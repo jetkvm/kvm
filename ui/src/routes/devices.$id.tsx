@@ -54,6 +54,8 @@ import {
 import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
 import { doRpcHidHandshake } from "@hooks/useHidRpc";
+import useKeyboard from "@hooks/useKeyboard";
+import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -628,6 +630,23 @@ export default function KvmIdRoute() {
   } = useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
   const { setFailsafeMode } = useFailsafeModeStore();
+
+  // Keyboard handler for E2E tests
+  const { handleKeyPress } = useKeyboard();
+
+  // Register E2E test hooks
+  useEffect(() => {
+    registerTestHandlers({
+      handleKeyPress,
+      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
+      getKeysDownState: () => useHidStore.getState().keysDownState,
+      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
+      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
+      getMediaStream: () => useRTCStore.getState().mediaStream,
+      getHdmiState: () => useVideoStore.getState().hdmiState,
+    });
+    return cleanupTestHooks;
+  }, [handleKeyPress]);
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();

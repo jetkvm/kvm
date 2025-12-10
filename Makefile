@@ -51,6 +51,11 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 test:
 	go test ./...
 
+test_e2e:
+	@read -p "Device IP: " device_ip; \
+	cd ui && npm install && npx playwright install --with-deps chromium && \
+	NODE_NO_WARNINGS=1 JETKVM_URL="http://$$device_ip" npm run test:e2e
+
 lint:
 	go vet ./...
 
@@ -166,6 +171,8 @@ dev_release: git_check_dev
 	@read -p "Test on device before release? [y/N] " test_confirm; \
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \
+		echo "Installing Playwright dependencies..."; \
+		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
 		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app test $(VERSION_DEV) || exit 1; \
 	fi
 	@echo "Uploading device app to R2..."
@@ -224,6 +231,8 @@ release: git_check_dev
 	@read -p "Test on device before release? [y/N] " test_confirm; \
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \
+		echo "Installing Playwright dependencies..."; \
+		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
 		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app test $(VERSION) || exit 1; \
 	fi
 	@echo "Uploading device app to R2..."

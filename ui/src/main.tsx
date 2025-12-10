@@ -11,6 +11,7 @@ import {
 import "./index.css";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
+import { initTestHooks } from "@/test/testHooks";
 import { CLOUD_API, CLOUD_ENABLE_VERSIONED_UI, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import Root from "@/root";
@@ -54,6 +55,9 @@ const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
+
+// Initialize E2E test hooks (safe to call in all environments)
+initTestHooks();
 
 export async function checkCloudAuth() {
   const res = await fetch(`${CLOUD_API}/me`, {
