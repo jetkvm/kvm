@@ -260,6 +260,9 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         code = "Henkan";
     } else if (code === "NonConvert") {
         code = "Muhenkan";
+    // Microsoft IME fix
+    } else if (key === "Shift" && code === "") {
+        code = "ShiftRight"
     }
 
     return code;
