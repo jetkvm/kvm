@@ -172,7 +172,7 @@ dev_release: git_check_dev
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \
 		echo "Installing Playwright dependencies..."; \
-		cd ui && npm install && npx playwright install --with-deps chromium && cd ..; \
+		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
 		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app test $(VERSION_DEV) || exit 1; \
 	fi
 	@echo "Uploading device app to R2..."
@@ -232,7 +232,7 @@ release: git_check_dev
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \
 		echo "Installing Playwright dependencies..."; \
-		cd ui && npm install && npx playwright install --with-deps chromium && cd ..; \
+		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
 		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app test $(VERSION) || exit 1; \
 	fi
 	@echo "Uploading device app to R2..."
