@@ -199,7 +199,7 @@ func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	}
 }
 
-// note: lock must be freeed by caller
+// note: lock must be freed by caller
 func (u *UsbGadget) popAutoReleaseTimer(key byte) bool {
 	u.kbdAutoReleaseLock.Lock()
 	timer, ok := u.kbdAutoReleaseTimers[key]

@@ -167,12 +167,6 @@ func (u *UsbGadget) Close() error {
 	u.kbdAutoReleaseTimers = make(map[byte]*time.Timer)
 	u.kbdAutoReleaseLock.Unlock()
 
-	// Cancel keyboard state context
-	if u.keyboardStateCancel != nil {
-		u.keyboardStateCancel()
-		u.keyboardStateCancel = nil
-	}
-
 	// Close HID files
 	if u.keyboardHidFile != nil {
 		u.keyboardHidFile.Close()

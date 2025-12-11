@@ -194,7 +194,7 @@ func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetCo
 
 func RunAutoUpdateCheck() {
 	// initially wait for 15 minutes before starting auto-update checks
-	// to avoid interfering with initial setup processesand to ensure
+	// to avoid interfering with initial setup processes and to ensure
 	// the system is stable before checking for updates
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()

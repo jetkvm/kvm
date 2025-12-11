@@ -312,7 +312,7 @@ func initializeNBDDevice() error {
 	nbdDevice = NewNBDDevice()
 	if err := nbdDevice.Start(); err != nil {
 		logger.Warn().Err(err).Msg("failed to start nbd device")
-		return err
+		return fmt.Errorf("failed to set ndb device: %w", err)
 	}
 
 	logger.Debug().Msg("nbd device started")
@@ -321,7 +321,7 @@ func initializeNBDDevice() error {
 	time.Sleep(1 * time.Second)
 
 	if err := setMassStorageImage("/dev/nbd0"); err != nil {
-		return err
+		return fmt.Errorf("failed to set mass storage image to /dev/nbd0: %w", err)
 	}
 
 	logger.Info().Msg("usb mass storage mounted")
@@ -331,7 +331,7 @@ func initializeNBDDevice() error {
 func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	filename, err := sanitizeFilename(filename)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to sanitize filename %s: %w", filename, err)
 	}
 
 	virtualMediaStateMutex.Lock()
@@ -344,15 +344,15 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	fullPath := filepath.Join(imagesFolder, filename)
 	fileInfo, err := os.Stat(fullPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get file info for %s: %w", fullPath, err)
 	}
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
-		return err
+		return fmt.Errorf("failed to set mass storage mode %s: %w", mode, err)
 	}
 
 	if err := setMassStorageImage(fullPath); err != nil {
-		return err
+		return fmt.Errorf("failed to set mass storage image to %s: %w", fullPath, err)
 	}
 	currentVirtualMediaState = &VirtualMediaState{
 		Source:   Storage,
@@ -437,18 +437,18 @@ func sanitizeFilename(filename string) (string, error) {
 func rpcDeleteStorageFile(filename string) error {
 	sanitizedFilename, err := sanitizeFilename(filename)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to sanitize filename %s: %w", filename, err)
 	}
 
 	fullPath := filepath.Join(imagesFolder, sanitizedFilename)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		return fmt.Errorf("file does not exist: %s", filename)
+		return fmt.Errorf("file %s does not exist: %w", fullPath, err)
 	}
 
 	err = os.Remove(fullPath)
 	if err != nil {
-		return fmt.Errorf("failed to delete file: %w", err)
+		return fmt.Errorf("failed to delete file %s: %w", fullPath, err)
 	}
 
 	return nil
@@ -464,7 +464,7 @@ const uploadIdPrefix = "upload_"
 func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload, error) {
 	sanitizedFilename, err := sanitizeFilename(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to sanitize filename %s: %w", filename, err)
 	}
 
 	filePath := path.Join(imagesFolder, sanitizedFilename)
@@ -482,7 +482,7 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 	uploadId := uploadIdPrefix + uuid.New().String()
 	file, err := os.OpenFile(uploadPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file for upload: %v", err)
+		return nil, fmt.Errorf("failed to open file %s for upload: %w", uploadPath, err)
 	}
 	pendingUploadsMutex.Lock()
 	pendingUploads[uploadId] = pendingUpload{
