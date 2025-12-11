@@ -242,8 +242,13 @@ export async function getUpdateStatus() {
   return response.result;
 }
 
-export async function getLocalVersion() {
-  const response = await callJsonRpc<VersionInfo>({ method: "getLocalVersion" });
+export async function getLocalVersion(
+  options?: Partial<JsonRpcCallOptions>,
+): Promise<VersionInfo> {
+  const response = await callJsonRpc<VersionInfo>({
+    method: "getLocalVersion",
+    ...options,
+  });
   if (response.error) throw response.error;
   return response.result;
 }
@@ -255,7 +260,10 @@ export interface updateParams {
   components?: UpdateComponents;
 }
 
-export async function checkUpdateComponents(params: updateParams, includePreRelease: boolean) {
+export async function checkUpdateComponents(
+  params: updateParams,
+  includePreRelease: boolean,
+) {
   const response = await callJsonRpc<SystemVersionInfo>({
     method: "checkUpdateComponents",
     params: {

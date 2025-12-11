@@ -192,6 +192,11 @@ func (rcm *ResolvConfManager) generateResolvConf(conf *types.ResolvConf) ([]byte
 	mergeConfig(&nameservers, &searchList, &conf.ConfigIPv4)
 	mergeConfig(&nameservers, &searchList, &conf.ConfigIPv6)
 
+	rcm.getLogger().Info().
+		Interface("nameservers", nameservers).
+		Interface("searchList", searchList).
+		Msg("merged config")
+
 	flattenedSearchList := []string{}
 	for search := range searchList {
 		flattenedSearchList = append(flattenedSearchList, search)

@@ -1,6 +1,9 @@
+import semver from "semver";
+
 import { KeySequence } from "@hooks/stores";
 import { getLocale, locales } from "@localizations/runtime.js";
 import { m } from "@localizations/messages.js";
+import { CLOUD_BACKWARDS_COMPATIBLE_VERSION, CLOUD_ENABLE_VERSIONED_UI } from "@/ui.config";
 
 const isInvalidDate = (date: Date) => date instanceof Date && isNaN(date.getTime());
 
@@ -302,4 +305,21 @@ export function deleteCookie(name: string, domain?: string, path = "/") {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Builds a versioned cloud URL for a device.
+ * Uses the device's app version to construct /v/{version}/devices/{id}{path}
+ * Falls back to CLOUD_BACKWARDS_COMPATIBLE_VERSION for older or invalid versions.
+ */
+export function buildCloudUrl(deviceId: string, appVersion: string | undefined, path = ""): string {
+  let uri = `/devices/${deviceId}${path}`;
+  if (CLOUD_ENABLE_VERSIONED_UI) {
+    const version =
+      appVersion && semver.valid(appVersion) && semver.gte(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION)
+        ? appVersion
+        : CLOUD_BACKWARDS_COMPATIBLE_VERSION;
+    uri = `/v/${version}${uri}`;
+  }
+  return new URL(uri, window.location.origin).href;
 }
