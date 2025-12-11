@@ -8,6 +8,8 @@
     "strict": true
   },
   "include": [
-    "vite.config.ts"
+    "vite.config.ts",
+    "playwright.config.ts",
+    "e2e/**/*.ts"
   ]
 }

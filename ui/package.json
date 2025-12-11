@@ -24,7 +24,8 @@
     "i18n:audit": "npm run i18n:find-dupes && npm run i18n:find-excess && npm run i18n:find-unused",
     "i18n:find-excess": "python3 ./tools/find_excess_messages.py",
     "i18n:find-unused": "python3 ./tools/find_unused_messages.py",
-    "i18n:find-dupes": "python3 ./tools/find_duplicate_translations.py"
+    "i18n:find-dupes": "python3 ./tools/find_duplicate_translations.py",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
@@ -71,10 +72,12 @@
     "@inlang/plugin-m-function-matcher": "^2.1.0",
     "@inlang/plugin-message-format": "^4.0.0",
     "@inlang/sdk": "^2.4.9",
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.17",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.17",
+    "@types/node": "^24.10.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/semver": "^7.7.1",

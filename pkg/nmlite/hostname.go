@@ -67,7 +67,7 @@ func (hm *ResolvConfManager) getHostname() string {
 }
 
 func (hm *ResolvConfManager) getDomain() string {
-	if hm.domain != "" {
+	if hm.domain != "" && hm.domain != "dhcp" {
 		return hm.domain
 	}
 
