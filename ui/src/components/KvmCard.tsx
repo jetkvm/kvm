@@ -2,13 +2,12 @@ import { Link } from "react-router";
 import { MdConnectWithoutContact } from "react-icons/md";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { LuEllipsisVertical } from "react-icons/lu";
-import semver from "semver";
 import { useMemo } from "react";
 
 import Card from "@components/Card";
 import { Button, LinkButton } from "@components/Button";
 import { m } from "@localizations/messages.js";
-import { CLOUD_BACKWARDS_COMPATIBLE_VERSION, CLOUD_ENABLE_VERSIONED_UI } from "@/ui.config";
+import { buildCloudUrl } from "@/utils";
 
 function getRelativeTimeString(date: Date | number, lang = navigator.language): string {
   // Allow dates or times to be passed
@@ -56,28 +55,7 @@ export default function KvmCard({
   lastSeen: Date | null;
   appVersion?: string;
 }) {
-  /**
-   * Constructs the URL for connecting to this KVM device's interface.
-   *
-   * CLOUD_BACKWARDS_COMPATIBLE_VERSION is the last backwards-compatible UI that works with older devices.
-   * Devices on CLOUD_BACKWARDS_COMPATIBLE_VERSION or below are served that version, while newer devices get
-   * their actual version. Unparseable versions fall back to CLOUD_BACKWARDS_COMPATIBLE_VERSION for safety.
-   */
-  const kvmUrl = useMemo(() => {
-    let uri = `/devices/${id}`;
-
-    // Only use versioned path if versioned UI is enabled
-    if (CLOUD_ENABLE_VERSIONED_UI) {
-      // Use device version if valid and >= 0.5.0, otherwise fall back to backwards-compatible version
-      let version = CLOUD_BACKWARDS_COMPATIBLE_VERSION;
-      if (appVersion && semver.valid(appVersion) && semver.gte(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION)) {
-        version = appVersion;
-      }
-      uri = `/v/${version}${uri}`;
-    }
-
-    return new URL(uri, window.location.origin).toString();
-  }, [appVersion, id]);
+  const kvmUrl = useMemo(() => buildCloudUrl(id, appVersion), [id, appVersion]);
 
 
   return (
