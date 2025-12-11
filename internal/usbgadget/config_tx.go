@@ -10,6 +10,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// no os package should occur in this file
+
 type UsbGadgetTransaction struct {
 	c                     *ChangeSet
 	reorderSymlinkChanges *RequestedFileChange
@@ -30,7 +32,6 @@ func (u *UsbGadget) WithTransaction(fn func(u2 *UsbGadget, tx *UsbGadgetTransact
 	logger.Info().Msg("starting USB gadget transaction")
 
 	tx := u.newUsbGadgetTransaction()
-
 	if err := fn(u, tx); err != nil {
 		logger.Error().Err(err).Msg("transaction failed")
 		return err
@@ -38,7 +39,6 @@ func (u *UsbGadget) WithTransaction(fn func(u2 *UsbGadget, tx *UsbGadgetTransact
 
 	err := tx.Commit()
 	logger.Trace().Err(err).Msg("committed transaction")
-
 	return err
 }
 

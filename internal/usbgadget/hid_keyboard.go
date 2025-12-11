@@ -124,14 +124,14 @@ func (u *UsbGadget) updateKeyboardState(state byte) {
 	u.keyboardStateLock.Lock()
 	defer u.keyboardStateLock.Unlock()
 
-	logger := u.getHidKeyboardLogger().With().Uint8("state", state).Logger()
+	logger := u.getHidKeyboardLogger().With().Hex("state", []byte{state}).Logger()
 
 	if state&^ValidKeyboardLedMasks != 0 {
 		logger.Warn().Msg("ignoring invalid bits")
 		state &= ValidKeyboardLedMasks
 	}
 
-	logger = logger.With().Uint8("old_state", u.keyboardState).Logger()
+	logger = logger.With().Hex("old_state", []byte{u.keyboardState}).Logger()
 
 	if u.keyboardState == state {
 		logger.Trace().Msg("unchanged keyboardState")
@@ -190,7 +190,7 @@ func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	logger := u.getHidKeyboardAutoReleaseLogger().With().Dur("reset_duration", resetDuration).Logger()
 
 	u.kbdAutoReleaseLock.Lock()
-	defer logging.UnlockWithTraceLog(&logger, &u.kbdAutoReleaseLock, "auto-release delayed")
+	defer logging.UnlockWithTraceLog(&u.kbdAutoReleaseLock, &logger, "auto-release delayed")
 
 	for _, timer := range u.kbdAutoReleaseTimers {
 		if timer != nil {
@@ -218,7 +218,7 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	logger := u.getHidKeyboardAutoReleaseLogger().With().Hex("key", []byte{key}).Logger()
 
 	_ = u.popAutoReleaseTimer(key) // discard previous timer if any
-	defer logging.UnlockWithTraceLog(&logger, &u.kbdAutoReleaseLock, "auto-release scheduled")
+	defer logging.UnlockWithTraceLog(&u.kbdAutoReleaseLock, &logger, "auto-release scheduled")
 
 	start := time.Now()
 	u.kbdAutoReleaseTimers[key] = time.AfterFunc(DefaultAutoReleaseDuration, func() {
@@ -231,7 +231,7 @@ func (u *UsbGadget) cancelAutoRelease(key byte) {
 	logger := u.getHidKeyboardAutoReleaseLogger().With().Hex("key", []byte{key}).Logger()
 
 	ok := u.popAutoReleaseTimer(key)
-	defer logging.UnlockWithTraceLog(&logger, &u.kbdAutoReleaseLock, "auto-release cancelled")
+	defer logging.UnlockWithTraceLog(&u.kbdAutoReleaseLock, &logger, "auto-release cancelled")
 
 	if ok {
 		// Reset keep-alive timing when key is actually released
@@ -245,7 +245,7 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 	logger := u.getHidKeyboardAutoReleaseLogger().With().Hex("key", []byte{key}).Logger()
 
 	ok := u.popAutoReleaseTimer(key)
-	logging.UnlockWithTraceLog(&logger, &u.kbdAutoReleaseLock, "auto-released")
+	defer logging.UnlockWithTraceLog(&u.kbdAutoReleaseLock, &logger, "auto-released")
 
 	if ok {
 		// Skip if already released
@@ -267,7 +267,7 @@ func (u *UsbGadget) listenKeyboardEvents() {
 	for {
 		select {
 		case <-u.keyboardStateCtx.Done():
-			u.getHidKeyboardLogger().Info().Str("listener", "keyboardEvents").Msg("context done")
+			u.getHidKeyboardLogger().Info().Msg("context done")
 			return
 		default:
 			if u.keyboardHidFile == nil {
@@ -280,17 +280,17 @@ func (u *UsbGadget) listenKeyboardEvents() {
 			n, err := u.keyboardHidFile.Read(buf)
 			if err != nil {
 				if errors.Is(err, os.ErrClosed) {
-					u.getHidKeyboardLogger().Warn().Msg("keyboard file is closed, stopping keyboard event listener")
+					logger.Warn().Msg("keyboard file is closed, stopping keyboard event listener")
 					return
 				} else if exceeded := u.logWithSuppression(&logger, "keyboardHidFileRead", 10, err, "failed to read"); exceeded {
-					u.getHidKeyboardLogger().Error().Msg("too many errors reading the keyboard file, stopping keyboard event listener")
+					logger.Error().Msg("too many errors reading the keyboard file, stopping keyboard event listener")
 					return
 				}
 			} else {
 				u.resetLogSuppressionCounter("keyboardHidFileRead")
 			}
 
-			logger.Trace().Int("n", n).Uints8("buf", buf).Msg("got data from keyboard")
+			logger.Trace().Int("n", n).Hex("buf", buf).Msg("got data from keyboard")
 			if n != 1 {
 				logger.Warn().Int("n", n).Msg("expected 1 byte")
 				continue
@@ -383,7 +383,7 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 
 	err := u.keyboardWriteHidFile(modifier, keys)
 	if err != nil {
-		u.getHidKeyboardLogger().Warn().Uint8("modifier", modifier).Uints8("keys", keys).Err(err).Msg("Could not write keyboard report to hidg0")
+		u.getHidKeyboardLogger().Warn().Err(err).Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
 	}
 
 	u.UpdateKeysDown(modifier, keys)
@@ -430,9 +430,9 @@ var KeyCodeToMaskMap = map[byte]byte{
 
 func (u *UsbGadget) keypressReport(l *zerolog.Logger, key byte, press bool) (KeysDownState, error) {
 	defer u.resetUserInputTime()
-	logger := l.With().Uint8("key", key).Bool("press", press).Logger()
+	logger := l.With().Hex("key", []byte{key}).Bool("press", press).Logger()
 
-	if logging.IsDebugLevel(&logger) {
+	if logger.GetLevel() <= zerolog.DebugLevel {
 		requestID := xid.New()
 		logger = logger.With().Stringer("requestID", requestID).Logger()
 	}
@@ -443,8 +443,7 @@ func (u *UsbGadget) keypressReport(l *zerolog.Logger, key byte, press bool) (Key
 	// in the client/browser-side code in useKeyboard.ts so make sure to keep
 	// them in sync.
 	var state = u.GetKeysDownState()
-	logger = logger.With().Object("state", state).Logger()
-	logger.Trace().Msg("got keys down state")
+	logger.Trace().Object("state", state).Msg("got keys down state")
 
 	modifier := state.Modifier
 	keys := append([]byte(nil), state.Keys...)
@@ -493,7 +492,7 @@ func (u *UsbGadget) keypressReport(l *zerolog.Logger, key byte, press bool) (Key
 				defer u.ResetRollover() // after reporting rollover, we reset the buffer
 			} else {
 				// If we are releasing a key, and we didn't find it in a slot, who cares?
-				logger.Trace().Msg("key not found in buffer, nothing to release")
+				logger.Debug().Msg("key not found in buffer, nothing to release")
 			}
 		}
 	}
@@ -503,7 +502,7 @@ func (u *UsbGadget) keypressReport(l *zerolog.Logger, key byte, press bool) (Key
 }
 
 func (u *UsbGadget) KeypressReport(key byte, press bool) error {
-	logger := u.getHidKeyboardLogger().With().Uint8("key", key).Bool("press", press).Logger()
+	logger := u.getHidKeyboardLogger().With().Hex("key", []byte{key}).Bool("press", press).Logger()
 
 	state, err := u.keypressReport(&logger, key, press)
 	if err != nil {

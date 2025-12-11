@@ -141,7 +141,7 @@ func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value 
 	// get it as a pointer
 	_, ok := u.configMap[itemKey]
 	if !ok {
-		err := fmt.Errorf("config not found %s", itemKey)
+		err := fmt.Errorf("config item %s not found", itemKey)
 		logger.Error().Err(err).Msg("overriding gadget config")
 		return false, err
 	}
@@ -180,7 +180,7 @@ func (u *UsbGadget) Init() error {
 
 	err := u.configureUsbGadget(false)
 	if err != nil {
-		return u.logError("no udc found, skipping USB stack init", err)
+		return u.logError("unable to initialize USB stack", err)
 	}
 
 	return nil

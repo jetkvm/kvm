@@ -31,7 +31,7 @@ func (u *UsbGadget) getHidKeyboardAutoReleaseLogger() *zerolog.Logger {
 	return &logger
 }
 
-func (u *UsbGadget) logWithSuppression(logger *zerolog.Logger, counterName string, every int, err error, msg string, args ...interface{}) bool {
+func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...interface{}) bool {
 	u.logSuppressionLock.Lock()
 	counter, ok := u.logSuppressionCounter[counterName] // returns 0, false if not found
 	counter++
@@ -62,6 +62,7 @@ func (u *UsbGadget) logWarn(msg string, err error) error {
 	if u.strictMode {
 		return err
 	}
+
 	return nil
 }
 
@@ -75,5 +76,6 @@ func (u *UsbGadget) logError(msg string, err error) error {
 	if u.strictMode {
 		return err
 	}
+
 	return nil
 }

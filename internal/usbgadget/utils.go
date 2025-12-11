@@ -109,7 +109,7 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 		logger.Warn().Msg("keyboard file is closed, stopping writes")
 		return 0, err
 	} else if errors.Is(err, os.ErrDeadlineExceeded) {
-		if exceeded := u.logWithSuppression(&logger, "writeWithTimeout_"+fileName, 10, err, "write timed out"); exceeded {
+		if exceeded := u.logWithSuppression("writeWithTimeout_"+fileName, 10, &logger, err, "write timed out"); exceeded {
 			logger.Error().Msg("too many errors writing to the keyboard file, stopping writes")
 			return 0, err
 		}

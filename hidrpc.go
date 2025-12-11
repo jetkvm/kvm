@@ -51,6 +51,7 @@ func handleKeyboardMacro(message hidrpc.Message) error {
 	if err != nil {
 		return err
 	}
+
 	hidrpc.GetHidRpcLogger().Debug().Interface("keyboardMacroReport", keyboardMacroReport).Msg("handling keyboard macro")
 	return rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
 }
@@ -77,7 +78,7 @@ func onHidMessage(msg hidQueueMessage, session *Session, index int) {
 	logger := hidrpc.GetHidRpcLogger().With().Int("queueIndex", index).Str("channel", msg.channel).Logger()
 	data := msg.Data
 
-	if logging.IsTraceLevel(&logger) {
+	if logger.GetLevel() <= zerolog.TraceLevel {
 		logger.Trace().Object("data", utils.ByteSlice(data)).Msg("HID RPC message received")
 	}
 
@@ -91,6 +92,10 @@ func onHidMessage(msg hidQueueMessage, session *Session, index int) {
 	if err := hidrpc.Unmarshal(data, &message); err != nil {
 		logger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
 		return
+	}
+
+	if logger.GetLevel() <= zerolog.DebugLevel {
+		logger = scopedLogger.With().Str("descr", message.String()).Logger()
 	}
 
 	t := time.Now()

@@ -364,7 +364,7 @@ func (fc *FileChange) getFileChangeResolvedAction(l *zerolog.Logger) FileChangeR
 		}
 		return FileChangeResolvedActionMountConfigFS
 	default:
-		logger.Warn().Msg("unknown expected state")
+		logger.Warn().Interface("file_change", FileStateString[fc.ExpectedState]).Msg("unknown expected state")
 		return FileChangeResolvedActionDoNothing
 	}
 }

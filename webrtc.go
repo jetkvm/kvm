@@ -230,7 +230,7 @@ func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
 
 func getOnHidMessageHandler(session *Session, l *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {
 	return func(msg webrtc.DataChannelMessage) {
-		logger := l.With().Interface("session", session).Str("channel", channel).Interface("msg", msg).Logger()
+		logger := l.With().Str("channel", channel).Interface("msg", msg).Logger()
 
 		if msg.IsString {
 			logger.Warn().Msg("received string data in HID RPC message handler")

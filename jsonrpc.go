@@ -643,7 +643,6 @@ func rpcGetUsbConfig() (usbgadget.Config, error) {
 
 func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
 	getJsonRPCLogger().Debug().Interface("usbConfig", usbConfig).Msg("setting USB emulation state")
-
 	LoadConfig()
 	config.UsbConfig = &usbConfig
 	gadget.SetGadgetConfig(config.UsbConfig)
@@ -668,7 +667,6 @@ func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
 
 func rpcResetConfig() error {
 	getJsonRPCLogger().Debug().Msg("resetting configuration to default")
-
 	defaultConfig := getDefaultConfig()
 	config = &defaultConfig
 	if err := SaveConfig(); err != nil {
@@ -824,6 +822,7 @@ var serialPortMode = defaultMode
 func rpcSetSerialSettings(settings SerialSettings) error {
 	logger := getJsonRPCLogger().With().Interface("settings", settings).Logger()
 	logger.Debug().Msg("setting serial settings")
+
 	baudRate, err := strconv.Atoi(settings.BaudRate)
 	if err != nil {
 		return fmt.Errorf("invalid baud rate: %v", err)

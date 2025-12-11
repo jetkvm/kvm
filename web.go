@@ -262,7 +262,7 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 	sourceType := "local"
 	connectionID := uuid.New().String()
 
-	getWebRTCLogger(source, sourceType, connectionID).Info().Msg("new connection established")
+	getWebRTCLogger(source, sourceType, connectionID).Info().Msg("new websocket connection established")
 
 	// Create WebSocket options with InsecureSkipVerify to bypass origin check
 	wsOptions := &websocket.AcceptOptions{

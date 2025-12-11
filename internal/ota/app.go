@@ -12,10 +12,7 @@ const (
 // DO NOT call it directly, it's not thread safe
 // Mutex is currently held by the caller, e.g. doUpdate
 func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus) error {
-	logger := GetOtaLogger().
-		With().
-		Str("path", appUpdatePath).
-		Logger()
+	logger := GetOtaLogger().With().Str("path", appUpdatePath).Logger()
 
 	if err := s.downloadFile(ctx, appUpdatePath, appUpdate.url, "app", &logger); err != nil {
 		return s.componentUpdateError("Error downloading app update", err, &logger)
