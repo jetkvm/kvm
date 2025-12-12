@@ -81,7 +81,7 @@ export async function waitForVideoStream(page: Page, timeout = 30000): Promise<v
  * @param taps - Number of key taps to send (default: 3)
  * @param delayMs - Delay between taps in milliseconds (default: 200)
  */
-export async function wakeDisplay(page: Page, taps = 3, delayMs = 200): Promise<void> {
+export async function wakeDisplay(page: Page, taps = 3, delayMs = 500): Promise<void> {
   for (let i = 0; i < taps; i++) {
     await tapKey(page, HID_KEY.SPACE);
     await page.waitForTimeout(delayMs);
