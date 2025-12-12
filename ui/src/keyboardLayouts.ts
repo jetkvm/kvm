@@ -39,6 +39,7 @@ import { nb_NO } from "@/keyboardLayouts/nb_NO";
 import { sv_SE } from "@/keyboardLayouts/sv_SE";
 import { da_DK } from "@/keyboardLayouts/da_DK";
 import { ja_JP } from "@/keyboardLayouts/ja_JP";
+import { sl_SI } from "@/keyboardLayouts/sl_SI"
 
 export const keyboards: KeyboardLayout[] = [
   cs_CZ,
@@ -55,4 +56,5 @@ export const keyboards: KeyboardLayout[] = [
   sv_SE,
   da_DK,
   ja_JP,
+  sl_SI,
 ];
