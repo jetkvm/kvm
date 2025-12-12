@@ -37,6 +37,34 @@ test.describe("EDID Round-Trip Tests", () => {
   // Testing 2 random EDIDs, so 2 minutes should be plenty
   test.setTimeout(120000); // 2 minutes
 
+  // Restore EDID to default after tests complete (for subsequent test runs)
+  test.afterAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto("/settings/video");
+      await page.waitForLoadState("networkidle");
+      const edidDropdown = page.locator("select").filter({
+        has: page.locator('option[value="custom"]'),
+      });
+      if (await edidDropdown.isVisible({ timeout: 5000 })) {
+        // Get the first non-custom option (the default)
+        const firstOption = await edidDropdown.evaluate((el: HTMLSelectElement) => {
+          const opts = Array.from(el.options);
+          const nonCustom = opts.find(o => !o.value.toLowerCase().includes("custom"));
+          return nonCustom?.value;
+        });
+        if (firstOption) {
+          await edidDropdown.selectOption(firstOption);
+          await page.waitForTimeout(3000); // Wait for EDID change
+        }
+      } else {
+        console.warn("[EDID cleanup] EDID dropdown not visible, skipping restoration");
+      }
+    } finally {
+      await page.close();
+    }
+  });
+
   test("video streams correctly after changing EDID presets", async ({ page }) => {
     // Navigate to settings/video to discover EDID options
     await page.goto("/settings/video");
@@ -44,9 +72,10 @@ test.describe("EDID Round-Trip Tests", () => {
     // Wait for the page to load and EDID dropdown to be ready
     await page.waitForLoadState("networkidle");
 
-    // Find the EDID dropdown - it's inside a Fieldset with the EDID settings
-    // The dropdown is a select element within the EDID SettingsItem
-    const edidSelect = page.locator("select").last();
+    // Find the EDID dropdown by looking for a select with "custom" option
+    const edidSelect = page.locator("select").filter({
+      has: page.locator('option[value="custom"]'),
+    });
     await expect(edidSelect).toBeVisible({ timeout: 10000 });
 
     // Wait for the dropdown to be enabled (not in loading state)
@@ -84,7 +113,9 @@ test.describe("EDID Round-Trip Tests", () => {
       }
 
       // Re-locate the dropdown (page may have reloaded)
-      const dropdown = page.locator("select").last();
+      const dropdown = page.locator("select").filter({
+        has: page.locator('option[value="custom"]'),
+      });
       await expect(dropdown).toBeVisible({ timeout: 10000 });
       await expect(dropdown).toBeEnabled({ timeout: 10000 });
 
@@ -125,13 +156,6 @@ test.describe("EDID Round-Trip Tests", () => {
       await page.waitForTimeout(FINGERPRINT_INTERVAL);
       const fpB = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
       expect(fpB, "Failed to capture fingerprint B").not.toBeNull();
-
-      // Verify the stream is updating (not frozen/black)
-      const distance = fingerprintDistance(fpA!, fpB!);
-      expect(
-        distance,
-        `Video stream should be updating for EDID "${option.label}" (distance=${distance}, expected >= 0)`,
-      ).toBeGreaterThanOrEqual(0);
 
       // Verify we're not getting a black/blank screen
       const uniqueValues = new Set(fpA!);
