@@ -53,7 +53,7 @@ import {
 } from "@components/VideoOverlay";
 import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
-import { doRpcHidHandshake } from "@hooks/useHidRpc";
+import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
 
@@ -634,19 +634,8 @@ export default function KvmIdRoute() {
   // Keyboard handler for E2E tests
   const { handleKeyPress } = useKeyboard();
 
-  // Register E2E test hooks
-  useEffect(() => {
-    registerTestHandlers({
-      handleKeyPress,
-      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
-      getKeysDownState: () => useHidStore.getState().keysDownState,
-      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
-      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
-      getMediaStream: () => useRTCStore.getState().mediaStream,
-      getHdmiState: () => useVideoStore.getState().hdmiState,
-    });
-    return cleanupTestHooks;
-  }, [handleKeyPress]);
+  // Mouse handler for E2E tests
+  const { reportAbsMouseEvent, rpcHidReady } = useHidRpc();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -737,6 +726,34 @@ export default function KvmIdRoute() {
   }
 
   const { send } = useJsonRpc(onJsonRpcRequest);
+
+  // Mouse movement handler for E2E tests (needs send from useJsonRpc)
+  const handleAbsMouseMove = useCallback(
+    (x: number, y: number, buttons: number) => {
+      if (rpcHidReady) {
+        reportAbsMouseEvent(x, y, buttons);
+      } else {
+        send("absMouseReport", { x, y, buttons });
+      }
+    },
+    [reportAbsMouseEvent, rpcHidReady, send],
+  );
+
+  // Register E2E test hooks
+  useEffect(() => {
+    registerTestHandlers({
+      handleKeyPress,
+      handleAbsMouseMove,
+      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
+      getKeysDownState: () => useHidStore.getState().keysDownState,
+      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
+      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
+      getMediaStream: () => useRTCStore.getState().mediaStream,
+      getHdmiState: () => useVideoStore.getState().hdmiState,
+      getVideoElement: () => useVideoStore.getState().videoElement,
+    });
+    return cleanupTestHooks;
+  }, [handleKeyPress, handleAbsMouseMove]);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
