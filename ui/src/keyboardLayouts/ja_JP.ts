@@ -42,7 +42,7 @@ export const chars = {
   "*": {key: "Quote", shift: true},
   "]": {key: "Backslash"},
   "}": {key: "Backslash", shift: true},
-  _: {key: "KeyRO", shift: true},
+  "_": {key: "KeyRO", shift: true},
 } as Record<string, KeyCombo>
 
 // NOTE:
