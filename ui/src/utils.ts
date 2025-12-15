@@ -309,7 +309,9 @@ export function buildCloudUrl(deviceId: string, appVersion: string | undefined, 
   let uri = `/devices/${deviceId}${path}`;
   if (CLOUD_ENABLE_VERSIONED_UI) {
     const version =
-      appVersion && semver.valid(appVersion) && semver.gte(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION)
+      appVersion &&
+      semver.valid(appVersion) &&
+      semver.gte(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION)
         ? appVersion
         : CLOUD_BACKWARDS_COMPATIBLE_VERSION;
     uri = `/v/${version}${uri}`;

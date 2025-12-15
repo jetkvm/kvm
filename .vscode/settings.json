@@ -36,5 +36,8 @@
       ],
       "url": "./internal/ota/testdata/ota.schema.json"
     }
-  ]
+  ],
+  "[go]": {
+    "editor.defaultFormatter": "golang.go"
+  }
 }

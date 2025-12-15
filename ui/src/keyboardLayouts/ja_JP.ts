@@ -1,6 +1,6 @@
-import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts";
 
-import { en_US } from "./en_US"
+import { en_US } from "./en_US";
 
 const name = "Japanese";
 const isoCode = "ja-JP";
@@ -21,29 +21,29 @@ const isoCode = "ja-JP";
 
 export const chars = {
   ...en_US.chars,
-  "\"": { key: "Digit2", shift: true },
+  '"': { key: "Digit2", shift: true },
   "&": { key: "Digit6", shift: true },
   "'": { key: "Digit7", shift: true },
   "(": { key: "Digit8", shift: true },
   ")": { key: "Digit9", shift: true },
   "=": { key: "Minus", shift: true },
-  "^": { key: "Equal"},
-  "~": { key: "Equal", shift: true  },
-  "\\": {key: "Yen"},
-  "¥": {key: "Yen"},
-  "|": {key: "Yen", shift: true},
-  "@": {key: "BracketLeft"},
-  "`": {key: "BracketLeft", shift: true},
-  "[": {key: "BracketRight"},
-  "{": {key: "BracketRight", shift: true},
-  ";": {key: "Semicolon"},
-  "+": {key: "Semicolon", shift: true},
-  ":": {key: "Quote"},
-  "*": {key: "Quote", shift: true},
-  "]": {key: "Backslash"},
-  "}": {key: "Backslash", shift: true},
-  "_": {key: "KeyRO", shift: true},
-} as Record<string, KeyCombo>
+  "^": { key: "Equal" },
+  "~": { key: "Equal", shift: true },
+  "\\": { key: "Yen" },
+  "¥": { key: "Yen" },
+  "|": { key: "Yen", shift: true },
+  "@": { key: "BracketLeft" },
+  "`": { key: "BracketLeft", shift: true },
+  "[": { key: "BracketRight" },
+  "{": { key: "BracketRight", shift: true },
+  ";": { key: "Semicolon" },
+  "+": { key: "Semicolon", shift: true },
+  ":": { key: "Quote" },
+  "*": { key: "Quote", shift: true },
+  "]": { key: "Backslash" },
+  "}": { key: "Backslash", shift: true },
+  _: { key: "KeyRO", shift: true },
+} as Record<string, KeyCombo>;
 
 // NOTE:
 // We intentionally avoid providing Hiragana glyph labels on keycaps in the UI.
@@ -53,7 +53,7 @@ export const chars = {
 // Source: https://ja.wikipedia.org/wiki/%E3%81%8B%E3%81%AA%E5%85%A5%E5%8A%9B#%E3%81%8B%E3%81%AA%E5%85%A5%E5%8A%9B%E3%81%AE%E5%88%A9%E7%94%A8%E7%8A%B6%E6%B3%81
 export const keyDisplayMap: Record<string, string> = {
   ...en_US.keyDisplayMap,
-  "(Digit2)": "\"",
+  "(Digit2)": '"',
   "(Digit6)": "&",
   "(Digit7)": "'",
   "(Digit8)": "(",
@@ -110,9 +110,9 @@ export const virtualKeyboard = {
       "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) (Backslash) (Enter)",
       "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) (KeyRO) ShiftRight",
       "ControlLeft MetaLeft AltLeft Muhenkan Space Henkan (KatakanaHiragana) AltRight MetaRight ContextMenu ControlRight",
-    ]
+    ],
   },
-}
+};
 
 export const ja_JP: KeyboardLayout = {
   isoCode,
@@ -120,5 +120,5 @@ export const ja_JP: KeyboardLayout = {
   chars,
   keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
-  virtualKeyboard
+  virtualKeyboard,
 };
