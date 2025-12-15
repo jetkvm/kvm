@@ -17,6 +17,8 @@ show_help() {
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --skip-native-build    Skip native build"
+    echo "      --log-trace <scopes>   Comma-separated scopes to trace"
+    echo "                             (e.g., usb, usb,hidrpc, all)"
     echo "      --disable-docker       Disable docker build"
     echo "      --enable-sync-trace    Enable sync trace (do not use in release builds)"
     echo "      --native-binary        Build and deploy the native binary (FOR DEBUGGING ONLY)"
@@ -64,7 +66,7 @@ GDB_DEBUG_PORT=2345
 BUILD_NATIVE_BINARY=false
 ENABLE_SYNC_TRACE=0
 RESET_USB_HID_DEVICE=false
-LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
+LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"  # Scopes to enable TRACE logging for
 RUN_GO_TESTS=false
 RUN_GO_TESTS_ONLY=false
 INSTALL_APP=false
@@ -95,13 +97,12 @@ while [[ $# -gt 0 ]]; do
             SKIP_NATIVE_BUILD=1
             shift
             ;;
+        --log-trace)
+            LOG_TRACE_SCOPES="$2"
+            shift 2
+            ;;
         --reset-usb-hid)
             RESET_USB_HID_DEVICE=true
-            shift
-            ;;
-        --enable-sync-trace)
-            ENABLE_SYNC_TRACE=1
-            LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES},synctrace"
             shift
             ;;
         --disable-docker)
@@ -319,8 +320,12 @@ cd "${REMOTE_PATH}"
 # Make the new binary executable
 chmod +x jetkvm_app_debug
 
-# Run the application in the background
-PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug | tee -a /tmp/jetkvm_app_debug.log
+# Run the application with logging configuration
+if [ -n "${LOG_TRACE_SCOPES}" ]; then
+    export JETKVM_LOG_ERROR=all
+    export JETKVM_LOG_TRACE="${LOG_TRACE_SCOPES}"
+fi
+./jetkvm_app_debug | tee -a /tmp/jetkvm_app_debug.log
 EOF
 fi
 
