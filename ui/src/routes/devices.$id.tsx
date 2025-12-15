@@ -872,7 +872,13 @@ export default function KvmIdRoute() {
 
     // Rebooting takes priority over connection status
     if (rebootState?.isRebooting) {
-      return <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} deviceId={params.id} />;
+      return (
+        <RebootingOverlay
+          show={true}
+          postRebootAction={rebootState.postRebootAction}
+          deviceId={params.id}
+        />
+      );
     }
 
     if (isFailsafeMode && failsafeReason) {
@@ -913,7 +919,6 @@ export default function KvmIdRoute() {
     setupPeerConnection,
     loadingMessage,
   ]);
-  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, params.id, isFailsafeMode, failsafeReason, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>

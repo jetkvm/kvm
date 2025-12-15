@@ -317,8 +317,9 @@ export default function SettingsNetworkRoute() {
     [prepareSettings, formState.dirtyFields, onSubmit],
   );
 
-  const ipv4mode = useWatch({name: "ipv4_mode"});
-  const ipv6mode = useWatch({name: "ipv6_mode"});
+  const ipv4mode = watch("ipv4_mode");
+  const ipv6mode = watch("ipv6_mode");
+  const domain = watch("domain");
 
   const onDhcpLeaseRenew = () => {
     send("renewDHCPLease", {}, resp => {
@@ -337,6 +338,8 @@ export default function SettingsNetworkRoute() {
   return (
     <>
       <FormProvider {...formMethods}>
+        {/* This is a bug in react. The fix hasn'e been released yet. https://github.com/facebook/react/pull/35062 */}
+        {}
         <form onSubmit={handleSubmit(onSubmitGate)} className="space-y-4">
           <SettingsPageHeader
             title={m.network_title()}
@@ -436,7 +439,7 @@ export default function SettingsNetworkRoute() {
                   </div>
                 </SettingsItem>
 
-                {watch("domain") === "custom" && (
+                {domain === "custom" && (
                   <div className="mt-2 w-1/3 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
                     <InputFieldWithLabel
                       size="SM"

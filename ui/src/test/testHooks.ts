@@ -28,8 +28,19 @@ export interface KvmTestHooks extends TestHooksInternal {
   getKeysDownState: () => KeysDownState | null;
   sendKeypress: (key: number, press: boolean) => void;
   sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
-  captureVideoRegion: (x: number, y: number, width: number, height: number) => Promise<string | null>;
-  captureVideoRegionFingerprint: (x: number, y: number, width: number, height: number, gridSize?: number) => number[] | null;
+  captureVideoRegion: (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => Promise<string | null>;
+  captureVideoRegionFingerprint: (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    gridSize?: number,
+  ) => number[] | null;
   getVideoStreamDimensions: () => { width: number; height: number } | null;
   isWebRTCConnected: () => boolean;
   isHidRpcReady: () => boolean;
@@ -77,7 +88,12 @@ export function initTestHooks(): void {
       return version !== null && version !== undefined;
     },
 
-    captureVideoRegion: async (x: number, y: number, width: number, height: number): Promise<string | null> => {
+    captureVideoRegion: async (
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ): Promise<string | null> => {
       const videoElement = hooks._getVideoElement?.();
       if (!videoElement) {
         console.warn("[E2E] captureVideoRegion called but no video element available");
@@ -97,7 +113,13 @@ export function initTestHooks(): void {
       return canvas.toDataURL("image/png");
     },
 
-    captureVideoRegionFingerprint: (x: number, y: number, width: number, height: number, gridSize = 8): number[] | null => {
+    captureVideoRegionFingerprint: (
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      gridSize = 8,
+    ): number[] | null => {
       const videoElement = hooks._getVideoElement?.();
       if (!videoElement) {
         console.warn("[E2E] captureVideoRegionFingerprint called but no video element available");
