@@ -28,7 +28,6 @@ func (n *Native) handleVideoFrameChan() {
 func (n *Native) handleVideoStateChan() {
 	for {
 		state := <-videoStateChan
-
 		n.onVideoStateChange(state)
 	}
 }
@@ -36,7 +35,8 @@ func (n *Native) handleVideoStateChan() {
 func (n *Native) handleLogChan() {
 	for {
 		entry := <-logChan
-		l := n.l.With().
+		l := GetNativeLogger().
+			With().
 			Str("file", entry.File).
 			Str("func", entry.FuncName).
 			Int("line", entry.Line).

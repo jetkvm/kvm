@@ -81,24 +81,20 @@ int set_edid(uint8_t *edid, size_t size)
     if (size != 128 && size != 256)
     {
         errno = EINVAL;
-        return -1;
+        return -2;
     }
 
-    int fd;
-    struct v4l2_edid v4l2_edid;
-
-    fd = open(V4L_SUBDEV, O_RDWR);
+    int fd = open(V4L_SUBDEV, O_RDWR);
     if (fd < 0)
     {
         log_error("Failed to open device");
-        return -1;
+        return -3;
     }
 
     fix_edid_checksum(edid, size);
 
+    struct v4l2_edid v4l2_edid;
     memset(&v4l2_edid, 0, sizeof(v4l2_edid));
-    v4l2_edid.pad = 0;
-    v4l2_edid.start_block = 0;
     v4l2_edid.blocks = size / 128;
     v4l2_edid.edid = edid;
 
@@ -106,7 +102,7 @@ int set_edid(uint8_t *edid, size_t size)
     {
         log_error("Failed to set EDID");
         close(fd);
-        return -1;
+        return -4;
     }
 
     close(fd);

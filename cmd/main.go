@@ -11,10 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/erikdubbelboer/gspt"
 	"github.com/jetkvm/kvm"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/supervisor"
+
+	"github.com/erikdubbelboer/gspt"
 )
 
 var (

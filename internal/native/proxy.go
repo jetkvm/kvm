@@ -47,11 +47,20 @@ type nativeProxyOptions struct {
 	OnNativeRestart      func()
 }
 
+func getClientLogger() *zerolog.Logger {
+	logger := GetNativeLogger().
+		With().
+		Str("subcomponent", "grpc-client").
+		Int("pid", pid).
+		Logger()
+	return &logger
+}
+
 func randomId(binaryLength int) string {
 	s := make([]byte, binaryLength)
 	_, err := rand.Read(s)
 	if err != nil {
-		nativeLogger.Error().Err(err).Msg("failed to generate random ID")
+		getClientLogger().Error().Err(err).Msg("failed to generate random ID")
 		return strings.Repeat("0", binaryLength*2) // return all zeros if error
 	}
 	return hex.EncodeToString(s)
@@ -133,7 +142,6 @@ type NativeProxy struct {
 	cmd   *cmdWrapper
 	cmdMu sync.Mutex // mutex for the cmd
 
-	logger   *zerolog.Logger
 	options  *nativeProxyOptions
 	restarts uint
 	stopped  bool
@@ -154,7 +162,6 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 		nativeUnixSocket:      proxyOptions.CtrlUnixSocket,
 		videoStreamUnixSocket: proxyOptions.VideoStreamUnixSocket,
 		binaryPath:            exePath,
-		logger:                nativeLogger,
 		options:               proxyOptions,
 		restarts:              0,
 	}
@@ -167,7 +174,7 @@ func (p *NativeProxy) startVideoStreamListener() error {
 		return nil
 	}
 
-	logger := p.logger.With().Str("socketPath", p.videoStreamUnixSocket).Logger()
+	logger := GetDisplayLogger().With().Str("socketPath", p.videoStreamUnixSocket).Logger()
 	listener, err := net.Listen("unix", p.videoStreamUnixSocket)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to start video stream listener")
@@ -185,7 +192,7 @@ func (p *NativeProxy) startVideoStreamListener() error {
 			}
 
 			logger.Info().Msg("video stream socket accepted")
-			go p.handleVideoFrame(conn)
+			go p.handleVideoFrames(conn)
 		}
 	}()
 
@@ -252,7 +259,7 @@ func (p *NativeProxy) toProcessCommand() (*cmdWrapper, error) {
 	return cmd, nil
 }
 
-func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
+func (p *NativeProxy) handleVideoFrames(conn net.Conn) {
 	defer conn.Close()
 
 	inboundPacket := make([]byte, maxFrameSize)
@@ -264,14 +271,14 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 		_, err := io.ReadFull(conn, frameSizeBuffer[:])
 		if err != nil {
 			if err != io.EOF {
-				p.logger.Warn().Err(err).Msg("failed to read frame size from socket")
+				GetDisplayLogger().Warn().Err(err).Msg("failed to read frame size from socket")
 			}
 			break
 		}
 
 		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
 		if frameSize == 0 || frameSize > maxFrameSize {
-			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
+			GetDisplayLogger().Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
 				Msg("received invalid frame size")
 			break
 		}
@@ -279,7 +286,7 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 		// Read the actual frame data
 		_, err = io.ReadFull(conn, inboundPacket[:frameSize])
 		if err != nil {
-			p.logger.Warn().Err(err).Msg("failed to read video frame from socket")
+			GetDisplayLogger().Warn().Err(err).Msg("failed to read video frame from socket")
 			break
 		}
 
@@ -295,24 +302,22 @@ func (p *NativeProxy) setUpGRPCClient() error {
 	// wait until handshake completed
 	select {
 	case <-p.cmd.stdoutHandler.handshakeCh:
-		p.logger.Info().Msg("handshake completed")
+		getClientLogger().Info().Msg("grpc handshake completed")
 	case <-time.After(10 * time.Second):
 		return fmt.Errorf("handshake not completed within 10 seconds")
 	}
 
-	logger := p.logger.With().Str("socketPath", "@"+p.nativeUnixSocket).Logger()
 	client, err := NewGRPCClient(grpcClientOptions{
 		SocketPath:         p.nativeUnixSocket,
-		Logger:             &logger,
 		OnIndevEvent:       p.options.OnIndevEvent,
 		OnRpcEvent:         p.options.OnRpcEvent,
 		OnVideoStateChange: p.options.OnVideoStateChange,
 	})
 
-	logger.Info().Msg("created gRPC client")
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC client: %w", err)
 	}
+	getClientLogger().Info().Str("socketPath", "@"+p.nativeUnixSocket).Msg("created gRPC client")
 	p.client = client
 
 	// Wait for ready signal from the native process
@@ -353,12 +358,7 @@ func (p *NativeProxy) doStart() error {
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
-	// here we'll replace the logger with a new one that includes the process ID
-	// there's no need to lock the mutex here as the side effect is acceptable
-	newLogger := p.logger.With().Int("pid", p.cmd.Process.Pid).Logger()
-	p.logger = &newLogger
-
-	p.logger.Info().Msg("native process started")
+	getClientLogger().Info().Int("pid", p.cmd.Process.Pid).Msg("native process started")
 
 	if err := p.setUpGRPCClient(); err != nil {
 		return fmt.Errorf("failed to set up gRPC client: %w", err)
@@ -400,7 +400,7 @@ func (p *NativeProxy) monitorProcess() {
 
 		select {
 		case <-p.ctx.Done():
-			p.logger.Trace().Msg("context done, stopping monitor process [before wait]")
+			getClientLogger().Trace().Msg("context done, stopping monitor process [before wait]")
 			return
 		default:
 		}
@@ -418,19 +418,20 @@ func (p *NativeProxy) monitorProcess() {
 
 		select {
 		case <-p.ctx.Done():
-			p.logger.Trace().Msg("context done, stopping monitor process [after wait]")
+			getClientLogger().Trace().Msg("context done, stopping monitor process [after wait]")
 			return
 		default:
 		}
 
-		p.logger.Warn().Err(err).Msg("native process exited, restarting ...")
+		logger := getClientLogger()
+		logger.Warn().Err(err).Msg("native process exited, restarting ...")
 
 		// Wait a bit before restarting
 		time.Sleep(1 * time.Second)
 
 		// Restart the process
 		if err := p.restartProcess(); err != nil {
-			p.logger.Error().Err(err).Msg("failed to restart native process")
+			logger.Error().Err(err).Msg("failed to restart native process")
 			// Wait longer before retrying
 			time.Sleep(5 * time.Second)
 			continue
@@ -441,7 +442,7 @@ func (p *NativeProxy) monitorProcess() {
 // restartProcess restarts the native process
 func (p *NativeProxy) restartProcess() error {
 	p.restarts++
-	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
+	logger := getClientLogger().With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
 
 	if p.restarts >= p.options.MaxRestartAttempts {
 		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonVideoMaxRestartAttemptsReached)

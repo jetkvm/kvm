@@ -28,12 +28,14 @@ func syncFilesystem() error {
 	return nil
 }
 
-func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
-	logger := s.l.With().
+func (s *State) downloadFile(ctx context.Context, path string, url string, component string, l *zerolog.Logger) error {
+	logger := l.
+		With().
 		Str("path", path).
 		Str("url", url).
 		Str("downloadComponent", component).
 		Logger()
+
 	t := time.Now()
 	traceLogger := func() *zerolog.Event {
 		return logger.Trace().Dur("duration", time.Since(t))
@@ -70,7 +72,7 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 	defer file.Close()
 
 	traceLogger().Msg("creating request")
-	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, traceLogger)
+	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, &logger)
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
@@ -129,9 +131,8 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	return nil
 }
-func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
-	l := s.l.With().Str("path", path).Logger()
 
+func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32, logger *zerolog.Logger) error {
 	unverifiedPath := path + ".unverified"
 	fileToHash, err := os.Open(unverifiedPath)
 	if err != nil {
@@ -175,7 +176,7 @@ func (s *State) verifyFile(path string, expectedHash string, verifyProgress *flo
 	}
 
 	hashSum := hash.Sum(nil)
-	l.Info().Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
+	logger.Info().Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
 
 	if hex.EncodeToString(hashSum) != expectedHash {
 		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)

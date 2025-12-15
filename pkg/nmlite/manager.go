@@ -7,20 +7,19 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jetkvm/kvm/internal/sync"
-
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/rs/zerolog"
+
 	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
-	"github.com/rs/zerolog"
 )
 
 // NetworkManager manages multiple network interfaces
 type NetworkManager struct {
 	interfaces map[string]*InterfaceManager
 	mu         sync.RWMutex
-	logger     *zerolog.Logger
 	ctx        context.Context
 	cancel     context.CancelFunc
 
@@ -33,23 +32,23 @@ type NetworkManager struct {
 }
 
 // NewNetworkManager creates a new network manager
-func NewNetworkManager(ctx context.Context, logger *zerolog.Logger) *NetworkManager {
-	if logger == nil {
-		logger = logging.GetSubsystemLogger("nm")
-	}
-
+func NewNetworkManager(ctx context.Context) *NetworkManager {
 	// Initialize the NetlinkManager singleton
-	link.InitializeNetlinkManager(logger)
+	link.InitializeNetlinkManager()
 
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &NetworkManager{
 		interfaces: make(map[string]*InterfaceManager),
-		logger:     logger,
 		ctx:        ctx,
 		cancel:     cancel,
-		resolvConf: NewResolvConfManager(logger),
+		resolvConf: NewResolvConfManager(),
 	}
+}
+
+func (nm *NetworkManager) getLogger() *zerolog.Logger {
+	logging := logging.GetSubsystemLogger("nmlite").With().Int("interface_count", len(nm.interfaces)).Logger()
+	return &logging
 }
 
 // SetHostname sets the hostname and domain for the network manager
@@ -71,7 +70,7 @@ func (nm *NetworkManager) AddInterface(iface string, config *types.NetworkConfig
 		return fmt.Errorf("interface %s already managed", iface)
 	}
 
-	im, err := NewInterfaceManager(nm.ctx, iface, config, nm.logger)
+	im, err := NewInterfaceManager(nm.ctx, iface, config)
 	if err != nil {
 		return fmt.Errorf("failed to create interface manager for %s: %w", iface, err)
 	}
@@ -108,7 +107,7 @@ func (nm *NetworkManager) AddInterface(iface string, config *types.NetworkConfig
 		return fmt.Errorf("failed to start interface manager for %s: %w", iface, err)
 	}
 
-	nm.logger.Info().Str("interface", iface).Msg("added interface to network manager")
+	nm.getLogger().Info().Str("interface", iface).Msg("added interface to network manager")
 	return nil
 }
 
@@ -123,11 +122,11 @@ func (nm *NetworkManager) RemoveInterface(iface string) error {
 	}
 
 	if err := im.Stop(); err != nil {
-		nm.logger.Error().Err(err).Str("interface", iface).Msg("failed to stop interface manager")
+		nm.getLogger().Error().Err(err).Str("interface", iface).Msg("failed to stop interface manager")
 	}
 
 	delete(nm.interfaces, iface)
-	nm.logger.Info().Str("interface", iface).Msg("removed interface from network manager")
+	nm.getLogger().Info().Str("interface", iface).Msg("removed interface from network manager")
 	return nil
 }
 
@@ -236,7 +235,7 @@ func (nm *NetworkManager) shouldKillLegacyDHCPClients() bool {
 func (nm *NetworkManager) CleanUpLegacyDHCPClients() error {
 	shouldKill := nm.shouldKillLegacyDHCPClients()
 	if shouldKill {
-		return jetdhcpc.KillUdhcpC(nm.logger)
+		return jetdhcpc.KillUdhcpC(nm.getLogger())
 	}
 	return nil
 }
@@ -249,12 +248,12 @@ func (nm *NetworkManager) Stop() error {
 	var lastErr error
 	for iface, im := range nm.interfaces {
 		if err := im.Stop(); err != nil {
-			nm.logger.Error().Err(err).Str("interface", iface).Msg("failed to stop interface manager")
+			nm.getLogger().Error().Err(err).Str("interface", iface).Msg("failed to stop interface manager")
 			lastErr = err
 		}
 	}
 
 	nm.cancel()
-	nm.logger.Info().Msg("network manager stopped")
+	nm.getLogger().Info().Msg("network manager stopped")
 	return lastErr
 }

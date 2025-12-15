@@ -5,8 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/native"
+
+	"github.com/Masterminds/semver/v3"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
@@ -16,6 +17,8 @@ var (
 )
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
+	nativeLogger := native.GetNativeLogger()
+
 	if failsafeModeActive {
 		nativeInstance = &native.EmptyNativeInterface{}
 		nativeLogger.Warn().Msg("failsafe mode active, using empty native interface")

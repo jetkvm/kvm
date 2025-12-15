@@ -1,18 +1,14 @@
 package native
 
 import (
-	"os"
 	"sync"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/rs/zerolog"
 )
 
 type Native struct {
 	ready                chan struct{}
-	l                    *zerolog.Logger
-	lD                   *zerolog.Logger
 	systemVersion        *semver.Version
 	appVersion           *semver.Version
 	displayRotation      uint16
@@ -23,7 +19,6 @@ type Native struct {
 	onRpcEvent           func(event string)
 	sleepModeSupported   bool
 	videoLock            sync.Mutex
-	screenLock           sync.Mutex
 	extraLock            sync.Mutex
 }
 
@@ -61,61 +56,49 @@ func (s VideoStreamingStatus) String() string {
 }
 
 func NewNative(opts NativeOptions) *Native {
-	pid := os.Getpid()
-	nativeSubLogger := nativeLogger.With().Int("pid", pid).Str("scope", "native").Logger()
-	displaySubLogger := displayLogger.With().Int("pid", pid).Str("scope", "native").Logger()
-
-	onVideoStateChange := opts.OnVideoStateChange
-	if onVideoStateChange == nil {
-		onVideoStateChange = func(state VideoState) {
-			nativeLogger.Info().Interface("state", state).Msg("video state changed")
-		}
-	}
-
-	onVideoFrameReceived := opts.OnVideoFrameReceived
-	if onVideoFrameReceived == nil {
-		onVideoFrameReceived = func(frame []byte, duration time.Duration) {
-			nativeLogger.Trace().Interface("frame", frame).Dur("duration", duration).Msg("video frame received")
-		}
-	}
-
-	onIndevEvent := opts.OnIndevEvent
-	if onIndevEvent == nil {
-		onIndevEvent = func(event string) {
-			nativeLogger.Info().Str("event", event).Msg("indev event")
-		}
-	}
-
-	onRpcEvent := opts.OnRpcEvent
-	if onRpcEvent == nil {
-		onRpcEvent = func(event string) {
-			nativeLogger.Info().Str("event", event).Msg("rpc event")
-		}
-	}
-
-	sleepModeSupported := isSleepModeSupported()
-
-	defaultQualityFactor := opts.DefaultQualityFactor
-	if defaultQualityFactor <= 0 || defaultQualityFactor > 1 {
-		defaultQualityFactor = 1.0
-	}
-
-	return &Native{
+	n := &Native{
 		ready:                make(chan struct{}),
-		l:                    &nativeSubLogger,
-		lD:                   &displaySubLogger,
 		systemVersion:        opts.SystemVersion,
 		appVersion:           opts.AppVersion,
 		displayRotation:      opts.DisplayRotation,
-		defaultQualityFactor: defaultQualityFactor,
-		onVideoStateChange:   onVideoStateChange,
-		onVideoFrameReceived: onVideoFrameReceived,
-		onIndevEvent:         onIndevEvent,
-		onRpcEvent:           onRpcEvent,
-		sleepModeSupported:   sleepModeSupported,
+		defaultQualityFactor: opts.DefaultQualityFactor,
+		onVideoStateChange:   opts.OnVideoStateChange,
+		onVideoFrameReceived: opts.OnVideoFrameReceived,
+		onIndevEvent:         opts.OnIndevEvent,
+		onRpcEvent:           opts.OnRpcEvent,
+		sleepModeSupported:   isSleepModeSupported(),
 		videoLock:            sync.Mutex{},
-		screenLock:           sync.Mutex{},
 	}
+
+	if n.onVideoStateChange == nil {
+		n.onVideoStateChange = func(state VideoState) {
+			GetDisplayLogger().Info().Interface("state", state).Msg("video state changed")
+		}
+	}
+
+	if n.onVideoFrameReceived == nil {
+		n.onVideoFrameReceived = func(frame []byte, duration time.Duration) {
+			GetDisplayLogger().Trace().Int("frame_size", len(frame)).Dur("duration", duration).Msg("video frame received")
+		}
+	}
+
+	if n.onIndevEvent == nil {
+		n.onIndevEvent = func(event string) {
+			GetDisplayLogger().Info().Str("event", event).Msg("indev event")
+		}
+	}
+
+	if n.onRpcEvent == nil {
+		n.onRpcEvent = func(event string) {
+			GetNativeLogger().Info().Str("event", event).Msg("rpc event")
+		}
+	}
+
+	if n.defaultQualityFactor <= 0 || n.defaultQualityFactor > 1 {
+		n.defaultQualityFactor = 1.0
+	}
+
+	return n
 }
 
 func (n *Native) Start() error {
@@ -134,7 +117,7 @@ func (n *Native) Start() error {
 	go n.tickUI()
 
 	if err := videoInit(n.defaultQualityFactor); err != nil {
-		n.l.Error().Err(err).Msg("failed to initialize video")
+		GetDisplayLogger().Error().Err(err).Msg("failed to initialize video")
 		return err
 	}
 
@@ -147,7 +130,7 @@ func (n *Native) Start() error {
 func (n *Native) DoNotUseThisIsForCrashTestingOnly() {
 	defer func() {
 		if r := recover(); r != nil {
-			n.l.Error().Msg("recovered from crash")
+			GetNativeLogger().Error().Interface("recovered", r).Msg("recovered from crash")
 		}
 	}()
 

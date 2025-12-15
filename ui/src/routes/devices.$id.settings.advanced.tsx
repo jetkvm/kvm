@@ -38,6 +38,7 @@ export default function SettingsAdvancedRoute() {
   const [resetConfig, setResetConfig] = useState(false);
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
+  const [logLevel, setLogLevel] = useState<string>("WARN");
   const settings = useSettingsStore();
 
   useEffect(() => {
@@ -66,6 +67,12 @@ export default function SettingsAdvancedRoute() {
       if ("error" in resp) return;
       setLocalLoopbackOnly(resp.result as boolean);
     });
+
+    send("getLogLevel", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const result = resp.result as { level: string };
+      setLogLevel(result.level);
+    });
   }, [send, setDeveloperMode]);
 
   const getUsbEmulationState = useCallback(() => {
@@ -81,8 +88,12 @@ export default function SettingsAdvancedRoute() {
         if ("error" in resp) {
           notifications.error(
             enabled
-              ? m.advanced_error_usb_emulation_enable({ error: resp.error.data || m.unknown_error() })
-              : m.advanced_error_usb_emulation_disable({ error: resp.error.data || m.unknown_error() })
+              ? m.advanced_error_usb_emulation_enable({
+                  error: resp.error.data || m.unknown_error(),
+                })
+              : m.advanced_error_usb_emulation_disable({
+                  error: resp.error.data || m.unknown_error(),
+                }),
           );
           return;
         }
@@ -97,7 +108,7 @@ export default function SettingsAdvancedRoute() {
     send("resetConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          m.advanced_error_reset_config({ error: resp.error.data || m.unknown_error() })
+          m.advanced_error_reset_config({ error: resp.error.data || m.unknown_error() }),
         );
         return;
       }
@@ -109,7 +120,9 @@ export default function SettingsAdvancedRoute() {
     send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          m.advanced_error_update_ssh_key({ error: resp.error.data || m.unknown_error() })
+          m.advanced_error_update_ssh_key({
+            error: resp.error.data || m.unknown_error(),
+          }),
         );
         return;
       }
@@ -122,7 +135,9 @@ export default function SettingsAdvancedRoute() {
       send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            m.advanced_error_set_dev_mode({ error: resp.error.data || m.unknown_error() })
+            m.advanced_error_set_dev_mode({
+              error: resp.error.data || m.unknown_error(),
+            }),
           );
           return;
         }
@@ -137,7 +152,9 @@ export default function SettingsAdvancedRoute() {
       send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            m.advanced_error_set_dev_channel({ error: resp.error.data || m.unknown_error() })
+            m.advanced_error_set_dev_channel({
+              error: resp.error.data || m.unknown_error(),
+            }),
           );
           return;
         }
@@ -153,8 +170,12 @@ export default function SettingsAdvancedRoute() {
         if ("error" in resp) {
           notifications.error(
             enabled
-              ? m.advanced_error_loopback_enable({ error: resp.error.data || m.unknown_error() })
-              : m.advanced_error_loopback_disable({ error: resp.error.data || m.unknown_error() })
+              ? m.advanced_error_loopback_enable({
+                  error: resp.error.data || m.unknown_error(),
+                })
+              : m.advanced_error_loopback_disable({
+                  error: resp.error.data || m.unknown_error(),
+                }),
           );
           return;
         }
@@ -182,6 +203,23 @@ export default function SettingsAdvancedRoute() {
     [applyLoopbackOnlyMode, setShowLoopbackWarning],
   );
 
+  const handleLogLevelChange = useCallback(
+    (level: string) => {
+      send("setLogLevel", { level: level }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(
+            m.advanced_error_set_log_level({
+              error: resp.error.data || m.unknown_error(),
+            }),
+          );
+          return;
+        }
+        setLogLevel(level);
+      });
+    },
+    [send, setLogLevel],
+  );
+
   const confirmLoopbackModeEnable = useCallback(() => {
     applyLoopbackOnlyMode(true);
     setShowLoopbackWarning(false);
@@ -190,9 +228,12 @@ export default function SettingsAdvancedRoute() {
   const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
     notifications.error(
       m.advanced_error_version_update({
-        error: typeof error === "string" ? error : (error?.data ?? error?.message ?? m.unknown_error())
+        error:
+          typeof error === "string"
+            ? error
+            : (error?.data ?? error?.message ?? m.unknown_error()),
       }),
-      { duration: 1000 * 15 } // 15 seconds
+      { duration: 1000 * 15 }, // 15 seconds
     );
     setCustomVersionUpdateLoading(false);
   }, []);
@@ -200,7 +241,8 @@ export default function SettingsAdvancedRoute() {
   const handleCustomVersionUpdate = useCallback(async () => {
     const components: UpdateComponents = {};
     if (["app", "both"].includes(updateTarget) && appVersion) components.app = appVersion;
-    if (["system", "both"].includes(updateTarget) && systemVersion) components.system = systemVersion;
+    if (["system", "both"].includes(updateTarget) && systemVersion)
+      components.system = systemVersion;
     let versionInfo: SystemVersionInfo | undefined;
 
     try {
@@ -209,7 +251,9 @@ export default function SettingsAdvancedRoute() {
       setCustomVersionUpdateLoading(true);
       versionInfo = await checkUpdateComponents({
         components,
-      }, devChannel);
+      },
+        devChannel,
+      );
     } catch (error: unknown) {
       const jsonRpcError = error as JsonRpcError;
       handleVersionUpdateError(jsonRpcError);
@@ -219,11 +263,19 @@ export default function SettingsAdvancedRoute() {
     let hasUpdate = false;
 
     const pageParams = new URLSearchParams();
-    if (components.app && versionInfo?.remote?.appVersion && versionInfo?.appUpdateAvailable) {
+    if (
+      components.app &&
+      versionInfo?.remote?.appVersion &&
+      versionInfo?.appUpdateAvailable
+    ) {
       hasUpdate = true;
       pageParams.set("custom_app_version", versionInfo.remote?.appVersion);
     }
-    if (components.system && versionInfo?.remote?.systemVersion && versionInfo?.systemUpdateAvailable) {
+    if (
+      components.system &&
+      versionInfo?.remote?.systemVersion &&
+      versionInfo?.systemUpdateAvailable
+    ) {
       hasUpdate = true;
       pageParams.set("custom_system_version", versionInfo.remote?.systemVersion);
     }
@@ -237,9 +289,14 @@ export default function SettingsAdvancedRoute() {
     // Navigate to update page
     navigateTo(`/settings/general/update?${pageParams.toString()}`);
   }, [
-    updateTarget, appVersion, systemVersion, devChannel,
-    navigateTo, resetConfig, handleVersionUpdateError,
-    setCustomVersionUpdateLoading
+    updateTarget,
+    appVersion,
+    systemVersion,
+    devChannel,
+    navigateTo,
+    resetConfig,
+    handleVersionUpdateError,
+    setCustomVersionUpdateLoading,
   ]);
 
   return (
@@ -319,7 +376,8 @@ export default function SettingsAdvancedRoute() {
                   placeholder={m.advanced_ssh_public_key_placeholder()}
                 />
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {m.advanced_ssh_default_user()}<strong>root</strong>.
+                  {m.advanced_ssh_default_user()}
+                  <strong>root</strong>.
                 </p>
                 <div className="flex items-center gap-x-2">
                   <Button
@@ -426,8 +484,6 @@ export default function SettingsAdvancedRoute() {
           />
         </SettingsItem>
 
-
-
         <SettingsItem
           title={m.advanced_troubleshooting_mode_title()}
           description={m.advanced_troubleshooting_mode_description()}
@@ -450,7 +506,9 @@ export default function SettingsAdvancedRoute() {
                 size="SM"
                 theme="light"
                 text={
-                  usbEmulationEnabled ? m.advanced_disable_usb_emulation() : m.advanced_enable_usb_emulation()
+                  usbEmulationEnabled
+                    ? m.advanced_disable_usb_emulation()
+                    : m.advanced_enable_usb_emulation()
                 }
                 onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
               />
@@ -472,6 +530,28 @@ export default function SettingsAdvancedRoute() {
                 }}
               />
             </SettingsItem>
+
+            <SettingsItem
+              title={m.advanced_log_level_title()}
+              description={m.advanced_log_level_description()}
+            >
+              <SelectMenuBasic
+                size="SM"
+                options={[
+                  { value: "DISABLE", label: m.advanced_log_level_disabled() },
+                  { value: "PANIC", label: m.advanced_log_level_panic() },
+                  { value: "FATAL", label: m.advanced_log_level_fatal() },
+                  { value: "ERROR", label: m.advanced_log_level_error() },
+                  { value: "WARN", label: m.advanced_log_level_warn() },
+                  { value: "INFO", label: m.advanced_log_level_info() },
+                  { value: "DEBUG", label: m.advanced_log_level_debug() },
+                  { value: "TRACE", label: m.advanced_log_level_trace() },
+                  { value: "UNSET", label: m.advanced_log_level_default() },
+                ]}
+                value={logLevel}
+                onChange={e => handleLogLevelChange(e.target.value)}
+              />
+            </SettingsItem>
           </NestedSettingsGroup>
         )}
       </div>
@@ -484,12 +564,8 @@ export default function SettingsAdvancedRoute() {
         title={m.advanced_loopback_warning_title()}
         description={
           <>
-            <p>
-              {m.advanced_loopback_warning_description()}
-            </p>
-            <p>
-              {m.advanced_loopback_warning_before()}
-            </p>
+            <p>{m.advanced_loopback_warning_description()}</p>
+            <p>{m.advanced_loopback_warning_before()}</p>
             <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
               <li>{m.advanced_loopback_warning_ssh()}</li>
               <li>{m.advanced_loopback_warning_cloud()}</li>

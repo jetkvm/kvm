@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pojntfx/go-nbd/pkg/server"
 	"github.com/rs/zerolog"
 )
@@ -16,6 +17,8 @@ type remoteImageBackend struct {
 
 func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	virtualMediaStateMutex.RLock()
+
+	logger := logging.GetSubsystemLogger("nbd")
 	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
 	logger.Debug().Int64("read size", int64(len(p))).Int64("off", off).Msg("read size and off")
 	if currentVirtualMediaState == nil {
@@ -60,12 +63,19 @@ type NBDDevice struct {
 	serverConn net.Conn
 	clientConn net.Conn
 	dev        *os.File
-
-	l *zerolog.Logger
 }
 
 func NewNBDDevice() *NBDDevice {
 	return &NBDDevice{}
+}
+
+func (d *NBDDevice) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nbd").
+		With().
+		Str("socket_path", nbdSocketPath).
+		Str("device_path", nbdDevicePath).
+		Logger()
+	return &logger
 }
 
 func (d *NBDDevice) Start() error {
@@ -80,18 +90,10 @@ func (d *NBDDevice) Start() error {
 		return err
 	}
 
-	if d.l == nil {
-		scopedLogger := nbdLogger.With().
-			Str("socket_path", nbdSocketPath).
-			Str("device_path", nbdDevicePath).
-			Logger()
-		d.l = &scopedLogger
-	}
-
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			d.l.Error().Err(err).Msg("failed to remove existing socket file")
+			d.getLogger().Error().Err(err).Msg("failed to remove existing socket file")
 			os.Exit(1)
 		}
 	}
@@ -133,5 +135,5 @@ func (d *NBDDevice) runServerConn() {
 			SupportsMultiConn:  false,
 		})
 
-	d.l.Info().Err(err).Msg("nbd server exited")
+	d.getLogger().Info().Err(err).Msg("nbd server exited")
 }

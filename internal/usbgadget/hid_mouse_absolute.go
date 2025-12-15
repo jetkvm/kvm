@@ -68,20 +68,17 @@ var absoluteMouseCombinedReportDesc = []byte{
 func (u *UsbGadget) absMouseWriteHidFile(data []byte) error {
 	if u.absMouseHidFile == nil {
 		var err error
-		u.absMouseHidFile, err = os.OpenFile("/dev/hidg1", os.O_RDWR, 0666)
-		if err != nil {
+		if u.absMouseHidFile, err = os.OpenFile("/dev/hidg1", os.O_RDWR, 0666); err != nil {
 			return fmt.Errorf("failed to open hidg1: %w", err)
 		}
 	}
 
 	_, err := u.writeWithTimeout(u.absMouseHidFile, data)
 	if err != nil {
-		u.logWithSuppression("absMouseWriteHidFile", 100, u.log, err, "failed to write to hidg1")
 		u.absMouseHidFile.Close()
 		u.absMouseHidFile = nil
 		return err
 	}
-	u.resetLogSuppressionCounter("absMouseWriteHidFile")
 	return nil
 }
 
@@ -97,12 +94,9 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 		byte(y),      // Y Low Byte
 		byte(y >> 8), // Y High Byte
 	})
-	if err != nil {
-		return err
-	}
 
 	u.resetUserInputTime()
-	return nil
+	return err
 }
 
 func (u *UsbGadget) AbsMouseWheelReport(wheelY int8) error {

@@ -9,11 +9,12 @@ import (
 
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/rs/zerolog"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -27,7 +28,6 @@ type DHCPClient struct {
 	leaseFile     string
 	pidFile       string
 	lease         *Lease
-	logger        *zerolog.Logger
 	process       *os.Process
 	runOnce       sync.Once
 	onLeaseChange func(lease *types.DHCPLease)
@@ -36,25 +36,27 @@ type DHCPClient struct {
 type DHCPClientOptions struct {
 	InterfaceName string
 	PidFile       string
-	Logger        *zerolog.Logger
 	OnLeaseChange func(lease *types.DHCPLease)
 }
 
-var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
-
 func NewDHCPClient(options *DHCPClientOptions) *DHCPClient {
-	if options.Logger == nil {
-		options.Logger = &defaultLogger
-	}
-
-	l := options.Logger.With().Str("interface", options.InterfaceName).Logger()
 	return &DHCPClient{
 		InterfaceName: options.InterfaceName,
-		logger:        &l,
 		leaseFile:     fmt.Sprintf(DHCPLeaseFile, options.InterfaceName),
 		pidFile:       options.PidFile,
 		onLeaseChange: options.OnLeaseChange,
 	}
+}
+
+func (c *DHCPClient) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nmlite").
+		With().
+		Str("subcomponent", "udhcpc").
+		Str("interface", c.InterfaceName).
+		Str("pidFile", c.pidFile).
+		Str("leaseFile", c.leaseFile).
+		Logger()
+	return &logger
 }
 
 func (c *DHCPClient) getWatchPaths() []string {
@@ -98,7 +100,7 @@ func (c *DHCPClient) run() error {
 				}
 
 				if event.Name == c.leaseFile {
-					c.logger.Debug().
+					c.getLogger().Debug().
 						Str("event", event.Op.String()).
 						Str("path", event.Name).
 						Msg("udhcpc lease file updated, reloading lease")
@@ -108,7 +110,7 @@ func (c *DHCPClient) run() error {
 				if !ok {
 					return
 				}
-				c.logger.Error().Err(err).Msg("error watching lease file")
+				c.getLogger().Error().Err(err).Msg("error watching lease file")
 			}
 		}
 	}()
@@ -116,7 +118,7 @@ func (c *DHCPClient) run() error {
 	for _, path := range c.getWatchPaths() {
 		err = watcher.Add(path)
 		if err != nil {
-			c.logger.Error().
+			c.getLogger().Error().
 				Err(err).
 				Str("path", path).
 				Msg("failed to watch directory")
@@ -145,7 +147,7 @@ func (c *DHCPClient) loadLeaseFile() error {
 
 	data := string(file)
 	if data == "" {
-		c.logger.Debug().Msg("udhcpc lease file is empty")
+		c.getLogger().Debug().Msg("udhcpc lease file is empty")
 		return nil
 	}
 
@@ -165,7 +167,7 @@ func (c *DHCPClient) loadLeaseFile() error {
 	c.lease = lease
 
 	if lease.IPAddress == nil {
-		c.logger.Info().
+		c.getLogger().Info().
 			Interface("lease", lease).
 			Str("data", string(file)).
 			Msg("udhcpc lease cleared")
@@ -179,20 +181,20 @@ func (c *DHCPClient) loadLeaseFile() error {
 
 	leaseExpiry, err := lease.SetLeaseExpiry()
 	if err != nil {
-		c.logger.Error().Err(err).Msg("failed to get dhcp lease expiry")
+		c.getLogger().Error().Err(err).Msg("failed to get dhcp lease expiry")
 	} else {
 		expiresIn := time.Until(leaseExpiry)
-		c.logger.Info().
+		c.getLogger().Info().
 			Interface("expiry", leaseExpiry).
-			Str("expiresIn", expiresIn.String()).
+			Dur("expiresIn", expiresIn).
 			Msg("current dhcp lease expiry time calculated")
 	}
 
 	c.onLeaseChange(lease.ToDHCPLease())
 
-	c.logger.Info().
-		Str("ip", lease.IPAddress.String()).
-		Str("leaseTime", lease.LeaseTime.String()).
+	c.getLogger().Info().
+		IPAddr("ip", lease.IPAddress).
+		Dur("leaseTime", lease.LeaseTime).
 		Interface("data", lease).
 		Msg(msg)
 
@@ -236,7 +238,7 @@ func (c *DHCPClient) Start() error {
 		go func() {
 			err := c.run()
 			if err != nil {
-				c.logger.Error().Err(err).Msg("failed to run udhcpc")
+				c.getLogger().Error().Err(err).Msg("failed to run udhcpc")
 			}
 		}()
 	})

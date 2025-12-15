@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -28,7 +27,6 @@ type PreCheckFunc func() (bool, error)
 
 type TimeSync struct {
 	syncLock *sync.Mutex
-	l        *zerolog.Logger
 
 	networkConfig    *types.NetworkConfig
 	dhcpNtpAddresses []string
@@ -49,7 +47,6 @@ type TimeSyncOptions struct {
 	PreCheckFunc  PreCheckFunc
 	PreCheckIPv4  PreCheckFunc
 	PreCheckIPv6  PreCheckFunc
-	Logger        *zerolog.Logger
 	NetworkConfig *types.NetworkConfig
 }
 
@@ -62,16 +59,16 @@ type SyncMode struct {
 }
 
 func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
+	logger := GetTimesyncLogger()
 	rtcDevice, err := getRtcDevicePath()
 	if err != nil {
-		opts.Logger.Error().Err(err).Msg("failed to get RTC device path")
+		logger.Error().Err(err).Msg("failed to get RTC device path")
 	} else {
-		opts.Logger.Info().Str("path", rtcDevice).Msg("RTC device found")
+		logger.Info().Str("path", rtcDevice).Msg("RTC device found")
 	}
 
 	t := &TimeSync{
 		syncLock:         &sync.Mutex{},
-		l:                opts.Logger,
 		dhcpNtpAddresses: []string{},
 		rtcDevicePath:    rtcDevice,
 		rtcLock:          &sync.Mutex{},
@@ -84,7 +81,7 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 
 	if t.rtcDevicePath != "" {
 		rtcTime, _ := t.readRtcTime()
-		t.l.Info().Interface("rtc_time", rtcTime).Msg("read RTC time")
+		logger.Info().Interface("rtc_time", rtcTime).Msg("read RTC time")
 	}
 
 	return t
@@ -122,35 +119,27 @@ func (t *TimeSync) getSyncMode() SyncMode {
 		}
 	}
 
-	t.l.Debug().
-		Strs("Ordering", syncMode.Ordering).
-		Bool("Ntp", syncMode.Ntp).
-		Bool("Http", syncMode.Http).
-		Bool("NtpUseFallback", syncMode.NtpUseFallback).
-		Bool("HttpUseFallback", syncMode.HttpUseFallback).
-		Msg("sync mode")
-
 	return syncMode
 }
+
 func (t *TimeSync) timeSyncLoop() {
 	metricTimeSyncStatus.Set(0)
 
-	// use a timer here instead of sleep
-
 	for range t.timer.C {
+		logger := GetTimesyncLogger()
 		if ok, err := t.preCheckFunc(); !ok {
 			if err != nil {
-				t.l.Error().Err(err).Msg("pre-check failed")
+				logger.Error().Err(err).Msg("pre-check failed")
 			}
 			t.timer.Reset(timeSyncWaitNetChkInt)
 			continue
 		}
 
-		t.l.Info().Msg("syncing system time")
+		logger.Info().Msg("syncing system time")
 		start := time.Now()
 		err := t.sync()
 		if err != nil {
-			t.l.Error().Str("error", err.Error()).Msg("failed to sync system time")
+			logger.Error().Err(err).Msg("failed to sync system time")
 
 			// retry after a delay
 			timeSyncRetryInterval += timeSyncRetryStep
@@ -165,8 +154,9 @@ func (t *TimeSync) timeSyncLoop() {
 		isInitialSync := !t.syncSuccess
 		t.syncSuccess = true
 
-		t.l.Info().Str("now", time.Now().Format(time.RFC3339)).
-			Str("time_taken", time.Since(start).String()).
+		logger.Info().
+			Time("now", time.Now()).
+			Dur("time_taken", time.Since(start)).
 			Bool("is_initial_sync", isInitialSync).
 			Msg("time sync successful")
 
@@ -183,20 +173,20 @@ func (t *TimeSync) sync() error {
 	var (
 		now    *time.Time
 		offset *time.Duration
-		log    zerolog.Logger
 	)
 
 	metricTimeSyncCount.Inc()
 
 	syncMode := t.getSyncMode()
+	logger := GetTimesyncLogger().With().Interface("sync_mode", syncMode).Logger()
 
 Orders:
 	for _, mode := range syncMode.Ordering {
-		log = t.l.With().Str("mode", mode).Logger()
+		loopLogger := logger.With().Str("mode", mode).Logger()
 		switch mode {
 		case "ntp_user_provided":
 			if syncMode.Ntp {
-				log.Info().Msg("using NTP custom servers")
+				loopLogger.Info().Msg("using NTP custom servers")
 				now, offset = t.queryNetworkTime(t.networkConfig.TimeSyncNTPServers)
 				if now != nil {
 					break Orders
@@ -204,7 +194,7 @@ Orders:
 			}
 		case "ntp_dhcp":
 			if syncMode.Ntp {
-				log.Info().Msg("using NTP servers from DHCP")
+				loopLogger.Info().Msg("using NTP servers from DHCP")
 				now, offset = t.queryNetworkTime(t.dhcpNtpAddresses)
 				if now != nil {
 					break Orders
@@ -212,10 +202,10 @@ Orders:
 			}
 		case "ntp":
 			if syncMode.Ntp && syncMode.NtpUseFallback {
-				log.Info().Msg("using NTP fallback IPs")
+				loopLogger.Info().Msg("using NTP fallback IPs")
 				now, offset = t.queryNetworkTime(DefaultNTPServerIPs)
 				if now == nil {
-					log.Info().Msg("using NTP fallback hostnames")
+					loopLogger.Info().Msg("using NTP fallback hostnames")
 					now, offset = t.queryNetworkTime(DefaultNTPServerHostnames)
 				}
 				if now != nil {
@@ -224,7 +214,7 @@ Orders:
 			}
 		case "http_user_provided":
 			if syncMode.Http {
-				log.Info().Msg("using HTTP custom URLs")
+				loopLogger.Info().Msg("using HTTP custom URLs")
 				now = t.queryAllHttpTime(t.networkConfig.TimeSyncHTTPUrls)
 				if now != nil {
 					break Orders
@@ -232,14 +222,14 @@ Orders:
 			}
 		case "http":
 			if syncMode.Http && syncMode.HttpUseFallback {
-				log.Info().Msg("using HTTP fallback")
+				loopLogger.Info().Msg("using HTTP fallback")
 				now = t.queryAllHttpTime(defaultHTTPUrls)
 				if now != nil {
 					break Orders
 				}
 			}
 		default:
-			log.Warn().Msg("unknown time sync mode, skipping")
+			loopLogger.Warn().Msg("unknown time sync mode, skipping")
 		}
 	}
 
@@ -248,11 +238,12 @@ Orders:
 	}
 
 	if offset != nil {
+		logger = logger.With().Dur("offset", *offset).Logger()
 		newNow := time.Now().Add(*offset)
 		now = &newNow
 	}
 
-	log.Info().Time("now", *now).Msg("time obtained")
+	logger.Info().Time("now", *now).Msg("time obtained")
 
 	err := t.setSystemTime(*now)
 	if err != nil {
@@ -260,14 +251,13 @@ Orders:
 	}
 
 	metricTimeSyncSuccessCount.Inc()
-
 	return nil
 }
 
 // Sync triggers a manual time sync
 func (t *TimeSync) Sync() error {
 	if !t.syncLock.TryLock() {
-		t.l.Warn().Msg("sync already in progress, skipping")
+		GetTimesyncLogger().Warn().Msg("sync already in progress, skipping")
 		return nil
 	}
 	t.syncLock.Unlock()
@@ -289,7 +279,7 @@ func (t *TimeSync) setSystemTime(now time.Time) error {
 	nowStr := now.Format("2006-01-02 15:04:05")
 	output, err := exec.Command("date", "-s", nowStr).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to run date -s: %w, %s", err, string(output))
+		return fmt.Errorf("failed to run date -s %s: %w, %s", nowStr, err, string(output))
 	}
 
 	if t.rtcDevicePath != "" {

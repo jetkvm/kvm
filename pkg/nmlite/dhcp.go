@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/udhcpc"
@@ -15,7 +16,6 @@ import (
 type DHCPClient struct {
 	ctx        context.Context
 	ifaceName  string
-	logger     *zerolog.Logger
 	client     types.DHCPClient
 	clientType string
 
@@ -28,19 +28,14 @@ type DHCPClient struct {
 }
 
 // NewDHCPClient creates a new DHCP client
-func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger, clientType string) (*DHCPClient, error) {
+func NewDHCPClient(ctx context.Context, ifaceName string, clientType string) (*DHCPClient, error) {
 	if ifaceName == "" {
 		return nil, fmt.Errorf("interface name cannot be empty")
-	}
-
-	if logger == nil {
-		return nil, fmt.Errorf("logger cannot be nil")
 	}
 
 	return &DHCPClient{
 		ctx:        ctx,
 		ifaceName:  ifaceName,
-		logger:     logger,
 		clientType: clientType,
 	}, nil
 }
@@ -77,6 +72,17 @@ func (dc *DHCPClient) initClient() (types.DHCPClient, error) {
 	}
 }
 
+func (dc *DHCPClient) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("dhcp").
+		With().
+		Str("interface", dc.ifaceName).
+		Str("clientType", dc.clientType).
+		Bool("ipv4Enabled", dc.ipv4Enabled).
+		Bool("ipv6Enabled", dc.ipv6Enabled).
+		Logger()
+	return &logger
+}
+
 func (dc *DHCPClient) initJetDHCPC() (types.DHCPClient, error) {
 	return jetdhcpc.NewClient(dc.ctx, []string{dc.ifaceName}, &jetdhcpc.Config{
 		IPv4:               dc.ipv4Enabled,
@@ -90,19 +96,18 @@ func (dc *DHCPClient) initJetDHCPC() (types.DHCPClient, error) {
 		},
 		UpdateResolvConf: func(nameservers []string) error {
 			// This will be handled by the resolv.conf manager
-			dc.logger.Debug().
+			dc.getLogger().Debug().
 				Interface("nameservers", nameservers).
 				Msg("DHCP client requested resolv.conf update")
 			return nil
 		},
-	}, dc.logger)
+	})
 }
 
 func (dc *DHCPClient) initUDHCPC() (types.DHCPClient, error) {
 	c := udhcpc.NewDHCPClient(&udhcpc.DHCPClientOptions{
 		InterfaceName: dc.ifaceName,
 		PidFile:       "",
-		Logger:        dc.logger,
 		OnLeaseChange: func(lease *types.DHCPLease) {
 			dc.handleLeaseChange(lease, false)
 		},
@@ -112,12 +117,13 @@ func (dc *DHCPClient) initUDHCPC() (types.DHCPClient, error) {
 
 // Start starts the DHCP client
 func (dc *DHCPClient) Start() error {
+	logger := dc.getLogger()
 	if dc.client != nil {
-		dc.logger.Warn().Msg("DHCP client already started")
+		logger.Warn().Msg("DHCP client already started")
 		return nil
 	}
 
-	dc.logger.Info().Msg("starting DHCP client")
+	logger.Info().Msg("starting DHCP client")
 
 	// Create the underlying DHCP client
 	client, err := dc.initClient()
@@ -134,7 +140,7 @@ func (dc *DHCPClient) Start() error {
 		return fmt.Errorf("failed to start DHCP client: %w", err)
 	}
 
-	dc.logger.Info().Msg("DHCP client started")
+	logger.Info().Msg("DHCP client started")
 	return nil
 }
 
@@ -165,10 +171,11 @@ func (dc *DHCPClient) Stop() error {
 		return nil
 	}
 
-	dc.logger.Info().Msg("stopping DHCP client")
+	logger := dc.getLogger()
+	logger.Info().Msg("stopping DHCP client")
 
 	dc.client = nil
-	dc.logger.Info().Msg("DHCP client stopped")
+	logger.Info().Msg("DHCP client stopped")
 	return nil
 }
 
@@ -178,7 +185,7 @@ func (dc *DHCPClient) Renew() error {
 		return fmt.Errorf("DHCP client not started")
 	}
 
-	dc.logger.Info().Msg("renewing DHCP lease")
+	dc.getLogger().Info().Msg("renewing DHCP lease")
 	if err := dc.client.Renew(); err != nil {
 		return fmt.Errorf("failed to renew DHCP lease: %w", err)
 	}
@@ -191,7 +198,7 @@ func (dc *DHCPClient) Release() error {
 		return fmt.Errorf("DHCP client not started")
 	}
 
-	dc.logger.Info().Msg("releasing DHCP lease")
+	dc.getLogger().Info().Msg("releasing DHCP lease")
 	if err := dc.client.Release(); err != nil {
 		return fmt.Errorf("failed to release DHCP lease: %w", err)
 	}
@@ -204,7 +211,7 @@ func (dc *DHCPClient) handleLeaseChange(lease *types.DHCPLease, isIPv6 bool) {
 		return
 	}
 
-	dc.logger.Info().
+	dc.getLogger().Info().
 		Bool("ipv6", isIPv6).
 		Str("ip", lease.IPAddress.String()).
 		Msg("DHCP lease changed")

@@ -22,7 +22,8 @@ var defaultHTTPUrls = []string{
 
 func (t *TimeSync) queryAllHttpTime(httpUrls []string) (now *time.Time) {
 	chunkSize := int(t.networkConfig.TimeSyncParallel.ValueOr(4))
-	t.l.Info().Strs("httpUrls", httpUrls).Int("chunkSize", chunkSize).Msg("querying HTTP URLs")
+	logger := GetTimesyncLogger()
+	logger.Info().Strs("httpUrls", httpUrls).Int("chunkSize", chunkSize).Msg("querying HTTP URLs")
 
 	// shuffle the http urls to avoid always querying the same servers
 	rand.Shuffle(len(httpUrls), func(i, j int) { httpUrls[i], httpUrls[j] = httpUrls[j], httpUrls[i] })
@@ -43,13 +44,12 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	logger := GetTimesyncLogger().With().Int("urls_count", len(urls)).Dur("timeout", timeout).Logger()
 
 	for _, url := range urls {
-		go func(url string) {
-			scopedLogger := t.l.With().
-				Str("http_url", url).
-				Logger()
+		loopLogger := logger.With().Str("http_url", url).Logger()
 
+		go func(url string) {
 			metricHttpRequestCount.WithLabelValues(url).Inc()
 			metricHttpTotalRequestCount.Inc()
 
@@ -85,22 +85,23 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				if requestId == "" {
 					requestId = response.Header.Get("Cf-Ray")
 				}
-				scopedLogger.Info().
-					Str("time", now.Format(time.RFC3339)).
+				loopLogger.Info().
+					Time("time", *now).
 					Int("status", status).
 					Str("request_id", requestId).
-					Str("time_taken", duration.String()).
+					Dur("time_taken", duration).
 					Msg("HTTP server returned time")
 
 				cancel()
+
 				results <- now
 			} else if errors.Is(err, context.Canceled) {
 				metricHttpCancelCount.WithLabelValues(url).Inc()
 				metricHttpTotalCancelCount.Inc()
 				results <- nil
 			} else {
-				scopedLogger.Warn().
-					Str("error", err.Error()).
+				loopLogger.Warn().
+					Err(err).
 					Int("status", status).
 					Msg("failed to query HTTP server")
 				results <- nil

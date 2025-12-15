@@ -6,10 +6,11 @@ import (
 	"net"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/rs/zerolog"
 
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
 
@@ -24,17 +25,12 @@ type StateChangeCallback struct {
 
 // NetlinkManager provides centralized netlink operations
 type NetlinkManager struct {
-	logger               *zerolog.Logger
 	mu                   sync.RWMutex
 	stateChangeCallbacks map[string][]StateChangeCallback
 }
 
-func newNetlinkManager(logger *zerolog.Logger) *NetlinkManager {
-	if logger == nil {
-		logger = &zerolog.Logger{} // Default no-op logger
-	}
+func newNetlinkManager() *NetlinkManager {
 	n := &NetlinkManager{
-		logger:               logger,
 		stateChangeCallbacks: make(map[string][]StateChangeCallback),
 	}
 	n.monitorStateChange()
@@ -44,15 +40,15 @@ func newNetlinkManager(logger *zerolog.Logger) *NetlinkManager {
 // GetNetlinkManager returns the singleton NetlinkManager instance
 func GetNetlinkManager() *NetlinkManager {
 	netlinkManagerOnce.Do(func() {
-		netlinkManagerInstance = newNetlinkManager(nil)
+		netlinkManagerInstance = newNetlinkManager()
 	})
 	return netlinkManagerInstance
 }
 
 // InitializeNetlinkManager initializes the singleton NetlinkManager with a logger
-func InitializeNetlinkManager(logger *zerolog.Logger) *NetlinkManager {
+func InitializeNetlinkManager() *NetlinkManager {
 	netlinkManagerOnce.Do(func() {
-		netlinkManagerInstance = newNetlinkManager(logger)
+		netlinkManagerInstance = newNetlinkManager()
 	})
 	return netlinkManagerInstance
 }
@@ -69,16 +65,22 @@ func (nm *NetlinkManager) AddStateChangeCallback(ifname string, callback StateCh
 	nm.stateChangeCallbacks[ifname] = append(nm.stateChangeCallbacks[ifname], callback)
 }
 
+func (nm *NetlinkManager) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nmlite").With().Str("subcomponent", "manager").Logger()
+	return &logger
+}
+
 // Interface operations
 func (nm *NetlinkManager) monitorStateChange() {
+	logger := nm.getLogger()
 	updateCh := make(chan netlink.LinkUpdate)
 	// we don't need to stop the subscription, as it will be closed when the program exits
 	stopCh := make(chan struct{}) //nolint:unused
 	if err := netlink.LinkSubscribe(updateCh, stopCh); err != nil {
-		nm.logger.Error().Err(err).Msg("failed to subscribe to link state changes")
+		logger.Error().Err(err).Msg("failed to subscribe to link state changes")
 	}
 
-	nm.logger.Info().Msg("state change monitoring started")
+	logger.Info().Msg("state change monitoring started")
 
 	go func() {
 		for update := range updateCh {
@@ -93,15 +95,14 @@ func (nm *NetlinkManager) runCallbacks(update netlink.LinkUpdate) {
 
 	ifname := update.Link.Attrs().Name
 	callbacks, ok := nm.stateChangeCallbacks[ifname]
-
-	l := nm.logger.With().Str("interface", ifname).Logger()
+	logger := nm.getLogger().With().Str("interface", ifname).Logger()
 	if !ok {
-		l.Trace().Msg("no state change callbacks for interface")
+		logger.Trace().Msg("no state change callbacks for interface")
 		return
 	}
 
 	for _, callback := range callbacks {
-		l.Trace().
+		logger.Trace().
 			Interface("callback", callback).
 			Bool("async", callback.Async).
 			Msg("calling callback")
@@ -150,54 +151,60 @@ func (nm *NetlinkManager) EnsureInterfaceUp(link *Link) error {
 // EnsureInterfaceUpWithTimeout ensures the interface is up with timeout and retry logic
 func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, iface *Link, timeout time.Duration) (*Link, error) {
 	ifname := iface.Attrs().Name
-
-	l := nm.logger.With().Str("interface", ifname).Logger()
-
 	linkUpTimeout := time.After(timeout)
 
 	var attempt int
 	start := time.Now()
 
 	for {
-		link, err := nm.GetLinkByName(ifname)
-		if err != nil {
+		logger := nm.getLogger().With().Str("interface", ifname).Logger()
+
+		var (
+			link *Link
+			err  error
+		)
+
+		if link, err = nm.GetLinkByName(ifname); err != nil {
+			logger.Error().Err(err).Msg("can't get link by name")
 			return nil, err
 		}
 
 		state := link.Attrs().OperState
-
-		l = l.With().
+		logger = logger.
+			With().
 			Int("attempt", attempt).
 			Dur("duration", time.Since(start)).
-			Str("state", state.String()).
+			Stringer("state", state).
 			Logger()
+
 		if state == netlink.OperUp || state == netlink.OperUnknown {
 			if attempt > 0 {
-				l.Info().Int("attempt", attempt-1).Msg("interface is up")
+				logger.Info().Int("attempt", attempt-1).Msg("interface is up")
 			}
 			return link, nil
 		}
 
-		l.Info().Msg("bringing up interface")
+		logger.Info().Msg("bringing up interface")
 
 		// bring up the interface
 		if err = nm.LinkSetUp(link); err != nil {
-			l.Error().Err(err).Msg("interface can't make it up")
+			logger.Error().Err(err).Msg("interface can't make it up")
 		}
 
 		// refresh the link attributes
 		if err = link.Refresh(); err != nil {
-			l.Error().Err(err).Msg("failed to refresh link attributes")
+			logger.Error().Err(err).Msg("failed to refresh link attributes")
 		}
 
 		// check the state again
 		state = link.Attrs().OperState
-		l = l.With().Str("new_state", state.String()).Logger()
+		logger = logger.With().Stringer("new_state", state).Logger()
+
 		if state == netlink.OperUp {
-			l.Info().Msg("interface is up")
+			logger.Info().Msg("interface is up")
 			return link, nil
 		}
-		l.Warn().Msg("interface is still down, retrying")
+		logger.Warn().Msg("interface is still down, retrying")
 
 		select {
 		case <-time.After(500 * time.Millisecond):
@@ -210,8 +217,7 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 			return nil, ErrInterfaceUpCanceled
 		case <-linkUpTimeout:
 			attempt++
-			l.Error().
-				Int("attempt", attempt).Msg("interface is still down after timeout")
+			logger.Error().Int("attempt", attempt).Msg("interface is still down after timeout")
 			if err != nil {
 				return nil, err
 			}
@@ -252,7 +258,7 @@ func (nm *NetlinkManager) RemoveAllAddresses(link *Link, family int) error {
 
 	for _, addr := range addrs {
 		if err := nm.AddrDel(link, &addr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.IP.String()).Msg("failed to remove address")
+			nm.getLogger().Warn().Err(err).IPAddr("address", addr.IP).Msg("failed to remove address")
 		}
 	}
 
@@ -269,7 +275,7 @@ func (nm *NetlinkManager) RemoveNonLinkLocalIPv6Addresses(link *Link) error {
 	for _, addr := range addrs {
 		if !addr.IP.IsLinkLocalUnicast() {
 			if err := nm.AddrDel(link, &addr); err != nil {
-				nm.logger.Warn().Err(err).Str("address", addr.IP.String()).Msg("failed to remove IPv6 address")
+				nm.getLogger().Warn().Err(err).IPAddr("address", addr.IP).Msg("failed to remove IPv6 address")
 			}
 		}
 	}
@@ -313,7 +319,7 @@ func (nm *NetlinkManager) ListDefaultRoutes(family int) ([]netlink.Route, error)
 		netlink.RT_FILTER_DST|netlink.RT_FILTER_TABLE,
 	)
 	if err != nil {
-		nm.logger.Error().Err(err).Int("family", family).Msg("failed to list default routes")
+		nm.getLogger().Error().Err(err).Int("family", family).Msg("failed to list default routes")
 		return nil, err
 	}
 
@@ -359,14 +365,16 @@ func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
 
 	for _, route := range routes {
 		if route.Dst != nil {
+			logger := nm.getLogger()
+
 			if family == AfInet && route.Dst.IP.Equal(net.IPv4zero) && route.Dst.Mask.String() == "0.0.0.0/0" {
 				if err := nm.RouteDel(&route); err != nil {
-					nm.logger.Warn().Err(err).Msg("failed to remove IPv4 default route")
+					logger.Warn().Err(err).Msg("failed to remove IPv4 default route")
 				}
 			}
 			if family == AfInet6 && route.Dst.IP.Equal(net.IPv6zero) && route.Dst.Mask.String() == "::/0" {
 				if err := nm.RouteDel(&route); err != nil {
-					nm.logger.Warn().Err(err).Msg("failed to remove IPv6 default route")
+					logger.Warn().Err(err).Msg("failed to remove IPv6 default route")
 				}
 			}
 		}
@@ -386,6 +394,8 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 		return fmt.Errorf("failed to get default routes: %w", err)
 	}
 
+	logger := nm.getLogger()
+
 	// check existing default routes
 	for _, defaultRoute := range defaultRoutes {
 		// only check the default routes for the current link
@@ -400,21 +410,22 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 			continue
 		}
 
-		nm.logger.Warn().Str("gateway", key).Msg("keeping default route")
+		logger.Warn().Str("gateway", key).Msg("keeping default route")
 		delete(expected, key)
 	}
 
 	// remove remaining default routes
 	for _, defaultRoute := range toRemove {
-		nm.logger.Warn().Str("gateway", defaultRoute.Gw.String()).Msg("removing default route")
+		logger.Info().Str("gateway", defaultRoute.Gw.String()).Msg("removing default route")
+
 		if err := nm.RouteDel(defaultRoute); err != nil {
-			nm.logger.Warn().Err(err).Msg("failed to remove default route")
+			logger.Warn().Err(err).Msg("failed to remove default route")
 		}
 	}
 
 	// add remaining expected default routes
 	for _, gateway := range expected {
-		nm.logger.Warn().Str("gateway", gateway.String()).Msg("adding default route")
+		logger.Info().Str("gateway", gateway.String()).Msg("adding default route")
 
 		route := &netlink.Route{
 			Dst:       &ipv4DefaultRoute,
@@ -425,16 +436,12 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 			route.Dst = &ipv6DefaultRoute
 		}
 		if err := nm.RouteAdd(route); err != nil {
-			nm.logger.Warn().Err(err).Interface("route", route).Msg("failed to add default route")
+			logger.Warn().Err(err).Interface("route", route).Msg("failed to add default route")
 		}
 		added++
 	}
 
-	nm.logger.Info().
-		Int("added", added).
-		Int("removed", len(toRemove)).
-		Msg("default routes reconciled")
-
+	logger.Info().Int("added", added).Int("removed", len(toRemove)).Msg("default routes reconciled")
 	return nil
 }
 
@@ -444,11 +451,15 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 	toRemove := make([]*netlink.Addr, 0)
 	toUpdate := make([]*types.IPAddress, 0)
 	expectedAddrs := make(map[string]*types.IPAddress)
-
 	expectedGateways := make(map[string]net.IP)
+
+	ifname := link.Attrs().Name
+	linkIndex := link.Attrs().Index
+	logger := nm.getLogger().With().Str("interface", ifname).Int("index", linkIndex).Logger()
 
 	mtu := link.Attrs().MTU
 	expectedMTU := mtu
+
 	// add all expected addresses to the map
 	for _, addr := range expected {
 		expectedAddrs[addr.String()] = &addr
@@ -461,7 +472,7 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 	}
 	if expectedMTU != mtu {
 		if err := link.SetMTU(expectedMTU); err != nil {
-			nm.logger.Warn().Err(err).Int("expected_mtu", expectedMTU).Int("mtu", mtu).Msg("failed to set MTU")
+			logger.Warn().Err(err).Int("expected_mtu", expectedMTU).Int("mtu", mtu).Msg("failed to set MTU")
 		}
 	}
 
@@ -501,35 +512,28 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 	for _, addr := range toUpdate {
 		netlinkAddr := addr.NetlinkAddr()
 		if err := nm.AddrDel(link, &netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to update address")
+			logger.Warn().Err(err).IPPrefix("address", addr.Address).Msg("failed to update address")
 		}
 		// we'll add it again later
 		toAdd = append(toAdd, addr)
 	}
 
-	for _, addr := range toAdd {
-		netlinkAddr := addr.NetlinkAddr()
-		if err := nm.AddrAdd(link, &netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to add address")
-		}
-	}
-
 	for _, netlinkAddr := range toRemove {
 		if err := nm.AddrDel(link, netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", netlinkAddr.IP.String()).Msg("failed to remove address")
+			logger.Warn().Err(err).IPAddr("address", netlinkAddr.IP).Msg("failed to remove address")
 		}
 	}
 
 	for _, addr := range toAdd {
 		netlinkAddr := addr.NetlinkAddr()
 		if err := nm.AddrAdd(link, &netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to add address")
+			logger.Warn().Err(err).IPPrefix("address", addr.Address).Msg("failed to add address")
 		}
 	}
 
 	actualToAdd := len(toAdd) - len(toUpdate)
 	if len(toAdd) > 0 || len(toUpdate) > 0 || len(toRemove) > 0 {
-		nm.logger.Info().
+		logger.Info().
 			Int("added", actualToAdd).
 			Int("updated", len(toUpdate)).
 			Int("removed", len(toRemove)).
@@ -537,7 +541,7 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 	}
 
 	if err := nm.reconcileDefaultRoute(link, expectedGateways, family); err != nil {
-		nm.logger.Warn().Err(err).Msg("failed to reconcile default route")
+		logger.Warn().Err(err).Msg("failed to reconcile default route")
 	}
 
 	return nil

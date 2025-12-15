@@ -37,19 +37,27 @@ func setProcTitle(status string) {
 	gspt.SetProcTitle(title)
 }
 
-func monitorCrashSignal(ctx context.Context, logger *zerolog.Logger, nativeInstance NativeInterface) {
-	logger.Info().Msg("DEBUG mode: will crash the process on SIGHUP signal")
+func getServerLogger() *zerolog.Logger {
+	logger := GetNativeLogger().
+		With().
+		Str("subcomponent", "grpc-server").
+		Int("pid", pid).
+		Logger()
+	return &logger
+}
 
+func monitorCrashSignal(ctx context.Context, nativeInstance NativeInterface) {
+	getServerLogger().Info().Msg("DEBUG mode: will crash the process on SIGHUP signal")
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGHUP)
 
 	for {
 		select {
 		case sig := <-sigChan:
-			logger.Info().Str("signal", sig.String()).Msg("received termination signal")
+			getServerLogger().Warn().Str("signal", sig.String()).Msg("received termination signal, crashing the process for testing purposes")
 			nativeInstance.DoNotUseThisIsForCrashTestingOnly()
 		case <-ctx.Done():
-			logger.Info().Msg("context done, stopping monitor process")
+			getServerLogger().Info().Msg("context done, stopping monitor process")
 			return
 		}
 	}
@@ -79,88 +87,114 @@ func RunNativeProcess(binaryName string) {
 	appCtx, appCtxCancel := context.WithCancel(context.Background())
 	defer appCtxCancel()
 
-	logger := nativeLogger.With().Int("pid", os.Getpid()).Logger()
-	setProcTitle("starting")
+	// for defer clean-up scoping... this is NOT a goroutine
+	func() {
+		setProcTitle("starting")
+		logger := getServerLogger().With().Str("binaryName", binaryName).Logger()
+		logger.Info().Msg("native process starting")
 
-	// Parse native options
-	var proxyOptions nativeProxyOptions
-	if err := env.Parse(&proxyOptions); err != nil {
-		logger.Fatal().Err(err).Msg("failed to parse native proxy options")
-	}
-
-	// Connect to video stream socket
-	conn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
-	}
-	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
-
-	nativeOptions := proxyOptions.toNativeOptions()
-	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
-		// Write 4-byte frame length prefix, then frame data
-		var frameSizeBuffer [4]byte
-		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
-
-		if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
+		// Parse native options
+		var proxyOptions nativeProxyOptions
+		if err := env.Parse(&proxyOptions); err != nil {
+			logger.Fatal().Err(err).Msg("failed to parse native proxy options")
+			return
 		}
-		if _, err := conn.Write(frame); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
+		socketPath := fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket)
+		logger = logger.With().Interface("proxyOptions", proxyOptions).Str("socketPath", socketPath).Logger()
+
+		// Connect to video stream socket
+		conn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
+			return
 		}
-	}
-	nativeOptions.OnVideoStateChange = func(state VideoState) {
-		updateProcessTitle(&state)
-	}
+		defer conn.Close()
+		logger = logger.With().Interface("local", conn.LocalAddr()).Interface("remote", conn.RemoteAddr()).Logger()
+		logger.Info().Msg("connected to video stream socket")
 
-	// Create native instance
-	nativeInstance := NewNative(*nativeOptions)
-	gspt.SetProcTitle("jetkvm: [native] initializing")
+		nativeOptions := proxyOptions.toNativeOptions()
+		nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
+			// Write 4-byte frame length prefix, then frame data
+			var frameSizeBuffer [4]byte
+			binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
 
-	// Start native instance
-	if err := nativeInstance.Start(); err != nil {
-		logger.Fatal().Err(err).Msg("failed to start native instance")
-	}
+			if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
+				logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
+				return
+			}
+			if _, err := conn.Write(frame); err != nil {
+				logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
+				return
+			}
+		}
+		nativeOptions.OnVideoStateChange = func(state VideoState) {
+			updateProcessTitle(&state)
+		}
 
-	grpcLogger := logger.With().Str("socketPath", fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket)).Logger()
-	setProcTitle("starting gRPC server")
-	// Create gRPC server
-	grpcServer := NewGRPCServer(nativeInstance, &grpcLogger)
+		setProcTitle("initializing")
+		logger.Info().Msg("starting native instance")
 
-	logger.Info().Msg("starting gRPC server")
-	// Start gRPC server
-	server, lis, err := StartGRPCServer(grpcServer, fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket), &logger)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to start gRPC server")
-	}
-	setProcTitle("ready")
+		// Create and start native instance
+		nativeInstance := NewNative(*nativeOptions)
+		if err := nativeInstance.Start(); err != nil {
+			logger.Fatal().Err(err).Msg("failed to start native instance")
+			return
+		}
 
-	if _, err := os.Stat(DebugModeFile); err == nil {
-		logger.Info().Msg("DEBUG mode: enabled")
-		go monitorCrashSignal(appCtx, &logger, nativeInstance)
-	}
+		setProcTitle("starting gRPC server")
+		logger.Info().Msg("starting gRPC server")
 
-	// Signal that we're ready by writing handshake message to stdout (for parent to read)
-	// Stdout.Write is used to avoid buffering the message
-	_, err = os.Stdout.Write([]byte(proxyOptions.HandshakeMessage + "\n"))
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to write handshake message to stdout")
-	}
+		// Create and Start gRPC server
+		grpcServer := NewGRPCServer(nativeInstance, socketPath)
+		server, lis, err := grpcServer.Start()
 
-	// Set up signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("failed to start gRPC server")
+			return
+		}
 
-	// Wait for signal
-	sig := <-sigChan
-	logger.Info().
-		Str("signal", sig.String()).
-		Msg("received termination signal")
+		defer lis.Close()   // close listener after
+		defer server.Stop() // forceful server stop
 
-	// Graceful shutdown might stuck forever,
-	// we will use Stop() instead to force quit the gRPC server,
-	// we can implement a graceful shutdown with a timeout in the future if needed
-	server.Stop()
-	lis.Close()
+		logger = logger.With().Interface("listener", lis).Logger()
 
-	logger.Info().Msg("native process exiting")
+		setProcTitle("ready")
+
+		if _, err := os.Stat(DebugModeFile); err == nil {
+			logger.Info().Msg("DEBUG mode: enabled")
+			go monitorCrashSignal(appCtx, nativeInstance)
+		}
+
+		// Signal that we're ready by writing handshake message to stdout (for parent to read)
+		// Stdout.Write is used to avoid buffering the message
+		_, err = os.Stdout.Write([]byte(proxyOptions.HandshakeMessage + "\n"))
+		if err != nil {
+			logger.Fatal().Err(err).Msg("failed to write handshake message to stdout")
+			return
+		}
+		logger.Debug().Msg("wrote handshake message for supervisor")
+
+		// Set up signal handling
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+
+		// Wait for signal
+		sig := <-sigChan
+		logger.Info().Str("signal", sig.String()).Msg("received termination signal")
+
+		// Graceful shutdown might take a long time so use a 2 second timeout
+		shutdownCtx, shutdownCancel := context.WithTimeout(appCtx, 2*time.Second)
+		defer shutdownCancel()
+
+		// Stop gRPC server
+		setProcTitle("shutting down gRPC server")
+		logger.Info().Msg("shutting down gRPC server")
+		go func() {
+			server.GracefulStop()
+		}()
+
+		// Wait for shutdown or timeout (and then the defer will force stop)
+		<-shutdownCtx.Done()
+		logger.Info().Msg("native process exiting")
+	}()
 }

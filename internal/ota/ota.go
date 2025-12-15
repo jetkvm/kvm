@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -60,31 +61,43 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 
 // newHTTPRequestWithTrace creates a new HTTP request with a trace logger
 // TODO: use OTEL instead of doing this manually
-func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string, body io.Reader, logger func() *zerolog.Event) (*http.Request, error) {
+func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string, body io.Reader, logger *zerolog.Logger) (*http.Request, error) {
 	localCtx := ctx
-	if s.l.GetLevel() <= zerolog.TraceLevel {
-		if logger == nil {
-			logger = func() *zerolog.Event { return s.l.Trace() }
-		}
-
-		l := func() *zerolog.Event { return logger().Str("url", url).Str("method", method) }
+	if logging.IsTraceLevel(logger) {
+		trace := func() *zerolog.Event { return logger.Trace().Str("url", url).Str("method", method) }
 		localCtx = httptrace.WithClientTrace(localCtx, &httptrace.ClientTrace{
-			GetConn:              func(hostPort string) { l().Str("hostPort", hostPort).Msg("[conn] starting to create conn") },
-			GotConn:              func(info httptrace.GotConnInfo) { l().Interface("info", info).Msg("[conn] connection established") },
-			PutIdleConn:          func(err error) { l().Err(err).Msg("[conn] connection returned to idle pool") },
-			GotFirstResponseByte: func() { l().Msg("[resp] first response byte received") },
-			Got100Continue:       func() { l().Msg("[resp] 100 continue received") },
-			DNSStart:             func(info httptrace.DNSStartInfo) { l().Interface("info", info).Msg("[dns] starting to look up dns") },
-			DNSDone:              func(info httptrace.DNSDoneInfo) { l().Interface("info", info).Msg("[dns] done looking up dns") },
+			GetConn: func(hostPort string) {
+				trace().Str("hostPort", hostPort).Msg("[conn] starting to create conn")
+			},
+			GotConn: func(info httptrace.GotConnInfo) {
+				trace().Interface("info", info).Msg("[conn] connection established")
+			},
+			PutIdleConn: func(err error) {
+				trace().Err(err).Msg("[conn] connection returned to idle pool")
+			},
+			GotFirstResponseByte: func() {
+				trace().Msg("[resp] first response byte received")
+			},
+			Got100Continue: func() {
+				trace().Msg("[resp] 100 continue received")
+			},
+			DNSStart: func(info httptrace.DNSStartInfo) {
+				trace().Interface("info", info).Msg("[dns] starting to look up dns")
+			},
+			DNSDone: func(info httptrace.DNSDoneInfo) {
+				trace().Interface("info", info).Msg("[dns] done looking up dns")
+			},
 			ConnectStart: func(network, addr string) {
-				l().Str("network", network).Str("addr", addr).Msg("[tcp] starting tcp connection")
+				trace().Str("network", network).Str("addr", addr).Msg("[tcp] starting tcp connection")
 			},
 			ConnectDone: func(network, addr string, err error) {
-				l().Str("network", network).Str("addr", addr).Err(err).Msg("[tcp] tcp connection created")
+				trace().Str("network", network).Str("addr", addr).Err(err).Msg("[tcp] tcp connection created")
 			},
-			TLSHandshakeStart: func() { l().Msg("[tls] handshake started") },
+			TLSHandshakeStart: func() {
+				trace().Msg("[tls] handshake started")
+			},
 			TLSHandshakeDone: func(state tls.ConnectionState, err error) {
-				l().
+				trace().
 					Str("tlsVersion", tls.VersionName(state.Version)).
 					Str("cipherSuite", tls.CipherSuiteName(state.CipherSuite)).
 					Str("negotiatedProtocol", state.NegotiatedProtocol).
@@ -100,27 +113,20 @@ func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string,
 func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
 
-	logger := s.l.With().Logger()
-	if params.RequestID != "" {
-		logger = logger.With().Str("requestID", params.RequestID).Logger()
-	}
+	logger := GetOtaLogger().With().Interface("params", params).Logger()
 	t := time.Now()
 	traceLogger := func() *zerolog.Event {
 		return logger.Trace().Dur("duration", time.Since(t))
 	}
 
 	url, err, isCustomVersion := s.getUpdateURL(params)
-	traceLogger().Err(err).
-		Msg("fetchUpdateMetadata: getUpdateURL")
 	if err != nil {
+		traceLogger().Err(err).Msg("fetchUpdateMetadata: getUpdateURL")
 		return nil, fmt.Errorf("error getting update URL: %w", err)
 	}
 
-	traceLogger().
-		Str("url", url).
-		Msg("fetching update metadata")
-
-	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, traceLogger)
+	traceLogger().Str("url", url).Bool("custom_version", isCustomVersion).Msg("fetching update metadata")
+	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, &logger)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -133,9 +139,7 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 	}
 	defer resp.Body.Close()
 
-	traceLogger().
-		Int("status", resp.StatusCode).
-		Msg("fetchUpdateMetadata: response")
+	traceLogger().Int("status", resp.StatusCode).Msg("fetchUpdateMetadata: response")
 
 	if isCustomVersion && resp.StatusCode == http.StatusNotFound {
 		return nil, ErrVersionNotFound
@@ -150,9 +154,7 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
-	traceLogger().
-		Msg("fetchUpdateMetadata: completed")
-
+	traceLogger().Msg("fetchUpdateMetadata: completed")
 	return metadata, nil
 }
 
@@ -173,19 +175,16 @@ func (s *State) TryUpdate(ctx context.Context, params UpdateParams) error {
 		return fmt.Errorf("update already in progress")
 	}
 
+	defer s.mu.Unlock()
 	return s.doUpdate(ctx, params)
 }
 
 // before calling doUpdate, the caller must have locked the mutex
 // otherwise a runtime error will occur
 func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
-	defer s.mu.Unlock()
+	logger := GetOtaLogger().With().Interface("params", params).Logger()
+	logger.Info().Msg("checking for updates")
 
-	scopedLogger := s.l.With().
-		Interface("params", params).
-		Logger()
-
-	scopedLogger.Info().Msg("checking for updates")
 	if s.updating {
 		return fmt.Errorf("update already in progress")
 	}
@@ -204,13 +203,13 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return s.componentUpdateError(
 			"Update aborted: no components were specified to update. Requested components: ",
 			fmt.Errorf("%v", params.Components),
-			&scopedLogger,
+			&logger,
 		)
 	}
 
 	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params)
 	if err != nil {
-		return s.componentUpdateError("Error checking for updates", err, &scopedLogger)
+		return s.componentUpdateError("Error checking for updates", err, &logger)
 	}
 
 	s.metadataFetchedAt = time.Now()
@@ -229,54 +228,66 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	}
 
 	if !appUpdate.pending && !systemUpdate.pending {
-		scopedLogger.Info().Msg("No updates available")
+		logger.Info().Msg("No updates available")
 		s.updating = false
 		s.triggerStateUpdate()
 		return nil
 	}
 
-	scopedLogger.Trace().Bool("pending", appUpdate.pending).Msg("Checking for app update")
+	logger.Trace().Bool("pending", appUpdate.pending).Msg("Checking for app update")
 
 	if appUpdate.pending {
-		scopedLogger.Info().
+		appLogger := logger.
+			With().
+			Str("subcomponent", "app").
 			Str("url", appUpdate.url).
 			Str("hash", appUpdate.hash).
-			Msg("App update available")
+			Logger()
+
+		appLogger.Info().Msg("App update available")
 
 		if err := s.updateApp(ctx, appUpdate); err != nil {
-			return s.componentUpdateError("Error updating app", err, &scopedLogger)
+			return s.componentUpdateError("Error updating app", err, &appLogger)
 		}
 	} else {
-		scopedLogger.Info().Msg("App is up to date")
+		logger.Info().Msg("App is up to date")
 	}
 
-	scopedLogger.Trace().Bool("pending", systemUpdate.pending).Msg("Checking for system update")
+	logger.Trace().Bool("pending", systemUpdate.pending).Msg("Checking for system update")
 
 	if systemUpdate.pending {
+		systemLogger := logger.
+			With().
+			Str("subcomponent", "system").
+			Str("url", systemUpdate.url).
+			Str("hash", systemUpdate.hash).
+			Logger()
+
+		systemLogger.Info().Msg("System update available")
+
 		if err := s.updateSystem(ctx, systemUpdate); err != nil {
-			return s.componentUpdateError("Error updating system", err, &scopedLogger)
+			return s.componentUpdateError("Error updating system", err, &systemLogger)
 		}
 	} else {
-		scopedLogger.Info().Msg("System is up to date")
+		logger.Info().Msg("System is up to date")
 	}
 
 	if s.rebootNeeded {
 		if appUpdate.customVersionUpdate || systemUpdate.customVersionUpdate {
-			scopedLogger.Info().Msg("disabling auto-update due to custom version update")
+			logger.Info().Msg("disabling auto-update due to custom version update")
 			// If they are explicitly updating a custom version, we assume they want to disable auto-update
 			if _, err := s.setAutoUpdate(false); err != nil {
-				scopedLogger.Warn().Err(err).Msg("Failed to disable auto-update")
+				logger.Warn().Err(err).Msg("Failed to disable auto-update")
 			}
 		}
 
-		scopedLogger.Info().Msg("System Rebooting due to OTA update")
-
+		logger.Info().Msg("System Rebooting due to OTA update")
 		redirectUrl := "/settings/general/update"
 
 		if params.ResetConfig {
-			scopedLogger.Info().Msg("Resetting config")
+			logger.Warn().Msg("Resetting config")
 			if err := s.resetConfig(); err != nil {
-				return s.componentUpdateError("Error resetting config", err, &scopedLogger)
+				return s.componentUpdateError("Error resetting config", err, &logger)
 			}
 			redirectUrl = "/welcome"
 		}
@@ -290,7 +301,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		// it means that healthCheckUrl will be called after 7 seconds that we send willReboot JSONRPC event
 		// so we need to reboot it within 7 seconds to avoid it being called before the device is rebooted
 		if err := s.reboot(true, postRebootAction, 5*time.Second); err != nil {
-			return s.componentUpdateError("Error requesting reboot", err, &scopedLogger)
+			return s.componentUpdateError("Error requesting reboot", err, &logger)
 		}
 	}
 
@@ -351,6 +362,7 @@ func (s *State) checkUpdateStatus(
 	systemUpdateStatus *componentUpdateStatus,
 ) error {
 	// get the local versions
+	t := time.Now()
 	systemVersionLocal, appVersionLocal, err := s.getLocalVersion()
 	if err != nil {
 		return fmt.Errorf("error getting local version: %w", err)
@@ -358,22 +370,19 @@ func (s *State) checkUpdateStatus(
 	appUpdateStatus.localVersion = appVersionLocal.String()
 	systemUpdateStatus.localVersion = systemVersionLocal.String()
 
-	logger := s.l.With().Logger()
-	if params.RequestID != "" {
-		logger = logger.With().Str("requestID", params.RequestID).Logger()
-	}
-	t := time.Now()
+	logger := GetOtaLogger().
+		With().
+		Interface("params", params).
+		Stringer("appVersionLocal", appVersionLocal).
+		Stringer("systemVersionLocal", systemVersionLocal).
+		Logger()
 
-	logger.Trace().
-		Str("appVersionLocal", appVersionLocal.String()).
-		Str("systemVersionLocal", systemVersionLocal.String()).
-		Dur("duration", time.Since(t)).
-		Msg("checkUpdateStatus: getLocalVersion")
+	logger.Trace().Dur("duration", time.Since(t)).Msg("checkUpdateStatus: getLocalVersion")
 
 	// fetch the remote metadata
 	remoteMetadata, err := s.fetchUpdateMetadata(ctx, params)
 	if err != nil {
-		if err == ErrVersionNotFound || errors.Unwrap(err) == ErrVersionNotFound {
+		if errors.Is(err, ErrVersionNotFound) {
 			err = ErrVersionNotFound
 		} else {
 			err = fmt.Errorf("error checking for updates: %w", err)
@@ -395,6 +404,9 @@ func (s *State) checkUpdateStatus(
 	); err != nil {
 		return fmt.Errorf("error parsing remote app version: %w", err)
 	}
+	logger.Trace().Str("subcomponent", "app").
+		Interface("componentUpdateStatus", appUpdateStatus).
+		Msg("checkUpdateStatus: remoteMetadataToComponentStatus")
 
 	if err := remoteMetadataToComponentStatus(
 		remoteMetadata,
@@ -404,11 +416,10 @@ func (s *State) checkUpdateStatus(
 	); err != nil {
 		return fmt.Errorf("error parsing remote system version: %w", err)
 	}
-
-	if s.l.GetLevel() <= zerolog.TraceLevel {
-		appUpdateStatus.getZerologLogger(&logger).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [app]")
-		systemUpdateStatus.getZerologLogger(&logger).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [system]")
-	}
+	logger.Trace().
+		Str("subcomponent", "system").
+		Interface("componentUpdateStatus", systemUpdateStatus).
+		Msg("checkUpdateStatus: remoteMetadataToComponentStatus")
 
 	logger.Trace().
 		Dur("duration", time.Since(t)).

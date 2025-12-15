@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/rs/zerolog"
 )
 
 var (
@@ -71,27 +70,6 @@ type componentUpdateStatus struct {
 	verifiedAt           time.Time
 	updateProgress       float32
 	updatedAt            time.Time
-	dependsOn            []string
-}
-
-func (c *componentUpdateStatus) getZerologLogger(l *zerolog.Logger) *zerolog.Logger {
-	logger := l.With().
-		Bool("pending", c.pending).
-		Bool("available", c.available).
-		Str("availableReason", c.availableReason).
-		Str("version", c.version).
-		Str("localVersion", c.localVersion).
-		Str("url", c.url).
-		Str("hash", c.hash).
-		Float32("downloadProgress", c.downloadProgress).
-		Time("downloadFinishedAt", c.downloadFinishedAt).
-		Float32("verificationProgress", c.verificationProgress).
-		Time("verifiedAt", c.verifiedAt).
-		Float32("updateProgress", c.updateProgress).
-		Time("updatedAt", c.updatedAt).
-		Strs("dependsOn", c.dependsOn).
-		Logger()
-	return &logger
 }
 
 // HwRebootFunc is a function that reboots the hardware
@@ -118,7 +96,6 @@ type GetLocalVersionFunc func() (systemVersion *semver.Version, appVersion *semv
 // State represents the current OTA state for the UI
 type State struct {
 	releaseAPIEndpoint      string
-	l                       *zerolog.Logger
 	mu                      sync.Mutex
 	updating                bool
 	error                   string
@@ -178,7 +155,6 @@ func (s *State) IsUpdatePending() bool {
 
 // Options represents the options for the OTA state
 type Options struct {
-	Logger             *zerolog.Logger
 	GetHTTPClient      GetHTTPClientFunc
 	GetLocalVersion    GetLocalVersionFunc
 	OnStateUpdate      OnStateUpdateFunc
@@ -198,7 +174,6 @@ func NewState(opts Options) *State {
 	}
 
 	s := &State{
-		l:                       opts.Logger,
 		client:                  opts.GetHTTPClient,
 		reboot:                  opts.HwReboot,
 		onStateUpdate:           opts.OnStateUpdate,

@@ -53,6 +53,8 @@ func (n *Native) setSleepMode(enabled bool) error {
 		return nil
 	}
 
+	logger := GetDisplayLogger().With().Bool("enabled", enabled).Logger()
+
 	bEnabled := "0"
 	shouldWait := false
 	if enabled {
@@ -60,11 +62,11 @@ func (n *Native) setSleepMode(enabled bool) error {
 
 		switch videoGetStreamingStatus() {
 		case VideoStreamingStatusActive:
-			n.l.Info().Msg("stopping video stream to enable sleep mode")
+			logger.Info().Msg("stopping video stream to enable sleep mode")
 			videoStop()
 			shouldWait = true
 		case VideoStreamingStatusStopping:
-			n.l.Info().Msg("video stream is stopping, will enable sleep mode in a few seconds")
+			logger.Info().Msg("video stream is stopping, will enable sleep mode in a few seconds")
 			shouldWait = true
 		}
 	}

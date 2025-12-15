@@ -8,12 +8,14 @@ import (
 
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/jetkvm/kvm/internal/confparser"
-	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
+
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+
 	"github.com/mdlayher/ndp"
 	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
@@ -26,7 +28,6 @@ type InterfaceManager struct {
 	ctx       context.Context
 	ifaceName string
 	config    *types.NetworkConfig
-	logger    *zerolog.Logger
 	state     *types.InterfaceState
 	linkState *link.Link
 	stateMu   sync.RWMutex
@@ -47,16 +48,10 @@ type InterfaceManager struct {
 }
 
 // NewInterfaceManager creates a new interface manager
-func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.NetworkConfig, logger *zerolog.Logger) (*InterfaceManager, error) {
+func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.NetworkConfig) (*InterfaceManager, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
-
-	if logger == nil {
-		logger = logging.GetSubsystemLogger("interface")
-	}
-
-	scopedLogger := logger.With().Str("interface", ifaceName).Logger()
 
 	// Validate and set defaults
 	if err := confparser.SetDefaultsAndValidate(config); err != nil {
@@ -67,7 +62,6 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 		ctx:       ctx,
 		ifaceName: ifaceName,
 		config:    config,
-		logger:    &scopedLogger,
 		state: &types.InterfaceState{
 			InterfaceName: ifaceName,
 			// LastUpdated:   time.Now(),
@@ -77,26 +71,27 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 
 	// Initialize components
 	var err error
-	im.staticConfig, err = NewStaticConfigManager(ifaceName, &scopedLogger)
+	im.staticConfig, err = NewStaticConfigManager(ifaceName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create static config manager: %w", err)
 	}
 
 	// create the dhcp client
-	im.dhcpClient, err = NewDHCPClient(ctx, ifaceName, &scopedLogger, config.DHCPClient.String)
+	im.dhcpClient, err = NewDHCPClient(ctx, ifaceName, config.DHCPClient.String)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DHCP client: %w", err)
 	}
 
 	// Set up DHCP client callbacks
 	im.dhcpClient.SetOnLeaseChange(func(lease *types.DHCPLease) {
+		logger := im.getLogger()
 		if im.config.IPv4Mode.String != "dhcp" {
-			im.logger.Warn().Str("mode", im.config.IPv4Mode.String).Msg("ignoring DHCP lease, current mode is not DHCP")
+			logger.Warn().Str("mode", im.config.IPv4Mode.String).Msg("ignoring DHCP lease, current mode is not DHCP")
 			return
 		}
 
 		if err := im.applyDHCPLease(lease); err != nil {
-			im.logger.Error().Err(err).Msg("failed to apply DHCP lease")
+			logger.Error().Err(err).Msg("failed to apply DHCP lease")
 		}
 		im.updateStateFromDHCPLease(lease)
 		if im.onDHCPLeaseChange != nil {
@@ -107,12 +102,26 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 	return im, nil
 }
 
+func (im *InterfaceManager) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nmlite").With().Str("interface", im.ifaceName).Logger()
+
+	if logging.IsTraceLevel(&logger) {
+		logger = logger.
+			With().
+			Object("state", im.state).
+			Logger()
+	}
+
+	return &logger
+}
+
 // Start starts managing the interface
 func (im *InterfaceManager) Start() error {
 	im.stateMu.Lock()
 	defer im.stateMu.Unlock()
 
-	im.logger.Info().Msg("starting interface manager")
+	logger := im.getLogger()
+	logger.Info().Msg("starting interface manager")
 
 	// Start monitoring interface state
 	im.wg.Add(1)
@@ -143,22 +152,23 @@ func (im *InterfaceManager) Start() error {
 	})
 
 	if linkUpErr != nil {
-		im.logger.Error().Err(linkUpErr).Msg("failed to bring interface up, continuing anyway")
+		logger.Error().Err(linkUpErr).Msg("failed to bring interface up, continuing anyway")
 	} else {
 		// Apply initial configuration
 		if err := im.applyConfiguration(); err != nil {
-			im.logger.Error().Err(err).Msg("failed to apply initial configuration")
+			logger.Error().Err(err).Msg("failed to apply initial configuration")
 			return err
 		}
 	}
 
-	im.logger.Info().Msg("interface manager started")
+	logger.Info().Msg("interface manager started")
 	return nil
 }
 
 // Stop stops managing the interface
 func (im *InterfaceManager) Stop() error {
-	im.logger.Info().Msg("stopping interface manager")
+	logger := im.getLogger()
+	logger.Info().Msg("stopping interface manager")
 
 	close(im.stopCh)
 	im.wg.Wait()
@@ -170,7 +180,7 @@ func (im *InterfaceManager) Stop() error {
 		}
 	}
 
-	im.logger.Info().Msg("interface manager stopped")
+	logger.Info().Msg("interface manager stopped")
 	return nil
 }
 
@@ -301,9 +311,9 @@ func (im *InterfaceManager) GetState() *types.InterfaceState {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
 
-	// Return a copy to avoid race conditions
-	im.logger.Debug().Interface("state", im.state).Msg("getting interface state")
+	im.getLogger().Debug().Msg("getting interface state")
 
+	// Return a copy to avoid race conditions
 	state := *im.state
 	return &state
 }
@@ -366,7 +376,7 @@ func (im *InterfaceManager) SetConfig(config *types.NetworkConfig) error {
 
 	// Apply the new configuration
 	if err := im.applyConfiguration(); err != nil {
-		im.logger.Error().Err(err).Msg("failed to apply new configuration")
+		im.getLogger().Error().Err(err).Msg("failed to apply new configuration")
 		return err
 	}
 
@@ -375,7 +385,7 @@ func (im *InterfaceManager) SetConfig(config *types.NetworkConfig) error {
 		im.onConfigChange(config)
 	}
 
-	im.logger.Info().Msg("configuration updated")
+	im.getLogger().Info().Msg("configuration updated")
 	return nil
 }
 
@@ -410,8 +420,6 @@ func (im *InterfaceManager) SetOnResolvConfChange(callback ResolvConfChangeCallb
 
 // applyConfiguration applies the current configuration to the interface
 func (im *InterfaceManager) applyConfiguration() error {
-	im.logger.Info().Msg("applying configuration")
-
 	// Apply IPv4 configuration
 	if err := im.applyIPv4Config(); err != nil {
 		return fmt.Errorf("failed to apply IPv4 config: %w", err)
@@ -428,7 +436,7 @@ func (im *InterfaceManager) applyConfiguration() error {
 // applyIPv4Config applies IPv4 configuration
 func (im *InterfaceManager) applyIPv4Config() error {
 	mode := im.config.IPv4Mode.String
-	im.logger.Info().Str("mode", mode).Msg("applying IPv4 configuration")
+	im.getLogger().Info().Str("mode", mode).Msg("applying IPv4 configuration")
 
 	switch mode {
 	case "static":
@@ -445,7 +453,7 @@ func (im *InterfaceManager) applyIPv4Config() error {
 // applyIPv6Config applies IPv6 configuration
 func (im *InterfaceManager) applyIPv6Config() error {
 	mode := im.config.IPv6Mode.String
-	im.logger.Info().Str("mode", mode).Msg("applying IPv6 configuration")
+	im.getLogger().Info().Str("mode", mode).Msg("applying IPv6 configuration")
 
 	switch mode {
 	case "static":
@@ -471,27 +479,27 @@ func (im *InterfaceManager) applyIPv4Static() error {
 		return fmt.Errorf("IPv4 static configuration is nil")
 	}
 
-	im.logger.Info().Msg("stopping DHCP")
+	im.getLogger().Info().Msg("stopping DHCP")
 
 	// Disable DHCP
 	if im.dhcpClient != nil {
 		im.dhcpClient.SetIPv4(false)
 	}
 
-	im.logger.Info().Interface("config", im.config.IPv4Static).Msg("applying IPv4 static configuration")
+	im.getLogger().Info().Interface("config", im.config.IPv4Static).Msg("applying IPv4 static configuration")
 
 	config, err := im.staticConfig.ToIPv4Static(im.config.IPv4Static)
 	if err != nil {
 		return fmt.Errorf("failed to convert IPv4 static configuration: %w", err)
 	}
 
-	im.logger.Info().Interface("config", config).Msg("converted IPv4 static configuration")
+	im.getLogger().Info().Interface("config", config).Msg("converted IPv4 static configuration")
 
 	if err := im.onResolvConfChange(link.AfInet, &types.InterfaceResolvConf{
 		NameServers: config.Nameservers,
 		Source:      "static",
 	}); err != nil {
-		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
+		im.getLogger().Warn().Err(err).Msg("failed to update resolv.conf")
 	}
 
 	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet)
@@ -525,7 +533,7 @@ func (im *InterfaceManager) applyIPv6Static() error {
 		return fmt.Errorf("IPv6 static configuration is nil")
 	}
 
-	im.logger.Info().Msg("stopping DHCPv6")
+	im.getLogger().Info().Msg("stopping DHCPv6")
 	// Disable DHCPv6
 	if im.dhcpClient != nil {
 		im.dhcpClient.SetIPv6(false)
@@ -536,13 +544,13 @@ func (im *InterfaceManager) applyIPv6Static() error {
 	if err != nil {
 		return fmt.Errorf("failed to convert IPv6 static configuration: %w", err)
 	}
-	im.logger.Info().Interface("config", config).Msg("converted IPv6 static configuration")
+	im.getLogger().Info().Interface("config", config).Msg("converted IPv6 static configuration")
 
 	if err := im.onResolvConfChange(link.AfInet6, &types.InterfaceResolvConf{
 		NameServers: config.Nameservers,
 		Source:      "static",
 	}); err != nil {
-		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
+		im.getLogger().Warn().Err(err).Msg("failed to update resolv.conf")
 	}
 
 	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet6)
@@ -584,7 +592,7 @@ func (im *InterfaceManager) applyIPv6SLAAC() error {
 	}
 
 	if err := im.SendRouterSolicitation(); err != nil {
-		im.logger.Error().Err(err).Msg("failed to send router solicitation, continuing anyway")
+		im.getLogger().Error().Err(err).Msg("failed to send router solicitation, continuing anyway")
 	}
 
 	// Enable SLAAC
@@ -638,7 +646,7 @@ func (im *InterfaceManager) handleLinkStateChange(link *link.Link) {
 		im.linkState = link
 	}
 
-	im.logger.Info().Interface("link", link).Msg("link state changed")
+	im.getLogger().Info().Interface("link", link).Msg("link state changed")
 
 	operState := link.Attrs().OperState
 	if operState == netlink.OperUp {
@@ -650,7 +658,7 @@ func (im *InterfaceManager) handleLinkStateChange(link *link.Link) {
 
 // SendRouterSolicitation sends a router solicitation
 func (im *InterfaceManager) SendRouterSolicitation() error {
-	im.logger.Info().Msg("sending router solicitation")
+	im.getLogger().Info().Msg("sending router solicitation")
 	m := &ndp.RouterSolicitation{}
 
 	l, err := im.link()
@@ -689,51 +697,53 @@ func (im *InterfaceManager) SendRouterSolicitation() error {
 		return fmt.Errorf("failed to write to %s: %w", targetAddr.String(), err)
 	}
 
-	im.logger.Info().Msg("router solicitation sent")
+	im.getLogger().Info().Msg("router solicitation sent")
 	c.Close()
 
 	return nil
 }
 
 func (im *InterfaceManager) handleLinkUp() {
-	im.logger.Info().Msg("link up")
+	logger := im.getLogger()
+	logger.Info().Msg("link up")
 
 	if err := im.applyConfiguration(); err != nil {
-		im.logger.Error().Err(err).Msg("failed to apply configuration")
+		logger.Error().Err(err).Msg("failed to apply configuration")
 	}
 
 	if im.config.IPv4Mode.String == "dhcp" {
 		if err := im.dhcpClient.Renew(); err != nil {
-			im.logger.Error().Err(err).Msg("failed to renew DHCP lease")
+			logger.Error().Err(err).Msg("failed to renew DHCP lease")
 		}
 	}
 
 	if im.config.IPv6Mode.String == "slaac" {
 		if err := im.staticConfig.EnableIPv6SLAAC(); err != nil {
-			im.logger.Error().Err(err).Msg("failed to enable IPv6 SLAAC")
+			logger.Error().Err(err).Msg("failed to enable IPv6 SLAAC")
 		}
 		if err := im.SendRouterSolicitation(); err != nil {
-			im.logger.Error().Err(err).Msg("failed to send router solicitation")
+			logger.Error().Err(err).Msg("failed to send router solicitation")
 		}
 	}
 }
 
 func (im *InterfaceManager) handleLinkDown() {
-	im.logger.Info().Msg("link down")
+	logger := im.getLogger()
+	logger.Info().Msg("link down")
 
 	if im.config.IPv4Mode.String == "dhcp" {
 		if err := im.dhcpClient.Stop(); err != nil {
-			im.logger.Error().Err(err).Msg("failed to stop DHCP client")
+			logger.Error().Err(err).Msg("failed to stop DHCP client")
 		}
 	}
 
 	netlinkMgr := getNetlinkManager()
 	if err := netlinkMgr.RemoveAllAddresses(im.linkState, link.AfInet); err != nil {
-		im.logger.Error().Err(err).Msg("failed to remove all IPv4 addresses")
+		logger.Error().Err(err).Msg("failed to remove all IPv4 addresses")
 	}
 
 	if err := netlinkMgr.RemoveNonLinkLocalIPv6Addresses(im.linkState); err != nil {
-		im.logger.Error().Err(err).Msg("failed to remove non-link-local IPv6 addresses")
+		logger.Error().Err(err).Msg("failed to remove non-link-local IPv6 addresses")
 	}
 }
 
@@ -741,7 +751,8 @@ func (im *InterfaceManager) handleLinkDown() {
 func (im *InterfaceManager) monitorInterfaceState() {
 	defer im.wg.Done()
 
-	im.logger.Debug().Msg("monitoring interface state")
+	logger := im.getLogger()
+	logger.Debug().Msg("monitoring interface state")
 	// TODO: use netlink subscription instead of polling
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -754,7 +765,7 @@ func (im *InterfaceManager) monitorInterfaceState() {
 			return
 		case <-ticker.C:
 			if err := im.updateInterfaceState(); err != nil {
-				im.logger.Error().Err(err).Msg("failed to update interface state")
+				logger.Error().Err(err).Msg("failed to update interface state")
 			}
 		}
 	}
@@ -778,8 +789,10 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 		return
 	}
 
+	logger := im.getLogger()
+
 	if im.ifaceName == "" {
-		im.logger.Warn().Msg("interface name is empty, skipping resolv.conf update")
+		logger.Warn().Msg("interface name is empty, skipping resolv.conf update")
 		return
 	}
 
@@ -789,7 +802,7 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 		Source:      "dhcp",
 		Domain:      lease.Domain,
 	}); err != nil {
-		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
+		logger.Warn().Err(err).Msg("failed to update resolv.conf")
 	}
 }
 
@@ -812,13 +825,15 @@ func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 		return fmt.Errorf("DHCP lease is nil")
 	}
 
+	logger := im.getLogger()
+
 	if lease.DHCPClient != "jetdhcpc" {
-		im.logger.Warn().Str("dhcp_client", lease.DHCPClient).Msg("ignoring DHCP lease, not implemented yet")
+		logger.Warn().Str("dhcp_client", lease.DHCPClient).Msg("ignoring DHCP lease, not implemented yet")
 		return nil
 	}
 
 	if lease.IsIPv6() {
-		im.logger.Warn().Msg("ignoring IPv6 DHCP lease, not implemented yet")
+		logger.Warn().Msg("ignoring IPv6 DHCP lease, not implemented yet")
 		return nil
 	}
 
@@ -844,7 +859,7 @@ func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease)
 		Permanent: false,
 	}
 
-	im.logger.Trace().
+	im.getLogger().Trace().
 		Interface("ipv4Addr", ipv4Addr).
 		Interface("lease", lease).
 		Msg("converted DHCP lease to IPv4Config")

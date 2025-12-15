@@ -2,43 +2,14 @@ package usbgadget
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/rs/zerolog"
 )
-
-type ByteSlice []byte
-
-func (s ByteSlice) MarshalJSON() ([]byte, error) {
-	vals := make([]int, len(s))
-	for i, v := range s {
-		vals[i] = int(v)
-	}
-	return json.Marshal(vals)
-}
-
-func (s *ByteSlice) UnmarshalJSON(data []byte) error {
-	var vals []int
-	if err := json.Unmarshal(data, &vals); err != nil {
-		return err
-	}
-	*s = make([]byte, len(vals))
-	for i, v := range vals {
-		if v < 0 || v > 255 {
-			return fmt.Errorf("value %d out of byte range", v)
-		}
-		(*s)[i] = byte(v)
-	}
-	return nil
-}
 
 func joinPath(basePath string, paths []string) string {
 	pathArr := append([]string{basePath}, paths...)
@@ -71,14 +42,21 @@ func hexToOctal(hex string) (string, error) {
 	return octal, nil
 }
 
+func compareIgnoreTrailingLF(shorter []byte, longer []byte) bool {
+	shorterLen := len(shorter)
+	longerLen := len(longer)
+	return shorterLen+1 == longerLen &&
+		bytes.Equal(longer[:shorterLen], shorter) &&
+		longer[shorterLen] == 0x0a
+}
+
 func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) bool {
-	if bytes.Equal(oldContent, newContent) {
+	if len(oldContent) == len(newContent) && bytes.Equal(oldContent, newContent) {
 		return true
 	}
 
-	if len(oldContent) == len(newContent)+1 &&
-		bytes.Equal(oldContent[:len(newContent)], newContent) &&
-		oldContent[len(newContent)] == 10 {
+	// allow for a trailing newline difference if the one did have one and the other does NOT
+	if compareIgnoreTrailingLF(oldContent, newContent) || compareIgnoreTrailingLF(newContent, oldContent) {
 		return true
 	}
 
@@ -112,67 +90,31 @@ func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) 
 }
 
 func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err error) {
+	fileName := file.Name()
+
 	if err := file.SetWriteDeadline(time.Now().Add(hidWriteTimeout)); err != nil {
 		return -1, err
 	}
 
 	n, err = file.Write(data)
 	if err == nil {
-		return
+		u.resetLogSuppressionCounter("writeWithTimeout_" + fileName)
+		return n, nil
 	}
 
-	u.log.Trace().
-		Str("file", file.Name()).
-		Bytes("data", data).
-		Err(err).
-		Msg("write failed")
+	logger := u.getHidKeyboardLogger().With().Str("file", fileName).Bytes("data", data).Logger()
+	logger.Trace().Err(err).Msg("write failed")
 
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		u.logWithSuppression(
-			fmt.Sprintf("writeWithTimeout_%s", file.Name()),
-			1000,
-			u.log,
-			err,
-			"write timed out: %s",
-			file.Name(),
-		)
-		err = nil
-	}
-
-	return
-}
-
-func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...any) {
-	u.logSuppressionLock.Lock()
-	defer u.logSuppressionLock.Unlock()
-
-	if _, ok := u.logSuppressionCounter[counterName]; !ok {
-		u.logSuppressionCounter[counterName] = 0
-	} else {
-		u.logSuppressionCounter[counterName]++
-	}
-
-	l := logger.With().Int("counter", u.logSuppressionCounter[counterName]).Logger()
-
-	if u.logSuppressionCounter[counterName]%every == 0 {
-		if err != nil {
-			l.Error().Err(err).Msgf(msg, args...)
-		} else {
-			l.Error().Msgf(msg, args...)
+	if errors.Is(err, os.ErrClosed) {
+		logger.Warn().Msg("keyboard file is closed, stopping writes")
+		return 0, err
+	} else if errors.Is(err, os.ErrDeadlineExceeded) {
+		if exceeded := u.logWithSuppression("writeWithTimeout_"+fileName, 10, &logger, err, "write timed out"); exceeded {
+			logger.Error().Msg("too many errors writing to the keyboard file, stopping writes")
+			return 0, err
 		}
+		return 0, nil
 	}
-}
 
-func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
-	u.logSuppressionLock.Lock()
-	defer u.logSuppressionLock.Unlock()
-
-	if _, ok := u.logSuppressionCounter[counterName]; !ok {
-		u.logSuppressionCounter[counterName] = 0
-	}
-}
-
-func unlockWithLog(lock *sync.Mutex, logger *zerolog.Logger, msg string, args ...any) {
-	logger.Trace().Msgf(msg, args...)
-	lock.Unlock()
+	return n, err
 }

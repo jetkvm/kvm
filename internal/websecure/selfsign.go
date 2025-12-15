@@ -11,18 +11,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
+
 	"golang.org/x/net/idna"
 )
 
 const selfSignerCAMagicName = "__ca__"
 
 type SelfSigner struct {
-	store *CertStore
-	log   *zerolog.Logger
-
-	caInfo pkix.Name
-
+	store         *CertStore
+	caInfo        pkix.Name
 	DefaultDomain string
 	DefaultOrg    string
 	DefaultOU     string
@@ -30,7 +28,6 @@ type SelfSigner struct {
 
 func NewSelfSigner(
 	store *CertStore,
-	log *zerolog.Logger,
 	defaultDomain,
 	defaultOrg,
 	defaultOU,
@@ -38,7 +35,6 @@ func NewSelfSigner(
 ) *SelfSigner {
 	return &SelfSigner{
 		store:         store,
-		log:           log,
 		DefaultDomain: defaultDomain,
 		DefaultOrg:    defaultOrg,
 		DefaultOU:     defaultOU,
@@ -59,17 +55,19 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 		return tlsCert
 	}
 
+	logger := logging.GetSubsystemLogger("web-selfsign").With().Str("hostname", hostname).Logger()
+
 	// check if hostname is the CA magic name
 	var ca *tls.Certificate
 	if hostname != selfSignerCAMagicName {
 		ca = s.getCA()
 		if ca == nil {
-			s.log.Error().Msg("Failed to get CA certificate")
+			logger.Error().Msg("Failed to get CA certificate")
 			return nil
 		}
 	}
 
-	s.log.Info().Str("hostname", hostname).Msg("Creating self-signed certificate")
+	logger.Info().Msg("Creating self-signed certificate")
 
 	// lock the store while creating the certificate (do not move upwards)
 	s.store.certLock.Lock()
@@ -77,16 +75,16 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to generate private key")
+		logger.Error().Err(err).Msg("Failed to generate private key")
 		return nil
 	}
 
-	notBefore := time.Now()
+	notBefore := time.Now().AddDate(0, 0, -1) // ensure we don't have issues with clock skew
 	notAfter := notBefore.AddDate(1, 0, 0)
 
 	serialNumber, err := generateSerialNumber()
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to generate serial number")
+		logger.Error().Err(err).Msg("Failed to generate serial number")
 		return nil
 	}
 
@@ -139,7 +137,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	if ca != nil {
 		parent, err = x509.ParseCertificate(ca.Certificate[0])
 		if err != nil {
-			s.log.Error().Err(err).Msg("Failed to parse parent certificate")
+			logger.Error().Err(err).Msg("Failed to parse parent certificate")
 			return nil
 		}
 		parentPriv = ca.PrivateKey.(*ecdsa.PrivateKey)
@@ -147,7 +145,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, &cert, parent, &priv.PublicKey, parentPriv)
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to create certificate")
+		logger.Error().Err(err).Msg("Failed to create certificate")
 		return nil
 	}
 
@@ -160,7 +158,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	}
 
 	s.store.certificates[hostname] = tlsCert
-	s.store.saveCertificate(hostname)
+	s.store.saveCertificate(hostname, &logger)
 
 	return tlsCert
 }
@@ -175,12 +173,13 @@ func (s *SelfSigner) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate
 		hostname = strings.Split(info.Conn.LocalAddr().String(), ":")[0]
 	}
 
-	s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
+	logger := logging.GetSubsystemLogger("web-selfsign").With().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Logger()
+	logger.Info().Msg("TLS handshake")
 
 	// convert hostname to punycode
 	h, err := idna.Lookup.ToASCII(hostname)
 	if err != nil {
-		s.log.Warn().Str("hostname", hostname).Err(err).Str("remote_addr", info.Conn.RemoteAddr().String()).Msg("Hostname is not valid")
+		logger.Warn().Err(err).Stringer("remote_addr", info.Conn.RemoteAddr()).Msg("Hostname is not valid")
 		hostname = s.DefaultDomain
 	} else {
 		hostname = h

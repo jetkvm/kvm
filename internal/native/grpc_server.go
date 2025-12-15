@@ -6,17 +6,17 @@ import (
 	"net"
 	"sync"
 
-	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
 	pb "github.com/jetkvm/kvm/internal/native/proto"
+	"github.com/rs/zerolog"
 )
 
 // grpcServer wraps the Native instance and implements the gRPC service
 type grpcServer struct {
 	pb.UnimplementedNativeServiceServer
 	native            *Native
-	logger            *zerolog.Logger
+	socketPath        string
 	eventStreamChan   chan *pb.Event
 	eventStreamMu     sync.Mutex
 	eventStreamCtx    context.Context
@@ -24,10 +24,10 @@ type grpcServer struct {
 }
 
 // NewGRPCServer creates a new gRPC server for the native service
-func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
+func NewGRPCServer(n *Native, socketPath string) *grpcServer {
 	s := &grpcServer{
 		native:          n,
-		logger:          logger,
+		socketPath:      socketPath,
 		eventStreamChan: make(chan *pb.Event, 100),
 	}
 
@@ -83,6 +83,14 @@ func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
 	return s
 }
 
+func (s *grpcServer) getLogger() *zerolog.Logger {
+	logger := getServerLogger().
+		With().
+		Str("socketPath", s.socketPath).
+		Logger()
+	return &logger
+}
+
 func (s *grpcServer) broadcastEvent(event *pb.Event) {
 	s.eventStreamChan <- event
 }
@@ -99,7 +107,7 @@ func (s *grpcServer) StreamEvents(req *pb.Empty, stream pb.NativeService_StreamE
 	// Cancel previous stream if exists
 	s.eventStreamMu.Lock()
 	if s.eventStreamCancel != nil {
-		s.logger.Debug().Msg("cancelling previous StreamEvents call")
+		s.getLogger().Debug().Msg("cancelling previous StreamEvents call")
 		s.eventStreamCancel()
 	}
 
@@ -130,7 +138,7 @@ func (s *grpcServer) StreamEvents(req *pb.Empty, stream pb.NativeService_StreamE
 			s.eventStreamMu.Unlock()
 
 			if !isActive {
-				s.logger.Debug().Msg("stream replaced by new call, exiting")
+				s.getLogger().Debug().Msg("stream replaced by new call, exiting")
 				return context.Canceled
 			}
 
@@ -144,8 +152,8 @@ func (s *grpcServer) StreamEvents(req *pb.Empty, stream pb.NativeService_StreamE
 }
 
 // StartGRPCServer starts the gRPC server on a Unix domain socket
-func StartGRPCServer(server *grpcServer, socketPath string, logger *zerolog.Logger) (*grpc.Server, net.Listener, error) {
-	lis, err := net.Listen("unix", socketPath)
+func (server *grpcServer) Start() (*grpc.Server, net.Listener, error) {
+	lis, err := net.Listen("unix", server.socketPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to listen on socket: %w", err)
 	}
@@ -155,10 +163,10 @@ func StartGRPCServer(server *grpcServer, socketPath string, logger *zerolog.Logg
 
 	go func() {
 		if err := s.Serve(lis); err != nil {
-			logger.Error().Err(err).Msg("gRPC server error")
+			server.getLogger().Error().Err(err).Msg("gRPC server error")
 		}
 	}()
 
-	logger.Info().Str("socket", socketPath).Msg("gRPC server started")
+	server.getLogger().Info().Msg("gRPC server started")
 	return s, lis, nil
 }

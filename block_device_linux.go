@@ -11,14 +11,14 @@ func (d *NBDDevice) runClientConn() {
 		ExportName: "jetkvm",
 		BlockSize:  uint32(4 * 1024),
 	})
-	d.l.Info().Err(err).Msg("nbd client exited")
+	d.getLogger().Info().Err(err).Msg("nbd client exited")
 }
 
 func (d *NBDDevice) Close() {
 	if d.dev != nil {
 		err := client.Disconnect(d.dev)
 		if err != nil {
-			d.l.Warn().Err(err).Msg("error disconnecting nbd client")
+			d.getLogger().Warn().Err(err).Msg("error disconnecting nbd client")
 		}
 		_ = d.dev.Close()
 	}

@@ -61,18 +61,18 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"mass_storage_lun0": massStorageLun0Config,
 }
 
-func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
+func (enabledDevices *Devices) isGadgetConfigItemEnabled(itemKey string) bool {
 	switch itemKey {
 	case "absolute_mouse":
-		return u.enabledDevices.AbsoluteMouse
+		return enabledDevices.AbsoluteMouse
 	case "relative_mouse":
-		return u.enabledDevices.RelativeMouse
+		return enabledDevices.RelativeMouse
 	case "keyboard":
-		return u.enabledDevices.Keyboard
+		return enabledDevices.Keyboard
 	case "mass_storage_base":
-		return u.enabledDevices.MassStorage
+		return enabledDevices.MassStorage
 	case "mass_storage_lun0":
-		return u.enabledDevices.MassStorage
+		return enabledDevices.MassStorage
 	default:
 		return true
 	}
@@ -80,7 +80,7 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 
 func (u *UsbGadget) loadGadgetConfig() {
 	if u.customConfig.isEmpty {
-		u.log.Trace().Msg("using default gadget config")
+		u.getUsbGadgetLogger().Trace().Msg("using default gadget config")
 		return
 	}
 
@@ -115,15 +115,6 @@ func (u *UsbGadget) SetGadgetDevices(devices *Devices) {
 	u.enabledDevices = *devices
 }
 
-// GetConfigPath returns the path to the config item.
-func (u *UsbGadget) GetConfigPath(itemKey string) (string, error) {
-	item, ok := u.configMap[itemKey]
-	if !ok {
-		return "", fmt.Errorf("config item %s not found", itemKey)
-	}
-	return joinPath(u.kvmGadgetPath, item.configPath), nil
-}
-
 // GetPath returns the path to the item.
 func (u *UsbGadget) GetPath(itemKey string) (string, error) {
 	item, ok := u.configMap[itemKey]
@@ -136,24 +127,34 @@ func (u *UsbGadget) GetPath(itemKey string) (string, error) {
 // OverrideGadgetConfig overrides the gadget config for the given item and attribute.
 // It returns an error if the item is not found or the attribute is not found.
 // It returns true if the attribute is overridden, false otherwise.
-func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value string) (error, bool) {
+func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value string) (bool, error) {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
+
+	logger := u.getUsbGadgetLogger().
+		With().
+		Str("itemKey", itemKey).
+		Str("itemAttr", itemAttr).
+		Str("value", value).
+		Logger()
 
 	// get it as a pointer
 	_, ok := u.configMap[itemKey]
 	if !ok {
-		return fmt.Errorf("config item %s not found", itemKey), false
+		err := fmt.Errorf("config item %s not found", itemKey)
+		logger.Error().Err(err).Msg("overriding gadget config")
+		return false, err
 	}
 
 	if u.configMap[itemKey].attrs[itemAttr] == value {
-		return nil, false
+		logger.Trace().Msg("unchanged gadget config")
+		return false, nil
 	}
 
 	u.configMap[itemKey].attrs[itemAttr] = value
-	u.log.Info().Str("itemKey", itemKey).Str("itemAttr", itemAttr).Str("value", value).Msg("overriding gadget config")
+	logger.Info().Msg("overriding gadget config")
 
-	return nil, true
+	return true, nil
 }
 
 func mountConfigFS(path string) error {
@@ -200,12 +201,12 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 }
 
 func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
-	return u.WithTransaction(func() error {
-		u.tx.MountConfigFS()
-		u.tx.CreateConfigPath()
-		u.tx.WriteGadgetConfig()
+	return u.WithTransaction(func(u *UsbGadget, tx *UsbGadgetTransaction) error {
+		tx.MountConfigFS()
+		tx.CreateConfigPath(u.configC1Path)
+		tx.WriteGadgetConfig(u.kvmGadgetPath, u.configC1Path, u.udc, u.getOrderedConfigItems(), &u.enabledDevices)
 		if resetUsb {
-			u.tx.RebindUsb(true)
+			tx.RebindUsb(u.udc, true)
 		}
 		return nil
 	})

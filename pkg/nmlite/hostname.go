@@ -100,7 +100,7 @@ func (hm *ResolvConfManager) reconcileHostname() error {
 		fqdn = fmt.Sprintf("%s.%s", hostname, domain)
 	}
 
-	hm.logger.Info().
+	hm.getLogger().Info().
 		Str("hostname", hostname).
 		Str("fqdn", fqdn).
 		Msg("setting hostname")
@@ -120,7 +120,7 @@ func (hm *ResolvConfManager) reconcileHostname() error {
 		return fmt.Errorf("failed to set system hostname: %w", err)
 	}
 
-	hm.logger.Info().
+	hm.getLogger().Info().
 		Str("hostname", hostname).
 		Str("fqdn", fqdn).
 		Msg("hostname set successfully")
@@ -150,7 +150,7 @@ func (hm *ResolvConfManager) updateEtcHostname(hostname string) error {
 		return fmt.Errorf("failed to write %s: %w", hostnamePath, err)
 	}
 
-	hm.logger.Debug().Str("file", hostnamePath).Str("hostname", hostname).Msg("updated /etc/hostname")
+	hm.getLogger().Debug().Str("file", hostnamePath).Str("hostname", hostname).Msg("updated /etc/hostname")
 	return nil
 }
 
@@ -204,7 +204,7 @@ func (hm *ResolvConfManager) updateEtcHosts(hostname, fqdn string) error {
 		return fmt.Errorf("failed to write %s: %w", hostsPath, err)
 	}
 
-	hm.logger.Debug().
+	hm.getLogger().Debug().
 		Str("file", hostsPath).
 		Str("hostname", hostname).
 		Str("fqdn", fqdn).
@@ -220,7 +220,7 @@ func (hm *ResolvConfManager) setSystemHostname(hostname string) error {
 		return fmt.Errorf("failed to run hostname command: %w", err)
 	}
 
-	hm.logger.Debug().Str("hostname", hostname).Msg("set system hostname")
+	hm.getLogger().Debug().Str("hostname", hostname).Msg("set system hostname")
 	return nil
 }
 

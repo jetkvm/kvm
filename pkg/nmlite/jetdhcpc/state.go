@@ -73,7 +73,7 @@ func (c *Client) SaveState(state *DHCPState) error {
 		return fmt.Errorf("failed to rename state file: %w", err)
 	}
 
-	c.l.Debug().Str("file", stateFile).Msg("DHCP state saved")
+	c.getLogger().Debug().Str("file", stateFile).Msg("DHCP state saved")
 	return nil
 }
 
@@ -83,7 +83,7 @@ func (c *Client) LoadState() (*DHCPState, error) {
 
 	// Check if state file exists
 	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
-		c.l.Debug().Msg("No existing DHCP state file found")
+		c.getLogger().Debug().Msg("No existing DHCP state file found")
 		return &DHCPState{
 			InterfaceStates: make(map[string]*InterfaceDHCPState),
 			LastUpdated:     time.Now(),
@@ -108,7 +108,7 @@ func (c *Client) LoadState() (*DHCPState, error) {
 		state.InterfaceStates = make(map[string]*InterfaceDHCPState)
 	}
 
-	c.l.Debug().Str("file", stateFile).Msg("DHCP state loaded")
+	c.getLogger().Debug().Str("file", stateFile).Msg("DHCP state loaded")
 	return &state, nil
 }
 
@@ -198,7 +198,7 @@ func (c *Client) CleanupExpiredStates() error {
 		if !ipv4Valid && !ipv6Valid {
 			delete(state.InterfaceStates, ifaceName)
 			cleaned = true
-			c.l.Debug().Str("interface", ifaceName).Msg("Removed expired DHCP state")
+			c.getLogger().Debug().Str("interface", ifaceName).Msg("Removed expired DHCP state")
 		}
 	}
 

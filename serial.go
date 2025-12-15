@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/utils"
 	"github.com/pion/webrtc/v4"
+	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 )
 
@@ -35,19 +38,19 @@ var (
 )
 
 func runATXControl() {
-	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
+	logger := logging.GetSubsystemLogger("serial").With().Str("service", "atx_control").Logger()
 
 	reader := bufio.NewReader(port)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
+			logger.Warn().Err(err).Msg("Error reading from serial port")
 			return
 		}
 
 		// Each line should be 4 binary digits + newline
 		if len(line) != 5 {
-			scopedLogger.Warn().Int("length", len(line)).Msg("Invalid line length")
+			logger.Warn().Int("length", len(line)).Msg("Invalid line length")
 			continue
 		}
 
@@ -68,7 +71,7 @@ func runATXControl() {
 			newLedPWRState != ledPWRState ||
 			newBtnRSTState != btnRSTState ||
 			newBtnPWRState != btnPWRState {
-			scopedLogger.Debug().
+			logger.Debug().
 				Bool("hdd", newLedHDDState).
 				Bool("pwr", newLedPWRState).
 				Bool("rst", newBtnRSTState).
@@ -141,40 +144,40 @@ func unmountDCControl() error {
 var dcState DCPowerState
 
 func runDCControl() {
-	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
 	reader := bufio.NewReader(port)
 	hasRestoreFeature := false
 	for {
+		logger := logging.GetSubsystemLogger("serial").With().Str("service", "dc_control").Logger()
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
+			logger.Warn().Err(err).Msg("Error reading from serial port")
 			return
 		}
 
 		// Split the line by semicolon
 		parts := strings.Split(strings.TrimSpace(line), ";")
 		if len(parts) == 5 {
-			scopedLogger.Debug().Str("line", line).Msg("Detected DC extension with restore feature")
+			logger.Debug().Str("line", line).Msg("Detected DC extension with restore feature")
 			hasRestoreFeature = true
 		} else if len(parts) == 4 {
-			scopedLogger.Debug().Str("line", line).Msg("Detected DC extension without restore feature")
+			logger.Debug().Str("line", line).Msg("Detected DC extension without restore feature")
 			hasRestoreFeature = false
 		} else {
-			scopedLogger.Warn().Str("line", line).Msg("Invalid line")
+			logger.Warn().Str("line", line).Msg("Invalid line")
 			continue
 		}
 
 		// Parse new states
 		powerState, err := strconv.Atoi(parts[0])
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Invalid power state")
+			logger.Warn().Err(err).Msg("Invalid power state")
 			continue
 		}
 		dcState.IsOn = powerState == 1
 		if hasRestoreFeature {
 			restoreState, err := strconv.Atoi(parts[4])
 			if err != nil {
-				scopedLogger.Warn().Err(err).Msg("Invalid restore state")
+				logger.Warn().Err(err).Msg("Invalid restore state")
 				continue
 			}
 			dcState.RestoreState = restoreState
@@ -184,21 +187,21 @@ func runDCControl() {
 		}
 		milliVolts, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Invalid voltage")
+			logger.Warn().Err(err).Msg("Invalid voltage")
 			continue
 		}
 		volts := milliVolts / 1000 // Convert mV to V
 
 		milliAmps, err := strconv.ParseFloat(parts[2], 64)
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Invalid current")
+			logger.Warn().Err(err).Msg("Invalid current")
 			continue
 		}
 		amps := milliAmps / 1000 // Convert mA to A
 
 		milliWatts, err := strconv.ParseFloat(parts[3], 64)
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Invalid power")
+			logger.Warn().Err(err).Msg("Invalid power")
 			continue
 		}
 		watts := milliWatts / 1000 // Convert mW to W
@@ -275,7 +278,8 @@ func reopenSerialPort() error {
 	var err error
 	port, err = serial.Open(serialPortPath, defaultMode)
 	if err != nil {
-		serialLogger.Error().
+		logging.GetSubsystemLogger("serial").
+			Error().
 			Err(err).
 			Str("path", serialPortPath).
 			Interface("mode", defaultMode).
@@ -284,10 +288,12 @@ func reopenSerialPort() error {
 	return nil
 }
 
-func handleSerialChannel(d *webrtc.DataChannel) {
-	scopedLogger := serialLogger.With().
-		Uint16("data_channel_id", *d.ID()).Logger()
+func getLogger(d *webrtc.DataChannel) *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("serial").With().Uint16("data_channel_id", *d.ID()).Logger()
+	return &logger
+}
 
+func handleSerialChannel(d *webrtc.DataChannel) {
 	d.OnOpen(func() {
 		go func() {
 			buf := make([]byte, 1024)
@@ -295,13 +301,13 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 				n, err := port.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						scopedLogger.Warn().Err(err).Msg("Failed to read from serial port")
+						getLogger(d).Warn().Err(err).Msg("Failed to read from serial port")
 					}
 					break
 				}
 				err = d.Send(buf[:n])
 				if err != nil {
-					scopedLogger.Warn().Err(err).Msg("Failed to send serial output")
+					getLogger(d).Warn().Err(err).Msg("Failed to send serial output")
 					break
 				}
 			}
@@ -312,17 +318,18 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 		if port == nil {
 			return
 		}
+		getLogger(d).Debug().Object("data", utils.ByteSlice(msg.Data)).Msg("Writing to serial port")
 		_, err := port.Write(msg.Data)
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Failed to write to serial")
+			getLogger(d).Warn().Err(err).Object("data", utils.ByteSlice(msg.Data)).Msg("Failed to write to serial")
 		}
 	})
 
 	d.OnError(func(err error) {
-		scopedLogger.Warn().Err(err).Msg("Serial channel error")
+		getLogger(d).Warn().Err(err).Msg("Serial channel error")
 	})
 
 	d.OnClose(func() {
-		scopedLogger.Info().Msg("Serial channel closed")
+		getLogger(d).Info().Msg("Serial channel closed")
 	})
 }

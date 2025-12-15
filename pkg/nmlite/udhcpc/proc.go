@@ -76,7 +76,7 @@ func (p *DHCPClient) findUdhcpcProcess() (int, error) {
 
 		// check if it's a udhcpc process
 		if strings.Contains(cmdlineText, fmt.Sprintf("-i %s", p.InterfaceName)) {
-			p.logger.Debug().
+			p.getLogger().Debug().
 				Str("pid", d.Name()).
 				Interface("cmdline", cmdline).
 				Msg("found udhcpc process")
@@ -93,7 +93,7 @@ func (c *DHCPClient) getProcessPid() (int, error) {
 		// try to read the pid file
 		pidHandle, err := os.ReadFile(c.pidFile)
 		if err != nil {
-			c.logger.Warn().Err(err).
+			c.getLogger().Warn().Err(err).
 				Str("pidFile", c.pidFile).Msg("failed to read udhcpc pid file")
 		}
 
@@ -101,7 +101,7 @@ func (c *DHCPClient) getProcessPid() (int, error) {
 		if pidHandle != nil {
 			pidFromFile, err := strconv.Atoi(string(pidHandle))
 			if err != nil {
-				c.logger.Warn().Err(err).
+				c.getLogger().Warn().Err(err).
 					Str("pidFile", c.pidFile).Msg("failed to convert pid file to int")
 			}
 			pid = pidFromFile
@@ -128,7 +128,7 @@ func (c *DHCPClient) getProcess() *os.Process {
 
 	process, err := os.FindProcess(pid)
 	if err != nil {
-		c.logger.Warn().Err(err).
+		c.getLogger().Warn().Err(err).
 			Int("pid", pid).Msg("failed to find process")
 		return nil
 	}
@@ -152,15 +152,15 @@ func (c *DHCPClient) GetProcess() *os.Process {
 		c.process = nil
 		c.process = c.getProcess()
 		if c.process == nil {
-			c.logger.Error().Msg("failed to find new udhcpc process")
+			c.getLogger().Error().Msg("failed to find new udhcpc process")
 			return nil
 		}
-		c.logger.Warn().
+		c.getLogger().Warn().
 			Int("oldPid", oldPid).
 			Int("newPid", c.process.Pid).
 			Msg("udhcpc process pid changed")
 	} else if err != nil {
-		c.logger.Warn().Err(err).
+		c.getLogger().Warn().Err(err).
 			Int("pid", c.process.Pid).Msg("udhcpc process is not running")
 	}
 
@@ -193,7 +193,7 @@ func (c *DHCPClient) signalProcess(sig syscall.Signal) error {
 
 	s := process.Signal(sig)
 	if s != nil {
-		c.logger.Warn().Err(s).
+		c.getLogger().Warn().Err(s).
 			Int("pid", process.Pid).
 			Str("signal", sig.String()).
 			Msg("failed to signal udhcpc process")

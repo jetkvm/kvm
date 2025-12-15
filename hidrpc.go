@@ -7,99 +7,110 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/utils"
 )
 
-func handleHidRPCMessage(message hidrpc.Message, session *Session) {
-	var rpcErr error
-
+func handleHidRPCMessage(message hidrpc.Message, session *Session) error {
 	switch message.Type() {
 	case hidrpc.TypeHandshake:
-		message, err := hidrpc.NewHandshakeMessage().Marshal()
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to marshal handshake message")
-			return
-		}
-		if err := session.HidChannel.Send(message); err != nil {
-			logger.Warn().Err(err).Msg("failed to send handshake message")
-			return
-		}
-		session.hidRPCAvailable = true
-	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
-		rpcErr = handleHidRPCKeyboardInput(message)
+		return handleHidRPCHandshake(session)
 	case hidrpc.TypeKeyboardMacroReport:
-		keyboardMacroReport, err := message.KeyboardMacroReport()
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
-			return
-		}
-		rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+		return handleKeyboardMacro(message)
+	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
+		return handleHidRPCKeyboardInput(message)
 	case hidrpc.TypeCancelKeyboardMacroReport:
-		rpcCancelKeyboardMacro()
-		return
+		return rpcCancelKeyboardMacro()
 	case hidrpc.TypeKeypressKeepAliveReport:
-		rpcErr = handleHidRPCKeypressKeepAlive(session)
+		return handleHidRPCKeypressKeepAlive(session)
 	case hidrpc.TypePointerReport:
-		pointerReport, err := message.PointerReport()
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to get pointer report")
-			return
-		}
-		rpcErr = rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
+		return handlePointerReport(message)
 	case hidrpc.TypeMouseReport:
-		mouseReport, err := message.MouseReport()
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to get mouse report")
-			return
-		}
-		rpcErr = rpcRelMouseReport(mouseReport.DX, mouseReport.DY, mouseReport.Button)
-	default:
-		logger.Warn().Uint8("type", uint8(message.Type())).Msg("unknown HID RPC message type")
+		return handleMouseReport(message)
 	}
 
-	if rpcErr != nil {
-		logger.Warn().Err(rpcErr).Msg("failed to handle HID RPC message")
-	}
+	return fmt.Errorf("unknown HID RPC message type %d", message.Type())
 }
 
-func onHidMessage(msg hidQueueMessage, session *Session) {
+func handleHidRPCHandshake(session *Session) error {
+	hidrpc.GetHidRpcLogger().Debug().Msg("handling handshake")
+	message, err := hidrpc.NewHandshakeMessage().Marshal()
+	if err != nil {
+		return err
+	}
+	if err = session.HidChannel.Send(message); err != nil {
+		return err
+	}
+	session.hidRPCAvailable = true
+	return nil
+}
+
+func handleKeyboardMacro(message hidrpc.Message) error {
+	keyboardMacroReport, err := message.KeyboardMacroReport()
+	if err != nil {
+		return err
+	}
+
+	hidrpc.GetHidRpcLogger().Debug().Interface("keyboardMacroReport", keyboardMacroReport).Msg("handling keyboard macro")
+	return rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+}
+
+func handleMouseReport(message hidrpc.Message) error {
+	mouseReport, err := message.MouseReport()
+	if err != nil {
+		return err
+	}
+	hidrpc.GetHidRpcLogger().Debug().Interface("mouseReport", mouseReport).Msg("handling relative mouse")
+	return rpcRelMouseReport(mouseReport.DX, mouseReport.DY, mouseReport.Button)
+}
+
+func handlePointerReport(message hidrpc.Message) error {
+	pointerReport, err := message.PointerReport()
+	if err != nil {
+		return err
+	}
+	hidrpc.GetHidRpcLogger().Debug().Interface("pointerReport", pointerReport).Msg("handling absolute pointer")
+	return rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
+}
+
+func onHidMessage(msg hidQueueMessage, session *Session, index int) {
+	logger := hidrpc.GetHidRpcLogger().With().Int("queueIndex", index).Str("channel", msg.channel).Logger()
 	data := msg.Data
 
-	scopedLogger := hidRPCLogger.With().
-		Str("channel", msg.channel).
-		Bytes("data", data).
-		Logger()
-	scopedLogger.Debug().Msg("HID RPC message received")
+	if logger.GetLevel() <= zerolog.TraceLevel {
+		logger.Trace().Object("data", utils.ByteSlice(data)).Msg("HID RPC message received")
+	}
 
 	if len(data) < 1 {
-		scopedLogger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
+		logger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
 		return
 	}
 
 	var message hidrpc.Message
 
 	if err := hidrpc.Unmarshal(data, &message); err != nil {
-		scopedLogger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
+		logger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
 		return
 	}
 
-	if scopedLogger.GetLevel() <= zerolog.DebugLevel {
-		scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	if logger.GetLevel() <= zerolog.DebugLevel {
+		logger = scopedLogger.With().Str("descr", message.String()).Logger()
 	}
 
 	t := time.Now()
-
 	r := make(chan interface{})
 	go func() {
-		handleHidRPCMessage(message, session)
-		r <- nil
+		r <- handleHidRPCMessage(message, session)
 	}()
 	select {
 	case <-time.After(1 * time.Second):
-		scopedLogger.Warn().Msg("HID RPC message timed out")
-	case <-r:
-		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
+		logger.Warn().Msg("HID RPC message took too long")
+	case err := <-r:
+		logger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
+		if err != nil {
+			logger.Warn().Err(err.(error)).Msg("failed to handle HID RPC message")
+		}
 	}
 }
 
@@ -108,12 +119,10 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 // macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
 // Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
 // Windows default: 1s `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
-
 const expectedRate = 50 * time.Millisecond       // expected keepalive interval
 const maxLateness = 50 * time.Millisecond        // max jitter we'll tolerate OR jitter budget
 const baseExtension = expectedRate + maxLateness // 100ms extension on perfect tick
-
-const maxStaleness = 225 * time.Millisecond // discard ancient packets outright
+const maxStaleness = 225 * time.Millisecond      // discard ancient packets outright
 
 func handleHidRPCKeypressKeepAlive(session *Session) error {
 	session.keepAliveJitterLock.Lock()
@@ -128,7 +137,6 @@ func handleHidRPCKeypressKeepAlive(session *Session) error {
 		return nil
 	}
 
-	validTick := true
 	timerExtension := baseExtension
 
 	if !session.lastKeepAliveArrivalTime.IsZero() {
@@ -147,14 +155,11 @@ func handleHidRPCKeypressKeepAlive(session *Session) error {
 				// This is likely a retransmit stall or ordering delay.
 				// We reject the tick entirely and DO NOT extend,
 				// so the auto-release still fires on time.
-				validTick = false
+				return nil
 			}
 		}
 	}
 
-	if !validTick {
-		return nil
-	}
 	// Only valid ticks update our state and extend the timer.
 	session.lastKeepAliveArrivalTime = now
 	session.lastTimerResetTime = now
@@ -167,6 +172,8 @@ func handleHidRPCKeypressKeepAlive(session *Session) error {
 }
 
 func handleHidRPCKeyboardInput(message hidrpc.Message) error {
+	logger := hidrpc.GetHidRpcLogger().With().Interface("message", message).Logger()
+
 	switch message.Type() {
 	case hidrpc.TypeKeypressReport:
 		keypressReport, err := message.KeypressReport()
@@ -174,6 +181,7 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 			logger.Warn().Err(err).Msg("failed to get keypress report")
 			return err
 		}
+		logger.Debug().Interface("keypressReport", keypressReport).Msg("handling key press")
 		return rpcKeypressReport(keypressReport.Key, keypressReport.Press)
 	case hidrpc.TypeKeyboardReport:
 		keyboardReport, err := message.KeyboardReport()
@@ -181,6 +189,7 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 			logger.Warn().Err(err).Msg("failed to get keyboard report")
 			return err
 		}
+		logger.Debug().Interface("keyboardReport", keyboardReport).Msg("handling keyboard")
 		return rpcKeyboardReport(keyboardReport.Modifier, keyboardReport.Keys)
 	}
 
@@ -188,6 +197,8 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 }
 
 func reportHidRPC(params any, session *Session) {
+	logger := hidrpc.GetHidRpcLogger().With().Interface("params", params).Logger()
+
 	if session == nil {
 		logger.Warn().Msg("session is nil, skipping reportHidRPC")
 		return
@@ -205,6 +216,7 @@ func reportHidRPC(params any, session *Session) {
 		message []byte
 		err     error
 	)
+
 	switch params := params.(type) {
 	case usbgadget.KeyboardState:
 		message, err = hidrpc.NewKeyboardLedMessage(params).Marshal()
@@ -216,23 +228,35 @@ func reportHidRPC(params any, session *Session) {
 		err = fmt.Errorf("unknown HID RPC message type: %T", params)
 	}
 
-	if err != nil {
+	logger = logger.With().Type("type", params).Logger()
+
+	if err != nil || message == nil {
 		logger.Warn().Err(err).Msg("failed to marshal HID RPC message")
 		return
 	}
 
-	if message == nil {
-		logger.Warn().Msg("failed to marshal HID RPC message")
-		return
-	}
-
-	if err := session.HidChannel.Send(message); err != nil {
-		if errors.Is(err, io.ErrClosedPipe) {
-			logger.Debug().Err(err).Msg("HID RPC channel closed, skipping reportHidRPC")
-			return
+	// fire and forget...
+	go func() {
+		t := time.Now()
+		r := make(chan interface{})
+		go func() {
+			logger.Trace().Msg("sending HID RPC report")
+			r <- session.HidChannel.Send(message)
+		}()
+		select {
+		case <-time.After(1 * time.Second):
+			logger.Warn().Msg("HID RPC report took too long")
+		case err := <-r:
+			logger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC report sent")
+			if err != nil {
+				if errors.Is(err.(error), io.ErrClosedPipe) {
+					logger.Warn().Err(err.(error)).Msg("HID RPC channel closed, skipping reportHidRPC")
+					return
+				}
+				logger.Warn().Err(err.(error)).Msg("failed to send HID RPC report")
+			}
 		}
-		logger.Warn().Err(err).Msg("failed to send HID RPC message")
-	}
+	}()
 }
 
 func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
@@ -244,10 +268,8 @@ func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
 
 func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
 	if !s.hidRPCAvailable {
-		usbLogger.Debug().Interface("state", state).Msg("reporting keys down state")
 		writeJSONRPCEvent("keysDownState", state, s)
 	}
-	usbLogger.Debug().Interface("state", state).Msg("reporting keys down state, calling reportHidRPC")
 	reportHidRPC(state, s)
 }
 
