@@ -300,6 +300,8 @@ export interface VideoState {
   setSize: (width: number, height: number) => void;
   hdmiState: HdmiStates;
   setHdmiState: (state: { ready: boolean; error?: HdmiErrorStates }) => void;
+  videoElement: HTMLVideoElement | null;
+  setVideoElement: (element: HTMLVideoElement | null) => void;
 }
 
 export const useVideoStore = create<VideoState>(set => ({
@@ -329,6 +331,9 @@ export const useVideoStore = create<VideoState>(set => ({
       return set({ hdmiState: "connecting" });
     }
   },
+
+  videoElement: null,
+  setVideoElement: (element: HTMLVideoElement | null) => set({ videoElement: element }),
 }));
 
 export interface BacklightSettings {

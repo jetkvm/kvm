@@ -74,6 +74,21 @@ export async function waitForVideoStream(page: Page, timeout = 30000): Promise<v
 }
 
 /**
+ * Wake the display by sending keystrokes to dismiss screensaver/sleep.
+ * Sends multiple Space key taps with delays.
+ *
+ * @param page - Playwright page object
+ * @param taps - Number of key taps to send (default: 3)
+ * @param delayMs - Delay between taps in milliseconds (default: 200)
+ */
+export async function wakeDisplay(page: Page, taps = 3, delayMs = 500): Promise<void> {
+  for (let i = 0; i < taps; i++) {
+    await tapKey(page, HID_KEY.SPACE);
+    await page.waitForTimeout(delayMs);
+  }
+}
+
+/**
  * Send a keypress event via the test hooks.
  *
  * @param page - Playwright page object
@@ -148,6 +163,131 @@ export async function waitForLedState(
     .toBe(expectedValue);
 }
 
+/**
+ * Video stream dimensions interface
+ */
+export interface VideoStreamDimensions {
+  width: number;
+  height: number;
+}
+
+/**
+ * Send an absolute mouse move event via the test hooks.
+ *
+ * @param page - Playwright page object
+ * @param x - X coordinate in HID absolute range (0-32767)
+ * @param y - Y coordinate in HID absolute range (0-32767)
+ * @param buttons - Mouse button bitmask (default: 0)
+ */
+export async function sendAbsMouseMove(
+  page: Page,
+  x: number,
+  y: number,
+  buttons = 0,
+): Promise<void> {
+  await page.evaluate(
+    ({ x, y, buttons }) => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) throw new Error("Test hooks not available");
+      hooks.sendAbsMouseMove(x, y, buttons);
+    },
+    { x, y, buttons },
+  );
+}
+
+/**
+ * Get the video stream dimensions.
+ *
+ * @param page - Playwright page object
+ * @returns The video dimensions or null if not available
+ */
+export async function getVideoStreamDimensions(
+  page: Page,
+): Promise<VideoStreamDimensions | null> {
+  return page.evaluate(() => {
+    const hooks = window.__kvmTestHooks;
+    if (!hooks) return null;
+    return hooks.getVideoStreamDimensions();
+  });
+}
+
+/**
+ * Capture a region of the video frame as a base64 PNG.
+ *
+ * @param page - Playwright page object
+ * @param x - X coordinate of the region (in video pixels)
+ * @param y - Y coordinate of the region (in video pixels)
+ * @param width - Width of the region
+ * @param height - Height of the region
+ * @returns Base64-encoded PNG string or null if capture failed
+ */
+export async function captureVideoRegion(
+  page: Page,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<string | null> {
+  return page.evaluate(
+    ({ x, y, width, height }) => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) return null;
+      return hooks.captureVideoRegion(x, y, width, height);
+    },
+    { x, y, width, height },
+  );
+}
+
+/**
+ * Capture a small fingerprint of a region of the video frame.
+ * This is more tolerant to small frame-to-frame noise than comparing PNGs.
+ */
+export async function captureVideoRegionFingerprint(
+  page: Page,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  gridSize = 8,
+): Promise<number[] | null> {
+  return page.evaluate(
+    ({ x, y, width, height, gridSize }) => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) return null;
+      return hooks.captureVideoRegionFingerprint(x, y, width, height, gridSize);
+    },
+    { x, y, width, height, gridSize },
+  );
+}
+
+export function fingerprintDistance(a: number[], b: number[]): number {
+  const n = Math.min(a.length, b.length);
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += Math.abs(a[i] - b[i]);
+  return sum;
+}
+
+/**
+ * Convert HID absolute coordinates (0-32767) to video pixel coordinates.
+ *
+ * @param hidX - X in HID absolute range
+ * @param hidY - Y in HID absolute range
+ * @param videoWidth - Video width in pixels
+ * @param videoHeight - Video height in pixels
+ * @returns Pixel coordinates
+ */
+export function hidToPixelCoords(
+  hidX: number,
+  hidY: number,
+  videoWidth: number,
+  videoHeight: number,
+): { x: number; y: number } {
+  return {
+    x: Math.round((hidX / 32767) * videoWidth),
+    y: Math.round((hidY / 32767) * videoHeight),
+  };
+}
+
 // TypeScript declarations for the test hooks on window
 declare global {
   interface Window {
@@ -155,6 +295,21 @@ declare global {
       getKeyboardLedState: () => KeyboardLedState | null;
       getKeysDownState: () => { modifier: number; keys: number[] } | null;
       sendKeypress: (key: number, press: boolean) => void;
+      sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
+      captureVideoRegion: (
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+      ) => Promise<string | null>;
+      captureVideoRegionFingerprint: (
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        gridSize?: number,
+      ) => number[] | null;
+      getVideoStreamDimensions: () => VideoStreamDimensions | null;
       isWebRTCConnected: () => boolean;
       isHidRpcReady: () => boolean;
       isVideoStreamActive: () => boolean;

@@ -52,6 +52,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     clientWidth: videoClientWidth,
     clientHeight: videoClientHeight,
     hdmiState,
+    setVideoElement,
   } = useVideoStore();
 
   // Video enhancement settings
@@ -105,6 +106,15 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       if (videoElm.current) updateVideoSizeStore(videoElm.current);
     },
     [updateVideoSizeStore],
+  );
+
+  // Store video element reference for E2E test hooks
+  useEffect(
+    function storeVideoElementRef() {
+      setVideoElement(videoElm.current);
+      return () => setVideoElement(null);
+    },
+    [setVideoElement],
   );
 
   // Pointer lock and keyboard lock related
