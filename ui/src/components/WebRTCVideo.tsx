@@ -491,7 +491,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       });
 
       if (isRelativeMouseMode) {
-        videoElmRefValue.addEventListener("click",
+        containerRef.current?.addEventListener("click",
           () => {
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
