@@ -45,10 +45,16 @@ const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.ha
 const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
 const SettingsAppearanceRoute = lazy(() => import("@routes/devices.$id.settings.appearance"));
 const SettingsGeneralIndexRoute = lazy(() => import("@routes/devices.$id.settings.general._index"));
-const SettingsGeneralRebootRoute = lazy(() => import("@routes/devices.$id.settings.general.reboot"));
-const SettingsGeneralUpdateRoute = lazy(() => import("@routes/devices.$id.settings.general.update"));
+const SettingsGeneralRebootRoute = lazy(
+  () => import("@routes/devices.$id.settings.general.reboot"),
+);
+const SettingsGeneralUpdateRoute = lazy(
+  () => import("@routes/devices.$id.settings.general.update"),
+);
 const SettingsNetworkRoute = lazy(() => import("@routes/devices.$id.settings.network"));
-const SecurityAccessLocalAuthRoute = lazy(() => import("@routes/devices.$id.settings.access.local-auth"));
+const SecurityAccessLocalAuthRoute = lazy(
+  () => import("@routes/devices.$id.settings.access.local-auth"),
+);
 const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
 const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
 const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
@@ -280,7 +286,7 @@ if (isOnDevice) {
             {
               path: "devices",
               element: <DevicesRoute />,
-              loader: DevicesRoute.loader
+              loader: DevicesRoute.loader,
             },
           ],
         },
@@ -294,7 +300,7 @@ if (isOnDevice) {
       path: "v/:version/*",
       element: <Root />,
       loader: async ({ params }) => {
-        throw redirect(`/${params['*']}`);
+        throw redirect(`/${params["*"]}`);
       },
     });
   }

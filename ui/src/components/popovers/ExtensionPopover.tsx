@@ -61,7 +61,9 @@ export default function ExtensionPopover() {
     send("setActiveExtension", { extensionId: extension?.id || "" }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          m.extension_popover_set_error_notification({ error: resp.error.data || m.unknown_error() }),
+          m.extension_popover_set_error_notification({
+            error: resp.error.data || m.unknown_error(),
+          }),
         );
         return;
       }
@@ -93,7 +95,7 @@ export default function ExtensionPopover() {
                 {renderActiveExtension()}
 
                 <div
-                  className="flex animate-fadeIn opacity-0 items-center justify-end space-x-2"
+                  className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
                   style={{
                     animationDuration: "0.7s",
                     animationDelay: "0.2s",
@@ -114,15 +116,12 @@ export default function ExtensionPopover() {
                   title={m.extensions_popover_extensions()}
                   description={m.extension_popover_load_and_manage_extensions()}
                 />
-                <Card className="animate-fadeIn opacity-0" >
+                <Card className="animate-fadeIn opacity-0">
                   <div className="w-full divide-y divide-slate-700/30 dark:divide-slate-600/30">
                     {AVAILABLE_EXTENSIONS.map(extension => (
-                      <div
-                        key={extension.id}
-                        className="flex items-center justify-between p-3"
-                      >
+                      <div key={extension.id} className="flex items-center justify-between p-3">
                         <div className="space-y-0.5">
-                          <p className="text-sm font-semibold leading-none text-slate-900 dark:text-slate-100">
+                          <p className="text-sm leading-none font-semibold text-slate-900 dark:text-slate-100">
                             {extension.name}
                           </p>
                           <p className="text-sm text-slate-600 dark:text-slate-400">

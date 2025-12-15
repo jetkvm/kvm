@@ -46,10 +46,7 @@ export default function SettingsKeyboardRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.keyboard_title()}
-        description={m.keyboard_description()}
-      />
+      <SettingsPageHeader title={m.keyboard_title()} description={m.keyboard_description()} />
 
       <div className="space-y-4">
         <SettingsItem

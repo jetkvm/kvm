@@ -9,6 +9,18 @@
       "synctrace"
     ]
   },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "prettier.requireConfig": true,
+  "prettier.configPath": ".prettierrc",
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "git.ignoreLimitWarning": true,
   "cmake.sourceDirectory": "${workspaceFolder}/internal/native/cgo",
   "cmake.ignoreCMakeListsMissing": true,

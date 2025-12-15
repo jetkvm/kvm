@@ -1,4 +1,3 @@
-
 import { CheckCircleIcon } from "@heroicons/react/24/solid"; // adjust import if you use a different icon set
 
 import LoadingSpinner from "@components/LoadingSpinner"; // adjust import path if needed
@@ -11,13 +10,7 @@ export interface UpdatePart {
   complete: boolean;
 }
 
-export default function UpdatingStatusCard({
-  label,
-  part,
-}: {
-  label: string;
-  part: UpdatePart;
-}) {
+export default function UpdatingStatusCard({ label, part }: { label: string; part: UpdatePart }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -34,7 +27,7 @@ export default function UpdatingStatusCard({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(part.progress)}
-        aria-label={m.general_update_status_progress({part: label})}
+        aria-label={m.general_update_status_progress({ part: label })}
       >
         <div
           className="h-2.5 rounded-full bg-blue-700 transition-all duration-500 ease-linear dark:bg-blue-500"

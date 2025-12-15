@@ -125,10 +125,7 @@ export default function SettingsAccessIndexRoute() {
         returnTo.search = "";
         returnTo.hash = "";
         window.location.href =
-          cloudAppUrl +
-          "/signup?deviceId=" +
-          deviceId +
-          `&returnTo=${returnTo.toString()}`;
+          cloudAppUrl + "/signup?deviceId=" + deviceId + `&returnTo=${returnTo.toString()}`;
       });
     },
     [deviceId, send],
@@ -168,7 +165,9 @@ export default function SettingsAccessIndexRoute() {
 
         notifications.success(m.access_tls_updated());
       });
-    }, [send]);
+    },
+    [send],
+  );
 
   // Handle TLS mode change
   const handleTlsModeChange = (value: string) => {
@@ -206,10 +205,7 @@ export default function SettingsAccessIndexRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.access_title()}
-        description={m.access_description()}
-      />
+      <SettingsPageHeader title={m.access_title()} description={m.access_description()} />
 
       {loaderData?.authMode && (
         <>
@@ -246,9 +242,7 @@ export default function SettingsAccessIndexRoute() {
                   <TextAreaWithLabel
                     label={m.access_certificate_label()}
                     rows={3}
-                    placeholder={
-                      "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
-                    }
+                    placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
                     value={tlsCert}
                     onChange={e => handleTlsCertChange(e.target.value)}
                   />
@@ -256,9 +250,7 @@ export default function SettingsAccessIndexRoute() {
                     label={m.access_private_key_label()}
                     description={m.access_private_key_description()}
                     rows={3}
-                    placeholder={
-                      "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-                    }
+                    placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
                     value={tlsKey}
                     onChange={e => handleTlsKeyChange(e.target.value)}
                   />
@@ -275,7 +267,11 @@ export default function SettingsAccessIndexRoute() {
 
               <SettingsItem
                 title={m.access_authentication_mode_title()}
-                description={loaderData.authMode === "password" ? m.access_auth_mode_password() : m.access_auth_mode_no_password()}
+                description={
+                  loaderData.authMode === "password"
+                    ? m.access_auth_mode_password()
+                    : m.access_auth_mode_no_password()
+                }
               >
                 {loaderData.authMode === "password" ? (
                   <Button
@@ -320,10 +316,7 @@ export default function SettingsAccessIndexRoute() {
       )}
 
       <div className="space-y-4">
-        <SettingsSectionHeader
-          title="Remote"
-          description={m.access_remote_description()}
-        />
+        <SettingsSectionHeader title="Remote" description={m.access_remote_description()} />
 
         <div className="space-y-4">
           {!isAdopted && (
@@ -438,11 +431,7 @@ export default function SettingsAccessIndexRoute() {
                     className="text-red-600"
                     onClick={() => {
                       if (deviceId) {
-                        if (
-                          window.confirm(
-                            m.access_confirm_deregister(),
-                          )
-                        ) {
+                        if (window.confirm(m.access_confirm_deregister())) {
                           deregisterDevice();
                         }
                       } else {

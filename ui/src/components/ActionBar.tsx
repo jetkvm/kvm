@@ -6,12 +6,7 @@ import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { cx } from "@/cva.config";
-import {
-  useHidStore,
-  useMountMediaStore,
-  useSettingsStore,
-  useUiStore,
-} from "@hooks/stores";
+import { useHidStore, useMountMediaStore, useSettingsStore, useUiStore } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button } from "@components/Button";
 import Container from "@components/Container";
@@ -28,7 +23,8 @@ export default function Actionbar({
 }) {
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
-  const { setDisableVideoFocusTrap, terminalType, setTerminalType, toggleSidebarView } = useUiStore();
+  const { setDisableVideoFocusTrap, terminalType, setTerminalType, toggleSidebarView } =
+    useUiStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { developerMode } = useSettingsStore();
 
@@ -246,10 +242,7 @@ export default function Actionbar({
               theme="light"
               text={m.action_bar_connection_stats()}
               LeadingIcon={({ className }) => (
-                <LuSignal
-                  className={cx(className, "mb-0.5 text-green-500")}
-                  strokeWidth={4}
-                />
+                <LuSignal className={cx(className, "mb-0.5 text-green-500")} strokeWidth={4} />
               )}
               onClick={() => {
                 toggleSidebarView("connection-stats");
@@ -264,7 +257,7 @@ export default function Actionbar({
               LeadingIcon={LuSettings}
               onClick={() => {
                 setDisableVideoFocusTrap(true);
-                navigateTo("/settings")
+                navigateTo("/settings");
               }}
             />
           </div>

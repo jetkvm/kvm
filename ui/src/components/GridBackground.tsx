@@ -18,11 +18,7 @@ export default function GridBackground() {
           </pattern>
         </defs>
 
-        <svg
-          x="50%"
-          y={-1}
-          className="overflow-visible fill-blue-100 dark:fill-blue-900/30"
-        >
+        <svg x="50%" y={-1} className="overflow-visible fill-blue-100 dark:fill-blue-900/30">
           <path
             d="M-200 0h201v201h-201Z M600 0h201v201h-201Z M-400 600h201v201h-201Z M200 800h201v201h-201Z"
             strokeWidth={0}
