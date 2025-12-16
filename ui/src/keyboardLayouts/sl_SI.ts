@@ -129,8 +129,8 @@ export const chars = {
   "{": { key: "KeyB", AltGr: true },
   "}": { key: "KeyN", AltGr: true },
   "§": { key: "KeyM", AltGr: true },
-  // "<": { key: "Comma", AltGr: true },
-  // ">": { key: "Period", AltGr: true },
+  // "<": { key: "Comma", AltGr: true },  // Can be typed in two different locations (`IntlBackslash`)
+  // ">": { key: "Period", AltGr: true },  // Can be typed in two different locations (`IntlBackslash+Shift`)
 
   " ": { key: "Space" },
   "\n": { key: "Enter" },
