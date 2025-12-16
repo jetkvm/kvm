@@ -71,12 +71,12 @@ void jetkvm_rpc_handler(const char *method, const char *params) {
 
 int main(int argc, char *argv[]) {
     const char *socket_path = SOCKET_PATH;
-    
+
     // Allow custom socket path via command line argument
     if (argc > 1) {
         socket_path = argv[1];
     }
-    
+
     // Remove existing socket file if it exists
     unlink(socket_path);
 
@@ -86,14 +86,18 @@ int main(int argc, char *argv[]) {
     jetkvm_set_video_state_handler(&jetkvm_video_state_handler);
     jetkvm_set_indev_handler(&jetkvm_indev_handler);
     jetkvm_set_rpc_handler(&jetkvm_rpc_handler);
-    
-    // Initialize video first (before accepting connections)
+
+    // Detect sleep mode (may block on I2C)
+    fprintf(stderr, "Detecting sleep mode...\n");
+    jetkvm_video_detect_sleep_mode();
+
+    // Initialize video (before accepting connections)
     fprintf(stderr, "Initializing video...\n");
     if (jetkvm_video_init(1.0) != 0) {
         fprintf(stderr, "Failed to initialize video\n");
         return 1;
     }
-    
+
     // Start video streaming - frames will be sent via video_send_frame
     // which calls the video handler we set up
     jetkvm_video_start();
@@ -107,7 +111,7 @@ int main(int argc, char *argv[]) {
         jetkvm_video_shutdown();
         return 1;
     }
-    
+
     // Make socket non-blocking
     int flags = fcntl(server_fd, F_GETFL, 0);
     if (flags < 0 || fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
@@ -117,13 +121,13 @@ int main(int argc, char *argv[]) {
         jetkvm_video_shutdown();
         return 1;
     }
-    
+
     // Bind socket to path
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-    
+
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind");
         close(server_fd);
@@ -131,7 +135,7 @@ int main(int argc, char *argv[]) {
         jetkvm_video_shutdown();
         return 1;
     }
-    
+
     // Listen for connections
     if (listen(server_fd, 1) < 0) {
         perror("listen");
@@ -140,18 +144,18 @@ int main(int argc, char *argv[]) {
         jetkvm_video_shutdown();
         return 1;
     }
-    
+
     fprintf(stderr, "Listening on Unix socket: %s (non-blocking)\n", socket_path);
     fprintf(stderr, "Video frames will be sent to connected clients...\n");
-    
+
     // Main loop: check for new connections and handle client disconnections
     fd_set read_fds;
     struct timeval timeout;
-    
+
     while (1) {
         FD_ZERO(&read_fds);
         FD_SET(server_fd, &read_fds);
-        
+
         pthread_mutex_lock(&client_fd_mutex);
         int current_client_fd = client_fd;
         if (current_client_fd >= 0) {
@@ -159,10 +163,10 @@ int main(int argc, char *argv[]) {
         }
         int max_fd = (current_client_fd > server_fd) ? current_client_fd : server_fd;
         pthread_mutex_unlock(&client_fd_mutex);
-        
+
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
-        
+
         int result = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
         if (result < 0) {
             if (errno == EINTR) {
@@ -171,7 +175,7 @@ int main(int argc, char *argv[]) {
             perror("select");
             break;
         }
-        
+
         // Check for new connection
         if (FD_ISSET(server_fd, &read_fds)) {
             int accepted_fd = accept(server_fd, NULL, NULL);
@@ -188,12 +192,12 @@ int main(int argc, char *argv[]) {
                 perror("accept");
             }
         }
-        
+
         // Check if client disconnected
         pthread_mutex_lock(&client_fd_mutex);
         current_client_fd = client_fd;
         pthread_mutex_unlock(&client_fd_mutex);
-        
+
         if (current_client_fd >= 0 && FD_ISSET(current_client_fd, &read_fds)) {
             // Client sent data or closed connection
             char buffer[1];
@@ -206,11 +210,11 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    
+
     // Stop video streaming
     jetkvm_video_stop();
     jetkvm_video_shutdown();
-    
+
     // Cleanup
     pthread_mutex_lock(&client_fd_mutex);
     if (client_fd >= 0) {
@@ -218,10 +222,10 @@ int main(int argc, char *argv[]) {
         client_fd = -1;
     }
     pthread_mutex_unlock(&client_fd_mutex);
-    
+
     close(server_fd);
     unlink(socket_path);
-    
+
     return 0;
 }
 

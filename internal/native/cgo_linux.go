@@ -135,6 +135,12 @@ func uiTick() {
 	C.jetkvm_ui_tick()
 }
 
+// videoDetectSleepMode detects and configures HDMI sleep mode.
+// No lock - this may block on I2C and we want Go to be able to timeout.
+func videoDetectSleepMode() {
+	C.jetkvm_video_detect_sleep_mode()
+}
+
 func videoInit(factor float64) error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()

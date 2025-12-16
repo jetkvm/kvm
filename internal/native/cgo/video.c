@@ -92,6 +92,11 @@ static void detect_sleep_mode()
     ensure_sleep_mode_disabled();
 }
 
+void video_detect_sleep_mode()
+{
+    detect_sleep_mode();
+}
+
 double calculate_bitrate(float bitrate_factor, int width, int height)
 {
     const int32_t base_bitrate_high = 2000;
@@ -233,8 +238,6 @@ pthread_t *format_thread = NULL;
 
 int video_init(float factor)
 {
-    detect_sleep_mode();
-
     if (factor <= 0 || factor > 1) {
         factor = 1.0f;
     }

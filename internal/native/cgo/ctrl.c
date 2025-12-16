@@ -417,6 +417,10 @@ char *jetkvm_video_log_status() {
     return (char *)videoc_log_status();
 }
 
+void jetkvm_video_detect_sleep_mode() {
+    video_detect_sleep_mode();
+}
+
 int jetkvm_video_init(float factor) {
     return video_init(factor);
 }

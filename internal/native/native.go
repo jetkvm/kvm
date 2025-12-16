@@ -133,6 +133,36 @@ func (n *Native) Start() error {
 	n.initUI()
 	go n.tickUI()
 
+	const maxRetries = 3
+	const retryTimeout = 5 * time.Second
+
+	// Detect sleep mode with retries - may block on I2C on some devices
+	sleepModeOK := false
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		done := make(chan struct{})
+		go func() {
+			n.l.Info().Int("attempt", attempt).Msg("detecting sleep mode")
+			videoDetectSleepMode()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			n.l.Info().Int("attempt", attempt).Msg("sleep mode detection completed")
+			sleepModeOK = true
+		case <-time.After(retryTimeout):
+			n.l.Info().Int("attempt", attempt).Msg("sleep mode detection timed out, retrying...")
+		}
+
+		if sleepModeOK {
+			break
+		}
+	}
+
+	if !sleepModeOK {
+		n.l.Info().Msg("sleep mode detection failed after 3 attempts, proceeding without it")
+	}
+
 	if err := videoInit(n.defaultQualityFactor); err != nil {
 		n.l.Error().Err(err).Msg("failed to initialize video")
 		return err

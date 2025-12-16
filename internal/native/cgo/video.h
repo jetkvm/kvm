@@ -2,6 +2,12 @@
 #define VIDEO_DAEMON_VIDEO_H
 
 /**
+ * @brief Detect and configure HDMI sleep mode if available.
+ * Call before video_init() - may block on I2C access.
+ */
+void video_detect_sleep_mode();
+
+/**
  * @brief Initialize the video subsystem
  *
  * @return int 0 on success, -1 on failure
