@@ -81,6 +81,8 @@ func RunNativeProcess(binaryName string) {
 	logging.ReconfigureToStderr()
 	refreshLoggers()
 
+	fmt.Fprintln(os.Stderr, "[DIAG-GO] RunNativeProcess: native subprocess STARTED")
+
 	appCtx, appCtxCancel := context.WithCancel(context.Background())
 	defer appCtxCancel()
 

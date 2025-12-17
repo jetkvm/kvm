@@ -379,6 +379,52 @@ handshakeLoop:
 				Int("bytesReceivedFromChild", bytesReceived).
 				Int("writeCountFromChild", writeCount).
 				Msg("[HANDSHAKE] TIMEOUT - handshake not completed within 10 seconds. Child process may be stuck during initialization.")
+
+			// Run device diagnostics on timeout
+			p.logger.Error().Str("phase", "handshake").Msg("[DIAG] Running device diagnostics...")
+
+			// Check device files
+			deviceFiles := []string{"/dev/fb0", "/dev/input/event0", "/dev/input/event1", "/dev/v4l-subdev2", "/dev/video0"}
+			for _, path := range deviceFiles {
+				if info, err := os.Stat(path); err != nil {
+					p.logger.Error().Str("phase", "handshake").Str("path", path).Err(err).Msg("[DIAG] device NOT found")
+				} else {
+					p.logger.Info().Str("phase", "handshake").Str("path", path).Str("mode", info.Mode().String()).Msg("[DIAG] device exists")
+				}
+			}
+
+			// Check I2C device names
+			if data, err := exec.Command("sh", "-c", "cat /sys/bus/i2c/devices/*/name 2>/dev/null").Output(); err == nil {
+				names := strings.TrimSpace(string(data))
+				p.logger.Info().Str("phase", "handshake").Str("devices", names).Msg("[DIAG] I2C device names")
+			}
+
+			// Check HDMI capture chip sleep_mode sysfs
+			sleepModePath := "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode"
+			if data, err := os.ReadFile(sleepModePath); err != nil {
+				p.logger.Error().Str("phase", "handshake").Err(err).Msg("[DIAG] sleep_mode sysfs NOT found - tc358743 may not be detected")
+			} else {
+				p.logger.Info().Str("phase", "handshake").Str("value", strings.TrimSpace(string(data))).Msg("[DIAG] sleep_mode sysfs exists")
+			}
+
+			// Run i2cdetect on bus 4 (HDMI capture chip)
+			if output, err := exec.Command("i2cdetect", "-y", "4").Output(); err == nil {
+				p.logger.Info().Str("phase", "handshake").Str("output", string(output)).Msg("[DIAG] i2cdetect bus 4")
+			}
+
+			// Dump dmesg tail
+			if output, err := exec.Command("dmesg").Output(); err == nil {
+				lines := strings.Split(string(output), "\n")
+				if len(lines) > 20 {
+					lines = lines[len(lines)-20:]
+				}
+				for _, line := range lines {
+					if line != "" {
+						p.logger.Info().Str("phase", "handshake").Str("line", line).Msg("[DIAG] dmesg")
+					}
+				}
+			}
+
 			return fmt.Errorf("handshake not completed within 10 seconds")
 		}
 	}

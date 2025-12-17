@@ -16,6 +16,7 @@ func (n *Native) initUI() {
 }
 
 func (n *Native) tickUI() {
+	n.l.Info().Str("phase", "goroutine-ready").Msg("[DIAG-GO] tickUI goroutine READY")
 	for {
 		uiTick()
 		time.Sleep(5 * time.Millisecond)
