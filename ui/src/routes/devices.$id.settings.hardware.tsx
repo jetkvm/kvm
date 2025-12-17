@@ -17,28 +17,21 @@ import { m } from "@localizations/messages.js";
 export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
   const settings = useSettingsStore();
-  const { displayRotation, setDisplayRotation } = useSettingsStore();
+  const { setDisplayRotation } = useSettingsStore();
   const [powerSavingEnabled, setPowerSavingEnabled] = useState(false);
 
   const handleDisplayRotationChange = (rotation: string) => {
     setDisplayRotation(rotation);
-    handleDisplayRotationSave();
-  };
 
-  const handleDisplayRotationSave = () => {
-    send(
-      "setDisplayRotation",
-      { params: { rotation: displayRotation } },
-      (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(
-            m.hardware_display_orientation_error({ error: resp.error.data || m.unknown_error() }),
-          );
-          return;
-        }
-        notifications.success(m.hardware_display_orientation_success());
-      },
-    );
+    send("setDisplayRotation", { params: { rotation } }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.hardware_display_orientation_error({ error: resp.error.data || m.unknown_error() }),
+        );
+        return;
+      }
+      notifications.success(m.hardware_display_orientation_success());
+    });
   };
 
   const { backlightSettings, setBacklightSettings } = useSettingsStore();
@@ -120,6 +113,17 @@ export default function SettingsHardwareRoute() {
       setPowerSavingEnabled(result.duration >= 0);
     });
   }, [send]);
+
+  useEffect(() => {
+    send("getDisplayRotation", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to get display rotation:", resp.error);
+        return;
+      }
+      const result = resp.result as { rotation: string };
+      setDisplayRotation(result.rotation);
+    });
+  }, [send, setDisplayRotation]);
 
   return (
     <div className="space-y-4">
