@@ -15,6 +15,7 @@ var (
 )
 
 func (n *Native) handleVideoFrameChan() {
+	n.l.Info().Str("phase", "goroutine-ready").Msg("[DIAG-GO] handleVideoFrameChan goroutine READY")
 	lastFrame := time.Now()
 	for {
 		frame := <-videoFrameChan
@@ -26,6 +27,7 @@ func (n *Native) handleVideoFrameChan() {
 }
 
 func (n *Native) handleVideoStateChan() {
+	n.l.Info().Str("phase", "goroutine-ready").Msg("[DIAG-GO] handleVideoStateChan goroutine READY")
 	for {
 		state := <-videoStateChan
 
@@ -34,6 +36,7 @@ func (n *Native) handleVideoStateChan() {
 }
 
 func (n *Native) handleLogChan() {
+	n.l.Info().Str("phase", "goroutine-ready").Msg("[DIAG-GO] handleLogChan goroutine READY")
 	for {
 		entry := <-logChan
 		l := n.l.With().
@@ -66,6 +69,7 @@ func (n *Native) handleLogChan() {
 }
 
 func (n *Native) handleIndevEventChan() {
+	n.l.Info().Str("phase", "goroutine-ready").Msg("[DIAG-GO] handleIndevEventChan goroutine READY")
 	for {
 		event := <-indevEventChan
 		name := uiEventCodeToName(event)
@@ -74,6 +78,7 @@ func (n *Native) handleIndevEventChan() {
 }
 
 func (n *Native) handleRpcEventChan() {
+	n.l.Info().Str("phase", "goroutine-ready").Msg("[DIAG-GO] handleRpcEventChan goroutine READY")
 	for {
 		event := <-rpcEventChan
 		n.onRpcEvent(event)
