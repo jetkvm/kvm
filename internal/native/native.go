@@ -119,26 +119,46 @@ func NewNative(opts NativeOptions) *Native {
 }
 
 func (n *Native) Start() error {
+	startTime := time.Now()
+	n.l.Info().Str("phase", "native-start").Msg("[NATIVE-START] beginning Native.Start() initialization")
+
 	// set up singleton
+	n.l.Info().Str("phase", "native-start").Msg("[NATIVE-START] calling setInstance")
 	setInstance(n)
+	n.l.Info().Str("phase", "native-start").Msg("[NATIVE-START] setInstance completed")
+
+	n.l.Info().Str("phase", "native-start").Msg("[NATIVE-START] calling setUpNativeHandlers (CGO callback setup)")
+	handlersStart := time.Now()
 	setUpNativeHandlers()
+	n.l.Info().Str("phase", "native-start").Dur("elapsed", time.Since(handlersStart)).Msg("[NATIVE-START] setUpNativeHandlers completed")
 
 	// start the native video
+	n.l.Info().Str("phase", "native-start").Msg("[NATIVE-START] launching channel handler goroutines")
 	go n.handleLogChan()
 	go n.handleVideoStateChan()
 	go n.handleVideoFrameChan()
 	go n.handleIndevEventChan()
 	go n.handleRpcEventChan()
+	n.l.Info().Str("phase", "native-start").Msg("[NATIVE-START] channel handler goroutines launched")
 
+	n.l.Info().Str("phase", "native-start").Uint16("rotation", n.displayRotation).Msg("[NATIVE-START] calling initUI (CGO uiInit)")
+	uiStart := time.Now()
 	n.initUI()
+	n.l.Info().Str("phase", "native-start").Dur("elapsed", time.Since(uiStart)).Msg("[NATIVE-START] initUI completed")
+
+	n.l.Info().Str("phase", "native-start").Msg("[NATIVE-START] launching tickUI goroutine")
 	go n.tickUI()
 
+	n.l.Info().Str("phase", "native-start").Float64("qualityFactor", n.defaultQualityFactor).Msg("[NATIVE-START] calling videoInit (CGO) - THIS IS A SUSPECTED BLOCKING POINT")
+	videoStart := time.Now()
 	if err := videoInit(n.defaultQualityFactor); err != nil {
-		n.l.Error().Err(err).Msg("failed to initialize video")
+		n.l.Error().Err(err).Dur("elapsed", time.Since(videoStart)).Msg("[NATIVE-START] videoInit failed")
 		return err
 	}
+	n.l.Info().Str("phase", "native-start").Dur("elapsed", time.Since(videoStart)).Msg("[NATIVE-START] videoInit completed successfully")
 
 	close(n.ready)
+	n.l.Info().Str("phase", "native-start").Dur("totalElapsed", time.Since(startTime)).Msg("[NATIVE-START] Native.Start() completed successfully, ready channel closed")
 	return nil
 }
 

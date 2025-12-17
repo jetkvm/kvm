@@ -210,7 +210,9 @@ const char *jetkvm_ui_get_var(const char *name) {
 }
 
 void jetkvm_ui_init(u_int16_t rotation) {
+    log_info("[C-INIT] jetkvm_ui_init starting with rotation=%d", rotation);
     lvgl_init(rotation);
+    log_info("[C-INIT] jetkvm_ui_init completed");
 }
 
 void jetkvm_ui_tick() {
@@ -418,7 +420,10 @@ char *jetkvm_video_log_status() {
 }
 
 int jetkvm_video_init(float factor) {
-    return video_init(factor);
+    log_info("[C-INIT] jetkvm_video_init starting with factor=%.2f", factor);
+    int ret = video_init(factor);
+    log_info("[C-INIT] jetkvm_video_init completed with result=%d", ret);
+    return ret;
 }
 
 void jetkvm_video_shutdown() {

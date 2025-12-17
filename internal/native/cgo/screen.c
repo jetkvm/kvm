@@ -30,33 +30,38 @@ void handle_indev_event(lv_event_t *e) {
 }
 
 void lvgl_init(u_int16_t rotation) {
-    log_trace("initalizing lvgl");
+    log_info("[C-UI-INIT] lvgl_init starting with rotation=%d", rotation);
 
-    /*LittlevGL init*/
+    log_info("[C-UI-INIT] step 1/6: calling lv_init");
     lv_init();
+    log_info("[C-UI-INIT] step 1/6: lv_init completed");
 
-    /*Linux frame buffer device init*/
+    log_info("[C-UI-INIT] step 2/6: creating framebuffer display");
     disp = lv_linux_fbdev_create();
-    // lv_display_set_physical_resolution(disp, 240, 300);
     lv_display_set_resolution(disp, 240, 300);
     lv_linux_fbdev_set_file(disp, "/dev/fb0");
+    log_info("[C-UI-INIT] step 2/6: framebuffer display created");
 
+    log_info("[C-UI-INIT] step 3/6: setting rotation");
     lvgl_set_rotation(disp, rotation);
+    log_info("[C-UI-INIT] step 3/6: rotation set");
 
-    /* Linux input device init */
+    log_info("[C-UI-INIT] step 4/6: initializing input device");
     lv_indev_t *mouse = lv_evdev_create(LV_INDEV_TYPE_POINTER, "/dev/input/event1");
     lv_indev_set_group(mouse, lv_group_get_default());
     lv_indev_set_display(mouse, disp);
-
     lv_indev_add_event_cb(mouse, handle_indev_event, LV_EVENT_ALL, NULL);
+    log_info("[C-UI-INIT] step 4/6: input device initialized");
 
-    log_trace("initalizing ui");
-
+    log_info("[C-UI-INIT] step 5/6: calling ui_init");
     ui_init();
-    
+    log_info("[C-UI-INIT] step 5/6: ui_init completed");
+
+    log_info("[C-UI-INIT] step 6/6: setting up RPC handler");
     ui_set_rpc_handler((jetkvm_rpc_handler_t *)jetkvm_call_rpc_handler);
-    
-    log_info("ui initalized");
+    log_info("[C-UI-INIT] step 6/6: RPC handler set");
+
+    log_info("[C-UI-INIT] lvgl_init completed successfully");
 }
 
 void lvgl_tick(void) {

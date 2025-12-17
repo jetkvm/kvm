@@ -12,6 +12,7 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/erikdubbelboer/gspt"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -76,8 +77,15 @@ func updateProcessTitle(state *VideoState) {
 
 // RunNativeProcess runs the native process mode
 func RunNativeProcess(binaryName string) {
+	// Redirect logging to stderr FIRST - stdout is reserved for handshake IPC with parent
+	logging.ReconfigureToStderr()
+	refreshLoggers()
+
 	appCtx, appCtxCancel := context.WithCancel(context.Background())
 	defer appCtxCancel()
+
+	// Initialize logging levels from environment variables (JETKVM_LOG_*)
+	logging.GetRootLogger().UpdateLogLevel("")
 
 	logger := nativeLogger.With().Int("pid", os.Getpid()).Logger()
 	setProcTitle("starting")

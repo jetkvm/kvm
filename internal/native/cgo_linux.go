@@ -8,6 +8,7 @@ package native
 import (
 	"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/rs/zerolog"
@@ -109,23 +110,38 @@ func uiEventCodeToName(code int) string {
 }
 
 func setUpNativeHandlers() {
+	nativeLogger.Info().Str("phase", "cgo").Msg("[CGO] setUpNativeHandlers: acquiring cgoLock")
+	lockStart := time.Now()
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
+	nativeLogger.Info().Str("phase", "cgo").Dur("lockWait", time.Since(lockStart)).Msg("[CGO] setUpNativeHandlers: cgoLock acquired")
 
+	nativeLogger.Info().Str("phase", "cgo").Msg("[CGO] setUpNativeHandlers: setting up log handler")
 	C.jetkvm_cgo_setup_log_handler()
+	nativeLogger.Info().Str("phase", "cgo").Msg("[CGO] setUpNativeHandlers: setting up video state handler")
 	C.jetkvm_cgo_setup_video_state_handler()
+	nativeLogger.Info().Str("phase", "cgo").Msg("[CGO] setUpNativeHandlers: setting up video handler")
 	C.jetkvm_cgo_setup_video_handler()
+	nativeLogger.Info().Str("phase", "cgo").Msg("[CGO] setUpNativeHandlers: setting up indev handler")
 	C.jetkvm_cgo_setup_indev_handler()
+	nativeLogger.Info().Str("phase", "cgo").Msg("[CGO] setUpNativeHandlers: setting up rpc handler")
 	C.jetkvm_cgo_setup_rpc_handler()
+	nativeLogger.Info().Str("phase", "cgo").Msg("[CGO] setUpNativeHandlers: all handlers set up successfully")
 }
 
 func uiInit(rotation uint16) {
+	nativeLogger.Info().Str("phase", "cgo").Uint16("rotation", rotation).Msg("[CGO] uiInit: acquiring cgoLock")
+	lockStart := time.Now()
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
+	nativeLogger.Info().Str("phase", "cgo").Dur("lockWait", time.Since(lockStart)).Msg("[CGO] uiInit: cgoLock acquired")
 
 	cRotation := C.u_int16_t(rotation)
 
+	nativeLogger.Info().Str("phase", "cgo").Uint16("rotation", rotation).Msg("[CGO] uiInit: calling C.jetkvm_ui_init")
+	cgoStart := time.Now()
 	C.jetkvm_ui_init(cRotation)
+	nativeLogger.Info().Str("phase", "cgo").Dur("elapsed", time.Since(cgoStart)).Msg("[CGO] uiInit: C.jetkvm_ui_init completed")
 }
 
 func uiTick() {
@@ -136,13 +152,22 @@ func uiTick() {
 }
 
 func videoInit(factor float64) error {
+	nativeLogger.Info().Str("phase", "cgo").Float64("factor", factor).Msg("[CGO] videoInit: acquiring cgoLock - THIS IS A SUSPECTED BLOCKING POINT")
+	lockStart := time.Now()
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
+	nativeLogger.Info().Str("phase", "cgo").Dur("lockWait", time.Since(lockStart)).Msg("[CGO] videoInit: cgoLock acquired")
 
 	factorC := C.float(factor)
 
+	nativeLogger.Info().Str("phase", "cgo").Float64("factor", factor).Msg("[CGO] videoInit: calling C.jetkvm_video_init - THIS MAY TAKE A LONG TIME")
+	cgoStart := time.Now()
 	ret := C.jetkvm_video_init(factorC)
+	elapsed := time.Since(cgoStart)
+	nativeLogger.Info().Str("phase", "cgo").Dur("elapsed", elapsed).Int("returnCode", int(ret)).Msg("[CGO] videoInit: C.jetkvm_video_init completed")
+
 	if ret != 0 {
+		nativeLogger.Error().Str("phase", "cgo").Int("returnCode", int(ret)).Dur("elapsed", elapsed).Msg("[CGO] videoInit: C.jetkvm_video_init FAILED")
 		return fmt.Errorf("failed to initialize video: %d", ret)
 	}
 	return nil

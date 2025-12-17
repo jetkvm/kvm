@@ -197,13 +197,43 @@ type nativeProxyStdoutHandler struct {
 	handshakeCh      chan bool
 	handshakeMessage string
 	handshakeDone    bool
+	bytesReceived    int
+	writeCount       int
+	createdAt        time.Time
 }
 
 func (w *nativeProxyStdoutHandler) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	w.writeCount++
+	w.bytesReceived += len(p)
+
+	// Log every write to stdout from the child process for debugging
+	dataPreview := string(p)
+	if len(dataPreview) > 200 {
+		dataPreview = dataPreview[:200] + "...(truncated)"
+	}
+	// Replace newlines for cleaner logging
+	dataPreview = strings.ReplaceAll(dataPreview, "\n", "\\n")
+	dataPreview = strings.ReplaceAll(dataPreview, "\r", "\\r")
+
+	nativeLogger.Info().
+		Str("phase", "handshake").
+		Int("writeNum", w.writeCount).
+		Int("bytesThisWrite", len(p)).
+		Int("totalBytesReceived", w.bytesReceived).
+		Dur("sinceCreated", time.Since(w.createdAt)).
+		Bool("handshakeDone", w.handshakeDone).
+		Str("dataPreview", dataPreview).
+		Msg("[HANDSHAKE] stdout handler received data from child process")
+
 	if !w.handshakeDone && strings.Contains(string(p), w.handshakeMessage) {
+		nativeLogger.Info().
+			Str("phase", "handshake").
+			Dur("sinceCreated", time.Since(w.createdAt)).
+			Int("totalBytesReceived", w.bytesReceived).
+			Msg("[HANDSHAKE] handshake message FOUND in stdout - signaling parent")
 		w.handshakeDone = true
 		w.handshakeCh <- true
 		return len(p), nil
@@ -235,8 +265,14 @@ func (p *NativeProxy) toProcessCommand() (*cmdWrapper, error) {
 			mu:               &sync.Mutex{},
 			handshakeCh:      make(chan bool),
 			handshakeMessage: p.options.HandshakeMessage,
+			createdAt:        time.Now(),
 		},
 	}
+	p.logger.Info().
+		Str("phase", "handshake").
+		Int("handshakeMsgLen", len(p.options.HandshakeMessage)).
+		Str("binaryPath", p.binaryPath).
+		Msg("[HANDSHAKE] created stdout handler, waiting for handshake message from child")
 	cmd.Stdout = cmd.stdoutHandler
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -292,15 +328,65 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 
 // it should be only called by start() method, as it isn't thread-safe
 func (p *NativeProxy) setUpGRPCClient() error {
-	// wait until handshake completed
-	select {
-	case <-p.cmd.stdoutHandler.handshakeCh:
-		p.logger.Info().Msg("handshake completed")
-	case <-time.After(10 * time.Second):
-		return fmt.Errorf("handshake not completed within 10 seconds")
+	handshakeStartTime := time.Now()
+	p.logger.Info().
+		Str("phase", "handshake").
+		Str("socketPath", "@"+p.nativeUnixSocket).
+		Msg("[HANDSHAKE] waiting for handshake from child process (10 second timeout)")
+
+	// Create a ticker for periodic status updates while waiting
+	statusTicker := time.NewTicker(2 * time.Second)
+	defer statusTicker.Stop()
+
+	timeout := time.After(10 * time.Second)
+
+	// wait until handshake completed with periodic status logging
+handshakeLoop:
+	for {
+		select {
+		case <-p.cmd.stdoutHandler.handshakeCh:
+			elapsed := time.Since(handshakeStartTime)
+			p.logger.Info().
+				Str("phase", "handshake").
+				Dur("elapsed", elapsed).
+				Int("totalBytesReceived", p.cmd.stdoutHandler.bytesReceived).
+				Int("writeCount", p.cmd.stdoutHandler.writeCount).
+				Msg("[HANDSHAKE] handshake completed successfully!")
+			break handshakeLoop
+		case <-statusTicker.C:
+			elapsed := time.Since(handshakeStartTime)
+			p.cmd.stdoutHandler.mu.Lock()
+			bytesReceived := p.cmd.stdoutHandler.bytesReceived
+			writeCount := p.cmd.stdoutHandler.writeCount
+			handshakeDone := p.cmd.stdoutHandler.handshakeDone
+			p.cmd.stdoutHandler.mu.Unlock()
+			p.logger.Warn().
+				Str("phase", "handshake").
+				Dur("elapsed", elapsed).
+				Int("bytesReceivedFromChild", bytesReceived).
+				Int("writeCountFromChild", writeCount).
+				Bool("handshakeDone", handshakeDone).
+				Msg("[HANDSHAKE] still waiting for handshake message from child process...")
+		case <-timeout:
+			elapsed := time.Since(handshakeStartTime)
+			p.cmd.stdoutHandler.mu.Lock()
+			bytesReceived := p.cmd.stdoutHandler.bytesReceived
+			writeCount := p.cmd.stdoutHandler.writeCount
+			p.cmd.stdoutHandler.mu.Unlock()
+			p.logger.Error().
+				Str("phase", "handshake").
+				Dur("elapsed", elapsed).
+				Int("bytesReceivedFromChild", bytesReceived).
+				Int("writeCountFromChild", writeCount).
+				Msg("[HANDSHAKE] TIMEOUT - handshake not completed within 10 seconds. Child process may be stuck during initialization.")
+			return fmt.Errorf("handshake not completed within 10 seconds")
+		}
 	}
 
+	p.logger.Info().Str("phase", "handshake").Msg("[HANDSHAKE] proceeding to create gRPC client")
 	logger := p.logger.With().Str("socketPath", "@"+p.nativeUnixSocket).Logger()
+
+	grpcClientStart := time.Now()
 	client, err := NewGRPCClient(grpcClientOptions{
 		SocketPath:         p.nativeUnixSocket,
 		Logger:             &logger,
@@ -308,15 +394,18 @@ func (p *NativeProxy) setUpGRPCClient() error {
 		OnRpcEvent:         p.options.OnRpcEvent,
 		OnVideoStateChange: p.options.OnVideoStateChange,
 	})
-
-	logger.Info().Msg("created gRPC client")
 	if err != nil {
+		logger.Error().Err(err).Dur("elapsed", time.Since(grpcClientStart)).Msg("[HANDSHAKE] failed to create gRPC client")
 		return fmt.Errorf("failed to create gRPC client: %w", err)
 	}
+	logger.Info().Dur("elapsed", time.Since(grpcClientStart)).Msg("[HANDSHAKE] created gRPC client successfully")
 	p.client = client
 
 	// Wait for ready signal from the native process
+	logger.Info().Msg("[HANDSHAKE] waiting for gRPC ready signal from native process")
+	readyStart := time.Now()
 	if err := p.client.WaitReady(); err != nil {
+		logger.Error().Err(err).Dur("elapsed", time.Since(readyStart)).Msg("[HANDSHAKE] failed to wait for gRPC ready")
 		// Clean up if ready failed
 		if p.cmd.Process != nil {
 			_ = p.cmd.Process.Kill()
@@ -324,6 +413,7 @@ func (p *NativeProxy) setUpGRPCClient() error {
 		}
 		return fmt.Errorf("failed to wait for ready: %w", err)
 	}
+	logger.Info().Dur("elapsed", time.Since(readyStart)).Msg("[HANDSHAKE] gRPC ready signal received - native process fully initialized")
 
 	// Call on native restart callback if it exists and restarts are greater than 0
 	if p.options.OnNativeRestart != nil && p.restarts > 0 {
@@ -334,6 +424,9 @@ func (p *NativeProxy) setUpGRPCClient() error {
 }
 
 func (p *NativeProxy) doStart() error {
+	doStartTime := time.Now()
+	p.logger.Info().Str("phase", "proxy-start").Msg("[PROXY-START] doStart beginning")
+
 	p.cmdMu.Lock()
 	defer p.cmdMu.Unlock()
 
@@ -342,6 +435,7 @@ func (p *NativeProxy) doStart() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	p.logger.Info().Str("phase", "proxy-start").Msg("[PROXY-START] creating process command")
 	cmd, err := p.toProcessCommand()
 	if err != nil {
 		return fmt.Errorf("failed to create process: %w", err)
@@ -349,7 +443,10 @@ func (p *NativeProxy) doStart() error {
 
 	p.cmd = cmd
 
+	p.logger.Info().Str("phase", "proxy-start").Str("binary", p.binaryPath).Msg("[PROXY-START] starting native child process")
+	processStartTime := time.Now()
 	if err := p.cmd.Start(); err != nil {
+		p.logger.Error().Err(err).Dur("elapsed", time.Since(processStartTime)).Msg("[PROXY-START] failed to start native process")
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
@@ -358,11 +455,20 @@ func (p *NativeProxy) doStart() error {
 	newLogger := p.logger.With().Int("pid", p.cmd.Process.Pid).Logger()
 	p.logger = &newLogger
 
-	p.logger.Info().Msg("native process started")
+	p.logger.Info().
+		Str("phase", "proxy-start").
+		Dur("processStartElapsed", time.Since(processStartTime)).
+		Msg("[PROXY-START] native child process started, now waiting for handshake")
 
 	if err := p.setUpGRPCClient(); err != nil {
+		p.logger.Error().Err(err).Dur("totalElapsed", time.Since(doStartTime)).Msg("[PROXY-START] failed to set up gRPC client")
 		return fmt.Errorf("failed to set up gRPC client: %w", err)
 	}
+
+	p.logger.Info().
+		Str("phase", "proxy-start").
+		Dur("totalElapsed", time.Since(doStartTime)).
+		Msg("[PROXY-START] doStart completed successfully - native process is ready")
 
 	return nil
 }

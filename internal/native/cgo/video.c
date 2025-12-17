@@ -84,12 +84,16 @@ static void ensure_sleep_mode_disabled()
 
 static void detect_sleep_mode()
 {
+    log_info("[C-VIDEO-INIT] detect_sleep_mode: checking for sleep mode file %s", SLEEP_MODE_FILE);
     if (access(SLEEP_MODE_FILE, F_OK) != 0) {
         sleep_mode_available = false;
+        log_info("[C-VIDEO-INIT] detect_sleep_mode: sleep mode file not found, sleep_mode_available=false");
         return;
     }
     sleep_mode_available = true;
+    log_info("[C-VIDEO-INIT] detect_sleep_mode: sleep mode file found, ensuring it's disabled");
     ensure_sleep_mode_disabled();
+    log_info("[C-VIDEO-INIT] detect_sleep_mode: completed");
 }
 
 double calculate_bitrate(float bitrate_factor, int width, int height)
@@ -213,18 +217,21 @@ const int input_buffer_count = 3;
 
 static int32_t buf_init()
 {
+    log_info("[C-VIDEO-INIT] buf_init: configuring memory pool (size=%d, count=%d)", 1920 * 1080 * 3, input_buffer_count);
     MB_POOL_CONFIG_S stMbPoolCfg;
     memset(&stMbPoolCfg, 0, sizeof(MB_POOL_CONFIG_S));
     stMbPoolCfg.u64MBSize = 1920 * 1080 * 3; // max resolution
     stMbPoolCfg.u32MBCnt = input_buffer_count;
     stMbPoolCfg.enAllocType = MB_ALLOC_TYPE_DMA;
     stMbPoolCfg.bPreAlloc = RK_TRUE;
+    log_info("[C-VIDEO-INIT] buf_init: calling RK_MPI_MB_CreatePool - THIS MAY HANG ON SOME DEVICES");
     memPool = RK_MPI_MB_CreatePool(&stMbPoolCfg);
     if (memPool == MB_INVALID_POOLID)
     {
+        log_error("[C-VIDEO-INIT] buf_init: RK_MPI_MB_CreatePool FAILED - returned MB_INVALID_POOLID");
         return -1;
     }
-    log_info("created memory pool");
+    log_info("[C-VIDEO-INIT] buf_init: memory pool created successfully, poolId=%d", memPool);
 
     return RK_SUCCESS;
 }
@@ -233,40 +240,56 @@ pthread_t *format_thread = NULL;
 
 int video_init(float factor)
 {
+    log_info("[C-VIDEO-INIT] video_init starting with factor=%.2f", factor);
+
+    log_info("[C-VIDEO-INIT] step 1/5: calling detect_sleep_mode");
     detect_sleep_mode();
+    log_info("[C-VIDEO-INIT] step 1/5: detect_sleep_mode completed, sleep_mode_available=%d", sleep_mode_available);
 
     if (factor <= 0 || factor > 1) {
         factor = 1.0f;
     }
     quality_factor = factor;
 
+    log_info("[C-VIDEO-INIT] step 2/5: calling RK_MPI_SYS_Init - THIS MAY HANG ON SOME DEVICES");
     if (RK_MPI_SYS_Init() != RK_SUCCESS)
     {
-        log_error("RK_MPI_SYS_Init failed");
+        log_error("[C-VIDEO-INIT] RK_MPI_SYS_Init FAILED");
         return RK_FAILURE;
     }
+    log_info("[C-VIDEO-INIT] step 2/5: RK_MPI_SYS_Init completed successfully");
 
     if (sub_dev_fd < 0)
     {
+        log_info("[C-VIDEO-INIT] step 3/5: opening control sub device %s", SUB_DEV);
         sub_dev_fd = open(SUB_DEV, O_RDWR);
         if (sub_dev_fd < 0)
         {
-            log_error("failed to open control sub device %s: %s", SUB_DEV, strerror(errno));
+            log_error("[C-VIDEO-INIT] failed to open control sub device %s: %s", SUB_DEV, strerror(errno));
             return errno;
         }
-        log_info("opened control sub device %s", SUB_DEV);
+        log_info("[C-VIDEO-INIT] step 3/5: opened control sub device %s successfully, fd=%d", SUB_DEV, sub_dev_fd);
+    }
+    else
+    {
+        log_info("[C-VIDEO-INIT] step 3/5: control sub device already open, fd=%d", sub_dev_fd);
     }
 
+    log_info("[C-VIDEO-INIT] step 4/5: calling buf_init (memory pool creation)");
     int32_t ret = buf_init();
     if (ret != RK_SUCCESS)
     {
-        log_error("buf_init failed with error: %d", ret);
+        log_error("[C-VIDEO-INIT] buf_init FAILED with error: %d", ret);
         return ret;
     }
-    log_info("buf_init completed successfully");
+    log_info("[C-VIDEO-INIT] step 4/5: buf_init completed successfully");
 
+    log_info("[C-VIDEO-INIT] step 5/5: creating format detection thread");
     format_thread = malloc(sizeof(pthread_t));
     pthread_create(format_thread, NULL, run_detect_format, NULL);
+    log_info("[C-VIDEO-INIT] step 5/5: format detection thread created");
+
+    log_info("[C-VIDEO-INIT] video_init completed successfully");
     return RK_SUCCESS;
 }
 
@@ -790,17 +813,20 @@ void video_restart_streaming()
 
 void *run_detect_format(void *arg)
 {
+    log_info("[C-VIDEO-INIT] run_detect_format thread started");
     struct v4l2_event_subscription sub;
     struct v4l2_event ev;
     struct v4l2_dv_timings dv_timings;
 
     memset(&sub, 0, sizeof(sub));
     sub.type = V4L2_EVENT_SOURCE_CHANGE;
+    log_info("[C-VIDEO-INIT] run_detect_format: subscribing to V4L2 source change events");
     if (ioctl(sub_dev_fd, VIDIOC_SUBSCRIBE_EVENT, &sub) == -1)
     {
-        log_error("cannot subscribe to event");
+        log_error("[C-VIDEO-INIT] run_detect_format: cannot subscribe to event");
         goto exit;
     }
+    log_info("[C-VIDEO-INIT] run_detect_format: event subscription successful, entering main loop");
 
     while (!should_exit)
     {
