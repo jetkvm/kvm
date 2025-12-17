@@ -61,9 +61,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"mass_storage_base": massStorageBaseConfig,
 	"mass_storage_lun0": massStorageLun0Config,
 	// audio (UAC1 - USB Audio Class 1)
-	// NOTE: configPath is intentionally omitted when UVC might be enabled.
-	// Audio symlink is created manually in configureUsbGadget() to ensure correct
-	// endpoint allocation order (UVC must come before audio for isochronous endpoints).
+	// NOTE: configPath is intentionally omitted - symlink is created manually in
+	// configureUsbGadget() after UVC setup completes.
 	"audio": {
 		order:  4000,
 		device: "uac1.usb0",
@@ -73,18 +72,23 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 			// UAC1 terminology (from gadget's perspective):
 			// - Playback (p_*) = Gadget sends audio TO host = Host sees MICROPHONE
 			// - Capture (c_*) = Gadget receives audio FROM host = Host sees SPEAKER
+			//
+			// NOTE: Capture (c_chmask) is disabled because audio output from the managed PC
+			// is received via HDMI, not USB. This saves 2 endpoints (IN+OUT) which is critical
+			// for fitting all gadget functions within the RV1106 DWC3 endpoint limit.
 			"p_chmask":         "3",     // USB Microphone: stereo (Browser → WebRTC → JetKVM → USB → Managed PC)
 			"p_srate":          "48000", // 48kHz sample rate
 			"p_ssize":          "2",     // 16-bit samples (2 bytes)
 			"p_volume_present": "1",     // Enable volume control
-			"c_chmask":         "0",     // USB Speaker: disabled (saves isochronous endpoint)
-			"c_srate":          "48000", // 48kHz sample rate
-			"c_ssize":          "2",     // 16-bit samples (2 bytes)
-			"c_volume_present": "0",     // No volume control
+			"c_chmask":         "0",     // USB Speaker: DISABLED - audio comes via HDMI instead
+			"c_srate":          "48000", // 48kHz sample rate (unused when c_chmask=0)
+			"c_ssize":          "2",     // 16-bit samples (unused when c_chmask=0)
+			"c_volume_present": "0",     // Volume control disabled (unused when c_chmask=0)
 		},
 	},
 	// UVC (USB Video Class) - webcam passthrough
-	// Order 3500 = before audio (4000) to allocate isochronous endpoints first
+	// Order 3500 = before audio (4000). UVC uses bulk mode (streaming_bulk=1) to avoid
+	// isochronous endpoint conflicts, allowing UAC1 to use isochronous for full duplex audio.
 	// UVC requires complex directory setup - handled by SetupUVCFunction()
 	"uvc": uvcConfig,
 }
@@ -207,6 +211,16 @@ func (u *UsbGadget) Init() error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
+	// Debug: Log enabledDevices at init time
+	u.log.Info().
+		Bool("keyboard", u.enabledDevices.Keyboard).
+		Bool("abs_mouse", u.enabledDevices.AbsoluteMouse).
+		Bool("rel_mouse", u.enabledDevices.RelativeMouse).
+		Bool("mass_storage", u.enabledDevices.MassStorage).
+		Bool("audio", u.enabledDevices.Audio).
+		Bool("uvc", u.enabledDevices.UVC).
+		Msg("UsbGadget.Init: enabledDevices at startup")
+
 	u.loadGadgetConfig()
 
 	udcs := getUdcs()
@@ -279,23 +293,39 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 		return err
 	}
 
-	// Setup UVC and/or Audio symlinks
-	// Both use isochronous endpoints, and UVC MUST be symlinked BEFORE audio
-	// because the dwc3 controller has limited isochronous endpoints.
-	// If audio is symlinked first, UVC will fail with "Unable to allocate streaming EP"
+	// Setup Audio and UVC symlinks
+	// CRITICAL: Per Rockchip documentation, Audio (UAC) symlink MUST be created BEFORE UVC
+	// for composite devices to enumerate correctly. The symlink order determines descriptor
+	// order in the USB configuration, and incorrect order causes Windows driver failures.
+	// Reference: Rockchip_Trouble_Shooting_Linux4.19_USB_Gadget_UVC_CN.md
 	u.log.Info().
 		Bool("uvc", u.enabledDevices.UVC).
 		Bool("audio", u.enabledDevices.Audio).
 		Bool("keyboard", u.enabledDevices.Keyboard).
 		Bool("mass_storage", u.enabledDevices.MassStorage).
 		Msg("configureUsbGadget: enabledDevices state")
+
+	// Create Audio symlink FIRST (before UVC)
+	// Audio symlink is created manually (configPath omitted in gadgetConfigItem)
+	if u.enabledDevices.Audio {
+		audioConfigPath := joinPath(u.configC1Path, []string{"uac1.usb0"})
+		audioFuncPath := joinPath(u.kvmGadgetPath, []string{"functions", "uac1.usb0"})
+		if err := createConfigFSSymlink(audioFuncPath, audioConfigPath); err != nil {
+			u.log.Warn().Err(err).Msg("failed to create audio config symlink")
+		}
+	}
+
+	// Setup UVC function and create symlink AFTER Audio
+	// UVC uses bulk mode (streaming_bulk=1) to avoid isochronous endpoint conflicts with UAC1
+	// Only advertise 1080p30 - must match browser camera capture resolution exactly
+	// The host cannot select other resolutions since browser always sends 1080p
 	uvcSetupOK := false
 	if u.enabledDevices.UVC {
-		if err := u.SetupUVCFunction([]UVCFormat{UVCFormat720p30, UVCFormat1080p30}); err != nil {
+		if err := u.SetupUVCFunction([]UVCFormat{UVCFormat1080p30}); err != nil {
 			u.log.Warn().Err(err).Msg("failed to setup UVC function")
 			// Continue without UVC - don't fail the entire gadget
 		} else {
-			// Create UVC symlink first (needs isochronous endpoints before audio)
+			// Create UVC symlink
 			uvcConfigPath := joinPath(u.configC1Path, []string{"uvc.usb0"})
 			uvcFuncPath := joinPath(u.kvmGadgetPath, []string{"functions", "uvc.usb0"})
 			if err := createConfigFSSymlink(uvcFuncPath, uvcConfigPath); err != nil {
@@ -303,16 +333,6 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 			} else {
 				uvcSetupOK = true
 			}
-		}
-	}
-
-	// Create audio symlink (after UVC if both are enabled)
-	// Audio symlink is created manually to ensure correct endpoint allocation order
-	if u.enabledDevices.Audio {
-		audioConfigPath := joinPath(u.configC1Path, []string{"uac1.usb0"})
-		audioFuncPath := joinPath(u.kvmGadgetPath, []string{"functions", "uac1.usb0"})
-		if err := createConfigFSSymlink(audioFuncPath, audioConfigPath); err != nil {
-			u.log.Warn().Err(err).Msg("failed to create audio config symlink")
 		}
 	}
 

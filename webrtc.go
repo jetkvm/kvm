@@ -12,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
+	"github.com/jetkvm/kvm/internal/crypto"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -214,6 +215,10 @@ func newSession(config SessionConfig) (*Session, error) {
 	}
 	iceServer := webrtc.ICEServer{}
 
+	// Use hardware-accelerated cipher suites for DTLS if available
+	// This offloads AES-GCM encryption/decryption to the RV1106 crypto engine
+	webrtcSettingEngine.SetDTLSCustomerCipherSuites(crypto.HardwareCipherSuites)
+
 	var scopedLogger *zerolog.Logger
 	if config.Logger != nil {
 		l := config.Logger.With().Str("component", "webrtc").Logger()
@@ -298,6 +303,8 @@ func newSession(config SessionConfig) (*Session, error) {
 			handleTerminalChannel(d)
 		case "serial":
 			handleSerialChannel(d)
+		case "camera":
+			handleCameraChannel(d)
 		default:
 			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
 				go handleUploadChannel(d)
@@ -348,19 +355,25 @@ func newSession(config SessionConfig) (*Session, error) {
 			setAudioTrack(session.AudioTrack)
 
 			peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+				codec := track.Codec()
 				scopedLogger.Info().
-					Str("codec", track.Codec().MimeType).
+					Str("codec", codec.MimeType).
 					Str("track_id", track.ID()).
-					Msg("Received incoming audio track from browser")
+					Str("kind", track.Kind().String()).
+					Msg("Received incoming track from browser")
 
-				// Store track for connection when audio starts
-				// OnTrack fires during SDP exchange, before ICE connection completes
-				setPendingInputTrack(track)
+				switch track.Kind() {
+				case webrtc.RTPCodecTypeAudio:
+					// Store audio track for connection when audio starts
+					// OnTrack fires during SDP exchange, before ICE connection completes
+					setPendingInputTrack(track)
+				}
 			})
 
 			scopedLogger.Info().Msg("Audio tracks configured successfully")
 		}
 	}
+
 
 	var isConnected bool
 

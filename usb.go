@@ -11,6 +11,20 @@ var gadget *usbgadget.UsbGadget
 
 // call it only after the config is loaded.
 func initUsbGadget() {
+	// Debug: Log config.UsbDevices before creating gadget
+	if config.UsbDevices != nil {
+		usbLogger.Info().
+			Bool("keyboard", config.UsbDevices.Keyboard).
+			Bool("abs_mouse", config.UsbDevices.AbsoluteMouse).
+			Bool("rel_mouse", config.UsbDevices.RelativeMouse).
+			Bool("mass_storage", config.UsbDevices.MassStorage).
+			Bool("audio", config.UsbDevices.Audio).
+			Bool("uvc", config.UsbDevices.UVC).
+			Msg("initUsbGadget: config.UsbDevices values")
+	} else {
+		usbLogger.Warn().Msg("initUsbGadget: config.UsbDevices is nil!")
+	}
+
 	gadget = usbgadget.NewUsbGadget(
 		"jetkvm",
 		config.UsbDevices,
@@ -46,6 +60,9 @@ func initUsbGadget() {
 	if err := gadget.OpenKeyboardHidFile(); err != nil {
 		usbLogger.Error().Err(err).Msg("failed to open keyboard hid file")
 	}
+
+	// Initialize camera manager after gadget is ready
+	initCameraManager()
 }
 
 func rpcKeyboardReport(modifier byte, keys []byte) error {

@@ -14,7 +14,9 @@ set -ex
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update && \
 sudo apt-get install -y --no-install-recommends \
+  git \
   iputils-ping \
+  openssh-client \
   build-essential \
   device-tree-compiler \
   gperf g++-multilib gcc-multilib \

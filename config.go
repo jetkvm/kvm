@@ -265,10 +265,27 @@ func LoadConfig() {
 
 	// load and merge the default config with the user config
 	loadedConfig := defaultConfig
+
+	// Debug: Log before JSON decode
+	if loadedConfig.UsbDevices != nil {
+		logger.Info().
+			Bool("audio_before", loadedConfig.UsbDevices.Audio).
+			Bool("uvc_before", loadedConfig.UsbDevices.UVC).
+			Msg("LoadConfig: UsbDevices BEFORE json decode")
+	}
+
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
 		logger.Warn().Err(err).Msg("config file JSON parsing failed")
 		configSuccess.Set(0.0)
 		return
+	}
+
+	// Debug: Log after JSON decode
+	if loadedConfig.UsbDevices != nil {
+		logger.Info().
+			Bool("audio_after", loadedConfig.UsbDevices.Audio).
+			Bool("uvc_after", loadedConfig.UsbDevices.UVC).
+			Msg("LoadConfig: UsbDevices AFTER json decode")
 	}
 
 	// merge the user config with the default config

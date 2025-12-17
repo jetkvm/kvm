@@ -92,6 +92,11 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		nativeInstance.DoNotUseThisIsForCrashTestingOnly()
 	}
 
+	// Set native controller on camera manager for MJPEG encoder control
+	if cameraManager != nil {
+		cameraManager.SetNativeController(nativeInstance)
+	}
+
 	// Initialize UVC streaming if enabled
 	initUVC()
 }

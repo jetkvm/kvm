@@ -180,6 +180,36 @@ func (n *Native) MjpegGetEnabled() bool {
 	return mjpegGetEnabled()
 }
 
+// MjpegSetFrameDivisor sets the frame rate divisor for MJPEG encoding
+// divisor=1 means full fps, divisor=2 means half fps (30fps from 60fps input), etc.
+func (n *Native) MjpegSetFrameDivisor(divisor int) {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+	mjpegSetFrameDivisor(divisor)
+}
+
+// MjpegGetFrameDivisor returns the current frame rate divisor
+func (n *Native) MjpegGetFrameDivisor() int {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+	return mjpegGetFrameDivisor()
+}
+
+// MjpegSetQuality sets the MJPEG encoding quality (0.1 to 1.0)
+// Higher values mean better quality but larger file sizes
+func (n *Native) MjpegSetQuality(quality float32) {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+	mjpegSetQuality(quality)
+}
+
+// MjpegGetQuality returns the current MJPEG encoding quality
+func (n *Native) MjpegGetQuality() float32 {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+	return mjpegGetQuality()
+}
+
 // SetMjpegFrameCallback sets the callback for MJPEG frames (for UVC streaming)
 func (n *Native) SetMjpegFrameCallback(callback func(frame []byte)) {
 	n.extraLock.Lock()

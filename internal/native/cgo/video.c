@@ -45,6 +45,11 @@ bool sleep_mode_available = false;
 bool should_exit = false;
 float quality_factor = 1.0f;
 
+// MJPEG frame rate control (defined in ctrl.c)
+extern int mjpeg_frame_divisor;
+extern float mjpeg_quality;
+static int mjpeg_frame_counter = 0;
+
 static void *venc_read_stream(void *arg);
 
 RK_U64 get_us()
@@ -223,10 +228,9 @@ static void *mjpeg_venc_read_stream(void *arg)
         s32Ret = RK_MPI_VENC_GetStream(MJPEG_VENC_CHANNEL, &stFrame, 200); // blocks max 200ms
         if (s32Ret == RK_SUCCESS)
         {
-            RK_U64 nowUs = get_us();
-            log_info("MJPEG frame received: seq=%d size=%u delay=%lldus",
-                   stFrame.u32Seq, stFrame.pstPack->u32Len,
-                   nowUs - stFrame.pstPack->u64PTS);
+            // Use trace level to avoid overhead at 60fps
+            log_trace("MJPEG frame: seq=%d size=%u",
+                   stFrame.u32Seq, stFrame.pstPack->u32Len);
             pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
             video_send_mjpeg_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
             s32Ret = RK_MPI_VENC_ReleaseStream(MJPEG_VENC_CHANNEL, &stFrame);
@@ -255,9 +259,22 @@ static void populate_mjpeg_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 width, RK_U
 {
     memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
 
-    // MJPEG doesn't use rate control like H.264, just quality
+    // Calculate effective framerate based on divisor
+    int effective_fps = 60 / (mjpeg_frame_divisor > 0 ? mjpeg_frame_divisor : 1);
+    if (effective_fps < 10) effective_fps = 10;
+    if (effective_fps > 60) effective_fps = 60;
+
+    // MJPEG uses CBR mode with quality-adjusted bitrate
+    // Base: width * height * fps / compression_ratio
+    // Quality scales compression: 1.0 = ~10:1, 0.5 = ~20:1, 0.1 = ~100:1
+    float compression = 10.0f / mjpeg_quality; // Higher quality = lower compression ratio
+    RK_U32 bitrate = (RK_U32)(width * height * effective_fps / compression);
+
     stAttr->stRcAttr.enRcMode = VENC_RC_MODE_MJPEGCBR;
-    stAttr->stRcAttr.stMjpegCbr.u32BitRate = width * height * 30 / 10; // Estimate for 30fps at ~10:1 compression
+    stAttr->stRcAttr.stMjpegCbr.u32BitRate = bitrate;
+
+    log_info("MJPEG encoder config: %dx%d @ %dfps, quality=%.1f%%, bitrate=%u bps",
+             width, height, effective_fps, mjpeg_quality * 100.0f, bitrate);
 
     stAttr->stVencAttr.enType = RK_VIDEO_ID_MJPEG;
     stAttr->stVencAttr.enPixelFormat = RK_FMT_YUV422_YUYV;
@@ -794,12 +811,19 @@ void *run_video_stream(void *arg)
             }
 
             // Send frame to MJPEG encoder for UVC if enabled
+            // Frame rate limiting: only send every Nth frame to reduce CPU/USB load
+            // H.264 (WebRTC) continues at full rate, only MJPEG (UVC) is limited
             if (mjpeg_venc_running)
             {
-                int mjpeg_ret = RK_MPI_VENC_SendFrame(MJPEG_VENC_CHANNEL, &stFrame, 100);
-                if (mjpeg_ret != RK_SUCCESS)
+                mjpeg_frame_counter++;
+                // Skip frames based on divisor (1 = no skip, 2 = half rate, etc.)
+                if (mjpeg_frame_divisor <= 1 || mjpeg_frame_counter % mjpeg_frame_divisor == 0)
                 {
-                    log_warn("MJPEG RK_MPI_VENC_SendFrame failed: %x", mjpeg_ret);
+                    int mjpeg_ret = RK_MPI_VENC_SendFrame(MJPEG_VENC_CHANNEL, &stFrame, 100);
+                    if (mjpeg_ret != RK_SUCCESS)
+                    {
+                        log_warn("MJPEG RK_MPI_VENC_SendFrame failed: %x", mjpeg_ret);
+                    }
                 }
             }
 

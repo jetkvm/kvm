@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
+	"github.com/jetkvm/kvm/internal/camera"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -1039,6 +1040,28 @@ func rpcSetAudioInputAutoEnable(enabled bool) error {
 	return SaveConfig()
 }
 
+func rpcGetCameraEnabled() (bool, error) {
+	return isCameraEnabled(), nil
+}
+
+func rpcSetCameraEnabled(enabled bool) error {
+	setCameraEnabled(enabled)
+	return nil
+}
+
+func rpcGetUVCSource() (string, error) {
+	return string(getUVCSource()), nil
+}
+
+func rpcSetUVCSource(source string) error {
+	src, err := camera.ParseSource(source)
+	if err != nil {
+		return err
+	}
+	setUVCSource(src)
+	return nil
+}
+
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 	currentCloudURL := config.CloudURL
 	config.CloudURL = apiUrl
@@ -1377,6 +1400,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"restartAudioOutput":      {Func: rpcRestartAudioOutput},
 	"getAudioInputAutoEnable": {Func: rpcGetAudioInputAutoEnable},
 	"setAudioInputAutoEnable": {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},
+	"getCameraEnabled":        {Func: rpcGetCameraEnabled},
+	"setCameraEnabled":        {Func: rpcSetCameraEnabled, Params: []string{"enabled"}},
+	"getUVCSource":            {Func: rpcGetUVCSource},
+	"setUVCSource":            {Func: rpcSetUVCSource, Params: []string{"source"}},
 	"setCloudUrl":             {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getKeyboardLayout":       {Func: rpcGetKeyboardLayout},
 	"setKeyboardLayout":       {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},

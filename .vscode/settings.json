@@ -24,5 +24,6 @@
       ],
       "url": "./internal/ota/testdata/ota.schema.json"
     }
-  ]
+  ],
+  "makefile.configureOnOpen": false
 }

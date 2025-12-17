@@ -440,3 +440,31 @@ func mjpegGetEnabled() bool {
 
 	return bool(C.jetkvm_mjpeg_get_enabled())
 }
+
+func mjpegSetFrameDivisor(divisor int) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	C.jetkvm_mjpeg_set_frame_divisor(C.int(divisor))
+}
+
+func mjpegGetFrameDivisor() int {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return int(C.jetkvm_mjpeg_get_frame_divisor())
+}
+
+func mjpegSetQuality(quality float32) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	C.jetkvm_mjpeg_set_quality(C.float(quality))
+}
+
+func mjpegGetQuality() float32 {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return float32(C.jetkvm_mjpeg_get_quality())
+}

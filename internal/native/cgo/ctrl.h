@@ -76,6 +76,14 @@ int video_send_mjpeg_frame(const uint8_t *frame, ssize_t len);
 void jetkvm_mjpeg_set_enabled(bool enabled);
 bool jetkvm_mjpeg_get_enabled();
 
+// MJPEG frame rate and quality control
+// frame_divisor: 1 = full fps, 2 = half fps, 3 = third fps, etc.
+void jetkvm_mjpeg_set_frame_divisor(int divisor);
+int jetkvm_mjpeg_get_frame_divisor();
+// quality: 0.1 to 1.0 (1.0 = highest quality, larger files)
+void jetkvm_mjpeg_set_quality(float quality);
+float jetkvm_mjpeg_get_quality();
+
 
 
 #endif //VIDEO_DAEMON_CTRL_H

@@ -143,6 +143,9 @@ export interface RTCState {
   audioTransceiver: RTCRtpTransceiver | null;
   setAudioTransceiver: (transceiver: RTCRtpTransceiver) => void;
 
+  cameraChannel: RTCDataChannel | null;
+  setCameraChannel: (channel: RTCDataChannel | null) => void;
+
   mediaStream: MediaStream | null;
   setMediaStream: (stream: MediaStream) => void;
 
@@ -204,6 +207,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   audioTransceiver: null,
   setAudioTransceiver: (transceiver: RTCRtpTransceiver) => set({ audioTransceiver: transceiver }),
+
+  cameraChannel: null,
+  setCameraChannel: (channel: RTCDataChannel | null) => set({ cameraChannel: channel }),
 
   peerConnectionState: null,
   setPeerConnectionState: state => set({ peerConnectionState: state }),
@@ -409,6 +415,11 @@ export interface SettingsState {
   setAudioPacketLossPerc: (value: number) => void;
 
   resetMicrophoneState: () => void;
+
+  // Camera passthrough settings
+  cameraEnabled: boolean;
+  setCameraEnabled: (enabled: boolean) => void;
+  resetCameraState: () => void;
 }
 
 export const useSettingsStore = create(
@@ -482,6 +493,11 @@ export const useSettingsStore = create(
       setAudioPacketLossPerc: (value: number) => set({ audioPacketLossPerc: value }),
 
       resetMicrophoneState: () => set({ microphoneEnabled: false }),
+
+      // Camera passthrough
+      cameraEnabled: false,
+      setCameraEnabled: (enabled: boolean) => set({ cameraEnabled: enabled }),
+      resetCameraState: () => set({ cameraEnabled: false }),
     }),
     {
       name: "settings",

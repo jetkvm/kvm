@@ -21,7 +21,11 @@ var keyboardConfig = gadgetConfigItem{
 		"protocol":        "1",
 		"subclass":        "1",
 		"report_length":   "8",
-		"no_out_endpoint": "0",
+		// NOTE: no_out_endpoint=1 saves 1 USB endpoint at the cost of no LED feedback from host.
+		// This is required to fit all functions (HID, Mass Storage, Audio, UVC) within the
+		// RV1106 DWC3 controller's 8 endpoint limit. Without this, UVC cannot allocate its
+		// streaming endpoint. LED state (Caps Lock, Num Lock, etc.) won't be tracked.
+		"no_out_endpoint": "1",
 	},
 	reportDesc: keyboardReportDesc,
 }
