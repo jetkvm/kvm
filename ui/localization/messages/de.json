@@ -914,6 +914,7 @@
     "wake_on_lan_add_device_save_device": "Gerät speichern",
     "wake_on_lan_description": "Senden Sie ein Magic Packet, um ein Remote-Gerät zu wecken.",
     "wake_on_lan_device_list_add_new_device": "Neues Gerät hinzufügen",
+    "wake_on_lan_device_list_confirm_delete_message": "Möchten Sie dieses Gerät wirklich löschen? {name}",
     "wake_on_lan_device_list_delete_device": "Gerät löschen",
     "wake_on_lan_device_list_wake": "Aufwachen",
     "wake_on_lan_empty_add_device_to_start": "Fügen Sie ein Gerät hinzu, um Wake-on-LAN zu verwenden",

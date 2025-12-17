@@ -11,6 +11,7 @@ import {
 import "./index.css";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
+import { initTestHooks } from "@/test/testHooks";
 import { CLOUD_API, CLOUD_ENABLE_VERSIONED_UI, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import Root from "@/root";
@@ -44,16 +45,25 @@ const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.ha
 const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
 const SettingsAppearanceRoute = lazy(() => import("@routes/devices.$id.settings.appearance"));
 const SettingsGeneralIndexRoute = lazy(() => import("@routes/devices.$id.settings.general._index"));
-const SettingsGeneralRebootRoute = lazy(() => import("@routes/devices.$id.settings.general.reboot"));
-const SettingsGeneralUpdateRoute = lazy(() => import("@routes/devices.$id.settings.general.update"));
+const SettingsGeneralRebootRoute = lazy(
+  () => import("@routes/devices.$id.settings.general.reboot"),
+);
+const SettingsGeneralUpdateRoute = lazy(
+  () => import("@routes/devices.$id.settings.general.update"),
+);
 const SettingsNetworkRoute = lazy(() => import("@routes/devices.$id.settings.network"));
-const SecurityAccessLocalAuthRoute = lazy(() => import("@routes/devices.$id.settings.access.local-auth"));
+const SecurityAccessLocalAuthRoute = lazy(
+  () => import("@routes/devices.$id.settings.access.local-auth"),
+);
 const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
 const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
 const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
+
+// Initialize E2E test hooks (safe to call in all environments)
+initTestHooks();
 
 export async function checkCloudAuth() {
   const res = await fetch(`${CLOUD_API}/me`, {
@@ -276,7 +286,7 @@ if (isOnDevice) {
             {
               path: "devices",
               element: <DevicesRoute />,
-              loader: DevicesRoute.loader
+              loader: DevicesRoute.loader,
             },
           ],
         },
@@ -290,7 +300,7 @@ if (isOnDevice) {
       path: "v/:version/*",
       element: <Root />,
       loader: async ({ params }) => {
-        throw redirect(`/${params['*']}`);
+        throw redirect(`/${params["*"]}`);
       },
     });
   }

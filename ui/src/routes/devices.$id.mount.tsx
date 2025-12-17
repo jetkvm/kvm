@@ -44,13 +44,8 @@ export default function MountRoute() {
 }
 
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
-  const {
-    modalView,
-    setModalView,
-    setRemoteVirtualMediaState,
-    errorMessage,
-    setErrorMessage,
-  } = useMountMediaStore();
+  const { modalView, setModalView, setRemoteVirtualMediaState, errorMessage, setErrorMessage } =
+    useMountMediaStore();
   const navigate = useNavigate();
 
   const [incompleteFileName, setIncompleteFileName] = useState<string | null>(null);
@@ -66,9 +61,7 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         if ("error" in resp) {
           reject(new Error(resp.error.message));
         } else {
-          setRemoteVirtualMediaState(
-            resp as unknown as MountMediaState["remoteVirtualMediaState"],
-          );
+          setRemoteVirtualMediaState(resp as unknown as MountMediaState["remoteVirtualMediaState"]);
           resolve(null);
         }
       });
@@ -133,10 +126,7 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         className={cx("mx-auto max-w-4xl px-4 transition-all duration-300 ease-in-out", {
           "max-w-4xl": modalView === "mode",
           "max-w-2xl": modalView === "device",
-          "max-w-xl":
-            modalView === "url" ||
-            modalView === "upload" ||
-            modalView === "error",
+          "max-w-xl": modalView === "url" || modalView === "upload" || modalView === "error",
         })}
       >
         <GridCard cardClassName="relative w-full text-left pointer-events-auto">
@@ -294,9 +284,7 @@ function ModeSelectionView({
             >
               <div
                 className="relative z-50 flex flex-col items-start p-4 select-none"
-                onClick={() =>
-                  disabled ? null : setSelectedMode(mode as "url" | "device")
-                }
+                onClick={() => (disabled ? null : setSelectedMode(mode as "url" | "device"))}
               >
                 <div>
                   <Card>
@@ -306,14 +294,10 @@ function ModeSelectionView({
                   </Card>
                 </div>
                 <div className="mt-2 space-y-0">
-                  <p className="block pt-1 text-xs text-red-500">
-                    {tag ? tag : <>&nbsp;</>}
-                  </p>
+                  <p className="block pt-1 text-xs text-red-500">{tag ? tag : <>&nbsp;</>}</p>
 
                   <h3 className="text-sm font-medium dark:text-white">{label}</h3>
-                  <p className="text-sm text-gray-700 dark:text-slate-400">
-                    {description}
-                  </p>
+                  <p className="text-sm text-gray-700 dark:text-slate-400">{description}</p>
                 </div>
                 <input
                   type="radio"
@@ -427,10 +411,7 @@ function UrlView({
 
   return (
     <div className="w-full space-y-4">
-      <ViewHeader
-        title={m.mount_view_url_title()}
-        description={m.mount_view_url_description()}
-      />
+      <ViewHeader title={m.mount_view_url_title()} description={m.mount_view_url_description()} />
 
       <div
         className="animate-fadeIn opacity-0"
@@ -465,9 +446,7 @@ function UrlView({
             loading={mountInProgress}
             text={m.mount_button_mount_url()}
             onClick={() => onMount(url, usbMode)}
-            disabled={
-              mountInProgress || !isUrlValid || url.length === 0
-            }
+            disabled={mountInProgress || !isUrlValid || url.length === 0}
           />
         </div>
       </div>
@@ -553,10 +532,9 @@ function DeviceFileView({
   const percentageUsed = useMemo(() => {
     if (!storageSpace) return 0;
     return Number(
-      (
-        (storageSpace.bytesUsed / (storageSpace.bytesUsed + storageSpace.bytesFree)) *
-        100
-      ).toFixed(1),
+      ((storageSpace.bytesUsed / (storageSpace.bytesUsed + storageSpace.bytesFree)) * 100).toFixed(
+        1,
+      ),
     );
   }, [storageSpace]);
 
@@ -692,9 +670,7 @@ function DeviceFileView({
                   onDelete={() => {
                     const selectedFile = onStorageFiles.find(f => f.name === file.name);
                     if (!selectedFile) return;
-                    if (
-                      window.confirm(m.mount_confirm_delete({ name: selectedFile.name }))
-                    ) {
+                    if (window.confirm(m.mount_confirm_delete({ name: selectedFile.name }))) {
                       handleDeleteFile(selectedFile);
                     }
                   }}
@@ -709,7 +685,7 @@ function DeviceFileView({
                     {m.mount_button_showing_results({
                       from: indexOfFirstFile + 1,
                       to: Math.min(indexOfLastFile, onStorageFiles.length),
-                      total: onStorageFiles.length
+                      total: onStorageFiles.length,
                     })}
                   </p>
                   <div className="flex items-center gap-x-2">
@@ -845,9 +821,7 @@ function UploadFileView({
   onCancelUpload: () => void;
   incompleteFileName?: string;
 }) {
-  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success">(
-    "idle",
-  );
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success">("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploadedFileSize, setUploadedFileSize] = useState<number | null>(null);
@@ -872,14 +846,8 @@ function UploadFileView({
     };
   }, []);
 
-  function handleWebRTCUpload(
-    file: File,
-    alreadyUploadedBytes: number,
-    dataChannel: string,
-  ) {
-    const rtcDataChannel = useRTCStore
-      .getState()
-      .peerConnection?.createDataChannel(dataChannel);
+  function handleWebRTCUpload(file: File, alreadyUploadedBytes: number, dataChannel: string) {
+    const rtcDataChannel = useRTCStore.getState().peerConnection?.createDataChannel(dataChannel);
 
     if (!rtcDataChannel) {
       console.error("Failed to create data channel for file upload");
@@ -921,8 +889,7 @@ function UploadFileView({
           }
 
           // Calculate average speed
-          const averageSpeed =
-            speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length;
+          const averageSpeed = speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length;
 
           setUploadSpeed(averageSpeed);
           setUploadProgress((AlreadyUploadedBytes / Size) * 100);
@@ -979,11 +946,7 @@ function UploadFileView({
     };
   }
 
-  async function handleHttpUpload(
-    file: File,
-    alreadyUploadedBytes: number,
-    dataChannel: string,
-  ) {
+  async function handleHttpUpload(file: File, alreadyUploadedBytes: number, dataChannel: string) {
     const uploadUrl = `${DEVICE_API}/storage/upload?uploadId=${dataChannel}`;
 
     const xhr = new XMLHttpRequest();
@@ -1012,8 +975,7 @@ function UploadFileView({
           }
 
           // Calculate average speed
-          const averageSpeed =
-            speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length;
+          const averageSpeed = speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length;
 
           setUploadSpeed(averageSpeed);
           setUploadProgress((totalUploaded / totalSize) * 100);
@@ -1053,10 +1015,7 @@ function UploadFileView({
       // Reset the upload error when a new file is selected
       setUploadError(null);
 
-      if (
-        incompleteFileName &&
-        file.name !== incompleteFileName.replace(".incomplete", "")
-      ) {
+      if (incompleteFileName && file.name !== incompleteFileName.replace(".incomplete", "")) {
         setFileError(
           m.mount_please_select_file({ name: incompleteFileName.replace(".incomplete", "") }),
         );
@@ -1070,31 +1029,35 @@ function UploadFileView({
       setUploadState("uploading");
       console.log("Upload state set to 'uploading'");
 
-      send("startStorageFileUpload", { filename: file.name, size: file.size }, (resp: JsonRpcResponse) => {
-        console.log("startStorageFileUpload response:", resp);
-        if ("error" in resp) {
-          console.error("Upload error:", resp.error.message);
-          setUploadError(resp.error.data || resp.error.message);
-          setUploadState("idle");
-          console.log("Upload state set to 'idle'");
-          return;
-        }
+      send(
+        "startStorageFileUpload",
+        { filename: file.name, size: file.size },
+        (resp: JsonRpcResponse) => {
+          console.log("startStorageFileUpload response:", resp);
+          if ("error" in resp) {
+            console.error("Upload error:", resp.error.message);
+            setUploadError(resp.error.data || resp.error.message);
+            setUploadState("idle");
+            console.log("Upload state set to 'idle'");
+            return;
+          }
 
-        const { alreadyUploadedBytes, dataChannel } = resp.result as {
-          alreadyUploadedBytes: number;
-          dataChannel: string;
-        };
+          const { alreadyUploadedBytes, dataChannel } = resp.result as {
+            alreadyUploadedBytes: number;
+            dataChannel: string;
+          };
 
-        console.log(
-          `Already uploaded bytes: ${alreadyUploadedBytes}, Data channel: ${dataChannel}`,
-        );
+          console.log(
+            `Already uploaded bytes: ${alreadyUploadedBytes}, Data channel: ${dataChannel}`,
+          );
 
-        if (isOnDevice) {
-          handleHttpUpload(file, alreadyUploadedBytes, dataChannel);
-        } else {
-          handleWebRTCUpload(file, alreadyUploadedBytes, dataChannel);
-        }
-      });
+          if (isOnDevice) {
+            handleHttpUpload(file, alreadyUploadedBytes, dataChannel);
+          } else {
+            handleWebRTCUpload(file, alreadyUploadedBytes, dataChannel);
+          }
+        },
+      );
     }
   };
 
@@ -1104,7 +1067,9 @@ function UploadFileView({
         title={m.mount_upload_title()}
         description={
           incompleteFileName
-            ? m.mount_continue_uploading_with_name({ name: incompleteFileName.replace(".incomplete", "") })
+            ? m.mount_continue_uploading_with_name({
+                name: incompleteFileName.replace(".incomplete", ""),
+              })
             : m.mount_upload_description()
         }
       />
@@ -1142,7 +1107,9 @@ function UploadFileView({
                       </div>
                       <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
                         {incompleteFileName
-                          ? m.mount_click_to_select_incomplete({ name: incompleteFileName.replace(".incomplete", "") })
+                          ? m.mount_click_to_select_incomplete({
+                              name: incompleteFileName.replace(".incomplete", ""),
+                            })
                           : m.mount_click_to_select_file()}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
@@ -1161,7 +1128,9 @@ function UploadFileView({
                         </Card>
                       </div>
                       <h3 className="leading-non text-lg font-semibold text-black dark:text-white">
-                        {m.mount_uploading_with_name({ name: formatters.truncateMiddle(uploadedFileName, 30) })}
+                        {m.mount_uploading_with_name({
+                          name: formatters.truncateMiddle(uploadedFileName, 30),
+                        })}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
                         {formatters.bytes(uploadedFileSize || 0)}
@@ -1198,7 +1167,9 @@ function UploadFileView({
                         {m.mount_upload_successful()}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                        {m.mount_uploaded_has_been_uploaded({ name: formatters.truncateMiddle(uploadedFileName, 40) })}
+                        {m.mount_uploaded_has_been_uploaded({
+                          name: formatters.truncateMiddle(uploadedFileName, 40),
+                        })}
                       </p>
                     </div>
                   )}
@@ -1214,15 +1185,13 @@ function UploadFileView({
           className="hidden"
           accept=".iso, .img"
         />
-        {fileError && (
-          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{fileError}</p>
-        )}
+        {fileError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{fileError}</p>}
       </div>
 
       {/* Display upload error if present */}
       {uploadError && (
         <div
-          className="mt-2 animate-fadeIn truncate text-sm text-red-600 dark:text-red-400 opacity-0"
+          className="mt-2 animate-fadeIn truncate text-sm text-red-600 opacity-0 dark:text-red-400"
           style={{ animationDuration: "0.7s" }}
         >
           {m.mount_upload_error({ error: String(uploadError) })}
@@ -1547,9 +1516,7 @@ function ErrorView({
           <ExclamationTriangleIcon className="h-6 w-6" />
           <h2 className="text-lg leading-tight font-bold">{m.mount_error_title()}</h2>
         </div>
-        <p className="text-sm leading-snug text-slate-600">
-          {m.mount_error_description()}
-        </p>
+        <p className="text-sm leading-snug text-slate-600">{m.mount_error_description()}</p>
       </div>
       {errorMessage && (
         <Card className="border border-red-200 bg-red-50 p-4">
@@ -1558,7 +1525,12 @@ function ErrorView({
       )}
       <div className="flex justify-end space-x-2">
         <Button size="SM" theme="light" text={m.close()} onClick={onClose} />
-        <Button size="SM" theme="primary" text={m.mount_button_back_to_overview()} onClick={onRetry} />
+        <Button
+          size="SM"
+          theme="primary"
+          text={m.mount_button_back_to_overview()}
+          onClick={onRetry}
+        />
       </div>
     </div>
   );
@@ -1663,12 +1635,8 @@ function PreUploadedImageItem({
 function ViewHeader({ title, description }: { title: string; description: string }) {
   return (
     <div className="space-y-0">
-      <h2 className="text-lg leading-tight font-bold text-black dark:text-white">
-        {title}
-      </h2>
-      <div className="text-sm leading-snug text-slate-600 dark:text-slate-400">
-        {description}
-      </div>
+      <h2 className="text-lg leading-tight font-bold text-black dark:text-white">{title}</h2>
+      <div className="text-sm leading-snug text-slate-600 dark:text-slate-400">{description}</div>
     </div>
   );
 }

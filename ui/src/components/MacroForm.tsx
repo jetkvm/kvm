@@ -8,11 +8,7 @@ import FieldLabel from "@components/FieldLabel";
 import Fieldset from "@components/Fieldset";
 import { InputFieldWithLabel, FieldError } from "@components/InputField";
 import { MacroStepCard } from "@components/MacroStepCard";
-import {
-  DEFAULT_DELAY,
-  MAX_STEPS_PER_MACRO,
-  MAX_KEYS_PER_STEP,
-} from "@/constants/macros";
+import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
 import { m } from "@localizations/messages.js";
 
 interface ValidationErrors {
@@ -61,8 +57,8 @@ export function MacroForm({
       newErrors.name = m.macro_name_too_long();
     }
 
-    const steps = (macro.steps || []);
-  
+    const steps = macro.steps || [];
+
     if (steps.length) {
       const hasKeyOrModifier = steps.some(
         step => step.keys.length > 0 || step.modifiers.length > 0,
@@ -91,7 +87,9 @@ export function MacroForm({
       await onSubmit(macro);
     } catch (error) {
       if (error instanceof Error) {
-        showTemporaryError(m.macro_save_failed_error({error: error.message || m.unknown_error()}));
+        showTemporaryError(
+          m.macro_save_failed_error({ error: error.message || m.unknown_error() }),
+        );
       } else {
         showTemporaryError(m.macro_save_failed());
       }
@@ -196,13 +194,13 @@ export function MacroForm({
       <div>
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-1">
-            <FieldLabel
-              label={m.macro_steps_label()}
-              description={m.macro_steps_description()}
-            />
+            <FieldLabel label={m.macro_steps_label()} description={m.macro_steps_description()} />
           </div>
           <span className="text-slate-500 dark:text-slate-400">
-            {m.macro_step_count({ steps: macro.steps?.length || 0, max: MAX_STEPS_PER_MACRO })}
+            {m.macro_step_count({
+              steps: macro.steps?.length || 0,
+              max: MAX_STEPS_PER_MACRO,
+            })}
           </span>
         </div>
         {errors.steps?.[0]?.keys && (
@@ -220,10 +218,10 @@ export function MacroForm({
                 onDelete={
                   macro.steps && macro.steps.length > 1
                     ? () => {
-                      const newSteps = [...(macro.steps || [])];
-                      newSteps.splice(stepIndex, 1);
-                      setMacro(prev => ({ ...prev, steps: newSteps }));
-                    }
+                        const newSteps = [...(macro.steps || [])];
+                        newSteps.splice(stepIndex, 1);
+                        setMacro(prev => ({ ...prev, steps: newSteps }));
+                      }
                     : undefined
                 }
                 onMoveUp={() => handleStepMove(stepIndex, "up")}
@@ -231,9 +229,7 @@ export function MacroForm({
                 onKeySelect={option => handleKeySelect(stepIndex, option)}
                 onKeyQueryChange={query => handleKeyQueryChange(stepIndex, query)}
                 keyQuery={keyQueries[stepIndex] || ""}
-                onModifierChange={modifiers =>
-                  handleModifierChange(stepIndex, modifiers)
-                }
+                onModifierChange={modifiers => handleModifierChange(stepIndex, modifiers)}
                 onDelayChange={delay => handleDelayChange(stepIndex, delay)}
                 isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
                 keyboard={selectedKeyboard}
@@ -248,7 +244,11 @@ export function MacroForm({
             theme="light"
             fullWidth
             LeadingIcon={LuPlus}
-            text={m.macro_add_step({ maxed_out: isMaxStepsReached ? m.macro_max_steps_reached({ max: MAX_STEPS_PER_MACRO }) : "" })}
+            text={m.macro_add_step({
+              maxed_out: isMaxStepsReached
+                ? m.macro_max_steps_reached({ max: MAX_STEPS_PER_MACRO })
+                : "",
+            })}
             onClick={() => {
               if (isMaxStepsReached) {
                 showTemporaryError(m.macro_max_steps_error({ max: MAX_STEPS_PER_MACRO }));
@@ -257,10 +257,7 @@ export function MacroForm({
 
               setMacro(prev => ({
                 ...prev,
-                steps: [
-                  ...(prev.steps || []),
-                  { keys: [], modifiers: [], delay: DEFAULT_DELAY },
-                ],
+                steps: [...(prev.steps || []), { keys: [], modifiers: [], delay: DEFAULT_DELAY }],
               }));
               setErrors({});
             }}

@@ -1,64 +1,7 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "forceConsistentCasingInFileNames": true,
-    "lib": [
-      "ES2021",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "allowJs": true,
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": false,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "erasableSyntaxOnly": true,
-    "noUncheckedSideEffectImports": true,
-    "types": [
-      "vite/client"
-    ],
-    /* Import Aliases */
-    "paths": {
-      "@components/*": [
-        "./src/components/*"
-      ],
-      "@routes/*": [
-        "./src/routes/*"
-      ],
-      "@hooks/*": [
-        "./src/hooks/*"
-      ],
-      "@providers/*": [
-        "./src/providers/*"
-      ],
-      "@assets/*": [
-        "./src/assets/*"
-      ],
-      "@localizations/*": [
-        "./localization/paraglide/*"
-      ],
-      "@/*": [
-        "./src/*"
-      ]
-    }
-  },
-  "include": [
-    "src"
-  ],
+  "files": [],
   "references": [
-    {
-      "path": "./tsconfig.node.json"
-    }
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
   ]
 }

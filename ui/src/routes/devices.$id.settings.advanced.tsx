@@ -81,8 +81,12 @@ export default function SettingsAdvancedRoute() {
         if ("error" in resp) {
           notifications.error(
             enabled
-              ? m.advanced_error_usb_emulation_enable({ error: resp.error.data || m.unknown_error() })
-              : m.advanced_error_usb_emulation_disable({ error: resp.error.data || m.unknown_error() })
+              ? m.advanced_error_usb_emulation_enable({
+                  error: resp.error.data || m.unknown_error(),
+                })
+              : m.advanced_error_usb_emulation_disable({
+                  error: resp.error.data || m.unknown_error(),
+                }),
           );
           return;
         }
@@ -97,7 +101,7 @@ export default function SettingsAdvancedRoute() {
     send("resetConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          m.advanced_error_reset_config({ error: resp.error.data || m.unknown_error() })
+          m.advanced_error_reset_config({ error: resp.error.data || m.unknown_error() }),
         );
         return;
       }
@@ -109,7 +113,7 @@ export default function SettingsAdvancedRoute() {
     send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          m.advanced_error_update_ssh_key({ error: resp.error.data || m.unknown_error() })
+          m.advanced_error_update_ssh_key({ error: resp.error.data || m.unknown_error() }),
         );
         return;
       }
@@ -122,7 +126,7 @@ export default function SettingsAdvancedRoute() {
       send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            m.advanced_error_set_dev_mode({ error: resp.error.data || m.unknown_error() })
+            m.advanced_error_set_dev_mode({ error: resp.error.data || m.unknown_error() }),
           );
           return;
         }
@@ -137,7 +141,7 @@ export default function SettingsAdvancedRoute() {
       send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            m.advanced_error_set_dev_channel({ error: resp.error.data || m.unknown_error() })
+            m.advanced_error_set_dev_channel({ error: resp.error.data || m.unknown_error() }),
           );
           return;
         }
@@ -154,7 +158,7 @@ export default function SettingsAdvancedRoute() {
           notifications.error(
             enabled
               ? m.advanced_error_loopback_enable({ error: resp.error.data || m.unknown_error() })
-              : m.advanced_error_loopback_disable({ error: resp.error.data || m.unknown_error() })
+              : m.advanced_error_loopback_disable({ error: resp.error.data || m.unknown_error() }),
           );
           return;
         }
@@ -190,9 +194,10 @@ export default function SettingsAdvancedRoute() {
   const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
     notifications.error(
       m.advanced_error_version_update({
-        error: typeof error === "string" ? error : (error?.data ?? error?.message ?? m.unknown_error())
+        error:
+          typeof error === "string" ? error : (error?.data ?? error?.message ?? m.unknown_error()),
       }),
-      { duration: 1000 * 15 } // 15 seconds
+      { duration: 1000 * 15 }, // 15 seconds
     );
     setCustomVersionUpdateLoading(false);
   }, []);
@@ -200,16 +205,15 @@ export default function SettingsAdvancedRoute() {
   const handleCustomVersionUpdate = useCallback(async () => {
     const components: UpdateComponents = {};
     if (["app", "both"].includes(updateTarget) && appVersion) components.app = appVersion;
-    if (["system", "both"].includes(updateTarget) && systemVersion) components.system = systemVersion;
+    if (["system", "both"].includes(updateTarget) && systemVersion)
+      components.system = systemVersion;
     let versionInfo: SystemVersionInfo | undefined;
 
     try {
       // we do not need to set it to false if check succeeds,
       // because it will be redirected to the update page later
       setCustomVersionUpdateLoading(true);
-      versionInfo = await checkUpdateComponents({
-        components,
-      }, devChannel);
+      versionInfo = await checkUpdateComponents({ components }, devChannel);
     } catch (error: unknown) {
       const jsonRpcError = error as JsonRpcError;
       handleVersionUpdateError(jsonRpcError);
@@ -223,7 +227,11 @@ export default function SettingsAdvancedRoute() {
       hasUpdate = true;
       pageParams.set("custom_app_version", versionInfo.remote?.appVersion);
     }
-    if (components.system && versionInfo?.remote?.systemVersion && versionInfo?.systemUpdateAvailable) {
+    if (
+      components.system &&
+      versionInfo?.remote?.systemVersion &&
+      versionInfo?.systemUpdateAvailable
+    ) {
       hasUpdate = true;
       pageParams.set("custom_system_version", versionInfo.remote?.systemVersion);
     }
@@ -237,17 +245,18 @@ export default function SettingsAdvancedRoute() {
     // Navigate to update page
     navigateTo(`/settings/general/update?${pageParams.toString()}`);
   }, [
-    updateTarget, appVersion, systemVersion, devChannel,
-    navigateTo, resetConfig, handleVersionUpdateError,
-    setCustomVersionUpdateLoading
+    appVersion,
+    devChannel,
+    handleVersionUpdateError,
+    navigateTo,
+    resetConfig,
+    systemVersion,
+    updateTarget,
   ]);
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.advanced_title()}
-        description={m.advanced_description()}
-      />
+      <SettingsPageHeader title={m.advanced_title()} description={m.advanced_description()} />
 
       <div className="space-y-4">
         <SettingsItem
@@ -319,7 +328,8 @@ export default function SettingsAdvancedRoute() {
                   placeholder={m.advanced_ssh_public_key_placeholder()}
                 />
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {m.advanced_ssh_default_user()}<strong>root</strong>.
+                  {m.advanced_ssh_default_user()}
+                  <strong>root</strong>.
                 </p>
                 <div className="flex items-center gap-x-2">
                   <Button
@@ -426,8 +436,6 @@ export default function SettingsAdvancedRoute() {
           />
         </SettingsItem>
 
-
-
         <SettingsItem
           title={m.advanced_troubleshooting_mode_title()}
           description={m.advanced_troubleshooting_mode_description()}
@@ -450,7 +458,9 @@ export default function SettingsAdvancedRoute() {
                 size="SM"
                 theme="light"
                 text={
-                  usbEmulationEnabled ? m.advanced_disable_usb_emulation() : m.advanced_enable_usb_emulation()
+                  usbEmulationEnabled
+                    ? m.advanced_disable_usb_emulation()
+                    : m.advanced_enable_usb_emulation()
                 }
                 onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
               />
@@ -484,12 +494,8 @@ export default function SettingsAdvancedRoute() {
         title={m.advanced_loopback_warning_title()}
         description={
           <>
-            <p>
-              {m.advanced_loopback_warning_description()}
-            </p>
-            <p>
-              {m.advanced_loopback_warning_before()}
-            </p>
+            <p>{m.advanced_loopback_warning_description()}</p>
+            <p>{m.advanced_loopback_warning_before()}</p>
             <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
               <li>{m.advanced_loopback_warning_ssh()}</li>
               <li>{m.advanced_loopback_warning_cloud()}</li>

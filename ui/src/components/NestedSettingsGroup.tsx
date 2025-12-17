@@ -11,7 +11,7 @@ export function NestedSettingsGroup(props: NestedSettingsGroupProps) {
   return (
     <div
       className={cx(
-        "space-y-4 border-l-2 border-slate-200 ml-2 pl-4 dark:border-slate-700",
+        "ml-2 space-y-4 border-l-2 border-slate-200 pl-4 dark:border-slate-700",
         className,
       )}
     >
@@ -19,4 +19,3 @@ export function NestedSettingsGroup(props: NestedSettingsGroupProps) {
     </div>
   );
 }
-

@@ -50,9 +50,7 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
 
 export default function WelcomeLocalModeRoute() {
   const actionData = useActionData() as { error?: string };
-  const [selectedMode, setSelectedMode] = useState<"password" | "noPassword" | null>(
-    null,
-  );
+  const [selectedMode, setSelectedMode] = useState<"password" | "noPassword" | null>(null);
 
   return (
     <>
@@ -61,12 +59,8 @@ export default function WelcomeLocalModeRoute() {
         <Container>
           <div className="isolate flex h-full w-full items-center justify-center">
             <div className="max-w-xl space-y-8">
-              <div className="animate-fadeIn flex items-center justify-center opacity-0">
-                <img
-                  src={LogoWhiteIcon}
-                  alt=""
-                  className="-ml-4 hidden h-[32px] dark:block"
-                />
+              <div className="flex animate-fadeIn items-center justify-center opacity-0">
+                <img src={LogoWhiteIcon} alt="" className="-ml-4 hidden h-[32px] dark:block" />
                 <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
               </div>
 
@@ -84,14 +78,14 @@ export default function WelcomeLocalModeRoute() {
 
               <Form method="POST" className="space-y-8">
                 <div
-                  className="animate-fadeIn grid grid-cols-1 gap-6 opacity-0 sm:grid-cols-2"
+                  className="grid animate-fadeIn grid-cols-1 gap-6 opacity-0 sm:grid-cols-2"
                   style={{ animationDelay: "400ms" }}
                 >
                   {["password", "noPassword"].map(mode => (
                     <GridCard
                       key={mode}
                       cardClassName={cx("transition-all duration-100", {
-                        "outline-blue-700! outline-2!": selectedMode === mode,
+                        "outline-2! outline-blue-700!": selectedMode === mode,
                         "hover:outline-blue-700!": selectedMode !== mode,
                       })}
                     >
@@ -103,7 +97,9 @@ export default function WelcomeLocalModeRoute() {
                       >
                         <div className="space-y-0 text-center">
                           <h3 className="text-base font-bold text-black dark:text-white">
-                            {mode === "password" ? m.auth_mode_local_password() : m.auth_mode_local_no_password()}
+                            {mode === "password"
+                              ? m.auth_mode_local_password()
+                              : m.auth_mode_local_no_password()}
                           </h3>
                           <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
                             {mode === "password"
@@ -119,7 +115,7 @@ export default function WelcomeLocalModeRoute() {
                           onChange={() => {
                             setSelectedMode(mode as "password" | "noPassword");
                           }}
-                          className="form-radio absolute top-2 right-2 h-4 w-4 text-blue-600"
+                          className="absolute top-2 right-2 form-radio h-4 w-4 text-blue-600"
                         />
                       </div>
                     </GridCard>
@@ -136,7 +132,7 @@ export default function WelcomeLocalModeRoute() {
                 )}
 
                 <div
-                  className="animate-fadeIn mx-auto max-w-sm opacity-0"
+                  className="mx-auto max-w-sm animate-fadeIn opacity-0"
                   style={{ animationDelay: "500ms" }}
                 >
                   <Button
@@ -152,7 +148,7 @@ export default function WelcomeLocalModeRoute() {
               </Form>
 
               <p
-                className="animate-fadeIn mx-auto max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
+                className="mx-auto max-w-md animate-fadeIn text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "600ms" }}
               >
                 {m.auth_mode_local_change_later()}

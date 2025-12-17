@@ -914,6 +914,7 @@
     "wake_on_lan_add_device_save_device": "Gem enhed",
     "wake_on_lan_description": "Send en magisk pakke for at vække en fjern enhed.",
     "wake_on_lan_device_list_add_new_device": "Tilføj ny enhed",
+    "wake_on_lan_device_list_confirm_delete_message": "Er du sikker på, at du vil slette denne enhed? {name}",
     "wake_on_lan_device_list_delete_device": "Slet enhed",
     "wake_on_lan_device_list_wake": "Vågne",
     "wake_on_lan_empty_add_device_to_start": "Tilføj en enhed for at begynde at bruge Wake-on-LAN",

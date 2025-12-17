@@ -135,7 +135,7 @@ func (l *Logger) getScopeLoggerLevel(scope string) zerolog.Level {
 		l.updateLogLevel()
 	}
 
-	var scopeLevel zerolog.Level
+	scopeLevel := l.defaultLogLevel
 	if l.defaultLogLevelFromConfig != -2 {
 		scopeLevel = l.defaultLogLevelFromConfig
 	}

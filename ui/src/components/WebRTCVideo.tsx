@@ -2,13 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
 import { cx } from "@/cva.config";
+import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
-import {
-  useRTCStore,
-  useSettingsStore,
-  useVideoStore,
-} from "@hooks/stores";
+import { useRTCStore, useSettingsStore, useVideoStore } from "@hooks/stores";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
@@ -32,7 +29,8 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
 
-  const isPointerLockPossible = window.location.protocol === "https:" || window.location.hostname === "localhost";
+  const isPointerLockPossible =
+    window.location.protocol === "https:" || window.location.hostname === "localhost";
 
   // Store hooks
   const settings = useSettingsStore();
@@ -51,6 +49,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     clientWidth: videoClientWidth,
     clientHeight: videoClientHeight,
     hdmiState,
+    setVideoElement,
   } = useVideoStore();
 
   // Video enhancement settings
@@ -71,8 +70,14 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       setVideoClientSize(width || 0, height || 0);
       setVideoSize(videoElm.current.videoWidth, videoElm.current.videoHeight);
     },
-    [setVideoClientSize, setVideoSize]
+    [setVideoClientSize, setVideoSize],
   );
+
+  // AltGr Fix for Windows Clients
+  const altGrSyntheticThresholdMs = 3;
+  const isWindowsClient = useMemo(() => isWindows(), []);
+  const lastKeyDownRef = useRef<{ hidKey: number; time: number } | null>(null);
+  const altGrLoopRef = useRef(false);
 
   useResizeObserver({
     ref: videoElm as React.RefObject<HTMLElement>,
@@ -100,6 +105,15 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     [updateVideoSizeStore],
   );
 
+  // Store video element reference for E2E test hooks
+  useEffect(
+    function storeVideoElementRef() {
+      setVideoElement(videoElm.current);
+      return () => setVideoElement(null);
+    },
+    [setVideoElement],
+  );
+
   // Pointer lock and keyboard lock related
   const isFullscreenEnabled = document.fullscreenEnabled;
 
@@ -119,9 +133,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   }, []);
 
   const requestPointerLock = useCallback(async () => {
-    if (!isPointerLockPossible
-      || videoElm.current === null
-      || document.pointerLockElement) return;
+    if (!isPointerLockPossible || videoElm.current === null || document.pointerLockElement) return;
 
     const isPointerLockGranted = await checkNavigatorPermissions("pointer-lock");
 
@@ -151,7 +163,11 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   }, [checkNavigatorPermissions, setIsKeyboardLockActive]);
 
   const releaseKeyboardLock = useCallback(async () => {
-    if (fullscreenContainerRef.current === null || document.fullscreenElement !== fullscreenContainerRef.current) return;
+    if (
+      fullscreenContainerRef.current === null ||
+      document.fullscreenElement !== fullscreenContainerRef.current
+    )
+      return;
 
     if (navigator && "keyboard" in navigator) {
       try {
@@ -216,24 +232,19 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   }, [releaseKeyboardLock]);
 
   const absMouseMoveHandler = useMemo(
-    () => getAbsMouseMoveHandler({
-      videoClientWidth,
-      videoClientHeight,
-      videoWidth,
-      videoHeight,
-    }),
+    () =>
+      getAbsMouseMoveHandler({
+        videoClientWidth,
+        videoClientHeight,
+        videoWidth,
+        videoHeight,
+      }),
     [getAbsMouseMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
   );
 
-  const relMouseMoveHandler = useMemo(
-    () => getRelMouseMoveHandler(),
-    [getRelMouseMoveHandler],
-  );
+  const relMouseMoveHandler = useMemo(() => getRelMouseMoveHandler(), [getRelMouseMoveHandler]);
 
-  const mouseWheelHandler = useMemo(
-    () => getMouseWheelHandler(),
-    [getMouseWheelHandler],
-  );
+  const mouseWheelHandler = useMemo(() => getMouseWheelHandler(), [getMouseWheelHandler]);
 
   function getAdjustedKeyCode(e: KeyboardEvent) {
     const key = e.key;
@@ -244,13 +255,23 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     } else if (code == "Backquote" && ["§", "±"].includes(key)) {
       code = "IntlBackslash";
     }
+    // For Japanese 106/109
+    else if (code === "IntlYen") {
+      code = "Yen";
+    } else if (code === "IntlRo") {
+      code = "KeyRO";
+    } else if (code === "Convert") {
+      code = "Henkan";
+    } else if (code === "NonConvert") {
+      code = "Muhenkan";
+    }
+
     return code;
   }
 
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       e.preventDefault();
-      if (e.repeat) return;
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
 
@@ -259,11 +280,40 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         return;
       }
 
+      // Detect Windows synthetic AltGr (CtrlLeft then AltRight within ~3ms) and cancel the synthetic Ctrl
+      if (isWindowsClient) {
+        // Buffer ControlLeft briefly; if no AltRight follows within the threshold, treat it as a real ControlLeft press.
+        if (hidKey === keys.ControlLeft) {
+          const controlLeftDownTime = e.timeStamp;
+          lastKeyDownRef.current = { hidKey, time: controlLeftDownTime };
+          setTimeout(() => {
+            if (
+              lastKeyDownRef.current?.hidKey === keys.ControlLeft &&
+              lastKeyDownRef.current.time === controlLeftDownTime
+            ) {
+              lastKeyDownRef.current = null;
+              handleKeyPress(keys.ControlLeft, true);
+            }
+          }, altGrSyntheticThresholdMs);
+          return;
+        }
+
+        // If AltRight arrives shortly after ControlLeft, treat the pair as AltGr and cancel the pending ControlLeft.
+        if (
+          hidKey === keys.AltRight &&
+          lastKeyDownRef.current?.hidKey === keys.ControlLeft &&
+          e.timeStamp - lastKeyDownRef.current.time <= altGrSyntheticThresholdMs
+        ) {
+          altGrLoopRef.current = true;
+          lastKeyDownRef.current = null;
+        }
+      }
+
       // When pressing the meta key + another key, the key will never trigger a keyup
       // event, so we need to clear the keys after a short delay
       // https://bugs.chromium.org/p/chromium/issues/detail?id=28089
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1299553
-      if (e.metaKey && hidKey < 0xE0) {
+      if (e.metaKey && hidKey < 0xe0) {
         setTimeout(() => {
           console.debug(`Forcing the meta key release of associated key: ${hidKey}`);
           handleKeyPress(hidKey, false);
@@ -282,7 +332,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive],
+    [handleKeyPress, isKeyboardLockActive, isWindowsClient],
   );
 
   const keyUpHandler = useCallback(
@@ -296,10 +346,26 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         return;
       }
 
+      // On Windows, handle ControlLeft specially to preserve FIFO semantics with AltGr buffering.
+      if (isWindowsClient && hidKey === keys.ControlLeft) {
+        // Synthetic AltGr ControlLeft: never sent a down, swallow the release as well.
+        if (altGrLoopRef.current) {
+          altGrLoopRef.current = false;
+          return;
+        }
+
+        // Very fast real Ctrl tap: flush the pending down before the up.
+        if (lastKeyDownRef.current?.hidKey === keys.ControlLeft) {
+          handleKeyPress(keys.ControlLeft, true);
+        }
+
+        lastKeyDownRef.current = null;
+      }
+
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress],
+    [handleKeyPress, isWindowsClient],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -403,7 +469,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       const videoElmRefValue = videoElm.current;
       if (!videoElmRefValue) return;
 
-      const isRelativeMouseMode = (settings.mouseMode === "relative");
+      const isRelativeMouseMode = settings.mouseMode === "relative";
       const mouseHandler = isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler;
 
       const abortController = new AbortController();
@@ -418,7 +484,8 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       });
 
       if (isRelativeMouseMode) {
-        videoElmRefValue.addEventListener("click",
+        videoElmRefValue.addEventListener(
+          "click",
           () => {
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
@@ -469,7 +536,15 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     if (!isPlaying) return false;
     if (videoHeight === 0 || videoWidth === 0) return false;
     return true;
-  }, [isPlaying, isPointerLockActive, isPointerLockPossible, isVideoLoading, settings.mouseMode, videoHeight, videoWidth]);
+  }, [
+    isPlaying,
+    isPointerLockActive,
+    isPointerLockPossible,
+    isVideoLoading,
+    settings.mouseMode,
+    videoHeight,
+    videoWidth,
+  ]);
 
   // Conditionally set the filter style so we don't fallback to software rendering if these values are default of 1.0
   const videoStyle = useMemo(() => {
@@ -477,19 +552,15 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     return isDefault
       ? {} // No filter if all settings are default (1.0)
       : {
-        filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
-      };
+          filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
+        };
   }, [videoSaturation, videoBrightness, videoContrast]);
-
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
-          <fieldset
-            disabled={peerConnection?.connectionState !== "connected"}
-            className="contents"
-          >
+          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
             <Actionbar requestFullscreen={requestFullscreen} />
             <MacroBar />
           </fieldset>
@@ -529,10 +600,10 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          "max-h-full max-w-full sm:min-h-[384px] sm:min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
+                          "max-h-full max-w-full bg-black/50 object-contain transition-all duration-1000 sm:min-h-[384px] sm:min-w-[512px]",
                           {
                             "cursor-none": settings.isCursorHidden,
-                            "!opacity-0":
+                            "opacity-0!":
                               isVideoLoading ||
                               hdmiError ||
                               hasConnectionIssues ||
@@ -546,7 +617,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
-                          className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center"
+                          className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                         >
                           <div className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
