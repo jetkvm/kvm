@@ -20,6 +20,8 @@ jetkvm_video_state_t state;
 jetkvm_video_state_handler_t *video_state_handler = NULL;
 jetkvm_rpc_handler_t *rpc_handler = NULL;
 jetkvm_video_handler_t *video_handler = NULL;
+jetkvm_mjpeg_handler_t *mjpeg_handler = NULL;
+bool mjpeg_enabled = false;
 
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
@@ -28,6 +30,21 @@ void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
 
 void jetkvm_set_video_handler(jetkvm_video_handler_t *handler) {
     video_handler = handler;
+}
+
+void jetkvm_set_mjpeg_handler(jetkvm_mjpeg_handler_t *handler) {
+    mjpeg_handler = handler;
+}
+
+void jetkvm_mjpeg_set_enabled(bool enabled) {
+    mjpeg_enabled = enabled;
+    log_info("MJPEG streaming %s", enabled ? "enabled" : "disabled");
+    // Start/stop MJPEG encoder dynamically based on enabled state
+    mjpeg_update_encoder(enabled);
+}
+
+bool jetkvm_mjpeg_get_enabled() {
+    return mjpeg_enabled;
 }
 
 static jetkvm_indev_handler_t *jetkvm_indev_handler = NULL;
@@ -83,6 +100,20 @@ int video_send_frame(const uint8_t *frame, ssize_t len)
         (*video_handler)(frame, len);
     } else {
         log_error("video handler is not set");
+    }
+    return 0;
+}
+
+int video_send_mjpeg_frame(const uint8_t *frame, ssize_t len)
+{
+    if (!mjpeg_enabled) {
+        return 0; // MJPEG streaming not enabled, skip
+    }
+    if (mjpeg_handler != NULL) {
+        log_info("Sending MJPEG frame to handler: size=%zd", len);
+        (*mjpeg_handler)(frame, len);
+    } else {
+        log_warn("MJPEG handler is NULL, frame dropped: size=%zd", len);
     }
     return 0;
 }

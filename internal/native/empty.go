@@ -41,6 +41,10 @@ func (e *EmptyNativeInterface) VideoStart() error {
 	return nil
 }
 
+func (e *EmptyNativeInterface) MjpegSetEnabled(enabled bool) {}
+
+func (e *EmptyNativeInterface) MjpegGetEnabled() bool { return false }
+
 func (e *EmptyNativeInterface) GetLVGLVersion() (string, error) {
 	return "", nil
 }

@@ -113,7 +113,8 @@ type RequestedFileChange struct {
 	BeforeChange    []string // if the file is going to be changed, apply the change first
 	Description     string
 	IgnoreErrors    bool
-	When            string // only apply the change if when meets the condition
+	When            string        // only apply the change if when meets the condition
+	DelayAfter      time.Duration // delay to wait after applying this change (useful for hardware settling)
 }
 
 type FileChange struct {

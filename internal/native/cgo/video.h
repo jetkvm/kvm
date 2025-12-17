@@ -1,6 +1,8 @@
 #ifndef VIDEO_DAEMON_VIDEO_H
 #define VIDEO_DAEMON_VIDEO_H
 
+#include <stdbool.h>
+
 /**
  * @brief Initialize the video subsystem
  *
@@ -51,5 +53,13 @@ void video_set_quality_factor(float factor);
  * @return float The quality factor of the video
  */
 float video_get_quality_factor();
+
+/**
+ * @brief Update MJPEG encoder state based on enabled flag
+ * Starts encoder if enabled and video is streaming, stops otherwise
+ *
+ * @param enabled Whether MJPEG should be enabled
+ */
+void mjpeg_update_encoder(bool enabled);
 
 #endif //VIDEO_DAEMON_VIDEO_H

@@ -74,6 +74,20 @@ func (c *GRPCClient) VideoStart() error {
 	return err
 }
 
+// MJPEG methods (for UVC streaming)
+func (c *GRPCClient) MjpegSetEnabled(enabled bool) error {
+	_, err := c.client.MjpegSetEnabled(context.Background(), &pb.MjpegSetEnabledRequest{Enabled: enabled})
+	return err
+}
+
+func (c *GRPCClient) MjpegGetEnabled() (bool, error) {
+	resp, err := c.client.MjpegGetEnabled(context.Background(), &pb.Empty{})
+	if err != nil {
+		return false, err
+	}
+	return resp.Enabled, nil
+}
+
 // UI methods
 func (c *GRPCClient) GetLVGLVersion() (string, error) {
 	resp, err := c.client.GetLVGLVersion(context.Background(), &pb.Empty{})

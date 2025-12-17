@@ -123,6 +123,10 @@ func checkUSBState() {
 		if err := gadget.OpenKeyboardHidFile(); err != nil {
 			usbLogger.Error().Err(err).Msg("failed to reopen keyboard hid file")
 		}
+
+		// Reinitialize UVC after USB reconfiguration
+		// The UVC video device may have been recreated with a different path
+		go reinitUVC()
 	}
 
 	requestDisplayUpdate(true, "usb_state_changed")

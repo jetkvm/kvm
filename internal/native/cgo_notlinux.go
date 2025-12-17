@@ -131,3 +131,37 @@ func videoGetStreamingStatus() VideoStreamingStatus {
 func crash() {
 	panicPlatformNotSupported()
 }
+
+func mjpegSetEnabled(enabled bool) {
+	panicPlatformNotSupported()
+}
+
+func mjpegGetEnabled() bool {
+	panicPlatformNotSupported()
+	return false
+}
+
+func videoInit(factor float64) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func videoShutdown() {
+	panicPlatformNotSupported()
+}
+
+func videoStart() {
+	panicPlatformNotSupported()
+}
+
+func videoStop() {
+	panicPlatformNotSupported()
+}
+
+func uiInit(rotation uint16) {
+	panicPlatformNotSupported()
+}
+
+func uiTick() {
+	panicPlatformNotSupported()
+}

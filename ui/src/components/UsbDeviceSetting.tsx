@@ -25,6 +25,7 @@ export interface UsbDeviceConfig {
   relative_mouse: boolean;
   mass_storage: boolean;
   audio: boolean;
+  uvc: boolean;
 }
 
 const defaultUsbDeviceConfig: UsbDeviceConfig = {
@@ -33,6 +34,7 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   relative_mouse: true,
   mass_storage: true,
   audio: true,
+  uvc: false,
 };
 
 const usbPresets = [
@@ -45,6 +47,7 @@ const usbPresets = [
       relative_mouse: true,
       mass_storage: true,
       audio: true,
+      uvc: false,
     },
   },
   {
@@ -56,6 +59,19 @@ const usbPresets = [
       relative_mouse: true,
       mass_storage: true,
       audio: false,
+      uvc: false,
+    },
+  },
+  {
+    label: m.usb_device_keyboard_mouse_audio_and_uvc(),
+    value: "keyboard_mouse_audio_and_uvc",
+    config: {
+      keyboard: true,
+      absolute_mouse: true,
+      relative_mouse: true,
+      mass_storage: false,
+      audio: true,
+      uvc: true,
     },
   },
   {
@@ -67,6 +83,7 @@ const usbPresets = [
       relative_mouse: false,
       mass_storage: false,
       audio: false,
+      uvc: false,
     },
   },
   {
@@ -242,6 +259,17 @@ export function UsbDeviceSetting() {
                 <Checkbox
                   checked={usbDeviceConfig.audio}
                   onChange={onUsbConfigItemChange("audio")}
+                />
+              </SettingsItem>
+            </div>
+            <div className="space-y-4">
+              <SettingsItem
+                title={m.usb_device_enable_uvc_title()}
+                description={m.usb_device_enable_uvc_description()}
+              >
+                <Checkbox
+                  checked={usbDeviceConfig.uvc}
+                  onChange={onUsbConfigItemChange("uvc")}
                 />
               </SettingsItem>
             </div>

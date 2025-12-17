@@ -83,6 +83,17 @@ func (s *grpcServer) VideoStart(ctx context.Context, req *pb.Empty) (*pb.Empty, 
 	return &pb.Empty{}, nil
 }
 
+// MJPEG methods (for UVC streaming)
+func (s *grpcServer) MjpegSetEnabled(ctx context.Context, req *pb.MjpegSetEnabledRequest) (*pb.Empty, error) {
+	s.native.MjpegSetEnabled(req.Enabled)
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) MjpegGetEnabled(ctx context.Context, req *pb.Empty) (*pb.MjpegGetEnabledResponse, error) {
+	enabled := s.native.MjpegGetEnabled()
+	return &pb.MjpegGetEnabledResponse{Enabled: enabled}, nil
+}
+
 // UI methods
 func (s *grpcServer) GetLVGLVersion(ctx context.Context, req *pb.Empty) (*pb.GetLVGLVersionResponse, error) {
 	version, err := s.native.GetLVGLVersion()

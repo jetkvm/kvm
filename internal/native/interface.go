@@ -13,6 +13,8 @@ type NativeInterface interface {
 	VideoLogStatus() (string, error)
 	VideoStop() error
 	VideoStart() error
+	MjpegSetEnabled(enabled bool)
+	MjpegGetEnabled() bool
 	GetLVGLVersion() (string, error)
 	UIObjHide(objName string) (bool, error)
 	UIObjShow(objName string) (bool, error)

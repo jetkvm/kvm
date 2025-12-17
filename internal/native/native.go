@@ -19,6 +19,7 @@ type Native struct {
 	defaultQualityFactor float64
 	onVideoStateChange   func(state VideoState)
 	onVideoFrameReceived func(frame []byte, duration time.Duration)
+	onMjpegFrameReceived func(frame []byte) // MJPEG frames for UVC streaming
 	onIndevEvent         func(event string)
 	onRpcEvent           func(event string)
 	sleepModeSupported   bool
@@ -35,6 +36,7 @@ type NativeOptions struct {
 	MaxRestartAttempts   uint
 	OnVideoStateChange   func(state VideoState)
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
+	OnMjpegFrameReceived func(frame []byte) // MJPEG frames for UVC streaming
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnNativeRestart      func()
@@ -93,6 +95,9 @@ func NewNative(opts NativeOptions) *Native {
 		}
 	}
 
+	// MJPEG callback is optional - nil means UVC streaming disabled
+	onMjpegFrameReceived := opts.OnMjpegFrameReceived
+
 	sleepModeSupported := isSleepModeSupported()
 
 	defaultQualityFactor := opts.DefaultQualityFactor
@@ -110,6 +115,7 @@ func NewNative(opts NativeOptions) *Native {
 		defaultQualityFactor: defaultQualityFactor,
 		onVideoStateChange:   onVideoStateChange,
 		onVideoFrameReceived: onVideoFrameReceived,
+		onMjpegFrameReceived: onMjpegFrameReceived,
 		onIndevEvent:         onIndevEvent,
 		onRpcEvent:           onRpcEvent,
 		sleepModeSupported:   sleepModeSupported,
@@ -127,6 +133,7 @@ func (n *Native) Start() error {
 	go n.handleLogChan()
 	go n.handleVideoStateChan()
 	go n.handleVideoFrameChan()
+	go n.handleMjpegFrameChan()
 	go n.handleIndevEventChan()
 	go n.handleRpcEventChan()
 
@@ -157,4 +164,25 @@ func (n *Native) DoNotUseThisIsForCrashTestingOnly() {
 // GetLVGLVersion returns the LVGL version
 func GetLVGLVersion() string {
 	return uiGetLVGLVersion()
+}
+
+// MjpegSetEnabled enables or disables MJPEG encoding for UVC streaming
+func (n *Native) MjpegSetEnabled(enabled bool) {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+	mjpegSetEnabled(enabled)
+}
+
+// MjpegGetEnabled returns whether MJPEG encoding is enabled
+func (n *Native) MjpegGetEnabled() bool {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+	return mjpegGetEnabled()
+}
+
+// SetMjpegFrameCallback sets the callback for MJPEG frames (for UVC streaming)
+func (n *Native) SetMjpegFrameCallback(callback func(frame []byte)) {
+	n.extraLock.Lock()
+	defer n.extraLock.Unlock()
+	n.onMjpegFrameReceived = callback
 }

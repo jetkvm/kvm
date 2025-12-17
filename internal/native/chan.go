@@ -8,6 +8,7 @@ import (
 
 var (
 	videoFrameChan chan []byte           = make(chan []byte)
+	mjpegFrameChan chan []byte           = make(chan []byte, 2) // Buffered to avoid blocking encoder
 	videoStateChan chan VideoState       = make(chan VideoState)
 	logChan        chan nativeLogMessage = make(chan nativeLogMessage)
 	indevEventChan chan int              = make(chan int)
@@ -22,6 +23,15 @@ func (n *Native) handleVideoFrameChan() {
 		sinceLastFrame := now.Sub(lastFrame)
 		lastFrame = now
 		n.onVideoFrameReceived(frame, sinceLastFrame)
+	}
+}
+
+func (n *Native) handleMjpegFrameChan() {
+	for {
+		frame := <-mjpegFrameChan
+		if n.onMjpegFrameReceived != nil {
+			n.onMjpegFrameReceived(frame)
+		}
 	}
 }
 

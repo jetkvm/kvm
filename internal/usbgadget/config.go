@@ -3,6 +3,7 @@ package usbgadget
 import (
 	"fmt"
 	"os/exec"
+	"time"
 )
 
 type gadgetConfigItem struct {
@@ -60,22 +61,32 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"mass_storage_base": massStorageBaseConfig,
 	"mass_storage_lun0": massStorageLun0Config,
 	// audio (UAC1 - USB Audio Class 1)
+	// NOTE: configPath is intentionally omitted when UVC might be enabled.
+	// Audio symlink is created manually in configureUsbGadget() to ensure correct
+	// endpoint allocation order (UVC must come before audio for isochronous endpoints).
 	"audio": {
-		order:      4000,
-		device:     "uac1.usb0",
-		path:       []string{"functions", "uac1.usb0"},
-		configPath: []string{"uac1.usb0"},
+		order:  4000,
+		device: "uac1.usb0",
+		path:   []string{"functions", "uac1.usb0"},
+		// configPath intentionally omitted - symlink created manually after UVC
 		attrs: gadgetAttributes{
-			"p_chmask":         "4",     // Playback: mono (Center Front - USB Audio Class recommended position for mono)
-			"p_srate":          "48000", // Playback: 48kHz sample rate
-			"p_ssize":          "2",     // Playback: 16-bit (2 bytes)
-			"p_volume_present": "1",     // Playback: enable volume control
-			"c_chmask":         "3",     // Capture: stereo (2 channels for HDMI audio)
-			"c_srate":          "48000", // Capture: 48kHz sample rate
-			"c_ssize":          "2",     // Capture: 16-bit (2 bytes)
-			"c_volume_present": "0",     // Capture: no volume control
+			// UAC1 terminology (from gadget's perspective):
+			// - Playback (p_*) = Gadget sends audio TO host = Host sees MICROPHONE
+			// - Capture (c_*) = Gadget receives audio FROM host = Host sees SPEAKER
+			"p_chmask":         "3",     // USB Microphone: stereo (Browser → WebRTC → JetKVM → USB → Managed PC)
+			"p_srate":          "48000", // 48kHz sample rate
+			"p_ssize":          "2",     // 16-bit samples (2 bytes)
+			"p_volume_present": "1",     // Enable volume control
+			"c_chmask":         "0",     // USB Speaker: disabled (saves isochronous endpoint)
+			"c_srate":          "48000", // 48kHz sample rate
+			"c_ssize":          "2",     // 16-bit samples (2 bytes)
+			"c_volume_present": "0",     // No volume control
 		},
 	},
+	// UVC (USB Video Class) - webcam passthrough
+	// Order 3500 = before audio (4000) to allocate isochronous endpoints first
+	// UVC requires complex directory setup - handled by SetupUVCFunction()
+	"uvc": uvcConfig,
 }
 
 func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
@@ -92,6 +103,8 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.MassStorage
 	case "audio":
 		return u.enabledDevices.Audio
+	case "uvc":
+		return u.enabledDevices.UVC
 	default:
 		return true
 	}
@@ -235,13 +248,86 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 }
 
 func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
-	return u.WithTransaction(func() error {
+	// If resetting USB (reconfiguration), perform full cleanup first.
+	// This is critical for UVC which creates video devices that need time to cleanup.
+	// Without proper cleanup, the gadget can fail with -19 (ENODEV) on rebind.
+	if resetUsb {
+		u.log.Info().Msg("unbinding USB gadget for reconfiguration")
+		if err := u.UnbindUDC(); err != nil {
+			u.log.Debug().Err(err).Msg("unbind failed (may not have been bound)")
+		}
+
+		// Remove config symlinks to allow clean reconfiguration
+		// This prevents stale state from causing -19 errors on rebind
+		u.log.Debug().Msg("removing config symlinks for clean reconfiguration")
+		u.removeConfigSymlinks()
+
+		// Wait for UVC video device cleanup before reconfiguring
+		// 500ms is needed for kernel kobject cleanup to complete
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// First pass: create directories and function config (without UDC binding)
+	// Note: UVC symlink is NOT created here - it must be created after UVC setup
+	err := u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
 		u.tx.CreateConfigPath()
-		u.tx.WriteGadgetConfig()
-		if resetUsb {
-			u.tx.RebindUsb(true)
-		}
+		u.tx.WriteGadgetConfigFunctions()
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// Setup UVC and/or Audio symlinks
+	// Both use isochronous endpoints, and UVC MUST be symlinked BEFORE audio
+	// because the dwc3 controller has limited isochronous endpoints.
+	// If audio is symlinked first, UVC will fail with "Unable to allocate streaming EP"
+	u.log.Info().
+		Bool("uvc", u.enabledDevices.UVC).
+		Bool("audio", u.enabledDevices.Audio).
+		Bool("keyboard", u.enabledDevices.Keyboard).
+		Bool("mass_storage", u.enabledDevices.MassStorage).
+		Msg("configureUsbGadget: enabledDevices state")
+	uvcSetupOK := false
+	if u.enabledDevices.UVC {
+		if err := u.SetupUVCFunction([]UVCFormat{UVCFormat720p30, UVCFormat1080p30}); err != nil {
+			u.log.Warn().Err(err).Msg("failed to setup UVC function")
+			// Continue without UVC - don't fail the entire gadget
+		} else {
+			// Create UVC symlink first (needs isochronous endpoints before audio)
+			uvcConfigPath := joinPath(u.configC1Path, []string{"uvc.usb0"})
+			uvcFuncPath := joinPath(u.kvmGadgetPath, []string{"functions", "uvc.usb0"})
+			if err := createConfigFSSymlink(uvcFuncPath, uvcConfigPath); err != nil {
+				u.log.Warn().Err(err).Msg("failed to create UVC config symlink")
+			} else {
+				uvcSetupOK = true
+			}
+		}
+	}
+
+	// Create audio symlink (after UVC if both are enabled)
+	// Audio symlink is created manually to ensure correct endpoint allocation order
+	if u.enabledDevices.Audio {
+		audioConfigPath := joinPath(u.configC1Path, []string{"uac1.usb0"})
+		audioFuncPath := joinPath(u.kvmGadgetPath, []string{"functions", "uac1.usb0"})
+		if err := createConfigFSSymlink(audioFuncPath, audioConfigPath); err != nil {
+			u.log.Warn().Err(err).Msg("failed to create audio config symlink")
+		}
+	}
+
+	_ = uvcSetupOK // Currently unused, but kept for potential future use
+
+	// Bind to UDC (single bind operation)
+	// For initial setup (resetUsb=false), this is the first bind.
+	// For reconfiguration (resetUsb=true), we already unbound above, so this is a clean bind.
+	err = u.WithTransaction(func() error {
+		u.tx.WriteUDC()
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

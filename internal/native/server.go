@@ -89,11 +89,22 @@ func RunNativeProcess(binaryName string) {
 	}
 
 	// Connect to video stream socket
-	conn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
+	videoConn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
 	}
 	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
+
+	// Connect to MJPEG stream socket (if path is set)
+	var mjpegConn net.Conn
+	if proxyOptions.MjpegStreamUnixSocket != "" {
+		mjpegConn, err = net.Dial("unix", proxyOptions.MjpegStreamUnixSocket)
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to connect to mjpeg stream socket (UVC disabled)")
+		} else {
+			logger.Info().Str("mjpegStreamSocketPath", proxyOptions.MjpegStreamUnixSocket).Msg("connected to mjpeg stream socket")
+		}
+	}
 
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
@@ -101,15 +112,32 @@ func RunNativeProcess(binaryName string) {
 		var frameSizeBuffer [4]byte
 		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
 
-		if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
+		if _, err := videoConn.Write(frameSizeBuffer[:]); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
 		}
-		if _, err := conn.Write(frame); err != nil {
+		if _, err := videoConn.Write(frame); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
 		}
 	}
 	nativeOptions.OnVideoStateChange = func(state VideoState) {
 		updateProcessTitle(&state)
+	}
+
+	// Set up MJPEG frame callback (for UVC streaming)
+	if mjpegConn != nil {
+		nativeOptions.OnMjpegFrameReceived = func(frame []byte) {
+			// Write 4-byte frame length prefix, then frame data
+			var frameSizeBuffer [4]byte
+			binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
+
+			if _, err := mjpegConn.Write(frameSizeBuffer[:]); err != nil {
+				logger.Warn().Err(err).Msg("failed to write mjpeg frame size to socket")
+				return
+			}
+			if _, err := mjpegConn.Write(frame); err != nil {
+				logger.Warn().Err(err).Msg("failed to write mjpeg frame to socket")
+			}
+		}
 	}
 
 	// Create native instance

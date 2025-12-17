@@ -73,6 +73,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 				}
 			}
 		},
+		OnMjpegFrameReceived: handleMjpegFrame,
 	})
 	if err != nil {
 		nativeLogger.Fatal().Err(err).Msg("failed to create native proxy")
@@ -90,4 +91,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
 		nativeInstance.DoNotUseThisIsForCrashTestingOnly()
 	}
+
+	// Initialize UVC streaming if enabled
+	initUVC()
 }

@@ -37,6 +37,11 @@ static inline void jetkvm_cgo_setup_video_handler() {
     jetkvm_set_video_handler(&jetkvm_go_video_handler);
 }
 
+extern void jetkvm_go_mjpeg_handler(cuint8_t *frame, ssize_t len);
+static inline void jetkvm_cgo_setup_mjpeg_handler() {
+    jetkvm_set_mjpeg_handler(&jetkvm_go_mjpeg_handler);
+}
+
 extern void jetkvm_go_indev_handler(int code);
 static inline void jetkvm_cgo_setup_indev_handler() {
     jetkvm_set_indev_handler(&jetkvm_go_indev_handler);
@@ -84,6 +89,16 @@ func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t) {
 	videoFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
 }
 
+//export jetkvm_go_mjpeg_handler
+func jetkvm_go_mjpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
+	// Non-blocking send - drop frame if channel is full
+	select {
+	case mjpegFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len)):
+	default:
+		// Channel full, drop frame (UVC might not be streaming)
+	}
+}
+
 //export jetkvm_go_indev_handler
 func jetkvm_go_indev_handler(code C.int) {
 	indevEventChan <- int(code)
@@ -115,6 +130,7 @@ func setUpNativeHandlers() {
 	C.jetkvm_cgo_setup_log_handler()
 	C.jetkvm_cgo_setup_video_state_handler()
 	C.jetkvm_cgo_setup_video_handler()
+	C.jetkvm_cgo_setup_mjpeg_handler()
 	C.jetkvm_cgo_setup_indev_handler()
 	C.jetkvm_cgo_setup_rpc_handler()
 }
@@ -409,4 +425,18 @@ func videoSetEDID(edid string) error {
 // This is only for testing purposes
 func crash() {
 	C.jetkvm_crash()
+}
+
+func mjpegSetEnabled(enabled bool) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	C.jetkvm_mjpeg_set_enabled(C.bool(enabled))
+}
+
+func mjpegGetEnabled() bool {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return bool(C.jetkvm_mjpeg_get_enabled())
 }

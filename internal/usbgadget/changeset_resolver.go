@@ -162,7 +162,18 @@ func (c *ChangeSetResolver) applyChangeWithTimeout(ctx context.Context, change *
 
 	select {
 	case err := <-done:
-		return err
+		if err != nil {
+			return err
+		}
+		// Apply delay after change if specified (e.g., for hardware settling time)
+		if change.DelayAfter > 0 {
+			c.l.Debug().
+				Str("change", change.String()).
+				Dur("delay", change.DelayAfter).
+				Msg("waiting after change for hardware settling")
+			time.Sleep(change.DelayAfter)
+		}
+		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("change application timed out for %s: %w", change.String(), ctx.Err())
 	}

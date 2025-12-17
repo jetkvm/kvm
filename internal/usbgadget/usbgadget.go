@@ -20,6 +20,7 @@ type Devices struct {
 	Keyboard      bool `json:"keyboard"`
 	MassStorage   bool `json:"mass_storage"`
 	Audio         bool `json:"audio"`
+	UVC           bool `json:"uvc"` // USB Video Class (webcam passthrough)
 }
 
 // Equals checks if two Devices structs are equal.
@@ -28,7 +29,8 @@ func (d Devices) Equals(other Devices) bool {
 		d.RelativeMouse == other.RelativeMouse &&
 		d.Keyboard == other.Keyboard &&
 		d.MassStorage == other.MassStorage &&
-		d.Audio == other.Audio
+		d.Audio == other.Audio &&
+		d.UVC == other.UVC
 }
 
 // Config is a struct that represents the customizations for a USB gadget.
@@ -50,6 +52,7 @@ var defaultUsbGadgetDevices = Devices{
 	Keyboard:      true,
 	MassStorage:   true,
 	Audio:         true,
+	UVC:           false, // UVC disabled by default - requires uvc-gadget userspace helper
 }
 
 type KeysDownState struct {

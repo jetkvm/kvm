@@ -21,6 +21,10 @@ service NativeService {
   rpc VideoStop(Empty) returns (Empty);
   rpc VideoStart(Empty) returns (Empty);
 
+  // MJPEG methods (for UVC streaming)
+  rpc MjpegSetEnabled(MjpegSetEnabledRequest) returns (Empty);
+  rpc MjpegGetEnabled(Empty) returns (MjpegGetEnabledResponse);
+
   // UI methods
   rpc GetLVGLVersion(Empty) returns (GetLVGLVersionResponse);
   rpc UIObjHide(UIObjHideRequest) returns (UIObjHideResponse);
@@ -98,6 +102,14 @@ message VideoGetEDIDResponse {
 
 message VideoLogStatusResponse {
   string status = 1;
+}
+
+message MjpegSetEnabledRequest {
+  bool enabled = 1;
+}
+
+message MjpegGetEnabledResponse {
+  bool enabled = 1;
 }
 
 message GetLVGLVersionResponse {

@@ -128,7 +128,10 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 }
 
 func (tx *UsbGadgetTransaction) Commit() error {
-	tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	// Only add symlink reordering if there are symlinks to reorder
+	if tx.reorderSymlinkChanges != nil {
+		tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	}
 
 	err := tx.c.Apply()
 	if err != nil {
@@ -169,7 +172,9 @@ func (tx *UsbGadgetTransaction) CreateConfigPath() {
 	)
 }
 
-func (tx *UsbGadgetTransaction) WriteGadgetConfig() {
+// WriteGadgetConfigFunctions creates function directories and symlinks but does NOT bind to UDC.
+// Call WriteUDC() separately after any additional setup (like UVC streaming config).
+func (tx *UsbGadgetTransaction) WriteGadgetConfigFunctions() {
 	// create kvm gadget path
 	tx.mkdirAll(
 		"gadget",
@@ -192,8 +197,6 @@ func (tx *UsbGadgetTransaction) WriteGadgetConfig() {
 		}
 		deps = tx.writeGadgetItemConfig(item, deps)
 	}
-
-	tx.WriteUDC()
 }
 
 func (tx *UsbGadgetTransaction) getDisableKeys() []string {
@@ -344,21 +347,39 @@ func (tx *UsbGadgetTransaction) addReorderSymlinkChange(path string, target stri
 	})
 }
 
+// CreateUVCConfigSymlink creates the symlink to bind UVC function to the config.
+// This must be called AFTER SetupUVCFunction() configures the streaming settings.
+func (tx *UsbGadgetTransaction) CreateUVCConfigSymlink() {
+	configPath := path.Join(tx.configC1Path, "uvc.usb0")
+	funcPath := path.Join(tx.kvmGadgetPath, "functions", "uvc.usb0")
+	tx.addReorderSymlinkChange(configPath, funcPath, nil)
+}
+
 func (tx *UsbGadgetTransaction) WriteUDC() {
 	// bound the gadget to a UDC (USB Device Controller)
-	path := path.Join(tx.kvmGadgetPath, "UDC")
+	udcPath := path.Join(tx.kvmGadgetPath, "UDC")
+
+	// Only depend on reorder-symlinks if it exists in this transaction
+	var deps []string
+	if tx.reorderSymlinkChanges != nil {
+		deps = []string{"reorder-symlinks"}
+	}
+
 	tx.addFileChange("udc", RequestedFileChange{
 		Key:             "udc",
-		Path:            path,
+		Path:            udcPath,
 		ExpectedState:   FileStateFileContentMatch,
 		ExpectedContent: []byte(tx.udc),
-		DependsOn:       []string{"reorder-symlinks"},
+		DependsOn:       deps,
 		Description:     "write UDC",
 	})
 }
 
 func (tx *UsbGadgetTransaction) RebindUsb(ignoreUnbindError bool) {
 	// remove the gadget from the UDC
+	// Add 200ms delay after unbind to allow UVC video device cleanup before rebind.
+	// Without this delay, the UVC gadget driver fails with "kobject already initialized"
+	// because the video4linux device hasn't been fully unregistered yet.
 	tx.addFileChange("udc", RequestedFileChange{
 		Path:            path.Join(tx.dwc3Path, "unbind"),
 		ExpectedState:   FileStateFileWrite,
@@ -366,6 +387,7 @@ func (tx *UsbGadgetTransaction) RebindUsb(ignoreUnbindError bool) {
 		Description:     "unbind UDC",
 		DependsOn:       []string{"udc"},
 		IgnoreErrors:    ignoreUnbindError,
+		DelayAfter:      200 * time.Millisecond,
 	})
 	// bind the gadget to the UDC
 	tx.addFileChange("udc", RequestedFileChange{
