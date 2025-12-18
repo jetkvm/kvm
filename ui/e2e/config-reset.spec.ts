@@ -8,7 +8,7 @@ import {
 } from "./helpers";
 
 // Time to wait after reset config before reloading (ms)
-const RESET_CONFIG_DELAY = 2000;
+const RESET_CONFIG_DELAY = 7000;
 
 // Time to wait for welcome screen animations (ms)
 const ANIMATION_DELAY = 3000;
