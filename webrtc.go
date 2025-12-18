@@ -12,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -65,6 +66,43 @@ func getActiveSessions() int {
 	defer activeSessionsMutex.Unlock()
 
 	return actionSessions
+}
+
+// GetDiagnosticsInfo returns WebRTC diagnostic info for the diagnostics package.
+func (s *Session) GetDiagnosticsInfo() diagnostics.SessionInfo {
+	info := diagnostics.SessionInfo{
+		HasCurrentSession: true,
+	}
+
+	if s.peerConnection != nil {
+		pc := s.peerConnection
+		info.ICEConnectionState = pc.ICEConnectionState().String()
+		info.SignalingState = pc.SignalingState().String()
+		info.ConnectionState = pc.ConnectionState().String()
+
+		var channels []diagnostics.DataChannelInfo
+		if s.ControlChannel != nil {
+			channels = append(channels, diagnostics.DataChannelInfo{
+				Label: s.ControlChannel.Label(),
+				State: s.ControlChannel.ReadyState().String(),
+			})
+		}
+		if s.RPCChannel != nil {
+			channels = append(channels, diagnostics.DataChannelInfo{
+				Label: s.RPCChannel.Label(),
+				State: s.RPCChannel.ReadyState().String(),
+			})
+		}
+		if s.HidChannel != nil {
+			channels = append(channels, diagnostics.DataChannelInfo{
+				Label: s.HidChannel.Label(),
+				State: s.HidChannel.ReadyState().String(),
+			})
+		}
+		info.DataChannels = channels
+	}
+
+	return info
 }
 
 func (s *Session) resetKeepAliveTime() {

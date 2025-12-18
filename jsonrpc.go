@@ -10,7 +10,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,10 +21,23 @@ import (
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
+
+// ansiRegex matches ANSI escape sequences for stripping from log output
+var ansiRegex = regexp.MustCompile(`[\x1b\x9b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\x07)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PRZcf-ntqry=><~]))`)
+
+// cleanLogOutput strips ANSI codes and unescapes newlines/tabs for readable output
+func cleanLogOutput(s string) string {
+	s = ansiRegex.ReplaceAllString(s, "")
+	s = strings.ReplaceAll(s, "\\n", "\n")
+	s = strings.ReplaceAll(s, "\\t", "\t")
+	return s
+}
 
 type JSONRPCRequest struct {
 	JSONRPC string         `json:"jsonrpc"`
@@ -660,6 +676,107 @@ func rpcResetConfig() error {
 	return nil
 }
 
+func rpcGetDiagnostics() (string, error) {
+	var sb strings.Builder
+
+	// Trigger diagnostics logging (will be written to last.log)
+	diag := diagnostics.New(diagnostics.Options{
+		GetSessionInfo: func() diagnostics.SessionInfo {
+			info := diagnostics.SessionInfo{
+				ActiveSessions:    getActiveSessions(),
+				HasCurrentSession: currentSession != nil,
+			}
+			if currentSession != nil {
+				sessionInfo := currentSession.GetDiagnosticsInfo()
+				info.ICEConnectionState = sessionInfo.ICEConnectionState
+				info.SignalingState = sessionInfo.SignalingState
+				info.ConnectionState = sessionInfo.ConnectionState
+				info.DataChannels = sessionInfo.DataChannels
+			}
+			return info
+		},
+	})
+	diag.LogAll("download")
+
+	// Section 1: Application log (last.log)
+	sb.WriteString("=== APPLICATION LOG ===\n")
+	if data, err := os.ReadFile(supervisor.AppLogPath); err == nil {
+		sb.WriteString(cleanLogOutput(string(data)))
+	} else {
+		sb.WriteString(fmt.Sprintf("Error reading log: %v\n", err))
+	}
+	sb.WriteString("\n\n")
+
+	// Section 2: Last crash log
+	lastCrashPath := filepath.Join(supervisor.ErrorDumpDir, supervisor.ErrorDumpLastFile)
+	sb.WriteString("=== LAST CRASH LOG ===\n")
+	if data, err := os.ReadFile(lastCrashPath); err == nil {
+		sb.WriteString(cleanLogOutput(string(data)))
+	} else {
+		sb.WriteString(fmt.Sprintf("No crash log found: %v\n", err))
+	}
+	sb.WriteString("\n\n")
+
+	// Section 3: Last 3 crash dumps (excluding last-crash.log)
+	sb.WriteString("=== RECENT CRASH DUMPS ===\n")
+	if entries, err := os.ReadDir(supervisor.ErrorDumpDir); err == nil {
+		type fileInfo struct {
+			name    string
+			modTime time.Time
+		}
+		var crashFiles []fileInfo
+		for _, entry := range entries {
+			if entry.IsDir() || entry.Name() == supervisor.ErrorDumpLastFile {
+				continue
+			}
+			// Match jetkvm-*.log pattern
+			if !strings.HasPrefix(entry.Name(), "jetkvm-") || !strings.HasSuffix(entry.Name(), ".log") {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			crashFiles = append(crashFiles, fileInfo{name: entry.Name(), modTime: info.ModTime()})
+		}
+		// Sort by modification time (newest first)
+		sort.Slice(crashFiles, func(i, j int) bool {
+			return crashFiles[i].modTime.After(crashFiles[j].modTime)
+		})
+		// Take last 3
+		if len(crashFiles) > 3 {
+			crashFiles = crashFiles[:3]
+		}
+		for _, cf := range crashFiles {
+			sb.WriteString(fmt.Sprintf("--- %s ---\n", cf.name))
+			crashPath := filepath.Join(supervisor.ErrorDumpDir, cf.name)
+			if data, err := os.ReadFile(crashPath); err == nil {
+				sb.WriteString(cleanLogOutput(string(data)))
+			} else {
+				sb.WriteString(fmt.Sprintf("Error reading: %v\n", err))
+			}
+			sb.WriteString("\n")
+		}
+		if len(crashFiles) == 0 {
+			sb.WriteString("No crash dumps found\n")
+		}
+	} else {
+		sb.WriteString(fmt.Sprintf("Error reading crash directory: %v\n", err))
+	}
+	sb.WriteString("\n")
+
+	// Section 4: Configuration
+	sb.WriteString("=== CONFIGURATION ===\n")
+	if data, err := os.ReadFile(configPath); err == nil {
+		sb.WriteString(string(data))
+	} else {
+		sb.WriteString(fmt.Sprintf("Error reading config: %v\n", err))
+	}
+	sb.WriteString("\n")
+
+	return sb.String(), nil
+}
+
 type DCPowerState struct {
 	IsOn         bool    `json:"isOn"`
 	Voltage      float64 `json:"voltage"`
@@ -1207,7 +1324,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":   {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
-	"getFailSafeLogs":        {Func: rpcGetFailsafeLogs},
 	"getPublicIPAddresses":   {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses": {Func: rpcCheckPublicIPAddresses},
+	"getDiagnostics":         {Func: rpcGetDiagnostics},
 }
