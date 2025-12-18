@@ -521,6 +521,7 @@ export default function SettingsAdvancedRoute() {
             >
               <Button
                 size="SM"
+                disabled={diagnosticsLoading}
                 theme="light"
                 text={m.advanced_download_diagnostics_button()}
                 loading={diagnosticsLoading}

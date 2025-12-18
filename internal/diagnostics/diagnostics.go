@@ -3,6 +3,8 @@
 package diagnostics
 
 import (
+	"io"
+
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
@@ -29,6 +31,8 @@ type SessionInfo struct {
 type Options struct {
 	// GetSessionInfo returns session diagnostics. Optional.
 	GetSessionInfo func() SessionInfo
+	// Writer is an optional output destination. If set, logs go here instead of default.
+	Writer io.Writer
 }
 
 // Diagnostics provides comprehensive system diagnostics logging.
@@ -38,7 +42,12 @@ type Diagnostics struct {
 }
 
 // New creates a new Diagnostics instance using the default diagnostics logger.
+// If opts.Writer is set, logs are written there instead of the default logger.
 func New(opts Options) *Diagnostics {
+	if opts.Writer != nil {
+		logger := zerolog.New(opts.Writer)
+		return &Diagnostics{logger: &logger, options: opts}
+	}
 	return NewWithLogger(diagLogger, opts)
 }
 

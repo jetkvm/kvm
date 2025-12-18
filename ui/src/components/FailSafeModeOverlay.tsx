@@ -145,6 +145,7 @@ Please attach the recovery logs file that was downloaded to your computer:
                       size="SM"
                       disabled={isDownloadingLogs}
                       LeadingIcon={GitHubIcon}
+                      loading={isDownloadingLogs}
                       text={
                         isDownloadingLogs ? "Downloading Logs..." : "Download Logs & Report Issue"
                       }

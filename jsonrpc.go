@@ -679,8 +679,24 @@ func rpcResetConfig() error {
 func rpcGetDiagnostics() (string, error) {
 	var sb strings.Builder
 
-	// Trigger diagnostics logging (will be written to last.log)
+	// Section 1: Application log (last.log) - last 500 lines
+	sb.WriteString("=== APPLICATION LOG ===\n")
+	if data, err := os.ReadFile(supervisor.AppLogPath); err == nil {
+		content := cleanLogOutput(string(data))
+		lines := strings.Split(content, "\n")
+		if len(lines) > 500 {
+			content = "... (truncated, showing last 500 lines)\n" + strings.Join(lines[len(lines)-500:], "\n")
+		}
+		sb.WriteString(content)
+	} else {
+		sb.WriteString(fmt.Sprintf("Error reading log: %v\n", err))
+	}
+	sb.WriteString("\n\n")
+
+	// Collect diagnostics to a buffer (not to last.log)
+	var diagBuf strings.Builder
 	diag := diagnostics.New(diagnostics.Options{
+		Writer: &diagBuf,
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{
 				ActiveSessions:    getActiveSessions(),
@@ -698,16 +714,12 @@ func rpcGetDiagnostics() (string, error) {
 	})
 	diag.LogAll("download")
 
-	// Section 1: Application log (last.log)
-	sb.WriteString("=== APPLICATION LOG ===\n")
-	if data, err := os.ReadFile(supervisor.AppLogPath); err == nil {
-		sb.WriteString(cleanLogOutput(string(data)))
-	} else {
-		sb.WriteString(fmt.Sprintf("Error reading log: %v\n", err))
-	}
-	sb.WriteString("\n\n")
+	// Section 2: System diagnostics
+	sb.WriteString("=== SYSTEM DIAGNOSTICS ===\n")
+	sb.WriteString(diagBuf.String())
+	sb.WriteString("\n")
 
-	// Section 2: Last crash log
+	// Section 3: Last crash log
 	lastCrashPath := filepath.Join(supervisor.ErrorDumpDir, supervisor.ErrorDumpLastFile)
 	sb.WriteString("=== LAST CRASH LOG ===\n")
 	if data, err := os.ReadFile(lastCrashPath); err == nil {
@@ -717,7 +729,7 @@ func rpcGetDiagnostics() (string, error) {
 	}
 	sb.WriteString("\n\n")
 
-	// Section 3: Last 3 crash dumps (excluding last-crash.log)
+	// Section 4: Recent crash dumps (excluding last-crash.log)
 	sb.WriteString("=== RECENT CRASH DUMPS ===\n")
 	if entries, err := os.ReadDir(supervisor.ErrorDumpDir); err == nil {
 		type fileInfo struct {
@@ -743,15 +755,25 @@ func rpcGetDiagnostics() (string, error) {
 		sort.Slice(crashFiles, func(i, j int) bool {
 			return crashFiles[i].modTime.After(crashFiles[j].modTime)
 		})
-		// Take last 3
-		if len(crashFiles) > 15 {
-			crashFiles = crashFiles[:15]
+
+		// Take 12 most recent crash dumps
+		if len(crashFiles) > 12 {
+			crashFiles = crashFiles[:12]
 		}
-		for _, cf := range crashFiles {
+
+		for i, cf := range crashFiles {
 			sb.WriteString(fmt.Sprintf("--- %s ---\n", cf.name))
 			crashPath := filepath.Join(supervisor.ErrorDumpDir, cf.name)
 			if data, err := os.ReadFile(crashPath); err == nil {
-				sb.WriteString(cleanLogOutput(string(data)))
+				content := cleanLogOutput(string(data))
+				// First file is full, rest are last 50 lines
+				if i > 0 {
+					lines := strings.Split(content, "\n")
+					if len(lines) > 100 {
+						content = "... (truncated)\n" + strings.Join(lines[len(lines)-50:], "\n")
+					}
+				}
+				sb.WriteString(content)
 			} else {
 				sb.WriteString(fmt.Sprintf("Error reading: %v\n", err))
 			}
@@ -765,7 +787,7 @@ func rpcGetDiagnostics() (string, error) {
 	}
 	sb.WriteString("\n")
 
-	// Section 4: Configuration
+	// Section 5: Configuration
 	sb.WriteString("=== CONFIGURATION ===\n")
 	if data, err := os.ReadFile(configPath); err == nil {
 		sb.WriteString(string(data))
