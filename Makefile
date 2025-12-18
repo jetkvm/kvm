@@ -87,7 +87,7 @@ build_dev:
 	fi
 
 _build_dev_inner: build_native
-	@echo "Building..."
+	@echo "Building... $(VERSION_DEV)"
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 		$(GO_RELEASE_BUILD_ARGS) \
