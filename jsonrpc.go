@@ -744,8 +744,8 @@ func rpcGetDiagnostics() (string, error) {
 			return crashFiles[i].modTime.After(crashFiles[j].modTime)
 		})
 		// Take last 3
-		if len(crashFiles) > 3 {
-			crashFiles = crashFiles[:3]
+		if len(crashFiles) > 15 {
+			crashFiles = crashFiles[:15]
 		}
 		for _, cf := range crashFiles {
 			sb.WriteString(fmt.Sprintf("--- %s ---\n", cf.name))
