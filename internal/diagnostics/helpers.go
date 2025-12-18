@@ -38,21 +38,6 @@ func (d *Diagnostics) readFileLog(label, path string) {
 	d.logger.Info().Str("content", strings.TrimSpace(string(data))).Msg(label)
 }
 
-// readFileHeadLog reads first N lines of a file and logs its content.
-func (d *Diagnostics) readFileHeadLog(label, path string, lines int) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		d.logger.Warn().Str("path", path).Err(err).Msg(label + " NOT found")
-		return
-	}
-	content := string(data)
-	allLines := strings.Split(content, "\n")
-	if len(allLines) > lines {
-		allLines = allLines[:lines]
-	}
-	d.logger.Info().Str("content", strings.Join(allLines, "\n")).Msg(label)
-}
-
 // checkFileLog checks if a file/device exists and logs its status.
 func (d *Diagnostics) checkFileLog(label, path string) {
 	info, err := os.Stat(path)
