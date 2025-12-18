@@ -288,6 +288,102 @@ export function hidToPixelCoords(
   };
 }
 
+// HID absolute coordinate range is 0-32767
+const HID_MAX = 32767;
+
+// Region size for cursor detection (pixels around the expected cursor position)
+const CAPTURE_REGION_SIZE = 80;
+
+// Minimum video dimensions to consider valid (sanity check)
+const MIN_VIDEO_DIMENSION = 100;
+
+/**
+ * Verify keyboard works using LED round-trip.
+ * Taps CAPS_LOCK and verifies the LED state toggles.
+ *
+ * @param page - Playwright page object
+ */
+export async function verifyKeyboardWorks(page: Page): Promise<void> {
+  // Get initial CAPS_LOCK state
+  const initialState = await getLedState(page);
+  expect(initialState, "LED state should be available").not.toBeNull();
+  const initialCapsLock = initialState!.caps_lock;
+
+  // Toggle CAPS_LOCK
+  await tapKey(page, HID_KEY.CAPS_LOCK);
+  await waitForLedState(page, "caps_lock", !initialCapsLock);
+
+  // Verify the state changed
+  const newState = await getLedState(page);
+  expect(newState!.caps_lock, "CAPS_LOCK should have toggled").toBe(!initialCapsLock);
+
+  // Restore original state
+  await tapKey(page, HID_KEY.CAPS_LOCK);
+  await waitForLedState(page, "caps_lock", initialCapsLock);
+}
+
+/**
+ * Verify mouse works using fingerprint comparison.
+ * Moves the cursor and verifies the video region changes.
+ *
+ * @param page - Playwright page object
+ */
+export async function verifyMouseWorks(page: Page): Promise<void> {
+  // Get video dimensions
+  const dimensions = await getVideoStreamDimensions(page);
+  expect(dimensions, "Video stream dimensions should be available").not.toBeNull();
+  const { width: videoWidth, height: videoHeight } = dimensions!;
+  expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
+  expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
+
+  // Calculate center position
+  const hidCenter = Math.floor(HID_MAX / 2);
+  const centerPixel = hidToPixelCoords(hidCenter, hidCenter, videoWidth, videoHeight);
+
+  // Calculate capture region bounds (centered around the target position)
+  const regionX = Math.max(0, centerPixel.x - CAPTURE_REGION_SIZE / 2);
+  const regionY = Math.max(0, centerPixel.y - CAPTURE_REGION_SIZE / 2);
+  const regionWidth = Math.min(CAPTURE_REGION_SIZE, videoWidth - regionX);
+  const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
+
+  // Move mouse to center and capture
+  await sendAbsMouseMove(page, hidCenter, hidCenter);
+  await page.waitForTimeout(100);
+  const fpBefore = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+  expect(fpBefore, "Failed to capture fingerprint with cursor at center").not.toBeNull();
+
+  // Move mouse to corner and capture
+  await sendAbsMouseMove(page, 0, 0);
+  await page.waitForTimeout(100);
+  const fpAfter = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+  expect(fpAfter, "Failed to capture fingerprint after cursor moved away").not.toBeNull();
+
+  // Verify the regions differ (cursor moved)
+  const distance = fingerprintDistance(fpBefore!, fpAfter!);
+  expect(
+    distance,
+    `Cursor movement should cause significant visual change (distance=${distance}, expected >10) — mouse HID path may be broken`,
+  ).toBeGreaterThan(10);
+}
+
+/**
+ * Combined verification for video stream, mouse, and keyboard.
+ * This is a convenience function that runs all three verifications.
+ *
+ * @param page - Playwright page object
+ */
+export async function verifyHidAndVideo(page: Page): Promise<void> {
+  // Verify video stream is active
+  const isVideoActive = await page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive());
+  expect(isVideoActive, "Video stream should be active").toBe(true);
+
+  // Verify mouse works
+  await verifyMouseWorks(page);
+
+  // Verify keyboard works
+  await verifyKeyboardWorks(page);
+}
+
 // TypeScript declarations for the test hooks on window
 declare global {
   interface Window {
