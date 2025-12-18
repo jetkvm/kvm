@@ -38,6 +38,7 @@ export default function SettingsAdvancedRoute() {
   const [resetConfig, setResetConfig] = useState(false);
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const settings = useSettingsStore();
 
   useEffect(() => {
@@ -190,6 +191,37 @@ export default function SettingsAdvancedRoute() {
     applyLoopbackOnlyMode(true);
     setShowLoopbackWarning(false);
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
+
+  const handleDownloadDiagnostics = useCallback(() => {
+    setDiagnosticsLoading(true);
+
+    send("getDiagnostics", {}, async (resp: JsonRpcResponse) => {
+      setDiagnosticsLoading(false);
+
+      if ("error" in resp) {
+        notifications.error(
+          m.advanced_error_download_diagnostics({ error: resp.error.data || m.unknown_error() }),
+        );
+        return;
+      }
+
+      const logContent = resp.result as string;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `jetkvm-diagnostics-${timestamp}.txt`;
+
+      const blob = new Blob([logContent], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      notifications.success(m.advanced_success_download_diagnostics());
+    });
+  }, [send]);
 
   const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
     notifications.error(
@@ -480,6 +512,19 @@ export default function SettingsAdvancedRoute() {
                   await sleep(2000);
                   window.location.reload();
                 }}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.advanced_download_diagnostics_title()}
+              description={m.advanced_download_diagnostics_description()}
+            >
+              <Button
+                size="SM"
+                theme="light"
+                text={m.advanced_download_diagnostics_button()}
+                loading={diagnosticsLoading}
+                onClick={handleDownloadDiagnostics}
               />
             </SettingsItem>
           </NestedSettingsGroup>

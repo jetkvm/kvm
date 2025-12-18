@@ -57,11 +57,11 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const handleReportAndDownloadLogs = () => {
     setIsDownloadingLogs(true);
 
-    send("getFailSafeLogs", {}, async (resp: JsonRpcResponse) => {
+    send("getDiagnostics", {}, async (resp: JsonRpcResponse) => {
       setIsDownloadingLogs(false);
 
       if ("error" in resp) {
-        notifications.error(`Failed to get recovery logs: ${resp.error.message}`);
+        notifications.error(`Failed to get diagnostics: ${resp.error.message}`);
         return;
       }
 

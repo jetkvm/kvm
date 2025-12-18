@@ -74,6 +74,12 @@ var (
 		"DEBUG":   zerolog.DebugLevel,
 		"TRACE":   zerolog.TraceLevel,
 	}
+
+	// subsystemDefaultLevels defines default log levels for specific subsystems
+	// that should always log at a certain level regardless of the global default.
+	subsystemDefaultLevels = map[string]zerolog.Level{
+		"diagnostics": zerolog.InfoLevel,
+	}
 )
 
 func NewLogger(zerologLogger zerolog.Logger) *Logger {
@@ -141,6 +147,14 @@ func (l *Logger) getScopeLoggerLevel(scope string) zerolog.Level {
 	}
 	if l.defaultLogLevelFromEnv != -2 {
 		scopeLevel = l.defaultLogLevelFromEnv
+	}
+
+	// Check if this subsystem has a specific default level
+	if subsystemLevel, ok := subsystemDefaultLevels[scope]; ok {
+		// Use the more verbose level (lower value = more verbose)
+		if subsystemLevel < scopeLevel {
+			scopeLevel = subsystemLevel
+		}
 	}
 
 	// if the scope is not in the map, use the default level from the root logger
