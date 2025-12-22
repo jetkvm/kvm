@@ -41,3 +41,12 @@ func handleMjpegFrameForUVC(frame []byte) {
 	}
 	cameraManager.HandleMjpegFrame(frame)
 }
+
+// restoreUVCMjpegState restores MJPEG encoder state after native restart.
+// Called from OnNativeRestart callback to re-enable MJPEG encoding if UVC was streaming.
+func restoreUVCMjpegState() {
+	if cameraManager == nil {
+		return
+	}
+	cameraManager.RestoreMjpegState()
+}

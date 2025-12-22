@@ -201,13 +201,16 @@ export class CameraEncoder {
    */
   async start(): Promise<void> {
     if (this._state === 'running') {
+      console.log('[CameraEncoder] Already running');
       return;
     }
 
     this.setState('initializing');
+    console.log('[CameraEncoder] Starting with codec:', this.codec);
 
     try {
       // Request camera access with 60fps
+      console.log('[CameraEncoder] Requesting camera access...');
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: this.config.width },
@@ -215,6 +218,7 @@ export class CameraEncoder {
           frameRate: { ideal: this.config.frameRate, min: 30 },
         },
       });
+      console.log('[CameraEncoder] Got camera access');
 
       const videoTracks = this.mediaStream.getVideoTracks();
       if (videoTracks.length === 0) {
@@ -232,15 +236,20 @@ export class CameraEncoder {
       // Update keyframe interval based on actual framerate
       this.framesPerKeyFrame = Math.round(this.actualFrameRate * this.config.keyFrameInterval);
 
-      if (this.codec === 'h264') {
-        await this.startH264Encoder(actualWidth, actualHeight);
-      } else {
-        await this.startMjpegEncoder(actualWidth, actualHeight);
-      }
-
+      // Set state to running BEFORE starting encoder so capture callbacks work
       this.lastStatsTime = performance.now();
       this.statsFrameCount = 0;
       this.setState('running');
+
+      if (this.codec === 'h264') {
+        console.log('[CameraEncoder] Starting H.264 encoder');
+        await this.startH264Encoder(actualWidth, actualHeight);
+      } else {
+        console.log('[CameraEncoder] Starting MJPEG encoder');
+        await this.startMjpegEncoder(actualWidth, actualHeight);
+      }
+
+      console.log('[CameraEncoder] Encoder running');
 
     } catch (error) {
       this.setState('error');
@@ -547,6 +556,11 @@ export class CameraEncoder {
       return;
     }
 
+    // Log first few captures
+    if (this.frameCount < 3) {
+      console.log('[CameraEncoder] Capturing frame', this.frameCount);
+    }
+
     let bitmap: ImageBitmap | null = null;
     try {
       // Create ImageBitmap from video frame (fast GPU operation)
@@ -579,6 +593,11 @@ export class CameraEncoder {
     this.frameCount++;
     this.statsFrameCount++;
     this.lastFrameSize = data.byteLength;
+
+    // Log first few frames
+    if (this.frameCount <= 3) {
+      console.log('[CameraEncoder] MJPEG frame from worker:', this.frameCount, 'size:', data.byteLength);
+    }
 
     // Report stats every second via callback
     const now = performance.now();

@@ -32,6 +32,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		MaxRestartAttempts:   config.NativeMaxRestart,
 		OnNativeRestart: func() {
 			configureDisplayOnNativeRestart()
+			// Restore MJPEG encoder state if UVC was streaming with MJPEG format
+			restoreUVCMjpegState()
 		},
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state

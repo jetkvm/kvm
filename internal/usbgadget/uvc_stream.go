@@ -192,7 +192,10 @@ func NewUVCStreamer(devicePath string, log Logger) *UVCStreamer {
 			bFrameIndex:              1,      // 1080p default
 			dwFrameInterval:          333333, // 30fps
 			dwMaxVideoFrameSize:      1920 * 1080 * 2,
-			dwMaxPayloadTransferSize: 3072,
+			// For bulk mode, dwMaxPayloadTransferSize must be large enough for the kernel's
+			// internal payload size. Using 2MB to accommodate large H.264 frames.
+			// For isochronous mode this was 3072 (3x1024 high-bandwidth packets).
+			dwMaxPayloadTransferSize: 2 * 1024 * 1024,
 			dwClockFrequency:         48000000,
 			bPreferedVersion:         1,
 			bMinVersion:              1,
@@ -370,7 +373,7 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.streaming = true
 	s.curBufIdx = 0
 	s.queuedBufs = 0
-	s.log.Debug().Msg("V4L2 streaming started")
+	s.log.Info().Int("bufCount", s.bufCount).Int("bufferSize", s.bufferSize).Msg("V4L2 STREAMON success")
 	return nil
 }
 
@@ -397,6 +400,8 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 	return nil
 }
 
+var writeFrameLogCount int
+
 func (s *UVCStreamer) WriteFrame(data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -407,6 +412,10 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	buf := s.buffers[s.curBufIdx]
 	if len(data) > len(buf) {
+		if writeFrameLogCount < 3 {
+			s.log.Warn().Int("dataLen", len(data)).Int("bufLen", len(buf)).Msg("WriteFrame: data too large for buffer")
+			writeFrameLogCount++
+		}
 		return nil
 	}
 

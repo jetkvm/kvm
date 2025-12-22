@@ -14,8 +14,13 @@ var uvcConfig = gadgetConfigItem{
 	device: "uvc.usb0",
 	path:   []string{"functions", "uvc.usb0"},
 	attrs: gadgetAttributes{
-		"streaming_bulk":      "0",    // isochronous mode
-		"streaming_maxpacket": "3072", // high-bandwidth (3x1024)
+		// Use bulk mode to avoid isochronous endpoint conflict with UAC.
+		// Both UAC and UVC need isochronous IN endpoints, but the DWC3 can only
+		// allocate one isochronous endpoint per direction. Bulk mode allows
+		// UVC and UAC to coexist.
+		// Throughput: Bulk has no guaranteed bandwidth but works well in practice.
+		"streaming_bulk":      "1",    // bulk mode (avoids isoc endpoint conflict with UAC)
+		"streaming_maxpacket": "1024", // max packet size for bulk
 	},
 }
 

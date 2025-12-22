@@ -109,8 +109,13 @@ func (m *Manager) IsEnabled() bool {
 }
 
 // SetSource sets the video source for UVC output.
+// Handles MJPEG encoder state transitions for seamless source switching.
 func (m *Manager) SetSource(source Source) {
 	oldSource := m.source.Get()
+	if oldSource == source {
+		return // No change
+	}
+
 	m.source.Set(source)
 
 	if m.camLog != nil {
@@ -118,6 +123,43 @@ func (m *Manager) SetSource(source Source) {
 			Str("old_source", oldSource.String()).
 			Str("new_source", source.String()).
 			Msg("UVC source changed")
+	}
+
+	// Reset camera frame log counters when switching to camera for fresh diagnostics
+	if source == SourceCamera {
+		ResetCameraFrameLogCounters()
+	}
+
+	// Update MJPEG encoder state based on source and streaming state
+	m.updateMjpegEncoderForSource(source)
+}
+
+// updateMjpegEncoderForSource enables/disables MJPEG encoder based on current source.
+// MJPEG encoder should only run when:
+// - UVC is streaming with MJPEG format selected
+// - Source is HDMI (encoder encodes HDMI capture buffer)
+func (m *Manager) updateMjpegEncoderForSource(source Source) {
+	m.streamerMu.Lock()
+	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
+	isMjpeg := m.uvcMjpegSelected
+	m.streamerMu.Unlock()
+
+	if m.native == nil {
+		return
+	}
+
+	if source == SourceHDMI && isStreaming && isMjpeg {
+		// Switching to HDMI with MJPEG format: enable encoder
+		if m.camLog != nil {
+			m.camLog.Info().Msg("Enabling MJPEG encoder for HDMI source")
+		}
+		m.native.MjpegSetEnabled(true)
+	} else {
+		// Not HDMI or not streaming MJPEG: disable encoder
+		if m.camLog != nil {
+			m.camLog.Info().Msg("Disabling MJPEG encoder (source not HDMI or not streaming MJPEG)")
+		}
+		m.native.MjpegSetEnabled(false)
 	}
 }
 

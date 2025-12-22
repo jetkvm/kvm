@@ -76,7 +76,10 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 			// NOTE: Capture (c_chmask) is disabled because audio output from the managed PC
 			// is received via HDMI, not USB. This saves 2 endpoints (IN+OUT) which is critical
 			// for fitting all gadget functions within the RV1106 DWC3 endpoint limit.
-			"p_chmask":         "3",     // USB Microphone: stereo (Browser → WebRTC → JetKVM → USB → Managed PC)
+			//
+			// CRITICAL: p_chmask MUST match the audio playback channel count in audio.c
+			// (playback_channels = 1). Mismatch causes ALSA format errors and no audio.
+			"p_chmask":         "1",     // USB Microphone: mono (Browser → WebRTC → JetKVM → USB → Managed PC)
 			"p_srate":          "48000", // 48kHz sample rate
 			"p_ssize":          "2",     // 16-bit samples (2 bytes)
 			"p_volume_present": "1",     // Enable volume control

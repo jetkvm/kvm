@@ -31,6 +31,9 @@ const (
 	codecMjpeg = 0x02
 )
 
+// wsFrameLogCount tracks debug logs for WebSocket frames
+var wsFrameLogCount int
+
 // handleCameraWs handles the zero-overhead WebSocket endpoint for camera frames.
 // Protocol:
 //   - Server -> Client: JSON messages for format negotiation
@@ -65,7 +68,8 @@ func handleCameraWs(c *gin.Context) {
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 
-	cameraLog.Debug().Msg("Camera WebSocket connected")
+	cameraLog.Info().Msg("Camera WebSocket connected")
+	wsFrameLogCount = 0 // Reset frame counter for new connection
 
 	// Subscribe to format changes
 	formatChan := cameraManager.SubscribeFormatChanges()
@@ -73,19 +77,30 @@ func handleCameraWs(c *gin.Context) {
 
 	// Send initial format if UVC is already streaming
 	if format := cameraManager.GetCurrentFormat(); format != nil {
+		cameraLog.Info().Msg("UVC is already streaming, sending initial format")
 		sendFormatMessage(ctx, ws, format)
+	} else {
+		cameraLog.Info().Msg("UVC not streaming yet, waiting for format notification")
 	}
 
 	// Start goroutine to forward format changes to WebSocket
 	go func() {
+		cameraLog.Info().Msg("Format subscription goroutine started")
 		for {
 			select {
 			case <-ctx.Done():
+				cameraLog.Info().Msg("Format subscription goroutine exiting (context done)")
 				return
 			case format, ok := <-formatChan:
 				if !ok {
+					cameraLog.Info().Msg("Format subscription goroutine exiting (channel closed)")
 					return
 				}
+				cameraLog.Info().
+					Str("codec", format.Codec).
+					Int("width", format.Width).
+					Int("height", format.Height).
+					Msg("Received format change notification")
 				sendFormatMessage(ctx, ws, &format)
 			}
 		}
@@ -153,6 +168,21 @@ func handleCameraWs(c *gin.Context) {
 		codec := data[0]
 		frameData := data[frameHeaderSize:n]
 
+		// Debug: log first few frames received via WebSocket
+		if wsFrameLogCount < 10 {
+			codecName := "unknown"
+			if codec == codecH264 {
+				codecName = "H.264"
+			} else if codec == codecMjpeg {
+				codecName = "MJPEG"
+			}
+			cameraLog.Info().
+				Str("codec", codecName).
+				Int("size", len(frameData)).
+				Msg("WebSocket frame received")
+			wsFrameLogCount++
+		}
+
 		// Route frame to appropriate handler based on codec
 		switch codec {
 		case codecH264:
@@ -202,12 +232,20 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 		return
 	}
 
+	cameraLog.Info().
+		Str("codec", format.Codec).
+		Int("width", format.Width).
+		Int("height", format.Height).
+		Msg("Sending format message to browser")
+
 	// Use a short timeout for control messages
 	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	if err := ws.Write(writeCtx, websocket.MessageText, data); err != nil {
 		cameraLog.Warn().Err(err).Msg("Failed to send format message")
+	} else {
+		cameraLog.Info().Msg("Format message sent successfully")
 	}
 }
 

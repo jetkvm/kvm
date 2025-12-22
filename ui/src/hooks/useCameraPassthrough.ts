@@ -99,8 +99,10 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
 
     const start = async () => {
       try {
+        console.log('[CameraPassthrough] Starting...');
 
         // Create transport first (to receive format negotiation)
+        console.log('[CameraPassthrough] Creating transport');
         const transport = await createCameraTransport(baseUrl);
         if (cancelled) {
           transport.close();
@@ -134,20 +136,26 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
             updateState({ stats });
           },
           onFormatRequest: async (format) => {
+            console.log('[CameraPassthrough] Format request:', format);
             // JetKVM tells us what format UVC host wants
             // Switch codec if host requests different format
             const currentEncoder = encoderRef.current;
+            console.log('[CameraPassthrough] Current encoder:', currentEncoder ? currentEncoder.currentCodec : 'null', 'state:', currentEncoder?.state);
             if (currentEncoder && currentEncoder.currentCodec !== format.codec) {
               try {
+                console.log('[CameraPassthrough] Switching codec to:', format.codec);
                 await currentEncoder.switchCodec(format.codec);
                 updateState({ currentCodec: format.codec });
+                console.log('[CameraPassthrough] Codec switched');
               } catch (err) {
+                console.error('[CameraPassthrough] Codec switch error:', err);
                 handleError(err instanceof Error ? err : new Error(String(err)));
               }
             }
             // Resume encoding when format request received (UVC started)
             const enc = encoderRef.current;
             if (enc && enc.state === 'paused') {
+              console.log('[CameraPassthrough] Resuming encoder');
               enc.resume();
             }
           },
@@ -162,8 +170,14 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
         });
 
         // Set up encoder event handlers
+        let frameLogCount = 0;
         encoder.setEventHandlers({
           onFrame: (frame) => {
+            // Log first few frames
+            if (frameLogCount < 3) {
+              console.log('[CameraPassthrough] Sending frame', frameLogCount, 'codec:', frame.codec, 'size:', frame.data.byteLength);
+              frameLogCount++;
+            }
             // Send encoded frame to JetKVM
             const currentTransport = transportRef.current;
             if (currentTransport) {
@@ -177,7 +191,9 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
         });
 
         // Connect transport
+        console.log('[CameraPassthrough] Connecting transport');
         await transport.connect();
+        console.log('[CameraPassthrough] Transport connected');
         if (cancelled) {
           encoder.stop();
           transport.close();
@@ -185,7 +201,9 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
         }
 
         // Start encoder (captures camera and begins encoding)
+        console.log('[CameraPassthrough] Starting encoder with codec:', encoder.currentCodec);
         await encoder.start();
+        console.log('[CameraPassthrough] Encoder started, state:', encoder.state);
         if (cancelled) {
           encoder.stop();
           transport.close();

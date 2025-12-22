@@ -411,13 +411,46 @@ func (m *Manager) HandleH264Frame(frame []byte) {
 	m.writeFrameToUVC(frame)
 }
 
+// cameraH264FrameLogCount tracks debug logs for camera H.264 frames
+var cameraH264FrameLogCount int
+
+// cameraMjpegFrameLogCount tracks debug logs for camera MJPEG frames
+var cameraMjpegFrameLogCount int
+
+// ResetCameraFrameLogCounters resets the frame log counters (called on source change)
+func ResetCameraFrameLogCounters() {
+	cameraH264FrameLogCount = 0
+	cameraMjpegFrameLogCount = 0
+}
+
 // HandleCameraH264Frame handles an H.264 frame from the browser camera.
-// This is called when the browser sends H.264 encoded video over DataChannel.
-// Note: Camera passthrough sends H.264 regardless of format negotiation.
-// If host selected MJPEG, this will likely not work (Linux uvcvideo prefers MJPEG).
+// This is called when the browser sends H.264 encoded video over WebSocket.
+// Browser sends H.264 when UVC host negotiates H.264 format.
 func (m *Manager) HandleCameraH264Frame(frame []byte) {
+	enabled := m.enabled.Load()
+	isCamera := m.source.IsCamera()
+
+	// Debug: log first few camera frames to understand the flow
+	if cameraH264FrameLogCount < 10 {
+		m.streamerMu.Lock()
+		isStreaming := m.streamer != nil && m.streamer.IsStreaming()
+		isMjpeg := m.uvcMjpegSelected
+		m.streamerMu.Unlock()
+
+		if m.camLog != nil {
+			m.camLog.Info().
+				Int("size", len(frame)).
+				Bool("enabled", enabled).
+				Bool("isCamera", isCamera).
+				Bool("streaming", isStreaming).
+				Bool("hostWantsMjpeg", isMjpeg).
+				Msg("Camera H.264 frame received")
+		}
+		cameraH264FrameLogCount++
+	}
+
 	// Only process camera frames if camera passthrough is enabled and source is camera
-	if !m.enabled.Load() || !m.source.IsCamera() {
+	if !enabled || !isCamera {
 		return
 	}
 
@@ -507,6 +540,23 @@ func (m *Manager) IsStreaming() bool {
 	return m.streamer != nil && m.streamer.IsStreaming()
 }
 
+// RestoreMjpegState re-enables MJPEG encoder if UVC is streaming with MJPEG format.
+// This should be called after native process restarts to restore encoder state.
+func (m *Manager) RestoreMjpegState() {
+	m.streamerMu.Lock()
+	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
+	isMjpeg := m.uvcMjpegSelected
+	isHDMI := m.source.IsHDMI()
+	m.streamerMu.Unlock()
+
+	if isStreaming && isMjpeg && isHDMI && m.native != nil {
+		if m.uvcLog != nil {
+			m.uvcLog.Info().Msg("Restoring MJPEG encoder state after native restart")
+		}
+		m.native.MjpegSetEnabled(true)
+	}
+}
+
 // HandleMjpegFrame handles an MJPEG frame from the native encoder.
 // This is called when the host selected MJPEG format and MJPEG encoder is enabled.
 // Only works for HDMI source (hardware encodes from capture buffer).
@@ -517,6 +567,16 @@ func (m *Manager) HandleMjpegFrame(frame []byte) {
 	isStreaming := streamer != nil && streamer.IsStreaming()
 	isMjpeg := m.uvcMjpegSelected
 	m.streamerMu.Unlock()
+
+	// Debug: log first few MJPEG frames received
+	if m.uvcFrameCount < 5 && m.uvcLog != nil {
+		m.uvcLog.Info().
+			Int("size", len(frame)).
+			Bool("streaming", isStreaming).
+			Bool("mjpeg", isMjpeg).
+			Bool("hdmi", m.source.IsHDMI()).
+			Msg("HandleMjpegFrame called")
+	}
 
 	if !isStreaming || !isMjpeg {
 		return
@@ -532,6 +592,10 @@ func (m *Manager) HandleMjpegFrame(frame []byte) {
 	m.uvcFrameCount++
 	if err := streamer.WriteFrame(frame); err != nil {
 		m.uvcFrameErrors++
+		// Debug: log first few errors
+		if m.uvcFrameErrors <= 5 && m.uvcLog != nil {
+			m.uvcLog.Warn().Err(err).Int("frame", m.uvcFrameCount).Msg("MJPEG WriteFrame error")
+		}
 	}
 
 	// Log stats periodically (debug level)
@@ -547,19 +611,36 @@ func (m *Manager) HandleMjpegFrame(frame []byte) {
 }
 
 // HandleCameraMjpegFrame handles an MJPEG frame from the browser camera.
-// This is called when the browser sends MJPEG encoded video over WebSocket
-// and the UVC host selected MJPEG format.
+// This is called when the browser sends MJPEG encoded video over WebSocket.
+// Browser sends MJPEG when UVC host negotiates MJPEG format.
 func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
-	// Only process camera frames if camera passthrough is enabled and source is camera
-	if !m.enabled.Load() || !m.source.IsCamera() {
-		return
-	}
+	enabled := m.enabled.Load()
+	isCamera := m.source.IsCamera()
 
 	m.streamerMu.Lock()
 	streamer := m.streamer
 	isStreaming := streamer != nil && streamer.IsStreaming()
 	isMjpeg := m.uvcMjpegSelected
 	m.streamerMu.Unlock()
+
+	// Debug: log first few camera MJPEG frames to understand the flow
+	if cameraMjpegFrameLogCount < 10 {
+		if m.camLog != nil {
+			m.camLog.Info().
+				Int("size", len(frame)).
+				Bool("enabled", enabled).
+				Bool("isCamera", isCamera).
+				Bool("streaming", isStreaming).
+				Bool("hostWantsMjpeg", isMjpeg).
+				Msg("Camera MJPEG frame received")
+		}
+		cameraMjpegFrameLogCount++
+	}
+
+	// Only process camera frames if camera passthrough is enabled and source is camera
+	if !enabled || !isCamera {
+		return
+	}
 
 	if !isStreaming || !isMjpeg {
 		return
