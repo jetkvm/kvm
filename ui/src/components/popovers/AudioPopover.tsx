@@ -37,6 +37,14 @@ export default function AudioPopover() {
       }
     });
 
+    send("getAudioInputEnabled", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to load audio input enabled:", resp.error);
+      } else {
+        setMicrophoneEnabled(resp.result as boolean);
+      }
+    });
+
     send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         console.error("Failed to load USB devices:", resp.error);
@@ -45,7 +53,7 @@ export default function AudioPopover() {
         setUsbAudioEnabled(usbDevices.audio || false);
       }
     });
-  }, [send]);
+  }, [send, setMicrophoneEnabled]);
 
   const handleAudioOutputEnabledToggle = useCallback((enabled: boolean) => {
     setLoading(true);

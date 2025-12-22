@@ -221,33 +221,62 @@ func (u *UsbGadget) CloseHidFiles() {
 	closeFile(&u.relMouseHidFile, "relative mouse")
 }
 
-// PreOpenHidFiles opens all HID files to reduce input latency
+// PreOpenHidFiles opens all HID files to reduce input latency.
+// Uses retry logic since USB re-enumeration on the host can take 1-2 seconds.
 func (u *UsbGadget) PreOpenHidFiles() {
-	// Small delay for USB gadget reconfiguration to complete
-	time.Sleep(100 * time.Millisecond)
+	// Initial delay for USB gadget to bind and create device files
+	time.Sleep(200 * time.Millisecond)
 
-	openHidFile := func(file **os.File, path string, name string) {
-		if *file == nil {
+	// Retry configuration: try up to 10 times with 200ms intervals (total ~2s)
+	const maxRetries = 10
+	const retryDelay = 200 * time.Millisecond
+
+	openHidFileWithRetry := func(file **os.File, path string, name string) {
+		if *file != nil {
+			return // Already open
+		}
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
 			f, err := os.OpenFile(path, os.O_RDWR, 0666)
-			if err != nil {
-				u.log.Debug().Err(err).Msgf("failed to pre-open %s HID file", name)
-			} else {
+			if err == nil {
 				*file = f
+				u.log.Debug().
+					Str("path", path).
+					Int("attempt", attempt).
+					Msgf("successfully opened %s HID file", name)
+				return
+			}
+
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+			} else {
+				u.log.Warn().
+					Err(err).
+					Str("path", path).
+					Msgf("failed to open %s HID file after %d attempts", name, maxRetries)
 			}
 		}
 	}
 
 	if u.enabledDevices.Keyboard {
-		if err := u.openKeyboardHidFile(); err != nil {
-			u.log.Debug().Err(err).Msg("failed to pre-open keyboard HID file")
+		// Keyboard uses a different open method, so retry it separately
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			if err := u.openKeyboardHidFile(); err == nil {
+				u.log.Debug().Int("attempt", attempt).Msg("successfully opened keyboard HID file")
+				break
+			} else if attempt < maxRetries {
+				time.Sleep(retryDelay)
+			} else {
+				u.log.Warn().Err(err).Msgf("failed to open keyboard HID file after %d attempts", maxRetries)
+			}
 		}
 	}
 
 	if u.enabledDevices.AbsoluteMouse {
-		openHidFile(&u.absMouseHidFile, "/dev/hidg1", "absolute mouse")
+		openHidFileWithRetry(&u.absMouseHidFile, "/dev/hidg1", "absolute mouse")
 	}
 
 	if u.enabledDevices.RelativeMouse {
-		openHidFile(&u.relMouseHidFile, "/dev/hidg2", "relative mouse")
+		openHidFileWithRetry(&u.relMouseHidFile, "/dev/hidg2", "relative mouse")
 	}
 }

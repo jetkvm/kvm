@@ -13,6 +13,12 @@ const (
 	SourceCamera Source = "camera" // Browser camera passthrough
 )
 
+// Internal int32 values for lock-free atomic operations (no type assertion overhead)
+const (
+	sourceValueHDMI   int32 = 0
+	sourceValueCamera int32 = 1
+)
+
 // IsValid returns true if the source is a valid value.
 func (s Source) IsValid() bool {
 	switch s {
@@ -38,31 +44,38 @@ func ParseSource(s string) (Source, error) {
 }
 
 // sourceStore provides thread-safe storage for the current UVC source.
+// Uses atomic.Int32 internally to avoid type assertion overhead in hot path.
 type sourceStore struct {
-	value atomic.Value
+	value atomic.Int32
 }
 
 func newSourceStore() *sourceStore {
 	s := &sourceStore{}
-	s.value.Store(SourceHDMI)
+	s.value.Store(sourceValueHDMI)
 	return s
 }
 
 func (s *sourceStore) Get() Source {
-	if v := s.value.Load(); v != nil {
-		return v.(Source)
+	if s.value.Load() == sourceValueCamera {
+		return SourceCamera
 	}
 	return SourceHDMI
 }
 
 func (s *sourceStore) Set(source Source) {
-	s.value.Store(source)
+	if source == SourceCamera {
+		s.value.Store(sourceValueCamera)
+	} else {
+		s.value.Store(sourceValueHDMI)
+	}
 }
 
+// IsCamera returns true if source is camera. HOTPATH: Single atomic load, no type assertion.
 func (s *sourceStore) IsCamera() bool {
-	return s.Get() == SourceCamera
+	return s.value.Load() == sourceValueCamera
 }
 
+// IsHDMI returns true if source is HDMI. HOTPATH: Single atomic load, no type assertion.
 func (s *sourceStore) IsHDMI() bool {
-	return s.Get() == SourceHDMI
+	return s.value.Load() == sourceValueHDMI
 }

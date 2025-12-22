@@ -23,7 +23,10 @@ import (
 )
 
 const (
-	maxFrameSize                   = 1920 * 1080 / 2
+	// maxFrameSize must accommodate large MJPEG frames at high quality.
+	// MJPEG at 1080p high quality can exceed 1MB per frame.
+	// 2MB provides headroom for all quality settings.
+	maxFrameSize                   = 2 * 1024 * 1024 // 2MB
 	defaultMaxRestartAttempts uint = 5
 )
 

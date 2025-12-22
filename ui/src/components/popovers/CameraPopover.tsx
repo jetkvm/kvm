@@ -5,7 +5,6 @@ import { useSettingsStore } from "@/hooks/stores";
 import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import Checkbox from "@components/Checkbox";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -13,14 +12,14 @@ import { isSecureContext } from "@/utils";
 
 type UVCSource = "hdmi" | "camera";
 
-const uvcSourceOptions = [
-  { value: "hdmi" as UVCSource, label: "HDMI Input" },
-  { value: "camera" as UVCSource, label: "Browser Camera" },
+const getUvcSourceOptions = () => [
+  { value: "hdmi" as UVCSource, label: m.camera_source_hdmi() },
+  { value: "camera" as UVCSource, label: m.camera_source_browser() },
 ];
 
 export default function CameraPopover() {
   const { send } = useJsonRpc();
-  const { cameraEnabled, setCameraEnabled } = useSettingsStore();
+  const { setCameraEnabled } = useSettingsStore();
   const [uvcEnabled, setUvcEnabled] = useState<boolean>(false);
   const [uvcSource, setUvcSource] = useState<UVCSource>("hdmi");
   const isHttps = isSecureContext();
@@ -41,42 +40,46 @@ export default function CameraPopover() {
       if ("error" in resp) {
         console.error("Failed to load UVC source:", resp.error);
       } else {
-        setUvcSource(resp.result as UVCSource);
-      }
-    });
-
-    // Sync camera enabled state from device (important for remote connections)
-    send("getCameraEnabled", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        console.error("Failed to load camera enabled state:", resp.error);
-      } else {
-        setCameraEnabled(resp.result as boolean);
+        const source = resp.result as UVCSource;
+        setUvcSource(source);
+        // Sync camera enabled state based on current source
+        setCameraEnabled(source === "camera");
       }
     });
   }, [send, setCameraEnabled]);
 
   const handleSourceChange = useCallback((source: UVCSource) => {
-    send("setUVCSource", { source }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(`Failed to change UVC source: ${resp.error.message}`);
-        return;
-      }
-      setUvcSource(source);
-      notifications.success(`UVC source changed to ${source === "hdmi" ? "HDMI Input" : "Browser Camera"}`);
-    });
-  }, [send]);
+    // Check HTTPS requirement for camera source
+    if (source === "camera" && !isHttps) {
+      notifications.error(m.camera_source_https_required());
+      return;
+    }
 
-  const handleCameraToggle = useCallback((enabled: boolean) => {
-    send("setCameraEnabled", { enabled }, (resp: JsonRpcResponse) => {
+    // Enable/disable camera based on source selection
+    const enableCamera = source === "camera";
+
+    // First set the camera enabled state
+    send("setCameraEnabled", { enabled: enableCamera }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.camera_failed_enable({ error: String(resp.error.data || resp.error.message) }));
         return;
       }
-      setCameraEnabled(enabled);
-      const successMsg = enabled ? m.camera_enabled() : m.camera_disabled();
-      notifications.success(successMsg);
+      setCameraEnabled(enableCamera);
+
+      // Then set the UVC source
+      send("setUVCSource", { source }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(m.camera_source_change_failed({ error: String(resp.error.message) }));
+          // Rollback camera state on failure
+          send("setCameraEnabled", { enabled: !enableCamera }, () => {});
+          setCameraEnabled(!enableCamera);
+          return;
+        }
+        setUvcSource(source);
+        notifications.success(source === "hdmi" ? m.camera_source_changed_hdmi() : m.camera_source_changed_browser());
+      });
     });
-  }, [send, setCameraEnabled]);
+  }, [send, setCameraEnabled, isHttps]);
 
   return (
     <GridCard>
@@ -92,44 +95,35 @@ export default function CameraPopover() {
               <>
                 {/* UVC Source Selector */}
                 <SettingsItem
-                  title="UVC Video Source"
-                  description="Select which video source to send to the target PC via UVC"
+                  title={m.camera_source_title()}
+                  description={m.camera_source_description()}
                 >
                   <SelectMenuBasic
                     size="SM"
                     value={uvcSource}
                     onChange={(e) => handleSourceChange(e.target.value as UVCSource)}
-                    options={uvcSourceOptions}
+                    options={getUvcSourceOptions()}
                   />
                 </SettingsItem>
 
-                {/* Camera Toggle - only shown when source is camera */}
-                {uvcSource === "camera" && (
-                  <SettingsItem
-                    title={m.camera_title()}
-                    description={m.camera_description()}
-                    badge={!isHttps ? m.camera_https_only() : undefined}
-                    badgeVariant="info"
-                    badgeLink={!isHttps ? "settings/access" : undefined}
-                  >
-                    <Checkbox
-                      checked={cameraEnabled}
-                      disabled={!isHttps}
-                      onChange={(e) => handleCameraToggle(e.target.checked)}
-                    />
-                  </SettingsItem>
-                )}
+                {/* Info text based on source */}
+                <div className="text-sm text-slate-500 dark:text-slate-400">
+                  {uvcSource === "hdmi"
+                    ? m.camera_source_hdmi_active()
+                    : m.camera_source_browser_active()
+                  }
+                </div>
 
-                {/* Info when HDMI is selected */}
-                {uvcSource === "hdmi" && (
-                  <div className="text-sm text-slate-500 dark:text-slate-400">
-                    HDMI input is being mirrored to the target PC via UVC.
+                {/* HTTPS warning for camera option */}
+                {!isHttps && (
+                  <div className="text-sm text-amber-600 dark:text-amber-400">
+                    {m.camera_source_https_warning()}
                   </div>
                 )}
               </>
             ) : (
               <div className="text-sm text-slate-500 dark:text-slate-400">
-                UVC (webcam) is not enabled. Enable it in USB Device settings to use camera passthrough.
+                {m.camera_source_uvc_disabled()}
               </div>
             )}
           </div>

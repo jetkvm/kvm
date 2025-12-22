@@ -1,11 +1,12 @@
 package camera
 
-const cameraLogInterval = 30 // Log every N frames
+const cameraLogInterval = 300 // Log every N frames (~10 seconds at 30fps)
 
 // HandleCameraFrame handles a camera frame received from the browser.
 // This is called by the WebRTC DataChannel handler in the kvm package.
 // Browser captures camera frames, encodes to H.264, and sends them here.
 // We pass the H.264 frames directly to the UVC streamer (no transcoding).
+// HOTPATH: Optimized with atomic counters to avoid mutex on every frame.
 func (m *Manager) HandleCameraFrame(data []byte, isString bool) {
 	// Only process if camera passthrough is enabled AND UVC source is set to camera
 	if !m.enabled.Load() || !m.source.IsCamera() {
@@ -24,19 +25,17 @@ func (m *Manager) HandleCameraFrame(data []byte, isString bool) {
 		return // Too small to be an H.264 NAL unit
 	}
 
-	// Update frame stats
-	m.frameMu.Lock()
-	m.frameCount++
-	shouldLog := m.frameCount-m.lastLogFrame >= cameraLogInterval
+	// Update frame stats with atomics (no mutex in hot path)
+	frameCount := m.cameraFrameCount.Add(1)
+	lastLog := m.cameraLastLogFrame.Load()
+	shouldLog := frameCount-lastLog >= cameraLogInterval
 	if shouldLog {
-		m.lastLogFrame = m.frameCount
+		m.cameraLastLogFrame.Store(frameCount)
 	}
-	frameCount := m.frameCount
-	m.frameMu.Unlock()
 
 	if shouldLog && m.camLog != nil {
 		m.camLog.Info().
-			Int("frames", frameCount).
+			Int32("frames", frameCount).
 			Int("h264Size", len(data)).
 			Msg("Camera H.264 passthrough stats")
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -17,10 +18,15 @@ const (
 	V4L2_MEMORY_MMAP           = 1
 	V4L2_MEMORY_USERPTR        = 2
 
+	// Buffer timestamp flags - GStreamer requires MONOTONIC timestamps
+	V4L2_BUF_FLAG_TIMESTAMP_MASK     = 0x0000e000
+	V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC = 0x00002000
+
 	// V4L2 ioctls (32-bit ARM values)
 	VIDIOC_QUERYCAP        = 0x80685600
 	VIDIOC_S_FMT           = 0xc0d05605
 	VIDIOC_REQBUFS         = 0xc0145608
+	VIDIOC_QUERYBUF        = 0xc0445609
 	VIDIOC_QBUF            = 0xc044560f
 	VIDIOC_DQBUF           = 0xc0445611
 	VIDIOC_STREAMON        = 0x40045612
@@ -38,7 +44,8 @@ const (
 	UVC_EVENT_SETUP          = V4L2_EVENT_PRIVATE_START + 4
 	UVC_EVENT_DATA           = V4L2_EVENT_PRIVATE_START + 5
 
-	V4L2_PIX_FMT_H264 = 0x34363248 // "H264" fourcc
+	V4L2_PIX_FMT_H264  = 0x34363248 // "H264" fourcc
+	V4L2_PIX_FMT_MJPEG = 0x47504A4D // "MJPG" fourcc
 
 	// USB/UVC constants
 	USB_TYPE_MASK  = 0x60
@@ -147,6 +154,7 @@ type UVCStreamer struct {
 	width       uint32
 	height      uint32
 	streaming   bool
+	streamReady bool // True after first frame queued and STREAMON issued
 	mu          sync.Mutex
 	log         Logger
 	bufferSize  int
@@ -159,6 +167,9 @@ type UVCStreamer struct {
 	probe       uvc_streaming_control
 	commit      uvc_streaming_control
 	pendingCtrl uint8
+
+	// Pre-allocated event data buffer to reduce GC pressure during polling
+	eventDataBuf [64]byte
 }
 
 type Logger interface {
@@ -192,10 +203,7 @@ func NewUVCStreamer(devicePath string, log Logger) *UVCStreamer {
 			bFrameIndex:              1,      // 1080p default
 			dwFrameInterval:          333333, // 30fps
 			dwMaxVideoFrameSize:      1920 * 1080 * 2,
-			// For bulk mode, dwMaxPayloadTransferSize must be large enough for the kernel's
-			// internal payload size. Using 2MB to accommodate large H.264 frames.
-			// For isochronous mode this was 3072 (3x1024 high-bandwidth packets).
-			dwMaxPayloadTransferSize: 2 * 1024 * 1024,
+			dwMaxPayloadTransferSize: 3072,
 			dwClockFrequency:         48000000,
 			bPreferedVersion:         1,
 			bMinVersion:              1,
@@ -215,6 +223,24 @@ func (s *UVCStreamer) GetCommittedResolution() (uint32, uint32) {
 	return 1920, 1080
 }
 
+// GetCommittedFrameInterval returns the frame interval negotiated by the host.
+// Value is in 100ns units (333333 = 30fps, 166666 = 60fps).
+func (s *UVCStreamer) GetCommittedFrameInterval() uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.commit.dwFrameInterval
+}
+
+// GetCommittedFrameRate returns the frame rate negotiated by the host in fps.
+func (s *UVCStreamer) GetCommittedFrameRate() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.commit.dwFrameInterval == 0 {
+		return 30 // Default to 30fps if not set
+	}
+	return int(10000000 / s.commit.dwFrameInterval)
+}
+
 // GetCommittedFormatIndex returns the format index selected by the host.
 // Format index is 1-based and corresponds to configfs format order:
 // - 1 = MJPEG (if configured)
@@ -226,14 +252,13 @@ func (s *UVCStreamer) GetCommittedFormatIndex() uint8 {
 }
 
 // IsH264Format returns true if the committed format is H.264.
-// When both MJPEG and H.264 are configured, H.264 is format index 2.
-// When only H.264 is configured, it's format index 1.
+// MJPEG is set up first in ConfigFS (setupMJPEGFormat before setupH264Format),
+// so MJPEG is format index 1, H.264 is format index 2.
 func (s *UVCStreamer) IsH264Format() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// With both formats: MJPEG=1, H.264=2
-	// With H.264 only: H.264=1
-	// For now assume both formats are configured
+	// MJPEG is set up first in ConfigFS, so it's format index 1
+	// H.264 is set up second, so it's format index 2
 	return s.commit.bFormatIndex == 2
 }
 
@@ -267,13 +292,7 @@ func (s *UVCStreamer) Close() error {
 		s.stopStreamingLocked()
 	}
 
-	if !s.useUserPtr {
-		for _, buf := range s.buffers {
-			if buf != nil {
-				syscall.Munmap(buf)
-			}
-		}
-	}
+	// Regular Go allocations - just clear references, GC will handle cleanup
 	s.buffers = nil
 	s.bufOffsets = nil
 	s.bufCount = 0
@@ -286,6 +305,12 @@ func (s *UVCStreamer) Close() error {
 }
 
 func (s *UVCStreamer) SetFormat(width, height uint32) error {
+	return s.SetFormatWithCodec(width, height, false)
+}
+
+// SetFormatWithCodec sets the V4L2 output format with the specified codec.
+// isMjpeg=true for MJPEG, false for H.264.
+func (s *UVCStreamer) SetFormatWithCodec(width, height uint32, isMjpeg bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -295,25 +320,34 @@ func (s *UVCStreamer) SetFormat(width, height uint32) error {
 
 	s.width = width
 	s.height = height
-	// H.264 compressed frames are typically much smaller than raw
-	// Use 2MB max buffer for 1080p H.264 (generous for high bitrate)
+	// Compressed frames are typically much smaller than raw
+	// Use 2MB max buffer for 1080p (generous for high bitrate/quality)
 	s.bufferSize = 2 * 1024 * 1024
+
+	pixelFormat := uint32(V4L2_PIX_FMT_H264)
+	if isMjpeg {
+		pixelFormat = V4L2_PIX_FMT_MJPEG
+	}
 
 	var v4l2fmt v4l2_format
 	v4l2fmt.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
 	v4l2fmt.Pix.Width = width
 	v4l2fmt.Pix.Height = height
-	v4l2fmt.Pix.PixelFormat = V4L2_PIX_FMT_H264 // H.264 framebased format
+	v4l2fmt.Pix.PixelFormat = pixelFormat
 	v4l2fmt.Pix.Field = V4L2_FIELD_NONE
 	v4l2fmt.Pix.SizeImage = uint32(s.bufferSize)
 
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_S_FMT, uintptr(unsafe.Pointer(&v4l2fmt)))
-	if errno == 0 {
-		s.width = v4l2fmt.Pix.Width
-		s.height = v4l2fmt.Pix.Height
-		if v4l2fmt.Pix.SizeImage > 0 {
-			s.bufferSize = int(v4l2fmt.Pix.SizeImage)
-		}
+	if errno != 0 {
+		// S_FMT may fail for UVC gadget but that's okay - the gadget driver
+		// automatically uses the format negotiated with the host
+		return fmt.Errorf("VIDIOC_S_FMT failed (errno=%d), using default UVC format", errno)
+	}
+
+	s.width = v4l2fmt.Pix.Width
+	s.height = v4l2fmt.Pix.Height
+	if v4l2fmt.Pix.SizeImage > 0 {
+		s.bufferSize = int(v4l2fmt.Pix.SizeImage)
 	}
 
 	return nil
@@ -349,7 +383,7 @@ func (s *UVCStreamer) RequestBuffers(count uint32) error {
 		s.buffers[i] = make([]byte, bufferSize)
 	}
 
-	s.log.Debug().Int("count", int(req.Count)).Msg("UVC buffers allocated")
+	s.log.Info().Int("count", int(req.Count)).Msg("UVC buffers allocated")
 	return nil
 }
 
@@ -361,19 +395,21 @@ func (s *UVCStreamer) StartStreaming() error {
 		return fmt.Errorf("UVC device not open")
 	}
 	if s.streaming {
+		s.log.Debug().Msg("UVC already streaming, skipping StartStreaming")
 		return nil
 	}
 
-	bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMON, uintptr(unsafe.Pointer(&bufType)))
-	if errno != 0 {
-		return fmt.Errorf("VIDIOC_STREAMON failed: %v", errno)
-	}
+	s.log.Info().Int("bufCount", s.bufCount).Msg("Preparing for V4L2 streaming (deferred STREAMON)")
 
-	s.streaming = true
-	s.curBufIdx = 0
+	// Don't call STREAMON yet - the UVC gadget driver expects buffers to be
+	// queued before STREAMON, otherwise it crashes the USB endpoint.
+	// We'll call STREAMON when the first frame arrives in WriteFrame().
 	s.queuedBufs = 0
-	s.log.Info().Int("bufCount", s.bufCount).Int("bufferSize", s.bufferSize).Msg("V4L2 STREAMON success")
+	s.curBufIdx = 0
+	s.streaming = true  // Mark as streaming so WriteFrame accepts frames
+	s.streamReady = false  // STREAMON not issued yet
+
+	s.log.Info().Msg("UVC streaming prepared - waiting for first frame")
 	return nil
 }
 
@@ -388,19 +424,21 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 		return nil
 	}
 
-	bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMOFF, uintptr(unsafe.Pointer(&bufType)))
-	if errno != 0 {
-		return fmt.Errorf("VIDIOC_STREAMOFF failed: %v", errno)
+	// Only issue STREAMOFF if we actually started streaming
+	if s.streamReady {
+		bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMOFF, uintptr(unsafe.Pointer(&bufType)))
+		if errno != 0 {
+			return fmt.Errorf("VIDIOC_STREAMOFF failed: %v", errno)
+		}
 	}
 
 	s.streaming = false
+	s.streamReady = false
 	s.queuedBufs = 0
 	s.curBufIdx = 0
 	return nil
 }
-
-var writeFrameLogCount int
 
 func (s *UVCStreamer) WriteFrame(data []byte) error {
 	s.mu.Lock()
@@ -412,18 +450,13 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	buf := s.buffers[s.curBufIdx]
 	if len(data) > len(buf) {
-		if writeFrameLogCount < 3 {
-			s.log.Warn().Int("dataLen", len(data)).Int("bufLen", len(buf)).Msg("WriteFrame: data too large for buffer")
-			writeFrameLogCount++
-		}
+		s.log.Warn().Int("dataLen", len(data)).Int("bufLen", len(buf)).Msg("WriteFrame: data too large for buffer")
 		return nil
 	}
 
-	memType := uint32(V4L2_MEMORY_MMAP)
-	if s.useUserPtr {
-		memType = V4L2_MEMORY_USERPTR
-	}
+	memType := uint32(V4L2_MEMORY_USERPTR)
 
+	// If all buffers are queued, we need to DQBUF one first
 	for s.queuedBufs >= s.bufCount {
 		var dqbuf v4l2_buffer
 		dqbuf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
@@ -442,6 +475,10 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	bufIdx := s.curBufIdx
 	copy(buf, data)
 
+	// Get current time for timestamp - GStreamer-based apps (Cheese, Chrome)
+	// require valid timestamps to function properly, unlike ffplay
+	now := time.Now()
+
 	var v4l2buf v4l2_buffer
 	v4l2buf.Index = uint32(bufIdx)
 	v4l2buf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
@@ -449,10 +486,12 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	v4l2buf.Field = V4L2_FIELD_NONE
 	v4l2buf.BytesUsed = uint32(len(data))
 	v4l2buf.Length = uint32(len(buf))
-
-	if s.useUserPtr {
-		v4l2buf.M = uintptr(unsafe.Pointer(&buf[0]))
+	v4l2buf.M = uintptr(unsafe.Pointer(&buf[0]))
+	v4l2buf.Timestamp = syscall.Timeval{
+		Sec:  int32(now.Unix()),
+		Usec: int32(now.Nanosecond() / 1000),
 	}
+	v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
 
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QBUF, uintptr(unsafe.Pointer(&v4l2buf)))
 	if errno != 0 {
@@ -461,6 +500,20 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	s.queuedBufs++
 	s.curBufIdx = (s.curBufIdx + 1) % s.bufCount
+
+	// Deferred STREAMON: Issue after first frame is queued
+	// This prevents USB endpoint crash from STREAMON with empty queue
+	if !s.streamReady && s.queuedBufs >= 1 {
+		bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMON, uintptr(unsafe.Pointer(&bufType)))
+		if errno != 0 {
+			s.log.Error().Int("errno", int(errno)).Msg("VIDIOC_STREAMON failed")
+			return fmt.Errorf("VIDIOC_STREAMON failed: %v", errno)
+		}
+		s.streamReady = true
+		s.log.Info().Msg("V4L2 STREAMON successful - UVC streaming active")
+	}
+
 	return nil
 }
 
@@ -487,15 +540,15 @@ func (s *UVCStreamer) SubscribeEvents() error {
 }
 
 func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.fd < 0 {
+	// HOTPATH: No mutex needed - DQEVENT is thread-safe and we only read fd
+	// The fd is only modified during Open/Close which don't run concurrently with polling
+	fd := s.fd
+	if fd < 0 {
 		return 0, nil, fmt.Errorf("UVC device not open")
 	}
 
 	var ev v4l2_event
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_DQEVENT, uintptr(unsafe.Pointer(&ev)))
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), VIDIOC_DQEVENT, uintptr(unsafe.Pointer(&ev)))
 	if errno != 0 {
 		if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK || errno == syscall.ENOENT {
 			return 0, nil, nil
@@ -503,9 +556,10 @@ func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
 		return 0, nil, fmt.Errorf("VIDIOC_DQEVENT failed: %v", errno)
 	}
 
-	data := make([]byte, 64)
-	copy(data, ev.U[:])
-	return ev.Type, data, nil
+	// Use pre-allocated buffer on streamer to reduce GC pressure
+	// IMPORTANT: Caller must process data before next PollEventsWithData call
+	copy(s.eventDataBuf[:], ev.U[:])
+	return ev.Type, s.eventDataBuf[:], nil
 }
 
 type pollfd struct {
@@ -737,26 +791,24 @@ func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 }
 
 func (s *UVCStreamer) IsStreaming() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// HOTPATH: Lock-free read - streaming is only modified during Start/StopStreaming
+	// which don't run concurrently with frame processing (benign race)
 	return s.streaming
 }
 
 func (s *UVCStreamer) IsOpen() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// HOTPATH: Lock-free read - fd is only modified during Open/Close
 	return s.fd >= 0
 }
 
 func (s *UVCStreamer) IsValid() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.fd < 0 {
+	// Lock-free - QUERYCAP is thread-safe and fd check is benign race
+	fd := s.fd
+	if fd < 0 {
 		return false
 	}
 
 	var cap v4l2_capability
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
 	return errno == 0
 }

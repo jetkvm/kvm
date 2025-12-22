@@ -14,13 +14,19 @@ var uvcConfig = gadgetConfigItem{
 	device: "uvc.usb0",
 	path:   []string{"functions", "uvc.usb0"},
 	attrs: gadgetAttributes{
-		// Use bulk mode to avoid isochronous endpoint conflict with UAC.
-		// Both UAC and UVC need isochronous IN endpoints, but the DWC3 can only
-		// allocate one isochronous endpoint per direction. Bulk mode allows
-		// UVC and UAC to coexist.
-		// Throughput: Bulk has no guaranteed bandwidth but works well in practice.
-		"streaming_bulk":      "1",    // bulk mode (avoids isoc endpoint conflict with UAC)
-		"streaming_maxpacket": "1024", // max packet size for bulk
+		// UVC uses isochronous mode (streaming_bulk=0) for better compatibility with
+		// GStreamer-based apps (Cheese, Chrome). Bulk mode doesn't work on this platform.
+		//
+		// FIFO considerations: Both UVC and UAC1 need isochronous IN endpoints.
+		// The DWC3 tx-fifo-resize device tree property enables dynamic FIFO allocation.
+		// USB 2.0 High Speed isochronous bandwidth per multiplier:
+		//   - 1024 (1x) = ~8 MB/s - too low for 1080p MJPEG
+		//   - 2048 (2x) = ~16 MB/s - may not be recognized by some hosts
+		//   - 3072 (3x) = ~24 MB/s - required for reliable UVC operation
+		// We use 3072 (3x) for UVC reliability. Audio coexistence depends on DWC3 FIFO
+		// allocation via tx-fifo-resize device tree property.
+		"streaming_bulk":      "0",    // isochronous mode (required for UVC to work)
+		"streaming_maxpacket": "3072", // 3x multiplier: required for UVC to work reliably
 	},
 }
 
@@ -47,17 +53,50 @@ type UVCFormatConfig struct {
 
 var (
 	// MJPEG formats (universal compatibility fallback)
+	// Frame interval in 100ns units: 10,000,000 / fps
 	UVCFormatMJPEG_1080p30 = UVCFormatConfig{UVCFormat{1920, 1080, 333333}, UVCFormatTypeMJPEG}
+	UVCFormatMJPEG_1080p24 = UVCFormatConfig{UVCFormat{1920, 1080, 416666}, UVCFormatTypeMJPEG}
+	UVCFormatMJPEG_1080p15 = UVCFormatConfig{UVCFormat{1920, 1080, 666666}, UVCFormatTypeMJPEG}
 	UVCFormatMJPEG_720p30  = UVCFormatConfig{UVCFormat{1280, 720, 333333}, UVCFormatTypeMJPEG}
+	UVCFormatMJPEG_720p24  = UVCFormatConfig{UVCFormat{1280, 720, 416666}, UVCFormatTypeMJPEG}
+	UVCFormatMJPEG_720p15  = UVCFormatConfig{UVCFormat{1280, 720, 666666}, UVCFormatTypeMJPEG}
 	UVCFormatMJPEG_480p30  = UVCFormatConfig{UVCFormat{640, 480, 333333}, UVCFormatTypeMJPEG}
+	UVCFormatMJPEG_480p24  = UVCFormatConfig{UVCFormat{640, 480, 416666}, UVCFormatTypeMJPEG}
+	UVCFormatMJPEG_480p15  = UVCFormatConfig{UVCFormat{640, 480, 666666}, UVCFormatTypeMJPEG}
 
 	// H.264 formats (uses framebased format for direct passthrough)
-	UVCFormatH264_1080p60 = UVCFormatConfig{UVCFormat{1920, 1080, 166666}, UVCFormatTypeH264} // 60fps
+	UVCFormatH264_1080p60 = UVCFormatConfig{UVCFormat{1920, 1080, 166666}, UVCFormatTypeH264}
 	UVCFormatH264_1080p30 = UVCFormatConfig{UVCFormat{1920, 1080, 333333}, UVCFormatTypeH264}
-	UVCFormatH264_720p60  = UVCFormatConfig{UVCFormat{1280, 720, 166666}, UVCFormatTypeH264} // 60fps
+	UVCFormatH264_1080p24 = UVCFormatConfig{UVCFormat{1920, 1080, 416666}, UVCFormatTypeH264}
+	UVCFormatH264_1080p15 = UVCFormatConfig{UVCFormat{1920, 1080, 666666}, UVCFormatTypeH264}
+	UVCFormatH264_720p60  = UVCFormatConfig{UVCFormat{1280, 720, 166666}, UVCFormatTypeH264}
 	UVCFormatH264_720p30  = UVCFormatConfig{UVCFormat{1280, 720, 333333}, UVCFormatTypeH264}
+	UVCFormatH264_720p24  = UVCFormatConfig{UVCFormat{1280, 720, 416666}, UVCFormatTypeH264}
+	UVCFormatH264_720p15  = UVCFormatConfig{UVCFormat{1280, 720, 666666}, UVCFormatTypeH264}
 	UVCFormatH264_480p30  = UVCFormatConfig{UVCFormat{640, 480, 333333}, UVCFormatTypeH264}
+	UVCFormatH264_480p24  = UVCFormatConfig{UVCFormat{640, 480, 416666}, UVCFormatTypeH264}
+	UVCFormatH264_480p15  = UVCFormatConfig{UVCFormat{640, 480, 666666}, UVCFormatTypeH264}
 )
+
+// GetAllUVCFormats returns supported UVC formats.
+// Both MJPEG and H.264 are advertised:
+// - MJPEG: Universal compatibility, required for Linux hosts (uvcvideo driver)
+// - H.264: Direct passthrough for hosts that support UVC H.264 (Windows, some apps)
+//
+// MJPEG is listed first so it becomes format index 1 (default for most hosts).
+// H.264 is format index 2, explicitly selected by hosts that support it.
+func GetAllUVCFormats() []UVCFormatConfig {
+	return []UVCFormatConfig{
+		// MJPEG formats (format index 1) - universal compatibility
+		UVCFormatMJPEG_1080p30,
+		UVCFormatMJPEG_720p30,
+		UVCFormatMJPEG_480p30,
+		// H.264 formats (format index 2) - for hosts supporting UVC H.264
+		UVCFormatH264_1080p30,
+		UVCFormatH264_720p30,
+		UVCFormatH264_480p30,
+	}
+}
 
 // SetupUVCFunction creates the directory structure required for UVC gadget.
 // Supports both MJPEG (universal compatibility) and H.264 (direct passthrough) formats.
@@ -72,8 +111,9 @@ func (u *UsbGadget) SetupUVCFunction(formats []UVCFormatConfig) error {
 	}
 
 	if len(formats) == 0 {
-		// Default: MJPEG for compatibility, H.264 for performance
-		formats = []UVCFormatConfig{UVCFormatMJPEG_1080p30, UVCFormatH264_1080p30}
+		// H.264 first (preferred), MJPEG fallback (for compatibility)
+		// macOS doesn't support UVC H.264 Frame-based format
+		formats = []UVCFormatConfig{UVCFormatH264_1080p30, UVCFormatMJPEG_1080p30}
 	}
 
 	streamingPath := filepath.Join(funcPath, "streaming")
@@ -101,20 +141,23 @@ func (u *UsbGadget) SetupUVCFunction(formats []UVCFormatConfig) error {
 		}
 	}
 
-	// Setup MJPEG format (universal compatibility)
+	// Setup MJPEG format FIRST (so it's format index 1 - used for HDMI loopback)
+	// macOS/host defaults to format index 1, so MJPEG will be used for HDMI loopback
+	// This enables the hardware MJPEG encoder on the RV1106
 	if len(mjpegFormats) > 0 {
 		if err := u.setupMJPEGFormat(streamingPath, headerPath, mjpegFormats); err != nil {
 			return fmt.Errorf("failed to setup MJPEG format: %w", err)
 		}
-		u.log.Info().Int("mjpeg_formats", len(mjpegFormats)).Msg("UVC MJPEG format configured")
+		u.log.Info().Int("mjpeg_formats", len(mjpegFormats)).Msg("UVC MJPEG format configured (primary)")
 	}
 
-	// Setup H.264 format (framebased for direct passthrough)
+	// Setup H.264 format SECOND (format index 2 - used for camera passthrough)
+	// Browser explicitly selects H.264 format for camera passthrough
 	if len(h264Formats) > 0 {
 		if err := u.setupH264Format(streamingPath, headerPath, h264Formats); err != nil {
 			return fmt.Errorf("failed to setup H.264 format: %w", err)
 		}
-		u.log.Info().Int("h264_formats", len(h264Formats)).Msg("UVC H.264 format configured")
+		u.log.Info().Int("h264_formats", len(h264Formats)).Msg("UVC H.264 format configured (secondary)")
 	}
 
 	// Link header to streaming class descriptors (FS/HS only, not SS)

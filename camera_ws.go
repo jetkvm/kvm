@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -13,26 +12,20 @@ import (
 	"github.com/jetkvm/kvm/internal/camera"
 )
 
-// frameBufferPool reduces GC pressure by reusing frame buffers.
-// Each buffer is 256KB which should handle most MJPEG frames.
-var frameBufferPool = sync.Pool{
-	New: func() interface{} {
-		buf := make([]byte, 256*1024) // 256KB initial capacity
-		return &buf
-	},
-}
-
 // Frame header size: 1-byte codec flag (timestamp removed for efficiency)
 const frameHeaderSize = 1
+
+// Ring buffer configuration for zero-allocation WebSocket reads
+const (
+	ringBufferCount = 4          // 4 buffers in ring (safe with 8 V4L2 buffers)
+	ringBufferSize  = 2048 * 1024 // 2MB per buffer (handles 1080p MJPEG at any quality)
+)
 
 // Codec flags for binary frame protocol
 const (
 	codecH264  = 0x01
 	codecMjpeg = 0x02
 )
-
-// wsFrameLogCount tracks debug logs for WebSocket frames
-var wsFrameLogCount int
 
 // handleCameraWs handles the zero-overhead WebSocket endpoint for camera frames.
 // Protocol:
@@ -68,8 +61,7 @@ func handleCameraWs(c *gin.Context) {
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 
-	cameraLog.Info().Msg("Camera WebSocket connected")
-	wsFrameLogCount = 0 // Reset frame counter for new connection
+	cameraLog.Debug().Msg("Camera WebSocket connected")
 
 	// Subscribe to format changes
 	formatChan := cameraManager.SubscribeFormatChanges()
@@ -77,36 +69,41 @@ func handleCameraWs(c *gin.Context) {
 
 	// Send initial format if UVC is already streaming
 	if format := cameraManager.GetCurrentFormat(); format != nil {
-		cameraLog.Info().Msg("UVC is already streaming, sending initial format")
 		sendFormatMessage(ctx, ws, format)
-	} else {
-		cameraLog.Info().Msg("UVC not streaming yet, waiting for format notification")
 	}
 
 	// Start goroutine to forward format changes to WebSocket
 	go func() {
-		cameraLog.Info().Msg("Format subscription goroutine started")
 		for {
 			select {
 			case <-ctx.Done():
-				cameraLog.Info().Msg("Format subscription goroutine exiting (context done)")
 				return
 			case format, ok := <-formatChan:
 				if !ok {
-					cameraLog.Info().Msg("Format subscription goroutine exiting (channel closed)")
 					return
 				}
-				cameraLog.Info().
-					Str("codec", format.Codec).
-					Int("width", format.Width).
-					Int("height", format.Height).
-					Msg("Received format change notification")
 				sendFormatMessage(ctx, ws, &format)
 			}
 		}
 	}()
 
-	// Main loop: read binary frames from client using pooled buffers
+	// HOTPATH: Pre-allocate ring buffer to eliminate per-frame GC pressure
+	// Ring of 4 buffers rotates; safe because WriteFrame copies to V4L2 buffer
+	// before we advance, and V4L2 has 8 buffers for pipelining
+	var ringBuf [ringBufferCount][]byte
+	for i := range ringBuf {
+		ringBuf[i] = make([]byte, ringBufferSize)
+	}
+	ringIdx := 0
+
+	// Log when WebSocket connects and is ready to receive frames
+	cameraLog.Info().Msg("Camera WebSocket ready to receive frames")
+
+	// Track frame count for debug logging
+	var frameCount int
+
+	// HOTPATH: Main loop - zero-allocation frame handling
+	// Uses ws.Reader() with ring buffer to avoid per-frame allocations
 	for {
 		msgType, reader, err := ws.Reader(ctx)
 		if err != nil {
@@ -118,135 +115,100 @@ func handleCameraWs(c *gin.Context) {
 			return
 		}
 
-		// Only process binary messages (frames)
+		// HOTPATH: Skip non-binary messages (control frames)
 		if msgType != websocket.MessageBinary {
-			// Drain the reader for non-binary messages
+			// Drain the reader to complete the message
 			_, _ = io.Copy(io.Discard, reader)
 			continue
 		}
 
-		// Get a buffer from the pool
-		bufPtr := frameBufferPool.Get().(*[]byte)
-		buf := *bufPtr
-
-		// Read frame data into pooled buffer
-		n, err := io.ReadFull(reader, buf)
-		if err == io.ErrUnexpectedEOF || err == io.EOF {
-			// Frame smaller than buffer - this is normal
-			// n contains the actual bytes read
-		} else if err != nil {
-			frameBufferPool.Put(bufPtr)
-			continue
-		}
-
-		// If frame is larger than our buffer, we need to read the rest
-		// This handles frames > 256KB (rare but possible)
-		if n == len(buf) {
-			// Check if there's more data
-			extra, _ := io.ReadAll(reader)
-			if len(extra) > 0 {
-				// Frame was larger than buffer, allocate new buffer
-				fullData := make([]byte, n+len(extra))
-				copy(fullData, buf[:n])
-				copy(fullData[n:], extra)
-				frameBufferPool.Put(bufPtr)
-				processFrame(fullData)
-				continue
+		// HOTPATH: Read entire message into current ring buffer slot
+		buf := ringBuf[ringIdx]
+		n := 0
+		for {
+			nr, readErr := reader.Read(buf[n:])
+			n += nr
+			if readErr == io.EOF {
+				break
+			}
+			if readErr != nil {
+				n = 0 // Mark as invalid
+				break
+			}
+			if n >= len(buf) {
+				// Frame too large, drain remainder and skip
+				_, _ = io.Copy(io.Discard, reader)
+				n = 0
+				break
 			}
 		}
 
-		// Process the frame from pooled buffer
-		data := buf[:n]
-
-		// Validate minimum frame size
-		if len(data) < frameHeaderSize+1 {
-			frameBufferPool.Put(bufPtr)
+		// HOTPATH: Validate minimum frame size (1 byte header + 1 byte data)
+		if n < frameHeaderSize+1 {
 			continue
 		}
 
-		// Parse header: codec (1 byte)
-		codec := data[0]
-		frameData := data[frameHeaderSize:n]
+		// HOTPATH: Parse codec byte and route directly
+		codec := buf[0]
+		frameData := buf[frameHeaderSize:n]
 
-		// Debug: log first few frames received via WebSocket
-		if wsFrameLogCount < 10 {
-			codecName := "unknown"
-			if codec == codecH264 {
-				codecName = "H.264"
-			} else if codec == codecMjpeg {
-				codecName = "MJPEG"
-			}
+		// HOTPATH: Direct dispatch to handlers
+		// WriteFrame copies data to V4L2 buffer before returning,
+		// so it's safe to advance ring index after dispatch
+		frameCount++
+		if frameCount <= 5 {
 			cameraLog.Info().
-				Str("codec", codecName).
+				Int("frame", frameCount).
 				Int("size", len(frameData)).
-				Msg("WebSocket frame received")
-			wsFrameLogCount++
+				Uint8("codec", codec).
+				Msg("Received camera frame")
 		}
-
-		// Route frame to appropriate handler based on codec
 		switch codec {
 		case codecH264:
 			cameraManager.HandleCameraH264Frame(frameData)
 		case codecMjpeg:
 			cameraManager.HandleCameraMjpegFrame(frameData)
-		default:
-			cameraLog.Warn().Uint8("codec", codec).Msg("Unknown codec in camera frame")
 		}
 
-		// Return buffer to pool
-		frameBufferPool.Put(bufPtr)
+		// Advance ring buffer index for next frame
+		ringIdx = (ringIdx + 1) % ringBufferCount
 	}
 }
 
-// processFrame handles a frame that was too large for the pooled buffer.
-func processFrame(data []byte) {
-	if len(data) < frameHeaderSize+1 {
-		return
-	}
-
-	codec := data[0]
-	frameData := data[frameHeaderSize:]
-
-	switch codec {
-	case codecH264:
-		cameraManager.HandleCameraH264Frame(frameData)
-	case codecMjpeg:
-		cameraManager.HandleCameraMjpegFrame(frameData)
-	default:
-		cameraLog.Warn().Uint8("codec", codec).Msg("Unknown codec in camera frame")
-	}
-}
 
 // sendFormatMessage sends a format negotiation message to the WebSocket client.
+// Includes encoder settings (bitrate/quality) from config so the browser can configure its encoder.
 func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.FormatInfo) {
+	ensureConfigLoaded()
+
+	// Debug: log actual config values being used
+	cameraLog.Info().
+		Int("h264Bitrate_mbps", config.CameraH264Bitrate).
+		Int("mjpegQuality_pct", config.CameraMjpegQuality).
+		Str("resolution", config.CameraResolution).
+		Int("frameRate", config.CameraFrameRate).
+		Msg("sendFormatMessage: config values")
+
 	msg := map[string]interface{}{
-		"type":   "format",
-		"codec":  format.Codec,
-		"width":  format.Width,
-		"height": format.Height,
+		"type":         "format",
+		"codec":        format.Codec,
+		"width":        format.Width,
+		"height":       format.Height,
+		"frameRate":    format.FrameRate,
+		"h264Bitrate":  config.CameraH264Bitrate * 1_000_000, // Convert Mbps to bps for browser
+		"mjpegQuality": float64(config.CameraMjpegQuality) / 100.0, // Convert 0-100% to 0.0-1.0
 	}
 
 	data, err := json.Marshal(msg)
 	if err != nil {
-		cameraLog.Warn().Err(err).Msg("Failed to marshal format message")
 		return
 	}
-
-	cameraLog.Info().
-		Str("codec", format.Codec).
-		Int("width", format.Width).
-		Int("height", format.Height).
-		Msg("Sending format message to browser")
 
 	// Use a short timeout for control messages
 	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if err := ws.Write(writeCtx, websocket.MessageText, data); err != nil {
-		cameraLog.Warn().Err(err).Msg("Failed to send format message")
-	} else {
-		cameraLog.Info().Msg("Format message sent successfully")
-	}
+	_ = ws.Write(writeCtx, websocket.MessageText, data)
 }
 
 // handleCameraFrame is called from WebRTC track handler.

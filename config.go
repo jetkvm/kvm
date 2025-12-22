@@ -124,6 +124,12 @@ type Config struct {
 	AudioBufferPeriods   int                  `json:"audio_buffer_periods"`   // 2-24
 	AudioPacketLossPerc  int                  `json:"audio_packet_loss_perc"` // 0-100
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
+
+	// Camera/UVC settings
+	CameraResolution   string `json:"camera_resolution"`    // "1080p", "720p", "480p"
+	CameraFrameRate    int    `json:"camera_frame_rate"`    // 15, 24, 30
+	CameraH264Bitrate  int    `json:"camera_h264_bitrate"`  // 1-10 Mbps
+	CameraMjpegQuality int    `json:"camera_mjpeg_quality"` // 0-100%
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -218,6 +224,12 @@ func getDefaultConfig() Config {
 		AudioFECEnabled:      true,
 		AudioBufferPeriods:   12,
 		AudioPacketLossPerc:  20,
+
+		// Camera/UVC defaults
+		CameraResolution:   "1080p",
+		CameraFrameRate:    24, // Cinema rate - good balance of quality and CPU
+		CameraH264Bitrate:  3,  // 3 Mbps for 1080p24
+		CameraMjpegQuality: 35, // 35% - reasonable quality/size balance
 	}
 }
 
@@ -314,6 +326,15 @@ func LoadConfig() {
 		loadedConfig.AudioFECEnabled = defaults.AudioFECEnabled
 		loadedConfig.AudioBufferPeriods = defaults.AudioBufferPeriods
 		loadedConfig.AudioPacketLossPerc = defaults.AudioPacketLossPerc
+	}
+
+	// Apply camera defaults for new configs
+	if loadedConfig.CameraResolution == "" {
+		defaults := getDefaultConfig()
+		loadedConfig.CameraResolution = defaults.CameraResolution
+		loadedConfig.CameraFrameRate = defaults.CameraFrameRate
+		loadedConfig.CameraH264Bitrate = defaults.CameraH264Bitrate
+		loadedConfig.CameraMjpegQuality = defaults.CameraMjpegQuality
 	}
 
 	// fixup old keyboard layout value

@@ -90,8 +90,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 		},
 	},
 	// UVC (USB Video Class) - webcam passthrough
-	// Order 3500 = before audio (4000). UVC uses bulk mode (streaming_bulk=1) to avoid
-	// isochronous endpoint conflicts, allowing UAC1 to use isochronous for full duplex audio.
+	// Order 3500 = before audio (4000). UVC uses isochronous mode (streaming_bulk=0)
+	// for GStreamer compatibility. UAC1 symlink is created before UVC per Rockchip docs.
 	// UVC requires complex directory setup - handled by SetupUVCFunction()
 	"uvc": uvcConfig,
 }
@@ -321,7 +321,6 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 	// Setup UVC function and create symlink AFTER Audio
 	// UVC uses H.264 framebased format for direct passthrough streaming
 	// This enables zero-copy H.264 streaming from both HDMI loopback and camera passthrough
-	// Advertise 1080p@60fps as primary format for high-quality streaming
 	//
 	// NOTE: Both MJPEG and H.264 are advertised because:
 	// 1. Linux's uvcvideo driver won't enumerate devices with only H.264 framebased format
@@ -331,8 +330,13 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 	// H.264 is listed first to be preferred when the host supports it
 	uvcSetupOK := false
 	if u.enabledDevices.UVC {
-		// Advertise H.264 first (preferred), then MJPEG (fallback for Linux compatibility)
-		if err := u.SetupUVCFunction([]UVCFormatConfig{UVCFormatH264_1080p60, UVCFormatMJPEG_1080p30}); err != nil {
+		// Get ALL supported formats - no USB rebind needed when camera settings change
+		formats := GetAllUVCFormats()
+		u.log.Info().
+			Int("formats", len(formats)).
+			Msg("UVC: Configuring with all supported formats")
+
+		if err := u.SetupUVCFunction(formats); err != nil {
 			u.log.Warn().Err(err).Msg("failed to setup UVC function")
 			// Continue without UVC - don't fail the entire gadget
 		} else {

@@ -97,6 +97,14 @@ func (s *UVCStreamer) GetCommittedResolution() (uint32, uint32) {
 	return 1280, 720
 }
 
+func (s *UVCStreamer) GetCommittedFrameInterval() uint32 {
+	return 333333 // 30fps
+}
+
+func (s *UVCStreamer) GetCommittedFrameRate() int {
+	return 30
+}
+
 func (s *UVCStreamer) GetCommittedFormatIndex() uint8 {
 	return 2 // H.264
 }

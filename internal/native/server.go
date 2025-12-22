@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -95,11 +96,19 @@ func RunNativeProcess(binaryName string) {
 	}
 	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
 
+	// Mutex to protect concurrent writes to video stream socket.
+	// Both H.264 and MJPEG frame callbacks can fire concurrently,
+	// so we need to serialize writes to prevent interleaved/corrupted frames.
+	var videoConnMu sync.Mutex
+
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
 		// Write 4-byte frame length prefix (includes type byte), type byte, then frame data
 		var frameSizeBuffer [4]byte
 		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)+1)) // +1 for type byte
+
+		videoConnMu.Lock()
+		defer videoConnMu.Unlock()
 
 		if _, err := videoConn.Write(frameSizeBuffer[:]); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
@@ -115,6 +124,9 @@ func RunNativeProcess(binaryName string) {
 		// Write 4-byte frame length prefix (includes type byte), type byte, then frame data
 		var frameSizeBuffer [4]byte
 		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)+1)) // +1 for type byte
+
+		videoConnMu.Lock()
+		defer videoConnMu.Unlock()
 
 		if _, err := videoConn.Write(frameSizeBuffer[:]); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write mjpeg frame size to video stream socket")

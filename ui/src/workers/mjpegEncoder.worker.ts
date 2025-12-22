@@ -27,7 +27,12 @@ interface StopMessage {
   type: 'stop';
 }
 
-type WorkerMessage = StartMessage | FrameMessage | StopMessage;
+interface SetQualityMessage {
+  type: 'setQuality';
+  quality: number;
+}
+
+type WorkerMessage = StartMessage | FrameMessage | StopMessage | SetQualityMessage;
 
 interface EncodedFrameMessage {
   type: 'frame';
@@ -69,6 +74,10 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 
     case 'stop':
       handleStop();
+      break;
+
+    case 'setQuality':
+      handleSetQuality(msg.quality);
       break;
   }
 };
@@ -144,6 +153,12 @@ function handleStop(): void {
 
   const response: StoppedMessage = { type: 'stopped' };
   self.postMessage(response);
+}
+
+function handleSetQuality(quality: number): void {
+  if (quality >= 0.0 && quality <= 1.0) {
+    config.quality = quality;
+  }
 }
 
 export type { WorkerMessage, WorkerResponse, EncoderConfig };

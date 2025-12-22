@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	uvcBufferCount = 4   // 4 buffers for 60fps pipelining (allows USB transfer overlap with frame writes)
-	uvcLogInterval = 600 // Log every N frames (~10 seconds at 60fps)
+	uvcBufferCount = 8   // 8 buffers for smooth 24fps pipelining (reduces DQBUF blocking)
+	uvcLogInterval = 240 // Log every N frames (~10 seconds at 24fps)
 )
 
 // zerologAdapter wraps zerolog to implement usbgadget.Logger interface.
@@ -159,9 +159,8 @@ func (m *Manager) eventLoop() {
 	)
 
 	for m.eventLoopRun {
-		m.streamerMu.Lock()
+		// HOTPATH: Lock-free streamer access - pointer only changes during init/shutdown
 		streamer := m.streamer
-		m.streamerMu.Unlock()
 
 		if streamer == nil {
 			time.Sleep(retryInterval)
@@ -254,10 +253,22 @@ func (m *Manager) prepareStreaming() {
 	}
 
 	width, height := m.streamer.GetCommittedResolution()
-	if err := m.streamer.SetFormat(width, height); err != nil {
+	isMjpeg := !m.streamer.IsH264Format()
+
+	if err := m.streamer.SetFormatWithCodec(width, height, isMjpeg); err != nil {
 		if m.uvcLog != nil {
-			m.uvcLog.Debug().Err(err).Msg("SetFormat failed (may not be supported)")
+			m.uvcLog.Debug().Err(err).Msg("SetFormatWithCodec failed (may not be supported)")
 		}
+	} else if m.uvcLog != nil {
+		codec := "H.264"
+		if isMjpeg {
+			codec = "MJPEG"
+		}
+		m.uvcLog.Info().
+			Uint32("width", width).
+			Uint32("height", height).
+			Str("codec", codec).
+			Msg("V4L2 format set for UVC output")
 	}
 }
 
@@ -294,6 +305,19 @@ func (m *Manager) startStreaming() {
 	isH264 := m.streamer.IsH264Format()
 	m.uvcMjpegSelected = !isH264
 	isHDMI := m.source.IsHDMI()
+
+	// Log committed resolution for debugging
+	committedW, committedH := m.streamer.GetCommittedResolution()
+	committedFPS := m.streamer.GetCommittedFrameRate()
+	if m.uvcLog != nil {
+		m.uvcLog.Info().
+			Uint32("width", committedW).
+			Uint32("height", committedH).
+			Int("fps", committedFPS).
+			Uint8("format_index", formatIndex).
+			Bool("isH264", isH264).
+			Msg("UVC host committed format")
+	}
 
 	// Enable/disable MJPEG encoder based on format selection
 	// Note: MJPEG encoder only works for HDMI source (hardware encodes capture buffer)
@@ -347,20 +371,30 @@ func (m *Manager) startStreaming() {
 		}
 	}
 
+	// Update atomic fast-path flags (for MJPEG hotpath)
+	m.uvcStreamingFast.Store(true)
+	m.uvcMjpegFast.Store(m.uvcMjpegSelected)
+
 	// Notify WebSocket clients about format change
 	width, height := m.streamer.GetCommittedResolution()
+	frameRate := m.streamer.GetCommittedFrameRate()
 	codec := "h264"
 	if m.uvcMjpegSelected {
 		codec = "mjpeg"
 	}
 	m.notifyFormatChange(FormatInfo{
-		Codec:  codec,
-		Width:  int(width),
-		Height: int(height),
+		Codec:     codec,
+		Width:     int(width),
+		Height:    int(height),
+		FrameRate: frameRate,
 	})
 }
 
 func (m *Manager) stopStreaming() {
+	// Clear atomic fast-path flags first (for MJPEG hotpath)
+	m.uvcStreamingFast.Store(false)
+	m.uvcMjpegFast.Store(false)
+
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
@@ -402,7 +436,13 @@ func (m *Manager) stopStreaming() {
 
 // HandleH264Frame handles an H.264 frame from the native encoder (HDMI loopback).
 // This is called for each H.264 NAL unit from the RV1106 hardware encoder.
+// HOTPATH: Optimized with atomic fast-path check to avoid mutex on every frame.
 func (m *Manager) HandleH264Frame(frame []byte) {
+	// HOTPATH: Atomic fast-path check - skip frames early if not streaming
+	if !m.uvcStreamingFast.Load() {
+		return
+	}
+
 	// Only process HDMI frames if UVC source is HDMI
 	if !m.source.IsHDMI() {
 		return
@@ -411,109 +451,133 @@ func (m *Manager) HandleH264Frame(frame []byte) {
 	m.writeFrameToUVC(frame)
 }
 
-// cameraH264FrameLogCount tracks debug logs for camera H.264 frames
-var cameraH264FrameLogCount int
-
-// cameraMjpegFrameLogCount tracks debug logs for camera MJPEG frames
-var cameraMjpegFrameLogCount int
-
-// ResetCameraFrameLogCounters resets the frame log counters (called on source change)
-func ResetCameraFrameLogCounters() {
-	cameraH264FrameLogCount = 0
-	cameraMjpegFrameLogCount = 0
-}
-
 // HandleCameraH264Frame handles an H.264 frame from the browser camera.
 // This is called when the browser sends H.264 encoded video over WebSocket.
 // Browser sends H.264 when UVC host negotiates H.264 format.
+// HOTPATH: Fully optimized - bypasses NAL scanning since browser sends complete H.264.
 func (m *Manager) HandleCameraH264Frame(frame []byte) {
-	enabled := m.enabled.Load()
-	isCamera := m.source.IsCamera()
-
-	// Debug: log first few camera frames to understand the flow
-	if cameraH264FrameLogCount < 10 {
-		m.streamerMu.Lock()
-		isStreaming := m.streamer != nil && m.streamer.IsStreaming()
-		isMjpeg := m.uvcMjpegSelected
-		m.streamerMu.Unlock()
-
+	// Debug logging for first few frames to trace issues
+	frameNum := m.cameraFrameCount.Add(1)
+	if frameNum <= 5 {
+		enabled := m.enabled.Load()
+		isCamera := m.source.IsCamera()
+		isMjpeg := m.uvcMjpegFast.Load()
 		if m.camLog != nil {
 			m.camLog.Info().
+				Int32("frame", frameNum).
 				Int("size", len(frame)).
 				Bool("enabled", enabled).
 				Bool("isCamera", isCamera).
-				Bool("streaming", isStreaming).
-				Bool("hostWantsMjpeg", isMjpeg).
-				Msg("Camera H.264 frame received")
+				Bool("isMjpeg", isMjpeg).
+				Msg("HandleCameraH264Frame called")
 		}
-		cameraH264FrameLogCount++
 	}
 
 	// Only process camera frames if camera passthrough is enabled and source is camera
-	if !enabled || !isCamera {
+	if !m.enabled.Load() || !m.source.IsCamera() {
 		return
 	}
 
-	m.writeFrameToUVC(frame)
+	// Skip H.264 frames when MJPEG format is selected
+	// (browser should send MJPEG in that case, not H.264)
+	if m.uvcMjpegFast.Load() {
+		return
+	}
+
+	// HOTPATH: Direct write - bypass NAL scanning for camera passthrough
+	// Browser sends properly formatted H.264 with SPS/PPS, no processing needed
+	streamer := m.streamer
+	if streamer == nil {
+		return
+	}
+
+	// Check if UVC is actually streaming before writing
+	if !streamer.IsStreaming() {
+		// Log first few dropped frames for debugging
+		if frameNum <= 3 && m.camLog != nil {
+			m.camLog.Warn().Int32("frame", frameNum).Int("size", len(frame)).Msg("Camera frame dropped - UVC not streaming yet")
+		}
+		return
+	}
+
+	// Write frame directly to UVC (no NAL analysis overhead)
+	m.uvcFrameCount++
+	if err := streamer.WriteFrame(frame); err != nil {
+		m.uvcFrameErrors++
+		if m.uvcFrameCount <= 5 || m.uvcFrameCount%30 == 1 {
+			if m.camLog != nil {
+				m.camLog.Warn().Err(err).Int("frame", m.uvcFrameCount).Int("size", len(frame)).Msg("Camera H264 WriteFrame failed")
+			}
+		}
+	} else if m.uvcFrameCount <= 5 || m.uvcFrameCount%60 == 1 {
+		if m.camLog != nil {
+			m.camLog.Info().Int("frame", m.uvcFrameCount).Int("size", len(frame)).Msg("Camera H264 frame written to UVC successfully")
+		}
+	}
 }
 
-// Periodic SPS/PPS injection interval (every N frames, ~10 seconds at 60fps)
-const spsInjectInterval = 600
+// Periodic SPS/PPS injection interval (every N frames, ~10 seconds at 24fps)
+const spsInjectInterval = 240
 
-// writeFrameToUVC writes an H.264 frame to the UVC gadget.
+// writeFrameToUVC writes an H.264 frame to the UVC gadget (HDMI loopback path).
 // Handles SPS/PPS caching and injection for proper H.264 stream initialization.
+// HOTPATH: Optimized with quick NAL check - avoids full frame scan for P-frames.
 func (m *Manager) writeFrameToUVC(frame []byte) {
-	m.streamerMu.Lock()
-	streamer := m.streamer
-	isStreaming := streamer != nil && streamer.IsStreaming()
-	needParamInject := m.uvcNeedParamInject
-	isMjpeg := m.uvcMjpegSelected
-	m.streamerMu.Unlock()
-
-	if !isStreaming {
-		return
-	}
-
 	// Skip H.264 frames when MJPEG format is selected AND source is HDMI
 	// (HDMI MJPEG frames are handled by HandleMjpegFrame)
-	// For camera source, we send H.264 frames regardless of format selection
-	// since we can't transcode camera to MJPEG
-	if isMjpeg && m.source.IsHDMI() {
+	if m.uvcMjpegFast.Load() && m.source.IsHDMI() {
 		return
 	}
 
-	// Always cache SPS/PPS from incoming frames
-	m.h264Cache.UpdateFromFrame(frame)
+	// HOTPATH: Lock-free streamer access
+	streamer := m.streamer
+	if streamer == nil {
+		return
+	}
 
-	// Prepare the frame to send
+	// HOTPATH: Quick NAL type check - O(1) vs O(n) full scan
+	// Most frames are P-frames that don't need SPS/PPS processing
+	firstNALType := GetFirstNALType(frame)
+	isIDR := firstNALType == NALTypeIDR
+	isSPS := firstNALType == NALTypeSPS
+
+	// Fast path: P-frames (non-IDR, non-SPS) - just send directly
+	if !isIDR && !isSPS {
+		m.uvcFrameCount++
+		if err := streamer.WriteFrame(frame); err != nil {
+			m.uvcFrameErrors++
+		}
+		return
+	}
+
+	// Slow path: IDR or SPS frame - may need parameter handling
+	// Only do full scan when we actually need to process parameters
+	needParamInject := m.uvcNeedParamInject
 	frameToSend := frame
 
-	// Handle SPS/PPS injection scenarios:
-	// 1. Stream just started - inject on first IDR frame
-	// 2. Periodic injection - every N frames to help clients that connect mid-stream
-	// 3. IDR frames without SPS - prepend cached parameters
-	if needParamInject && IsIDRFrame(frame) {
-		// Stream start: inject SPS/PPS before first IDR
-		if m.h264Cache.HasParameters() {
-			frameToSend = m.h264Cache.PrependParameters(frame)
-			m.streamerMu.Lock()
+	if isSPS {
+		// Frame starts with SPS - cache it (full scan needed for complete analysis)
+		frameInfo := m.h264Cache.AnalyzeAndUpdate(frame)
+		if needParamInject && frameInfo.HasIDR {
 			m.uvcNeedParamInject = false
-			m.streamerMu.Unlock()
 		}
-	} else if IsIDRFrame(frame) && !ContainsSPS(frame) {
-		// IDR without SPS: prepend cached parameters
-		frameToSend = m.h264Cache.PrependParameters(frame)
+	} else if isIDR {
+		// IDR frame - check if we need to inject SPS/PPS
+		if needParamInject || m.uvcParamInjectCount >= spsInjectInterval {
+			// Need to inject parameters - do quick check for existing SPS
+			quickInfo := QuickFrameInfo(frame)
+			if !quickInfo.HasSPS && m.h264Cache.HasParameters() {
+				frameToSend = m.h264Cache.PrependParametersWithInfo(frame, quickInfo)
+			}
+			if needParamInject {
+				m.uvcNeedParamInject = false
+			}
+			m.uvcParamInjectCount = 0
+		}
 	}
 
-	// Periodic SPS/PPS injection for clients joining mid-stream
+	// Periodic counter for SPS/PPS injection
 	m.uvcParamInjectCount++
-	if m.uvcParamInjectCount >= spsInjectInterval {
-		m.uvcParamInjectCount = 0
-		// If this is an IDR frame, ensure it has SPS/PPS
-		if IsIDRFrame(frame) && m.h264Cache.HasParameters() && !ContainsSPS(frameToSend) {
-			frameToSend = m.h264Cache.PrependParameters(frame)
-		}
-	}
 
 	// Write the frame to UVC
 	m.uvcFrameCount++
@@ -560,25 +624,10 @@ func (m *Manager) RestoreMjpegState() {
 // HandleMjpegFrame handles an MJPEG frame from the native encoder.
 // This is called when the host selected MJPEG format and MJPEG encoder is enabled.
 // Only works for HDMI source (hardware encodes from capture buffer).
+// HOTPATH: Optimized with atomic fast-path checks to avoid mutex on every frame.
 func (m *Manager) HandleMjpegFrame(frame []byte) {
-	// Only process MJPEG frames when MJPEG format is selected
-	m.streamerMu.Lock()
-	streamer := m.streamer
-	isStreaming := streamer != nil && streamer.IsStreaming()
-	isMjpeg := m.uvcMjpegSelected
-	m.streamerMu.Unlock()
-
-	// Debug: log first few MJPEG frames received
-	if m.uvcFrameCount < 5 && m.uvcLog != nil {
-		m.uvcLog.Info().
-			Int("size", len(frame)).
-			Bool("streaming", isStreaming).
-			Bool("mjpeg", isMjpeg).
-			Bool("hdmi", m.source.IsHDMI()).
-			Msg("HandleMjpegFrame called")
-	}
-
-	if !isStreaming || !isMjpeg {
+	// HOTPATH: Atomic fast-path check - skip frames early if not streaming MJPEG
+	if !m.uvcStreamingFast.Load() || !m.uvcMjpegFast.Load() {
 		return
 	}
 
@@ -588,78 +637,99 @@ func (m *Manager) HandleMjpegFrame(frame []byte) {
 		return
 	}
 
+	// HOTPATH: Lock-free streamer access - pointer only changes during init/shutdown
+	streamer := m.streamer
+	if streamer == nil {
+		return
+	}
+
 	// Write MJPEG frame directly to UVC
 	m.uvcFrameCount++
-	if err := streamer.WriteFrame(frame); err != nil {
-		m.uvcFrameErrors++
-		// Debug: log first few errors
-		if m.uvcFrameErrors <= 5 && m.uvcLog != nil {
-			m.uvcLog.Warn().Err(err).Int("frame", m.uvcFrameCount).Msg("MJPEG WriteFrame error")
+
+	// Log first few frames and then periodically
+	if m.uvcFrameCount <= 5 || m.uvcFrameCount%60 == 1 {
+		if m.uvcLog != nil {
+			m.uvcLog.Info().
+				Int("frame", m.uvcFrameCount).
+				Int("size", len(frame)).
+				Msg("HDMI MJPEG frame to UVC")
 		}
 	}
 
-	// Log stats periodically (debug level)
-	if m.uvcFrameCount-m.uvcLastLogFrame >= uvcLogInterval {
-		if m.uvcLog != nil {
-			m.uvcLog.Debug().
-				Int("frames", m.uvcFrameCount).
-				Int("errors", m.uvcFrameErrors).
-				Msg("UVC MJPEG stats")
+	if err := streamer.WriteFrame(frame); err != nil {
+		m.uvcFrameErrors++
+		if m.uvcFrameCount <= 5 || m.uvcFrameErrors%30 == 1 {
+			if m.uvcLog != nil {
+				m.uvcLog.Warn().Err(err).Int("frame", m.uvcFrameCount).Msg("HDMI MJPEG WriteFrame failed")
+			}
 		}
-		m.uvcLastLogFrame = m.uvcFrameCount
 	}
 }
 
 // HandleCameraMjpegFrame handles an MJPEG frame from the browser camera.
 // This is called when the browser sends MJPEG encoded video over WebSocket.
 // Browser sends MJPEG when UVC host negotiates MJPEG format.
+// HOTPATH: Fully lock-free using atomic flags - no mutex in frame path.
 func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
-	enabled := m.enabled.Load()
-	isCamera := m.source.IsCamera()
+	// Debug: log first few frames to diagnose issues
+	count := m.cameraFrameCount.Add(1)
+	if count <= 5 && m.camLog != nil {
+		streaming := m.uvcStreamingFast.Load()
+		mjpeg := m.uvcMjpegFast.Load()
+		enabled := m.enabled.Load()
+		isCamera := m.source.IsCamera()
 
-	m.streamerMu.Lock()
-	streamer := m.streamer
-	isStreaming := streamer != nil && streamer.IsStreaming()
-	isMjpeg := m.uvcMjpegSelected
-	m.streamerMu.Unlock()
+		// Check JPEG validity (SOI=0xFFD8, EOI=0xFFD9)
+		validJpeg := len(frame) >= 4 &&
+			frame[0] == 0xFF && frame[1] == 0xD8 &&
+			frame[len(frame)-2] == 0xFF && frame[len(frame)-1] == 0xD9
 
-	// Debug: log first few camera MJPEG frames to understand the flow
-	if cameraMjpegFrameLogCount < 10 {
-		if m.camLog != nil {
-			m.camLog.Info().
-				Int("size", len(frame)).
-				Bool("enabled", enabled).
-				Bool("isCamera", isCamera).
-				Bool("streaming", isStreaming).
-				Bool("hostWantsMjpeg", isMjpeg).
-				Msg("Camera MJPEG frame received")
-		}
-		cameraMjpegFrameLogCount++
+		m.camLog.Info().
+			Int32("frame", count).
+			Bool("streaming", streaming).
+			Bool("mjpeg", mjpeg).
+			Bool("enabled", enabled).
+			Bool("isCamera", isCamera).
+			Int("size", len(frame)).
+			Bool("validJpeg", validJpeg).
+			Hex("first4", frame[:min(4, len(frame))]).
+			Hex("last4", frame[max(0, len(frame)-4):]).
+			Msg("HandleCameraMjpegFrame: checking conditions")
 	}
 
-	// Only process camera frames if camera passthrough is enabled and source is camera
-	if !enabled || !isCamera {
+	// HOTPATH: Atomic fast-path checks - skip frames early
+	if !m.uvcStreamingFast.Load() || !m.uvcMjpegFast.Load() {
 		return
 	}
 
-	if !isStreaming || !isMjpeg {
+	// Only process camera frames if camera passthrough is enabled and source is camera
+	if !m.enabled.Load() || !m.source.IsCamera() {
+		return
+	}
+
+	// HOTPATH: Direct streamer access - streamer pointer only changes during
+	// init/shutdown which doesn't happen during active streaming
+	// The atomic flags above guarantee streaming is active
+	streamer := m.streamer
+	if streamer == nil {
 		return
 	}
 
 	// Write MJPEG frame directly to UVC
-	m.uvcFrameCount++
 	if err := streamer.WriteFrame(frame); err != nil {
-		m.uvcFrameErrors++
+		// Log first 5 errors and then occasional (every 30 frames)
+		if count <= 5 || count%30 == 1 {
+			if m.camLog != nil {
+				m.camLog.Warn().Err(err).Int32("frame", count).Int("size", len(frame)).Msg("Camera MJPEG WriteFrame failed")
+			}
+		}
+		return
 	}
 
-	// Log stats periodically (debug level)
-	if m.uvcFrameCount-m.uvcLastLogFrame >= uvcLogInterval {
-		if m.uvcLog != nil {
-			m.uvcLog.Debug().
-				Int("frames", m.uvcFrameCount).
-				Int("errors", m.uvcFrameErrors).
-				Msg("UVC camera MJPEG stats")
+	// Log first 5 successes and then occasional (every 60 frames = ~2.5s at 24fps)
+	if count <= 5 || count%60 == 1 {
+		if m.camLog != nil {
+			m.camLog.Info().Int32("frame", count).Int("size", len(frame)).Msg("Camera MJPEG frame written to UVC successfully")
 		}
-		m.uvcLastLogFrame = m.uvcFrameCount
 	}
 }

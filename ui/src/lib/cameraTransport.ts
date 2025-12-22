@@ -21,6 +21,9 @@ export interface FormatRequest {
   codec: VideoCodec;
   width: number;
   height: number;
+  frameRate: number; // Negotiated frame rate from UVC host (e.g., 30 or 60)
+  h264Bitrate?: number; // H.264 bitrate in bps (from config)
+  mjpegQuality?: number; // MJPEG quality 0.0-1.0 (from config)
 }
 
 export interface CameraTransportEvents {
@@ -67,6 +70,9 @@ export class WebSocketCameraTransport implements CameraTransport {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private latencySamples: number[] = [];
+
+  // Reusable send buffer to minimize GC pressure (resized as needed)
+  private sendBuffer: Uint8Array = new Uint8Array(2 * 1024 * 1024); // 2MB initial (handles large MJPEG frames)
 
   constructor(url: string) {
     this.url = url;
@@ -152,11 +158,15 @@ export class WebSocketCameraTransport implements CameraTransport {
                     console.log('[CameraTransport] UVC streaming stopped');
                     this.events.onStreamingStopped?.();
                   } else if (msg.codec && msg.width && msg.height) {
-                    // Don't log every format message (can be spammy with UVC restarts)
+                    // Log format with frame rate and encoder settings for debugging
+                    console.log(`[CameraTransport] Format request: ${msg.codec} ${msg.width}x${msg.height}@${msg.frameRate || 30}fps, h264Bitrate=${msg.h264Bitrate}, mjpegQuality=${msg.mjpegQuality}`);
                     this.events.onFormatRequest?.({
                       codec: msg.codec as 'h264' | 'mjpeg',
                       width: msg.width,
                       height: msg.height,
+                      frameRate: msg.frameRate || 30, // Default to 30fps if not specified
+                      h264Bitrate: msg.h264Bitrate, // H.264 bitrate in bps
+                      mjpegQuality: msg.mjpegQuality, // MJPEG quality 0.0-1.0
                     });
                   }
                   break;
@@ -199,8 +209,8 @@ export class WebSocketCameraTransport implements CameraTransport {
 
     // Check if buffer is getting too full (backpressure)
     // Drop frames early to prevent buffer from growing too large
-    // 512KB threshold allows ~2-3 frames of MJPEG buffer for transient network hiccups
-    if (this.ws.bufferedAmount > 512 * 1024) { // 512KB buffer threshold
+    // 4MB threshold allows several MJPEG frames at high quality for transient network hiccups
+    if (this.ws.bufferedAmount > 4 * 1024 * 1024) { // 4MB buffer threshold
       this._stats.framesDropped++;
       // Only log every 30 dropped frames to avoid console spam
       if (this._stats.framesDropped % 30 === 1) {
@@ -212,20 +222,28 @@ export class WebSocketCameraTransport implements CameraTransport {
     try {
       // Create frame header: 1-byte codec (timestamp not used by server)
       const headerSize = 1;
-      const message = new Uint8Array(headerSize + frame.byteLength);
+      const totalSize = headerSize + frame.byteLength;
+
+      // Resize buffer if needed (rare, only for large frames)
+      if (this.sendBuffer.length < totalSize) {
+        // Round up to next 64KB boundary to avoid frequent resizing
+        const newSize = Math.ceil(totalSize / (64 * 1024)) * (64 * 1024);
+        this.sendBuffer = new Uint8Array(newSize);
+      }
 
       // Write codec byte
-      message[0] = codec === 'h264'
+      this.sendBuffer[0] = codec === 'h264'
         ? WebSocketCameraTransport.CODEC_H264
         : WebSocketCameraTransport.CODEC_MJPEG;
 
-      // Copy frame data
-      message.set(new Uint8Array(frame), headerSize);
+      // Copy frame data into reusable buffer
+      this.sendBuffer.set(new Uint8Array(frame), headerSize);
 
-      this.ws.send(message);
+      // Send only the portion we need (subarray doesn't allocate)
+      this.ws.send(this.sendBuffer.subarray(0, totalSize));
 
       this._stats.framesSent++;
-      this._stats.bytesSent += message.byteLength;
+      this._stats.bytesSent += totalSize;
 
       // Periodically report stats
       if (this._stats.framesSent % 30 === 0) {
@@ -254,9 +272,11 @@ export class WebSocketCameraTransport implements CameraTransport {
 }
 
 export function createCameraTransport(baseUrl: string): CameraTransport {
+  console.log('[CameraTransport] Creating transport with baseUrl:', baseUrl);
   const wsUrl = baseUrl
     .replace(/^http:/, 'ws:')
     .replace(/^https:/, 'wss:')
     .replace(/\/$/, '') + '/api/camera/ws';
+  console.log('[CameraTransport] WebSocket URL:', wsUrl);
   return new WebSocketCameraTransport(wsUrl);
 }

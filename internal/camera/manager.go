@@ -45,11 +45,12 @@ type Manager struct {
 	h264Cache *H264ParamCache
 
 	// Camera passthrough state
-	enabled      atomic.Bool
-	source       *sourceStore
-	frameCount   int
-	lastLogFrame int
-	frameMu      sync.Mutex
+	enabled atomic.Bool
+	source  *sourceStore
+
+	// Camera frame stats (separate from MJPEG debug counter)
+	cameraFrameCount   atomic.Int32
+	cameraLastLogFrame atomic.Int32
 
 	// UVC frame stats
 	uvcFrameCount       int
@@ -61,6 +62,10 @@ type Manager struct {
 	// MJPEG format tracking
 	uvcMjpegSelected bool // True when host selected MJPEG format
 
+	// Atomic fast-path flags for MJPEG hotpath (avoid mutex in frame handlers)
+	uvcStreamingFast atomic.Bool // Cached: streamer != nil && streamer.IsStreaming()
+	uvcMjpegFast     atomic.Bool // Cached: uvcMjpegSelected
+
 	// Format change notification channel for WebSocket clients
 	formatChangeChan   chan FormatInfo
 	formatChanMu       sync.RWMutex
@@ -69,9 +74,10 @@ type Manager struct {
 
 // FormatInfo contains the current UVC format information.
 type FormatInfo struct {
-	Codec  string `json:"codec"` // "h264" or "mjpeg"
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
+	Codec     string `json:"codec"`     // "h264" or "mjpeg"
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	FrameRate int    `json:"frameRate"` // Negotiated frame rate in fps (e.g., 30 or 60)
 }
 
 // Config holds configuration for the Manager.
@@ -109,7 +115,7 @@ func (m *Manager) IsEnabled() bool {
 }
 
 // SetSource sets the video source for UVC output.
-// Handles MJPEG encoder state transitions for seamless source switching.
+// Handles MJPEG encoder state transitions and browser notifications for seamless source switching.
 func (m *Manager) SetSource(source Source) {
 	oldSource := m.source.Get()
 	if oldSource == source {
@@ -119,19 +125,17 @@ func (m *Manager) SetSource(source Source) {
 	m.source.Set(source)
 
 	if m.camLog != nil {
-		m.camLog.Info().
+		m.camLog.Debug().
 			Str("old_source", oldSource.String()).
 			Str("new_source", source.String()).
 			Msg("UVC source changed")
 	}
 
-	// Reset camera frame log counters when switching to camera for fresh diagnostics
-	if source == SourceCamera {
-		ResetCameraFrameLogCounters()
-	}
-
 	// Update MJPEG encoder state based on source and streaming state
 	m.updateMjpegEncoderForSource(source)
+
+	// Notify browser about source change so it can start/stop camera encoding
+	m.notifySourceChange(source)
 }
 
 // updateMjpegEncoderForSource enables/disables MJPEG encoder based on current source.
@@ -150,15 +154,9 @@ func (m *Manager) updateMjpegEncoderForSource(source Source) {
 
 	if source == SourceHDMI && isStreaming && isMjpeg {
 		// Switching to HDMI with MJPEG format: enable encoder
-		if m.camLog != nil {
-			m.camLog.Info().Msg("Enabling MJPEG encoder for HDMI source")
-		}
 		m.native.MjpegSetEnabled(true)
 	} else {
 		// Not HDMI or not streaming MJPEG: disable encoder
-		if m.camLog != nil {
-			m.camLog.Info().Msg("Disabling MJPEG encoder (source not HDMI or not streaming MJPEG)")
-		}
 		m.native.MjpegSetEnabled(false)
 	}
 }
@@ -197,15 +195,17 @@ func (m *Manager) GetCurrentFormat() *FormatInfo {
 	}
 
 	width, height := m.streamer.GetCommittedResolution()
+	frameRate := m.streamer.GetCommittedFrameRate()
 	codec := "h264"
 	if m.uvcMjpegSelected {
 		codec = "mjpeg"
 	}
 
 	return &FormatInfo{
-		Codec:  codec,
-		Width:  int(width),
-		Height: int(height),
+		Codec:     codec,
+		Width:     int(width),
+		Height:    int(height),
+		FrameRate: frameRate,
 	}
 }
 
@@ -238,7 +238,8 @@ func (m *Manager) notifyFormatChange(info FormatInfo) {
 	// Check if format changed
 	if m.lastNotifiedFormat.Codec == info.Codec &&
 		m.lastNotifiedFormat.Width == info.Width &&
-		m.lastNotifiedFormat.Height == info.Height {
+		m.lastNotifiedFormat.Height == info.Height &&
+		m.lastNotifiedFormat.FrameRate == info.FrameRate {
 		m.formatChanMu.Unlock()
 		return // No change, skip notification
 	}
@@ -271,5 +272,99 @@ func (m *Manager) notifyStreamingStopped() {
 		default:
 			// Channel full, skip notification
 		}
+	}
+}
+
+// ResendCurrentFormat forces a format notification to all connected WebSocket clients.
+// Used when encoder settings change (bitrate/quality) so browser can update its encoder.
+func (m *Manager) ResendCurrentFormat() {
+	m.streamerMu.Lock()
+	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
+	var width, height uint32
+	var frameRate int
+	if m.streamer != nil {
+		width, height = m.streamer.GetCommittedResolution()
+		frameRate = m.streamer.GetCommittedFrameRate()
+	}
+	isMjpeg := m.uvcMjpegSelected
+	m.streamerMu.Unlock()
+
+	if !isStreaming {
+		return
+	}
+
+	codec := "h264"
+	if isMjpeg {
+		codec = "mjpeg"
+	}
+
+	if m.camLog != nil {
+		m.camLog.Info().
+			Str("codec", codec).
+			Uint32("width", width).
+			Uint32("height", height).
+			Int("frameRate", frameRate).
+			Msg("Resending format notification (encoder settings changed)")
+	}
+
+	// Clear the last notified format to force resend
+	m.formatChanMu.Lock()
+	m.lastNotifiedFormat = FormatInfo{}
+	m.formatChanMu.Unlock()
+
+	m.notifyFormatChange(FormatInfo{
+		Codec:     codec,
+		Width:     int(width),
+		Height:    int(height),
+		FrameRate: frameRate,
+	})
+}
+
+// notifySourceChange notifies WebSocket clients about source changes.
+// When switching to HDMI: tells browser to stop camera encoding
+// When switching to Camera: tells browser to start camera encoding with current format
+func (m *Manager) notifySourceChange(source Source) {
+	m.streamerMu.Lock()
+	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
+	var width, height uint32
+	var frameRate int
+	if m.streamer != nil {
+		width, height = m.streamer.GetCommittedResolution()
+		frameRate = m.streamer.GetCommittedFrameRate()
+	}
+	isMjpeg := m.uvcMjpegSelected
+	m.streamerMu.Unlock()
+
+	// Only notify if UVC is currently streaming
+	if !isStreaming {
+		return
+	}
+
+	if source == SourceHDMI {
+		// Switching to HDMI: tell browser to stop camera encoding
+		if m.camLog != nil {
+			m.camLog.Info().Msg("Notifying browser to stop camera encoding (switched to HDMI)")
+		}
+		m.notifyStreamingStopped()
+	} else if source == SourceCamera {
+		// Switching to Camera: tell browser to start camera encoding
+		codec := "h264"
+		if isMjpeg {
+			codec = "mjpeg"
+		}
+		if m.camLog != nil {
+			m.camLog.Info().
+				Str("codec", codec).
+				Uint32("width", width).
+				Uint32("height", height).
+				Int("frameRate", frameRate).
+				Msg("Notifying browser to start camera encoding (switched to Camera)")
+		}
+		m.notifyFormatChange(FormatInfo{
+			Codec:     codec,
+			Width:     int(width),
+			Height:    int(height),
+			FrameRate: frameRate,
+		})
 	}
 }

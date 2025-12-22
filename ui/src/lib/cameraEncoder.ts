@@ -66,9 +66,9 @@ export interface CameraEncoderEvents {
 const DEFAULT_CONFIG: EncoderConfig = {
   width: 1920,
   height: 1080,
-  frameRate: 60, // 60fps target
-  bitrate: 8_000_000, // 8 Mbps for H.264 at 60fps
-  quality: 0.65, // 65% quality for MJPEG (balance size/quality for 60fps)
+  frameRate: 24, // 24fps cinema rate - reduces CPU/USB load on JetKVM
+  bitrate: 3_000_000, // 3 Mbps for H.264 at 24fps
+  quality: 0.35, // 35% quality for MJPEG (smaller frames = less CPU/bandwidth)
   keyFrameInterval: 2, // keyframe every 2 seconds
 };
 
@@ -89,7 +89,7 @@ export async function isH264Supported(): Promise<boolean> {
 
   try {
     const support = await VideoEncoder.isConfigSupported({
-      codec: 'avc1.42001f', // H.264 Baseline Profile Level 3.1
+      codec: 'avc1.640032', // H.264 High Profile Level 5.0 (supports 1080p60)
       width: 1920,
       height: 1080,
       bitrate: 8_000_000,
@@ -142,6 +142,8 @@ export class CameraEncoder {
   private videoElement: HTMLVideoElement | null = null;
   private videoFrameCallbackId: number | null = null;
   private mjpegFrameInterval: number | null = null;
+  private lastCaptureTime = 0; // For frame rate throttling
+  private minFrameIntervalMs = 0; // Minimum time between frames
 
   // Stats
   private lastStatsTime = 0;
@@ -153,6 +155,8 @@ export class CameraEncoder {
     this.codec = codec;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.framesPerKeyFrame = this.config.frameRate * this.config.keyFrameInterval;
+    // Calculate minimum frame interval for rate limiting (allow 10% tolerance)
+    this.minFrameIntervalMs = (1000 / this.config.frameRate) * 0.9;
   }
 
   get frameRate(): number {
@@ -197,7 +201,76 @@ export class CameraEncoder {
   }
 
   /**
-   * Start capturing and encoding camera video at 60fps
+   * Update the target frame rate (takes effect immediately for MJPEG, on next start for H.264)
+   */
+  setFrameRate(fps: number): void {
+    if (fps < 1 || fps > 120) {
+      console.warn(`[CameraEncoder] Invalid frame rate ${fps}, ignoring`);
+      return;
+    }
+
+    // Cap all codecs at configured fps to reduce CPU/USB load on JetKVM
+    // Allow higher rates when explicitly configured in settings
+    const maxFps = 30; // Maximum supported by UVC configuration
+    if (fps > maxFps) {
+      console.log(`[CameraEncoder] Capping frame rate: ${fps}fps -> ${maxFps}fps`);
+      fps = maxFps;
+    }
+
+    const oldFps = this.config.frameRate;
+    if (oldFps === fps) return;
+
+    console.log(`[CameraEncoder] Updating frame rate: ${oldFps}fps -> ${fps}fps`);
+    this.config.frameRate = fps;
+    // Recalculate minimum frame interval for rate limiting
+    this.minFrameIntervalMs = (1000 / fps) * 0.9;
+    // Update keyframe interval if H.264
+    this.framesPerKeyFrame = Math.round(fps * this.config.keyFrameInterval);
+  }
+
+  /**
+   * Update the H.264 bitrate (takes effect on next keyframe or encoder restart)
+   * @param bitrate Bitrate in bits per second (e.g., 3_000_000 for 3 Mbps)
+   */
+  setBitrate(bitrate: number): void {
+    if (bitrate < 100_000 || bitrate > 50_000_000) {
+      console.warn(`[CameraEncoder] Invalid bitrate ${bitrate}, ignoring`);
+      return;
+    }
+
+    if (this.config.bitrate === bitrate) return;
+
+    console.log(`[CameraEncoder] Updating bitrate: ${this.config.bitrate / 1_000_000}Mbps -> ${bitrate / 1_000_000}Mbps`);
+    this.config.bitrate = bitrate;
+    // Note: H.264 encoder will use new bitrate on next restart/reconfigure
+  }
+
+  /**
+   * Update the MJPEG quality (takes effect immediately)
+   * @param quality Quality value 0.0-1.0 (0.35 = 35% quality)
+   */
+  setQuality(quality: number): void {
+    if (quality < 0.0 || quality > 1.0) {
+      console.warn(`[CameraEncoder] Invalid quality ${quality}, ignoring`);
+      return;
+    }
+
+    if (this.config.quality === quality) return;
+
+    console.log(`[CameraEncoder] Updating MJPEG quality: ${Math.round(this.config.quality * 100)}% -> ${Math.round(quality * 100)}%`);
+    this.config.quality = quality;
+
+    // Update worker immediately if MJPEG is running
+    if (this.codec === 'mjpeg' && this.mjpegWorker) {
+      this.mjpegWorker.postMessage({
+        type: 'setQuality',
+        quality,
+      });
+    }
+  }
+
+  /**
+   * Start capturing and encoding camera video
    */
   async start(): Promise<void> {
     if (this._state === 'running') {
@@ -206,16 +279,26 @@ export class CameraEncoder {
     }
 
     this.setState('initializing');
-    console.log('[CameraEncoder] Starting with codec:', this.codec);
+
+    // Apply 24fps cap (cinema rate) for all codecs to reduce CPU/USB load
+    let targetFrameRate = this.config.frameRate;
+    if (targetFrameRate > 24) {
+      console.log(`[CameraEncoder] Capping frame rate: ${targetFrameRate}fps -> 24fps (cinema rate)`);
+      targetFrameRate = 24;
+      this.config.frameRate = 24;
+      this.minFrameIntervalMs = (1000 / 24) * 0.9;
+    }
+
+    console.log(`[CameraEncoder] Starting with codec: ${this.codec} at ${targetFrameRate}fps`);
 
     try {
-      // Request camera access with 60fps
+      // Request camera access with configured frame rate
       console.log('[CameraEncoder] Requesting camera access...');
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: this.config.width },
           height: { ideal: this.config.height },
-          frameRate: { ideal: this.config.frameRate, min: 30 },
+          frameRate: { ideal: targetFrameRate, min: 15 },
         },
       });
       console.log('[CameraEncoder] Got camera access');
@@ -375,8 +458,10 @@ export class CameraEncoder {
     });
 
     // Configure encoder for H.264 Annex B format (required for UVC)
+    // Use High Profile Level 5.0 for 1080p60 support
+    // Level encoding: 0x32 = 50 (Level 5.0), supports up to 4096x2304@30fps or 1920x1080@60fps
     await this.h264Encoder.configure({
-      codec: 'avc1.42001f', // Constrained Baseline Profile, Level 3.1
+      codec: 'avc1.640032', // High Profile, Level 5.0
       width,
       height,
       bitrate: this.config.bitrate,
@@ -443,6 +528,17 @@ export class CameraEncoder {
   }
 
   private handleH264Chunk(chunk: EncodedVideoChunk, _metadata?: EncodedVideoChunkMetadata): void {
+    // Skip frames that are too small - likely incomplete from encoder warm-up
+    // A valid 1080p H.264 IDR frame should be at least 5KB, P-frames at least 1KB
+    const minKeyFrameSize = 5000;
+    const minPFrameSize = 1000;
+    const minSize = chunk.type === 'key' ? minKeyFrameSize : minPFrameSize;
+
+    if (chunk.byteLength < minSize) {
+      console.log(`[CameraEncoder] Skipping small ${chunk.type} frame: ${chunk.byteLength} bytes (min: ${minSize})`);
+      return;
+    }
+
     const data = new ArrayBuffer(chunk.byteLength);
     chunk.copyTo(data);
 
@@ -528,7 +624,7 @@ export class CameraEncoder {
 
   /**
    * Frame-accurate capture using requestVideoFrameCallback
-   * This syncs perfectly with the video's actual frame rate
+   * Throttled to configured frame rate to avoid overwhelming the WebSocket
    */
   private captureWithVideoFrameCallback(): void {
     if (this._state !== 'running' || !this.videoElement || !hasRequestVideoFrameCallback()) {
@@ -536,11 +632,16 @@ export class CameraEncoder {
     }
 
     this.videoFrameCallbackId = this.videoElement.requestVideoFrameCallback(
-      (_now, metadata) => {
-        // Capture this frame
-        this.captureFrame(metadata.presentationTime);
+      (now, metadata) => {
+        // Throttle to configured frame rate
+        const timeSinceLastCapture = now - this.lastCaptureTime;
+        if (timeSinceLastCapture >= this.minFrameIntervalMs) {
+          this.lastCaptureTime = now;
+          // Capture this frame
+          this.captureFrame(metadata.presentationTime);
+        }
 
-        // Schedule next frame
+        // Schedule next frame callback
         if (this._state === 'running') {
           this.captureWithVideoFrameCallback();
         }

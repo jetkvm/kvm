@@ -910,6 +910,15 @@ export default function KvmIdRoute() {
     });
   }, [rpcDataChannel?.readyState, send, setCameraEnabled]);
 
+  // Sync audio input enabled state from device on connection
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    send("getAudioInputEnabled", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setMicrophoneEnabled(resp.result as boolean);
+    });
+  }, [rpcDataChannel?.readyState, send, setMicrophoneEnabled]);
+
   const autoEnableAppliedRef = useRef(false);
   const audioInputAutoEnableValueRef = useRef(audioInputAutoEnable);
 

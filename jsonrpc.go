@@ -1045,6 +1045,7 @@ func rpcGetCameraEnabled() (bool, error) {
 }
 
 func rpcSetCameraEnabled(enabled bool) error {
+	cameraLog.Info().Bool("enabled", enabled).Msg("RPC setCameraEnabled called")
 	setCameraEnabled(enabled)
 	return nil
 }
@@ -1054,12 +1055,94 @@ func rpcGetUVCSource() (string, error) {
 }
 
 func rpcSetUVCSource(source string) error {
+	cameraLog.Info().Str("source", source).Msg("RPC setUVCSource called")
 	src, err := camera.ParseSource(source)
 	if err != nil {
 		return err
 	}
 	setUVCSource(src)
 	return nil
+}
+
+// CameraSettingsResponse contains all camera/UVC configuration
+type CameraSettingsResponse struct {
+	Resolution   string `json:"resolution"`   // "1080p", "720p", "480p"
+	FrameRate    int    `json:"frameRate"`    // 15, 24, 30
+	H264Bitrate  int    `json:"h264Bitrate"`  // 1-10 Mbps
+	MjpegQuality int    `json:"mjpegQuality"` // 0-100%
+}
+
+func rpcGetCameraSettings() (CameraSettingsResponse, error) {
+	ensureConfigLoaded()
+	return CameraSettingsResponse{
+		Resolution:   config.CameraResolution,
+		FrameRate:    config.CameraFrameRate,
+		H264Bitrate:  config.CameraH264Bitrate,
+		MjpegQuality: config.CameraMjpegQuality,
+	}, nil
+}
+
+func rpcSetCameraSettings(resolution string, frameRate int, h264Bitrate int, mjpegQuality int) error {
+	ensureConfigLoaded()
+
+	// Validate resolution
+	if resolution != "1080p" && resolution != "720p" && resolution != "480p" {
+		return fmt.Errorf("invalid resolution: %s (must be 1080p, 720p, or 480p)", resolution)
+	}
+
+	// Validate frame rate
+	if frameRate != 15 && frameRate != 24 && frameRate != 30 {
+		return fmt.Errorf("invalid frame rate: %d (must be 15, 24, or 30)", frameRate)
+	}
+
+	// Validate H.264 bitrate (1-10 Mbps)
+	if h264Bitrate < 1 || h264Bitrate > 10 {
+		return fmt.Errorf("H.264 bitrate must be between 1 and 10 Mbps")
+	}
+
+	// Validate MJPEG quality (0-100%)
+	if mjpegQuality < 0 || mjpegQuality > 100 {
+		return fmt.Errorf("MJPEG quality must be between 0 and 100")
+	}
+
+	// Update config
+	config.CameraResolution = resolution
+	config.CameraFrameRate = frameRate
+	config.CameraH264Bitrate = h264Bitrate
+	config.CameraMjpegQuality = mjpegQuality
+
+	// Save config
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	cameraLog.Info().
+		Str("resolution", resolution).
+		Int("frameRate", frameRate).
+		Int("h264Bitrate", h264Bitrate).
+		Int("mjpegQuality", mjpegQuality).
+		Msg("Camera settings updated")
+
+	// Notify connected clients of encoder settings change
+	// No USB rebind needed - UVC gadget advertises all resolutions
+	// The browser encoder will use these settings for the next stream
+	notifyCameraEncoderSettingsChanged(h264Bitrate, mjpegQuality)
+
+	return nil
+}
+
+// notifyCameraEncoderSettingsChanged notifies connected clients of encoder settings change
+func notifyCameraEncoderSettingsChanged(h264Bitrate int, mjpegQuality int) {
+	cameraLog.Info().
+		Int("h264Bitrate", h264Bitrate).
+		Int("mjpegQuality", mjpegQuality).
+		Msg("Camera encoder settings updated, notifying browser")
+
+	// Trigger format resend to update browser encoder with new settings
+	// The browser will receive a format message with the updated bitrate/quality
+	if cameraManager != nil {
+		cameraManager.ResendCurrentFormat()
+	}
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
@@ -1404,6 +1487,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setCameraEnabled":        {Func: rpcSetCameraEnabled, Params: []string{"enabled"}},
 	"getUVCSource":            {Func: rpcGetUVCSource},
 	"setUVCSource":            {Func: rpcSetUVCSource, Params: []string{"source"}},
+	"getCameraSettings":       {Func: rpcGetCameraSettings},
+	"setCameraSettings":       {Func: rpcSetCameraSettings, Params: []string{"resolution", "frameRate", "h264Bitrate", "mjpegQuality"}},
 	"setCloudUrl":             {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getKeyboardLayout":       {Func: rpcGetKeyboardLayout},
 	"setKeyboardLayout":       {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
