@@ -83,15 +83,10 @@ func (s *grpcServer) VideoStart(ctx context.Context, req *pb.Empty) (*pb.Empty, 
 	return &pb.Empty{}, nil
 }
 
-// MJPEG methods (for UVC streaming)
+// MJPEG encoding for UVC
 func (s *grpcServer) MjpegSetEnabled(ctx context.Context, req *pb.MjpegSetEnabledRequest) (*pb.Empty, error) {
 	s.native.MjpegSetEnabled(req.Enabled)
 	return &pb.Empty{}, nil
-}
-
-func (s *grpcServer) MjpegGetEnabled(ctx context.Context, req *pb.Empty) (*pb.MjpegGetEnabledResponse, error) {
-	enabled := s.native.MjpegGetEnabled()
-	return &pb.MjpegGetEnabledResponse{Enabled: enabled}, nil
 }
 
 // UI methods
@@ -232,4 +227,40 @@ func (s *grpcServer) SwitchToScreenIfDifferent(ctx context.Context, req *pb.Swit
 func (s *grpcServer) DoNotUseThisIsForCrashTestingOnly(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
 	s.native.DoNotUseThisIsForCrashTestingOnly()
 	return &pb.Empty{}, nil
+}
+
+// H.264 to MJPEG transcoder methods (camera passthrough)
+func (s *grpcServer) TranscodeInit(ctx context.Context, req *pb.TranscodeInitRequest) (*pb.Empty, error) {
+	if err := s.native.TranscodeInit(int(req.Width), int(req.Height)); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) TranscodeStart(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	if err := s.native.TranscodeStart(); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) TranscodeStop(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	s.native.TranscodeStop()
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) TranscodeShutdown(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	s.native.TranscodeShutdown()
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) TranscodeSendH264(ctx context.Context, req *pb.TranscodeSendH264Request) (*pb.Empty, error) {
+	if err := s.native.TranscodeSendH264(req.Frame); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) TranscodeIsRunning(ctx context.Context, req *pb.Empty) (*pb.TranscodeIsRunningResponse, error) {
+	return &pb.TranscodeIsRunningResponse{Running: s.native.TranscodeIsRunning()}, nil
 }

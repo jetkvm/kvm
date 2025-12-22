@@ -62,4 +62,48 @@ float video_get_quality_factor();
  */
 void mjpeg_update_encoder(bool enabled);
 
+/**
+ * @brief Initialize the H.264 to MJPEG transcoder
+ * Uses VDEC for H.264 decoding and VENC for MJPEG encoding.
+ *
+ * @param width Video width
+ * @param height Video height
+ * @return int 0 on success, -1 on failure
+ */
+int transcode_init(int width, int height);
+
+/**
+ * @brief Start the transcoder
+ * Begins the decode/encode pipeline.
+ *
+ * @return int 0 on success, -1 on failure
+ */
+int transcode_start();
+
+/**
+ * @brief Stop the transcoder
+ */
+void transcode_stop();
+
+/**
+ * @brief Shutdown the transcoder and release resources
+ */
+void transcode_shutdown();
+
+/**
+ * @brief Send an H.264 frame to the transcoder for decoding
+ *
+ * @param frame H.264 NAL data
+ * @param len Length of the frame data
+ * @return int 0 on success, -1 on failure
+ */
+int transcode_send_h264_frame(const uint8_t *frame, ssize_t len);
+
+/**
+ * @brief Check if the transcoder is running
+ *
+ * @return bool true if running
+ */
+bool transcode_is_running();
+
 #endif //VIDEO_DAEMON_VIDEO_H

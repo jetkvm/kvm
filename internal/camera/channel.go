@@ -4,15 +4,15 @@ const cameraLogInterval = 30 // Log every N frames
 
 // HandleCameraFrame handles a camera frame received from the browser.
 // This is called by the WebRTC DataChannel handler in the kvm package.
-// Browser captures camera frames, encodes to JPEG, and sends them here.
-// We simply pass the JPEG frames directly to the UVC streamer (no transcoding).
+// Browser captures camera frames, encodes to H.264, and sends them here.
+// We pass the H.264 frames directly to the UVC streamer (no transcoding).
 func (m *Manager) HandleCameraFrame(data []byte, isString bool) {
 	// Only process if camera passthrough is enabled AND UVC source is set to camera
 	if !m.enabled.Load() || !m.source.IsCamera() {
 		return
 	}
 
-	// Expect binary JPEG data
+	// Expect binary H.264 NAL unit data
 	if isString {
 		if m.camLog != nil {
 			m.camLog.Warn().Msg("Received unexpected string data on camera channel")
@@ -20,16 +20,8 @@ func (m *Manager) HandleCameraFrame(data []byte, isString bool) {
 		return
 	}
 
-	if len(data) < 2 {
-		return // Too small to be a JPEG
-	}
-
-	// Quick JPEG header check (FFD8)
-	if data[0] != 0xFF || data[1] != 0xD8 {
-		if m.camLog != nil {
-			m.camLog.Debug().Msg("Received non-JPEG data on camera channel")
-		}
-		return
+	if len(data) < 4 {
+		return // Too small to be an H.264 NAL unit
 	}
 
 	// Update frame stats
@@ -45,19 +37,18 @@ func (m *Manager) HandleCameraFrame(data []byte, isString bool) {
 	if shouldLog && m.camLog != nil {
 		m.camLog.Info().
 			Int("frames", frameCount).
-			Int("jpegSize", len(data)).
-			Msg("Camera passthrough stats")
+			Int("h264Size", len(data)).
+			Msg("Camera H.264 passthrough stats")
 	}
 
-	// Pass JPEG directly to UVC streamer (no transcoding needed!)
-	// This is the same path used by HDMI loopback
-	m.HandleMjpegFrame(data)
+	// Pass H.264 directly to UVC streamer (no transcoding needed!)
+	m.HandleCameraH264Frame(data)
 }
 
 // OnChannelOpen should be called when the camera DataChannel opens.
 func (m *Manager) OnChannelOpen(channelID uint16) {
 	if m.camLog != nil {
-		m.camLog.Info().Uint16("id", channelID).Msg("Camera DataChannel opened")
+		m.camLog.Info().Uint16("id", channelID).Msg("Camera DataChannel opened (H.264 mode)")
 	}
 }
 

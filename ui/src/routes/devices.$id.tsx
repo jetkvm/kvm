@@ -58,6 +58,7 @@ import { isSecureContext } from "@/utils";
 import { doRpcHidHandshake } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
+import { useCameraPassthrough } from "@hooks/useCameraPassthrough";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -132,8 +133,6 @@ export default function KvmIdRoute() {
     setTransceiver,
     setAudioTransceiver,
     audioTransceiver,
-    setCameraChannel,
-    cameraChannel,
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
@@ -542,29 +541,13 @@ export default function KvmIdRoute() {
       }
     };
 
-    setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
+    // Use sendrecv for video to allow browser to send camera video back to JetKVM
+    // JetKVM sends HDMI video to browser, browser can optionally send camera video back
+    const videoTransceiver = pc.addTransceiver("video", { direction: "sendrecv" });
+    setTransceiver(videoTransceiver);
 
     const audioTrans = pc.addTransceiver("audio", { direction: "sendrecv" });
     setAudioTransceiver(audioTrans);
-
-    // Camera DataChannel for JPEG passthrough to target via UVC
-    // Using DataChannel instead of video transceiver because RV1106 has no hardware video decoder
-    // Browser encodes to JPEG and sends raw bytes - KVM passes directly to UVC (no transcoding)
-    // Using unreliable+unordered mode for minimum latency - each JPEG frame is independent
-    const cameraDataChannel = pc.createDataChannel("camera", {
-      ordered: false,      // Don't wait for reordering - each JPEG frame is self-contained
-      maxRetransmits: 0,   // Don't retransmit - drop frames instead of blocking
-    });
-    cameraDataChannel.binaryType = "arraybuffer";
-    cameraDataChannel.onclose = () => {
-      console.log("cameraDataChannel has closed");
-      setCameraChannel(null);
-    };
-    cameraDataChannel.onerror = (ev: Event) => console.error(`Error on cameraDataChannel: ${ev}`);
-    cameraDataChannel.onopen = () => {
-      console.log("cameraDataChannel opened");
-      setCameraChannel(cameraDataChannel);
-    };
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
@@ -620,7 +603,6 @@ export default function KvmIdRoute() {
     setRpcHidProtocolVersion,
     setTransceiver,
     setAudioTransceiver,
-    setCameraChannel,
     audioInputAutoEnable,
     setMicrophoneEnabled,
   ]);
@@ -692,271 +674,22 @@ export default function KvmIdRoute() {
     };
   }, [microphoneEnabled, audioTransceiver, peerConnection, setMicrophoneEnabled]);
 
-  // Camera passthrough handling via JPEG over DataChannel
-  // Using DataChannel with JPEG encoding because RV1106 has no hardware video decoder
-  // This allows zero-transcoding path: Browser JPEG → DataChannel → UVC streamer
+  // Camera passthrough via zero-overhead WebSocket transport
+  // Browser captures camera, encodes to H.264/MJPEG based on UVC host request,
+  // and sends raw frames directly over WebSocket (no RTP/DTLS overhead)
   //
-  // Performance optimizations:
-  // - Web Worker for encoding (off main thread)
-  // - OffscreenCanvas (hardware accelerated)
-  // - createImageBitmap (zero-copy frame capture)
-  // - Transferable ArrayBuffers (zero-copy transfer)
-  const cameraStreamRef = useRef<MediaStream | null>(null);
-  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
-  const cameraAnimFrameRef = useRef<number | null>(null);
-  const cameraRequestInProgress = useRef(false);
-  const cameraEncoderRef = useRef<{
-    worker: Worker | null;
-    ready: boolean;
-    fallbackCanvas: HTMLCanvasElement | null;
-    fallbackCtx: CanvasRenderingContext2D | null;
-    pendingEncode: boolean;
-    disposed: boolean; // Flag to prevent callbacks after cleanup
-  }>({
-    worker: null,
-    ready: false,
-    fallbackCanvas: null,
-    fallbackCtx: null,
-    pendingEncode: false,
-    disposed: false,
+  // Flow: Browser camera → WebCodecs encoder → WebSocket → JetKVM → UVC
+  // Format negotiation: JetKVM tells browser what codec UVC host wants
+  // Camera passthrough state (available for future stats display)
+  const _cameraPassthrough = useCameraPassthrough({
+    baseUrl: window.location.origin,
+    enabled: cameraEnabled,
+    onError: (error) => {
+      console.error('[CameraPassthrough] Error:', error);
+      setCameraEnabled(false);
+    },
   });
-
-  // Check for OffscreenCanvas + createImageBitmap support
-  const supportsWorkerEncoder = typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap !== 'undefined';
-
-  useEffect(() => {
-    if (!cameraChannel || !peerConnection) return;
-
-    const encoder = cameraEncoderRef.current;
-
-    const cleanup = () => {
-      // Set disposed flag first to prevent any callbacks from running
-      encoder.disposed = true;
-
-      if (cameraAnimFrameRef.current) {
-        cancelAnimationFrame(cameraAnimFrameRef.current);
-        cameraAnimFrameRef.current = null;
-      }
-      if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach(track => track.stop());
-        cameraStreamRef.current = null;
-      }
-      if (cameraVideoRef.current) {
-        cameraVideoRef.current.srcObject = null;
-        cameraVideoRef.current = null;
-      }
-      if (encoder.worker) {
-        encoder.worker.terminate();
-        encoder.worker = null;
-      }
-      encoder.ready = false;
-      encoder.fallbackCanvas = null;
-      encoder.fallbackCtx = null;
-      encoder.pendingEncode = false;
-    };
-
-    if (cameraEnabled) {
-      if (cameraRequestInProgress.current) return;
-      cameraRequestInProgress.current = true;
-
-      // Clean up any existing stream
-      cleanup();
-
-      navigator.mediaDevices?.getUserMedia({
-        video: {
-          // Use 1080p @ 30fps for high quality camera passthrough
-          // Must match UVC advertised format: 1920x1080 @ 30fps
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 },
-        }
-      }).then((stream) => {
-        cameraRequestInProgress.current = false;
-        cameraStreamRef.current = stream;
-
-        // Create video element to render camera frames
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.muted = true;
-        video.playsInline = true;
-        // iOS Safari compatibility
-        video.setAttribute('playsinline', '');
-        video.setAttribute('webkit-playsinline', '');
-        cameraVideoRef.current = video;
-
-        video.onloadedmetadata = () => {
-          video.play();
-          const width = video.videoWidth;
-          const height = video.videoHeight;
-
-          // Reset disposed flag for new session
-          encoder.disposed = false;
-
-          // Initialize encoder (Worker or fallback)
-          if (supportsWorkerEncoder) {
-            const worker = new Worker(
-              new URL('../workers/cameraEncoder.worker.ts', import.meta.url),
-              { type: 'module' }
-            );
-
-            worker.onmessage = (e) => {
-              // Check if disposed before processing any messages
-              if (encoder.disposed) return;
-
-              const { data } = e;
-              if (data.type === 'ready') {
-                encoder.ready = true;
-                console.log('Camera encoder worker ready (OffscreenCanvas)');
-              } else if (data.type === 'encoded') {
-                encoder.pendingEncode = false;
-                if (cameraChannel && cameraChannel.readyState === 'open') {
-                  try {
-                    cameraChannel.send(data.buffer);
-                  } catch (e) {
-                    console.warn('Failed to send camera frame:', e);
-                  }
-                }
-              } else if (data.type === 'error') {
-                encoder.pendingEncode = false;
-                console.error('Camera encoder error:', data.error);
-              }
-            };
-
-            worker.onerror = (e) => {
-              if (encoder.disposed) return;
-              console.error('Camera encoder worker error:', e);
-            };
-
-            worker.postMessage({ type: 'init', width, height });
-            encoder.worker = worker;
-          } else {
-            // Fallback: main thread canvas encoding
-            console.log('Camera encoder: using main thread fallback');
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            encoder.fallbackCanvas = canvas;
-            // Use willReadFrequently: false since we're only writing to canvas, not reading pixels
-            // Use desynchronized: true for lower latency rendering (skips compositor)
-            encoder.fallbackCtx = canvas.getContext('2d', {
-              alpha: false,        // JPEG has no alpha, skip alpha processing
-              desynchronized: true // Lower latency
-            });
-            encoder.ready = true;
-          }
-
-          // Target 30fps for camera passthrough to match UVC advertised frame rate
-          const targetFps = 30;
-          const frameInterval = 1000 / targetFps;
-          let lastFrameTime = 0;
-
-          // DataChannel buffer threshold (16KB) - skip frames early to reduce latency
-          // Lower threshold = less buffered data = lower latency but more dropped frames
-          const bufferThreshold = 16 * 1024;
-
-          const captureFrame = async (timestamp: number) => {
-            // Check disposed flag to stop capture loop
-            if (encoder.disposed) return;
-
-            if (!cameraEnabled || !cameraChannel || cameraChannel.readyState !== 'open') {
-              cameraAnimFrameRef.current = requestAnimationFrame(captureFrame);
-              return;
-            }
-
-            // Throttle to target FPS
-            if (timestamp - lastFrameTime < frameInterval) {
-              cameraAnimFrameRef.current = requestAnimationFrame(captureFrame);
-              return;
-            }
-
-            // Skip frame if previous encode still in progress (backpressure)
-            if (encoder.pendingEncode || !encoder.ready) {
-              cameraAnimFrameRef.current = requestAnimationFrame(captureFrame);
-              return;
-            }
-
-            // Skip frame if DataChannel buffer is too full (network backpressure)
-            if (cameraChannel.bufferedAmount > bufferThreshold) {
-              cameraAnimFrameRef.current = requestAnimationFrame(captureFrame);
-              return;
-            }
-
-            lastFrameTime = timestamp;
-            encoder.pendingEncode = true;
-
-            if (encoder.worker && supportsWorkerEncoder) {
-              // Web Worker path: create ImageBitmap and send to worker
-              let bitmap: ImageBitmap | null = null;
-              try {
-                // createImageBitmap options for maximum performance:
-                // - resizeQuality: 'low' for speed (we're not resizing, but good default)
-                // - premultiplyAlpha: 'none' to skip alpha processing (JPEG has no alpha)
-                // - colorSpaceConversion: 'none' to skip color space conversion
-                bitmap = await createImageBitmap(video, {
-                  premultiplyAlpha: 'none',
-                  colorSpaceConversion: 'none',
-                });
-                encoder.worker.postMessage(
-                  { type: 'encode', bitmap, quality: 0.5 },  // Lower quality = smaller frames = less CPU on JetKVM
-                  [bitmap] // Transfer bitmap (zero-copy)
-                );
-                // After successful transfer, bitmap is "neutered" - no need to close
-              } catch (e) {
-                encoder.pendingEncode = false;
-                // Close bitmap if it was created but transfer failed
-                if (bitmap) {
-                  bitmap.close();
-                }
-                console.warn('Failed to encode frame:', e);
-              }
-            } else if (encoder.fallbackCanvas && encoder.fallbackCtx) {
-              // Fallback path: main thread canvas encoding
-              const canvas = encoder.fallbackCanvas;
-              const ctx = encoder.fallbackCtx;
-
-              if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-              }
-
-              ctx.drawImage(video, 0, 0);
-              canvas.toBlob((blob) => {
-                encoder.pendingEncode = false;
-                // Check disposed flag before sending
-                if (encoder.disposed) return;
-                if (blob && cameraChannel && cameraChannel.readyState === 'open') {
-                  blob.arrayBuffer().then((buffer) => {
-                    // Check disposed again after async operation
-                    if (encoder.disposed) return;
-                    try {
-                      cameraChannel.send(buffer);
-                    } catch (e) {
-                      console.warn('Failed to send camera frame:', e);
-                    }
-                  });
-                }
-              }, 'image/jpeg', 0.5);  // Lower quality = smaller frames = less CPU on JetKVM
-            } else {
-              encoder.pendingEncode = false;
-            }
-
-            cameraAnimFrameRef.current = requestAnimationFrame(captureFrame);
-          };
-
-          cameraAnimFrameRef.current = requestAnimationFrame(captureFrame);
-        };
-      }).catch((err) => {
-        cameraRequestInProgress.current = false;
-        console.error('Failed to get camera:', err);
-        setCameraEnabled(false);
-      });
-    } else {
-      cameraRequestInProgress.current = false;
-      cleanup();
-    }
-
-    return cleanup;
-  }, [cameraEnabled, cameraChannel, peerConnection, setCameraEnabled, supportsWorkerEncoder]);
+  void _cameraPassthrough; // Suppress unused variable warning
 
   // Cleanup effect
   const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();

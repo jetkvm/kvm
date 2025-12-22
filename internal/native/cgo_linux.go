@@ -37,11 +37,6 @@ static inline void jetkvm_cgo_setup_video_handler() {
     jetkvm_set_video_handler(&jetkvm_go_video_handler);
 }
 
-extern void jetkvm_go_mjpeg_handler(cuint8_t *frame, ssize_t len);
-static inline void jetkvm_cgo_setup_mjpeg_handler() {
-    jetkvm_set_mjpeg_handler(&jetkvm_go_mjpeg_handler);
-}
-
 extern void jetkvm_go_indev_handler(int code);
 static inline void jetkvm_cgo_setup_indev_handler() {
     jetkvm_set_indev_handler(&jetkvm_go_indev_handler);
@@ -50,6 +45,11 @@ static inline void jetkvm_cgo_setup_indev_handler() {
 extern void jetkvm_go_rpc_handler(cchar_t *method, cchar_t *params);
 static inline void jetkvm_cgo_setup_rpc_handler() {
     jetkvm_set_rpc_handler(&jetkvm_go_rpc_handler);
+}
+
+extern void jetkvm_go_mjpeg_handler(cuint8_t *frame, ssize_t len);
+static inline void jetkvm_cgo_setup_mjpeg_handler() {
+    jetkvm_set_mjpeg_handler(&jetkvm_go_mjpeg_handler);
 }
 */
 import "C"
@@ -89,16 +89,6 @@ func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t) {
 	videoFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
 }
 
-//export jetkvm_go_mjpeg_handler
-func jetkvm_go_mjpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
-	// Non-blocking send - drop frame if channel is full
-	select {
-	case mjpegFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len)):
-	default:
-		// Channel full, drop frame (UVC might not be streaming)
-	}
-}
-
 //export jetkvm_go_indev_handler
 func jetkvm_go_indev_handler(code C.int) {
 	indevEventChan <- int(code)
@@ -107,6 +97,11 @@ func jetkvm_go_indev_handler(code C.int) {
 //export jetkvm_go_rpc_handler
 func jetkvm_go_rpc_handler(method *C.cchar_t, params *C.cchar_t) {
 	rpcEventChan <- C.GoString(method)
+}
+
+//export jetkvm_go_mjpeg_handler
+func jetkvm_go_mjpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
+	mjpegFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
 }
 
 var eventCodeToNameMap = map[int]string{}
@@ -130,9 +125,9 @@ func setUpNativeHandlers() {
 	C.jetkvm_cgo_setup_log_handler()
 	C.jetkvm_cgo_setup_video_state_handler()
 	C.jetkvm_cgo_setup_video_handler()
-	C.jetkvm_cgo_setup_mjpeg_handler()
 	C.jetkvm_cgo_setup_indev_handler()
 	C.jetkvm_cgo_setup_rpc_handler()
+	C.jetkvm_cgo_setup_mjpeg_handler()
 }
 
 func uiInit(rotation uint16) {
@@ -183,6 +178,13 @@ func videoStop() {
 	defer cgoLock.Unlock()
 
 	C.jetkvm_video_stop()
+}
+
+func mjpegSetEnabled(enabled bool) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	C.jetkvm_mjpeg_set_enabled(C.bool(enabled))
 }
 
 func videoGetStreamingStatus() VideoStreamingStatus {
@@ -427,44 +429,61 @@ func crash() {
 	C.jetkvm_crash()
 }
 
-func mjpegSetEnabled(enabled bool) {
+// Transcoder functions for H.264 to MJPEG conversion
+func transcodeInit(width, height int) error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	C.jetkvm_mjpeg_set_enabled(C.bool(enabled))
+	ret := C.jetkvm_transcode_init(C.int(width), C.int(height))
+	if ret != 0 {
+		return fmt.Errorf("failed to initialize transcoder: %d", ret)
+	}
+	return nil
 }
 
-func mjpegGetEnabled() bool {
+func transcodeStart() error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	return bool(C.jetkvm_mjpeg_get_enabled())
+	ret := C.jetkvm_transcode_start()
+	if ret != 0 {
+		return fmt.Errorf("failed to start transcoder: %d", ret)
+	}
+	return nil
 }
 
-func mjpegSetFrameDivisor(divisor int) {
+func transcodeStop() {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	C.jetkvm_mjpeg_set_frame_divisor(C.int(divisor))
+	C.jetkvm_transcode_stop()
 }
 
-func mjpegGetFrameDivisor() int {
+func transcodeShutdown() {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	return int(C.jetkvm_mjpeg_get_frame_divisor())
+	C.jetkvm_transcode_shutdown()
 }
 
-func mjpegSetQuality(quality float32) {
+func transcodeSendH264(frame []byte) error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	C.jetkvm_mjpeg_set_quality(C.float(quality))
+	if len(frame) == 0 {
+		return nil
+	}
+
+	ret := C.jetkvm_transcode_send_h264((*C.uint8_t)(unsafe.Pointer(&frame[0])), C.ssize_t(len(frame)))
+	if ret != 0 {
+		return fmt.Errorf("failed to send H.264 frame: %d", ret)
+	}
+	return nil
 }
 
-func mjpegGetQuality() float32 {
+func transcodeIsRunning() bool {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	return float32(C.jetkvm_mjpeg_get_quality())
+	return bool(C.jetkvm_transcode_is_running())
 }

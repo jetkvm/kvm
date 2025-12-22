@@ -187,6 +187,9 @@ func setupRouter() *gin.Engine {
 		protected.POST("/storage/upload", handleUploadHttp)
 
 		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
+
+		// Camera WebSocket endpoint for zero-overhead frame transport
+		protected.GET("/api/camera/ws", handleCameraWs)
 	}
 
 	// Catch-all route for SPA

@@ -1,0 +1,262 @@
+/**
+ * WebSocket transport for sending camera frames to JetKVM.
+ *
+ * Protocol:
+ * - Server sends JSON messages: format requests, acks, errors
+ * - Client sends binary frames: [codec:u8][frame_data...]
+ */
+
+import type { VideoCodec } from './cameraEncoder';
+
+export type TransportState = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface CameraTransportStats {
+  framesSent: number;
+  bytesSent: number;
+  framesDropped: number;
+  avgLatencyMs: number;
+}
+
+export interface FormatRequest {
+  codec: VideoCodec;
+  width: number;
+  height: number;
+}
+
+export interface CameraTransportEvents {
+  onStateChange: (state: TransportState) => void;
+  onError: (error: Error) => void;
+  onStats: (stats: CameraTransportStats) => void;
+  /** Called when JetKVM requests a specific video format */
+  onFormatRequest: (format: FormatRequest) => void;
+  /** Called when UVC streaming stops (host disconnected) */
+  onStreamingStopped: () => void;
+}
+
+export interface CameraTransport {
+  /** Current connection state */
+  readonly state: TransportState;
+
+  /** Transport statistics */
+  readonly stats: CameraTransportStats;
+
+  /** Connect to the server */
+  connect(): Promise<void>;
+
+  /** Send a video frame with codec type */
+  sendFrame(frame: ArrayBuffer, timestamp: number, codec: VideoCodec): void;
+
+  /** Close the connection */
+  close(): void;
+
+  /** Set event handlers */
+  setEventHandlers(events: Partial<CameraTransportEvents>): void;
+}
+
+export class WebSocketCameraTransport implements CameraTransport {
+  private ws: WebSocket | null = null;
+  private _state: TransportState = 'disconnected';
+  private _stats: CameraTransportStats = {
+    framesSent: 0,
+    bytesSent: 0,
+    framesDropped: 0,
+    avgLatencyMs: 0,
+  };
+  private events: Partial<CameraTransportEvents> = {};
+  private url: string;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 3;
+  private latencySamples: number[] = [];
+
+  constructor(url: string) {
+    this.url = url;
+  }
+
+  get state(): TransportState {
+    return this._state;
+  }
+
+  get stats(): CameraTransportStats {
+    return { ...this._stats };
+  }
+
+  setEventHandlers(events: Partial<CameraTransportEvents>): void {
+    this.events = { ...this.events, ...events };
+  }
+
+  private setState(state: TransportState): void {
+    if (this._state !== state) {
+      this._state = state;
+      this.events.onStateChange?.(state);
+    }
+  }
+
+  async connect(): Promise<void> {
+    if (this._state === 'connected' || this._state === 'connecting') {
+      return;
+    }
+
+    this.setState('connecting');
+
+    return new Promise((resolve, reject) => {
+      try {
+        this.ws = new WebSocket(this.url);
+        this.ws.binaryType = 'arraybuffer';
+
+        this.ws.onopen = () => {
+          this.reconnectAttempts = 0;
+          this.setState('connected');
+          resolve();
+        };
+
+        this.ws.onclose = (event) => {
+          this.setState('disconnected');
+
+          // Attempt reconnect if not a clean close
+          if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            setTimeout(() => this.connect(), 1000 * this.reconnectAttempts);
+          }
+        };
+
+        this.ws.onerror = (event) => {
+          const error = new Error('WebSocket error');
+          console.error('[CameraTransport] WebSocket error:', event);
+          this.events.onError?.(error);
+
+          if (this._state === 'connecting') {
+            this.setState('error');
+            reject(error);
+          }
+        };
+
+        this.ws.onmessage = (event) => {
+          // Handle server messages (JSON control messages)
+          if (typeof event.data === 'string') {
+            try {
+              const msg = JSON.parse(event.data);
+
+              switch (msg.type) {
+                case 'ack':
+                  // Latency measurement
+                  if (msg.timestamp) {
+                    const latency = Date.now() - msg.timestamp;
+                    this.updateLatency(latency);
+                  }
+                  break;
+
+                case 'format':
+                  // Format negotiation from JetKVM
+                  // UVC host has requested a specific format, or "stop" when disconnected
+                  if (msg.codec === 'stop') {
+                    console.log('[CameraTransport] UVC streaming stopped');
+                    this.events.onStreamingStopped?.();
+                  } else if (msg.codec && msg.width && msg.height) {
+                    // Don't log every format message (can be spammy with UVC restarts)
+                    this.events.onFormatRequest?.({
+                      codec: msg.codec as 'h264' | 'mjpeg',
+                      width: msg.width,
+                      height: msg.height,
+                    });
+                  }
+                  break;
+
+                case 'error':
+                  // Server error
+                  console.error('[CameraTransport] Server error:', msg.message);
+                  this.events.onError?.(new Error(msg.message || 'Server error'));
+                  break;
+
+                default:
+                  console.log('[CameraTransport] Unknown message type:', msg.type);
+              }
+            } catch {
+              // Ignore non-JSON messages
+            }
+          }
+        };
+      } catch (error) {
+        this.setState('error');
+        reject(error);
+      }
+    });
+  }
+
+  // Codec byte constants matching Go server
+  private static readonly CODEC_H264 = 0x01;
+  private static readonly CODEC_MJPEG = 0x02;
+
+  sendFrame(frame: ArrayBuffer, _timestamp: number, codec: VideoCodec): void {
+    if (this._state !== 'connected' || !this.ws) {
+      this._stats.framesDropped++;
+      return;
+    }
+
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      this._stats.framesDropped++;
+      return;
+    }
+
+    // Check if buffer is getting too full (backpressure)
+    // Drop frames early to prevent buffer from growing too large
+    // 512KB threshold allows ~2-3 frames of MJPEG buffer for transient network hiccups
+    if (this.ws.bufferedAmount > 512 * 1024) { // 512KB buffer threshold
+      this._stats.framesDropped++;
+      // Only log every 30 dropped frames to avoid console spam
+      if (this._stats.framesDropped % 30 === 1) {
+        console.warn(`[CameraTransport] Buffer backpressure, dropped ${this._stats.framesDropped} frames`);
+      }
+      return;
+    }
+
+    try {
+      // Create frame header: 1-byte codec (timestamp not used by server)
+      const headerSize = 1;
+      const message = new Uint8Array(headerSize + frame.byteLength);
+
+      // Write codec byte
+      message[0] = codec === 'h264'
+        ? WebSocketCameraTransport.CODEC_H264
+        : WebSocketCameraTransport.CODEC_MJPEG;
+
+      // Copy frame data
+      message.set(new Uint8Array(frame), headerSize);
+
+      this.ws.send(message);
+
+      this._stats.framesSent++;
+      this._stats.bytesSent += message.byteLength;
+
+      // Periodically report stats
+      if (this._stats.framesSent % 30 === 0) {
+        this.events.onStats?.(this.stats);
+      }
+    } catch {
+      this._stats.framesDropped++;
+    }
+  }
+
+  close(): void {
+    if (this.ws) {
+      this.ws.close(1000, 'Client closing');
+      this.ws = null;
+    }
+    this.setState('disconnected');
+  }
+
+  private updateLatency(latency: number): void {
+    this.latencySamples.push(latency);
+    if (this.latencySamples.length > 30) {
+      this.latencySamples.shift();
+    }
+    this._stats.avgLatencyMs = this.latencySamples.reduce((a, b) => a + b, 0) / this.latencySamples.length;
+  }
+}
+
+export function createCameraTransport(baseUrl: string): CameraTransport {
+  const wsUrl = baseUrl
+    .replace(/^http:/, 'ws:')
+    .replace(/^https:/, 'wss:')
+    .replace(/\/$/, '') + '/api/camera/ws';
+  return new WebSocketCameraTransport(wsUrl);
+}

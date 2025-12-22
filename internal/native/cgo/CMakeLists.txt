@@ -61,9 +61,9 @@ target_link_directories(jknative PRIVATE ${RK_APP_MEDIA_LIBS_PATH})
 # target_link_directories(jknative PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/deps/libgpiod/lib)
 
 target_link_libraries(jknative PRIVATE
-    lvgl::lvgl 
+    lvgl::lvgl
     pthread
-    rockit
+    rockit_full
     rockchip_mpp
     rga
     m

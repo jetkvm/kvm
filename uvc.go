@@ -24,8 +24,18 @@ func reinitUVC() {
 	cameraManager.ReinitUVC(config.UsbDevices.UVC)
 }
 
-// handleMjpegFrame handles an MJPEG frame from the native encoder.
-func handleMjpegFrame(frame []byte) {
+// handleH264Frame handles an H.264 frame from the native encoder for UVC streaming.
+// This routes H.264 frames to the UVC gadget when source is HDMI.
+func handleH264FrameForUVC(frame []byte) {
+	if cameraManager == nil {
+		return
+	}
+	cameraManager.HandleH264Frame(frame)
+}
+
+// handleMjpegFrameForUVC handles an MJPEG frame from the native encoder for UVC streaming.
+// This routes MJPEG frames to the UVC gadget when MJPEG format is selected by the host.
+func handleMjpegFrameForUVC(frame []byte) {
 	if cameraManager == nil {
 		return
 	}

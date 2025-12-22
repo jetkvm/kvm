@@ -4,6 +4,16 @@ package usbgadget
 
 import "fmt"
 
+// UVC event constants (stubs for non-linux builds)
+const (
+	UVC_EVENT_CONNECT    = 0x08000000
+	UVC_EVENT_DISCONNECT = 0x08000001
+	UVC_EVENT_STREAMON   = 0x08000002
+	UVC_EVENT_STREAMOFF  = 0x08000003
+	UVC_EVENT_SETUP      = 0x08000004
+	UVC_EVENT_DATA       = 0x08000005
+)
+
 // UVCStreamer stub for non-linux builds
 type UVCStreamer struct{}
 
@@ -85,6 +95,14 @@ func (s *UVCStreamer) GetFd() int {
 
 func (s *UVCStreamer) GetCommittedResolution() (uint32, uint32) {
 	return 1280, 720
+}
+
+func (s *UVCStreamer) GetCommittedFormatIndex() uint8 {
+	return 2 // H.264
+}
+
+func (s *UVCStreamer) IsH264Format() bool {
+	return true
 }
 
 func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {

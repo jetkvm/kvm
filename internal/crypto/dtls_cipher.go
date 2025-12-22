@@ -27,7 +27,7 @@ var errCipherSuiteNotInit = errors.New("cipher suite not initialized")
 
 // HardwareGCM provides AES-GCM using hardware acceleration.
 type HardwareGCM struct {
-	localAEAD, remoteAEAD   AEAD
+	localAEAD, remoteAEAD       AEAD
 	localWriteIV, remoteWriteIV []byte
 }
 

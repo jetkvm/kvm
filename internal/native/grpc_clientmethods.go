@@ -74,18 +74,10 @@ func (c *GRPCClient) VideoStart() error {
 	return err
 }
 
-// MJPEG methods (for UVC streaming)
+// MJPEG encoding
 func (c *GRPCClient) MjpegSetEnabled(enabled bool) error {
 	_, err := c.client.MjpegSetEnabled(context.Background(), &pb.MjpegSetEnabledRequest{Enabled: enabled})
 	return err
-}
-
-func (c *GRPCClient) MjpegGetEnabled() (bool, error) {
-	resp, err := c.client.MjpegGetEnabled(context.Background(), &pb.Empty{})
-	if err != nil {
-		return false, err
-	}
-	return resp.Enabled, nil
 }
 
 // UI methods
@@ -223,4 +215,36 @@ func (c *GRPCClient) SwitchToScreenIfDifferent(screenName string) {
 
 func (c *GRPCClient) DoNotUseThisIsForCrashTestingOnly() {
 	_, _ = c.client.DoNotUseThisIsForCrashTestingOnly(context.Background(), &pb.Empty{})
+}
+
+// H.264 to MJPEG transcoder methods (camera passthrough)
+func (c *GRPCClient) TranscodeInit(width, height int) error {
+	_, err := c.client.TranscodeInit(context.Background(), &pb.TranscodeInitRequest{Width: int32(width), Height: int32(height)})
+	return err
+}
+
+func (c *GRPCClient) TranscodeStart() error {
+	_, err := c.client.TranscodeStart(context.Background(), &pb.Empty{})
+	return err
+}
+
+func (c *GRPCClient) TranscodeStop() {
+	_, _ = c.client.TranscodeStop(context.Background(), &pb.Empty{})
+}
+
+func (c *GRPCClient) TranscodeShutdown() {
+	_, _ = c.client.TranscodeShutdown(context.Background(), &pb.Empty{})
+}
+
+func (c *GRPCClient) TranscodeSendH264(frame []byte) error {
+	_, err := c.client.TranscodeSendH264(context.Background(), &pb.TranscodeSendH264Request{Frame: frame})
+	return err
+}
+
+func (c *GRPCClient) TranscodeIsRunning() bool {
+	resp, err := c.client.TranscodeIsRunning(context.Background(), &pb.Empty{})
+	if err != nil {
+		return false
+	}
+	return resp.Running
 }

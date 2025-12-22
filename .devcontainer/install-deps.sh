@@ -25,7 +25,12 @@ sudo apt-get install -y --no-install-recommends \
   bc openssl flex bison libssl-dev python3 python-is-python3 texinfo kmod cmake \
   wget zstd \
   python3-venv python3-kconfiglib \
+  protobuf-compiler \
   && sudo rm -rf /var/lib/apt/lists/*
+
+# Install Go protobuf plugins for proto generation
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 # Install buildkit
 BUILDKIT_VERSION="v0.2.5"

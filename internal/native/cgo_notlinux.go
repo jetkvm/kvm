@@ -132,33 +132,6 @@ func crash() {
 	panicPlatformNotSupported()
 }
 
-func mjpegSetEnabled(enabled bool) {
-	panicPlatformNotSupported()
-}
-
-func mjpegGetEnabled() bool {
-	panicPlatformNotSupported()
-	return false
-}
-
-func mjpegSetFrameDivisor(divisor int) {
-	panicPlatformNotSupported()
-}
-
-func mjpegGetFrameDivisor() int {
-	panicPlatformNotSupported()
-	return 2
-}
-
-func mjpegSetQuality(quality float32) {
-	panicPlatformNotSupported()
-}
-
-func mjpegGetQuality() float32 {
-	panicPlatformNotSupported()
-	return 0.8
-}
-
 func videoInit(factor float64) error {
 	panicPlatformNotSupported()
 	return nil
@@ -176,10 +149,42 @@ func videoStop() {
 	panicPlatformNotSupported()
 }
 
+func mjpegSetEnabled(enabled bool) {
+	panicPlatformNotSupported()
+}
+
 func uiInit(rotation uint16) {
 	panicPlatformNotSupported()
 }
 
 func uiTick() {
 	panicPlatformNotSupported()
+}
+
+func transcodeInit(width, height int) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func transcodeStart() error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func transcodeStop() {
+	panicPlatformNotSupported()
+}
+
+func transcodeShutdown() {
+	panicPlatformNotSupported()
+}
+
+func transcodeSendH264(frame []byte) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func transcodeIsRunning() bool {
+	panicPlatformNotSupported()
+	return false
 }

@@ -488,3 +488,28 @@ void jetkvm_crash() {
     int* p = 0;
     *p = 0;
 }
+
+// Transcoder wrapper functions
+int jetkvm_transcode_init(int width, int height) {
+    return transcode_init(width, height);
+}
+
+int jetkvm_transcode_start() {
+    return transcode_start();
+}
+
+void jetkvm_transcode_stop() {
+    transcode_stop();
+}
+
+void jetkvm_transcode_shutdown() {
+    transcode_shutdown();
+}
+
+int jetkvm_transcode_send_h264(const uint8_t *frame, ssize_t len) {
+    return transcode_send_h264_frame(frame, len);
+}
+
+bool jetkvm_transcode_is_running() {
+    return transcode_is_running();
+}

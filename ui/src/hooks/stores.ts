@@ -143,9 +143,6 @@ export interface RTCState {
   audioTransceiver: RTCRtpTransceiver | null;
   setAudioTransceiver: (transceiver: RTCRtpTransceiver) => void;
 
-  cameraChannel: RTCDataChannel | null;
-  setCameraChannel: (channel: RTCDataChannel | null) => void;
-
   mediaStream: MediaStream | null;
   setMediaStream: (stream: MediaStream) => void;
 
@@ -207,9 +204,6 @@ export const useRTCStore = create<RTCState>(set => ({
 
   audioTransceiver: null,
   setAudioTransceiver: (transceiver: RTCRtpTransceiver) => set({ audioTransceiver: transceiver }),
-
-  cameraChannel: null,
-  setCameraChannel: (channel: RTCDataChannel | null) => set({ cameraChannel: channel }),
 
   peerConnectionState: null,
   setPeerConnectionState: state => set({ peerConnectionState: state }),

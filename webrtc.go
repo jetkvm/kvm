@@ -303,8 +303,6 @@ func newSession(config SessionConfig) (*Session, error) {
 			handleTerminalChannel(d)
 		case "serial":
 			handleSerialChannel(d)
-		case "camera":
-			handleCameraChannel(d)
 		default:
 			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
 				go handleUploadChannel(d)
@@ -318,10 +316,35 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	rtpSender, err := peerConnection.AddTrack(session.VideoTrack)
+	// Use sendrecv transceiver to allow browser to send camera video back
+	videoTransceiver, err := peerConnection.AddTransceiverFromTrack(session.VideoTrack, webrtc.RTPTransceiverInit{
+		Direction: webrtc.RTPTransceiverDirectionSendrecv,
+	})
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
+		scopedLogger.Warn().Err(err).Msg("Failed to add VideoTrack transceiver")
 		return nil, err
+	}
+
+	// Set codec preferences to prefer H.264 for incoming camera video
+	// This is required for UVC passthrough since we can't transcode VP8/VP9 to H.264
+	videoCodecs := videoTransceiver.Receiver().GetParameters().Codecs
+	var h264Codecs []webrtc.RTPCodecParameters
+	var otherCodecs []webrtc.RTPCodecParameters
+	for _, codec := range videoCodecs {
+		if strings.Contains(strings.ToLower(codec.MimeType), "h264") {
+			h264Codecs = append(h264Codecs, codec)
+		} else {
+			otherCodecs = append(otherCodecs, codec)
+		}
+	}
+	// Put H.264 codecs first to prefer them
+	preferredCodecs := append(h264Codecs, otherCodecs...)
+	if len(preferredCodecs) > 0 {
+		if err := videoTransceiver.SetCodecPreferences(preferredCodecs); err != nil {
+			scopedLogger.Warn().Err(err).Msg("Failed to set H.264 codec preference (non-fatal)")
+		} else {
+			scopedLogger.Info().Int("h264_count", len(h264Codecs)).Msg("Set H.264 as preferred codec for incoming video")
+		}
 	}
 
 	// Read incoming RTCP packets
@@ -329,6 +352,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	// like NACK this needs to be called.
 	go func() {
 		rtcpBuf := make([]byte, 1500)
+		rtpSender := videoTransceiver.Sender()
 		for {
 			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
 				return
@@ -367,13 +391,15 @@ func newSession(config SessionConfig) (*Session, error) {
 					// Store audio track for connection when audio starts
 					// OnTrack fires during SDP exchange, before ICE connection completes
 					setPendingInputTrack(track)
+				case webrtc.RTPCodecTypeVideo:
+					// Handle incoming camera video from browser for UVC passthrough
+					handleCameraVideoTrack(track)
 				}
 			})
 
 			scopedLogger.Info().Msg("Audio tracks configured successfully")
 		}
 	}
-
 
 	var isConnected bool
 

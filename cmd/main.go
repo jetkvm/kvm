@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -16,6 +17,13 @@ import (
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
+
+func init() {
+	// Reduce GC frequency for lower CPU overhead on embedded systems.
+	// Default GOGC=100 means GC runs when heap doubles.
+	// GOGC=200 means GC runs when heap triples, reducing GC frequency by ~50%.
+	debug.SetGCPercent(200)
+}
 
 var (
 	subcomponent string

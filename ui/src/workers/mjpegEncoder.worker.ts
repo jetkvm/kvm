@@ -1,0 +1,149 @@
+/**
+ * MJPEG Encoder WebWorker
+ *
+ * Offloads MJPEG encoding from the main thread for 60fps performance.
+ * Uses OffscreenCanvas.convertToBlob() which is the most efficient
+ * JPEG encoding method available in browsers.
+ */
+
+interface EncoderConfig {
+  width: number;
+  height: number;
+  quality: number;
+}
+
+interface StartMessage {
+  type: 'start';
+  config: EncoderConfig;
+}
+
+interface FrameMessage {
+  type: 'frame';
+  bitmap: ImageBitmap;
+  timestamp: number;
+}
+
+interface StopMessage {
+  type: 'stop';
+}
+
+type WorkerMessage = StartMessage | FrameMessage | StopMessage;
+
+interface EncodedFrameMessage {
+  type: 'frame';
+  data: ArrayBuffer;
+  timestamp: number;
+}
+
+interface ErrorMessage {
+  type: 'error';
+  message: string;
+}
+
+interface ReadyMessage {
+  type: 'ready';
+}
+
+interface StoppedMessage {
+  type: 'stopped';
+}
+
+type WorkerResponse = EncodedFrameMessage | ErrorMessage | ReadyMessage | StoppedMessage;
+
+let canvas: OffscreenCanvas | null = null;
+let ctx: OffscreenCanvasRenderingContext2D | null = null;
+let config: EncoderConfig = { width: 1920, height: 1080, quality: 0.7 };
+let isRunning = false;
+
+self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+  const msg = event.data;
+
+  switch (msg.type) {
+    case 'start':
+      await handleStart(msg.config);
+      break;
+
+    case 'frame':
+      await handleFrame(msg.bitmap, msg.timestamp);
+      break;
+
+    case 'stop':
+      handleStop();
+      break;
+  }
+};
+
+async function handleStart(newConfig: EncoderConfig): Promise<void> {
+  try {
+    config = newConfig;
+
+    // Create OffscreenCanvas for encoding
+    canvas = new OffscreenCanvas(config.width, config.height);
+    ctx = canvas.getContext('2d', {
+      alpha: false, // No alpha channel needed for MJPEG
+      desynchronized: true, // Hint for lower latency
+    });
+
+    if (!ctx) {
+      throw new Error('Failed to get 2D context');
+    }
+
+    isRunning = true;
+
+    const response: ReadyMessage = { type: 'ready' };
+    self.postMessage(response);
+
+  } catch (error) {
+    const response: ErrorMessage = {
+      type: 'error',
+      message: error instanceof Error ? error.message : String(error),
+    };
+    self.postMessage(response);
+  }
+}
+
+async function handleFrame(bitmap: ImageBitmap, timestamp: number): Promise<void> {
+  if (!isRunning || !canvas || !ctx) {
+    bitmap.close();
+    return;
+  }
+
+  try {
+    // Draw bitmap to canvas (fast GPU operation)
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    // Encode to JPEG (this is the expensive operation, but now off main thread)
+    const blob = await canvas.convertToBlob({
+      type: 'image/jpeg',
+      quality: config.quality,
+    });
+
+    // Convert to ArrayBuffer for transfer
+    const data = await blob.arrayBuffer();
+
+    // Send encoded frame back (transfer ownership for zero-copy)
+    const response: EncodedFrameMessage = {
+      type: 'frame',
+      data,
+      timestamp,
+    };
+    self.postMessage(response, { transfer: [data] });
+
+  } catch {
+    // Ignore transient encode errors
+  } finally {
+    // Always close the bitmap to free GPU memory
+    bitmap.close();
+  }
+}
+
+function handleStop(): void {
+  isRunning = false;
+  canvas = null;
+  ctx = null;
+
+  const response: StoppedMessage = { type: 'stopped' };
+  self.postMessage(response);
+}
+
+export type { WorkerMessage, WorkerResponse, EncoderConfig };

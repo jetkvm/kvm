@@ -316,12 +316,20 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 	}
 
 	// Setup UVC function and create symlink AFTER Audio
-	// UVC uses bulk mode (streaming_bulk=1) to avoid isochronous endpoint conflicts with UAC1
-	// Only advertise 1080p30 - must match browser camera capture resolution exactly
-	// The host cannot select other resolutions since browser always sends 1080p
+	// UVC uses H.264 framebased format for direct passthrough streaming
+	// This enables zero-copy H.264 streaming from both HDMI loopback and camera passthrough
+	// Advertise 1080p@60fps as primary format for high-quality streaming
+	//
+	// NOTE: Both MJPEG and H.264 are advertised because:
+	// 1. Linux's uvcvideo driver won't enumerate devices with only H.264 framebased format
+	// 2. MJPEG is required for the device to be visible on Linux hosts
+	// 3. When host selects MJPEG, we transcode H.264→MJPEG in software
+	// 4. When host selects H.264 (macOS/Windows), we pass through directly
+	// H.264 is listed first to be preferred when the host supports it
 	uvcSetupOK := false
 	if u.enabledDevices.UVC {
-		if err := u.SetupUVCFunction([]UVCFormat{UVCFormat1080p30}); err != nil {
+		// Advertise H.264 first (preferred), then MJPEG (fallback for Linux compatibility)
+		if err := u.SetupUVCFunction([]UVCFormatConfig{UVCFormatH264_1080p60, UVCFormatMJPEG_1080p30}); err != nil {
 			u.log.Warn().Err(err).Msg("failed to setup UVC function")
 			// Continue without UVC - don't fail the entire gadget
 		} else {

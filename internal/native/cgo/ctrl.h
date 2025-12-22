@@ -84,6 +84,13 @@ int jetkvm_mjpeg_get_frame_divisor();
 void jetkvm_mjpeg_set_quality(float quality);
 float jetkvm_mjpeg_get_quality();
 
-
+// H.264 to MJPEG transcoder for camera passthrough
+// Decodes browser H.264 and encodes to MJPEG for UVC
+int jetkvm_transcode_init(int width, int height);
+int jetkvm_transcode_start();
+void jetkvm_transcode_stop();
+void jetkvm_transcode_shutdown();
+int jetkvm_transcode_send_h264(const uint8_t *frame, ssize_t len);
+bool jetkvm_transcode_is_running();
 
 #endif //VIDEO_DAEMON_CTRL_H

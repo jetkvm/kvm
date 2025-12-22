@@ -18,16 +18,16 @@ const (
 	V4L2_MEMORY_USERPTR        = 2
 
 	// V4L2 ioctls (32-bit ARM values)
-	VIDIOC_QUERYCAP          = 0x80685600
-	VIDIOC_S_FMT             = 0xc0d05605
-	VIDIOC_REQBUFS           = 0xc0145608
-	VIDIOC_QBUF              = 0xc044560f
-	VIDIOC_DQBUF             = 0xc0445611
-	VIDIOC_STREAMON          = 0x40045612
-	VIDIOC_STREAMOFF         = 0x40045613
-	VIDIOC_SUBSCRIBE_EVENT   = 0x4020565a
-	VIDIOC_DQEVENT           = 0x80805659
-	UVCIOC_SEND_RESPONSE     = 0x40405501
+	VIDIOC_QUERYCAP        = 0x80685600
+	VIDIOC_S_FMT           = 0xc0d05605
+	VIDIOC_REQBUFS         = 0xc0145608
+	VIDIOC_QBUF            = 0xc044560f
+	VIDIOC_DQBUF           = 0xc0445611
+	VIDIOC_STREAMON        = 0x40045612
+	VIDIOC_STREAMOFF       = 0x40045613
+	VIDIOC_SUBSCRIBE_EVENT = 0x4020565a
+	VIDIOC_DQEVENT         = 0x80805659
+	UVCIOC_SEND_RESPONSE   = 0x40405501
 
 	// UVC events
 	V4L2_EVENT_PRIVATE_START = 0x08000000
@@ -38,7 +38,7 @@ const (
 	UVC_EVENT_SETUP          = V4L2_EVENT_PRIVATE_START + 4
 	UVC_EVENT_DATA           = V4L2_EVENT_PRIVATE_START + 5
 
-	V4L2_PIX_FMT_MJPEG = 0x47504a4d
+	V4L2_PIX_FMT_H264 = 0x34363248 // "H264" fourcc
 
 	// USB/UVC constants
 	USB_TYPE_MASK  = 0x60
@@ -71,10 +71,10 @@ type v4l2_capability struct {
 }
 
 type v4l2_pix_format struct {
-	Width, Height, PixelFormat, Field    uint32
-	BytesPerLine, SizeImage, Colorspace  uint32
-	Priv, Flags, YcbcrEnc, Quantization  uint32
-	XferFunc                             uint32
+	Width, Height, PixelFormat, Field   uint32
+	BytesPerLine, SizeImage, Colorspace uint32
+	Priv, Flags, YcbcrEnc, Quantization uint32
+	XferFunc                            uint32
 }
 
 type v4l2_format struct {
@@ -91,9 +91,9 @@ type v4l2_requestbuffers struct {
 }
 
 type v4l2_timecode struct {
-	Type, Flags                      uint32
-	Frames, Seconds, Minutes, Hours  uint8
-	Userbits                         [4]uint8
+	Type, Flags                     uint32
+	Frames, Seconds, Minutes, Hours uint8
+	Userbits                        [4]uint8
 }
 
 type v4l2_buffer struct {
@@ -122,7 +122,7 @@ type v4l2_event struct {
 }
 
 type usb_ctrlrequest struct {
-	bRequestType, bRequest uint8
+	bRequestType, bRequest  uint8
 	wValue, wIndex, wLength uint16
 }
 
@@ -132,13 +132,13 @@ type uvc_request_data struct {
 }
 
 type uvc_streaming_control struct {
-	bmHint                   uint16
-	bFormatIndex, bFrameIndex uint8
-	dwFrameInterval          uint32
+	bmHint                                                            uint16
+	bFormatIndex, bFrameIndex                                         uint8
+	dwFrameInterval                                                   uint32
 	wKeyFrameRate, wPFrameRate, wCompQuality, wCompWindowSize, wDelay uint16
-	dwMaxVideoFrameSize, dwMaxPayloadTransferSize uint32
-	dwClockFrequency         uint32
-	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion uint8
+	dwMaxVideoFrameSize, dwMaxPayloadTransferSize                     uint32
+	dwClockFrequency                                                  uint32
+	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion         uint8
 }
 
 type UVCStreamer struct {
@@ -189,7 +189,7 @@ func NewUVCStreamer(devicePath string, log Logger) *UVCStreamer {
 		probe: uvc_streaming_control{
 			bmHint:                   1,
 			bFormatIndex:             1,
-			bFrameIndex:              1, // 1080p default
+			bFrameIndex:              1,      // 1080p default
 			dwFrameInterval:          333333, // 30fps
 			dwMaxVideoFrameSize:      1920 * 1080 * 2,
 			dwMaxPayloadTransferSize: 3072,
@@ -210,6 +210,28 @@ func (s *UVCStreamer) GetCommittedResolution() (uint32, uint32) {
 		return res[0], res[1]
 	}
 	return 1920, 1080
+}
+
+// GetCommittedFormatIndex returns the format index selected by the host.
+// Format index is 1-based and corresponds to configfs format order:
+// - 1 = MJPEG (if configured)
+// - 2 = H.264 (if MJPEG also configured), or 1 if H.264 only
+func (s *UVCStreamer) GetCommittedFormatIndex() uint8 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.commit.bFormatIndex
+}
+
+// IsH264Format returns true if the committed format is H.264.
+// When both MJPEG and H.264 are configured, H.264 is format index 2.
+// When only H.264 is configured, it's format index 1.
+func (s *UVCStreamer) IsH264Format() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// With both formats: MJPEG=1, H.264=2
+	// With H.264 only: H.264=1
+	// For now assume both formats are configured
+	return s.commit.bFormatIndex == 2
 }
 
 func (s *UVCStreamer) Open() error {
@@ -270,13 +292,15 @@ func (s *UVCStreamer) SetFormat(width, height uint32) error {
 
 	s.width = width
 	s.height = height
-	s.bufferSize = int(width * height)
+	// H.264 compressed frames are typically much smaller than raw
+	// Use 2MB max buffer for 1080p H.264 (generous for high bitrate)
+	s.bufferSize = 2 * 1024 * 1024
 
 	var v4l2fmt v4l2_format
 	v4l2fmt.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
 	v4l2fmt.Pix.Width = width
 	v4l2fmt.Pix.Height = height
-	v4l2fmt.Pix.PixelFormat = V4L2_PIX_FMT_MJPEG
+	v4l2fmt.Pix.PixelFormat = V4L2_PIX_FMT_H264 // H.264 framebased format
 	v4l2fmt.Pix.Field = V4L2_FIELD_NONE
 	v4l2fmt.Pix.SizeImage = uint32(s.bufferSize)
 
@@ -322,7 +346,7 @@ func (s *UVCStreamer) RequestBuffers(count uint32) error {
 		s.buffers[i] = make([]byte, bufferSize)
 	}
 
-	s.log.Info().Int("count", int(req.Count)).Msg("UVC buffers allocated")
+	s.log.Debug().Int("count", int(req.Count)).Msg("UVC buffers allocated")
 	return nil
 }
 
@@ -346,7 +370,7 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.streaming = true
 	s.curBufIdx = 0
 	s.queuedBufs = 0
-	s.log.Info().Msg("Starting V4L2 streaming (VIDIOC_STREAMON)")
+	s.log.Debug().Msg("V4L2 streaming started")
 	return nil
 }
 
