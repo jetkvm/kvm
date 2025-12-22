@@ -51,10 +51,11 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 test:
 	go test ./...
 
-test_e2e:
+test_e2e: build_dev
 	@read -p "Device IP: " device_ip; \
-	cd ui && npm install && npx playwright install --with-deps chromium && \
-	NODE_NO_WARNINGS=1 JETKVM_URL="http://$$device_ip" npm run test:e2e
+	test_version="$(VERSION)-test-$$(date +%s)"; \
+	cd ui && npm install && npx playwright install --with-deps chromium && cd .. && \
+	./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$$test_version"
 
 lint:
 	go vet ./...

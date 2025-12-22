@@ -384,6 +384,29 @@ export async function verifyHidAndVideo(page: Page): Promise<void> {
   await verifyKeyboardWorks(page);
 }
 
+/**
+ * Get the current app version from the /metrics endpoint.
+ * This endpoint exposes Prometheus metrics including the version.
+ *
+ * @param page - Playwright page object
+ * @returns The version string or null if not found
+ */
+export async function getCurrentVersion(page: Page): Promise<string | null> {
+  return page.evaluate(async () => {
+    try {
+      const response = await fetch('/metrics');
+      if (!response.ok) return null;
+
+      const text = await response.text();
+      const match = text.match(/version="([^"]+)"/);
+      return match ? match[1] : null;
+    } catch (error) {
+      console.error('Failed to fetch version from /metrics:', error);
+      return null;
+    }
+  });
+}
+
 // TypeScript declarations for the test hooks on window
 declare global {
   interface Window {
