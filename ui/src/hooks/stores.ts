@@ -568,7 +568,8 @@ export type USBStates =
   | "attached"
   | "not attached"
   | "suspended"
-  | "addressed";
+  | "addressed"
+  | "default";
 
 export interface HidState {
   keyboardLedState: KeyboardLedState;

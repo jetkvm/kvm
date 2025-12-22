@@ -66,9 +66,9 @@ export interface CameraEncoderEvents {
 const DEFAULT_CONFIG: EncoderConfig = {
   width: 1920,
   height: 1080,
-  frameRate: 24, // 24fps cinema rate - reduces CPU/USB load on JetKVM
-  bitrate: 3_000_000, // 3 Mbps for H.264 at 24fps
-  quality: 0.35, // 35% quality for MJPEG (smaller frames = less CPU/bandwidth)
+  frameRate: 60, // 60fps target for smooth video
+  bitrate: 8_000_000, // 8 Mbps for H.264 at 60fps
+  quality: 0.65, // 65% quality for MJPEG (balance size/quality)
   keyFrameInterval: 2, // keyframe every 2 seconds
 };
 
@@ -183,19 +183,21 @@ export class CameraEncoder {
   }
 
   /**
-   * Switch codec while running (will restart encoder)
+   * Switch codec (will restart encoder to create new resources)
    */
   async switchCodec(newCodec: VideoCodec): Promise<void> {
     if (this.codec === newCodec) return;
 
-    const wasRunning = this._state === 'running';
-    if (wasRunning) {
+    // Always restart when switching codec - need to create new encoder resources
+    // (H.264 and MJPEG have completely different resources: WebCodecs vs WebWorker)
+    const wasActive = this._state === 'running' || this._state === 'paused';
+    if (wasActive) {
       this.stop();
     }
 
     this.codec = newCodec;
 
-    if (wasRunning) {
+    if (wasActive) {
       await this.start();
     }
   }
@@ -207,14 +209,6 @@ export class CameraEncoder {
     if (fps < 1 || fps > 120) {
       console.warn(`[CameraEncoder] Invalid frame rate ${fps}, ignoring`);
       return;
-    }
-
-    // Cap all codecs at configured fps to reduce CPU/USB load on JetKVM
-    // Allow higher rates when explicitly configured in settings
-    const maxFps = 30; // Maximum supported by UVC configuration
-    if (fps > maxFps) {
-      console.log(`[CameraEncoder] Capping frame rate: ${fps}fps -> ${maxFps}fps`);
-      fps = maxFps;
     }
 
     const oldFps = this.config.frameRate;
@@ -270,6 +264,33 @@ export class CameraEncoder {
   }
 
   /**
+   * Update the capture resolution (requires encoder restart)
+   * @param width New width
+   * @param height New height
+   */
+  async setResolution(width: number, height: number): Promise<void> {
+    if (width < 320 || width > 3840 || height < 240 || height > 2160) {
+      console.warn(`[CameraEncoder] Invalid resolution ${width}x${height}, ignoring`);
+      return;
+    }
+
+    if (this.config.width === width && this.config.height === height) return;
+
+    console.log(`[CameraEncoder] Updating resolution: ${this.config.width}x${this.config.height} -> ${width}x${height}`);
+    this.config.width = width;
+    this.config.height = height;
+
+    // Resolution change requires encoder restart to re-request camera with new constraints
+    // Must handle both running AND paused states (camera constraints need to change)
+    const wasActive = this._state === 'running' || this._state === 'paused';
+    if (wasActive) {
+      console.log('[CameraEncoder] Restarting encoder for resolution change');
+      this.stop();
+      await this.start();
+    }
+  }
+
+  /**
    * Start capturing and encoding camera video
    */
   async start(): Promise<void> {
@@ -280,15 +301,7 @@ export class CameraEncoder {
 
     this.setState('initializing');
 
-    // Apply 24fps cap (cinema rate) for all codecs to reduce CPU/USB load
-    let targetFrameRate = this.config.frameRate;
-    if (targetFrameRate > 24) {
-      console.log(`[CameraEncoder] Capping frame rate: ${targetFrameRate}fps -> 24fps (cinema rate)`);
-      targetFrameRate = 24;
-      this.config.frameRate = 24;
-      this.minFrameIntervalMs = (1000 / 24) * 0.9;
-    }
-
+    const targetFrameRate = this.config.frameRate;
     console.log(`[CameraEncoder] Starting with codec: ${this.codec} at ${targetFrameRate}fps`);
 
     try {
@@ -377,17 +390,29 @@ export class CameraEncoder {
     if (this._state !== 'paused') {
       return;
     }
+
+    // Force immediate keyframe on resume so decoder can start immediately
+    this.forceKeyFrame();
+
+    // Set state to running - this will wake up the H.264 frame reading loop
+    // which is already running but waiting due to paused state
     this.setState('running');
 
-    // Resume MJPEG capture
+    // Resume MJPEG capture (needs to restart callback/interval)
     if (this.codec === 'mjpeg' && this.mjpegWorker && this.videoElement) {
       this.startMjpegCapture();
     }
+    // Note: H.264 loop is already running, just waiting - setting state to 'running' wakes it up
+  }
 
-    // For H.264, restart the frame reading loop
-    if (this.codec === 'h264' && this.frameReader) {
-      this.readH264Frames();
-    }
+  /**
+   * Force the next H.264 frame to be a keyframe (IDR with SPS/PPS).
+   * Call this when UVC streaming starts so the decoder can immediately start.
+   */
+  forceKeyFrame(): void {
+    // Reset keyframe counter to force immediate keyframe on next encode
+    this.keyFrameCounter = this.framesPerKeyFrame;
+    console.log('[CameraEncoder] Forcing keyframe on next encode');
   }
 
   private cleanup(): void {
@@ -502,16 +527,25 @@ export class CameraEncoder {
 
         if (frame) {
           try {
-            if (this.h264Encoder && this.h264Encoder.state === 'configured') {
-              const isKeyFrame = this.keyFrameCounter >= this.framesPerKeyFrame;
-              if (isKeyFrame) {
-                this.keyFrameCounter = 0;
-              }
+            // Throttle to configured frame rate (same as MJPEG path)
+            const now = performance.now();
+            const timeSinceLastCapture = now - this.lastCaptureTime;
 
-              this.h264Encoder.encode(frame, { keyFrame: isKeyFrame });
-              this.frameCount++;
-              this.keyFrameCounter++;
+            if (timeSinceLastCapture >= this.minFrameIntervalMs) {
+              this.lastCaptureTime = now;
+
+              if (this.h264Encoder && this.h264Encoder.state === 'configured') {
+                const isKeyFrame = this.keyFrameCounter >= this.framesPerKeyFrame;
+                if (isKeyFrame) {
+                  this.keyFrameCounter = 0;
+                }
+
+                this.h264Encoder.encode(frame, { keyFrame: isKeyFrame });
+                this.frameCount++;
+                this.keyFrameCounter++;
+              }
             }
+            // else: skip this frame (frame rate throttling)
           } catch {
             // Ignore transient encode errors
           } finally {

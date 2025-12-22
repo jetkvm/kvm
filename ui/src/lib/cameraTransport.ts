@@ -22,6 +22,7 @@ export interface FormatRequest {
   width: number;
   height: number;
   frameRate: number; // Negotiated frame rate from UVC host (e.g., 30 or 60)
+  frameRateCap?: number; // User's configured frame rate cap (browser uses min of both)
   h264Bitrate?: number; // H.264 bitrate in bps (from config)
   mjpegQuality?: number; // MJPEG quality 0.0-1.0 (from config)
 }
@@ -159,12 +160,13 @@ export class WebSocketCameraTransport implements CameraTransport {
                     this.events.onStreamingStopped?.();
                   } else if (msg.codec && msg.width && msg.height) {
                     // Log format with frame rate and encoder settings for debugging
-                    console.log(`[CameraTransport] Format request: ${msg.codec} ${msg.width}x${msg.height}@${msg.frameRate || 30}fps, h264Bitrate=${msg.h264Bitrate}, mjpegQuality=${msg.mjpegQuality}`);
+                    console.log(`[CameraTransport] Format request: ${msg.codec} ${msg.width}x${msg.height}@${msg.frameRate || 30}fps (cap: ${msg.frameRateCap || 'none'}), h264Bitrate=${msg.h264Bitrate}, mjpegQuality=${msg.mjpegQuality}`);
                     this.events.onFormatRequest?.({
                       codec: msg.codec as 'h264' | 'mjpeg',
                       width: msg.width,
                       height: msg.height,
-                      frameRate: msg.frameRate || 30, // Default to 30fps if not specified
+                      frameRate: msg.frameRate || 30, // UVC-negotiated rate, default to 30fps
+                      frameRateCap: msg.frameRateCap, // User's configured cap
                       h264Bitrate: msg.h264Bitrate, // H.264 bitrate in bps
                       mjpegQuality: msg.mjpegQuality, // MJPEG quality 0.0-1.0
                     });

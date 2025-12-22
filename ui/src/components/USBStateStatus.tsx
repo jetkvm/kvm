@@ -22,6 +22,7 @@ const USBStateMap: Record<USBStates, string> = {
   addressed: m.usb_state_connecting(),
   "not attached": m.usb_state_disconnected(),
   suspended: m.usb_state_low_power_mode(),
+  default: m.usb_state_connecting(), // USB reset/initialization state
 };
 const StatusCardProps: StatusProps = {
   configured: {
@@ -54,6 +55,11 @@ const StatusCardProps: StatusProps = {
     ),
     iconClassName: "h-5 w-5 opacity-50 grayscale filter",
     statusIndicatorClassName: "bg-green-500 border-green-600",
+  },
+  default: {
+    icon: ({ className }) => <LoadingSpinner className={cx(className)} />,
+    iconClassName: "h-5 w-5 text-blue-500",
+    statusIndicatorClassName: "bg-slate-300 border-slate-400",
   },
 };
 

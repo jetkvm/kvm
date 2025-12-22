@@ -11,6 +11,12 @@ import (
 	"unsafe"
 )
 
+// Streaming cooldown to prevent kernel UVC gadget race condition.
+// The kernel driver's uvcg_video_enable() function has a race condition
+// where concurrent enable/disable calls can cause NULL pointer dereference.
+// This cooldown ensures STREAMON is not issued too quickly after STREAMOFF.
+const streamingCooldownNs = 100_000_000 // 100ms in nanoseconds
+
 // V4L2 constants
 const (
 	V4L2_BUF_TYPE_VIDEO_OUTPUT = 2
@@ -161,12 +167,17 @@ type UVCStreamer struct {
 	bufCount    int
 	buffers     [][]byte
 	bufOffsets  []uint32
-	curBufIdx   int
-	queuedBufs  int
-	useUserPtr  bool
+	curBufIdx    int
+	queuedBufs   int
+	frameCounter uint32 // HOTPATH: Frame counter for timestamps (avoids time.Now() syscall)
+	useUserPtr   bool
 	probe       uvc_streaming_control
 	commit      uvc_streaming_control
 	pendingCtrl uint8
+
+	// Streaming state change protection to prevent kernel UVC gadget race condition
+	// The kernel driver crashes if STREAMON is issued too quickly after STREAMOFF
+	lastStreamOffTime int64 // Unix nano timestamp of last STREAMOFF
 
 	// Pre-allocated event data buffer to reduce GC pressure during polling
 	eventDataBuf [64]byte
@@ -188,8 +199,14 @@ type LogEvent interface {
 	Msg(msg string)
 }
 
+// frameResolutions maps UVC frame index to resolution.
+// Frame indices are 1-based and match the order defined in ConfigFS:
+// MJPEG frames: 1080p=1, 720p_1=2, 480p_2=3
+// H.264 frames: 1080p=1, 720p_1=2, 480p_2=3 (same indices within format)
 var frameResolutions = map[uint8][2]uint32{
-	1: {1920, 1080}, // 1080p - must match browser camera capture
+	1: {1920, 1080}, // 1080p
+	2: {1280, 720},  // 720p
+	3: {640, 480},   // 480p
 }
 
 func NewUVCStreamer(devicePath string, log Logger) *UVCStreamer {
@@ -431,12 +448,16 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 		if errno != 0 {
 			return fmt.Errorf("VIDIOC_STREAMOFF failed: %v", errno)
 		}
+		// Record STREAMOFF time to prevent race with quick STREAMON
+		// Kernel UVC gadget driver needs time to complete cleanup
+		s.lastStreamOffTime = time.Now().UnixNano()
 	}
 
 	s.streaming = false
 	s.streamReady = false
 	s.queuedBufs = 0
 	s.curBufIdx = 0
+	s.frameCounter = 0 // Reset timestamp counter for next stream
 	return nil
 }
 
@@ -475,9 +496,12 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	bufIdx := s.curBufIdx
 	copy(buf, data)
 
-	// Get current time for timestamp - GStreamer-based apps (Cheese, Chrome)
-	// require valid timestamps to function properly, unlike ffplay
-	now := time.Now()
+	// HOTPATH: Use frame counter for timestamp instead of time.Now()
+	// GStreamer/Chrome need monotonically increasing timestamps, not wall clock
+	// This saves ~50ns per frame vs time.Now() syscall
+	s.frameCounter++
+	frameIntervalUs := int64(1000000 / 30) // ~33333us per frame at 30fps
+	timestampUs := int64(s.frameCounter) * frameIntervalUs
 
 	var v4l2buf v4l2_buffer
 	v4l2buf.Index = uint32(bufIdx)
@@ -488,8 +512,8 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	v4l2buf.Length = uint32(len(buf))
 	v4l2buf.M = uintptr(unsafe.Pointer(&buf[0]))
 	v4l2buf.Timestamp = syscall.Timeval{
-		Sec:  int32(now.Unix()),
-		Usec: int32(now.Nanosecond() / 1000),
+		Sec:  int32(timestampUs / 1000000),
+		Usec: int32(timestampUs % 1000000),
 	}
 	v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
 
@@ -504,6 +528,26 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	// Deferred STREAMON: Issue after first frame is queued
 	// This prevents USB endpoint crash from STREAMON with empty queue
 	if !s.streamReady && s.queuedBufs >= 1 {
+		// Kernel UVC gadget race condition protection:
+		// Ensure sufficient time has passed since last STREAMOFF before issuing STREAMON.
+		// The kernel driver's uvcg_video_enable() has a race condition that can cause
+		// NULL pointer dereference if STREAMON comes too quickly after STREAMOFF.
+		if s.lastStreamOffTime > 0 {
+			elapsed := time.Now().UnixNano() - s.lastStreamOffTime
+			if elapsed < streamingCooldownNs {
+				waitTime := time.Duration(streamingCooldownNs - elapsed)
+				s.log.Debug().Int("wait_ms", int(waitTime.Milliseconds())).Msg("Waiting for UVC cooldown before STREAMON")
+				// Release lock while sleeping to allow other operations
+				s.mu.Unlock()
+				time.Sleep(waitTime)
+				s.mu.Lock()
+				// Re-check state after sleep (device could have been closed)
+				if s.fd < 0 || !s.streaming {
+					return nil
+				}
+			}
+		}
+
 		bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
 		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMON, uintptr(unsafe.Pointer(&bufType)))
 		if errno != 0 {

@@ -51,15 +51,15 @@ const usbPresets = [
     },
   },
   {
-    label: m.usb_device_keyboard_mouse_and_mass_storage(),
-    value: "keyboard_mouse_and_mass_storage",
+    label: m.usb_device_everything_enabled(),
+    value: "everything_enabled",
     config: {
       keyboard: true,
       absolute_mouse: true,
       relative_mouse: true,
       mass_storage: true,
-      audio: false,
-      uvc: false,
+      audio: true,
+      uvc: true,
     },
   },
   {
@@ -72,6 +72,18 @@ const usbPresets = [
       mass_storage: false,
       audio: true,
       uvc: true,
+    },
+  },
+  {
+    label: m.usb_device_keyboard_mouse_and_mass_storage(),
+    value: "keyboard_mouse_and_mass_storage",
+    config: {
+      keyboard: true,
+      absolute_mouse: true,
+      relative_mouse: true,
+      mass_storage: true,
+      audio: false,
+      uvc: false,
     },
   },
   {

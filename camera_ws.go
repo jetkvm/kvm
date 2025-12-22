@@ -181,22 +181,25 @@ func handleCameraWs(c *gin.Context) {
 func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.FormatInfo) {
 	ensureConfigLoaded()
 
-	// Debug: log actual config values being used
+	// Debug: log actual format values being sent to browser
 	cameraLog.Info().
+		Str("codec", format.Codec).
+		Int("width", format.Width).
+		Int("height", format.Height).
+		Int("frameRate", format.FrameRate).
 		Int("h264Bitrate_mbps", config.CameraH264Bitrate).
 		Int("mjpegQuality_pct", config.CameraMjpegQuality).
-		Str("resolution", config.CameraResolution).
-		Int("frameRate", config.CameraFrameRate).
-		Msg("sendFormatMessage: config values")
+		Msg("sendFormatMessage: sending to browser")
 
 	msg := map[string]interface{}{
-		"type":         "format",
-		"codec":        format.Codec,
-		"width":        format.Width,
-		"height":       format.Height,
-		"frameRate":    format.FrameRate,
-		"h264Bitrate":  config.CameraH264Bitrate * 1_000_000, // Convert Mbps to bps for browser
-		"mjpegQuality": float64(config.CameraMjpegQuality) / 100.0, // Convert 0-100% to 0.0-1.0
+		"type":          "format",
+		"codec":         format.Codec,
+		"width":         format.Width,
+		"height":        format.Height,
+		"frameRate":     format.FrameRate,                           // UVC-negotiated rate from host
+		"frameRateCap":  config.CameraFrameRate,                     // User's configured cap (browser uses min of both)
+		"h264Bitrate":   config.CameraH264Bitrate * 1_000_000,       // Convert Mbps to bps for browser
+		"mjpegQuality":  float64(config.CameraMjpegQuality) / 100.0, // Convert 0-100% to 0.0-1.0
 	}
 
 	data, err := json.Marshal(msg)
