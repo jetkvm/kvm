@@ -271,6 +271,7 @@ func initSerialPort() {
 func reopenSerialPort() error {
 	if port != nil {
 		port.Close()
+		port = nil
 	}
 	var err error
 	port, err = serial.Open(serialPortPath, defaultMode)

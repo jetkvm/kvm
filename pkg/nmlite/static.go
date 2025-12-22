@@ -121,7 +121,7 @@ func (scm *StaticConfigManager) ToIPv6Static(config *types.IPv6StaticConfig) (*t
 func (scm *StaticConfigManager) DisableIPv4() error {
 	scm.logger.Info().Msg("disabling IPv4")
 
-	netlinkMgr := getNetlinkManager()
+	netlinkMgr := getNetlinkManager(scm.logger)
 	iface, err := netlinkMgr.GetLinkByName(scm.ifaceName)
 	if err != nil {
 		return fmt.Errorf("failed to get interface: %w", err)
@@ -144,14 +144,14 @@ func (scm *StaticConfigManager) DisableIPv4() error {
 // DisableIPv6 disables IPv6 on the interface
 func (scm *StaticConfigManager) DisableIPv6() error {
 	scm.logger.Info().Msg("disabling IPv6")
-	netlinkMgr := getNetlinkManager()
+	netlinkMgr := getNetlinkManager(scm.logger)
 	return netlinkMgr.DisableIPv6(scm.ifaceName)
 }
 
 // EnableIPv6SLAAC enables IPv6 SLAAC
 func (scm *StaticConfigManager) EnableIPv6SLAAC() error {
 	scm.logger.Info().Msg("enabling IPv6 SLAAC")
-	netlinkMgr := getNetlinkManager()
+	netlinkMgr := getNetlinkManager(scm.logger)
 	return netlinkMgr.EnableIPv6SLAAC(scm.ifaceName)
 }
 
@@ -159,7 +159,7 @@ func (scm *StaticConfigManager) EnableIPv6SLAAC() error {
 func (scm *StaticConfigManager) EnableIPv6LinkLocal() error {
 	scm.logger.Info().Msg("enabling IPv6 link-local only")
 
-	netlinkMgr := getNetlinkManager()
+	netlinkMgr := getNetlinkManager(scm.logger)
 	if err := netlinkMgr.EnableIPv6LinkLocal(scm.ifaceName); err != nil {
 		return err
 	}
@@ -179,6 +179,6 @@ func (scm *StaticConfigManager) EnableIPv6LinkLocal() error {
 
 // removeIPv4DefaultRoute removes IPv4 default route
 func (scm *StaticConfigManager) removeIPv4DefaultRoute() error {
-	netlinkMgr := getNetlinkManager()
+	netlinkMgr := getNetlinkManager(scm.logger)
 	return netlinkMgr.RemoveDefaultRoute(link.AfInet)
 }

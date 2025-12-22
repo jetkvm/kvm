@@ -220,7 +220,7 @@ func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
 }
 
 func (c *Client) ensureInterfaceUp(ifname string) (*link.Link, error) {
-	nlm := link.GetNetlinkManager()
+	nlm := link.GetNetlinkManager(c.l)
 	iface, err := nlm.GetLinkByName(ifname)
 	if err != nil {
 		return nil, err

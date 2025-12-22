@@ -119,7 +119,7 @@ func (im *InterfaceManager) Start() error {
 	im.wg.Add(1)
 	go im.monitorInterfaceState()
 
-	nl := getNetlinkManager()
+	nl := getNetlinkManager(im.logger)
 
 	// Set the link state
 	linkState, err := nl.GetLinkByName(im.ifaceName)
@@ -176,7 +176,7 @@ func (im *InterfaceManager) Stop() error {
 }
 
 func (im *InterfaceManager) link() (*link.Link, error) {
-	nl := getNetlinkManager()
+	nl := getNetlinkManager(im.logger)
 	if nl == nil {
 		return nil, fmt.Errorf("netlink manager not initialized")
 	}
@@ -568,7 +568,7 @@ func (im *InterfaceManager) applyIPv6SLAAC() error {
 		return fmt.Errorf("failed to get interface: %w", err)
 	}
 
-	netlinkMgr := getNetlinkManager()
+	netlinkMgr := getNetlinkManager(im.logger)
 
 	// Ensure interface is up
 	if err := netlinkMgr.EnsureInterfaceUp(l); err != nil {
@@ -723,7 +723,7 @@ func (im *InterfaceManager) handleLinkDown() {
 		}
 	}
 
-	netlinkMgr := getNetlinkManager()
+	netlinkMgr := getNetlinkManager(im.logger)
 	if err := netlinkMgr.RemoveAllAddresses(im.linkState, link.AfInet); err != nil {
 		im.logger.Error().Err(err).Msg("failed to remove all IPv4 addresses")
 	}
@@ -791,7 +791,7 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 
 // ReconcileLinkAddrs reconciles the link addresses
 func (im *InterfaceManager) ReconcileLinkAddrs(addrs []types.IPAddress, family int, protocol netlink.RouteProtocol) error {
-	nl := getNetlinkManager()
+	nl := getNetlinkManager(im.logger)
 	link, err := im.link()
 	if err != nil {
 		return fmt.Errorf("failed to get interface: %w", err)

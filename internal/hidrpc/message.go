@@ -3,6 +3,26 @@ package hidrpc
 import (
 	"encoding/binary"
 	"fmt"
+
+	"github.com/rs/zerolog"
+)
+
+// MessageType is the type of the HID RPC message
+type MessageType byte
+
+const (
+	TypeHandshake                 MessageType = 0x01
+	TypeKeyboardReport            MessageType = 0x02
+	TypePointerReport             MessageType = 0x03
+	TypeWheelReport               MessageType = 0x04
+	TypeKeypressReport            MessageType = 0x05
+	TypeKeypressKeepAliveReport   MessageType = 0x09
+	TypeMouseReport               MessageType = 0x06
+	TypeKeyboardMacroReport       MessageType = 0x07
+	TypeCancelKeyboardMacroReport MessageType = 0x08
+	TypeKeyboardLedState          MessageType = 0x32
+	TypeKeydownState              MessageType = 0x33
+	TypeKeyboardMacroState        MessageType = 0x34
 )
 
 // Message ..
@@ -11,9 +31,22 @@ type Message struct {
 	d []byte
 }
 
+func (m Message) MarshalZerologObject(e *zerolog.Event) {
+	e.Uint8("Type", uint8(m.t))
+	e.Bytes("Payload", m.d)
+}
+
 // Marshal marshals the message to a byte array.
 func (m *Message) Marshal() ([]byte, error) {
-	return Marshal(m)
+	if m.t == 0 {
+		return nil, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	data := make([]byte, len(m.d)+1)
+	data[0] = byte(m.t)
+	copy(data[1:], m.d)
+
+	return data, nil
 }
 
 func (m *Message) Type() MessageType {
@@ -56,10 +89,18 @@ func (m *Message) String() string {
 	}
 }
 
+// HidKeyBufferSize is the size of the keys buffer in the keyboard report.
+const HidKeyBufferSize = 6
+
 // KeypressReport ..
 type KeypressReport struct {
 	Key   byte
 	Press bool
+}
+
+func (k KeypressReport) MarshalZerologObject(e *zerolog.Event) {
+	e.Hex("Key", []byte{k.Key})
+	e.Bool("Press", k.Press)
 }
 
 // KeypressReport returns the keypress report from the message.
@@ -77,7 +118,12 @@ func (m *Message) KeypressReport() (KeypressReport, error) {
 // KeyboardReport ..
 type KeyboardReport struct {
 	Modifier byte
-	Keys     []byte
+	Keys     []byte // 6 bytes: HidKeyBufferSize
+}
+
+func (k KeyboardReport) MarshalZerologObject(e *zerolog.Event) {
+	e.Hex("Modifier", []byte{k.Modifier})
+	e.Hex("Keys", k.Keys)
 }
 
 // KeyboardReport returns the keyboard report from the message.
@@ -95,17 +141,26 @@ func (m *Message) KeyboardReport() (KeyboardReport, error) {
 // Macro ..
 type KeyboardMacroStep struct {
 	Modifier byte   // 1 byte
-	Keys     []byte // 6 bytes: hidKeyBufferSize
+	Keys     []byte // 6 bytes: HidKeyBufferSize
 	Delay    uint16 // 2 bytes
 }
+
+func (s KeyboardMacroStep) MarshalZerologObject(e *zerolog.Event) {
+	e.Hex("Modifier", []byte{s.Modifier})
+	e.Hex("Keys", s.Keys)
+	e.Uint16("Delay", s.Delay)
+}
+
 type KeyboardMacroReport struct {
 	IsPaste   bool
 	StepCount uint32
 	Steps     []KeyboardMacroStep
 }
 
-// HidKeyBufferSize is the size of the keys buffer in the keyboard report.
-const HidKeyBufferSize = 6
+func (m KeyboardMacroReport) MarshalZerologObject(e *zerolog.Event) {
+	e.Bool("IsPaste", m.IsPaste)
+	e.Uint32("StepCount", m.StepCount)
+}
 
 // KeyboardMacroReport returns the keyboard macro report from the message.
 func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
@@ -117,7 +172,9 @@ func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
 	stepCount := binary.BigEndian.Uint32(m.d[1:5])
 
 	// check total length
-	expectedLength := int(stepCount)*9 + 5
+	const StepSize = 1 + HidKeyBufferSize + 2
+
+	expectedLength := int(stepCount)*StepSize + 5
 	if len(m.d) != expectedLength {
 		return KeyboardMacroReport{}, fmt.Errorf("invalid length: %d, expected: %d", len(m.d), expectedLength)
 	}
@@ -131,7 +188,7 @@ func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
 			Delay:    binary.BigEndian.Uint16(m.d[offset+7 : offset+9]),
 		})
 
-		offset += 1 + HidKeyBufferSize + 2
+		offset += StepSize
 	}
 
 	return KeyboardMacroReport{
@@ -146,6 +203,12 @@ type PointerReport struct {
 	X      int
 	Y      int
 	Button uint8
+}
+
+func (p PointerReport) MarshalZerologObject(e *zerolog.Event) {
+	e.Int("X", p.X)
+	e.Int("Y", p.Y)
+	e.Uint8("Button", p.Button)
 }
 
 func toInt(b []byte) int {
@@ -176,6 +239,12 @@ type MouseReport struct {
 	Button uint8
 }
 
+func (m MouseReport) MarshalZerologObject(e *zerolog.Event) {
+	e.Int8("DX", m.DX)
+	e.Int8("DY", m.DY)
+	e.Uint8("Button", m.Button)
+}
+
 // MouseReport returns the mouse report from the message.
 func (m *Message) MouseReport() (MouseReport, error) {
 	if m.t != TypeMouseReport {
@@ -192,6 +261,11 @@ func (m *Message) MouseReport() (MouseReport, error) {
 type KeyboardMacroState struct {
 	State   bool
 	IsPaste bool
+}
+
+func (k KeyboardMacroState) MarshalZerologObject(e *zerolog.Event) {
+	e.Bool("State", k.State)
+	e.Bool("IsPaste", k.IsPaste)
 }
 
 // KeyboardMacroState returns the keyboard macro state report from the message.

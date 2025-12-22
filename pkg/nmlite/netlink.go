@@ -1,7 +1,10 @@
 package nmlite
 
-import "github.com/jetkvm/kvm/pkg/nmlite/link"
+import (
+	"github.com/jetkvm/kvm/pkg/nmlite/link"
+	"github.com/rs/zerolog"
+)
 
-func getNetlinkManager() *link.NetlinkManager {
-	return link.GetNetlinkManager()
+func getNetlinkManager(logger *zerolog.Logger) *link.NetlinkManager {
+	return link.GetNetlinkManager(logger)
 }

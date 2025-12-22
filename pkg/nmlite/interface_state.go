@@ -110,7 +110,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 
 // updateIPAddresses updates the IP addresses in the state
 func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, error) {
-	mgr := getNetlinkManager()
+	mgr := getNetlinkManager(im.logger)
 
 	addrs, err := nl.AddrList(link.AfUnspec)
 	if err != nil {

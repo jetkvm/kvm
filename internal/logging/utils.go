@@ -2,30 +2,24 @@ package logging
 
 import (
 	"fmt"
-	"os"
+	"sync"
 
 	"github.com/rs/zerolog"
 )
 
-var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
-
-func GetDefaultLogger() *zerolog.Logger {
-	return &defaultLogger
+func UnlockWithTraceLog(lock *sync.Mutex, logger *zerolog.Logger, msg string, args ...any) {
+	defer lock.Unlock()
+	logger.Trace().Msgf(msg, args...)
 }
 
-func ErrorfL(l *zerolog.Logger, format string, err error, args ...any) error {
-	// TODO: move rootLogger to logging package
-	if l == nil {
-		l = &defaultLogger
-	}
-
-	l.Error().Err(err).Msgf(format, args...)
+func ErrorfL(logger *zerolog.Logger, format string, err error, args ...any) error {
+	logger.Error().Err(err).Msgf(format, args...)
 
 	if err == nil {
 		return fmt.Errorf(format, args...)
 	}
 
-	err_msg := err.Error() + ": %v"
+	err_msg := err.Error() + ": %w"
 	err_args := append(args, err)
 
 	return fmt.Errorf(err_msg, err_args...)

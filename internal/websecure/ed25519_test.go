@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 
 	certSigner = NewSelfSigner(
 		certStore,
-		nil,
+		&defaultLogger,
 		"ci.jetkvm.com",
 		"JetKVM",
 		"JetKVM",

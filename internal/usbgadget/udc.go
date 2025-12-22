@@ -58,7 +58,7 @@ func (u *UsbGadget) GetUsbState() (state string) {
 		if os.IsNotExist(err) {
 			return "not attached"
 		} else {
-			u.log.Trace().Err(err).Msg("failed to read usb state")
+			u.log.Warn().Err(err).Msg("failed to read usb state")
 		}
 		return "unknown"
 	}

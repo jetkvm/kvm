@@ -76,7 +76,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{
-				ActiveSessions:    getActiveSessions(),
+				ActiveSessions:    int(getActiveSessions()),
 				HasCurrentSession: currentSession != nil,
 			}
 			if currentSession != nil {

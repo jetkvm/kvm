@@ -11,7 +11,6 @@ import (
 
 	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
-	"github.com/jetkvm/kvm/internal/ota"
 )
 
 var appCtx context.Context
@@ -33,7 +32,7 @@ func Main() {
 	checkFailsafeReason()
 	if failsafeModeActive {
 		procPrefix = "jetkvm: [app+failsafe]"
-		logger.Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")
+		logger.Warn().Str("subcomponent", "failsafe").Str("reason", failsafeModeReason).Msg("failsafe mode activated")
 	}
 
 	LoadConfig()
@@ -104,49 +103,11 @@ func Main() {
 	if err := initImagesFolder(); err != nil {
 		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
+
 	initJiggler()
 
 	// start video sleep mode timer
 	startVideoSleepModeTicker()
-
-	go func() {
-		// wait for 15 minutes before starting auto-update checks
-		// this is to avoid interfering with initial setup processes
-		// and to ensure the system is stable before checking for updates
-		time.Sleep(15 * time.Minute)
-
-		for {
-			logger.Info().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("auto-update check")
-			if !config.AutoUpdateEnabled {
-				logger.Debug().Msg("auto-update disabled")
-				time.Sleep(5 * time.Minute) // we'll check if auto-updates are enabled in five minutes
-				continue
-			}
-
-			if currentSession != nil {
-				logger.Debug().Msg("skipping update since a session is active")
-				time.Sleep(1 * time.Minute)
-				continue
-			}
-
-			if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
-				logger.Debug().Msg("system time is not synced, will retry in 30 seconds")
-				time.Sleep(30 * time.Second)
-				continue
-			}
-
-			includePreRelease := config.IncludePreRelease
-			err = otaState.TryUpdate(context.Background(), ota.UpdateParams{
-				DeviceID:          GetDeviceID(),
-				IncludePreRelease: includePreRelease,
-			})
-			if err != nil {
-				logger.Warn().Err(err).Msg("failed to auto update")
-			}
-
-			time.Sleep(1 * time.Hour)
-		}
-	}()
 
 	//go RunFuseServer()
 	go RunWebServer()
@@ -159,26 +120,25 @@ func Main() {
 
 	// As websocket client already checks if the cloud token is set, we can start it here.
 	go RunWebsocketClient()
-	initPublicIPState()
 
+	initPublicIPState()
 	initSerialPort()
 
 	setProcTitle("ready")
+	logger.Log().Msg("JetKVM ready")
+
+	go RunAutoUpdateCheck()
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
 
-	logger.Log().Msg("JetKVM Shutting Down")
-	//if fuseServer != nil {
-	//	err := setMassStorageImage(" ")
-	//	if err != nil {
-	//		logger.Infof("Failed to unmount mass storage image: %v", err)
-	//	}
-	//	err = fuseServer.Unmount()
-	//	if err != nil {
-	//		logger.Infof("Failed to unmount fuse: %v", err)
-	//	}
+	if err := rpcUnmountImage(); err != nil {
+		logger.Warn().Err(err).Msg("failed to eject virtual media on shutdown")
+	}
 
+	gadget.Close()
+
+	logger.Log().Msg("JetKVM Shutting Down")
 	// os.Exit(0)
 }
