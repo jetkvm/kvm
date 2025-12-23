@@ -19,6 +19,8 @@
     "access_description": "Gérer le contrôle d'accès de l'appareil",
     "access_disable_protection": "Désactiver la protection",
     "access_enable_password": "Activer le mot de passe",
+    "access_enforce_tls_label": "Appliquer TLS",
+    "access_enforce_tls_description": "Rediriger toutes les requêtes HTTP vers HTTPS",
     "access_failed_deregister": "Échec de la désinscription du périphérique : {error}",
     "access_failed_update_cloud_url": "Échec de la mise à jour de l'URL du cloud : {error}",
     "access_failed_update_tls": "Échec de la mise à jour des paramètres TLS : {error}",

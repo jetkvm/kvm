@@ -19,6 +19,8 @@
     "access_description": "Administre el control de acceso del dispositivo",
     "access_disable_protection": "Desactivar la protección",
     "access_enable_password": "Activar contraseña",
+    "access_enforce_tls_label": "Aplicar TLS",
+    "access_enforce_tls_description": "Redirigir todas las solicitudes HTTP a HTTPS",
     "access_failed_deregister": "No se pudo cancelar el registro del dispositivo: {error}",
     "access_failed_update_cloud_url": "No se pudo actualizar la URL de la nube: {error}",
     "access_failed_update_tls": "No se pudo actualizar la configuración de TLS: {error}",

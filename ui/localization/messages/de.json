@@ -19,6 +19,8 @@
     "access_description": "Verwalten Sie die Zugriffssteuerung Ihres Geräts",
     "access_disable_protection": "Schutz deaktivieren",
     "access_enable_password": "Kennwort aktivieren",
+    "access_enforce_tls_label": "TLS erzwingen",
+    "access_enforce_tls_description": "Alle HTTP-Anfragen auf HTTPS umleiten",
     "access_failed_deregister": "Abmeldung des Geräts fehlgeschlagen: {error}",
     "access_failed_update_cloud_url": "Fehler beim Aktualisieren der Cloud-URL: {error}",
     "access_failed_update_tls": "TLS-Einstellungen konnten nicht aktualisiert werden: {error}",

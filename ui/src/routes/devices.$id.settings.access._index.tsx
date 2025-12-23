@@ -4,6 +4,7 @@ import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { CheckboxWithLabel } from "@components/Checkbox";
 import { GridCard } from "@components/Card";
 import { Button, LinkButton } from "@components/Button";
 import { InputFieldWithLabel } from "@components/InputField";
@@ -24,6 +25,7 @@ import { CloudState } from "./adopt";
 
 export interface TLSState {
   mode: "self-signed" | "custom" | "disabled";
+  enforce: boolean;
   certificate?: string;
   privateKey?: string;
 }
@@ -54,6 +56,7 @@ export default function SettingsAccessIndexRoute() {
   // Use a simple string identifier for the selected provider
   const [selectedProvider, setSelectedProvider] = useState<string>("jetkvm");
   const [tlsMode, setTlsMode] = useState<string>("unknown");
+  const [tlsEnforce, setTlsEnforce] = useState<boolean>(false);
   const [tlsCert, setTlsCert] = useState<string>("");
   const [tlsKey, setTlsKey] = useState<string>("");
 
@@ -84,6 +87,7 @@ export default function SettingsAccessIndexRoute() {
       const tlsState = resp.result as TLSState;
 
       setTlsMode(tlsState.mode);
+      setTlsEnforce(tlsState.enforce);
       if (tlsState.certificate) setTlsCert(tlsState.certificate);
       if (tlsState.privateKey) setTlsKey(tlsState.privateKey);
     });
@@ -148,12 +152,13 @@ export default function SettingsAccessIndexRoute() {
 
   // Function to update TLS state - accepts a mode parameter
   const updateTlsState = useCallback(
-    (mode: string, cert?: string, key?: string) => {
+    (mode: string, enforce: boolean, cert?: string, key?: string) => {
       const state = { mode } as TLSState;
       if (cert && key) {
         state.certificate = cert;
         state.privateKey = key;
       }
+      state.enforce = enforce;
 
       send("setTLSState", { state }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
@@ -172,10 +177,11 @@ export default function SettingsAccessIndexRoute() {
   // Handle TLS mode change
   const handleTlsModeChange = (value: string) => {
     setTlsMode(value);
+    setTlsEnforce(value === "disabled" ? false : tlsEnforce);
 
     // For "disabled" and "self-signed" modes, immediately apply the settings
     if (value !== "custom") {
-      updateTlsState(value);
+      updateTlsState(value, tlsEnforce);
     }
   };
 
@@ -187,9 +193,17 @@ export default function SettingsAccessIndexRoute() {
     setTlsKey(value);
   };
 
+  const handleTlsEnforceChange = (value: boolean) => {
+    setTlsEnforce(value);
+    // For "disabled" and "self-signed" modes, immediately apply the settings
+    if (tlsMode !== "custom") {
+      updateTlsState(tlsMode, value);
+    }
+  };
+
   // Update the custom TLS settings button click handler
   const handleCustomTlsUpdate = () => {
-    updateTlsState(tlsMode, tlsCert, tlsKey);
+    updateTlsState(tlsMode, tlsEnforce, tlsCert, tlsKey);
   };
 
   // Fetch device ID and cloud state on component mount
@@ -233,36 +247,50 @@ export default function SettingsAccessIndexRoute() {
                 />
               </SettingsItem>
 
-              {tlsMode === "custom" && (
-                <NestedSettingsGroup className="mt-4">
-                  <SettingsItem
-                    title={m.access_tls_certificate_title()}
-                    description={m.access_tls_certificate_description()}
-                  />
-                  <TextAreaWithLabel
-                    label={m.access_certificate_label()}
-                    rows={3}
-                    placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
-                    value={tlsCert}
-                    onChange={e => handleTlsCertChange(e.target.value)}
-                  />
-                  <TextAreaWithLabel
-                    label={m.access_private_key_label()}
-                    description={m.access_private_key_description()}
-                    rows={3}
-                    placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
-                    value={tlsKey}
-                    onChange={e => handleTlsKeyChange(e.target.value)}
-                  />
-                  <div className="flex items-center gap-x-2">
-                    <Button
-                      size="SM"
-                      theme="primary"
-                      text={m.access_update_tls_settings()}
-                      onClick={handleCustomTlsUpdate}
-                    />
-                  </div>
-                </NestedSettingsGroup>
+              {(tlsMode === "custom" || tlsMode == "self-signed") && (
+                <>
+                  <NestedSettingsGroup className="mt-4">
+                    <div>
+                      <CheckboxWithLabel
+                        label={m.access_enforce_tls_label()}
+                        description={m.access_enforce_tls_description()}
+                        checked={tlsEnforce}
+                        onChange={e => handleTlsEnforceChange(e.target.checked)}
+                      />
+                    </div>
+                    {tlsMode === "custom" && (
+                      <>
+                      <SettingsItem
+                        title={m.access_tls_certificate_title()}
+                        description={m.access_tls_certificate_description()}
+                      />
+                      <TextAreaWithLabel
+                        label={m.access_certificate_label()}
+                        rows={3}
+                        placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+                        value={tlsCert}
+                        onChange={e => handleTlsCertChange(e.target.value)}
+                      />
+                      <TextAreaWithLabel
+                        label={m.access_private_key_label()}
+                        description={m.access_private_key_description()}
+                        rows={3}
+                        placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                        value={tlsKey}
+                        onChange={e => handleTlsKeyChange(e.target.value)}
+                      />
+                      <div className="flex items-center gap-x-2">
+                        <Button
+                          size="SM"
+                          theme="primary"
+                          text={m.access_update_tls_settings()}
+                          onClick={handleCustomTlsUpdate}
+                        />
+                      </div>
+                    </>
+                  )}
+                  </NestedSettingsGroup>
+                </>
               )}
 
               <SettingsItem

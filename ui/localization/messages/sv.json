@@ -19,6 +19,8 @@
     "access_description": "Hantera enhetens åtkomstkontroll",
     "access_disable_protection": "Inaktivera skydd",
     "access_enable_password": "Aktivera lösenord",
+    "access_enforce_tls_label": "Tillämpa TLS",
+    "access_enforce_tls_description": "Omdirigera alla HTTP-förfrågningar till HTTPS",
     "access_failed_deregister": "Misslyckades med att avregistrera enheten: {error}",
     "access_failed_update_cloud_url": "Misslyckades med att uppdatera moln-URL: {error}",
     "access_failed_update_tls": "Misslyckades med att uppdatera TLS-inställningarna: {error}",

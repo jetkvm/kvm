@@ -19,6 +19,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	gin_logger "github.com/gin-contrib/logger"
+	"github.com/gin-gonic/contrib/secure"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/logging"
@@ -73,7 +74,7 @@ var cachableFileExtensions = []string{
 	".jpg", ".jpeg", ".png", ".svg", ".gif", ".webp", ".ico", ".woff2",
 }
 
-func setupRouter() *gin.Engine {
+func setupRouter(secureRedirect bool) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
@@ -82,6 +83,22 @@ func setupRouter() *gin.Engine {
 			return *ginLogger
 		}),
 	))
+
+	if secureRedirect {
+		r.Use(secure.Secure(secure.Options{
+			AllowedHosts:          []string{},
+			SSLRedirect:           true,
+			SSLHost:               "",
+			SSLProxyHeaders:       map[string]string{"X-Forwarded-Proto": "https"},
+			STSSeconds:            315360000,
+			STSIncludeSubdomains:  true,
+			FrameDeny:             true,
+			ContentTypeNosniff:    true,
+			BrowserXssFilter:      true,
+			ContentSecurityPolicy: "default-src 'self'",
+		}))
+		return r
+	}
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -564,8 +581,12 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	}
 }
 
+var (
+	updateWebRouter = make(chan struct{})
+)
+
 func RunWebServer() {
-	r := setupRouter()
+	r := setupRouter(config.TLSMode != "" && config.TLSEnforce)
 
 	// Determine the binding address based on the config
 	var bindAddress string
@@ -592,7 +613,19 @@ func RunWebServer() {
 	}
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	if err := r.Run(bindAddress); err != nil {
+	server := &http.Server{
+		Addr:    bindAddress,
+		Handler: r,
+	}
+
+	go func() {
+		for range updateWebRouter {
+			server.Handler = setupRouter(config.TLSMode != "" && config.TLSEnforce)
+		}
+	}()
+
+	err := server.ListenAndServe()
+	if !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
 }

@@ -19,6 +19,8 @@
     "access_description": "Administrer adgangskontrollen for enheden",
     "access_disable_protection": "Deaktiver beskyttelse",
     "access_enable_password": "Aktivér adgangskode",
+    "access_enforce_tls_label": "TLS afdwingen",
+    "access_enforce_tls_description": "Alle HTTP-verzoeken doorsturen naar HTTPS",
     "access_failed_deregister": "Kunne ikke afregistrere enhed: {error}",
     "access_failed_update_cloud_url": "Kunne ikke opdatere cloud-URL: {error}",
     "access_failed_update_tls": "Kunne ikke opdatere TLS-indstillinger: {error}",

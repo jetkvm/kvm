@@ -42,6 +42,8 @@ github.com/gin-contrib/logger v1.2.6 h1:EPolruKUTzNXMVBD9LuAFQmRjTs7AH7yKGuXgYqr
 github.com/gin-contrib/logger v1.2.6/go.mod h1:7niPrd7F0Nscw/zvgz8RiGJxSdbKM2yfQNy8xCHcm64=
 github.com/gin-contrib/sse v1.1.0 h1:n0w2GMuUpWDVp7qSpvze6fAu9iRxJY4Hmj6AmBOU05w=
 github.com/gin-contrib/sse v1.1.0/go.mod h1:hxRZ5gVpWMT7Z0B0gSNYqqsSCNIJMjzvm6fqCz9vjwM=
+github.com/gin-gonic/contrib v0.0.0-20250521004450-2b1292699c15 h1:AoSudS8CW8Mc9rRf5sO1vBtNxr2Ok6TaAICjgg5oKUY=
+github.com/gin-gonic/contrib v0.0.0-20250521004450-2b1292699c15/go.mod h1:iqneQ2Df3omzIVTkIfn7c1acsVnMGiSLn4XF5Blh3Yg=
 github.com/gin-gonic/gin v1.10.1 h1:T0ujvqyCSqRopADpgPgiTT63DUQVSfojyME59Ei63pQ=
 github.com/gin-gonic/gin v1.10.1/go.mod h1:4PMNQiOhvDRa013RKVbsiNwoyezlm2rm0uX/T7kzp5Y=
 github.com/go-co-op/gocron/v2 v2.17.0 h1:e/oj6fcAM8vOOKZxv2Cgfmjo+s8AXC46po5ZPtaSea4=

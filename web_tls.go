@@ -29,6 +29,7 @@ var (
 
 type TLSState struct {
 	Mode        string `json:"mode"`
+	Enforce     bool   `json:"enforce"`
 	Certificate string `json:"certificate"`
 	PrivateKey  string `json:"privateKey"`
 }
@@ -68,6 +69,9 @@ func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 
 func getTLSState() TLSState {
 	s := TLSState{}
+
+	s.Enforce = config.TLSEnforce
+
 	switch config.TLSMode {
 	case "disabled":
 		s.Mode = "disabled"
@@ -96,6 +100,9 @@ func getTLSState() TLSState {
 
 func setTLSState(s TLSState) error {
 	var isChanged = false
+	var oldEnforce = config.TLSEnforce
+
+	config.TLSEnforce = s.Enforce
 
 	switch s.Mode {
 	case "disabled":
@@ -103,6 +110,7 @@ func setTLSState(s TLSState) error {
 			isChanged = true
 		}
 		config.TLSMode = ""
+		config.TLSEnforce = false
 	case "custom":
 		if config.TLSMode == "" {
 			isChanged = true
@@ -124,6 +132,11 @@ func setTLSState(s TLSState) error {
 		config.TLSMode = "self-signed"
 	default:
 		return fmt.Errorf("invalid TLS mode: %s", s.Mode)
+	}
+
+	if oldEnforce != config.TLSEnforce {
+		logger.Info().Msg("Rerouting web server, as TLS enforcement changed")
+		updateWebRouter <- struct{}{}
 	}
 
 	if !isChanged {
@@ -159,7 +172,7 @@ func runWebSecureServer() {
 		tlsStarted = false
 	}()
 
-	r := setupRouter()
+	r := setupRouter(false)
 
 	server := &http.Server{
 		Addr:    webSecureListen,

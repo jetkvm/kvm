@@ -107,6 +107,7 @@ type Config struct {
 	DisplayDimAfterSec   int                  `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int                  `json:"display_off_after_sec"`
 	TLSMode              string               `json:"tls_mode"` // options: "self-signed", "user-defined", ""
+	TLSEnforce           bool                 `json:"tls_enforce"`
 	UsbConfig            *usbgadget.Config    `json:"usb_config"`
 	UsbDevices           *usbgadget.Devices   `json:"usb_devices"`
 	NetworkConfig        *types.NetworkConfig `json:"network_config"`
@@ -188,6 +189,7 @@ func getDefaultConfig() Config {
 		// This is the "Standard" jiggler option in the UI
 		JigglerConfig: func() *JigglerConfig { c := defaultJigglerConfig; return &c }(),
 		TLSMode:       "",
+		TLSEnforce:    false,
 		UsbConfig:     func() *usbgadget.Config { c := defaultUsbConfig; return &c }(),
 		UsbDevices:    func() *usbgadget.Devices { c := defaultUsbDevices; return &c }(),
 		NetworkConfig: func() *types.NetworkConfig {

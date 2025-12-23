@@ -19,6 +19,8 @@
     "access_description": "Gestisci il controllo degli accessi del dispositivo",
     "access_disable_protection": "Disattiva la protezione",
     "access_enable_password": "Attiva password",
+    "access_enforce_tls_label": "Applica TLS",
+    "access_enforce_tls_description": "Reindirizza tutte le richieste HTTP a HTTPS",
     "access_failed_deregister": "Impossibile annullare la registrazione del dispositivo: {error}",
     "access_failed_update_cloud_url": "Impossibile aggiornare l'URL del cloud: {error}",
     "access_failed_update_tls": "Impossibile aggiornare le impostazioni TLS: {error}",

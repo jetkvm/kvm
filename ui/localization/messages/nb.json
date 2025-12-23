@@ -19,6 +19,8 @@
     "access_description": "Administrer tilgang til enheten",
     "access_disable_protection": "Deaktiver beskyttelse",
     "access_enable_password": "Aktiver passord",
+    "access_enforce_tls_label": "Håndhev TLS",
+    "access_enforce_tls_description": "Omdiriger alle HTTP-forespørsler til HTTPS",
     "access_failed_deregister": "Kunne ikke avregistrere enheten: {error}",
     "access_failed_update_cloud_url": "Kunne ikke oppdatere nettadressen til skyen: {error}",
     "access_failed_update_tls": "Kunne ikke oppdatere TLS-innstillingene: {error}",

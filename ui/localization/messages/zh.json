@@ -19,6 +19,8 @@
     "access_description": "管理设备的访问控制。",
     "access_disable_protection": "禁用保护",
     "access_enable_password": "启用密码",
+    "access_enforce_tls_label": "强制执行 TLS",
+    "access_enforce_tls_description": "将所有 HTTP 请求重定向到 HTTPS",
     "access_failed_deregister": "注销设备失败：{error}",
     "access_failed_update_cloud_url": "更新云地址失败：{error}",
     "access_failed_update_tls": "更新 TLS 设置失败：{error}",
