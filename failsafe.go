@@ -1,7 +1,6 @@
 package kvm
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -104,12 +103,4 @@ func notifyFailsafeMode(session *Session) {
 		Active: true,
 		Reason: failsafeModeReason,
 	}, session)
-}
-
-func rpcGetFailsafeLogs() (string, error) {
-	if !failsafeModeActive {
-		return "", fmt.Errorf("failsafe mode is not active")
-	}
-
-	return failsafeCrashLog, nil
 }

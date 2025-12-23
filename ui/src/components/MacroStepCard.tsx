@@ -72,7 +72,7 @@ const ensureArray = <T,>(arr: T[] | null | undefined): T[] => {
 };
 
 const keyDisplay = (keyDisplayMap: Record<string, string>, key: string): string => {
-   return keyDisplayMap[key] || key
+  return keyDisplayMap[key] || key;
 };
 
 export function MacroStepCard({
@@ -113,9 +113,7 @@ export function MacroStepCard({
 
   const filteredKeys = useMemo(() => {
     const selectedKeys = ensureArray(step.keys);
-    const availableKeys = keyOptions.filter(
-      option => !selectedKeys.includes(option.value),
-    );
+    const availableKeys = keyOptions.filter(option => !selectedKeys.includes(option.value));
 
     if (keyQuery === "") {
       return availableKeys;
@@ -186,9 +184,7 @@ export function MacroStepCard({
                       key={option.value}
                       size="XS"
                       theme={
-                        ensureArray(step.modifiers).includes(option.value)
-                          ? "primary"
-                          : "light"
+                        ensureArray(step.modifiers).includes(option.value) ? "primary" : "light"
                       }
                       text={option.label.split(" ")[1] || option.label}
                       onClick={() => handleModifierToggle(option.value)}
@@ -221,9 +217,7 @@ export function MacroStepCard({
                     className=""
                     theme="blank"
                     onClick={() => {
-                      const newKeys = step.keys.filter(
-                        (_, i) => i !== keyIndex,
-                      );
+                      const newKeys = step.keys.filter((_, i) => i !== keyIndex);
                       onKeySelect({ value: null, keys: newKeys });
                     }}
                     LeadingIcon={LuX}

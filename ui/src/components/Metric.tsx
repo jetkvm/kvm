@@ -35,10 +35,7 @@ interface MetricProps<T, K extends keyof T> {
  * @param metrics - Expected to be ordered from oldest to newest.
  * @param metricName - Name of the metric to create a chart array for.
  */
-export function createChartArray<T, K extends keyof T>(
-  metrics: Map<number, T>,
-  metricName: K,
-) {
+export function createChartArray<T, K extends keyof T>(metrics: Map<number, T>, metricName: K) {
   const result: { date: number; metric: number | null }[] = [];
   const iter = metrics.entries();
   let next = iter.next() as IteratorResult<[number, T]>;
@@ -146,12 +143,7 @@ export function Metric<T, K extends keyof T>({
 
   return (
     <div className="space-y-2">
-      <MetricHeader
-        title={title}
-        description={description}
-        badge={badge}
-        badgeTheme={badgeTheme}
-      />
+      <MetricHeader title={title} description={description} badge={badge} badgeTheme={badgeTheme} />
 
       <GridCard>
         <div
