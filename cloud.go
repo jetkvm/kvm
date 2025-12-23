@@ -454,6 +454,7 @@ func handleSessionRequest(
 		LocalIP:    req.IP,
 		ICEServers: req.ICEServers,
 		Logger:     scopedLogger,
+		NoMDNS:     config.NetworkConfig.MDNSMode.String == "disabled",
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})

@@ -212,7 +212,7 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession(SessionConfig{})
+	session, err := newSession(SessionConfig{NoMDNS: config.NetworkConfig.MDNSMode.String == "disabled"})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return

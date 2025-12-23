@@ -16,6 +16,7 @@ import (
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -123,6 +124,7 @@ type SessionConfig struct {
 	IsCloud    bool
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
+	NoMDNS     bool
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -249,6 +251,11 @@ func newSession(config SessionConfig) (*Session, error) {
 	webrtcSettingEngine := webrtc.SettingEngine{
 		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	}
+
+	if config.NoMDNS {
+		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	}
+
 	iceServer := webrtc.ICEServer{}
 
 	var scopedLogger *zerolog.Logger
