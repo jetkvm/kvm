@@ -564,12 +564,9 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	}
 }
 
-func RunWebServer() {
-	r := setupRouter()
-
+func getBindAddress(listenPort int) string {
 	// Determine the binding address based on the config
 	var bindAddress string
-	listenPort := 80 // default port
 	useIPv4 := config.NetworkConfig.IPv4Mode.String != "disabled"
 	useIPv6 := config.NetworkConfig.IPv6Mode.String != "disabled"
 
@@ -590,6 +587,14 @@ func RunWebServer() {
 			bindAddress = fmt.Sprintf("[::]:%d", listenPort)
 		}
 	}
+	return bindAddress
+}
+
+func RunWebServer() {
+	r := setupRouter()
+
+	// Determine the binding address based on the config
+	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
 	if err := r.Run(bindAddress); err != nil {
