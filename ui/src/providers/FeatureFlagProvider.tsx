@@ -31,7 +31,5 @@ export const FeatureFlagProvider = ({
 
   const value = { appVersion, isFeatureEnabled };
 
-  return (
-    <FeatureFlagContext.Provider value={value}>{children}</FeatureFlagContext.Provider>
-  );
+  return <FeatureFlagContext.Provider value={value}>{children}</FeatureFlagContext.Provider>;
 };

@@ -12,10 +12,12 @@ export default function DevicesAlreadyAdopted() {
       <div className="grid min-h-screen grid-rows-(--grid-layout)">
         <SimpleNavbar />
         <Container>
-          <div className="flex items-center justify-center w-full h-full isolate">
-            <div className="max-w-2xl -mt-16 space-y-8">
+          <div className="isolate flex h-full w-full items-center justify-center">
+            <div className="-mt-16 max-w-2xl space-y-8">
               <div className="space-y-4 text-center">
-                <h1 className="text-4xl font-semibold text-black dark:text-white">{m.already_adopted_title()}</h1>
+                <h1 className="text-4xl font-semibold text-black dark:text-white">
+                  {m.already_adopted_title()}
+                </h1>
                 <p className="text-lg text-slate-600 dark:text-slate-400">
                   {m.already_adopted_other_user()}
                 </p>

@@ -31,7 +31,6 @@ export interface USBConfig {
   product: string;
 }
 
-
 const usbConfigs = [
   {
     label: m.usb_config_default(),
@@ -127,7 +126,10 @@ export function UsbInfoSetting() {
         await sleep(2000);
         setLoading(false);
         notifications.success(
-          m.usb_config_set_success({ manufacturer: usbConfig.manufacturer, product: usbConfig.product }),
+          m.usb_config_set_success({
+            manufacturer: usbConfig.manufacturer,
+            product: usbConfig.product,
+          }),
         );
 
         syncUsbConfigProduct();
@@ -174,13 +176,11 @@ export function UsbInfoSetting() {
         />
       </SettingsItem>
       {usbConfigProduct === "custom" && (
-        <div className="ml-2 space-y-4 border-l border-slate-800/10 pl-4 dark:border-slate-300/20 ">
+        <div className="ml-2 space-y-4 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
           <USBConfigDialog
             loading={loading}
             onSetUsbConfig={usbConfig => handleUsbConfigChange(usbConfig)}
-            onRestoreToDefault={() =>
-              handleUsbConfigChange(usbConfigData[usbConfigs[0].value])
-            }
+            onRestoreToDefault={() => handleUsbConfigChange(usbConfigData[usbConfigs[0].value])}
           />
         </div>
       )}

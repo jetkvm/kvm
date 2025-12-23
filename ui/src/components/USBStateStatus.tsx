@@ -70,7 +70,6 @@ export default function USBStateStatus({
   state: USBStates;
   peerConnectionState?: RTCPeerConnectionState | null;
 }) {
-
   const props = StatusCardProps[state];
   if (!props) {
     console.warn("Unsupported USB state: ", state);
@@ -79,11 +78,7 @@ export default function USBStateStatus({
 
   // If the peer connection is not connected, show the USB cable as disconnected
   if (peerConnectionState !== "connected") {
-    const {
-      icon: Icon,
-      iconClassName,
-      statusIndicatorClassName,
-    } = StatusCardProps["not attached"];
+    const { icon: Icon, iconClassName, statusIndicatorClassName } = StatusCardProps["not attached"];
 
     return (
       <StatusCard
@@ -96,7 +91,5 @@ export default function USBStateStatus({
     );
   }
 
-  return (
-    <StatusCard title={m.usb()} status={USBStateMap[state]} {...StatusCardProps[state]} />
-  );
+  return <StatusCard title={m.usb()} status={USBStateMap[state]} {...StatusCardProps[state]} />;
 }

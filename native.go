@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -83,6 +84,20 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		OnMjpegFrameReceived: func(frame []byte) {
 			// Send MJPEG frame to UVC when host selected MJPEG format
 			handleMjpegFrameForUVC(frame)
+		},
+		GetSessionInfo: func() diagnostics.SessionInfo {
+			info := diagnostics.SessionInfo{
+				ActiveSessions:    getActiveSessions(),
+				HasCurrentSession: currentSession != nil,
+			}
+			if currentSession != nil {
+				sessionInfo := currentSession.GetDiagnosticsInfo()
+				info.ICEConnectionState = sessionInfo.ICEConnectionState
+				info.SignalingState = sessionInfo.SignalingState
+				info.ConnectionState = sessionInfo.ConnectionState
+				info.DataChannels = sessionInfo.DataChannels
+			}
+			return info
 		},
 	})
 	if err != nil {

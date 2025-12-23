@@ -68,7 +68,9 @@ export default function SettingsVideoRoute() {
 
     send("getDefaultEDID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }),
+        );
         return;
       }
 
@@ -106,19 +108,21 @@ export default function SettingsVideoRoute() {
   }, [send]);
 
   const handleStreamQualityChange = (factor: string) => {
-    send(
-      "setStreamQualityFactor",
-      { factor: Number(factor) },
-      (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(m.video_failed_set_stream_quality({ error: resp.error.data || m.unknown_error() }));
-          return;
-        }
+    send("setStreamQualityFactor", { factor: Number(factor) }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.video_failed_set_stream_quality({ error: resp.error.data || m.unknown_error() }),
+        );
+        return;
+      }
 
-        notifications.success(m.video_stream_quality_set({ quality: streamQualityOptions.find(x => x.value === factor)?.label || "Unknown" }));
-        setStreamQuality(factor);
-      },
-    );
+      notifications.success(
+        m.video_stream_quality_set({
+          quality: streamQualityOptions.find(x => x.value === factor)?.label || "Unknown",
+        }),
+      );
+      setStreamQuality(factor);
+    });
   };
 
   const handleEDIDChange = (newEdid: string) => {
@@ -126,11 +130,17 @@ export default function SettingsVideoRoute() {
     send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
-        notifications.error(m.video_failed_set_edid({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.video_failed_set_edid({ error: resp.error.data || m.unknown_error() }),
+        );
         return;
       }
 
-      notifications.success(m.video_edid_set_success({ edid: edids.find(x => x.value === newEdid)?.label ?? "the custom EDID" }));
+      notifications.success(
+        m.video_edid_set_success({
+          edid: edids.find(x => x.value === newEdid)?.label ?? "the custom EDID",
+        }),
+      );
       // Update the EDID value in the UI
       setEdid(newEdid);
     });
@@ -142,15 +152,18 @@ export default function SettingsVideoRoute() {
     setDebugInfoLoading(true);
     send("getVideoLogStatus", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.video_failed_get_debug_info({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.video_failed_get_debug_info({ error: resp.error.data || m.unknown_error() }),
+        );
         setDebugInfoLoading(false);
         return;
       }
       const data = resp.result as string;
-      setDebugInfo(data
-        .split("\n")
-        .map(line => line.trim().replace(/^\[\s*\d+\.\d+\]\s*/, ""))
-        .join("\n")
+      setDebugInfo(
+        data
+          .split("\n")
+          .map(line => line.trim().replace(/^\[\s*\d+\.\d+\]\s*/, ""))
+          .join("\n"),
       );
       setDebugInfoLoading(false);
     });
@@ -159,10 +172,7 @@ export default function SettingsVideoRoute() {
   return (
     <div className="space-y-3">
       <div className="space-y-4">
-        <SettingsPageHeader
-          title={m.video_title()}
-          description={m.video_description()}
-        />
+        <SettingsPageHeader title={m.video_title()} description={m.video_description()} />
 
         <div className="space-y-4">
           <div className="space-y-4">
@@ -310,18 +320,20 @@ export default function SettingsVideoRoute() {
                 title={m.video_debugging_info_title()}
                 description={m.video_debugging_info_description()}
               >
-                <Button size="SM" theme="primary" text={m.video_get_debugging_info()}
+                <Button
+                  size="SM"
+                  theme="primary"
+                  text={m.video_get_debugging_info()}
                   loading={debugInfoLoading}
                   disabled={debugInfoLoading}
                   onClick={() => {
                     getDebugInfo();
-                  }} />
+                  }}
+                />
               </SettingsItem>
               {debugInfo && (
-                <div className="font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded-md text-xs max-h-64 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap">
-                    {debugInfo}
-                  </pre>
+                <div className="max-h-64 overflow-y-auto rounded-md bg-gray-100 p-2 font-mono text-xs dark:bg-gray-800">
+                  <pre className="whitespace-pre-wrap">{debugInfo}</pre>
                 </div>
               )}
             </div>

@@ -21,8 +21,7 @@ export const DetachIcon = ({ className }: { className?: string }) => {
 
 function KeyboardWrapper() {
   const keyboardRef = useRef<HTMLDivElement>(null);
-  const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } =
-    useUiStore();
+  const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } = useUiStore();
   const { keyboardLedState, keysDownState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
     useHidStore();
   const { handleKeyPress, executeMacro } = useKeyboard();
@@ -159,9 +158,7 @@ function KeyboardWrapper() {
       }
 
       if (key === "AltMetaEscape") {
-        await executeMacro([
-          { keys: ["Escape"], modifiers: ["AltLeft", "MetaLeft"], delay: 100 },
-        ]);
+        await executeMacro([{ keys: ["Escape"], modifiers: ["AltLeft", "MetaLeft"], delay: 100 }]);
         return;
       }
 
@@ -258,7 +255,7 @@ function KeyboardWrapper() {
                     {m.virtual_keyboard_header()}
                   </h2>
                   <div className="absolute right-2 flex items-center gap-x-2">
-                    <div className="hidden md:flex gap-x-2 items-center">
+                    <div className="hidden items-center gap-x-2 md:flex">
                       <LinkButton
                         size="XS"
                         to="settings/keyboard"

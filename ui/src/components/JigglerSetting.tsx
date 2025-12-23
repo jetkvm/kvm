@@ -72,7 +72,9 @@ export function JigglerSetting({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{m.jiggler_examples_label()}</h4>
+        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          {m.jiggler_examples_label()}
+        </h4>
         <div className="flex flex-wrap gap-2">
           {exampleConfigs.map((example, index) => (
             <Button

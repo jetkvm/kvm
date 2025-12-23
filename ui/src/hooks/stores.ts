@@ -1,11 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import {
-  MAX_STEPS_PER_MACRO,
-  MAX_TOTAL_MACROS,
-  MAX_KEYS_PER_STEP,
-} from "@/constants/macros";
+import { MAX_STEPS_PER_MACRO, MAX_TOTAL_MACROS, MAX_KEYS_PER_STEP } from "@/constants/macros";
 
 // Define the JsonRpc types for better type checking
 interface JsonRpcResponse {
@@ -92,8 +88,7 @@ export const useUiStore = create<UIState>(set => ({
   setDisableVideoFocusTrap: (enabled: boolean) => set({ disableVideoFocusTrap: enabled }),
 
   isWakeOnLanModalVisible: false,
-  setWakeOnLanModalVisibility: (enabled: boolean) =>
-    set({ isWakeOnLanModalVisible: enabled }),
+  setWakeOnLanModalVisibility: (enabled: boolean) => set({ isWakeOnLanModalVisible: enabled }),
 
   toggleSidebarView: view =>
     set(state => {
@@ -281,12 +276,7 @@ export const useMouseStore = create<MouseState>(set => ({
   setMousePosition: (x, y) => set({ mouseX: x, mouseY: y }),
 }));
 
-export type HdmiStates =
-  | "ready"
-  | "no_signal"
-  | "no_lock"
-  | "out_of_range"
-  | "connecting";
+export type HdmiStates = "ready" | "no_signal" | "no_lock" | "out_of_range" | "connecting";
 export type HdmiErrorStates = Extract<
   VideoState["hdmiState"],
   "no_signal" | "no_lock" | "out_of_range"
@@ -306,6 +296,8 @@ export interface VideoState {
   setSize: (width: number, height: number) => void;
   hdmiState: HdmiStates;
   setHdmiState: (state: { ready: boolean; error?: HdmiErrorStates }) => void;
+  videoElement: HTMLVideoElement | null;
+  setVideoElement: (element: HTMLVideoElement | null) => void;
 }
 
 export const useVideoStore = create<VideoState>(set => ({
@@ -316,8 +308,7 @@ export const useVideoStore = create<VideoState>(set => ({
   clientHeight: 0,
 
   // The video element's client size
-  setClientSize: (clientWidth: number, clientHeight: number) =>
-    set({ clientWidth, clientHeight }),
+  setClientSize: (clientWidth: number, clientHeight: number) => set({ clientWidth, clientHeight }),
 
   // Resolution
   setSize: (width: number, height: number) => set({ width, height }),
@@ -335,6 +326,9 @@ export const useVideoStore = create<VideoState>(set => ({
       return set({ hdmiState: "connecting" });
     }
   },
+
+  videoElement: null,
+  setVideoElement: (element: HTMLVideoElement | null) => set({ videoElement: element }),
 }));
 
 export interface BacklightSettings {
@@ -440,8 +434,7 @@ export const useSettingsStore = create(
         dim_after: 10000,
         off_after: 50000,
       },
-      setBacklightSettings: (settings: BacklightSettings) =>
-        set({ backlightSettings: settings }),
+      setBacklightSettings: (settings: BacklightSettings) => set({ backlightSettings: settings }),
 
       keyboardLayout: "en-US",
       setKeyboardLayout: (layout: string) => set({ keyboardLayout: layout }),
@@ -597,15 +590,13 @@ export const useHidStore = create<HidState>(set => ({
     kana: false,
     shift: false,
   } as KeyboardLedState,
-  setKeyboardLedState: (ledState: KeyboardLedState): void =>
-    set({ keyboardLedState: ledState }),
+  setKeyboardLedState: (ledState: KeyboardLedState): void => set({ keyboardLedState: ledState }),
 
   keysDownState: { modifier: 0, keys: [0, 0, 0, 0, 0, 0] } as KeysDownState,
   setKeysDownState: (state: KeysDownState): void => set({ keysDownState: state }),
 
   isVirtualKeyboardEnabled: false,
-  setVirtualKeyboardEnabled: (enabled: boolean): void =>
-    set({ isVirtualKeyboardEnabled: enabled }),
+  setVirtualKeyboardEnabled: (enabled: boolean): void => set({ isVirtualKeyboardEnabled: enabled }),
 
   isPasteInProgress: false,
   setPasteModeEnabled: (enabled: boolean): void => set({ isPasteInProgress: enabled }),
@@ -712,8 +703,7 @@ export const useUpdateStore = create<UpdateState>(set => ({
   setModalView: (view: UpdateModalViews) => set({ modalView: view }),
 
   updateErrorMessage: null,
-  setUpdateErrorMessage: (errorMessage: string) =>
-    set({ updateErrorMessage: errorMessage }),
+  setUpdateErrorMessage: (errorMessage: string) => set({ updateErrorMessage: errorMessage }),
 
   shouldReload: false,
   setShouldReload: (reloadRequired: boolean) => set({ shouldReload: reloadRequired }),
@@ -862,12 +852,7 @@ export type IPv6Mode =
 export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
 export type LLDPMode = "disabled" | "basic" | "all" | "unknown";
 export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
-export type TimeSyncMode =
-  | "ntp_only"
-  | "ntp_and_http"
-  | "http_only"
-  | "custom"
-  | "unknown";
+export type TimeSyncMode = "ntp_only" | "ntp_and_http" | "http_only" | "custom" | "unknown";
 
 export interface IPv4StaticConfig {
   address: string;
@@ -932,12 +917,12 @@ export interface MacrosState {
   loadMacros: () => Promise<void>;
   saveMacros: (macros: KeySequence[]) => Promise<void>;
   sendFn:
-  | ((
-    method: string,
-    params: unknown,
-    callback?: ((resp: JsonRpcResponse) => void) | undefined,
-  ) => void)
-  | null;
+    | ((
+        method: string,
+        params: unknown,
+        callback?: ((resp: JsonRpcResponse) => void) | undefined,
+      ) => void)
+    | null;
   setSendFn: (
     sendFn: (
       method: string,

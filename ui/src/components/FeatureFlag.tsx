@@ -19,8 +19,8 @@ export function FeatureFlag({
     if (!appVersion) return;
     console.log(
       `Feature '${name}' ${isEnabled ? "ENABLED" : "DISABLED"}: ` +
-      `Current version: ${appVersion}, ` +
-      `Required min version: ${minAppVersion || "N/A"}`,
+        `Current version: ${appVersion}, ` +
+        `Required min version: ${minAppVersion || "N/A"}`,
     );
   }, [isEnabled, name, minAppVersion, appVersion]);
 
