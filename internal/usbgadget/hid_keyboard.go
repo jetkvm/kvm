@@ -27,6 +27,8 @@ var keyboardConfig = gadgetConfigItem{
 }
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
+// Note: Original kernel doc used 0x65 (101 keys) for both LOGICAL_MAXIMUM and USAGE_MAXIMUM,
+// but we use 0xff to support international keys like RO (0x87), Yen (0x89), Henkan (0x8a), Muhenkan (0x8b), etc.
 var keyboardReportDesc = []byte{
 	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)	          */
 	0x09, 0x06, /* USAGE (Keyboard)                       */
@@ -55,10 +57,10 @@ var keyboardReportDesc = []byte{
 	0x95, 0x06, /*   REPORT_COUNT (6)                     */
 	0x75, 0x08, /*   REPORT_SIZE (8)                      */
 	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
-	0x25, 0x65, /*   LOGICAL_MAXIMUM (101)                */
+	0x25, 0xff, /*   LOGICAL_MAXIMUM (255)                */
 	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
 	0x19, 0x00, /*   USAGE_MINIMUM (Reserved)             */
-	0x29, 0x65, /*   USAGE_MAXIMUM (Keyboard Application) */
+	0x29, 0xff, /*   USAGE_MAXIMUM (Keyboard Application) */
 	0x81, 0x00, /*   INPUT (Data,Ary,Abs)                 */
 	0xc0, /* END_COLLECTION                         */
 }

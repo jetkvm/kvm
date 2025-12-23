@@ -54,7 +54,7 @@ const TERMINAL_CONFIG = {
   // Add these configurations:
   cursorStyle: "block",
   rendererType: "canvas", // Ensure we're using the canvas renderer
-  unicode: { activeVersion: "11" }
+  unicode: { activeVersion: "11" },
 } as const;
 
 function Terminal({
@@ -162,10 +162,7 @@ function Terminal({
   }, [instance]);
 
   return (
-    <div
-      onKeyDown={e => e.stopPropagation()}
-      onKeyUp={e => e.stopPropagation()}
-    >
+    <div onKeyDown={e => e.stopPropagation()} onKeyUp={e => e.stopPropagation()}>
       <div>
         <div
           className={cx(
@@ -184,7 +181,7 @@ function Terminal({
         >
           <div className="h-[500px] w-full bg-[#0f172a]">
             <div className="flex items-center justify-center border-y border-y-slate-800/30 bg-white px-2 py-1 dark:border-y-slate-300/20 dark:bg-slate-800">
-              <h2 className="select-none self-center font-sans text-[12px] text-slate-700 dark:text-slate-300">
+              <h2 className="self-center font-sans text-[12px] text-slate-700 select-none dark:text-slate-300">
                 {title}
               </h2>
               <div className="absolute right-2">

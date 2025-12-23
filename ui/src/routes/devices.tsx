@@ -46,7 +46,7 @@ export default function DevicesRoute() {
   useInterval(revalidate.revalidate, 4000);
   return (
     <div className="relative h-full">
-      <div className="grid h-full select-none grid-rows-(--grid-headerBody)">
+      <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
         <DashboardNavbar
           isLoggedIn={!!user}
           primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}
@@ -58,9 +58,7 @@ export default function DevicesRoute() {
           <div className="mx-auto h-full w-full space-y-6 px-4 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
             <div className="mt-8 flex items-center justify-between border-b border-b-slate-800/20 pb-4 dark:border-b-slate-300/20">
               <div>
-                <h1 className="text-xl font-bold text-black dark:text-white">
-                  {m.cloud_kvms()}
-                </h1>
+                <h1 className="text-xl font-bold text-black dark:text-white">{m.cloud_kvms()}</h1>
                 <p className="text-base text-slate-700 dark:text-slate-400">
                   {m.cloud_kvms_description()}
                 </p>

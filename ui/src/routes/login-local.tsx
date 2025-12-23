@@ -62,11 +62,7 @@ export default function LoginLocalRoute() {
           <div className="isolate flex h-full w-full items-center justify-center">
             <div className="-mt-32 max-w-2xl space-y-8">
               <div className="flex items-center justify-center">
-                <img
-                  src={LogoWhiteIcon}
-                  alt=""
-                  className="-ml-4 hidden h-[32px] dark:block"
-                />
+                <img src={LogoWhiteIcon} alt="" className="-ml-4 hidden h-[32px] dark:block" />
                 <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
               </div>
 

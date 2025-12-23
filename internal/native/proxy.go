@@ -3,8 +3,10 @@ package native
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/jetkvm/kvm/internal/utils"
 	"github.com/rs/zerolog"
@@ -43,6 +46,7 @@ type nativeProxyOptions struct {
 	OnRpcEvent           func(event string)
 	OnVideoStateChange   func(state VideoState)
 	OnNativeRestart      func()
+	GetSessionInfo       func() diagnostics.SessionInfo
 }
 
 func randomId(binaryLength int) string {
@@ -72,6 +76,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		OnRpcEvent:           n.OnRpcEvent,
 		OnVideoStateChange:   n.OnVideoStateChange,
 		OnNativeRestart:      n.OnNativeRestart,
+		GetSessionInfo:       n.GetSessionInfo,
 		HandshakeMessage:     handshakeMessage,
 		MaxRestartAttempts:   maxRestartAttempts,
 	}
@@ -133,6 +138,7 @@ type NativeProxy struct {
 
 	logger   *zerolog.Logger
 	options  *nativeProxyOptions
+	diag     *diagnostics.Diagnostics
 	restarts uint
 	stopped  bool
 }
@@ -148,12 +154,18 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 		return nil, fmt.Errorf("failed to get executable path: %w", err)
 	}
 
+	// Initialize diagnostics with session info callback
+	diag := diagnostics.New(diagnostics.Options{
+		GetSessionInfo: proxyOptions.GetSessionInfo,
+	})
+
 	proxy := &NativeProxy{
 		nativeUnixSocket:      proxyOptions.CtrlUnixSocket,
 		videoStreamUnixSocket: proxyOptions.VideoStreamUnixSocket,
 		binaryPath:            exePath,
 		logger:                nativeLogger,
 		options:               proxyOptions,
+		diag:                  diag,
 		restarts:              0,
 	}
 
@@ -166,7 +178,7 @@ func (p *NativeProxy) startVideoStreamListener() error {
 	}
 
 	logger := p.logger.With().Str("socketPath", p.videoStreamUnixSocket).Logger()
-	listener, err := net.Listen("unixpacket", p.videoStreamUnixSocket)
+	listener, err := net.Listen("unix", p.videoStreamUnixSocket)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to start video stream listener")
 		return fmt.Errorf("failed to start video stream listener: %w", err)
@@ -254,18 +266,37 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	defer conn.Close()
 
 	inboundPacket := make([]byte, maxFrameSize)
+	var frameSizeBuffer [4]byte
 	lastFrame := time.Now()
 
 	for {
-		n, err := conn.Read(inboundPacket)
+		// Read 4-byte frame length prefix
+		_, err := io.ReadFull(conn, frameSizeBuffer[:])
+		if err != nil {
+			if err != io.EOF {
+				p.logger.Warn().Err(err).Msg("failed to read frame size from socket")
+			}
+			break
+		}
+
+		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
+		if frameSize == 0 || frameSize > maxFrameSize {
+			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
+				Msg("received invalid frame size")
+			break
+		}
+
+		// Read the actual frame data
+		_, err = io.ReadFull(conn, inboundPacket[:frameSize])
 		if err != nil {
 			p.logger.Warn().Err(err).Msg("failed to read video frame from socket")
 			break
 		}
+
 		now := time.Now()
 		sinceLastFrame := now.Sub(lastFrame)
 		lastFrame = now
-		p.options.OnVideoFrameReceived(inboundPacket[:n], sinceLastFrame)
+		p.options.OnVideoFrameReceived(inboundPacket[:frameSize], sinceLastFrame)
 	}
 }
 
@@ -276,6 +307,8 @@ func (p *NativeProxy) setUpGRPCClient() error {
 	case <-p.cmd.stdoutHandler.handshakeCh:
 		p.logger.Info().Msg("handshake completed")
 	case <-time.After(10 * time.Second):
+		p.logger.Error().Msg("[HANDSHAKE] TIMEOUT - handshake not completed within 10 seconds. Child process may be stuck during initialization.")
+		p.diag.LogAll("handshake")
 		return fmt.Errorf("handshake not completed within 10 seconds")
 	}
 
@@ -403,6 +436,9 @@ func (p *NativeProxy) monitorProcess() {
 		}
 
 		p.logger.Warn().Err(err).Msg("native process exited, restarting ...")
+
+		// Log diagnostics before restarting
+		p.diag.LogAll("crash")
 
 		// Wait a bit before restarting
 		time.Sleep(1 * time.Second)

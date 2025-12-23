@@ -9,7 +9,7 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import notifications from "@/notifications";
-import { getLocale, setLocale, locales, baseLocale } from '@localizations/runtime.js';
+import { getLocale, setLocale, locales, baseLocale } from "@localizations/runtime.js";
 import { m } from "@localizations/messages.js";
 import { deleteCookie, map_locale_code_to_name } from "@/utils";
 
@@ -45,19 +45,21 @@ export default function SettingsGeneralRoute() {
   const [currentLocale, setCurrentLocale] = useState(getLocale());
 
   const localeOptions = useMemo(() => {
-    return ["", ...locales]
-      .map((code) => {
-        const [localizedName, nativeName] = map_locale_code_to_name(currentLocale, code);
-        // don't repeat the name if it's the same in both locales (or blank)
-        const label = nativeName && nativeName !== localizedName ? `${localizedName} - ${nativeName}` : localizedName;
-        return { value: code, label: label }
-      });
+    return ["", ...locales].map(code => {
+      const [localizedName, nativeName] = map_locale_code_to_name(currentLocale, code);
+      // don't repeat the name if it's the same in both locales (or blank)
+      const label =
+        nativeName && nativeName !== localizedName
+          ? `${localizedName} - ${nativeName}`
+          : localizedName;
+      return { value: code, label: label };
+    });
   }, [currentLocale]);
 
   const handleLocaleChange = (newLocale: string) => {
     if (newLocale === currentLocale) return;
 
-    let validLocale = newLocale as typeof locales[number];
+    let validLocale = newLocale as (typeof locales)[number];
 
     if (newLocale !== "") {
       if (!locales.includes(validLocale)) {
@@ -75,10 +77,7 @@ export default function SettingsGeneralRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.general_title()}
-        description={m.general_page_description()}
-      />
+      <SettingsPageHeader title={m.general_title()} description={m.general_page_description()} />
 
       <div className="space-y-4">
         <div className="space-y-4 pb-2">
@@ -94,7 +93,9 @@ export default function SettingsGeneralRoute() {
                 label=""
                 value={currentLocale}
                 options={localeOptions}
-                onChange={e => { handleLocaleChange(e.target.value); }}
+                onChange={e => {
+                  handleLocaleChange(e.target.value);
+                }}
               />
             </SettingsItem>
           </div>
@@ -103,9 +104,13 @@ export default function SettingsGeneralRoute() {
               title={m.general_check_for_updates()}
               description={
                 <>
-                  {m.general_app_version({ version: currentVersions ? currentVersions.appVersion : m.loading() })}
+                  {m.general_app_version({
+                    version: currentVersions ? currentVersions.appVersion : m.loading(),
+                  })}
                   <br />
-                  {m.general_system_version({ version: currentVersions ? currentVersions.systemVersion : m.loading() })}
+                  {m.general_system_version({
+                    version: currentVersions ? currentVersions.systemVersion : m.loading(),
+                  })}
                 </>
               }
             />

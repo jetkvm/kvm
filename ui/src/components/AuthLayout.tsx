@@ -55,9 +55,7 @@ export default function AuthLayout({
                 </div>
               ) : null}
               <div className="space-y-2 text-center">
-                <h1 className="text-4xl font-semibold text-black dark:text-white">
-                  {title}
-                </h1>
+                <h1 className="text-4xl font-semibold text-black dark:text-white">{title}</h1>
                 <p className="text-slate-600 dark:text-slate-400">{description}</p>
               </div>
 
@@ -65,12 +63,8 @@ export default function AuthLayout({
                 <div className="mx-auto max-w-sm space-y-4">
                   <form action={`${CLOUD_API}/oidc/google`} method="POST">
                     {/*This could be the KVM ID*/}
-                    {deviceId ? (
-                      <input type="hidden" name="deviceId" value={deviceId} />
-                    ) : null}
-                    {returnTo ? (
-                      <input type="hidden" name="returnTo" value={returnTo} />
-                    ) : null}
+                    {deviceId ? <input type="hidden" name="deviceId" value={deviceId} /> : null}
+                    {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
                     <Button
                       size="LG"
                       theme="light"
@@ -80,8 +74,7 @@ export default function AuthLayout({
                       textAlign="center"
                       type="submit"
                       loading={
-                        (navigation.state === "submitting" ||
-                          navigation.state === "loading") &&
+                        (navigation.state === "submitting" || navigation.state === "loading") &&
                         navigation.formMethod?.toLowerCase() === "post" &&
                         navigation.formAction?.includes("auth/google")
                       }

@@ -18,12 +18,12 @@ interface ATXState {
 
 export function ATXPowerControl() {
   const [isPowerPressed, setIsPowerPressed] = useState(false);
-  const [powerPressTimer, setPowerPressTimer] = useState<ReturnType<
-    typeof setTimeout
-  > | null>(null);
+  const [powerPressTimer, setPowerPressTimer] = useState<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [atxState, setAtxState] = useState<ATXState | null>(null);
 
-  const { send }  = useJsonRpc(function onRequest(resp) {
+  const { send } = useJsonRpc(function onRequest(resp) {
     if (resp.method === "atxState") {
       setAtxState(resp.params as ATXState);
     }
@@ -33,7 +33,9 @@ export function ATXPowerControl() {
   useEffect(() => {
     send("getATXState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.atx_power_control_get_state_error({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.atx_power_control_get_state_error({ error: resp.error.data || m.unknown_error() }),
+        );
         return;
       }
       setAtxState(resp.result as ATXState);
@@ -54,7 +56,12 @@ export function ATXPowerControl() {
         console.log("Sending long press ATX power action");
         send("setATXPowerAction", { action: "power-long" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
-            notifications.error(m.atx_power_control_send_action_error({ action: m.atx_power_control_long_power_button(), error: resp.error.data || m.unknown_error() }));
+            notifications.error(
+              m.atx_power_control_send_action_error({
+                action: m.atx_power_control_long_power_button(),
+                error: resp.error.data || m.unknown_error(),
+              }),
+            );
           }
           setIsPowerPressed(false);
         });
@@ -73,7 +80,12 @@ export function ATXPowerControl() {
         console.log("Sending short press ATX power action");
         send("setATXPowerAction", { action: "power-short" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
-            notifications.error(m.atx_power_control_send_action_error({ action: m.atx_power_control_short_power_button(), error: resp.error.data || m.unknown_error() }));
+            notifications.error(
+              m.atx_power_control_send_action_error({
+                action: m.atx_power_control_short_power_button(),
+                error: resp.error.data || m.unknown_error(),
+              }),
+            );
           }
         });
       }
@@ -123,7 +135,12 @@ export function ATXPowerControl() {
                 onClick={() => {
                   send("setATXPowerAction", { action: "reset" }, (resp: JsonRpcResponse) => {
                     if ("error" in resp) {
-                      notifications.error(m.atx_power_control_send_action_error({ action: m.atx_power_control_reset_button(), error: resp.error.data || m.unknown_error() }));
+                      notifications.error(
+                        m.atx_power_control_send_action_error({
+                          action: m.atx_power_control_reset_button(),
+                          error: resp.error.data || m.unknown_error(),
+                        }),
+                      );
                       return;
                     }
                   });
@@ -149,9 +166,7 @@ export function ATXPowerControl() {
                 <span className="text-sm text-slate-600 dark:text-slate-400">
                   <LuHardDrive
                     strokeWidth={3}
-                    className={`mr-1 inline ${
-                      atxState?.hdd ? "text-blue-400" : "text-slate-300"
-                    }`}
+                    className={`mr-1 inline ${atxState?.hdd ? "text-blue-400" : "text-slate-300"}`}
                   />
                   {m.atx_power_control_hdd_led()}
                 </span>

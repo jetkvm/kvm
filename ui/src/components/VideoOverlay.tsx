@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,8 +13,8 @@ import { useRTCStore, PostRebootAction } from "@/hooks/stores";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 import { isOnDevice } from "@/main";
-import { sleep } from "@/utils";
-
+import { sleep, buildCloudUrl } from "@/utils";
+import { getLocalVersion } from "@/utils/jsonrpc";
 
 interface OverlayContentProps {
   readonly children: React.ReactNode;
@@ -86,9 +86,7 @@ export function LoadingConnectionOverlay({ show, text }: LoadingConnectionOverla
               <div className="animate flex h-12 w-12 items-center justify-center">
                 <LoadingSpinner className="h-8 w-8 text-blue-800 dark:text-blue-200" />
               </div>
-              <p className="text-center text-sm text-slate-700 dark:text-slate-300">
-                {text}
-              </p>
+              <p className="text-center text-sm text-slate-700 dark:text-slate-300">{text}</p>
             </div>
           </OverlayContent>
         </motion.div>
@@ -125,7 +123,9 @@ export function ConnectionFailedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{m.video_overlay_connection_issue_title()}</h2>
+                    <h2 className="text-xl font-bold">
+                      {m.video_overlay_connection_issue_title()}
+                    </h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
                       <li>{m.video_overlay_conn_verify_power()}</li>
                       <li>{m.video_overlay_conn_check_cables()}</li>
@@ -163,9 +163,7 @@ interface PeerConnectionDisconnectedOverlay {
   readonly show: boolean;
 }
 
-export function PeerConnectionDisconnectedOverlay({
-  show,
-}: PeerConnectionDisconnectedOverlay) {
+export function PeerConnectionDisconnectedOverlay({ show }: PeerConnectionDisconnectedOverlay) {
   return (
     <AnimatePresence>
       {show && (
@@ -185,7 +183,9 @@ export function PeerConnectionDisconnectedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{m.video_overlay_connection_issue_title()}</h2>
+                    <h2 className="text-xl font-bold">
+                      {m.video_overlay_connection_issue_title()}
+                    </h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
                       <li>{m.video_overlay_conn_verify_power()}</li>
                       <li>{m.video_overlay_conn_check_cables()}</li>
@@ -398,124 +398,135 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
 interface RebootingOverlayProps {
   readonly show: boolean;
   readonly postRebootAction: PostRebootAction;
+  readonly deviceId?: string; // Required for cloud mode to build versioned URLs
 }
 
-export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayProps) {
+export function RebootingOverlay({ show, postRebootAction, deviceId }: RebootingOverlayProps) {
   const { peerConnectionState } = useRTCStore();
-
-  // Check if we've already seen the connection drop (confirms reboot actually started)
   const [hasSeenDisconnect, setHasSeenDisconnect] = useState(
-    ['disconnected', 'closed', 'failed'].includes(peerConnectionState ?? '')
+    ["disconnected", "closed", "failed"].includes(peerConnectionState ?? ""),
   );
-
-  // Track if we've timed out
   const [hasTimedOut, setHasTimedOut] = useState(false);
+  const isCheckingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Monitor for disconnect after reboot is initiated
+  // Detect connection drop (confirms reboot started)
   useEffect(() => {
-    if (!show) return;
-    if (hasSeenDisconnect) return;
-
-    if (['disconnected', 'closed', 'failed'].includes(peerConnectionState ?? '')) {
-      console.log('hasSeenDisconnect', hasSeenDisconnect);
+    if (!show || hasSeenDisconnect) return;
+    if (["disconnected", "closed", "failed"].includes(peerConnectionState ?? "")) {
+      console.log("hasSeenDisconnect", hasSeenDisconnect);
       setHasSeenDisconnect(true);
     }
   }, [show, peerConnectionState, hasSeenDisconnect]);
 
-  // Set timeout after 30 seconds
+  // Timeout after 30 seconds
   useEffect(() => {
     if (!show) {
       setHasTimedOut(false);
       return;
     }
-
-    const timeoutId = setTimeout(() => {
-      setHasTimedOut(true);
-    }, 30 * 1000);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
+    const id = setTimeout(() => setHasTimedOut(true), 30_000);
+    return () => clearTimeout(id);
   }, [show]);
 
+  // Redirect helper - navigates and forces reload
+  const redirectTo = useCallback(async (url: string) => {
+    console.log("Redirecting to", url);
+    window.location.href = url;
+    await sleep(1000);
+    window.location.reload();
+  }, []);
 
-  // Poll suggested IP in device mode to detect when it's available
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const isFetchingRef = useRef(false);
-
+  // Local mode: poll HTTP health endpoint
   useEffect(() => {
-    // Only run in device mode with a postRebootAction
-    if (!isOnDevice || !postRebootAction || !show || !hasSeenDisconnect) {
-      return;
-    }
+    if (!isOnDevice || !postRebootAction || !show || !hasSeenDisconnect) return;
 
-    const checkPostRebootHealth = async () => {
-      // Don't start a new fetch if one is already in progress
-      if (isFetchingRef.current) {
-        return;
-      }
+    const checkHealth = async () => {
+      if (isCheckingRef.current) return;
 
-      // Cancel any pending fetch
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      abortControllerRef.current?.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      isCheckingRef.current = true;
 
-      // Create new abort controller for this fetch
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
-      isFetchingRef.current = true;
-
-      console.log('Checking post-reboot health endpoint:', postRebootAction.healthCheck);
-      const timeoutId = window.setTimeout(() => abortController.abort(), 2000);
+      console.log("Checking post-reboot health endpoint:", postRebootAction.healthCheck);
+      const timeout = setTimeout(() => controller.abort(), 2000);
       try {
-        const response = await fetch(
-          postRebootAction.healthCheck,
-          { signal: abortController.signal, }
-        );
+        // URL constructor handles relative paths, protocol-relative URLs, and absolute URLs
+        // Relative path → resolves against origin
+        // new URL("/device/status", "http://192.168.1.77").href
+        // // → "http://192.168.1.77/device/status"
 
-        if (response.ok) {
-          // Device is available, redirect to the specified URL
-          console.log('Device is available, redirecting to:', postRebootAction.redirectTo);
+        // // Protocol-relative URL → uses protocol from base, host from URL
+        // new URL("//192.168.1.100/device/status", "http://192.168.1.77").href
+        // // → "http://192.168.1.100/device/status"
 
-          // URL constructor handles all cases elegantly:
-          // - Absolute paths: resolved against current origin
-          // - Protocol-relative URLs: resolved with current protocol
-          // - Fully qualified URLs: used as-is
-          const targetUrl = new URL(postRebootAction.redirectTo, window.location.origin);
-          clearInterval(intervalId); // Stop polling before redirect
-
-          window.location.href = targetUrl.href;
-          // Add 1s delay between setting location.href and calling reload() to prevent reload from interrupting the navigation.
-          await sleep(1000);
-          window.location.reload();
+        // // Fully qualified URL → base is ignored entirely
+        // new URL("http://192.168.1.100/device/status", "http://192.168.1.77").href
+        // // → "http://192.168.1.100/device/status"
+        const healthUrl = new URL(postRebootAction.healthCheck, window.location.origin).href;
+        const res = await fetch(healthUrl, { signal: controller.signal });
+        if (res.ok) {
+          clearInterval(intervalId);
+          const targetUrl = new URL(postRebootAction.redirectTo, window.location.origin).href;
+          await redirectTo(targetUrl);
         }
       } catch (err) {
-        // Ignore errors - they're expected while device is rebooting
-        // Only log if it's not an abort error
-        if (err instanceof Error && err.name !== 'AbortError') {
-          console.debug('Error checking post-reboot health:', err);
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.debug("Health check failed:", err.message);
         }
       } finally {
-        clearTimeout(timeoutId);
-        isFetchingRef.current = false;
+        clearTimeout(timeout);
+        isCheckingRef.current = false;
       }
     };
 
-    // Start interval (check every 2 seconds)
-    const intervalId = setInterval(checkPostRebootHealth, 2000);
+    const intervalId = setInterval(checkHealth, 2000);
+    checkHealth();
 
-    // Also check immediately
-    checkPostRebootHealth();
-
-    // Cleanup on unmount or when dependencies change
     return () => {
       clearInterval(intervalId);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      isFetchingRef.current = false;
+      abortControllerRef.current?.abort();
+      isCheckingRef.current = false;
     };
-  }, [show, postRebootAction, hasTimedOut, hasSeenDisconnect]);
+  }, [show, postRebootAction, hasSeenDisconnect, redirectTo]);
+
+  // Cloud mode: wait for WebRTC reconnection via RPC, then redirect with versioned URL
+  useEffect(() => {
+    if (isOnDevice) return;
+    if (!postRebootAction || !deviceId || !show || !hasSeenDisconnect) return;
+
+    let cancelled = false;
+
+    const waitForReconnectAndRedirect = async () => {
+      if (isCheckingRef.current) return;
+      isCheckingRef.current = true;
+
+      try {
+        const { appVersion } = await getLocalVersion({
+          attemptTimeoutMs: 2000,
+        });
+
+        if (cancelled) return;
+
+        clearInterval(intervalId);
+        const targetUrl = buildCloudUrl(deviceId, appVersion, postRebootAction.redirectTo);
+        await redirectTo(targetUrl);
+      } catch (err) {
+        console.debug("Cloud reconnect check failed:", err);
+        isCheckingRef.current = false;
+      }
+    };
+
+    const intervalId = setInterval(waitForReconnectAndRedirect, 3000);
+    waitForReconnectAndRedirect();
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      isCheckingRef.current = false;
+    };
+  }, [show, postRebootAction, deviceId, hasSeenDisconnect, redirectTo]);
 
   return (
     <AnimatePresence>
@@ -531,8 +542,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
           }}
         >
           <OverlayContent>
-
-            <div className="flex flex-col items-start gap-y-4  w-full max-w-md">
+            <div className="flex w-full max-w-md flex-col items-start gap-y-4">
               <div className="h-[24px]">
                 <img src={LogoBlue} alt="" className="h-full dark:hidden" />
                 <img src={LogoWhite} alt="" className="hidden h-full dark:block" />
@@ -540,17 +550,16 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{hasTimedOut ? m.video_overlay_reboot_unable_to_reconnect() : m.video_overlay_reboot_device_is_rebooting()}</h2>
+                    <h2 className="text-xl font-bold">
+                      {hasTimedOut
+                        ? m.video_overlay_reboot_unable_to_reconnect()
+                        : m.video_overlay_reboot_device_is_rebooting()}
+                    </h2>
                     <p className="text-sm text-slate-700 dark:text-slate-300">
                       {hasTimedOut ? (
-                        <>
-                          {m.video_overlay_reboot_different_ip_message()}
-                        </>
+                        <>{m.video_overlay_reboot_different_ip_message()}</>
                       ) : (
-                        <>
-                          {m.video_overlay_reboot_please_wait_message()}
-
-                        </>
+                        <>{m.video_overlay_reboot_please_wait_message()}</>
                       )}
                     </p>
                   </div>

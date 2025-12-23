@@ -77,14 +77,13 @@ export function ConfirmDialog({
           <div className="pointer-events-auto relative w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-all dark:border-slate-800 dark:bg-slate-900">
             <div className="p-6">
               <div className="flex items-start gap-3.5">
-                <Icon aria-hidden="true" className={cx("size-[18px] shrink-0 mt-[2px]", iconClass)} />
-                <div className="flex-1 min-w-0 space-y-2">
-                  <h2 className="font-semibold text-slate-950 dark:text-white">
-                    {title}
-                  </h2>
-                  <div className="text-sm text-slate-700 dark:text-slate-300">
-                    {description}
-                  </div>
+                <Icon
+                  aria-hidden="true"
+                  className={cx("mt-[2px] size-[18px] shrink-0", iconClass)}
+                />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <h2 className="font-semibold text-slate-950 dark:text-white">{title}</h2>
+                  <div className="text-sm text-slate-700 dark:text-slate-300">{description}</div>
                 </div>
               </div>
 

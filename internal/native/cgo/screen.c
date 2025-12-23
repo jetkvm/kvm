@@ -29,6 +29,21 @@ void handle_indev_event(lv_event_t *e) {
     indev_handler(lv_event_get_code(e));
 }
 
+static void evdev_discovery_cb(lv_indev_t *indev, lv_evdev_type_t type, void *user_data) {
+    LV_UNUSED(user_data);
+
+    // Only handle touchscreen (absolute pointer devices)
+    if (type != LV_EVDEV_TYPE_ABS) {
+        return;
+    }
+
+    log_info("[C-UI-INIT] touchscreen discovered, configuring...");
+    lv_indev_set_group(indev, lv_group_get_default());
+    lv_indev_set_display(indev, disp);
+    lv_indev_add_event_cb(indev, handle_indev_event, LV_EVENT_ALL, NULL);
+    log_info("[C-UI-INIT] touchscreen configured successfully");
+}
+
 void lvgl_init(u_int16_t rotation) {
     log_trace("initalizing lvgl");
 
@@ -43,19 +58,19 @@ void lvgl_init(u_int16_t rotation) {
 
     lvgl_set_rotation(disp, rotation);
 
-    /* Linux input device init */
-    lv_indev_t *mouse = lv_evdev_create(LV_INDEV_TYPE_POINTER, "/dev/input/event1");
-    lv_indev_set_group(mouse, lv_group_get_default());
-    lv_indev_set_display(mouse, disp);
-
-    lv_indev_add_event_cb(mouse, handle_indev_event, LV_EVENT_ALL, NULL);
+    log_info("[C-UI-INIT] step 4/6: initializing input device discovery");
+    if (lv_evdev_discovery_start(evdev_discovery_cb, NULL) != LV_RESULT_OK) {
+        log_warn("[C-UI-INIT] step 4/6: evdev discovery failed to start, touchscreen may not work");
+    } else {
+        log_info("[C-UI-INIT] step 4/6: evdev discovery started");
+    }
 
     log_trace("initalizing ui");
 
     ui_init();
-    
+
     ui_set_rpc_handler((jetkvm_rpc_handler_t *)jetkvm_call_rpc_handler);
-    
+
     log_info("ui initalized");
 }
 
