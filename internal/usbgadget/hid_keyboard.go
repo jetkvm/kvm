@@ -94,7 +94,6 @@ type KeyboardState struct {
 	ScrollLock bool `json:"scroll_lock"`
 	Compose    bool `json:"compose"`
 	Kana       bool `json:"kana"`
-	Shift      bool `json:"shift"` // This is not part of the main USB HID spec
 	raw        byte
 }
 
@@ -115,7 +114,6 @@ func getKeyboardState(b byte) KeyboardState {
 		ScrollLock: b&KeyboardLedMaskScrollLock != 0,
 		Compose:    b&KeyboardLedMaskCompose != 0,
 		Kana:       b&KeyboardLedMaskKana != 0,
-		Shift:      b&KeyboardLedMaskShift != 0,
 		raw:        b,
 	}
 }

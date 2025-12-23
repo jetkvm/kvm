@@ -41,7 +41,8 @@ type Session struct {
 	hidQueueLock             sync.Mutex
 	hidQueue                 []chan hidQueueMessage
 
-	keysDownStateQueue chan usbgadget.KeysDownState
+	keysDownStateQueue *utils.OverwriteChan[usbgadget.KeysDownState]
+	ledStateQueue      *utils.OverwriteChan[usbgadget.KeyboardState]
 }
 
 var activeSessions atomic.Int32
@@ -154,6 +155,7 @@ func (s *Session) startupSession() {
 	s.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	s.initQueues()
 	s.initKeysDownStateQueue()
+	s.initLedStateQueue()
 
 	go func() {
 		for msg := range s.rpcQueue {
@@ -197,8 +199,13 @@ func (s *Session) shutdownSession() {
 	}
 
 	if s.keysDownStateQueue != nil {
-		close(s.keysDownStateQueue)
+		s.keysDownStateQueue.Close()
 		s.keysDownStateQueue = nil
+	}
+
+	if s.ledStateQueue != nil {
+		s.ledStateQueue.Close()
+		s.ledStateQueue = nil
 	}
 
 	if s.shouldUmountVirtualMedia {
@@ -245,16 +252,16 @@ func (s *Session) handleQueue(index int) {
 	}
 }
 
-const keysDownStateQueueSize = 64
+const keysDownStateQueueSize = 16
 
 func (s *Session) initKeysDownStateQueue() {
 	// serialise outbound key state reports so unreliable links can't stall input handling
-	s.keysDownStateQueue = make(chan usbgadget.KeysDownState, keysDownStateQueueSize)
+	s.keysDownStateQueue = utils.NewOverwriteChan[usbgadget.KeysDownState](keysDownStateQueueSize)
 	go s.handleKeysDownStateQueue()
 }
 
 func (s *Session) handleKeysDownStateQueue() {
-	for state := range s.keysDownStateQueue {
+	for state := range s.keysDownStateQueue.Chan() {
 		s.reportHidRPCKeysDownState(state)
 	}
 }
@@ -264,11 +271,29 @@ func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
 		return
 	}
 
-	select {
-	case s.keysDownStateQueue <- state:
-	default:
-		hidRPCLogger.Error().Msg("dropping keys down state update; queue full")
+	s.keysDownStateQueue.Send(state)
+}
+
+const ledStateQueueSize = 4
+
+func (s *Session) initLedStateQueue() {
+	// serialise outbound key state reports so unreliable links can't stall input handling
+	s.ledStateQueue = utils.NewOverwriteChan[usbgadget.KeyboardState](ledStateQueueSize)
+	go s.handleLedStateQueue()
+}
+
+func (s *Session) handleLedStateQueue() {
+	for state := range s.ledStateQueue.Chan() {
+		s.reportHidRPCKeyboardLedState(state)
 	}
+}
+
+func (s *Session) enqueueLedState(state usbgadget.KeyboardState) {
+	if s == nil || s.ledStateQueue == nil {
+		return
+	}
+
+	s.ledStateQueue.Send(state)
 }
 
 func getOnHidMessageHandler(session *Session, l *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {

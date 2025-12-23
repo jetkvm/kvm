@@ -171,7 +171,7 @@ func handleHidRPCKeypressKeepAlive(session *Session) error {
 }
 
 func handleHidRPCKeyboardInput(message hidrpc.Message) error {
-	logger := hidRPCLogger.With().Interface("message", message).Logger()
+	logger := hidRPCLogger.With().Object("message", message).Logger()
 
 	switch message.Type() {
 	case hidrpc.TypeKeypressReport:
@@ -180,7 +180,7 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 			logger.Warn().Err(err).Msg("failed to get keypress report")
 			return err
 		}
-		logger.Debug().Interface("keypressReport", keypressReport).Msg("handling key press")
+		logger.Debug().Object("keypressReport", keypressReport).Msg("handling key press")
 		return rpcKeypressReport(keypressReport.Key, keypressReport.Press)
 	case hidrpc.TypeKeyboardReport:
 		keyboardReport, err := message.KeyboardReport()
@@ -188,7 +188,7 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 			logger.Warn().Err(err).Msg("failed to get keyboard report")
 			return err
 		}
-		logger.Debug().Interface("keyboardReport", keyboardReport).Msg("handling keyboard")
+		logger.Debug().Object("keyboardReport", keyboardReport).Msg("handling keyboard")
 		return rpcKeyboardReport(keyboardReport.Modifier, keyboardReport.Keys)
 	}
 
@@ -267,10 +267,8 @@ func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
 
 func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
 	if !s.hidRPCAvailable {
-		usbLogger.Debug().Interface("state", state).Msg("reporting keys down state")
 		writeJSONRPCEvent("keysDownState", state, s)
 	}
-	usbLogger.Debug().Interface("state", state).Msg("reporting keys down state, calling reportHidRPC")
 	reportHidRPC(state, s)
 }
 

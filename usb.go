@@ -21,7 +21,7 @@ func initUsbGadget() *usbgadget.UsbGadget {
 
 	gadget.SetOnKeyboardStateChange(func(state usbgadget.KeyboardState) {
 		if currentSession != nil {
-			currentSession.reportHidRPCKeyboardLedState(state)
+			currentSession.enqueueLedState(state)
 		}
 	})
 
