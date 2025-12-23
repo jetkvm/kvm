@@ -91,6 +91,6 @@ func (o *Once) Do(f func()) {
 	o.mu.Do(f)
 }
 
-// logDangledLocks is a no-op in non-synctrace builds
+// LogDangledLocks is a no-op in non-synctrace builds
 func LogDangledLocks() {
 }

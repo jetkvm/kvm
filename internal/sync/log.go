@@ -105,10 +105,8 @@ func increaseUnlockCount(ptr uintptr) {
 	indexMu.Unlock()
 
 	if !ok {
-		logLockTrack(ptr).Warn().Interface("entry", entry).Msg("Unlock called without prior Lock")
-	}
-
-	if delta < 0 {
+		logLockTrack(ptr).Warn().Interface("entry", entry).Msg("Unlock called without any prior Lock")
+	} else if delta < 0 {
 		logLockTrack(ptr).Warn().Interface("entry", entry).Msg("Unlock called more times than Lock")
 	}
 }
@@ -166,7 +164,7 @@ func logTryRLockResult(t trackable, l bool) {
 }
 
 // You can call this function at any time to log any dangled locks currently tracked
-// it's not an error for there to be open locks, but this can help identify any
+// It is not an error for there to be open locks, but this can help identify any
 // potential issues if called judiciously
 func LogDangledLocks() {
 	defaultLogger.Info().Msgf("Checking %v tracked locks for dangles", len(tracking))
