@@ -27,6 +27,9 @@ var uvcConfig = gadgetConfigItem{
 		// allocation via tx-fifo-resize device tree property.
 		"streaming_bulk":      "0",    // isochronous mode (required for UVC to work)
 		"streaming_maxpacket": "3072", // 3x multiplier: required for UVC to work reliably
+		// Zero-copy mode eliminates kernel memcpy per frame, reducing CPU overhead.
+		// Requires Rockchip kernel with CONFIG_ARCH_ROCKCHIP and CONFIG_NO_GKI.
+		"uvc_zero_copy": "1",
 	},
 }
 

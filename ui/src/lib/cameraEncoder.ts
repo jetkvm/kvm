@@ -66,10 +66,10 @@ export interface CameraEncoderEvents {
 const DEFAULT_CONFIG: EncoderConfig = {
   width: 1920,
   height: 1080,
-  frameRate: 60, // 60fps target for smooth video
-  bitrate: 8_000_000, // 8 Mbps for H.264 at 60fps
+  frameRate: 30, // 30fps max for camera passthrough
+  bitrate: 9_000_000, // 9 Mbps to match MJPEG 35% bandwidth (~75KB × 15fps)
   quality: 0.65, // 65% quality for MJPEG (balance size/quality)
-  keyFrameInterval: 2, // keyframe every 2 seconds
+  keyFrameInterval: 1, // keyframe every 1s (balance latency/efficiency)
 };
 
 /**
@@ -400,6 +400,14 @@ export class CameraEncoder {
 
     // Resume MJPEG capture (needs to restart callback/interval)
     if (this.codec === 'mjpeg' && this.mjpegWorker && this.videoElement) {
+      // Ensure video element is playing - Chrome may have paused it while we were paused
+      // (this can happen when tab is inactive or to save resources)
+      if (this.videoElement.paused) {
+        console.log('[CameraEncoder] Video element was paused, restarting playback');
+        this.videoElement.play().catch((err) => {
+          console.warn('[CameraEncoder] Failed to resume video playback:', err);
+        });
+      }
       this.startMjpegCapture();
     }
     // Note: H.264 loop is already running, just waiting - setting state to 'running' wakes it up
@@ -563,13 +571,12 @@ export class CameraEncoder {
 
   private handleH264Chunk(chunk: EncodedVideoChunk, _metadata?: EncodedVideoChunkMetadata): void {
     // Skip frames that are too small - likely incomplete from encoder warm-up
-    // A valid 1080p H.264 IDR frame should be at least 5KB, P-frames at least 1KB
+    // A valid 1080p H.264 IDR frame should be at least 5KB
+    // P-frames can be very small (100-200 bytes) for static scenes - don't filter them
     const minKeyFrameSize = 5000;
-    const minPFrameSize = 1000;
-    const minSize = chunk.type === 'key' ? minKeyFrameSize : minPFrameSize;
 
-    if (chunk.byteLength < minSize) {
-      console.log(`[CameraEncoder] Skipping small ${chunk.type} frame: ${chunk.byteLength} bytes (min: ${minSize})`);
+    if (chunk.type === 'key' && chunk.byteLength < minKeyFrameSize) {
+      console.log(`[CameraEncoder] Skipping small key frame: ${chunk.byteLength} bytes (min: ${minKeyFrameSize})`);
       return;
     }
 
@@ -662,6 +669,20 @@ export class CameraEncoder {
    */
   private captureWithVideoFrameCallback(): void {
     if (this._state !== 'running' || !this.videoElement || !hasRequestVideoFrameCallback()) {
+      return;
+    }
+
+    // Ensure video is playing - requestVideoFrameCallback won't fire for paused video
+    if (this.videoElement.paused) {
+      console.log('[CameraEncoder] Video paused in capture callback, restarting');
+      this.videoElement.play().then(() => {
+        // Retry after play starts
+        if (this._state === 'running') {
+          this.captureWithVideoFrameCallback();
+        }
+      }).catch((err) => {
+        console.warn('[CameraEncoder] Failed to restart video:', err);
+      });
       return;
     }
 

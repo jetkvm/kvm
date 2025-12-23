@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	uvcBufferCount = 8   // 8 buffers for smooth 24fps pipelining (reduces DQBUF blocking)
+	uvcBufferCount = 3   // 3 buffers for low-latency streaming (double-buffer + 1 for jitter)
 	uvcLogInterval = 240 // Log every N frames (~10 seconds at 24fps)
 )
 
@@ -456,31 +456,33 @@ func (m *Manager) HandleH264Frame(frame []byte) {
 // Browser sends H.264 when UVC host negotiates H.264 format.
 // HOTPATH: Fully optimized - bypasses NAL scanning since browser sends complete H.264.
 func (m *Manager) HandleCameraH264Frame(frame []byte) {
+	// HOTPATH: Cache atomic loads once at function entry to avoid redundant loads
+	enabled := m.enabled.Load()
+	isCamera := m.source.IsCamera()
+	isMjpeg := m.uvcMjpegFast.Load()
+
 	// Debug logging for first few frames to trace issues
 	frameNum := m.cameraFrameCount.Add(1)
-	if frameNum <= 5 {
-		enabled := m.enabled.Load()
-		isCamera := m.source.IsCamera()
-		isMjpeg := m.uvcMjpegFast.Load()
-		if m.camLog != nil {
-			m.camLog.Info().
-				Int32("frame", frameNum).
-				Int("size", len(frame)).
-				Bool("enabled", enabled).
-				Bool("isCamera", isCamera).
-				Bool("isMjpeg", isMjpeg).
-				Msg("HandleCameraH264Frame called")
-		}
+	if frameNum <= 5 && m.camLog != nil {
+		m.camLog.Info().
+			Int32("frame", frameNum).
+			Int("size", len(frame)).
+			Bool("enabled", enabled).
+			Bool("isCamera", isCamera).
+			Bool("isMjpeg", isMjpeg).
+			Msg("HandleCameraH264Frame called")
 	}
 
 	// Only process camera frames if camera passthrough is enabled and source is camera
-	if !m.enabled.Load() || !m.source.IsCamera() {
+	// Use cached values from function entry
+	if !enabled || !isCamera {
 		return
 	}
 
 	// Skip H.264 frames when MJPEG format is selected
 	// (browser should send MJPEG in that case, not H.264)
-	if m.uvcMjpegFast.Load() {
+	// Use cached value from function entry
+	if isMjpeg {
 		return
 	}
 
@@ -522,10 +524,12 @@ const spsInjectInterval = 240
 // writeFrameToUVC writes an H.264 frame to the UVC gadget (HDMI loopback path).
 // Handles SPS/PPS caching and injection for proper H.264 stream initialization.
 // HOTPATH: Optimized with quick NAL check - avoids full frame scan for P-frames.
+// NOTE: Caller (HandleH264Frame) guarantees source is HDMI - no need to recheck.
 func (m *Manager) writeFrameToUVC(frame []byte) {
-	// Skip H.264 frames when MJPEG format is selected AND source is HDMI
+	// Skip H.264 frames when MJPEG format is selected
 	// (HDMI MJPEG frames are handled by HandleMjpegFrame)
-	if m.uvcMjpegFast.Load() && m.source.IsHDMI() {
+	// NOTE: IsHDMI check removed - caller HandleH264Frame already verified this
+	if m.uvcMjpegFast.Load() {
 		return
 	}
 
@@ -671,14 +675,15 @@ func (m *Manager) HandleMjpegFrame(frame []byte) {
 // Browser sends MJPEG when UVC host negotiates MJPEG format.
 // HOTPATH: Fully lock-free using atomic flags - no mutex in frame path.
 func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
+	// HOTPATH: Cache atomic loads once at function entry to avoid redundant loads
+	streaming := m.uvcStreamingFast.Load()
+	mjpeg := m.uvcMjpegFast.Load()
+	enabled := m.enabled.Load()
+	isCamera := m.source.IsCamera()
+
 	// Debug: log first few frames to diagnose issues
 	count := m.cameraFrameCount.Add(1)
 	if count <= 5 && m.camLog != nil {
-		streaming := m.uvcStreamingFast.Load()
-		mjpeg := m.uvcMjpegFast.Load()
-		enabled := m.enabled.Load()
-		isCamera := m.source.IsCamera()
-
 		// Check JPEG validity (SOI=0xFFD8, EOI=0xFFD9)
 		validJpeg := len(frame) >= 4 &&
 			frame[0] == 0xFF && frame[1] == 0xD8 &&
@@ -697,13 +702,13 @@ func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
 			Msg("HandleCameraMjpegFrame: checking conditions")
 	}
 
-	// HOTPATH: Atomic fast-path checks - skip frames early
-	if !m.uvcStreamingFast.Load() || !m.uvcMjpegFast.Load() {
+	// HOTPATH: Use cached values for all checks
+	if !streaming || !mjpeg {
 		return
 	}
 
 	// Only process camera frames if camera passthrough is enabled and source is camera
-	if !m.enabled.Load() || !m.source.IsCamera() {
+	if !enabled || !isCamera {
 		return
 	}
 

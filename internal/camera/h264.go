@@ -72,23 +72,34 @@ func (c *H264ParamCache) AnalyzeAndUpdate(frame []byte) FrameInfo {
 
 		case NALTypeSPS:
 			info.HasSPS = true
-			// Store SPS with 4-byte start code
-			newSPS := make([]byte, 4+len(nalu))
+			// HOTPATH: Check if SPS unchanged WITHOUT allocating first
+			// This avoids heap allocation on every IDR frame when SPS is stable
+			spsLen := 4 + len(nalu)
+			if len(c.sps) == spsLen &&
+				c.sps[0] == 0 && c.sps[1] == 0 && c.sps[2] == 0 && c.sps[3] == 1 &&
+				bytes.Equal(c.sps[4:], nalu) {
+				break // No change, skip allocation
+			}
+			// Only allocate when actually needed
+			newSPS := make([]byte, spsLen)
 			copy(newSPS, startCode4)
 			copy(newSPS[4:], nalu)
-			if !bytes.Equal(c.sps, newSPS) {
-				c.sps = newSPS
-			}
+			c.sps = newSPS
 
 		case NALTypePPS:
 			info.HasPPS = true
-			// Store PPS with 3-byte start code
-			newPPS := make([]byte, 3+len(nalu))
+			// HOTPATH: Check if PPS unchanged WITHOUT allocating first
+			ppsLen := 3 + len(nalu)
+			if len(c.pps) == ppsLen &&
+				c.pps[0] == 0 && c.pps[1] == 0 && c.pps[2] == 1 &&
+				bytes.Equal(c.pps[3:], nalu) {
+				break // No change, skip allocation
+			}
+			// Only allocate when actually needed
+			newPPS := make([]byte, ppsLen)
 			copy(newPPS, startCode3)
 			copy(newPPS[3:], nalu)
-			if !bytes.Equal(c.pps, newPPS) {
-				c.pps = newPPS
-			}
+			c.pps = newPPS
 		}
 	})
 
@@ -367,10 +378,12 @@ func QuickFrameInfo(data []byte) FrameInfo {
 		return info
 	}
 
-	// Only scan first 200 bytes - SPS/PPS/IDR NALs start at frame beginning
+	// HOTPATH: H.264 NAL units start at offset 0-4, 32 bytes is more than sufficient
+	// Reduced from 200 bytes for ~6x faster scanning
+	const maxScanForNAL = 32
 	scanLimit := len(data)
-	if scanLimit > 200 {
-		scanLimit = 200
+	if scanLimit > maxScanForNAL {
+		scanLimit = maxScanForNAL
 	}
 
 	// Find first NAL unit

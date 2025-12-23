@@ -63,18 +63,6 @@ const usbPresets = [
     },
   },
   {
-    label: m.usb_device_keyboard_mouse_audio_and_uvc(),
-    value: "keyboard_mouse_audio_and_uvc",
-    config: {
-      keyboard: true,
-      absolute_mouse: true,
-      relative_mouse: true,
-      mass_storage: false,
-      audio: true,
-      uvc: true,
-    },
-  },
-  {
     label: m.usb_device_keyboard_mouse_and_mass_storage(),
     value: "keyboard_mouse_and_mass_storage",
     config: {
