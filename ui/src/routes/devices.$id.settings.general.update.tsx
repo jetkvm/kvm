@@ -11,7 +11,12 @@ import LoadingSpinner from "@components/LoadingSpinner";
 import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
-import { checkUpdateComponents, SystemVersionInfo, UpdateComponents, updateParams } from "@/utils/jsonrpc";
+import {
+  checkUpdateComponents,
+  SystemVersionInfo,
+  UpdateComponents,
+  updateParams,
+} from "@/utils/jsonrpc";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
@@ -22,8 +27,14 @@ export default function SettingsGeneralUpdateRoute() {
   const { setModalView, otaState, shouldReload, setShouldReload } = useUpdateStore();
   const { send } = useJsonRpc();
 
-  const customAppVersion = useMemo(() => searchParams.get("custom_app_version") || undefined, [searchParams]);
-  const customSystemVersion = useMemo(() => searchParams.get("custom_system_version") || undefined, [searchParams]);
+  const customAppVersion = useMemo(
+    () => searchParams.get("custom_app_version") || undefined,
+    [searchParams],
+  );
+  const customSystemVersion = useMemo(
+    () => searchParams.get("custom_system_version") || undefined,
+    [searchParams],
+  );
   const resetConfig = useMemo(() => searchParams.get("reset_config") === "true", [searchParams]);
 
   const onClose = useCallback(async () => {
@@ -31,7 +42,7 @@ export default function SettingsGeneralUpdateRoute() {
 
     if (shouldReload) {
       setShouldReload(false);
-      await sleep(1000);      // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
+      await sleep(1000); // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
       window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
     }
   }, [navigate, setShouldReload, shouldReload]);
@@ -42,20 +53,23 @@ export default function SettingsGeneralUpdateRoute() {
     setModalView("updating");
   }, [send, setModalView, setShouldReload]);
 
-  const onConfirmCustomUpdate = useCallback((appTargetVersion?: string, systemTargetVersion?: string) => {
-    const components: UpdateComponents = {};
-    if (appTargetVersion) components.app = appTargetVersion;
-    if (systemTargetVersion) components.system = systemTargetVersion;
+  const onConfirmCustomUpdate = useCallback(
+    (appTargetVersion?: string, systemTargetVersion?: string) => {
+      const components: UpdateComponents = {};
+      if (appTargetVersion) components.app = appTargetVersion;
+      if (systemTargetVersion) components.system = systemTargetVersion;
 
-    setShouldReload(true);
-    setModalView("updating");
+      setShouldReload(true);
+      setModalView("updating");
 
-    send("tryUpdateComponents", {
-      params: { components, },
-      includePreRelease: false,
-      resetConfig,
-    });
-  }, [resetConfig, send, setModalView, setShouldReload]);
+      send("tryUpdateComponents", {
+        params: { components },
+        includePreRelease: false,
+        resetConfig,
+      });
+    },
+    [resetConfig, send, setModalView, setShouldReload],
+  );
 
   useEffect(() => {
     if (otaState.updating) {
@@ -69,13 +83,15 @@ export default function SettingsGeneralUpdateRoute() {
     }
   }, [otaState.error, otaState.updating, setModalView, updateSuccess]);
 
-  return <Dialog
-    onClose={onClose}
-    onConfirmUpdate={onConfirmUpdate}
-    onConfirmCustomUpdate={onConfirmCustomUpdate}
-    customAppVersion={customAppVersion}
-    customSystemVersion={customSystemVersion}
-  />;
+  return (
+    <Dialog
+      onClose={onClose}
+      onConfirmUpdate={onConfirmUpdate}
+      onConfirmCustomUpdate={onConfirmCustomUpdate}
+      customAppVersion={customAppVersion}
+      customSystemVersion={customSystemVersion}
+    />
+  );
 }
 
 export function Dialog({
@@ -105,8 +121,7 @@ export function Dialog({
 
   const onFinishedLoading = useCallback(
     (versionInfo: SystemVersionInfo) => {
-      const hasUpdate =
-        versionInfo?.systemUpdateAvailable || versionInfo?.appUpdateAvailable;
+      const hasUpdate = versionInfo?.systemUpdateAvailable || versionInfo?.appUpdateAvailable;
 
       setVersionInfo(versionInfo);
 
@@ -156,10 +171,7 @@ export function Dialog({
         )}
 
         {modalView === "upToDate" && (
-          <SystemUpToDateState
-            checkUpdate={() => setModalView("loading")}
-            onClose={onClose}
-          />
+          <SystemUpToDateState checkUpdate={() => setModalView("loading")} onClose={onClose} />
         )}
 
         {modalView === "updateCompleted" && <UpdateCompletedState onClose={onClose} />}
@@ -211,7 +223,7 @@ function LoadingState({
       .then(async versionInfo => {
         // Add a small delay to ensure it's not just flickering
         await sleep(600);
-        return versionInfo
+        return versionInfo;
       })
       .then(versionInfo => {
         if (!signal.aborted) {
@@ -268,15 +280,13 @@ function UpdatingDeviceState({
     system: UpdatePart;
     app: UpdatePart;
     areAllUpdatesComplete: boolean;
-  };
+  }
 
   const progress = useMemo<ProgressSummary>(() => {
     const calculateOverallProgress = (type: "system" | "app") => {
       const downloadProgress = Math.round((otaState[`${type}DownloadProgress`] || 0) * 100);
       const updateProgress = Math.round((otaState[`${type}UpdateProgress`] || 0) * 100);
-      const verificationProgress = Math.round(
-        (otaState[`${type}VerificationProgress`] || 0) * 100,
-      );
+      const verificationProgress = Math.round((otaState[`${type}VerificationProgress`] || 0) * 100);
 
       if (!downloadProgress && !updateProgress && !verificationProgress) {
         return 0;
@@ -284,16 +294,17 @@ function UpdatingDeviceState({
 
       if (type === "app") {
         // App: 55% download, 54% verification, 1% update(There is no "real" update for the app)
-        return Math.round(Math.min(
-          downloadProgress * 0.55 + verificationProgress * 0.54 + updateProgress * 0.01,
-          100,
-        ));
+        return Math.round(
+          Math.min(
+            downloadProgress * 0.55 + verificationProgress * 0.54 + updateProgress * 0.01,
+            100,
+          ),
+        );
       } else {
         // System: 10% download, 10% verification, 80% update
-        return Math.round(Math.min(
-          downloadProgress * 0.1 + verificationProgress * 0.1 + updateProgress * 0.8,
-          100,
-        ));
+        return Math.round(
+          Math.min(downloadProgress * 0.1 + verificationProgress * 0.1 + updateProgress * 0.8, 100),
+        );
       }
     };
 
@@ -302,7 +313,8 @@ function UpdatingDeviceState({
       const verifiedAt = otaState[`${type}VerifiedAt`];
       const updatedAt = otaState[`${type}UpdatedAt`];
 
-      const update_type = () => (type === "system" ? m.general_update_system_type() : m.general_update_application_type());
+      const update_type = () =>
+        type === "system" ? m.general_update_system_type() : m.general_update_application_type();
 
       if (!otaState.metadataFetchedAt) {
         return m.general_update_status_fetching();
@@ -321,10 +333,10 @@ function UpdatingDeviceState({
       return !!otaState[`${type}UpdatedAt`];
     };
 
-    const systemUpdatePending = otaState.systemUpdatePending
+    const systemUpdatePending = otaState.systemUpdatePending;
     const systemUpdateComplete = isUpdateComplete("system");
 
-    const appUpdatePending = otaState.appUpdatePending
+    const appUpdatePending = otaState.appUpdatePending;
     const appUpdateComplete = isUpdateComplete("app");
 
     let areAllUpdatesComplete: boolean;
@@ -383,7 +395,10 @@ function UpdatingDeviceState({
               )}
 
               {progress.system.pending && (
-                <UpdatingStatusCard label={m.general_update_system_update_title()} part={progress.system} />
+                <UpdatingStatusCard
+                  label={m.general_update_system_update_title()}
+                  part={progress.system}
+                />
               )}
 
               {progress.system.pending && progress.app.pending && (
@@ -391,7 +406,10 @@ function UpdatingDeviceState({
               )}
 
               {progress.app.pending && (
-                <UpdatingStatusCard label={m.general_update_app_update_title()} part={progress.app} />
+                <UpdatingStatusCard
+                  label={m.general_update_app_update_title()}
+                  part={progress.app}
+                />
               )}
             </>
           )}
@@ -427,7 +445,12 @@ function SystemUpToDateState({
         </p>
 
         <div className="mt-4 flex gap-x-2">
-          <Button size="SM" theme="light" text={m.general_update_check_again_button()} onClick={checkUpdate} />
+          <Button
+            size="SM"
+            theme="light"
+            text={m.general_update_check_again_button()}
+            onClick={checkUpdate}
+          />
           <Button size="SM" theme="blank" text={m.back()} onClick={onClose} />
         </div>
       </div>
@@ -457,13 +480,15 @@ function UpdateAvailableState({
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
           {versionInfo?.systemUpdateAvailable ? (
             <>
-              <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.local?.systemVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.systemVersion}
+              <span className="font-semibold">{m.general_update_system_type()}</span>:{" "}
+              {versionInfo?.remote?.systemVersion}
               <br />
             </>
           ) : null}
           {versionInfo?.appUpdateAvailable ? (
             <>
-              <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.local?.appVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.appVersion}
+              <span className="font-semibold">{m.general_update_application_type()}</span>:{" "}
+              {versionInfo?.remote?.appVersion}
             </>
           ) : null}
           {versionInfo?.willDisableAutoUpdate ? (
@@ -473,8 +498,18 @@ function UpdateAvailableState({
           ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text={m.general_update_now_button()} onClick={onConfirm} />
-          <Button size="SM" theme="light" text={m.general_update_later_button()} onClick={onClose} />
+          <Button
+            size="SM"
+            theme="primary"
+            text={m.general_update_now_button()}
+            onClick={onConfirm}
+          />
+          <Button
+            size="SM"
+            theme="light"
+            text={m.general_update_later_button()}
+            onClick={onClose}
+          />
         </div>
       </div>
     </div>

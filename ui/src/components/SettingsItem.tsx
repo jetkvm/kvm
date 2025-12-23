@@ -43,10 +43,7 @@ export function SettingsItem(props: SettingsItemProps) {
 
   return (
     <label
-      className={cx(
-        "flex select-none items-center justify-between gap-x-8 rounded",
-        className,
-      )}
+      className={cx("flex items-center justify-between gap-x-8 rounded select-none", className)}
     >
       <div className="space-y-0.5">
         <div className="flex items-center gap-x-2">

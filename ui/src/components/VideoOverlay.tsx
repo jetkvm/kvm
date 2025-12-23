@@ -16,7 +16,6 @@ import { isOnDevice } from "@/main";
 import { sleep, buildCloudUrl } from "@/utils";
 import { getLocalVersion } from "@/utils/jsonrpc";
 
-
 interface OverlayContentProps {
   readonly children: React.ReactNode;
 }
@@ -87,9 +86,7 @@ export function LoadingConnectionOverlay({ show, text }: LoadingConnectionOverla
               <div className="animate flex h-12 w-12 items-center justify-center">
                 <LoadingSpinner className="h-8 w-8 text-blue-800 dark:text-blue-200" />
               </div>
-              <p className="text-center text-sm text-slate-700 dark:text-slate-300">
-                {text}
-              </p>
+              <p className="text-center text-sm text-slate-700 dark:text-slate-300">{text}</p>
             </div>
           </OverlayContent>
         </motion.div>
@@ -126,7 +123,9 @@ export function ConnectionFailedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{m.video_overlay_connection_issue_title()}</h2>
+                    <h2 className="text-xl font-bold">
+                      {m.video_overlay_connection_issue_title()}
+                    </h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
                       <li>{m.video_overlay_conn_verify_power()}</li>
                       <li>{m.video_overlay_conn_check_cables()}</li>
@@ -164,9 +163,7 @@ interface PeerConnectionDisconnectedOverlay {
   readonly show: boolean;
 }
 
-export function PeerConnectionDisconnectedOverlay({
-  show,
-}: PeerConnectionDisconnectedOverlay) {
+export function PeerConnectionDisconnectedOverlay({ show }: PeerConnectionDisconnectedOverlay) {
   return (
     <AnimatePresence>
       {show && (
@@ -186,7 +183,9 @@ export function PeerConnectionDisconnectedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{m.video_overlay_connection_issue_title()}</h2>
+                    <h2 className="text-xl font-bold">
+                      {m.video_overlay_connection_issue_title()}
+                    </h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
                       <li>{m.video_overlay_conn_verify_power()}</li>
                       <li>{m.video_overlay_conn_check_cables()}</li>
@@ -415,6 +414,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
   useEffect(() => {
     if (!show || hasSeenDisconnect) return;
     if (["disconnected", "closed", "failed"].includes(peerConnectionState ?? "")) {
+      console.log("hasSeenDisconnect", hasSeenDisconnect);
       setHasSeenDisconnect(true);
     }
   }, [show, peerConnectionState, hasSeenDisconnect]);
@@ -449,6 +449,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
       abortControllerRef.current = controller;
       isCheckingRef.current = true;
 
+      console.log("Checking post-reboot health endpoint:", postRebootAction.healthCheck);
       const timeout = setTimeout(() => controller.abort(), 2000);
       try {
         // URL constructor handles relative paths, protocol-relative URLs, and absolute URLs
@@ -541,8 +542,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
           }}
         >
           <OverlayContent>
-
-            <div className="flex flex-col items-start gap-y-4  w-full max-w-md">
+            <div className="flex w-full max-w-md flex-col items-start gap-y-4">
               <div className="h-[24px]">
                 <img src={LogoBlue} alt="" className="h-full dark:hidden" />
                 <img src={LogoWhite} alt="" className="hidden h-full dark:block" />
@@ -550,17 +550,16 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{hasTimedOut ? m.video_overlay_reboot_unable_to_reconnect() : m.video_overlay_reboot_device_is_rebooting()}</h2>
+                    <h2 className="text-xl font-bold">
+                      {hasTimedOut
+                        ? m.video_overlay_reboot_unable_to_reconnect()
+                        : m.video_overlay_reboot_device_is_rebooting()}
+                    </h2>
                     <p className="text-sm text-slate-700 dark:text-slate-300">
                       {hasTimedOut ? (
-                        <>
-                          {m.video_overlay_reboot_different_ip_message()}
-                        </>
+                        <>{m.video_overlay_reboot_different_ip_message()}</>
                       ) : (
-                        <>
-                          {m.video_overlay_reboot_please_wait_message()}
-
-                        </>
+                        <>{m.video_overlay_reboot_please_wait_message()}</>
                       )}
                     </p>
                   </div>

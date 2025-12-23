@@ -5,10 +5,10 @@ import { getDeviceUiPath } from "@hooks/useAppNavigation";
 
 const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
   return redirect(getDeviceUiPath("/settings/general", params.id));
-}
+};
 
 export default function SettingIndexRoute() {
-  return (<></>);
+  return <></>;
 }
 
 SettingIndexRoute.loader = loader;

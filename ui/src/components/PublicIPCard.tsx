@@ -9,7 +9,6 @@ import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { formatters } from "@/utils";
 
-
 const TimeAgoLabel = ({ date }: { date: Date }) => {
   const [timeAgo, setTimeAgo] = useState<string | undefined>(formatters.timeAgo(date));
   useEffect(() => {
@@ -19,11 +18,7 @@ const TimeAgoLabel = ({ date }: { date: Date }) => {
     return () => clearInterval(interval);
   }, [date]);
 
-  return (
-    <span className="text-sm text-slate-600 dark:text-slate-400 select-none">
-      {timeAgo}
-    </span>
-  );
+  return <span className="text-sm text-slate-600 select-none dark:text-slate-400">{timeAgo}</span>;
 };
 
 export default function PublicIPCard() {
@@ -34,19 +29,23 @@ export default function PublicIPCard() {
     send("getPublicIPAddresses", { refresh: true }, (resp: JsonRpcResponse) => {
       setPublicIPs([]);
       if ("error" in resp) {
-        notifications.error(m.public_ip_card_refresh_error({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.public_ip_card_refresh_error({ error: resp.error.data || m.unknown_error() }),
+        );
         return;
       }
       const publicIPs = resp.result as PublicIP[];
       // sort the public IPs by IP address
       // IPv6 addresses are sorted after IPv4 addresses
-      setPublicIPs(publicIPs.sort(({ ip: aIp }, { ip: bIp }) => {
-        const aIsIPv6 = aIp.includes(":");
-        const bIsIPv6 = bIp.includes(":");
-        if (aIsIPv6 && !bIsIPv6) return 1;
-        if (!aIsIPv6 && bIsIPv6) return -1;
-        return aIp.localeCompare(bIp);
-      }));
+      setPublicIPs(
+        publicIPs.sort(({ ip: aIp }, { ip: bIp }) => {
+          const aIsIPv6 = aIp.includes(":");
+          const bIsIPv6 = bIp.includes(":");
+          if (aIsIPv6 && !bIsIPv6) return 1;
+          if (!aIsIPv6 && bIsIPv6) return -1;
+          return aIp.localeCompare(bIp);
+        }),
+      );
     });
   }, [send, setPublicIPs]);
 
@@ -89,10 +88,11 @@ export default function PublicIPCard() {
             <div className="flex gap-x-6 gap-y-2">
               <div className="flex-1 space-y-2">
                 {publicIPs?.map(ip => (
-                  <div key={ip.ip} className="flex justify-between border-slate-800/10 pt-2 dark:border-slate-300/20">
-                    <span className="text-sm font-medium">
-                      {ip.ip}
-                    </span>
+                  <div
+                    key={ip.ip}
+                    className="flex justify-between border-slate-800/10 pt-2 dark:border-slate-300/20"
+                  >
+                    <span className="text-sm font-medium">{ip.ip}</span>
                     {ip.last_updated && <TimeAgoLabel date={new Date(ip.last_updated)} />}
                   </div>
                 ))}

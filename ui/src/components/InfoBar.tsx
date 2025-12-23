@@ -6,7 +6,7 @@ import {
   useRTCStore,
   useSettingsStore,
   useVideoStore,
-  VideoState
+  VideoState,
 } from "@hooks/stores";
 import { useHidRpc } from "@hooks/useHidRpc";
 import { keys, modifiers } from "@/keyboardMappings";
@@ -48,10 +48,10 @@ export default function InfoBar() {
   }, [keysDownState, showPressedKeys]);
 
   return (
-    <div className="bg-white border-t border-t-slate-800/30 text-slate-800 dark:border-t-slate-300/20 dark:bg-slate-900 dark:text-slate-300">
+    <div className="border-t border-t-slate-800/30 bg-white text-slate-800 dark:border-t-slate-300/20 dark:bg-slate-900 dark:text-slate-300">
       <div className="flex flex-wrap items-stretch justify-between gap-1">
         <div className="flex items-center">
-          <div className="flex flex-wrap items-center pl-2 gap-x-4">
+          <div className="flex flex-wrap items-center gap-x-4 pl-2">
             {debugMode ? (
               <div className="flex">
                 <span className="text-xs font-semibold">{m.info_resolution()}</span>{" "}
@@ -66,18 +66,22 @@ export default function InfoBar() {
               </div>
             ) : null}
 
-            {(debugMode && mouseMode == "absolute") ? (
+            {debugMode && mouseMode == "absolute" ? (
               <div className="flex w-[118px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{m.info_pointer()}</span>
-                <span className="text-xs">{mouseX},{mouseY}</span>
+                <span className="text-xs">
+                  {mouseX},{mouseY}
+                </span>
               </div>
             ) : null}
 
-            {(debugMode && mouseMode == "relative") ? (
+            {debugMode && mouseMode == "relative" ? (
               <div className="flex w-[118px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{m.info_last_move()}</span>
                 <span className="text-xs">
-                  {mouseMove ? `${mouseMove.x},${mouseMove.y} ${mouseMove.buttons ? `(${mouseMove.buttons})` : ""}` : "N/A"}
+                  {mouseMove
+                    ? `${mouseMove.x},${mouseMove.y} ${mouseMove.buttons ? `(${mouseMove.buttons})` : ""}`
+                    : "N/A"}
                 </span>
               </div>
             ) : null}
@@ -119,7 +123,7 @@ export default function InfoBar() {
           </div>
         </div>
 
-        <div className="flex items-center divide-x first:divide-l divide-slate-800/20 dark:divide-slate-300/20">
+        <div className="first:divide-l flex items-center divide-x divide-slate-800/20 dark:divide-slate-300/20">
           {isTurnServerInUse && (
             <div className="shrink-0 p-1 px-1.5 text-xs text-black dark:text-white">
               {m.info_relayed_by_cloudflare()}

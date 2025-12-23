@@ -20,12 +20,7 @@ export interface SystemVersionInfo {
 }
 
 export function useVersion() {
-  const {
-    appVersion,
-    systemVersion,
-    setAppVersion,
-    setSystemVersion,
-  } = useDeviceStore();
+  const { appVersion, systemVersion, setAppVersion, setSystemVersion } = useDeviceStore();
 
   const getVersionInfo = useCallback(async () => {
     try {
