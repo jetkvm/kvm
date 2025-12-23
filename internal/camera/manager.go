@@ -26,61 +26,42 @@ type NativeController interface {
 	TranscodeIsRunning() bool
 }
 
-// Manager handles all camera and UVC functionality.
-// Now uses H.264 directly for both HDMI loopback and camera passthrough.
 type Manager struct {
-	// Dependencies
-	gadget GadgetController
-	native NativeController
-	uvcLog *zerolog.Logger
-	camLog *zerolog.Logger
+	gadget           GadgetController
+	native           NativeController
+	uvcLog           *zerolog.Logger
+	camLog           *zerolog.Logger
+	streamer         *usbgadget.UVCStreamer
+	streamerMu       sync.Mutex
+	stopChan         chan struct{}
+	eventLoopRun     bool
+	uvcMjpegSelected bool
+	h264Cache        *H264ParamCache
+	enabled          atomic.Bool
+	source           *sourceStore
 
-	// UVC streaming state
-	streamer     *usbgadget.UVCStreamer
-	streamerMu   sync.Mutex
-	eventLoopRun bool
-	stopChan     chan struct{}
+	cameraFrameCount    atomic.Int32
+	cameraLastLogFrame  atomic.Int32
+	uvcFrameCount       atomic.Uint32
+	uvcFrameErrors      atomic.Uint32
+	uvcLastLogFrame     atomic.Uint32
+	uvcNeedParamInject  atomic.Bool
+	uvcParamInjectCount atomic.Uint32
+	uvcStreamingFast    atomic.Bool
+	uvcMjpegFast        atomic.Bool
 
-	// H.264 parameter cache for SPS/PPS injection
-	h264Cache *H264ParamCache
-
-	// Camera passthrough state
-	enabled atomic.Bool
-	source  *sourceStore
-
-	// Camera frame stats (separate from MJPEG debug counter)
-	cameraFrameCount   atomic.Int32
-	cameraLastLogFrame atomic.Int32
-
-	// UVC frame stats
-	uvcFrameCount       int
-	uvcFrameErrors      int
-	uvcLastLogFrame     int
-	uvcNeedParamInject  bool // Flag to inject SPS/PPS on next frame
-	uvcParamInjectCount int  // Counter for periodic SPS/PPS injection
-
-	// MJPEG format tracking
-	uvcMjpegSelected bool // True when host selected MJPEG format
-
-	// Atomic fast-path flags for MJPEG hotpath (avoid mutex in frame handlers)
-	uvcStreamingFast atomic.Bool // Cached: streamer != nil && streamer.IsStreaming()
-	uvcMjpegFast     atomic.Bool // Cached: uvcMjpegSelected
-
-	// Format change notification channel for WebSocket clients
 	formatChangeChan   chan FormatInfo
 	formatChanMu       sync.RWMutex
-	lastNotifiedFormat FormatInfo // Track last notified format to avoid duplicates
+	lastNotifiedFormat FormatInfo
 }
 
-// FormatInfo contains the current UVC format information.
 type FormatInfo struct {
-	Codec     string `json:"codec"`     // "h264" or "mjpeg"
+	Codec     string `json:"codec"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
-	FrameRate int    `json:"frameRate"` // Negotiated frame rate in fps (e.g., 30 or 60)
+	FrameRate int    `json:"frameRate"`
 }
 
-// Config holds configuration for the Manager.
 type Config struct {
 	UVCLogger    *zerolog.Logger
 	CameraLogger *zerolog.Logger
@@ -88,7 +69,6 @@ type Config struct {
 	Native       NativeController
 }
 
-// NewManager creates a new camera Manager.
 func NewManager(cfg Config) *Manager {
 	m := &Manager{
 		gadget:    cfg.Gadget,
@@ -101,7 +81,6 @@ func NewManager(cfg Config) *Manager {
 	return m
 }
 
-// SetEnabled enables or disables camera passthrough.
 func (m *Manager) SetEnabled(enabled bool) {
 	m.enabled.Store(enabled)
 	if m.camLog != nil {
@@ -109,39 +88,24 @@ func (m *Manager) SetEnabled(enabled bool) {
 	}
 }
 
-// IsEnabled returns whether camera passthrough is enabled.
-func (m *Manager) IsEnabled() bool {
-	return m.enabled.Load()
-}
+func (m *Manager) IsEnabled() bool { return m.enabled.Load() }
 
-// SetSource sets the video source for UVC output.
-// Handles MJPEG encoder state transitions and browser notifications for seamless source switching.
 func (m *Manager) SetSource(source Source) {
 	oldSource := m.source.Get()
 	if oldSource == source {
-		return // No change
+		return
 	}
-
 	m.source.Set(source)
-
 	if m.camLog != nil {
 		m.camLog.Debug().
 			Str("old_source", oldSource.String()).
 			Str("new_source", source.String()).
 			Msg("UVC source changed")
 	}
-
-	// Update MJPEG encoder state based on source and streaming state
 	m.updateMjpegEncoderForSource(source)
-
-	// Notify browser about source change so it can start/stop camera encoding
 	m.notifySourceChange(source)
 }
 
-// updateMjpegEncoderForSource enables/disables MJPEG encoder based on current source.
-// MJPEG encoder should only run when:
-// - UVC is streaming with MJPEG format selected
-// - Source is HDMI (encoder encodes HDMI capture buffer)
 func (m *Manager) updateMjpegEncoderForSource(source Source) {
 	m.streamerMu.Lock()
 	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
@@ -153,39 +117,22 @@ func (m *Manager) updateMjpegEncoderForSource(source Source) {
 	}
 
 	if source == SourceHDMI && isStreaming && isMjpeg {
-		// Switching to HDMI with MJPEG format: enable encoder
 		m.native.MjpegSetEnabled(true)
 	} else {
-		// Not HDMI or not streaming MJPEG: disable encoder
 		m.native.MjpegSetEnabled(false)
 	}
 }
 
-// GetSource returns the current UVC video source.
-func (m *Manager) GetSource() Source {
-	return m.source.Get()
-}
+func (m *Manager) GetSource() Source       { return m.source.Get() }
+func (m *Manager) IsSourceCamera() bool    { return m.source.IsCamera() }
+func (m *Manager) IsSourceHDMI() bool      { return m.source.IsHDMI() }
 
-// IsSourceCamera returns true if UVC source is browser camera.
-func (m *Manager) IsSourceCamera() bool {
-	return m.source.IsCamera()
-}
-
-// IsSourceHDMI returns true if UVC source is HDMI.
-func (m *Manager) IsSourceHDMI() bool {
-	return m.source.IsHDMI()
-}
-
-// SetNativeController sets the native controller for MJPEG encoding control.
-// This should be called after native is initialized.
 func (m *Manager) SetNativeController(native NativeController) {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 	m.native = native
 }
 
-// GetCurrentFormat returns the current UVC format info.
-// Returns nil if UVC is not streaming.
 func (m *Manager) GetCurrentFormat() *FormatInfo {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -209,39 +156,30 @@ func (m *Manager) GetCurrentFormat() *FormatInfo {
 	}
 }
 
-// SubscribeFormatChanges returns a channel that receives format change notifications.
-// Call UnsubscribeFormatChanges when done.
 func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
 	m.formatChanMu.Lock()
 	defer m.formatChanMu.Unlock()
-
-	// Create buffered channel to avoid blocking
 	m.formatChangeChan = make(chan FormatInfo, 4)
 	return m.formatChangeChan
 }
 
-// UnsubscribeFormatChanges closes the format change subscription.
 func (m *Manager) UnsubscribeFormatChanges() {
 	m.formatChanMu.Lock()
 	defer m.formatChanMu.Unlock()
-
 	if m.formatChangeChan != nil {
 		close(m.formatChangeChan)
 		m.formatChangeChan = nil
 	}
 }
 
-// notifyFormatChange sends format info to subscribed WebSocket clients.
-// Only sends if format actually changed from last notification.
 func (m *Manager) notifyFormatChange(info FormatInfo) {
 	m.formatChanMu.Lock()
-	// Check if format changed
 	if m.lastNotifiedFormat.Codec == info.Codec &&
 		m.lastNotifiedFormat.Width == info.Width &&
 		m.lastNotifiedFormat.Height == info.Height &&
 		m.lastNotifiedFormat.FrameRate == info.FrameRate {
 		m.formatChanMu.Unlock()
-		return // No change, skip notification
+		return
 	}
 	m.lastNotifiedFormat = info
 	ch := m.formatChangeChan
@@ -251,32 +189,24 @@ func (m *Manager) notifyFormatChange(info FormatInfo) {
 		select {
 		case ch <- info:
 		default:
-			// Channel full, skip notification
 		}
 	}
 }
 
-// notifyStreamingStopped sends a stop notification to WebSocket clients.
-// This tells the browser to pause camera encoding when UVC host disconnects.
 func (m *Manager) notifyStreamingStopped() {
 	m.formatChanMu.Lock()
-	// Reset last notified format so next start will send format again
 	m.lastNotifiedFormat = FormatInfo{}
 	ch := m.formatChangeChan
 	m.formatChanMu.Unlock()
 
-	// Send empty format to signal stop
 	if ch != nil {
 		select {
 		case ch <- FormatInfo{Codec: "stop"}:
 		default:
-			// Channel full, skip notification
 		}
 	}
 }
 
-// ResendCurrentFormat forces a format notification to all connected WebSocket clients.
-// Used when encoder settings change (bitrate/quality) so browser can update its encoder.
 func (m *Manager) ResendCurrentFormat() {
 	m.streamerMu.Lock()
 	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
@@ -304,10 +234,9 @@ func (m *Manager) ResendCurrentFormat() {
 			Uint32("width", width).
 			Uint32("height", height).
 			Int("frameRate", frameRate).
-			Msg("Resending format notification (encoder settings changed)")
+			Msg("Resending format notification")
 	}
 
-	// Clear the last notified format to force resend
 	m.formatChanMu.Lock()
 	m.lastNotifiedFormat = FormatInfo{}
 	m.formatChanMu.Unlock()
@@ -320,9 +249,6 @@ func (m *Manager) ResendCurrentFormat() {
 	})
 }
 
-// notifySourceChange notifies WebSocket clients about source changes.
-// When switching to HDMI: tells browser to stop camera encoding
-// When switching to Camera: tells browser to start camera encoding with current format
 func (m *Manager) notifySourceChange(source Source) {
 	m.streamerMu.Lock()
 	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
@@ -335,19 +261,16 @@ func (m *Manager) notifySourceChange(source Source) {
 	isMjpeg := m.uvcMjpegSelected
 	m.streamerMu.Unlock()
 
-	// Only notify if UVC is currently streaming
 	if !isStreaming {
 		return
 	}
 
 	if source == SourceHDMI {
-		// Switching to HDMI: tell browser to stop camera encoding
 		if m.camLog != nil {
-			m.camLog.Info().Msg("Notifying browser to stop camera encoding (switched to HDMI)")
+			m.camLog.Info().Msg("Notifying browser to stop camera encoding")
 		}
 		m.notifyStreamingStopped()
 	} else if source == SourceCamera {
-		// Switching to Camera: tell browser to start camera encoding
 		codec := "h264"
 		if isMjpeg {
 			codec = "mjpeg"

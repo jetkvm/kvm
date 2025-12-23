@@ -49,6 +49,10 @@ func (s *UVCStreamer) SetFormat(width, height uint32) error {
 	return fmt.Errorf("UVC not supported on this platform")
 }
 
+func (s *UVCStreamer) SetFormatWithCodec(width, height uint32, isMjpeg bool) error {
+	return fmt.Errorf("UVC not supported on this platform")
+}
+
 func (s *UVCStreamer) RequestBuffers(count uint32) error {
 	return fmt.Errorf("UVC not supported on this platform")
 }

@@ -12,17 +12,7 @@ import (
 	"unsafe"
 )
 
-// USB 2.0 High-Speed frame size limit.
-// This prevents USB saturation which causes device resets and HID failures.
-// NOTE: We use time.Since() for monotonic timestamps (vDSO optimized, ~10ns overhead).
-// We rely on frame size limits + frame dropping at the kernel level for rate limiting.
-const (
-	// Maximum frame size we'll accept. Frames larger than this would
-	// exceed USB 2.0 bandwidth even at low framerates.
-	// At USB 2.0 High-Speed (~40 MB/s practical), 1.5 MB allows ~26 fps.
-	// Type: int32 for 32-bit ARM compatibility (1.5MB = 1,572,864 fits easily)
-	maxFrameSizeBytes int32 = 1536 * 1024 // 1.5 MB
-)
+const maxFrameSizeBytes int32 = 1536 * 1024
 
 // V4L2 constants
 const (
@@ -32,7 +22,7 @@ const (
 	V4L2_MEMORY_USERPTR        = 2
 
 	// Buffer timestamp flags - GStreamer requires MONOTONIC timestamps
-	V4L2_BUF_FLAG_TIMESTAMP_MASK     = 0x0000e000
+	V4L2_BUF_FLAG_TIMESTAMP_MASK      = 0x0000e000
 	V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC = 0x00002000
 
 	// V4L2 ioctls (32-bit ARM values)
@@ -162,34 +152,30 @@ type uvc_streaming_control struct {
 }
 
 type UVCStreamer struct {
-	devicePath  string
-	fd          int
-	width       uint32
-	height      uint32
-	streaming   bool
-	streamReady bool // True after first frame queued and STREAMON issued
-	mu          sync.Mutex
-	log         Logger
-	bufferSize  int
-	bufCount    int
-	buffers     [][]byte
-	bufOffsets  []uint32
-	curBufIdx        int
-	curBufIdxAtomic  int32 // HOTPATH: Atomic buffer index for lock-free read in WriteFrame
-	queuedBufs       int
-	frameCounter     uint32    // HOTPATH: Frame counter for diagnostics
-	streamStartTime  time.Time // HOTPATH: Stream start time for monotonic timestamps
-	useUserPtr   bool
-	probe       uvc_streaming_control
-	commit      uvc_streaming_control
-	pendingCtrl uint8
-
-	// Pre-allocated event data buffer to reduce GC pressure during polling
-	eventDataBuf [64]byte
-
-	// Frame size tracking for USB 2.0 bandwidth protection
-	droppedFrames   uint32 // Counter for monitoring (uint32 for LogEvent compatibility)
-	oversizedWarned bool   // Throttle oversize warnings (log once per stream)
+	streamStartTime time.Time
+	devicePath      string
+	mu              sync.Mutex
+	log             Logger
+	buffers         [][]byte
+	bufOffsets      []uint32
+	fd              int
+	width           uint32
+	height          uint32
+	bufferSize      int
+	bufCount        int
+	curBufIdx       int
+	curBufIdxAtomic int32
+	queuedBufs      int
+	frameCounter    uint32
+	droppedFrames   uint32
+	probe           uvc_streaming_control
+	commit          uvc_streaming_control
+	eventDataBuf    [64]byte
+	pendingCtrl     uint8
+	streaming       bool
+	streamReady     bool
+	useUserPtr      bool
+	oversizedWarned bool
 }
 
 type Logger interface {
@@ -433,13 +419,9 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.curBufIdx = 0
 	atomic.StoreInt32(&s.curBufIdxAtomic, 0)
 	s.frameCounter = 0
-	s.streamStartTime = time.Now() // Capture stream start for monotonic timestamps
+	s.streamStartTime = time.Now()
 	s.streaming = true
 
-	// CRITICAL: Call STREAMON immediately to complete USB_GADGET_DELAYED_STATUS.
-	// With USB_GADGET_DELAYED_STATUS in f_uvc.c, the kernel waits for userspace
-	// to call VIDIOC_STREAMON before completing the USB SET_INTERFACE transaction.
-	// If we defer STREAMON, the host will timeout waiting for the USB response.
 	bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMON, uintptr(unsafe.Pointer(&bufType)))
 	if errno != 0 {
@@ -463,7 +445,6 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 		return nil
 	}
 
-	// Only issue STREAMOFF if we actually started streaming
 	if s.streamReady {
 		bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
 		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMOFF, uintptr(unsafe.Pointer(&bufType)))
@@ -478,20 +459,15 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 	s.curBufIdx = 0
 	atomic.StoreInt32(&s.curBufIdxAtomic, 0)
 	s.frameCounter = 0
-	s.streamStartTime = time.Time{} // Reset for next stream
+	s.streamStartTime = time.Time{}
 	return nil
 }
 
 func (s *UVCStreamer) WriteFrame(data []byte) error {
-	// HOTPATH: Lock-free early validation - avoids lock acquisition for common rejection cases
 	if s.fd < 0 || !s.streaming || len(s.buffers) == 0 {
 		return nil
 	}
 
-	// Frame size validation: reject frames that would saturate USB 2.0
-	// This prevents USB device resets and HID failures.
-	// NOTE: We intentionally do NOT use time-based rate limiting here because
-	// time.Now() is a SYSCALL that would kill performance at 30+ fps.
 	dataLen := len(data)
 	if int32(dataLen) > maxFrameSizeBytes {
 		if !s.oversizedWarned {
@@ -499,32 +475,25 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 			s.log.Warn().
 				Int("frameSize", dataLen).
 				Int("maxSize", int(maxFrameSizeBytes)).
-				Msg("Frame too large for USB 2.0 - reduce MJPEG quality to 50% or less")
+				Msg("Frame too large for USB 2.0")
 		}
 		s.droppedFrames++
 		return nil
 	}
 
-	// HOTPATH: Lock-free buffer selection using atomic load
-	// This allows the expensive copy to happen outside the critical section
 	bufIdx := int(atomic.LoadInt32(&s.curBufIdxAtomic))
 	if bufIdx >= len(s.buffers) {
-		bufIdx = 0 // Safety fallback
+		bufIdx = 0
 	}
 	buf := s.buffers[bufIdx]
 	if dataLen > len(buf) {
-		s.log.Warn().Int("dataLen", dataLen).Int("bufLen", len(buf)).Msg("WriteFrame: data too large for buffer")
 		return nil
 	}
 
-	// HOTPATH: Copy OUTSIDE lock - this is the expensive operation (1-2ms for 1080p)
-	// Safe because WriteFrame is called sequentially from a single goroutine
 	copy(buf, data)
 
-	// Minimal lock scope for state management only
 	s.mu.Lock()
 
-	// Re-validate under lock (state may have changed due to StopStreaming)
 	if s.fd < 0 || !s.streaming {
 		s.mu.Unlock()
 		return nil
@@ -532,7 +501,6 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	memType := uint32(V4L2_MEMORY_USERPTR)
 
-	// DQBUF if all buffers are queued (still under lock for queue state consistency)
 	for s.queuedBufs >= s.bufCount {
 		var dqbuf v4l2_buffer
 		dqbuf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
@@ -551,9 +519,6 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	s.frameCounter++
 
-	// HOTPATH: Use real monotonic time for accurate timestamps
-	// This ensures decoder sees correct frame spacing regardless of source frame rate.
-	// time.Since() is optimized via vDSO on Linux, minimal overhead at 30fps.
 	elapsed := time.Since(s.streamStartTime)
 	elapsedSec := int32(elapsed / time.Second)
 	elapsedUsec := int32((elapsed % time.Second) / time.Microsecond)
@@ -572,7 +537,6 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	}
 	v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
 
-	// QBUF syscall
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QBUF, uintptr(unsafe.Pointer(&v4l2buf)))
 	if errno != 0 {
 		s.mu.Unlock()
@@ -580,8 +544,6 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	}
 
 	s.queuedBufs++
-	// HOTPATH: Bit mask for 8 buffers (faster than modulo, requires bufCount to be power of 2)
-	// Falls back to modulo if bufCount is not 8
 	var nextIdx int
 	if s.bufCount == 8 {
 		nextIdx = (bufIdx + 1) & 0x7
@@ -612,14 +574,15 @@ func (s *UVCStreamer) SubscribeEvents() error {
 	for _, eventType := range events {
 		var sub v4l2_event_subscription
 		sub.Type = eventType
-		syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_SUBSCRIBE_EVENT, uintptr(unsafe.Pointer(&sub)))
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_SUBSCRIBE_EVENT, uintptr(unsafe.Pointer(&sub)))
+		if errno != 0 {
+			return fmt.Errorf("VIDIOC_SUBSCRIBE_EVENT failed for event %d: %v", eventType, errno)
+		}
 	}
 	return nil
 }
 
 func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
-	// HOTPATH: No mutex needed - DQEVENT is thread-safe and we only read fd
-	// The fd is only modified during Open/Close which don't run concurrently with polling
 	fd := s.fd
 	if fd < 0 {
 		return 0, nil, fmt.Errorf("UVC device not open")
@@ -634,8 +597,6 @@ func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
 		return 0, nil, fmt.Errorf("VIDIOC_DQEVENT failed: %v", errno)
 	}
 
-	// Use pre-allocated buffer on streamer to reduce GC pressure
-	// IMPORTANT: Caller must process data before next PollEventsWithData call
 	copy(s.eventDataBuf[:], ev.U[:])
 	return ev.Type, s.eventDataBuf[:], nil
 }
@@ -868,24 +829,14 @@ func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 	return nil
 }
 
-func (s *UVCStreamer) IsStreaming() bool {
-	// HOTPATH: Lock-free read - streaming is only modified during Start/StopStreaming
-	// which don't run concurrently with frame processing (benign race)
-	return s.streaming
-}
-
-func (s *UVCStreamer) IsOpen() bool {
-	// HOTPATH: Lock-free read - fd is only modified during Open/Close
-	return s.fd >= 0
-}
+func (s *UVCStreamer) IsStreaming() bool { return s.streaming }
+func (s *UVCStreamer) IsOpen() bool      { return s.fd >= 0 }
 
 func (s *UVCStreamer) IsValid() bool {
-	// Lock-free - QUERYCAP is thread-safe and fd check is benign race
 	fd := s.fd
 	if fd < 0 {
 		return false
 	}
-
 	var cap v4l2_capability
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
 	return errno == 0
