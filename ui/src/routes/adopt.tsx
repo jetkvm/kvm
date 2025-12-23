@@ -37,7 +37,7 @@ const loader: LoaderFunction = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function AdoptRoute() {
-  return (<></>);
+  return <></>;
 }
 
 AdoptRoute.loader = loader;

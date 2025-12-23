@@ -1,4 +1,4 @@
-import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts";
 
 const name = "English (US)";
 const isoCode = "en-US";
@@ -99,13 +99,13 @@ export const chars = {
   ">": { key: "Period", shift: true },
   ";": { key: "Semicolon" },
   ":": { key: "Semicolon", shift: true },
-  "¶": { key: "Semicolon", altRight: true }, // pilcrow sign 
+  "¶": { key: "Semicolon", altRight: true }, // pilcrow sign
   "[": { key: "BracketLeft" },
   "{": { key: "BracketLeft", shift: true },
-  "«": { key: "BracketLeft", altRight: true }, // double left quote sign 
+  "«": { key: "BracketLeft", altRight: true }, // double left quote sign
   "]": { key: "BracketRight" },
   "}": { key: "BracketRight", shift: true },
-  "»": { key: "BracketRight", altRight: true }, // double right quote sign 
+  "»": { key: "BracketRight", altRight: true }, // double right quote sign
   "\\": { key: "Backslash" },
   "|": { key: "Backslash", shift: true },
   "¬": { key: "Backslash", altRight: true }, // not sign
@@ -125,7 +125,7 @@ export const chars = {
   Break: { key: "Pause", shift: true },
   Insert: { key: "Insert" },
   Delete: { key: "Delete" },
-} as Record<string, KeyCombo>
+} as Record<string, KeyCombo>;
 
 export const modifierDisplayMap: Record<string, string> = {
   ControlLeft: "Left Ctrl",
@@ -173,28 +173,84 @@ export const keyDisplayMap: Record<string, string> = {
   Tab: "Tab ⇥",
 
   // Letters
-  KeyA: "a", KeyB: "b", KeyC: "c", KeyD: "d", KeyE: "e",
-  KeyF: "f", KeyG: "g", KeyH: "h", KeyI: "i", KeyJ: "j",
-  KeyK: "k", KeyL: "l", KeyM: "m", KeyN: "n", KeyO: "o",
-  KeyP: "p", KeyQ: "q", KeyR: "r", KeyS: "s", KeyT: "t",
-  KeyU: "u", KeyV: "v", KeyW: "w", KeyX: "x", KeyY: "y",
+  KeyA: "a",
+  KeyB: "b",
+  KeyC: "c",
+  KeyD: "d",
+  KeyE: "e",
+  KeyF: "f",
+  KeyG: "g",
+  KeyH: "h",
+  KeyI: "i",
+  KeyJ: "j",
+  KeyK: "k",
+  KeyL: "l",
+  KeyM: "m",
+  KeyN: "n",
+  KeyO: "o",
+  KeyP: "p",
+  KeyQ: "q",
+  KeyR: "r",
+  KeyS: "s",
+  KeyT: "t",
+  KeyU: "u",
+  KeyV: "v",
+  KeyW: "w",
+  KeyX: "x",
+  KeyY: "y",
   KeyZ: "z",
 
   // Capital letters
-  "(KeyA)": "A", "(KeyB)": "B", "(KeyC)": "C", "(KeyD)": "D", "(KeyE)": "E",
-  "(KeyF)": "F", "(KeyG)": "G", "(KeyH)": "H", "(KeyI)": "I", "(KeyJ)": "J",
-  "(KeyK)": "K", "(KeyL)": "L", "(KeyM)": "M", "(KeyN)": "N", "(KeyO)": "O",
-  "(KeyP)": "P", "(KeyQ)": "Q", "(KeyR)": "R", "(KeyS)": "S", "(KeyT)": "T",
-  "(KeyU)": "U", "(KeyV)": "V", "(KeyW)": "W", "(KeyX)": "X", "(KeyY)": "Y",
+  "(KeyA)": "A",
+  "(KeyB)": "B",
+  "(KeyC)": "C",
+  "(KeyD)": "D",
+  "(KeyE)": "E",
+  "(KeyF)": "F",
+  "(KeyG)": "G",
+  "(KeyH)": "H",
+  "(KeyI)": "I",
+  "(KeyJ)": "J",
+  "(KeyK)": "K",
+  "(KeyL)": "L",
+  "(KeyM)": "M",
+  "(KeyN)": "N",
+  "(KeyO)": "O",
+  "(KeyP)": "P",
+  "(KeyQ)": "Q",
+  "(KeyR)": "R",
+  "(KeyS)": "S",
+  "(KeyT)": "T",
+  "(KeyU)": "U",
+  "(KeyV)": "V",
+  "(KeyW)": "W",
+  "(KeyX)": "X",
+  "(KeyY)": "Y",
   "(KeyZ)": "Z",
 
   // Numbers
-  Digit1: "1", Digit2: "2", Digit3: "3", Digit4: "4", Digit5: "5",
-  Digit6: "6", Digit7: "7", Digit8: "8", Digit9: "9", Digit0: "0",
+  Digit1: "1",
+  Digit2: "2",
+  Digit3: "3",
+  Digit4: "4",
+  Digit5: "5",
+  Digit6: "6",
+  Digit7: "7",
+  Digit8: "8",
+  Digit9: "9",
+  Digit0: "0",
 
   // Shifted Numbers
-  "(Digit1)": "!", "(Digit2)": "@", "(Digit3)": "#", "(Digit4)": "$", "(Digit5)": "%",
-  "(Digit6)": "^", "(Digit7)": "&", "(Digit8)": "*", "(Digit9)": "(", "(Digit0)": ")",
+  "(Digit1)": "!",
+  "(Digit2)": "@",
+  "(Digit3)": "#",
+  "(Digit4)": "$",
+  "(Digit5)": "%",
+  "(Digit6)": "^",
+  "(Digit7)": "&",
+  "(Digit8)": "*",
+  "(Digit9)": "(",
+  "(Digit0)": ")",
 
   // Symbols
   Minus: "-",
@@ -210,7 +266,7 @@ export const keyDisplayMap: Record<string, string> = {
   Semicolon: ";",
   "(Semicolon)": ":",
   Quote: "'",
-  "(Quote)": "\"",
+  "(Quote)": '"',
   Comma: ",",
   "(Comma)": "<",
   Period: ".",
@@ -222,23 +278,49 @@ export const keyDisplayMap: Record<string, string> = {
   IntlBackslash: "\\",
 
   // Function keys
-  F1: "F1", F2: "F2", F3: "F3", F4: "F4",
-  F5: "F5", F6: "F6", F7: "F7", F8: "F8",
-  F9: "F9", F10: "F10", F11: "F11", F12: "F12",
+  F1: "F1",
+  F2: "F2",
+  F3: "F3",
+  F4: "F4",
+  F5: "F5",
+  F6: "F6",
+  F7: "F7",
+  F8: "F8",
+  F9: "F9",
+  F10: "F10",
+  F11: "F11",
+  F12: "F12",
 
   // Numpad
-  Numpad0: "Num 0", Numpad1: "Num 1", Numpad2: "Num 2",
-  Numpad3: "Num 3", Numpad4: "Num 4", Numpad5: "Num 5",
-  Numpad6: "Num 6", Numpad7: "Num 7", Numpad8: "Num 8",
-  Numpad9: "Num 9", NumpadAdd: "Num +", NumpadSubtract: "Num -",
-  NumpadMultiply: "Num *", NumpadDivide: "Num /", NumpadDecimal: "Num .",
-  NumpadEqual: "Num =", NumpadEnter: "Num Enter", NumpadInsert: "Ins",
-  NumpadDelete: "Del", NumLock: "Num Lock",
+  Numpad0: "Num 0",
+  Numpad1: "Num 1",
+  Numpad2: "Num 2",
+  Numpad3: "Num 3",
+  Numpad4: "Num 4",
+  Numpad5: "Num 5",
+  Numpad6: "Num 6",
+  Numpad7: "Num 7",
+  Numpad8: "Num 8",
+  Numpad9: "Num 9",
+  NumpadAdd: "Num +",
+  NumpadSubtract: "Num -",
+  NumpadMultiply: "Num *",
+  NumpadDivide: "Num /",
+  NumpadDecimal: "Num .",
+  NumpadEqual: "Num =",
+  NumpadEnter: "Num Enter",
+  NumpadInsert: "Ins",
+  NumpadDelete: "Del",
+  NumLock: "Num Lock",
 
   // Modals
-  PrintScreen: "Prt Sc", ScrollLock: "Scr Lk", Pause: "Pause",
-  "(PrintScreen)": "Sys Rq", "(Pause)": "Break",
-  SystemRequest: "Sys Rq", Break: "Break"
+  PrintScreen: "Prt Sc",
+  ScrollLock: "Scr Lk",
+  Pause: "Pause",
+  "(PrintScreen)": "Sys Rq",
+  "(Pause)": "Break",
+  SystemRequest: "Sys Rq",
+  Break: "Break",
 };
 
 export const virtualKeyboard = {
@@ -260,25 +342,15 @@ export const virtualKeyboard = {
       "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) Enter",
       "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) ShiftRight",
       "ControlLeft MetaLeft AltLeft Space AltGr MetaRight Menu ControlRight",
-    ]
+    ],
   },
   control: {
-    default: [
-      "PrintScreen ScrollLock Pause",
-      "Insert Home PageUp",
-      "Delete End PageDown"
-    ],
-    shift: [
-      "(PrintScreen) ScrollLock (Pause)",
-      "Insert Home PageUp",
-      "Delete End PageDown"
-    ],
+    default: ["PrintScreen ScrollLock Pause", "Insert Home PageUp", "Delete End PageDown"],
+    shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home PageUp", "Delete End PageDown"],
   },
 
   arrows: {
-    default: [
-      "ArrowUp",
-      "ArrowLeft ArrowDown ArrowRight"],
+    default: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
   },
 
   numpad: {
@@ -296,8 +368,8 @@ export const virtualKeyboard = {
       "End ArrowDown PageDown NumpadEnter",
       "NumpadInsert NumpadDelete",
     ],
-  }
-}
+  },
+};
 
 export const en_US: KeyboardLayout = {
   isoCode,
@@ -305,7 +377,5 @@ export const en_US: KeyboardLayout = {
   chars,
   keyDisplayMap,
   modifierDisplayMap,
-  virtualKeyboard
+  virtualKeyboard,
 };
-
-

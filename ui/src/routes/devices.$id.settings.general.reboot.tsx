@@ -1,14 +1,13 @@
-import { useCallback , useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router";
 
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useFailsafeModeStore } from "@hooks/stores";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
-import { useFailsafeModeStore } from "@/hooks/stores";
+import LoadingSpinner from "@components/LoadingSpinner";
 import { sleep } from "@/utils";
 import { m } from "@localizations/messages.js";
-
-import LoadingSpinner from "../components/LoadingSpinner";
-import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 // Time to wait after initiating reboot before redirecting to home
 const REBOOT_REDIRECT_DELAY_MS = 7000;
@@ -27,10 +26,9 @@ export default function SettingsGeneralRebootRoute() {
     window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
   }, [navigate]);
 
-
   const onConfirmUpdate = useCallback(async () => {
     setIsRebooting(true);
-    send("reboot", {  force: true });
+    send("reboot", { force: true });
 
     await new Promise(resolve => setTimeout(resolve, REBOOT_REDIRECT_DELAY_MS));
     setFailsafeMode(false, "");
@@ -49,15 +47,10 @@ export function Dialog({
   onClose: () => void;
   onConfirmUpdate: () => void;
 }>) {
-
   return (
     <div className="pointer-events-auto relative mx-auto text-left">
       <div>
-        <ConfirmationBox
-          isRebooting={isRebooting}
-          onYes={onConfirmUpdate}
-          onNo={onClose}
-        />
+        <ConfirmationBox isRebooting={isRebooting} onYes={onConfirmUpdate} onNo={onClose} />
       </div>
     </div>
   );

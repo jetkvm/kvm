@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -72,6 +73,20 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 					nativeLogger.Warn().Err(err).Msg("error writing sample")
 				}
 			}
+		},
+		GetSessionInfo: func() diagnostics.SessionInfo {
+			info := diagnostics.SessionInfo{
+				ActiveSessions:    getActiveSessions(),
+				HasCurrentSession: currentSession != nil,
+			}
+			if currentSession != nil {
+				sessionInfo := currentSession.GetDiagnosticsInfo()
+				info.ICEConnectionState = sessionInfo.ICEConnectionState
+				info.SignalingState = sessionInfo.SignalingState
+				info.ConnectionState = sessionInfo.ConnectionState
+				info.DataChannels = sessionInfo.DataChannels
+			}
+			return info
 		},
 	})
 	if err != nil {

@@ -30,14 +30,17 @@ export default function OtherSessionRoute() {
           </div>
 
           <div className="text-left">
-            <p className="text-base font-semibold dark:text-white">
-              {m.other_session_detected()}
-            </p>
+            <p className="text-base font-semibold dark:text-white">{m.other_session_detected()}</p>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
               {m.other_session_take_over()}
             </p>
             <div className="flex items-center justify-start space-x-4">
-              <Button size="SM" theme="primary" text={m.other_session_use_here_button()} onClick={handleClose} />
+              <Button
+                size="SM"
+                theme="primary"
+                text={m.other_session_use_here_button()}
+                onClick={handleClose}
+              />
             </div>
           </div>
         </div>

@@ -64,16 +64,16 @@ type JigglerValues = (typeof jigglerOptions)[number]["value"] | "custom";
 
 export default function SettingsMouseRoute() {
   const {
-    isCursorHidden, setCursorVisibility,
-    mouseMode, setMouseMode,
-    scrollThrottling, setScrollThrottling
+    isCursorHidden,
+    setCursorVisibility,
+    mouseMode,
+    setMouseMode,
+    scrollThrottling,
+    setScrollThrottling,
   } = useSettingsStore();
 
-  const [selectedJigglerOption, setSelectedJigglerOption] =
-    useState<JigglerValues | null>(null);
-  const [currentJigglerConfig, setCurrentJigglerConfig] = useState<JigglerConfig | null>(
-    null,
-  );
+  const [selectedJigglerOption, setSelectedJigglerOption] = useState<JigglerValues | null>(null);
+  const [currentJigglerConfig, setCurrentJigglerConfig] = useState<JigglerConfig | null>(null);
 
   const scrollThrottlingOptions = [
     { value: "0", label: m.mouse_scroll_off() },
@@ -120,7 +120,9 @@ export default function SettingsMouseRoute() {
       // We assume the jiggler should be set to enabled if the config is being updated
       send("setJigglerState", { enabled: true }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          return notifications.error(m.mouse_jiggler_failed_state({ error: resp.error.data || m.unknown_error() }));
+          return notifications.error(
+            m.mouse_jiggler_failed_state({ error: resp.error.data || m.unknown_error() }),
+          );
         }
       });
 
@@ -158,7 +160,9 @@ export default function SettingsMouseRoute() {
     if (option === "disabled") {
       send("setJigglerState", { enabled: false }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          return notifications.error(m.mouse_jiggler_failed_state({ error: resp.error.data || m.unknown_error() }));
+          return notifications.error(
+            m.mouse_jiggler_failed_state({ error: resp.error.data || m.unknown_error() }),
+          );
         }
       });
 
@@ -176,10 +180,7 @@ export default function SettingsMouseRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.mouse_title()}
-        description={m.mouse_description()}
-      />
+      <SettingsPageHeader title={m.mouse_title()} description={m.mouse_description()} />
 
       <div className="space-y-4">
         <SettingsItem
@@ -220,9 +221,7 @@ export default function SettingsMouseRoute() {
               { value: "custom", label: m.mouse_jiggler_custom() },
             ]}
             onChange={e => {
-              handleJigglerChange(
-                e.target.value as (typeof jigglerOptions)[number]["value"],
-              );
+              handleJigglerChange(e.target.value as (typeof jigglerOptions)[number]["value"]);
             }}
           />
         </SettingsItem>

@@ -7,7 +7,6 @@ import { LifeTimeLabel } from "@routes/devices.$id.settings.network";
 import { NetworkState } from "@hooks/stores";
 import { m } from "@localizations/messages.js";
 
-
 export default function DhcpLeaseCard({
   networkState,
   setShowRenewLeaseConfirm,
@@ -54,10 +53,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.ip_address()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.ip}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.ip}</span>
                 </div>
               )}
 
@@ -65,10 +63,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.subnet_mask()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.netmask}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.netmask}</span>
                 </div>
               )}
 
@@ -76,7 +73,8 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dns_servers()}
-                  </span>&nbsp;
+                  </span>
+                  &nbsp;
                   <span className="text-right text-sm font-medium">
                     {networkState?.dhcp_lease?.dns_servers.map(dns => (
                       <div key={dns}>{dns}</div>
@@ -89,10 +87,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_broadcast()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.broadcast}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.broadcast}</span>
                 </div>
               )}
 
@@ -100,10 +97,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_domain()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.domain}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.domain}</span>
                 </div>
               )}
 
@@ -112,7 +108,8 @@ export default function DhcpLeaseCard({
                   <div className="flex justify-between gap-x-8 border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                     <div className="w-full grow text-sm text-slate-600 dark:text-slate-400">
                       {m.ntp_servers()}
-                    </div>&nbsp;
+                    </div>
+                    &nbsp;
                     <div className="shrink text-right text-sm font-medium">
                       {networkState?.dhcp_lease?.ntp_servers.map(server => (
                         <div key={server}>{server}</div>
@@ -125,10 +122,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_hostname()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.hostname}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.hostname}</span>
                 </div>
               )}
             </div>
@@ -139,7 +135,8 @@ export default function DhcpLeaseCard({
                   <div className="flex justify-between pt-2">
                     <span className="text-sm text-slate-600 dark:text-slate-400">
                       {m.dhcp_lease_gateway()}
-                    </span>&nbsp;
+                    </span>
+                    &nbsp;
                     <span className="text-right text-sm font-medium">
                       {networkState?.dhcp_lease?.routers.map(router => (
                         <div key={router}>{router}</div>
@@ -152,10 +149,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_server()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.server_id}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.server_id}</span>
                 </div>
               )}
 
@@ -163,11 +159,10 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_lease_expires()}
-                  </span>&nbsp;
+                  </span>
+                  &nbsp;
                   <span className="text-sm font-medium">
-                    <LifeTimeLabel
-                      lifetime={`${networkState?.dhcp_lease?.lease_expiry}`}
-                    />
+                    <LifeTimeLabel lifetime={`${networkState?.dhcp_lease?.lease_expiry}`} />
                   </span>
                 </div>
               )}
@@ -176,10 +171,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_broadcast()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.broadcast}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.broadcast}</span>
                 </div>
               )}
 
@@ -187,10 +181,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_maximum_transfer_unit()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.mtu}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.mtu}</span>
                 </div>
               )}
 
@@ -198,10 +191,9 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_time_to_live()}
-                  </span>&nbsp;
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.ttl}
                   </span>
+                  &nbsp;
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.ttl}</span>
                 </div>
               )}
 
@@ -209,7 +201,8 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_boot_next_server()}
-                  </span>&nbsp;
+                  </span>
+                  &nbsp;
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.bootp_next_server}
                   </span>
@@ -220,7 +213,8 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_boot_server_name()}
-                  </span>&nbsp;
+                  </span>
+                  &nbsp;
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.bootp_server_name}
                   </span>
@@ -231,7 +225,8 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.dhcp_lease_boot_file()}
-                  </span>&nbsp;
+                  </span>
+                  &nbsp;
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.bootp_file}
                   </span>
@@ -242,7 +237,8 @@ export default function DhcpLeaseCard({
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     {m.network_dhcp_client_title()}
-                  </span>&nbsp;
+                  </span>
+                  &nbsp;
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.dhcp_client}
                   </span>

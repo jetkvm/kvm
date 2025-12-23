@@ -85,10 +85,6 @@ build_native:
 			./scripts/build_cgo.sh; \
 	fi
 
-# NOTE: VERSION_DEV must be explicitly passed to nested make invocations.
-# VERSION_DEV contains $(shell date ...) which gets re-evaluated when a new make
-# process starts. Without passing it explicitly, a minute boundary crossed during
-# the build would cause version mismatch between what's displayed and what's built.
 build_dev:
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_dev in Docker..."; \
@@ -100,7 +96,7 @@ build_dev:
 	fi
 
 _build_dev_inner: build_native
-	@echo "Building..."
+	@echo "Building... $(VERSION_DEV)"
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 		$(GO_RELEASE_BUILD_ARGS) \
@@ -180,7 +176,7 @@ dev_release: git_check_dev
 	@echo "  Time:    $$(date -u +%FT%T%z)"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	$(MAKE) check frontend build_dev
+	$(MAKE) check frontend build_dev VERSION_DEV=$(VERSION_DEV)
 	@read -p "Test on device before release? [y/N] " test_confirm; \
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \
@@ -240,7 +236,7 @@ release: git_check_dev
 	@echo "  Time:    $$(date -u +%FT%T%z)"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	$(MAKE) check frontend build_release
+	$(MAKE) check frontend build_release VERSION=$(VERSION)
 	@read -p "Test on device before release? [y/N] " test_confirm; \
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \

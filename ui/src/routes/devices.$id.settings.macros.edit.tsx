@@ -29,8 +29,8 @@ export default function SettingsMacrosEditRoute() {
           ...step,
           keys: Array.isArray(step.keys) ? step.keys : [],
           modifiers: Array.isArray(step.modifiers) ? step.modifiers : [],
-          delay: typeof step.delay === 'number' ? step.delay : 0
-        }))
+          delay: typeof step.delay === "number" ? step.delay : 0,
+        })),
       });
     } else {
       navigate("../");
@@ -43,11 +43,13 @@ export default function SettingsMacrosEditRoute() {
     setIsUpdating(true);
     try {
       const newMacros = macros.map(m =>
-        m.id === macro.id ? {
-          ...macro,
-          name: updatedMacro.name!.trim(),
-          steps: updatedMacro.steps || [],
-        } : m
+        m.id === macro.id
+          ? {
+              ...macro,
+              name: updatedMacro.name!.trim(),
+              steps: updatedMacro.steps || [],
+            }
+          : m,
       );
 
       await saveMacros(normalizeSortOrders(newMacros));
@@ -55,7 +57,9 @@ export default function SettingsMacrosEditRoute() {
       navigate("../");
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(m.macros_failed_update_error({ error: error.message || m.unknown_error() }));
+        notifications.error(
+          m.macros_failed_update_error({ error: error.message || m.unknown_error() }),
+        );
       } else {
         notifications.error(m.macros_failed_update());
       }

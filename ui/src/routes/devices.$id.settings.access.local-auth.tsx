@@ -195,9 +195,7 @@ function CreatePasswordModal({
         }}
       >
         <div>
-          <h2 className="text-lg font-semibold dark:text-white">
-            {m.local_auth_create_title()}
-          </h2>
+          <h2 className="text-lg font-semibold dark:text-white">{m.local_auth_create_title()}</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             {m.local_auth_create_description()}
           </p>
@@ -225,7 +223,12 @@ function CreatePasswordModal({
             text={m.local_auth_create_secure_button()}
             onClick={() => onSetPassword(password, confirmPassword)}
           />
-          <Button size="SM" theme="light" text={m.local_auth_create_not_now_button()} onClick={onCancel} />
+          <Button
+            size="SM"
+            theme="light"
+            text={m.local_auth_create_not_now_button()}
+            onClick={onCancel}
+          />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
@@ -282,11 +285,7 @@ function UpdatePasswordModal({
   onCancel,
   error,
 }: {
-  onUpdatePassword: (
-    oldPassword: string,
-    newPassword: string,
-    confirmNewPassword: string,
-  ) => void;
+  onUpdatePassword: (oldPassword: string, newPassword: string, confirmNewPassword: string) => void;
   onCancel: () => void;
   error: string | null;
 }) {

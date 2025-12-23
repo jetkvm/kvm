@@ -11,13 +11,7 @@ interface Props {
   className?: string;
 }
 
-export default function EmptyCard({
-  IconElm,
-  headline,
-  description,
-  BtnElm,
-  className,
-}: Props) {
+export default function EmptyCard({ IconElm, headline, description, BtnElm, className }: Props) {
   return (
     <GridCard>
       <div
@@ -28,16 +22,12 @@ export default function EmptyCard({
       >
         <div className="max-w-[90%] space-y-1.5 text-center md:max-w-[60%]">
           <div className="space-y-2">
-            {IconElm && (
-              <IconElm className="mx-auto h-5 w-5 text-blue-600 dark:text-blue-600" />
-            )}
-            <h4 className="text-base font-bold leading-none text-black dark:text-white">
+            {IconElm && <IconElm className="mx-auto h-5 w-5 text-blue-600 dark:text-blue-600" />}
+            <h4 className="text-base leading-none font-bold text-black dark:text-white">
               {headline}
             </h4>
           </div>
-          <p className="mx-auto text-sm text-slate-600 dark:text-slate-400">
-            {description}
-          </p>
+          <p className="mx-auto text-sm text-slate-600 dark:text-slate-400">{description}</p>
         </div>
         {BtnElm}
       </div>

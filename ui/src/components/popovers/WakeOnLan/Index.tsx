@@ -69,13 +69,17 @@ export default function WakeOnLanModal() {
     (index: number) => {
       const updatedDevices = storedDevices.filter((_, i) => i !== index);
 
-      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          console.error("Failed to update Wake-on-LAN devices:", resp.error);
-        } else {
-          syncStoredDevices();
-        }
-      });
+      send(
+        "setWakeOnLanDevices",
+        { params: { devices: updatedDevices } },
+        (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            console.error("Failed to update Wake-on-LAN devices:", resp.error);
+          } else {
+            syncStoredDevices();
+          }
+        },
+      );
     },
     [send, storedDevices, syncStoredDevices],
   );
@@ -85,15 +89,19 @@ export default function WakeOnLanModal() {
       if (!name || !macAddress) return;
       const updatedDevices = [...storedDevices, { name, macAddress }];
       console.log("updatedDevices", updatedDevices);
-      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          console.error("Failed to add Wake-on-LAN device:", resp.error);
-          setAddDeviceErrorMessage(m.wake_on_lan_failed_add_device());
-        } else {
-          setShowAddForm(false);
-          syncStoredDevices();
-        }
-      });
+      send(
+        "setWakeOnLanDevices",
+        { params: { devices: updatedDevices } },
+        (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            console.error("Failed to add Wake-on-LAN device:", resp.error);
+            setAddDeviceErrorMessage(m.wake_on_lan_failed_add_device());
+          } else {
+            setShowAddForm(false);
+            syncStoredDevices();
+          }
+        },
+      );
     },
     [send, storedDevices, syncStoredDevices],
   );
@@ -103,10 +111,7 @@ export default function WakeOnLanModal() {
       <div className="space-y-4 p-4 py-3">
         <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="space-y-4">
-            <SettingsPageHeader
-              title={m.wake_on_lan()}
-              description={m.wake_on_lan_description()}
-            />
+            <SettingsPageHeader title={m.wake_on_lan()} description={m.wake_on_lan_description()} />
 
             {showAddForm ? (
               <AddDeviceForm
