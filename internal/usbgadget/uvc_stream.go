@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sync"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -172,14 +171,12 @@ type UVCStreamer struct {
 	frameCounter     uint32
 	droppedFrames    uint32
 	lastDropLogFrame uint32 // Last frame count when we logged drops
-	startNanos       int64  // Stream start time in nanoseconds (avoids Duration alloc)
 	probe            uvc_streaming_control
 	commit           uvc_streaming_control
 	eventDataBuf     [64]byte
 	pendingCtrl      uint8
 	streaming        bool
 	streamReady      bool
-	oversizedWarned  bool
 }
 
 type Logger interface {
@@ -318,10 +315,6 @@ func (s *UVCStreamer) Close() error {
 	return err
 }
 
-func (s *UVCStreamer) SetFormat(width, height uint32) error {
-	return s.SetFormatWithCodec(width, height, false)
-}
-
 // SetFormatWithCodec sets the V4L2 output format with the specified codec.
 // isMjpeg=true for MJPEG, false for H.264.
 func (s *UVCStreamer) SetFormatWithCodec(width, height uint32, isMjpeg bool) error {
@@ -418,8 +411,6 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.frameCounter = 0
 	s.droppedFrames = 0
 	s.lastDropLogFrame = 0
-	s.oversizedWarned = false
-	s.startNanos = time.Now().UnixNano()
 	s.streaming = true
 
 	bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
@@ -458,7 +449,6 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 	s.queuedBufs = 0
 	s.curBufIdx = 0
 	s.frameCounter = 0
-	s.startNanos = 0
 	return nil
 }
 
@@ -529,10 +519,13 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	s.frameCounter++
 
-	// Calculate timestamp using nanoseconds directly (avoids Duration allocation)
-	elapsedNanos := time.Now().UnixNano() - s.startNanos
-	elapsedSec := int32(elapsedNanos / 1e9)
-	elapsedUsec := int32((elapsedNanos % 1e9) / 1000)
+	// Frame-counter-based timestamp (avoids time.Now() syscall overhead).
+	// UVC hosts use buffer arrival order for timing, not timestamp values.
+	// Assumes 30fps nominal - actual frame pacing controlled by source.
+	const usecPerFrame = 33333 // 1/30 second in microseconds
+	elapsedUsecTotal := int64(s.frameCounter) * usecPerFrame
+	elapsedSec := int32(elapsedUsecTotal / 1_000_000)
+	elapsedUsec := int32(elapsedUsecTotal % 1_000_000)
 
 	// Prepare V4L2 buffer
 	var v4l2buf v4l2_buffer
@@ -608,8 +601,6 @@ func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
 	copy(s.eventDataBuf[:], ev.U[:])
 	return ev.Type, s.eventDataBuf[:], nil
 }
-
-const POLLPRI = 0x0002
 
 func (s *UVCStreamer) HandleSetupEvent(eventData []byte) error {
 	if len(eventData) < 12 {
@@ -819,11 +810,19 @@ func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 	return nil
 }
 
+// IsStreaming returns true if streaming is active.
+// Note: This is a lock-free read for hot-path performance. Use uvcStreamingFast
+// atomic flag in Manager for authoritative streaming state in frame handlers.
 func (s *UVCStreamer) IsStreaming() bool { return s.streaming }
-func (s *UVCStreamer) IsOpen() bool      { return s.fd >= 0 }
+
+// IsOpen returns true if the device is open.
+// Note: Lock-free read - fd is only modified under mutex in Open/Close.
+func (s *UVCStreamer) IsOpen() bool { return s.fd >= 0 }
 
 func (s *UVCStreamer) IsValid() bool {
+	s.mu.Lock()
 	fd := s.fd
+	s.mu.Unlock()
 	if fd < 0 {
 		return false
 	}

@@ -6,13 +6,9 @@ import (
 )
 
 const (
-	NALTypeSlice  = 1
-	NALTypeIDR    = 5
-	NALTypeSEI    = 6
-	NALTypeSPS    = 7
-	NALTypePPS    = 8
-	NALTypeAUD    = 9
-	NALTypeFiller = 12
+	NALTypeIDR = 5
+	NALTypeSPS = 7
+	NALTypePPS = 8
 )
 
 var (
@@ -84,20 +80,6 @@ func (c *H264ParamCache) AnalyzeAndUpdate(frame []byte) FrameInfo {
 	})
 
 	return info
-}
-
-func (c *H264ParamCache) GetParameters() []byte {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if len(c.sps) == 0 || len(c.pps) == 0 {
-		return nil
-	}
-
-	result := make([]byte, len(c.sps)+len(c.pps))
-	copy(result, c.sps)
-	copy(result[len(c.sps):], c.pps)
-	return result
 }
 
 func (c *H264ParamCache) HasParameters() bool {

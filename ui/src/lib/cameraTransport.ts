@@ -70,7 +70,6 @@ export class WebSocketCameraTransport implements CameraTransport {
   private url: string;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
-  private latencySamples: number[] = [];
 
   // Reusable send buffer to minimize GC pressure (resized as needed)
   private sendBuffer: Uint8Array = new Uint8Array(2 * 1024 * 1024); // 2MB initial (handles large MJPEG frames)
@@ -144,14 +143,6 @@ export class WebSocketCameraTransport implements CameraTransport {
               const msg = JSON.parse(event.data);
 
               switch (msg.type) {
-                case "ack":
-                  // Latency measurement
-                  if (msg.timestamp) {
-                    const latency = Date.now() - msg.timestamp;
-                    this.updateLatency(latency);
-                  }
-                  break;
-
                 case "format":
                   // Format negotiation from JetKVM
                   // UVC host has requested a specific format, or "stop" when disconnected
@@ -268,15 +259,6 @@ export class WebSocketCameraTransport implements CameraTransport {
       this.ws = null;
     }
     this.setState("disconnected");
-  }
-
-  private updateLatency(latency: number): void {
-    this.latencySamples.push(latency);
-    if (this.latencySamples.length > 30) {
-      this.latencySamples.shift();
-    }
-    this._stats.avgLatencyMs =
-      this.latencySamples.reduce((a, b) => a + b, 0) / this.latencySamples.length;
   }
 }
 

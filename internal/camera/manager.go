@@ -34,7 +34,7 @@ type Manager struct {
 	streamer         *usbgadget.UVCStreamer
 	streamerMu       sync.Mutex
 	stopChan         chan struct{}
-	eventLoopRun     bool
+	eventLoopRun     atomic.Bool
 	uvcMjpegSelected bool
 	h264Cache        *H264ParamCache
 	enabled          atomic.Bool

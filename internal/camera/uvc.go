@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	uvcBufferCount = 3 // 3 buffers for low-latency streaming (double-buffer + 1 for jitter)
+	uvcBufferCount = 3 // Triple-buffered V4L2 queue for low-latency streaming
 )
 
 // zerologAdapter wraps zerolog to implement usbgadget.Logger interface.
@@ -88,7 +88,7 @@ func (m *Manager) InitUVC(uvcEnabled bool) {
 	m.streamer = usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog})
 
 	m.stopChan = make(chan struct{})
-	m.eventLoopRun = true
+	m.eventLoopRun.Store(true)
 	go m.eventLoop()
 }
 
@@ -98,14 +98,18 @@ func (m *Manager) StopUVC() {
 	defer m.streamerMu.Unlock()
 
 	if m.stopChan != nil {
-		m.eventLoopRun = false
+		m.eventLoopRun.Store(false)
 		close(m.stopChan)
 		m.stopChan = nil
 	}
 
 	if m.streamer != nil {
-		_ = m.streamer.StopStreaming()
-		m.streamer.Close()
+		if err := m.streamer.StopStreaming(); err != nil && m.uvcLog != nil {
+			m.uvcLog.Debug().Err(err).Msg("StopStreaming error during cleanup")
+		}
+		if err := m.streamer.Close(); err != nil && m.uvcLog != nil {
+			m.uvcLog.Debug().Err(err).Msg("Close error during cleanup")
+		}
 		m.streamer = nil
 	}
 }
@@ -133,8 +137,12 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	}
 
 	if m.streamer != nil {
-		_ = m.streamer.StopStreaming()
-		m.streamer.Close()
+		if err := m.streamer.StopStreaming(); err != nil && m.uvcLog != nil {
+			m.uvcLog.Debug().Err(err).Msg("StopStreaming error during reinit")
+		}
+		if err := m.streamer.Close(); err != nil && m.uvcLog != nil {
+			m.uvcLog.Debug().Err(err).Msg("Close error during reinit")
+		}
 	}
 
 	if m.uvcLog != nil {
@@ -142,9 +150,9 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	}
 	m.streamer = usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog})
 
-	if !m.eventLoopRun && m.stopChan == nil {
+	if !m.eventLoopRun.Load() && m.stopChan == nil {
 		m.stopChan = make(chan struct{})
-		m.eventLoopRun = true
+		m.eventLoopRun.Store(true)
 		go m.eventLoop()
 	}
 }
@@ -157,8 +165,8 @@ func (m *Manager) eventLoop() {
 		errorRetryDelay = 100 * time.Millisecond
 	)
 
-	for m.eventLoopRun {
-		// HOTPATH: Lock-free streamer access - pointer only changes during init/shutdown
+	for m.eventLoopRun.Load() {
+		// Lock-free streamer access - pointer only changes during init/shutdown
 		streamer := m.streamer
 
 		if streamer == nil {
@@ -177,6 +185,9 @@ func (m *Manager) eventLoop() {
 
 		if !streamer.IsOpen() {
 			if err := streamer.Open(); err != nil {
+				if m.uvcLog != nil {
+					m.uvcLog.Warn().Err(err).Msg("Failed to open UVC device, retrying")
+				}
 				time.Sleep(retryInterval)
 				continue
 			}
@@ -456,27 +467,32 @@ func (m *Manager) HandleH264Frame(frame []byte) {
 }
 
 // HandleCameraH264Frame handles an H.264 frame from the browser camera.
-// HOTPATH: Zero overhead - no logging, no allocations, minimal branches.
+// HOTPATH: Optimized check order - streaming check first for fast bailout when idle.
 // Browser sends properly formatted H.264 with SPS/PPS, no processing needed.
 func (m *Manager) HandleCameraH264Frame(frame []byte) {
-	// HOTPATH: Single atomic load per check, bail early on any failure
-	if !m.enabled.Load() || !m.source.IsCamera() || m.uvcMjpegFast.Load() {
+	// HOTPATH: Fast bailout when not streaming (most common idle case)
+	if !m.uvcStreamingFast.Load() {
+		return
+	}
+
+	// Safety: verify source is camera and manager is enabled (prevents race conditions)
+	if !m.source.IsCamera() || !m.enabled.Load() || m.uvcMjpegFast.Load() {
 		return
 	}
 
 	// HOTPATH: Direct streamer access - only changes during init/shutdown
 	streamer := m.streamer
-	if streamer == nil || !streamer.IsStreaming() {
+	if streamer == nil {
 		return
 	}
 
-	// HOTPATH: Direct write, no error handling overhead in success path
+	// Direct write with error tracking
 	if err := streamer.WriteFrame(frame); err != nil {
 		m.uvcFrameErrors.Add(1)
 	}
 }
 
-// Periodic SPS/PPS injection interval (every N frames, ~10 seconds at 24fps)
+// Periodic SPS/PPS injection interval (every 240 frames, ~4-8 seconds at 30-60fps)
 const spsInjectInterval = 240
 
 // writeFrameToUVC writes an H.264 frame to the UVC gadget (HDMI loopback path).
@@ -567,7 +583,7 @@ func (m *Manager) RestoreMjpegState() {
 }
 
 // HandleMjpegFrame handles an MJPEG frame from the native encoder.
-// HOTPATH: Zero overhead - no logging, no allocations, minimal branches.
+// HOTPATH: Low overhead - no logging, minimal allocations.
 // Only works for HDMI source (hardware encodes from capture buffer).
 func (m *Manager) HandleMjpegFrame(frame []byte) {
 	// HOTPATH: Single combined check - bail early
@@ -588,12 +604,16 @@ func (m *Manager) HandleMjpegFrame(frame []byte) {
 }
 
 // HandleCameraMjpegFrame handles an MJPEG frame from the browser camera.
-// HOTPATH: Zero overhead - no logging, no allocations, minimal branches.
+// HOTPATH: Optimized check order - streaming check first for fast bailout when idle.
 // Browser sends MJPEG when UVC host negotiates MJPEG format.
 func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
-	// HOTPATH: Single combined check - bail early on any failure
-	if !m.uvcStreamingFast.Load() || !m.uvcMjpegFast.Load() ||
-		!m.enabled.Load() || !m.source.IsCamera() {
+	// HOTPATH: Fast bailout when not streaming (most common idle case)
+	if !m.uvcStreamingFast.Load() {
+		return
+	}
+
+	// Safety: verify source is camera, manager is enabled, and MJPEG mode
+	if !m.source.IsCamera() || !m.enabled.Load() || !m.uvcMjpegFast.Load() {
 		return
 	}
 
@@ -603,7 +623,7 @@ func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
 		return
 	}
 
-	// HOTPATH: Direct write, no error handling overhead in success path
+	// Direct write with error tracking
 	if err := streamer.WriteFrame(frame); err != nil {
 		m.uvcFrameErrors.Add(1)
 	}

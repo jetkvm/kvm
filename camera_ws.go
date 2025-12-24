@@ -27,7 +27,7 @@ const (
 	codecMjpeg = 0x02
 )
 
-// handleCameraWs handles the zero-overhead WebSocket endpoint for camera frames.
+// handleCameraWs handles the low-latency WebSocket endpoint for camera frames.
 // Protocol:
 //   - Server -> Client: JSON messages for format negotiation
 //   - Client -> Server: Binary frames with 1-byte header (codec)
