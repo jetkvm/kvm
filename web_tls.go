@@ -207,6 +207,8 @@ func stopWebSecureServer() {
 		return
 	}
 	stopTLS <- struct{}{}
+	close(stopTLS)
+	stopTLS = make(chan struct{})
 }
 
 func startWebSecureServer() {
