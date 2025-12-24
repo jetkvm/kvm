@@ -83,7 +83,18 @@ export default function SettingsAudioRoute() {
       setAudioBufferPeriods(config.buffer_periods);
       setAudioPacketLossPerc(config.packet_loss_perc);
     });
-  }, [send, setAudioOutputEnabled, setAudioInputAutoEnable, setAudioOutputSource, setAudioBitrate, setAudioComplexity, setAudioDTXEnabled, setAudioFECEnabled, setAudioBufferPeriods, setAudioPacketLossPerc]);
+  }, [
+    send,
+    setAudioOutputEnabled,
+    setAudioInputAutoEnable,
+    setAudioOutputSource,
+    setAudioBitrate,
+    setAudioComplexity,
+    setAudioDTXEnabled,
+    setAudioFECEnabled,
+    setAudioBufferPeriods,
+    setAudioPacketLossPerc,
+  ]);
 
   const handleAudioOutputEnabledChange = (enabled: boolean) => {
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
@@ -105,7 +116,7 @@ export default function SettingsAudioRoute() {
     send("setAudioOutputSource", { source }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         const errorMsg = m.audio_settings_output_source_failed({
-          error: String(resp.error.data || m.unknown_error())
+          error: String(resp.error.data || m.unknown_error()),
         });
         notifications.error(errorMsg);
         return;
@@ -173,7 +184,7 @@ export default function SettingsAudioRoute() {
         >
           <Checkbox
             checked={audioOutputEnabled || false}
-            onChange={(e) => handleAudioOutputEnabledChange(e.target.checked)}
+            onChange={e => handleAudioOutputEnabledChange(e.target.checked)}
           />
         </SettingsItem>
 
@@ -188,7 +199,7 @@ export default function SettingsAudioRoute() {
               { value: "usb", label: m.audio_settings_usb_label() },
               { value: "hdmi", label: m.audio_settings_hdmi_label() },
             ]}
-            onChange={(e) => handleAudioOutputSourceChange(e.target.value)}
+            onChange={e => handleAudioOutputSourceChange(e.target.value)}
           />
         </SettingsItem>
 
@@ -198,7 +209,7 @@ export default function SettingsAudioRoute() {
         >
           <Checkbox
             checked={audioInputAutoEnable || false}
-            onChange={(e) => handleAudioInputAutoEnableChange(e.target.checked)}
+            onChange={e => handleAudioInputAutoEnableChange(e.target.checked)}
           />
         </SettingsItem>
 
@@ -214,10 +225,13 @@ export default function SettingsAudioRoute() {
               { value: "96", label: "96 kbps" },
               { value: "128", label: "128 kbps" },
               { value: "160", label: "160 kbps" },
-              { value: "192", label: `192 kbps${192 === AUDIO_DEFAULTS.bitrate ? m.audio_settings_default_suffix() : ''}` },
+              {
+                value: "192",
+                label: `192 kbps${192 === AUDIO_DEFAULTS.bitrate ? m.audio_settings_default_suffix() : ""}`,
+              },
               { value: "256", label: "256 kbps" },
             ]}
-            onChange={(e) => handleAudioConfigChange({ bitrate: parseInt(e.target.value) })}
+            onChange={e => handleAudioConfigChange({ bitrate: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
@@ -232,10 +246,13 @@ export default function SettingsAudioRoute() {
               { value: "0", label: "0 (fastest)" },
               { value: "2", label: "2" },
               { value: "5", label: "5" },
-              { value: "8", label: `8${8 === AUDIO_DEFAULTS.complexity ? m.audio_settings_default_suffix() : ''}` },
+              {
+                value: "8",
+                label: `8${8 === AUDIO_DEFAULTS.complexity ? m.audio_settings_default_suffix() : ""}`,
+              },
               { value: "10", label: "10 (best quality)" },
             ]}
-            onChange={(e) => handleAudioConfigChange({ complexity: parseInt(e.target.value) })}
+            onChange={e => handleAudioConfigChange({ complexity: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
@@ -245,7 +262,7 @@ export default function SettingsAudioRoute() {
         >
           <Checkbox
             checked={audioDTXEnabled}
-            onChange={(e) => handleAudioConfigChange({ dtxEnabled: e.target.checked })}
+            onChange={e => handleAudioConfigChange({ dtxEnabled: e.target.checked })}
           />
         </SettingsItem>
 
@@ -255,7 +272,7 @@ export default function SettingsAudioRoute() {
         >
           <Checkbox
             checked={audioFECEnabled}
-            onChange={(e) => handleAudioConfigChange({ fecEnabled: e.target.checked })}
+            onChange={e => handleAudioConfigChange({ fecEnabled: e.target.checked })}
           />
         </SettingsItem>
 
@@ -273,7 +290,7 @@ export default function SettingsAudioRoute() {
               { value: "16", label: "16 (320ms)" },
               { value: "24", label: "24 (480ms)" },
             ]}
-            onChange={(e) => handleAudioConfigChange({ bufferPeriods: parseInt(e.target.value) })}
+            onChange={e => handleAudioConfigChange({ bufferPeriods: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
@@ -289,18 +306,21 @@ export default function SettingsAudioRoute() {
               { value: "5", label: "5%" },
               { value: "10", label: "10%" },
               { value: "15", label: "15%" },
-              { value: "20", label: `20%${20 === AUDIO_DEFAULTS.packetLossPerc ? m.audio_settings_default_suffix() : ''}` },
+              {
+                value: "20",
+                label: `20%${20 === AUDIO_DEFAULTS.packetLossPerc ? m.audio_settings_default_suffix() : ""}`,
+              },
               { value: "25", label: "25%" },
               { value: "30", label: "30%" },
             ]}
-            onChange={(e) => handleAudioConfigChange({ packetLossPerc: parseInt(e.target.value) })}
+            onChange={e => handleAudioConfigChange({ packetLossPerc: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
         <div className="pt-4">
           <button
             onClick={handleRestartAudio}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
           >
             {m.audio_settings_apply_button()}
           </button>
