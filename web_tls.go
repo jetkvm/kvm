@@ -70,7 +70,7 @@ func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 func getTLSState() TLSState {
 	s := TLSState{}
 
-	s.Enforce = config.TLSEnforce
+	canEnforce := false
 	s.Mode = "disabled"
 
 	switch config.TLSMode {
@@ -89,19 +89,21 @@ func getTLSState() TLSState {
 				certPEM = append(certPEM, pem.EncodeToMemory(&block)...)
 			}
 			s.Certificate = string(certPEM)
+			canEnforce = true
 		}
 	case "self-signed":
 		s.Mode = "self-signed"
+		canEnforce = true
 	}
+
+	s.Enforce = canEnforce && config.TLSEnforce
 
 	return s
 }
 
 func setTLSState(s TLSState) error {
 	var isChanged = false
-	var oldEnforce = config.TLSEnforce
-
-	config.TLSEnforce = s.Enforce
+	oldEnforce := config.TLSEnforce
 
 	switch s.Mode {
 	case "disabled":
@@ -124,11 +126,13 @@ func setTLSState(s TLSState) error {
 			return fmt.Errorf("failed to save certificate: %w", err)
 		}
 		config.TLSMode = "custom"
+		config.TLSEnforce = s.Enforce
 	case "self-signed":
 		if config.TLSMode == "" {
 			isChanged = true
 		}
 		config.TLSMode = "self-signed"
+		config.TLSEnforce = s.Enforce
 	default:
 		return fmt.Errorf("invalid TLS mode: %s", s.Mode)
 	}
