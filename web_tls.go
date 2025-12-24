@@ -172,7 +172,7 @@ func runWebSecureServer() {
 		tlsStarted = false
 	}()
 
-	r := setupRouter(false)
+	r := setupRouter(true)
 
 	server := &http.Server{
 		Addr:    webSecureListen,

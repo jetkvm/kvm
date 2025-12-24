@@ -74,7 +74,7 @@ var cachableFileExtensions = []string{
 	".jpg", ".jpeg", ".png", ".svg", ".gif", ".webp", ".ico", ".woff2",
 }
 
-func setupRouter(secureRedirect bool) *gin.Engine {
+func setupRouter(isSecureServer bool) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
@@ -84,7 +84,7 @@ func setupRouter(secureRedirect bool) *gin.Engine {
 		}),
 	))
 
-	if secureRedirect {
+	if !isSecureServer && config.TLSEnforce {
 		r.Use(secure.Secure(secure.Options{
 			AllowedHosts:          []string{},
 			SSLRedirect:           true,
@@ -586,7 +586,7 @@ var (
 )
 
 func RunWebServer() {
-	r := setupRouter(config.TLSMode != "" && config.TLSEnforce)
+	r := setupRouter(false)
 
 	// Determine the binding address based on the config
 	var bindAddress string
@@ -620,7 +620,7 @@ func RunWebServer() {
 
 	go func() {
 		for range updateWebRouter {
-			server.Handler = setupRouter(config.TLSMode != "" && config.TLSEnforce)
+			server.Handler = setupRouter(false)
 		}
 	}()
 
