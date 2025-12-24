@@ -106,9 +106,16 @@ type v4l2_timecode struct {
 	Userbits                        [4]uint8
 }
 
+// v4l2_timeval matches kernel struct timeval on 32-bit ARM (linux/arm).
+// We define our own to avoid platform-specific differences in syscall.Timeval.
+type v4l2_timeval struct {
+	Sec  int32
+	Usec int32
+}
+
 type v4l2_buffer struct {
 	Index, Type, BytesUsed, Flags, Field uint32
-	Timestamp                            syscall.Timeval
+	Timestamp                            v4l2_timeval
 	Timecode                             v4l2_timecode
 	Sequence, Memory                     uint32
 	M                                    uintptr
@@ -531,7 +538,7 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	v4l2buf.BytesUsed = uint32(len(data))
 	v4l2buf.Length = uint32(len(buf))
 	v4l2buf.M = uintptr(unsafe.Pointer(&buf[0]))
-	v4l2buf.Timestamp = syscall.Timeval{
+	v4l2buf.Timestamp = v4l2_timeval{
 		Sec:  elapsedSec,
 		Usec: elapsedUsec,
 	}
