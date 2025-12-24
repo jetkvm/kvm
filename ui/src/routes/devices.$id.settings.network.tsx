@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FieldValues, FormProvider, useForm } from "react-hook-form";
+import { FieldValues, FormProvider, useForm, useWatch } from "react-hook-form";
 import { LuCopy, LuEthernetPort } from "react-icons/lu";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -171,7 +171,7 @@ export default function SettingsNetworkRoute() {
     [customDomain],
   );
 
-  const { register, handleSubmit, watch, formState, reset } = formMethods;
+  const { register, handleSubmit, control, formState, reset } = formMethods;
 
   const onSubmit = useCallback(
     async (settings: NetworkSettings) => {
@@ -317,9 +317,9 @@ export default function SettingsNetworkRoute() {
     [prepareSettings, formState.dirtyFields, onSubmit],
   );
 
-  const ipv4mode = watch("ipv4_mode");
-  const ipv6mode = watch("ipv6_mode");
-  const domain = watch("domain");
+  const ipv4mode = useWatch({ control, name: "ipv4_mode" });
+  const ipv6mode = useWatch({ control, name: "ipv6_mode" });
+  const domain = useWatch({ control, name: "domain" });
 
   const onDhcpLeaseRenew = () => {
     send("renewDHCPLease", {}, resp => {
@@ -338,8 +338,7 @@ export default function SettingsNetworkRoute() {
   return (
     <>
       <FormProvider {...formMethods}>
-        {/* This is a bug in react. The fix hasn'e been released yet. https://github.com/facebook/react/pull/35062 */}
-        {}
+        {/* eslint-disable-next-line react-hooks/refs -- callback reads ref on submit, not during render. React fix pending: https://github.com/facebook/react/pull/35062 */}
         <form onSubmit={handleSubmit(onSubmitGate)} className="space-y-4">
           <SettingsPageHeader
             title={m.network_title()}

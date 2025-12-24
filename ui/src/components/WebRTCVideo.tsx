@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
 import { cx } from "@/cva.config";
-import { isWindows } from "@/utils";
+import { isWindows, isSecureContext } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import { useRTCStore, useSettingsStore, useVideoStore } from "@hooks/stores";
@@ -19,7 +19,6 @@ import {
 import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
-import { isSecureContext } from "@/utils";
 
 export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
   // Video and stream related refs and states
@@ -412,12 +411,15 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
             document.body.appendChild(audioElm);
             audioElementsRef.current.push(audioElm);
 
-            audioElm.play().then(() => {
-              setAudioAutoplayBlocked(false);
-            }).catch(() => {
-              console.debug("[Audio] Autoplay blocked, will be started by user interaction");
-              setAudioAutoplayBlocked(true);
-            });
+            audioElm
+              .play()
+              .then(() => {
+                setAudioAutoplayBlocked(false);
+              })
+              .catch(() => {
+                console.debug("[Audio] Autoplay blocked, will be started by user interaction");
+                setAudioAutoplayBlocked(true);
+              });
           }
         },
         { signal },
@@ -425,7 +427,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
       return () => {
         abortController.abort();
-        audioElementsRef.current.forEach((audioElm) => {
+        audioElementsRef.current.forEach(audioElm => {
           audioElm.srcObject = null;
           audioElm.remove();
         });
@@ -550,7 +552,14 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     if (!isPlaying) return true;
     if (audioAutoplayBlocked) return true;
     return false;
-  }, [audioAutoplayBlocked, hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
+  }, [
+    audioAutoplayBlocked,
+    hdmiError,
+    isPlaying,
+    peerConnection?.connectionState,
+    videoHeight,
+    videoWidth,
+  ]);
 
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
@@ -650,9 +659,12 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                               onPlayClick={() => {
                                 videoElm.current?.play();
                                 audioElementsRef.current.forEach(audioElm => {
-                                  audioElm.play().then(() => {
-                                    setAudioAutoplayBlocked(false);
-                                  }).catch(() => undefined);
+                                  audioElm
+                                    .play()
+                                    .then(() => {
+                                      setAudioAutoplayBlocked(false);
+                                    })
+                                    .catch(() => undefined);
                                 });
                               }}
                             />

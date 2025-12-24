@@ -119,7 +119,8 @@ export default function KvmIdRoute() {
   const params = useParams() as { id: string };
   const { sidebarView, setSidebarView, disableVideoFocusTrap, rebootState, setRebootState } =
     useUiStore();
-  const { microphoneEnabled, setMicrophoneEnabled, audioInputAutoEnable, setAudioInputAutoEnable } = useSettingsStore();
+  const { microphoneEnabled, setMicrophoneEnabled, audioInputAutoEnable, setAudioInputAutoEnable } =
+    useSettingsStore();
   const [queryParams, setQueryParams] = useSearchParams();
 
   const {
@@ -194,18 +195,18 @@ export default function KvmIdRoute() {
           console.warn("[SDP] Opus 48kHz stereo not found in answer - stereo may not work");
         } else {
           const pt = opusMatch[1];
-          const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
+          const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, "i");
           const fmtpMatch = remoteDescription.sdp.match(fmtpRegex);
 
-          if (fmtpMatch && !fmtpMatch[1].includes('stereo=')) {
+          if (fmtpMatch && !fmtpMatch[1].includes("stereo=")) {
             remoteDescription.sdp = remoteDescription.sdp.replace(
               fmtpRegex,
-              `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`
+              `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`,
             );
           } else if (!fmtpMatch) {
             remoteDescription.sdp = remoteDescription.sdp.replace(
               opusMatch[0],
-              `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`
+              `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`,
             );
           }
         }
@@ -478,17 +479,23 @@ export default function KvmIdRoute() {
             console.warn("[SDP] Opus 48kHz stereo not found in offer - stereo may not work");
           } else {
             const pt = opusMatch[1];
-            const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
+            const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, "i");
             const fmtpMatch = offer.sdp.match(fmtpRegex);
 
             if (fmtpMatch) {
               // Modify existing fmtp line
-              if (!fmtpMatch[1].includes('stereo=')) {
-                offer.sdp = offer.sdp.replace(fmtpRegex, `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`);
+              if (!fmtpMatch[1].includes("stereo=")) {
+                offer.sdp = offer.sdp.replace(
+                  fmtpRegex,
+                  `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`,
+                );
               }
             } else {
               // Add new fmtp line after rtpmap
-              offer.sdp = offer.sdp.replace(opusMatch[0], `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`);
+              offer.sdp = offer.sdp.replace(
+                opusMatch[0],
+                `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`,
+              );
             }
           }
         }
@@ -603,8 +610,6 @@ export default function KvmIdRoute() {
     setRpcHidProtocolVersion,
     setTransceiver,
     setAudioTransceiver,
-    audioInputAutoEnable,
-    setMicrophoneEnabled,
   ]);
 
   useEffect(() => {
@@ -628,33 +633,36 @@ export default function KvmIdRoute() {
 
       const requestMicrophone = () => {
         microphoneRequestInProgress.current = true;
-        navigator.mediaDevices?.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-          }
-        }).then((stream) => {
-          microphoneRequestInProgress.current = false;
-          const audioTrack = stream.getAudioTracks()[0];
-          if (audioTrack && audioTransceiver.sender) {
-            const handleTrackEnded = () => {
-              console.warn('Microphone track ended unexpectedly, attempting to restart...');
-              if (audioTransceiver.sender.track === audioTrack) {
-                audioTransceiver.sender.replaceTrack(null);
-                setTimeout(requestMicrophone, 500);
-              }
-            };
+        navigator.mediaDevices
+          ?.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1,
+            },
+          })
+          .then(stream => {
+            microphoneRequestInProgress.current = false;
+            const audioTrack = stream.getAudioTracks()[0];
+            if (audioTrack && audioTransceiver.sender) {
+              const handleTrackEnded = () => {
+                console.warn("Microphone track ended unexpectedly, attempting to restart...");
+                if (audioTransceiver.sender.track === audioTrack) {
+                  audioTransceiver.sender.replaceTrack(null);
+                  setTimeout(requestMicrophone, 500);
+                }
+              };
 
-            audioTrack.addEventListener('ended', handleTrackEnded, { once: true });
-            audioTransceiver.sender.replaceTrack(audioTrack);
-          }
-        }).catch((err) => {
-          microphoneRequestInProgress.current = false;
-          console.error('Failed to get microphone:', err);
-          setMicrophoneEnabled(false);
-        });
+              audioTrack.addEventListener("ended", handleTrackEnded, { once: true });
+              audioTransceiver.sender.replaceTrack(audioTrack);
+            }
+          })
+          .catch(err => {
+            microphoneRequestInProgress.current = false;
+            console.error("Failed to get microphone:", err);
+            setMicrophoneEnabled(false);
+          });
       };
 
       requestMicrophone();
@@ -925,7 +933,14 @@ export default function KvmIdRoute() {
         }
       });
     }
-  }, [audioTransceiver, peerConnection, audioInputAutoEnableLoaded, microphoneEnabled, setMicrophoneEnabled, send]);
+  }, [
+    audioTransceiver,
+    peerConnection,
+    audioInputAutoEnableLoaded,
+    microphoneEnabled,
+    setMicrophoneEnabled,
+    send,
+  ]);
 
   useEffect(() => {
     if (!peerConnection) {
