@@ -48,38 +48,49 @@ export default function CameraPopover() {
     });
   }, [send, setCameraEnabled]);
 
-  const handleSourceChange = useCallback((source: UVCSource) => {
-    // Check HTTPS requirement for camera source
-    if (source === "camera" && !isHttps) {
-      notifications.error(m.camera_source_https_required());
-      return;
-    }
-
-    // Enable/disable camera based on source selection
-    const enableCamera = source === "camera";
-
-    // First set the camera enabled state
-    send("setCameraEnabled", { enabled: enableCamera }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(m.camera_failed_enable({ error: String(resp.error.data || resp.error.message) }));
+  const handleSourceChange = useCallback(
+    (source: UVCSource) => {
+      // Check HTTPS requirement for camera source
+      if (source === "camera" && !isHttps) {
+        notifications.error(m.camera_source_https_required());
         return;
       }
-      setCameraEnabled(enableCamera);
 
-      // Then set the UVC source
-      send("setUVCSource", { source }, (resp: JsonRpcResponse) => {
+      // Enable/disable camera based on source selection
+      const enableCamera = source === "camera";
+
+      // First set the camera enabled state
+      send("setCameraEnabled", { enabled: enableCamera }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          notifications.error(m.camera_source_change_failed({ error: String(resp.error.message) }));
-          // Rollback camera state on failure
-          send("setCameraEnabled", { enabled: !enableCamera }, () => {});
-          setCameraEnabled(!enableCamera);
+          notifications.error(
+            m.camera_failed_enable({ error: String(resp.error.data || resp.error.message) }),
+          );
           return;
         }
-        setUvcSource(source);
-        notifications.success(source === "hdmi" ? m.camera_source_changed_hdmi() : m.camera_source_changed_browser());
+        setCameraEnabled(enableCamera);
+
+        // Then set the UVC source
+        send("setUVCSource", { source }, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            notifications.error(
+              m.camera_source_change_failed({ error: String(resp.error.message) }),
+            );
+            // Rollback camera state on failure
+            send("setCameraEnabled", { enabled: !enableCamera }, () => {
+              // Ignore rollback response
+            });
+            setCameraEnabled(!enableCamera);
+            return;
+          }
+          setUvcSource(source);
+          notifications.success(
+            source === "hdmi" ? m.camera_source_changed_hdmi() : m.camera_source_changed_browser(),
+          );
+        });
       });
-    });
-  }, [send, setCameraEnabled, isHttps]);
+    },
+    [send, setCameraEnabled, isHttps],
+  );
 
   return (
     <GridCard>
@@ -101,7 +112,7 @@ export default function CameraPopover() {
                   <SelectMenuBasic
                     size="SM"
                     value={uvcSource}
-                    onChange={(e) => handleSourceChange(e.target.value as UVCSource)}
+                    onChange={e => handleSourceChange(e.target.value as UVCSource)}
                     options={getUvcSourceOptions()}
                   />
                 </SettingsItem>
@@ -110,8 +121,7 @@ export default function CameraPopover() {
                 <div className="text-sm text-slate-500 dark:text-slate-400">
                   {uvcSource === "hdmi"
                     ? m.camera_source_hdmi_active()
-                    : m.camera_source_browser_active()
-                  }
+                    : m.camera_source_browser_active()}
                 </div>
 
                 {/* HTTPS warning for camera option */}

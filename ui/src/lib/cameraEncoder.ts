@@ -31,12 +31,14 @@ interface VideoFrameCallbackMetadata {
 
 declare global {
   interface HTMLVideoElement {
-    requestVideoFrameCallback(callback: (now: DOMHighResTimeStamp, metadata: VideoFrameCallbackMetadata) => void): number;
+    requestVideoFrameCallback(
+      callback: (now: DOMHighResTimeStamp, metadata: VideoFrameCallbackMetadata) => void,
+    ): number;
     cancelVideoFrameCallback(handle: number): void;
   }
 }
 
-export type VideoCodec = 'h264' | 'mjpeg';
+export type VideoCodec = "h264" | "mjpeg";
 
 export interface EncoderConfig {
   width: number;
@@ -54,7 +56,7 @@ export interface EncodedFrame {
   codec: VideoCodec;
 }
 
-export type EncoderState = 'idle' | 'initializing' | 'running' | 'paused' | 'error' | 'stopped';
+export type EncoderState = "idle" | "initializing" | "running" | "paused" | "error" | "stopped";
 
 export interface CameraEncoderEvents {
   onFrame: (frame: EncodedFrame) => void;
@@ -76,7 +78,7 @@ const DEFAULT_CONFIG: EncoderConfig = {
  * Check if WebCodecs VideoEncoder is supported
  */
 export function isVideoEncoderSupported(): boolean {
-  return typeof VideoEncoder !== 'undefined';
+  return typeof VideoEncoder !== "undefined";
 }
 
 /**
@@ -89,7 +91,7 @@ export async function isH264Supported(): Promise<boolean> {
 
   try {
     const support = await VideoEncoder.isConfigSupported({
-      codec: 'avc1.640032', // H.264 High Profile Level 5.0 (supports 1080p60)
+      codec: "avc1.640032", // H.264 High Profile Level 5.0 (supports 1080p60)
       width: 1920,
       height: 1080,
       bitrate: 8_000_000,
@@ -105,15 +107,17 @@ export async function isH264Supported(): Promise<boolean> {
  * Check if MJPEG encoding is supported (OffscreenCanvas + Worker)
  */
 export function isMjpegSupported(): boolean {
-  return typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined';
+  return typeof OffscreenCanvas !== "undefined" && typeof Worker !== "undefined";
 }
 
 /**
  * Check if requestVideoFrameCallback is supported (better than rAF for video)
  */
 export function hasRequestVideoFrameCallback(): boolean {
-  return typeof HTMLVideoElement !== 'undefined' &&
-    'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  return (
+    typeof HTMLVideoElement !== "undefined" &&
+    "requestVideoFrameCallback" in HTMLVideoElement.prototype
+  );
 }
 
 /**
@@ -123,7 +127,7 @@ export class CameraEncoder {
   private codec: VideoCodec;
   private config: EncoderConfig;
   private events: Partial<CameraEncoderEvents> = {};
-  private _state: EncoderState = 'idle';
+  private _state: EncoderState = "idle";
 
   // Camera capture
   private mediaStream: MediaStream | null = null;
@@ -190,7 +194,7 @@ export class CameraEncoder {
 
     // Always restart when switching codec - need to create new encoder resources
     // (H.264 and MJPEG have completely different resources: WebCodecs vs WebWorker)
-    const wasActive = this._state === 'running' || this._state === 'paused';
+    const wasActive = this._state === "running" || this._state === "paused";
     if (wasActive) {
       this.stop();
     }
@@ -234,7 +238,9 @@ export class CameraEncoder {
 
     if (this.config.bitrate === bitrate) return;
 
-    console.log(`[CameraEncoder] Updating bitrate: ${this.config.bitrate / 1_000_000}Mbps -> ${bitrate / 1_000_000}Mbps`);
+    console.log(
+      `[CameraEncoder] Updating bitrate: ${this.config.bitrate / 1_000_000}Mbps -> ${bitrate / 1_000_000}Mbps`,
+    );
     this.config.bitrate = bitrate;
     // Note: H.264 encoder will use new bitrate on next restart/reconfigure
   }
@@ -251,13 +257,15 @@ export class CameraEncoder {
 
     if (this.config.quality === quality) return;
 
-    console.log(`[CameraEncoder] Updating MJPEG quality: ${Math.round(this.config.quality * 100)}% -> ${Math.round(quality * 100)}%`);
+    console.log(
+      `[CameraEncoder] Updating MJPEG quality: ${Math.round(this.config.quality * 100)}% -> ${Math.round(quality * 100)}%`,
+    );
     this.config.quality = quality;
 
     // Update worker immediately if MJPEG is running
-    if (this.codec === 'mjpeg' && this.mjpegWorker) {
+    if (this.codec === "mjpeg" && this.mjpegWorker) {
       this.mjpegWorker.postMessage({
-        type: 'setQuality',
+        type: "setQuality",
         quality,
       });
     }
@@ -276,15 +284,17 @@ export class CameraEncoder {
 
     if (this.config.width === width && this.config.height === height) return;
 
-    console.log(`[CameraEncoder] Updating resolution: ${this.config.width}x${this.config.height} -> ${width}x${height}`);
+    console.log(
+      `[CameraEncoder] Updating resolution: ${this.config.width}x${this.config.height} -> ${width}x${height}`,
+    );
     this.config.width = width;
     this.config.height = height;
 
     // Resolution change requires encoder restart to re-request camera with new constraints
     // Must handle both running AND paused states (camera constraints need to change)
-    const wasActive = this._state === 'running' || this._state === 'paused';
+    const wasActive = this._state === "running" || this._state === "paused";
     if (wasActive) {
-      console.log('[CameraEncoder] Restarting encoder for resolution change');
+      console.log("[CameraEncoder] Restarting encoder for resolution change");
       this.stop();
       await this.start();
     }
@@ -294,19 +304,19 @@ export class CameraEncoder {
    * Start capturing and encoding camera video
    */
   async start(): Promise<void> {
-    if (this._state === 'running') {
-      console.log('[CameraEncoder] Already running');
+    if (this._state === "running") {
+      console.log("[CameraEncoder] Already running");
       return;
     }
 
-    this.setState('initializing');
+    this.setState("initializing");
 
     const targetFrameRate = this.config.frameRate;
     console.log(`[CameraEncoder] Starting with codec: ${this.codec} at ${targetFrameRate}fps`);
 
     try {
       // Request camera access with configured frame rate
-      console.log('[CameraEncoder] Requesting camera access...');
+      console.log("[CameraEncoder] Requesting camera access...");
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: this.config.width },
@@ -314,11 +324,11 @@ export class CameraEncoder {
           frameRate: { ideal: targetFrameRate, min: 15 },
         },
       });
-      console.log('[CameraEncoder] Got camera access');
+      console.log("[CameraEncoder] Got camera access");
 
       const videoTracks = this.mediaStream.getVideoTracks();
       if (videoTracks.length === 0) {
-        throw new Error('No video track available');
+        throw new Error("No video track available");
       }
 
       this.videoTrack = videoTracks[0];
@@ -335,20 +345,19 @@ export class CameraEncoder {
       // Set state to running BEFORE starting encoder so capture callbacks work
       this.lastStatsTime = performance.now();
       this.statsFrameCount = 0;
-      this.setState('running');
+      this.setState("running");
 
-      if (this.codec === 'h264') {
-        console.log('[CameraEncoder] Starting H.264 encoder');
+      if (this.codec === "h264") {
+        console.log("[CameraEncoder] Starting H.264 encoder");
         await this.startH264Encoder(actualWidth, actualHeight);
       } else {
-        console.log('[CameraEncoder] Starting MJPEG encoder');
+        console.log("[CameraEncoder] Starting MJPEG encoder");
         await this.startMjpegEncoder(actualWidth, actualHeight);
       }
 
-      console.log('[CameraEncoder] Encoder running');
-
+      console.log("[CameraEncoder] Encoder running");
     } catch (error) {
-      this.setState('error');
+      this.setState("error");
       this.events.onError?.(error instanceof Error ? error : new Error(String(error)));
       this.cleanup();
       throw error;
@@ -359,15 +368,15 @@ export class CameraEncoder {
    * Stop capturing and encoding
    */
   stop(): void {
-    this.setState('stopped');
+    this.setState("stopped");
     this.cleanup();
   }
 
   pause(): void {
-    if (this._state !== 'running') {
+    if (this._state !== "running") {
       return;
     }
-    this.setState('paused');
+    this.setState("paused");
 
     if (this.videoFrameCallbackId !== null && this.videoElement && hasRequestVideoFrameCallback()) {
       this.videoElement.cancelVideoFrameCallback(this.videoFrameCallbackId);
@@ -393,7 +402,7 @@ export class CameraEncoder {
   }
 
   async resume(): Promise<void> {
-    if (this._state !== 'paused') {
+    if (this._state !== "paused") {
       return;
     }
 
@@ -408,7 +417,7 @@ export class CameraEncoder {
 
       const videoTracks = this.mediaStream.getVideoTracks();
       if (videoTracks.length === 0) {
-        throw new Error('No video track available');
+        throw new Error("No video track available");
       }
 
       this.videoTrack = videoTracks[0];
@@ -423,15 +432,15 @@ export class CameraEncoder {
 
       this.lastStatsTime = performance.now();
       this.statsFrameCount = 0;
-      this.setState('running');
+      this.setState("running");
 
-      if (this.codec === 'h264') {
+      if (this.codec === "h264") {
         await this.startH264Encoder(actualWidth, actualHeight);
       } else {
         await this.startMjpegEncoder(actualWidth, actualHeight);
       }
     } catch (error) {
-      this.setState('error');
+      this.setState("error");
       this.events.onError?.(error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
@@ -444,17 +453,19 @@ export class CameraEncoder {
   forceKeyFrame(): void {
     // Reset keyframe counter to force immediate keyframe on next encode
     this.keyFrameCounter = this.framesPerKeyFrame;
-    console.log('[CameraEncoder] Forcing keyframe on next encode');
+    console.log("[CameraEncoder] Forcing keyframe on next encode");
   }
 
   private cleanup(): void {
     // Stop H.264 encoder
     if (this.frameReader) {
-      this.frameReader.cancel().catch(() => {});
+      this.frameReader.cancel().catch(() => {
+        // Ignore cancel errors during cleanup
+      });
       this.frameReader = null;
     }
 
-    if (this.h264Encoder && this.h264Encoder.state !== 'closed') {
+    if (this.h264Encoder && this.h264Encoder.state !== "closed") {
       try {
         this.h264Encoder.close();
       } catch {
@@ -477,7 +488,7 @@ export class CameraEncoder {
     }
 
     if (this.mjpegWorker) {
-      this.mjpegWorker.postMessage({ type: 'stop' });
+      this.mjpegWorker.postMessage({ type: "stop" });
       this.mjpegWorker.terminate();
       this.mjpegWorker = null;
     }
@@ -502,15 +513,15 @@ export class CameraEncoder {
 
   private async startH264Encoder(width: number, height: number): Promise<void> {
     if (!isVideoEncoderSupported()) {
-      throw new Error('VideoEncoder API not supported');
+      throw new Error("VideoEncoder API not supported");
     }
 
     // Create H.264 encoder
     this.h264Encoder = new VideoEncoder({
       output: (chunk, metadata) => this.handleH264Chunk(chunk, metadata),
-      error: (error) => {
+      error: error => {
         this.events.onError?.(error);
-        this.setState('error');
+        this.setState("error");
       },
     });
 
@@ -518,14 +529,14 @@ export class CameraEncoder {
     // Use High Profile Level 5.0 for 1080p60 support
     // Level encoding: 0x32 = 50 (Level 5.0), supports up to 4096x2304@30fps or 1920x1080@60fps
     await this.h264Encoder.configure({
-      codec: 'avc1.640032', // High Profile, Level 5.0
+      codec: "avc1.640032", // High Profile, Level 5.0
       width,
       height,
       bitrate: this.config.bitrate,
       framerate: this.config.frameRate,
-      latencyMode: 'realtime',
+      latencyMode: "realtime",
       avc: {
-        format: 'annexb', // Annex B format with start codes
+        format: "annexb", // Annex B format with start codes
       },
     });
 
@@ -539,14 +550,14 @@ export class CameraEncoder {
   }
 
   private async readH264Frames(): Promise<void> {
-    if (!this.frameReader || (this._state !== 'running' && this._state !== 'paused')) {
+    if (!this.frameReader || (this._state !== "running" && this._state !== "paused")) {
       return;
     }
 
     try {
-      while (this._state === 'running' || this._state === 'paused') {
+      while (this._state === "running" || this._state === "paused") {
         // If paused, wait briefly and check again
-        if (this._state === 'paused') {
+        if (this._state === "paused") {
           await new Promise(resolve => setTimeout(resolve, 100));
           continue;
         }
@@ -566,7 +577,7 @@ export class CameraEncoder {
             if (timeSinceLastCapture >= this.minFrameIntervalMs) {
               this.lastCaptureTime = now;
 
-              if (this.h264Encoder && this.h264Encoder.state === 'configured') {
+              if (this.h264Encoder && this.h264Encoder.state === "configured") {
                 const isKeyFrame = this.keyFrameCounter >= this.framesPerKeyFrame;
                 if (isKeyFrame) {
                   this.keyFrameCounter = 0;
@@ -587,7 +598,7 @@ export class CameraEncoder {
         }
       }
     } catch (error) {
-      if (this._state === 'running') {
+      if (this._state === "running") {
         this.events.onError?.(error instanceof Error ? error : new Error(String(error)));
       }
     }
@@ -599,8 +610,10 @@ export class CameraEncoder {
     // P-frames can be very small (100-200 bytes) for static scenes - don't filter them
     const minKeyFrameSize = 5000;
 
-    if (chunk.type === 'key' && chunk.byteLength < minKeyFrameSize) {
-      console.log(`[CameraEncoder] Skipping small key frame: ${chunk.byteLength} bytes (min: ${minKeyFrameSize})`);
+    if (chunk.type === "key" && chunk.byteLength < minKeyFrameSize) {
+      console.log(
+        `[CameraEncoder] Skipping small key frame: ${chunk.byteLength} bytes (min: ${minKeyFrameSize})`,
+      );
       return;
     }
 
@@ -610,8 +623,8 @@ export class CameraEncoder {
     const encodedFrame: EncodedFrame = {
       data,
       timestamp: chunk.timestamp,
-      isKeyFrame: chunk.type === 'key',
-      codec: 'h264',
+      isKeyFrame: chunk.type === "key",
+      codec: "h264",
     };
 
     this.events.onFrame?.(encodedFrame);
@@ -621,35 +634,34 @@ export class CameraEncoder {
 
   private async startMjpegEncoder(width: number, height: number): Promise<void> {
     if (!isMjpegSupported()) {
-      throw new Error('WebWorker or OffscreenCanvas not supported');
+      throw new Error("WebWorker or OffscreenCanvas not supported");
     }
 
     // Create WebWorker for MJPEG encoding
-    this.mjpegWorker = new Worker(
-      new URL('../workers/mjpegEncoder.worker.ts', import.meta.url),
-      { type: 'module' }
-    );
+    this.mjpegWorker = new Worker(new URL("../workers/mjpegEncoder.worker.ts", import.meta.url), {
+      type: "module",
+    });
 
     // Handle messages from worker
-    this.mjpegWorker.onmessage = (event) => {
+    this.mjpegWorker.onmessage = event => {
       const msg = event.data;
       switch (msg.type) {
-        case 'frame':
+        case "frame":
           this.handleMjpegFrame(msg.data, msg.timestamp);
           break;
-        case 'error':
+        case "error":
           this.events.onError?.(new Error(msg.message));
           break;
       }
     };
 
-    this.mjpegWorker.onerror = (error) => {
+    this.mjpegWorker.onerror = error => {
       this.events.onError?.(new Error(error.message));
     };
 
     // Initialize worker with config
     this.mjpegWorker.postMessage({
-      type: 'start',
+      type: "start",
       config: {
         width,
         height,
@@ -658,7 +670,7 @@ export class CameraEncoder {
     });
 
     // Create video element to receive camera stream
-    this.videoElement = document.createElement('video');
+    this.videoElement = document.createElement("video");
     this.videoElement.srcObject = this.mediaStream;
     this.videoElement.muted = true;
     this.videoElement.playsInline = true;
@@ -692,53 +704,54 @@ export class CameraEncoder {
    * Throttled to configured frame rate to avoid overwhelming the WebSocket
    */
   private captureWithVideoFrameCallback(): void {
-    if (this._state !== 'running' || !this.videoElement || !hasRequestVideoFrameCallback()) {
+    if (this._state !== "running" || !this.videoElement || !hasRequestVideoFrameCallback()) {
       return;
     }
 
     // Ensure video is playing - requestVideoFrameCallback won't fire for paused video
     if (this.videoElement.paused) {
-      console.log('[CameraEncoder] Video paused in capture callback, restarting');
-      this.videoElement.play().then(() => {
-        // Retry after play starts
-        if (this._state === 'running') {
-          this.captureWithVideoFrameCallback();
-        }
-      }).catch((err) => {
-        console.warn('[CameraEncoder] Failed to restart video:', err);
-      });
+      console.log("[CameraEncoder] Video paused in capture callback, restarting");
+      this.videoElement
+        .play()
+        .then(() => {
+          // Retry after play starts
+          if (this._state === "running") {
+            this.captureWithVideoFrameCallback();
+          }
+        })
+        .catch(err => {
+          console.warn("[CameraEncoder] Failed to restart video:", err);
+        });
       return;
     }
 
-    this.videoFrameCallbackId = this.videoElement.requestVideoFrameCallback(
-      (now, metadata) => {
-        // Throttle to configured frame rate
-        const timeSinceLastCapture = now - this.lastCaptureTime;
-        if (timeSinceLastCapture >= this.minFrameIntervalMs) {
-          this.lastCaptureTime = now;
-          // Capture this frame
-          this.captureFrame(metadata.presentationTime);
-        }
-
-        // Schedule next frame callback
-        if (this._state === 'running') {
-          this.captureWithVideoFrameCallback();
-        }
+    this.videoFrameCallbackId = this.videoElement.requestVideoFrameCallback((now, metadata) => {
+      // Throttle to configured frame rate
+      const timeSinceLastCapture = now - this.lastCaptureTime;
+      if (timeSinceLastCapture >= this.minFrameIntervalMs) {
+        this.lastCaptureTime = now;
+        // Capture this frame
+        this.captureFrame(metadata.presentationTime);
       }
-    );
+
+      // Schedule next frame callback
+      if (this._state === "running") {
+        this.captureWithVideoFrameCallback();
+      }
+    });
   }
 
   /**
    * Capture a single frame and send to worker for encoding
    */
   private async captureFrame(timestamp?: number): Promise<void> {
-    if (this._state !== 'running' || !this.videoElement || !this.mjpegWorker) {
+    if (this._state !== "running" || !this.videoElement || !this.mjpegWorker) {
       return;
     }
 
     // Log first few captures
     if (this.frameCount < 3) {
-      console.log('[CameraEncoder] Capturing frame', this.frameCount);
+      console.log("[CameraEncoder] Capturing frame", this.frameCount);
     }
 
     let bitmap: ImageBitmap | null = null;
@@ -750,14 +763,13 @@ export class CameraEncoder {
       // Send to worker for encoding (transfer ownership for zero-copy)
       this.mjpegWorker.postMessage(
         {
-          type: 'frame',
+          type: "frame",
           bitmap,
           timestamp: timestamp ?? performance.now() * 1000, // microseconds
         },
-        [bitmap] // Transfer ownership - bitmap is now neutered on this side
+        [bitmap], // Transfer ownership - bitmap is now neutered on this side
       );
       bitmap = null; // Ownership transferred, don't close on this side
-
     } catch {
       // Close bitmap if transfer failed (prevents memory leak)
       if (bitmap) {
@@ -776,7 +788,12 @@ export class CameraEncoder {
 
     // Log first few frames
     if (this.frameCount <= 3) {
-      console.log('[CameraEncoder] MJPEG frame from worker:', this.frameCount, 'size:', data.byteLength);
+      console.log(
+        "[CameraEncoder] MJPEG frame from worker:",
+        this.frameCount,
+        "size:",
+        data.byteLength,
+      );
     }
 
     // Report stats every second via callback
@@ -792,7 +809,7 @@ export class CameraEncoder {
       data,
       timestamp: Math.floor(timestamp),
       isKeyFrame: true,
-      codec: 'mjpeg',
+      codec: "mjpeg",
     };
 
     this.events.onFrame?.(encodedFrame);
@@ -803,21 +820,21 @@ export class CameraEncoder {
  * Create encoder with the best supported codec
  */
 export async function createEncoder(
-  preferredCodec: VideoCodec = 'h264',
-  config?: Partial<EncoderConfig>
+  preferredCodec: VideoCodec = "h264",
+  config?: Partial<EncoderConfig>,
 ): Promise<CameraEncoder> {
   // Check if preferred codec is supported
-  if (preferredCodec === 'h264') {
+  if (preferredCodec === "h264") {
     const h264Ok = await isH264Supported();
     if (h264Ok) {
-      return new CameraEncoder('h264', config);
+      return new CameraEncoder("h264", config);
     }
     // H.264 not supported, fall back to MJPEG
   }
 
   if (isMjpegSupported()) {
-    return new CameraEncoder('mjpeg', config);
+    return new CameraEncoder("mjpeg", config);
   }
 
-  throw new Error('No supported video codec available');
+  throw new Error("No supported video codec available");
 }
