@@ -5,6 +5,7 @@ import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { CheckboxWithLabel } from "@components/Checkbox";
+import { ConfirmDialog } from "@components/ConfirmDialog";
 import { GridCard } from "@components/Card";
 import { Button, LinkButton } from "@components/Button";
 import { InputFieldWithLabel } from "@components/InputField";
@@ -59,6 +60,7 @@ export default function SettingsAccessIndexRoute() {
   const [tlsEnforce, setTlsEnforce] = useState<boolean>(false);
   const [tlsCert, setTlsCert] = useState<string>("");
   const [tlsKey, setTlsKey] = useState<string>("");
+  const [showTlsEnforceWarning, setShowTlsEnforceWarning] = useState(false);
 
   const getCloudState = useCallback(() => {
     send("getCloudState", {}, (resp: JsonRpcResponse) => {
@@ -194,11 +196,22 @@ export default function SettingsAccessIndexRoute() {
   };
 
   const handleTlsEnforceChange = (value: boolean) => {
-    setTlsEnforce(value);
-    // For "disabled" and "self-signed" modes, immediately apply the settings
-    if (tlsMode !== "custom") {
-      updateTlsState(tlsMode, value);
+    // If trying to enable Enforce TLS, show warning first
+    if (value) {
+      setShowTlsEnforceWarning(true);
     }
+    else {
+      setTlsEnforce(value);
+      // If HTTPS Mode is off, instantly disable Enforce TLS
+      if (tlsMode === "disabled") {
+        updateTlsState(tlsMode, value);
+      }
+    }
+  };
+
+  const confirmTlsEnforceEnable = () => {
+    setTlsEnforce(true);
+    setShowTlsEnforceWarning(false);
   };
 
   // Update the custom TLS settings button click handler
@@ -290,6 +303,25 @@ export default function SettingsAccessIndexRoute() {
                       </>
                     )}
                   </NestedSettingsGroup>
+                  <ConfirmDialog
+                    open={showTlsEnforceWarning}
+                    onClose={() => {
+                      setShowTlsEnforceWarning(false);
+                    }}
+                    title={m.access_enforce_tls_warning_title()}
+                    description={
+                      <>
+                        <p>{m.access_enforce_tls_warning_description()}</p>
+                        <p>{m.access_enforce_tls_warning_before()}</p>
+                        <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
+                          <li>{m.access_enforce_tls_warning_https()}</li>
+                        </ul>
+                      </>
+                    }
+                    variant="warning"
+                    confirmText={m.access_enforce_tls_warning_confirm()}
+                    onConfirm={confirmTlsEnforceEnable}
+                  />
                 </>
               )}
 
