@@ -71,10 +71,9 @@ func getTLSState() TLSState {
 	s := TLSState{}
 
 	s.Enforce = config.TLSEnforce
+	s.Mode = "disabled"
 
 	switch config.TLSMode {
-	case "disabled":
-		s.Mode = "disabled"
 	case "custom":
 		s.Mode = "custom"
 		cert := certStore.GetCertificate(webSecureCustomCertificateName)
