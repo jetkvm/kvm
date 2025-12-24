@@ -620,6 +620,9 @@ func RunWebServer() {
 
 	go func() {
 		for range updateWebRouter {
+			if config.TLSEnforce {
+				time.Sleep(3 * time.Second)
+			}
 			server.Handler = setupRouter(false)
 		}
 	}()
