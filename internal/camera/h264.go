@@ -95,6 +95,8 @@ func (c *H264ParamCache) Clear() {
 	c.pps = nil
 }
 
+// PrependParametersWithInfo prepends SPS/PPS to IDR frames lacking them.
+// Returns a slice aliasing an internal buffer - only valid until next call.
 func (c *H264ParamCache) PrependParametersWithInfo(frame []byte, info FrameInfo) []byte {
 	if !info.HasIDR || info.HasSPS {
 		return frame

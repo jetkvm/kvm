@@ -8,16 +8,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// GadgetController interface for USB gadget operations.
 type GadgetController interface {
 	GetUVCVideoDevice() (string, error)
 }
 
-// NativeController interface for native operations (MJPEG encoding and transcoding).
 type NativeController interface {
 	MjpegSetEnabled(enabled bool)
-
-	// Transcoder methods for H.264 to MJPEG conversion (camera passthrough)
 	TranscodeInit(width, height int) error
 	TranscodeStart() error
 	TranscodeStop()
@@ -31,7 +27,7 @@ type Manager struct {
 	native           NativeController
 	uvcLog           *zerolog.Logger
 	camLog           *zerolog.Logger
-	streamer         *usbgadget.UVCStreamer
+	streamer         atomic.Pointer[usbgadget.UVCStreamer]
 	streamerMu       sync.Mutex
 	stopChan         chan struct{}
 	eventLoopRun     atomic.Bool
@@ -106,7 +102,8 @@ func (m *Manager) SetSource(source Source) {
 
 func (m *Manager) updateMjpegEncoderForSource(source Source) {
 	m.streamerMu.Lock()
-	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
+	streamer := m.streamer.Load()
+	isStreaming := streamer != nil && streamer.IsStreaming()
 	isMjpeg := m.uvcMjpegSelected
 	m.streamerMu.Unlock()
 
@@ -135,9 +132,13 @@ func (m *Manager) GetCurrentFormat() *FormatInfo {
 	return m.getStreamingFormat()
 }
 
+// SubscribeFormatChanges returns a channel for format notifications (one subscriber only).
 func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
 	m.formatChanMu.Lock()
 	defer m.formatChanMu.Unlock()
+	if m.formatChangeChan != nil {
+		close(m.formatChangeChan)
+	}
 	m.formatChangeChan = make(chan FormatInfo, 4)
 	return m.formatChangeChan
 }
@@ -186,18 +187,17 @@ func (m *Manager) notifyStreamingStopped() {
 	}
 }
 
-// getStreamingFormat returns the current streaming format info, or nil if not streaming.
-// Caller must not hold streamerMu.
 func (m *Manager) getStreamingFormat() *FormatInfo {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
-	if m.streamer == nil || !m.streamer.IsStreaming() {
+	streamer := m.streamer.Load()
+	if streamer == nil || !streamer.IsStreaming() {
 		return nil
 	}
 
-	width, height := m.streamer.GetCommittedResolution()
-	frameRate := m.streamer.GetCommittedFrameRate()
+	width, height := streamer.GetCommittedResolution()
+	frameRate := streamer.GetCommittedFrameRate()
 	codec := "h264"
 	if m.uvcMjpegSelected {
 		codec = "mjpeg"

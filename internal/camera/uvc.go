@@ -7,11 +7,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	uvcBufferCount = 3 // Triple-buffered V4L2 queue for low-latency streaming
-)
+const uvcBufferCount = 3
 
-// zerologAdapter wraps zerolog to implement usbgadget.Logger interface.
+// zerologAdapter wraps zerolog for usbgadget.Logger.
 type zerologAdapter struct {
 	logger *zerolog.Logger
 }
@@ -65,7 +63,6 @@ func (e *zerologEventAdapter) Msg(msg string) {
 	e.event.Msg(msg)
 }
 
-// InitUVC initializes UVC streaming if enabled.
 func (m *Manager) InitUVC(uvcEnabled bool) {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -85,14 +82,13 @@ func (m *Manager) InitUVC(uvcEnabled bool) {
 	if m.uvcLog != nil {
 		m.uvcLog.Info().Str("device", devicePath).Msg("UVC initialized (H.264 mode)")
 	}
-	m.streamer = usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog})
+	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
 
 	m.stopChan = make(chan struct{})
 	m.eventLoopRun.Store(true)
 	go m.eventLoop()
 }
 
-// StopUVC stops UVC streaming and cleanup.
 func (m *Manager) StopUVC() {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -103,18 +99,17 @@ func (m *Manager) StopUVC() {
 		m.stopChan = nil
 	}
 
-	if m.streamer != nil {
-		if err := m.streamer.StopStreaming(); err != nil && m.uvcLog != nil {
+	if streamer := m.streamer.Load(); streamer != nil {
+		if err := streamer.StopStreaming(); err != nil && m.uvcLog != nil {
 			m.uvcLog.Debug().Err(err).Msg("StopStreaming error during cleanup")
 		}
-		if err := m.streamer.Close(); err != nil && m.uvcLog != nil {
+		if err := streamer.Close(); err != nil && m.uvcLog != nil {
 			m.uvcLog.Debug().Err(err).Msg("Close error during cleanup")
 		}
-		m.streamer = nil
+		m.streamer.Store(nil)
 	}
 }
 
-// ReinitUVC reinitializes UVC if needed.
 func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -122,9 +117,7 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	if !uvcEnabled {
 		return
 	}
-
-	// Don't disrupt existing valid connection
-	if m.streamer != nil && m.streamer.IsOpen() && m.streamer.IsValid() {
+	if streamer := m.streamer.Load(); streamer != nil && streamer.IsOpen() && streamer.IsValid() {
 		return
 	}
 
@@ -136,11 +129,11 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 		return
 	}
 
-	if m.streamer != nil {
-		if err := m.streamer.StopStreaming(); err != nil && m.uvcLog != nil {
+	if streamer := m.streamer.Load(); streamer != nil {
+		if err := streamer.StopStreaming(); err != nil && m.uvcLog != nil {
 			m.uvcLog.Debug().Err(err).Msg("StopStreaming error during reinit")
 		}
-		if err := m.streamer.Close(); err != nil && m.uvcLog != nil {
+		if err := streamer.Close(); err != nil && m.uvcLog != nil {
 			m.uvcLog.Debug().Err(err).Msg("Close error during reinit")
 		}
 	}
@@ -148,7 +141,7 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	if m.uvcLog != nil {
 		m.uvcLog.Info().Str("device", devicePath).Msg("UVC reinitialized (H.264 mode)")
 	}
-	m.streamer = usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog})
+	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
 
 	if !m.eventLoopRun.Load() && m.stopChan == nil {
 		m.stopChan = make(chan struct{})
@@ -166,8 +159,7 @@ func (m *Manager) eventLoop() {
 	)
 
 	for m.eventLoopRun.Load() {
-		// Lock-free streamer access - pointer only changes during init/shutdown
-		streamer := m.streamer
+		streamer := m.streamer.Load()
 
 		if streamer == nil {
 			time.Sleep(retryInterval)
@@ -261,14 +253,15 @@ func (m *Manager) prepareStreaming() {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
-	if m.streamer == nil || m.streamer.IsStreaming() {
+	streamer := m.streamer.Load()
+	if streamer == nil || streamer.IsStreaming() {
 		return
 	}
 
-	width, height := m.streamer.GetCommittedResolution()
-	isMjpeg := !m.streamer.IsH264Format()
+	width, height := streamer.GetCommittedResolution()
+	isMjpeg := !streamer.IsH264Format()
 
-	if err := m.streamer.SetFormatWithCodec(width, height, isMjpeg); err != nil {
+	if err := streamer.SetFormatWithCodec(width, height, isMjpeg); err != nil {
 		if m.uvcLog != nil {
 			m.uvcLog.Debug().Err(err).Msg("SetFormatWithCodec failed (may not be supported)")
 		}
@@ -289,58 +282,50 @@ func (m *Manager) startStreaming() {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
-	if m.streamer == nil {
+	streamer := m.streamer.Load()
+	if streamer == nil {
 		return
 	}
 
-	if !m.streamer.IsStreaming() {
-		if err := m.streamer.RequestBuffers(uvcBufferCount); err != nil {
+	if !streamer.IsStreaming() {
+		if err := streamer.RequestBuffers(uvcBufferCount); err != nil {
 			if m.uvcLog != nil {
 				m.uvcLog.Warn().Err(err).Msg("Failed to request UVC buffers")
 			}
 			return
 		}
-		if err := m.streamer.StartStreaming(); err != nil {
+		if err := streamer.StartStreaming(); err != nil {
 			if m.uvcLog != nil {
 				m.uvcLog.Warn().Err(err).Msg("Failed to start UVC streaming")
 			}
 			return
 		}
-
-		// Request SPS/PPS injection on first frame after stream start
-		// This ensures UVC clients receive the parameters they need to decode
+		// Inject SPS/PPS on first frame so UVC clients can decode
 		m.uvcNeedParamInject.Store(true)
 		m.uvcParamInjectCount.Store(0)
 	}
 
-	// Determine format from host negotiation
-	formatIndex := m.streamer.GetCommittedFormatIndex()
-	isH264 := m.streamer.IsH264Format()
+	formatIndex := streamer.GetCommittedFormatIndex()
+	isH264 := streamer.IsH264Format()
 	m.uvcMjpegSelected = !isH264
 	isHDMI := m.source.IsHDMI()
+	width, height := streamer.GetCommittedResolution()
+	frameRate := streamer.GetCommittedFrameRate()
 
-	committedW, committedH := m.streamer.GetCommittedResolution()
-	committedFPS := m.streamer.GetCommittedFrameRate()
 	if m.uvcLog != nil {
 		m.uvcLog.Info().
-			Uint32("width", committedW).
-			Uint32("height", committedH).
-			Int("fps", committedFPS).
+			Uint32("width", width).
+			Uint32("height", height).
+			Int("fps", frameRate).
 			Uint8("format_index", formatIndex).
 			Bool("isH264", isH264).
 			Msg("UVC host committed format")
 	}
 
-	// Configure MJPEG encoder based on format and source
 	m.configureEncoderForStreaming(formatIndex, isHDMI)
-
-	// Update atomic fast-path flags (for MJPEG hotpath)
 	m.uvcStreamingFast.Store(true)
 	m.uvcMjpegFast.Store(m.uvcMjpegSelected)
 
-	// Notify WebSocket clients about format change
-	width, height := m.streamer.GetCommittedResolution()
-	frameRate := m.streamer.GetCommittedFrameRate()
 	codec := "h264"
 	if m.uvcMjpegSelected {
 		codec = "mjpeg"
@@ -353,8 +338,6 @@ func (m *Manager) startStreaming() {
 	})
 }
 
-// configureEncoderForStreaming sets up the MJPEG encoder based on format and source.
-// MJPEG hardware encoding only works for HDMI source (encodes from capture buffer).
 func (m *Manager) configureEncoderForStreaming(formatIndex uint8, isHDMI bool) {
 	if m.native == nil {
 		if m.uvcLog != nil && m.uvcMjpegSelected {
@@ -406,18 +389,17 @@ func (m *Manager) configureEncoderForStreaming(formatIndex uint8, isHDMI bool) {
 }
 
 func (m *Manager) stopStreaming() {
-	// Clear atomic fast-path flags first (for MJPEG hotpath)
 	m.uvcStreamingFast.Store(false)
 	m.uvcMjpegFast.Store(false)
 
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
-	if m.streamer == nil {
+	streamer := m.streamer.Load()
+	if streamer == nil {
 		return
 	}
 
-	// Disable MJPEG encoder if it was enabled
 	if m.uvcMjpegSelected && m.native != nil {
 		m.native.MjpegSetEnabled(false)
 	}
@@ -425,17 +407,14 @@ func (m *Manager) stopStreaming() {
 	wasMjpeg := m.uvcMjpegSelected
 	m.uvcMjpegSelected = false
 
-	// Notify WebSocket clients that streaming stopped (so browser can pause encoding)
 	m.notifyStreamingStopped()
 
-	if err := m.streamer.StopStreaming(); err != nil {
+	if err := streamer.StopStreaming(); err != nil {
 		if m.uvcLog != nil {
 			m.uvcLog.Debug().Err(err).Msg("StopStreaming error")
 		}
 	}
 
-	// Clear H.264 parameter cache on stream stop
-	// Fresh parameters will be cached when streaming resumes
 	m.h264Cache.Clear()
 	m.uvcNeedParamInject.Store(false)
 	m.uvcParamInjectCount.Store(0)
@@ -449,74 +428,47 @@ func (m *Manager) stopStreaming() {
 	}
 }
 
-// HandleH264Frame handles an H.264 frame from the native encoder (HDMI loopback).
-// This is called for each H.264 NAL unit from the RV1106 hardware encoder.
-// HOTPATH: Optimized with atomic fast-path check to avoid mutex on every frame.
+// HandleH264Frame processes H.264 frames from the native encoder (HDMI source).
 func (m *Manager) HandleH264Frame(frame []byte) {
-	// HOTPATH: Atomic fast-path check - skip frames early if not streaming
-	if !m.uvcStreamingFast.Load() {
+	if !m.uvcStreamingFast.Load() || !m.source.IsHDMI() {
 		return
 	}
-
-	// Only process HDMI frames if UVC source is HDMI
-	if !m.source.IsHDMI() {
-		return
-	}
-
 	m.writeFrameToUVC(frame)
 }
 
-// HandleCameraH264Frame handles an H.264 frame from the browser camera.
-// HOTPATH: Optimized check order - streaming check first for fast bailout when idle.
-// Browser sends properly formatted H.264 with SPS/PPS, no processing needed.
+// HandleCameraH264Frame processes H.264 frames from the browser camera.
 func (m *Manager) HandleCameraH264Frame(frame []byte) {
-	// HOTPATH: Fast bailout when not streaming (most common idle case)
 	if !m.uvcStreamingFast.Load() {
 		return
 	}
-
-	// Safety: verify source is camera and manager is enabled (prevents race conditions)
 	if !m.source.IsCamera() || !m.enabled.Load() || m.uvcMjpegFast.Load() {
 		return
 	}
-
-	// HOTPATH: Direct streamer access - only changes during init/shutdown
-	streamer := m.streamer
-	if streamer == nil {
-		return
-	}
-
-	// Direct write with error tracking
-	if err := streamer.WriteFrame(frame); err != nil {
-		m.uvcFrameErrors.Add(1)
+	if streamer := m.streamer.Load(); streamer != nil {
+		if err := streamer.WriteFrame(frame); err != nil {
+			m.uvcFrameErrors.Add(1)
+		}
 	}
 }
 
-// Periodic SPS/PPS injection interval (every 240 frames, ~4-8 seconds at 30-60fps)
-const spsInjectInterval = 240
+const spsInjectInterval = 240 // Re-inject SPS/PPS every ~4-8 seconds
 
-// writeFrameToUVC writes an H.264 frame to the UVC gadget (HDMI loopback path).
-// HOTPATH: Optimized with quick NAL check - avoids full frame scan for P-frames.
-// NOTE: Caller (HandleH264Frame) guarantees source is HDMI - no need to recheck.
+// writeFrameToUVC writes H.264 frames to UVC (HDMI path only).
 func (m *Manager) writeFrameToUVC(frame []byte) {
-	// Skip H.264 frames when MJPEG format is selected
 	if m.uvcMjpegFast.Load() {
 		return
 	}
 
-	// HOTPATH: Lock-free streamer access
-	streamer := m.streamer
+	streamer := m.streamer.Load()
 	if streamer == nil {
 		return
 	}
 
-	// HOTPATH: Quick NAL type check - O(1) vs O(n) full scan
-	// Most frames are P-frames that don't need SPS/PPS processing
+	// Fast path: P-frames (95%+ of frames) need no SPS/PPS processing
 	firstNALType := GetFirstNALType(frame)
 	isIDR := firstNALType == NALTypeIDR
 	isSPS := firstNALType == NALTypeSPS
 
-	// HOTPATH: Fast path for P-frames (95%+ of frames) - direct write, no branching
 	if !isIDR && !isSPS {
 		if err := streamer.WriteFrame(frame); err != nil {
 			m.uvcFrameErrors.Add(1)
@@ -524,18 +476,16 @@ func (m *Manager) writeFrameToUVC(frame []byte) {
 		return
 	}
 
-	// Slow path: IDR or SPS frame - may need parameter handling
+	// IDR/SPS frames: may need parameter injection
 	needParamInject := m.uvcNeedParamInject.Load()
 	frameToSend := frame
 
 	if isSPS {
-		// Frame starts with SPS - cache it
 		frameInfo := m.h264Cache.AnalyzeAndUpdate(frame)
 		if needParamInject && frameInfo.HasIDR {
 			m.uvcNeedParamInject.Store(false)
 		}
 	} else if isIDR {
-		// IDR frame - check if we need to inject SPS/PPS
 		paramInjectCount := m.uvcParamInjectCount.Load()
 		if needParamInject || paramInjectCount >= spsInjectInterval {
 			quickInfo := QuickFrameInfo(frame)
@@ -549,27 +499,25 @@ func (m *Manager) writeFrameToUVC(frame []byte) {
 		}
 	}
 
-	// Periodic counter for SPS/PPS injection
 	m.uvcParamInjectCount.Add(1)
 
-	// Write the frame to UVC
 	if err := streamer.WriteFrame(frameToSend); err != nil {
 		m.uvcFrameErrors.Add(1)
 	}
 }
 
-// IsStreaming returns true if UVC is currently streaming.
 func (m *Manager) IsStreaming() bool {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
-	return m.streamer != nil && m.streamer.IsStreaming()
+	streamer := m.streamer.Load()
+	return streamer != nil && streamer.IsStreaming()
 }
 
-// RestoreMjpegState re-enables MJPEG encoder if UVC is streaming with MJPEG format.
-// This should be called after native process restarts to restore encoder state.
+// RestoreMjpegState re-enables MJPEG encoder after native process restart.
 func (m *Manager) RestoreMjpegState() {
 	m.streamerMu.Lock()
-	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
+	streamer := m.streamer.Load()
+	isStreaming := streamer != nil && streamer.IsStreaming()
 	isMjpeg := m.uvcMjpegSelected
 	isHDMI := m.source.IsHDMI()
 	m.streamerMu.Unlock()
@@ -582,49 +530,29 @@ func (m *Manager) RestoreMjpegState() {
 	}
 }
 
-// HandleMjpegFrame handles an MJPEG frame from the native encoder.
-// HOTPATH: Low overhead - no logging, minimal allocations.
-// Only works for HDMI source (hardware encodes from capture buffer).
+// HandleMjpegFrame processes MJPEG frames from the native encoder (HDMI source).
 func (m *Manager) HandleMjpegFrame(frame []byte) {
-	// HOTPATH: Single combined check - bail early
 	if !m.uvcStreamingFast.Load() || !m.uvcMjpegFast.Load() || !m.source.IsHDMI() {
 		return
 	}
-
-	// HOTPATH: Direct streamer access
-	streamer := m.streamer
-	if streamer == nil {
-		return
-	}
-
-	// HOTPATH: Direct write, no error handling overhead in success path
-	if err := streamer.WriteFrame(frame); err != nil {
-		m.uvcFrameErrors.Add(1)
+	if streamer := m.streamer.Load(); streamer != nil {
+		if err := streamer.WriteFrame(frame); err != nil {
+			m.uvcFrameErrors.Add(1)
+		}
 	}
 }
 
-// HandleCameraMjpegFrame handles an MJPEG frame from the browser camera.
-// HOTPATH: Optimized check order - streaming check first for fast bailout when idle.
-// Browser sends MJPEG when UVC host negotiates MJPEG format.
+// HandleCameraMjpegFrame processes MJPEG frames from the browser camera.
 func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
-	// HOTPATH: Fast bailout when not streaming (most common idle case)
 	if !m.uvcStreamingFast.Load() {
 		return
 	}
-
-	// Safety: verify source is camera, manager is enabled, and MJPEG mode
 	if !m.source.IsCamera() || !m.enabled.Load() || !m.uvcMjpegFast.Load() {
 		return
 	}
-
-	// HOTPATH: Direct streamer access
-	streamer := m.streamer
-	if streamer == nil {
-		return
-	}
-
-	// Direct write with error tracking
-	if err := streamer.WriteFrame(frame); err != nil {
-		m.uvcFrameErrors.Add(1)
+	if streamer := m.streamer.Load(); streamer != nil {
+		if err := streamer.WriteFrame(frame); err != nil {
+			m.uvcFrameErrors.Add(1)
+		}
 	}
 }
