@@ -260,35 +260,35 @@ export default function SettingsAccessIndexRoute() {
                     </div>
                     {tlsMode === "custom" && (
                       <>
-                      <SettingsItem
-                        title={m.access_tls_certificate_title()}
-                        description={m.access_tls_certificate_description()}
-                      />
-                      <TextAreaWithLabel
-                        label={m.access_certificate_label()}
-                        rows={3}
-                        placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
-                        value={tlsCert}
-                        onChange={e => handleTlsCertChange(e.target.value)}
-                      />
-                      <TextAreaWithLabel
-                        label={m.access_private_key_label()}
-                        description={m.access_private_key_description()}
-                        rows={3}
-                        placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
-                        value={tlsKey}
-                        onChange={e => handleTlsKeyChange(e.target.value)}
-                      />
-                      <div className="flex items-center gap-x-2">
-                        <Button
-                          size="SM"
-                          theme="primary"
-                          text={m.access_update_tls_settings()}
-                          onClick={handleCustomTlsUpdate}
+                        <SettingsItem
+                          title={m.access_tls_certificate_title()}
+                          description={m.access_tls_certificate_description()}
                         />
-                      </div>
-                    </>
-                  )}
+                        <TextAreaWithLabel
+                          label={m.access_certificate_label()}
+                          rows={3}
+                          placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+                          value={tlsCert}
+                          onChange={e => handleTlsCertChange(e.target.value)}
+                        />
+                        <TextAreaWithLabel
+                          label={m.access_private_key_label()}
+                          description={m.access_private_key_description()}
+                          rows={3}
+                          placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                          value={tlsKey}
+                          onChange={e => handleTlsKeyChange(e.target.value)}
+                        />
+                        <div className="flex items-center gap-x-2">
+                          <Button
+                            size="SM"
+                            theme="primary"
+                            text={m.access_update_tls_settings()}
+                            onClick={handleCustomTlsUpdate}
+                          />
+                        </div>
+                      </>
+                    )}
                   </NestedSettingsGroup>
                 </>
               )}
