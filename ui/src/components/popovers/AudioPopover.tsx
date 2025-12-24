@@ -55,39 +55,47 @@ export default function AudioPopover() {
     });
   }, [send, setMicrophoneEnabled]);
 
-  const handleAudioOutputEnabledToggle = useCallback((enabled: boolean) => {
-    setLoading(true);
-    send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
-      setLoading(false);
-      if ("error" in resp) {
-        const errorMsg = enabled
-          ? m.audio_output_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
-          : m.audio_output_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
-        handleRpcError(resp, errorMsg);
-        return;
-      }
+  const handleAudioOutputEnabledToggle = useCallback(
+    (enabled: boolean) => {
+      setLoading(true);
+      send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
+        setLoading(false);
+        if ("error" in resp) {
+          const errorMsg = enabled
+            ? m.audio_output_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+            : m.audio_output_failed_disable({
+                error: String(resp.error.data || m.unknown_error()),
+              });
+          handleRpcError(resp, errorMsg);
+          return;
+        }
 
-      setAudioOutputEnabled(enabled);
-      const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
-      notifications.success(successMsg);
-    });
-  }, [send]);
+        setAudioOutputEnabled(enabled);
+        const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
+        notifications.success(successMsg);
+      });
+    },
+    [send],
+  );
 
-  const handleMicrophoneToggle = useCallback((enabled: boolean) => {
-    setMicLoading(true);
-    send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
-      setMicLoading(false);
-      if ("error" in resp) {
-        const errorMsg = enabled
-          ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
-          : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
-        handleRpcError(resp, errorMsg);
-        return;
-      }
+  const handleMicrophoneToggle = useCallback(
+    (enabled: boolean) => {
+      setMicLoading(true);
+      send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
+        setMicLoading(false);
+        if ("error" in resp) {
+          const errorMsg = enabled
+            ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+            : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
+          handleRpcError(resp, errorMsg);
+          return;
+        }
 
-      setMicrophoneEnabled(enabled);
-    });
-  }, [send, setMicrophoneEnabled]);
+        setMicrophoneEnabled(enabled);
+      });
+    },
+    [send, setMicrophoneEnabled],
+  );
 
   return (
     <GridCard>
@@ -106,7 +114,7 @@ export default function AudioPopover() {
             >
               <Checkbox
                 checked={audioOutputEnabled}
-                onChange={(e) => handleAudioOutputEnabledToggle(e.target.checked)}
+                onChange={e => handleAudioOutputEnabledToggle(e.target.checked)}
               />
             </SettingsItem>
 
@@ -125,7 +133,7 @@ export default function AudioPopover() {
                   <Checkbox
                     checked={microphoneEnabled}
                     disabled={!isHttps}
-                    onChange={(e) => handleMicrophoneToggle(e.target.checked)}
+                    onChange={e => handleMicrophoneToggle(e.target.checked)}
                   />
                 </SettingsItem>
               </>

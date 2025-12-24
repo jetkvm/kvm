@@ -99,6 +99,20 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 			return info
 		},
+		GetSessionInfo: func() diagnostics.SessionInfo {
+			info := diagnostics.SessionInfo{
+				ActiveSessions:    getActiveSessions(),
+				HasCurrentSession: currentSession != nil,
+			}
+			if currentSession != nil {
+				sessionInfo := currentSession.GetDiagnosticsInfo()
+				info.ICEConnectionState = sessionInfo.ICEConnectionState
+				info.SignalingState = sessionInfo.SignalingState
+				info.ConnectionState = sessionInfo.ConnectionState
+				info.DataChannels = sessionInfo.DataChannels
+			}
+			return info
+		},
 	})
 	if err != nil {
 		nativeLogger.Fatal().Err(err).Msg("failed to create native proxy")

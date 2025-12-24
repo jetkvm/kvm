@@ -25,21 +25,31 @@ interface SettingsItemProps {
 }
 
 export function SettingsItem(props: SettingsItemProps) {
-  const { title, description, badge, badgeVariant = "error", badgeLink, children, className, loading } = props;
+  const {
+    title,
+    description,
+    badge,
+    badgeVariant = "error",
+    badgeLink,
+    children,
+    className,
+    loading,
+  } = props;
 
   const badgeClasses = badgeVariants({ variant: badgeVariant });
 
-  const badgeContent = badge && (
-    badgeLink ? (
-      <Link to={badgeLink} className={cx(badgeClasses, "hover:opacity-80 transition-opacity cursor-pointer")}>
+  const badgeContent =
+    badge &&
+    (badgeLink ? (
+      <Link
+        to={badgeLink}
+        className={cx(badgeClasses, "cursor-pointer transition-opacity hover:opacity-80")}
+      >
         {badge}
       </Link>
     ) : (
-      <span className={badgeClasses}>
-        {badge}
-      </span>
-    )
-  );
+      <span className={badgeClasses}>{badge}</span>
+    ));
 
   return (
     <label

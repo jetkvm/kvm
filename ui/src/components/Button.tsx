@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { JSX } from "react";
 import { Link, type FetcherWithComponents, type LinkProps, useNavigation } from "react-router";
 

@@ -48,7 +48,7 @@ export default function SettingsVideoRoute() {
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
   const [defaultEdid, setDefaultEdid] = useState<string>("");
-  const [edids, setEdids] = useState<{value: string, label: string}[]>([]);
+  const [edids, setEdids] = useState<{ value: string; label: string }[]>([]);
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
@@ -79,14 +79,16 @@ export default function SettingsVideoRoute() {
 
       const allEdids = [
         { value: fetchedDefaultEdid, label: m.video_edid_jetkvm_default() },
-        ...otherEdids
+        ...otherEdids,
       ];
       setEdids(allEdids);
 
       send("getEDID", {}, (resp: JsonRpcResponse) => {
         setEdidLoading(false);
         if ("error" in resp) {
-          notifications.error(m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }));
+          notifications.error(
+            m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }),
+          );
           return;
         }
 
