@@ -363,16 +363,12 @@ export class CameraEncoder {
     this.cleanup();
   }
 
-  /**
-   * Pause encoding (keeps camera open but stops sending frames)
-   */
   pause(): void {
     if (this._state !== 'running') {
       return;
     }
     this.setState('paused');
 
-    // For MJPEG, cancel the frame callback/interval
     if (this.videoFrameCallbackId !== null && this.videoElement && hasRequestVideoFrameCallback()) {
       this.videoElement.cancelVideoFrameCallback(this.videoFrameCallbackId);
       this.videoFrameCallbackId = null;
@@ -381,36 +377,64 @@ export class CameraEncoder {
       clearInterval(this.mjpegFrameInterval);
       this.mjpegFrameInterval = null;
     }
+
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop());
+      this.mediaStream = null;
+      this.videoTrack = null;
+    }
+
+    if (this.videoElement) {
+      this.videoElement.srcObject = null;
+    }
+
+    this.trackProcessor = null;
+    this.frameReader = null;
   }
 
-  /**
-   * Resume encoding after pause
-   */
-  resume(): void {
+  async resume(): Promise<void> {
     if (this._state !== 'paused') {
       return;
     }
 
-    // Force immediate keyframe on resume so decoder can start immediately
-    this.forceKeyFrame();
+    try {
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: this.config.width },
+          height: { ideal: this.config.height },
+          frameRate: { ideal: this.config.frameRate, min: 15 },
+        },
+      });
 
-    // Set state to running - this will wake up the H.264 frame reading loop
-    // which is already running but waiting due to paused state
-    this.setState('running');
-
-    // Resume MJPEG capture (needs to restart callback/interval)
-    if (this.codec === 'mjpeg' && this.mjpegWorker && this.videoElement) {
-      // Ensure video element is playing - Chrome may have paused it while we were paused
-      // (this can happen when tab is inactive or to save resources)
-      if (this.videoElement.paused) {
-        console.log('[CameraEncoder] Video element was paused, restarting playback');
-        this.videoElement.play().catch((err) => {
-          console.warn('[CameraEncoder] Failed to resume video playback:', err);
-        });
+      const videoTracks = this.mediaStream.getVideoTracks();
+      if (videoTracks.length === 0) {
+        throw new Error('No video track available');
       }
-      this.startMjpegCapture();
+
+      this.videoTrack = videoTracks[0];
+
+      const settings = this.videoTrack.getSettings();
+      const actualWidth = settings.width || this.config.width;
+      const actualHeight = settings.height || this.config.height;
+      this.actualFrameRate = settings.frameRate || this.config.frameRate;
+      this.framesPerKeyFrame = Math.round(this.actualFrameRate * this.config.keyFrameInterval);
+
+      this.forceKeyFrame();
+
+      this.lastStatsTime = performance.now();
+      this.statsFrameCount = 0;
+      this.setState('running');
+
+      if (this.codec === 'h264') {
+        await this.startH264Encoder(actualWidth, actualHeight);
+      } else {
+        await this.startMjpegEncoder(actualWidth, actualHeight);
+      }
+    } catch (error) {
+      this.setState('error');
+      this.events.onError?.(error instanceof Error ? error : new Error(String(error)));
+      throw error;
     }
-    // Note: H.264 loop is already running, just waiting - setting state to 'running' wakes it up
   }
 
   /**

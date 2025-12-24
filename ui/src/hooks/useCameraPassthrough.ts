@@ -186,14 +186,17 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
               }
             }
 
-            // Resume encoding if paused (UVC restarted after being stopped)
+            // Start/resume encoder when USB host requests video
             const enc = encoderRef.current;
-            if (enc && enc.state === 'paused') {
+            if (enc && enc.state === 'idle') {
+              console.log('[CameraPassthrough] Starting encoder (USB host requested video)');
+              await enc.start();
+              updateState({ encoderState: enc.state });
+            } else if (enc && enc.state === 'paused') {
               console.log('[CameraPassthrough] Resuming encoder');
-              enc.resume();
+              await enc.resume();
               updateState({ encoderState: enc.state });
             } else if (enc && enc.state === 'running') {
-              // Already running but got a format request - force keyframe for decoder
               console.log('[CameraPassthrough] Format request while running - forcing keyframe');
               enc.forceKeyFrame();
             }
@@ -240,18 +243,10 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
           return;
         }
 
-        // Start encoder immediately (captures camera and begins encoding)
-        console.log('[CameraPassthrough] Starting encoder with codec:', encoder.currentCodec);
-        await encoder.start();
-        console.log('[CameraPassthrough] Encoder started, state:', encoder.state);
-        if (cancelled) {
-          encoder.stop();
-          transport.close();
-          return;
-        }
-
+        // Encoder stays idle until USB host requests video (STREAMON)
+        // Camera will activate only when onFormatRequest is triggered
         updateState({
-          encoderState: encoder.state,
+          encoderState: 'idle',
           transportState: transport.state,
           currentCodec: encoder.currentCodec,
         });
