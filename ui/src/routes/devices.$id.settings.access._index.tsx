@@ -158,7 +158,7 @@ export default function SettingsAccessIndexRoute() {
         state.certificate = cert;
         state.privateKey = key;
       }
-      state.enforce = enforce;
+      state.enforce = mode === "disabled" ? false : enforce;
 
       send("setTLSState", { state }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
