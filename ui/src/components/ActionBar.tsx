@@ -1,6 +1,14 @@
 import { Fragment, useCallback, useRef } from "react";
 import { MdOutlineContentPasteGo } from "react-icons/md";
-import { LuCable, LuCamera, LuHardDrive, LuMaximize, LuSettings, LuSignal, LuVolume2 } from "react-icons/lu";
+import {
+  LuCable,
+  LuCamera,
+  LuHardDrive,
+  LuMaximize,
+  LuSettings,
+  LuSignal,
+  LuVolume2,
+} from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";

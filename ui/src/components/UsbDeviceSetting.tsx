@@ -267,10 +267,7 @@ export function UsbDeviceSetting() {
                 title={m.usb_device_enable_uvc_title()}
                 description={m.usb_device_enable_uvc_description()}
               >
-                <Checkbox
-                  checked={usbDeviceConfig.uvc}
-                  onChange={onUsbConfigItemChange("uvc")}
-                />
+                <Checkbox checked={usbDeviceConfig.uvc} onChange={onUsbConfigItemChange("uvc")} />
               </SettingsItem>
             </div>
           </div>

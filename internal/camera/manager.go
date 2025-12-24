@@ -40,9 +40,9 @@ type Manager struct {
 	enabled          atomic.Bool
 	source           *sourceStore
 
-	cameraFrameCount   atomic.Int32
-	cameraLastLogFrame atomic.Int32
-	uvcFrameErrors     atomic.Uint32
+	cameraFrameCount    atomic.Int32
+	cameraLastLogFrame  atomic.Int32
+	uvcFrameErrors      atomic.Uint32
 	uvcNeedParamInject  atomic.Bool
 	uvcParamInjectCount atomic.Uint32
 	uvcStreamingFast    atomic.Bool
@@ -132,26 +132,7 @@ func (m *Manager) SetNativeController(native NativeController) {
 }
 
 func (m *Manager) GetCurrentFormat() *FormatInfo {
-	m.streamerMu.Lock()
-	defer m.streamerMu.Unlock()
-
-	if m.streamer == nil || !m.streamer.IsStreaming() {
-		return nil
-	}
-
-	width, height := m.streamer.GetCommittedResolution()
-	frameRate := m.streamer.GetCommittedFrameRate()
-	codec := "h264"
-	if m.uvcMjpegSelected {
-		codec = "mjpeg"
-	}
-
-	return &FormatInfo{
-		Codec:     codec,
-		Width:     int(width),
-		Height:    int(height),
-		FrameRate: frameRate,
-	}
+	return m.getStreamingFormat()
 }
 
 func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
@@ -205,33 +186,43 @@ func (m *Manager) notifyStreamingStopped() {
 	}
 }
 
-func (m *Manager) ResendCurrentFormat() {
+// getStreamingFormat returns the current streaming format info, or nil if not streaming.
+// Caller must not hold streamerMu.
+func (m *Manager) getStreamingFormat() *FormatInfo {
 	m.streamerMu.Lock()
-	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
-	var width, height uint32
-	var frameRate int
-	if m.streamer != nil {
-		width, height = m.streamer.GetCommittedResolution()
-		frameRate = m.streamer.GetCommittedFrameRate()
-	}
-	isMjpeg := m.uvcMjpegSelected
-	m.streamerMu.Unlock()
+	defer m.streamerMu.Unlock()
 
-	if !isStreaming {
-		return
+	if m.streamer == nil || !m.streamer.IsStreaming() {
+		return nil
 	}
 
+	width, height := m.streamer.GetCommittedResolution()
+	frameRate := m.streamer.GetCommittedFrameRate()
 	codec := "h264"
-	if isMjpeg {
+	if m.uvcMjpegSelected {
 		codec = "mjpeg"
+	}
+
+	return &FormatInfo{
+		Codec:     codec,
+		Width:     int(width),
+		Height:    int(height),
+		FrameRate: frameRate,
+	}
+}
+
+func (m *Manager) ResendCurrentFormat() {
+	format := m.getStreamingFormat()
+	if format == nil {
+		return
 	}
 
 	if m.camLog != nil {
 		m.camLog.Info().
-			Str("codec", codec).
-			Uint32("width", width).
-			Uint32("height", height).
-			Int("frameRate", frameRate).
+			Str("codec", format.Codec).
+			Int("width", format.Width).
+			Int("height", format.Height).
+			Int("frameRate", format.FrameRate).
 			Msg("Resending format notification")
 	}
 
@@ -239,27 +230,12 @@ func (m *Manager) ResendCurrentFormat() {
 	m.lastNotifiedFormat = FormatInfo{}
 	m.formatChanMu.Unlock()
 
-	m.notifyFormatChange(FormatInfo{
-		Codec:     codec,
-		Width:     int(width),
-		Height:    int(height),
-		FrameRate: frameRate,
-	})
+	m.notifyFormatChange(*format)
 }
 
 func (m *Manager) notifySourceChange(source Source) {
-	m.streamerMu.Lock()
-	isStreaming := m.streamer != nil && m.streamer.IsStreaming()
-	var width, height uint32
-	var frameRate int
-	if m.streamer != nil {
-		width, height = m.streamer.GetCommittedResolution()
-		frameRate = m.streamer.GetCommittedFrameRate()
-	}
-	isMjpeg := m.uvcMjpegSelected
-	m.streamerMu.Unlock()
-
-	if !isStreaming {
+	format := m.getStreamingFormat()
+	if format == nil {
 		return
 	}
 
@@ -270,23 +246,14 @@ func (m *Manager) notifySourceChange(source Source) {
 		}
 		m.notifyStreamingStopped()
 	case SourceCamera:
-		codec := "h264"
-		if isMjpeg {
-			codec = "mjpeg"
-		}
 		if m.camLog != nil {
 			m.camLog.Info().
-				Str("codec", codec).
-				Uint32("width", width).
-				Uint32("height", height).
-				Int("frameRate", frameRate).
+				Str("codec", format.Codec).
+				Int("width", format.Width).
+				Int("height", format.Height).
+				Int("frameRate", format.FrameRate).
 				Msg("Notifying browser to start camera encoding (switched to Camera)")
 		}
-		m.notifyFormatChange(FormatInfo{
-			Codec:     codec,
-			Width:     int(width),
-			Height:    int(height),
-			FrameRate: frameRate,
-		})
+		m.notifyFormatChange(*format)
 	}
 }

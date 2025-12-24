@@ -89,7 +89,7 @@ func handleCameraWs(c *gin.Context) {
 
 	// HOTPATH: Pre-allocate ring buffer to eliminate per-frame GC pressure
 	// Ring of 4 buffers rotates; safe because WriteFrame copies to V4L2 buffer
-	// before we advance, and V4L2 has 8 buffers for pipelining
+	// before we advance, and V4L2 has 3 buffers for low-latency streaming
 	var ringBuf [ringBufferCount][]byte
 	for i := range ringBuf {
 		ringBuf[i] = make([]byte, ringBufferSize)
@@ -212,4 +212,3 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 
 	_ = ws.Write(writeCtx, websocket.MessageText, data)
 }
-

@@ -702,8 +702,8 @@ export default function KvmIdRoute() {
   const _cameraPassthrough = useCameraPassthrough({
     baseUrl: window.location.origin,
     enabled: cameraEnabled,
-    onError: (error) => {
-      console.error('[CameraPassthrough] Error:', error);
+    onError: error => {
+      console.error("[CameraPassthrough] Error:", error);
       setCameraEnabled(false);
     },
   });

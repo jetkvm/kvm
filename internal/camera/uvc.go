@@ -8,8 +8,7 @@ import (
 )
 
 const (
-	uvcBufferCount = 3   // 3 buffers for low-latency streaming (double-buffer + 1 for jitter)
-	uvcLogInterval = 240 // Log every N frames (~10 seconds at 24fps)
+	uvcBufferCount = 3 // 3 buffers for low-latency streaming (double-buffer + 1 for jitter)
 )
 
 // zerologAdapter wraps zerolog to implement usbgadget.Logger interface.
@@ -193,6 +192,9 @@ func (m *Manager) eventLoop() {
 
 		eventType, eventData, err := streamer.PollEventsWithData()
 		if err != nil {
+			if m.uvcLog != nil {
+				m.uvcLog.Warn().Err(err).Msg("UVC PollEventsWithData failed")
+			}
 			time.Sleep(errorRetryDelay)
 			continue
 		}
@@ -300,13 +302,12 @@ func (m *Manager) startStreaming() {
 		m.uvcParamInjectCount.Store(0)
 	}
 
-	// Check the format selected by the host
+	// Determine format from host negotiation
 	formatIndex := m.streamer.GetCommittedFormatIndex()
 	isH264 := m.streamer.IsH264Format()
 	m.uvcMjpegSelected = !isH264
 	isHDMI := m.source.IsHDMI()
 
-	// Log committed resolution for debugging
 	committedW, committedH := m.streamer.GetCommittedResolution()
 	committedFPS := m.streamer.GetCommittedFrameRate()
 	if m.uvcLog != nil {
@@ -319,57 +320,8 @@ func (m *Manager) startStreaming() {
 			Msg("UVC host committed format")
 	}
 
-	// Enable/disable MJPEG encoder based on format selection
-	// Note: MJPEG encoder only works for HDMI source (hardware encodes capture buffer)
-	// For camera source, we send H.264 frames regardless of format selection
-	if m.native != nil {
-		if m.uvcMjpegSelected && isHDMI {
-			// HDMI source with MJPEG format: enable hardware MJPEG encoder
-			m.native.MjpegSetEnabled(true)
-			if m.uvcLog != nil {
-				m.uvcLog.Info().
-					Uint8("format_index", formatIndex).
-					Str("format", "MJPEG").
-					Str("source", m.source.Get().String()).
-					Msg("UVC MJPEG streaming started (hardware encoder enabled)")
-			}
-		} else if m.uvcMjpegSelected && !isHDMI {
-			// Camera source with MJPEG format requested by host
-			// Unfortunately, hardware transcoding is not available on RV1106 (no VDEC)
-			// Fall back to sending H.264 frames - this may not work on all hosts
-			// but is the best we can do without hardware H.264 decoder
-			m.native.MjpegSetEnabled(false)
-			if m.uvcLog != nil {
-				m.uvcLog.Warn().
-					Uint8("format_index", formatIndex).
-					Str("format", "MJPEG").
-					Str("source", m.source.Get().String()).
-					Msg("UVC: Camera source with MJPEG format - H.264 transcoding not available on RV1106 (no hardware VDEC)")
-			}
-		} else {
-			m.native.MjpegSetEnabled(false)
-			if m.uvcLog != nil {
-				m.uvcLog.Info().
-					Uint8("format_index", formatIndex).
-					Str("format", "H.264").
-					Str("source", m.source.Get().String()).
-					Msg("UVC H.264 streaming started")
-			}
-		}
-	} else if m.uvcLog != nil {
-		if isH264 {
-			m.uvcLog.Info().
-				Uint8("format_index", formatIndex).
-				Str("format", "H.264").
-				Str("source", m.source.Get().String()).
-				Msg("UVC H.264 streaming started")
-		} else {
-			m.uvcLog.Warn().
-				Uint8("format_index", formatIndex).
-				Str("format", "MJPEG").
-				Msg("UVC: Host selected MJPEG but native controller not available")
-		}
-	}
+	// Configure MJPEG encoder based on format and source
+	m.configureEncoderForStreaming(formatIndex, isHDMI)
 
 	// Update atomic fast-path flags (for MJPEG hotpath)
 	m.uvcStreamingFast.Store(true)
@@ -388,6 +340,58 @@ func (m *Manager) startStreaming() {
 		Height:    int(height),
 		FrameRate: frameRate,
 	})
+}
+
+// configureEncoderForStreaming sets up the MJPEG encoder based on format and source.
+// MJPEG hardware encoding only works for HDMI source (encodes from capture buffer).
+func (m *Manager) configureEncoderForStreaming(formatIndex uint8, isHDMI bool) {
+	if m.native == nil {
+		if m.uvcLog != nil && m.uvcMjpegSelected {
+			m.uvcLog.Warn().
+				Uint8("format_index", formatIndex).
+				Str("format", "MJPEG").
+				Msg("UVC: Host selected MJPEG but native controller not available")
+		}
+		return
+	}
+
+	source := m.source.Get().String()
+	format := "H.264"
+	if m.uvcMjpegSelected {
+		format = "MJPEG"
+	}
+
+	switch {
+	case m.uvcMjpegSelected && isHDMI:
+		m.native.MjpegSetEnabled(true)
+		if m.uvcLog != nil {
+			m.uvcLog.Info().
+				Uint8("format_index", formatIndex).
+				Str("format", format).
+				Str("source", source).
+				Msg("UVC MJPEG streaming started (hardware encoder enabled)")
+		}
+
+	case m.uvcMjpegSelected && !isHDMI:
+		m.native.MjpegSetEnabled(false)
+		if m.uvcLog != nil {
+			m.uvcLog.Warn().
+				Uint8("format_index", formatIndex).
+				Str("format", format).
+				Str("source", source).
+				Msg("UVC: Camera source with MJPEG format - H.264 transcoding not available on RV1106")
+		}
+
+	default:
+		m.native.MjpegSetEnabled(false)
+		if m.uvcLog != nil {
+			m.uvcLog.Info().
+				Uint8("format_index", formatIndex).
+				Str("format", format).
+				Str("source", source).
+				Msg("UVC H.264 streaming started")
+		}
+	}
 }
 
 func (m *Manager) stopStreaming() {

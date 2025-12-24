@@ -36,7 +36,9 @@ export default function SettingsCameraRoute() {
   useEffect(() => {
     send("getCameraSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.camera_settings_failed_load({ error: String(resp.error.data || m.unknown_error()) }));
+        notifications.error(
+          m.camera_settings_failed_load({ error: String(resp.error.data || m.unknown_error()) }),
+        );
         setIsLoading(false);
         return;
       }
@@ -60,11 +62,13 @@ export default function SettingsCameraRoute() {
       },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          notifications.error(m.camera_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }));
+          notifications.error(
+            m.camera_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+          );
           return;
         }
         notifications.success(m.camera_settings_saved());
-      }
+      },
     );
   };
 
@@ -76,7 +80,7 @@ export default function SettingsCameraRoute() {
           description={m.camera_settings_encoder_description()}
         />
         <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
         </div>
       </div>
     );
@@ -114,12 +118,13 @@ export default function SettingsCameraRoute() {
               const label = labels[value] || `${value} fps`;
               return {
                 value,
-                label: value === String(CAMERA_DEFAULTS.frameRate)
-                  ? `${label}${m.camera_settings_default_suffix()}`
-                  : label
+                label:
+                  value === String(CAMERA_DEFAULTS.frameRate)
+                    ? `${label}${m.camera_settings_default_suffix()}`
+                    : label,
               };
             })}
-            onChange={(e) => setFrameRate(parseInt(e.target.value))}
+            onChange={e => setFrameRate(parseInt(e.target.value))}
           />
         </SettingsItem>
 
@@ -133,14 +138,17 @@ export default function SettingsCameraRoute() {
             options={[
               { value: "1", label: "1 Mbps" },
               { value: "2", label: "2 Mbps" },
-              { value: "3", label: `3 Mbps${h264Bitrate === CAMERA_DEFAULTS.h264Bitrate ? m.camera_settings_default_suffix() : ""}` },
+              {
+                value: "3",
+                label: `3 Mbps${h264Bitrate === CAMERA_DEFAULTS.h264Bitrate ? m.camera_settings_default_suffix() : ""}`,
+              },
               { value: "4", label: "4 Mbps" },
               { value: "5", label: "5 Mbps" },
               { value: "6", label: "6 Mbps" },
               { value: "8", label: "8 Mbps" },
               { value: "10", label: "10 Mbps" },
             ]}
-            onChange={(e) => setH264Bitrate(parseInt(e.target.value))}
+            onChange={e => setH264Bitrate(parseInt(e.target.value))}
           />
         </SettingsItem>
 
@@ -153,12 +161,15 @@ export default function SettingsCameraRoute() {
             value={String(mjpegQuality)}
             options={[
               { value: "20", label: `20% (${m.camera_settings_quality_low()})` },
-              { value: "35", label: `35%${CAMERA_DEFAULTS.mjpegQuality === 35 ? m.camera_settings_default_suffix() : ""}` },
+              {
+                value: "35",
+                label: `35%${CAMERA_DEFAULTS.mjpegQuality === 35 ? m.camera_settings_default_suffix() : ""}`,
+              },
               { value: "50", label: `50% (${m.camera_settings_quality_medium()})` },
               { value: "75", label: `75% (${m.camera_settings_quality_high()})` },
               { value: "100", label: `100% (${m.camera_settings_quality_maximum()})` },
             ]}
-            onChange={(e) => setMjpegQuality(parseInt(e.target.value))}
+            onChange={e => setMjpegQuality(parseInt(e.target.value))}
           />
         </SettingsItem>
       </div>
@@ -166,7 +177,7 @@ export default function SettingsCameraRoute() {
       <div className="pt-4">
         <button
           onClick={handleSaveSettings}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
         >
           {m.camera_settings_save_button()}
         </button>

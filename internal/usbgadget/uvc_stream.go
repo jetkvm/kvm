@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -155,34 +154,32 @@ type uvc_streaming_control struct {
 	wKeyFrameRate, wPFrameRate, wCompQuality, wCompWindowSize, wDelay uint16
 	dwMaxVideoFrameSize, dwMaxPayloadTransferSize                     uint32
 	dwClockFrequency                                                  uint32
-	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion uint8 //nolint:unused // kernel struct fields
+	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion         uint8 //nolint:unused // kernel struct fields
 }
 
 type UVCStreamer struct {
-	streamStartTime time.Time
-	devicePath      string
-	mu              sync.Mutex
-	log             Logger
-	buffers         [][]byte
-	bufOffsets      []uint32
-	fd              int
-	width           uint32
-	height          uint32
-	bufferSize      int
-	bufCount        int
-	curBufIdx       int
-	curBufIdxAtomic int32
-	queuedBufs      int
-	frameCounter    uint32
-	droppedFrames   uint32
-	probe           uvc_streaming_control
-	commit          uvc_streaming_control
-	eventDataBuf    [64]byte
-	pendingCtrl     uint8
-	streaming       bool
-	streamReady     bool
-	useUserPtr      bool
-	oversizedWarned bool
+	devicePath       string
+	mu               sync.Mutex
+	log              Logger
+	buffers          [][]byte
+	fd               int
+	width            uint32
+	height           uint32
+	bufferSize       int
+	bufCount         int
+	curBufIdx        int
+	queuedBufs       int
+	frameCounter     uint32
+	droppedFrames    uint32
+	lastDropLogFrame uint32 // Last frame count when we logged drops
+	startNanos       int64  // Stream start time in nanoseconds (avoids Duration alloc)
+	probe            uvc_streaming_control
+	commit           uvc_streaming_control
+	eventDataBuf     [64]byte
+	pendingCtrl      uint8
+	streaming        bool
+	streamReady      bool
+	oversizedWarned  bool
 }
 
 type Logger interface {
@@ -311,13 +308,10 @@ func (s *UVCStreamer) Close() error {
 		_ = s.stopStreamingLocked()
 	}
 
-	// Regular Go allocations - just clear references, GC will handle cleanup
+	// Clear buffer references - GC will handle cleanup
 	s.buffers = nil
-	s.bufOffsets = nil
 	s.bufCount = 0
 	s.curBufIdx = 0
-	atomic.StoreInt32(&s.curBufIdxAtomic, 0)
-	s.useUserPtr = false
 
 	err := syscall.Close(s.fd)
 	s.fd = -1
@@ -395,10 +389,7 @@ func (s *UVCStreamer) RequestBuffers(count uint32) error {
 
 	s.bufCount = int(req.Count)
 	s.buffers = make([][]byte, req.Count)
-	s.bufOffsets = nil
 	s.curBufIdx = 0
-	atomic.StoreInt32(&s.curBufIdxAtomic, 0)
-	s.useUserPtr = true
 
 	for i := uint32(0); i < req.Count; i++ {
 		s.buffers[i] = make([]byte, bufferSize)
@@ -424,9 +415,11 @@ func (s *UVCStreamer) StartStreaming() error {
 
 	s.queuedBufs = 0
 	s.curBufIdx = 0
-	atomic.StoreInt32(&s.curBufIdxAtomic, 0)
 	s.frameCounter = 0
-	s.streamStartTime = time.Now()
+	s.droppedFrames = 0
+	s.lastDropLogFrame = 0
+	s.oversizedWarned = false
+	s.startNanos = time.Now().UnixNano()
 	s.streaming = true
 
 	bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
@@ -464,54 +457,64 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 	s.streamReady = false
 	s.queuedBufs = 0
 	s.curBufIdx = 0
-	atomic.StoreInt32(&s.curBufIdxAtomic, 0)
 	s.frameCounter = 0
-	s.streamStartTime = time.Time{}
+	s.startNanos = 0
 	return nil
 }
 
+// WriteFrame writes a video frame to the UVC device.
+// This is the hot path - optimized for minimal overhead at 1080p@30fps on 32-bit ARM.
 func (s *UVCStreamer) WriteFrame(data []byte) error {
-	if s.fd < 0 || !s.streaming || len(s.buffers) == 0 {
-		return nil
-	}
-
-	dataLen := len(data)
-	if int32(dataLen) > maxFrameSizeBytes {
-		if !s.oversizedWarned {
-			s.oversizedWarned = true
-			s.log.Warn().
-				Int("frameSize", dataLen).
-				Int("maxSize", int(maxFrameSizeBytes)).
-				Msg("Frame too large for USB 2.0")
-		}
-		s.droppedFrames++
-		return nil
-	}
-
-	bufIdx := int(atomic.LoadInt32(&s.curBufIdxAtomic))
-	if bufIdx >= len(s.buffers) {
-		bufIdx = 0
-	}
-	buf := s.buffers[bufIdx]
-	if dataLen > len(buf) {
-		return nil
-	}
-
-	copy(buf, data)
-
 	s.mu.Lock()
 
-	if s.fd < 0 || !s.streaming {
+	// Fast path: check if streaming is active
+	if s.fd < 0 || !s.streaming || len(s.buffers) == 0 {
 		s.mu.Unlock()
 		return nil
 	}
 
-	memType := uint32(V4L2_MEMORY_USERPTR)
+	dataLen := len(data)
 
+	// Check USB 2.0 bandwidth limit
+	if int32(dataLen) > maxFrameSizeBytes {
+		s.droppedFrames++
+		// Log periodically (first drop, then every 100 drops)
+		if s.droppedFrames == 1 || s.droppedFrames%100 == 0 {
+			s.log.Warn().
+				Int("frameSize", dataLen).
+				Int("maxSize", int(maxFrameSizeBytes)).
+				Uint32("totalDropped", s.droppedFrames).
+				Msg("Frame too large for USB 2.0 - dropping")
+		}
+		s.mu.Unlock()
+		return nil
+	}
+
+	// Get current buffer
+	bufIdx := s.curBufIdx
+	buf := s.buffers[bufIdx]
+	if dataLen > len(buf) {
+		s.droppedFrames++
+		if s.droppedFrames-s.lastDropLogFrame >= 100 {
+			s.lastDropLogFrame = s.droppedFrames
+			s.log.Warn().
+				Int("frameSize", dataLen).
+				Int("bufSize", len(buf)).
+				Uint32("totalDropped", s.droppedFrames).
+				Msg("Frame exceeds buffer size - dropping")
+		}
+		s.mu.Unlock()
+		return nil
+	}
+
+	// Copy frame data to buffer (under lock - prevents race)
+	copy(buf, data)
+
+	// Dequeue completed buffers if all are in use
 	for s.queuedBufs >= s.bufCount {
 		var dqbuf v4l2_buffer
 		dqbuf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
-		dqbuf.Memory = memType
+		dqbuf.Memory = V4L2_MEMORY_USERPTR
 
 		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_DQBUF, uintptr(unsafe.Pointer(&dqbuf)))
 		if errno != 0 {
@@ -526,24 +529,24 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	s.frameCounter++
 
-	elapsed := time.Since(s.streamStartTime)
-	elapsedSec := int32(elapsed / time.Second)
-	elapsedUsec := int32((elapsed % time.Second) / time.Microsecond)
+	// Calculate timestamp using nanoseconds directly (avoids Duration allocation)
+	elapsedNanos := time.Now().UnixNano() - s.startNanos
+	elapsedSec := int32(elapsedNanos / 1e9)
+	elapsedUsec := int32((elapsedNanos % 1e9) / 1000)
 
+	// Prepare V4L2 buffer
 	var v4l2buf v4l2_buffer
 	v4l2buf.Index = uint32(bufIdx)
 	v4l2buf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
-	v4l2buf.Memory = memType
+	v4l2buf.Memory = V4L2_MEMORY_USERPTR
 	v4l2buf.Field = V4L2_FIELD_NONE
-	v4l2buf.BytesUsed = uint32(len(data))
+	v4l2buf.BytesUsed = uint32(dataLen)
 	v4l2buf.Length = uint32(len(buf))
 	v4l2buf.M = uintptr(unsafe.Pointer(&buf[0]))
-	v4l2buf.Timestamp = v4l2_timeval{
-		Sec:  elapsedSec,
-		Usec: elapsedUsec,
-	}
+	v4l2buf.Timestamp = v4l2_timeval{Sec: elapsedSec, Usec: elapsedUsec}
 	v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
 
+	// Queue buffer to V4L2
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QBUF, uintptr(unsafe.Pointer(&v4l2buf)))
 	if errno != 0 {
 		s.mu.Unlock()
@@ -551,16 +554,14 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	}
 
 	s.queuedBufs++
-	var nextIdx int
-	if s.bufCount == 8 {
-		nextIdx = (bufIdx + 1) & 0x7
-	} else {
-		nextIdx = (bufIdx + 1) % s.bufCount
-	}
-	s.curBufIdx = nextIdx
-	atomic.StoreInt32(&s.curBufIdxAtomic, int32(nextIdx))
-	s.mu.Unlock()
 
+	// Advance buffer index (conditional is faster than modulo on ARM)
+	s.curBufIdx = bufIdx + 1
+	if s.curBufIdx >= s.bufCount {
+		s.curBufIdx = 0
+	}
+
+	s.mu.Unlock()
 	return nil
 }
 
@@ -783,35 +784,23 @@ func (s *UVCStreamer) sendLengthResponse(length int) error {
 }
 
 func (s *UVCStreamer) sendZeroProbeControl() error {
-	var resp uvc_request_data
-	resp.Length = UVC_STREAMING_CONTROL_SIZE
-	return s.sendResponse(&resp)
+	return s.sendZeroResponse(UVC_STREAMING_CONTROL_SIZE)
 }
 
 func (s *UVCStreamer) sendControlLength() error {
-	var resp uvc_request_data
-	resp.Length = 2
-	binary.LittleEndian.PutUint16(resp.Data[0:2], UVC_STREAMING_CONTROL_SIZE)
-	return s.sendResponse(&resp)
+	return s.sendLengthResponse(UVC_STREAMING_CONTROL_SIZE)
 }
 
 func (s *UVCStreamer) sendControlInfo() error {
-	var resp uvc_request_data
-	resp.Length = 1
-	resp.Data[0] = 0x03
-	return s.sendResponse(&resp)
+	return s.sendInfoResponse(0x03)
 }
 
 func (s *UVCStreamer) sendEmptyResponse() error {
-	var resp uvc_request_data
-	resp.Length = 0
-	return s.sendResponse(&resp)
+	return s.sendZeroResponse(0)
 }
 
 func (s *UVCStreamer) sendAcceptResponse(length int) error {
-	var resp uvc_request_data
-	resp.Length = int32(length)
-	return s.sendResponse(&resp)
+	return s.sendZeroResponse(length)
 }
 
 func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {

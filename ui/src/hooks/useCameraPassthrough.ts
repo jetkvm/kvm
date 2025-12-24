@@ -10,9 +10,19 @@
  * WebSocket approach that sends raw encoded frames directly to UVC.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { CameraEncoder, createEncoder, type VideoCodec, type EncoderState } from '@/lib/cameraEncoder';
-import { createCameraTransport, type CameraTransport, type TransportState, type CameraTransportStats } from '@/lib/cameraTransport';
+import { useEffect, useRef, useState } from "react";
+import {
+  CameraEncoder,
+  createEncoder,
+  type VideoCodec,
+  type EncoderState,
+} from "@/lib/cameraEncoder";
+import {
+  createCameraTransport,
+  type CameraTransport,
+  type TransportState,
+  type CameraTransportStats,
+} from "@/lib/cameraTransport";
 
 export interface CameraPassthroughState {
   encoderState: EncoderState;
@@ -33,9 +43,9 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
   const { baseUrl, enabled, onError, onStateChange } = options;
 
   const [state, setState] = useState<CameraPassthroughState>({
-    encoderState: 'idle',
-    transportState: 'disconnected',
-    currentCodec: 'h264',
+    encoderState: "idle",
+    transportState: "disconnected",
+    currentCodec: "h264",
     stats: { framesSent: 0, bytesSent: 0, framesDropped: 0, avgLatencyMs: 0 },
     error: null,
   });
@@ -77,8 +87,8 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
     }
 
     updateState({
-      encoderState: 'idle',
-      transportState: 'disconnected',
+      encoderState: "idle",
+      transportState: "disconnected",
       error: null,
     });
   };
@@ -99,10 +109,10 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
 
     const start = async () => {
       try {
-        console.log('[CameraPassthrough] Starting...');
+        console.log("[CameraPassthrough] Starting...");
 
         // Create transport first (to receive format negotiation)
-        console.log('[CameraPassthrough] Creating transport');
+        console.log("[CameraPassthrough] Creating transport");
         const transport = await createCameraTransport(baseUrl);
         if (cancelled) {
           transport.close();
@@ -112,7 +122,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
 
         // Create encoder - start with H.264, may switch to MJPEG based on host request
         // 60fps target with optimized settings for throughput
-        const encoder = await createEncoder('h264', {
+        const encoder = await createEncoder("h264", {
           width: 1920,
           height: 1080,
           frameRate: 60, // 60fps target for smooth video
@@ -128,18 +138,23 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
 
         // Set up transport event handlers
         transport.setEventHandlers({
-          onStateChange: (transportState) => {
+          onStateChange: transportState => {
             updateState({ transportState });
           },
           onError: handleError,
-          onStats: (stats) => {
+          onStats: stats => {
             updateState({ stats });
           },
-          onFormatRequest: async (format) => {
-            console.log('[CameraPassthrough] Format request:', format);
+          onFormatRequest: async format => {
+            console.log("[CameraPassthrough] Format request:", format);
             // JetKVM tells us what format UVC host wants
             const currentEncoder = encoderRef.current;
-            console.log('[CameraPassthrough] Current encoder:', currentEncoder ? currentEncoder.currentCodec : 'null', 'state:', currentEncoder?.state);
+            console.log(
+              "[CameraPassthrough] Current encoder:",
+              currentEncoder ? currentEncoder.currentCodec : "null",
+              "state:",
+              currentEncoder?.state,
+            );
 
             if (currentEncoder) {
               // IMPORTANT: Apply settings in correct order:
@@ -153,7 +168,9 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
               let effectiveFrameRate = format.frameRate || 30;
               if (format.frameRateCap && format.frameRateCap > 0) {
                 effectiveFrameRate = Math.min(effectiveFrameRate, format.frameRateCap);
-                console.log(`[CameraPassthrough] Frame rate: UVC=${format.frameRate}, cap=${format.frameRateCap}, effective=${effectiveFrameRate}`);
+                console.log(
+                  `[CameraPassthrough] Frame rate: UVC=${format.frameRate}, cap=${format.frameRateCap}, effective=${effectiveFrameRate}`,
+                );
               }
               if (effectiveFrameRate > 0) {
                 currentEncoder.setFrameRate(effectiveFrameRate);
@@ -170,12 +187,12 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
               // Switch codec if host requests different format (may restart encoder)
               if (currentEncoder.currentCodec !== format.codec) {
                 try {
-                  console.log('[CameraPassthrough] Switching codec to:', format.codec);
+                  console.log("[CameraPassthrough] Switching codec to:", format.codec);
                   await currentEncoder.switchCodec(format.codec);
                   updateState({ currentCodec: format.codec });
-                  console.log('[CameraPassthrough] Codec switched');
+                  console.log("[CameraPassthrough] Codec switched");
                 } catch (err) {
-                  console.error('[CameraPassthrough] Codec switch error:', err);
+                  console.error("[CameraPassthrough] Codec switch error:", err);
                   handleError(err instanceof Error ? err : new Error(String(err)));
                 }
               }
@@ -188,26 +205,26 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
 
             // Start/resume encoder when USB host requests video
             const enc = encoderRef.current;
-            if (enc && enc.state === 'idle') {
-              console.log('[CameraPassthrough] Starting encoder (USB host requested video)');
+            if (enc && enc.state === "idle") {
+              console.log("[CameraPassthrough] Starting encoder (USB host requested video)");
               await enc.start();
               updateState({ encoderState: enc.state });
-            } else if (enc && enc.state === 'paused') {
-              console.log('[CameraPassthrough] Resuming encoder');
+            } else if (enc && enc.state === "paused") {
+              console.log("[CameraPassthrough] Resuming encoder");
               await enc.resume();
               updateState({ encoderState: enc.state });
-            } else if (enc && enc.state === 'running') {
-              console.log('[CameraPassthrough] Format request while running - forcing keyframe');
+            } else if (enc && enc.state === "running") {
+              console.log("[CameraPassthrough] Format request while running - forcing keyframe");
               enc.forceKeyFrame();
             }
           },
           onStreamingStopped: () => {
             // Pause encoder when UVC host disconnects (saves CPU/power)
             const enc = encoderRef.current;
-            if (enc && enc.state === 'running') {
-              console.log('[CameraPassthrough] Pausing encoder (UVC stopped)');
+            if (enc && enc.state === "running") {
+              console.log("[CameraPassthrough] Pausing encoder (UVC stopped)");
               enc.pause();
-              updateState({ encoderState: 'paused' });
+              updateState({ encoderState: "paused" });
             }
           },
         });
@@ -215,10 +232,17 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
         // Set up encoder event handlers
         let frameLogCount = 0;
         encoder.setEventHandlers({
-          onFrame: (frame) => {
+          onFrame: frame => {
             // Log first few frames
             if (frameLogCount < 3) {
-              console.log('[CameraPassthrough] Sending frame', frameLogCount, 'codec:', frame.codec, 'size:', frame.data.byteLength);
+              console.log(
+                "[CameraPassthrough] Sending frame",
+                frameLogCount,
+                "codec:",
+                frame.codec,
+                "size:",
+                frame.data.byteLength,
+              );
               frameLogCount++;
             }
             // Send encoded frame to JetKVM
@@ -227,16 +251,16 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
               currentTransport.sendFrame(frame.data, frame.timestamp, frame.codec);
             }
           },
-          onStateChange: (encoderState) => {
+          onStateChange: encoderState => {
             updateState({ encoderState });
           },
           onError: handleError,
         });
 
         // Connect transport
-        console.log('[CameraPassthrough] Connecting transport');
+        console.log("[CameraPassthrough] Connecting transport");
         await transport.connect();
-        console.log('[CameraPassthrough] Transport connected');
+        console.log("[CameraPassthrough] Transport connected");
         if (cancelled) {
           encoder.stop();
           transport.close();
@@ -246,11 +270,10 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
         // Encoder stays idle until USB host requests video (STREAMON)
         // Camera will activate only when onFormatRequest is triggered
         updateState({
-          encoderState: 'idle',
+          encoderState: "idle",
           transportState: transport.state,
           currentCodec: encoder.currentCodec,
         });
-
       } catch (err) {
         if (!cancelled) {
           handleError(err instanceof Error ? err : new Error(String(err)));
@@ -265,7 +288,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
       cancelled = true;
       cleanup();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, baseUrl]);
 
   return {

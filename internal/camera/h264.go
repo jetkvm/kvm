@@ -86,44 +86,6 @@ func (c *H264ParamCache) AnalyzeAndUpdate(frame []byte) FrameInfo {
 	return info
 }
 
-func (c *H264ParamCache) UpdateFromFrame(frame []byte) bool {
-	nalUnits := splitNALUnits(frame)
-	updated := false
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for _, nalu := range nalUnits {
-		if len(nalu) < 1 {
-			continue
-		}
-
-		nalType := nalu[0] & 0x1F
-
-		switch nalType {
-		case NALTypeSPS:
-			newSPS := make([]byte, 4+len(nalu))
-			copy(newSPS, startCode4)
-			copy(newSPS[4:], nalu)
-			if !bytes.Equal(c.sps, newSPS) {
-				c.sps = newSPS
-				updated = true
-			}
-
-		case NALTypePPS:
-			newPPS := make([]byte, 3+len(nalu))
-			copy(newPPS, startCode3)
-			copy(newPPS[3:], nalu)
-			if !bytes.Equal(c.pps, newPPS) {
-				c.pps = newPPS
-				updated = true
-			}
-		}
-	}
-
-	return updated
-}
-
 func (c *H264ParamCache) GetParameters() []byte {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -151,42 +113,6 @@ func (c *H264ParamCache) Clear() {
 	c.pps = nil
 }
 
-func IsIDRFrame(frame []byte) bool {
-	nalUnits := splitNALUnits(frame)
-	for _, nalu := range nalUnits {
-		if len(nalu) > 0 && (nalu[0]&0x1F) == NALTypeIDR {
-			return true
-		}
-	}
-	return false
-}
-
-func ContainsSPS(frame []byte) bool {
-	nalUnits := splitNALUnits(frame)
-	for _, nalu := range nalUnits {
-		if len(nalu) > 0 && (nalu[0]&0x1F) == NALTypeSPS {
-			return true
-		}
-	}
-	return false
-}
-
-func (c *H264ParamCache) PrependParameters(frame []byte) []byte {
-	if !IsIDRFrame(frame) || ContainsSPS(frame) {
-		return frame
-	}
-
-	params := c.GetParameters()
-	if params == nil {
-		return frame
-	}
-
-	result := make([]byte, len(params)+len(frame))
-	copy(result, params)
-	copy(result[len(params):], frame)
-	return result
-}
-
 func (c *H264ParamCache) PrependParametersWithInfo(frame []byte, info FrameInfo) []byte {
 	if !info.HasIDR || info.HasSPS {
 		return frame
@@ -210,17 +136,6 @@ func (c *H264ParamCache) PrependParametersWithInfo(frame []byte, info FrameInfo)
 	copy(result[len(c.sps):], c.pps)
 	copy(result[len(c.sps)+len(c.pps):], frame)
 	return result
-}
-
-func splitNALUnits(data []byte) [][]byte {
-	if len(data) < 4 {
-		return nil
-	}
-	var nalUnits [][]byte
-	scanNALUnits(data, func(nalu []byte) {
-		nalUnits = append(nalUnits, nalu)
-	})
-	return nalUnits
 }
 
 func scanNALUnits(data []byte, fn func(nalu []byte)) {

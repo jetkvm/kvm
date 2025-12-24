@@ -13,44 +13,44 @@ interface EncoderConfig {
 }
 
 interface StartMessage {
-  type: 'start';
+  type: "start";
   config: EncoderConfig;
 }
 
 interface FrameMessage {
-  type: 'frame';
+  type: "frame";
   bitmap: ImageBitmap;
   timestamp: number;
 }
 
 interface StopMessage {
-  type: 'stop';
+  type: "stop";
 }
 
 interface SetQualityMessage {
-  type: 'setQuality';
+  type: "setQuality";
   quality: number;
 }
 
 type WorkerMessage = StartMessage | FrameMessage | StopMessage | SetQualityMessage;
 
 interface EncodedFrameMessage {
-  type: 'frame';
+  type: "frame";
   data: ArrayBuffer;
   timestamp: number;
 }
 
 interface ErrorMessage {
-  type: 'error';
+  type: "error";
   message: string;
 }
 
 interface ReadyMessage {
-  type: 'ready';
+  type: "ready";
 }
 
 interface StoppedMessage {
-  type: 'stopped';
+  type: "stopped";
 }
 
 type WorkerResponse = EncodedFrameMessage | ErrorMessage | ReadyMessage | StoppedMessage;
@@ -64,19 +64,19 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   const msg = event.data;
 
   switch (msg.type) {
-    case 'start':
+    case "start":
       await handleStart(msg.config);
       break;
 
-    case 'frame':
+    case "frame":
       await handleFrame(msg.bitmap, msg.timestamp);
       break;
 
-    case 'stop':
+    case "stop":
       handleStop();
       break;
 
-    case 'setQuality':
+    case "setQuality":
       handleSetQuality(msg.quality);
       break;
   }
@@ -88,23 +88,22 @@ async function handleStart(newConfig: EncoderConfig): Promise<void> {
 
     // Create OffscreenCanvas for encoding
     canvas = new OffscreenCanvas(config.width, config.height);
-    ctx = canvas.getContext('2d', {
+    ctx = canvas.getContext("2d", {
       alpha: false, // No alpha channel needed for MJPEG
       desynchronized: true, // Hint for lower latency
     });
 
     if (!ctx) {
-      throw new Error('Failed to get 2D context');
+      throw new Error("Failed to get 2D context");
     }
 
     isRunning = true;
 
-    const response: ReadyMessage = { type: 'ready' };
+    const response: ReadyMessage = { type: "ready" };
     self.postMessage(response);
-
   } catch (error) {
     const response: ErrorMessage = {
-      type: 'error',
+      type: "error",
       message: error instanceof Error ? error.message : String(error),
     };
     self.postMessage(response);
@@ -123,7 +122,7 @@ async function handleFrame(bitmap: ImageBitmap, timestamp: number): Promise<void
 
     // Encode to JPEG (this is the expensive operation, but now off main thread)
     const blob = await canvas.convertToBlob({
-      type: 'image/jpeg',
+      type: "image/jpeg",
       quality: config.quality,
     });
 
@@ -132,12 +131,11 @@ async function handleFrame(bitmap: ImageBitmap, timestamp: number): Promise<void
 
     // Send encoded frame back (transfer ownership for zero-copy)
     const response: EncodedFrameMessage = {
-      type: 'frame',
+      type: "frame",
       data,
       timestamp,
     };
     self.postMessage(response, { transfer: [data] });
-
   } catch {
     // Ignore transient encode errors
   } finally {
@@ -151,7 +149,7 @@ function handleStop(): void {
   canvas = null;
   ctx = null;
 
-  const response: StoppedMessage = { type: 'stopped' };
+  const response: StoppedMessage = { type: "stopped" };
   self.postMessage(response);
 }
 
