@@ -18,6 +18,7 @@ import (
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
 
+//nolint:gochecknoinits // GC tuning must happen before main() runs
 func init() {
 	// Reduce GC frequency for lower CPU overhead on embedded systems.
 	// Default GOGC=100 means GC runs when heap doubles.

@@ -105,7 +105,7 @@ func (m *Manager) StopUVC() {
 	}
 
 	if m.streamer != nil {
-		m.streamer.StopStreaming()
+		_ = m.streamer.StopStreaming()
 		m.streamer.Close()
 		m.streamer = nil
 	}
@@ -134,7 +134,7 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	}
 
 	if m.streamer != nil {
-		m.streamer.StopStreaming()
+		_ = m.streamer.StopStreaming()
 		m.streamer.Close()
 	}
 

@@ -8,14 +8,6 @@ func initUVC() {
 	cameraManager.InitUVC(config.UsbDevices.UVC)
 }
 
-// stopUVC stops UVC streaming.
-func stopUVC() {
-	if cameraManager == nil {
-		return
-	}
-	cameraManager.StopUVC()
-}
-
 // reinitUVC reinitializes UVC if needed.
 func reinitUVC() {
 	if cameraManager == nil {

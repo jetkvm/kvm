@@ -155,7 +155,7 @@ type uvc_streaming_control struct {
 	wKeyFrameRate, wPFrameRate, wCompQuality, wCompWindowSize, wDelay uint16
 	dwMaxVideoFrameSize, dwMaxPayloadTransferSize                     uint32
 	dwClockFrequency                                                  uint32
-	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion         uint8
+	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion uint8 //nolint:unused // kernel struct fields
 }
 
 type UVCStreamer struct {
@@ -308,7 +308,7 @@ func (s *UVCStreamer) Close() error {
 	}
 
 	if s.streaming {
-		s.stopStreamingLocked()
+		_ = s.stopStreamingLocked()
 	}
 
 	// Regular Go allocations - just clear references, GC will handle cleanup
@@ -606,12 +606,6 @@ func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
 
 	copy(s.eventDataBuf[:], ev.U[:])
 	return ev.Type, s.eventDataBuf[:], nil
-}
-
-type pollfd struct {
-	fd      int32
-	events  int16
-	revents int16
 }
 
 const POLLPRI = 0x0002

@@ -17,7 +17,7 @@ const frameHeaderSize = 1
 
 // Ring buffer configuration for zero-allocation WebSocket reads
 const (
-	ringBufferCount = 4          // 4 buffers in ring (safe with 8 V4L2 buffers)
+	ringBufferCount = 4           // 4 buffers in ring (safe with 8 V4L2 buffers)
 	ringBufferSize  = 2048 * 1024 // 2MB per buffer (handles 1080p MJPEG at any quality)
 )
 
@@ -53,7 +53,7 @@ func handleCameraWs(c *gin.Context) {
 		cameraLog.Warn().Err(err).Msg("Failed to accept camera WebSocket")
 		return
 	}
-	defer ws.CloseNow()
+	defer func() { _ = ws.CloseNow() }()
 
 	// Set generous read limit for video frames (16MB should handle any resolution)
 	ws.SetReadLimit(16 * 1024 * 1024)
@@ -175,7 +175,6 @@ func handleCameraWs(c *gin.Context) {
 	}
 }
 
-
 // sendFormatMessage sends a format negotiation message to the WebSocket client.
 // Includes encoder settings (bitrate/quality) from config so the browser can configure its encoder.
 func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.FormatInfo) {
@@ -192,14 +191,14 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 		Msg("sendFormatMessage: sending to browser")
 
 	msg := map[string]interface{}{
-		"type":          "format",
-		"codec":         format.Codec,
-		"width":         format.Width,
-		"height":        format.Height,
-		"frameRate":     format.FrameRate,                           // UVC-negotiated rate from host
-		"frameRateCap":  config.CameraFrameRate,                     // User's configured cap (browser uses min of both)
-		"h264Bitrate":   config.CameraH264Bitrate * 1_000_000,       // Convert Mbps to bps for browser
-		"mjpegQuality":  float64(config.CameraMjpegQuality) / 100.0, // Convert 0-100% to 0.0-1.0
+		"type":         "format",
+		"codec":        format.Codec,
+		"width":        format.Width,
+		"height":       format.Height,
+		"frameRate":    format.FrameRate,                           // UVC-negotiated rate from host
+		"frameRateCap": config.CameraFrameRate,                     // User's configured cap (browser uses min of both)
+		"h264Bitrate":  config.CameraH264Bitrate * 1_000_000,       // Convert Mbps to bps for browser
+		"mjpegQuality": float64(config.CameraMjpegQuality) / 100.0, // Convert 0-100% to 0.0-1.0
 	}
 
 	data, err := json.Marshal(msg)
@@ -214,10 +213,3 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 	_ = ws.Write(writeCtx, websocket.MessageText, data)
 }
 
-// handleCameraFrame is called from WebRTC track handler.
-// Kept for backward compatibility with WebRTC camera track.
-func handleCameraFrame(frame []byte) {
-	if cameraManager != nil {
-		cameraManager.HandleCameraH264Frame(frame)
-	}
-}

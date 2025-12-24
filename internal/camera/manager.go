@@ -40,11 +40,9 @@ type Manager struct {
 	enabled          atomic.Bool
 	source           *sourceStore
 
-	cameraFrameCount    atomic.Int32
-	cameraLastLogFrame  atomic.Int32
-	uvcFrameCount       atomic.Uint32
-	uvcFrameErrors      atomic.Uint32
-	uvcLastLogFrame     atomic.Uint32
+	cameraFrameCount   atomic.Int32
+	cameraLastLogFrame atomic.Int32
+	uvcFrameErrors     atomic.Uint32
 	uvcNeedParamInject  atomic.Bool
 	uvcParamInjectCount atomic.Uint32
 	uvcStreamingFast    atomic.Bool
@@ -123,9 +121,9 @@ func (m *Manager) updateMjpegEncoderForSource(source Source) {
 	}
 }
 
-func (m *Manager) GetSource() Source       { return m.source.Get() }
-func (m *Manager) IsSourceCamera() bool    { return m.source.IsCamera() }
-func (m *Manager) IsSourceHDMI() bool      { return m.source.IsHDMI() }
+func (m *Manager) GetSource() Source    { return m.source.Get() }
+func (m *Manager) IsSourceCamera() bool { return m.source.IsCamera() }
+func (m *Manager) IsSourceHDMI() bool   { return m.source.IsHDMI() }
 
 func (m *Manager) SetNativeController(native NativeController) {
 	m.streamerMu.Lock()
@@ -265,12 +263,13 @@ func (m *Manager) notifySourceChange(source Source) {
 		return
 	}
 
-	if source == SourceHDMI {
+	switch source {
+	case SourceHDMI:
 		if m.camLog != nil {
 			m.camLog.Info().Msg("Notifying browser to stop camera encoding")
 		}
 		m.notifyStreamingStopped()
-	} else if source == SourceCamera {
+	case SourceCamera:
 		codec := "h264"
 		if isMjpeg {
 			codec = "mjpeg"
