@@ -631,6 +631,8 @@ func RunWebServer() {
 	if !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
+
+	close(updateWebRouter)
 }
 
 func handleDevice(c *gin.Context) {
