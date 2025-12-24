@@ -124,7 +124,7 @@ type SessionConfig struct {
 	IsCloud    bool
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
-	NoMDNS     bool
+	MDNSMode   string
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -252,7 +252,18 @@ func newSession(config SessionConfig) (*Session, error) {
 		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	}
 
-	if config.NoMDNS {
+	mDNSNetworkTypes := make([]webrtc.NetworkType, 0)
+	if config.MDNSMode == "auto" || config.MDNSMode == "ipv4_only" {
+		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP4)
+	}
+	if config.MDNSMode == "auto" || config.MDNSMode == "ipv6_only" {
+		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP6)
+	}
+
+	if len(mDNSNetworkTypes) > 0 {
+		webrtcSettingEngine.SetNetworkTypes(mDNSNetworkTypes)
+		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
+	} else {
 		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	}
 
