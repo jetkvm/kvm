@@ -777,6 +777,13 @@ export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
 export type LLDPMode = "disabled" | "basic" | "all" | "unknown";
 export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
 export type TimeSyncMode = "ntp_only" | "ntp_and_http" | "http_only" | "custom" | "unknown";
+export type TimeSyncOrdering =
+  | "ntp"
+  | "http"
+  | "ntp_dhcp"
+  | "ntp_user_provided"
+  | "http_user_provided"
+  | "unknown";
 
 export interface IPv4StaticConfig {
   address: string;
@@ -804,6 +811,11 @@ export interface NetworkSettings {
   lldp_tx_tlvs: string[];
   mdns_mode: mDNSMode;
   time_sync_mode: TimeSyncMode;
+  time_sync_ordering: string[];
+  time_sync_parallel: number;
+  time_sync_disable_fallback: boolean;
+  time_sync_ntp_servers: string[];
+  time_sync_http_urls: string[];
 }
 
 export const useNetworkStateStore = create<NetworkState>((set, get) => ({
