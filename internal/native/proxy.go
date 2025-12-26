@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/jetkvm/kvm/internal/utils"
 	"github.com/rs/zerolog"
@@ -45,6 +46,7 @@ type nativeProxyOptions struct {
 	OnRpcEvent           func(event string)
 	OnVideoStateChange   func(state VideoState)
 	OnNativeRestart      func()
+	GetSessionInfo       func() diagnostics.SessionInfo
 }
 
 func randomId(binaryLength int) string {
@@ -74,6 +76,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		OnRpcEvent:           n.OnRpcEvent,
 		OnVideoStateChange:   n.OnVideoStateChange,
 		OnNativeRestart:      n.OnNativeRestart,
+		GetSessionInfo:       n.GetSessionInfo,
 		HandshakeMessage:     handshakeMessage,
 		MaxRestartAttempts:   maxRestartAttempts,
 	}
@@ -135,6 +138,7 @@ type NativeProxy struct {
 
 	logger   *zerolog.Logger
 	options  *nativeProxyOptions
+	diag     *diagnostics.Diagnostics
 	restarts uint
 	stopped  bool
 }
@@ -150,12 +154,18 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 		return nil, fmt.Errorf("failed to get executable path: %w", err)
 	}
 
+	// Initialize diagnostics with session info callback
+	diag := diagnostics.New(diagnostics.Options{
+		GetSessionInfo: proxyOptions.GetSessionInfo,
+	})
+
 	proxy := &NativeProxy{
 		nativeUnixSocket:      proxyOptions.CtrlUnixSocket,
 		videoStreamUnixSocket: proxyOptions.VideoStreamUnixSocket,
 		binaryPath:            exePath,
 		logger:                nativeLogger,
 		options:               proxyOptions,
+		diag:                  diag,
 		restarts:              0,
 	}
 
@@ -297,6 +307,8 @@ func (p *NativeProxy) setUpGRPCClient() error {
 	case <-p.cmd.stdoutHandler.handshakeCh:
 		p.logger.Info().Msg("handshake completed")
 	case <-time.After(10 * time.Second):
+		p.logger.Error().Msg("[HANDSHAKE] TIMEOUT - handshake not completed within 10 seconds. Child process may be stuck during initialization.")
+		p.diag.LogAll("handshake")
 		return fmt.Errorf("handshake not completed within 10 seconds")
 	}
 
@@ -424,6 +436,9 @@ func (p *NativeProxy) monitorProcess() {
 		}
 
 		p.logger.Warn().Err(err).Msg("native process exited, restarting ...")
+
+		// Log diagnostics before restarting
+		p.diag.LogAll("crash")
 
 		// Wait a bit before restarting
 		time.Sleep(1 * time.Second)

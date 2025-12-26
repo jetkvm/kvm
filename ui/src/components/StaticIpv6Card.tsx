@@ -39,7 +39,7 @@ export default function StaticIpv6Card() {
   };
 
   const ipv6Validation = (value: string) => {
-    if (!validator.isIP(value, 6)) return m.network_ipv6_invalid()
+    if (!validator.isIP(value, 6)) return m.network_ipv6_invalid();
     return true;
   };
 
@@ -56,7 +56,9 @@ export default function StaticIpv6Card() {
             type="text"
             size="SM"
             placeholder="2001:db8::1/64"
-            {...register("ipv6_static.prefix", { validate: (value: string | undefined) => cidrValidation(value ?? "") })}
+            {...register("ipv6_static.prefix", {
+              validate: (value: string | undefined) => cidrValidation(value ?? ""),
+            })}
             error={formState.errors.ipv6_static?.prefix?.message}
           />
 
@@ -65,7 +67,9 @@ export default function StaticIpv6Card() {
             type="text"
             size="SM"
             placeholder="2001:db8::1"
-            {...register("ipv6_static.gateway", { validate: (value: string | undefined) => ipv6Validation(value ?? "") })}
+            {...register("ipv6_static.gateway", {
+              validate: (value: string | undefined) => ipv6Validation(value ?? ""),
+            })}
             error={formState.errors.ipv6_static?.gateway?.message}
           />
 
@@ -81,7 +85,9 @@ export default function StaticIpv6Card() {
                         type="text"
                         size="SM"
                         placeholder="2001:4860:4860::8888"
-                        {...register(`ipv6_static.dns.${index}`, { validate: (value: string | undefined) => ipv6Validation(value ?? "") })}
+                        {...register(`ipv6_static.dns.${index}`, {
+                          validate: (value: string | undefined) => ipv6Validation(value ?? ""),
+                        })}
                         error={formState.errors.ipv6_static?.dns?.[index]?.message}
                       />
                     </div>

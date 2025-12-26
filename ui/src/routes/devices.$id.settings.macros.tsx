@@ -32,10 +32,7 @@ export default function SettingsMacrosRoute() {
   const [macroToDelete, setMacroToDelete] = useState<KeySequence | null>(null);
   const { selectedKeyboard } = useKeyboardLayout();
 
-  const isMaxMacrosReached = useMemo(
-    () => macros.length >= MAX_TOTAL_MACROS,
-    [macros.length],
-  );
+  const isMaxMacrosReached = useMemo(() => macros.length >= MAX_TOTAL_MACROS, [macros.length]);
 
   useEffect(() => {
     if (!initialized) {
@@ -69,7 +66,9 @@ export default function SettingsMacrosRoute() {
         notifications.success(m.macros_duplicated_success({ name: newMacroCopy.name }));
       } catch (error: unknown) {
         if (error instanceof Error) {
-          notifications.error(m.macros_failed_duplicate_error({ error: error.message || m.unknown_error() }));
+          notifications.error(
+            m.macros_failed_duplicate_error({ error: error.message || m.unknown_error() }),
+          );
         } else {
           notifications.error(m.macros_failed_duplicate());
         }
@@ -101,7 +100,9 @@ export default function SettingsMacrosRoute() {
         notifications.success(m.macros_order_updated());
       } catch (error: unknown) {
         if (error instanceof Error) {
-          notifications.error(m.macros_failed_reorder_error({ error: error.message || m.unknown_error() }));
+          notifications.error(
+            m.macros_failed_reorder_error({ error: error.message || m.unknown_error() }),
+          );
         } else {
           notifications.error(m.macros_failed_reorder());
         }
@@ -117,16 +118,16 @@ export default function SettingsMacrosRoute() {
 
     setActionLoadingId(macroToDelete.id);
     try {
-      const updatedMacros = normalizeSortOrders(
-        macros.filter(m => m.id !== macroToDelete.id),
-      );
+      const updatedMacros = normalizeSortOrders(macros.filter(m => m.id !== macroToDelete.id));
       await saveMacros(updatedMacros);
       notifications.success(m.macros_deleted_success({ name: macroToDelete.name }));
       setShowDeleteConfirm(false);
       setMacroToDelete(null);
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(m.macros_failed_delete_error({ error: error.message || m.unknown_error() }));
+        notifications.error(
+          m.macros_failed_delete_error({ error: error.message || m.unknown_error() }),
+        );
       } else {
         notifications.error(m.macros_failed_delete());
       }
@@ -173,9 +174,8 @@ export default function SettingsMacrosRoute() {
                         <span key={`step-${stepIndex}`} className="inline-flex items-center">
                           <StepIcon className="mr-1 h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
                           <span className="rounded-md border border-slate-200/50 bg-slate-50 px-2 py-0.5 dark:border-slate-700/50 dark:bg-slate-800">
-                            {(Array.isArray(step.modifiers) &&
-                              step.modifiers.length > 0) ||
-                              (Array.isArray(step.keys) && step.keys.length > 0) ? (
+                            {(Array.isArray(step.modifiers) && step.modifiers.length > 0) ||
+                            (Array.isArray(step.keys) && step.keys.length > 0) ? (
                               <>
                                 {Array.isArray(step.modifiers) &&
                                   step.modifiers.map((modifier, idx) => (
@@ -184,7 +184,9 @@ export default function SettingsMacrosRoute() {
                                         {selectedKeyboard.modifierDisplayMap[modifier] || modifier}
                                       </span>
                                       {idx < step.modifiers.length - 1 && (
-                                        <span className="text-slate-400 dark:text-slate-600">&nbsp;+&nbsp;</span>
+                                        <span className="text-slate-400 dark:text-slate-600">
+                                          &nbsp;+&nbsp;
+                                        </span>
                                       )}
                                     </Fragment>
                                   ))}
@@ -193,7 +195,9 @@ export default function SettingsMacrosRoute() {
                                   step.modifiers.length > 0 &&
                                   Array.isArray(step.keys) &&
                                   step.keys.length > 0 && (
-                                    <span className="text-slate-400 dark:text-slate-600">&nbsp;+&nbsp;</span>
+                                    <span className="text-slate-400 dark:text-slate-600">
+                                      &nbsp;+&nbsp;
+                                    </span>
                                   )}
 
                                 {Array.isArray(step.keys) &&
@@ -203,7 +207,9 @@ export default function SettingsMacrosRoute() {
                                         {selectedKeyboard.keyDisplayMap[key] || key}
                                       </span>
                                       {idx < step.keys.length - 1 && (
-                                        <span className="text-slate-400 dark:text-slate-600">&nbsp;+&nbsp;</span>
+                                        <span className="text-slate-400 dark:text-slate-600">
+                                          &nbsp;+&nbsp;
+                                        </span>
                                       )}
                                     </Fragment>
                                   ))}
@@ -270,7 +276,9 @@ export default function SettingsMacrosRoute() {
           title={m.macros_confirm_delete_title()}
           description={m.macros_confirm_delete_description({ name: macroToDelete?.name || "" })}
           variant="danger"
-          confirmText={actionLoadingId === macroToDelete?.id ? m.macros_confirm_deleting() : m.delete()}
+          confirmText={
+            actionLoadingId === macroToDelete?.id ? m.macros_confirm_deleting() : m.delete()
+          }
           onConfirm={handleDeleteMacro}
           isConfirming={actionLoadingId === macroToDelete?.id}
         />
@@ -287,17 +295,14 @@ export default function SettingsMacrosRoute() {
       selectedKeyboard.modifierDisplayMap,
       selectedKeyboard.keyDisplayMap,
       handleDuplicateMacro,
-      navigate
+      navigate,
     ],
   );
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <SettingsPageHeader
-          title={m.macros_title()}
-          description={m.macros_add_new()}
-        />
+        <SettingsPageHeader title={m.macros_title()} description={m.macros_add_new()} />
         {macros.length > 0 && (
           <div className="flex items-center pl-2">
             <Button

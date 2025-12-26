@@ -30,7 +30,10 @@ const HANDSHAKE_TIMEOUT = 30 * 1000; // 30 seconds
 const HANDSHAKE_MAX_ATTEMPTS = 10;
 const logger = new Logger({ name: "hidrpc" });
 
-export function doRpcHidHandshake(rpcHidChannel: RTCDataChannel, setRpcHidProtocolVersion: (version: number | null) => void) {
+export function doRpcHidHandshake(
+  rpcHidChannel: RTCDataChannel,
+  setRpcHidProtocolVersion: (version: number | null) => void,
+) {
   let attempts = 0;
   let lastConnectedTime: Date | undefined;
   let lastSendTime: Date | undefined;
@@ -50,7 +53,7 @@ export function doRpcHidHandshake(rpcHidChannel: RTCDataChannel, setRpcHidProtoc
     }
 
     return false;
-  }
+  };
 
   const sendHandshake = (initial: boolean) => {
     if (handshakeCompleted) return;
@@ -104,14 +107,22 @@ export function doRpcHidHandshake(rpcHidChannel: RTCDataChannel, setRpcHidProtoc
     setRpcHidProtocolVersion(message.version);
 
     const timeUsed = lastSendTime ? Date.now() - lastSendTime.getTime() : 0;
-    logger.info(`Handshake completed in ${timeUsed}ms after ${attempts} attempts (Version: ${message.version} / ${HID_RPC_VERSION})`);
+    logger.info(
+      `Handshake completed in ${timeUsed}ms after ${attempts} attempts (Version: ${message.version} / ${HID_RPC_VERSION})`,
+    );
 
-    // clean up 
+    // clean up
     rpcHidChannel.removeEventListener("message", onMessage);
     resetHandshake({ completed: true });
   };
 
-  const resetHandshake = ({ lastConnectedTime: newLastConnectedTime, completed }: { lastConnectedTime?: Date | undefined, completed?: boolean }) => {
+  const resetHandshake = ({
+    lastConnectedTime: newLastConnectedTime,
+    completed,
+  }: {
+    lastConnectedTime?: Date | undefined;
+    completed?: boolean;
+  }) => {
     if (newLastConnectedTime) lastConnectedTime = newLastConnectedTime;
     lastSendTime = undefined;
     attempts = 0;
@@ -154,7 +165,8 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     rpcHidUnreliableChannel,
     rpcHidUnreliableNonOrderedChannel,
     setRpcHidProtocolVersion,
-    rpcHidProtocolVersion, hidRpcDisabled,
+    rpcHidProtocolVersion,
+    hidRpcDisabled,
   } = useRTCStore();
 
   const rpcHidReady = useMemo(() => {
@@ -163,15 +175,12 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   }, [rpcHidChannel, rpcHidProtocolVersion, hidRpcDisabled]);
 
   const rpcHidUnreliableReady = useMemo(() => {
-    return (
-      rpcHidUnreliableChannel?.readyState === "open" && rpcHidProtocolVersion !== null
-    );
+    return rpcHidUnreliableChannel?.readyState === "open" && rpcHidProtocolVersion !== null;
   }, [rpcHidProtocolVersion, rpcHidUnreliableChannel?.readyState]);
 
   const rpcHidUnreliableNonOrderedReady = useMemo(() => {
     return (
-      rpcHidUnreliableNonOrderedChannel?.readyState === "open" &&
-      rpcHidProtocolVersion !== null
+      rpcHidUnreliableNonOrderedChannel?.readyState === "open" && rpcHidProtocolVersion !== null
     );
   }, [rpcHidProtocolVersion, rpcHidUnreliableNonOrderedChannel?.readyState]);
 
@@ -187,11 +196,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   const sendMessage = useCallback(
     (
       message: RpcMessage,
-      {
-        ignoreHandshakeState,
-        useUnreliableChannel,
-        requireOrdered = true,
-      }: sendMessageParams = {},
+      { ignoreHandshakeState, useUnreliableChannel, requireOrdered = true }: sendMessageParams = {},
     ) => {
       if (hidRpcDisabled) return;
       if (rpcHidChannel?.readyState !== "open") return;
@@ -219,7 +224,8 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     [
       rpcHidChannel,
       rpcHidUnreliableChannel,
-      hidRpcDisabled, rpcHidUnreliableNonOrderedChannel,
+      hidRpcDisabled,
+      rpcHidUnreliableNonOrderedChannel,
       rpcHidReady,
       rpcHidUnreliableReady,
       rpcHidUnreliableNonOrderedReady,
@@ -263,12 +269,9 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     [sendMessage],
   );
 
-  const cancelOngoingKeyboardMacro = useCallback(
-    () => {
-      sendMessage(new CancelKeyboardMacroReportMessage());
-    },
-    [sendMessage],
-  );
+  const cancelOngoingKeyboardMacro = useCallback(() => {
+    sendMessage(new CancelKeyboardMacroReportMessage());
+  }, [sendMessage]);
 
   const reportKeypressKeepAlive = useCallback(() => {
     sendMessage(KEEPALIVE_MESSAGE);
@@ -300,7 +303,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     };
 
     const errorHandler = (e: Event) => {
-      logger.error(`Error on channel '${rpcHidChannel.label}'`, e);
+      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${e}`);
     };
 
     rpcHidChannel.addEventListener("message", messageHandler);
@@ -310,12 +313,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       rpcHidChannel.removeEventListener("message", messageHandler);
       rpcHidChannel.removeEventListener("error", errorHandler);
     };
-  }, [
-    rpcHidChannel,
-    onHidRpcMessage,
-    setRpcHidProtocolVersion,
-    hidRpcDisabled,
-  ]);
+  }, [rpcHidChannel, onHidRpcMessage, setRpcHidProtocolVersion, hidRpcDisabled]);
 
   return {
     reportKeyboardEvent,

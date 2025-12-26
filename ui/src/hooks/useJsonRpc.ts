@@ -37,14 +37,14 @@ let requestCounter = 0;
 // Map of blocked RPC methods by failsafe reason
 const blockedMethodsByReason: Record<string, string[]> = {
   video: [
-    'setStreamQualityFactor',
-    'getEDID',
-    'setEDID',
-    'getVideoLogStatus',
-    'setDisplayRotation',
-    'getVideoSleepMode',
-    'setVideoSleepMode',
-    'getVideoState',
+    "setStreamQualityFactor",
+    "getEDID",
+    "setEDID",
+    "getVideoLogStatus",
+    "setDisplayRotation",
+    "getVideoSleepMode",
+    "setVideoSleepMode",
+    "getVideoState",
   ],
 };
 
@@ -86,7 +86,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
 
       rpcDataChannel.send(JSON.stringify(payload));
     },
-    [rpcDataChannel, isFailsafeMode, reason]
+    [rpcDataChannel, isFailsafeMode, reason],
   );
 
   useEffect(() => {
@@ -117,8 +117,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
     return () => {
       rpcDataChannel.removeEventListener("message", messageHandler);
     };
-  },
-    [rpcDataChannel, onRequest]);
+  }, [rpcDataChannel, onRequest]);
 
   return { send };
 }

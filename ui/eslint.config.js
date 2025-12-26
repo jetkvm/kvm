@@ -1,19 +1,17 @@
-const {
-    defineConfig,
-    globalIgnores,
-} = require("eslint/config");
+import globals from "globals";
+import { defineConfig, globalIgnores } from "eslint/config";
+import { fixupConfigRules } from "@eslint/compat";
+import js from "@eslint/js";
+import { FlatCompat } from "@eslint/eslintrc";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const globals = require("globals");
+import tsParser from "@typescript-eslint/parser";
+import reactRefresh from "eslint-plugin-react-refresh";
 
-const {
-    fixupConfigRules,
-} = require("@eslint/compat");
-
-const js = require("@eslint/js");
-
-const {
-    FlatCompat,
-} = require("@eslint/eslintrc");
+// mimic CommonJS variables
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const compat = new FlatCompat({
     baseDirectory: __dirname,
@@ -21,43 +19,35 @@ const compat = new FlatCompat({
     allConfig: js.configs.all
 });
 
-const tsParser = require("@typescript-eslint/parser");
-const reactRefresh = require("eslint-plugin-react-refresh");
-
-module.exports = defineConfig([{
+export default defineConfig([
+  {
     languageOptions: {
-        globals: {
-            ...globals.browser,
-        },
-
+        globals: globals.browser,
         parser: tsParser,
         ecmaVersion: "latest",
         sourceType: "module",
-
         parserOptions: {
-            project: ["./tsconfig.json", "./tsconfig.node.json"],
+            project: ["./tsconfig.app.json", "./tsconfig.node.json"],
             tsconfigRootDir: __dirname,
             ecmaFeatures: {
                 jsx: true
             }
         },
     },
-
     extends: fixupConfigRules(compat.extends(
         "eslint:recommended",
         "plugin:@typescript-eslint/recommended",
         "plugin:@typescript-eslint/stylistic",
-        "plugin:react-hooks/recommended",
         "plugin:react/recommended",
+        "plugin:react-hooks/recommended",
         "plugin:react/jsx-runtime",
         "plugin:import/recommended",
+        "plugin:prettier/recommended",
         "prettier",
     )),
-
     plugins: {
         "react-refresh": reactRefresh,
     },
-
     rules: {
         "react-refresh/only-export-components": ["warn", {
             allowConstantExport: true,
@@ -65,14 +55,13 @@ module.exports = defineConfig([{
 
         "import/order": ["error", {
             groups: ["builtin", "external", "internal", "parent", "sibling"],
-            "newlines-between": "always",
+            "newlines-between": "ignore",
         }],
 
         "@typescript-eslint/no-unused-vars": ["warn", {
             "argsIgnorePattern": "^_", "varsIgnorePattern": "^_"
         }],
     },
-
     settings: {
         "react": {
             "version": "detect"
@@ -93,9 +82,9 @@ module.exports = defineConfig([{
             },
         },
     },
-}, globalIgnores([
+},
+globalIgnores([
     "**/dist",
-    "**/.eslintrc.cjs",
     "**/tailwind.config.js",
     "**/postcss.config.js",
 ])]);

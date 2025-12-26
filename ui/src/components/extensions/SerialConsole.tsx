@@ -29,7 +29,9 @@ export function SerialConsole() {
   useEffect(() => {
     send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.serial_console_get_settings_error({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.serial_console_get_settings_error({ error: resp.error.data || m.unknown_error() }),
+        );
         return;
       }
       setSettings(resp.result as SerialSettings);
@@ -40,7 +42,12 @@ export function SerialConsole() {
     const newSettings = { ...settings, [setting]: value };
     send("setSerialSettings", { settings: newSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.serial_console_set_settings_error({ settings: setting, error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.serial_console_set_settings_error({
+            settings: setting,
+            error: resp.error.data || m.unknown_error(),
+          }),
+        );
         return;
       }
       setSettings(newSettings);

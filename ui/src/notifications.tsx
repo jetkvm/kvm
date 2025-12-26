@@ -19,8 +19,9 @@ const ToastContent = ({
   t: Toast;
 }) => (
   <Card
-    className={`${t.visible ? "animate-enter" : "animate-leave"
-      } pointer-events-auto z-30 w-full max-w-sm shadow-xl!`}
+    className={`${
+      t.visible ? "animate-enter" : "animate-leave"
+    } pointer-events-auto z-30 w-full max-w-sm shadow-xl!`}
   >
     <div className="flex items-center gap-x-2 p-2.5 px-2">
       {icon}
@@ -34,7 +35,7 @@ const notifications = {
     return toast.custom(
       (t: Toast) => (
         <ToastContent
-          icon={<CheckCircleIcon className="w-5 h-5 text-green-500 dark:text-green-400" />}
+          icon={<CheckCircleIcon className="h-5 w-5 text-green-500 dark:text-green-400" />}
           message={message}
           t={t}
         />
@@ -47,7 +48,7 @@ const notifications = {
     return toast.custom(
       (t: Toast) => (
         <ToastContent
-          icon={<XCircleIcon className="w-5 h-5 text-red-500 dark:text-red-400" />}
+          icon={<XCircleIcon className="h-5 w-5 text-red-500 dark:text-red-400" />}
           message={message}
           t={t}
         />

@@ -197,9 +197,7 @@ export default function useKeyboard() {
       // If we reach here it means we didn't find an empty slot or the key in the buffer
       if (overrun) {
         if (press) {
-          console.warn(
-            `keyboard buffer overflow current keys ${keys}, key: ${key} not added`,
-          );
+          console.warn(`keyboard buffer overflow current keys ${keys}, key: ${key} not added`);
           // Fill all key slots with ErrorRollOver (0x01) to indicate overflow
           keys.length = hidKeyBufferSize;
           keys.fill(hidErrorRollOver);
@@ -248,11 +246,7 @@ export default function useKeyboard() {
         // Older backends don't support the hidRpc API, so we need:
         // 1. Calculate the state
         // 2. Send the newly calculated state to the device
-        const downState = simulateDeviceSideKeyHandlingForLegacyDevices(
-          keysDownState,
-          key,
-          press,
-        );
+        const downState = simulateDeviceSideKeyHandlingForLegacyDevices(keysDownState, key, press);
 
         handleLegacyKeyboardReport(downState.keys, downState.modifier);
 

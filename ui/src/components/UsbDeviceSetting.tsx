@@ -64,8 +64,7 @@ export function UsbDeviceSetting() {
   const { send } = useJsonRpc();
   const [loading, setLoading] = useState(false);
 
-  const [usbDeviceConfig, setUsbDeviceConfig] =
-    useState<UsbDeviceConfig>(defaultUsbDeviceConfig);
+  const [usbDeviceConfig, setUsbDeviceConfig] = useState<UsbDeviceConfig>(defaultUsbDeviceConfig);
   const [selectedPreset, setSelectedPreset] = useState<string>("default");
 
   const syncUsbDeviceConfig = useCallback(() => {
@@ -134,9 +133,7 @@ export function UsbDeviceSetting() {
       setSelectedPreset(newPreset);
 
       if (newPreset !== "custom") {
-        const presetConfig = usbPresets.find(
-          preset => preset.value === newPreset,
-        )?.config;
+        const presetConfig = usbPresets.find(preset => preset.value === newPreset)?.config;
 
         if (presetConfig) {
           handleUsbConfigChange(presetConfig);
@@ -176,10 +173,13 @@ export function UsbDeviceSetting() {
       </SettingsItem>
 
       {selectedPreset === "custom" && (
-        <div className="ml-2 border-l border-slate-800/10 pl-4 dark:border-slate-300/20 ">
+        <div className="ml-2 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
           <div className="space-y-4">
             <div className="space-y-4">
-              <SettingsItem title={m.usb_device_enable_keyboard_title()} description={m.usb_device_enable_keyboard_description()}>
+              <SettingsItem
+                title={m.usb_device_enable_keyboard_title()}
+                description={m.usb_device_enable_keyboard_description()}
+              >
                 <Checkbox
                   checked={usbDeviceConfig.keyboard}
                   onChange={onUsbConfigItemChange("keyboard")}
