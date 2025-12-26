@@ -14,6 +14,7 @@ import PasteModal from "@components/popovers/PasteModal";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
 import MountPopopover from "@components/popovers/MountPopover";
 import ExtensionPopover from "@components/popovers/ExtensionPopover";
+import ATXStateIndicator from "@components/ATXStateIndicator";
 import { m } from "@localizations/messages.js";
 
 export default function Actionbar({
@@ -226,6 +227,8 @@ export default function Actionbar({
               }}
             </PopoverPanel>
           </Popover>
+
+          <ATXStateIndicator setDisableVideoFocusTrap={setDisableVideoFocusTrap} />
 
           <div className="block lg:hidden">
             <Button
