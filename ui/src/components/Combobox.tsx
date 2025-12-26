@@ -2,10 +2,12 @@ import { useRef } from "react";
 import clsx from "clsx";
 import {
   Combobox as HeadlessCombobox,
+  ComboboxButton,
   ComboboxInput,
   ComboboxOption,
   ComboboxOptions,
 } from "@headlessui/react";
+import { ChevronDownIcon } from "@heroicons/react/16/solid";
 
 import { m } from "@localizations/messages.js";
 import Card from "@components/Card";
@@ -58,7 +60,7 @@ export function Combobox({
     <HeadlessCombobox onChange={onChange} {...otherProps}>
       {() => (
         <>
-          <Card className="w-auto border! border-solid border-slate-800/30! shadow-xs outline-0 dark:border-slate-300/30!">
+          <Card className="w-auto h-auto border! border-solid border-slate-800/30! shadow-xs outline-0 dark:border-slate-300/30!">
             <ComboboxInput
               ref={inputRef}
               className={clsx(
@@ -85,6 +87,14 @@ export function Combobox({
               onChange={event => onInputChange(event.target.value)}
               disabled={disabled}
             />
+            <ComboboxButton
+              className={clsx(
+                classes.replaceAll(/p[l,r]-[0-9]+/g, ""),
+                "group absolute inset-y-0 right-0 px-2.5",
+              )}
+            >
+              <ChevronDownIcon className="size-4 fill-white/60 group-data-hover:fill-white" />
+            </ComboboxButton>
           </Card>
 
           {options().length > 0 && (
