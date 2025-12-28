@@ -25,7 +25,11 @@ function dataUrlToPngBuffer(dataUrl: string): Buffer {
   return Buffer.from(dataUrl.slice(prefix.length), "base64");
 }
 
-async function persistPng(testInfo: ReturnType<typeof test.info>, filename: string, dataUrl: string) {
+async function persistPng(
+  testInfo: ReturnType<typeof test.info>,
+  filename: string,
+  dataUrl: string,
+) {
   const buf = dataUrlToPngBuffer(dataUrl);
   await fs.writeFile(testInfo.outputPath(filename), buf);
   await testInfo.attach(filename, { body: buf, contentType: "image/png" });
@@ -58,8 +62,12 @@ test.describe("Mouse Round-Trip Tests", () => {
     const dimensions = await getVideoStreamDimensions(page);
     expect(dimensions, "Video stream dimensions should be available").not.toBeNull();
     const { width: videoWidth, height: videoHeight } = dimensions!;
-    expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
-    expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
+    expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+      MIN_VIDEO_DIMENSION,
+    );
+    expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+      MIN_VIDEO_DIMENSION,
+    );
     console.log(`Video dimensions: ${videoWidth}x${videoHeight}`);
 
     // Calculate pixel position for center of screen
@@ -77,9 +85,21 @@ test.describe("Mouse Round-Trip Tests", () => {
     await page.waitForTimeout(100);
 
     // Step 2: Capture the region where the cursor should be (state A: with cursor)
-    const fpBefore = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+    const fpBefore = await captureVideoRegionFingerprint(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
     expect(fpBefore, "Failed to capture fingerprint with cursor at center").not.toBeNull();
-    const regionBefore = await captureVideoRegion(page, regionX, regionY, regionWidth, regionHeight);
+    const regionBefore = await captureVideoRegion(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
     expect(regionBefore, "Failed to capture PNG with cursor at center").not.toBeNull();
     console.log("Captured state A: region with cursor at center");
     await persistPng(test.info(), "mouse-region-before.png", regionBefore!);
@@ -89,7 +109,13 @@ test.describe("Mouse Round-Trip Tests", () => {
     await page.waitForTimeout(100);
 
     // Step 4: Capture the same region (state B: cursor gone)
-    const fpAfter = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+    const fpAfter = await captureVideoRegionFingerprint(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
     expect(fpAfter, "Failed to capture fingerprint after cursor moved away").not.toBeNull();
     const regionAfter = await captureVideoRegion(page, regionX, regionY, regionWidth, regionHeight);
     expect(regionAfter, "Failed to capture PNG after cursor moved away").not.toBeNull();
@@ -124,8 +150,12 @@ test.describe("Mouse Round-Trip Tests", () => {
     const dimensions = await getVideoStreamDimensions(page);
     expect(dimensions, "Video stream dimensions should be available").not.toBeNull();
     const { width: videoWidth, height: videoHeight } = dimensions!;
-    expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
-    expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
+    expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+      MIN_VIDEO_DIMENSION,
+    );
+    expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+      MIN_VIDEO_DIMENSION,
+    );
     console.log(`Video dimensions: ${videoWidth}x${videoHeight}`);
 
     // Use a position offset from center to avoid any UI elements
@@ -151,8 +181,17 @@ test.describe("Mouse Round-Trip Tests", () => {
       regionWidth,
       regionHeight,
     );
-    expect(fpWithoutCursor, "Failed to capture fingerprint A (baseline without cursor)").not.toBeNull();
-    const regionWithoutCursorPng = await captureVideoRegion(page, regionX, regionY, regionWidth, regionHeight);
+    expect(
+      fpWithoutCursor,
+      "Failed to capture fingerprint A (baseline without cursor)",
+    ).not.toBeNull();
+    const regionWithoutCursorPng = await captureVideoRegion(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
     expect(regionWithoutCursorPng, "Failed to capture PNG for state A").not.toBeNull();
     console.log("Captured state A: region without cursor (baseline)");
     await persistPng(test.info(), "mouse-bidir-A-without-cursor.png", regionWithoutCursorPng!);
@@ -170,7 +209,13 @@ test.describe("Mouse Round-Trip Tests", () => {
       regionHeight,
     );
     expect(fpWithCursor, "Failed to capture fingerprint B (with cursor in region)").not.toBeNull();
-    const regionWithCursorPng = await captureVideoRegion(page, regionX, regionY, regionWidth, regionHeight);
+    const regionWithCursorPng = await captureVideoRegion(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
     expect(regionWithCursorPng, "Failed to capture PNG for state B").not.toBeNull();
     console.log("Captured state B: region with cursor");
     await persistPng(test.info(), "mouse-bidir-B-with-cursor.png", regionWithCursorPng!);
@@ -187,17 +232,34 @@ test.describe("Mouse Round-Trip Tests", () => {
       regionWidth,
       regionHeight,
     );
-    expect(fpWithoutCursorAgain, "Failed to capture fingerprint A2 (after cursor left again)").not.toBeNull();
-    const regionWithoutCursorAgainPng = await captureVideoRegion(page, regionX, regionY, regionWidth, regionHeight);
+    expect(
+      fpWithoutCursorAgain,
+      "Failed to capture fingerprint A2 (after cursor left again)",
+    ).not.toBeNull();
+    const regionWithoutCursorAgainPng = await captureVideoRegion(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
     expect(regionWithoutCursorAgainPng, "Failed to capture PNG for state A2").not.toBeNull();
     console.log("Captured state A2: region without cursor again");
-    await persistPng(test.info(), "mouse-bidir-A2-without-cursor-again.png", regionWithoutCursorAgainPng!);
+    await persistPng(
+      test.info(),
+      "mouse-bidir-A2-without-cursor-again.png",
+      regionWithoutCursorAgainPng!,
+    );
 
     const distArrive = fingerprintDistance(fpWithoutCursor!, fpWithCursor!);
     const distRestore = fingerprintDistance(fpWithoutCursor!, fpWithoutCursorAgain!);
     console.log(`Fingerprint distance: arrive=${distArrive}, restore=${distRestore}`);
     const distText = `arrive=${distArrive}\nrestore=${distRestore}\n`;
-    await fs.writeFile(test.info().outputPath("mouse-bidir-fingerprint-distances.txt"), distText, "utf-8");
+    await fs.writeFile(
+      test.info().outputPath("mouse-bidir-fingerprint-distances.txt"),
+      distText,
+      "utf-8",
+    );
     await test.info().attach("mouse-bidir-fingerprint-distances.txt", {
       body: Buffer.from(distText, "utf-8"),
       contentType: "text/plain",
@@ -218,4 +280,3 @@ test.describe("Mouse Round-Trip Tests", () => {
     console.log("Verified: region restored after cursor left (B→A2)");
   });
 });
-

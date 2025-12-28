@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { waitForWebRTCReady, waitForVideoStream, wakeDisplay, verifyHidAndVideo } from "./helpers";
+import { verifyHidAndVideo, reconnectAfterReboot } from "./helpers";
 
 // Time to wait for device to reboot (ms)
 const REBOOT_DELAY = 15000;
@@ -32,7 +32,9 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
     // === Step 3: Toggle HDMI sleep mode ===
     await hdmiSleepCheckbox.click();
     await page.waitForTimeout(SETTINGS_APPLY_DELAY);
-    console.log(`✓ Toggled HDMI sleep mode to: ${expectedStateAfterToggle ? "enabled" : "disabled"}`);
+    console.log(
+      `✓ Toggled HDMI sleep mode to: ${expectedStateAfterToggle ? "enabled" : "disabled"}`,
+    );
 
     // === Step 4: Navigate to reboot page ===
     await page.goto("/settings/general/reboot");
@@ -45,35 +47,10 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
 
     console.log("✓ Reboot initiated, waiting for device to come back online...");
 
-    // === Step 6: Wait for device to reboot ===
-    await page.waitForTimeout(REBOOT_DELAY);
+    // === Step 6: Wait for reboot and reconnect ===
+    await reconnectAfterReboot(page, REBOOT_DELAY);
 
-    // === Step 7: Navigate back to main page ===
-    await page.goto("/");
-
-    // === Step 8: Wait for WebRTC connection with extended timeout ===
-    // Retry navigating to the page until WebRTC is ready
-    let connected = false;
-    const maxRetries = 10;
-    for (let i = 0; i < maxRetries && !connected; i++) {
-      try {
-        await page.goto("/", { timeout: 10000 });
-        await waitForWebRTCReady(page, 10000);
-        connected = true;
-      } catch {
-        console.log(`Retry ${i + 1}/${maxRetries}: Device not ready yet...`);
-        await page.waitForTimeout(3000);
-      }
-    }
-    if (!connected) {
-      throw new Error("Device did not come back online after reboot");
-    }
-
-    await waitForWebRTCReady(page, 30000);
-    await wakeDisplay(page);
-    await waitForVideoStream(page, 45000);
-
-    // === Step 9: Verify video, mouse, and keyboard all work ===
+    // === Step 7: Verify video, mouse, and keyboard all work ===
     await verifyHidAndVideo(page);
 
     console.log("✓ Device rebooted successfully");
@@ -81,7 +58,7 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
     console.log("✓ Mouse is working");
     console.log("✓ Keyboard is working");
 
-    // === Step 10: Verify HDMI sleep mode setting persisted ===
+    // === Step 8: Verify HDMI sleep mode setting persisted ===
     await page.goto("/settings/hardware");
     await page.waitForLoadState("networkidle");
 
@@ -100,7 +77,7 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
 
     console.log("✓ HDMI sleep mode setting persisted correctly after reboot");
 
-    // === Step 11: Ensure HDMI sleep mode is enabled for the next test run ===
+    // === Step 9: Ensure HDMI sleep mode is enabled for the next test run ===
     if (!stateAfterReboot) {
       await hdmiSleepCheckboxAfter.click();
       await page.waitForTimeout(SETTINGS_APPLY_DELAY);

@@ -2,8 +2,6 @@ import { test, expect } from "@playwright/test";
 
 import {
   waitForWebRTCReady,
-  waitForVideoStream,
-  wakeDisplay,
   verifyHidAndVideo,
 } from "./helpers";
 
@@ -84,8 +82,6 @@ test.describe("HTTPS Mode Tests", () => {
 
       // === Step 7: Wait for WebRTC connection ===
       await waitForWebRTCReady(httpsPage, 45000);
-      await wakeDisplay(httpsPage);
-      await waitForVideoStream(httpsPage, 45000);
 
       // === Step 8: Verify video, mouse, and keyboard all work ===
       await verifyHidAndVideo(httpsPage);

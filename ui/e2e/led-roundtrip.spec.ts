@@ -7,7 +7,7 @@ import {
   tapKey,
   waitForLedState,
   HID_KEY,
-  KeyboardLedState,
+  type KeyboardLedState,
 } from "./helpers";
 
 // Parameterized test data for LED round-trip tests

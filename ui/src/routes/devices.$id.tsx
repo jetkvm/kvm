@@ -747,22 +747,6 @@ export default function KvmIdRoute() {
     [reportAbsMouseEvent, rpcHidReady, send],
   );
 
-  // Register E2E test hooks
-  useEffect(() => {
-    registerTestHandlers({
-      handleKeyPress,
-      handleAbsMouseMove,
-      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
-      getKeysDownState: () => useHidStore.getState().keysDownState,
-      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
-      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
-      getMediaStream: () => useRTCStore.getState().mediaStream,
-      getHdmiState: () => useVideoStore.getState().hdmiState,
-      getVideoElement: () => useVideoStore.getState().videoElement,
-    });
-    return cleanupTestHooks;
-  }, [handleKeyPress, handleAbsMouseMove]);
-
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     console.log("Requesting video state");
@@ -850,6 +834,23 @@ export default function KvmIdRoute() {
       setSerialConsole(peerConnection.createDataChannel("serial"));
     }
   }, [kvmTerminal, peerConnection, serialConsole]);
+
+  // Register E2E test hooks
+  useEffect(() => {
+    registerTestHandlers({
+      handleKeyPress,
+      handleAbsMouseMove,
+      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
+      getKeysDownState: () => useHidStore.getState().keysDownState,
+      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
+      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
+      getMediaStream: () => useRTCStore.getState().mediaStream,
+      getHdmiState: () => useVideoStore.getState().hdmiState,
+      getVideoElement: () => useVideoStore.getState().videoElement,
+      getKvmTerminal: () => kvmTerminal,
+    });
+    return cleanupTestHooks;
+  }, [handleKeyPress, handleAbsMouseMove, kvmTerminal]);
 
   const outlet = useOutlet();
   const onModalClose = useCallback(() => {
