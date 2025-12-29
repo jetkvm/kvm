@@ -1,6 +1,6 @@
-import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts";
 
-import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
+import { en_US } from "./en_US"; // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
 const name = "Slovenian";
 const isoCode = "sl-SI";
@@ -9,10 +9,10 @@ export const chars = {
   A: { key: "KeyA", shift: true },
   B: { key: "KeyB", shift: true },
   C: { key: "KeyC", shift: true },
-  "Č": { key: "Semicolon", shift: true },
-  "Ć": { key: "Quote", shift: true },
+  Č: { key: "Semicolon", shift: true },
+  Ć: { key: "Quote", shift: true },
   D: { key: "KeyD", shift: true },
-  "Đ": { key: "BracketRight", shift: true },
+  Đ: { key: "BracketRight", shift: true },
   E: { key: "KeyE", shift: true },
   F: { key: "KeyF", shift: true },
   G: { key: "KeyG", shift: true },
@@ -28,7 +28,7 @@ export const chars = {
   Q: { key: "KeyQ", shift: true },
   R: { key: "KeyR", shift: true },
   S: { key: "KeyS", shift: true },
-  "Š": { key: "BracketLeft", shift: true },
+  Š: { key: "BracketLeft", shift: true },
   T: { key: "KeyT", shift: true },
   U: { key: "KeyU", shift: true },
   V: { key: "KeyV", shift: true },
@@ -36,14 +36,14 @@ export const chars = {
   X: { key: "KeyX", shift: true },
   Y: { key: "KeyZ", shift: true },
   Z: { key: "KeyY", shift: true },
-  "Ž": { key: "Backslash", shift: true },
+  Ž: { key: "Backslash", shift: true },
   a: { key: "KeyA" },
   b: { key: "KeyB" },
   c: { key: "KeyC" },
-  "č": { key: "Semicolon"},
-  "ć": { key: "Quote"},
+  č: { key: "Semicolon" },
+  ć: { key: "Quote" },
   d: { key: "KeyD" },
-  "đ": { key: "BracketRight"},
+  đ: { key: "BracketRight" },
   e: { key: "KeyE" },
   f: { key: "KeyF" },
   g: { key: "KeyG" },
@@ -59,7 +59,7 @@ export const chars = {
   q: { key: "KeyQ" },
   r: { key: "KeyR" },
   s: { key: "KeyS" },
-  "š": { key: "BracketLeft"},
+  š: { key: "BracketLeft" },
   t: { key: "KeyT" },
   u: { key: "KeyU" },
   v: { key: "KeyV" },
@@ -67,15 +67,15 @@ export const chars = {
   x: { key: "KeyX" },
   y: { key: "KeyZ" },
   z: { key: "KeyY" },
-  "ž": { key: "Backslash"},
+  ž: { key: "Backslash" },
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
   2: { key: "Digit2" },
-  "\"": { key: "Digit2", shift: true },
+  '"': { key: "Digit2", shift: true },
   3: { key: "Digit3" },
   "#": { key: "Digit3", shift: true },
   4: { key: "Digit4" },
-  "$": { key: "Digit4", shift: true },
+  $: { key: "Digit4", shift: true },
   5: { key: "Digit5" },
   "%": { key: "Digit5", shift: true },
   6: { key: "Digit6" },
@@ -100,10 +100,10 @@ export const chars = {
   ".": { key: "Period" },
   ":": { key: "Period", shift: true },
   "-": { key: "Slash" },
-  "_": { key: "Slash", shift: true },
+  _: { key: "Slash", shift: true },
 
   "~": { key: "Digit1", shift: true },
-  "ˇ": { key: "Digit2", shift: true },
+  ˇ: { key: "Digit2", shift: true },
   "^": { key: "Digit3", shift: true },
   "˘": { key: "Digit4", shift: true },
   "°": { key: "Digit5", shift: true },
@@ -121,9 +121,9 @@ export const chars = {
   "×": { key: "BracketRight", AltGr: true },
   "[": { key: "KeyF", AltGr: true },
   "]": { key: "KeyG", AltGr: true },
-  "ł": { key: "KeyK", AltGr: true },
-  "Ł": { key: "KeyL", AltGr: true },
-  "ß": { key: "Quote", AltGr: true },
+  ł: { key: "KeyK", AltGr: true },
+  Ł: { key: "KeyL", AltGr: true },
+  ß: { key: "Quote", AltGr: true },
   "¤": { key: "Backslash", AltGr: true },
   "@": { key: "KeyV", AltGr: true },
   "{": { key: "KeyB", AltGr: true },
@@ -144,7 +144,7 @@ export const chars = {
   Break: { key: "Pause", shift: true },
   Insert: { key: "Insert" },
   Delete: { key: "Delete" },
-} as Record<string, KeyCombo>
+} as Record<string, KeyCombo>;
 
 export const sl_SI: KeyboardLayout = {
   isoCode: isoCode,
@@ -153,5 +153,5 @@ export const sl_SI: KeyboardLayout = {
   // TODO need to localize these maps and layouts
   keyDisplayMap: en_US.keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
-  virtualKeyboard: en_US.virtualKeyboard
+  virtualKeyboard: en_US.virtualKeyboard,
 };
