@@ -398,6 +398,7 @@ function UpdatingDeviceState({
                 <UpdatingStatusCard
                   label={m.general_update_system_update_title()}
                   part={progress.system}
+                  testIdPrefix="system"
                 />
               )}
 
@@ -409,6 +410,7 @@ function UpdatingDeviceState({
                 <UpdatingStatusCard
                   label={m.general_update_app_update_title()}
                   part={progress.app}
+                  testIdPrefix="app"
                 />
               )}
             </>
@@ -450,6 +452,7 @@ function SystemUpToDateState({
             theme="light"
             text={m.general_update_check_again_button()}
             onClick={checkUpdate}
+            data-testid="check-updates-button"
           />
           <Button size="SM" theme="blank" text={m.back()} onClick={onClose} />
         </div>
@@ -481,14 +484,14 @@ function UpdateAvailableState({
           {versionInfo?.systemUpdateAvailable ? (
             <>
               <span className="font-semibold">{m.general_update_system_type()}</span>:{" "}
-              {versionInfo?.remote?.systemVersion}
+              <span data-testid="available-version">{versionInfo?.remote?.systemVersion}</span>
               <br />
             </>
           ) : null}
           {versionInfo?.appUpdateAvailable ? (
             <>
               <span className="font-semibold">{m.general_update_application_type()}</span>:{" "}
-              {versionInfo?.remote?.appVersion}
+              <span data-testid="available-version">{versionInfo?.remote?.appVersion}</span>
             </>
           ) : null}
           {versionInfo?.willDisableAutoUpdate ? (
@@ -503,6 +506,7 @@ function UpdateAvailableState({
             theme="primary"
             text={m.general_update_now_button()}
             onClick={onConfirm}
+            data-testid="update-now-button"
           />
           <Button
             size="SM"
@@ -518,7 +522,10 @@ function UpdateAvailableState({
 
 function UpdateCompletedState({ onClose }: { onClose: () => void }) {
   return (
-    <div className="flex flex-col items-start justify-start space-y-4 text-left">
+    <div
+      className="flex flex-col items-start justify-start space-y-4 text-left"
+      data-testid="update-success"
+    >
       <div className="text-left">
         <p className="text-base font-semibold dark:text-white">
           {m.general_update_completed_title()}
@@ -544,7 +551,10 @@ function UpdateErrorState({
   onRetryUpdate: () => void;
 }) {
   return (
-    <div className="flex flex-col items-start justify-start space-y-4 text-left">
+    <div
+      className="flex flex-col items-start justify-start space-y-4 text-left"
+      data-testid="update-error"
+    >
       <div className="text-left">
         <p className="text-base font-semibold dark:text-white">{m.general_update_error_title()}</p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">

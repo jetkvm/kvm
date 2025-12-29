@@ -8,12 +8,13 @@ import (
 
 	"time"
 
-	"github.com/jetkvm/kvm/internal/sync"
-
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/internal/sync"
+
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+
 	"github.com/mdlayher/ndp"
 	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
@@ -346,11 +347,6 @@ func (im *InterfaceManager) GetConfig() *types.NetworkConfig {
 	return &config
 }
 
-// ApplyConfiguration applies the current configuration to the interface
-func (im *InterfaceManager) ApplyConfiguration() error {
-	return im.applyConfiguration()
-}
-
 // SetConfig updates the interface configuration
 func (im *InterfaceManager) SetConfig(config *types.NetworkConfig) error {
 	if config == nil {
@@ -471,7 +467,7 @@ func (im *InterfaceManager) applyIPv4Static() error {
 		return fmt.Errorf("IPv4 static configuration is nil")
 	}
 
-	im.logger.Info().Msg("stopping DHCP")
+	im.logger.Info().Msg("stopping DHCP for IPv4")
 
 	// Disable DHCP
 	if im.dhcpClient != nil {
@@ -494,7 +490,7 @@ func (im *InterfaceManager) applyIPv4Static() error {
 		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
 	}
 
-	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet)
+	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet, link.StaticProtocol)
 }
 
 // applyIPv4DHCP applies DHCP IPv4 configuration
@@ -545,7 +541,7 @@ func (im *InterfaceManager) applyIPv6Static() error {
 		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
 	}
 
-	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet6)
+	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet6, link.StaticProtocol)
 }
 
 // applyIPv6DHCP applies DHCPv6 configuration
@@ -794,7 +790,7 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 }
 
 // ReconcileLinkAddrs reconciles the link addresses
-func (im *InterfaceManager) ReconcileLinkAddrs(addrs []types.IPAddress, family int) error {
+func (im *InterfaceManager) ReconcileLinkAddrs(addrs []types.IPAddress, family int, protocol netlink.RouteProtocol) error {
 	nl := getNetlinkManager()
 	link, err := im.link()
 	if err != nil {
@@ -803,7 +799,8 @@ func (im *InterfaceManager) ReconcileLinkAddrs(addrs []types.IPAddress, family i
 	if link == nil {
 		return fmt.Errorf("failed to get interface: %w", err)
 	}
-	return nl.ReconcileLink(link, addrs, family)
+
+	return nl.ReconcileLink(link, addrs, family, protocol)
 }
 
 // applyDHCPLease applies DHCP lease configuration using ReconcileLinkAddrs
@@ -826,7 +823,7 @@ func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 	ipv4Config := im.convertDHCPLeaseToIPv4Config(lease)
 
 	// Apply the configuration using ReconcileLinkAddrs
-	return im.ReconcileLinkAddrs([]types.IPAddress{*ipv4Config}, link.AfInet)
+	return im.ReconcileLinkAddrs([]types.IPAddress{*ipv4Config}, link.AfInet, link.DhcpProtocol)
 }
 
 // convertDHCPLeaseToIPv4Config converts a DHCP lease to IPv4Config

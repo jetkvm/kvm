@@ -21,6 +21,7 @@ interface TestHooksInternal {
   _getMediaStream?: () => MediaStream | null;
   _getHdmiState?: () => string;
   _getVideoElement?: () => HTMLVideoElement | null;
+  _getKvmTerminal?: () => RTCDataChannel | null;
 }
 
 export interface KvmTestHooks extends TestHooksInternal {
@@ -28,6 +29,8 @@ export interface KvmTestHooks extends TestHooksInternal {
   getKeysDownState: () => KeysDownState | null;
   sendKeypress: (key: number, press: boolean) => void;
   sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
+  sendTerminalCommand: (command: string) => boolean;
+  isTerminalReady: () => boolean;
   captureVideoRegion: (
     x: number,
     y: number,
@@ -79,6 +82,20 @@ export function initTestHooks(): void {
       } else {
         console.warn("[E2E] sendAbsMouseMove called but no handler registered");
       }
+    },
+
+    sendTerminalCommand: (command: string) => {
+      const terminal = hooks._getKvmTerminal?.();
+      if (terminal && terminal.readyState === "open") {
+        terminal.send(command + "\n");
+        return true;
+      }
+      return false;
+    },
+
+    isTerminalReady: () => {
+      const terminal = hooks._getKvmTerminal?.();
+      return terminal?.readyState === "open";
     },
 
     isWebRTCConnected: () => hooks._getPeerConnectionState?.() === "connected",
@@ -208,6 +225,7 @@ export function registerTestHandlers(handlers: {
   getMediaStream: () => MediaStream | null;
   getHdmiState: () => string;
   getVideoElement: () => HTMLVideoElement | null;
+  getKvmTerminal: () => RTCDataChannel | null;
 }): void {
   if (!window.__kvmTestHooks) return;
 
@@ -220,6 +238,7 @@ export function registerTestHandlers(handlers: {
   window.__kvmTestHooks._getMediaStream = handlers.getMediaStream;
   window.__kvmTestHooks._getHdmiState = handlers.getHdmiState;
   window.__kvmTestHooks._getVideoElement = handlers.getVideoElement;
+  window.__kvmTestHooks._getKvmTerminal = handlers.getKvmTerminal;
 }
 
 /**
@@ -237,4 +256,5 @@ export function cleanupTestHooks(): void {
   window.__kvmTestHooks._getMediaStream = undefined;
   window.__kvmTestHooks._getHdmiState = undefined;
   window.__kvmTestHooks._getVideoElement = undefined;
+  window.__kvmTestHooks._getKvmTerminal = undefined;
 }

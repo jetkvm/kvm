@@ -14,7 +14,6 @@ import (
 
 const (
 	tlsStorePath                     = "/userdata/jetkvm/tls"
-	webSecureListen                  = ":443"
 	webSecureSelfSignedDefaultDomain = "jetkvm.local"
 	webSecureSelfSignedCAName        = "JetKVM Self-Signed CA"
 	webSecureSelfSignedOrganization  = "JetKVM"
@@ -161,8 +160,11 @@ func runWebSecureServer() {
 
 	r := setupRouter()
 
+	// Determine the binding address based on the config
+	bindAddress := getBindAddress(443)
+
 	server := &http.Server{
-		Addr:    webSecureListen,
+		Addr:    bindAddress,
 		Handler: r,
 		TLSConfig: &tls.Config{
 			MaxVersion:       tls.VersionTLS13,
@@ -170,7 +172,7 @@ func runWebSecureServer() {
 			GetCertificate:   getCertificate,
 		},
 	}
-	websecureLogger.Info().Str("listen", webSecureListen).Msg("Starting websecure server")
+	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting websecure server")
 
 	go func() {
 		for range stopTLS {
