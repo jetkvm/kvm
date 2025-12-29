@@ -57,7 +57,9 @@ export default function UpdatingStatusCard({
       <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
         <span>{part.status}</span>
         {part.progress < 100 ? (
-          <span data-testid={phaseTestId ? `${phaseTestId}-text` : undefined}>{`${Math.round(part.progress)}%`}</span>
+          <span
+            data-testid={phaseTestId ? `${phaseTestId}-text` : undefined}
+          >{`${Math.round(part.progress)}%`}</span>
         ) : null}
       </div>
     </div>

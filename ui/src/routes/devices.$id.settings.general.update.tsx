@@ -522,7 +522,10 @@ function UpdateAvailableState({
 
 function UpdateCompletedState({ onClose }: { onClose: () => void }) {
   return (
-    <div className="flex flex-col items-start justify-start space-y-4 text-left" data-testid="update-success">
+    <div
+      className="flex flex-col items-start justify-start space-y-4 text-left"
+      data-testid="update-success"
+    >
       <div className="text-left">
         <p className="text-base font-semibold dark:text-white">
           {m.general_update_completed_title()}
@@ -548,7 +551,10 @@ function UpdateErrorState({
   onRetryUpdate: () => void;
 }) {
   return (
-    <div className="flex flex-col items-start justify-start space-y-4 text-left" data-testid="update-error">
+    <div
+      className="flex flex-col items-start justify-start space-y-4 text-left"
+      data-testid="update-error"
+    >
       <div className="text-left">
         <p className="text-base font-semibold dark:text-white">{m.general_update_error_title()}</p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
