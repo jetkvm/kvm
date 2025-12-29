@@ -2,8 +2,8 @@
  * JetKVM Audio Processing Module
  *
  * Bidirectional audio processing optimized for ARM NEON SIMD:
- * - OUTPUT PATH: TC358743 HDMI or USB Gadget audio → Client speakers
- *   Pipeline: ALSA hw:0,0 or hw:1,0 capture → SpeexDSP resample → Opus encode (192kbps, FEC enabled)
+ * - OUTPUT PATH: TC358743 HDMI audio → Client speakers
+ *   Pipeline: ALSA hw:0,0 capture → SpeexDSP resample → Opus encode (192kbps, FEC enabled)
  *
  * - INPUT PATH: Client microphone → Device speakers
  *   Pipeline: Opus decode (with FEC) → ALSA hw:1,0 playback
@@ -66,7 +66,7 @@ static SpeexResamplerState *capture_resampler = NULL;
 // RTP timestamp clock must always increment at 48kHz for WebRTC compatibility
 static const uint32_t opus_sample_rate = 48000;  // RFC 7587: Opus RTP timestamp clock rate (not codec sample rate)
 static uint32_t hardware_sample_rate = 48000;    // Hardware-negotiated rate (can be 44.1k, 48k, 96k, etc.)
-static uint8_t capture_channels = 2;   // OUTPUT: Audio source (HDMI or USB) → client (stereo by default)
+static uint8_t capture_channels = 2;   // OUTPUT: HDMI audio → client (stereo by default)
 static uint8_t playback_channels = 1;  // INPUT: Client mono mic → device (always mono for USB audio gadget)
 static const uint16_t opus_frame_size = 960;  // 20ms frames at 48kHz (fixed)
 static uint16_t hardware_frame_size = 960;     // 20ms frames at hardware rate
@@ -667,8 +667,8 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 // AUDIO OUTPUT PATH FUNCTIONS (TC358743 HDMI Audio → Client Speakers)
 
 /**
- * Initialize OUTPUT path (HDMI or USB Gadget audio capture → Opus encoder)
- * Opens ALSA capture device from ALSA_CAPTURE_DEVICE env (default: hw:1,0, set to hw:0,0 for HDMI)
+ * Initialize OUTPUT path (HDMI audio capture → Opus encoder)
+ * Opens ALSA capture device from ALSA_CAPTURE_DEVICE env (default: hw:0,0 for TC358743 HDMI)
  * and creates Opus encoder with optimized settings
  * @return 0 on success, -EBUSY if initializing, or:
  *         ERR_ALSA_OPEN_FAILED (-1), ERR_ALSA_CONFIG_FAILED (-2),

@@ -1004,19 +1004,9 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 
 func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	ensureConfigLoaded()
-	nowHasUsbAudio := config.UsbDevices != nil && config.UsbDevices.Audio
 
-	// Stop audio before reconfiguring USB gadget
+	// Stop input audio before reconfiguring USB gadget (output always uses HDMI)
 	stopInputAudio()
-	if config.AudioOutputSource == "usb" {
-		stopOutputAudio()
-	}
-
-	// Auto-switch to HDMI when USB audio disabled
-	if wasUsbAudioEnabled && !nowHasUsbAudio && config.AudioOutputSource == "usb" {
-		logger.Info().Msg("USB audio disabled, switching output to HDMI")
-		config.AudioOutputSource = "hdmi"
-	}
 
 	// Update USB gadget configuration
 	if err := gadget.UpdateGadgetConfig(); err != nil {
@@ -1101,18 +1091,6 @@ func rpcGetAudioInputEnabled() (bool, error) {
 
 func rpcSetAudioInputEnabled(enabled bool) error {
 	return SetAudioInputEnabled(enabled)
-}
-
-func rpcGetAudioOutputSource() (string, error) {
-	ensureConfigLoaded()
-	if config.AudioOutputSource == "" {
-		return "usb", nil
-	}
-	return config.AudioOutputSource, nil
-}
-
-func rpcSetAudioOutputSource(source string) error {
-	return SetAudioOutputSource(source)
 }
 
 type AudioConfigResponse struct {
@@ -1508,8 +1486,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioOutputEnabled":   {Func: rpcSetAudioOutputEnabled, Params: []string{"enabled"}},
 	"getAudioInputEnabled":    {Func: rpcGetAudioInputEnabled},
 	"setAudioInputEnabled":    {Func: rpcSetAudioInputEnabled, Params: []string{"enabled"}},
-	"getAudioOutputSource":    {Func: rpcGetAudioOutputSource},
-	"setAudioOutputSource":    {Func: rpcSetAudioOutputSource, Params: []string{"source"}},
 	"refreshHdmiConnection":   {Func: rpcRefreshHdmiConnection},
 	"getAudioConfig":          {Func: rpcGetAudioConfig},
 	"setAudioConfig":          {Func: rpcSetAudioConfig, Params: []string{"bitrate", "complexity", "dtxEnabled", "fecEnabled", "bufferPeriods", "packetLossPerc"}},

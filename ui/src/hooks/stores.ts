@@ -379,8 +379,6 @@ export interface SettingsState {
   // Audio settings
   audioOutputEnabled: boolean;
   setAudioOutputEnabled: (enabled: boolean) => void;
-  audioOutputSource: string;
-  setAudioOutputSource: (source: string) => void;
   microphoneEnabled: boolean;
   setMicrophoneEnabled: (enabled: boolean) => void;
   audioInputAutoEnable: boolean;
@@ -452,8 +450,6 @@ export const useSettingsStore = create(
 
       audioOutputEnabled: true,
       setAudioOutputEnabled: (enabled: boolean) => set({ audioOutputEnabled: enabled }),
-      audioOutputSource: "usb",
-      setAudioOutputSource: (source: string) => set({ audioOutputSource: source }),
       microphoneEnabled: false,
       setMicrophoneEnabled: (enabled: boolean) => set({ microphoneEnabled: enabled }),
       audioInputAutoEnable: false,

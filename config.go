@@ -116,9 +116,8 @@ type Config struct {
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	AudioInputAutoEnable bool                 `json:"audio_input_auto_enable"`
 	AudioOutputEnabled   bool                 `json:"audio_output_enabled"`
-	AudioOutputSource    string               `json:"audio_output_source"` // "hdmi" or "usb"
-	AudioBitrate         int                  `json:"audio_bitrate"`       // kbps (64-256)
-	AudioComplexity      int                  `json:"audio_complexity"`    // 0-10
+	AudioBitrate         int                  `json:"audio_bitrate"`    // kbps (64-256)
+	AudioComplexity      int                  `json:"audio_complexity"` // 0-10
 	AudioDTXEnabled      bool                 `json:"audio_dtx_enabled"`
 	AudioFECEnabled      bool                 `json:"audio_fec_enabled"`
 	AudioBufferPeriods   int                  `json:"audio_buffer_periods"`   // 2-24
@@ -211,7 +210,6 @@ func getDefaultConfig() Config {
 		VideoQualityFactor:   1.0,
 		AudioInputAutoEnable: false,
 		AudioOutputEnabled:   true,
-		AudioOutputSource:    "usb",
 		AudioBitrate:         192,
 		AudioComplexity:      8,
 		AudioDTXEnabled:      true,
