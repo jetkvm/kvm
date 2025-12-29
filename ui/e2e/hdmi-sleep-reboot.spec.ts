@@ -13,12 +13,11 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
   test.setTimeout(180000); // 3 minutes
 
   test("toggle HDMI sleep mode, reboot, and verify setting persists", async ({ page }) => {
-    // === Step 1: Navigate to hardware settings ===
+    // Navigate to hardware settings
     await page.goto("/settings/hardware");
     await page.waitForLoadState("networkidle");
 
-    // === Step 2: Find HDMI sleep mode checkbox and get initial state ===
-    // SettingsItem renders as a <label> containing both the title and the checkbox
+    // Find HDMI sleep mode checkbox and get initial state
     const hdmiSleepLabel = page.locator("label").filter({ hasText: "HDMI Sleep Mode" });
     await expect(hdmiSleepLabel).toBeVisible({ timeout: 10000 });
     const hdmiSleepCheckbox = hdmiSleepLabel.locator('input[type="checkbox"]');
@@ -27,38 +26,27 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
     // Get initial state and toggle it
     const initialState = await hdmiSleepCheckbox.isChecked();
     const expectedStateAfterToggle = !initialState;
-    console.log(`✓ Initial HDMI sleep mode state: ${initialState ? "enabled" : "disabled"}`);
 
-    // === Step 3: Toggle HDMI sleep mode ===
+    // Toggle HDMI sleep mode
     await hdmiSleepCheckbox.click();
     await page.waitForTimeout(SETTINGS_APPLY_DELAY);
-    console.log(
-      `✓ Toggled HDMI sleep mode to: ${expectedStateAfterToggle ? "enabled" : "disabled"}`,
-    );
 
-    // === Step 4: Navigate to reboot page ===
+    // Navigate to reboot page
     await page.goto("/settings/general/reboot");
     await page.waitForLoadState("networkidle");
 
-    // === Step 5: Confirm reboot by clicking "Yes" button ===
+    // Confirm reboot by clicking "Yes" button
     const yesButton = page.getByRole("button", { name: /Yes/i });
     await expect(yesButton).toBeVisible({ timeout: 5000 });
     await yesButton.click();
 
-    console.log("✓ Reboot initiated, waiting for device to come back online...");
-
-    // === Step 6: Wait for reboot and reconnect ===
+    // Wait for reboot and reconnect
     await reconnectAfterReboot(page, REBOOT_DELAY);
 
-    // === Step 7: Verify video, mouse, and keyboard all work ===
+    // Verify video, mouse, and keyboard all work
     await verifyHidAndVideo(page);
 
-    console.log("✓ Device rebooted successfully");
-    console.log("✓ Video stream is active");
-    console.log("✓ Mouse is working");
-    console.log("✓ Keyboard is working");
-
-    // === Step 8: Verify HDMI sleep mode setting persisted ===
+    // Verify HDMI sleep mode setting persisted
     await page.goto("/settings/hardware");
     await page.waitForLoadState("networkidle");
 
@@ -68,22 +56,15 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
     await expect(hdmiSleepCheckboxAfter).toBeVisible({ timeout: 5000 });
 
     const stateAfterReboot = await hdmiSleepCheckboxAfter.isChecked();
-    console.log(`✓ HDMI sleep mode after reboot: ${stateAfterReboot ? "enabled" : "disabled"}`);
-
     expect(
       stateAfterReboot,
       `HDMI sleep mode should be ${expectedStateAfterToggle ? "enabled" : "disabled"} after reboot`,
     ).toBe(expectedStateAfterToggle);
 
-    console.log("✓ HDMI sleep mode setting persisted correctly after reboot");
-
-    // === Step 9: Ensure HDMI sleep mode is enabled for the next test run ===
+    // Ensure HDMI sleep mode is enabled for the next test run
     if (!stateAfterReboot) {
       await hdmiSleepCheckboxAfter.click();
       await page.waitForTimeout(SETTINGS_APPLY_DELAY);
-      console.log("✓ Enabled HDMI sleep mode for next test run");
-    } else {
-      console.log("✓ HDMI sleep mode already enabled for next test run");
     }
   });
 });

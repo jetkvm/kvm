@@ -58,7 +58,7 @@ test_e2e: build_dev
 	else \
 		device_ip="$(DEVICE_IP)"; \
 	fi; \
-	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
+	cd ui && npm ci && npx playwright install chromium && cd ..; \
 	./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)"
 
 lint:

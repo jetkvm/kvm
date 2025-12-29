@@ -31,13 +31,11 @@ test.describe("LED Round-Trip Tests", () => {
       const initialState = await getLedState(page);
       expect(initialState).not.toBeNull();
       const initialValue = initialState![led];
-      console.log(`Initial ${name} state: ${initialValue}`);
 
       // Toggle and verify
       await tapKey(page, key);
       await waitForLedState(page, led, !initialValue);
       expect((await getLedState(page))![led]).toBe(!initialValue);
-      console.log(`New ${name} state: ${!initialValue}`);
 
       // Restore and verify
       await tapKey(page, key);

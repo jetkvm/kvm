@@ -54,8 +54,6 @@ test.describe("Mouse Round-Trip Tests", () => {
   test("mouse movement changes video at cursor position", async ({ page }) => {
     // Wake display if screensaver/sleep is active
     await wakeDisplay(page);
-
-    // Wait for video stream to be active
     await waitForVideoStream(page);
 
     // Get video dimensions and validate them
@@ -68,11 +66,9 @@ test.describe("Mouse Round-Trip Tests", () => {
     expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
       MIN_VIDEO_DIMENSION,
     );
-    console.log(`Video dimensions: ${videoWidth}x${videoHeight}`);
 
     // Calculate pixel position for center of screen
     const centerPixel = hidToPixelCoords(HID_CENTER, HID_CENTER, videoWidth, videoHeight);
-    console.log(`Target pixel position: (${centerPixel.x}, ${centerPixel.y})`);
 
     // Calculate capture region bounds (centered around the target position)
     const regionX = Math.max(0, centerPixel.x - CAPTURE_REGION_SIZE / 2);
@@ -80,11 +76,11 @@ test.describe("Mouse Round-Trip Tests", () => {
     const regionWidth = Math.min(CAPTURE_REGION_SIZE, videoWidth - regionX);
     const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
 
-    // Step 1: Move mouse to center and let it settle
+    // Move mouse to center and let it settle
     await sendAbsMouseMove(page, HID_CENTER, HID_CENTER);
     await page.waitForTimeout(100);
 
-    // Step 2: Capture the region where the cursor should be (state A: with cursor)
+    // Capture the region where the cursor should be (state A: with cursor)
     const fpBefore = await captureVideoRegionFingerprint(
       page,
       regionX,
@@ -101,14 +97,13 @@ test.describe("Mouse Round-Trip Tests", () => {
       regionHeight,
     );
     expect(regionBefore, "Failed to capture PNG with cursor at center").not.toBeNull();
-    console.log("Captured state A: region with cursor at center");
     await persistPng(test.info(), "mouse-region-before.png", regionBefore!);
 
-    // Step 3: Move mouse to top-left corner (away from center)
+    // Move mouse to top-left corner (away from center)
     await sendAbsMouseMove(page, 0, 0);
     await page.waitForTimeout(100);
 
-    // Step 4: Capture the same region (state B: cursor gone)
+    // Capture the same region (state B: cursor gone)
     const fpAfter = await captureVideoRegionFingerprint(
       page,
       regionX,
@@ -119,12 +114,10 @@ test.describe("Mouse Round-Trip Tests", () => {
     expect(fpAfter, "Failed to capture fingerprint after cursor moved away").not.toBeNull();
     const regionAfter = await captureVideoRegion(page, regionX, regionY, regionWidth, regionHeight);
     expect(regionAfter, "Failed to capture PNG after cursor moved away").not.toBeNull();
-    console.log("Captured state B: region after cursor moved away");
     await persistPng(test.info(), "mouse-region-after.png", regionAfter!);
 
-    // Step 5: Assert the regions differ significantly (cursor left the area)
+    // Assert the regions differ significantly (cursor left the area)
     const distance = fingerprintDistance(fpBefore!, fpAfter!);
-    console.log(`Fingerprint distance: ${distance}`);
     const distText = `distance=${distance}\n`;
     await fs.writeFile(test.info().outputPath("mouse-fingerprint-distance.txt"), distText, "utf-8");
     await test.info().attach("mouse-fingerprint-distance.txt", {
@@ -136,14 +129,11 @@ test.describe("Mouse Round-Trip Tests", () => {
       distance,
       `Cursor movement should cause significant visual change (distance=${distance}, expected >10) — mouse HID path may be broken`,
     ).toBeGreaterThan(10);
-    console.log("Verified: region changed after cursor moved away (A→B)");
   });
 
   test("mouse movement is bidirectionally verifiable", async ({ page }) => {
     // Wake display if screensaver/sleep is active
     await wakeDisplay(page);
-
-    // Wait for video stream to be active
     await waitForVideoStream(page);
 
     // Get video dimensions and validate them
@@ -156,20 +146,18 @@ test.describe("Mouse Round-Trip Tests", () => {
     expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
       MIN_VIDEO_DIMENSION,
     );
-    console.log(`Video dimensions: ${videoWidth}x${videoHeight}`);
 
     // Use a position offset from center to avoid any UI elements
     const testHidX = Math.floor(HID_MAX * 0.7);
     const testHidY = Math.floor(HID_MAX * 0.7);
-    const testPixel = hidToPixelCoords(testHidX, testHidY, videoWidth, videoHeight);
-    console.log(`Target pixel position: (${testPixel.x}, ${testPixel.y})`);
 
+    const testPixel = hidToPixelCoords(testHidX, testHidY, videoWidth, videoHeight);
     const regionX = Math.max(0, testPixel.x - CAPTURE_REGION_SIZE / 2);
     const regionY = Math.max(0, testPixel.y - CAPTURE_REGION_SIZE / 2);
     const regionWidth = Math.min(CAPTURE_REGION_SIZE, videoWidth - regionX);
     const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
 
-    // Step 1: Move cursor away first to establish baseline
+    // Move cursor away first to establish baseline
     await sendAbsMouseMove(page, 0, 0);
     await page.waitForTimeout(100);
 
@@ -193,10 +181,9 @@ test.describe("Mouse Round-Trip Tests", () => {
       regionHeight,
     );
     expect(regionWithoutCursorPng, "Failed to capture PNG for state A").not.toBeNull();
-    console.log("Captured state A: region without cursor (baseline)");
     await persistPng(test.info(), "mouse-bidir-A-without-cursor.png", regionWithoutCursorPng!);
 
-    // Step 2: Move cursor into the target region
+    // Move cursor into the target region
     await sendAbsMouseMove(page, testHidX, testHidY);
     await page.waitForTimeout(100);
 
@@ -217,10 +204,9 @@ test.describe("Mouse Round-Trip Tests", () => {
       regionHeight,
     );
     expect(regionWithCursorPng, "Failed to capture PNG for state B").not.toBeNull();
-    console.log("Captured state B: region with cursor");
     await persistPng(test.info(), "mouse-bidir-B-with-cursor.png", regionWithCursorPng!);
 
-    // Step 3: Move cursor away again
+    // Move cursor away again
     await sendAbsMouseMove(page, 0, 0);
     await page.waitForTimeout(100);
 
@@ -244,7 +230,6 @@ test.describe("Mouse Round-Trip Tests", () => {
       regionHeight,
     );
     expect(regionWithoutCursorAgainPng, "Failed to capture PNG for state A2").not.toBeNull();
-    console.log("Captured state A2: region without cursor again");
     await persistPng(
       test.info(),
       "mouse-bidir-A2-without-cursor-again.png",
@@ -253,7 +238,6 @@ test.describe("Mouse Round-Trip Tests", () => {
 
     const distArrive = fingerprintDistance(fpWithoutCursor!, fpWithCursor!);
     const distRestore = fingerprintDistance(fpWithoutCursor!, fpWithoutCursorAgain!);
-    console.log(`Fingerprint distance: arrive=${distArrive}, restore=${distRestore}`);
     const distText = `arrive=${distArrive}\nrestore=${distRestore}\n`;
     await fs.writeFile(
       test.info().outputPath("mouse-bidir-fingerprint-distances.txt"),
@@ -270,13 +254,11 @@ test.describe("Mouse Round-Trip Tests", () => {
       distArrive,
       `Cursor arrival should cause significant visual change (distArrive=${distArrive}, expected >10) — mouse HID path may be broken`,
     ).toBeGreaterThan(10);
-    console.log("Verified: cursor arrival changed the region (A→B)");
 
     // Verify: after moving away, the region is closer to baseline than when cursor was present
     expect(
       distRestore,
       `Region should restore after cursor leaves (distRestore=${distRestore} should be < distArrive=${distArrive}) — cursor may not have moved away`,
     ).toBeLessThan(distArrive);
-    console.log("Verified: region restored after cursor left (B→A2)");
   });
 });

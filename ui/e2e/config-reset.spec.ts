@@ -23,7 +23,6 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
 
     if (!isOnWelcome) {
       // Device is set up, need to reset it first
-      console.log("Device is set up, navigating to advanced settings to reset...");
 
       // === Step 2: Navigate to advanced settings ===
       await page.goto("/settings/advanced");
@@ -58,7 +57,6 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
       await page.waitForURL("**/welcome", { timeout: 10000 });
       await page.waitForLoadState("networkidle");
     } else {
-      console.log("Device already on welcome screen, proceeding with setup...");
       // Navigate to the base welcome page if we're on a sub-route
       if (!currentUrl.endsWith("/welcome")) {
         await page.goto("/welcome");
@@ -97,10 +95,5 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
 
     // === Step 12: Verify video, mouse, and keyboard all work ===
     await verifyHidAndVideo(page);
-
-    console.log("✓ Config reset and welcome screen flow completed successfully");
-    console.log("✓ Video stream is active");
-    console.log("✓ Mouse is working");
-    console.log("✓ Keyboard is working");
   });
 });

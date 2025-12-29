@@ -99,9 +99,6 @@ test.describe("EDID Round-Trip Tests", () => {
     // Randomly select NUM_EDIDS_TO_TEST options to test (or all if fewer available)
     const shuffled = [...edidOptions].sort(() => Math.random() - 0.5);
     const selectedOptions = shuffled.slice(0, Math.min(NUM_EDIDS_TO_TEST, edidOptions.length));
-    console.log(
-      `Testing ${selectedOptions.length} EDIDs: ${selectedOptions.map(o => o.label).join(", ")}`,
-    );
 
     // Cycle through selected EDID options
     for (let i = 0; i < selectedOptions.length; i++) {
@@ -183,7 +180,6 @@ test.describe("EDID Round-Trip Tests", () => {
         `Video should not be blank/single color for EDID "${option.label}"`,
       ).toBeGreaterThan(1);
 
-      console.log(`✓ ${option.label} (${videoWidth}x${videoHeight})`);
     }
   });
 });

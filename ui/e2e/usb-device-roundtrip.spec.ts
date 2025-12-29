@@ -185,8 +185,5 @@ test.describe("USB Device Round-Trip Tests", () => {
       distanceDefault,
       `Mouse SHOULD cause visual change in default mode (distance=${distanceDefault}, expected > 10)`,
     ).toBeGreaterThan(10);
-
-    console.log(`✓ Keyboard-only mode: mouse disabled (distance=${distanceKeyboardOnly})`);
-    console.log(`✓ Default mode: mouse enabled (distance=${distanceDefault})`);
   });
 });
