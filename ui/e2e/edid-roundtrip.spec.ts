@@ -6,7 +6,6 @@ import {
   wakeDisplay,
   getVideoStreamDimensions,
   captureVideoRegionFingerprint,
-  fingerprintDistance,
 } from "./helpers";
 
 // Minimum video dimensions to consider valid (sanity check)
@@ -91,16 +90,15 @@ test.describe("EDID Round-Trip Tests", () => {
 
     // Filter out any options containing "custom" (case-insensitive)
     const edidOptions: EdidOption[] = allOptions.filter(
-      o =>
-        !o.value.toLowerCase().includes("custom") &&
-        !o.label.toLowerCase().includes("custom"),
+      o => !o.value.toLowerCase().includes("custom") && !o.label.toLowerCase().includes("custom"),
     );
-    expect(edidOptions.length, "Should have at least one non-custom EDID option").toBeGreaterThan(0);
+    expect(edidOptions.length, "Should have at least one non-custom EDID option").toBeGreaterThan(
+      0,
+    );
 
     // Randomly select NUM_EDIDS_TO_TEST options to test (or all if fewer available)
     const shuffled = [...edidOptions].sort(() => Math.random() - 0.5);
     const selectedOptions = shuffled.slice(0, Math.min(NUM_EDIDS_TO_TEST, edidOptions.length));
-    console.log(`Testing ${selectedOptions.length} EDIDs: ${selectedOptions.map(o => o.label).join(", ")}`);
 
     // Cycle through selected EDID options
     for (let i = 0; i < selectedOptions.length; i++) {
@@ -139,8 +137,14 @@ test.describe("EDID Round-Trip Tests", () => {
       const dimensions = await getVideoStreamDimensions(page);
       expect(dimensions, "Video dimensions should be available").not.toBeNull();
       const { width: videoWidth, height: videoHeight } = dimensions!;
-      expect(videoWidth, `Video width should be >= ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThanOrEqual(MIN_VIDEO_DIMENSION);
-      expect(videoHeight, `Video height should be >= ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThanOrEqual(MIN_VIDEO_DIMENSION);
+      expect(
+        videoWidth,
+        `Video width should be >= ${MIN_VIDEO_DIMENSION}px`,
+      ).toBeGreaterThanOrEqual(MIN_VIDEO_DIMENSION);
+      expect(
+        videoHeight,
+        `Video height should be >= ${MIN_VIDEO_DIMENSION}px`,
+      ).toBeGreaterThanOrEqual(MIN_VIDEO_DIMENSION);
 
       // Calculate center region for fingerprint capture (based on current resolution)
       const centerX = Math.floor(videoWidth / 2);
@@ -151,10 +155,22 @@ test.describe("EDID Round-Trip Tests", () => {
       const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
 
       // Capture two fingerprints to verify stream is updating
-      const fpA = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+      const fpA = await captureVideoRegionFingerprint(
+        page,
+        regionX,
+        regionY,
+        regionWidth,
+        regionHeight,
+      );
       expect(fpA, "Failed to capture fingerprint A").not.toBeNull();
       await page.waitForTimeout(FINGERPRINT_INTERVAL);
-      const fpB = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+      const fpB = await captureVideoRegionFingerprint(
+        page,
+        regionX,
+        regionY,
+        regionWidth,
+        regionHeight,
+      );
       expect(fpB, "Failed to capture fingerprint B").not.toBeNull();
 
       // Verify we're not getting a black/blank screen
@@ -164,8 +180,6 @@ test.describe("EDID Round-Trip Tests", () => {
         `Video should not be blank/single color for EDID "${option.label}"`,
       ).toBeGreaterThan(1);
 
-      console.log(`✓ ${option.label} (${videoWidth}x${videoHeight})`);
     }
   });
 });
-

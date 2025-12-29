@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import {
   waitForWebRTCReady,
@@ -101,7 +102,11 @@ test.describe("USB Device Round-Trip Tests", () => {
 
     // Capture baseline fingerprint
     const fpKeyboardOnlyBefore = await captureVideoRegionFingerprint(
-      page, regionX, regionY, regionWidth, regionHeight
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
     );
     expect(fpKeyboardOnlyBefore, "Failed to capture baseline fingerprint").not.toBeNull();
 
@@ -111,7 +116,11 @@ test.describe("USB Device Round-Trip Tests", () => {
 
     // Capture fingerprint after attempted move
     const fpKeyboardOnlyAfter = await captureVideoRegionFingerprint(
-      page, regionX, regionY, regionWidth, regionHeight
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
     );
     expect(fpKeyboardOnlyAfter, "Failed to capture after-move fingerprint").not.toBeNull();
 
@@ -148,7 +157,11 @@ test.describe("USB Device Round-Trip Tests", () => {
 
     // Capture baseline fingerprint
     const fpDefaultBefore = await captureVideoRegionFingerprint(
-      page, regionX, regionY, regionWidth, regionHeight
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
     );
     expect(fpDefaultBefore, "Failed to capture baseline fingerprint").not.toBeNull();
 
@@ -158,7 +171,11 @@ test.describe("USB Device Round-Trip Tests", () => {
 
     // Capture fingerprint after move
     const fpDefaultAfter = await captureVideoRegionFingerprint(
-      page, regionX, regionY, regionWidth, regionHeight
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
     );
     expect(fpDefaultAfter, "Failed to capture after-move fingerprint").not.toBeNull();
 
@@ -168,9 +185,5 @@ test.describe("USB Device Round-Trip Tests", () => {
       distanceDefault,
       `Mouse SHOULD cause visual change in default mode (distance=${distanceDefault}, expected > 10)`,
     ).toBeGreaterThan(10);
-
-    console.log(`✓ Keyboard-only mode: mouse disabled (distance=${distanceKeyboardOnly})`);
-    console.log(`✓ Default mode: mouse enabled (distance=${distanceDefault})`);
   });
 });
-

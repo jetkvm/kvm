@@ -140,6 +140,8 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
     setRpcHidProtocolVersion,
+    terminalChannel,
+    setTerminalChannel,
   } = useRTCStore();
 
   const location = useLocation();
@@ -594,6 +596,15 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
     };
 
+    // Create terminal channel as part of initial offer
+    const terminalDataChannel = pc.createDataChannel("terminal");
+    terminalDataChannel.onclose = () => console.log("terminalDataChannel has closed");
+    terminalDataChannel.onerror = (ev: Event) =>
+      console.error(`Error on terminalDataChannel '${terminalDataChannel.label}': ${ev}`);
+    terminalDataChannel.onopen = () => {
+      setTerminalChannel(terminalDataChannel);
+    };
+
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
@@ -608,6 +619,7 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
     setRpcHidProtocolVersion,
+    setTerminalChannel,
     setTransceiver,
     setAudioTransceiver,
   ]);
@@ -699,6 +711,7 @@ export default function KvmIdRoute() {
       setSidebarView(null);
       setPeerConnection(null);
       setRpcDataChannel(null);
+      setTerminalChannel(null);
     };
   }, [
     clearCandidatePairStats,
@@ -706,6 +719,7 @@ export default function KvmIdRoute() {
     setPeerConnection,
     setSidebarView,
     setRpcDataChannel,
+    setTerminalChannel,
   ]);
 
   // TURN server usage detection
@@ -875,22 +889,6 @@ export default function KvmIdRoute() {
     [reportAbsMouseEvent, rpcHidReady, send],
   );
 
-  // Register E2E test hooks
-  useEffect(() => {
-    registerTestHandlers({
-      handleKeyPress,
-      handleAbsMouseMove,
-      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
-      getKeysDownState: () => useHidStore.getState().keysDownState,
-      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
-      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
-      getMediaStream: () => useRTCStore.getState().mediaStream,
-      getHdmiState: () => useVideoStore.getState().hdmiState,
-      getVideoElement: () => useVideoStore.getState().videoElement,
-    });
-    return cleanupTestHooks;
-  }, [handleKeyPress, handleAbsMouseMove]);
-
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     console.log("Requesting video state");
@@ -1011,20 +1009,32 @@ export default function KvmIdRoute() {
     }
   }, [navigate, navigateTo, queryParams, setModalView, setQueryParams]);
 
-  // System update
-  const [kvmTerminal, setKvmTerminal] = useState<RTCDataChannel | null>(null);
+  // Serial console - still created via useEffect for now
   const [serialConsole, setSerialConsole] = useState<RTCDataChannel | null>(null);
 
   useEffect(() => {
     if (!peerConnection) return;
-    if (!kvmTerminal) {
-      setKvmTerminal(peerConnection.createDataChannel("terminal"));
-    }
-
     if (!serialConsole) {
       setSerialConsole(peerConnection.createDataChannel("serial"));
     }
-  }, [kvmTerminal, peerConnection, serialConsole]);
+  }, [peerConnection, serialConsole]);
+
+  // Register E2E test hooks
+  useEffect(() => {
+    registerTestHandlers({
+      handleKeyPress,
+      handleAbsMouseMove,
+      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
+      getKeysDownState: () => useHidStore.getState().keysDownState,
+      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
+      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
+      getMediaStream: () => useRTCStore.getState().mediaStream,
+      getHdmiState: () => useVideoStore.getState().hdmiState,
+      getVideoElement: () => useVideoStore.getState().videoElement,
+      getKvmTerminal: () => useRTCStore.getState().terminalChannel,
+    });
+    return cleanupTestHooks;
+  }, [handleKeyPress, handleAbsMouseMove]);
 
   const outlet = useOutlet();
   const onModalClose = useCallback(() => {
@@ -1173,7 +1183,9 @@ export default function KvmIdRoute() {
         </Modal>
       </div>
 
-      {kvmTerminal && <Terminal type="kvm" dataChannel={kvmTerminal} title={m.kvm_terminal()} />}
+      {terminalChannel && (
+        <Terminal type="kvm" dataChannel={terminalChannel} title={m.kvm_terminal()} />
+      )}
 
       {serialConsole && (
         <Terminal type="serial" dataChannel={serialConsole} title={m.serial_console()} />

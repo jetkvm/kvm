@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/sync"
 
-	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
@@ -309,7 +309,7 @@ func (nm *NetlinkManager) RouteReplace(route *netlink.Route) error {
 func (nm *NetlinkManager) ListDefaultRoutes(family int) ([]netlink.Route, error) {
 	routes, err := netlink.RouteListFiltered(
 		family,
-		&netlink.Route{Dst: nil, Table: 254},
+		&netlink.Route{Dst: nil, Table: MainRoutingTable},
 		netlink.RT_FILTER_DST|netlink.RT_FILTER_TABLE,
 	)
 	if err != nil {
@@ -330,7 +330,7 @@ func (nm *NetlinkManager) HasDefaultRoute(family int) bool {
 }
 
 // AddDefaultRoute adds a default route
-func (nm *NetlinkManager) AddDefaultRoute(link *Link, gateway net.IP, family int) error {
+func (nm *NetlinkManager) AddDefaultRoute(link *Link, gateway net.IP, family int, protocol netlink.RouteProtocol) error {
 	var dst *net.IPNet
 	switch family {
 	case AfInet:
@@ -345,6 +345,9 @@ func (nm *NetlinkManager) AddDefaultRoute(link *Link, gateway net.IP, family int
 		Dst:       dst,
 		Gw:        gateway,
 		LinkIndex: link.Attrs().Index,
+		Scope:     netlink.SCOPE_UNIVERSE,
+		Table:     MainRoutingTable,
+		Protocol:  protocol,
 	}
 
 	return nm.RouteReplace(route)
@@ -352,21 +355,26 @@ func (nm *NetlinkManager) AddDefaultRoute(link *Link, gateway net.IP, family int
 
 // RemoveDefaultRoute removes the default route for the given family
 func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
+	l := nm.logger.With().Int("family", family).Logger()
 	routes, err := nm.RouteList(nil, family)
 	if err != nil {
+		l.Error().Err(err).Msg("failed to get route list")
 		return fmt.Errorf("failed to get routes: %w", err)
 	}
+	l.Trace().Int("route_count", len(routes)).Msg("checking routes for default route removal")
 
 	for _, route := range routes {
 		if route.Dst != nil {
 			if family == AfInet && route.Dst.IP.Equal(net.IPv4zero) && route.Dst.Mask.String() == "0.0.0.0/0" {
+				l.Trace().Interface("destination", route.Dst).Msg("removing IPv4 default route")
 				if err := nm.RouteDel(&route); err != nil {
-					nm.logger.Warn().Err(err).Msg("failed to remove IPv4 default route")
+					l.Warn().Err(err).Msg("failed to remove IPv4 default route")
 				}
 			}
 			if family == AfInet6 && route.Dst.IP.Equal(net.IPv6zero) && route.Dst.Mask.String() == "::/0" {
+				l.Trace().Interface("destination", route.Dst).Msg("removing IPv6 default route")
 				if err := nm.RouteDel(&route); err != nil {
-					nm.logger.Warn().Err(err).Msg("failed to remove IPv6 default route")
+					l.Warn().Err(err).Msg("failed to remove IPv6 default route")
 				}
 			}
 		}
@@ -375,169 +383,202 @@ func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
 	return nil
 }
 
-func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]net.IP, family int) error {
-	linkIndex := link.Attrs().Index
+func (nm *NetlinkManager) reconcileDefaultRoutes(link *Link, expected map[string]net.IP, family int, protocol netlink.RouteProtocol) error {
+	linkAttrs := link.Attrs()
+	l := nm.logger.With().Str("interface", linkAttrs.Name).Int("linkIndex", linkAttrs.Index).Int("family", family).Logger()
 
 	added := 0
+	removed := 0
 	toRemove := make([]*netlink.Route, 0)
 
 	defaultRoutes, err := nm.ListDefaultRoutes(family)
 	if err != nil {
+		l.Warn().Err(err).Msg("failed get default routes")
 		return fmt.Errorf("failed to get default routes: %w", err)
 	}
+	l.Debug().Int("defaultRoutes_count", len(defaultRoutes)).Msg("current default routes")
 
 	// check existing default routes
 	for _, defaultRoute := range defaultRoutes {
+		ll := l.With().Interface("defaultRoute", defaultRoute).Logger()
+
 		// only check the default routes for the current link
 		// TODO: we should also check others later
-		if defaultRoute.LinkIndex != linkIndex {
+		if defaultRoute.LinkIndex != linkAttrs.Index {
+			ll.Trace().Msg("wrong link index, skipping")
 			continue
 		}
 
 		key := defaultRoute.Gw.String()
+		ll.Trace().Str("key", key).Msg("checking default route")
+
 		if _, ok := expected[key]; !ok {
+			ll.Debug().Str("key", key).Msg("not in expected routes, marked for removal")
 			toRemove = append(toRemove, &defaultRoute)
 			continue
 		}
 
-		nm.logger.Warn().Str("gateway", key).Msg("keeping default route")
+		l.Debug().Msg("will keep default route")
 		delete(expected, key)
 	}
 
 	// remove remaining default routes
 	for _, defaultRoute := range toRemove {
-		nm.logger.Warn().Str("gateway", defaultRoute.Gw.String()).Msg("removing default route")
 		if err := nm.RouteDel(defaultRoute); err != nil {
-			nm.logger.Warn().Err(err).Msg("failed to remove default route")
+			l.Warn().Err(err).Msg("failed to remove default route")
+			// do not abandon the reconciliation for route removal failure
 		}
+		l.Debug().Stringer("gateway", defaultRoute.Gw).Msg("removed default route")
+		removed++
 	}
 
 	// add remaining expected default routes
 	for _, gateway := range expected {
-		nm.logger.Warn().Str("gateway", gateway.String()).Msg("adding default route")
+		l.Debug().Stringer("gateway", gateway).Msg("adding default route")
 
 		route := &netlink.Route{
-			Dst:       &ipv4DefaultRoute,
 			Gw:        gateway,
-			LinkIndex: linkIndex,
+			LinkIndex: linkAttrs.Index,
+			Scope:     netlink.SCOPE_UNIVERSE,
+			Table:     MainRoutingTable,
+			Protocol:  protocol,
 		}
-		if family == AfInet6 {
+
+		switch family {
+		case AfInet6:
 			route.Dst = &ipv6DefaultRoute
+		case AfInet:
+			route.Dst = &ipv4DefaultRoute
 		}
+
 		if err := nm.RouteAdd(route); err != nil {
-			nm.logger.Warn().Err(err).Interface("route", route).Msg("failed to add default route")
+			l.Warn().Err(err).Interface("route", route).Msg("failed to add default route")
+			// do not abandon the reconciliation for route addition failure
+			continue
 		}
+		l.Debug().IPAddr("gateway", gateway).Msg("added default route")
 		added++
 	}
 
 	nm.logger.Info().
 		Int("added", added).
-		Int("removed", len(toRemove)).
+		Int("removed", removed).
 		Msg("default routes reconciled")
 
 	return nil
 }
 
 // ReconcileLink reconciles the addresses and routes of a link
-func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, family int) error {
+func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, family int, protocol netlink.RouteProtocol) error {
+	l := nm.logger.With().Interface("link", link.Link).Int("family", family).Logger()
+
 	toAdd := make([]*types.IPAddress, 0)
 	toRemove := make([]*netlink.Addr, 0)
 	toUpdate := make([]*types.IPAddress, 0)
 	expectedAddrs := make(map[string]*types.IPAddress)
-
 	expectedGateways := make(map[string]net.IP)
 
 	mtu := link.Attrs().MTU
-	expectedMTU := mtu
+	expectedMTU := 0
+
 	// add all expected addresses to the map
 	for _, addr := range expected {
 		expectedAddrs[addr.String()] = &addr
 		if addr.Gateway != nil {
-			expectedGateways[addr.String()] = addr.Gateway
+			expectedGateways[addr.Gateway.String()] = addr.Gateway
 		}
 		if addr.MTU != 0 {
-			mtu = addr.MTU
+			// we take the smallest MTU among expected addresses
+			if expectedMTU == 0 || addr.MTU < expectedMTU {
+				expectedMTU = addr.MTU
+			}
 		}
 	}
-	if expectedMTU != mtu {
+
+	l.Trace().Int("expected_mtu", expectedMTU).Int("link_mtu", mtu).Msg("computed MTU")
+	if expectedMTU != 0 && expectedMTU != mtu {
 		if err := link.SetMTU(expectedMTU); err != nil {
-			nm.logger.Warn().Err(err).Int("expected_mtu", expectedMTU).Int("mtu", mtu).Msg("failed to set MTU")
+			l.Warn().Err(err).Int("expected_mtu", expectedMTU).Int("current_mtu", mtu).Msg("failed to set MTU")
+			// do not abandon the reconciliation for MTU failure
 		}
 	}
 
 	addrs, err := nm.AddrList(link, family)
 	if err != nil {
+		l.Error().Err(err).Msg("failed to get addresses")
 		return fmt.Errorf("failed to get addresses: %w", err)
 	}
+	l.Debug().Int("address_count", len(addrs)).Msg("current addresses")
 
 	// check existing addresses
 	for _, addr := range addrs {
 		// skip the link-local address
 		if addr.IP.IsLinkLocalUnicast() {
+			l.Trace().Interface("addr", addr).Msg("link lock unicast address, skipping")
 			continue
 		}
 
-		expectedAddr, ok := expectedAddrs[addr.IPNet.String()]
+		key := addr.IPNet.String()
+		expectedAddr, ok := expectedAddrs[key]
 		if !ok {
+			l.Trace().Interface("addr", addr).Str("key", key).Msg("not in expected addresses, marked for removal")
 			toRemove = append(toRemove, &addr)
 			continue
 		}
 
-		// if it's not fully equal, we need to update it
-		if !expectedAddr.Compare(addr) {
-			toUpdate = append(toUpdate, expectedAddr)
-			continue
-		}
+		// found it, so remove it from expected addresses
+		delete(expectedAddrs, key)
 
-		// remove it from expected addresses
-		delete(expectedAddrs, addr.IPNet.String())
+		// if it's not fully equal, we will need to update it
+		if !expectedAddr.Compare(addr) {
+			l.Trace().Interface("addr", addr).Interface("expectedAddr", expectedAddr).Msg("addresses are not equal, marked for update")
+			toUpdate = append(toUpdate, expectedAddr)
+		}
 	}
 
-	// add remaining expected addresses
+	// add remaining unmatched expected addresses
 	for _, addr := range expectedAddrs {
+		l.Trace().Interface("addr", addr).Msg("addresses not found, marked for addition")
 		toAdd = append(toAdd, addr)
 	}
+
+	l.Trace().Int("toAdd_count", len(toAdd)).Int("toRemove_count", len(toRemove)).Int("toUpdate_count", len(toUpdate)).Msg("reconcilliations computed")
 
 	for _, addr := range toUpdate {
 		netlinkAddr := addr.NetlinkAddr()
 		if err := nm.AddrDel(link, &netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to update address")
+			l.Warn().Err(err).Stringer("address", netlinkAddr).Msg("failed to remove address for update")
 		}
-		// we'll add it again later
-		toAdd = append(toAdd, addr)
-	}
-
-	for _, addr := range toAdd {
-		netlinkAddr := addr.NetlinkAddr()
-		if err := nm.AddrAdd(link, &netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to add address")
-		}
+		l.Trace().Stringer("address", netlinkAddr).Msg("address removed for update/readdition")
+		toAdd = append(toAdd, addr) // add it back after all the other removals
 	}
 
 	for _, netlinkAddr := range toRemove {
 		if err := nm.AddrDel(link, netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", netlinkAddr.IP.String()).Msg("failed to remove address")
+			l.Warn().Err(err).Stringer("address", netlinkAddr).Msg("failed to remove address")
 		}
+		l.Trace().Stringer("address", netlinkAddr).Msg("removed address")
 	}
 
 	for _, addr := range toAdd {
 		netlinkAddr := addr.NetlinkAddr()
 		if err := nm.AddrAdd(link, &netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to add address")
+			l.Warn().Err(err).Stringer("address", netlinkAddr).Msg("failed to add address")
 		}
+		l.Trace().Stringer("address", netlinkAddr).Msg("added address")
 	}
 
 	actualToAdd := len(toAdd) - len(toUpdate)
 	if len(toAdd) > 0 || len(toUpdate) > 0 || len(toRemove) > 0 {
-		nm.logger.Info().
+		l.Info().
 			Int("added", actualToAdd).
 			Int("updated", len(toUpdate)).
 			Int("removed", len(toRemove)).
 			Msg("addresses reconciled")
 	}
 
-	if err := nm.reconcileDefaultRoute(link, expectedGateways, family); err != nil {
-		nm.logger.Warn().Err(err).Msg("failed to reconcile default route")
+	if err := nm.reconcileDefaultRoutes(link, expectedGateways, family, protocol); err != nil {
+		l.Warn().Err(err).Msg("failed to reconcile default route")
 	}
 
 	return nil
