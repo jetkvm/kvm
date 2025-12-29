@@ -17,6 +17,7 @@ import (
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -125,6 +126,7 @@ type SessionConfig struct {
 	IsCloud    bool
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
+	MDNSMode   string
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -251,11 +253,27 @@ func newSession(config SessionConfig) (*Session, error) {
 	webrtcSettingEngine := webrtc.SettingEngine{
 		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	}
-	iceServer := webrtc.ICEServer{}
 
 	// Use hardware-accelerated cipher suites for DTLS if available
 	// This offloads AES-GCM encryption/decryption to the RV1106 crypto engine
 	webrtcSettingEngine.SetDTLSCustomerCipherSuites(crypto.HardwareCipherSuites)
+
+	mDNSNetworkTypes := make([]webrtc.NetworkType, 0)
+	if config.MDNSMode == "auto" || config.MDNSMode == "ipv4_only" {
+		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP4)
+	}
+	if config.MDNSMode == "auto" || config.MDNSMode == "ipv6_only" {
+		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP6)
+	}
+
+	if len(mDNSNetworkTypes) > 0 {
+		webrtcSettingEngine.SetNetworkTypes(mDNSNetworkTypes)
+		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
+	} else {
+		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	}
+
+	iceServer := webrtc.ICEServer{}
 
 	var scopedLogger *zerolog.Logger
 	if config.Logger != nil {

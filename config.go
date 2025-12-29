@@ -116,9 +116,8 @@ type Config struct {
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	AudioInputAutoEnable bool                 `json:"audio_input_auto_enable"`
 	AudioOutputEnabled   bool                 `json:"audio_output_enabled"`
-	AudioOutputSource    string               `json:"audio_output_source"` // "hdmi" or "usb"
-	AudioBitrate         int                  `json:"audio_bitrate"`       // kbps (64-256)
-	AudioComplexity      int                  `json:"audio_complexity"`    // 0-10
+	AudioBitrate         int                  `json:"audio_bitrate"`    // kbps (64-256)
+	AudioComplexity      int                  `json:"audio_complexity"` // 0-10
 	AudioDTXEnabled      bool                 `json:"audio_dtx_enabled"`
 	AudioFECEnabled      bool                 `json:"audio_fec_enabled"`
 	AudioBufferPeriods   int                  `json:"audio_buffer_periods"`   // 2-24
@@ -217,7 +216,6 @@ func getDefaultConfig() Config {
 		VideoQualityFactor:   1.0,
 		AudioInputAutoEnable: false,
 		AudioOutputEnabled:   true,
-		AudioOutputSource:    "usb",
 		AudioBitrate:         192,
 		AudioComplexity:      8,
 		AudioDTXEnabled:      true,
@@ -277,27 +275,10 @@ func LoadConfig() {
 
 	// load and merge the default config with the user config
 	loadedConfig := defaultConfig
-
-	// Debug: Log before JSON decode
-	if loadedConfig.UsbDevices != nil {
-		logger.Info().
-			Bool("audio_before", loadedConfig.UsbDevices.Audio).
-			Bool("uvc_before", loadedConfig.UsbDevices.UVC).
-			Msg("LoadConfig: UsbDevices BEFORE json decode")
-	}
-
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
 		logger.Warn().Err(err).Msg("config file JSON parsing failed")
 		configSuccess.Set(0.0)
 		return
-	}
-
-	// Debug: Log after JSON decode
-	if loadedConfig.UsbDevices != nil {
-		logger.Info().
-			Bool("audio_after", loadedConfig.UsbDevices.Audio).
-			Bool("uvc_after", loadedConfig.UsbDevices.UVC).
-			Msg("LoadConfig: UsbDevices AFTER json decode")
 	}
 
 	// merge the user config with the default config
