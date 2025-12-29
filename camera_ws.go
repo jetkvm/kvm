@@ -53,7 +53,11 @@ func handleCameraWs(c *gin.Context) {
 		cameraLog.Warn().Err(err).Msg("Failed to accept camera WebSocket")
 		return
 	}
-	defer func() { _ = ws.CloseNow() }()
+	defer func() {
+		if err := ws.CloseNow(); err != nil {
+			cameraLog.Debug().Err(err).Msg("Error closing camera WebSocket")
+		}
+	}()
 
 	// Set generous read limit for video frames (16MB should handle any resolution)
 	ws.SetReadLimit(16 * 1024 * 1024)
@@ -118,7 +122,9 @@ func handleCameraWs(c *gin.Context) {
 		// HOTPATH: Skip non-binary messages (control frames)
 		if msgType != websocket.MessageBinary {
 			// Drain the reader to complete the message
-			_, _ = io.Copy(io.Discard, reader)
+			if _, err := io.Copy(io.Discard, reader); err != nil {
+				cameraLog.Debug().Err(err).Msg("Error draining non-binary WebSocket message")
+			}
 			continue
 		}
 
@@ -137,7 +143,10 @@ func handleCameraWs(c *gin.Context) {
 			}
 			if n >= len(buf) {
 				// Frame too large, drain remainder and skip
-				_, _ = io.Copy(io.Discard, reader)
+				cameraLog.Warn().Int("bufferSize", len(buf)).Msg("Camera frame too large for buffer")
+				if _, drainErr := io.Copy(io.Discard, reader); drainErr != nil {
+					cameraLog.Debug().Err(drainErr).Msg("Error draining oversized frame")
+				}
 				n = 0
 				break
 			}
@@ -203,6 +212,7 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 
 	data, err := json.Marshal(msg)
 	if err != nil {
+		cameraLog.Error().Err(err).Msg("Failed to marshal format message")
 		return
 	}
 
@@ -210,5 +220,7 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_ = ws.Write(writeCtx, websocket.MessageText, data)
+	if err := ws.Write(writeCtx, websocket.MessageText, data); err != nil {
+		cameraLog.Warn().Err(err).Msg("Failed to send format message to browser")
+	}
 }

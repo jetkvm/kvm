@@ -326,9 +326,9 @@ func (m *Manager) startStreaming() {
 	m.uvcStreamingFast.Store(true)
 	m.uvcMjpegFast.Store(m.uvcMjpegSelected)
 
-	codec := "h264"
+	codec := CodecH264
 	if m.uvcMjpegSelected {
-		codec = "mjpeg"
+		codec = CodecMJPEG
 	}
 	m.notifyFormatChange(FormatInfo{
 		Codec:     codec,
@@ -446,12 +446,18 @@ func (m *Manager) HandleCameraH264Frame(frame []byte) {
 	}
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.WriteFrame(frame); err != nil {
-			m.uvcFrameErrors.Add(1)
+			errCount := m.uvcFrameErrors.Add(1)
+			// Log periodically: first error and every 128th (power of 2 for fast bitwise AND)
+			if errCount == 1 || errCount&127 == 0 {
+				if m.uvcLog != nil {
+					m.uvcLog.Warn().Uint32("total_errors", errCount).Err(err).Msg("Camera H.264 WriteFrame failed")
+				}
+			}
 		}
 	}
 }
 
-const spsInjectInterval = 240 // Re-inject SPS/PPS every ~4-8 seconds
+const spsInjectInterval = 256 // Re-inject SPS/PPS every ~4-8 seconds (power of 2 for fast check)
 
 // writeFrameToUVC writes H.264 frames to UVC (HDMI path only).
 func (m *Manager) writeFrameToUVC(frame []byte) {
@@ -471,7 +477,12 @@ func (m *Manager) writeFrameToUVC(frame []byte) {
 
 	if !isIDR && !isSPS {
 		if err := streamer.WriteFrame(frame); err != nil {
-			m.uvcFrameErrors.Add(1)
+			errCount := m.uvcFrameErrors.Add(1)
+			if errCount == 1 || errCount&127 == 0 {
+				if m.uvcLog != nil {
+					m.uvcLog.Warn().Uint32("total_errors", errCount).Err(err).Msg("HDMI H.264 WriteFrame failed")
+				}
+			}
 		}
 		return
 	}
@@ -502,7 +513,12 @@ func (m *Manager) writeFrameToUVC(frame []byte) {
 	m.uvcParamInjectCount.Add(1)
 
 	if err := streamer.WriteFrame(frameToSend); err != nil {
-		m.uvcFrameErrors.Add(1)
+		errCount := m.uvcFrameErrors.Add(1)
+		if errCount == 1 || errCount&127 == 0 {
+			if m.uvcLog != nil {
+				m.uvcLog.Warn().Uint32("total_errors", errCount).Err(err).Msg("HDMI H.264 (IDR) WriteFrame failed")
+			}
+		}
 	}
 }
 
@@ -537,7 +553,12 @@ func (m *Manager) HandleMjpegFrame(frame []byte) {
 	}
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.WriteFrame(frame); err != nil {
-			m.uvcFrameErrors.Add(1)
+			errCount := m.uvcFrameErrors.Add(1)
+			if errCount == 1 || errCount&127 == 0 {
+				if m.uvcLog != nil {
+					m.uvcLog.Warn().Uint32("total_errors", errCount).Err(err).Msg("HDMI MJPEG WriteFrame failed")
+				}
+			}
 		}
 	}
 }
@@ -552,7 +573,12 @@ func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
 	}
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.WriteFrame(frame); err != nil {
-			m.uvcFrameErrors.Add(1)
+			errCount := m.uvcFrameErrors.Add(1)
+			if errCount == 1 || errCount&127 == 0 {
+				if m.uvcLog != nil {
+					m.uvcLog.Warn().Uint32("total_errors", errCount).Err(err).Msg("Camera MJPEG WriteFrame failed")
+				}
+			}
 		}
 	}
 }

@@ -3,6 +3,7 @@ package camera
 import (
 	"bytes"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -23,10 +24,11 @@ type FrameInfo struct {
 }
 
 type H264ParamCache struct {
-	mu         sync.RWMutex
+	mu         sync.Mutex // Protects sps, pps, prependBuf writes
 	sps        []byte
 	pps        []byte
 	prependBuf []byte
+	hasParams  atomic.Bool // Lock-free hot path check for HasParameters()
 }
 
 func NewH264ParamCache() *H264ParamCache { return &H264ParamCache{} }
@@ -38,7 +40,6 @@ func (c *H264ParamCache) AnalyzeAndUpdate(frame []byte) FrameInfo {
 	}
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	scanNALUnits(frame, func(nalu []byte) {
 		if len(nalu) < 1 {
@@ -79,20 +80,24 @@ func (c *H264ParamCache) AnalyzeAndUpdate(frame []byte) FrameInfo {
 		}
 	})
 
+	// Update atomic flag for lock-free hot path check
+	c.hasParams.Store(len(c.sps) > 0 && len(c.pps) > 0)
+	c.mu.Unlock()
+
 	return info
 }
 
+// HasParameters returns true if both SPS and PPS are cached (lock-free hot path).
 func (c *H264ParamCache) HasParameters() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return len(c.sps) > 0 && len(c.pps) > 0
+	return c.hasParams.Load()
 }
 
 func (c *H264ParamCache) Clear() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.sps = nil
 	c.pps = nil
+	c.hasParams.Store(false)
+	c.mu.Unlock()
 }
 
 // PrependParametersWithInfo prepends SPS/PPS to IDR frames lacking them.

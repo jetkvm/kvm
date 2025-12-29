@@ -6,11 +6,15 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
 
-const maxFrameSizeBytes int32 = 1536 * 1024
+const (
+	maxFrameSizeBytes int32 = 1536 * 1024     // USB 2.0 bandwidth limit per frame
+	uvcBufferSize     int   = 2 * 1024 * 1024 // 2MB buffer per V4L2 buffer (handles 1080p MJPEG)
+)
 
 // V4L2 constants
 const (
@@ -175,7 +179,7 @@ type UVCStreamer struct {
 	commit           uvc_streaming_control
 	eventDataBuf     [64]byte
 	pendingCtrl      uint8
-	streaming        bool
+	streaming        atomic.Bool
 	streamReady      bool
 }
 
@@ -301,7 +305,7 @@ func (s *UVCStreamer) Close() error {
 		return nil
 	}
 
-	if s.streaming {
+	if s.streaming.Load() {
 		_ = s.stopStreamingLocked()
 	}
 
@@ -328,8 +332,7 @@ func (s *UVCStreamer) SetFormatWithCodec(width, height uint32, isMjpeg bool) err
 	s.width = width
 	s.height = height
 	// Compressed frames are typically much smaller than raw
-	// Use 2MB max buffer for 1080p (generous for high bitrate/quality)
-	s.bufferSize = 2 * 1024 * 1024
+	s.bufferSize = uvcBufferSize
 
 	pixelFormat := uint32(V4L2_PIX_FMT_H264)
 	if isMjpeg {
@@ -368,8 +371,6 @@ func (s *UVCStreamer) RequestBuffers(count uint32) error {
 		return fmt.Errorf("UVC device not open")
 	}
 
-	const bufferSize = 2 * 1024 * 1024
-
 	var req v4l2_requestbuffers
 	req.Count = count
 	req.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
@@ -385,7 +386,7 @@ func (s *UVCStreamer) RequestBuffers(count uint32) error {
 	s.curBufIdx = 0
 
 	for i := uint32(0); i < req.Count; i++ {
-		s.buffers[i] = make([]byte, bufferSize)
+		s.buffers[i] = make([]byte, uvcBufferSize)
 	}
 
 	s.log.Info().Int("count", int(req.Count)).Msg("UVC buffers allocated")
@@ -399,7 +400,7 @@ func (s *UVCStreamer) StartStreaming() error {
 	if s.fd < 0 {
 		return fmt.Errorf("UVC device not open")
 	}
-	if s.streaming {
+	if s.streaming.Load() {
 		s.log.Debug().Msg("UVC already streaming, skipping StartStreaming")
 		return nil
 	}
@@ -411,12 +412,12 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.frameCounter = 0
 	s.droppedFrames = 0
 	s.lastDropLogFrame = 0
-	s.streaming = true
+	s.streaming.Store(true)
 
 	bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMON, uintptr(unsafe.Pointer(&bufType)))
 	if errno != 0 {
-		s.streaming = false
+		s.streaming.Store(false)
 		return fmt.Errorf("VIDIOC_STREAMON failed: %v", errno)
 	}
 	s.streamReady = true
@@ -432,7 +433,7 @@ func (s *UVCStreamer) StopStreaming() error {
 }
 
 func (s *UVCStreamer) stopStreamingLocked() error {
-	if s.fd < 0 || !s.streaming {
+	if s.fd < 0 || !s.streaming.Load() {
 		return nil
 	}
 
@@ -444,7 +445,7 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 		}
 	}
 
-	s.streaming = false
+	s.streaming.Store(false)
 	s.streamReady = false
 	s.queuedBufs = 0
 	s.curBufIdx = 0
@@ -458,7 +459,7 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	s.mu.Lock()
 
 	// Fast path: check if streaming is active
-	if s.fd < 0 || !s.streaming || len(s.buffers) == 0 {
+	if s.fd < 0 || !s.streaming.Load() || len(s.buffers) == 0 {
 		s.mu.Unlock()
 		return nil
 	}
@@ -468,8 +469,8 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	// Check USB 2.0 bandwidth limit
 	if int32(dataLen) > maxFrameSizeBytes {
 		s.droppedFrames++
-		// Log periodically (first drop, then every 100 drops)
-		if s.droppedFrames == 1 || s.droppedFrames%100 == 0 {
+		// Log periodically (first drop, then every 128 drops - power of 2 for fast bitwise AND)
+		if s.droppedFrames == 1 || s.droppedFrames&127 == 0 {
 			s.log.Warn().
 				Int("frameSize", dataLen).
 				Int("maxSize", int(maxFrameSizeBytes)).
@@ -519,13 +520,11 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	s.frameCounter++
 
-	// Frame-counter-based timestamp (avoids time.Now() syscall overhead).
+	// HOTPATH: Synthetic timestamp using frame counter directly.
 	// UVC hosts use buffer arrival order for timing, not timestamp values.
-	// Assumes 30fps nominal - actual frame pacing controlled by source.
-	const usecPerFrame = 33333 // 1/30 second in microseconds
-	elapsedUsecTotal := int64(s.frameCounter) * usecPerFrame
-	elapsedSec := int32(elapsedUsecTotal / 1_000_000)
-	elapsedUsec := int32(elapsedUsecTotal % 1_000_000)
+	// We use frame counter as usec to avoid expensive division on 32-bit ARM.
+	// This gives monotonically increasing timestamps that wrap safely.
+	timestamp := s.frameCounter
 
 	// Prepare V4L2 buffer
 	var v4l2buf v4l2_buffer
@@ -536,7 +535,7 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	v4l2buf.BytesUsed = uint32(dataLen)
 	v4l2buf.Length = uint32(len(buf))
 	v4l2buf.M = uintptr(unsafe.Pointer(&buf[0]))
-	v4l2buf.Timestamp = v4l2_timeval{Sec: elapsedSec, Usec: elapsedUsec}
+	v4l2buf.Timestamp = v4l2_timeval{Sec: 0, Usec: int32(timestamp)}
 	v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
 
 	// Queue buffer to V4L2
@@ -810,10 +809,8 @@ func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 	return nil
 }
 
-// IsStreaming returns true if streaming is active.
-// Note: This is a lock-free read for hot-path performance. Use uvcStreamingFast
-// atomic flag in Manager for authoritative streaming state in frame handlers.
-func (s *UVCStreamer) IsStreaming() bool { return s.streaming }
+// IsStreaming returns true if streaming is active (thread-safe).
+func (s *UVCStreamer) IsStreaming() bool { return s.streaming.Load() }
 
 // IsOpen returns true if the device is open.
 // Note: Lock-free read - fd is only modified under mutex in Open/Close.

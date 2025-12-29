@@ -49,6 +49,13 @@ type Manager struct {
 	lastNotifiedFormat FormatInfo
 }
 
+// Codec constants for FormatInfo
+const (
+	CodecH264  = "h264"
+	CodecMJPEG = "mjpeg"
+	CodecStop  = "stop" // Signals streaming stopped
+)
+
 type FormatInfo struct {
 	Codec     string `json:"codec"`
 	Width     int    `json:"width"`
@@ -169,6 +176,7 @@ func (m *Manager) notifyFormatChange(info FormatInfo) {
 		select {
 		case ch <- info:
 		default:
+			// Channel full, format notification dropped (non-fatal, subscriber will get next one)
 		}
 	}
 }
@@ -181,8 +189,9 @@ func (m *Manager) notifyStreamingStopped() {
 
 	if ch != nil {
 		select {
-		case ch <- FormatInfo{Codec: "stop"}:
+		case ch <- FormatInfo{Codec: CodecStop}:
 		default:
+			// Channel full, stop notification dropped (non-fatal, streaming state is authoritative)
 		}
 	}
 }
@@ -198,9 +207,9 @@ func (m *Manager) getStreamingFormat() *FormatInfo {
 
 	width, height := streamer.GetCommittedResolution()
 	frameRate := streamer.GetCommittedFrameRate()
-	codec := "h264"
+	codec := CodecH264
 	if m.uvcMjpegSelected {
-		codec = "mjpeg"
+		codec = CodecMJPEG
 	}
 
 	return &FormatInfo{

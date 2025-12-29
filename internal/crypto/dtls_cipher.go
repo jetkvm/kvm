@@ -209,6 +209,16 @@ func (c *TLSEcdheEcdsaWithAes128GcmSha256Hardware) IsInitialized() bool {
 	return c.gcm.Load() != nil
 }
 
+// Deinit releases hardware crypto resources. Must be called when the DTLS
+// connection is closed to prevent leaking /dev/crypto sessions.
+func (c *TLSEcdheEcdsaWithAes128GcmSha256Hardware) Deinit() error {
+	gcm, ok := c.gcm.Swap(nil).(*HardwareGCM)
+	if !ok || gcm == nil {
+		return nil
+	}
+	return gcm.Close()
+}
+
 // Init initializes the internal Cipher with keying material.
 func (c *TLSEcdheEcdsaWithAes128GcmSha256Hardware) Init(masterSecret, clientRandom, serverRandom []byte, isClient bool) error {
 	const (

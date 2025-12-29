@@ -175,8 +175,8 @@ export class WebSocketCameraTransport implements CameraTransport {
                 default:
                   console.log("[CameraTransport] Unknown message type:", msg.type);
               }
-            } catch {
-              // Ignore non-JSON messages
+            } catch (e) {
+              console.debug("[CameraTransport] Non-JSON message received:", e);
             }
           }
         };
@@ -248,8 +248,9 @@ export class WebSocketCameraTransport implements CameraTransport {
       if (this._stats.framesSent % 30 === 0) {
         this.events.onStats?.(this.stats);
       }
-    } catch {
+    } catch (e) {
       this._stats.framesDropped++;
+      console.debug("[CameraTransport] Frame send error:", e);
     }
   }
 

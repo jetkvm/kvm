@@ -1,5 +1,4 @@
 #define _POSIX_C_SOURCE 200809L
-#include <unistd.h>
 #include <time.h>
 #include <rk_type.h>
 #include <rk_mpi_venc.h>
@@ -22,7 +21,6 @@
 #include <pthread.h>
 #include <assert.h>
 #include <sys/un.h>
-#include <sys/socket.h>
 #include "video.h"
 #include "ctrl.h"
 #include "log.h"
@@ -217,7 +215,6 @@ static void *mjpeg_venc_read_stream(void *arg)
 {
     (void)arg;
     void *pData = RK_NULL;
-    int loopCount = 0;
     int s32Ret;
 
     VENC_STREAM_S stFrame;
@@ -238,7 +235,6 @@ static void *mjpeg_venc_read_stream(void *arg)
             {
                 log_error("MJPEG RK_MPI_VENC_ReleaseStream fail %x", s32Ret);
             }
-            loopCount++;
         }
         else
         {
@@ -432,35 +428,6 @@ int video_init(float factor)
     pthread_create(format_thread, NULL, run_detect_format, NULL);
     return RK_SUCCESS;
 }
-
-// static int32_t venc_set_param(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height)
-// {
-
-//     VENC_CHN_ATTR_S stAttr;
-//     populate_venc_attr(&stAttr, bitrate, max_bitrate, width, height);
-//     VENC_CHN_PARAM_S stParam;
-//     memset(&stParam, 0, sizeof(VENC_CHN_PARAM_S));
-
-//     RK_MPI_VENC_StopRecvFrame(VENC_CHANNEL);
-
-//     int32_t ret = RK_MPI_VENC_SetChnParam(VENC_CHANNEL, &stAttr);
-//     if (ret < 0)
-//     {
-//         RK_LOGE("error RK_MPI_VENC_SetChnParam, %d", ret);
-//         return ret;
-//     }
-//     VENC_RECV_PIC_PARAM_S stRecvParam;
-//     memset(&stRecvParam, 0, sizeof(VENC_RECV_PIC_PARAM_S));
-//     stRecvParam.s32RecvPicNum = -1;
-//     ret = RK_MPI_VENC_StartRecvFrame(VENC_CHANNEL, &stRecvParam);
-//     if (ret < 0)
-//     {
-//         RK_LOGE("error RK_MPI_VENC_StartRecvFrame, %d", ret);
-//         return ret;
-//     }
-
-//     return RK_SUCCESS;
-// }
 
 /**
  * @brief Continuously reads encoded video streams and sends them over unix socket.

@@ -48,37 +48,41 @@ const (
 	UVCFormatTypeH264
 )
 
+// IsValid returns true if the format type is a known valid type.
+func (t UVCFormatType) IsValid() bool {
+	return t == UVCFormatTypeMJPEG || t == UVCFormatTypeH264
+}
+
+// String returns the string representation of the format type.
+func (t UVCFormatType) String() string {
+	switch t {
+	case UVCFormatTypeMJPEG:
+		return "MJPEG"
+	case UVCFormatTypeH264:
+		return "H.264"
+	default:
+		return "unknown"
+	}
+}
+
 // UVCFormatConfig includes format type along with resolution
 type UVCFormatConfig struct {
 	Format UVCFormat
 	Type   UVCFormatType
 }
 
+// Standard UVC format configurations used by GetAllUVCFormats.
+// Frame interval in 100ns units: 10,000,000 / fps (e.g., 333333 = 30fps)
 var (
-	// MJPEG formats (universal compatibility fallback)
-	// Frame interval in 100ns units: 10,000,000 / fps
+	// MJPEG formats (universal compatibility, format index 1)
 	UVCFormatMJPEG_1080p30 = UVCFormatConfig{UVCFormat{1920, 1080, 333333}, UVCFormatTypeMJPEG}
-	UVCFormatMJPEG_1080p24 = UVCFormatConfig{UVCFormat{1920, 1080, 416666}, UVCFormatTypeMJPEG}
-	UVCFormatMJPEG_1080p15 = UVCFormatConfig{UVCFormat{1920, 1080, 666666}, UVCFormatTypeMJPEG}
 	UVCFormatMJPEG_720p30  = UVCFormatConfig{UVCFormat{1280, 720, 333333}, UVCFormatTypeMJPEG}
-	UVCFormatMJPEG_720p24  = UVCFormatConfig{UVCFormat{1280, 720, 416666}, UVCFormatTypeMJPEG}
-	UVCFormatMJPEG_720p15  = UVCFormatConfig{UVCFormat{1280, 720, 666666}, UVCFormatTypeMJPEG}
 	UVCFormatMJPEG_480p30  = UVCFormatConfig{UVCFormat{640, 480, 333333}, UVCFormatTypeMJPEG}
-	UVCFormatMJPEG_480p24  = UVCFormatConfig{UVCFormat{640, 480, 416666}, UVCFormatTypeMJPEG}
-	UVCFormatMJPEG_480p15  = UVCFormatConfig{UVCFormat{640, 480, 666666}, UVCFormatTypeMJPEG}
 
-	// H.264 formats (uses framebased format for direct passthrough)
-	UVCFormatH264_1080p60 = UVCFormatConfig{UVCFormat{1920, 1080, 166666}, UVCFormatTypeH264}
+	// H.264 formats (framebased format for direct passthrough, format index 2)
 	UVCFormatH264_1080p30 = UVCFormatConfig{UVCFormat{1920, 1080, 333333}, UVCFormatTypeH264}
-	UVCFormatH264_1080p24 = UVCFormatConfig{UVCFormat{1920, 1080, 416666}, UVCFormatTypeH264}
-	UVCFormatH264_1080p15 = UVCFormatConfig{UVCFormat{1920, 1080, 666666}, UVCFormatTypeH264}
-	UVCFormatH264_720p60  = UVCFormatConfig{UVCFormat{1280, 720, 166666}, UVCFormatTypeH264}
 	UVCFormatH264_720p30  = UVCFormatConfig{UVCFormat{1280, 720, 333333}, UVCFormatTypeH264}
-	UVCFormatH264_720p24  = UVCFormatConfig{UVCFormat{1280, 720, 416666}, UVCFormatTypeH264}
-	UVCFormatH264_720p15  = UVCFormatConfig{UVCFormat{1280, 720, 666666}, UVCFormatTypeH264}
 	UVCFormatH264_480p30  = UVCFormatConfig{UVCFormat{640, 480, 333333}, UVCFormatTypeH264}
-	UVCFormatH264_480p24  = UVCFormatConfig{UVCFormat{640, 480, 416666}, UVCFormatTypeH264}
-	UVCFormatH264_480p15  = UVCFormatConfig{UVCFormat{640, 480, 666666}, UVCFormatTypeH264}
 )
 
 // GetAllUVCFormats returns supported UVC formats.

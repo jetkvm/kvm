@@ -98,7 +98,8 @@ export async function isH264Supported(): Promise<boolean> {
       framerate: 60,
     });
     return support.supported === true;
-  } catch {
+  } catch (e) {
+    console.debug("[CameraEncoder] H.264 support check failed:", e);
     return false;
   }
 }
@@ -459,8 +460,8 @@ export class CameraEncoder {
   private cleanup(): void {
     // Stop H.264 encoder
     if (this.frameReader) {
-      this.frameReader.cancel().catch(() => {
-        // Ignore cancel errors during cleanup
+      this.frameReader.cancel().catch(e => {
+        console.debug("[CameraEncoder] Frame reader cancel error (cleanup):", e);
       });
       this.frameReader = null;
     }
@@ -468,8 +469,8 @@ export class CameraEncoder {
     if (this.h264Encoder && this.h264Encoder.state !== "closed") {
       try {
         this.h264Encoder.close();
-      } catch {
-        // Ignore close errors
+      } catch (e) {
+        console.debug("[CameraEncoder] Encoder close error (cleanup):", e);
       }
       this.h264Encoder = null;
     }
@@ -589,8 +590,8 @@ export class CameraEncoder {
               }
             }
             // else: skip this frame (frame rate throttling)
-          } catch {
-            // Ignore transient encode errors
+          } catch (e) {
+            console.debug("[CameraEncoder] Transient encode error:", e);
           } finally {
             // Always close the frame to prevent memory leaks
             frame.close();
@@ -770,7 +771,8 @@ export class CameraEncoder {
         [bitmap], // Transfer ownership - bitmap is now neutered on this side
       );
       bitmap = null; // Ownership transferred, don't close on this side
-    } catch {
+    } catch (e) {
+      console.debug("[CameraEncoder] Frame capture/transfer error:", e);
       // Close bitmap if transfer failed (prevents memory leak)
       if (bitmap) {
         bitmap.close();
