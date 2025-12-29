@@ -98,9 +98,9 @@ func startAudio() error {
 
 	var outputErr, inputErr error
 
-	// Start output audio if enabled and track is available
+	// Start output audio if enabled and track is available (always uses HDMI)
 	if audioOutputEnabled.Load() && currentAudioTrack != nil {
-		outputErr = startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource))
+		outputErr = startOutputAudioUnderMutex(getAlsaDevice("hdmi"))
 	}
 
 	// Start input audio if enabled and USB audio device is configured
@@ -238,7 +238,7 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	currentAudioTrack = audioTrack
 
 	if audioInitialized && activeConnections.Load() > 0 && audioOutputEnabled.Load() && currentAudioTrack != nil {
-		if err := startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource)); err != nil {
+		if err := startOutputAudioUnderMutex(getAlsaDevice("hdmi")); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start output audio after track change")
 		}
 	}
@@ -314,48 +314,6 @@ func SetAudioInputEnabled(enabled bool) error {
 	}
 	stopInputAudio()
 	return nil
-}
-
-// SetAudioOutputSource switches between HDMI and USB audio capture.
-// Config is saved synchronously, audio restarts asynchronously.
-func SetAudioOutputSource(source string) error {
-	if source != "hdmi" && source != "usb" {
-		return fmt.Errorf("invalid audio source: %s (must be 'hdmi' or 'usb')", source)
-	}
-
-	ensureConfigLoaded()
-	if config.AudioOutputSource == source {
-		return nil
-	}
-
-	config.AudioOutputSource = source
-
-	// Save config synchronously before starting async audio operations
-	if err := SaveConfig(); err != nil {
-		audioLogger.Error().Err(err).Msg("Failed to save config after audio source change")
-		return err
-	}
-
-	// Stop audio immediately (synchronous to release hardware)
-	stopOutputAudio()
-
-	// Restart audio with timeout
-	done := make(chan error, 1)
-	go func() {
-		done <- startAudio()
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio after source change")
-			return fmt.Errorf("failed to start audio after source change: %w", err)
-		}
-		return nil
-	case <-time.After(5 * time.Second):
-		audioLogger.Error().Str("source", source).Msg("Audio restart timed out after source change")
-		return fmt.Errorf("audio restart timed out after 5 seconds")
-	}
 }
 
 // RestartAudioOutput stops and restarts the audio output capture.
