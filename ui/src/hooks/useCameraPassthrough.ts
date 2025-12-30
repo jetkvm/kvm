@@ -205,17 +205,23 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
 
             // Start/resume encoder when USB host requests video
             const enc = encoderRef.current;
-            if (enc && enc.state === "idle") {
-              console.log("[CameraPassthrough] Starting encoder (USB host requested video)");
-              await enc.start();
-              updateState({ encoderState: enc.state });
-            } else if (enc && enc.state === "paused") {
-              console.log("[CameraPassthrough] Resuming encoder");
-              await enc.resume();
-              updateState({ encoderState: enc.state });
-            } else if (enc && enc.state === "running") {
-              console.log("[CameraPassthrough] Format request while running - forcing keyframe");
-              enc.forceKeyFrame();
+            if (enc) {
+              const state = enc.state;
+              console.log("[CameraPassthrough] Encoder state before action:", state);
+
+              if (state === "idle" || state === "stopped" || state === "error") {
+                // Start fresh for idle, stopped, or error states
+                console.log("[CameraPassthrough] Starting encoder (USB host requested video)");
+                await enc.start();
+                updateState({ encoderState: enc.state });
+              } else if (state === "paused") {
+                console.log("[CameraPassthrough] Resuming encoder");
+                await enc.resume();
+                updateState({ encoderState: enc.state });
+              } else if (state === "running") {
+                console.log("[CameraPassthrough] Format request while running - forcing keyframe");
+                enc.forceKeyFrame();
+              }
             }
           },
           onStreamingStopped: () => {

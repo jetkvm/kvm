@@ -141,6 +141,8 @@ export class CameraEncoder {
   private frameCount = 0;
   private keyFrameCounter = 0;
   private framesPerKeyFrame: number;
+  private spsNalu: Uint8Array | null = null; // Cached SPS NAL unit (with start code)
+  private ppsNalu: Uint8Array | null = null; // Cached PPS NAL unit (with start code)
 
   // MJPEG encoding (WebWorker)
   private mjpegWorker: Worker | null = null;
@@ -508,6 +510,8 @@ export class CameraEncoder {
     this.videoTrack = null;
     this.frameCount = 0;
     this.keyFrameCounter = 0;
+    this.spsNalu = null;
+    this.ppsNalu = null;
   }
 
   // ==================== H.264 Encoding (WebCodecs) ====================
@@ -605,26 +609,157 @@ export class CameraEncoder {
     }
   }
 
-  private handleH264Chunk(chunk: EncodedVideoChunk, _metadata?: EncodedVideoChunkMetadata): void {
-    // Skip frames that are too small - likely incomplete from encoder warm-up
-    // A valid 1080p H.264 IDR frame should be at least 5KB
-    // P-frames can be very small (100-200 bytes) for static scenes - don't filter them
-    const minKeyFrameSize = 5000;
-
-    if (chunk.type === "key" && chunk.byteLength < minKeyFrameSize) {
-      console.log(
-        `[CameraEncoder] Skipping small key frame: ${chunk.byteLength} bytes (min: ${minKeyFrameSize})`,
-      );
+  /**
+   * Extract SPS/PPS NAL units from AVCC decoder configuration record.
+   * AVCC format: version(1) + profile(1) + compat(1) + level(1) + lengthSize(1)
+   *              + numSPS(1) + [spsLen(2) + spsData]... + numPPS(1) + [ppsLen(2) + ppsData]...
+   */
+  private extractParameterSets(description: ArrayBuffer): void {
+    const data = new Uint8Array(description);
+    if (data.length < 7) {
+      console.warn("[CameraEncoder] AVCC description too short:", data.length);
       return;
     }
 
-    const data = new ArrayBuffer(chunk.byteLength);
-    chunk.copyTo(data);
+    let offset = 5; // Skip version, profile, compat, level, lengthSize
+
+    // Extract SPS
+    const numSps = data[offset] & 0x1f;
+    offset++;
+    if (numSps > 0 && offset + 2 <= data.length) {
+      const spsLen = (data[offset] << 8) | data[offset + 1];
+      offset += 2;
+      if (offset + spsLen <= data.length) {
+        // Create SPS with 4-byte Annex B start code
+        this.spsNalu = new Uint8Array(4 + spsLen);
+        this.spsNalu.set([0x00, 0x00, 0x00, 0x01], 0);
+        this.spsNalu.set(data.subarray(offset, offset + spsLen), 4);
+        offset += spsLen;
+        console.log("[CameraEncoder] Extracted SPS:", spsLen, "bytes");
+      }
+    }
+
+    // Skip any additional SPS entries
+    for (let i = 1; i < numSps && offset + 2 <= data.length; i++) {
+      const len = (data[offset] << 8) | data[offset + 1];
+      offset += 2 + len;
+    }
+
+    // Extract PPS
+    if (offset < data.length) {
+      const numPps = data[offset] & 0x1f;
+      offset++;
+      if (numPps > 0 && offset + 2 <= data.length) {
+        const ppsLen = (data[offset] << 8) | data[offset + 1];
+        offset += 2;
+        if (offset + ppsLen <= data.length) {
+          // Create PPS with 4-byte Annex B start code
+          this.ppsNalu = new Uint8Array(4 + ppsLen);
+          this.ppsNalu.set([0x00, 0x00, 0x00, 0x01], 0);
+          this.ppsNalu.set(data.subarray(offset, offset + ppsLen), 4);
+          console.log("[CameraEncoder] Extracted PPS:", ppsLen, "bytes");
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if H.264 Annex B data contains SPS NAL unit (type 7)
+   */
+   private hasSpsInStream(data: Uint8Array): boolean {
+    // Look for start code followed by NAL type 7 (SPS)
+    for (let i = 0; i < data.length - 4; i++) {
+      // Check for 4-byte start code
+      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
+        const nalType = data[i + 4] & 0x1f;
+        if (nalType === 7) return true;
+      }
+      // Check for 3-byte start code
+      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) {
+        const nalType = data[i + 3] & 0x1f;
+        if (nalType === 7) return true;
+      }
+    }
+    return false;
+  }
+
+  private handleH264Chunk(chunk: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata): void {
+    // Log metadata on first frame to understand what WebCodecs provides
+    if (this.frameCount === 0 && metadata) {
+      console.log("[CameraEncoder] First frame metadata:", {
+        hasDecoderConfig: !!metadata.decoderConfig,
+        hasDescription: !!metadata.decoderConfig?.description,
+        descriptionSize: metadata.decoderConfig?.description
+          ? (metadata.decoderConfig.description as ArrayBuffer).byteLength
+          : 0,
+      });
+    }
+
+    // Extract SPS/PPS from decoder config when provided (typically on first keyframe)
+    if (metadata?.decoderConfig?.description) {
+      this.extractParameterSets(metadata.decoderConfig.description as ArrayBuffer);
+    }
+
+    const isKeyFrame = chunk.type === "key";
+    const chunkData = new Uint8Array(chunk.byteLength);
+    chunk.copyTo(chunkData);
+
+    let data: ArrayBuffer;
+
+    // For keyframes, ensure SPS/PPS are present
+    if (isKeyFrame) {
+      const hasInlineSps = this.hasSpsInStream(chunkData);
+
+      if (hasInlineSps) {
+        // SPS/PPS already inline in Annex B stream - use as-is
+        data = chunkData.buffer;
+        if (this.frameCount < 3) {
+          console.log(`[CameraEncoder] Keyframe with inline SPS/PPS: ${chunkData.length} bytes`);
+        }
+      } else if (this.spsNalu && this.ppsNalu) {
+        // Prepend cached SPS + PPS
+        const totalLen = this.spsNalu.length + this.ppsNalu.length + chunkData.length;
+        const combined = new Uint8Array(totalLen);
+        combined.set(this.spsNalu, 0);
+        combined.set(this.ppsNalu, this.spsNalu.length);
+        combined.set(chunkData, this.spsNalu.length + this.ppsNalu.length);
+        data = combined.buffer;
+        if (this.frameCount < 3) {
+          console.log(
+            `[CameraEncoder] Keyframe with prepended SPS/PPS: ${this.spsNalu.length} + ${this.ppsNalu.length} + ${chunkData.length} = ${totalLen} bytes`,
+          );
+        }
+      } else {
+        // No SPS/PPS available - send anyway and log warning
+        data = chunkData.buffer;
+        if (this.frameCount < 5) {
+          console.warn(
+            `[CameraEncoder] Keyframe without SPS/PPS: ${chunkData.length} bytes - decoder may fail`,
+          );
+        }
+      }
+    } else {
+      // P-frame - use as-is
+      data = chunkData.buffer;
+    }
+
+    this.frameCount++;
+    this.statsFrameCount++;
+    this.lastFrameSize = data.byteLength;
+
+    // Report stats every second
+    const now = performance.now();
+    if (now - this.lastStatsTime >= 1000) {
+      const fps = (this.statsFrameCount / (now - this.lastStatsTime)) * 1000;
+      this.events.onStats?.({ fps, avgEncodeMs: 0, frameSize: this.lastFrameSize });
+      this.lastStatsTime = now;
+      this.statsFrameCount = 0;
+    }
 
     const encodedFrame: EncodedFrame = {
       data,
       timestamp: chunk.timestamp,
-      isKeyFrame: chunk.type === "key",
+      isKeyFrame,
       codec: "h264",
     };
 
