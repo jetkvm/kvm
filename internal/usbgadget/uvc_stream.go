@@ -210,9 +210,8 @@ type LogEvent interface {
 }
 
 // frameResolutions maps UVC frame index to resolution.
-// Frame indices are 1-based and match the order defined in ConfigFS:
-// MJPEG frames: 1080p=1, 720p_1=2, 480p_2=3
-// H.264 frames: 1080p=1, 720p_1=2, 480p_2=3 (same indices within format)
+// Frame indices are 1-based and correspond to the order frames are created in ConfigFS.
+// Standard ordering: 1=1080p, 2=720p, 3=480p (applies independently per format type).
 var frameResolutions = map[uint8][2]uint32{
 	1: {1920, 1080}, // 1080p
 	2: {1280, 720},  // 720p

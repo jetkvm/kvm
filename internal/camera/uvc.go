@@ -13,8 +13,8 @@ import (
 const uvcBufferCount = 3
 
 // errorLogInterval is a bitmask for throttling frame error logs.
-// With value 127 (0x7F), logs are emitted when errCount&127 == 0,
-// i.e., at counts 128, 256, 384... (every 128 errors after the first).
+// Logs are emitted at error counts 1 (first error), then 128, 256, 384...
+// (every 128 errors thereafter via errCount&127 == 0).
 const errorLogInterval = 127
 
 // codecName returns the display name for a codec.
@@ -82,12 +82,14 @@ func (e *zerologEventAdapter) Msg(msg string) {
 // InitUVC initializes the UVC streaming subsystem if enabled.
 // It opens the UVC device, sets up event subscription, and starts
 // the event loop goroutine. Safe to call multiple times.
-func (m *Manager) InitUVC(uvcEnabled bool) {
+// Returns nil if UVC is disabled or initialization succeeds.
+// Returns an error if the UVC device cannot be found.
+func (m *Manager) InitUVC(uvcEnabled bool) error {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
 	if !uvcEnabled {
-		return
+		return nil
 	}
 
 	devicePath, err := m.gadget.GetUVCVideoDevice()
@@ -95,7 +97,7 @@ func (m *Manager) InitUVC(uvcEnabled bool) {
 		if m.uvcLog != nil {
 			m.uvcLog.Warn().Err(err).Msg("UVC device not found")
 		}
-		return
+		return err
 	}
 
 	if m.uvcLog != nil {
@@ -106,6 +108,7 @@ func (m *Manager) InitUVC(uvcEnabled bool) {
 	m.stopChan = make(chan struct{})
 	m.eventLoopRun.Store(true)
 	go m.eventLoop()
+	return nil
 }
 
 // StopUVC stops UVC streaming and releases all resources.

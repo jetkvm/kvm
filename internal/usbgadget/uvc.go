@@ -118,8 +118,8 @@ func (u *UsbGadget) SetupUVCFunction(formats []UVCFormatConfig) error {
 	}
 
 	if len(formats) == 0 {
-		// H.264 first (preferred), MJPEG fallback (for compatibility)
-		// macOS doesn't support UVC H.264 Frame-based format
+		// Default formats when none specified. Note: regardless of array order here,
+		// MJPEG is always set up first in ConfigFS (format index 1) for host compatibility.
 		formats = []UVCFormatConfig{UVCFormatH264_1080p30, UVCFormatMJPEG_1080p30}
 	}
 

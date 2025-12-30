@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"errors"
 	"os"
+	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -118,12 +119,20 @@ func newHardwareAESGCM(key []byte) (AEAD, error) {
 		return nil, err
 	}
 
-	return &hardwareAESGCM{
+	aead := &hardwareAESGCM{
 		fd:        fd,
 		sessionOp: sess,
 		nonceSize: 12,
 		tagSize:   16,
-	}, nil
+	}
+
+	// Set finalizer to release /dev/crypto session if Close() is not called.
+	// This prevents session leaks when DTLS connections are garbage collected.
+	runtime.SetFinalizer(aead, func(a *hardwareAESGCM) {
+		_ = a.Close()
+	})
+
+	return aead, nil
 }
 
 func (g *hardwareAESGCM) NonceSize() int {
@@ -139,6 +148,8 @@ func (g *hardwareAESGCM) Close() error {
 	defer g.mu.Unlock()
 
 	if g.sessionOp != nil {
+		// Clear finalizer since we're explicitly closing
+		runtime.SetFinalizer(g, nil)
 		err := ioctl(g.fd, ciocfsession, unsafe.Pointer(g.sessionOp))
 		g.sessionOp = nil
 		return err
@@ -189,6 +200,13 @@ func (g *hardwareAESGCM) Seal(dst, nonce, plaintext, additionalData []byte) []by
 	}
 
 	err := ioctl(g.fd, ciocauthcrypt, unsafe.Pointer(authOp))
+
+	// Keep slices alive until after ioctl completes to prevent GC from
+	// moving the backing arrays during the syscall
+	runtime.KeepAlive(additionalData)
+	runtime.KeepAlive(plaintext)
+	runtime.KeepAlive(nonceCopy)
+
 	if err != nil {
 		panic("crypto: hardware encryption failed: " + err.Error())
 	}
@@ -242,6 +260,14 @@ func (g *hardwareAESGCM) Open(dst, nonce, ciphertext, additionalData []byte) ([]
 	}
 
 	err := ioctl(g.fd, ciocauthcrypt, unsafe.Pointer(authOp))
+
+	// Keep slices alive until after ioctl completes to prevent GC from
+	// moving the backing arrays during the syscall
+	runtime.KeepAlive(additionalData)
+	runtime.KeepAlive(actualCiphertext)
+	runtime.KeepAlive(nonceCopy)
+	runtime.KeepAlive(tagCopy)
+
 	if err != nil {
 		return nil, errors.New("crypto: authentication failed")
 	}

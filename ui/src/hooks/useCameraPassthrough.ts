@@ -156,6 +156,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
                   updateState({ currentCodec: format.codec });
                 } catch (err) {
                   handleError(err instanceof Error ? err : new Error(String(err)));
+                  return; // Don't continue with resolution change if codec switch failed
                 }
               }
 

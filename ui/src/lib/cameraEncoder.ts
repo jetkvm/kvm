@@ -201,28 +201,46 @@ export class CameraEncoder {
 
   /**
    * Update the target frame rate.
+   * @returns true if the value was accepted, false if invalid or unchanged
    */
-  setFrameRate(fps: number): void {
-    if (fps < 1 || fps > 120 || this.config.frameRate === fps) return;
+  setFrameRate(fps: number): boolean {
+    if (fps < 1 || fps > 120) {
+      console.warn(`[CameraEncoder] setFrameRate: invalid fps ${fps} (must be 1-120)`);
+      return false;
+    }
+    if (this.config.frameRate === fps) return true; // Already set
 
     this.config.frameRate = fps;
     this.minFrameIntervalMs = (1000 / fps) * 0.9;
     this.framesPerKeyFrame = Math.round(fps * this.config.keyFrameInterval);
+    return true;
   }
 
   /**
    * Update the H.264 bitrate (takes effect on encoder restart).
+   * @returns true if the value was accepted, false if invalid or unchanged
    */
-  setBitrate(bitrate: number): void {
-    if (bitrate < 100_000 || bitrate > 50_000_000 || this.config.bitrate === bitrate) return;
+  setBitrate(bitrate: number): boolean {
+    if (bitrate < 100_000 || bitrate > 50_000_000) {
+      console.warn(`[CameraEncoder] setBitrate: invalid bitrate ${bitrate} (must be 100k-50M)`);
+      return false;
+    }
+    if (this.config.bitrate === bitrate) return true; // Already set
+
     this.config.bitrate = bitrate;
+    return true;
   }
 
   /**
    * Update the MJPEG quality (takes effect immediately).
+   * @returns true if the value was accepted, false if invalid or unchanged
    */
-  setQuality(quality: number): void {
-    if (quality < 0.0 || quality > 1.0 || this.config.quality === quality) return;
+  setQuality(quality: number): boolean {
+    if (quality < 0.0 || quality > 1.0) {
+      console.warn(`[CameraEncoder] setQuality: invalid quality ${quality} (must be 0.0-1.0)`);
+      return false;
+    }
+    if (this.config.quality === quality) return true; // Already set
 
     this.config.quality = quality;
 
@@ -230,14 +248,21 @@ export class CameraEncoder {
     if (this.codec === "mjpeg" && this.mjpegWorker) {
       this.mjpegWorker.postMessage({ type: "setQuality", quality });
     }
+    return true;
   }
 
   /**
    * Update the capture resolution (requires encoder restart).
+   * @returns true if the value was accepted, false if invalid or unchanged
    */
-  async setResolution(width: number, height: number): Promise<void> {
-    if (width < 320 || width > 3840 || height < 240 || height > 2160) return;
-    if (this.config.width === width && this.config.height === height) return;
+  async setResolution(width: number, height: number): Promise<boolean> {
+    if (width < 320 || width > 3840 || height < 240 || height > 2160) {
+      console.warn(
+        `[CameraEncoder] setResolution: invalid ${width}x${height} (must be 320-3840 x 240-2160)`,
+      );
+      return false;
+    }
+    if (this.config.width === width && this.config.height === height) return true; // Already set
 
     this.config.width = width;
     this.config.height = height;
@@ -247,6 +272,7 @@ export class CameraEncoder {
       this.stop();
       await this.start();
     }
+    return true;
   }
 
   /**
@@ -389,8 +415,8 @@ export class CameraEncoder {
 
   private cleanup(): void {
     if (this.frameReader) {
-      this.frameReader.cancel().catch(() => {
-        /* ignore */
+      this.frameReader.cancel().catch((err: unknown) => {
+        console.debug("[CameraEncoder] frameReader.cancel failed:", err);
       });
       this.frameReader = null;
     }
@@ -398,8 +424,8 @@ export class CameraEncoder {
     if (this.h264Encoder && this.h264Encoder.state !== "closed") {
       try {
         this.h264Encoder.close();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.debug("[CameraEncoder] h264Encoder.close failed:", err);
       }
       this.h264Encoder = null;
     }
@@ -498,8 +524,8 @@ export class CameraEncoder {
                 this.keyFrameCounter++;
               }
             }
-          } catch {
-            /* ignore transient errors */
+          } catch (err) {
+            console.debug("[CameraEncoder] frame encode error:", err);
           } finally {
             frame.close();
           }
@@ -687,8 +713,8 @@ export class CameraEncoder {
         .then(() => {
           if (this._state === "running") this.captureWithVideoFrameCallback();
         })
-        .catch(() => {
-          /* ignore */
+        .catch((err: unknown) => {
+          console.debug("[CameraEncoder] video.play failed:", err);
         });
       return;
     }
@@ -713,7 +739,8 @@ export class CameraEncoder {
         [bitmap],
       );
       bitmap = null;
-    } catch {
+    } catch (err) {
+      console.debug("[CameraEncoder] createImageBitmap failed:", err);
       bitmap?.close();
     }
   }
