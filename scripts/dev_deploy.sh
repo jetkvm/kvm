@@ -105,6 +105,11 @@ while [[ $# -gt 0 ]]; do
             RESET_USB_HID_DEVICE=true
             shift
             ;;
+        --enable-sync-trace)
+            ENABLE_SYNC_TRACE=1
+            LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES},synctrace"
+            shift
+            ;;
         --disable-docker)
             BUILD_IN_DOCKER=false
             shift
@@ -141,6 +146,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [ "$ENABLE_SYNC_TRACE" = 1 ]; then
+    if [[ ! "$LOG_TRACE_SCOPES" =~ synctrace ]]; then
+        LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES},synctrace"
+    fi
+fi
 
 source ${SCRIPT_PATH}/build_utils.sh
 
