@@ -71,9 +71,6 @@ export class WebSocketCameraTransport implements CameraTransport {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
 
-  // Reusable send buffer to minimize GC pressure (resized as needed)
-  private sendBuffer: Uint8Array = new Uint8Array(2 * 1024 * 1024); // 2MB initial (handles large MJPEG frames)
-
   constructor(url: string) {
     this.url = url;
   }
@@ -179,56 +176,28 @@ export class WebSocketCameraTransport implements CameraTransport {
     });
   }
 
-  // Codec byte constants matching Go server
-  private static readonly CODEC_H264 = 0x01;
-  private static readonly CODEC_MJPEG = 0x02;
-
-  sendFrame(frame: ArrayBuffer, _timestamp: number, codec: VideoCodec): void {
-    if (this._state !== "connected" || !this.ws) {
+  // Frames arrive pre-framed with codec byte from encoder - zero-copy send
+  sendFrame(frame: ArrayBuffer, _timestamp: number, _codec: VideoCodec): void {
+    if (this._state !== "connected" || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this._stats.framesDropped++;
       return;
     }
 
-    if (this.ws.readyState !== WebSocket.OPEN) {
-      this._stats.framesDropped++;
-      return;
-    }
-
-    // Check if buffer is getting too full (backpressure)
-    // Drop frames early to prevent buffer from growing too large
-    // 4MB threshold allows several MJPEG frames at high quality for transient network hiccups
+    // Backpressure: drop frames if buffer is too full (4MB threshold)
     if (this.ws.bufferedAmount > 4 * 1024 * 1024) {
-      // 4MB buffer threshold
       this._stats.framesDropped++;
-      // Only log every 30 dropped frames to avoid console spam
       if (this._stats.framesDropped % 30 === 1) {
-        console.warn(
-          `[CameraTransport] Buffer backpressure, dropped ${this._stats.framesDropped} frames`,
-        );
+        console.warn(`[CameraTransport] Backpressure, dropped ${this._stats.framesDropped} frames`);
       }
       return;
     }
 
-    // HOTPATH: Minimize allocations
-    const totalSize = 1 + frame.byteLength;
-
-    // Resize buffer if needed (rare, only for large frames)
-    if (this.sendBuffer.length < totalSize) {
-      this.sendBuffer = new Uint8Array(Math.ceil(totalSize / 65536) * 65536);
-    }
-
-    // Write header and copy frame data
-    this.sendBuffer[0] =
-      codec === "h264" ? WebSocketCameraTransport.CODEC_H264 : WebSocketCameraTransport.CODEC_MJPEG;
-    this.sendBuffer.set(new Uint8Array(frame), 1);
-
-    // Send only the portion we need (subarray doesn't allocate)
-    this.ws.send(this.sendBuffer.subarray(0, totalSize));
+    // Zero-copy: frame already has codec byte prefix from encoder
+    this.ws.send(frame);
 
     this._stats.framesSent++;
-    this._stats.bytesSent += totalSize;
+    this._stats.bytesSent += frame.byteLength;
 
-    // Periodically report stats
     if (this._stats.framesSent % 30 === 0) {
       this.events.onStats?.(this._stats);
     }

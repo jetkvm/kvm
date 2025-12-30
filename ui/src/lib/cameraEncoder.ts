@@ -567,8 +567,9 @@ export class CameraEncoder {
     return false;
   }
 
+  private static readonly CODEC_H264 = 0x01;
+
   private handleH264Chunk(chunk: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata): void {
-    // Extract SPS/PPS from decoder config when provided (typically on first keyframe)
     if (metadata?.decoderConfig?.description) {
       this.extractParameterSets(metadata.decoderConfig.description as ArrayBuffer);
     }
@@ -577,33 +578,28 @@ export class CameraEncoder {
     const chunkData = new Uint8Array(chunk.byteLength);
     chunk.copyTo(chunkData);
 
-    let data: ArrayBuffer;
+    let framed: Uint8Array;
 
-    // For keyframes, ensure SPS/PPS are present
-    if (isKeyFrame) {
-      if (this.hasSpsInStream(chunkData)) {
-        // SPS/PPS already inline - use as-is
-        data = chunkData.buffer;
-      } else if (this.spsNalu && this.ppsNalu) {
-        // Prepend cached SPS + PPS
-        const totalLen = this.spsNalu.length + this.ppsNalu.length + chunkData.length;
-        const combined = new Uint8Array(totalLen);
-        combined.set(this.spsNalu, 0);
-        combined.set(this.ppsNalu, this.spsNalu.length);
-        combined.set(chunkData, this.spsNalu.length + this.ppsNalu.length);
-        data = combined.buffer;
-      } else {
-        // No SPS/PPS available - send anyway (decoder may fail)
-        data = chunkData.buffer;
-      }
+    // Build frame with codec byte prefix for zero-copy transport
+    if (isKeyFrame && !this.hasSpsInStream(chunkData) && this.spsNalu && this.ppsNalu) {
+      // Keyframe needs SPS/PPS prepended: [codec][SPS][PPS][chunk]
+      const totalLen = 1 + this.spsNalu.length + this.ppsNalu.length + chunkData.length;
+      framed = new Uint8Array(totalLen);
+      framed[0] = CameraEncoder.CODEC_H264;
+      framed.set(this.spsNalu, 1);
+      framed.set(this.ppsNalu, 1 + this.spsNalu.length);
+      framed.set(chunkData, 1 + this.spsNalu.length + this.ppsNalu.length);
     } else {
-      data = chunkData.buffer;
+      // Regular frame or keyframe with inline SPS/PPS: [codec][chunk]
+      framed = new Uint8Array(1 + chunkData.length);
+      framed[0] = CameraEncoder.CODEC_H264;
+      framed.set(chunkData, 1);
     }
 
-    this.updateStats(data.byteLength);
+    this.updateStats(framed.byteLength);
 
     this.events.onFrame?.({
-      data,
+      data: framed.buffer,
       timestamp: chunk.timestamp,
       isKeyFrame,
       codec: "h264",
@@ -639,13 +635,14 @@ export class CameraEncoder {
       this.events.onError?.(new Error(error.message));
     };
 
-    // Initialize worker with config
+    // Initialize worker with config (codecByte enables zero-copy transport)
     this.mjpegWorker.postMessage({
       type: "start",
       config: {
         width,
         height,
         quality: this.config.quality,
+        codecByte: 0x02, // MJPEG codec byte for transport
       },
     });
 

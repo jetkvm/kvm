@@ -10,6 +10,7 @@ interface EncoderConfig {
   width: number;
   height: number;
   quality: number;
+  codecByte?: number; // Prepended to each frame for transport (0x02 for MJPEG)
 }
 
 interface StartMessage {
@@ -117,25 +118,29 @@ async function handleFrame(bitmap: ImageBitmap, timestamp: number): Promise<void
   }
 
   try {
-    // Draw bitmap to canvas (fast GPU operation)
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0);
 
-    // Encode to JPEG (this is the expensive operation, but now off main thread)
     const blob = await canvas.convertToBlob({
       type: "image/jpeg",
       quality: config.quality,
     });
 
-    // Convert to ArrayBuffer for transfer
-    const data = await blob.arrayBuffer();
+    const jpegData = await blob.arrayBuffer();
 
-    // Send encoded frame back (transfer ownership for zero-copy)
-    const response: EncodedFrameMessage = {
-      type: "frame",
-      data,
-      timestamp,
-    };
-    self.postMessage(response, { transfer: [data] });
+    // Prepend codec byte if configured (avoids copy in transport)
+    let data: ArrayBuffer;
+    if (config.codecByte !== undefined) {
+      const framed = new Uint8Array(1 + jpegData.byteLength);
+      framed[0] = config.codecByte;
+      framed.set(new Uint8Array(jpegData), 1);
+      data = framed.buffer;
+    } else {
+      data = jpegData;
+    }
+
+    self.postMessage({ type: "frame", data, timestamp } as EncodedFrameMessage, {
+      transfer: [data],
+    });
   } catch {
     // Ignore transient encode errors
   } finally {
