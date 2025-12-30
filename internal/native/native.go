@@ -20,7 +20,6 @@ type Native struct {
 	defaultQualityFactor float64
 	onVideoStateChange   func(state VideoState)
 	onVideoFrameReceived func(frame []byte, duration time.Duration)
-	onMjpegFrameReceived func(frame []byte)
 	onIndevEvent         func(event string)
 	onRpcEvent           func(event string)
 	sleepModeSupported   bool
@@ -37,7 +36,6 @@ type NativeOptions struct {
 	MaxRestartAttempts   uint
 	OnVideoStateChange   func(state VideoState)
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
-	OnMjpegFrameReceived func(frame []byte)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnNativeRestart      func()
@@ -98,13 +96,6 @@ func NewNative(opts NativeOptions) *Native {
 		}
 	}
 
-	onMjpegFrameReceived := opts.OnMjpegFrameReceived
-	if onMjpegFrameReceived == nil {
-		onMjpegFrameReceived = func(frame []byte) {
-			nativeLogger.Trace().Int("size", len(frame)).Msg("mjpeg frame received")
-		}
-	}
-
 	sleepModeSupported := isSleepModeSupported()
 
 	defaultQualityFactor := opts.DefaultQualityFactor
@@ -122,7 +113,6 @@ func NewNative(opts NativeOptions) *Native {
 		defaultQualityFactor: defaultQualityFactor,
 		onVideoStateChange:   onVideoStateChange,
 		onVideoFrameReceived: onVideoFrameReceived,
-		onMjpegFrameReceived: onMjpegFrameReceived,
 		onIndevEvent:         onIndevEvent,
 		onRpcEvent:           onRpcEvent,
 		sleepModeSupported:   sleepModeSupported,
@@ -140,7 +130,6 @@ func (n *Native) Start() error {
 	go n.handleLogChan()
 	go n.handleVideoStateChan()
 	go n.handleVideoFrameChan()
-	go n.handleMjpegFrameChan()
 	go n.handleIndevEventChan()
 	go n.handleRpcEventChan()
 
@@ -171,29 +160,4 @@ func (n *Native) DoNotUseThisIsForCrashTestingOnly() {
 // GetLVGLVersion returns the LVGL version
 func GetLVGLVersion() string {
 	return uiGetLVGLVersion()
-}
-
-// H.264 to MJPEG transcoder methods (camera passthrough)
-func (n *Native) TranscodeInit(width, height int) error {
-	return transcodeInit(width, height)
-}
-
-func (n *Native) TranscodeStart() error {
-	return transcodeStart()
-}
-
-func (n *Native) TranscodeStop() {
-	transcodeStop()
-}
-
-func (n *Native) TranscodeShutdown() {
-	transcodeShutdown()
-}
-
-func (n *Native) TranscodeSendH264(frame []byte) error {
-	return transcodeSendH264(frame)
-}
-
-func (n *Native) TranscodeIsRunning() bool {
-	return transcodeIsRunning()
 }

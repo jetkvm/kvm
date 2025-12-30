@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include <unistd.h>
 #include <time.h>
 #include <rk_type.h>
 #include <rk_mpi_venc.h>
@@ -21,6 +22,7 @@
 #include <pthread.h>
 #include <assert.h>
 #include <sys/un.h>
+#include <sys/socket.h>
 #include "video.h"
 #include "ctrl.h"
 #include "log.h"
@@ -35,18 +37,12 @@
 #define RK_ALIGN_32(x) RK_ALIGN(x, 32)
 
 int sub_dev_fd = -1;
-#define VENC_CHANNEL 0       // H.264 for WebRTC
-#define MJPEG_VENC_CHANNEL 1 // MJPEG for UVC
+#define VENC_CHANNEL 0
 MB_POOL memPool = MB_INVALID_POOLID;
 
 bool sleep_mode_available = false;
 bool should_exit = false;
 float quality_factor = 1.0f;
-
-// MJPEG frame rate control (defined in ctrl.c)
-extern int mjpeg_frame_divisor;
-extern float mjpeg_quality;
-static int mjpeg_frame_counter = 0;
 
 static void *venc_read_stream(void *arg);
 
@@ -207,161 +203,6 @@ static int32_t venc_stop()
     return RK_SUCCESS;
 }
 
-// MJPEG encoder for UVC streaming
-pthread_t *mjpeg_venc_read_thread = NULL;
-volatile bool mjpeg_venc_running = false;
-
-static void *mjpeg_venc_read_stream(void *arg)
-{
-    (void)arg;
-    void *pData = RK_NULL;
-    int s32Ret;
-
-    VENC_STREAM_S stFrame;
-    stFrame.pstPack = malloc(sizeof(VENC_PACK_S));
-    while (mjpeg_venc_running)
-    {
-        log_trace("MJPEG RK_MPI_VENC_GetStream");
-        s32Ret = RK_MPI_VENC_GetStream(MJPEG_VENC_CHANNEL, &stFrame, 200); // blocks max 200ms
-        if (s32Ret == RK_SUCCESS)
-        {
-            // Use trace level to avoid overhead at 60fps
-            log_trace("MJPEG frame: seq=%d size=%u",
-                   stFrame.u32Seq, stFrame.pstPack->u32Len);
-            pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
-            video_send_mjpeg_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
-            s32Ret = RK_MPI_VENC_ReleaseStream(MJPEG_VENC_CHANNEL, &stFrame);
-            if (s32Ret != RK_SUCCESS)
-            {
-                log_error("MJPEG RK_MPI_VENC_ReleaseStream fail %x", s32Ret);
-            }
-        }
-        else
-        {
-            if (s32Ret == RK_ERR_VENC_BUF_EMPTY)
-            {
-                continue;
-            }
-            log_error("MJPEG RK_MPI_VENC_GetStream fail %x", s32Ret);
-            break;
-        }
-    }
-    log_info("exiting mjpeg_venc_read_stream");
-    free(stFrame.pstPack);
-    return NULL;
-}
-
-static void populate_mjpeg_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 width, RK_U32 height)
-{
-    memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
-
-    // Calculate effective framerate based on divisor
-    int effective_fps = 60 / (mjpeg_frame_divisor > 0 ? mjpeg_frame_divisor : 1);
-    if (effective_fps < 10) effective_fps = 10;
-    if (effective_fps > 60) effective_fps = 60;
-
-    // MJPEG uses CBR mode with quality-adjusted bitrate
-    // Base: width * height * fps / compression_ratio
-    // Quality scales compression: 1.0 = ~10:1, 0.5 = ~20:1, 0.1 = ~100:1
-    float compression = 10.0f / mjpeg_quality; // Higher quality = lower compression ratio
-    RK_U32 bitrate = (RK_U32)(width * height * effective_fps / compression);
-
-    stAttr->stRcAttr.enRcMode = VENC_RC_MODE_MJPEGCBR;
-    stAttr->stRcAttr.stMjpegCbr.u32BitRate = bitrate;
-
-    log_info("MJPEG encoder config: %dx%d @ %dfps, quality=%.1f%%, bitrate=%u bps",
-             width, height, effective_fps, mjpeg_quality * 100.0f, bitrate);
-
-    stAttr->stVencAttr.enType = RK_VIDEO_ID_MJPEG;
-    stAttr->stVencAttr.enPixelFormat = RK_FMT_YUV422_YUYV;
-    stAttr->stVencAttr.u32Profile = 0; // Not used for MJPEG
-    stAttr->stVencAttr.u32PicWidth = width;
-    stAttr->stVencAttr.u32PicHeight = height;
-    stAttr->stVencAttr.u32VirWidth = RK_ALIGN_2(width);
-    stAttr->stVencAttr.u32VirHeight = RK_ALIGN_2(height);
-    stAttr->stVencAttr.u32StreamBufCnt = 3;
-    stAttr->stVencAttr.u32BufSize = width * height * 2; // MJPEG compressed should be smaller than raw
-    stAttr->stVencAttr.enMirror = MIRROR_NONE;
-}
-
-static int32_t mjpeg_venc_start(int32_t width, int32_t height)
-{
-    if (!jetkvm_mjpeg_get_enabled()) {
-        log_info("MJPEG not enabled, skipping MJPEG encoder start");
-        return RK_SUCCESS;
-    }
-
-    int32_t ret;
-    VENC_CHN_ATTR_S stAttr;
-    populate_mjpeg_venc_attr(&stAttr, width, height);
-
-    ret = RK_MPI_VENC_CreateChn(MJPEG_VENC_CHANNEL, &stAttr);
-    if (ret < 0)
-    {
-        RK_LOGE("error RK_MPI_VENC_CreateChn for MJPEG, %d", ret);
-        return ret;
-    }
-
-    VENC_RECV_PIC_PARAM_S stRecvParam;
-    memset(&stRecvParam, 0, sizeof(VENC_RECV_PIC_PARAM_S));
-    stRecvParam.s32RecvPicNum = -1;
-    ret = RK_MPI_VENC_StartRecvFrame(MJPEG_VENC_CHANNEL, &stRecvParam);
-    if (ret < 0)
-    {
-        RK_LOGE("error RK_MPI_VENC_StartRecvFrame for MJPEG, %d", ret);
-        RK_MPI_VENC_DestroyChn(MJPEG_VENC_CHANNEL);
-        return ret;
-    }
-
-    mjpeg_venc_running = true;
-    mjpeg_venc_read_thread = malloc(sizeof(pthread_t));
-    if (pthread_create(mjpeg_venc_read_thread, NULL, mjpeg_venc_read_stream, NULL) != 0)
-    {
-        RK_LOGE("Failed to create mjpeg_venc_read_thread");
-        mjpeg_venc_running = false;
-        RK_MPI_VENC_StopRecvFrame(MJPEG_VENC_CHANNEL);
-        RK_MPI_VENC_DestroyChn(MJPEG_VENC_CHANNEL);
-        free(mjpeg_venc_read_thread);
-        mjpeg_venc_read_thread = NULL;
-        return RK_FAILURE;
-    }
-
-    log_info("MJPEG encoder started: %dx%d", width, height);
-    return RK_SUCCESS;
-}
-
-static int32_t mjpeg_venc_stop()
-{
-    if (!mjpeg_venc_running && mjpeg_venc_read_thread == NULL) {
-        return RK_SUCCESS; // Not running
-    }
-
-    mjpeg_venc_running = false;
-
-    int32_t ret;
-    ret = RK_MPI_VENC_StopRecvFrame(MJPEG_VENC_CHANNEL);
-    if (ret != RK_SUCCESS)
-    {
-        RK_LOGE("Failed to stop receiving frames for MJPEG_VENC_CHANNEL, error code: %d", ret);
-    }
-
-    if (mjpeg_venc_read_thread != NULL)
-    {
-        pthread_join(*mjpeg_venc_read_thread, NULL);
-        free(mjpeg_venc_read_thread);
-        mjpeg_venc_read_thread = NULL;
-    }
-
-    ret = RK_MPI_VENC_DestroyChn(MJPEG_VENC_CHANNEL);
-    if (ret != RK_SUCCESS)
-    {
-        RK_LOGE("Failed to destroy MJPEG_VENC_CHANNEL, error code: %d", ret);
-    }
-
-    log_info("MJPEG encoder stopped");
-    return RK_SUCCESS;
-}
-
 struct buffer
 {
     struct v4l2_plane plane_buffer;
@@ -428,6 +269,35 @@ int video_init(float factor)
     pthread_create(format_thread, NULL, run_detect_format, NULL);
     return RK_SUCCESS;
 }
+
+// static int32_t venc_set_param(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height)
+// {
+
+//     VENC_CHN_ATTR_S stAttr;
+//     populate_venc_attr(&stAttr, bitrate, max_bitrate, width, height);
+//     VENC_CHN_PARAM_S stParam;
+//     memset(&stParam, 0, sizeof(VENC_CHN_PARAM_S));
+
+//     RK_MPI_VENC_StopRecvFrame(VENC_CHANNEL);
+
+//     int32_t ret = RK_MPI_VENC_SetChnParam(VENC_CHANNEL, &stAttr);
+//     if (ret < 0)
+//     {
+//         RK_LOGE("error RK_MPI_VENC_SetChnParam, %d", ret);
+//         return ret;
+//     }
+//     VENC_RECV_PIC_PARAM_S stRecvParam;
+//     memset(&stRecvParam, 0, sizeof(VENC_RECV_PIC_PARAM_S));
+//     stRecvParam.s32RecvPicNum = -1;
+//     ret = RK_MPI_VENC_StartRecvFrame(VENC_CHANNEL, &stRecvParam);
+//     if (ret < 0)
+//     {
+//         RK_LOGE("error RK_MPI_VENC_StartRecvFrame, %d", ret);
+//         return ret;
+//     }
+
+//     return RK_SUCCESS;
+// }
 
 /**
  * @brief Continuously reads encoded video streams and sends them over unix socket.
@@ -522,27 +392,6 @@ bool get_streaming_stopped()
     bool stopped = streaming_stopped;
     pthread_mutex_unlock(&streaming_stopped_mutex);
     return stopped;
-}
-
-// Update MJPEG encoder based on enabled flag - starts/stops dynamically
-void mjpeg_update_encoder(bool enabled)
-{
-    if (enabled) {
-        // Only start if video is streaming and encoder not already running
-        if (get_streaming_flag() && detected_signal && !mjpeg_venc_running) {
-            log_info("MJPEG enabled while streaming, starting encoder: %dx%d", detected_width, detected_height);
-            int32_t ret = mjpeg_venc_start(detected_width, detected_height);
-            if (ret != RK_SUCCESS) {
-                log_warn("Failed to start MJPEG encoder dynamically: %d", ret);
-            }
-        }
-    } else {
-        // Stop encoder if running
-        if (mjpeg_venc_running) {
-            log_info("MJPEG disabled, stopping encoder");
-            mjpeg_venc_stop();
-        }
-    }
 }
 
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
@@ -694,14 +543,6 @@ void *run_video_stream(void *arg)
             goto cleanup;
         }
 
-        // Start MJPEG encoder for UVC if enabled
-        ret = mjpeg_venc_start(width, height);
-        if (ret != RK_SUCCESS)
-        {
-            log_warn("MJPEG encoder start failed with %#x, UVC will not be available", ret);
-            // Continue without MJPEG - don't fail the entire streaming
-        }
-
         fd_set fds;
         struct timeval tv;
         int r;
@@ -777,23 +618,6 @@ void *run_video_stream(void *arg)
                 }
             }
 
-            // Send frame to MJPEG encoder for UVC if enabled
-            // Frame rate limiting: only send every Nth frame to reduce CPU/USB load
-            // H.264 (WebRTC) continues at full rate, only MJPEG (UVC) is limited
-            if (mjpeg_venc_running)
-            {
-                mjpeg_frame_counter++;
-                // Skip frames based on divisor (1 = no skip, 2 = half rate, etc.)
-                if (mjpeg_frame_divisor <= 1 || mjpeg_frame_counter % mjpeg_frame_divisor == 0)
-                {
-                    int mjpeg_ret = RK_MPI_VENC_SendFrame(MJPEG_VENC_CHANNEL, &stFrame, 100);
-                    if (mjpeg_ret != RK_SUCCESS)
-                    {
-                        log_warn("MJPEG RK_MPI_VENC_SendFrame failed: %x", mjpeg_ret);
-                    }
-                }
-            }
-
             num++;
 
             if (ioctl(video_dev_fd, VIDIOC_QBUF, &buf) < 0)
@@ -818,7 +642,6 @@ void *run_video_stream(void *arg)
             log_error("Failed to free V4L2 buffers: %s", strerror(errno));
         }
 
-        mjpeg_venc_stop();
         venc_stop();
 
         for (int i = 0; i < input_buffer_count; i++)

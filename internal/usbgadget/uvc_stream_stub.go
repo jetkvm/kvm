@@ -17,6 +17,12 @@ const (
 // UVCStreamer stub for non-linux builds
 type UVCStreamer struct{}
 
+// DmabufSlotInfo stub for non-linux builds
+type DmabufSlotInfo struct {
+	Slot  int
+	InUse bool
+}
+
 type Logger interface {
 	Info() LogEvent
 	Warn() LogEvent
@@ -127,4 +133,17 @@ func (s *UVCStreamer) HandleDataEvent(eventData []byte) (bool, error) {
 
 func (s *UVCStreamer) WaitForEventWithTimeout(timeoutMs int) (uint32, []byte, error) {
 	return 0, nil, fmt.Errorf("UVC not supported on this platform")
+}
+
+// DMABUF zero-copy stubs
+func (s *UVCStreamer) RequestBuffersDmabuf(count uint32, releaseFunc func(slot int)) error {
+	return fmt.Errorf("UVC not supported on this platform")
+}
+
+func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
+	return fmt.Errorf("UVC not supported on this platform")
+}
+
+func (s *UVCStreamer) IsDmabufMode() bool {
+	return false
 }

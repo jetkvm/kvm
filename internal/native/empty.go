@@ -109,18 +109,3 @@ func (e *EmptyNativeInterface) SwitchToScreenIf(screenName string, shouldSwitch 
 func (e *EmptyNativeInterface) SwitchToScreenIfDifferent(screenName string) {}
 
 func (e *EmptyNativeInterface) DoNotUseThisIsForCrashTestingOnly() {}
-
-func (e *EmptyNativeInterface) MjpegSetEnabled(enabled bool) {}
-
-// Transcoder methods
-func (e *EmptyNativeInterface) TranscodeInit(width, height int) error { return nil }
-
-func (e *EmptyNativeInterface) TranscodeStart() error { return nil }
-
-func (e *EmptyNativeInterface) TranscodeStop() {}
-
-func (e *EmptyNativeInterface) TranscodeShutdown() {}
-
-func (e *EmptyNativeInterface) TranscodeSendH264(frame []byte) error { return nil }
-
-func (e *EmptyNativeInterface) TranscodeIsRunning() bool { return false }

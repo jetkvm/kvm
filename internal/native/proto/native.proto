@@ -21,17 +21,6 @@ service NativeService {
   rpc VideoStop(Empty) returns (Empty);
   rpc VideoStart(Empty) returns (Empty);
 
-  // MJPEG encoding for UVC
-  rpc MjpegSetEnabled(MjpegSetEnabledRequest) returns (Empty);
-
-  // H.264 to MJPEG transcoder for camera passthrough
-  rpc TranscodeInit(TranscodeInitRequest) returns (Empty);
-  rpc TranscodeStart(Empty) returns (Empty);
-  rpc TranscodeStop(Empty) returns (Empty);
-  rpc TranscodeShutdown(Empty) returns (Empty);
-  rpc TranscodeSendH264(TranscodeSendH264Request) returns (Empty);
-  rpc TranscodeIsRunning(Empty) returns (TranscodeIsRunningResponse);
-
   // UI methods
   rpc GetLVGLVersion(Empty) returns (GetLVGLVersionResponse);
   rpc UIObjHide(UIObjHideRequest) returns (UIObjHideResponse);
@@ -259,33 +248,11 @@ message Event {
     string indev_event = 3;
     string rpc_event = 4;
     VideoFrame video_frame = 5;
-    MjpegFrame mjpeg_frame = 6;
   }
 }
 
 message VideoFrame {
   bytes frame = 1;
   int64 duration_ns = 2;
-}
-
-message MjpegFrame {
-  bytes frame = 1;
-}
-
-message MjpegSetEnabledRequest {
-  bool enabled = 1;
-}
-
-message TranscodeInitRequest {
-  int32 width = 1;
-  int32 height = 2;
-}
-
-message TranscodeSendH264Request {
-  bytes frame = 1;
-}
-
-message TranscodeIsRunningResponse {
-  bool running = 1;
 }
 

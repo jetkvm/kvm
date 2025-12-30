@@ -8,54 +8,45 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// GadgetController provides access to the USB gadget UVC device.
 type GadgetController interface {
 	GetUVCVideoDevice() (string, error)
 }
 
-type NativeController interface {
-	MjpegSetEnabled(enabled bool)
-	TranscodeInit(width, height int) error
-	TranscodeStart() error
-	TranscodeStop()
-	TranscodeShutdown()
-	TranscodeSendH264(frame []byte) error
-	TranscodeIsRunning() bool
-}
-
+// Manager coordinates camera passthrough from browser to UVC.
 type Manager struct {
-	gadget           GadgetController
-	native           NativeController
-	uvcLog           *zerolog.Logger
-	camLog           *zerolog.Logger
-	streamer         atomic.Pointer[usbgadget.UVCStreamer]
-	streamerMu       sync.Mutex
-	stopChan         chan struct{}
-	eventLoopRun     atomic.Bool
-	uvcMjpegSelected bool
-	h264Cache        *H264ParamCache
-	enabled          atomic.Bool
-	source           *sourceStore
+	gadget       GadgetController
+	uvcLog       *zerolog.Logger
+	camLog       *zerolog.Logger
+	streamer     atomic.Pointer[usbgadget.UVCStreamer]
+	streamerMu   sync.Mutex
+	stopChan     chan struct{}
+	eventLoopRun atomic.Bool
+	enabled      atomic.Bool
 
-	cameraFrameCount    atomic.Int32
-	cameraLastLogFrame  atomic.Int32
-	uvcFrameErrors      atomic.Uint32
-	uvcNeedParamInject  atomic.Bool
-	uvcParamInjectCount atomic.Uint32
-	uvcStreamingFast    atomic.Bool
-	uvcMjpegFast        atomic.Bool
+	// Fast-path flags: Cached streaming state to avoid mutex/pointer loads on every frame.
+	// uvcStreamingFast mirrors streamer.IsStreaming() for lock-free hot path rejection.
+	// uvcMjpegFast is true when streaming MJPEG (codec selection for incoming frames).
+	uvcStreamingFast atomic.Bool
+	uvcMjpegFast     atomic.Bool
 
+	// Format negotiation
 	formatChangeChan   chan FormatInfo
 	formatChanMu       sync.RWMutex
 	lastNotifiedFormat FormatInfo
+
+	// Stats (only used for periodic logging)
+	uvcFrameErrors atomic.Uint32
 }
 
 // Codec constants for FormatInfo
 const (
 	CodecH264  = "h264"
 	CodecMJPEG = "mjpeg"
-	CodecStop  = "stop" // Signals streaming stopped
+	CodecStop  = "stop"
 )
 
+// FormatInfo describes the video format requested by the UVC host.
 type FormatInfo struct {
 	Codec     string `json:"codec"`
 	Width     int    `json:"width"`
@@ -63,25 +54,23 @@ type FormatInfo struct {
 	FrameRate int    `json:"frameRate"`
 }
 
+// Config holds configuration for creating a Manager.
 type Config struct {
 	UVCLogger    *zerolog.Logger
 	CameraLogger *zerolog.Logger
 	Gadget       GadgetController
-	Native       NativeController
 }
 
+// NewManager creates a new camera manager.
 func NewManager(cfg Config) *Manager {
-	m := &Manager{
-		gadget:    cfg.Gadget,
-		native:    cfg.Native,
-		uvcLog:    cfg.UVCLogger,
-		camLog:    cfg.CameraLogger,
-		source:    newSourceStore(),
-		h264Cache: NewH264ParamCache(),
+	return &Manager{
+		gadget: cfg.Gadget,
+		uvcLog: cfg.UVCLogger,
+		camLog: cfg.CameraLogger,
 	}
-	return m
 }
 
+// SetEnabled enables or disables camera passthrough.
 func (m *Manager) SetEnabled(enabled bool) {
 	m.enabled.Store(enabled)
 	if m.camLog != nil {
@@ -89,117 +78,11 @@ func (m *Manager) SetEnabled(enabled bool) {
 	}
 }
 
+// IsEnabled returns true if camera passthrough is enabled.
 func (m *Manager) IsEnabled() bool { return m.enabled.Load() }
 
-func (m *Manager) SetSource(source Source) {
-	oldSource := m.source.Get()
-	if oldSource == source {
-		return
-	}
-	m.source.Set(source)
-	if m.camLog != nil {
-		m.camLog.Debug().
-			Str("old_source", oldSource.String()).
-			Str("new_source", source.String()).
-			Msg("UVC source changed")
-	}
-	m.updateMjpegEncoderForSource(source)
-	m.notifySourceChange(source)
-}
-
-func (m *Manager) updateMjpegEncoderForSource(source Source) {
-	m.streamerMu.Lock()
-	streamer := m.streamer.Load()
-	isStreaming := streamer != nil && streamer.IsStreaming()
-	isMjpeg := m.uvcMjpegSelected
-	m.streamerMu.Unlock()
-
-	if m.native == nil {
-		return
-	}
-
-	if source == SourceHDMI && isStreaming && isMjpeg {
-		m.native.MjpegSetEnabled(true)
-	} else {
-		m.native.MjpegSetEnabled(false)
-	}
-}
-
-func (m *Manager) GetSource() Source    { return m.source.Get() }
-func (m *Manager) IsSourceCamera() bool { return m.source.IsCamera() }
-func (m *Manager) IsSourceHDMI() bool   { return m.source.IsHDMI() }
-
-func (m *Manager) SetNativeController(native NativeController) {
-	m.streamerMu.Lock()
-	defer m.streamerMu.Unlock()
-	m.native = native
-}
-
+// GetCurrentFormat returns the current streaming format, or nil if not streaming.
 func (m *Manager) GetCurrentFormat() *FormatInfo {
-	return m.getStreamingFormat()
-}
-
-// SubscribeFormatChanges returns a channel for format notifications (one subscriber only).
-func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
-	m.formatChanMu.Lock()
-	defer m.formatChanMu.Unlock()
-	if m.formatChangeChan != nil {
-		close(m.formatChangeChan)
-	}
-	m.formatChangeChan = make(chan FormatInfo, 4)
-	return m.formatChangeChan
-}
-
-func (m *Manager) UnsubscribeFormatChanges() {
-	m.formatChanMu.Lock()
-	defer m.formatChanMu.Unlock()
-	if m.formatChangeChan != nil {
-		close(m.formatChangeChan)
-		m.formatChangeChan = nil
-	}
-}
-
-func (m *Manager) notifyFormatChange(info FormatInfo) {
-	m.formatChanMu.Lock()
-	if m.lastNotifiedFormat.Codec == info.Codec &&
-		m.lastNotifiedFormat.Width == info.Width &&
-		m.lastNotifiedFormat.Height == info.Height &&
-		m.lastNotifiedFormat.FrameRate == info.FrameRate {
-		m.formatChanMu.Unlock()
-		return
-	}
-	m.lastNotifiedFormat = info
-	ch := m.formatChangeChan
-	m.formatChanMu.Unlock()
-
-	if ch != nil {
-		select {
-		case ch <- info:
-		default:
-			// Channel full, format notification dropped (non-fatal, subscriber will get next one)
-		}
-	}
-}
-
-func (m *Manager) notifyStreamingStopped() {
-	m.formatChanMu.Lock()
-	m.lastNotifiedFormat = FormatInfo{}
-	ch := m.formatChangeChan
-	m.formatChanMu.Unlock()
-
-	if ch != nil {
-		select {
-		case ch <- FormatInfo{Codec: CodecStop}:
-		default:
-			// Channel full, stop notification dropped (non-fatal, streaming state is authoritative)
-		}
-	}
-}
-
-func (m *Manager) getStreamingFormat() *FormatInfo {
-	m.streamerMu.Lock()
-	defer m.streamerMu.Unlock()
-
 	streamer := m.streamer.Load()
 	if streamer == nil || !streamer.IsStreaming() {
 		return nil
@@ -208,7 +91,7 @@ func (m *Manager) getStreamingFormat() *FormatInfo {
 	width, height := streamer.GetCommittedResolution()
 	frameRate := streamer.GetCommittedFrameRate()
 	codec := CodecH264
-	if m.uvcMjpegSelected {
+	if m.uvcMjpegFast.Load() {
 		codec = CodecMJPEG
 	}
 
@@ -220,8 +103,70 @@ func (m *Manager) getStreamingFormat() *FormatInfo {
 	}
 }
 
+// SubscribeFormatChanges returns a channel for format notifications.
+func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
+	m.formatChanMu.Lock()
+	defer m.formatChanMu.Unlock()
+	if m.formatChangeChan != nil {
+		close(m.formatChangeChan)
+	}
+	m.formatChangeChan = make(chan FormatInfo, 4)
+	return m.formatChangeChan
+}
+
+// UnsubscribeFormatChanges closes the format notification channel.
+func (m *Manager) UnsubscribeFormatChanges() {
+	m.formatChanMu.Lock()
+	defer m.formatChanMu.Unlock()
+	if m.formatChangeChan != nil {
+		close(m.formatChangeChan)
+		m.formatChangeChan = nil
+	}
+}
+
+// notifyFormatChange sends a format change notification if it differs from last.
+func (m *Manager) notifyFormatChange(info FormatInfo) {
+	m.formatChanMu.Lock()
+	if m.lastNotifiedFormat == info {
+		m.formatChanMu.Unlock()
+		return
+	}
+	m.lastNotifiedFormat = info
+	ch := m.formatChangeChan
+	m.formatChanMu.Unlock()
+
+	if ch != nil {
+		select {
+		case ch <- info:
+		default:
+			if m.camLog != nil {
+				m.camLog.Warn().Msg("Format notification dropped - channel full")
+			}
+		}
+	}
+}
+
+// notifyStreamingStopped notifies that streaming has stopped.
+func (m *Manager) notifyStreamingStopped() {
+	m.formatChanMu.Lock()
+	m.lastNotifiedFormat = FormatInfo{}
+	ch := m.formatChangeChan
+	m.formatChanMu.Unlock()
+
+	if ch != nil {
+		select {
+		case ch <- FormatInfo{Codec: CodecStop}:
+		default:
+			if m.camLog != nil {
+				m.camLog.Warn().Msg("Stop notification dropped - channel full")
+			}
+		}
+	}
+}
+
+// ResendCurrentFormat resends the current format to the browser.
 func (m *Manager) ResendCurrentFormat() {
-	format := m.getStreamingFormat()
+	format := m.GetCurrentFormat()
 	if format == nil {
 		return
 	}
@@ -240,29 +185,4 @@ func (m *Manager) ResendCurrentFormat() {
 	m.formatChanMu.Unlock()
 
 	m.notifyFormatChange(*format)
-}
-
-func (m *Manager) notifySourceChange(source Source) {
-	format := m.getStreamingFormat()
-	if format == nil {
-		return
-	}
-
-	switch source {
-	case SourceHDMI:
-		if m.camLog != nil {
-			m.camLog.Info().Msg("Notifying browser to stop camera encoding")
-		}
-		m.notifyStreamingStopped()
-	case SourceCamera:
-		if m.camLog != nil {
-			m.camLog.Info().
-				Str("codec", format.Codec).
-				Int("width", format.Width).
-				Int("height", format.Height).
-				Int("frameRate", format.FrameRate).
-				Msg("Notifying browser to start camera encoding (switched to Camera)")
-		}
-		m.notifyFormatChange(*format)
-	}
 }

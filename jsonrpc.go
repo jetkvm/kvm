@@ -21,7 +21,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
-	"github.com/jetkvm/kvm/internal/camera"
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/native"
@@ -1167,20 +1166,6 @@ func rpcSetCameraEnabled(enabled bool) error {
 	return nil
 }
 
-func rpcGetUVCSource() (string, error) {
-	return string(getUVCSource()), nil
-}
-
-func rpcSetUVCSource(source string) error {
-	cameraLog.Info().Str("source", source).Msg("RPC setUVCSource called")
-	src, err := camera.ParseSource(source)
-	if err != nil {
-		return err
-	}
-	setUVCSource(src)
-	return nil
-}
-
 // CameraSettingsResponse contains all camera/UVC configuration
 type CameraSettingsResponse struct {
 	Resolution   string `json:"resolution"`   // "1080p", "720p", "480p"
@@ -1600,8 +1585,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioInputAutoEnable": {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},
 	"getCameraEnabled":        {Func: rpcGetCameraEnabled},
 	"setCameraEnabled":        {Func: rpcSetCameraEnabled, Params: []string{"enabled"}},
-	"getUVCSource":            {Func: rpcGetUVCSource},
-	"setUVCSource":            {Func: rpcSetUVCSource, Params: []string{"source"}},
 	"getCameraSettings":       {Func: rpcGetCameraSettings},
 	"setCameraSettings":       {Func: rpcSetCameraSettings, Params: []string{"resolution", "frameRate", "h264Bitrate", "mjpegQuality"}},
 	"setCloudUrl":             {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},

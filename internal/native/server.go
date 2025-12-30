@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -90,52 +89,23 @@ func RunNativeProcess(binaryName string) {
 	}
 
 	// Connect to video stream socket
-	videoConn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
+	conn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
 	}
 	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
 
-	// Mutex to protect concurrent writes to video stream socket.
-	// Both H.264 and MJPEG frame callbacks can fire concurrently,
-	// so we need to serialize writes to prevent interleaved/corrupted frames.
-	var videoConnMu sync.Mutex
-
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
-		// Write 4-byte frame length prefix (includes type byte), type byte, then frame data
+		// Write 4-byte frame length prefix, then frame data
 		var frameSizeBuffer [4]byte
-		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)+1)) // +1 for type byte
+		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
 
-		videoConnMu.Lock()
-		defer videoConnMu.Unlock()
-
-		if _, err := videoConn.Write(frameSizeBuffer[:]); err != nil {
+		if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
 		}
-		if _, err := videoConn.Write([]byte{FrameTypeH264}); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write frame type to video stream socket")
-		}
-		if _, err := videoConn.Write(frame); err != nil {
+		if _, err := conn.Write(frame); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
-		}
-	}
-	nativeOptions.OnMjpegFrameReceived = func(frame []byte) {
-		// Write 4-byte frame length prefix (includes type byte), type byte, then frame data
-		var frameSizeBuffer [4]byte
-		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)+1)) // +1 for type byte
-
-		videoConnMu.Lock()
-		defer videoConnMu.Unlock()
-
-		if _, err := videoConn.Write(frameSizeBuffer[:]); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write mjpeg frame size to video stream socket")
-		}
-		if _, err := videoConn.Write([]byte{FrameTypeMJPEG}); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write mjpeg frame type to video stream socket")
-		}
-		if _, err := videoConn.Write(frame); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write mjpeg frame to video stream socket")
 		}
 	}
 	nativeOptions.OnVideoStateChange = func(state VideoState) {

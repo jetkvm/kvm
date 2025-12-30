@@ -13,7 +13,6 @@ type NativeInterface interface {
 	VideoLogStatus() (string, error)
 	VideoStop() error
 	VideoStart() error
-	MjpegSetEnabled(enabled bool)
 	GetLVGLVersion() (string, error)
 	UIObjHide(objName string) (bool, error)
 	UIObjShow(objName string) (bool, error)
@@ -34,12 +33,4 @@ type NativeInterface interface {
 	SwitchToScreenIf(screenName string, shouldSwitch []string)
 	SwitchToScreenIfDifferent(screenName string)
 	DoNotUseThisIsForCrashTestingOnly()
-
-	// Transcoder methods for H.264 to MJPEG conversion (camera passthrough)
-	TranscodeInit(width, height int) error
-	TranscodeStart() error
-	TranscodeStop()
-	TranscodeShutdown()
-	TranscodeSendH264(frame []byte) error
-	TranscodeIsRunning() bool
 }

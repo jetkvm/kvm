@@ -22,6 +22,7 @@ const (
 	V4L2_FIELD_NONE            = 1
 	V4L2_MEMORY_MMAP           = 1
 	V4L2_MEMORY_USERPTR        = 2
+	V4L2_MEMORY_DMABUF         = 4 // Zero-copy via dmabuf file descriptor
 
 	// Buffer timestamp flags - GStreamer requires MONOTONIC timestamps
 	V4L2_BUF_FLAG_TIMESTAMP_MASK      = 0x0000e000
@@ -160,27 +161,36 @@ type uvc_streaming_control struct {
 	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion         uint8 //nolint:unused // kernel struct fields
 }
 
+type DmabufSlotInfo struct {
+	Slot  int
+	InUse bool
+}
+
 type UVCStreamer struct {
 	devicePath       string
 	mu               sync.Mutex
 	log              Logger
 	buffers          [][]byte
+	bufferPtrs       []uintptr // Pre-computed buffer pointers for zero-overhead access
 	fd               int
 	width            uint32
 	height           uint32
 	bufferSize       int
 	bufCount         int
-	curBufIdx        int
+	curBufIdx        atomic.Int32 // Atomic for lock-free buffer selection
 	queuedBufs       int
-	frameCounter     uint32
+	frameCounter     atomic.Uint32 // Atomic for lock-free increment
 	droppedFrames    uint32
-	lastDropLogFrame uint32 // Last frame count when we logged drops
+	lastDropLogFrame uint32
 	probe            uvc_streaming_control
 	commit           uvc_streaming_control
 	eventDataBuf     [64]byte
 	pendingCtrl      uint8
 	streaming        atomic.Bool
 	streamReady      bool
+	dmabufMode       bool
+	dmabufSlots      []DmabufSlotInfo
+	dmabufRelease    func(slot int)
 }
 
 type Logger interface {
@@ -311,8 +321,9 @@ func (s *UVCStreamer) Close() error {
 
 	// Clear buffer references - GC will handle cleanup
 	s.buffers = nil
+	s.bufferPtrs = nil
 	s.bufCount = 0
-	s.curBufIdx = 0
+	s.curBufIdx.Store(0)
 
 	err := syscall.Close(s.fd)
 	s.fd = -1
@@ -383,10 +394,12 @@ func (s *UVCStreamer) RequestBuffers(count uint32) error {
 
 	s.bufCount = int(req.Count)
 	s.buffers = make([][]byte, req.Count)
-	s.curBufIdx = 0
+	s.bufferPtrs = make([]uintptr, req.Count)
+	s.curBufIdx.Store(0)
 
 	for i := uint32(0); i < req.Count; i++ {
 		s.buffers[i] = make([]byte, uvcBufferSize)
+		s.bufferPtrs[i] = uintptr(unsafe.Pointer(&s.buffers[i][0]))
 	}
 
 	s.log.Info().Int("count", int(req.Count)).Msg("UVC buffers allocated")
@@ -408,8 +421,8 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.log.Info().Int("bufCount", s.bufCount).Msg("Starting V4L2 streaming")
 
 	s.queuedBufs = 0
-	s.curBufIdx = 0
-	s.frameCounter = 0
+	s.curBufIdx.Store(0)
+	s.frameCounter.Store(0)
 	s.droppedFrames = 0
 	s.lastDropLogFrame = 0
 	s.streaming.Store(true)
@@ -445,60 +458,52 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 		}
 	}
 
+	// Release any pending DMABUF slots before stopping
+	if s.dmabufMode && s.dmabufRelease != nil {
+		for i := range s.dmabufSlots {
+			if s.dmabufSlots[i].InUse {
+				s.dmabufRelease(s.dmabufSlots[i].Slot)
+				s.dmabufSlots[i].InUse = false
+			}
+		}
+	}
+
 	s.streaming.Store(false)
 	s.streamReady = false
 	s.queuedBufs = 0
-	s.curBufIdx = 0
-	s.frameCounter = 0
+	s.curBufIdx.Store(0)
+	s.frameCounter.Store(0)
+	s.dmabufMode = false
+	s.dmabufSlots = nil
+	s.dmabufRelease = nil
 	return nil
 }
 
 // WriteFrame writes a video frame to the UVC device.
-// This is the hot path - optimized for minimal overhead at 1080p@30fps on 32-bit ARM.
+// HOTPATH: Optimized for minimal overhead at 1080p@30fps on 32-bit ARM.
 func (s *UVCStreamer) WriteFrame(data []byte) error {
+	// Fast path rejection without lock
+	if !s.streaming.Load() {
+		return nil
+	}
+
+	dataLen := int32(len(data))
+	if dataLen > maxFrameSizeBytes || dataLen == 0 {
+		return nil
+	}
+
 	s.mu.Lock()
 
-	// Fast path: check if streaming is active
-	if s.fd < 0 || !s.streaming.Load() || len(s.buffers) == 0 {
+	if s.fd < 0 || s.bufCount == 0 {
 		s.mu.Unlock()
 		return nil
 	}
 
-	dataLen := len(data)
-
-	// Check USB 2.0 bandwidth limit
-	if int32(dataLen) > maxFrameSizeBytes {
-		s.droppedFrames++
-		// Log periodically (first drop, then every 128 drops - power of 2 for fast bitwise AND)
-		if s.droppedFrames == 1 || s.droppedFrames&127 == 0 {
-			s.log.Warn().
-				Int("frameSize", dataLen).
-				Int("maxSize", int(maxFrameSizeBytes)).
-				Uint32("totalDropped", s.droppedFrames).
-				Msg("Frame too large for USB 2.0 - dropping")
-		}
-		s.mu.Unlock()
-		return nil
-	}
-
-	// Get current buffer
-	bufIdx := s.curBufIdx
+	bufIdx := int(s.curBufIdx.Load())
+	bufPtr := s.bufferPtrs[bufIdx]
 	buf := s.buffers[bufIdx]
-	if dataLen > len(buf) {
-		s.droppedFrames++
-		if s.droppedFrames-s.lastDropLogFrame >= 100 {
-			s.lastDropLogFrame = s.droppedFrames
-			s.log.Warn().
-				Int("frameSize", dataLen).
-				Int("bufSize", len(buf)).
-				Uint32("totalDropped", s.droppedFrames).
-				Msg("Frame exceeds buffer size - dropping")
-		}
-		s.mu.Unlock()
-		return nil
-	}
 
-	// Copy frame data to buffer (under lock - prevents race)
+	// Copy frame data to buffer
 	copy(buf, data)
 
 	// Dequeue completed buffers if all are in use
@@ -506,7 +511,6 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 		var dqbuf v4l2_buffer
 		dqbuf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
 		dqbuf.Memory = V4L2_MEMORY_USERPTR
-
 		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_DQBUF, uintptr(unsafe.Pointer(&dqbuf)))
 		if errno != 0 {
 			s.mu.Unlock()
@@ -518,15 +522,8 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 		s.queuedBufs--
 	}
 
-	s.frameCounter++
+	timestamp := s.frameCounter.Add(1)
 
-	// HOTPATH: Synthetic timestamp using frame counter directly.
-	// UVC hosts use buffer arrival order for timing, not timestamp values.
-	// We use frame counter as usec to avoid expensive division on 32-bit ARM.
-	// This gives monotonically increasing timestamps that wrap safely.
-	timestamp := s.frameCounter
-
-	// Prepare V4L2 buffer
 	var v4l2buf v4l2_buffer
 	v4l2buf.Index = uint32(bufIdx)
 	v4l2buf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
@@ -534,11 +531,10 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	v4l2buf.Field = V4L2_FIELD_NONE
 	v4l2buf.BytesUsed = uint32(dataLen)
 	v4l2buf.Length = uint32(len(buf))
-	v4l2buf.M = uintptr(unsafe.Pointer(&buf[0]))
+	v4l2buf.M = bufPtr
 	v4l2buf.Timestamp = v4l2_timeval{Sec: 0, Usec: int32(timestamp)}
 	v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
 
-	// Queue buffer to V4L2
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QBUF, uintptr(unsafe.Pointer(&v4l2buf)))
 	if errno != 0 {
 		s.mu.Unlock()
@@ -547,11 +543,11 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	s.queuedBufs++
 
-	// Advance buffer index (conditional is faster than modulo on ARM)
-	s.curBufIdx = bufIdx + 1
-	if s.curBufIdx >= s.bufCount {
-		s.curBufIdx = 0
+	nextIdx := int32(bufIdx + 1)
+	if int(nextIdx) >= s.bufCount {
+		nextIdx = 0
 	}
+	s.curBufIdx.Store(nextIdx)
 
 	s.mu.Unlock()
 	return nil
@@ -826,4 +822,110 @@ func (s *UVCStreamer) IsValid() bool {
 	var cap v4l2_capability
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
 	return errno == 0
+}
+
+func (s *UVCStreamer) RequestBuffersDmabuf(count uint32, releaseFunc func(slot int)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.fd < 0 {
+		return fmt.Errorf("UVC device not open")
+	}
+
+	var req v4l2_requestbuffers
+	req.Count = count
+	req.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
+	req.Memory = V4L2_MEMORY_DMABUF
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_REQBUFS, uintptr(unsafe.Pointer(&req)))
+	if errno != 0 {
+		return fmt.Errorf("VIDIOC_REQBUFS (DMABUF) failed: %v", errno)
+	}
+
+	s.bufCount = int(req.Count)
+	s.dmabufMode = true
+	s.dmabufSlots = make([]DmabufSlotInfo, req.Count)
+	s.dmabufRelease = releaseFunc
+	s.curBufIdx.Store(0)
+	s.buffers = nil
+	s.bufferPtrs = nil
+	return nil
+}
+
+func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
+	if !s.streaming.Load() || int32(size) > maxFrameSizeBytes || size == 0 {
+		return nil
+	}
+
+	s.mu.Lock()
+
+	if s.fd < 0 || !s.dmabufMode {
+		s.mu.Unlock()
+		return nil
+	}
+
+	bufIdx := int(s.curBufIdx.Load())
+
+	for s.queuedBufs >= s.bufCount {
+		var dqbuf v4l2_buffer
+		dqbuf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
+		dqbuf.Memory = V4L2_MEMORY_DMABUF
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_DQBUF, uintptr(unsafe.Pointer(&dqbuf)))
+		if errno != 0 {
+			s.mu.Unlock()
+			if errno == syscall.EAGAIN {
+				return nil
+			}
+			return fmt.Errorf("VIDIOC_DQBUF (DMABUF) failed: %v", errno)
+		}
+		s.queuedBufs--
+		dequeuedIdx := int(dqbuf.Index)
+		if dequeuedIdx < len(s.dmabufSlots) && s.dmabufSlots[dequeuedIdx].InUse {
+			releaseSlot := s.dmabufSlots[dequeuedIdx].Slot
+			s.dmabufSlots[dequeuedIdx].InUse = false
+			if s.dmabufRelease != nil {
+				s.dmabufRelease(releaseSlot)
+			}
+		}
+	}
+
+	timestamp := s.frameCounter.Add(1)
+	s.dmabufSlots[bufIdx] = DmabufSlotInfo{Slot: slot, InUse: true}
+
+	var v4l2buf v4l2_buffer
+	v4l2buf.Index = uint32(bufIdx)
+	v4l2buf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
+	v4l2buf.Memory = V4L2_MEMORY_DMABUF
+	v4l2buf.Field = V4L2_FIELD_NONE
+	v4l2buf.BytesUsed = uint32(size)
+	v4l2buf.Length = uint32(size)
+	v4l2buf.M = uintptr(fd)
+	v4l2buf.Timestamp = v4l2_timeval{Sec: 0, Usec: int32(timestamp)}
+	v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QBUF, uintptr(unsafe.Pointer(&v4l2buf)))
+	if errno != 0 {
+		s.dmabufSlots[bufIdx].InUse = false
+		if s.dmabufRelease != nil {
+			s.dmabufRelease(slot)
+		}
+		s.mu.Unlock()
+		return fmt.Errorf("VIDIOC_QBUF (DMABUF) failed: %v", errno)
+	}
+
+	s.queuedBufs++
+	nextIdx := int32(bufIdx + 1)
+	if int(nextIdx) >= s.bufCount {
+		nextIdx = 0
+	}
+	s.curBufIdx.Store(nextIdx)
+
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *UVCStreamer) IsDmabufMode() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dmabufMode
 }

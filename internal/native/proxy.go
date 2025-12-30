@@ -24,17 +24,8 @@ import (
 )
 
 const (
-	// maxFrameSize must accommodate large MJPEG frames at high quality.
-	// MJPEG at 1080p high quality can exceed 1MB per frame.
-	// 2MB provides headroom for all quality settings.
-	maxFrameSize                   = 2 * 1024 * 1024 // 2MB
+	maxFrameSize                   = 1920 * 1080 / 2
 	defaultMaxRestartAttempts uint = 5
-)
-
-// Frame type constants for multiplexing H.264 and MJPEG on same socket
-const (
-	FrameTypeH264  = 0x00
-	FrameTypeMJPEG = 0x01
 )
 
 type nativeProxyOptions struct {
@@ -51,7 +42,6 @@ type nativeProxyOptions struct {
 	MaxRestartAttempts    uint
 
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
-	OnMjpegFrameReceived func(frame []byte)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnVideoStateChange   func(state VideoState)
@@ -82,7 +72,6 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		DisplayRotation:      n.DisplayRotation,
 		DefaultQualityFactor: n.DefaultQualityFactor,
 		OnVideoFrameReceived: n.OnVideoFrameReceived,
-		OnMjpegFrameReceived: n.OnMjpegFrameReceived,
 		OnIndevEvent:         n.OnIndevEvent,
 		OnRpcEvent:           n.OnRpcEvent,
 		OnVideoStateChange:   n.OnVideoStateChange,
@@ -278,11 +267,10 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 
 	inboundPacket := make([]byte, maxFrameSize)
 	var frameSizeBuffer [4]byte
-	var frameTypeBuffer [1]byte
-	lastH264Frame := time.Now()
+	lastFrame := time.Now()
 
 	for {
-		// Read 4-byte frame length prefix (includes type byte)
+		// Read 4-byte frame length prefix
 		_, err := io.ReadFull(conn, frameSizeBuffer[:])
 		if err != nil {
 			if err != io.EOF {
@@ -292,43 +280,23 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 		}
 
 		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
-		if frameSize < 2 || frameSize > maxFrameSize {
+		if frameSize == 0 || frameSize > maxFrameSize {
 			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
 				Msg("received invalid frame size")
 			break
 		}
 
-		// Read frame type byte
-		_, err = io.ReadFull(conn, frameTypeBuffer[:])
-		if err != nil {
-			p.logger.Warn().Err(err).Msg("failed to read frame type from socket")
-			break
-		}
-		frameType := frameTypeBuffer[0]
-		dataSize := frameSize - 1 // Subtract type byte
-
 		// Read the actual frame data
-		_, err = io.ReadFull(conn, inboundPacket[:dataSize])
+		_, err = io.ReadFull(conn, inboundPacket[:frameSize])
 		if err != nil {
 			p.logger.Warn().Err(err).Msg("failed to read video frame from socket")
 			break
 		}
 
-		switch frameType {
-		case FrameTypeH264:
-			now := time.Now()
-			sinceLastFrame := now.Sub(lastH264Frame)
-			lastH264Frame = now
-			if p.options.OnVideoFrameReceived != nil {
-				p.options.OnVideoFrameReceived(inboundPacket[:dataSize], sinceLastFrame)
-			}
-		case FrameTypeMJPEG:
-			if p.options.OnMjpegFrameReceived != nil {
-				p.options.OnMjpegFrameReceived(inboundPacket[:dataSize])
-			}
-		default:
-			p.logger.Warn().Uint8("frameType", frameType).Msg("unknown frame type received")
-		}
+		now := time.Now()
+		sinceLastFrame := now.Sub(lastFrame)
+		lastFrame = now
+		p.options.OnVideoFrameReceived(inboundPacket[:frameSize], sinceLastFrame)
 	}
 }
 
@@ -626,12 +594,6 @@ func (p *NativeProxy) VideoStart() error {
 	})
 }
 
-func (p *NativeProxy) MjpegSetEnabled(enabled bool) {
-	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
-		return client.MjpegSetEnabled(enabled)
-	})
-}
-
 func (p *NativeProxy) GetLVGLVersion() (string, error) {
 	return nativeProxyClientExec[string](p, func(client *GRPCClient) (string, error) {
 		return client.GetLVGLVersion()
@@ -759,44 +721,4 @@ func (p *NativeProxy) DoNotUseThisIsForCrashTestingOnly() {
 		client.DoNotUseThisIsForCrashTestingOnly()
 		return nil
 	})
-}
-
-// H.264 to MJPEG transcoder methods (camera passthrough)
-func (p *NativeProxy) TranscodeInit(width, height int) error {
-	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
-		return client.TranscodeInit(width, height)
-	})
-}
-
-func (p *NativeProxy) TranscodeStart() error {
-	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
-		return client.TranscodeStart()
-	})
-}
-
-func (p *NativeProxy) TranscodeStop() {
-	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
-		client.TranscodeStop()
-		return nil
-	})
-}
-
-func (p *NativeProxy) TranscodeShutdown() {
-	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
-		client.TranscodeShutdown()
-		return nil
-	})
-}
-
-func (p *NativeProxy) TranscodeSendH264(frame []byte) error {
-	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
-		return client.TranscodeSendH264(frame)
-	})
-}
-
-func (p *NativeProxy) TranscodeIsRunning() bool {
-	result, _ := nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
-		return client.TranscodeIsRunning(), nil
-	})
-	return result
 }

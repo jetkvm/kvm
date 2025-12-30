@@ -20,10 +20,7 @@ jetkvm_video_state_t state;
 jetkvm_video_state_handler_t *video_state_handler = NULL;
 jetkvm_rpc_handler_t *rpc_handler = NULL;
 jetkvm_video_handler_t *video_handler = NULL;
-jetkvm_mjpeg_handler_t *mjpeg_handler = NULL;
-bool mjpeg_enabled = false;
-int mjpeg_frame_divisor = 2;    // Default: 30fps from 60fps input (skip every other frame)
-float mjpeg_quality = 0.6f;     // Default: 60% quality (lower CPU/bandwidth, still good for webcam)
+
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
     log_set_handler(handler);
@@ -31,43 +28,6 @@ void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
 
 void jetkvm_set_video_handler(jetkvm_video_handler_t *handler) {
     video_handler = handler;
-}
-
-void jetkvm_set_mjpeg_handler(jetkvm_mjpeg_handler_t *handler) {
-    mjpeg_handler = handler;
-}
-
-void jetkvm_mjpeg_set_enabled(bool enabled) {
-    mjpeg_enabled = enabled;
-    log_info("MJPEG streaming %s", enabled ? "enabled" : "disabled");
-    // Start/stop MJPEG encoder dynamically based on enabled state
-    mjpeg_update_encoder(enabled);
-}
-
-bool jetkvm_mjpeg_get_enabled() {
-    return mjpeg_enabled;
-}
-
-void jetkvm_mjpeg_set_frame_divisor(int divisor) {
-    if (divisor < 1) divisor = 1;
-    if (divisor > 10) divisor = 10;
-    mjpeg_frame_divisor = divisor;
-    log_info("MJPEG frame divisor set to %d (output fps = input/%d)", divisor, divisor);
-}
-
-int jetkvm_mjpeg_get_frame_divisor() {
-    return mjpeg_frame_divisor;
-}
-
-void jetkvm_mjpeg_set_quality(float quality) {
-    if (quality < 0.1f) quality = 0.1f;
-    if (quality > 1.0f) quality = 1.0f;
-    mjpeg_quality = quality;
-    log_info("MJPEG quality set to %.1f%%", quality * 100.0f);
-}
-
-float jetkvm_mjpeg_get_quality() {
-    return mjpeg_quality;
 }
 
 static jetkvm_indev_handler_t *jetkvm_indev_handler = NULL;
@@ -123,24 +83,6 @@ int video_send_frame(const uint8_t *frame, ssize_t len)
         (*video_handler)(frame, len);
     } else {
         log_error("video handler is not set");
-    }
-    return 0;
-}
-
-int video_send_mjpeg_frame(const uint8_t *frame, ssize_t len)
-{
-    if (!mjpeg_enabled) {
-        return 0; // MJPEG streaming not enabled, skip
-    }
-    if (mjpeg_handler != NULL) {
-        (*mjpeg_handler)(frame, len);
-    } else {
-        // Only log once when handler is NULL (rate-limited in practice)
-        static int null_handler_warned = 0;
-        if (!null_handler_warned) {
-            log_warn("MJPEG handler is NULL, frames will be dropped");
-            null_handler_warned = 1;
-        }
     }
     return 0;
 }
@@ -487,29 +429,4 @@ void jetkvm_crash() {
     // let's call a function that will crash the program
     int* p = 0;
     *p = 0;
-}
-
-// Transcoder wrapper functions
-int jetkvm_transcode_init(int width, int height) {
-    return transcode_init(width, height);
-}
-
-int jetkvm_transcode_start() {
-    return transcode_start();
-}
-
-void jetkvm_transcode_stop() {
-    transcode_stop();
-}
-
-void jetkvm_transcode_shutdown() {
-    transcode_shutdown();
-}
-
-int jetkvm_transcode_send_h264(const uint8_t *frame, ssize_t len) {
-    return transcode_send_h264_frame(frame, len);
-}
-
-bool jetkvm_transcode_is_running() {
-    return transcode_is_running();
 }

@@ -199,17 +199,6 @@ func (n *Native) VideoStart() error {
 	return nil
 }
 
-// MjpegSetEnabled enables or disables the hardware MJPEG encoder.
-// This is used for UVC streaming when the host requires MJPEG format.
-// The MJPEG encoder runs in parallel with H.264 but only when enabled,
-// avoiding unnecessary resource usage.
-func (n *Native) MjpegSetEnabled(enabled bool) {
-	n.videoLock.Lock()
-	defer n.videoLock.Unlock()
-
-	mjpegSetEnabled(enabled)
-}
-
 // VideoGetStreamingStatus gets the streaming status of the video.
 func (n *Native) VideoGetStreamingStatus() VideoStreamingStatus {
 	n.videoLock.Lock()

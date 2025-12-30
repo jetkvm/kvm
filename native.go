@@ -33,8 +33,6 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		MaxRestartAttempts:   config.NativeMaxRestart,
 		OnNativeRestart: func() {
 			configureDisplayOnNativeRestart()
-			// Restore MJPEG encoder state if UVC was streaming with MJPEG format
-			restoreUVCMjpegState()
 		},
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
@@ -69,21 +67,12 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
-			// Send H.264 frame to WebRTC for browser streaming
 			if currentSession != nil {
 				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
 				if err != nil {
 					nativeLogger.Warn().Err(err).Msg("error writing sample")
 				}
 			}
-
-			// Also send H.264 frame to UVC for HDMI loopback
-			// (UVC handler checks if source is HDMI before processing)
-			handleH264FrameForUVC(frame)
-		},
-		OnMjpegFrameReceived: func(frame []byte) {
-			// Send MJPEG frame to UVC when host selected MJPEG format
-			handleMjpegFrameForUVC(frame)
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{
@@ -115,11 +104,6 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
 		nativeInstance.DoNotUseThisIsForCrashTestingOnly()
-	}
-
-	// Set native controller on camera manager for MJPEG encoding control
-	if cameraManager != nil {
-		cameraManager.SetNativeController(nativeInstance)
 	}
 
 	// Initialize UVC streaming if enabled
