@@ -182,7 +182,13 @@ func (m *Manager) eventLoop() {
 		retryInterval   = time.Second
 		recoveryDelay   = 500 * time.Millisecond
 		errorRetryDelay = 100 * time.Millisecond
+		maxEventsPerPoll = 16
 	)
+
+	type pendingEvent struct {
+		eventType uint32
+		eventData []byte
+	}
 
 	for m.eventLoopRun.Load() {
 		streamer := m.streamer.Load()
@@ -222,17 +228,64 @@ func (m *Manager) eventLoop() {
 			}
 		}
 
-		eventType, eventData, err := streamer.PollEventsWithData()
-		if err != nil {
-			if m.uvcLog != nil {
-				m.uvcLog.Warn().Err(err).Msg("UVC PollEventsWithData failed")
+		var events []pendingEvent
+		for i := 0; i < maxEventsPerPoll; i++ {
+			eventType, eventData, err := streamer.PollEventsWithData()
+			if err != nil {
+				if m.uvcLog != nil {
+					m.uvcLog.Warn().Err(err).Msg("UVC PollEventsWithData failed")
+				}
+				break
 			}
-			time.Sleep(errorRetryDelay)
+			if eventType == 0 {
+				break
+			}
+			dataCopy := make([]byte, len(eventData))
+			copy(dataCopy, eventData)
+			events = append(events, pendingEvent{eventType: eventType, eventData: dataCopy})
+		}
+
+		if len(events) == 0 {
+			time.Sleep(pollInterval)
 			continue
 		}
 
-		if eventType != 0 {
-			m.handleEvent(streamer, eventType, eventData)
+		wantStreaming := false
+		sawStreamingEvent := false
+		for _, ev := range events {
+			switch ev.eventType {
+			case usbgadget.UVC_EVENT_STREAMON:
+				wantStreaming = true
+				sawStreamingEvent = true
+			case usbgadget.UVC_EVENT_STREAMOFF, usbgadget.UVC_EVENT_DISCONNECT:
+				wantStreaming = false
+				sawStreamingEvent = true
+			default:
+				m.handleEvent(streamer, ev.eventType, ev.eventData)
+			}
+		}
+
+		if sawStreamingEvent {
+			if wantStreaming {
+				// Settling delay: USB host may rapidly connect then disconnect.
+				time.Sleep(50 * time.Millisecond)
+
+				for i := 0; i < maxEventsPerPoll; i++ {
+					eventType, _, err := streamer.PollEventsWithData()
+					if err != nil || eventType == 0 {
+						break
+					}
+					if eventType == usbgadget.UVC_EVENT_STREAMOFF || eventType == usbgadget.UVC_EVENT_DISCONNECT {
+						wantStreaming = false
+						break
+					}
+				}
+				if wantStreaming {
+					m.startStreaming()
+				}
+			} else {
+				m.stopStreaming()
+			}
 		}
 
 		time.Sleep(pollInterval)
@@ -245,18 +298,6 @@ func (m *Manager) handleEvent(streamer *usbgadget.UVCStreamer, eventType uint32,
 		if m.uvcLog != nil {
 			m.uvcLog.Debug().Msg("UVC connected")
 		}
-
-	case usbgadget.UVC_EVENT_DISCONNECT:
-		if m.uvcLog != nil {
-			m.uvcLog.Debug().Msg("UVC disconnected")
-		}
-		m.stopStreaming()
-
-	case usbgadget.UVC_EVENT_STREAMON:
-		m.startStreaming()
-
-	case usbgadget.UVC_EVENT_STREAMOFF:
-		m.stopStreaming()
 
 	case usbgadget.UVC_EVENT_SETUP:
 		if err := streamer.HandleSetupEvent(eventData); err != nil {

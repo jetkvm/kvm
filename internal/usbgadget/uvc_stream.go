@@ -417,6 +417,12 @@ func (s *UVCStreamer) StartStreaming() error {
 		return nil
 	}
 
+	var cap v4l2_capability
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
+	if errno != 0 {
+		return fmt.Errorf("UVC device no longer valid (errno=%d), aborting STREAMON", errno)
+	}
+
 	s.log.Info().Int("bufCount", s.bufCount).Msg("Starting V4L2 streaming")
 
 	s.queuedBufs = 0
@@ -424,17 +430,42 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.frameCounter.Store(0)
 	s.droppedFrames = 0
 	s.lastDropLogFrame = 0
+
+	for i := 0; i < s.bufCount; i++ {
+		var v4l2buf v4l2_buffer
+		v4l2buf.Index = uint32(i)
+		v4l2buf.Type = V4L2_BUF_TYPE_VIDEO_OUTPUT
+		v4l2buf.Memory = V4L2_MEMORY_USERPTR
+		v4l2buf.Field = V4L2_FIELD_NONE
+		v4l2buf.BytesUsed = 0
+		v4l2buf.Length = uint32(len(s.buffers[i]))
+		v4l2buf.M = s.bufferPtrs[i]
+		v4l2buf.Flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QBUF, uintptr(unsafe.Pointer(&v4l2buf)))
+		if errno != 0 {
+			s.log.Warn().Int("buffer", i).Uint32("errno", uint32(errno)).Msg("Pre-queue VIDIOC_QBUF failed")
+		} else {
+			s.queuedBufs++
+		}
+	}
+
+	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
+	if errno != 0 {
+		return fmt.Errorf("UVC device invalidated during setup (errno=%d), aborting STREAMON", errno)
+	}
+
 	s.streaming.Store(true)
 
 	bufType := uint32(V4L2_BUF_TYPE_VIDEO_OUTPUT)
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMON, uintptr(unsafe.Pointer(&bufType)))
-	if errno != 0 {
+	_, _, streamerr := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_STREAMON, uintptr(unsafe.Pointer(&bufType)))
+	if streamerr != 0 {
 		s.streaming.Store(false)
-		return fmt.Errorf("VIDIOC_STREAMON failed: %v", errno)
+		return fmt.Errorf("VIDIOC_STREAMON failed: %v", streamerr)
 	}
 	s.streamReady = true
 
-	s.log.Info().Msg("V4L2 STREAMON successful - UVC streaming active")
+	s.log.Info().Int("preQueued", s.queuedBufs).Msg("V4L2 STREAMON successful - UVC streaming active")
 	return nil
 }
 
