@@ -144,39 +144,31 @@ export class WebSocketCameraTransport implements CameraTransport {
 
               switch (msg.type) {
                 case "format":
-                  // Format negotiation from JetKVM
-                  // UVC host has requested a specific format, or "stop" when disconnected
                   if (msg.codec === "stop") {
-                    console.log("[CameraTransport] UVC streaming stopped");
                     this.events.onStreamingStopped?.();
                   } else if (msg.codec && msg.width && msg.height) {
-                    // Log format with frame rate and encoder settings for debugging
-                    console.log(
-                      `[CameraTransport] Format request: ${msg.codec} ${msg.width}x${msg.height}@${msg.frameRate || 30}fps (cap: ${msg.frameRateCap || "none"}), h264Bitrate=${msg.h264Bitrate}, mjpegQuality=${msg.mjpegQuality}`,
-                    );
                     this.events.onFormatRequest?.({
                       codec: msg.codec as "h264" | "mjpeg",
                       width: msg.width,
                       height: msg.height,
-                      frameRate: msg.frameRate || 30, // UVC-negotiated rate, default to 30fps
-                      frameRateCap: msg.frameRateCap, // User's configured cap
-                      h264Bitrate: msg.h264Bitrate, // H.264 bitrate in bps
-                      mjpegQuality: msg.mjpegQuality, // MJPEG quality 0.0-1.0
+                      frameRate: msg.frameRate || 30,
+                      frameRateCap: msg.frameRateCap,
+                      h264Bitrate: msg.h264Bitrate,
+                      mjpegQuality: msg.mjpegQuality,
                     });
                   }
                   break;
 
                 case "error":
-                  // Server error
                   console.error("[CameraTransport] Server error:", msg.message);
                   this.events.onError?.(new Error(msg.message || "Server error"));
                   break;
 
                 default:
-                  console.log("[CameraTransport] Unknown message type:", msg.type);
+                  break;
               }
-            } catch (e) {
-              console.debug("[CameraTransport] Non-JSON message received:", e);
+            } catch {
+              // Ignore non-JSON messages
             }
           }
         };
@@ -217,40 +209,28 @@ export class WebSocketCameraTransport implements CameraTransport {
       return;
     }
 
-    try {
-      // Create frame header: 1-byte codec (timestamp not used by server)
-      const headerSize = 1;
-      const totalSize = headerSize + frame.byteLength;
+    // HOTPATH: Minimize allocations
+    const totalSize = 1 + frame.byteLength;
 
-      // Resize buffer if needed (rare, only for large frames)
-      if (this.sendBuffer.length < totalSize) {
-        // Round up to next 64KB boundary to avoid frequent resizing
-        const newSize = Math.ceil(totalSize / (64 * 1024)) * (64 * 1024);
-        this.sendBuffer = new Uint8Array(newSize);
-      }
+    // Resize buffer if needed (rare, only for large frames)
+    if (this.sendBuffer.length < totalSize) {
+      this.sendBuffer = new Uint8Array(Math.ceil(totalSize / 65536) * 65536);
+    }
 
-      // Write codec byte
-      this.sendBuffer[0] =
-        codec === "h264"
-          ? WebSocketCameraTransport.CODEC_H264
-          : WebSocketCameraTransport.CODEC_MJPEG;
+    // Write header and copy frame data
+    this.sendBuffer[0] =
+      codec === "h264" ? WebSocketCameraTransport.CODEC_H264 : WebSocketCameraTransport.CODEC_MJPEG;
+    this.sendBuffer.set(new Uint8Array(frame), 1);
 
-      // Copy frame data into reusable buffer
-      this.sendBuffer.set(new Uint8Array(frame), headerSize);
+    // Send only the portion we need (subarray doesn't allocate)
+    this.ws.send(this.sendBuffer.subarray(0, totalSize));
 
-      // Send only the portion we need (subarray doesn't allocate)
-      this.ws.send(this.sendBuffer.subarray(0, totalSize));
+    this._stats.framesSent++;
+    this._stats.bytesSent += totalSize;
 
-      this._stats.framesSent++;
-      this._stats.bytesSent += totalSize;
-
-      // Periodically report stats
-      if (this._stats.framesSent % 30 === 0) {
-        this.events.onStats?.(this.stats);
-      }
-    } catch (e) {
-      this._stats.framesDropped++;
-      console.debug("[CameraTransport] Frame send error:", e);
+    // Periodically report stats
+    if (this._stats.framesSent % 30 === 0) {
+      this.events.onStats?.(this._stats);
     }
   }
 
@@ -264,12 +244,10 @@ export class WebSocketCameraTransport implements CameraTransport {
 }
 
 export function createCameraTransport(baseUrl: string): CameraTransport {
-  console.log("[CameraTransport] Creating transport with baseUrl:", baseUrl);
   const wsUrl =
     baseUrl
       .replace(/^http:/, "ws:")
       .replace(/^https:/, "wss:")
       .replace(/\/$/, "") + "/api/camera/ws";
-  console.log("[CameraTransport] WebSocket URL:", wsUrl);
   return new WebSocketCameraTransport(wsUrl);
 }
