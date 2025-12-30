@@ -118,7 +118,8 @@ async function handleFrame(bitmap: ImageBitmap, timestamp: number): Promise<void
   }
 
   try {
-    ctx.drawImage(bitmap, 0, 0);
+    // Scale bitmap to canvas dimensions
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
     const blob = await canvas.convertToBlob({
       type: "image/jpeg",
@@ -130,19 +131,24 @@ async function handleFrame(bitmap: ImageBitmap, timestamp: number): Promise<void
     // Prepend codec byte if configured (avoids copy in transport)
     let data: ArrayBuffer;
     if (config.codecByte !== undefined) {
-      const framed = new Uint8Array(1 + jpegData.byteLength);
+      // Create framed buffer: [codecByte][jpegData...]
+      const jpegBytes = new Uint8Array(jpegData);
+      const framed = new Uint8Array(1 + jpegBytes.length);
       framed[0] = config.codecByte;
-      framed.set(new Uint8Array(jpegData), 1);
+      framed.set(jpegBytes, 1);
       data = framed.buffer;
     } else {
       data = jpegData;
     }
 
-    self.postMessage({ type: "frame", data, timestamp } as EncodedFrameMessage, {
-      transfer: [data],
-    });
-  } catch {
-    // Ignore transient encode errors
+    const response: EncodedFrameMessage = { type: "frame", data, timestamp };
+    self.postMessage(response, { transfer: [data] });
+  } catch (err) {
+    // Report errors back to main thread
+    self.postMessage({
+      type: "error",
+      message: err instanceof Error ? err.message : String(err),
+    } as ErrorMessage);
   } finally {
     // Always close the bitmap to free GPU memory
     bitmap.close();
