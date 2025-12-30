@@ -21,11 +21,7 @@ const (
 	ciocauthcrypt = 0xc02c636d // _IOWR('c', 109, 44) - correct size for 32-bit ARM
 )
 
-// Cipher types
-const (
-	cryptoAESGCM   = 50  // Standard CRYPTO_AES_GCM
-	cryptoRKAESGCM = 177 // Rockchip-specific (may not work with cryptodev)
-)
+const cryptoRKAESGCM = 177
 
 // Operation types
 const (
@@ -109,7 +105,7 @@ func newHardwareAESGCM(key []byte) (AEAD, error) {
 	copy(keyCopy, key)
 
 	sess := &sessionOp{
-		Cipher: cryptoRKAESGCM, // Use Rockchip CRYPTO_RK_AES_GCM
+		Cipher: cryptoRKAESGCM,
 		Keylen: uint32(len(keyCopy)),
 		Key:    unsafe.Pointer(&keyCopy[0]),
 	}

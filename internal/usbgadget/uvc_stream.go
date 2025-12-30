@@ -835,12 +835,14 @@ func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 	return nil
 }
 
-// IsStreaming returns true if streaming is active (thread-safe).
 func (s *UVCStreamer) IsStreaming() bool { return s.streaming.Load() }
 
-// IsOpen returns true if the device is open.
-// Note: Lock-free read - fd is only modified under mutex in Open/Close.
-func (s *UVCStreamer) IsOpen() bool { return s.fd >= 0 }
+func (s *UVCStreamer) IsOpen() bool {
+	s.mu.Lock()
+	fd := s.fd
+	s.mu.Unlock()
+	return fd >= 0
+}
 
 func (s *UVCStreamer) IsValid() bool {
 	s.mu.Lock()

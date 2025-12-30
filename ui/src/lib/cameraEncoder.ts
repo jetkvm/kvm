@@ -525,7 +525,7 @@ export class CameraEncoder {
               }
             }
           } catch (err) {
-            console.debug("[CameraEncoder] frame encode error:", err);
+            console.warn("[CameraEncoder] frame encode error:", err);
           } finally {
             frame.close();
           }
@@ -714,7 +714,7 @@ export class CameraEncoder {
           if (this._state === "running") this.captureWithVideoFrameCallback();
         })
         .catch((err: unknown) => {
-          console.debug("[CameraEncoder] video.play failed:", err);
+          console.warn("[CameraEncoder] video.play failed:", err);
         });
       return;
     }
@@ -740,7 +740,7 @@ export class CameraEncoder {
       );
       bitmap = null;
     } catch (err) {
-      console.debug("[CameraEncoder] createImageBitmap failed:", err);
+      console.warn("[CameraEncoder] createImageBitmap failed:", err);
       bitmap?.close();
     }
   }

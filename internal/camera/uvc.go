@@ -79,11 +79,6 @@ func (e *zerologEventAdapter) Msg(msg string) {
 	e.event.Msg(msg)
 }
 
-// InitUVC initializes the UVC streaming subsystem if enabled.
-// It opens the UVC device, sets up event subscription, and starts
-// the event loop goroutine. Safe to call multiple times.
-// Returns nil if UVC is disabled or initialization succeeds.
-// Returns an error if the UVC device cannot be found.
 func (m *Manager) InitUVC(uvcEnabled bool) error {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -219,8 +214,10 @@ func (m *Manager) eventLoop() {
 			}
 			if err := streamer.SubscribeEvents(); err != nil {
 				if m.uvcLog != nil {
-					m.uvcLog.Error().Err(err).Msg("Failed to subscribe to UVC events - streaming will not work")
+					m.uvcLog.Error().Err(err).Msg("Failed to subscribe to UVC events")
 				}
+				_ = streamer.Close()
+				time.Sleep(retryInterval)
 				continue
 			}
 			if m.uvcLog != nil {
