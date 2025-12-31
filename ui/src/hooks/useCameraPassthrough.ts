@@ -108,12 +108,14 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
         }
         transportRef.current = transport;
 
+        // Initial encoder config - will be overwritten by format request from backend
+        // Using maximum capability values; actual settings come from user config
         const encoder = await createEncoder("h264", {
           width: 1920,
           height: 1080,
-          frameRate: 60,
-          bitrate: 8_000_000,
-          quality: 0.65,
+          frameRate: 30,
+          bitrate: 3_000_000,
+          quality: 0.35,
         });
         if (cancelled) {
           encoder.stop();

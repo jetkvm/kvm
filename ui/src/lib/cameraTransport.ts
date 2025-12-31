@@ -57,6 +57,9 @@ export interface CameraTransport {
   setEventHandlers(events: Partial<CameraTransportEvents>): void;
 }
 
+// Backpressure threshold: drop frames if WebSocket buffer exceeds this size
+const BACKPRESSURE_THRESHOLD_BYTES = 4 * 1024 * 1024; // 4MB
+
 export class WebSocketCameraTransport implements CameraTransport {
   private ws: WebSocket | null = null;
   private _state: TransportState = "disconnected";
@@ -201,8 +204,8 @@ export class WebSocketCameraTransport implements CameraTransport {
       return;
     }
 
-    // Backpressure: drop frames if buffer is too full (4MB threshold)
-    if (this.ws.bufferedAmount > 4 * 1024 * 1024) {
+    // Backpressure: drop frames if buffer exceeds threshold
+    if (this.ws.bufferedAmount > BACKPRESSURE_THRESHOLD_BYTES) {
       this._stats.framesDropped++;
       if (this._stats.framesDropped % 30 === 1) {
         console.warn(`[CameraTransport] Backpressure, dropped ${this._stats.framesDropped} frames`);

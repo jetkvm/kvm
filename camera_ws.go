@@ -3,6 +3,7 @@ package kvm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -18,7 +19,7 @@ const frameHeaderSize = 1
 // Ring buffer configuration for zero-allocation WebSocket reads
 const (
 	ringBufferCount = 4           // 4 buffers in ring (exceeds 3 V4L2 buffers for safety)
-	ringBufferSize  = 2048 * 1024 // 2MB per buffer (handles 1080p MJPEG at any quality)
+	ringBufferSize  = 2048 * 1024 // 2MB per buffer (handles typical 1080p MJPEG; oversized frames are drained and skipped)
 )
 
 // Codec flags for binary frame protocol
@@ -74,7 +75,9 @@ func handleCameraWs(c *gin.Context) {
 
 	// Send initial format if UVC is already streaming
 	if format := mgr.GetCurrentFormat(); format != nil {
-		sendFormatMessage(ctx, ws, format)
+		if err := sendFormatMessage(ctx, ws, format); err != nil {
+			cameraLog.Warn().Err(err).Msg("Failed to send initial format message")
+		}
 	}
 
 	// Start goroutine to forward format changes to WebSocket
@@ -87,7 +90,9 @@ func handleCameraWs(c *gin.Context) {
 				if !ok {
 					return
 				}
-				sendFormatMessage(ctx, ws, &format)
+				if err := sendFormatMessage(ctx, ws, &format); err != nil {
+					cameraLog.Warn().Err(err).Msg("Failed to send format change message")
+				}
 			}
 		}
 	}()
@@ -191,10 +196,10 @@ func handleCameraWs(c *gin.Context) {
 
 // sendFormatMessage sends a format negotiation message to the WebSocket client.
 // Includes encoder settings (bitrate/quality) from config so the browser can configure its encoder.
-func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.FormatInfo) {
+// Returns an error if the message could not be sent.
+func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.FormatInfo) error {
 	ensureConfigLoaded()
 
-	// Debug: log actual format values being sent to browser
 	cameraLog.Info().
 		Str("codec", format.Codec).
 		Int("width", format.Width).
@@ -217,8 +222,7 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 
 	data, err := json.Marshal(msg)
 	if err != nil {
-		cameraLog.Error().Err(err).Msg("Failed to marshal format message")
-		return
+		return fmt.Errorf("failed to marshal format message: %w", err)
 	}
 
 	// Use a short timeout for control messages
@@ -226,6 +230,7 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 	defer cancel()
 
 	if err := ws.Write(writeCtx, websocket.MessageText, data); err != nil {
-		cameraLog.Warn().Err(err).Msg("Failed to send format message to browser")
+		return fmt.Errorf("failed to send format message: %w", err)
 	}
+	return nil
 }

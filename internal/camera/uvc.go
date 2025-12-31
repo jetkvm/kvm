@@ -298,7 +298,11 @@ func (m *Manager) eventLoop() {
 					}
 				}
 				if wantStreaming {
-					m.startStreaming()
+					if err := m.startStreaming(); err != nil {
+						if m.uvcLog != nil {
+							m.uvcLog.Error().Err(err).Msg("Failed to start streaming")
+						}
+					}
 				}
 			} else {
 				m.stopStreaming()
@@ -370,27 +374,21 @@ func (m *Manager) prepareStreaming() {
 	}
 }
 
-func (m *Manager) startStreaming() {
+func (m *Manager) startStreaming() error {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
 	streamer := m.streamer.Load()
 	if streamer == nil {
-		return
+		return fmt.Errorf("no UVC streamer available")
 	}
 
 	if !streamer.IsStreaming() {
 		if err := streamer.RequestBuffers(uvcBufferCount); err != nil {
-			if m.uvcLog != nil {
-				m.uvcLog.Error().Err(err).Int("buffer_count", uvcBufferCount).Msg("Failed to request UVC buffers")
-			}
-			return
+			return fmt.Errorf("failed to request UVC buffers: %w", err)
 		}
 		if err := streamer.StartStreaming(); err != nil {
-			if m.uvcLog != nil {
-				m.uvcLog.Error().Err(err).Msg("Failed to start UVC streaming")
-			}
-			return
+			return fmt.Errorf("failed to start UVC streaming: %w", err)
 		}
 	}
 
@@ -423,6 +421,7 @@ func (m *Manager) startStreaming() {
 		Height:    int(height),
 		FrameRate: frameRate,
 	})
+	return nil
 }
 
 func (m *Manager) stopStreaming() {
@@ -454,7 +453,7 @@ func (m *Manager) logFrameError(err error, codec string) {
 }
 
 // HandleCameraH264Frame processes H.264 frames from the browser camera.
-// HOTPATH: Called for every frame at up to 30fps.
+// HOTPATH: Called for every frame at the negotiated frame rate.
 func (m *Manager) HandleCameraH264Frame(frame []byte) {
 	if !m.uvcStreamingFast.Load() || !m.enabled.Load() || m.uvcMjpegFast.Load() {
 		return
@@ -467,7 +466,7 @@ func (m *Manager) HandleCameraH264Frame(frame []byte) {
 }
 
 // HandleCameraMjpegFrame processes MJPEG frames from the browser camera.
-// HOTPATH: Called for every frame at up to 30fps.
+// HOTPATH: Called for every frame at the negotiated frame rate.
 func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
 	if !m.uvcStreamingFast.Load() || !m.enabled.Load() || !m.uvcMjpegFast.Load() {
 		return
