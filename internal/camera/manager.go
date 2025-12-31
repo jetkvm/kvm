@@ -113,6 +113,64 @@ func StopFormat() FormatInfo {
 	return FormatInfo{Codec: CodecStop}
 }
 
+// FormatInfo validation errors.
+var (
+	ErrInvalidCodec     = errors.New("camera: invalid video codec")
+	ErrInvalidWidth     = errors.New("camera: width must be positive")
+	ErrInvalidHeight    = errors.New("camera: height must be positive")
+	ErrInvalidFrameRate = errors.New("camera: frame rate must be 1-240")
+)
+
+// Validate checks that FormatInfo contains valid values.
+// Stop formats are always valid. For streaming formats, validates:
+// - Codec is h264 or mjpeg (not stop or invalid)
+// - Width and Height are positive
+// - FrameRate is between 1 and 240
+func (f FormatInfo) Validate() error {
+	// Stop format is always valid
+	if f.Codec == CodecStop {
+		return nil
+	}
+
+	if !f.Codec.IsValid() || f.Codec == CodecStop {
+		return ErrInvalidCodec
+	}
+	if f.Width <= 0 {
+		return ErrInvalidWidth
+	}
+	if f.Height <= 0 {
+		return ErrInvalidHeight
+	}
+	if f.FrameRate < 1 || f.FrameRate > 240 {
+		return ErrInvalidFrameRate
+	}
+	return nil
+}
+
+// NewFormatInfo creates a validated FormatInfo for streaming.
+// Use StopFormat() for stop notifications instead of this constructor.
+// Returns error if any parameter is invalid.
+func NewFormatInfo(codec VideoCodec, width, height, frameRate int) (FormatInfo, error) {
+	if !codec.IsValid() || codec == CodecStop {
+		return FormatInfo{}, ErrInvalidCodec
+	}
+	if width <= 0 {
+		return FormatInfo{}, ErrInvalidWidth
+	}
+	if height <= 0 {
+		return FormatInfo{}, ErrInvalidHeight
+	}
+	if frameRate < 1 || frameRate > 240 {
+		return FormatInfo{}, ErrInvalidFrameRate
+	}
+	return FormatInfo{
+		Codec:     codec,
+		Width:     width,
+		Height:    height,
+		FrameRate: frameRate,
+	}, nil
+}
+
 // Config holds configuration for creating a Manager.
 type Config struct {
 	UVCLogger    *zerolog.Logger

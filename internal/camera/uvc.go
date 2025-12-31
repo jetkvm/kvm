@@ -197,6 +197,8 @@ func (m *Manager) eventLoop() {
 			m.eventLoopRun.Store(false)
 			m.uvcStreamingFast.Store(false)
 			m.uvcMjpegFast.Store(false)
+			// Notify browser that streaming stopped unexpectedly so it can stop encoding
+			m.notifyStreamingStopped()
 			// Notify higher layers about the panic for alerting/recovery
 			if m.onPanic != nil {
 				m.onPanic(r)
@@ -315,6 +317,8 @@ func (m *Manager) eventLoop() {
 						if m.uvcLog != nil {
 							m.uvcLog.Error().Err(err).Msg("Failed to start streaming")
 						}
+						// Notify browser so it stops encoding (it received format during prepare)
+						m.notifyStreamingStopped()
 					}
 				}
 			} else {
