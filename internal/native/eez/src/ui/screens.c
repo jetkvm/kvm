@@ -314,25 +314,44 @@ void create_screen_home_screen() {
                     {
                         lv_obj_t *parent_obj = obj;
                         {
-                            // HomeInfoIPv4Addr
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.home_info_ipv4_addr = obj;
-                            lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_label_font_bold30(obj);
-                            lv_label_set_text(obj, "169.254.169.254");
-                        }
-                        {
-                            // HomeInfoIPv6Addr
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.home_info_ipv6_addr = obj;
-                            lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
-                            lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL);
-                            add_style_label_font16(obj);
-                            lv_obj_set_style_text_font(obj, &ui_font_inter9black, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text(obj, "2001:0db8:0000:0000:0000:0000:0000:0000-\n2001:0db8:0000:0000:0000:0000:0000:0000-");
+                            // IPinfo
+                            lv_obj_t *obj = lv_obj_create(parent_obj);
+                            objects.ipinfo = obj;
+                            lv_obj_set_pos(obj, 0, 0);
+                            lv_obj_set_size(obj, LV_PCT(100), LV_PCT(75));
+                            lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_pad_bottom(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            add_style_flex_column_start(obj);
+                            {
+                                lv_obj_t *parent_obj = obj;
+                                {
+                                    // HomeInfoIPv4Addr
+                                    lv_obj_t *obj = lv_label_create(parent_obj);
+                                    objects.home_info_ipv4_addr = obj;
+                                    lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
+                                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                                    add_style_label_font_bold30(obj);
+                                    lv_obj_set_style_margin_bottom(obj, -10, LV_PART_MAIN | LV_STATE_DEFAULT);
+                                    lv_label_set_text(obj, "169.254.169.254");
+                                }
+                                {
+                                    // HomeInfoIPv6Addr
+                                    lv_obj_t *obj = lv_label_create(parent_obj);
+                                    objects.home_info_ipv6_addr = obj;
+                                    lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
+                                    lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);
+                                    lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL);
+                                    add_style_label_font16(obj);
+                                    lv_obj_set_style_text_font(obj, &ui_font_inter9black, LV_PART_MAIN | LV_STATE_DEFAULT);
+                                    lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
+                                    lv_label_set_text(obj, "2001:0db8:0000:0000:0000:0000:0000:0000-\n2001:0db8:0000:0000:0000:0000:0000:0000-\nf\nf\nf\nf");
+                                }
+                            }
                         }
                         {
                             // HomeInfoMACAddr

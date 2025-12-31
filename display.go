@@ -58,26 +58,10 @@ func capStrSlice(sl []string, maxLen int) ([]string) {
 
 func updateDisplay() {
 	if networkManager != nil {
+		var ipv6String string
 		ipv4String := networkManager.IPv4String()
 		ipv6Addrs := networkManager.GetIPv6Addresses()
 		ipv6Addrs = append(ipv6Addrs, networkManager.GetIPv6LinkLocalAddress())
-		ipv6Addrs = append(ipv6Addrs, "fe80::afff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::bfff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::cfff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::dfff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::efff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::01ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::02ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::03ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-		ipv6Addrs = append(ipv6Addrs, "fe80::04ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-
-		var ipv6String string
-		if ipv4String == "" {
-			ipv6Addrs = capStrSlice(ipv6Addrs, 5)
-		} else {
-			ipv6Addrs = capStrSlice(ipv6Addrs, 2)
-		}
-
 
 		if len(ipv6Addrs) > 0 {
 			ipv6String = strings.Join(ipv6Addrs, "\n")

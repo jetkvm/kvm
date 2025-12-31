@@ -1226,94 +1226,143 @@
                   "heightUnit": "%",
                   "children": [
                     {
-                      "objID": "e9de87d1-c8c7-432f-8ee4-8f723c037e51",
-                      "type": "LVGLLabelWidget",
-                      "left": 0,
-                      "top": 0,
-                      "width": 217,
-                      "height": 31,
-                      "customInputs": [],
-                      "customOutputs": [],
-                      "style": {
-                        "objID": "2028e9cc-159f-4dde-b871-5ba217c74372",
-                        "useStyle": "default",
-                        "conditionalStyles": [],
-                        "childStyles": []
-                      },
-                      "timeline": [],
-                      "eventHandlers": [],
-                      "identifier": "HomeInfoIPv4Addr",
-                      "leftUnit": "%",
-                      "topUnit": "%",
-                      "widthUnit": "content",
-                      "heightUnit": "content",
-                      "children": [],
-                      "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
-                      "hiddenFlag": false,
-                      "hiddenFlagType": "literal",
-                      "clickableFlagType": "literal",
-                      "checkedStateType": "literal",
-                      "disabledStateType": "literal",
-                      "states": "",
-                      "useStyle": "LabelFontBold30",
-                      "localStyles": {
-                        "objID": "e584be1c-d434-4f13-fb87-00665e4a53a9"
-                      },
-                      "groupIndex": 0,
-                      "text": "169.254.169.254",
-                      "textType": "literal",
-                      "longMode": "WRAP",
-                      "recolor": false,
-                      "previewValue": "169.254.169.254"
-                    },
-                    {
-                      "objID": "8e702d60-3603-4391-91d8-2653ee1fa468",
-                      "type": "LVGLLabelWidget",
+                      "objID": "4b705674-84d8-4743-93a3-3353664187de",
+                      "type": "LVGLContainerWidget",
                       "left": 0,
                       "top": 0,
                       "width": 100,
-                      "height": 22,
+                      "height": 75,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
-                        "objID": "33218a07-582e-4e3a-f629-b80bb5697f6f",
+                        "objID": "0afd1e38-dc03-49c8-e24f-283390f15606",
                         "useStyle": "default",
                         "conditionalStyles": [],
                         "childStyles": []
                       },
-                      "hiddenInEditor": false,
                       "timeline": [],
                       "eventHandlers": [],
-                      "identifier": "HomeInfoIPv6Addr",
-                      "leftUnit": "%",
-                      "topUnit": "%",
+                      "identifier": "IPinfo",
+                      "leftUnit": "px",
+                      "topUnit": "px",
                       "widthUnit": "%",
-                      "heightUnit": "content",
-                      "children": [],
+                      "heightUnit": "%",
+                      "children": [
+                        {
+                          "objID": "e9de87d1-c8c7-432f-8ee4-8f723c037e51",
+                          "type": "LVGLLabelWidget",
+                          "left": 0,
+                          "top": 0,
+                          "width": 217,
+                          "height": 31,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "2028e9cc-159f-4dde-b871-5ba217c74372",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "timeline": [],
+                          "eventHandlers": [],
+                          "identifier": "HomeInfoIPv4Addr",
+                          "leftUnit": "%",
+                          "topUnit": "%",
+                          "widthUnit": "content",
+                          "heightUnit": "content",
+                          "children": [],
+                          "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                          "hiddenFlag": false,
+                          "hiddenFlagType": "literal",
+                          "clickableFlagType": "literal",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "useStyle": "LabelFontBold30",
+                          "localStyles": {
+                            "objID": "e584be1c-d434-4f13-fb87-00665e4a53a9",
+                            "definition": {
+                              "MAIN": {
+                                "DEFAULT": {
+                                  "margin_bottom": -10
+                                }
+                              }
+                            }
+                          },
+                          "groupIndex": 0,
+                          "text": "169.254.169.254",
+                          "textType": "literal",
+                          "longMode": "WRAP",
+                          "recolor": false,
+                          "previewValue": "169.254.169.254"
+                        },
+                        {
+                          "objID": "8e702d60-3603-4391-91d8-2653ee1fa468",
+                          "type": "LVGLLabelWidget",
+                          "left": 0,
+                          "top": 0,
+                          "width": 100,
+                          "height": 66,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "33218a07-582e-4e3a-f629-b80bb5697f6f",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "hiddenInEditor": false,
+                          "timeline": [],
+                          "eventHandlers": [],
+                          "identifier": "HomeInfoIPv6Addr",
+                          "leftUnit": "%",
+                          "topUnit": "%",
+                          "widthUnit": "%",
+                          "heightUnit": "content",
+                          "children": [],
+                          "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                          "hiddenFlag": false,
+                          "hiddenFlagType": "literal",
+                          "clickableFlagType": "literal",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "useStyle": "LabelFont16",
+                          "localStyles": {
+                            "objID": "64467adf-a093-484d-b5cf-b70c5be5264f",
+                            "definition": {
+                              "MAIN": {
+                                "DEFAULT": {
+                                  "text_font": "inter9black",
+                                  "text_align": "LEFT"
+                                }
+                              }
+                            }
+                          },
+                          "groupIndex": 0,
+                          "text": "2001:0db8:0000:0000:0000:0000:0000:0000-\n2001:0db8:0000:0000:0000:0000:0000:0000-\nf\nf\nf\nf",
+                          "textType": "literal",
+                          "longMode": "SCROLL",
+                          "recolor": false
+                        }
+                      ],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
-                      "hiddenFlag": false,
                       "hiddenFlagType": "literal",
+                      "clickableFlag": true,
                       "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
                       "checkedStateType": "literal",
                       "disabledStateType": "literal",
                       "states": "",
-                      "useStyle": "LabelFont16",
+                      "useStyle": "FlexColumnStart",
                       "localStyles": {
-                        "objID": "64467adf-a093-484d-b5cf-b70c5be5264f",
-                        "definition": {
-                          "MAIN": {
-                            "DEFAULT": {
-                              "text_font": "inter9black",
-                              "text_align": "LEFT"
-                            }
-                          }
-                        }
+                        "objID": "4580e759-0466-415b-86a2-13697730d7be"
                       },
-                      "groupIndex": 0,
-                      "text": "2001:0db8:0000:0000:0000:0000:0000:0000-\n2001:0db8:0000:0000:0000:0000:0000:0000-",
-                      "textType": "literal",
-                      "longMode": "SCROLL",
-                      "recolor": false
+                      "group": "",
+                      "groupIndex": 0
                     },
                     {
                       "objID": "cc8f7c54-c932-45a2-b007-08ec2c63c00b",
