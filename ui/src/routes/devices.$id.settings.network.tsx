@@ -509,6 +509,7 @@ export default function SettingsNetworkRoute() {
                 <SelectMenuBasic
                   size="SM"
                   options={[
+                    { value: "disabled", label: m.network_ipv6_mode_disabled() },
                     { value: "dhcp", label: m.network_ipv4_mode_dhcp() },
                     { value: "static", label: m.network_ipv4_mode_static() },
                   ]}
@@ -565,7 +566,7 @@ export default function SettingsNetworkRoute() {
                 <SelectMenuBasic
                   size="SM"
                   options={[
-                    //{ value: "disabled", label: m.network_ipv6_mode_disabled() },
+                    { value: "disabled", label: m.network_ipv6_mode_disabled() },
                     { value: "slaac", label: m.network_ipv6_mode_slaac() },
                     //{ value: "dhcpv6", label: m.network_ipv6_mode_dhcpv6() },
                     //{ value: "slaac_and_dhcpv6", label: m.network_ipv6_mode_slaac_dhcpv6() },
