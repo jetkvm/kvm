@@ -8,30 +8,53 @@
 
 import type { VideoCodec } from "./cameraEncoder";
 
+/**
+ * Wire protocol codec bytes for binary frame headers.
+ * Must match the values in camera/manager.go (CodecByteH264, CodecByteMJPEG).
+ * These are prefixed to each frame for efficient codec identification without parsing.
+ */
+export const CODEC_BYTES = {
+  h264: 0x01,
+  mjpeg: 0x02,
+} as const;
+
 /** Valid codec values that can be received from the server */
 const VALID_CODECS = new Set<string>(["h264", "mjpeg"]);
 
-/** Type guard to validate codec values from server */
+/** Type guard to validate codec values from server JSON messages */
 function isValidCodec(value: unknown): value is VideoCodec {
   return typeof value === "string" && VALID_CODECS.has(value);
 }
 
 export type TransportState = "disconnected" | "connecting" | "connected" | "error";
 
+/**
+ * Frame transmission statistics for monitoring.
+ * All fields are monotonically increasing counters reset on reconnect.
+ */
 export interface CameraTransportStats {
-  framesSent: number;
-  bytesSent: number;
-  framesDropped: number;
+  readonly framesSent: number;
+  readonly bytesSent: number;
+  /** Frames dropped due to backpressure or connection issues */
+  readonly framesDropped: number;
 }
 
+/**
+ * Format negotiation request from the UVC host via JetKVM backend.
+ * The browser encoder should configure itself to match these parameters.
+ */
 export interface FormatRequest {
-  codec: VideoCodec;
-  width: number;
-  height: number;
-  frameRate: number; // Negotiated frame rate from UVC host (e.g., 30 or 60)
-  frameRateCap?: number; // User's configured frame rate cap (browser uses min of both)
-  h264Bitrate?: number; // H.264 bitrate in bps (from config)
-  mjpegQuality?: number; // MJPEG quality 0.0-1.0 (from config)
+  readonly codec: VideoCodec;
+  readonly width: number;
+  readonly height: number;
+  /** UVC-negotiated frame rate from host (e.g., 30 or 60 fps) */
+  readonly frameRate: number;
+  /** User's configured frame rate cap; browser uses min(frameRate, frameRateCap) */
+  readonly frameRateCap?: number;
+  /** H.264 bitrate in bps from user config */
+  readonly h264Bitrate?: number;
+  /** MJPEG quality 0.0-1.0 from user config */
+  readonly mjpegQuality?: number;
 }
 
 export interface CameraTransportEvents {
@@ -69,8 +92,13 @@ export interface CameraTransport {
   setEventHandlers(events: Partial<CameraTransportEvents>): void;
 }
 
-// Backpressure threshold: drop frames if WebSocket buffer exceeds this size
-const BACKPRESSURE_THRESHOLD_BYTES = 4 * 1024 * 1024; // 4MB
+/**
+ * Backpressure threshold for frame dropping.
+ * 4MB allows ~2-3 frames of buffering at 1080p MJPEG before dropping.
+ * This prevents unbounded memory growth if the network is slower than encoding,
+ * while allowing enough buffer to smooth out temporary network jitter.
+ */
+const BACKPRESSURE_THRESHOLD_BYTES = 4 * 1024 * 1024;
 
 export class WebSocketCameraTransport implements CameraTransport {
   private ws: WebSocket | null = null;
@@ -83,6 +111,7 @@ export class WebSocketCameraTransport implements CameraTransport {
   private events: Partial<CameraTransportEvents> = {};
   private url: string;
   private reconnectAttempts = 0;
+  /** Max reconnect attempts before giving up (3 = ~6 seconds total with backoff) */
   private maxReconnectAttempts = 3;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 

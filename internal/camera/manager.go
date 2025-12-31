@@ -47,6 +47,10 @@ type Manager struct {
 
 	uvcFrameErrors atomic.Uint32
 
+	// Frame drop counters for observability (atomic for lock-free hot path access)
+	droppedStateFrames atomic.Uint64 // Frames dropped due to state mismatch (not streaming, disabled, wrong codec)
+	droppedWriteFrames atomic.Uint64 // Frames dropped due to V4L2 write failures
+
 	onPanic PanicHandler
 }
 
@@ -80,6 +84,19 @@ func (c VideoCodec) IsValid() bool {
 // String returns the string representation of the codec.
 func (c VideoCodec) String() string {
 	return string(c)
+}
+
+// ToByte returns the wire protocol byte for this codec.
+// Returns 0 for CodecStop since it has no wire representation.
+func (c VideoCodec) ToByte() byte {
+	switch c {
+	case CodecH264:
+		return CodecByteH264
+	case CodecMJPEG:
+		return CodecByteMJPEG
+	default:
+		return 0
+	}
 }
 
 // FormatInfo describes the video format requested by the UVC host.
@@ -215,6 +232,31 @@ func (m *Manager) notifyStreamingStopped() {
 			}
 		}
 	}
+}
+
+// FrameStats provides frame processing statistics for monitoring.
+type FrameStats struct {
+	DroppedStateFrames uint64 // Frames dropped due to state mismatch
+	DroppedWriteFrames uint64 // Frames dropped due to V4L2 write failures
+	WriteErrors        uint32 // Total V4L2 write errors (throttled in logs)
+}
+
+// GetFrameStats returns current frame processing statistics.
+// Use this for monitoring dashboards and debugging frame drop issues.
+func (m *Manager) GetFrameStats() FrameStats {
+	return FrameStats{
+		DroppedStateFrames: m.droppedStateFrames.Load(),
+		DroppedWriteFrames: m.droppedWriteFrames.Load(),
+		WriteErrors:        m.uvcFrameErrors.Load(),
+	}
+}
+
+// ResetFrameStats resets all frame statistics counters.
+// Typically called when starting a new streaming session.
+func (m *Manager) ResetFrameStats() {
+	m.droppedStateFrames.Store(0)
+	m.droppedWriteFrames.Store(0)
+	m.uvcFrameErrors.Store(0)
 }
 
 // ResendCurrentFormat resends the current format to the browser.

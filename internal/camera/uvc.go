@@ -408,6 +408,8 @@ func (m *Manager) startStreaming() error {
 	}
 
 	if !streamer.IsStreaming() {
+		// Reset frame stats for the new session
+		m.ResetFrameStats()
 		if err := streamer.RequestBuffers(uvcBufferCount); err != nil {
 			return fmt.Errorf("failed to request UVC buffers: %w", err)
 		}
@@ -482,27 +484,45 @@ func (m *Manager) logFrameError(err error, codec string) {
 
 // HandleCameraH264Frame processes H.264 frames from the browser camera.
 // HOTPATH: Called for every frame at the negotiated frame rate.
+// Frames are silently dropped (with counter increment) when:
+// - UVC is not streaming (host hasn't started capture)
+// - Camera passthrough is disabled
+// - Host requested MJPEG codec instead of H.264
+// Use GetFrameStats() to monitor drop rates for debugging.
 func (m *Manager) HandleCameraH264Frame(frame []byte) {
 	if !m.uvcStreamingFast.Load() || !m.enabled.Load() || m.uvcMjpegFast.Load() {
+		m.droppedStateFrames.Add(1) // Track for observability
 		return
 	}
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.WriteFrame(frame); err != nil {
+			m.droppedWriteFrames.Add(1)
 			m.logFrameError(err, "H.264")
 		}
+	} else {
+		m.droppedStateFrames.Add(1)
 	}
 }
 
 // HandleCameraMjpegFrame processes MJPEG frames from the browser camera.
 // HOTPATH: Called for every frame at the negotiated frame rate.
+// Frames are silently dropped (with counter increment) when:
+// - UVC is not streaming (host hasn't started capture)
+// - Camera passthrough is disabled
+// - Host requested H.264 codec instead of MJPEG
+// Use GetFrameStats() to monitor drop rates for debugging.
 func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
 	if !m.uvcStreamingFast.Load() || !m.enabled.Load() || !m.uvcMjpegFast.Load() {
+		m.droppedStateFrames.Add(1) // Track for observability
 		return
 	}
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.WriteFrame(frame); err != nil {
+			m.droppedWriteFrames.Add(1)
 			m.logFrameError(err, "MJPEG")
 		}
+	} else {
+		m.droppedStateFrames.Add(1)
 	}
 }
 

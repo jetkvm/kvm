@@ -2,6 +2,8 @@
  * Camera Encoder - H.264 (WebCodecs) and MJPEG (WebWorker) encoding for UVC passthrough.
  */
 
+import { CODEC_BYTES } from "./cameraTransport";
+
 // Type declarations for APIs not yet in TypeScript lib
 declare class MediaStreamTrackProcessor<T> {
   constructor(init: { track: MediaStreamTrack });
@@ -633,8 +635,6 @@ export class CameraEncoder {
     return false;
   }
 
-  private static readonly CODEC_H264 = 0x01;
-
   private handleH264Chunk(chunk: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata): void {
     if (metadata?.decoderConfig?.description) {
       this.extractParameterSets(metadata.decoderConfig.description as ArrayBuffer);
@@ -651,14 +651,14 @@ export class CameraEncoder {
       // Keyframe needs SPS/PPS prepended: [codec][SPS][PPS][chunk]
       const totalLen = 1 + this.spsNalu.length + this.ppsNalu.length + chunkData.length;
       framed = new Uint8Array(totalLen);
-      framed[0] = CameraEncoder.CODEC_H264;
+      framed[0] = CODEC_BYTES.h264;
       framed.set(this.spsNalu, 1);
       framed.set(this.ppsNalu, 1 + this.spsNalu.length);
       framed.set(chunkData, 1 + this.spsNalu.length + this.ppsNalu.length);
     } else {
       // Regular frame or keyframe with inline SPS/PPS: [codec][chunk]
       framed = new Uint8Array(1 + chunkData.length);
-      framed[0] = CameraEncoder.CODEC_H264;
+      framed[0] = CODEC_BYTES.h264;
       framed.set(chunkData, 1);
     }
 
@@ -708,7 +708,7 @@ export class CameraEncoder {
         width,
         height,
         quality: this.config.quality,
-        codecByte: 0x02, // MJPEG codec byte for transport
+        codecByte: CODEC_BYTES.mjpeg,
       },
     });
 
