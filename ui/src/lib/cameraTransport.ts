@@ -138,7 +138,9 @@ export class WebSocketCameraTransport implements CameraTransport {
                 console.warn("[CameraTransport] Reconnect failed:", err);
                 // Notify error handler so application layer can react
                 this.events.onError?.(
-                  err instanceof Error ? err : new Error(`Reconnect attempt ${this.reconnectAttempts} failed`),
+                  err instanceof Error
+                    ? err
+                    : new Error(`Reconnect attempt ${this.reconnectAttempts} failed`),
                 );
               });
             }, 1000 * this.reconnectAttempts);

@@ -21,6 +21,12 @@ func initCameraManager() {
 		UVCLogger:    uvcLog,
 		CameraLogger: cameraLog,
 		Gadget:       gadget,
+		OnPanic: func(panicValue interface{}) {
+			// Log panic for alerting - the event loop has already logged details
+			cameraLog.Error().
+				Interface("panic", panicValue).
+				Msg("UVC event loop crashed - camera passthrough unavailable until reinit")
+		},
 	})
 	if err != nil {
 		cameraLog.Error().Err(err).Msg("Failed to create camera manager")

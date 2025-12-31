@@ -218,7 +218,8 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
           onStats: stats => {
             updateState({ stats });
           },
-          onFormatRequest: format => handleFormatRequest(format, encoderRef, updateState, handleError),
+          onFormatRequest: format =>
+            handleFormatRequest(format, encoderRef, updateState, handleError),
           onStreamingStopped: () => {
             const enc = encoderRef.current;
             if (enc && enc.state === "running") {
