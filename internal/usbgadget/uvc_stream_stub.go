@@ -12,6 +12,18 @@ const (
 	UVC_EVENT_STREAMOFF  = 0x08000003
 	UVC_EVENT_SETUP      = 0x08000004
 	UVC_EVENT_DATA       = 0x08000005
+
+	// UVC format indices correspond to ConfigFS setup order.
+	FormatIndexMJPEG = 1
+	FormatIndexH264  = 2
+
+	// UVC frame indices (1-based, per format type).
+	FrameIndex1080p = 1
+	FrameIndex720p  = 2
+	FrameIndex480p  = 3
+
+	// UVCFrameIntervalUnit is the number of 100ns units per second (UVC spec).
+	UVCFrameIntervalUnit = 10_000_000
 )
 
 // UVCStreamer stub for non-linux builds

@@ -41,6 +41,12 @@ type UVCFormat struct {
 	FrameInterval int // 100ns units (333333=30fps, 166666=60fps)
 }
 
+// UVCFrameIntervalUnit is the number of 100ns units per second.
+// UVC frame intervals are expressed in 100ns units per the USB Video Class spec.
+// To convert fps to frame interval: UVCFrameIntervalUnit / fps
+// To convert frame interval to fps: UVCFrameIntervalUnit / frameInterval
+const UVCFrameIntervalUnit = 10_000_000
+
 // UVCFormatType specifies the encoding type
 type UVCFormatType int
 
@@ -218,7 +224,7 @@ func (u *UsbGadget) setupMJPEGFormat(streamingPath, headerPath string, formats [
 			return fmt.Errorf("failed to create MJPEG frame directory: %w", err)
 		}
 
-		fps := 10000000 / format.FrameInterval
+		fps := UVCFrameIntervalUnit / format.FrameInterval
 		pixels := format.Width * format.Height
 		// MJPEG bitrates: ~10-30 Mbps for 1080p
 		minBitRate := pixels * fps / 20
@@ -266,7 +272,7 @@ func (u *UsbGadget) setupH264Format(streamingPath, headerPath string, formats []
 			return fmt.Errorf("failed to create H.264 frame directory: %w", err)
 		}
 
-		fps := 10000000 / format.FrameInterval
+		fps := UVCFrameIntervalUnit / format.FrameInterval
 		pixels := format.Width * format.Height
 		// H.264 bitrates: ~2-8 Mbps for 1080p
 		minBitRate := pixels * fps / 100

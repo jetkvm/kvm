@@ -273,7 +273,7 @@ func (s *UVCStreamer) GetCommittedFrameRate() int {
 	if s.commit.dwFrameInterval == 0 {
 		return 30 // Default to 30fps if not set
 	}
-	return int(10000000 / s.commit.dwFrameInterval)
+	return int(UVCFrameIntervalUnit / s.commit.dwFrameInterval)
 }
 
 // GetCommittedFormatIndex returns the format index selected by the host.
@@ -523,7 +523,7 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 const dropLogInterval = 100
 
 // WriteFrame writes a video frame to the UVC device.
-// HOTPATH: Optimized for minimal overhead at 1080p@30fps on 32-bit ARM.
+// HOTPATH: Optimized for minimal overhead at 1080p up to 60fps on 32-bit ARM.
 func (s *UVCStreamer) WriteFrame(data []byte) error {
 	// Fast path rejection without lock
 	if !s.streaming.Load() {
@@ -914,7 +914,7 @@ func (s *UVCStreamer) RequestBuffersDmabuf(count uint32, releaseFunc func(slot i
 }
 
 // WriteFrameDmabuf writes a video frame from a DMABUF file descriptor.
-// HOTPATH: Optimized for minimal overhead at 1080p@30fps on 32-bit ARM.
+// HOTPATH: Optimized for minimal overhead at 1080p up to 60fps on 32-bit ARM.
 func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
 	if !s.streaming.Load() {
 		return nil
