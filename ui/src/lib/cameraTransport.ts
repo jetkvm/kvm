@@ -10,7 +10,7 @@ import type { VideoCodec } from "./cameraEncoder";
 
 /**
  * Wire protocol codec bytes for binary frame headers.
- * Must match the values in camera/manager.go (CodecByteH264, CodecByteMJPEG).
+ * Must match the values in internal/camera/manager.go (CodecByteH264, CodecByteMJPEG).
  * These are prefixed to each frame for efficient codec identification without parsing.
  */
 export const CODEC_BYTES = {
