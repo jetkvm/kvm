@@ -184,7 +184,9 @@ export class H264Encoder {
             // Escalate to error handler after too many consecutive failures
             if (this.consecutiveEncodeErrors >= H264Encoder.MAX_CONSECUTIVE_ERRORS) {
               this.events.onError(
-                new Error(`Frame encode failed ${this.consecutiveEncodeErrors} times consecutively`),
+                new Error(
+                  `Frame encode failed ${this.consecutiveEncodeErrors} times consecutively`,
+                ),
               );
             }
           } finally {
