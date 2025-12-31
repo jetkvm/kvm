@@ -92,7 +92,7 @@ func setupRouter(isSecureServer bool) *gin.Engine {
 			SSLProxyHeaders:       map[string]string{"X-Forwarded-Proto": "https"},
 			STSSeconds:            0,
 			STSIncludeSubdomains:  false,
-			FrameDeny:             true,
+			FrameDeny:             false,
 			ContentTypeNosniff:    true,
 			BrowserXssFilter:      true,
 			ContentSecurityPolicy: "default-src 'self'",
