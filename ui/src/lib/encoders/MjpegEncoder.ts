@@ -116,13 +116,14 @@ export class MjpegEncoder {
           this.handleFrame(msg.data, msg.timestamp);
           break;
         case "error":
-          this.events.onError(new Error(msg.message));
+          this.events.onError(new Error(`MJPEG worker: ${msg.message}`));
           break;
       }
     };
 
     this.worker.onerror = error => {
-      this.events.onError(new Error(error.message));
+      const location = error.filename ? ` (${error.filename}:${error.lineno})` : "";
+      this.events.onError(new Error(`MJPEG worker error: ${error.message}${location}`));
     };
 
     // Initialize worker with config (codecByte enables zero-copy transport)

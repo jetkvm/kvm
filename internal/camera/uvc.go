@@ -449,12 +449,15 @@ func (m *Manager) startStreaming() error {
 	if isMjpeg {
 		codec = CodecMJPEG
 	}
-	m.notifyFormatChange(FormatInfo{
-		Codec:     codec,
-		Width:     int(width),
-		Height:    int(height),
-		FrameRate: frameRate,
-	})
+	formatInfo, err := NewFormatInfo(codec, int(width), int(height), frameRate)
+	if err != nil {
+		// Should never happen with UVC-negotiated values, but log if it does
+		if m.uvcLog != nil {
+			m.uvcLog.Warn().Err(err).Msg("UVC format validation failed, using raw values")
+		}
+		formatInfo = FormatInfo{Codec: codec, Width: int(width), Height: int(height), FrameRate: frameRate}
+	}
+	m.notifyFormatChange(formatInfo)
 	return nil
 }
 

@@ -88,14 +88,17 @@ func (c VideoCodec) String() string {
 
 // ToByte returns the wire protocol byte for this codec.
 // Returns 0 for CodecStop since it has no wire representation.
+// Panics on invalid codec values to fail fast during development.
 func (c VideoCodec) ToByte() byte {
 	switch c {
 	case CodecH264:
 		return CodecByteH264
 	case CodecMJPEG:
 		return CodecByteMJPEG
-	default:
+	case CodecStop:
 		return 0
+	default:
+		panic("camera: ToByte called on invalid VideoCodec: " + string(c))
 	}
 }
 
@@ -127,12 +130,13 @@ var (
 // - Width and Height are positive
 // - FrameRate is between 1 and 240
 func (f FormatInfo) Validate() error {
-	// Stop format is always valid
+	// Stop format is always valid (no dimension/rate requirements)
 	if f.Codec == CodecStop {
 		return nil
 	}
 
-	if !f.Codec.IsValid() || f.Codec == CodecStop {
+	// For streaming formats, codec must be valid (h264 or mjpeg)
+	if !f.Codec.IsValid() {
 		return ErrInvalidCodec
 	}
 	if f.Width <= 0 {

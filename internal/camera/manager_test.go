@@ -55,7 +55,6 @@ func TestVideoCodec_ToByte(t *testing.T) {
 		{"H264 maps to 0x01", CodecH264, CodecByteH264},
 		{"MJPEG maps to 0x02", CodecMJPEG, CodecByteMJPEG},
 		{"Stop maps to 0x00", CodecStop, 0},
-		{"Invalid codec maps to 0x00", VideoCodec("invalid"), 0},
 	}
 
 	for _, tt := range tests {
@@ -65,6 +64,16 @@ func TestVideoCodec_ToByte(t *testing.T) {
 			}
 		})
 	}
+
+	// Invalid codec should panic
+	t.Run("Invalid codec panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("VideoCodec(\"invalid\").ToByte() should panic")
+			}
+		}()
+		VideoCodec("invalid").ToByte()
+	})
 }
 
 func TestCodecByteConstants(t *testing.T) {

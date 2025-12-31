@@ -84,6 +84,9 @@ export class RateLimitedLogger {
   private readonly prefix: string;
 
   constructor(prefix: string, intervalMs = 1000) {
+    if (intervalMs <= 0) {
+      throw new Error(`RateLimitedLogger: intervalMs must be positive, got ${intervalMs}`);
+    }
     this.prefix = prefix;
     this.intervalMs = intervalMs;
   }

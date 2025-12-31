@@ -44,8 +44,8 @@ export interface CameraEncoderEvents {
  * - frameRate: 30fps is widely compatible; higher rates may exceed USB 2.0 bandwidth
  * - bitrate: 9Mbps provides good H.264 quality at 1080p30 without exceeding typical
  *   USB 2.0 bandwidth (~40MB/s shared with other endpoints)
- * - quality: 0.65 MJPEG quality balances file size (~150KB/frame at 1080p) with
- *   acceptable visual quality; higher values increase bandwidth significantly
+ * - quality: 0.65 MJPEG quality balances file size (typically 100-200KB/frame
+ *   at 1080p depending on scene complexity) with acceptable visual quality
  * - keyFrameInterval: 1 second ensures fast seek/recovery if frames are dropped,
  *   at the cost of ~10% higher bitrate vs longer intervals
  */

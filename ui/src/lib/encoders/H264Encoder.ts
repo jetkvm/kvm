@@ -192,7 +192,10 @@ export class H264Encoder {
    */
   private extractParameterSets(description: ArrayBuffer): void {
     const data = new Uint8Array(description);
-    if (data.length < 7) return;
+    if (data.length < 7) {
+      console.warn("[H264Encoder] Decoder config description too short:", data.length, "bytes");
+      return;
+    }
 
     let offset = 5; // Skip AVCC header: version, profile, compat, level, lengthSize
 

@@ -254,6 +254,12 @@ export class WebSocketCameraTransport implements CameraTransport {
   sendFrame(frame: ArrayBuffer, _timestamp: number, _codec: VideoCodec): void {
     if (this._state !== "connected" || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this._stats.framesDropped++;
+      // Rate-limited logging for connection state drops
+      if (this._stats.framesDropped === 1 || this._stats.framesDropped % 100 === 0) {
+        console.warn(
+          `[CameraTransport] Frame dropped (state: ${this._state}, total: ${this._stats.framesDropped})`,
+        );
+      }
       return;
     }
 
