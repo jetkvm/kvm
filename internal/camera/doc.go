@@ -82,7 +82,9 @@
 //	}()
 //
 //	// Initialize UVC device
-//	mgr.InitUVC()
+//	if err := mgr.InitUVC(true); err != nil {
+//	    return err
+//	}
 //	mgr.SetEnabled(true)
 //
 //	// Handle incoming frames from WebSocket

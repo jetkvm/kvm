@@ -333,7 +333,8 @@ export class CameraEncoder {
     }
     this.setState("paused");
 
-    // Stop internal encoder but keep camera resources for resume
+    // Stop internal encoder and release camera resources
+    // (resume() will reinitialize the camera when called)
     this.internalEncoder?.stop();
     this.internalEncoder = null;
 
