@@ -572,11 +572,17 @@ export class CameraEncoder {
     }
   }
 
+  /**
+   * Extract SPS/PPS from WebCodecs AVCC description for Annex B conversion.
+   * WebCodecs returns H.264 in AVCC format (length-prefixed NALUs), but UVC
+   * gadgets need Annex B format (start code prefixed). SPS/PPS are required
+   * in keyframes for decoders to initialize.
+   */
   private extractParameterSets(description: ArrayBuffer): void {
     const data = new Uint8Array(description);
     if (data.length < 7) return;
 
-    let offset = 5; // Skip version, profile, compat, level, lengthSize
+    let offset = 5; // Skip AVCC header: version, profile, compat, level, lengthSize
 
     // Extract SPS
     const numSps = data[offset] & 0x1f;

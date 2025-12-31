@@ -50,6 +50,7 @@ function applyEncoderSettings(encoder: CameraEncoder, format: FormatRequest): nu
 async function handleFormatRequest(
   format: FormatRequest,
   encoderRef: React.RefObject<CameraEncoder | null>,
+  isStartingRef: React.MutableRefObject<boolean>,
   updateState: (updates: Partial<CameraPassthroughState>) => void,
   handleError: (error: Error) => void,
 ): Promise<void> {
@@ -85,11 +86,17 @@ async function handleFormatRequest(
   }
 
   // Start/resume encoder when USB host requests video
+  // Guard against concurrent start calls from rapid format requests
   const currentState = currentEncoder.state;
   try {
-    if (isStartableState(currentState)) {
-      await currentEncoder.start();
-      updateState({ encoderState: currentEncoder.state });
+    if (isStartableState(currentState) && !isStartingRef.current) {
+      isStartingRef.current = true;
+      try {
+        await currentEncoder.start();
+        updateState({ encoderState: currentEncoder.state });
+      } finally {
+        isStartingRef.current = false;
+      }
     } else if (currentState === "paused") {
       await currentEncoder.resume();
       updateState({ encoderState: currentEncoder.state });
@@ -130,6 +137,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
   const encoderRef = useRef<CameraEncoder | null>(null);
   const transportRef = useRef<CameraTransport | null>(null);
   const isRunningRef = useRef(false);
+  const isStartingRef = useRef(false);
 
   // Use refs for callbacks to avoid effect dependency changes
   const onErrorRef = useRef(onError);
@@ -219,7 +227,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
             updateState({ stats });
           },
           onFormatRequest: format =>
-            handleFormatRequest(format, encoderRef, updateState, handleError),
+            handleFormatRequest(format, encoderRef, isStartingRef, updateState, handleError),
           onStreamingStopped: () => {
             const enc = encoderRef.current;
             if (enc && enc.state === "running") {

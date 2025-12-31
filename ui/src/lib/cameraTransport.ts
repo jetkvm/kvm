@@ -158,6 +158,11 @@ export class WebSocketCameraTransport implements CameraTransport {
           this.events.onError?.(error);
 
           if (this._state === "connecting") {
+            // Cancel pending reconnect to prevent stale timer firing
+            if (this.reconnectTimer) {
+              clearTimeout(this.reconnectTimer);
+              this.reconnectTimer = null;
+            }
             this.setState("error");
             reject(error);
           }

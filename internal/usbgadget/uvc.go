@@ -73,7 +73,8 @@ type UVCFormatConfig struct {
 }
 
 // Standard UVC format configurations used by GetAllUVCFormats.
-// Frame interval in 100ns units: 10,000,000 / fps (e.g., 333333 = 30fps)
+// Resolutions match common webcam capabilities and fit within USB 2.0 bandwidth.
+// Frame interval in 100ns units: 10,000,000 / fps (e.g., 333333 = 30fps).
 var (
 	// MJPEG formats (universal compatibility, format index 1)
 	UVCFormatMJPEG_1080p30 = UVCFormatConfig{UVCFormat{1920, 1080, 333333}, UVCFormatTypeMJPEG}

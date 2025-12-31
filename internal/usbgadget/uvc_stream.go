@@ -71,6 +71,17 @@ const (
 	UVC_VS_COMMIT_CONTROL = 0x02
 
 	UVC_STREAMING_CONTROL_SIZE = 26
+
+	// UVC format indices correspond to ConfigFS setup order.
+	// MJPEG is set up first (setupMJPEGFormat), H.264 second (setupH264Format).
+	FormatIndexMJPEG = 1
+	FormatIndexH264  = 2
+
+	// UVC frame indices (1-based, per format type).
+	// Standard ordering: 1=1080p, 2=720p, 3=480p.
+	FrameIndex1080p = 1
+	FrameIndex720p  = 2
+	FrameIndex480p  = 3
 )
 
 type v4l2_capability struct {
@@ -210,12 +221,10 @@ type LogEvent interface {
 }
 
 // frameResolutions maps UVC frame index to resolution.
-// Frame indices are 1-based and correspond to the order frames are created in ConfigFS.
-// Standard ordering: 1=1080p, 2=720p, 3=480p (applies independently per format type).
 var frameResolutions = map[uint8][2]uint32{
-	1: {1920, 1080}, // 1080p
-	2: {1280, 720},  // 720p
-	3: {640, 480},   // 480p
+	FrameIndex1080p: {1920, 1080},
+	FrameIndex720p:  {1280, 720},
+	FrameIndex480p:  {640, 480},
 }
 
 func NewUVCStreamer(devicePath string, log Logger) *UVCStreamer {
@@ -278,14 +287,10 @@ func (s *UVCStreamer) GetCommittedFormatIndex() uint8 {
 }
 
 // IsH264Format returns true if the committed format is H.264.
-// MJPEG is set up first in ConfigFS (setupMJPEGFormat before setupH264Format),
-// so MJPEG is format index 1, H.264 is format index 2.
 func (s *UVCStreamer) IsH264Format() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// MJPEG is set up first in ConfigFS, so it's format index 1
-	// H.264 is set up second, so it's format index 2
-	return s.commit.bFormatIndex == 2
+	return s.commit.bFormatIndex == FormatIndexH264
 }
 
 func (s *UVCStreamer) Open() error {

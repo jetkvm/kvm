@@ -37,9 +37,12 @@ func initCameraManager() {
 
 // setCameraEnabled enables or disables camera passthrough.
 func setCameraEnabled(enabled bool) {
-	if mgr := cameraManagerPtr.Load(); mgr != nil {
-		mgr.SetEnabled(enabled)
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
+		cameraLog.Debug().Bool("enabled", enabled).Msg("setCameraEnabled ignored: manager not initialized")
+		return
 	}
+	mgr.SetEnabled(enabled)
 }
 
 // isCameraEnabled returns whether camera passthrough is enabled.

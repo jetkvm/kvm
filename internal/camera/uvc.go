@@ -197,11 +197,11 @@ func (m *Manager) eventLoop() {
 	}()
 
 	const (
-		pollInterval     = 20 * time.Millisecond
-		retryInterval    = time.Second
-		recoveryDelay    = 500 * time.Millisecond
-		settlingDelay    = 50 * time.Millisecond // USB host may rapidly connect then disconnect
-		maxEventsPerPoll = 16
+		pollInterval     = 20 * time.Millisecond  // Balance latency vs CPU usage (50 polls/sec)
+		retryInterval    = time.Second            // Backoff on open/subscribe failures
+		recoveryDelay    = 500 * time.Millisecond // Allow USB stack to stabilize after errors
+		settlingDelay    = 50 * time.Millisecond  // Debounce rapid USB connect/disconnect events
+		maxEventsPerPoll = 16                     // Drain event queue to find final state
 	)
 
 	type pendingEvent struct {
