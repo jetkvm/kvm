@@ -47,7 +47,12 @@ export interface CameraTransport {
   /** Connect to the server */
   connect(): Promise<void>;
 
-  /** Send a video frame with codec type */
+  /**
+   * Send a video frame. Frame must include 1-byte codec prefix from encoder.
+   * @param frame - Pre-framed data with codec byte prefix
+   * @param timestamp - Frame timestamp (for metrics/debugging, not transmitted)
+   * @param codec - Codec type (for metrics/debugging, embedded in frame prefix)
+   */
   sendFrame(frame: ArrayBuffer, timestamp: number, codec: VideoCodec): void;
 
   /** Close the connection */

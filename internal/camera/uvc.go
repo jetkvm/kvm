@@ -1,6 +1,7 @@
 package camera
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -195,6 +196,7 @@ func (m *Manager) eventLoop() {
 		pollInterval     = 20 * time.Millisecond
 		retryInterval    = time.Second
 		recoveryDelay    = 500 * time.Millisecond
+		settlingDelay    = 50 * time.Millisecond // USB host may rapidly connect then disconnect
 		maxEventsPerPoll = 16
 	)
 
@@ -284,8 +286,7 @@ func (m *Manager) eventLoop() {
 
 		if sawStreamingEvent {
 			if wantStreaming {
-				// Settling delay: USB host may rapidly connect then disconnect.
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(settlingDelay)
 
 				for i := 0; i < maxEventsPerPoll; i++ {
 					eventType, _, err := streamer.PollEventsWithData()
@@ -427,6 +428,7 @@ func (m *Manager) startStreaming() error {
 func (m *Manager) stopStreaming() {
 	m.uvcStreamingFast.Store(false)
 	m.uvcMjpegFast.Store(false)
+	m.uvcFrameErrors.Store(0) // Reset error counter for next streaming session
 
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
