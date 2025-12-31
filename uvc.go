@@ -2,18 +2,20 @@ package kvm
 
 // initUVC initializes UVC streaming for camera passthrough.
 func initUVC() {
-	if cameraManager == nil {
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
 		return
 	}
-	if err := cameraManager.InitUVC(config.UsbDevices.UVC); err != nil {
+	if err := mgr.InitUVC(config.UsbDevices.UVC); err != nil {
 		uvcLog.Warn().Err(err).Msg("UVC initialization failed (camera passthrough unavailable)")
 	}
 }
 
 // reinitUVC reinitializes UVC if needed.
 func reinitUVC() {
-	if cameraManager == nil {
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
 		return
 	}
-	cameraManager.ReinitUVC(config.UsbDevices.UVC)
+	mgr.ReinitUVC(config.UsbDevices.UVC)
 }

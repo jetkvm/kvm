@@ -6,7 +6,6 @@ import {
   wakeDisplay,
   getVideoStreamDimensions,
   captureVideoRegionFingerprint,
-  fingerprintDistance,
 } from "./helpers";
 
 // Minimum video dimensions to consider valid (sanity check)

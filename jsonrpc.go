@@ -1169,7 +1169,7 @@ func rpcSetCameraEnabled(enabled bool) error {
 // CameraSettingsResponse contains all camera/UVC configuration
 type CameraSettingsResponse struct {
 	Resolution   string `json:"resolution"`   // "1080p", "720p", "480p"
-	FrameRate    int    `json:"frameRate"`    // 15, 24, 30
+	FrameRate    int    `json:"frameRate"`    // 10, 15, 24, 25, 30, 50, 60
 	H264Bitrate  int    `json:"h264Bitrate"`  // 1-10 Mbps
 	MjpegQuality int    `json:"mjpegQuality"` // 0-100%
 }
@@ -1192,9 +1192,10 @@ func rpcSetCameraSettings(resolution string, frameRate int, h264Bitrate int, mjp
 		return fmt.Errorf("invalid resolution: %s (must be 1080p, 720p, or 480p)", resolution)
 	}
 
-	// Validate frame rate
-	if frameRate != 15 && frameRate != 24 && frameRate != 30 {
-		return fmt.Errorf("invalid frame rate: %d (must be 15, 24, or 30)", frameRate)
+	// Validate frame rate (standard commercial camera frame rates)
+	validFrameRates := map[int]bool{10: true, 15: true, 24: true, 25: true, 30: true, 50: true, 60: true}
+	if !validFrameRates[frameRate] {
+		return fmt.Errorf("invalid frame rate: %d (must be 10, 15, 24, 25, 30, 50, or 60)", frameRate)
 	}
 
 	// Validate H.264 bitrate (1-10 Mbps)
@@ -1242,8 +1243,8 @@ func notifyCameraEncoderSettingsChanged(h264Bitrate int, mjpegQuality int) {
 
 	// Trigger format resend to update browser encoder with new settings
 	// The browser will receive a format message with the updated bitrate/quality
-	if cameraManager != nil {
-		cameraManager.ResendCurrentFormat()
+	if mgr := cameraManagerPtr.Load(); mgr != nil {
+		mgr.ResendCurrentFormat()
 	}
 }
 

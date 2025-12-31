@@ -136,7 +136,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
             if (currentEncoder) {
               // Apply settings: frame rate, bitrate, quality first (no restart)
               let effectiveFrameRate = format.frameRate || 30;
-              if (format.frameRateCap && format.frameRateCap > 0) {
+              if (format.frameRateCap && format.frameRateCap >= 1) {
                 effectiveFrameRate = Math.min(effectiveFrameRate, format.frameRateCap);
               }
               if (effectiveFrameRate > 0) {
@@ -162,22 +162,41 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
 
               // Update resolution last (may restart encoder)
               if (format.width && format.height && format.width > 0 && format.height > 0) {
-                await currentEncoder.setResolution(format.width, format.height);
+                try {
+                  const success = await currentEncoder.setResolution(format.width, format.height);
+                  if (!success) {
+                    handleError(
+                      new Error(`Failed to set resolution to ${format.width}x${format.height}`),
+                    );
+                    return;
+                  }
+                } catch (err) {
+                  handleError(err instanceof Error ? err : new Error(String(err)));
+                  return;
+                }
               }
             }
 
             // Start/resume encoder when USB host requests video
             const enc = encoderRef.current;
             if (enc) {
-              const state = enc.state;
-              if (state === "idle" || state === "stopped" || state === "error") {
-                await enc.start();
-                updateState({ encoderState: enc.state });
-              } else if (state === "paused") {
-                await enc.resume();
-                updateState({ encoderState: enc.state });
-              } else if (state === "running") {
-                enc.forceKeyFrame();
+              const currentState = enc.state;
+              try {
+                if (
+                  currentState === "idle" ||
+                  currentState === "stopped" ||
+                  currentState === "error"
+                ) {
+                  await enc.start();
+                  updateState({ encoderState: enc.state });
+                } else if (currentState === "paused") {
+                  await enc.resume();
+                  updateState({ encoderState: enc.state });
+                } else if (currentState === "running") {
+                  enc.forceKeyFrame();
+                }
+              } catch (err) {
+                handleError(err instanceof Error ? err : new Error(String(err)));
               }
             }
           },

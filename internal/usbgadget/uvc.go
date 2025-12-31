@@ -136,10 +136,13 @@ func (u *UsbGadget) SetupUVCFunction(formats []UVCFormatConfig) error {
 		return fmt.Errorf("failed to create streaming header directory: %w", err)
 	}
 
-	// Group formats by type
+	// Validate and group formats by type
 	mjpegFormats := make([]UVCFormat, 0)
 	h264Formats := make([]UVCFormat, 0)
 	for _, fc := range formats {
+		if !fc.Type.IsValid() {
+			return fmt.Errorf("invalid UVC format type: %d", fc.Type)
+		}
 		switch fc.Type {
 		case UVCFormatTypeMJPEG:
 			mjpegFormats = append(mjpegFormats, fc.Format)
@@ -296,6 +299,9 @@ func (u *UsbGadget) GetUVCVideoDevice() (string, error) {
 	const maxRetries = 10
 	const retryDelay = 200 * time.Millisecond
 
+	var lastGlobErr error
+	var devicesChecked int
+
 	for retry := 0; retry < maxRetries; retry++ {
 		if retry > 0 {
 			time.Sleep(retryDelay)
@@ -303,10 +309,12 @@ func (u *UsbGadget) GetUVCVideoDevice() (string, error) {
 
 		videoDevices, err := filepath.Glob("/dev/video*")
 		if err != nil {
+			lastGlobErr = err
 			continue
 		}
 
 		for _, dev := range videoDevices {
+			devicesChecked++
 			namePath := filepath.Join("/sys/class/video4linux", filepath.Base(dev), "name")
 			nameBytes, err := os.ReadFile(namePath)
 			if err != nil {
@@ -320,7 +328,13 @@ func (u *UsbGadget) GetUVCVideoDevice() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no UVC video device found")
+	if lastGlobErr != nil {
+		return "", fmt.Errorf("no UVC video device found after %d retries (glob error: %w)", maxRetries, lastGlobErr)
+	}
+	if devicesChecked == 0 {
+		return "", fmt.Errorf("no UVC video device found: no /dev/video* devices exist")
+	}
+	return "", fmt.Errorf("no UVC video device found: checked %d devices, none matched gadget/dwc3/g_uvc", devicesChecked)
 }
 
 func writeFile(path, content string) error {

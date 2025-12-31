@@ -22,8 +22,9 @@ const CAMERA_DEFAULTS = {
   mjpegQuality: 35,
 } as const;
 
-// Frame rate options - labels are localized in the component
-const FRAME_RATE_VALUES = ["15", "20", "24", "30"] as const;
+// Frame rate options - standard commercial camera frame rates
+// Must match backend validation in jsonrpc.go
+const FRAME_RATE_VALUES = ["10", "15", "24", "25", "30", "50", "60"] as const;
 
 export default function SettingsCameraRoute() {
   const { send } = useJsonRpc();
@@ -110,10 +111,13 @@ export default function SettingsCameraRoute() {
             value={String(frameRate)}
             options={FRAME_RATE_VALUES.map(value => {
               const labels: Record<string, string> = {
+                "10": m.camera_settings_framerate_10_label(),
                 "15": m.camera_settings_framerate_15_label(),
-                "20": m.camera_settings_framerate_20_label(),
                 "24": m.camera_settings_framerate_24_label(),
+                "25": m.camera_settings_framerate_25_label(),
                 "30": m.camera_settings_framerate_30_label(),
+                "50": m.camera_settings_framerate_50_label(),
+                "60": m.camera_settings_framerate_60_label(),
               };
               const label = labels[value] || `${value} fps`;
               return {

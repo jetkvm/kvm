@@ -21,6 +21,7 @@ export default function CameraPopover() {
     send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         console.error("Failed to load USB devices:", resp.error);
+        notifications.error(m.camera_failed_load_usb_devices());
       } else {
         const usbDevices = resp.result as { uvc: boolean };
         setUvcEnabled(usbDevices.uvc || false);
@@ -30,6 +31,7 @@ export default function CameraPopover() {
     send("getCameraEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         console.error("Failed to load camera state:", resp.error);
+        notifications.error(m.camera_failed_load_state());
       } else {
         const enabled = resp.result as boolean;
         setCameraEnabledLocal(enabled);

@@ -1,6 +1,7 @@
 package camera
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 
@@ -14,6 +15,12 @@ type GadgetController interface {
 }
 
 // Manager coordinates camera passthrough from browser to UVC.
+//
+// Thread-safety:
+//   - enabled, uvcStreamingFast, uvcMjpegFast: atomic, lock-free access for hot paths
+//   - streamer: atomic pointer, lock-free load for frame dispatch
+//   - streamerMu: protects streamer creation/destruction and streaming state changes
+//   - formatChanMu: protects format notification channel and lastNotifiedFormat
 type Manager struct {
 	gadget       GadgetController
 	uvcLog       *zerolog.Logger
@@ -24,18 +31,13 @@ type Manager struct {
 	eventLoopRun atomic.Bool
 	enabled      atomic.Bool
 
-	// Fast-path flags: Cached streaming state to avoid mutex/pointer loads on every frame.
-	// uvcStreamingFast mirrors streamer.IsStreaming() for lock-free hot path rejection.
-	// uvcMjpegFast is true when streaming MJPEG (codec selection for incoming frames).
 	uvcStreamingFast atomic.Bool
 	uvcMjpegFast     atomic.Bool
 
-	// Format negotiation
 	formatChangeChan   chan FormatInfo
 	formatChanMu       sync.RWMutex
 	lastNotifiedFormat FormatInfo
 
-	// Stats (only used for periodic logging)
 	uvcFrameErrors atomic.Uint32
 }
 
@@ -61,13 +63,20 @@ type Config struct {
 	Gadget       GadgetController
 }
 
+// ErrNilGadget is returned when Config.Gadget is nil.
+var ErrNilGadget = errors.New("camera: gadget controller is required")
+
 // NewManager creates a new camera manager.
-func NewManager(cfg Config) *Manager {
+// Returns error if cfg.Gadget is nil.
+func NewManager(cfg Config) (*Manager, error) {
+	if cfg.Gadget == nil {
+		return nil, ErrNilGadget
+	}
 	return &Manager{
 		gadget: cfg.Gadget,
 		uvcLog: cfg.UVCLogger,
 		camLog: cfg.CameraLogger,
-	}
+	}, nil
 }
 
 // SetEnabled enables or disables camera passthrough.
@@ -104,12 +113,11 @@ func (m *Manager) GetCurrentFormat() *FormatInfo {
 }
 
 // SubscribeFormatChanges returns a channel for format notifications.
+// Only one subscriber is supported; calling again replaces the previous subscription.
+// The old channel is not closed to avoid races with concurrent sends.
 func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
 	m.formatChanMu.Lock()
 	defer m.formatChanMu.Unlock()
-	if m.formatChangeChan != nil {
-		close(m.formatChangeChan)
-	}
 	m.formatChangeChan = make(chan FormatInfo, 4)
 	return m.formatChangeChan
 }
@@ -125,19 +133,19 @@ func (m *Manager) UnsubscribeFormatChanges() {
 }
 
 // notifyFormatChange sends a format change notification if it differs from last.
+// The lock is held during send (non-blocking) to prevent send-to-closed-channel panic.
 func (m *Manager) notifyFormatChange(info FormatInfo) {
 	m.formatChanMu.Lock()
+	defer m.formatChanMu.Unlock()
+
 	if m.lastNotifiedFormat == info {
-		m.formatChanMu.Unlock()
 		return
 	}
 	m.lastNotifiedFormat = info
-	ch := m.formatChangeChan
-	m.formatChanMu.Unlock()
 
-	if ch != nil {
+	if m.formatChangeChan != nil {
 		select {
-		case ch <- info:
+		case m.formatChangeChan <- info:
 		default:
 			if m.camLog != nil {
 				m.camLog.Warn().Msg("Format notification dropped - channel full")
@@ -147,15 +155,16 @@ func (m *Manager) notifyFormatChange(info FormatInfo) {
 }
 
 // notifyStreamingStopped notifies that streaming has stopped.
+// The lock is held during send (non-blocking) to prevent send-to-closed-channel panic.
 func (m *Manager) notifyStreamingStopped() {
 	m.formatChanMu.Lock()
-	m.lastNotifiedFormat = FormatInfo{}
-	ch := m.formatChangeChan
-	m.formatChanMu.Unlock()
+	defer m.formatChanMu.Unlock()
 
-	if ch != nil {
+	m.lastNotifiedFormat = FormatInfo{}
+
+	if m.formatChangeChan != nil {
 		select {
-		case ch <- FormatInfo{Codec: CodecStop}:
+		case m.formatChangeChan <- FormatInfo{Codec: CodecStop}:
 		default:
 			if m.camLog != nil {
 				m.camLog.Warn().Msg("Stop notification dropped - channel full")

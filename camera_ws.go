@@ -17,7 +17,7 @@ const frameHeaderSize = 1
 
 // Ring buffer configuration for zero-allocation WebSocket reads
 const (
-	ringBufferCount = 4           // 4 buffers in ring (safe with 8 V4L2 buffers)
+	ringBufferCount = 4           // 4 buffers in ring (exceeds 3 V4L2 buffers for safety)
 	ringBufferSize  = 2048 * 1024 // 2MB per buffer (handles 1080p MJPEG at any quality)
 )
 
@@ -37,7 +37,8 @@ const (
 //	[0]    uint8 codec (0x01=H.264, 0x02=MJPEG)
 //	[1+]   raw frame data
 func handleCameraWs(c *gin.Context) {
-	if cameraManager == nil {
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Camera manager not initialized"})
 		return
 	}
@@ -68,11 +69,11 @@ func handleCameraWs(c *gin.Context) {
 	cameraLog.Debug().Msg("Camera WebSocket connected")
 
 	// Subscribe to format changes
-	formatChan := cameraManager.SubscribeFormatChanges()
-	defer cameraManager.UnsubscribeFormatChanges()
+	formatChan := mgr.SubscribeFormatChanges()
+	defer mgr.UnsubscribeFormatChanges()
 
 	// Send initial format if UVC is already streaming
-	if format := cameraManager.GetCurrentFormat(); format != nil {
+	if format := mgr.GetCurrentFormat(); format != nil {
 		sendFormatMessage(ctx, ws, format)
 	}
 
@@ -138,6 +139,7 @@ func handleCameraWs(c *gin.Context) {
 				break
 			}
 			if readErr != nil {
+				cameraLog.Warn().Err(readErr).Msg("Error reading WebSocket frame")
 				n = 0 // Mark as invalid
 				break
 			}
@@ -154,6 +156,7 @@ func handleCameraWs(c *gin.Context) {
 
 		// HOTPATH: Validate minimum frame size (1 byte header + 1 byte data)
 		if n < frameHeaderSize+1 {
+			cameraLog.Debug().Int("size", n).Msg("Camera frame too small, skipping")
 			continue
 		}
 
@@ -166,7 +169,7 @@ func handleCameraWs(c *gin.Context) {
 		// so it's safe to advance ring index after dispatch
 		frameCount++
 		if frameCount <= 5 {
-			cameraLog.Info().
+			cameraLog.Debug().
 				Int("frame", frameCount).
 				Int("size", len(frameData)).
 				Uint8("codec", codec).
@@ -174,9 +177,11 @@ func handleCameraWs(c *gin.Context) {
 		}
 		switch codec {
 		case codecH264:
-			cameraManager.HandleCameraH264Frame(frameData)
+			mgr.HandleCameraH264Frame(frameData)
 		case codecMjpeg:
-			cameraManager.HandleCameraMjpegFrame(frameData)
+			mgr.HandleCameraMjpegFrame(frameData)
+		default:
+			cameraLog.Warn().Uint8("codec", codec).Msg("Unknown camera codec, dropping frame")
 		}
 
 		// Advance ring buffer index for next frame

@@ -70,6 +70,7 @@ export class WebSocketCameraTransport implements CameraTransport {
   private url: string;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(url: string) {
     this.url = url;
@@ -95,6 +96,12 @@ export class WebSocketCameraTransport implements CameraTransport {
   }
 
   async connect(): Promise<void> {
+    // Cancel any pending reconnect to prevent double connections
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     if (this._state === "connected" || this._state === "connecting") {
       return;
     }
@@ -118,7 +125,16 @@ export class WebSocketCameraTransport implements CameraTransport {
           // Attempt reconnect if not a clean close
           if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            setTimeout(() => this.connect(), 1000 * this.reconnectAttempts);
+            this.reconnectTimer = setTimeout(() => {
+              this.connect().catch(err => {
+                console.warn("[CameraTransport] Reconnect failed:", err);
+              });
+            }, 1000 * this.reconnectAttempts);
+          } else if (event.code !== 1000 && this.reconnectAttempts >= this.maxReconnectAttempts) {
+            this.setState("error");
+            this.events.onError?.(
+              new Error(`Connection lost after ${this.maxReconnectAttempts} reconnect attempts`),
+            );
           }
         };
 
@@ -162,10 +178,12 @@ export class WebSocketCameraTransport implements CameraTransport {
                   break;
 
                 default:
+                  console.debug("[CameraTransport] Unknown message type:", msg.type);
                   break;
               }
-            } catch {
-              // Ignore non-JSON messages
+            } catch (e) {
+              // Non-JSON text messages are expected (e.g., keep-alive pings)
+              console.debug("[CameraTransport] Non-JSON message received:", event.data, e);
             }
           }
         };
@@ -204,6 +222,12 @@ export class WebSocketCameraTransport implements CameraTransport {
   }
 
   close(): void {
+    // Cancel any pending reconnect
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     if (this.ws) {
       this.ws.close(1000, "Client closing");
       this.ws = null;

@@ -148,12 +148,46 @@ export class CameraEncoder {
   private lastFrameSize = 0;
   private actualFrameRate = 0;
 
+  // Error rate limiting
+  private errorCount = 0;
+  private lastErrorLogTime = 0;
+  private static readonly ERROR_LOG_INTERVAL_MS = 1000;
+
   constructor(codec: VideoCodec, config: Partial<EncoderConfig> = {}) {
     this.codec = codec;
     this.config = { ...DEFAULT_CONFIG, ...config };
+
+    // Validate and clamp config values to valid ranges
+    this.config.width = Math.max(320, Math.min(3840, this.config.width));
+    this.config.height = Math.max(240, Math.min(2160, this.config.height));
+    this.config.frameRate = Math.max(1, Math.min(120, this.config.frameRate));
+    this.config.bitrate = Math.max(100_000, Math.min(50_000_000, this.config.bitrate));
+    this.config.quality = Math.max(0.0, Math.min(1.0, this.config.quality));
+
     this.framesPerKeyFrame = this.config.frameRate * this.config.keyFrameInterval;
     // Calculate minimum frame interval for rate limiting (allow 10% tolerance)
     this.minFrameIntervalMs = (1000 / this.config.frameRate) * 0.9;
+  }
+
+  /**
+   * Rate-limited error logging to avoid log spam during error storms.
+   */
+  private logError(context: string, err: unknown): void {
+    this.errorCount++;
+    const now = performance.now();
+    if (now - this.lastErrorLogTime >= CameraEncoder.ERROR_LOG_INTERVAL_MS) {
+      if (this.errorCount > 1) {
+        console.warn(
+          `[CameraEncoder] ${context}:`,
+          err,
+          `(${this.errorCount} errors in last interval)`,
+        );
+      } else {
+        console.warn(`[CameraEncoder] ${context}:`, err);
+      }
+      this.lastErrorLogTime = now;
+      this.errorCount = 0;
+    }
   }
 
   get frameRate(): number {
@@ -525,7 +559,7 @@ export class CameraEncoder {
               }
             }
           } catch (err) {
-            console.warn("[CameraEncoder] frame encode error:", err);
+            this.logError("frame encode error", err);
           } finally {
             frame.close();
           }
@@ -714,7 +748,9 @@ export class CameraEncoder {
           if (this._state === "running") this.captureWithVideoFrameCallback();
         })
         .catch((err: unknown) => {
-          console.warn("[CameraEncoder] video.play failed:", err);
+          this.logError("video.play failed", err);
+          this.setState("error");
+          this.events.onError?.(err instanceof Error ? err : new Error(String(err)));
         });
       return;
     }
@@ -740,7 +776,7 @@ export class CameraEncoder {
       );
       bitmap = null;
     } catch (err) {
-      console.warn("[CameraEncoder] createImageBitmap failed:", err);
+      this.logError("createImageBitmap failed", err);
       bitmap?.close();
     }
   }

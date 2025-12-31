@@ -157,6 +157,11 @@ func (g *hardwareAESGCM) IsHardwareAccelerated() bool {
 	return true
 }
 
+// Seal encrypts and authenticates plaintext with the given nonce and additional data.
+//
+// Panics: This method panics in two cases (matching Go's crypto/cipher.AEAD contract):
+//   - If nonce length != NonceSize() - caller error, unrecoverable
+//   - If hardware encryption fails - system-level failure, should not occur in normal operation
 func (g *hardwareAESGCM) Seal(dst, nonce, plaintext, additionalData []byte) []byte {
 	if len(nonce) != g.nonceSize {
 		panic("crypto: incorrect nonce length")

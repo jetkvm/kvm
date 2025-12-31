@@ -17,10 +17,10 @@ const (
 // UVCStreamer stub for non-linux builds
 type UVCStreamer struct{}
 
-// DmabufSlotInfo stub for non-linux builds
-type DmabufSlotInfo struct {
-	Slot  int
-	InUse bool
+// dmabufSlotInfo stub for non-linux builds (unexported to match main file)
+type dmabufSlotInfo struct {
+	slot  int
+	inUse bool
 }
 
 type Logger interface {
@@ -75,10 +75,6 @@ func (s *UVCStreamer) SubscribeEvents() error {
 	return fmt.Errorf("UVC not supported on this platform")
 }
 
-func (s *UVCStreamer) PollEvents() (uint32, error) {
-	return 0, fmt.Errorf("UVC not supported on this platform")
-}
-
 func (s *UVCStreamer) IsStreaming() bool {
 	return false
 }
@@ -89,14 +85,6 @@ func (s *UVCStreamer) IsOpen() bool {
 
 func (s *UVCStreamer) IsValid() bool {
 	return false
-}
-
-func (s *UVCStreamer) Reopen() error {
-	return fmt.Errorf("UVC not supported on this platform")
-}
-
-func (s *UVCStreamer) GetFd() int {
-	return -1
 }
 
 func (s *UVCStreamer) GetCommittedResolution() (uint32, uint32) {
@@ -129,10 +117,6 @@ func (s *UVCStreamer) HandleSetupEvent(eventData []byte) error {
 
 func (s *UVCStreamer) HandleDataEvent(eventData []byte) (bool, error) {
 	return false, fmt.Errorf("UVC not supported on this platform")
-}
-
-func (s *UVCStreamer) WaitForEventWithTimeout(timeoutMs int) (uint32, []byte, error) {
-	return 0, nil, fmt.Errorf("UVC not supported on this platform")
 }
 
 // DMABUF zero-copy stubs

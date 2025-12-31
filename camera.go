@@ -10,40 +10,49 @@ import (
 )
 
 var (
-	cameraManager     *camera.Manager
+	cameraManagerPtr  atomic.Pointer[camera.Manager]
 	currentVideoTrack atomic.Pointer[string] // Track ID of current camera video track
 )
 
 // initCameraManager initializes the camera manager.
 // Must be called after gadget is initialized.
 func initCameraManager() {
-	cameraManager = camera.NewManager(camera.Config{
+	mgr, err := camera.NewManager(camera.Config{
 		UVCLogger:    uvcLog,
 		CameraLogger: cameraLog,
 		Gadget:       gadget,
 	})
+	if err != nil {
+		cameraLog.Error().Err(err).Msg("Failed to create camera manager")
+		return
+	}
+	cameraManagerPtr.Store(mgr)
 }
 
 // setCameraEnabled enables or disables camera passthrough.
 func setCameraEnabled(enabled bool) {
-	if cameraManager != nil {
-		cameraManager.SetEnabled(enabled)
+	if mgr := cameraManagerPtr.Load(); mgr != nil {
+		mgr.SetEnabled(enabled)
 	}
 }
 
 // isCameraEnabled returns whether camera passthrough is enabled.
 func isCameraEnabled() bool {
-	if cameraManager != nil {
-		return cameraManager.IsEnabled()
+	if mgr := cameraManagerPtr.Load(); mgr != nil {
+		return mgr.IsEnabled()
 	}
 	return false
 }
+
+// depacketizeLogInterval controls periodic logging of depacketization errors.
+const depacketizeLogInterval = 100
 
 // handleCameraVideoTrack handles incoming H.264 video from the browser camera.
 // This is called when the browser sends camera video over the WebRTC video track.
 // We depacketize the H.264 RTP packets and pass NAL units directly to UVC.
 func handleCameraVideoTrack(track *webrtc.TrackRemote) {
-	if cameraManager == nil {
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
 		cameraLog.Warn().Msg("Camera manager not initialized, ignoring video track")
 		return
 	}
@@ -64,6 +73,7 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 	// 1080p H.264 I-frames are typically 50-150KB, with P-frames much smaller.
 	frameBuffer := make([]byte, 0, 256*1024)
 	var lastTimestamp uint32
+	var depacketErrors uint32
 
 	for {
 		// Check if we've been superseded by another track
@@ -88,14 +98,17 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 		}
 
 		// Skip if camera passthrough is disabled
-		if !cameraManager.IsEnabled() {
+		if !mgr.IsEnabled() {
 			continue
 		}
 
 		// Depacketize H.264 NAL unit from RTP
 		nalUnit, err := depacketizer.Unmarshal(rtpPacket.Payload)
 		if err != nil {
-			cameraLog.Trace().Err(err).Msg("Failed to depacketize H.264")
+			depacketErrors++
+			if depacketErrors == 1 || depacketErrors%depacketizeLogInterval == 0 {
+				cameraLog.Warn().Uint32("total_errors", depacketErrors).Err(err).Msg("H.264 depacketization failed")
+			}
 			continue
 		}
 
@@ -106,7 +119,7 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 		// Accumulate NAL units for the same timestamp (same frame)
 		if rtpPacket.Timestamp != lastTimestamp && len(frameBuffer) > 0 {
 			// New frame started, send the previous frame to UVC
-			cameraManager.HandleCameraH264Frame(frameBuffer)
+			mgr.HandleCameraH264Frame(frameBuffer)
 			frameBuffer = frameBuffer[:0]
 		}
 		lastTimestamp = rtpPacket.Timestamp
@@ -116,7 +129,7 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 
 		// If this is the last packet of the frame (marker bit set), send immediately
 		if rtpPacket.Marker {
-			cameraManager.HandleCameraH264Frame(frameBuffer)
+			mgr.HandleCameraH264Frame(frameBuffer)
 			frameBuffer = frameBuffer[:0]
 		}
 	}

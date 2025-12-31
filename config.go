@@ -192,7 +192,7 @@ func getDefaultConfig() Config {
 		CloudURL:             DefaultAPIURL,
 		UpdateAPIURL:         DefaultAPIURL,
 		CloudAppURL:          "https://app.jetkvm.com",
-		AutoUpdateEnabled:    true, // Set a default value
+		AutoUpdateEnabled:    true,
 		ActiveExtension:      "",
 		KeyboardMacros:       []KeyboardMacro{},
 		DisplayRotation:      "270",

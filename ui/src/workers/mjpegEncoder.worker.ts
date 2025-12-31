@@ -61,6 +61,24 @@ let ctx: OffscreenCanvasRenderingContext2D | null = null;
 let config: EncoderConfig = { width: 1920, height: 1080, quality: 0.7 };
 let isRunning = false;
 
+// Error rate limiting to avoid spamming main thread
+let errorCount = 0;
+let lastErrorTime = 0;
+const ERROR_LOG_INTERVAL_MS = 1000;
+
+function reportError(err: unknown): void {
+  errorCount++;
+  const now = performance.now();
+  if (now - lastErrorTime >= ERROR_LOG_INTERVAL_MS) {
+    const message = err instanceof Error ? err.message : String(err);
+    const fullMessage =
+      errorCount > 1 ? `${message} (${errorCount} errors in last interval)` : message;
+    self.postMessage({ type: "error", message: fullMessage } as ErrorMessage);
+    lastErrorTime = now;
+    errorCount = 0;
+  }
+}
+
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   const msg = event.data;
 
@@ -144,11 +162,7 @@ async function handleFrame(bitmap: ImageBitmap, timestamp: number): Promise<void
     const response: EncodedFrameMessage = { type: "frame", data, timestamp };
     self.postMessage(response, { transfer: [data] });
   } catch (err) {
-    // Report errors back to main thread
-    self.postMessage({
-      type: "error",
-      message: err instanceof Error ? err.message : String(err),
-    } as ErrorMessage);
+    reportError(err);
   } finally {
     // Always close the bitmap to free GPU memory
     bitmap.close();
@@ -167,6 +181,8 @@ function handleStop(): void {
 function handleSetQuality(quality: number): void {
   if (quality >= 0.0 && quality <= 1.0) {
     config.quality = quality;
+  } else {
+    reportError(new Error(`Invalid quality value: ${quality} (must be 0.0-1.0)`));
   }
 }
 

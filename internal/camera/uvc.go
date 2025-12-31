@@ -8,8 +8,7 @@ import (
 )
 
 // uvcBufferCount is the number of V4L2 buffers to allocate.
-// 3 buffers provides double-buffering plus one in-flight, balancing
-// latency and CPU utilization for 30fps streaming.
+// 3 buffers provides triple-buffering (one being filled, one ready, one in-flight).
 const uvcBufferCount = 3
 
 // errorLogInterval is a bitmask for throttling frame error logs.
@@ -147,6 +146,15 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 		if m.uvcLog != nil {
 			m.uvcLog.Warn().Err(err).Msg("UVC device not found during reinit")
 		}
+		if streamer := m.streamer.Load(); streamer != nil {
+			if closeErr := streamer.Close(); closeErr != nil && m.uvcLog != nil {
+				m.uvcLog.Warn().Err(closeErr).Msg("Close error during reinit cleanup")
+			}
+			m.streamer.Store(nil)
+		}
+		m.uvcStreamingFast.Store(false)
+		m.uvcMjpegFast.Store(false)
+		m.notifyStreamingStopped()
 		return
 	}
 
@@ -172,11 +180,21 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 }
 
 func (m *Manager) eventLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			if m.uvcLog != nil {
+				m.uvcLog.Error().Interface("panic", r).Msg("UVC event loop panic - recovering")
+			}
+			m.eventLoopRun.Store(false)
+			m.uvcStreamingFast.Store(false)
+			m.uvcMjpegFast.Store(false)
+		}
+	}()
+
 	const (
-		pollInterval    = 20 * time.Millisecond
-		retryInterval   = time.Second
-		recoveryDelay   = 500 * time.Millisecond
-		errorRetryDelay = 100 * time.Millisecond
+		pollInterval     = 20 * time.Millisecond
+		retryInterval    = time.Second
+		recoveryDelay    = 500 * time.Millisecond
 		maxEventsPerPoll = 16
 	)
 
@@ -216,7 +234,9 @@ func (m *Manager) eventLoop() {
 				if m.uvcLog != nil {
 					m.uvcLog.Error().Err(err).Msg("Failed to subscribe to UVC events")
 				}
-				_ = streamer.Close()
+				if closeErr := streamer.Close(); closeErr != nil && m.uvcLog != nil {
+					m.uvcLog.Warn().Err(closeErr).Msg("Close failed after SubscribeEvents error")
+				}
 				time.Sleep(retryInterval)
 				continue
 			}

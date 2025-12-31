@@ -161,36 +161,35 @@ type uvc_streaming_control struct {
 	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion         uint8 //nolint:unused // kernel struct fields
 }
 
-type DmabufSlotInfo struct {
-	Slot  int
-	InUse bool
+type dmabufSlotInfo struct {
+	slot  int
+	inUse bool
 }
 
 type UVCStreamer struct {
-	devicePath       string
-	mu               sync.Mutex
-	log              Logger
-	buffers          [][]byte
-	bufferPtrs       []uintptr // Pre-computed buffer pointers for zero-overhead access
-	fd               int
-	width            uint32
-	height           uint32
-	bufferSize       int
-	bufCount         int
-	curBufIdx        atomic.Int32 // Atomic for lock-free buffer selection
-	queuedBufs       int
-	frameCounter     atomic.Uint32 // Atomic for lock-free increment
-	droppedFrames    uint32
-	lastDropLogFrame uint32
-	probe            uvc_streaming_control
-	commit           uvc_streaming_control
-	eventDataBuf     [64]byte
-	pendingCtrl      uint8
-	streaming        atomic.Bool
-	streamReady      bool
-	dmabufMode       bool
-	dmabufSlots      []DmabufSlotInfo
-	dmabufRelease    func(slot int)
+	devicePath    string
+	mu            sync.Mutex
+	log           Logger
+	buffers       [][]byte
+	bufferPtrs    []uintptr // Pre-computed buffer pointers for zero-overhead access
+	fd            int
+	width         uint32
+	height        uint32
+	bufferSize    int
+	bufCount      int
+	curBufIdx     atomic.Int32 // Atomic for lock-free buffer selection
+	queuedBufs    int
+	frameCounter  atomic.Uint32 // Atomic for lock-free increment
+	droppedFrames uint32
+	probe         uvc_streaming_control
+	commit        uvc_streaming_control
+	eventDataBuf  [64]byte
+	pendingCtrl   uint8
+	streaming     atomic.Bool
+	streamReady   bool
+	dmabufMode    bool
+	dmabufSlots   []dmabufSlotInfo
+	dmabufRelease func(slot int)
 }
 
 type Logger interface {
@@ -315,7 +314,9 @@ func (s *UVCStreamer) Close() error {
 	}
 
 	if s.streaming.Load() {
-		_ = s.stopStreamingLocked()
+		if err := s.stopStreamingLocked(); err != nil && s.log != nil {
+			s.log.Warn().Err(err).Msg("Error stopping streaming during Close")
+		}
 	}
 
 	// Clear buffer references - GC will handle cleanup
@@ -374,6 +375,10 @@ func (s *UVCStreamer) SetFormatWithCodec(width, height uint32, isMjpeg bool) err
 }
 
 func (s *UVCStreamer) RequestBuffers(count uint32) error {
+	if count == 0 {
+		return fmt.Errorf("buffer count must be > 0")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -429,7 +434,6 @@ func (s *UVCStreamer) StartStreaming() error {
 	s.curBufIdx.Store(0)
 	s.frameCounter.Store(0)
 	s.droppedFrames = 0
-	s.lastDropLogFrame = 0
 
 	for i := 0; i < s.bufCount; i++ {
 		var v4l2buf v4l2_buffer
@@ -491,9 +495,9 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 	// Release any pending DMABUF slots before stopping
 	if s.dmabufMode && s.dmabufRelease != nil {
 		for i := range s.dmabufSlots {
-			if s.dmabufSlots[i].InUse {
-				s.dmabufRelease(s.dmabufSlots[i].Slot)
-				s.dmabufSlots[i].InUse = false
+			if s.dmabufSlots[i].inUse {
+				s.dmabufRelease(s.dmabufSlots[i].slot)
+				s.dmabufSlots[i].inUse = false
 			}
 		}
 	}
@@ -509,6 +513,9 @@ func (s *UVCStreamer) stopStreamingLocked() error {
 	return nil
 }
 
+// dropLogInterval controls how often dropped frames are logged (every N drops).
+const dropLogInterval = 100
+
 // WriteFrame writes a video frame to the UVC device.
 // HOTPATH: Optimized for minimal overhead at 1080p@30fps on 32-bit ARM.
 func (s *UVCStreamer) WriteFrame(data []byte) error {
@@ -519,6 +526,7 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	dataLen := int32(len(data))
 	if dataLen > maxFrameSizeBytes || dataLen == 0 {
+		s.trackDroppedFrame()
 		return nil
 	}
 
@@ -526,6 +534,7 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 
 	if s.fd < 0 || s.bufCount == 0 {
 		s.mu.Unlock()
+		s.trackDroppedFrame()
 		return nil
 	}
 
@@ -545,6 +554,7 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 		if errno != 0 {
 			s.mu.Unlock()
 			if errno == syscall.EAGAIN {
+				s.trackDroppedFrame()
 				return nil
 			}
 			return fmt.Errorf("VIDIOC_DQBUF failed: %v", errno)
@@ -837,6 +847,19 @@ func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 
 func (s *UVCStreamer) IsStreaming() bool { return s.streaming.Load() }
 
+// trackDroppedFrame increments the drop counter and logs periodically.
+func (s *UVCStreamer) trackDroppedFrame() {
+	s.mu.Lock()
+	s.droppedFrames++
+	dropped := s.droppedFrames
+	shouldLog := dropped == 1 || dropped%dropLogInterval == 0
+	s.mu.Unlock()
+
+	if shouldLog && s.log != nil {
+		s.log.Warn().Uint32("total_dropped", dropped).Msg("UVC frames dropped")
+	}
+}
+
 func (s *UVCStreamer) IsOpen() bool {
 	s.mu.Lock()
 	fd := s.fd
@@ -876,7 +899,7 @@ func (s *UVCStreamer) RequestBuffersDmabuf(count uint32, releaseFunc func(slot i
 
 	s.bufCount = int(req.Count)
 	s.dmabufMode = true
-	s.dmabufSlots = make([]DmabufSlotInfo, req.Count)
+	s.dmabufSlots = make([]dmabufSlotInfo, req.Count)
 	s.dmabufRelease = releaseFunc
 	s.curBufIdx.Store(0)
 	s.buffers = nil
@@ -885,7 +908,11 @@ func (s *UVCStreamer) RequestBuffersDmabuf(count uint32, releaseFunc func(slot i
 }
 
 func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
-	if !s.streaming.Load() || int32(size) > maxFrameSizeBytes || size == 0 {
+	if !s.streaming.Load() {
+		return nil
+	}
+	if int32(size) > maxFrameSizeBytes || size == 0 {
+		s.trackDroppedFrame()
 		return nil
 	}
 
@@ -893,6 +920,7 @@ func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
 
 	if s.fd < 0 || !s.dmabufMode {
 		s.mu.Unlock()
+		s.trackDroppedFrame()
 		return nil
 	}
 
@@ -906,15 +934,16 @@ func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
 		if errno != 0 {
 			s.mu.Unlock()
 			if errno == syscall.EAGAIN {
+				s.trackDroppedFrame()
 				return nil
 			}
 			return fmt.Errorf("VIDIOC_DQBUF (DMABUF) failed: %v", errno)
 		}
 		s.queuedBufs--
 		dequeuedIdx := int(dqbuf.Index)
-		if dequeuedIdx < len(s.dmabufSlots) && s.dmabufSlots[dequeuedIdx].InUse {
-			releaseSlot := s.dmabufSlots[dequeuedIdx].Slot
-			s.dmabufSlots[dequeuedIdx].InUse = false
+		if dequeuedIdx < len(s.dmabufSlots) && s.dmabufSlots[dequeuedIdx].inUse {
+			releaseSlot := s.dmabufSlots[dequeuedIdx].slot
+			s.dmabufSlots[dequeuedIdx].inUse = false
 			if s.dmabufRelease != nil {
 				s.dmabufRelease(releaseSlot)
 			}
@@ -922,7 +951,7 @@ func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
 	}
 
 	timestamp := s.frameCounter.Add(1)
-	s.dmabufSlots[bufIdx] = DmabufSlotInfo{Slot: slot, InUse: true}
+	s.dmabufSlots[bufIdx] = dmabufSlotInfo{slot: slot, inUse: true}
 
 	var v4l2buf v4l2_buffer
 	v4l2buf.Index = uint32(bufIdx)
@@ -937,7 +966,7 @@ func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
 
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QBUF, uintptr(unsafe.Pointer(&v4l2buf)))
 	if errno != 0 {
-		s.dmabufSlots[bufIdx].InUse = false
+		s.dmabufSlots[bufIdx].inUse = false
 		if s.dmabufRelease != nil {
 			s.dmabufRelease(slot)
 		}
