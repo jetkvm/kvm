@@ -285,6 +285,18 @@ func (im *InterfaceManager) GetIPv6Addresses() []string {
 	return addresses
 }
 
+// GetIPv6Addresses returns the IPv6 link-local address of the interface
+func (im *InterfaceManager) GetIPv6LinkLocalAddress() string {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
+	if im.state == nil {
+		return ""
+	}
+
+	return im.state.IPv6LinkLocal
+}
+
 // GetMACAddress returns the MAC address of the interface
 func (im *InterfaceManager) GetMACAddress() string {
 	im.stateMu.RLock()

@@ -1271,8 +1271,8 @@
                       "type": "LVGLLabelWidget",
                       "left": 0,
                       "top": 0,
-                      "width": 98,
-                      "height": 16,
+                      "width": 100,
+                      "height": 11,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
@@ -1291,7 +1291,7 @@
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
-                      "hiddenFlag": true,
+                      "hiddenFlag": false,
                       "hiddenFlagType": "literal",
                       "clickableFlagType": "literal",
                       "checkedStateType": "literal",
@@ -1303,14 +1303,14 @@
                         "definition": {
                           "MAIN": {
                             "DEFAULT": {
-                              "text_align": "LEFT",
-                              "text_font": "MONTSERRAT_14"
+                              "text_align": "CENTER",
+                              "text_font": "MONTSERRAT_10"
                             }
                           }
                         }
                       },
                       "groupIndex": 0,
-                      "text": "fe80::ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+                      "text": "2001:0db8:0000:0000:0000:0000:0000:0000",
                       "textType": "literal",
                       "longMode": "SCROLL",
                       "recolor": false

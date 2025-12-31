@@ -72,6 +72,13 @@ func (nm *NetworkManager) GetIPv6Addresses() []string {
 	return []string{}
 }
 
+func (nm *NetworkManager) GetIPv6LinkLocalAddress() string {
+	for _, iface := range nm.interfaces {
+		return iface.GetIPv6LinkLocalAddress()
+	}
+	return ""
+}
+
 func (nm *NetworkManager) GetMACAddress() string {
 	for _, iface := range nm.interfaces {
 		return iface.GetMACAddress()

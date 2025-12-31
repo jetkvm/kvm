@@ -327,12 +327,12 @@ void create_screen_home_screen() {
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.home_info_ipv6_addr = obj;
                             lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
-                            lv_obj_set_size(obj, LV_PCT(98), 17);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
-                            lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+                            lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);
+                            lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL);
                             add_style_label_font16(obj);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text(obj, "fe80::ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_text_font(obj, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_label_set_text(obj, "2001:0db8:0000:0000:0000:0000:0000:0000");
                         }
                         {
                             // HomeInfoMACAddr

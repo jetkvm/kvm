@@ -53,6 +53,7 @@ func updateDisplay() {
 	if networkManager != nil {
 		ipv4String := networkManager.IPv4String()
 		ipv6Addrs := networkManager.GetIPv6Addresses()
+		ipv6Addrs = append(ipv6Addrs, networkManager.GetIPv6LinkLocalAddress())
 		var ipv6String string
 		if ipv4String == "" {
 			n := 4
