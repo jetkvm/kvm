@@ -2,7 +2,7 @@
  * Camera passthrough hook - manages WebSocket transport and encoding for UVC.
  */
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   CameraEncoder,
   createEncoder,
@@ -14,7 +14,92 @@ import {
   type CameraTransport,
   type TransportState,
   type CameraTransportStats,
+  type FormatRequest,
 } from "@/lib/cameraTransport";
+
+/** Returns true if encoder state allows starting */
+function isStartableState(state: EncoderState): boolean {
+  return state === "idle" || state === "stopped" || state === "error";
+}
+
+/**
+ * Applies format settings to encoder (frame rate, bitrate, quality).
+ * Does not restart encoder - these are hot-configurable settings.
+ */
+function applyEncoderSettings(encoder: CameraEncoder, format: FormatRequest): number {
+  let effectiveFrameRate = format.frameRate || 30;
+  if (format.frameRateCap && format.frameRateCap >= 1) {
+    effectiveFrameRate = Math.min(effectiveFrameRate, format.frameRateCap);
+  }
+  if (effectiveFrameRate > 0) {
+    encoder.setFrameRate(effectiveFrameRate);
+  }
+  if (format.h264Bitrate && format.h264Bitrate > 0) {
+    encoder.setBitrate(format.h264Bitrate);
+  }
+  if (format.mjpegQuality !== undefined && format.mjpegQuality > 0) {
+    encoder.setQuality(format.mjpegQuality);
+  }
+  return effectiveFrameRate;
+}
+
+/**
+ * Handles format change request from UVC host.
+ * Updates encoder settings, switches codec if needed, and starts/resumes encoder.
+ */
+async function handleFormatRequest(
+  format: FormatRequest,
+  encoderRef: React.RefObject<CameraEncoder | null>,
+  updateState: (updates: Partial<CameraPassthroughState>) => void,
+  handleError: (error: Error) => void,
+): Promise<void> {
+  const currentEncoder = encoderRef.current;
+  if (!currentEncoder) return;
+
+  // Apply hot-configurable settings first (no restart)
+  applyEncoderSettings(currentEncoder, format);
+
+  // Switch codec if needed (may restart encoder)
+  if (currentEncoder.currentCodec !== format.codec) {
+    try {
+      await currentEncoder.switchCodec(format.codec);
+      updateState({ currentCodec: format.codec });
+    } catch (err) {
+      handleError(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+  }
+
+  // Update resolution last (may restart encoder)
+  if (format.width && format.height && format.width > 0 && format.height > 0) {
+    try {
+      const success = await currentEncoder.setResolution(format.width, format.height);
+      if (!success) {
+        handleError(new Error(`Failed to set resolution to ${format.width}x${format.height}`));
+        return;
+      }
+    } catch (err) {
+      handleError(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+  }
+
+  // Start/resume encoder when USB host requests video
+  const currentState = currentEncoder.state;
+  try {
+    if (isStartableState(currentState)) {
+      await currentEncoder.start();
+      updateState({ encoderState: currentEncoder.state });
+    } else if (currentState === "paused") {
+      await currentEncoder.resume();
+      updateState({ encoderState: currentEncoder.state });
+    } else if (currentState === "running") {
+      currentEncoder.forceKeyFrame();
+    }
+  } catch (err) {
+    handleError(err instanceof Error ? err : new Error(String(err)));
+  }
+}
 
 export interface CameraPassthroughState {
   encoderState: EncoderState;
@@ -133,75 +218,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
           onStats: stats => {
             updateState({ stats });
           },
-          onFormatRequest: async format => {
-            const currentEncoder = encoderRef.current;
-            if (currentEncoder) {
-              // Apply settings: frame rate, bitrate, quality first (no restart)
-              let effectiveFrameRate = format.frameRate || 30;
-              if (format.frameRateCap && format.frameRateCap >= 1) {
-                effectiveFrameRate = Math.min(effectiveFrameRate, format.frameRateCap);
-              }
-              if (effectiveFrameRate > 0) {
-                currentEncoder.setFrameRate(effectiveFrameRate);
-              }
-              if (format.h264Bitrate && format.h264Bitrate > 0) {
-                currentEncoder.setBitrate(format.h264Bitrate);
-              }
-              if (format.mjpegQuality !== undefined && format.mjpegQuality > 0) {
-                currentEncoder.setQuality(format.mjpegQuality);
-              }
-
-              // Switch codec if needed (may restart encoder)
-              if (currentEncoder.currentCodec !== format.codec) {
-                try {
-                  await currentEncoder.switchCodec(format.codec);
-                  updateState({ currentCodec: format.codec });
-                } catch (err) {
-                  handleError(err instanceof Error ? err : new Error(String(err)));
-                  return; // Don't continue with resolution change if codec switch failed
-                }
-              }
-
-              // Update resolution last (may restart encoder)
-              if (format.width && format.height && format.width > 0 && format.height > 0) {
-                try {
-                  const success = await currentEncoder.setResolution(format.width, format.height);
-                  if (!success) {
-                    handleError(
-                      new Error(`Failed to set resolution to ${format.width}x${format.height}`),
-                    );
-                    return;
-                  }
-                } catch (err) {
-                  handleError(err instanceof Error ? err : new Error(String(err)));
-                  return;
-                }
-              }
-            }
-
-            // Start/resume encoder when USB host requests video
-            const enc = encoderRef.current;
-            if (enc) {
-              const currentState = enc.state;
-              try {
-                if (
-                  currentState === "idle" ||
-                  currentState === "stopped" ||
-                  currentState === "error"
-                ) {
-                  await enc.start();
-                  updateState({ encoderState: enc.state });
-                } else if (currentState === "paused") {
-                  await enc.resume();
-                  updateState({ encoderState: enc.state });
-                } else if (currentState === "running") {
-                  enc.forceKeyFrame();
-                }
-              } catch (err) {
-                handleError(err instanceof Error ? err : new Error(String(err)));
-              }
-            }
-          },
+          onFormatRequest: format => handleFormatRequest(format, encoderRef, updateState, handleError),
           onStreamingStopped: () => {
             const enc = encoderRef.current;
             if (enc && enc.state === "running") {

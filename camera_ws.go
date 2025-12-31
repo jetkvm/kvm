@@ -18,14 +18,9 @@ const frameHeaderSize = 1
 
 // Ring buffer configuration for zero-allocation WebSocket reads
 const (
-	ringBufferCount = 4           // 4 buffers in ring (exceeds 3 V4L2 buffers for safety)
-	ringBufferSize  = 2048 * 1024 // 2MB per buffer (handles typical 1080p MJPEG; oversized frames are drained and skipped)
-)
-
-// Codec flags for binary frame protocol
-const (
-	codecH264  = 0x01
-	codecMjpeg = 0x02
+	ringBufferCount      = 4           // 4 buffers in ring (exceeds 3 V4L2 buffers for safety)
+	ringBufferSize       = 2048 * 1024 // 2MB per buffer (handles typical 1080p MJPEG; oversized frames are drained and skipped)
+	initialFrameLogCount = 5           // Number of initial frames to log for debugging
 )
 
 // handleCameraWs handles the low-latency WebSocket endpoint for camera frames.
@@ -166,27 +161,29 @@ func handleCameraWs(c *gin.Context) {
 		}
 
 		// HOTPATH: Parse codec byte and route directly
-		codec := buf[0]
+		codecByte := buf[0]
 		frameData := buf[frameHeaderSize:n]
 
 		// HOTPATH: Direct dispatch to handlers
 		// WriteFrame copies data to V4L2 buffer before returning,
 		// so it's safe to advance ring index after dispatch
 		frameCount++
-		if frameCount <= 5 {
+		if frameCount <= initialFrameLogCount {
 			cameraLog.Debug().
 				Int("frame", frameCount).
 				Int("size", len(frameData)).
-				Uint8("codec", codec).
+				Uint8("codec", codecByte).
 				Msg("Received camera frame")
 		}
-		switch codec {
-		case codecH264:
+
+		// Use centralized codec byte constants from camera package
+		switch codecByte {
+		case camera.CodecByteH264:
 			mgr.HandleCameraH264Frame(frameData)
-		case codecMjpeg:
+		case camera.CodecByteMJPEG:
 			mgr.HandleCameraMjpegFrame(frameData)
 		default:
-			cameraLog.Warn().Uint8("codec", codec).Msg("Unknown camera codec, dropping frame")
+			cameraLog.Warn().Uint8("codec", codecByte).Msg("Unknown camera codec, dropping frame")
 		}
 
 		// Advance ring buffer index for next frame

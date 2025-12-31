@@ -14,6 +14,10 @@ type GadgetController interface {
 	GetUVCVideoDevice() (string, error)
 }
 
+// PanicHandler is called when the UVC event loop panics and recovers.
+// The handler receives the panic value for logging/alerting purposes.
+type PanicHandler func(panicValue interface{})
+
 // Manager coordinates camera passthrough from browser to UVC.
 //
 // Thread-safety:
@@ -21,6 +25,7 @@ type GadgetController interface {
 //   - streamer: atomic pointer, lock-free load for frame dispatch
 //   - streamerMu: protects streamer creation/destruction and streaming state changes
 //   - formatChanMu: protects format notification channel and lastNotifiedFormat
+//   - onPanic: set once during configuration, read-only during operation
 type Manager struct {
 	gadget       GadgetController
 	uvcLog       *zerolog.Logger
@@ -39,6 +44,8 @@ type Manager struct {
 	lastNotifiedFormat FormatInfo
 
 	uvcFrameErrors atomic.Uint32
+
+	onPanic PanicHandler
 }
 
 // VideoCodec represents a video codec type with validation.
@@ -50,6 +57,39 @@ const (
 	CodecMJPEG VideoCodec = "mjpeg"
 	CodecStop  VideoCodec = "stop"
 )
+
+// Wire protocol codec bytes for binary frame headers.
+// These must match the values used in camera_ws.go and cameraTransport.ts.
+const (
+	CodecByteH264  byte = 0x01
+	CodecByteMJPEG byte = 0x02
+)
+
+// ErrInvalidCodec is returned when parsing an unrecognized codec string.
+var ErrInvalidCodec = errors.New("invalid video codec")
+
+// ParseVideoCodec parses a string into a validated VideoCodec.
+// Returns ErrInvalidCodec if the string is not a recognized codec.
+func ParseVideoCodec(s string) (VideoCodec, error) {
+	c := VideoCodec(s)
+	if !c.IsValid() {
+		return "", ErrInvalidCodec
+	}
+	return c, nil
+}
+
+// VideoCodecFromByte converts a wire protocol byte to VideoCodec.
+// Returns ErrInvalidCodec if the byte is not recognized.
+func VideoCodecFromByte(b byte) (VideoCodec, error) {
+	switch b {
+	case CodecByteH264:
+		return CodecH264, nil
+	case CodecByteMJPEG:
+		return CodecMJPEG, nil
+	default:
+		return "", ErrInvalidCodec
+	}
+}
 
 // IsValid returns true if the codec is a recognized value.
 func (c VideoCodec) IsValid() bool {
@@ -75,10 +115,11 @@ type FormatInfo struct {
 }
 
 // NewFormatInfo creates a validated FormatInfo.
-// Returns error if codec is invalid or dimensions are non-positive.
+// Returns error if codec is invalid, dimensions are non-positive, or frameRate
+// is non-positive. For CodecStop, dimensions and frameRate may be zero.
 func NewFormatInfo(codec VideoCodec, width, height, frameRate int) (FormatInfo, error) {
 	if !codec.IsValid() {
-		return FormatInfo{}, errors.New("invalid video codec")
+		return FormatInfo{}, ErrInvalidCodec
 	}
 	if codec != CodecStop && (width <= 0 || height <= 0) {
 		return FormatInfo{}, errors.New("width and height must be positive")
@@ -94,11 +135,18 @@ func NewFormatInfo(codec VideoCodec, width, height, frameRate int) (FormatInfo, 
 	}, nil
 }
 
+// StopFormat returns a FormatInfo signaling that streaming has stopped.
+// This is the canonical way to create a stop notification.
+func StopFormat() FormatInfo {
+	return FormatInfo{Codec: CodecStop}
+}
+
 // Config holds configuration for creating a Manager.
 type Config struct {
 	UVCLogger    *zerolog.Logger
 	CameraLogger *zerolog.Logger
 	Gadget       GadgetController
+	OnPanic      PanicHandler // Optional: called when event loop panics and recovers
 }
 
 // ErrNilGadget is returned when Config.Gadget is nil.
@@ -111,9 +159,10 @@ func NewManager(cfg Config) (*Manager, error) {
 		return nil, ErrNilGadget
 	}
 	return &Manager{
-		gadget: cfg.Gadget,
-		uvcLog: cfg.UVCLogger,
-		camLog: cfg.CameraLogger,
+		gadget:  cfg.Gadget,
+		uvcLog:  cfg.UVCLogger,
+		camLog:  cfg.CameraLogger,
+		onPanic: cfg.OnPanic,
 	}, nil
 }
 
@@ -202,7 +251,7 @@ func (m *Manager) notifyStreamingStopped() {
 
 	if m.formatChangeChan != nil {
 		select {
-		case m.formatChangeChan <- FormatInfo{Codec: CodecStop}:
+		case m.formatChangeChan <- StopFormat():
 		default:
 			if m.camLog != nil {
 				m.camLog.Warn().Msg("Stop notification dropped - channel full")

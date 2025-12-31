@@ -189,6 +189,10 @@ func (m *Manager) eventLoop() {
 			m.eventLoopRun.Store(false)
 			m.uvcStreamingFast.Store(false)
 			m.uvcMjpegFast.Store(false)
+			// Notify higher layers about the panic for alerting/recovery
+			if m.onPanic != nil {
+				m.onPanic(r)
+			}
 		}
 	}()
 
