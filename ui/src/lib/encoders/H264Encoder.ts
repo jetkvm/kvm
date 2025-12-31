@@ -135,6 +135,7 @@ export class H264Encoder {
     this.keyFrameCounter = 0;
     this.spsNalu = null;
     this.ppsNalu = null;
+    this.logger.reset();
   }
 
   forceKeyFrame(): void {

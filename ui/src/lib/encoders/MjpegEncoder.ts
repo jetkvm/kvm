@@ -176,6 +176,8 @@ export class MjpegEncoder {
       this.videoElement.srcObject = null;
       this.videoElement = null;
     }
+
+    this.logger.reset();
   }
 
   forceKeyFrame(): void {

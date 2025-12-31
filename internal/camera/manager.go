@@ -71,6 +71,10 @@ const (
 	CodecByteMJPEG byte = 0x02
 )
 
+// MaxFrameRate is the maximum supported frame rate (240fps).
+// This limit balances hardware capabilities with practical UVC bandwidth constraints.
+const MaxFrameRate = 240
+
 // IsValid returns true if the codec is a recognized value.
 func (c VideoCodec) IsValid() bool {
 	switch c {
@@ -121,7 +125,7 @@ var (
 	ErrInvalidCodec     = errors.New("camera: invalid video codec")
 	ErrInvalidWidth     = errors.New("camera: width must be positive")
 	ErrInvalidHeight    = errors.New("camera: height must be positive")
-	ErrInvalidFrameRate = errors.New("camera: frame rate must be 1-240")
+	ErrInvalidFrameRate = errors.New("camera: frame rate must be 1-240") // See MaxFrameRate
 )
 
 // Validate checks that FormatInfo contains valid values.
@@ -145,7 +149,7 @@ func (f FormatInfo) Validate() error {
 	if f.Height <= 0 {
 		return ErrInvalidHeight
 	}
-	if f.FrameRate < 1 || f.FrameRate > 240 {
+	if f.FrameRate < 1 || f.FrameRate > MaxFrameRate {
 		return ErrInvalidFrameRate
 	}
 	return nil
@@ -164,7 +168,7 @@ func NewFormatInfo(codec VideoCodec, width, height, frameRate int) (FormatInfo, 
 	if height <= 0 {
 		return FormatInfo{}, ErrInvalidHeight
 	}
-	if frameRate < 1 || frameRate > 240 {
+	if frameRate < 1 || frameRate > MaxFrameRate {
 		return FormatInfo{}, ErrInvalidFrameRate
 	}
 	return FormatInfo{
@@ -225,12 +229,21 @@ func (m *Manager) GetCurrentFormat() *FormatInfo {
 		codec = CodecMJPEG
 	}
 
-	return &FormatInfo{
-		Codec:     codec,
-		Width:     int(width),
-		Height:    int(height),
-		FrameRate: frameRate,
+	// Use constructor to ensure format validity (should always succeed with UVC values)
+	info, err := NewFormatInfo(codec, int(width), int(height), frameRate)
+	if err != nil {
+		// UVC-negotiated values should always be valid; log if they aren't
+		if m.camLog != nil {
+			m.camLog.Error().Err(err).
+				Str("codec", string(codec)).
+				Int("width", int(width)).
+				Int("height", int(height)).
+				Int("frameRate", frameRate).
+				Msg("GetCurrentFormat: unexpected invalid format")
+		}
+		return nil
 	}
+	return &info
 }
 
 // SubscribeFormatChanges returns a channel for format notifications.

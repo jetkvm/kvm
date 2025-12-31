@@ -98,6 +98,10 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     case "setQuality":
       handleSetQuality(msg.quality);
       break;
+
+    default:
+      // Unknown message types are silently ignored for forward compatibility
+      break;
   }
 };
 
