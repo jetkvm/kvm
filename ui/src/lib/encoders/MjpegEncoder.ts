@@ -5,10 +5,27 @@
  * them as JPEG using Canvas.toBlob(). This approach works in all browsers
  * that support OffscreenCanvas and WebWorkers.
  *
+ * ## WebWorker Message Protocol
+ *
+ * Main thread → Worker:
+ * - `{ type: "start", config: { width, height, quality, codecByte? } }` - Initialize encoder
+ * - `{ type: "frame", bitmap: ImageBitmap, timestamp: number }` - Encode frame (bitmap transferred)
+ * - `{ type: "setQuality", quality: number }` - Update JPEG quality (0.0-1.0)
+ * - `{ type: "stop" }` - Stop encoder and release resources
+ *
+ * Worker → Main thread:
+ * - `{ type: "ready" }` - Encoder initialized successfully
+ * - `{ type: "frame", data: ArrayBuffer, timestamp: number }` - Encoded JPEG (transferred)
+ * - `{ type: "error", message: string }` - Error occurred (rate-limited)
+ * - `{ type: "stopped" }` - Encoder stopped
+ *
+ * See `src/workers/mjpegEncoder.worker.ts` for the worker implementation.
+ *
  * @internal This is an internal implementation - use CameraEncoder for the public API.
  */
 
 import { CODEC_BYTES } from "../cameraTransport";
+import { RateLimitedLogger } from "./types";
 import type { EncodedFrame, EncoderConfig, InternalEncoderEvents } from "./types";
 
 // requestVideoFrameCallback types
@@ -65,11 +82,7 @@ export class MjpegEncoder {
   private minFrameIntervalMs: number;
   private actualFrameRate: number;
 
-  // Error rate limiting
-  private errorCount = 0;
-  private lastErrorLogTime = 0;
-  private static readonly ERROR_LOG_INTERVAL_MS = 1000;
-
+  private readonly logger = new RateLimitedLogger("MjpegEncoder");
   private running = false;
 
   constructor(
@@ -83,27 +96,6 @@ export class MjpegEncoder {
     this.events = events;
     this.actualFrameRate = actualFrameRate;
     this.minFrameIntervalMs = (1000 / config.frameRate) * 0.9;
-  }
-
-  /**
-   * Rate-limited error logging to avoid log spam during error storms.
-   */
-  private logError(context: string, err: unknown): void {
-    this.errorCount++;
-    const now = performance.now();
-    if (now - this.lastErrorLogTime >= MjpegEncoder.ERROR_LOG_INTERVAL_MS) {
-      if (this.errorCount > 1) {
-        console.warn(
-          `[MjpegEncoder] ${context}:`,
-          err,
-          `(${this.errorCount} errors in last interval)`,
-        );
-      } else {
-        console.warn(`[MjpegEncoder] ${context}:`, err);
-      }
-      this.lastErrorLogTime = now;
-      this.errorCount = 0;
-    }
   }
 
   async start(width: number, height: number): Promise<void> {
@@ -227,7 +219,7 @@ export class MjpegEncoder {
           if (this.running) this.captureWithVideoFrameCallback();
         })
         .catch((err: unknown) => {
-          this.logError("video.play failed", err);
+          this.logger.logError("video.play failed", err);
           this.events.onError(err instanceof Error ? err : new Error(String(err)));
         });
       return;
@@ -254,7 +246,7 @@ export class MjpegEncoder {
       );
       bitmap = null;
     } catch (err) {
-      this.logError("createImageBitmap failed", err);
+      this.logger.logError("createImageBitmap failed", err);
       bitmap?.close();
     }
   }

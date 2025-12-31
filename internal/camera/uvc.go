@@ -2,6 +2,7 @@ package camera
 
 import (
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -192,7 +193,10 @@ func (m *Manager) eventLoop() {
 	defer func() {
 		if r := recover(); r != nil {
 			if m.uvcLog != nil {
-				m.uvcLog.Error().Interface("panic", r).Msg("UVC event loop panic - recovering")
+				m.uvcLog.Error().
+					Interface("panic", r).
+					Str("stack", string(debug.Stack())).
+					Msg("UVC event loop panic - recovering")
 			}
 			m.eventLoopRun.Store(false)
 			m.uvcStreamingFast.Store(false)

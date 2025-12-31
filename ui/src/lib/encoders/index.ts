@@ -9,9 +9,11 @@
 
 export { H264Encoder, isH264Supported, isVideoEncoderSupported } from "./H264Encoder";
 export { MjpegEncoder, isMjpegSupported, hasRequestVideoFrameCallback } from "./MjpegEncoder";
+export { RateLimitedLogger } from "./types";
 export type {
   VideoCodec,
   EncoderConfig,
+  MutableEncoderConfig,
   EncodedFrame,
   InternalEncoderEvents,
   InternalEncoder,

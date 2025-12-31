@@ -9,6 +9,7 @@
  */
 
 import { CODEC_BYTES } from "../cameraTransport";
+import { RateLimitedLogger } from "./types";
 import type { EncodedFrame, EncoderConfig, InternalEncoderEvents } from "./types";
 
 // Type declarations for APIs not yet in TypeScript lib
@@ -70,11 +71,7 @@ export class H264Encoder {
   private spsNalu: Uint8Array | null = null;
   private ppsNalu: Uint8Array | null = null;
 
-  // Error rate limiting
-  private errorCount = 0;
-  private lastErrorLogTime = 0;
-  private static readonly ERROR_LOG_INTERVAL_MS = 1000;
-
+  private readonly logger = new RateLimitedLogger("H264Encoder");
   private running = false;
 
   constructor(videoTrack: MediaStreamTrack, config: EncoderConfig, events: InternalEncoderEvents) {
@@ -83,27 +80,6 @@ export class H264Encoder {
     this.events = events;
     this.framesPerKeyFrame = Math.round(config.frameRate * config.keyFrameInterval);
     this.minFrameIntervalMs = (1000 / config.frameRate) * 0.9;
-  }
-
-  /**
-   * Rate-limited error logging to avoid log spam during error storms.
-   */
-  private logError(context: string, err: unknown): void {
-    this.errorCount++;
-    const now = performance.now();
-    if (now - this.lastErrorLogTime >= H264Encoder.ERROR_LOG_INTERVAL_MS) {
-      if (this.errorCount > 1) {
-        console.warn(
-          `[H264Encoder] ${context}:`,
-          err,
-          `(${this.errorCount} errors in last interval)`,
-        );
-      } else {
-        console.warn(`[H264Encoder] ${context}:`, err);
-      }
-      this.lastErrorLogTime = now;
-      this.errorCount = 0;
-    }
   }
 
   async start(width: number, height: number): Promise<void> {
@@ -195,7 +171,7 @@ export class H264Encoder {
               }
             }
           } catch (err) {
-            this.logError("frame encode error", err);
+            this.logger.logError("frame encode error", err);
           } finally {
             frame.close();
           }

@@ -18,7 +18,12 @@ import {
   isVideoEncoderSupported,
   isMjpegSupported,
 } from "./encoders";
-import type { EncoderConfig, EncodedFrame, VideoCodec } from "./encoders/types";
+import type {
+  EncoderConfig,
+  MutableEncoderConfig,
+  EncodedFrame,
+  VideoCodec,
+} from "./encoders/types";
 
 // Re-export types for public API
 export type { VideoCodec, EncoderConfig, EncodedFrame };
@@ -64,7 +69,7 @@ export { isVideoEncoderSupported, isH264Supported, isMjpegSupported };
  */
 export class CameraEncoder {
   private codec: VideoCodec;
-  private config: EncoderConfig;
+  private config: MutableEncoderConfig;
   private events: Partial<CameraEncoderEvents> = {};
   private _state: EncoderState = "idle";
 
@@ -84,14 +89,18 @@ export class CameraEncoder {
 
   constructor(codec: VideoCodec, config: Partial<EncoderConfig> = {}) {
     this.codec = codec;
-    this.config = { ...DEFAULT_CONFIG, ...config };
 
-    // Validate and clamp config values to valid ranges
-    this.config.width = Math.max(320, Math.min(3840, this.config.width));
-    this.config.height = Math.max(240, Math.min(2160, this.config.height));
-    this.config.frameRate = Math.max(1, Math.min(120, this.config.frameRate));
-    this.config.bitrate = Math.max(100_000, Math.min(50_000_000, this.config.bitrate));
-    this.config.quality = Math.max(0.0, Math.min(1.0, this.config.quality));
+    // Create validated config by clamping values to valid ranges.
+    // We build a new object rather than mutating since EncoderConfig is readonly.
+    const merged = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      width: Math.max(320, Math.min(3840, merged.width)),
+      height: Math.max(240, Math.min(2160, merged.height)),
+      frameRate: Math.max(1, Math.min(120, merged.frameRate)),
+      bitrate: Math.max(100_000, Math.min(50_000_000, merged.bitrate)),
+      quality: Math.max(0.0, Math.min(1.0, merged.quality)),
+      keyFrameInterval: merged.keyFrameInterval,
+    };
   }
 
   get frameRate(): number {
