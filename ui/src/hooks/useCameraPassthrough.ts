@@ -130,7 +130,7 @@ export function useCameraPassthrough(options: UseCameraPassthroughOptions) {
     encoderState: "idle",
     transportState: "disconnected",
     currentCodec: "h264",
-    stats: { framesSent: 0, bytesSent: 0, framesDropped: 0, avgLatencyMs: 0 },
+    stats: { framesSent: 0, bytesSent: 0, framesDropped: 0 },
     error: null,
   });
 

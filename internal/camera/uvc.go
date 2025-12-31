@@ -79,6 +79,9 @@ func (e *zerologEventAdapter) Msg(msg string) {
 	e.event.Msg(msg)
 }
 
+// InitUVC initializes the UVC subsystem and starts the event loop.
+// If uvcEnabled is false, this is a no-op and returns nil.
+// Returns an error if the UVC video device cannot be found.
 func (m *Manager) InitUVC(uvcEnabled bool) error {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -180,6 +183,11 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	}
 }
 
+// eventLoop runs the UVC event processing loop in a goroutine.
+// It handles device open/close, event subscription, and streaming state transitions.
+// The loop runs until eventLoopRun is set to false via StopUVC.
+// Note: PollEventsWithData is only called from this goroutine, ensuring thread-safe
+// access to the file descriptor without requiring the mutex during polling.
 func (m *Manager) eventLoop() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -318,6 +326,9 @@ func (m *Manager) eventLoop() {
 	}
 }
 
+// handleEvent processes a single UVC event from the kernel driver.
+// CONNECT events are logged; SETUP and DATA events are forwarded to the streamer.
+// Streaming events (STREAMON/STREAMOFF/DISCONNECT) are handled separately in eventLoop.
 func (m *Manager) handleEvent(streamer *usbgadget.UVCStreamer, eventType uint32, eventData []byte) {
 	switch eventType {
 	case usbgadget.UVC_EVENT_CONNECT:
@@ -345,6 +356,10 @@ func (m *Manager) handleEvent(streamer *usbgadget.UVCStreamer, eventType uint32,
 	}
 }
 
+// prepareStreaming configures the V4L2 output format after the host commits a format.
+// Called when UVC_VS_COMMIT_CONTROL is received. Sets the pixel format (MJPEG or H.264)
+// to match what the host negotiated. Errors are logged but not fatal since the gadget
+// driver will use the negotiated format regardless.
 func (m *Manager) prepareStreaming() {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -379,6 +394,10 @@ func (m *Manager) prepareStreaming() {
 	}
 }
 
+// startStreaming activates V4L2 streaming and notifies the browser of the format.
+// Called when UVC_EVENT_STREAMON is received and confirmed stable. Allocates V4L2
+// buffers, starts the streaming pipeline, and sends a format notification to the
+// browser so it can configure its encoder to match.
 func (m *Manager) startStreaming() error {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
@@ -429,6 +448,9 @@ func (m *Manager) startStreaming() error {
 	return nil
 }
 
+// stopStreaming deactivates V4L2 streaming and notifies the browser.
+// Called when UVC_EVENT_STREAMOFF or UVC_EVENT_DISCONNECT is received.
+// Resets all streaming state flags and error counters for the next session.
 func (m *Manager) stopStreaming() {
 	m.uvcStreamingFast.Store(false)
 	m.uvcMjpegFast.Store(false)

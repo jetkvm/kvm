@@ -21,19 +21,10 @@ const (
 	FrameIndex1080p = 1
 	FrameIndex720p  = 2
 	FrameIndex480p  = 3
-
-	// UVCFrameIntervalUnit is the number of 100ns units per second (UVC spec).
-	UVCFrameIntervalUnit = 10_000_000
 )
 
 // UVCStreamer stub for non-linux builds
 type UVCStreamer struct{}
-
-// dmabufSlotInfo stub for non-linux builds (unexported to match main file)
-type dmabufSlotInfo struct {
-	slot  int
-	inUse bool
-}
 
 type Logger interface {
 	Info() LogEvent
@@ -103,10 +94,6 @@ func (s *UVCStreamer) GetCommittedResolution() (uint32, uint32) {
 	return 1920, 1080 // Match real implementation default
 }
 
-func (s *UVCStreamer) GetCommittedFrameInterval() uint32 {
-	return 333333 // 30fps
-}
-
 func (s *UVCStreamer) GetCommittedFrameRate() int {
 	return 30
 }
@@ -129,17 +116,4 @@ func (s *UVCStreamer) HandleSetupEvent(eventData []byte) error {
 
 func (s *UVCStreamer) HandleDataEvent(eventData []byte) (bool, error) {
 	return false, fmt.Errorf("UVC not supported on this platform")
-}
-
-// DMABUF zero-copy stubs
-func (s *UVCStreamer) RequestBuffersDmabuf(count uint32, releaseFunc func(slot int)) error {
-	return fmt.Errorf("UVC not supported on this platform")
-}
-
-func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
-	return fmt.Errorf("UVC not supported on this platform")
-}
-
-func (s *UVCStreamer) IsDmabufMode() bool {
-	return false
 }

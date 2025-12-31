@@ -8,13 +8,20 @@
 
 import type { VideoCodec } from "./cameraEncoder";
 
+/** Valid codec values that can be received from the server */
+const VALID_CODECS = new Set<string>(["h264", "mjpeg"]);
+
+/** Type guard to validate codec values from server */
+function isValidCodec(value: unknown): value is VideoCodec {
+  return typeof value === "string" && VALID_CODECS.has(value);
+}
+
 export type TransportState = "disconnected" | "connecting" | "connected" | "error";
 
 export interface CameraTransportStats {
   framesSent: number;
   bytesSent: number;
   framesDropped: number;
-  avgLatencyMs: number;
 }
 
 export interface FormatRequest {
@@ -72,7 +79,6 @@ export class WebSocketCameraTransport implements CameraTransport {
     framesSent: 0,
     bytesSent: 0,
     framesDropped: 0,
-    avgLatencyMs: 0,
   };
   private events: Partial<CameraTransportEvents> = {};
   private url: string;
@@ -178,9 +184,9 @@ export class WebSocketCameraTransport implements CameraTransport {
                 case "format":
                   if (msg.codec === "stop") {
                     this.events.onStreamingStopped?.();
-                  } else if (msg.codec && msg.width && msg.height) {
+                  } else if (isValidCodec(msg.codec) && msg.width > 0 && msg.height > 0) {
                     this.events.onFormatRequest?.({
-                      codec: msg.codec as "h264" | "mjpeg",
+                      codec: msg.codec,
                       width: msg.width,
                       height: msg.height,
                       frameRate: msg.frameRate || 30,
@@ -188,6 +194,8 @@ export class WebSocketCameraTransport implements CameraTransport {
                       h264Bitrate: msg.h264Bitrate,
                       mjpegQuality: msg.mjpegQuality,
                     });
+                  } else if (msg.codec && msg.codec !== "stop") {
+                    console.warn("[CameraTransport] Invalid format request:", msg);
                   }
                   break;
 

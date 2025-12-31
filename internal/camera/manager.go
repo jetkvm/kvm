@@ -67,32 +67,6 @@ const (
 	CodecByteMJPEG byte = 0x02
 )
 
-// ErrInvalidCodec is returned when parsing an unrecognized codec string.
-var ErrInvalidCodec = errors.New("invalid video codec")
-
-// ParseVideoCodec parses a string into a validated VideoCodec.
-// Returns ErrInvalidCodec if the string is not a recognized codec.
-func ParseVideoCodec(s string) (VideoCodec, error) {
-	c := VideoCodec(s)
-	if !c.IsValid() {
-		return "", ErrInvalidCodec
-	}
-	return c, nil
-}
-
-// VideoCodecFromByte converts a wire protocol byte to VideoCodec.
-// Returns ErrInvalidCodec if the byte is not recognized.
-func VideoCodecFromByte(b byte) (VideoCodec, error) {
-	switch b {
-	case CodecByteH264:
-		return CodecH264, nil
-	case CodecByteMJPEG:
-		return CodecMJPEG, nil
-	default:
-		return "", ErrInvalidCodec
-	}
-}
-
 // IsValid returns true if the codec is a recognized value.
 func (c VideoCodec) IsValid() bool {
 	switch c {
@@ -114,27 +88,6 @@ type FormatInfo struct {
 	Width     int        `json:"width"`
 	Height    int        `json:"height"`
 	FrameRate int        `json:"frameRate"`
-}
-
-// NewFormatInfo creates a validated FormatInfo.
-// Returns error if codec is invalid, dimensions are non-positive, or frameRate
-// is non-positive. For CodecStop, dimensions and frameRate may be zero.
-func NewFormatInfo(codec VideoCodec, width, height, frameRate int) (FormatInfo, error) {
-	if !codec.IsValid() {
-		return FormatInfo{}, ErrInvalidCodec
-	}
-	if codec != CodecStop && (width <= 0 || height <= 0) {
-		return FormatInfo{}, errors.New("width and height must be positive")
-	}
-	if codec != CodecStop && frameRate <= 0 {
-		return FormatInfo{}, errors.New("frameRate must be positive")
-	}
-	return FormatInfo{
-		Codec:     codec,
-		Width:     width,
-		Height:    height,
-		FrameRate: frameRate,
-	}, nil
 }
 
 // StopFormat returns a FormatInfo signaling that streaming has stopped.
@@ -204,6 +157,8 @@ func (m *Manager) GetCurrentFormat() *FormatInfo {
 // SubscribeFormatChanges returns a channel for format notifications.
 // Only one subscriber is supported; calling again replaces the previous subscription.
 // The old channel is not closed to avoid races with concurrent sends.
+// Buffer size 4 allows bursty format changes (e.g., rapid USB reconnects) without
+// blocking the UVC event loop while the WebSocket goroutine processes them.
 func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
 	m.formatChanMu.Lock()
 	defer m.formatChanMu.Unlock()
