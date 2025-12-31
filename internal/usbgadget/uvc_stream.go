@@ -158,7 +158,8 @@ type uvc_streaming_control struct {
 	wKeyFrameRate, wPFrameRate, wCompQuality, wCompWindowSize, wDelay uint16
 	dwMaxVideoFrameSize, dwMaxPayloadTransferSize                     uint32
 	dwClockFrequency                                                  uint32
-	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion         uint8 //nolint:unused // kernel struct fields
+	// UVC 1.1 spec fields - unused but required for correct binary struct layout
+	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion uint8 //nolint:unused
 }
 
 type dmabufSlotInfo struct {

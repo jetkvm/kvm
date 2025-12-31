@@ -24,6 +24,8 @@ type PanicHandler func(panicValue interface{})
 //   - enabled, uvcStreamingFast, uvcMjpegFast: atomic, lock-free access for hot paths
 //   - streamer: atomic pointer, lock-free load for frame dispatch
 //   - streamerMu: protects streamer creation/destruction and streaming state changes
+//   - stopChan: protected by streamerMu
+//   - eventLoopRun: atomic, controls event loop lifecycle
 //   - formatChanMu: protects format notification channel and lastNotifiedFormat
 //   - onPanic: set once during configuration, read-only during operation
 type Manager struct {

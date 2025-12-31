@@ -88,7 +88,7 @@ func (s *UVCStreamer) IsValid() bool {
 }
 
 func (s *UVCStreamer) GetCommittedResolution() (uint32, uint32) {
-	return 1280, 720
+	return 1920, 1080 // Match real implementation default
 }
 
 func (s *UVCStreamer) GetCommittedFrameInterval() uint32 {
@@ -100,7 +100,7 @@ func (s *UVCStreamer) GetCommittedFrameRate() int {
 }
 
 func (s *UVCStreamer) GetCommittedFormatIndex() uint8 {
-	return 2 // H.264
+	return 2 // H.264 (MJPEG is index 1 when both are configured)
 }
 
 func (s *UVCStreamer) IsH264Format() bool {

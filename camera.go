@@ -53,6 +53,10 @@ func isCameraEnabled() bool {
 // depacketizeLogInterval controls periodic logging of depacketization errors.
 const depacketizeLogInterval = 100
 
+// h264FrameBufferSize is the pre-allocated buffer for H.264 frame accumulation.
+// 1080p I-frames are typically 50-150KB; P-frames are much smaller.
+const h264FrameBufferSize = 256 * 1024
+
 // handleCameraVideoTrack handles incoming H.264 video from the browser camera.
 // This is called when the browser sends camera video over the WebRTC video track.
 // We depacketize the H.264 RTP packets and pass NAL units directly to UVC.
@@ -71,13 +75,8 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 		Str("codec", track.Codec().MimeType).
 		Msg("Camera video track started")
 
-	// H.264 depacketizer to reassemble NAL units from RTP packets
 	depacketizer := &codecs.H264Packet{}
-
-	// Buffer to accumulate NAL units into complete frames.
-	// Pre-allocated to 256KB to avoid allocations during streaming.
-	// 1080p H.264 I-frames are typically 50-150KB, with P-frames much smaller.
-	frameBuffer := make([]byte, 0, 256*1024)
+	frameBuffer := make([]byte, 0, h264FrameBufferSize)
 	var lastTimestamp uint32
 	var depacketErrors uint32
 
@@ -92,7 +91,6 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 			return
 		}
 
-		// Read RTP packet
 		rtpPacket, _, err := track.ReadRTP()
 		if err != nil {
 			if err == io.EOF {
@@ -103,7 +101,6 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 			continue
 		}
 
-		// Skip if camera passthrough is disabled
 		if !mgr.IsEnabled() {
 			continue
 		}
@@ -141,9 +138,10 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 	}
 }
 
-// appendNALU appends a NAL unit with Annex B start code to the buffer
+// appendNALU appends a NAL unit with Annex B start code to the buffer.
+// Uses 4-byte start code (00 00 00 01) for first NALU for decoder sync,
+// 3-byte (00 00 01) for subsequent NALUs to save bandwidth per H.264 spec.
 func appendNALU(buf []byte, nalu []byte) []byte {
-	// Use 4-byte start code for first NALU, 3-byte for subsequent
 	if len(buf) == 0 {
 		buf = append(buf, 0x00, 0x00, 0x00, 0x01)
 	} else {

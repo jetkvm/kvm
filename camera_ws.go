@@ -25,13 +25,11 @@ const (
 
 // handleCameraWs handles the low-latency WebSocket endpoint for camera frames.
 // Protocol:
-//   - Server -> Client: JSON messages for format negotiation
-//   - Client -> Server: Binary frames with 1-byte header (codec)
+//   - Server -> Client: JSON format requests
+//     {"type":"format","codec":"h264"|"mjpeg"|"stop","width":int,"height":int,"frameRate":int,...}
+//   - Client -> Server: Binary frames with 1-byte codec header
 //
-// Binary frame format:
-//
-//	[0]    uint8 codec (0x01=H.264, 0x02=MJPEG)
-//	[1+]   raw frame data
+// Binary frame format: [0] codec (0x01=H.264, 0x02=MJPEG), [1+] frame data
 func handleCameraWs(c *gin.Context) {
 	mgr := cameraManagerPtr.Load()
 	if mgr == nil {
