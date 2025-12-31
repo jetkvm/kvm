@@ -201,7 +201,7 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 	ensureConfigLoaded()
 
 	cameraLog.Info().
-		Str("codec", format.Codec).
+		Str("codec", format.Codec.String()).
 		Int("width", format.Width).
 		Int("height", format.Height).
 		Int("frameRate", format.FrameRate).
@@ -211,7 +211,7 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 
 	msg := map[string]interface{}{
 		"type":         "format",
-		"codec":        format.Codec,
+		"codec":        format.Codec.String(),
 		"width":        format.Width,
 		"height":       format.Height,
 		"frameRate":    format.FrameRate,                           // UVC-negotiated rate from host

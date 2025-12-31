@@ -41,19 +41,57 @@ type Manager struct {
 	uvcFrameErrors atomic.Uint32
 }
 
-// Codec constants for FormatInfo
+// VideoCodec represents a video codec type with validation.
+type VideoCodec string
+
+// Valid video codec constants.
 const (
-	CodecH264  = "h264"
-	CodecMJPEG = "mjpeg"
-	CodecStop  = "stop"
+	CodecH264  VideoCodec = "h264"
+	CodecMJPEG VideoCodec = "mjpeg"
+	CodecStop  VideoCodec = "stop"
 )
+
+// IsValid returns true if the codec is a recognized value.
+func (c VideoCodec) IsValid() bool {
+	switch c {
+	case CodecH264, CodecMJPEG, CodecStop:
+		return true
+	default:
+		return false
+	}
+}
+
+// String returns the string representation of the codec.
+func (c VideoCodec) String() string {
+	return string(c)
+}
 
 // FormatInfo describes the video format requested by the UVC host.
 type FormatInfo struct {
-	Codec     string `json:"codec"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
-	FrameRate int    `json:"frameRate"`
+	Codec     VideoCodec `json:"codec"`
+	Width     int        `json:"width"`
+	Height    int        `json:"height"`
+	FrameRate int        `json:"frameRate"`
+}
+
+// NewFormatInfo creates a validated FormatInfo.
+// Returns error if codec is invalid or dimensions are non-positive.
+func NewFormatInfo(codec VideoCodec, width, height, frameRate int) (FormatInfo, error) {
+	if !codec.IsValid() {
+		return FormatInfo{}, errors.New("invalid video codec")
+	}
+	if codec != CodecStop && (width <= 0 || height <= 0) {
+		return FormatInfo{}, errors.New("width and height must be positive")
+	}
+	if codec != CodecStop && frameRate <= 0 {
+		return FormatInfo{}, errors.New("frameRate must be positive")
+	}
+	return FormatInfo{
+		Codec:     codec,
+		Width:     width,
+		Height:    height,
+		FrameRate: frameRate,
+	}, nil
 }
 
 // Config holds configuration for creating a Manager.
@@ -182,7 +220,7 @@ func (m *Manager) ResendCurrentFormat() {
 
 	if m.camLog != nil {
 		m.camLog.Info().
-			Str("codec", format.Codec).
+			Str("codec", format.Codec.String()).
 			Int("width", format.Width).
 			Int("height", format.Height).
 			Int("frameRate", format.FrameRate).

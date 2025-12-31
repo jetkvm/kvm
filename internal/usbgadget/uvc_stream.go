@@ -907,6 +907,8 @@ func (s *UVCStreamer) RequestBuffersDmabuf(count uint32, releaseFunc func(slot i
 	return nil
 }
 
+// WriteFrameDmabuf writes a video frame from a DMABUF file descriptor.
+// HOTPATH: Optimized for minimal overhead at 1080p@30fps on 32-bit ARM.
 func (s *UVCStreamer) WriteFrameDmabuf(fd, size, slot int) error {
 	if !s.streaming.Load() {
 		return nil
