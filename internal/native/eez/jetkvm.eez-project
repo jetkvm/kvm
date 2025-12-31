@@ -1249,6 +1249,7 @@
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                      "hiddenFlag": false,
                       "hiddenFlagType": "literal",
                       "clickableFlagType": "literal",
                       "checkedStateType": "literal",
@@ -1271,7 +1272,7 @@
                       "left": 0,
                       "top": 0,
                       "width": 98,
-                      "height": 17,
+                      "height": 16,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
@@ -1280,13 +1281,14 @@
                         "conditionalStyles": [],
                         "childStyles": []
                       },
+                      "hiddenInEditor": false,
                       "timeline": [],
                       "eventHandlers": [],
                       "identifier": "HomeInfoIPv6Addr",
                       "leftUnit": "%",
                       "topUnit": "%",
                       "widthUnit": "%",
-                      "heightUnit": "px",
+                      "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
                       "hiddenFlag": true,
@@ -1301,7 +1303,8 @@
                         "definition": {
                           "MAIN": {
                             "DEFAULT": {
-                              "text_align": "LEFT"
+                              "text_align": "LEFT",
+                              "text_font": "MONTSERRAT_14"
                             }
                           }
                         }
@@ -1309,7 +1312,7 @@
                       "groupIndex": 0,
                       "text": "fe80::ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
                       "textType": "literal",
-                      "longMode": "DOT",
+                      "longMode": "SCROLL",
                       "recolor": false
                     },
                     {
