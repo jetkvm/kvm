@@ -74,9 +74,13 @@ export class H264Encoder {
   private readonly logger = new RateLimitedLogger("H264Encoder");
   private running = false;
 
+  // Consecutive encode error tracking for escalation
+  private consecutiveEncodeErrors = 0;
+  private static readonly MAX_CONSECUTIVE_ERRORS = 10;
+
   constructor(videoTrack: MediaStreamTrack, config: EncoderConfig, events: InternalEncoderEvents) {
     this.videoTrack = videoTrack;
-    this.config = config;
+    this.config = { ...config }; // Clone to prevent external mutation
     this.events = events;
     this.framesPerKeyFrame = Math.round(config.frameRate * config.keyFrameInterval);
     this.minFrameIntervalMs = (1000 / config.frameRate) * 0.9;
@@ -135,6 +139,7 @@ export class H264Encoder {
     this.keyFrameCounter = 0;
     this.spsNalu = null;
     this.ppsNalu = null;
+    this.consecutiveEncodeErrors = 0;
     this.logger.reset();
   }
 
@@ -169,10 +174,19 @@ export class H264Encoder {
                 this.encoder.encode(frame, { keyFrame: isKeyFrame });
                 this.frameCount++;
                 this.keyFrameCounter++;
+                this.consecutiveEncodeErrors = 0; // Reset on success
               }
             }
           } catch (err) {
+            this.consecutiveEncodeErrors++;
             this.logger.logError("frame encode error", err);
+
+            // Escalate to error handler after too many consecutive failures
+            if (this.consecutiveEncodeErrors >= H264Encoder.MAX_CONSECUTIVE_ERRORS) {
+              this.events.onError(
+                new Error(`Frame encode failed ${this.consecutiveEncodeErrors} times consecutively`),
+              );
+            }
           } finally {
             frame.close();
           }

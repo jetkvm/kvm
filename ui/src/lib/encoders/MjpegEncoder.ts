@@ -1,9 +1,9 @@
 /**
- * MJPEG encoder implementation using WebWorker and Canvas.
+ * MJPEG encoder implementation using WebWorker and OffscreenCanvas.
  *
  * This encoder captures video frames to a canvas in a WebWorker, then encodes
- * them as JPEG using Canvas.toBlob(). This approach works in all browsers
- * that support OffscreenCanvas and WebWorkers.
+ * them as JPEG using OffscreenCanvas.convertToBlob(). This approach works in
+ * all browsers that support OffscreenCanvas and WebWorkers.
  *
  * ## WebWorker Message Protocol
  *
@@ -96,7 +96,7 @@ export class MjpegEncoder {
     actualFrameRate: number,
   ) {
     this.mediaStream = mediaStream;
-    this.config = config;
+    this.config = { ...config }; // Clone to prevent external mutation
     this.events = events;
     this.actualFrameRate = actualFrameRate;
     this.minFrameIntervalMs = (1000 / config.frameRate) * 0.9;
