@@ -102,19 +102,19 @@ func getTLSState() TLSState {
 }
 
 func setTLSState(s TLSState) error {
-	var isChanged = false
+	var signalSecure = false
 	oldEnforce := config.TLSEnforce
 
 	switch s.Mode {
 	case "disabled":
 		if config.TLSMode != "" {
-			isChanged = true
+			signalSecure = true
 		}
 		config.TLSMode = ""
 		config.TLSEnforce = false
 	case "custom":
 		if config.TLSMode == "" {
-			isChanged = true
+			signalSecure = true
 		}
 		// parse pem to cert and key
 		if certStore == nil {
@@ -129,7 +129,7 @@ func setTLSState(s TLSState) error {
 		config.TLSEnforce = s.Enforce
 	case "self-signed":
 		if config.TLSMode == "" {
-			isChanged = true
+			signalSecure = true
 		}
 		config.TLSMode = "self-signed"
 		config.TLSEnforce = s.Enforce
@@ -137,22 +137,21 @@ func setTLSState(s TLSState) error {
 		return fmt.Errorf("invalid TLS mode: %s", s.Mode)
 	}
 
+	if signalSecure {
+		if config.TLSMode == "" {
+			websecureLogger.Info().Msg("Stopping websecure server, as TLS mode is disabled")
+			stopWebSecureServer()
+		} else {
+			websecureLogger.Info().Msg("Starting websecure server, as TLS mode is enabled")
+			startWebSecureServer()
+		}
+	} else {
+		websecureLogger.Info().Msg("TLS enabled state is not changed, not starting/stopping websecure server")
+	}
+
 	if oldEnforce != config.TLSEnforce {
 		logger.Info().Msg("Rerouting web server, as TLS enforcement changed")
 		updateWebRouter <- struct{}{}
-	}
-
-	if !isChanged {
-		websecureLogger.Info().Msg("TLS enabled state is not changed, not starting/stopping websecure server")
-		return nil
-	}
-
-	if config.TLSMode == "" {
-		websecureLogger.Info().Msg("Stopping websecure server, as TLS mode is disabled")
-		stopWebSecureServer()
-	} else {
-		websecureLogger.Info().Msg("Starting websecure server, as TLS mode is enabled")
-		startWebSecureServer()
 	}
 
 	return nil
