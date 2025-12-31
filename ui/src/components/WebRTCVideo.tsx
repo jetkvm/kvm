@@ -264,6 +264,9 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       code = "Henkan";
     } else if (code === "NonConvert") {
       code = "Muhenkan";
+    } else if (key === "Shift" && code === "") {
+      // Microsoft IME fix
+      code = "ShiftRight";
     }
 
     return code;
@@ -307,6 +310,13 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
           altGrLoopRef.current = true;
           lastKeyDownRef.current = null;
         }
+
+        // Microsoft IME fix:
+        // Effective keydown events are consumed by IME (reported as "Process"),
+        // so we handle the full press/release cycle in the keyup handler instead.
+        if (["Zenkaku", "Hankaku", "ZenkakuHankaku"].includes(e.key)) {
+          return;
+        }
       }
 
       // When pressing the meta key + another key, the key will never trigger a keyup
@@ -346,20 +356,29 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         return;
       }
 
-      // On Windows, handle ControlLeft specially to preserve FIFO semantics with AltGr buffering.
-      if (isWindowsClient && hidKey === keys.ControlLeft) {
-        // Synthetic AltGr ControlLeft: never sent a down, swallow the release as well.
-        if (altGrLoopRef.current) {
-          altGrLoopRef.current = false;
-          return;
+      if (isWindowsClient) {
+        // On Windows, handle ControlLeft specially to preserve FIFO semantics with AltGr buffering.
+        if (hidKey === keys.ControlLeft) {
+          // Synthetic AltGr ControlLeft: never sent a down, swallow the release as well.
+          if (altGrLoopRef.current) {
+            altGrLoopRef.current = false;
+            return;
+          }
+
+          // Very fast real Ctrl tap: flush the pending down before the up.
+          if (lastKeyDownRef.current?.hidKey === keys.ControlLeft) {
+            handleKeyPress(keys.ControlLeft, true);
+          }
+
+          lastKeyDownRef.current = null;
         }
 
-        // Very fast real Ctrl tap: flush the pending down before the up.
-        if (lastKeyDownRef.current?.hidKey === keys.ControlLeft) {
-          handleKeyPress(keys.ControlLeft, true);
+        // Microsoft IME fix:
+        // Synthesize the missing keydown event to ensure a complete key press cycle.
+        if (["Zenkaku", "Hankaku", "ZenkakuHankaku"].includes(e.key)) {
+          console.debug(`Synthesizing missed key down for IME key: ${e.key}`);
+          handleKeyPress(hidKey, true);
         }
-
-        lastKeyDownRef.current = null;
       }
 
       console.debug(`Key up: ${hidKey}`);

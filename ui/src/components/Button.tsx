@@ -162,6 +162,7 @@ type ButtonPropsType = Pick<
   | "onMouseDown"
   | "onMouseUp"
   | "onMouseLeave"
+  | "data-testid"
 > &
   React.ComponentProps<typeof ButtonContent> & {
     fetcher?: FetcherWithComponents<unknown>;
@@ -189,6 +190,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
         onMouseLeave={props?.onMouseLeave}
         name={props.name}
         value={props.value}
+        data-testid={props["data-testid"]}
       >
         <ButtonContent
           {...props}

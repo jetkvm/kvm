@@ -165,7 +165,7 @@ export interface RTCState {
   appendDiskDataChannelStats: (stats: RTCDataChannelStats) => void;
 
   terminalChannel: RTCDataChannel | null;
-  setTerminalChannel: (channel: RTCDataChannel) => void;
+  setTerminalChannel: (channel: RTCDataChannel | null) => void;
 }
 
 export const useRTCStore = create<RTCState>(set => ({

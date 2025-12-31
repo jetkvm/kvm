@@ -1,12 +1,13 @@
-import { Page, expect } from "@playwright/test";
+import { expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 /**
  * USB HID Key Codes
  */
 export const HID_KEY = {
-  SPACE: 0x2c,     // 44
+  SPACE: 0x2c, // 44
   CAPS_LOCK: 0x39, // 57
-  NUM_LOCK: 0x53,  // 83
+  NUM_LOCK: 0x53, // 83
 } as const;
 
 /**
@@ -62,14 +63,11 @@ export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<v
  */
 export async function waitForVideoStream(page: Page, timeout = 30000): Promise<void> {
   await expect
-    .poll(
-      async () => page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive()),
-      {
-        message: "Waiting for video stream to be active",
-        timeout,
-        intervals: [500, 1000, 2000],
-      },
-    )
+    .poll(async () => page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive()), {
+      message: "Waiting for video stream to be active",
+      timeout,
+      intervals: [500, 1000, 2000],
+    })
     .toBe(true);
 }
 
@@ -201,9 +199,7 @@ export async function sendAbsMouseMove(
  * @param page - Playwright page object
  * @returns The video dimensions or null if not available
  */
-export async function getVideoStreamDimensions(
-  page: Page,
-): Promise<VideoStreamDimensions | null> {
+export async function getVideoStreamDimensions(page: Page): Promise<VideoStreamDimensions | null> {
   return page.evaluate(() => {
     const hooks = window.__kvmTestHooks;
     if (!hooks) return null;
@@ -329,12 +325,21 @@ export async function verifyKeyboardWorks(page: Page): Promise<void> {
  * @param page - Playwright page object
  */
 export async function verifyMouseWorks(page: Page): Promise<void> {
-  // Get video dimensions
-  const dimensions = await getVideoStreamDimensions(page);
+  // Wait for video to be ready and get dimensions (with retry)
+  let dimensions = await getVideoStreamDimensions(page);
+  if (!dimensions) {
+    // Video may still be initializing, wait and retry
+    await page.waitForTimeout(2000);
+    dimensions = await getVideoStreamDimensions(page);
+  }
   expect(dimensions, "Video stream dimensions should be available").not.toBeNull();
   const { width: videoWidth, height: videoHeight } = dimensions!;
-  expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
-  expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(MIN_VIDEO_DIMENSION);
+  expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+    MIN_VIDEO_DIMENSION,
+  );
+  expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+    MIN_VIDEO_DIMENSION,
+  );
 
   // Calculate center position
   const hidCenter = Math.floor(HID_MAX / 2);
@@ -349,13 +354,25 @@ export async function verifyMouseWorks(page: Page): Promise<void> {
   // Move mouse to center and capture
   await sendAbsMouseMove(page, hidCenter, hidCenter);
   await page.waitForTimeout(100);
-  const fpBefore = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+  const fpBefore = await captureVideoRegionFingerprint(
+    page,
+    regionX,
+    regionY,
+    regionWidth,
+    regionHeight,
+  );
   expect(fpBefore, "Failed to capture fingerprint with cursor at center").not.toBeNull();
 
   // Move mouse to corner and capture
   await sendAbsMouseMove(page, 0, 0);
   await page.waitForTimeout(100);
-  const fpAfter = await captureVideoRegionFingerprint(page, regionX, regionY, regionWidth, regionHeight);
+  const fpAfter = await captureVideoRegionFingerprint(
+    page,
+    regionX,
+    regionY,
+    regionWidth,
+    regionHeight,
+  );
   expect(fpAfter, "Failed to capture fingerprint after cursor moved away").not.toBeNull();
 
   // Verify the regions differ (cursor moved)
@@ -373,9 +390,11 @@ export async function verifyMouseWorks(page: Page): Promise<void> {
  * @param page - Playwright page object
  */
 export async function verifyHidAndVideo(page: Page): Promise<void> {
-  // Verify video stream is active
-  const isVideoActive = await page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive());
-  expect(isVideoActive, "Video stream should be active").toBe(true);
+  // Wake display first (sends 3 space key presses to wake target machine)
+  await wakeDisplay(page);
+
+  // Wait for video stream to be active (proper polling with timeout)
+  await waitForVideoStream(page, 10000);
 
   // Verify mouse works
   await verifyMouseWorks(page);
@@ -384,7 +403,121 @@ export async function verifyHidAndVideo(page: Page): Promise<void> {
   await verifyKeyboardWorks(page);
 }
 
+/**
+ * Get the current app version from the /metrics endpoint.
+ * This endpoint exposes Prometheus metrics including the version.
+ *
+ * @param page - Playwright page object
+ * @returns The version string or null if not found
+ */
+export async function getCurrentVersion(page: Page): Promise<string | null> {
+  return page.evaluate(async () => {
+    try {
+      const response = await fetch("/metrics");
+      if (!response.ok) return null;
+
+      const text = await response.text();
+      // Look for promhttp_metric_handler_requests_total or similar app-specific metrics
+      // The app version is in the build_info metric, not go_info
+      const match = text.match(/build_info.*version="([^"]+)"/);
+      if (match) return match[1];
+
+      // Fallback: try to find any version that's not the go version
+      const allVersions = Array.from(text.matchAll(/version="([^"]+)"/g));
+      for (const m of allVersions) {
+        const ver = m[1];
+        // Skip go versions
+        if (!ver.startsWith("go1.")) {
+          return ver;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Failed to fetch version from /metrics:", error);
+      return null;
+    }
+  });
+}
+
 // TypeScript declarations for the test hooks on window
+/**
+ * Send a command to the KVM terminal via the test hooks.
+ *
+ * @param page - Playwright page object
+ * @param command - Command to send (newline will be appended automatically)
+ * @param waitMs - Time to wait after sending (default: 500ms)
+ */
+export async function sendTerminalCommand(
+  page: Page,
+  command: string,
+  waitMs = 500,
+): Promise<boolean> {
+  const result = await page.evaluate(cmd => {
+    return window.__kvmTestHooks?.sendTerminalCommand?.(cmd) ?? false;
+  }, command);
+
+  if (waitMs > 0) {
+    await page.waitForTimeout(waitMs);
+  }
+
+  return result;
+}
+
+/**
+ * Wait for the KVM terminal data channel to be ready.
+ *
+ * @param page - Playwright page object
+ * @param timeout - Maximum time to wait in milliseconds (default: 10000)
+ */
+export async function waitForTerminalReady(page: Page, timeout = 10000): Promise<void> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeout) {
+    const ready = await page.evaluate(() => {
+      return window.__kvmTestHooks?.isTerminalReady?.() ?? false;
+    });
+
+    if (ready) {
+      return;
+    }
+
+    await page.waitForTimeout(200);
+  }
+
+  throw new Error(`Terminal not ready after ${timeout}ms`);
+}
+
+/**
+ * Reconnect to the device after a reboot.
+ * Waits for the device to come back online and re-establishes WebRTC connection.
+ *
+ * @param page - Playwright page object
+ * @param waitBeforeRetry - Initial wait time before starting retries (default: 30000ms)
+ * @param maxRetries - Maximum number of reconnection attempts (default: 15)
+ * @param retryInterval - Time between retry attempts (default: 3000ms)
+ */
+export async function reconnectAfterReboot(
+  page: Page,
+  waitBeforeRetry = 30000,
+  maxRetries = 15,
+  retryInterval = 3000,
+): Promise<void> {
+  await page.waitForTimeout(waitBeforeRetry);
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await page.goto("/", { timeout: 5000 });
+      await waitForWebRTCReady(page, 10000);
+      return;
+    } catch {
+      if (attempt === maxRetries) {
+        throw new Error("Failed to reconnect after reboot");
+      }
+      await page.waitForTimeout(retryInterval);
+    }
+  }
+}
+
 declare global {
   interface Window {
     __kvmTestHooks?: {
@@ -409,6 +542,8 @@ declare global {
       isWebRTCConnected: () => boolean;
       isHidRpcReady: () => boolean;
       isVideoStreamActive: () => boolean;
+      sendTerminalCommand: (command: string) => boolean;
+      isTerminalReady: () => boolean;
     };
   }
 }

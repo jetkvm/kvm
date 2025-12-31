@@ -10,9 +10,29 @@ export interface UpdatePart {
   complete: boolean;
 }
 
-export default function UpdatingStatusCard({ label, part }: { label: string; part: UpdatePart }) {
+export default function UpdatingStatusCard({
+  label,
+  part,
+  testIdPrefix,
+}: {
+  label: string;
+  part: UpdatePart;
+  testIdPrefix?: string;
+}) {
+  // Determine the phase based on status text
+  const getPhaseTestId = () => {
+    if (!testIdPrefix) return undefined;
+    const statusLower = part.status.toLowerCase();
+    if (statusLower.includes("download")) return `${testIdPrefix}-download-progress`;
+    if (statusLower.includes("verif")) return `${testIdPrefix}-verification-progress`;
+    if (statusLower.includes("install")) return `${testIdPrefix}-installation-progress`;
+    return `${testIdPrefix}-progress`;
+  };
+
+  const phaseTestId = getPhaseTestId();
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid={phaseTestId}>
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-black dark:text-white">{label}</p>
         {part.progress < 100 ? (
@@ -36,7 +56,11 @@ export default function UpdatingStatusCard({ label, part }: { label: string; par
       </div>
       <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
         <span>{part.status}</span>
-        {part.progress < 100 ? <span>{`${Math.round(part.progress)}%`}</span> : null}
+        {part.progress < 100 ? (
+          <span
+            data-testid={phaseTestId ? `${phaseTestId}-text` : undefined}
+          >{`${Math.round(part.progress)}%`}</span>
+        ) : null}
       </div>
     </div>
   );

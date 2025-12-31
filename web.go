@@ -229,7 +229,7 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession(SessionConfig{})
+	session, err := newSession(SessionConfig{MDNSMode: config.NetworkConfig.MDNSMode.String})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
@@ -585,12 +585,9 @@ var (
 	updateWebRouter = make(chan struct{})
 )
 
-func RunWebServer() {
-	r := setupRouter(false)
-
+func getBindAddress(listenPort int) string {
 	// Determine the binding address based on the config
 	var bindAddress string
-	listenPort := 80 // default port
 	useIPv4 := config.NetworkConfig.IPv4Mode.String != "disabled"
 	useIPv6 := config.NetworkConfig.IPv6Mode.String != "disabled"
 
@@ -611,6 +608,14 @@ func RunWebServer() {
 			bindAddress = fmt.Sprintf("[::]:%d", listenPort)
 		}
 	}
+	return bindAddress
+}
+
+func RunWebServer() {
+	r := setupRouter(false)
+
+	// Determine the binding address based on the config
+	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
 	server := &http.Server{

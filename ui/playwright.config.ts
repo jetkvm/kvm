@@ -8,7 +8,7 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 60000,
   workers: 1,
-  reporter: "list",
+  reporter: [["list", { printSteps: true }]],
   use: {
     baseURL: process.env.JETKVM_URL,
     trace: "retain-on-failure",

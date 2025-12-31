@@ -40,12 +40,14 @@ func ParseIPv4Netmask(address, netmask string) (*net.IPNet, error) {
 
 // ParseIPv6Prefix parses an IPv6 address and prefix length
 func ParseIPv6Prefix(address string, prefixLength int) (*net.IPNet, error) {
+	var ipNet net.IPMask = nil
 	if strings.Contains(address, "/") {
-		_, ipNet, err := net.ParseCIDR(address)
+		_, ipCidr, err := net.ParseCIDR(address)
 		if err != nil {
 			return nil, fmt.Errorf("invalid IPv6 address: %s", address)
 		}
-		return ipNet, nil
+		address = address[:strings.Index(address, "/")]
+		ipNet = ipCidr.Mask
 	}
 
 	ip := net.ParseIP(address)
@@ -56,13 +58,17 @@ func ParseIPv6Prefix(address string, prefixLength int) (*net.IPNet, error) {
 		return nil, fmt.Errorf("not an IPv6 address: %s", address)
 	}
 
-	if prefixLength < 0 || prefixLength > 128 {
+	if ipNet == nil && (prefixLength < 0 || prefixLength > 128) {
 		return nil, fmt.Errorf("invalid IPv6 prefix length: %d (must be 0-128)", prefixLength)
+	}
+
+	if ipNet == nil {
+		ipNet = net.CIDRMask(prefixLength, 128)
 	}
 
 	return &net.IPNet{
 		IP:   ip,
-		Mask: net.CIDRMask(prefixLength, 128),
+		Mask: ipNet,
 	}, nil
 }
 

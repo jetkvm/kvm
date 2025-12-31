@@ -1,11 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import {
-  waitForWebRTCReady,
-  waitForVideoStream,
-  wakeDisplay,
-  verifyHidAndVideo,
-} from "./helpers";
+import { waitForWebRTCReady, verifyHidAndVideo } from "./helpers";
 
 // Time to wait after reset config before reloading (ms)
 const RESET_CONFIG_DELAY = 7000;
@@ -28,7 +23,6 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
 
     if (!isOnWelcome) {
       // Device is set up, need to reset it first
-      console.log("Device is set up, navigating to advanced settings to reset...");
 
       // === Step 2: Navigate to advanced settings ===
       await page.goto("/settings/advanced");
@@ -36,7 +30,9 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
 
       // === Step 3: Enable Troubleshooting mode ===
       // SettingsItem renders as a <label> containing both the title and the checkbox
-      const troubleshootingLabel = page.locator("label").filter({ hasText: "Troubleshooting Mode" });
+      const troubleshootingLabel = page
+        .locator("label")
+        .filter({ hasText: "Troubleshooting Mode" });
       await expect(troubleshootingLabel).toBeVisible({ timeout: 10000 });
       const troubleshootingCheckbox = troubleshootingLabel.locator('input[type="checkbox"]');
       await expect(troubleshootingCheckbox).toBeVisible({ timeout: 5000 });
@@ -61,7 +57,6 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
       await page.waitForURL("**/welcome", { timeout: 10000 });
       await page.waitForLoadState("networkidle");
     } else {
-      console.log("Device already on welcome screen, proceeding with setup...");
       // Navigate to the base welcome page if we're on a sub-route
       if (!currentUrl.endsWith("/welcome")) {
         await page.goto("/welcome");
@@ -97,16 +92,8 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
 
     // === Step 11: Wait for WebRTC connection ===
     await waitForWebRTCReady(page, 45000);
-    await wakeDisplay(page);
-    await waitForVideoStream(page, 45000);
 
     // === Step 12: Verify video, mouse, and keyboard all work ===
     await verifyHidAndVideo(page);
-
-    console.log("✓ Config reset and welcome screen flow completed successfully");
-    console.log("✓ Video stream is active");
-    console.log("✓ Mouse is working");
-    console.log("✓ Keyboard is working");
   });
 });
-
