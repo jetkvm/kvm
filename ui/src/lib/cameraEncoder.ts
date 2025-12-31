@@ -34,7 +34,7 @@ export interface CameraEncoderEvents {
   onFrame: (frame: EncodedFrame) => void;
   onStateChange: (state: EncoderState) => void;
   onError: (error: Error) => void;
-  onStats?: (stats: { fps: number; avgEncodeMs: number; frameSize: number }) => void;
+  onStats?: (stats: { fps: number; frameSize: number }) => void;
 }
 
 /**
@@ -231,7 +231,7 @@ export class CameraEncoder {
     const now = performance.now();
     if (now - this.lastStatsTime >= 1000) {
       const fps = (this.statsFrameCount / (now - this.lastStatsTime)) * 1000;
-      this.events.onStats?.({ fps, avgEncodeMs: 0, frameSize: this.lastFrameSize });
+      this.events.onStats?.({ fps, frameSize: this.lastFrameSize });
       this.lastStatsTime = now;
       this.statsFrameCount = 0;
     }

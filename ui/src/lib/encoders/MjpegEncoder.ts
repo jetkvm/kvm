@@ -85,6 +85,10 @@ export class MjpegEncoder {
   private readonly logger = new RateLimitedLogger("MjpegEncoder");
   private running = false;
 
+  // Consecutive capture error tracking for escalation
+  private consecutiveCaptureErrors = 0;
+  private static readonly MAX_CONSECUTIVE_ERRORS = 10;
+
   constructor(
     mediaStream: MediaStream,
     config: EncoderConfig,
@@ -241,14 +245,23 @@ export class MjpegEncoder {
     let bitmap: ImageBitmap | null = null;
     try {
       bitmap = await createImageBitmap(this.videoElement);
+      this.consecutiveCaptureErrors = 0; // Reset on success
       this.worker.postMessage(
         { type: "frame", bitmap, timestamp: timestamp ?? performance.now() * 1000 },
         [bitmap],
       );
       bitmap = null;
     } catch (err) {
+      this.consecutiveCaptureErrors++;
       this.logger.logError("createImageBitmap failed", err);
       bitmap?.close();
+
+      // Escalate to error handler after too many consecutive failures
+      if (this.consecutiveCaptureErrors >= MjpegEncoder.MAX_CONSECUTIVE_ERRORS) {
+        this.events.onError(
+          new Error(`Frame capture failed ${this.consecutiveCaptureErrors} times consecutively`),
+        );
+      }
     }
   }
 

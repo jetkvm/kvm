@@ -451,11 +451,16 @@ func (m *Manager) startStreaming() error {
 	}
 	formatInfo, err := NewFormatInfo(codec, int(width), int(height), frameRate)
 	if err != nil {
-		// Should never happen with UVC-negotiated values, but log if it does
+		// Should never happen with UVC-negotiated values
 		if m.uvcLog != nil {
-			m.uvcLog.Warn().Err(err).Msg("UVC format validation failed, using raw values")
+			m.uvcLog.Error().Err(err).
+				Str("codec", string(codec)).
+				Int("width", int(width)).
+				Int("height", int(height)).
+				Int("frameRate", frameRate).
+				Msg("UVC format validation failed - not notifying browser")
 		}
-		formatInfo = FormatInfo{Codec: codec, Width: int(width), Height: int(height), FrameRate: frameRate}
+		return fmt.Errorf("invalid UVC format: %w", err)
 	}
 	m.notifyFormatChange(formatInfo)
 	return nil
