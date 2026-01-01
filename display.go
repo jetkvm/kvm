@@ -49,13 +49,6 @@ func updateDisplayUsbState() {
 	}
 }
 
-func capStrSlice(sl []string, maxLen int) ([]string) {
-	if len(sl) < maxLen {
-		maxLen = len(sl)
-	}
-	return sl[:maxLen]
-}
-
 func updateDisplay() {
 	if networkManager != nil {
 		var ipv6String string
