@@ -35,7 +35,7 @@
     "@heroicons/react": "^2.2.0",
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@xterm/addon-clipboard": "^0.1.0",
-    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/addon-webgl": "^0.18.0",
