@@ -354,9 +354,9 @@ func (nm *NetlinkManager) AddDefaultRoute(link *Link, gateway net.IP, family int
 }
 
 // RemoveDefaultRoute removes the default route for the given family
-func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
+func (nm *NetlinkManager) RemoveDefaultRoute(iface *Link, family int) error {
 	l := nm.logger.With().Int("family", family).Logger()
-	routes, err := nm.RouteList(nil, family)
+	routes, err := nm.RouteList(iface, family)
 	if err != nil {
 		l.Error().Err(err).Msg("failed to get route list")
 		return fmt.Errorf("failed to get routes: %w", err)

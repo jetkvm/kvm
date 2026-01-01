@@ -133,7 +133,7 @@ func (scm *StaticConfigManager) DisableIPv4() error {
 	}
 
 	// Remove default route
-	if err := scm.removeIPv4DefaultRoute(); err != nil {
+	if err := scm.removeIPv4DefaultRoute(iface); err != nil {
 		scm.logger.Warn().Err(err).Msg("failed to remove IPv4 default route")
 	}
 
@@ -178,7 +178,7 @@ func (scm *StaticConfigManager) EnableIPv6LinkLocal() error {
 }
 
 // removeIPv4DefaultRoute removes IPv4 default route
-func (scm *StaticConfigManager) removeIPv4DefaultRoute() error {
+func (scm *StaticConfigManager) removeIPv4DefaultRoute(iface *link.Link) error {
 	netlinkMgr := getNetlinkManager()
-	return netlinkMgr.RemoveDefaultRoute(link.AfInet)
+	return netlinkMgr.RemoveDefaultRoute(iface, link.AfInet)
 }
