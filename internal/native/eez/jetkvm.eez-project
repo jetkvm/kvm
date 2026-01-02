@@ -420,7 +420,7 @@
                       "type": "LVGLLabelWidget",
                       "left": 0,
                       "top": 0,
-                      "width": 35,
+                      "width": 0,
                       "height": 17,
                       "customInputs": [],
                       "customOutputs": [],
@@ -1343,7 +1343,7 @@
                             }
                           },
                           "groupIndex": 0,
-                          "text": "2001:0db8:0000:0000:0000:0000:0000:0000-\n2001:0db8:0000:0000:0000:0000:0000:0000-\nf\nf\nf\nf",
+                          "text": "2001:0db8:0000:0000:0000:0000:0000:0000-\n2001:0db8:0000:0000:0000:0000:0000:0000-\n3fff::\n3fff::\n3fff::\n3fff::",
                           "textType": "literal",
                           "longMode": "SCROLL",
                           "recolor": false
@@ -2268,7 +2268,7 @@
                       "left": 0,
                       "top": 0,
                       "width": 100,
-                      "height": 108,
+                      "height": 282,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
