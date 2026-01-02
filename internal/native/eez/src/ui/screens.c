@@ -350,7 +350,7 @@ void create_screen_home_screen() {
                                     add_style_label_font16(obj);
                                     lv_obj_set_style_text_font(obj, &ui_font_inter9black, LV_PART_MAIN | LV_STATE_DEFAULT);
                                     lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                                    lv_label_set_text(obj, "2001:0db8:0000:0000:0000:0000:0000:0000-\n2001:0db8:0000:0000:0000:0000:0000:0000-\n3fff::\n3fff::\n3fff::\n3fff::");
+                                    lv_label_set_text(obj, "2001:0db8:0000:0000:0000:0000:0000:0000--\n2001:0db8:0000:0000:0000:0000:0000:0000--\n3fff::\n3fff::\n3fff::\n3fff::");
                                 }
                             }
                         }
