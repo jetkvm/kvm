@@ -1350,7 +1350,7 @@
                       "hiddenFlagType": "literal",
                       "clickableFlag": true,
                       "clickableFlagType": "literal",
-                      "flagScrollbarMode": "",
+                      "flagScrollbarMode": "auto",
                       "flagScrollDirection": "",
                       "scrollSnapX": "",
                       "scrollSnapY": "",
@@ -1404,7 +1404,7 @@
                       "recolor": false
                     }
                   ],
-                  "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_VER|SNAPPABLE|SCROLL_ELASTIC|SCROLL_WITH_ARROW|SCROLL_MOMENTUM|SCROLL_CHAIN_HOR|SCROLLABLE",
+                  "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_VER|SNAPPABLE|SCROLL_ELASTIC|SCROLL_WITH_ARROW|SCROLL_MOMENTUM|SCROLL_CHAIN_HOR",
                   "hiddenFlagType": "literal",
                   "clickableFlag": false,
                   "clickableFlagType": "literal",
