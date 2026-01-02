@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"runtime/debug"
 
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
@@ -460,17 +459,9 @@ func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string
 		if r := recover(); r != nil {
 			// Convert the panic to an error
 			if e, ok := r.(error); ok {
-				err = fmt.Errorf(
-					"%w; %s",
-					e,
-					debug.Stack(),
-				)
+				err = e
 			} else {
-				err = fmt.Errorf(
-					"panic occurred: %v; %s",
-					r,
-					debug.Stack(),
-				)
+				err = fmt.Errorf("panic occurred: %v", r)
 			}
 		}
 	}()

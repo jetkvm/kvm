@@ -32,7 +32,6 @@ typedef struct _objects_t {
     lv_obj_t *cloud_status_icon;
     lv_obj_t *cloud_status_label;
     lv_obj_t *home_info_container;
-    lv_obj_t *ipinfo;
     lv_obj_t *home_info_ipv4_addr;
     lv_obj_t *home_info_ipv6_addr;
     lv_obj_t *home_info_mac_addr;
