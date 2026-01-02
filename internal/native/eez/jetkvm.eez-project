@@ -1337,7 +1337,8 @@
                                   "text_align": "LEFT"
                                 },
                                 "CHECKED": {
-                                  "text_font": "inter9black"
+                                  "text_font": "inter9black",
+                                  "text_align": "LEFT"
                                 }
                               }
                             }
