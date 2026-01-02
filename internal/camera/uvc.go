@@ -14,7 +14,7 @@ import (
 const uvcBufferCount = 3
 
 // errorLogInterval is a bitmask for throttling frame error logs.
-// Logs at error count 1, then every 128 errors (128, 256, 384...).
+// Logs at error count 1, then at multiples of 128 (128, 256, 384...).
 // Condition: errCount == 1 || errCount & errorLogInterval == 0.
 const errorLogInterval = 127
 
