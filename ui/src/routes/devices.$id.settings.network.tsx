@@ -519,45 +519,47 @@ export default function SettingsNetworkRoute() {
 
               <PublicIPCard />
 
-              <div>
-                <AutoHeight>
-                  {formState.isLoading ? (
-                    <GridCard>
-                      <div className="p-4">
-                        <div className="space-y-4">
-                          <div className="h-6 w-1/3 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-                          <div className="animate-pulse space-y-2">
-                            <div className="h-4 w-1/4 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/4 rounded bg-slate-200 dark:bg-slate-700" />
+              {ipv4mode !== "disabled" && (
+                <div>
+                  <AutoHeight>
+                    {formState.isLoading ? (
+                      <GridCard>
+                        <div className="p-4">
+                          <div className="space-y-4">
+                            <div className="h-6 w-1/3 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                            <div className="animate-pulse space-y-2">
+                              <div className="h-4 w-1/4 rounded bg-slate-200 dark:bg-slate-700" />
+                              <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                              <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                              <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                              <div className="h-4 w-1/4 rounded bg-slate-200 dark:bg-slate-700" />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </GridCard>
-                  ) : ipv4mode === "static" ? (
-                    <StaticIpv4Card />
-                  ) : ipv4mode === "dhcp" && !!formState.dirtyFields.ipv4_mode ? (
-                    <EmptyCard
-                      IconElm={LuEthernetPort}
-                      headline={m.network_pending_dhcp_mode_change_headline()}
-                      description={m.network_pending_dhcp_mode_change_description()}
-                    />
-                  ) : ipv4mode === "dhcp" ? (
-                    <DhcpLeaseCard
-                      networkState={networkState}
-                      setShowRenewLeaseConfirm={setShowRenewLeaseConfirm}
-                    />
-                  ) : (
-                    <EmptyCard
-                      IconElm={LuEthernetPort}
-                      headline={m.network_no_information_headline()}
-                      description={m.network_no_information_description()}
-                    />
-                  )}
-                </AutoHeight>
-              </div>
+                      </GridCard>
+                    ) : ipv4mode === "static" ? (
+                      <StaticIpv4Card />
+                    ) : ipv4mode === "dhcp" && !!formState.dirtyFields.ipv4_mode ? (
+                      <EmptyCard
+                        IconElm={LuEthernetPort}
+                        headline={m.network_pending_dhcp_mode_change_headline()}
+                        description={m.network_pending_dhcp_mode_change_description()}
+                      />
+                    ) : ipv4mode === "dhcp" ? (
+                      <DhcpLeaseCard
+                        networkState={networkState}
+                        setShowRenewLeaseConfirm={setShowRenewLeaseConfirm}
+                      />
+                    ) : (
+                      <EmptyCard
+                        IconElm={LuEthernetPort}
+                        headline={m.network_no_information_headline()}
+                        description={m.network_no_information_description()}
+                      />
+                    )}
+                  </AutoHeight>
+                </div>
+              )}
 
               <SettingsItem
                 title={m.network_ipv6_mode_title()}
@@ -577,30 +579,32 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
-              <div className="space-y-4">
-                <AutoHeight>
-                  {!networkState ? (
-                    <GridCard>
-                      <div className="p-4">
-                        <div className="space-y-4">
-                          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                            {m.network_ipv6_information()}
-                          </h3>
-                          <div className="animate-pulse space-y-3">
-                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+              {ipv6mode !== "disabled" && (
+                <div className="space-y-4">
+                  <AutoHeight>
+                    {!networkState ? (
+                      <GridCard>
+                        <div className="p-4">
+                          <div className="space-y-4">
+                            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                              {m.network_ipv6_information()}
+                            </h3>
+                            <div className="animate-pulse space-y-3">
+                              <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                              <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                              <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </GridCard>
-                  ) : ipv6mode === "static" ? (
-                    <StaticIpv6Card />
-                  ) : (
-                    <Ipv6NetworkCard networkState={networkState || undefined} />
-                  )}
-                </AutoHeight>
-              </div>
+                      </GridCard>
+                    ) : ipv6mode === "static" ? (
+                      <StaticIpv6Card />
+                    ) : (
+                      <Ipv6NetworkCard networkState={networkState || undefined} />
+                    )}
+                  </AutoHeight>
+                </div>
+              )}
 
               {isLLDPAvailable && (
                 <div className="hidden space-y-4">
