@@ -1335,10 +1335,6 @@
                                 "DEFAULT": {
                                   "text_font": "inter9black",
                                   "text_align": "LEFT"
-                                },
-                                "CHECKED": {
-                                  "text_font": "inter9black",
-                                  "text_align": "LEFT"
                                 }
                               }
                             }
@@ -2269,7 +2265,7 @@
                       "left": 0,
                       "top": 0,
                       "width": 100,
-                      "height": 282,
+                      "height": 108,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
