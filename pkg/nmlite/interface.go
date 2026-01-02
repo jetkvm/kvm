@@ -285,7 +285,7 @@ func (im *InterfaceManager) GetIPv6Addresses() []string {
 	return addresses
 }
 
-// GetIPv6Addresses returns the IPv6 link-local address of the interface
+// GetIPv6LinkLocalAddress returns the IPv6 link-local address of the interface
 func (im *InterfaceManager) GetIPv6LinkLocalAddress() string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
