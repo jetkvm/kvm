@@ -65,7 +65,7 @@ const (
 )
 
 // Wire protocol codec bytes for binary frame headers.
-// These must match the values in camera_ws.go (repo root) and ui/src/lib/cameraTransport.ts.
+// Used by camera_ws.go (via import) and must match values in ui/src/lib/cameraTransport.ts.
 const (
 	CodecByteH264  byte = 0x01
 	CodecByteMJPEG byte = 0x02

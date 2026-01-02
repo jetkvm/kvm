@@ -19,7 +19,7 @@
  * - `{ type: "error", message: string }` - Error occurred (rate-limited)
  * - `{ type: "stopped" }` - Encoder stopped
  *
- * See `src/workers/mjpegEncoder.worker.ts` for the worker implementation.
+ * See `../workers/mjpegEncoder.worker.ts` for the worker implementation.
  *
  * @internal This is an internal implementation - use CameraEncoder for the public API.
  */

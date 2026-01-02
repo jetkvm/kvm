@@ -94,9 +94,9 @@ export interface CameraTransport {
 
 /**
  * Backpressure threshold for frame dropping.
- * 4MB allows ~2-3 frames of buffering at 1080p MJPEG before dropping.
- * This prevents unbounded memory growth if the network is slower than encoding,
- * while allowing enough buffer to smooth out temporary network jitter.
+ * 4MB provides buffer for ~20-40 typical 1080p MJPEG frames (100-200KB each at 70% quality),
+ * or ~2-4 high-quality frames (1-2MB each at 95% quality).
+ * This prevents unbounded memory growth while smoothing temporary network jitter.
  */
 const BACKPRESSURE_THRESHOLD_BYTES = 4 * 1024 * 1024;
 
