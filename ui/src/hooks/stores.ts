@@ -1000,3 +1000,107 @@ export const useFailsafeModeStore = create<FailsafeModeState>(set => ({
   reason: "",
   setFailsafeMode: (active, reason) => set({ isFailsafeMode: active, reason }),
 }));
+
+// Mesh VPN types and store
+export type MeshVPNProviderState =
+  | "not_installed"
+  | "installing"
+  | "stopped"
+  | "connecting"
+  | "needs_auth"
+  | "connected"
+  | "error";
+
+export interface MeshVPNProviderInfo {
+  name: string;
+  displayName: string;
+  installed: boolean;
+  supportsExitNodes: boolean;
+  supportsCustomServer: boolean;
+  supportsAuthKey: boolean;
+}
+
+export interface MeshVPNProviderStatus {
+  state: MeshVPNProviderState;
+  installed: boolean;
+  running: boolean;
+  ip?: string;
+  hostname?: string;
+  authUrl?: string;
+  exitNode?: string;
+  controlServer?: string;
+  backendState?: string;
+  errorMessage?: string;
+  version?: string;
+}
+
+export interface MeshVPNTailscaleConfig {
+  enabled: boolean;
+  controlServer?: string;
+  authKey?: string;
+  exitNode?: string;
+  exitNodeAllowLanAccess?: boolean;
+  advertiseExitNode?: boolean;
+  tunMode?: "userspace" | "kernel";
+}
+
+export interface MeshVPNConfig {
+  activeProvider?: string;
+  tailscale?: MeshVPNTailscaleConfig;
+}
+
+export interface MeshVPNExitNode {
+  id: string;
+  name: string;
+  hostName: string;
+  ip: string;
+  country?: string;
+  city?: string;
+  online: boolean;
+}
+
+export interface MeshVPNVersionInfo {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+}
+
+export interface MeshVPNState {
+  providers: MeshVPNProviderInfo[];
+  status: MeshVPNProviderStatus | null;
+  config: MeshVPNConfig | null;
+  exitNodes: MeshVPNExitNode[];
+  installProgress: number | null;
+  updateProgress: number | null;
+  isAuthDialogOpen: boolean;
+  versionInfo: MeshVPNVersionInfo | null;
+
+  setProviders: (providers: MeshVPNProviderInfo[]) => void;
+  setStatus: (status: MeshVPNProviderStatus | null) => void;
+  setConfig: (config: MeshVPNConfig | null) => void;
+  setExitNodes: (nodes: MeshVPNExitNode[]) => void;
+  setInstallProgress: (progress: number | null) => void;
+  setUpdateProgress: (progress: number | null) => void;
+  setAuthDialogOpen: (open: boolean) => void;
+  setVersionInfo: (info: MeshVPNVersionInfo | null) => void;
+}
+
+export const useMeshVPNStore = create<MeshVPNState>(set => ({
+  providers: [],
+  status: null,
+  config: null,
+  exitNodes: [],
+  installProgress: null,
+  updateProgress: null,
+  isAuthDialogOpen: false,
+  versionInfo: null,
+
+  setProviders: (providers: MeshVPNProviderInfo[]) => set({ providers }),
+  setStatus: (status: MeshVPNProviderStatus | null) => set({ status }),
+  setConfig: (config: MeshVPNConfig | null) => set({ config }),
+  setExitNodes: (nodes: MeshVPNExitNode[]) => set({ exitNodes: nodes }),
+  setInstallProgress: (progress: number | null) => set({ installProgress: progress }),
+  setUpdateProgress: (progress: number | null) => set({ updateProgress: progress }),
+  setAuthDialogOpen: (open: boolean) => set({ isAuthDialogOpen: open }),
+  setVersionInfo: (info: MeshVPNVersionInfo | null) => set({ versionInfo: info }),
+}));

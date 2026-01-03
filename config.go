@@ -10,6 +10,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/meshvpn"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/prometheus/client_golang/prometheus"
@@ -110,6 +111,7 @@ type Config struct {
 	UsbConfig            *usbgadget.Config    `json:"usb_config"`
 	UsbDevices           *usbgadget.Devices   `json:"usb_devices"`
 	NetworkConfig        *types.NetworkConfig `json:"network_config"`
+	MeshVPNConfig        *meshvpn.Config      `json:"meshvpn_config,omitempty"`
 	DefaultLogLevel      string               `json:"default_log_level"`
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
 	VideoQualityFactor   float64              `json:"video_quality_factor"`

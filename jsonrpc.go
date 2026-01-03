@@ -1349,4 +1349,23 @@ var rpcHandlers = map[string]RPCHandler{
 	"getPublicIPAddresses":   {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses": {Func: rpcCheckPublicIPAddresses},
 	"getDiagnostics":         {Func: rpcGetDiagnostics},
+
+	// Mesh VPN handlers
+	"getMeshVPNProviders":         {Func: rpcGetMeshVPNProviders},
+	"getMeshVPNStatus":            {Func: rpcGetMeshVPNStatus, Params: []string{"params"}},
+	"getMeshVPNConfig":            {Func: rpcGetMeshVPNConfig},
+	"setMeshVPNConfig":            {Func: rpcSetMeshVPNConfig, Params: []string{"config"}},
+	"meshVPNInstall":              {Func: rpcMeshVPNInstall, Params: []string{"provider"}},
+	"meshVPNUninstall":            {Func: rpcMeshVPNUninstall, Params: []string{"provider"}},
+	"meshVPNConnect":              {Func: rpcMeshVPNConnect, Params: []string{"params"}},
+	"meshVPNDisconnect":           {Func: rpcMeshVPNDisconnect},
+	"meshVPNLogout":               {Func: rpcMeshVPNLogout},
+	"meshVPNGetExitNodes":         {Func: rpcMeshVPNGetExitNodes},
+	"meshVPNSetExitNode":          {Func: rpcMeshVPNSetExitNode, Params: []string{"params"}},
+	"meshVPNClearExitNode":        {Func: rpcMeshVPNClearExitNode},
+	"meshVPNGetVersionInfo":       {Func: rpcMeshVPNGetVersionInfo, Params: []string{"params"}},
+	"meshVPNUpdate":               {Func: rpcMeshVPNUpdate, Params: []string{"params"}},
+	"meshVPNGetTUNMode":           {Func: rpcMeshVPNGetTUNMode, Params: []string{"params"}},
+	"meshVPNSetTUNMode":           {Func: rpcMeshVPNSetTUNMode, Params: []string{"params"}},
+	"meshVPNSetAdvertiseExitNode": {Func: rpcMeshVPNSetAdvertiseExitNode, Params: []string{"params"}},
 }
