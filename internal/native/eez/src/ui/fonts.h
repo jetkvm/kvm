@@ -13,8 +13,6 @@ extern const lv_font_t ui_font_font_book18;
 extern const lv_font_t ui_font_font_book20;
 extern const lv_font_t ui_font_font_book24;
 extern const lv_font_t ui_font_inter9black;
-extern const lv_font_t ui_font_inter9black_1bpp;
-extern const lv_font_t ui_font_inter9black_2bpp;
 
 
 #ifdef __cplusplus
