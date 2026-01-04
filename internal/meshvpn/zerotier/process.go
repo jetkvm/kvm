@@ -108,10 +108,10 @@ func (p *ProcessManager) Start() error {
 
 	logger.Info().Int("pid", p.cmd.Process.Pid).Msg("started zerotier-one")
 
-	// Wait for daemon to initialize (indicated by port file creation)
 	if err := p.waitForReady(10 * time.Second); err != nil {
-		// Stop the process since it failed to initialize properly
-		_ = p.cmd.Process.Kill()
+		if killErr := p.cmd.Process.Kill(); killErr != nil {
+			logger.Warn().Err(killErr).Msg("failed to kill uninitialized daemon")
+		}
 		p.running = false
 		p.cmd = nil
 		return fmt.Errorf("daemon failed to initialize: %w", err)
@@ -170,16 +170,16 @@ func (p *ProcessManager) Stop() error {
 		p.cancel = nil
 	}
 
+	var stopErr error
+
 	if p.cmd != nil && p.cmd.Process != nil {
-		// Try graceful SIGTERM first
 		if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			logger.Debug().Err(err).Msg("SIGTERM failed, forcing kill")
 			if killErr := p.cmd.Process.Kill(); killErr != nil {
-				logger.Warn().Err(killErr).Msg("failed to kill zerotier-one process")
+				stopErr = fmt.Errorf("failed to kill zerotier-one process: %w", killErr)
 			}
 		}
 
-		// Wait for process to exit with timeout
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			if err := p.cmd.Process.Signal(syscall.Signal(0)); err != nil {
@@ -188,11 +188,10 @@ func (p *ProcessManager) Stop() error {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		// Force kill if still running
 		if err := p.cmd.Process.Signal(syscall.Signal(0)); err == nil {
 			logger.Debug().Msg("process still running after timeout, forcing kill")
 			if killErr := p.cmd.Process.Kill(); killErr != nil {
-				logger.Warn().Err(killErr).Msg("failed to force kill zerotier-one process")
+				stopErr = fmt.Errorf("failed to force kill zerotier-one process: %w", killErr)
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -200,5 +199,5 @@ func (p *ProcessManager) Stop() error {
 
 	p.running = false
 	p.cmd = nil
-	return nil
+	return stopErr
 }

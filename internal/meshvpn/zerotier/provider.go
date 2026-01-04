@@ -56,7 +56,13 @@ func (p *Provider) SupportsAuthKey() bool      { return false } // Authorization
 
 func (p *Provider) IsInstalled() bool {
 	_, err := os.Stat(ZeroTierOnePath)
-	return err == nil
+	if err == nil {
+		return true
+	}
+	if !os.IsNotExist(err) {
+		logger.Warn().Err(err).Str("path", ZeroTierOnePath).Msg("unexpected error checking installation")
+	}
+	return false
 }
 
 func (p *Provider) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
@@ -331,12 +337,12 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 		status.Version = cliStatus.Version
 	}
 
-	// Get node ID as hostname
 	status.Hostname = cliStatus.Address
 
-	// Get IP from joined networks
-	ip, _ := cli.GetPrimaryIP(ctx)
-	if ip != "" {
+	ip, ipErr := cli.GetPrimaryIP(ctx)
+	if ipErr != nil {
+		logger.Debug().Err(ipErr).Msg("failed to get primary IP")
+	} else if ip != "" {
 		status.IP = ip
 	}
 
@@ -459,28 +465,22 @@ func (p *Provider) Update(ctx context.Context, targetVersion string, progress me
 		return meshvpn.ErrNotInstalled
 	}
 
-	// If no target version specified, get the latest from GitHub
 	if targetVersion == "" {
-		if p.versionClient != nil {
-			latest, err := p.versionClient.GetLatestVersion(ctx)
-			if err != nil {
-				logger.Warn().Err(err).Msg("failed to get latest version, using default")
-				targetVersion = DefaultVersion
-			} else {
-				targetVersion = latest
-			}
-		} else {
-			targetVersion = DefaultVersion
+		if p.versionClient == nil {
+			return fmt.Errorf("version client not initialized")
 		}
+		latest, err := p.versionClient.GetLatestVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get latest version: %w", err)
+		}
+		targetVersion = latest
 	}
 
 	cli := NewCLI()
 	currentVersion, err := cli.Version(ctx)
 	if err != nil {
-		logger.Warn().Err(err).Msg("failed to get current version")
-	}
-
-	if currentVersion == targetVersion {
+		logger.Warn().Err(err).Msg("cannot determine current version, proceeding with update")
+	} else if currentVersion == targetVersion {
 		logger.Info().Str("version", currentVersion).Msg("already on target version")
 		return nil
 	}

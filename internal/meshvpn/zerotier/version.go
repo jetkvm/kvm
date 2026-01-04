@@ -88,6 +88,8 @@ func (c *VersionClient) GetLatestVersion(ctx context.Context) (string, error) {
 }
 
 // IsNewerVersion compares two semantic versions and returns true if latest > current.
+// Only supports versions with exactly 3 numeric parts (MAJOR.MINOR.PATCH).
+// Returns false if either version cannot be parsed.
 func IsNewerVersion(current, latest string) bool {
 	re := regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
 

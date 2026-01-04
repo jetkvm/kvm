@@ -13,7 +13,6 @@ var (
 	meshVPNRegistry *meshvpn.Registry
 )
 
-// initMeshVPN initializes the mesh VPN subsystem
 func initMeshVPN() {
 	logger.Info().Msg("initializing mesh VPN")
 
@@ -46,7 +45,6 @@ func initMeshVPN() {
 		Config:   vpnConfig,
 		Registry: meshVPNRegistry,
 		OnStatusChange: func(status meshvpn.ProviderStatus) {
-			// Emit status change to connected clients
 			logger.Info().
 				Str("state", string(status.State)).
 				Bool("hasSession", currentSession != nil).
@@ -56,7 +54,6 @@ func initMeshVPN() {
 			}
 		},
 		OnConfigChange: func(cfg *meshvpn.Config) {
-			// Update main config
 			config.MeshVPNConfig = cfg
 		},
 		SaveConfig: func(cfg *meshvpn.Config) error {

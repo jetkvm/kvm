@@ -4,11 +4,14 @@ package zerotier
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/meshvpn"
@@ -99,12 +102,30 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 }
 
 func (d *Downloader) getPackageURL() string {
-	// Official ZeroTier Debian package containing static-pie linked binary
 	return fmt.Sprintf("%s/%s/dist/debian/bullseye/zerotier-one_%s_armhf.deb", BaseDownloadURL, d.version, d.version)
 }
 
+func (d *Downloader) getChecksumURL() string {
+	return fmt.Sprintf("%s/%s/dist/debian/bullseye/zerotier-one_%s_armhf.deb.sha256", BaseDownloadURL, d.version, d.version)
+}
+
+func (d *Downloader) hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 // Install downloads and installs ZeroTier.
-// Progress: 0-70% download, 70-90% extract, 90-100% setup.
+// Progress: 0-10% checksum fetch, 10-70% download, 70-80% verify, 80-95% extract, 95-100% setup.
 func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
 	logger.Info().Str("version", d.version).Msg("starting ZeroTier installation")
 
@@ -114,25 +135,46 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 		}
 		var overall float64
 		switch stage {
-		case 0: // Download
-			overall = stageProgress * 0.7
-		case 1: // Extract
-			overall = 0.7 + stageProgress*0.2
-		case 2: // Setup
-			overall = 0.9 + stageProgress*0.1
+		case 0: // Checksum fetch
+			overall = stageProgress * 0.1
+		case 1: // Download
+			overall = 0.1 + stageProgress*0.6
+		case 2: // Verify
+			overall = 0.7 + stageProgress*0.1
+		case 3: // Extract
+			overall = 0.8 + stageProgress*0.15
+		case 4: // Setup
+			overall = 0.95 + stageProgress*0.05
 		}
 		progress(overall)
 	}
-
-	logger.Debug().Msg("downloading package")
-	reportProgress(0, 0)
 
 	httpClient := d.httpClient
 	if httpClient == nil {
 		httpClient = NewDefaultHTTPClient()
 	}
 
-	// Download .deb package
+	// Attempt to download checksum (may not be available)
+	logger.Debug().Msg("fetching checksum")
+	reportProgress(0, 0)
+
+	var expectedHash string
+	checksumData, err := httpClient.Get(d.getChecksumURL())
+	if err != nil {
+		logger.Debug().Err(err).Msg("checksum file not available, will rely on HTTPS transport security")
+	} else {
+		expectedHash = strings.TrimSpace(string(checksumData))
+		parts := strings.Fields(expectedHash)
+		if len(parts) > 0 {
+			expectedHash = parts[0]
+		}
+		logger.Debug().Str("hash", expectedHash).Msg("got expected hash")
+	}
+	reportProgress(0, 1.0)
+
+	logger.Debug().Msg("downloading package")
+	reportProgress(1, 0)
+
 	tmpFile, err := os.CreateTemp("", "zerotier-*.deb")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
@@ -142,28 +184,47 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 	defer os.Remove(tmpPath)
 
 	err = httpClient.Download(d.getPackageURL(), tmpPath, func(p float64) {
-		reportProgress(0, p)
+		reportProgress(1, p)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to download package: %w", err)
 	}
-	reportProgress(0, 1.0)
+	reportProgress(1, 1.0)
+
+	// Verify checksum if available
+	if expectedHash != "" {
+		logger.Debug().Msg("verifying checksum")
+		reportProgress(2, 0)
+
+		actualHash, err := d.hashFile(tmpPath)
+		if err != nil {
+			return fmt.Errorf("failed to hash file: %w", err)
+		}
+
+		if actualHash != expectedHash {
+			return fmt.Errorf("%w: expected %s, got %s", meshvpn.ErrVerificationFailed, expectedHash, actualHash)
+		}
+		logger.Debug().Msg("checksum verified")
+		reportProgress(2, 1.0)
+	} else {
+		reportProgress(2, 1.0)
+	}
 
 	logger.Debug().Msg("extracting package")
-	reportProgress(1, 0)
+	reportProgress(3, 0)
 
 	if err := d.extractDeb(tmpPath); err != nil {
 		return fmt.Errorf("failed to extract package: %w", err)
 	}
-	reportProgress(1, 1.0)
+	reportProgress(3, 1.0)
 
 	logger.Debug().Msg("setting up")
-	reportProgress(2, 0)
+	reportProgress(4, 0)
 
 	if err := d.setup(); err != nil {
 		return fmt.Errorf("failed to setup: %w", err)
 	}
-	reportProgress(2, 1.0)
+	reportProgress(4, 1.0)
 
 	logger.Info().Str("version", d.version).Msg("ZeroTier installation complete")
 

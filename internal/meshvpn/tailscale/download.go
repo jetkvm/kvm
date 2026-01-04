@@ -147,7 +147,7 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 	logger.Debug().Msg("downloading checksum")
 	reportProgress(0, 0)
 
-	expectedHash, err := d.downloadChecksum(ctx)
+	expectedHash, err := d.downloadChecksum()
 	if err != nil {
 		return fmt.Errorf("failed to download checksum: %w", err)
 	}
@@ -215,7 +215,7 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 	return nil
 }
 
-func (d *Downloader) downloadChecksum(ctx context.Context) (string, error) {
+func (d *Downloader) downloadChecksum() (string, error) {
 	httpClient := d.httpClient
 	if httpClient == nil {
 		httpClient = NewDefaultHTTPClient()
