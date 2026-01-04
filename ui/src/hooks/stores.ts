@@ -1044,9 +1044,15 @@ export interface MeshVPNTailscaleConfig {
   tunMode?: "userspace" | "kernel";
 }
 
+export interface MeshVPNZeroTierConfig {
+  enabled: boolean;
+  networkId?: string;
+}
+
 export interface MeshVPNConfig {
   activeProvider?: string;
   tailscale?: MeshVPNTailscaleConfig;
+  zerotier?: MeshVPNZeroTierConfig;
 }
 
 export interface MeshVPNExitNode {
@@ -1067,17 +1073,31 @@ export interface MeshVPNVersionInfo {
 
 export interface MeshVPNState {
   providers: MeshVPNProviderInfo[];
-  status: MeshVPNProviderStatus | null;
+  providerStatuses: Record<string, MeshVPNProviderStatus>;
   config: MeshVPNConfig | null;
+  providerExitNodes: Record<string, MeshVPNExitNode[]>;
+  providerInstallProgress: Record<string, number | null>;
+  providerUpdateProgress: Record<string, number | null>;
+  authDialogProvider: string | null;
+  providerVersionInfo: Record<string, MeshVPNVersionInfo>;
+
+  setProviders: (providers: MeshVPNProviderInfo[]) => void;
+  setProviderStatus: (provider: string, status: MeshVPNProviderStatus | null) => void;
+  setConfig: (config: MeshVPNConfig | null) => void;
+  setProviderExitNodes: (provider: string, nodes: MeshVPNExitNode[]) => void;
+  setProviderInstallProgress: (provider: string, progress: number | null) => void;
+  setProviderUpdateProgress: (provider: string, progress: number | null) => void;
+  setAuthDialogProvider: (provider: string | null) => void;
+  setProviderVersionInfo: (provider: string, info: MeshVPNVersionInfo | null) => void;
+
+  // Legacy compatibility
+  status: MeshVPNProviderStatus | null;
   exitNodes: MeshVPNExitNode[];
   installProgress: number | null;
   updateProgress: number | null;
   isAuthDialogOpen: boolean;
   versionInfo: MeshVPNVersionInfo | null;
-
-  setProviders: (providers: MeshVPNProviderInfo[]) => void;
   setStatus: (status: MeshVPNProviderStatus | null) => void;
-  setConfig: (config: MeshVPNConfig | null) => void;
   setExitNodes: (nodes: MeshVPNExitNode[]) => void;
   setInstallProgress: (progress: number | null) => void;
   setUpdateProgress: (progress: number | null) => void;
@@ -1085,22 +1105,81 @@ export interface MeshVPNState {
   setVersionInfo: (info: MeshVPNVersionInfo | null) => void;
 }
 
-export const useMeshVPNStore = create<MeshVPNState>(set => ({
+export const useMeshVPNStore = create<MeshVPNState>((set, get) => ({
   providers: [],
-  status: null,
+  providerStatuses: {},
   config: null,
-  exitNodes: [],
-  installProgress: null,
-  updateProgress: null,
-  isAuthDialogOpen: false,
-  versionInfo: null,
+  providerExitNodes: {},
+  providerInstallProgress: {},
+  providerUpdateProgress: {},
+  authDialogProvider: null,
+  providerVersionInfo: {},
 
   setProviders: (providers: MeshVPNProviderInfo[]) => set({ providers }),
-  setStatus: (status: MeshVPNProviderStatus | null) => set({ status }),
+  setProviderStatus: (provider: string, status: MeshVPNProviderStatus | null) =>
+    set(state => ({
+      providerStatuses: status
+        ? { ...state.providerStatuses, [provider]: status }
+        : Object.fromEntries(
+            Object.entries(state.providerStatuses).filter(([k]) => k !== provider),
+          ),
+    })),
   setConfig: (config: MeshVPNConfig | null) => set({ config }),
-  setExitNodes: (nodes: MeshVPNExitNode[]) => set({ exitNodes: nodes }),
-  setInstallProgress: (progress: number | null) => set({ installProgress: progress }),
-  setUpdateProgress: (progress: number | null) => set({ updateProgress: progress }),
-  setAuthDialogOpen: (open: boolean) => set({ isAuthDialogOpen: open }),
-  setVersionInfo: (info: MeshVPNVersionInfo | null) => set({ versionInfo: info }),
+  setProviderExitNodes: (provider: string, nodes: MeshVPNExitNode[]) =>
+    set(state => ({
+      providerExitNodes: { ...state.providerExitNodes, [provider]: nodes },
+    })),
+  setProviderInstallProgress: (provider: string, progress: number | null) =>
+    set(state => ({
+      providerInstallProgress: { ...state.providerInstallProgress, [provider]: progress },
+    })),
+  setProviderUpdateProgress: (provider: string, progress: number | null) =>
+    set(state => ({
+      providerUpdateProgress: { ...state.providerUpdateProgress, [provider]: progress },
+    })),
+  setAuthDialogProvider: (provider: string | null) => set({ authDialogProvider: provider }),
+  setProviderVersionInfo: (provider: string, info: MeshVPNVersionInfo | null) =>
+    set(state => ({
+      providerVersionInfo: info
+        ? { ...state.providerVersionInfo, [provider]: info }
+        : Object.fromEntries(
+            Object.entries(state.providerVersionInfo).filter(([k]) => k !== provider),
+          ),
+    })),
+
+  // Legacy compatibility getters (computed from new state)
+  get status() {
+    const statuses = get().providerStatuses;
+    const firstProvider = Object.keys(statuses)[0];
+    return firstProvider ? statuses[firstProvider] : null;
+  },
+  get exitNodes() {
+    const nodes = get().providerExitNodes;
+    const firstProvider = Object.keys(nodes)[0];
+    return firstProvider ? nodes[firstProvider] : [];
+  },
+  get installProgress() {
+    const progress = get().providerInstallProgress;
+    const firstProvider = Object.keys(progress)[0];
+    return firstProvider ? progress[firstProvider] : null;
+  },
+  get updateProgress() {
+    const progress = get().providerUpdateProgress;
+    const firstProvider = Object.keys(progress)[0];
+    return firstProvider ? progress[firstProvider] : null;
+  },
+  get isAuthDialogOpen() {
+    return get().authDialogProvider !== null;
+  },
+  get versionInfo() {
+    const info = get().providerVersionInfo;
+    const firstProvider = Object.keys(info)[0];
+    return firstProvider ? info[firstProvider] : null;
+  },
+  setStatus: () => {},
+  setExitNodes: () => {},
+  setInstallProgress: () => {},
+  setUpdateProgress: () => {},
+  setAuthDialogOpen: () => {},
+  setVersionInfo: () => {},
 }));

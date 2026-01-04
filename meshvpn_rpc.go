@@ -19,6 +19,7 @@ var errMeshVPNNotInitialized = errors.New("mesh VPN not initialized")
 type RpcMeshVPNConfig struct {
 	ActiveProvider string                      `json:"activeProvider,omitempty"`
 	Tailscale      *RpcTailscaleProviderConfig `json:"tailscale,omitempty"`
+	ZeroTier       *RpcZeroTierProviderConfig  `json:"zerotier,omitempty"`
 }
 
 // RpcTailscaleProviderConfig contains Tailscale-specific config for RPC
@@ -30,6 +31,12 @@ type RpcTailscaleProviderConfig struct {
 	ExitNodeAllowLANAccess bool   `json:"exitNodeAllowLanAccess,omitempty"`
 	AdvertiseExitNode      bool   `json:"advertiseExitNode,omitempty"`
 	TUNMode                string `json:"tunMode,omitempty"`
+}
+
+// RpcZeroTierProviderConfig contains ZeroTier-specific config for RPC
+type RpcZeroTierProviderConfig struct {
+	Enabled   bool   `json:"enabled"`
+	NetworkID string `json:"networkId,omitempty"` // 16-digit hex network ID
 }
 
 // RpcMeshVPNConnectParams contains parameters for connect RPC
@@ -145,6 +152,13 @@ func rpcGetMeshVPNConfig() (*RpcMeshVPNConfig, error) {
 		}
 	}
 
+	if cfg.ZeroTier != nil {
+		result.ZeroTier = &RpcZeroTierProviderConfig{
+			Enabled:   cfg.ZeroTier.Enabled,
+			NetworkID: cfg.ZeroTier.NetworkID,
+		}
+	}
+
 	return result, nil
 }
 
@@ -169,6 +183,13 @@ func rpcSetMeshVPNConfig(params struct {
 			ExitNodeAllowLANAccess: params.Config.Tailscale.ExitNodeAllowLANAccess,
 			AdvertiseExitNode:      params.Config.Tailscale.AdvertiseExitNode,
 			TUNMode:                meshvpn.TUNMode(params.Config.Tailscale.TUNMode),
+		}
+	}
+
+	if params.Config.ZeroTier != nil {
+		cfg.ZeroTier = &meshvpn.ZeroTierConfig{
+			Enabled:   params.Config.ZeroTier.Enabled,
+			NetworkID: params.Config.ZeroTier.NetworkID,
 		}
 	}
 
@@ -211,9 +232,13 @@ func rpcMeshVPNUninstall(provider string) (bool, error) {
 	}
 
 	ctx := context.Background()
-	err := manager.Uninstall(ctx, provider)
-	if err != nil {
+	if err := manager.Uninstall(ctx, provider); err != nil {
 		return false, err
+	}
+
+	// Disable auto-start after uninstall
+	if err := manager.DisableProvider(provider); err != nil {
+		logger.Warn().Err(err).Msg("failed to disable provider config after uninstall")
 	}
 
 	return true, nil
@@ -225,21 +250,13 @@ func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult
 		return nil, errMeshVPNNotInitialized
 	}
 
-	// Set active provider if specified
 	providerName := params.Provider
-	if providerName != "" {
-		if err := manager.SetActiveProvider(providerName); err != nil {
-			return nil, err
-		}
-	} else {
-		// Get current active provider name
-		if provider := manager.GetActiveProvider(); provider != nil {
-			providerName = provider.Name()
-		}
+	if providerName == "" {
+		return nil, fmt.Errorf("provider name is required")
 	}
 
 	ctx := context.Background()
-	result, err := manager.Connect(ctx, meshvpn.ConnectOptions{
+	result, err := manager.ConnectProvider(ctx, providerName, meshvpn.ConnectOptions{
 		ControlServer: params.ControlServer,
 		AuthKey:       params.AuthKey,
 	})
@@ -249,16 +266,20 @@ func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult
 	}
 
 	// Enable the provider in config for auto-start on next boot
-	if providerName != "" {
-		if err := manager.EnableProvider(providerName, params.ControlServer, params.AuthKey); err != nil {
-			logger.Warn().Err(err).Msg("failed to save VPN config for auto-start")
-		}
+	if err := manager.EnableProvider(providerName, params.ControlServer, params.AuthKey); err != nil {
+		logger.Warn().Err(err).Msg("failed to save VPN config for auto-start")
 	}
 
-	// Start status monitoring
-	manager.StartStatusMonitor(ctx)
+	// Start status monitoring for this provider
+	manager.StartProviderStatusMonitor(ctx, providerName)
+
+	// Restart mDNS for ZeroTier to advertise on the new virtual interface
+	if providerName == "zerotier" {
+		restartMdns()
+	}
 
 	logger.Info().
+		Str("provider", providerName).
 		Str("authUrl", result.AuthURL).
 		Msg("meshVPNConnect returning result")
 
@@ -268,48 +289,91 @@ func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult
 	}, nil
 }
 
-func rpcMeshVPNDisconnect() (bool, error) {
+func rpcMeshVPNDisconnect(params struct {
+	Provider string `json:"provider"`
+}) (*meshvpn.ProviderStatus, error) {
 	manager := getMeshVPNManager()
 	if manager == nil {
-		return false, errMeshVPNNotInitialized
+		return nil, errMeshVPNNotInitialized
 	}
+
+	providerName := params.Provider
+	if providerName == "" {
+		// For backward compatibility, use first running provider
+		if provider := manager.GetActiveProvider(); provider != nil {
+			providerName = provider.Name()
+		}
+	}
+
+	if providerName == "" {
+		return nil, meshvpn.ErrNoActiveProvider
+	}
+
+	logger.Info().Str("provider", providerName).Msg("meshVPNDisconnect called")
 
 	ctx := context.Background()
-	err := manager.Disconnect(ctx)
+	err := manager.DisconnectProvider(ctx, providerName)
 	if err != nil {
-		return false, err
+		logger.Error().Err(err).Msg("meshVPNDisconnect failed")
+		return nil, err
 	}
 
-	return true, nil
+	// Disable auto-start on reboot (but keep network config like network ID)
+	if err := manager.DisableProvider(providerName); err != nil {
+		logger.Warn().Err(err).Msg("failed to disable VPN provider in config")
+	}
+
+	// Stop status monitoring for this provider
+	manager.StopProviderStatusMonitor(providerName)
+
+	// Return the new status directly to ensure UI updates
+	status, err := manager.GetProviderStatus(ctx, providerName)
+	if err != nil {
+		logger.Info().Msg("meshVPNDisconnect returning fallback stopped status")
+		return &meshvpn.ProviderStatus{
+			State:     meshvpn.StateStopped,
+			Installed: true,
+			Running:   false,
+		}, nil
+	}
+
+	logger.Info().Str("state", string(status.State)).Msg("meshVPNDisconnect returning status")
+	return status, nil
 }
 
-func rpcMeshVPNLogout() (bool, error) {
+func rpcMeshVPNLogout(params struct {
+	Provider string `json:"provider"`
+}) (bool, error) {
 	manager := getMeshVPNManager()
 	if manager == nil {
 		return false, errMeshVPNNotInitialized
 	}
 
-	// Get provider name before logout
-	var providerName string
-	if provider := manager.GetActiveProvider(); provider != nil {
-		providerName = provider.Name()
+	providerName := params.Provider
+	if providerName == "" {
+		// For backward compatibility, use first running provider
+		if provider := manager.GetActiveProvider(); provider != nil {
+			providerName = provider.Name()
+		}
+	}
+
+	if providerName == "" {
+		return false, meshvpn.ErrNoActiveProvider
 	}
 
 	ctx := context.Background()
-	err := manager.Logout(ctx)
+	err := manager.LogoutProvider(ctx, providerName)
 	if err != nil {
 		return false, err
 	}
 
 	// Disable auto-start on logout
-	if providerName != "" {
-		if err := manager.DisableProvider(providerName); err != nil {
-			logger.Warn().Err(err).Msg("failed to disable VPN provider in config")
-		}
+	if err := manager.DisableProvider(providerName); err != nil {
+		logger.Warn().Err(err).Msg("failed to disable VPN provider in config")
 	}
 
-	// Stop status monitoring
-	manager.StopStatusMonitor()
+	// Stop status monitoring for this provider
+	manager.StopProviderStatusMonitor(providerName)
 
 	return true, nil
 }

@@ -16,31 +16,24 @@ type ManagerConfig struct {
 }
 
 type Manager struct {
-	mu             sync.RWMutex
-	config         *Config
-	registry       *Registry
-	activeProvider Provider
-	onStatusChange StatusChangeFunc
-	onConfigChange OnConfigChangeFunc
-	saveConfig     func(*Config) error
+	mu               sync.RWMutex
+	config           *Config
+	registry         *Registry
+	runningProviders map[string]Provider // Multiple providers can run simultaneously
+	onStatusChange   StatusChangeFunc
+	onConfigChange   OnConfigChangeFunc
+	saveConfig       func(*Config) error
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
-	m := &Manager{
-		config:         cfg.Config,
-		registry:       cfg.Registry,
-		onStatusChange: cfg.OnStatusChange,
-		onConfigChange: cfg.OnConfigChange,
-		saveConfig:     cfg.SaveConfig,
+	return &Manager{
+		config:           cfg.Config,
+		registry:         cfg.Registry,
+		runningProviders: make(map[string]Provider),
+		onStatusChange:   cfg.OnStatusChange,
+		onConfigChange:   cfg.OnConfigChange,
+		saveConfig:       cfg.SaveConfig,
 	}
-
-	if cfg.Config != nil && cfg.Config.ActiveProvider != "" {
-		if provider, ok := cfg.Registry.Get(cfg.Config.ActiveProvider); ok {
-			m.activeProvider = provider
-		}
-	}
-
-	return m
 }
 
 func (m *Manager) GetConfig() *Config {
@@ -55,14 +48,6 @@ func (m *Manager) SetConfig(config *Config) error {
 
 	m.config = config
 
-	if config != nil && config.ActiveProvider != "" {
-		if provider, ok := m.registry.Get(config.ActiveProvider); ok {
-			m.activeProvider = provider
-		}
-	} else {
-		m.activeProvider = nil
-	}
-
 	if m.saveConfig != nil {
 		if err := m.saveConfig(config); err != nil {
 			return err
@@ -76,47 +61,70 @@ func (m *Manager) SetConfig(config *Config) error {
 	return nil
 }
 
+// GetActiveProvider returns a running provider for backward compatibility.
+// If multiple providers are running, returns the first one found.
+// Prefer using GetRunningProvider(name) for explicit provider access.
 func (m *Manager) GetActiveProvider() Provider {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.activeProvider
+	for _, p := range m.runningProviders {
+		return p
+	}
+	return nil
 }
 
-func (m *Manager) SetActiveProvider(name string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// GetRunningProvider returns a specific running provider by name.
+func (m *Manager) GetRunningProvider(name string) Provider {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.runningProviders[name]
+}
 
+// GetRunningProviders returns all currently running providers.
+func (m *Manager) GetRunningProviders() []Provider {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	providers := make([]Provider, 0, len(m.runningProviders))
+	for _, p := range m.runningProviders {
+		providers = append(providers, p)
+	}
+	return providers
+}
+
+// SetActiveProvider marks a provider as the current active for backward compatibility.
+// With multi-provider support, this is primarily used to set which provider to connect.
+func (m *Manager) SetActiveProvider(name string) error {
 	if name == "" {
-		m.activeProvider = nil
-		if m.config != nil {
-			m.config.ActiveProvider = ""
-		}
 		return nil
 	}
 
-	provider, ok := m.registry.Get(name)
+	_, ok := m.registry.Get(name)
 	if !ok {
 		return ErrProviderNotFound
 	}
 
-	m.activeProvider = provider
-	if m.config == nil {
-		m.config = &Config{}
-	}
-	m.config.ActiveProvider = name
-
 	return nil
 }
 
-func (m *Manager) GetStatus(ctx context.Context) (*ProviderStatus, error) {
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
+// trackRunningProvider adds a provider to the running set.
+func (m *Manager) trackRunningProvider(p Provider) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runningProviders[p.Name()] = p
+}
 
+// untrackRunningProvider removes a provider from the running set.
+func (m *Manager) untrackRunningProvider(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.runningProviders, name)
+}
+
+func (m *Manager) GetStatus(ctx context.Context) (*ProviderStatus, error) {
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return nil, ErrNoActiveProvider
 	}
-
 	return provider.GetStatus(ctx)
 }
 
@@ -147,97 +155,152 @@ func (m *Manager) Uninstall(ctx context.Context, name string) error {
 	return provider.Uninstall(ctx)
 }
 
-func (m *Manager) Connect(ctx context.Context, opts ConnectOptions) (*ConnectResult, error) {
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
+// ConnectProvider connects a specific provider by name.
+func (m *Manager) ConnectProvider(ctx context.Context, name string, opts ConnectOptions) (*ConnectResult, error) {
+	provider, ok := m.registry.Get(name)
+	if !ok {
+		return nil, ErrProviderNotFound
+	}
 
+	result, err := provider.Connect(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	m.trackRunningProvider(provider)
+	return result, nil
+}
+
+// Connect connects the first available provider (backward compatibility).
+func (m *Manager) Connect(ctx context.Context, opts ConnectOptions) (*ConnectResult, error) {
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return nil, ErrNoActiveProvider
 	}
 
-	return provider.Connect(ctx, opts)
+	result, err := provider.Connect(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	m.trackRunningProvider(provider)
+	return result, nil
 }
 
+// DisconnectProvider disconnects a specific provider by name.
+func (m *Manager) DisconnectProvider(ctx context.Context, name string) error {
+	provider, ok := m.registry.Get(name)
+	if !ok {
+		return ErrProviderNotFound
+	}
+
+	err := provider.Disconnect(ctx)
+	m.untrackRunningProvider(name)
+	return err
+}
+
+// Disconnect disconnects the first running provider (backward compatibility).
 func (m *Manager) Disconnect(ctx context.Context) error {
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
-
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return ErrNoActiveProvider
 	}
 
-	return provider.Disconnect(ctx)
+	err := provider.Disconnect(ctx)
+	m.untrackRunningProvider(provider.Name())
+	return err
 }
 
-func (m *Manager) Logout(ctx context.Context) error {
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
+// LogoutProvider logs out a specific provider by name.
+func (m *Manager) LogoutProvider(ctx context.Context, name string) error {
+	provider, ok := m.registry.Get(name)
+	if !ok {
+		return ErrProviderNotFound
+	}
 
+	err := provider.Logout(ctx)
+	m.untrackRunningProvider(name)
+	return err
+}
+
+// Logout logs out the first running provider (backward compatibility).
+func (m *Manager) Logout(ctx context.Context) error {
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return ErrNoActiveProvider
 	}
 
-	return provider.Logout(ctx)
+	err := provider.Logout(ctx)
+	m.untrackRunningProvider(provider.Name())
+	return err
 }
 
 func (m *Manager) ListExitNodes(ctx context.Context) ([]ExitNode, error) {
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
-
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return nil, ErrNoActiveProvider
 	}
-
 	return provider.ListExitNodes(ctx)
 }
 
 func (m *Manager) SetExitNode(ctx context.Context, hostname string, allowLAN bool) error {
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
-
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return ErrNoActiveProvider
 	}
-
 	return provider.SetExitNode(ctx, hostname, allowLAN)
 }
 
 func (m *Manager) ClearExitNode(ctx context.Context) error {
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
-
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return ErrNoActiveProvider
 	}
-
 	return provider.ClearExitNode(ctx)
 }
 
+// StartStatusMonitor starts monitoring all running providers.
 func (m *Manager) StartStatusMonitor(ctx context.Context) {
 	m.mu.RLock()
-	provider := m.activeProvider
 	onChange := m.onStatusChange
 	m.mu.RUnlock()
 
-	if provider == nil || onChange == nil {
+	if onChange == nil {
 		return
 	}
 
-	provider.StartStatusMonitor(ctx, onChange)
+	for _, p := range m.GetRunningProviders() {
+		p.StartStatusMonitor(ctx, onChange)
+	}
 }
 
-func (m *Manager) StopStatusMonitor() {
+// StartProviderStatusMonitor starts monitoring a specific provider.
+func (m *Manager) StartProviderStatusMonitor(ctx context.Context, name string) {
 	m.mu.RLock()
-	provider := m.activeProvider
+	onChange := m.onStatusChange
 	m.mu.RUnlock()
 
-	if provider != nil {
+	if onChange == nil {
+		return
+	}
+
+	provider, ok := m.registry.Get(name)
+	if ok {
+		provider.StartStatusMonitor(ctx, onChange)
+	}
+}
+
+// StopStatusMonitor stops monitoring all running providers.
+func (m *Manager) StopStatusMonitor() {
+	for _, p := range m.GetRunningProviders() {
+		p.StopStatusMonitor()
+	}
+}
+
+// StopProviderStatusMonitor stops monitoring a specific provider.
+func (m *Manager) StopProviderStatusMonitor(name string) {
+	provider, ok := m.registry.Get(name)
+	if ok {
 		provider.StopStatusMonitor()
 	}
 }
@@ -255,8 +318,6 @@ func (m *Manager) EnableProvider(name string, controlServer string, authKey stri
 		m.config = &Config{}
 	}
 
-	m.config.ActiveProvider = name
-
 	switch name {
 	case "tailscale":
 		if m.config.Tailscale == nil {
@@ -268,6 +329,14 @@ func (m *Manager) EnableProvider(name string, controlServer string, authKey stri
 		}
 		if authKey != "" {
 			m.config.Tailscale.AuthKey = authKey
+		}
+	case "zerotier":
+		if m.config.ZeroTier == nil {
+			m.config.ZeroTier = &ZeroTierConfig{}
+		}
+		m.config.ZeroTier.Enabled = true
+		if controlServer != "" {
+			m.config.ZeroTier.NetworkID = controlServer
 		}
 	}
 
@@ -291,6 +360,10 @@ func (m *Manager) DisableProvider(name string) error {
 		if m.config.Tailscale != nil {
 			m.config.Tailscale.Enabled = false
 		}
+	case "zerotier":
+		if m.config.ZeroTier != nil {
+			m.config.ZeroTier.Enabled = false
+		}
 	}
 
 	if m.saveConfig != nil {
@@ -300,45 +373,57 @@ func (m *Manager) DisableProvider(name string) error {
 	return nil
 }
 
-// AutoStart restores VPN state after reboot by starting enabled providers.
+// AutoStart restores VPN state after reboot by starting all enabled providers.
 // Connect errors are logged but not returned so status monitoring can still start.
 func (m *Manager) AutoStart(ctx context.Context) error {
 	m.mu.RLock()
 	config := m.config
-	provider := m.activeProvider
 	m.mu.RUnlock()
 
-	if provider == nil || config == nil {
+	if config == nil {
 		return nil
 	}
 
-	if !provider.IsInstalled() {
-		return nil
+	providers := m.registry.List()
+	for _, name := range providers {
+		if !config.IsProviderEnabled(name) {
+			continue
+		}
+
+		provider, ok := m.registry.Get(name)
+		if !ok || !provider.IsInstalled() {
+			continue
+		}
+
+		logger.Info().
+			Str("provider", name).
+			Msg("auto-starting mesh VPN provider")
+
+		var opts ConnectOptions
+		switch name {
+		case "tailscale":
+			if config.Tailscale != nil {
+				opts.ControlServer = config.Tailscale.ControlServer
+				opts.AuthKey = config.Tailscale.AuthKey
+			}
+		case "zerotier":
+			if config.ZeroTier != nil {
+				opts.ControlServer = config.ZeroTier.NetworkID
+			}
+		}
+
+		_, err := provider.Connect(ctx, opts)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("provider", name).
+				Msg("failed to auto-start provider")
+			continue
+		}
+
+		m.trackRunningProvider(provider)
+		m.StartProviderStatusMonitor(ctx, name)
 	}
-
-	if !config.IsProviderEnabled(provider.Name()) {
-		return nil
-	}
-
-	logger.Info().
-		Str("provider", provider.Name()).
-		Msg("auto-starting mesh VPN provider")
-
-	var opts ConnectOptions
-	if config.Tailscale != nil && provider.Name() == "tailscale" {
-		opts.ControlServer = config.Tailscale.ControlServer
-		opts.AuthKey = config.Tailscale.AuthKey
-	}
-
-	_, err := provider.Connect(ctx, opts)
-	if err != nil {
-		logger.Error().
-			Err(err).
-			Str("provider", provider.Name()).
-			Msg("failed to auto-start provider")
-	}
-
-	m.StartStatusMonitor(ctx)
 
 	return nil
 }
@@ -360,10 +445,7 @@ func (m *Manager) getProvider(name string) (Provider, error) {
 		return provider, nil
 	}
 
-	m.mu.RLock()
-	provider := m.activeProvider
-	m.mu.RUnlock()
-
+	provider := m.GetActiveProvider()
 	if provider == nil {
 		return nil, ErrNoActiveProvider
 	}

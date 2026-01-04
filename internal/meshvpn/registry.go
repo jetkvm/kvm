@@ -28,6 +28,18 @@ func (r *Registry) Get(name string) (Provider, bool) {
 	return p, ok
 }
 
+// List returns the names of all registered providers.
+func (r *Registry) List() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	names := make([]string, 0, len(r.providers))
+	for name := range r.providers {
+		names = append(names, name)
+	}
+	return names
+}
+
 func (r *Registry) ListProviderInfo() []ProviderInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

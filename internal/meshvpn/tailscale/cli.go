@@ -161,32 +161,56 @@ func (c *CLI) Version(ctx context.Context) (string, error) {
 }
 
 func (c *CLI) ListExitNodes(ctx context.Context) ([]meshvpn.ExitNode, error) {
+	// First, try `exit-node list --json` (newer versions)
 	output, err := c.run(ctx, "exit-node", "list", "--json")
+	if err == nil {
+		var items []ExitNodeListItem
+		if err := json.Unmarshal(output, &items); err != nil {
+			var itemMap map[string]ExitNodeListItem
+			if err2 := json.Unmarshal(output, &itemMap); err2 == nil {
+				for _, item := range itemMap {
+					items = append(items, item)
+				}
+			}
+		}
+
+		if len(items) > 0 {
+			nodes := make([]meshvpn.ExitNode, 0, len(items))
+			for _, item := range items {
+				nodes = append(nodes, meshvpn.ExitNode{
+					ID:       item.ID,
+					Name:     item.Name,
+					HostName: item.Name,
+					Online:   item.Online,
+					Country:  item.Location.Country,
+					City:     item.Location.City,
+				})
+			}
+			return nodes, nil
+		}
+	}
+
+	// Fallback: extract exit nodes from status (works with all versions)
+	status, err := c.Status(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var items []ExitNodeListItem
-	if err := json.Unmarshal(output, &items); err != nil {
-		var itemMap map[string]ExitNodeListItem
-		if err2 := json.Unmarshal(output, &itemMap); err2 != nil {
-			return nil, fmt.Errorf("failed to parse exit nodes: %w", err)
+	nodes := make([]meshvpn.ExitNode, 0)
+	for _, peer := range status.Peer {
+		if peer.ExitNodeOption {
+			ip := ""
+			if len(peer.TailscaleIPs) > 0 {
+				ip = peer.TailscaleIPs[0]
+			}
+			nodes = append(nodes, meshvpn.ExitNode{
+				ID:       peer.ID,
+				Name:     peer.HostName,
+				HostName: peer.HostName,
+				IP:       ip,
+				Online:   peer.Online,
+			})
 		}
-		for _, item := range itemMap {
-			items = append(items, item)
-		}
-	}
-
-	nodes := make([]meshvpn.ExitNode, 0, len(items))
-	for _, item := range items {
-		nodes = append(nodes, meshvpn.ExitNode{
-			ID:       item.ID,
-			Name:     item.Name,
-			HostName: item.Name,
-			Online:   item.Online,
-			Country:  item.Location.Country,
-			City:     item.Location.City,
-		})
 	}
 
 	return nodes, nil
