@@ -161,16 +161,21 @@ func (c *CLI) Version(ctx context.Context) (string, error) {
 }
 
 func (c *CLI) ListExitNodes(ctx context.Context) ([]meshvpn.ExitNode, error) {
-	// First, try `exit-node list --json` (newer versions)
 	output, err := c.run(ctx, "exit-node", "list", "--json")
 	if err == nil {
 		var items []ExitNodeListItem
 		if err := json.Unmarshal(output, &items); err != nil {
 			var itemMap map[string]ExitNodeListItem
 			if err2 := json.Unmarshal(output, &itemMap); err2 == nil {
+				logger.Debug().Msg("exit node list parsed as map format")
 				for _, item := range itemMap {
 					items = append(items, item)
 				}
+			} else {
+				logger.Debug().
+					AnErr("arrayErr", err).
+					AnErr("mapErr", err2).
+					Msg("failed to parse exit node list JSON")
 			}
 		}
 

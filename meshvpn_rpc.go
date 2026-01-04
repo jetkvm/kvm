@@ -487,7 +487,7 @@ func rpcMeshVPNSetTUNMode(params RpcMeshVPNSetTUNModeParams) (bool, error) {
 	}
 	cfg.Tailscale.TUNMode = tunMode
 	if err := manager.SetConfig(cfg); err != nil {
-		logger.Warn().Err(err).Msg("failed to persist TUN mode to config")
+		return false, fmt.Errorf("failed to persist TUN mode to config: %w", err)
 	}
 
 	return true, nil
