@@ -6,7 +6,7 @@ import (
 )
 
 // IsNewerVersion compares two semantic version strings and returns true if newVersion is newer.
-// Handles versions with v prefix, pre-release suffixes (-beta, -rc1), and build metadata (+build123).
+// Pre-release suffixes are stripped before comparison, so "1.92.3" and "1.92.3-beta" are equal.
 func IsNewerVersion(currentVersion, newVersion string) bool {
 	current := parseVersion(currentVersion)
 	newer := parseVersion(newVersion)

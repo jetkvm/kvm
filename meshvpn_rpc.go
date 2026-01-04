@@ -10,19 +10,14 @@ import (
 
 var errMeshVPNNotInitialized = errors.New("mesh VPN not initialized")
 
-// RPC types for mesh VPN
-// Note: meshvpn.ProviderInfo, meshvpn.ProviderStatus, meshvpn.ExitNode, and
-// meshvpn.VersionInfo are used directly for RPC since they have correct JSON tags.
-// Config types below use camelCase for RPC vs snake_case in internal types.
+// RPC types use camelCase JSON tags vs snake_case in internal types.
 
-// RpcMeshVPNConfig contains configuration for RPC
 type RpcMeshVPNConfig struct {
 	ActiveProvider string                      `json:"activeProvider,omitempty"`
 	Tailscale      *RpcTailscaleProviderConfig `json:"tailscale,omitempty"`
 	ZeroTier       *RpcZeroTierProviderConfig  `json:"zerotier,omitempty"`
 }
 
-// RpcTailscaleProviderConfig contains Tailscale-specific config for RPC
 type RpcTailscaleProviderConfig struct {
 	Enabled                bool   `json:"enabled"`
 	ControlServer          string `json:"controlServer,omitempty"`
@@ -33,55 +28,45 @@ type RpcTailscaleProviderConfig struct {
 	TUNMode                string `json:"tunMode,omitempty"`
 }
 
-// RpcZeroTierProviderConfig contains ZeroTier-specific config for RPC
 type RpcZeroTierProviderConfig struct {
 	Enabled   bool   `json:"enabled"`
-	NetworkID string `json:"networkId,omitempty"` // 16-digit hex network ID
+	NetworkID string `json:"networkId,omitempty"`
 }
 
-// RpcMeshVPNConnectParams contains parameters for connect RPC
 type RpcMeshVPNConnectParams struct {
 	Provider      string `json:"provider,omitempty"`
 	ControlServer string `json:"controlServer,omitempty"`
 	AuthKey       string `json:"authKey,omitempty"`
 }
 
-// RpcMeshVPNConnectResult contains result of connect RPC
 type RpcMeshVPNConnectResult struct {
 	Success bool   `json:"success"`
 	AuthURL string `json:"authUrl,omitempty"`
 }
 
-// RpcMeshVPNSetExitNodeParams contains parameters for set exit node RPC
 type RpcMeshVPNSetExitNodeParams struct {
 	Hostname string `json:"hostname"`
 	AllowLAN bool   `json:"allowLan"`
 }
 
-// RpcMeshVPNUpdateParams contains parameters for update RPC
 type RpcMeshVPNUpdateParams struct {
 	Provider      string `json:"provider,omitempty"`
-	TargetVersion string `json:"targetVersion,omitempty"` // Empty means latest
+	TargetVersion string `json:"targetVersion,omitempty"`
 }
 
-// RpcMeshVPNSetTUNModeParams contains parameters for set TUN mode RPC
 type RpcMeshVPNSetTUNModeParams struct {
 	Provider string `json:"provider,omitempty"`
-	Mode     string `json:"mode"` // "userspace" or "kernel"
+	Mode     string `json:"mode"`
 }
 
-// RpcMeshVPNGetTUNModeResult contains the result of get TUN mode RPC
 type RpcMeshVPNGetTUNModeResult struct {
 	Mode string `json:"mode"`
 }
 
-// RpcMeshVPNSetAdvertiseExitNodeParams contains parameters for set advertise exit node RPC
 type RpcMeshVPNSetAdvertiseExitNodeParams struct {
 	Provider  string `json:"provider,omitempty"`
 	Advertise bool   `json:"advertise"`
 }
-
-// RPC Handler functions
 
 func rpcGetMeshVPNProviders() ([]meshvpn.ProviderInfo, error) {
 	manager := getMeshVPNManager()

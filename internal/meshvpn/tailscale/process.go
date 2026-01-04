@@ -140,7 +140,7 @@ func (p *ProcessManager) Stop() error {
 	if p.cmd != nil && p.cmd.Process != nil {
 		done := make(chan struct{})
 		go func() {
-			_ = p.cmd.Wait() // Error intentionally ignored; we just need to know when it exits
+			_ = p.cmd.Wait()
 			close(done)
 		}()
 
