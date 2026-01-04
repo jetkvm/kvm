@@ -24,8 +24,5 @@ const (
 	AuthTokenPath      = "/userdata/meshvpn/zerotier/authtoken.secret"
 	NetworksDirectory  = "/userdata/meshvpn/zerotier/networks.d"
 	PortFilePath       = "/userdata/meshvpn/zerotier/zerotier-one.port"
-	PidFilePath        = "/userdata/meshvpn/zerotier/zerotier-one.pid"
-
-	// Default API port
-	DefaultAPIPort = 9993
+	PidFilePath = "/userdata/meshvpn/zerotier/zerotier-one.pid"
 )

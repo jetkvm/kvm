@@ -1089,23 +1089,9 @@ export interface MeshVPNState {
   setProviderUpdateProgress: (provider: string, progress: number | null) => void;
   setAuthDialogProvider: (provider: string | null) => void;
   setProviderVersionInfo: (provider: string, info: MeshVPNVersionInfo | null) => void;
-
-  // Legacy compatibility
-  status: MeshVPNProviderStatus | null;
-  exitNodes: MeshVPNExitNode[];
-  installProgress: number | null;
-  updateProgress: number | null;
-  isAuthDialogOpen: boolean;
-  versionInfo: MeshVPNVersionInfo | null;
-  setStatus: (status: MeshVPNProviderStatus | null) => void;
-  setExitNodes: (nodes: MeshVPNExitNode[]) => void;
-  setInstallProgress: (progress: number | null) => void;
-  setUpdateProgress: (progress: number | null) => void;
-  setAuthDialogOpen: (open: boolean) => void;
-  setVersionInfo: (info: MeshVPNVersionInfo | null) => void;
 }
 
-export const useMeshVPNStore = create<MeshVPNState>((set, get) => ({
+export const useMeshVPNStore = create<MeshVPNState>(set => ({
   providers: [],
   providerStatuses: {},
   config: null,
@@ -1146,40 +1132,4 @@ export const useMeshVPNStore = create<MeshVPNState>((set, get) => ({
             Object.entries(state.providerVersionInfo).filter(([k]) => k !== provider),
           ),
     })),
-
-  // Legacy compatibility getters (computed from new state)
-  get status() {
-    const statuses = get().providerStatuses;
-    const firstProvider = Object.keys(statuses)[0];
-    return firstProvider ? statuses[firstProvider] : null;
-  },
-  get exitNodes() {
-    const nodes = get().providerExitNodes;
-    const firstProvider = Object.keys(nodes)[0];
-    return firstProvider ? nodes[firstProvider] : [];
-  },
-  get installProgress() {
-    const progress = get().providerInstallProgress;
-    const firstProvider = Object.keys(progress)[0];
-    return firstProvider ? progress[firstProvider] : null;
-  },
-  get updateProgress() {
-    const progress = get().providerUpdateProgress;
-    const firstProvider = Object.keys(progress)[0];
-    return firstProvider ? progress[firstProvider] : null;
-  },
-  get isAuthDialogOpen() {
-    return get().authDialogProvider !== null;
-  },
-  get versionInfo() {
-    const info = get().providerVersionInfo;
-    const firstProvider = Object.keys(info)[0];
-    return firstProvider ? info[firstProvider] : null;
-  },
-  setStatus: () => {},
-  setExitNodes: () => {},
-  setInstallProgress: () => {},
-  setUpdateProgress: () => {},
-  setAuthDialogOpen: () => {},
-  setVersionInfo: () => {},
 }));

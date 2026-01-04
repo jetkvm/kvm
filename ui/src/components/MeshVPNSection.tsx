@@ -750,11 +750,13 @@ export function MeshVPNSection() {
     });
   };
 
-  const handleClearExitNode = (_providerName: string) => {
+  const handleClearExitNode = (providerName: string) => {
     send("meshVPNClearExitNode", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.meshvpn_exit_node_set_error({ error: String(resp.error.message) }));
+        return;
       }
+      fetchProviderStatus(providerName);
     });
   };
 

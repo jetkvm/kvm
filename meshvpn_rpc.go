@@ -111,8 +111,7 @@ func rpcGetMeshVPNStatus(params struct {
 	}
 
 	if err != nil {
-		// If no active provider, return a default status instead of error
-		if err == meshvpn.ErrNoActiveProvider {
+		if errors.Is(err, meshvpn.ErrNoActiveProvider) {
 			return &meshvpn.ProviderStatus{
 				State:     meshvpn.StateNotInstalled,
 				Installed: false,
@@ -175,6 +174,10 @@ func rpcSetMeshVPNConfig(params struct {
 	}
 
 	if params.Config.Tailscale != nil {
+		tunMode, err := meshvpn.ParseTUNMode(params.Config.Tailscale.TUNMode)
+		if err != nil {
+			return nil, err
+		}
 		cfg.Tailscale = &meshvpn.TailscaleConfig{
 			Enabled:                params.Config.Tailscale.Enabled,
 			ControlServer:          params.Config.Tailscale.ControlServer,
@@ -182,7 +185,7 @@ func rpcSetMeshVPNConfig(params struct {
 			ExitNode:               params.Config.Tailscale.ExitNode,
 			ExitNodeAllowLANAccess: params.Config.Tailscale.ExitNodeAllowLANAccess,
 			AdvertiseExitNode:      params.Config.Tailscale.AdvertiseExitNode,
-			TUNMode:                meshvpn.TUNMode(params.Config.Tailscale.TUNMode),
+			TUNMode:                tunMode,
 		}
 	}
 
@@ -479,9 +482,13 @@ func rpcMeshVPNSetTUNMode(params RpcMeshVPNSetTUNModeParams) (bool, error) {
 		return false, errMeshVPNNotInitialized
 	}
 
-	ctx := context.Background()
-	err := manager.SetTUNMode(ctx, params.Provider, meshvpn.TUNMode(params.Mode))
+	tunMode, err := meshvpn.ParseTUNMode(params.Mode)
 	if err != nil {
+		return false, err
+	}
+
+	ctx := context.Background()
+	if err := manager.SetTUNMode(ctx, params.Provider, tunMode); err != nil {
 		return false, err
 	}
 
@@ -493,7 +500,7 @@ func rpcMeshVPNSetTUNMode(params RpcMeshVPNSetTUNModeParams) (bool, error) {
 	if cfg.Tailscale == nil {
 		cfg.Tailscale = &meshvpn.TailscaleConfig{}
 	}
-	cfg.Tailscale.TUNMode = meshvpn.TUNMode(params.Mode)
+	cfg.Tailscale.TUNMode = tunMode
 	if err := manager.SetConfig(cfg); err != nil {
 		logger.Warn().Err(err).Msg("failed to persist TUN mode to config")
 	}

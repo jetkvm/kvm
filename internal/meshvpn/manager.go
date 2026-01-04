@@ -91,21 +91,6 @@ func (m *Manager) GetRunningProviders() []Provider {
 	return providers
 }
 
-// SetActiveProvider marks a provider as the current active for backward compatibility.
-// With multi-provider support, this is primarily used to set which provider to connect.
-func (m *Manager) SetActiveProvider(name string) error {
-	if name == "" {
-		return nil
-	}
-
-	_, ok := m.registry.Get(name)
-	if !ok {
-		return ErrProviderNotFound
-	}
-
-	return nil
-}
-
 // trackRunningProvider adds a provider to the running set.
 func (m *Manager) trackRunningProvider(p Provider) {
 	m.mu.Lock()

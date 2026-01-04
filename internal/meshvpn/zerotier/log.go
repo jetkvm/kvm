@@ -3,12 +3,7 @@
 package zerotier
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
-var logger zerolog.Logger
-
-func init() {
-	logger = log.With().Str("component", "zerotier").Logger()
-}
+var logger = logging.GetSubsystemLogger("meshvpn.zerotier")

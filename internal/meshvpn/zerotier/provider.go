@@ -86,13 +86,13 @@ func (p *Provider) Uninstall(ctx context.Context) error {
 	// Stop the daemon before uninstalling
 	if p.process != nil && p.process.IsRunning() {
 		if err := p.process.Stop(); err != nil {
-			logger.Warn().Err(err).Msg("failed to stop daemon")
+			return fmt.Errorf("cannot uninstall while daemon is running: %w", err)
 		}
 	}
 
 	// Stop any orphaned daemon from a previous session
 	if err := p.stopOrphanedDaemon(); err != nil {
-		logger.Warn().Err(err).Msg("failed to stop orphaned daemon")
+		return fmt.Errorf("cannot uninstall: %w", err)
 	}
 
 	if err := os.RemoveAll(InstallBasePath); err != nil {
@@ -130,21 +130,25 @@ func (p *Provider) stopOrphanedDaemon() error {
 
 	// Try graceful SIGTERM first
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		_ = proc.Kill()
+		if killErr := proc.Kill(); killErr != nil {
+			return fmt.Errorf("failed to kill orphaned daemon (pid %d): %w", pid, killErr)
+		}
 	}
 
 	// Wait for process to exit
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			break
+			return nil // Process exited
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	// Force kill if still running
 	if err := proc.Signal(syscall.Signal(0)); err == nil {
-		_ = proc.Kill()
+		if killErr := proc.Kill(); killErr != nil {
+			return fmt.Errorf("failed to force kill orphaned daemon (pid %d): %w", pid, killErr)
+		}
 	}
 
 	return nil
@@ -176,7 +180,6 @@ func (p *Provider) Connect(ctx context.Context, opts meshvpn.ConnectOptions) (*m
 	cli := NewCLI()
 
 	// If a network ID is provided, join it
-	// For ZeroTier, we use ControlServer field to pass the network ID
 	networkID := opts.ControlServer
 	if networkID != "" {
 		if err := cli.Join(ctx, networkID); err != nil {
@@ -203,7 +206,7 @@ func (p *Provider) Connect(ctx context.Context, opts meshvpn.ConnectOptions) (*m
 	}
 
 	if err != nil {
-		logger.Warn().Err(err).Msg("failed to get status after connect")
+		return nil, fmt.Errorf("connected but failed to verify status: %w", err)
 	}
 
 	// Check network authorization status
@@ -273,9 +276,16 @@ func (p *Provider) Logout(ctx context.Context) error {
 	}
 
 	// Remove identity files to fully logout
-	_ = os.Remove(IdentityPublicPath)
-	_ = os.Remove(IdentitySecretPath)
-	_ = os.Remove(AuthTokenPath)
+	var removeErrors []string
+	for _, path := range []string{IdentityPublicPath, IdentitySecretPath, AuthTokenPath} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			logger.Warn().Err(err).Str("path", path).Msg("failed to remove identity file during logout")
+			removeErrors = append(removeErrors, path)
+		}
+	}
+	if len(removeErrors) > 0 {
+		return fmt.Errorf("logout incomplete: failed to remove %d identity file(s)", len(removeErrors))
+	}
 
 	return nil
 }
