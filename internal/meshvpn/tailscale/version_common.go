@@ -6,10 +6,15 @@ import (
 )
 
 // IsNewerVersion compares two semantic version strings and returns true if newVersion is newer.
-// Handles versions with v prefix, pre-release suffixes (-beta, -rc1), and build metadata (+build123).
+// Pre-release suffixes are stripped before comparison, so "1.92.3" and "1.92.3-beta" are equal.
+// Returns false if either version cannot be parsed.
 func IsNewerVersion(currentVersion, newVersion string) bool {
-	current := parseVersion(currentVersion)
-	newer := parseVersion(newVersion)
+	current, currentOk := parseVersion(currentVersion)
+	newer, newerOk := parseVersion(newVersion)
+
+	if !currentOk || !newerOk {
+		return false
+	}
 
 	for i := 0; i < len(current) && i < len(newer); i++ {
 		if newer[i] > current[i] {
@@ -22,16 +27,24 @@ func IsNewerVersion(currentVersion, newVersion string) bool {
 	return len(newer) > len(current)
 }
 
-func parseVersion(v string) []int {
+// parseVersion parses a semantic version string into its numeric components.
+// Returns the components and true on success, or nil and false if parsing fails.
+func parseVersion(v string) ([]int, bool) {
 	v = strings.TrimPrefix(v, "v")
-	// Strip pre-release suffix (e.g., "1.92.3-beta" -> "1.92.3")
 	if idx := strings.IndexAny(v, "-+"); idx != -1 {
 		v = v[:idx]
+	}
+	if v == "" {
+		return nil, false
 	}
 	parts := strings.Split(v, ".")
 	result := make([]int, len(parts))
 	for i, p := range parts {
-		result[i], _ = strconv.Atoi(p)
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return nil, false
+		}
+		result[i] = n
 	}
-	return result
+	return result, true
 }

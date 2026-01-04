@@ -4,6 +4,7 @@ package tailscale
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,39 +138,38 @@ func (p *ProcessManager) Stop() error {
 		p.cancel = nil
 	}
 
+	var stopErr error
+
 	if p.cmd != nil && p.cmd.Process != nil {
 		done := make(chan struct{})
 		go func() {
-			_ = p.cmd.Wait() // Error intentionally ignored; we just need to know when it exits
+			if err := p.cmd.Wait(); err != nil {
+				logger.Debug().Err(err).Msg("process wait completed with error")
+			}
 			close(done)
 		}()
 
-		// Try graceful SIGTERM first
 		if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			// SIGTERM failed - process may already be dead or we lack permission
 			logger.Warn().Err(err).Msg("failed to send SIGTERM, trying SIGKILL")
 			if killErr := p.cmd.Process.Kill(); killErr != nil {
-				logger.Error().Err(killErr).Msg("failed to kill process")
+				stopErr = fmt.Errorf("failed to kill process: %w", killErr)
 			}
 		} else {
-			// Wait for graceful shutdown with timeout
 			select {
 			case <-done:
-				// Process exited gracefully
 			case <-time.After(5 * time.Second):
 				logger.Warn().Msg("tailscaled did not stop gracefully, killing")
 				if killErr := p.cmd.Process.Kill(); killErr != nil {
-					logger.Error().Err(killErr).Msg("failed to kill process after timeout")
+					stopErr = fmt.Errorf("failed to kill process after timeout: %w", killErr)
 				}
 			}
 		}
 
-		// Wait for process to fully exit
 		<-done
 	}
 
 	p.running = false
 	p.cmd = nil
 
-	return nil
+	return stopErr
 }

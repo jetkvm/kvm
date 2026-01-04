@@ -5,6 +5,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/meshvpn"
 	"github.com/jetkvm/kvm/internal/meshvpn/tailscale"
+	"github.com/jetkvm/kvm/internal/meshvpn/zerotier"
 )
 
 var (
@@ -12,7 +13,6 @@ var (
 	meshVPNRegistry *meshvpn.Registry
 )
 
-// initMeshVPN initializes the mesh VPN subsystem
 func initMeshVPN() {
 	logger.Info().Msg("initializing mesh VPN")
 
@@ -35,17 +35,25 @@ func initMeshVPN() {
 	})
 	meshVPNRegistry.Register(tailscaleProvider)
 
+	zerotierProvider := zerotier.NewProvider(zerotier.ProviderConfig{
+		Version:    zerotier.DefaultVersion,
+		HTTPClient: zerotier.NewDefaultHTTPClient(),
+	})
+	meshVPNRegistry.Register(zerotierProvider)
+
 	meshVPNManager = meshvpn.NewManager(meshvpn.ManagerConfig{
 		Config:   vpnConfig,
 		Registry: meshVPNRegistry,
 		OnStatusChange: func(status meshvpn.ProviderStatus) {
-			// Emit status change to connected clients
+			logger.Info().
+				Str("state", string(status.State)).
+				Bool("hasSession", currentSession != nil).
+				Msg("meshVPN status change")
 			if currentSession != nil {
 				writeJSONRPCEvent("meshVPNState", status, currentSession)
 			}
 		},
 		OnConfigChange: func(cfg *meshvpn.Config) {
-			// Update main config
 			config.MeshVPNConfig = cfg
 		},
 		SaveConfig: func(cfg *meshvpn.Config) error {

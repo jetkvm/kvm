@@ -1,6 +1,6 @@
 //go:build !linux
 
-package tailscale
+package zerotier
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/jetkvm/kvm/internal/meshvpn"
 )
 
-var errNotSupported = errors.New("tailscale is only supported on Linux")
+var errNotSupported = errors.New("zerotier is only supported on Linux")
 
 type HTTPClient interface {
 	Get(url string) ([]byte, error)
@@ -18,7 +18,6 @@ type HTTPClient interface {
 
 type ProviderConfig struct {
 	Version    string
-	TUNMode    meshvpn.TUNMode
 	HTTPClient HTTPClient
 }
 
@@ -27,8 +26,8 @@ type Provider struct{}
 func NewProvider(_ ProviderConfig) *Provider { return &Provider{} }
 func NewDefaultHTTPClient() HTTPClient       { return nil }
 
-func (p *Provider) Name() string               { return "tailscale" }
-func (p *Provider) DisplayName() string        { return "Tailscale" }
+func (p *Provider) Name() string               { return ProviderName }
+func (p *Provider) DisplayName() string        { return ProviderDisplayName }
 func (p *Provider) SupportsExitNodes() bool    { return false }
 func (p *Provider) SupportsCustomServer() bool { return false }
 func (p *Provider) SupportsAuthKey() bool      { return false }
@@ -79,8 +78,8 @@ func (p *Provider) ClearExitNode(_ context.Context) error {
 
 func (p *Provider) GetInfo() meshvpn.ProviderInfo {
 	return meshvpn.ProviderInfo{
-		Name:                 "tailscale",
-		DisplayName:          "Tailscale",
+		Name:                 ProviderName,
+		DisplayName:          ProviderDisplayName,
 		Installed:            false,
 		SupportsExitNodes:    false,
 		SupportsCustomServer: false,
@@ -95,7 +94,3 @@ func (p *Provider) GetVersionInfo(_ context.Context) (*meshvpn.VersionInfo, erro
 func (p *Provider) Update(_ context.Context, _ string, _ meshvpn.ProgressFunc) error {
 	return errNotSupported
 }
-
-func (p *Provider) GetTUNMode() meshvpn.TUNMode                                   { return meshvpn.TUNModeUserspace }
-func (p *Provider) SetTUNMode(_ context.Context, _ meshvpn.TUNMode) error         { return errNotSupported }
-func (p *Provider) SetAdvertiseExitNode(_ context.Context, _ bool) error          { return errNotSupported }

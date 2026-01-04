@@ -134,6 +134,32 @@ func TestIsNewerVersion(t *testing.T) {
 			new:      "2",
 			expected: true,
 		},
+
+		// Invalid versions (should return false)
+		{
+			name:     "invalid current version",
+			current:  "invalid",
+			new:      "1.92.3",
+			expected: false,
+		},
+		{
+			name:     "invalid new version",
+			current:  "1.92.3",
+			new:      "invalid",
+			expected: false,
+		},
+		{
+			name:     "both invalid",
+			current:  "invalid",
+			new:      "also-invalid",
+			expected: false,
+		},
+		{
+			name:     "empty versions",
+			current:  "",
+			new:      "",
+			expected: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -150,44 +176,72 @@ func TestParseVersion(t *testing.T) {
 		name     string
 		input    string
 		expected []int
+		ok       bool
 	}{
 		{
 			name:     "simple version",
 			input:    "1.92.3",
 			expected: []int{1, 92, 3},
+			ok:       true,
 		},
 		{
 			name:     "with v prefix",
 			input:    "v1.92.3",
 			expected: []int{1, 92, 3},
+			ok:       true,
 		},
 		{
 			name:     "with pre-release suffix",
 			input:    "1.92.3-beta",
 			expected: []int{1, 92, 3},
+			ok:       true,
 		},
 		{
 			name:     "with build metadata",
 			input:    "1.92.3+build123",
 			expected: []int{1, 92, 3},
+			ok:       true,
 		},
 		{
 			name:     "two part version",
 			input:    "1.92",
 			expected: []int{1, 92},
+			ok:       true,
 		},
 		{
 			name:     "single part version",
 			input:    "1",
 			expected: []int{1},
+			ok:       true,
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: nil,
+			ok:       false,
+		},
+		{
+			name:     "non-numeric part",
+			input:    "1.x.3",
+			expected: nil,
+			ok:       false,
+		},
+		{
+			name:     "only prefix",
+			input:    "v",
+			expected: nil,
+			ok:       false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := parseVersion(tc.input)
-			assert.Equal(t, tc.expected, result,
-				"parseVersion(%q) should be %v", tc.input, tc.expected)
+			result, ok := parseVersion(tc.input)
+			assert.Equal(t, tc.ok, ok, "parseVersion(%q) ok should be %v", tc.input, tc.ok)
+			if tc.ok {
+				assert.Equal(t, tc.expected, result,
+					"parseVersion(%q) should be %v", tc.input, tc.expected)
+			}
 		})
 	}
 }

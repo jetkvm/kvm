@@ -75,6 +75,12 @@ func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
+
+	jsonRpcLogger.Info().
+		Interface("id", response.ID).
+		Int("resultLen", len(responseBytes)).
+		Msg("sending RPC response")
+
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
 		jsonRpcLogger.Warn().Err(err).Msg("Error sending JSONRPC response")
@@ -1358,8 +1364,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"meshVPNInstall":              {Func: rpcMeshVPNInstall, Params: []string{"provider"}},
 	"meshVPNUninstall":            {Func: rpcMeshVPNUninstall, Params: []string{"provider"}},
 	"meshVPNConnect":              {Func: rpcMeshVPNConnect, Params: []string{"params"}},
-	"meshVPNDisconnect":           {Func: rpcMeshVPNDisconnect},
-	"meshVPNLogout":               {Func: rpcMeshVPNLogout},
+	"meshVPNDisconnect":           {Func: rpcMeshVPNDisconnect, Params: []string{"params"}},
+	"meshVPNLogout":               {Func: rpcMeshVPNLogout, Params: []string{"params"}},
 	"meshVPNGetExitNodes":         {Func: rpcMeshVPNGetExitNodes},
 	"meshVPNSetExitNode":          {Func: rpcMeshVPNSetExitNode, Params: []string{"params"}},
 	"meshVPNClearExitNode":        {Func: rpcMeshVPNClearExitNode},

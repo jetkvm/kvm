@@ -38,10 +38,17 @@ type TailscaleConfig struct {
 	TUNMode                TUNMode `json:"tun_mode,omitempty"`
 }
 
+// ZeroTierConfig holds persistent settings for the ZeroTier provider.
+type ZeroTierConfig struct {
+	Enabled   bool   `json:"enabled"`
+	NetworkID string `json:"network_id,omitempty"` // 16-digit hex network ID
+}
+
 // Config contains the mesh VPN configuration.
 type Config struct {
 	ActiveProvider string           `json:"active_provider,omitempty"`
 	Tailscale      *TailscaleConfig `json:"tailscale,omitempty"`
+	ZeroTier       *ZeroTierConfig  `json:"zerotier,omitempty"`
 }
 
 // IsProviderEnabled returns whether a provider is enabled for auto-start.
@@ -52,6 +59,8 @@ func (c *Config) IsProviderEnabled(name string) bool {
 	switch name {
 	case "tailscale":
 		return c.Tailscale != nil && c.Tailscale.Enabled
+	case "zerotier":
+		return c.ZeroTier != nil && c.ZeroTier.Enabled
 	default:
 		return false
 	}

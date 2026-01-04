@@ -20,6 +20,7 @@ type Provider struct {
 	statusMonitor *StatusMonitor
 	httpClient    HTTPClient
 	versionClient *VersionClient
+	connectCancel context.CancelFunc
 }
 
 type HTTPClient interface {
@@ -65,7 +66,13 @@ func (p *Provider) SupportsAuthKey() bool      { return true }
 
 func (p *Provider) IsInstalled() bool {
 	_, err := os.Stat(TailscalePath)
-	return err == nil
+	if err == nil {
+		return true
+	}
+	if !os.IsNotExist(err) {
+		logger.Warn().Err(err).Str("path", TailscalePath).Msg("unexpected error checking installation")
+	}
+	return false
 }
 
 func (p *Provider) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
@@ -126,14 +133,24 @@ func (p *Provider) Connect(ctx context.Context, opts meshvpn.ConnectOptions) (*m
 
 	cli := NewCLI()
 
+	// Cancel any previous connect operation
+	if p.connectCancel != nil {
+		p.connectCancel()
+	}
+
+	// Create a cancellable context for the background Up operation
+	upCtx, upCancel := context.WithCancel(context.Background())
+	p.connectCancel = upCancel
+
 	go func() {
-		upCtx := context.Background()
 		_, err := cli.Up(upCtx, UpOptions{
 			ControlServer: opts.ControlServer,
 			AuthKey:       opts.AuthKey,
 		})
 		if err != nil {
-			logger.Warn().Err(err).Msg("tailscale up completed with error")
+			if upCtx.Err() == nil {
+				logger.Warn().Err(err).Msg("tailscale up completed with error")
+			}
 		} else {
 			logger.Info().Msg("tailscale up completed successfully")
 		}
@@ -183,6 +200,12 @@ func (p *Provider) Disconnect(ctx context.Context) error {
 		return meshvpn.ErrNotInstalled
 	}
 
+	// Cancel any pending connect operation
+	if p.connectCancel != nil {
+		p.connectCancel()
+		p.connectCancel = nil
+	}
+
 	cli := NewCLI()
 	return cli.Down(ctx)
 }
@@ -193,6 +216,12 @@ func (p *Provider) Logout(ctx context.Context) error {
 
 	if !p.IsInstalled() {
 		return meshvpn.ErrNotInstalled
+	}
+
+	// Cancel any pending connect operation
+	if p.connectCancel != nil {
+		p.connectCancel()
+		p.connectCancel = nil
 	}
 
 	cli := NewCLI()
@@ -382,10 +411,8 @@ func (p *Provider) Update(ctx context.Context, targetVersion string, progress me
 	cli := NewCLI()
 	currentVersion, err := cli.Version(ctx)
 	if err != nil {
-		logger.Warn().Err(err).Msg("failed to get current version")
-	}
-
-	if currentVersion == targetVersion {
+		logger.Warn().Err(err).Msg("cannot determine current version, proceeding with update")
+	} else if currentVersion == targetVersion {
 		logger.Info().Str("version", currentVersion).Msg("already on target version")
 		return nil
 	}
