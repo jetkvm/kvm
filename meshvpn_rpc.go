@@ -314,14 +314,14 @@ func rpcMeshVPNDisconnect(params struct {
 	// Stop status monitoring for this provider
 	manager.StopProviderStatusMonitor(providerName)
 
-	// Return the new status directly to ensure UI updates
 	status, err := manager.GetProviderStatus(ctx, providerName)
 	if err != nil {
-		logger.Info().Msg("meshVPNDisconnect returning fallback stopped status")
+		logger.Warn().Err(err).Msg("failed to get status after disconnect")
 		return &meshvpn.ProviderStatus{
-			State:     meshvpn.StateStopped,
-			Installed: true,
-			Running:   false,
+			State:        meshvpn.StateStopped,
+			Installed:    true,
+			Running:      false,
+			ErrorMessage: "disconnected but status unknown: " + err.Error(),
 		}, nil
 	}
 
