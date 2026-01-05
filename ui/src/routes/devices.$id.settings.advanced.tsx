@@ -83,11 +83,11 @@ export default function SettingsAdvancedRoute() {
           notifications.error(
             enabled
               ? m.advanced_error_usb_emulation_enable({
-                  error: resp.error.data || m.unknown_error(),
-                })
+                error: resp.error.data || m.unknown_error(),
+              })
               : m.advanced_error_usb_emulation_disable({
-                  error: resp.error.data || m.unknown_error(),
-                }),
+                error: resp.error.data || m.unknown_error(),
+              }),
           );
           return;
         }
@@ -204,7 +204,9 @@ export default function SettingsAdvancedRoute() {
 
       if (response.error) {
         notifications.error(
-          m.advanced_error_download_diagnostics({ error: response.error.data || m.unknown_error() }),
+          m.advanced_error_download_diagnostics({
+            error: response.error.data || m.unknown_error(),
+          }),
         );
         return;
       }
