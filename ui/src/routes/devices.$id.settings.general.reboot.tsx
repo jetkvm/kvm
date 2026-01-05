@@ -80,7 +80,13 @@ function ConfirmationBox({
           </div>
         ) : (
           <div className="mt-4 flex gap-x-2">
-            <Button size="SM" theme="light" text={m.general_reboot_yes_button()} onClick={onYes} />
+            <Button
+              size="SM"
+              theme="light"
+              text={m.general_reboot_yes_button()}
+              onClick={onYes}
+              data-testid="reboot-confirm-yes"
+            />
             <Button size="SM" theme="blank" text={m.general_reboot_no_button()} onClick={onNo} />
           </div>
         )}

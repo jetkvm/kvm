@@ -30,7 +30,7 @@ func Main() {
 
 	logger.Log().Msg("JetKVM Starting Up")
 
-	checkFailsafeReason()
+	initFailsafe()
 	if failsafeModeActive {
 		procPrefix = "jetkvm: [app+failsafe]"
 		logger.Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")

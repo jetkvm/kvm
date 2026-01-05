@@ -11,7 +11,6 @@ func ErrorfL(l *zerolog.Logger, format string, err error, args ...any) error {
 
 var (
 	logger          = logging.GetSubsystemLogger("jetkvm")
-	failsafeLogger  = logging.GetSubsystemLogger("failsafe")
 	networkLogger   = logging.GetSubsystemLogger("network")
 	cloudLogger     = logging.GetSubsystemLogger("cloud")
 	websocketLogger = logging.GetSubsystemLogger("websocket")
