@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
@@ -13,6 +14,8 @@ const (
 	failsafeFile                 = "/userdata/jetkvm/.enablefailsafe"
 	failsafeLastCrashEnv         = "JETKVM_LAST_ERROR_PATH"
 	failsafeEnv                  = "JETKVM_FORCE_FAILSAFE"
+	failsafeCrashWindow          = 10 * time.Minute
+	failsafeCrashThreshold       = 3
 )
 
 var (
@@ -20,11 +23,53 @@ var (
 	failsafeCrashLog   = ""
 	failsafeModeActive = false
 	failsafeModeReason = ""
+	failsafeCrashDumpDir = supervisor.ErrorDumpDir
 )
 
 type FailsafeModeNotification struct {
 	Active bool   `json:"active"`
 	Reason string `json:"reason"`
+}
+
+func countRecentCrashDumpsByMtime() (int, time.Time) {
+	entries, err := os.ReadDir(failsafeCrashDumpDir)
+	if err != nil {
+		return 0, time.Time{}
+	}
+
+	var newest time.Time
+	var crashFiles []time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == supervisor.ErrorDumpLastFile {
+			continue
+		}
+		if !strings.HasPrefix(entry.Name(), "jetkvm-") || !strings.HasSuffix(entry.Name(), ".log") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		mt := info.ModTime()
+		crashFiles = append(crashFiles, mt)
+		if mt.After(newest) {
+			newest = mt
+		}
+	}
+
+	if newest.IsZero() {
+		return 0, time.Time{}
+	}
+
+	cutoff := newest.Add(-failsafeCrashWindow)
+	count := 0
+	for _, mt := range crashFiles {
+		if mt.After(cutoff) || mt.Equal(cutoff) {
+			count++
+		}
+	}
+	return count, newest
 }
 
 // this function has side effects and can be only executed once
@@ -76,6 +121,15 @@ func checkFailsafeReason() {
 		// unlink the last crash log file
 		failsafeCrashLog = string(content)
 		_ = os.Remove(lastCrashPath)
+
+		count, newest := countRecentCrashDumpsByMtime()
+		if count < failsafeCrashThreshold {
+			failsafeLogger.Info().
+				Int("count", count).
+				Time("newest", newest).
+				Msg("crash count below failsafe threshold; skipping failsafe")
+			return
+		}
 
 		// TODO: read the goroutine stack trace and check which goroutine is panicking
 		failsafeModeActive = true
