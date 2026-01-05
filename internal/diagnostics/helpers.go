@@ -1,14 +1,21 @@
 package diagnostics
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+const defaultCmdTimeout = 2 * time.Second
 
 // runCmdLog runs a command and logs its output.
 func (d *Diagnostics) runCmdLog(label string, cmd string, args ...string) {
-	output, err := exec.Command(cmd, args...).CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCmdTimeout)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, cmd, args...).CombinedOutput()
 	if err != nil {
 		d.logger.Warn().Str("cmd", label).Err(err).
 			Str("output", strings.TrimSpace(string(output))).Msg("command failed")
@@ -19,7 +26,10 @@ func (d *Diagnostics) runCmdLog(label string, cmd string, args ...string) {
 
 // runShellLog runs a shell command (for pipelines) and logs its output.
 func (d *Diagnostics) runShellLog(label, script string) {
-	output, err := exec.Command("sh", "-c", script).CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCmdTimeout)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, "sh", "-c", script).CombinedOutput()
 	if err != nil {
 		d.logger.Warn().Str("cmd", label).Err(err).
 			Str("output", strings.TrimSpace(string(output))).Msg("shell command failed")
