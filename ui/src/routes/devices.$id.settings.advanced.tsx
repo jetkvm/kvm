@@ -17,7 +17,7 @@ import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
-import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
+import { callJsonRpc, checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
 import { SystemVersionInfo } from "@hooks/useVersion";
 
 import { FeatureFlag } from "../components/FeatureFlag";
@@ -192,20 +192,24 @@ export default function SettingsAdvancedRoute() {
     setShowLoopbackWarning(false);
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
-  const handleDownloadDiagnostics = useCallback(() => {
+  const handleDownloadDiagnostics = useCallback(async () => {
     setDiagnosticsLoading(true);
 
-    send("getDiagnostics", {}, async (resp: JsonRpcResponse) => {
-      setDiagnosticsLoading(false);
+    try {
+      const response = await callJsonRpc<string>({
+        method: "getDiagnostics",
+        attemptTimeoutMs: 20000, // 20s - diagnostics collects a lot of data
+        maxAttempts: 1,
+      });
 
-      if ("error" in resp) {
+      if (response.error) {
         notifications.error(
-          m.advanced_error_download_diagnostics({ error: resp.error.data || m.unknown_error() }),
+          m.advanced_error_download_diagnostics({ error: response.error.data || m.unknown_error() }),
         );
         return;
       }
 
-      const logContent = resp.result as string;
+      const logContent = response.result;
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filename = `jetkvm-diagnostics-${timestamp}.txt`;
 
@@ -220,8 +224,16 @@ export default function SettingsAdvancedRoute() {
       URL.revokeObjectURL(url);
 
       notifications.success(m.advanced_success_download_diagnostics());
-    });
-  }, [send]);
+    } catch (error) {
+      notifications.error(
+        m.advanced_error_download_diagnostics({
+          error: error instanceof Error ? error.message : m.unknown_error(),
+        }),
+      );
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  }, []);
 
   const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
     notifications.error(

@@ -5,12 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import { GitHubIcon } from "@components/Icons";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { useVersion } from "@hooks/useVersion";
 import { useDeviceStore } from "@hooks/stores";
 import notifications from "@/notifications";
 import { DOWNGRADE_VERSION } from "@/ui.config";
+import { callJsonRpc } from "@/utils/jsonrpc";
 
 interface FailSafeModeOverlayProps {
   reason: string;
@@ -31,7 +31,6 @@ function OverlayContent({ children }: OverlayContentProps) {
 }
 
 export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
-  const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const { appVersion } = useVersion();
   const { systemVersion } = useDeviceStore();
@@ -54,19 +53,23 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
 
   const { message } = getReasonCopy();
 
-  const handleReportAndDownloadLogs = () => {
+  const handleReportAndDownloadLogs = async () => {
     setIsDownloadingLogs(true);
 
-    send("getDiagnostics", {}, async (resp: JsonRpcResponse) => {
-      setIsDownloadingLogs(false);
+    try {
+      const response = await callJsonRpc<string>({
+        method: "getDiagnostics",
+        attemptTimeoutMs: 20000, // 20s - diagnostics collects a lot of data
+        maxAttempts: 1,
+      });
 
-      if ("error" in resp) {
-        notifications.error(`Failed to get diagnostics: ${resp.error.message}`);
+      if (response.error) {
+        notifications.error(`Failed to get diagnostics: ${response.error.message}`);
         return;
       }
 
       // Download logs
-      const logContent = resp.result as string;
+      const logContent = response.result;
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filename = `jetkvm-recovery-${reason}-${timestamp}.txt`;
 
@@ -109,7 +112,13 @@ Please attach the recovery logs file that was downloaded to your computer:
         `body=${encodeURIComponent(issueBody)}`;
 
       window.open(issueUrl, "_blank");
-    });
+    } catch (error) {
+      notifications.error(
+        `Failed to get diagnostics: ${error instanceof Error ? error.message : "Request timed out"}`,
+      );
+    } finally {
+      setIsDownloadingLogs(false);
+    }
   };
 
   const handleDowngrade = () => {
