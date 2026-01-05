@@ -498,7 +498,7 @@ export async function waitForTerminalReady(page: Page, timeout = 10000): Promise
  */
 export async function reconnectAfterReboot(
   page: Page,
-  waitBeforeRetry = 30000,
+  waitBeforeRetry = 15000,
   maxRetries = 15,
   retryInterval = 3000,
 ): Promise<void> {

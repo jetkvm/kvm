@@ -54,7 +54,7 @@ test.describe("OTA Update Flow", () => {
 
       try {
         await page.goto("/", { timeout: 10000 });
-        await waitForWebRTCReady(page, 30000);
+        await waitForWebRTCReady(page);
         await waitForTerminalReady(page, 10000);
 
         const restoreCommand = `sed -i 's|"update_api_url": "[^"]*"|"update_api_url": "https://api.jetkvm.com"|' /userdata/kvm_config.json`;
@@ -77,7 +77,7 @@ test.describe("OTA Update Flow", () => {
         configModified = true;
 
         await sendTerminalCommand(page, "reboot", 0);
-        await reconnectAfterReboot(page, 30000);
+        await reconnectAfterReboot(page);
       });
 
       // Phase 2: Downgrade to stable version
@@ -90,7 +90,7 @@ test.describe("OTA Update Flow", () => {
         await expect(updateButton).toBeVisible({ timeout: 20000 });
         await updateButton.click();
 
-        await reconnectAfterReboot(page, 60000);
+        await reconnectAfterReboot(page, 35000);
 
         const afterDowngrade = await getCurrentVersion(page);
         expect(afterDowngrade).toBe(stableVersion);
@@ -106,7 +106,7 @@ test.describe("OTA Update Flow", () => {
         await expect(otaUpdateButton).toBeVisible({ timeout: 20000 });
         await otaUpdateButton.click();
 
-        await reconnectAfterReboot(page, 60000);
+        await reconnectAfterReboot(page, 35000);
 
         const finalVersion = await getCurrentVersion(page);
         expect(finalVersion, "Failed to get version after OTA upgrade").not.toBeNull();
