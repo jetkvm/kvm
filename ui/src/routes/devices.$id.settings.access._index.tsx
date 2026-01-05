@@ -292,16 +292,16 @@ export default function SettingsAccessIndexRoute() {
                           value={tlsKey}
                           onChange={e => handleTlsKeyChange(e.target.value)}
                         />
-                        <div className="flex items-center gap-x-2">
-                          <Button
-                            size="SM"
-                            theme="primary"
-                            text={m.access_update_tls_settings()}
-                            onClick={handleCustomTlsUpdate}
-                          />
-                        </div>
                       </>
                     )}
+                    <div className="flex items-center gap-x-2">
+                      <Button
+                        size="SM"
+                        theme="primary"
+                        text={m.access_update_tls_settings()}
+                        onClick={handleCustomTlsUpdate}
+                      />
+                    </div>
                   </NestedSettingsGroup>
                   <ConfirmDialog
                     open={showTlsEnforceWarning}
