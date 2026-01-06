@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,9 +20,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
-	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/hidrpc"
-	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -676,117 +673,6 @@ func rpcResetConfig() error {
 	return nil
 }
 
-func rpcGetDiagnostics() (string, error) {
-	var sb strings.Builder
-
-	// Section 1: Application log (last.log) - last 500 lines
-	// Read only the last 512KB to avoid memory issues with large log files
-	sb.WriteString("=== APPLICATION LOG ===\n")
-	if data, err := readFileTail(supervisor.AppLogPath, 512*1024); err == nil {
-		content := cleanLogOutput(data)
-		lines := strings.Split(content, "\n")
-		if len(lines) > 500 {
-			content = "... (truncated, showing last 500 lines)\n" + strings.Join(lines[len(lines)-500:], "\n")
-		}
-		sb.WriteString(content)
-	} else {
-		sb.WriteString(fmt.Sprintf("Error reading log: %v\n", err))
-	}
-	sb.WriteString("\n\n")
-
-	// Collect diagnostics to a buffer (not to last.log)
-	var diagBuf strings.Builder
-	diag := diagnostics.New(diagnostics.Options{
-		Writer: &diagBuf,
-		GetSessionInfo: func() diagnostics.SessionInfo {
-			info := diagnostics.SessionInfo{
-				ActiveSessions:    getActiveSessions(),
-				HasCurrentSession: currentSession != nil,
-			}
-			if currentSession != nil {
-				sessionInfo := currentSession.GetDiagnosticsInfo()
-				info.ICEConnectionState = sessionInfo.ICEConnectionState
-				info.SignalingState = sessionInfo.SignalingState
-				info.ConnectionState = sessionInfo.ConnectionState
-				info.DataChannels = sessionInfo.DataChannels
-			}
-			return info
-		},
-	})
-	diag.LogAll("download")
-
-	// Section 2: System diagnostics
-	sb.WriteString("=== SYSTEM DIAGNOSTICS ===\n")
-	sb.WriteString(diagBuf.String())
-	sb.WriteString("\n")
-
-	// Section 3: Recent crash dumps (sorted by time, newest first)
-	sb.WriteString("=== RECENT CRASH DUMPS ===\n")
-	if entries, err := os.ReadDir(supervisor.ErrorDumpDir); err == nil {
-		type fileInfo struct {
-			name    string
-			modTime time.Time
-		}
-		var crashFiles []fileInfo
-		for _, entry := range entries {
-			if entry.IsDir() || entry.Name() == supervisor.ErrorDumpLastFile {
-				continue
-			}
-			// Match jetkvm-*.log pattern
-			if !strings.HasPrefix(entry.Name(), "jetkvm-") || !strings.HasSuffix(entry.Name(), ".log") {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil {
-				continue
-			}
-			crashFiles = append(crashFiles, fileInfo{name: entry.Name(), modTime: info.ModTime()})
-		}
-		// Sort by modification time (newest first)
-		sort.Slice(crashFiles, func(i, j int) bool {
-			return crashFiles[i].modTime.After(crashFiles[j].modTime)
-		})
-
-		// Take 12 most recent crash dumps
-		if len(crashFiles) > 12 {
-			crashFiles = crashFiles[:12]
-		}
-
-		for i, cf := range crashFiles {
-			sb.WriteString(fmt.Sprintf("--- %s ---\n", cf.name))
-			crashPath := filepath.Join(supervisor.ErrorDumpDir, cf.name)
-			// Latest crash gets 512KB, older ones get 100KB
-			maxBytes := int64(100 * 1024)
-			if i == 0 {
-				maxBytes = 512 * 1024
-			}
-			if data, err := readFileTail(crashPath, maxBytes); err == nil {
-				sb.WriteString(cleanLogOutput(data))
-			} else {
-				sb.WriteString(fmt.Sprintf("Error reading: %v\n", err))
-			}
-			sb.WriteString("\n")
-		}
-		if len(crashFiles) == 0 {
-			sb.WriteString("No crash dumps found\n")
-		}
-	} else {
-		sb.WriteString(fmt.Sprintf("Error reading crash directory: %v\n", err))
-	}
-	sb.WriteString("\n")
-
-	// Section 4: Configuration
-	sb.WriteString("=== CONFIGURATION ===\n")
-	if data, err := os.ReadFile(configPath); err == nil {
-		sb.WriteString(string(data))
-	} else {
-		sb.WriteString(fmt.Sprintf("Error reading config: %v\n", err))
-	}
-	sb.WriteString("\n")
-
-	return sb.String(), nil
-}
-
 type DCPowerState struct {
 	IsOn         bool    `json:"isOn"`
 	Voltage      float64 `json:"voltage"`
@@ -1336,5 +1222,4 @@ var rpcHandlers = map[string]RPCHandler{
 	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 	"getPublicIPAddresses":   {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses": {Func: rpcCheckPublicIPAddresses},
-	"getDiagnostics":         {Func: rpcGetDiagnostics},
 }

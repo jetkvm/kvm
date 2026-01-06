@@ -133,6 +133,16 @@ func supervise() error {
 	}
 
 	if exiterr, ok := cmdErr.(*exec.ExitError); ok {
+		// Append crash info to the log file
+		fmt.Fprintf(logFile, "\n=== SUPERVISOR CRASH INFO ===\n")
+		fmt.Fprintf(logFile, "Timestamp: %s\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(logFile, "Exit Code: %d\n", exiterr.ExitCode())
+		if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+			if ws.Signaled() {
+				fmt.Fprintf(logFile, "Signal: %s\n", ws.Signal())
+			}
+		}
+
 		createErrorDump(logFile)
 		os.Exit(exiterr.ExitCode())
 	}

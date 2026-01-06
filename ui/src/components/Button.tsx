@@ -208,7 +208,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 Button.displayName = "Button";
 
-type LinkPropsType = Pick<LinkProps, "to" | "target" | "reloadDocument"> &
+type LinkPropsType = Pick<LinkProps, "to" | "target" | "reloadDocument" | "download"> &
   React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
