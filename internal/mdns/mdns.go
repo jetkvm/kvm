@@ -40,10 +40,6 @@ const (
 )
 
 func NewMDNS(opts *MDNSOptions) (*MDNS, error) {
-	if opts.Logger == nil {
-		opts.Logger = logging.GetDefaultLogger()
-	}
-
 	if opts.ListenOptions == nil {
 		opts.ListenOptions = &MDNSListenOptions{
 			IPv4: true,

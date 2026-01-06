@@ -21,10 +21,6 @@ type CertStore struct {
 }
 
 func NewCertStore(storePath string, log *zerolog.Logger) *CertStore {
-	if log == nil {
-		log = &defaultLogger
-	}
-
 	return &CertStore{
 		certificates: make(map[string]*tls.Certificate),
 		certLock:     &sync.Mutex{},

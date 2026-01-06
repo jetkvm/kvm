@@ -2,12 +2,7 @@ package kvm
 
 import (
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
-
-func ErrorfL(l *zerolog.Logger, format string, err error, args ...any) error {
-	return logging.ErrorfL(l, format, err, args...)
-}
 
 var (
 	logger          = logging.GetSubsystemLogger("jetkvm")
@@ -29,6 +24,7 @@ var (
 	displayLogger   = logging.GetSubsystemLogger("display")
 	wolLogger       = logging.GetSubsystemLogger("wol")
 	usbLogger       = logging.GetSubsystemLogger("usb")
+	powerLogger     = logging.GetSubsystemLogger("dcpower")
 	// external components
 	ginLogger = logging.GetSubsystemLogger("gin")
 )

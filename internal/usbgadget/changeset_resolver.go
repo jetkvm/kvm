@@ -9,9 +9,7 @@ import (
 
 type ChangeSetResolver struct {
 	changeset *ChangeSet
-
-	l *zerolog.Logger
-	g *dag.AcyclicGraph
+	g         *dag.AcyclicGraph
 
 	changesMap            map[string]*FileChange
 	conditionalChangesMap map[string]*FileChange
@@ -43,13 +41,13 @@ func (c *ChangeSetResolver) toOrderedChanges() error {
 	return nil
 }
 
-func (c *ChangeSetResolver) doResolveChanges(initial bool) error {
+func (c *ChangeSetResolver) doResolveChanges(initial bool, logger *zerolog.Logger) error {
 	resolvedChanges := make([]*FileChange, 0)
 
 	for _, key := range c.orderedChanges {
 		change := c.changesMap[key.(string)]
 		if change == nil {
-			c.l.Error().Str("key", key.(string)).Msg("fileChange not found")
+			logger.Error().Str("key", key.(string)).Msg("fileChange not found")
 			continue
 		}
 
@@ -57,7 +55,7 @@ func (c *ChangeSetResolver) doResolveChanges(initial bool) error {
 			change.ResetActionResolution()
 		}
 
-		resolvedAction := change.Action()
+		resolvedAction := change.Action(logger)
 
 		resolvedChanges = append(resolvedChanges, change)
 		// no need to check the triggers if there's no change
@@ -89,7 +87,7 @@ func (c *ChangeSetResolver) doResolveChanges(initial bool) error {
 	return nil
 }
 
-func (c *ChangeSetResolver) resolveChanges(initial bool) error {
+func (c *ChangeSetResolver) resolveChanges(initial bool, logger *zerolog.Logger) error {
 	// get the ordered changes
 	err := c.toOrderedChanges()
 	if err != nil {
@@ -97,39 +95,43 @@ func (c *ChangeSetResolver) resolveChanges(initial bool) error {
 	}
 
 	// resolve the changes
-	err = c.doResolveChanges(initial)
+	err = c.doResolveChanges(initial, logger)
 	if err != nil {
 		return err
 	}
 
 	for _, change := range c.resolvedChanges {
-		c.l.Trace().Str("change", change.String()).Msg("resolved change")
+		logger.Trace().Stringer("change", change).Msg("resolved change")
 	}
 
 	if !c.additionalResolveRequired || !initial {
 		return nil
 	}
 
-	return c.resolveChanges(false)
+	return c.resolveChanges(false, logger)
 }
 
-func (c *ChangeSetResolver) applyChanges() error {
+func (c *ChangeSetResolver) applyChanges(l *zerolog.Logger) error {
 	for _, change := range c.resolvedChanges {
 		change.ResetActionResolution()
-		action := change.Action()
+
+		action := change.Action(l)
 		actionStr := FileChangeResolvedActionString[action]
 
-		l := c.l.Info()
+		logger := l.With().Str("action", actionStr).Stringer("change", change).Logger()
+		var event *zerolog.Event
 		if action == FileChangeResolvedActionDoNothing {
-			l = c.l.Trace()
+			event = logger.Trace()
+		} else {
+			event = logger.Debug()
 		}
 
-		l.Str("action", actionStr).Str("change", change.String()).Msg("applying change")
+		event.Msg("applying change")
 
-		err := c.changeset.applyChange(change)
+		err := c.changeset.applyChange(change, &logger)
 		if err != nil {
 			if change.IgnoreErrors {
-				c.l.Warn().Str("change", change.String()).Err(err).Msg("ignoring error")
+				logger.Warn().Err(err).Msg("ignoring error")
 			} else {
 				return err
 			}
@@ -139,7 +141,7 @@ func (c *ChangeSetResolver) applyChanges() error {
 	return nil
 }
 
-func (c *ChangeSetResolver) GetChanges() ([]*FileChange, error) {
+func (c *ChangeSetResolver) GetChanges(logger *zerolog.Logger) ([]*FileChange, error) {
 	localChanges := c.changeset.Changes
 	changesMap := make(map[string]*FileChange)
 	conditionalChangesMap := make(map[string]*FileChange)
@@ -175,7 +177,7 @@ func (c *ChangeSetResolver) GetChanges() ([]*FileChange, error) {
 	c.changesMap = changesMap
 	c.conditionalChangesMap = conditionalChangesMap
 
-	err := c.resolveChanges(true)
+	err := c.resolveChanges(true, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -183,10 +185,10 @@ func (c *ChangeSetResolver) GetChanges() ([]*FileChange, error) {
 	return c.resolvedChanges, nil
 }
 
-func (c *ChangeSetResolver) Apply() error {
-	if _, err := c.GetChanges(); err != nil {
+func (c *ChangeSetResolver) Apply(logger *zerolog.Logger) error {
+	if _, err := c.GetChanges(logger); err != nil {
 		return err
 	}
 
-	return c.applyChanges()
+	return c.applyChanges(logger)
 }

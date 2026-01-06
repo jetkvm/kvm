@@ -9,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/utils"
+
 	"github.com/rs/zerolog"
 )
 
@@ -29,9 +30,8 @@ type Config struct {
 	SerialNumber string `json:"serial_number"`
 	Manufacturer string `json:"manufacturer"`
 	Product      string `json:"product"`
-
-	strictMode bool // when it's enabled, all warnings will be converted to errors
-	isEmpty    bool
+	isEmpty      bool
+	strictMode   bool // when it's enabled, all warnings will be converted to errors
 }
 
 var defaultUsbGadgetDevices = Devices{
@@ -42,8 +42,13 @@ var defaultUsbGadgetDevices = Devices{
 }
 
 type KeysDownState struct {
-	Modifier byte      `json:"modifier"`
-	Keys     ByteSlice `json:"keys"`
+	Modifier byte            `json:"modifier"`
+	Keys     utils.ByteSlice `json:"keys"`
+}
+
+func (k KeysDownState) MarshalZerologObject(e *zerolog.Event) {
+	e.Uint8("modifier", k.Modifier)
+	e.Object("keys", k.Keys)
 }
 
 // UsbGadget is a struct that represents a USB gadget.
@@ -77,13 +82,12 @@ type UsbGadget struct {
 
 	enabledDevices Devices
 
-	strictMode bool // only intended for testing for now
+	strictMode bool // only intended for testing
 
 	absMouseAccumulatedWheelY float64
 
 	lastUserInput time.Time
 
-	tx     *UsbGadgetTransaction
 	txLock sync.Mutex
 
 	onKeyboardStateChange *func(state KeyboardState)
@@ -99,18 +103,12 @@ type UsbGadget struct {
 const configFSPath = "/sys/kernel/config"
 const gadgetPath = "/sys/kernel/config/usb_gadget"
 
-var defaultLogger = logging.GetSubsystemLogger("usbgadget")
-
 // NewUsbGadget creates a new UsbGadget.
 func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
 	return newUsbGadget(name, defaultGadgetConfig, enabledDevices, config, logger)
 }
 
 func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
-	if logger == nil {
-		logger = defaultLogger
-	}
-
 	if enabledDevices == nil {
 		enabledDevices = &defaultUsbGadgetDevices
 	}
@@ -141,15 +139,14 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		lastUserInput:        time.Now(),
 		log:                  logger,
 
-		strictMode: config.strictMode,
-
+		strictMode:            config.strictMode,
 		logSuppressionCounter: make(map[string]int),
 
 		absMouseAccumulatedWheelY: 0,
 	}
+
 	if err := g.Init(); err != nil {
 		logger.Error().Err(err).Msg("failed to init USB gadget")
-		return nil
 	}
 
 	return g
@@ -160,6 +157,7 @@ func (u *UsbGadget) Close() error {
 	// Cancel keyboard state context
 	if u.keyboardStateCancel != nil {
 		u.keyboardStateCancel()
+		u.keyboardStateCancel = nil
 	}
 
 	// Stop auto-release timer

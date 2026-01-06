@@ -42,9 +42,9 @@ func newNetlinkManager(logger *zerolog.Logger) *NetlinkManager {
 }
 
 // GetNetlinkManager returns the singleton NetlinkManager instance
-func GetNetlinkManager() *NetlinkManager {
+func GetNetlinkManager(logger *zerolog.Logger) *NetlinkManager {
 	netlinkManagerOnce.Do(func() {
-		netlinkManagerInstance = newNetlinkManager(nil)
+		netlinkManagerInstance = newNetlinkManager(logger)
 	})
 	return netlinkManagerInstance
 }

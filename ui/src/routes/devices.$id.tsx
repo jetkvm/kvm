@@ -652,7 +652,7 @@ export default function KvmIdRoute() {
 
   const { setNetworkState } = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
-  const { keyboardLedState, setKeyboardLedState, keysDownState, setKeysDownState, setUsbState } =
+  const { setKeyboardLedState, setKeysDownState, setUsbState } =
     useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
   const { setFailsafeMode } = useFailsafeModeStore();
@@ -775,60 +775,65 @@ export default function KvmIdRoute() {
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
-  const [needLedState, setNeedLedState] = useState(true);
-
   // request keyboard led state from the device
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
-    if (!needLedState) return;
-    console.log("Requesting keyboard led state");
 
-    send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        console.error("Failed to get keyboard led state", resp.error);
-        return;
-      } else {
-        const ledState = resp.result as KeyboardLedState;
-        console.debug("Keyboard led state: ", ledState);
-        setKeyboardLedState(ledState);
-      }
-      setNeedLedState(false);
-    });
-  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState]);
+    const requestLedState = () => {
+      console.log("Requesting keyboard led state");
+      send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          console.error("Failed to get keyboard led state", resp.error);
+          return;
+        } else {
+          const ledState = resp.result as KeyboardLedState;
+          console.debug("Keyboard led state: ", ledState);
+          setKeyboardLedState(ledState);
+        }
+      });
+    };
 
-  const [needKeyDownState, setNeedKeyDownState] = useState(true);
+    // Request immediately
+    requestLedState();
+
+    // Set up polling every 30 seconds
+    const intervalId = setInterval(requestLedState, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [rpcDataChannel?.readyState, send, setKeyboardLedState]);
 
   // request keyboard key down state from the device
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
-    if (!needKeyDownState) return;
-    console.log("Requesting keys down state");
 
-    send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        // -32601 means the method is not supported
-        if (resp.error.code === RpcMethodNotFound) {
-          // if we don't support key down state, we know key press is also not available
-          console.warn("Failed to get key down state, switching to old-school", resp.error);
-          setHidRpcDisabled(true);
+    const requestKeyDownState = () => {
+      console.log("Requesting keys down state");
+      send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          // -32601 means the method is not supported
+          if (resp.error.code === RpcMethodNotFound) {
+            // if we don't support key down state, we know key press is also not available
+            console.warn("Failed to get key down state, switching to old-school", resp.error);
+            setHidRpcDisabled(true);
+          } else {
+            console.error("Failed to get key down state", resp.error);
+          }
         } else {
-          console.error("Failed to get key down state", resp.error);
+          const downState = resp.result as KeysDownState;
+          console.debug("Keyboard key down state", downState);
+          setKeysDownState(downState);
         }
-      } else {
-        const downState = resp.result as KeysDownState;
-        console.debug("Keyboard key down state", downState);
-        setKeysDownState(downState);
-      }
-      setNeedKeyDownState(false);
-    });
-  }, [
-    keysDownState,
-    needKeyDownState,
-    rpcDataChannel?.readyState,
-    send,
-    setKeysDownState,
-    setHidRpcDisabled,
-  ]);
+      });
+    };
+
+    // Request immediately
+    requestKeyDownState();
+
+    // Set up polling every 30 seconds
+    const intervalId = setInterval(requestKeyDownState, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {

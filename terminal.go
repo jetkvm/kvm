@@ -83,6 +83,7 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 	d.OnClose(func() {
 		if ptmx != nil {
 			ptmx.Close()
+			ptmx = nil
 		}
 		if cmd != nil && cmd.Process != nil {
 			_ = cmd.Process.Kill()

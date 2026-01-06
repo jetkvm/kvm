@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/jetkvm/kvm/internal/websecure"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -32,17 +33,17 @@ type TLSState struct {
 	PrivateKey  string `json:"privateKey"`
 }
 
-func initCertStore() {
+func initCertStore(logger *zerolog.Logger) {
 	if certStore != nil {
 		websecureLogger.Warn().Msg("TLS store already initialized, it should not be initialized again")
 		return
 	}
-	certStore = websecure.NewCertStore(tlsStorePath, websecureLogger)
+	certStore = websecure.NewCertStore(tlsStorePath, logger)
 	certStore.LoadCertificates()
 
 	certSigner = websecure.NewSelfSigner(
 		certStore,
-		websecureLogger,
+		logger,
 		webSecureSelfSignedDefaultDomain,
 		webSecureSelfSignedOrganization,
 		webSecureSelfSignedOU,
@@ -108,7 +109,7 @@ func setTLSState(s TLSState) error {
 		}
 		// parse pem to cert and key
 		if certStore == nil {
-			initCertStore()
+			initCertStore(logger)
 		}
 		err, _ := certStore.ValidateAndSaveCertificate(webSecureCustomCertificateName, s.Certificate, s.PrivateKey, true)
 		// warn doesn't matter as ... we don't know the hostname yet
@@ -184,6 +185,7 @@ func runWebSecureServer() {
 		}
 	}()
 
+	websecureLogger.Info().Msg("Starting websecure server")
 	err := server.ListenAndServeTLS("", "")
 	if !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
@@ -209,8 +211,9 @@ func startWebSecureServer() {
 func RunWebSecureServer() {
 	for range startTLS {
 		websecureLogger.Info().Msg("Starting websecure server, as we have received a start signal")
+
 		if certStore == nil {
-			initCertStore()
+			initCertStore(websecureLogger)
 		}
 		go runWebSecureServer()
 	}
