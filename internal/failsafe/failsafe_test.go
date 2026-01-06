@@ -59,6 +59,36 @@ func TestCountRecentCrashDumpsByMtimeEmpty(t *testing.T) {
 	}
 }
 
+func TestCountRecentCrashDumpsByMtimeThirdOutsideWindow(t *testing.T) {
+	// Test scenario: 2 crashes at T and T+5min, then a 3rd crash at T+16min (11 min after 2nd).
+	// The 10-minute window from the newest (T+16min) is T+6min to T+16min.
+	// Only the 3rd crash falls within this window, so count should be 1.
+	tmp := t.TempDir()
+	prev := failsafeCrashDumpDir
+	failsafeCrashDumpDir = tmp
+	t.Cleanup(func() {
+		failsafeCrashDumpDir = prev
+	})
+
+	base := time.Now().Truncate(time.Second)
+	// Crash A at T (16 minutes before the newest)
+	writeFileWithMtime(t, tmp, "jetkvm-20250101-000001.log", base)
+	// Crash B at T + 5 minutes (11 minutes before the newest)
+	writeFileWithMtime(t, tmp, "jetkvm-20250101-000002.log", base.Add(5*time.Minute))
+	// Crash C at T + 16 minutes (the newest, 11 minutes after B)
+	writeFileWithMtime(t, tmp, "jetkvm-20250101-000003.log", base.Add(16*time.Minute))
+
+	count, newest := countRecentCrashDumpsByMtime()
+	// Only crash C should be counted (A and B are outside the 10-minute window from C)
+	if count != 1 {
+		t.Fatalf("count=%d, want 1 (only newest crash should be in window)", count)
+	}
+	expectedNewest := base.Add(16 * time.Minute)
+	if !newest.Equal(expectedNewest) {
+		t.Fatalf("newest=%v, want %v", newest, expectedNewest)
+	}
+}
+
 func TestCheckOnceClearsSymlink(t *testing.T) {
 	tmp := t.TempDir()
 	prev := failsafeCrashDumpDir

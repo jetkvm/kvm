@@ -25,7 +25,7 @@ test.describe("Failsafe file trigger", () => {
       await run("touch /userdata/jetkvm/.enablefailsafe");
 
       await run("reboot", 0);
-      await reconnectAfterReboot(page, 30000);
+      await reconnectAfterReboot(page);
       await waitForWebRTCReady(page);
 
       await expect(page.getByText("Fail safe mode activated")).toBeVisible();
@@ -71,7 +71,7 @@ test.describe("Failsafe file trigger", () => {
       const confirmReboot = page.getByRole("button", { name: "Yes" });
       await expect(confirmReboot).toBeVisible();
       await confirmReboot.click();
-      await reconnectAfterReboot(page, 30000);
+      await reconnectAfterReboot(page);
       await waitForWebRTCReady(page);
       await waitForTerminalReady(page);
 
