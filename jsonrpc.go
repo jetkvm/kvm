@@ -680,9 +680,10 @@ func rpcGetDiagnostics() (string, error) {
 	var sb strings.Builder
 
 	// Section 1: Application log (last.log) - last 500 lines
+	// Read only the last 512KB to avoid memory issues with large log files
 	sb.WriteString("=== APPLICATION LOG ===\n")
-	if data, err := os.ReadFile(supervisor.AppLogPath); err == nil {
-		content := cleanLogOutput(string(data))
+	if data, err := readFileTail(supervisor.AppLogPath, 512*1024); err == nil {
+		content := cleanLogOutput(data)
 		lines := strings.Split(content, "\n")
 		if len(lines) > 500 {
 			content = "... (truncated, showing last 500 lines)\n" + strings.Join(lines[len(lines)-500:], "\n")
@@ -719,17 +720,7 @@ func rpcGetDiagnostics() (string, error) {
 	sb.WriteString(diagBuf.String())
 	sb.WriteString("\n")
 
-	// Section 3: Last crash log
-	lastCrashPath := filepath.Join(supervisor.ErrorDumpDir, supervisor.ErrorDumpLastFile)
-	sb.WriteString("=== LAST CRASH LOG ===\n")
-	if data, err := os.ReadFile(lastCrashPath); err == nil {
-		sb.WriteString(cleanLogOutput(string(data)))
-	} else {
-		sb.WriteString(fmt.Sprintf("No crash log found: %v\n", err))
-	}
-	sb.WriteString("\n\n")
-
-	// Section 4: Recent crash dumps (excluding last-crash.log)
+	// Section 3: Recent crash dumps (sorted by time, newest first)
 	sb.WriteString("=== RECENT CRASH DUMPS ===\n")
 	if entries, err := os.ReadDir(supervisor.ErrorDumpDir); err == nil {
 		type fileInfo struct {
@@ -764,16 +755,13 @@ func rpcGetDiagnostics() (string, error) {
 		for i, cf := range crashFiles {
 			sb.WriteString(fmt.Sprintf("--- %s ---\n", cf.name))
 			crashPath := filepath.Join(supervisor.ErrorDumpDir, cf.name)
-			if data, err := os.ReadFile(crashPath); err == nil {
-				content := cleanLogOutput(string(data))
-				// First file is full, rest are last 50 lines
-				if i > 0 {
-					lines := strings.Split(content, "\n")
-					if len(lines) > 100 {
-						content = "... (truncated)\n" + strings.Join(lines[len(lines)-50:], "\n")
-					}
-				}
-				sb.WriteString(content)
+			// Latest crash gets 512KB, older ones get 100KB
+			maxBytes := int64(100 * 1024)
+			if i == 0 {
+				maxBytes = 512 * 1024
+			}
+			if data, err := readFileTail(crashPath, maxBytes); err == nil {
+				sb.WriteString(cleanLogOutput(data))
 			} else {
 				sb.WriteString(fmt.Sprintf("Error reading: %v\n", err))
 			}
@@ -787,7 +775,7 @@ func rpcGetDiagnostics() (string, error) {
 	}
 	sb.WriteString("\n")
 
-	// Section 5: Configuration
+	// Section 4: Configuration
 	sb.WriteString("=== CONFIGURATION ===\n")
 	if data, err := os.ReadFile(configPath); err == nil {
 		sb.WriteString(string(data))
