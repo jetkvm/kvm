@@ -17,7 +17,7 @@ import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
-import { callJsonRpc, checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
+import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
 import { SystemVersionInfo } from "@hooks/useVersion";
 
 import { FeatureFlag } from "../components/FeatureFlag";
@@ -38,7 +38,6 @@ export default function SettingsAdvancedRoute() {
   const [resetConfig, setResetConfig] = useState(false);
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const settings = useSettingsStore();
 
   useEffect(() => {
@@ -493,10 +492,8 @@ export default function SettingsAdvancedRoute() {
                 reloadDocument
                 download
                 size="SM"
-                disabled={diagnosticsLoading}
                 theme="light"
                 text={m.advanced_download_diagnostics_button()}
-                loading={diagnosticsLoading}
               />
             </SettingsItem>
           </NestedSettingsGroup>
