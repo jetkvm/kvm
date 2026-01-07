@@ -12,7 +12,11 @@ const defaultCmdTimeout = 2 * time.Second
 
 // runCmdLog runs a command and logs its output.
 func (d *Diagnostics) runCmdLog(label string, cmd string, args ...string) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultCmdTimeout)
+	parentCtx := d.ctx
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, defaultCmdTimeout)
 	defer cancel()
 
 	output, err := exec.CommandContext(ctx, cmd, args...).CombinedOutput()
@@ -26,7 +30,11 @@ func (d *Diagnostics) runCmdLog(label string, cmd string, args ...string) {
 
 // runShellLog runs a shell command (for pipelines) and logs its output.
 func (d *Diagnostics) runShellLog(label, script string) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultCmdTimeout)
+	parentCtx := d.ctx
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, defaultCmdTimeout)
 	defer cancel()
 
 	output, err := exec.CommandContext(ctx, "sh", "-c", script).CombinedOutput()
