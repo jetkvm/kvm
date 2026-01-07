@@ -1,0 +1,95 @@
+diff --git a/cmd/main.go b/cmd/main.go
+index ba7e6c07b..a538c98e0 100644
+--- a/cmd/main.go
++++ b/cmd/main.go
+@@ -13,6 +13,7 @@ import (
+ 
+ 	"github.com/erikdubbelboer/gspt"
+ 	"github.com/jetkvm/kvm"
++	"github.com/jetkvm/kvm/internal/diagnostics"
+ 	"github.com/jetkvm/kvm/internal/native"
+ 	"github.com/jetkvm/kvm/internal/supervisor"
+ )
+@@ -143,6 +144,13 @@ func supervise() error {
+ 			}
+ 		}
+ 
++		// Log full system diagnostics
++		diag := diagnostics.New(diagnostics.Options{Writer: logFile})
++		diag.LogAll("supervisor_crash")
++
++		// Ensure all data is flushed to disk before copying
++		_ = logFile.Sync()
++
+ 		createErrorDump(logFile)
+ 		os.Exit(exiterr.ExitCode())
+ 	}
+diff --git a/internal/diagnostics/diagnostics.go b/internal/diagnostics/diagnostics.go
+index 14054b3b6..a8e723b0f 100644
+--- a/internal/diagnostics/diagnostics.go
++++ b/internal/diagnostics/diagnostics.go
+@@ -3,7 +3,9 @@
+ package diagnostics
+ 
+ import (
++	"context"
+ 	"io"
++	"time"
+ 
+ 	"github.com/jetkvm/kvm/internal/logging"
+ 	"github.com/rs/zerolog"
+@@ -39,8 +41,11 @@ type Options struct {
+ type Diagnostics struct {
+ 	logger  *zerolog.Logger
+ 	options Options
++	ctx     context.Context // set during LogAll for overall timeout
+ }
+ 
++const defaultLogAllTimeout = 10 * time.Second
++
+ // New creates a new Diagnostics instance using the default diagnostics logger.
+ // If opts.Writer is set, logs are written there instead of the default logger.
+ func New(opts Options) *Diagnostics {
+@@ -61,7 +66,12 @@ func NewWithLogger(logger *zerolog.Logger, opts Options) *Diagnostics {
+ 
+ // LogAll runs all diagnostic checks and logs the results.
+ // The phase parameter distinguishes context (e.g., "crash" vs "handshake" vs "download").
++// LogAll has an overall timeout of 10 seconds; individual commands have a 2-second timeout.
+ func (d *Diagnostics) LogAll(phase string) {
++	ctx, cancel := context.WithTimeout(context.Background(), defaultLogAllTimeout)
++	defer cancel()
++	d.ctx = ctx
++
+ 	d.logger.Error().Str("phase", phase).Msg("=== DIAGNOSTICS ===")
+ 
+ 	d.LogSystemInfo()
+diff --git a/internal/diagnostics/helpers.go b/internal/diagnostics/helpers.go
+index c6b63b86a..9bbcaa414 100644
+--- a/internal/diagnostics/helpers.go
++++ b/internal/diagnostics/helpers.go
+@@ -12,7 +12,11 @@ const defaultCmdTimeout = 2 * time.Second
+ 
+ // runCmdLog runs a command and logs its output.
+ func (d *Diagnostics) runCmdLog(label string, cmd string, args ...string) {
+-	ctx, cancel := context.WithTimeout(context.Background(), defaultCmdTimeout)
++	parentCtx := d.ctx
++	if parentCtx == nil {
++		parentCtx = context.Background()
++	}
++	ctx, cancel := context.WithTimeout(parentCtx, defaultCmdTimeout)
+ 	defer cancel()
+ 
+ 	output, err := exec.CommandContext(ctx, cmd, args...).CombinedOutput()
+@@ -26,7 +30,11 @@ func (d *Diagnostics) runCmdLog(label string, cmd string, args ...string) {
+ 
+ // runShellLog runs a shell command (for pipelines) and logs its output.
+ func (d *Diagnostics) runShellLog(label, script string) {
+-	ctx, cancel := context.WithTimeout(context.Background(), defaultCmdTimeout)
++	parentCtx := d.ctx
++	if parentCtx == nil {
++		parentCtx = context.Background()
++	}
++	ctx, cancel := context.WithTimeout(parentCtx, defaultCmdTimeout)
+ 	defer cancel()
+ 
+ 	output, err := exec.CommandContext(ctx, "sh", "-c", script).CombinedOutput()

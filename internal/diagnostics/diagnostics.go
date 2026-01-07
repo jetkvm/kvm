@@ -71,6 +71,7 @@ func (d *Diagnostics) LogAll(phase string) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultLogAllTimeout)
 	defer cancel()
 	d.ctx = ctx
+	defer func() { d.ctx = nil }()
 
 	d.logger.Error().Str("phase", phase).Msg("=== DIAGNOSTICS ===")
 
