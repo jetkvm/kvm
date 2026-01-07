@@ -10,9 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,17 +22,6 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
-
-// ansiRegex matches ANSI escape sequences for stripping from log output
-var ansiRegex = regexp.MustCompile(`[\x1b\x9b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\x07)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PRZcf-ntqry=><~]))`)
-
-// cleanLogOutput strips ANSI codes and unescapes newlines/tabs for readable output
-func cleanLogOutput(s string) string {
-	s = ansiRegex.ReplaceAllString(s, "")
-	s = strings.ReplaceAll(s, "\\n", "\n")
-	s = strings.ReplaceAll(s, "\\t", "\t")
-	return s
-}
 
 type JSONRPCRequest struct {
 	JSONRPC string         `json:"jsonrpc"`
