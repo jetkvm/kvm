@@ -13,6 +13,7 @@ import (
 
 	"github.com/erikdubbelboer/gspt"
 	"github.com/jetkvm/kvm"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
@@ -142,6 +143,13 @@ func supervise() error {
 				fmt.Fprintf(logFile, "Signal: %s\n", ws.Signal())
 			}
 		}
+
+		// Log full system diagnostics
+		diag := diagnostics.New(diagnostics.Options{Writer: logFile})
+		diag.LogAll("supervisor_crash")
+
+		// Ensure all data is flushed to disk before copying
+		_ = logFile.Sync()
 
 		createErrorDump(logFile)
 		os.Exit(exiterr.ExitCode())
