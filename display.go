@@ -51,9 +51,27 @@ func updateDisplayUsbState() {
 
 func updateDisplay() {
 	if networkManager != nil {
-		nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkManager.IPv4String())
-		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkManager.IPv6String())
-		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+		ipv4 := networkManager.IPv4String()
+		if ipv4 == "" {
+			ipv4 = "--"
+		}
+		nativeInstance.UISetVar("ip_v4_address", ipv4)
+		nativeInstance.ChangeVisibility("home_info_ipv4_addr", ipv4 != "")
+
+		ipv6 := networkManager.IPv6String()
+		if ipv6 == "" {
+			ipv6 = "--"
+		}
+		nativeInstance.UISetVar("ip_v6_address", ipv6)
+		nativeInstance.ChangeVisibility("home_info_ipv6_addr", ipv6 != "" && ipv6 != "--")
+
+		nativeInstance.UISetVar("mac_address", networkManager.MACString())
+		nativeInstance.UISetVar("hostname", networkManager.Hostname())
+
+		// we either show the MAC address (if no IP yet) or the hostname (if either IPv4 or IPv6 are available)
+		hasIP := networkManager.IPv4Ready() || networkManager.IPv6Ready()
+		nativeInstance.ChangeVisibility("home_info_mac_addr", !hasIP)
+		nativeInstance.ChangeVisibility("home_info_hostname", hasIP)
 	}
 
 	_, _ = nativeInstance.UIObjHide("menu_btn_network")
@@ -75,6 +93,7 @@ func updateDisplay() {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Disconnected")
 		_, _ = nativeInstance.UIObjClearState("hdmi_status_label", "LV_STATE_CHECKED")
 	}
+
 	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
 
 	if networkManager != nil && networkManager.IsUp() {
@@ -208,7 +227,8 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 func updateStaticContents() {
 	//contents that never change
 	if networkManager != nil {
-		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+		mac := networkManager.MACString()
+		nativeInstance.UISetVar("mac_address", mac)
 	}
 
 	// get cpu info
@@ -234,7 +254,7 @@ func updateStaticContents() {
 	nativeInstance.UpdateLabelAndChangeVisibility("build_date", version.BuildDate)
 	nativeInstance.UpdateLabelAndChangeVisibility("golang_version", version.GoVersion)
 
-	// nativeInstance.UpdateLabelAndChangeVisibility("boot_screen_device_id", GetDeviceID())
+	nativeInstance.UpdateLabelAndChangeVisibility("device_id", GetDeviceID())
 }
 
 // configureDisplayOnNativeRestart is called when the native process restarts

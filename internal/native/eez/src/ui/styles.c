@@ -76,8 +76,6 @@ void remove_style_flex_center(lv_obj_t *obj) {
 void init_style_flex_start_MAIN_DEFAULT(lv_style_t *style) {
     init_style_flex_center_MAIN_DEFAULT(style);
     
-    lv_style_set_layout(style, LV_LAYOUT_FLEX);
-    lv_style_set_flex_flow(style, LV_FLEX_FLOW_COLUMN);
     lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_START);
     lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_START);
     lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
@@ -110,10 +108,8 @@ void remove_style_flex_start(lv_obj_t *obj) {
 void init_style_flow_row_space_between_MAIN_DEFAULT(lv_style_t *style) {
     init_style_flex_center_MAIN_DEFAULT(style);
     
-    lv_style_set_layout(style, LV_LAYOUT_FLEX);
     lv_style_set_flex_flow(style, LV_FLEX_FLOW_ROW);
     lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_SPACE_BETWEEN);
-    lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_CENTER);
     lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
 };
 
@@ -144,11 +140,7 @@ void remove_style_flow_row_space_between(lv_obj_t *obj) {
 void init_style_flow_row_start_center_MAIN_DEFAULT(lv_style_t *style) {
     init_style_flow_row_space_between_MAIN_DEFAULT(style);
     
-    lv_style_set_layout(style, LV_LAYOUT_FLEX);
-    lv_style_set_flex_flow(style, LV_FLEX_FLOW_ROW);
     lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_START);
-    lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_CENTER);
-    lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
 };
 
 lv_style_t *get_style_flow_row_start_center_MAIN_DEFAULT() {
@@ -178,11 +170,9 @@ void remove_style_flow_row_start_center(lv_obj_t *obj) {
 void init_style_flex_column_start_MAIN_DEFAULT(lv_style_t *style) {
     init_style_flow_row_space_between_MAIN_DEFAULT(style);
     
-    lv_style_set_layout(style, LV_LAYOUT_FLEX);
-    lv_style_set_flex_flow(style, LV_FLEX_FLOW_COLUMN);
-    lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_START);
     lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_START);
-    lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
+    lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_SPACE_EVENLY);
+    lv_style_set_flex_flow(style, LV_FLEX_FLOW_COLUMN);
 };
 
 lv_style_t *get_style_flex_column_start_MAIN_DEFAULT() {
@@ -342,7 +332,6 @@ void init_style_header_link_MAIN_DEFAULT(lv_style_t *style) {
     lv_style_set_text_color(style, lv_color_hex(0xff1d4ed8));
     lv_style_set_text_opa(style, 255);
     lv_style_set_text_font(style, &ui_font_font_book20);
-    lv_style_set_text_align(style, LV_TEXT_ALIGN_CENTER);
 };
 
 lv_style_t *get_style_header_link_MAIN_DEFAULT() {

@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 20 px
  * Bpp: 4
- * Opts: --bpp 4 --size 20 --no-compress --font ../../Downloads/jetkvm-lvgl-ui 2/assets/font-book.ttf --range 32-127 --format lvgl
+ * Opts: --bpp 4 --size 20 --no-compress --font ../fonts/font-book.ttf --range 32-127 --format lvgl
  ******************************************************************************/
 
 #ifdef __has_include

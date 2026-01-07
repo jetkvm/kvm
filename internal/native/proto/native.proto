@@ -41,6 +41,7 @@ service NativeService {
   rpc UpdateLabelAndChangeVisibility(UpdateLabelAndChangeVisibilityRequest) returns (Empty);
   rpc SwitchToScreenIf(SwitchToScreenIfRequest) returns (Empty);
   rpc SwitchToScreenIfDifferent(SwitchToScreenIfDifferentRequest) returns (Empty);
+  rpc ChangeVisibility(ChangeVisibilityRequest) returns (Empty);
 
   // Testing
   rpc DoNotUseThisIsForCrashTestingOnly(Empty) returns (Empty);
@@ -256,3 +257,7 @@ message VideoFrame {
   int64 duration_ns = 2;
 }
 
+message ChangeVisibilityRequest {
+  string obj_name = 1;
+  bool show = 2;
+}

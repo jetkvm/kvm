@@ -30,6 +30,7 @@ type NativeInterface interface {
 	DisplaySetRotation(rotation uint16) (bool, error)
 	UpdateLabelIfChanged(objName string, newText string)
 	UpdateLabelAndChangeVisibility(objName string, newText string)
+	ChangeVisibility(objName string, show bool)
 	SwitchToScreenIf(screenName string, shouldSwitch []string)
 	SwitchToScreenIfDifferent(screenName string)
 	DoNotUseThisIsForCrashTestingOnly()

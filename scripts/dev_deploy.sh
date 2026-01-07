@@ -14,15 +14,18 @@ show_help() {
     echo "  -u, --user <remote_user>   Remote username (default: root)"
     echo "      --gdb-port <port>      GDB debug port (default: 2345)"
     echo "      --run-go-tests         Run go tests"
-    echo "      --run-go-tests-only    Run go tests and exit"
+    echo "  -t, --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
+    echo " -ui, --build-ui             Force frontend/UI build"
     echo "      --skip-native-build    Skip native build"
+    echo "  -n, --build-native         Force native build"
     echo "      --log-trace <scopes>   Comma-separated scopes to trace"
     echo "                             (e.g., usb, usb,hidrpc, all)"
     echo "      --disable-docker       Disable docker build"
     echo "      --enable-sync-trace    Enable sync trace (do not use in release builds)"
     echo "      --native-binary        Build and deploy the native binary (FOR DEBUGGING ONLY)"
     echo "  -i, --install              Build for release and install the app"
+    echo "  -q, --quick-build          Do quick build (only rebuild go components)"
     echo "      --help                 Display this help message"
     echo
     echo "Example:"
@@ -93,10 +96,17 @@ while [[ $# -gt 0 ]]; do
             SKIP_UI_BUILD=true
             shift
             ;;
+        -ui|--build-ui)
+            SKIP_UI_BUILD=false
+            shift
+            ;;
         --skip-native-build)
             SKIP_NATIVE_BUILD=1
             shift
             ;;
+        -n|--build-native)
+            SKIP_NATIVE_BUILD=0
+            shift
         --log-trace)
             LOG_TRACE_SCOPES="$2"
             shift 2
@@ -117,7 +127,7 @@ while [[ $# -gt 0 ]]; do
             RUN_GO_TESTS=true
             shift
             ;;
-        --run-go-tests-only)
+        -t|--run-go-tests-only)
             RUN_GO_TESTS_ONLY=true
             RUN_GO_TESTS=true
             shift
@@ -128,6 +138,13 @@ while [[ $# -gt 0 ]]; do
             ;;
         -i|--install)
             INSTALL_APP=true
+            shift
+            ;;
+        -q|--quick-build)
+            SKIP_NATIVE_BUILD=1
+            SKIP_UI_BUILD=true
+            BUILD_NATIVE_BINARY=false
+            RUN_GO_TESTS=false
             shift
             ;;
         --help)
@@ -275,7 +292,7 @@ else
 	msg_info "▶ Building development binary"
 	do_make build_dev \
     SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
-    SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
+    SKIP_UI_BUILD=${SKIP_UI_BUILD} \
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 
 	# Kill any existing instances of the application

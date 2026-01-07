@@ -98,6 +98,10 @@ func uiGetLVGLVersion() string {
 	return ""
 }
 
+func uiTick() {
+	panicPlatformNotSupported()
+}
+
 func videoGetStreamQualityFactor() (float64, error) {
 	panicPlatformNotSupported()
 	return 0, nil

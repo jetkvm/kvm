@@ -12,7 +12,7 @@ cd "$PROJECT_ROOT"
 if ! command -v protoc &> /dev/null; then
     echo "Error: protoc is not installed"
     echo "Install it with:"
-    echo "  apt-get install protobuf-compiler  # Debian/Ubuntu"
+    echo "  sudo apt-get install protobuf-compiler  # Debian/Ubuntu"
     echo "  brew install protobuf               # macOS"
     exit 1
 fi

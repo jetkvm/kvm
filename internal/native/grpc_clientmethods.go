@@ -207,6 +207,10 @@ func (c *GRPCClient) SwitchToScreenIfDifferent(screenName string) {
 	_, _ = c.client.SwitchToScreenIfDifferent(context.Background(), &pb.SwitchToScreenIfDifferentRequest{ScreenName: screenName})
 }
 
+func (c *GRPCClient) ChangeVisibility(objName string, show bool) {
+	_, _ = c.client.ChangeVisibility(context.Background(), &pb.ChangeVisibilityRequest{ObjName: objName, Show: show})
+}
+
 func (c *GRPCClient) DoNotUseThisIsForCrashTestingOnly() {
 	_, _ = c.client.DoNotUseThisIsForCrashTestingOnly(context.Background(), &pb.Empty{})
 }
