@@ -162,7 +162,7 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 		})
 		if ipv6Addr == "" {
 			ipv6Addr = addr.IP.String()
-			ipv6Ready = true
+			ipv6Ready = ipv6Gateway != ""
 		}
 	}
 
