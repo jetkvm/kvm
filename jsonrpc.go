@@ -59,12 +59,6 @@ func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
-
-	jsonRpcLogger.Info().
-		Interface("id", response.ID).
-		Int("resultLen", len(responseBytes)).
-		Msg("sending RPC response")
-
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
 		jsonRpcLogger.Warn().Err(err).Msg("Error sending JSONRPC response")
