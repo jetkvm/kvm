@@ -20,7 +20,6 @@ import (
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/native"
-	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -1459,5 +1458,4 @@ var rpcHandlers = map[string]RPCHandler{
 	"setLocalLoopbackOnly":    {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 	"getPublicIPAddresses":    {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses":  {Func: rpcCheckPublicIPAddresses},
-	"getDiagnostics":          {Func: rpcGetDiagnostics},
 }
