@@ -206,7 +206,7 @@ func getDefaultConfig() Config {
 			_ = confparser.SetDefaultsAndValidate(c)
 			return c
 		}(),
-		DefaultLogLevel:      "INFO",
+		DefaultLogLevel:      "WARN",
 		VideoQualityFactor:   1.0,
 		AudioInputAutoEnable: false,
 		AudioOutputEnabled:   true,
@@ -300,6 +300,11 @@ func LoadConfig() {
 	// fixup old keyboard layout value
 	if loadedConfig.KeyboardLayout == "en_US" {
 		loadedConfig.KeyboardLayout = "en-US"
+	}
+
+	// Migrate old verbose log level to sensible default
+	if loadedConfig.DefaultLogLevel == "INFO" {
+		loadedConfig.DefaultLogLevel = "WARN"
 	}
 
 	config = &loadedConfig
