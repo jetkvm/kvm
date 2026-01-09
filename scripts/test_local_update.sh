@@ -72,8 +72,38 @@ if [ -z "$DEV_MACHINE_IP" ]; then
     exit 1
 fi
 
+# SSH helper function
+sshdev() {
+    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "root@$DEVICE_IP" "$@"
+}
+
 # Calculate binary SHA256
 BINARY_SHA256=$(shasum -a 256 "$BINARY_PATH" | awk '{print $1}')
+
+# Deploy binary to device
+echo -e "${CYAN}Deploying binary to device...${NC}"
+sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < "$BINARY_PATH"
+sshdev "reboot"
+
+echo -e "${YELLOW}Waiting for device to reboot...${NC}"
+sleep 30
+
+# Wait for device to come back online
+for i in {1..30}; do
+    if ping -c 1 -W 2 "$DEVICE_IP" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
+# Wait for web interface to be ready
+for i in {1..30}; do
+    if curl -s --max-time 5 "http://$DEVICE_IP" >/dev/null 2>&1; then
+        echo -e "${GREEN}Device is ready${NC}"
+        break
+    fi
+    sleep 2
+done
 
 # Create mock API server
 TEMP_DIR=$(mktemp -d)
@@ -188,9 +218,10 @@ echo ""
 echo -e "${CYAN}╭${HLINE}╮${NC}"
 printf "${CYAN}│${NC}  ${GREEN}%-$((BOX_WIDTH - 2))s${NC}${CYAN}│${NC}\n" "E2E Tests"
 echo -e "${CYAN}├${HLINE}┤${NC}"
-print_row "Device " "http://$DEVICE_IP"
-print_row "Version" "$VERSION"
-print_row "Stable " "$STABLE_VERSION"
+print_row "Device  " "http://$DEVICE_IP"
+print_row "Version " "$VERSION"
+print_row "Stable  " "$STABLE_VERSION"
+print_row "Deployed" "Yes"
 echo -e "${CYAN}╰${HLINE}╯${NC}"
 echo ""
 

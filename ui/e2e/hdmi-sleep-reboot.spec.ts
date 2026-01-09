@@ -2,9 +2,6 @@ import { test, expect } from "@playwright/test";
 
 import { verifyHidAndVideo, reconnectAfterReboot } from "./helpers";
 
-// Time to wait for device to reboot (ms)
-const REBOOT_DELAY = 15000;
-
 // Time to wait for settings to apply (ms)
 const SETTINGS_APPLY_DELAY = 1000;
 
@@ -41,7 +38,7 @@ test.describe("HDMI Sleep Mode and Reboot Tests", () => {
     await yesButton.click();
 
     // Wait for reboot and reconnect
-    await reconnectAfterReboot(page, REBOOT_DELAY);
+    await reconnectAfterReboot(page);
 
     // Verify video, mouse, and keyboard all work
     await verifyHidAndVideo(page);

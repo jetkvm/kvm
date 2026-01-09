@@ -552,7 +552,10 @@ export default function KvmIdRoute() {
     setAudioTransceiver(audioTrans);
 
     const rpcDataChannel = pc.createDataChannel("rpc");
-    rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
+    rpcDataChannel.onclose = () => {
+      console.log("rpcDataChannel has closed");
+      setRpcDataChannel(null);
+    };
     rpcDataChannel.onerror = (ev: Event) =>
       console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev}`);
     rpcDataChannel.onopen = () => {

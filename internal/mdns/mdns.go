@@ -130,10 +130,7 @@ func (m *MDNS) start(allowRestart bool) error {
 		}
 	}
 
-	mDNSConn, err := pion_mdns.Server(p4, p6, &pion_mdns.Config{
-		LocalNames:    newLocalNames,
-		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
-	})
+	mDNSConn, err := pion_mdns.Server(p4, p6, &pion_mdns.Config{LocalNames: newLocalNames})
 
 	if err != nil {
 		scopeLogger.Warn().Err(err).Msg("failed to start mDNS server")

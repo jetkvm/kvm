@@ -2,15 +2,15 @@ import { useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { Button } from "@components/Button";
+import { Button, LinkButton } from "@components/Button";
 import { GridCard } from "@components/Card";
 import { GitHubIcon } from "@components/Icons";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { useVersion } from "@hooks/useVersion";
 import { useDeviceStore } from "@hooks/stores";
 import notifications from "@/notifications";
 import { DOWNGRADE_VERSION } from "@/ui.config";
+import { sleep } from "../utils";
 
 interface FailSafeModeOverlayProps {
   reason: string;
@@ -31,7 +31,6 @@ function OverlayContent({ children }: OverlayContentProps) {
 }
 
 export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
-  const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const { appVersion } = useVersion();
   const { systemVersion } = useDeviceStore();
@@ -54,36 +53,11 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
 
   const { message } = getReasonCopy();
 
-  const handleReportAndDownloadLogs = () => {
+  const handleReportAndDownloadLogs = async () => {
     setIsDownloadingLogs(true);
+    await sleep(2000);
 
-    send("getDiagnostics", {}, async (resp: JsonRpcResponse) => {
-      setIsDownloadingLogs(false);
-
-      if ("error" in resp) {
-        notifications.error(`Failed to get diagnostics: ${resp.error.message}`);
-        return;
-      }
-
-      // Download logs
-      const logContent = resp.result as string;
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const filename = `jetkvm-recovery-${reason}-${timestamp}.txt`;
-
-      const blob = new Blob([logContent], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      a.click();
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      notifications.success("Crash logs downloaded successfully");
-
+    try {
       // Open GitHub issue
       const issueBody = `## Issue Description
 The \`${reason}\` process encountered an error and failsafe mode was activated.
@@ -94,11 +68,10 @@ The \`${reason}\` process encountered an error and failsafe mode was activated.
 **System Version:** ${systemVersion || "Unknown"}
 
 ## Logs
-Please attach the recovery logs file that was downloaded to your computer:
-\`${filename}\`
+Please attach the diagnostics ZIP file that was downloaded to your computer.
 
 > [!NOTE]
-> Please remove any sensitive information from the logs. The reports are public and can be viewed by anyone.
+> Please remove any sensitive information from the logs before attaching. The reports are public and can be viewed by anyone.
 
 ## Additional Context
 [Please describe what you were doing when this occurred]`;
@@ -109,7 +82,13 @@ Please attach the recovery logs file that was downloaded to your computer:
         `body=${encodeURIComponent(issueBody)}`;
 
       window.open(issueUrl, "_blank");
-    });
+    } catch (error) {
+      notifications.error(
+        `Failed to download diagnostics: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    } finally {
+      setIsDownloadingLogs(false);
+    }
   };
 
   const handleDowngrade = () => {
@@ -138,9 +117,14 @@ Please attach the recovery logs file that was downloaded to your computer:
                   <p className="text-sm">{message}</p>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      onClick={handleReportAndDownloadLogs}
+                  <div
+                    className="flex flex-wrap items-center gap-2"
+                    onClick={handleReportAndDownloadLogs}
+                  >
+                    <LinkButton
+                      to="/diagnostics"
+                      reloadDocument
+                      download
                       theme="primary"
                       size="SM"
                       disabled={isDownloadingLogs}
