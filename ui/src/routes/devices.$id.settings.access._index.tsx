@@ -13,6 +13,7 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import { TextAreaWithLabel } from "@components/TextArea";
+import { MeshVPNSection } from "@components/MeshVPNSection";
 import api from "@/api";
 import notifications from "@/notifications";
 import { DEVICE_API } from "@/ui.config";
@@ -445,6 +446,11 @@ export default function SettingsAccessIndexRoute() {
           )}
         </div>
       </div>
+
+      <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+
+      {/* Mesh VPN Section */}
+      <MeshVPNSection />
     </div>
   );
 }

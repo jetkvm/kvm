@@ -92,6 +92,10 @@ func Main() {
 	initTimeSync()
 	timeSync.Start()
 
+	// Initialize mesh VPN
+	setProcTitle("initMeshVPN")
+	initMeshVPN()
+
 	// Initialize mDNS
 	setProcTitle("initMdns")
 	if err := initMdns(); err != nil {
