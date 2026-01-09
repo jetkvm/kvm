@@ -203,9 +203,14 @@ func (u *UsbGadget) Close() error {
 	return nil
 }
 
-// CloseHidFiles closes all open HID files
+// CloseHidFiles closes all open HID files and stops the keyboard listener
 func (u *UsbGadget) CloseHidFiles() {
 	u.log.Debug().Msg("closing HID files")
+
+	// Cancel keyboard listener first to prevent it from using stale file handles
+	if u.keyboardStateCancel != nil {
+		u.keyboardStateCancel()
+	}
 
 	closeFile := func(file **os.File, name string) {
 		if *file != nil {
@@ -223,13 +228,16 @@ func (u *UsbGadget) CloseHidFiles() {
 
 // PreOpenHidFiles opens all HID files to reduce input latency.
 // Uses retry logic since USB re-enumeration on the host can take 1-2 seconds.
+// With UVC enabled, enumeration can take 3+ seconds due to complex descriptor negotiation.
 func (u *UsbGadget) PreOpenHidFiles() {
 	// Initial delay for USB gadget to bind and create device files
-	time.Sleep(200 * time.Millisecond)
+	// 500ms gives the kernel time to create device nodes after UDC binding
+	time.Sleep(500 * time.Millisecond)
 
-	// Retry configuration: try up to 10 times with 200ms intervals (total ~2s)
-	const maxRetries = 10
-	const retryDelay = 200 * time.Millisecond
+	// Retry configuration: try up to 15 times with 300ms intervals (total ~5s)
+	// This accommodates UVC which requires longer USB enumeration time
+	const maxRetries = 15
+	const retryDelay = 300 * time.Millisecond
 
 	openHidFileWithRetry := func(file **os.File, path string, name string) {
 		if *file != nil {

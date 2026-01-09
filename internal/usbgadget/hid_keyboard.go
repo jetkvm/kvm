@@ -275,6 +275,13 @@ func (u *UsbGadget) listenKeyboardEvents() {
 				n, err := u.keyboardHidFile.Read(buf)
 				if err != nil {
 					u.logWithSuppression("keyboardHidFileRead", 100, &l, err, "failed to read")
+					// Close stale file handle and set to nil to trigger recovery
+					// This handles "transport endpoint shutdown" and "file already closed" errors
+					if u.keyboardHidFile != nil {
+						u.keyboardHidFile.Close()
+						u.keyboardHidFile = nil
+					}
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 				u.resetLogSuppressionCounter("keyboardHidFileRead")
