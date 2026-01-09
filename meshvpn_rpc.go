@@ -307,7 +307,7 @@ func rpcMeshVPNDisconnect(params struct {
 	logger.Info().Str("provider", providerName).Msg("meshVPNDisconnect called")
 
 	ctx := context.Background()
-	err := manager.DisconnectProvider(ctx, providerName)
+	err = manager.DisconnectProvider(ctx, providerName)
 	if err != nil {
 		logger.Error().Err(err).Msg("meshVPNDisconnect failed")
 		return nil, err
@@ -357,7 +357,7 @@ func rpcMeshVPNLogout(params struct {
 	}
 
 	ctx := context.Background()
-	err := manager.LogoutProvider(ctx, providerName)
+	err = manager.LogoutProvider(ctx, providerName)
 	if err != nil {
 		return false, err
 	}

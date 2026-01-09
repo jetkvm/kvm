@@ -31,13 +31,13 @@ func initMeshVPN() {
 	tailscaleProvider := tailscale.NewProvider(tailscale.ProviderConfig{
 		Version:    tailscale.DefaultVersion,
 		TUNMode:    tunMode,
-		HTTPClient: tailscale.NewDefaultHTTPClient(),
+		HTTPClient: meshvpn.NewDefaultHTTPClient(),
 	})
 	meshVPNRegistry.Register(tailscaleProvider)
 
 	zerotierProvider := zerotier.NewProvider(zerotier.ProviderConfig{
 		Version:    zerotier.DefaultVersion,
-		HTTPClient: zerotier.NewDefaultHTTPClient(),
+		HTTPClient: meshvpn.NewDefaultHTTPClient(),
 	})
 	meshVPNRegistry.Register(zerotierProvider)
 
