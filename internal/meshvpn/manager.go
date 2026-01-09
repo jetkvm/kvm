@@ -255,7 +255,13 @@ func (m *Manager) StartStatusMonitor(ctx context.Context) {
 	}
 
 	for _, p := range m.GetRunningProviders() {
-		p.StartStatusMonitor(ctx, onChange)
+		providerName := p.Name()
+		// Wrap the callback to include the provider name in status updates
+		wrappedOnChange := func(status ProviderStatus) {
+			status.Provider = providerName
+			onChange(status)
+		}
+		p.StartStatusMonitor(ctx, wrappedOnChange)
 	}
 }
 
@@ -271,7 +277,12 @@ func (m *Manager) StartProviderStatusMonitor(ctx context.Context, name string) {
 
 	provider, ok := m.registry.Get(name)
 	if ok {
-		provider.StartStatusMonitor(ctx, onChange)
+		// Wrap the callback to include the provider name in status updates
+		wrappedOnChange := func(status ProviderStatus) {
+			status.Provider = name
+			onChange(status)
+		}
+		provider.StartStatusMonitor(ctx, wrappedOnChange)
 	}
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GlobeAltIcon, CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
 
 import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
@@ -97,30 +97,50 @@ function ProviderCard({
   onSetAdvertiseExitNode,
   onAuthDialogClose,
 }: ProviderCardProps) {
-  const [controlServer, setControlServer] = useState("");
-  const [authKey, setAuthKey] = useState("");
-  const [networkId, setNetworkId] = useState("");
-  const [selectedExitNode, setSelectedExitNode] = useState("");
-  const [allowLanAccess, setAllowLanAccess] = useState(false);
-  const [advertiseExitNode, setAdvertiseExitNode] = useState(false);
-  const [tunMode, setTunMode] = useState<"userspace" | "kernel">("userspace");
+  const [controlServer, setControlServer] = useState(
+    provider.name === "tailscale" ? config?.tailscale?.controlServer || "" : "",
+  );
+  const [authKey, setAuthKey] = useState(
+    provider.name === "tailscale" ? config?.tailscale?.authKey || "" : "",
+  );
+  const [networkId, setNetworkId] = useState(
+    provider.name === "zerotier" ? config?.zerotier?.networkId || "" : "",
+  );
+  const [selectedExitNode, setSelectedExitNode] = useState(
+    provider.name === "tailscale" ? config?.tailscale?.exitNode || "" : "",
+  );
+  const [allowLanAccess, setAllowLanAccess] = useState(
+    provider.name === "tailscale" ? config?.tailscale?.exitNodeAllowLanAccess || false : false,
+  );
+  const [advertiseExitNode, setAdvertiseExitNode] = useState(
+    provider.name === "tailscale" ? config?.tailscale?.advertiseExitNode || false : false,
+  );
+  const [tunMode, setTunMode] = useState<"userspace" | "kernel">(
+    provider.name === "tailscale" ? config?.tailscale?.tunMode || "userspace" : "userspace",
+  );
   const [actionLoading, setActionLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Load config when it changes
+  // Track opened auth URLs to avoid reopening
+  const openedAuthUrlRef = useRef<string | null>(null);
+
+  // Derive effective loading state - not loading if status is definitive
+  const definitiveStates = ["connected", "stopped", "needs_auth", "error", "not_installed"];
+  const isEffectivelyLoading =
+    actionLoading && !(status?.state && definitiveStates.includes(status.state));
+
+  // Auto-open Tailscale auth URL when dialog opens
   useEffect(() => {
-    if (provider.name === "tailscale" && config?.tailscale) {
-      setControlServer(config.tailscale.controlServer || "");
-      setAuthKey(config.tailscale.authKey || "");
-      setSelectedExitNode(config.tailscale.exitNode || "");
-      setAllowLanAccess(config.tailscale.exitNodeAllowLanAccess || false);
-      setAdvertiseExitNode(config.tailscale.advertiseExitNode || false);
-      setTunMode(config.tailscale.tunMode || "userspace");
+    if (
+      isAuthDialogOpen &&
+      status?.authUrl &&
+      provider.name === "tailscale" &&
+      status.authUrl !== openedAuthUrlRef.current
+    ) {
+      openedAuthUrlRef.current = status.authUrl;
+      window.open(status.authUrl, "_blank");
     }
-    if (provider.name === "zerotier" && config?.zerotier) {
-      setNetworkId(config.zerotier.networkId || "");
-    }
-  }, [provider.name, config]);
+  }, [isAuthDialogOpen, status?.authUrl, provider.name]);
 
   const isInstalled = status?.installed ?? provider.installed;
   const isConnected = status?.state === "connected";
@@ -134,24 +154,26 @@ function ProviderCard({
         ? { controlServer: networkId || undefined }
         : { controlServer: controlServer || undefined, authKey: authKey || undefined };
     onConnect(provider.name, connectOpts);
-    setTimeout(() => setActionLoading(false), 1000);
+    // ZeroTier first-time init can take up to 45 seconds, Tailscale up to 15 seconds
+    setTimeout(() => setActionLoading(false), 60000);
   };
 
   const handleDisconnect = () => {
     setActionLoading(true);
     onDisconnect(provider.name);
-    setTimeout(() => setActionLoading(false), 1000);
+    // Disconnect can take up to 10 seconds for graceful shutdown
+    setTimeout(() => setActionLoading(false), 15000);
   };
 
   const handleLogout = () => {
     if (!window.confirm(m.meshvpn_logout_confirm_description())) return;
     setActionLoading(true);
     onLogout(provider.name);
-    setTimeout(() => setActionLoading(false), 1000);
+    setTimeout(() => setActionLoading(false), 15000);
   };
 
   const handleInstall = () => {
-    setActionLoading(true);
+    // Progress indicator handles disabled state via installProgress !== null
     onInstall(provider.name);
   };
 
@@ -163,7 +185,7 @@ function ProviderCard({
   };
 
   const handleUpdate = () => {
-    setActionLoading(true);
+    // Progress indicator handles disabled state via updateProgress !== null
     onUpdate(provider.name);
   };
 
@@ -201,9 +223,7 @@ function ProviderCard({
           <div className="flex items-center gap-x-3">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                isConnected
-                  ? "bg-green-100 dark:bg-green-900/30"
-                  : "bg-slate-100 dark:bg-slate-700"
+                isConnected ? "bg-green-100 dark:bg-green-900/30" : "bg-slate-100 dark:bg-slate-700"
               }`}
             >
               {isConnected ? (
@@ -232,7 +252,7 @@ function ProviderCard({
                 theme="primary"
                 text={m.meshvpn_install_button()}
                 onClick={handleInstall}
-                disabled={actionLoading || installProgress !== null}
+                disabled={isEffectivelyLoading || installProgress !== null}
               />
             )}
             {isInstalled && !isConnected && !isConnecting && !needsAuth && (
@@ -241,7 +261,7 @@ function ProviderCard({
                 theme="primary"
                 text={m.meshvpn_connect_button()}
                 onClick={handleConnect}
-                disabled={actionLoading}
+                disabled={isEffectivelyLoading}
               />
             )}
             {(isConnected || isConnecting || needsAuth) && (
@@ -250,7 +270,7 @@ function ProviderCard({
                 theme="light"
                 text={m.meshvpn_disconnect_button()}
                 onClick={handleDisconnect}
-                disabled={actionLoading}
+                disabled={isEffectivelyLoading}
               />
             )}
             {isInstalled && (
@@ -269,12 +289,16 @@ function ProviderCard({
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {status.ip && (
               <span className="text-slate-600 dark:text-slate-400">
-                IP: <span className="font-mono text-slate-800 dark:text-slate-200">{status.ip}</span>
+                IP:{" "}
+                <span className="font-mono text-slate-800 dark:text-slate-200">{status.ip}</span>
               </span>
             )}
             {status.hostname && (
               <span className="text-slate-600 dark:text-slate-400">
-                Node: <span className="font-mono text-slate-800 dark:text-slate-200">{status.hostname}</span>
+                Node:{" "}
+                <span className="font-mono text-slate-800 dark:text-slate-200">
+                  {status.hostname}
+                </span>
               </span>
             )}
           </div>
@@ -286,7 +310,9 @@ function ProviderCard({
             <div className="flex items-center gap-x-2">
               <LoadingSpinner className="h-4 w-4 text-blue-500" />
               <span className="text-sm text-blue-700 dark:text-blue-300">
-                {m.meshvpn_install_progress({ progress: Math.round(installProgress * 100).toString() })}
+                {m.meshvpn_install_progress({
+                  progress: Math.round(installProgress * 100).toString(),
+                })}
               </span>
             </div>
           </div>
@@ -298,7 +324,9 @@ function ProviderCard({
             <div className="flex items-center gap-x-2">
               <LoadingSpinner className="h-4 w-4 text-blue-500" />
               <span className="text-sm text-blue-700 dark:text-blue-300">
-                {m.meshvpn_update_progress({ progress: Math.round(updateProgress * 100).toString() })}
+                {m.meshvpn_update_progress({
+                  progress: Math.round(updateProgress * 100).toString(),
+                })}
               </span>
             </div>
           </div>
@@ -374,7 +402,7 @@ function ProviderCard({
                   value={controlServer}
                   onChange={e => setControlServer(e.target.value)}
                   placeholder={m.meshvpn_control_server_placeholder()}
-                  disabled={actionLoading || isConnecting}
+                  disabled={isEffectivelyLoading || isConnecting}
                 />
                 <InputFieldWithLabel
                   size="SM"
@@ -383,7 +411,7 @@ function ProviderCard({
                   value={authKey}
                   onChange={e => setAuthKey(e.target.value)}
                   type="password"
-                  disabled={actionLoading || isConnecting}
+                  disabled={isEffectivelyLoading || isConnecting}
                 />
                 <SettingsItem
                   title={m.meshvpn_tun_mode_title()}
@@ -393,7 +421,7 @@ function ProviderCard({
                     size="SM"
                     value={tunMode}
                     onChange={e => handleTunModeChange(e.target.value as "userspace" | "kernel")}
-                    disabled={actionLoading || isConnecting}
+                    disabled={isEffectivelyLoading || isConnecting}
                     options={[
                       { value: "userspace", label: m.meshvpn_tun_mode_userspace() },
                       { value: "kernel", label: m.meshvpn_tun_mode_kernel() },
@@ -412,7 +440,7 @@ function ProviderCard({
                 value={networkId}
                 onChange={e => setNetworkId(e.target.value)}
                 placeholder={m.meshvpn_zerotier_network_id_placeholder()}
-                disabled={actionLoading || isConnecting}
+                disabled={isEffectivelyLoading || isConnecting}
               />
             )}
 
@@ -480,7 +508,9 @@ function ProviderCard({
                   <div className="space-y-1 text-sm">
                     <div className="text-slate-600 dark:text-slate-400">
                       {m.meshvpn_current_version()}:{" "}
-                      <span className="font-mono">{versionInfo.currentVersion || status?.version || "?"}</span>
+                      <span className="font-mono">
+                        {versionInfo.currentVersion || status?.version || "?"}
+                      </span>
                     </div>
                     <div className="text-slate-600 dark:text-slate-400">
                       {m.meshvpn_latest_version()}:{" "}
@@ -493,7 +523,7 @@ function ProviderCard({
                       theme="primary"
                       text={m.meshvpn_update_button()}
                       onClick={handleUpdate}
-                      disabled={actionLoading || isConnecting}
+                      disabled={isEffectivelyLoading || isConnecting || updateProgress !== null}
                     />
                   )}
                 </div>
@@ -508,7 +538,7 @@ function ProviderCard({
                   theme="light"
                   text={m.meshvpn_logout_button()}
                   onClick={handleLogout}
-                  disabled={actionLoading}
+                  disabled={isEffectivelyLoading}
                 />
               )}
               {!isConnected && !isConnecting && (
@@ -517,7 +547,9 @@ function ProviderCard({
                   theme="light"
                   text={m.meshvpn_uninstall_button()}
                   onClick={handleUninstall}
-                  disabled={actionLoading}
+                  disabled={
+                    isEffectivelyLoading || installProgress !== null || updateProgress !== null
+                  }
                   className="text-red-600"
                 />
               )}
@@ -566,7 +598,12 @@ export function MeshVPNSection() {
         setProviderUpdateProgress(provider, progress);
       }
     },
-    [setProviderStatus, setAuthDialogProvider, setProviderInstallProgress, setProviderUpdateProgress],
+    [
+      setProviderStatus,
+      setAuthDialogProvider,
+      setProviderInstallProgress,
+      setProviderUpdateProgress,
+    ],
   );
 
   const { send } = useJsonRpc(handleRpcEvent);
@@ -621,12 +658,16 @@ export function MeshVPNSection() {
   // Fetch version info for a provider
   const fetchVersionInfo = useCallback(
     (providerName: string) => {
-      send("meshVPNGetVersionInfo", { params: { provider: providerName } }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          return;
-        }
-        setProviderVersionInfo(providerName, resp.result as MeshVPNVersionInfo);
-      });
+      send(
+        "meshVPNGetVersionInfo",
+        { params: { provider: providerName } },
+        (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            return;
+          }
+          setProviderVersionInfo(providerName, resp.result as MeshVPNVersionInfo);
+        },
+      );
     },
     [send, setProviderVersionInfo],
   );
@@ -682,10 +723,19 @@ export function MeshVPNSection() {
     });
   };
 
-  const handleConnect = (providerName: string, opts: { controlServer?: string; authKey?: string }) => {
+  const handleConnect = (
+    providerName: string,
+    opts: { controlServer?: string; authKey?: string },
+  ) => {
     send(
       "meshVPNConnect",
-      { params: { provider: providerName, controlServer: opts.controlServer, authKey: opts.authKey } },
+      {
+        params: {
+          provider: providerName,
+          controlServer: opts.controlServer,
+          authKey: opts.authKey,
+        },
+      },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(m.meshvpn_connect_error({ error: String(resp.error.message) }));
@@ -694,7 +744,11 @@ export function MeshVPNSection() {
         const result = resp.result as { success: boolean; authUrl?: string };
         if (result.authUrl) {
           setProviderStatus(providerName, {
-            ...(providerStatuses[providerName] || { state: "needs_auth", installed: true, running: false }),
+            ...(providerStatuses[providerName] || {
+              state: "needs_auth",
+              installed: true,
+              running: false,
+            }),
             authUrl: result.authUrl,
             state: "needs_auth",
           });
@@ -765,15 +819,19 @@ export function MeshVPNSection() {
   };
 
   const handleSetTUNMode = (providerName: string, mode: "userspace" | "kernel") => {
-    send("meshVPNSetTUNMode", { params: { provider: providerName, mode } }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(m.meshvpn_tun_mode_error({ error: String(resp.error.message) }));
-        fetchConfig();
-        return;
-      }
-      notifications.success(m.meshvpn_tun_mode_updated());
-      fetchProviderStatus(providerName);
-    });
+    send(
+      "meshVPNSetTUNMode",
+      { params: { provider: providerName, mode } },
+      (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(m.meshvpn_tun_mode_error({ error: String(resp.error.message) }));
+          fetchConfig();
+          return;
+        }
+        notifications.success(m.meshvpn_tun_mode_updated());
+        fetchProviderStatus(providerName);
+      },
+    );
   };
 
   const handleSetAdvertiseExitNode = (providerName: string, advertise: boolean) => {
@@ -782,12 +840,16 @@ export function MeshVPNSection() {
       { params: { provider: providerName, advertise } },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          notifications.error(m.meshvpn_advertise_exit_node_error({ error: String(resp.error.message) }));
+          notifications.error(
+            m.meshvpn_advertise_exit_node_error({ error: String(resp.error.message) }),
+          );
           fetchConfig();
           return;
         }
         notifications.success(
-          advertise ? m.meshvpn_advertise_exit_node_enabled() : m.meshvpn_advertise_exit_node_disabled(),
+          advertise
+            ? m.meshvpn_advertise_exit_node_enabled()
+            : m.meshvpn_advertise_exit_node_disabled(),
         );
       },
     );

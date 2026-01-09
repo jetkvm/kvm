@@ -46,6 +46,7 @@ func initMeshVPN() {
 		Registry: meshVPNRegistry,
 		OnStatusChange: func(status meshvpn.ProviderStatus) {
 			logger.Info().
+				Str("provider", status.Provider).
 				Str("state", string(status.State)).
 				Bool("hasSession", currentSession != nil).
 				Msg("meshVPN status change")

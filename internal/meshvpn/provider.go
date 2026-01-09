@@ -30,6 +30,7 @@ type ConnectResult struct {
 
 // ProviderStatus represents the current status of a VPN provider
 type ProviderStatus struct {
+	Provider      string        `json:"provider,omitempty"`
 	State         ProviderState `json:"state"`
 	Installed     bool          `json:"installed"`
 	Running       bool          `json:"running"`

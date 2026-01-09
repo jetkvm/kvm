@@ -140,7 +140,8 @@ func (m *StatusMonitor) hasChanged(current *ProviderStatus) bool {
 
 	last := m.lastStatus
 
-	return current.State != last.State ||
+	return current.Provider != last.Provider ||
+		current.State != last.State ||
 		current.Installed != last.Installed ||
 		current.Running != last.Running ||
 		current.IP != last.IP ||

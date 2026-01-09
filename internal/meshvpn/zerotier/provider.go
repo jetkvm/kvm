@@ -73,8 +73,20 @@ func (p *Provider) Install(ctx context.Context, progress meshvpn.ProgressFunc) e
 		return meshvpn.ErrAlreadyInstalled
 	}
 
+	// Try to fetch the latest version, fall back to hardcoded default
+	version := p.version
+	if p.versionClient != nil {
+		latestVersion, err := p.versionClient.GetLatestVersion(ctx)
+		if err != nil {
+			logger.Warn().Err(err).Str("fallback", version).Msg("failed to fetch latest version, using fallback")
+		} else if latestVersion != "" {
+			version = latestVersion
+			logger.Info().Str("version", version).Msg("installing latest ZeroTier version")
+		}
+	}
+
 	downloader := &Downloader{
-		version:    p.version,
+		version:    version,
 		httpClient: p.httpClient,
 	}
 
@@ -245,11 +257,20 @@ func (p *Provider) Disconnect(ctx context.Context) error {
 	// Stop the daemon but preserve network membership (networks.d/ files remain)
 	// On next Connect, daemon will auto-rejoin networks
 	if p.process != nil && p.process.IsRunning() {
-		return p.process.Stop()
+		if err := p.process.Stop(); err != nil {
+			return err
+		}
+		logger.Info().Msg("ZeroTier disconnected")
+		return nil
 	}
 
 	// Handle orphaned daemon from a previous session
-	return p.stopOrphanedDaemon()
+	if err := p.stopOrphanedDaemon(); err != nil {
+		return err
+	}
+
+	logger.Info().Msg("ZeroTier disconnected")
+	return nil
 }
 
 func (p *Provider) Logout(ctx context.Context) error {
@@ -274,11 +295,16 @@ func (p *Provider) Logout(ctx context.Context) error {
 		}
 	}
 
-	// Stop the daemon
-	if p.process != nil {
+	// Stop the daemon (tracked process)
+	if p.process != nil && p.process.IsRunning() {
 		if err := p.process.Stop(); err != nil {
-			return err
+			return fmt.Errorf("failed to stop daemon after logout: %w", err)
 		}
+	}
+
+	// Handle orphaned daemon from a previous session
+	if err := p.stopOrphanedDaemon(); err != nil {
+		return fmt.Errorf("failed to stop orphaned daemon after logout: %w", err)
 	}
 
 	// Remove identity files to fully logout
@@ -293,6 +319,7 @@ func (p *Provider) Logout(ctx context.Context) error {
 		return fmt.Errorf("logout incomplete: failed to remove %d identity file(s)", len(removeErrors))
 	}
 
+	logger.Info().Msg("ZeroTier logged out")
 	return nil
 }
 
@@ -333,6 +360,9 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 		return status, nil
 	}
 
+	// CLI worked, so daemon is definitely running (even if p.process is nil after app restart)
+	status.Running = true
+
 	if cliStatus.Version != "" {
 		status.Version = cliStatus.Version
 	}
@@ -366,13 +396,13 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 		} else if hasPendingNetwork {
 			status.State = meshvpn.StateNeedsAuth
 		} else if cliStatus.Online {
-			// Online but no networks joined - still connecting
-			status.State = meshvpn.StateConnecting
+			// Online but no networks joined - daemon is running and connected to ZT infrastructure
+			status.State = meshvpn.StateConnected
 		}
 	} else {
 		// Failed to get networks - if CLI worked but networks failed, check online status
 		if cliStatus.Online {
-			status.State = meshvpn.StateConnecting
+			status.State = meshvpn.StateConnected
 		}
 	}
 

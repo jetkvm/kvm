@@ -8,12 +8,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/meshvpn"
 )
+
+// isProcessFinishedError checks if the error indicates the process already exited.
+// This is not an error condition when stopping - it means the process is already stopped.
+func isProcessFinishedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "process already finished") ||
+		strings.Contains(errStr, "no such process")
+}
 
 type ProcessManager struct {
 	mu        sync.RWMutex
@@ -150,22 +162,31 @@ func (p *ProcessManager) Stop() error {
 		}()
 
 		if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			logger.Warn().Err(err).Msg("failed to send SIGTERM, trying SIGKILL")
-			if killErr := p.cmd.Process.Kill(); killErr != nil {
-				stopErr = fmt.Errorf("failed to kill process: %w", killErr)
+			// Process may already be finished - that's OK
+			if !isProcessFinishedError(err) {
+				logger.Warn().Err(err).Msg("failed to send SIGTERM, trying SIGKILL")
+				if killErr := p.cmd.Process.Kill(); killErr != nil && !isProcessFinishedError(killErr) {
+					stopErr = fmt.Errorf("failed to kill process: %w", killErr)
+				}
 			}
 		} else {
 			select {
 			case <-done:
 			case <-time.After(5 * time.Second):
 				logger.Warn().Msg("tailscaled did not stop gracefully, killing")
-				if killErr := p.cmd.Process.Kill(); killErr != nil {
+				if killErr := p.cmd.Process.Kill(); killErr != nil && !isProcessFinishedError(killErr) {
 					stopErr = fmt.Errorf("failed to kill process after timeout: %w", killErr)
 				}
 			}
 		}
 
-		<-done
+		// Wait for process to be reaped, but with a timeout to avoid blocking forever
+		select {
+		case <-done:
+			logger.Info().Msg("tailscaled stopped")
+		case <-time.After(3 * time.Second):
+			logger.Warn().Msg("timed out waiting for process to be reaped")
+		}
 	}
 
 	p.running = false

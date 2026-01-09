@@ -96,6 +96,6 @@ func (p *Provider) Update(_ context.Context, _ string, _ meshvpn.ProgressFunc) e
 	return errNotSupported
 }
 
-func (p *Provider) GetTUNMode() meshvpn.TUNMode                                   { return meshvpn.TUNModeUserspace }
-func (p *Provider) SetTUNMode(_ context.Context, _ meshvpn.TUNMode) error         { return errNotSupported }
-func (p *Provider) SetAdvertiseExitNode(_ context.Context, _ bool) error          { return errNotSupported }
+func (p *Provider) GetTUNMode() meshvpn.TUNMode                           { return meshvpn.TUNModeUserspace }
+func (p *Provider) SetTUNMode(_ context.Context, _ meshvpn.TUNMode) error { return errNotSupported }
+func (p *Provider) SetAdvertiseExitNode(_ context.Context, _ bool) error  { return errNotSupported }

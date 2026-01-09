@@ -108,7 +108,14 @@ func (p *ProcessManager) Start() error {
 
 	logger.Info().Int("pid", p.cmd.Process.Pid).Msg("started zerotier-one")
 
-	if err := p.waitForReady(10 * time.Second); err != nil {
+	// Use longer timeout for first-time initialization (needs to create identity, connect to roots)
+	timeout := 15 * time.Second
+	if _, err := os.Stat(IdentitySecretPath); os.IsNotExist(err) {
+		timeout = 45 * time.Second
+		logger.Info().Dur("timeout", timeout).Msg("first-time initialization, using extended timeout")
+	}
+
+	if err := p.waitForReady(timeout); err != nil {
 		if killErr := p.cmd.Process.Kill(); killErr != nil {
 			logger.Warn().Err(killErr).Msg("failed to kill uninitialized daemon")
 		}

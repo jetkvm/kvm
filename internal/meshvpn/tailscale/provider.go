@@ -6,7 +6,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/meshvpn"
@@ -78,8 +80,20 @@ func (p *Provider) Install(ctx context.Context, progress meshvpn.ProgressFunc) e
 		return meshvpn.ErrAlreadyInstalled
 	}
 
+	// Try to fetch the latest version, fall back to hardcoded default
+	version := p.version
+	if p.versionClient != nil {
+		latestInfo, err := p.versionClient.GetLatestVersion(ctx, TrackStable)
+		if err != nil {
+			logger.Warn().Err(err).Str("fallback", version).Msg("failed to fetch latest version, using fallback")
+		} else if latestInfo.Version != "" {
+			version = latestInfo.Version
+			logger.Info().Str("version", version).Msg("installing latest Tailscale version")
+		}
+	}
+
 	downloader := &Downloader{
-		version:    p.version,
+		version:    version,
 		httpClient: p.httpClient,
 	}
 
@@ -101,8 +115,76 @@ func (p *Provider) Uninstall(ctx context.Context) error {
 		}
 	}
 
+	// Stop any orphaned daemon from a previous session
+	if err := p.stopOrphanedDaemon(); err != nil {
+		return fmt.Errorf("cannot uninstall: %w", err)
+	}
+
 	if err := os.RemoveAll(InstallBasePath); err != nil {
 		return err
+	}
+
+	logger.Info().Msg("Tailscale uninstalled")
+	return nil
+}
+
+// stopOrphanedDaemon stops a tailscaled daemon that was started in a previous session.
+// This handles the case where the app was restarted but the daemon is still running.
+func (p *Provider) stopOrphanedDaemon() error {
+	// Check if daemon is running by trying to communicate with it
+	cli := NewCLI()
+	_, err := cli.Status(context.Background())
+	if err != nil {
+		// Daemon is not running or not responding
+		return nil
+	}
+
+	// Find the tailscaled process by name
+	pgrepCmd := exec.Command("pgrep", "-x", "tailscaled")
+	output, err := pgrepCmd.Output()
+	if err != nil {
+		// No process found
+		return nil
+	}
+
+	var pid int
+	if _, parseErr := fmt.Sscanf(string(output), "%d", &pid); parseErr != nil || pid <= 0 {
+		return nil
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return nil
+	}
+
+	// Check if process is actually running
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return nil // Process not running
+	}
+
+	logger.Info().Int("pid", pid).Msg("stopping orphaned tailscaled")
+
+	// Try graceful SIGTERM first
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		if killErr := proc.Kill(); killErr != nil {
+			return fmt.Errorf("failed to kill orphaned daemon (pid %d): %w", pid, killErr)
+		}
+	}
+
+	// Wait for process to exit
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			return nil // Process exited
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Force kill if still running
+	if err := proc.Signal(syscall.Signal(0)); err == nil {
+		if killErr := proc.Kill(); killErr != nil {
+			return fmt.Errorf("failed to force kill orphaned daemon (pid %d): %w", pid, killErr)
+		}
 	}
 
 	return nil
@@ -201,8 +283,23 @@ func (p *Provider) Disconnect(ctx context.Context) error {
 		p.connectCancel = nil
 	}
 
-	cli := NewCLI()
-	return cli.Down(ctx)
+	// Stop the daemon but preserve state files (for easy reconnect later)
+	// This is different from Logout which clears auth state
+	if p.process != nil && p.process.IsRunning() {
+		if err := p.process.Stop(); err != nil {
+			return err
+		}
+		logger.Info().Msg("Tailscale disconnected")
+		return nil
+	}
+
+	// Handle orphaned daemon from a previous session
+	if err := p.stopOrphanedDaemon(); err != nil {
+		return err
+	}
+
+	logger.Info().Msg("Tailscale disconnected")
+	return nil
 }
 
 func (p *Provider) Logout(ctx context.Context) error {
@@ -219,8 +316,26 @@ func (p *Provider) Logout(ctx context.Context) error {
 		p.connectCancel = nil
 	}
 
+	// Logout clears the auth state
 	cli := NewCLI()
-	return cli.Logout(ctx)
+	if err := cli.Logout(ctx); err != nil {
+		logger.Warn().Err(err).Msg("tailscale logout command failed")
+	}
+
+	// Stop the daemon after logout
+	if p.process != nil && p.process.IsRunning() {
+		if err := p.process.Stop(); err != nil {
+			return fmt.Errorf("failed to stop daemon after logout: %w", err)
+		}
+	}
+
+	// Handle orphaned daemon from a previous session
+	if err := p.stopOrphanedDaemon(); err != nil {
+		return fmt.Errorf("failed to stop orphaned daemon after logout: %w", err)
+	}
+
+	logger.Info().Msg("Tailscale logged out")
+	return nil
 }
 
 func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, error) {

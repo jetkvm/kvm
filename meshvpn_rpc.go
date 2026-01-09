@@ -95,22 +95,35 @@ func rpcGetMeshVPNStatus(params struct {
 
 	ctx := context.Background()
 	var status *meshvpn.ProviderStatus
+	providerName := params.Provider
 
-	if params.Provider != "" {
-		status, err = manager.GetProviderStatus(ctx, params.Provider)
+	if providerName != "" {
+		status, err = manager.GetProviderStatus(ctx, providerName)
 	} else {
 		status, err = manager.GetStatus(ctx)
+		// If we got status from the active provider, get its name
+		if err == nil && status != nil {
+			if provider := manager.GetActiveProvider(); provider != nil {
+				providerName = provider.Name()
+			}
+		}
 	}
 
 	if err != nil {
 		if errors.Is(err, meshvpn.ErrNoActiveProvider) {
 			return &meshvpn.ProviderStatus{
+				Provider:  providerName,
 				State:     meshvpn.StateNotInstalled,
 				Installed: false,
 				Running:   false,
 			}, nil
 		}
 		return nil, err
+	}
+
+	// Ensure provider field is set
+	if providerName != "" {
+		status.Provider = providerName
 	}
 
 	return status, nil
@@ -240,6 +253,10 @@ func rpcMeshVPNUninstall(provider string) (bool, error) {
 }
 
 func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult, error) {
+	logger.Info().
+		Str("provider", params.Provider).
+		Msg("meshVPNConnect RPC called")
+
 	manager, err := requireManager()
 	if err != nil {
 		return nil, err
@@ -293,10 +310,15 @@ func rpcMeshVPNDisconnect(params struct {
 	}
 
 	providerName := params.Provider
+	logger.Info().
+		Str("receivedProvider", params.Provider).
+		Msg("meshVPNDisconnect RPC received")
+
 	if providerName == "" {
 		// For backward compatibility, use first running provider
 		if provider := manager.GetActiveProvider(); provider != nil {
 			providerName = provider.Name()
+			logger.Info().Str("fallbackProvider", providerName).Msg("using fallback provider")
 		}
 	}
 
@@ -304,7 +326,7 @@ func rpcMeshVPNDisconnect(params struct {
 		return nil, meshvpn.ErrNoActiveProvider
 	}
 
-	logger.Info().Str("provider", providerName).Msg("meshVPNDisconnect called")
+	logger.Info().Str("provider", providerName).Msg("meshVPNDisconnect disconnecting")
 
 	ctx := context.Background()
 	err = manager.DisconnectProvider(ctx, providerName)
@@ -325,6 +347,7 @@ func rpcMeshVPNDisconnect(params struct {
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to get status after disconnect")
 		return &meshvpn.ProviderStatus{
+			Provider:     providerName,
 			State:        meshvpn.StateStopped,
 			Installed:    true,
 			Running:      false,
@@ -332,7 +355,14 @@ func rpcMeshVPNDisconnect(params struct {
 		}, nil
 	}
 
-	logger.Info().Str("state", string(status.State)).Msg("meshVPNDisconnect returning status")
+	// Ensure provider field is set in the returned status
+	status.Provider = providerName
+
+	logger.Info().
+		Str("provider", providerName).
+		Str("state", string(status.State)).
+		Bool("installed", status.Installed).
+		Msg("meshVPNDisconnect returning status")
 	return status, nil
 }
 
@@ -416,6 +446,11 @@ func rpcMeshVPNGetVersionInfo(params struct {
 }
 
 func rpcMeshVPNUpdate(params RpcMeshVPNUpdateParams) (bool, error) {
+	logger.Info().
+		Str("provider", params.Provider).
+		Str("targetVersion", params.TargetVersion).
+		Msg("meshVPNUpdate RPC called")
+
 	manager, err := requireManager()
 	if err != nil {
 		return false, err
