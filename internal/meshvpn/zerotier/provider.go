@@ -13,12 +13,19 @@ import (
 	"github.com/jetkvm/kvm/internal/meshvpn"
 )
 
+// statusMonitorLogger adapts the package logger to the StatusMonitorLogger interface.
+type statusMonitorLogger struct{}
+
+func (l *statusMonitorLogger) Warn(msg string, err error, failures int) {
+	logger.Warn().Err(err).Int("consecutiveFailures", failures).Msg(msg)
+}
+
 // Provider implements the meshvpn.Provider interface for ZeroTier.
 type Provider struct {
 	mu            sync.RWMutex
 	version       string
 	process       *ProcessManager
-	statusMonitor *StatusMonitor
+	statusMonitor *meshvpn.StatusMonitor
 	httpClient    meshvpn.HTTPClient
 	versionClient *VersionClient
 }
@@ -417,7 +424,11 @@ func (p *Provider) StartStatusMonitor(ctx context.Context, onChange meshvpn.Stat
 		p.statusMonitor.Stop()
 	}
 
-	p.statusMonitor = NewStatusMonitor(p, onChange)
+	p.statusMonitor = meshvpn.NewStatusMonitor(meshvpn.StatusMonitorConfig{
+		Provider: p,
+		OnChange: onChange,
+		Logger:   &statusMonitorLogger{},
+	})
 	go p.statusMonitor.Start(ctx)
 }
 

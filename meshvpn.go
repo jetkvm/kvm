@@ -45,11 +45,6 @@ func initMeshVPN() {
 		Config:   vpnConfig,
 		Registry: meshVPNRegistry,
 		OnStatusChange: func(status meshvpn.ProviderStatus) {
-			logger.Info().
-				Str("provider", status.Provider).
-				Str("state", string(status.State)).
-				Bool("hasSession", currentSession != nil).
-				Msg("meshVPN status change")
 			if currentSession != nil {
 				writeJSONRPCEvent("meshVPNState", status, currentSession)
 			}
@@ -63,9 +58,7 @@ func initMeshVPN() {
 		},
 	})
 
-	logger.Info().
-		Int("providers", meshVPNRegistry.Count()).
-		Msg("mesh VPN initialized")
+	logger.Info().Msg("mesh VPN initialized")
 
 	// Auto-start the provider if it was previously enabled
 	go func() {

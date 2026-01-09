@@ -253,10 +253,6 @@ func rpcMeshVPNUninstall(provider string) (bool, error) {
 }
 
 func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult, error) {
-	logger.Info().
-		Str("provider", params.Provider).
-		Msg("meshVPNConnect RPC called")
-
 	manager, err := requireManager()
 	if err != nil {
 		return nil, err
@@ -290,11 +286,6 @@ func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult
 		restartMdns()
 	}
 
-	logger.Info().
-		Str("provider", providerName).
-		Str("authUrl", result.AuthURL).
-		Msg("meshVPNConnect returning result")
-
 	return &RpcMeshVPNConnectResult{
 		Success: true,
 		AuthURL: result.AuthURL,
@@ -310,15 +301,10 @@ func rpcMeshVPNDisconnect(params struct {
 	}
 
 	providerName := params.Provider
-	logger.Info().
-		Str("receivedProvider", params.Provider).
-		Msg("meshVPNDisconnect RPC received")
-
 	if providerName == "" {
 		// For backward compatibility, use first running provider
 		if provider := manager.GetActiveProvider(); provider != nil {
 			providerName = provider.Name()
-			logger.Info().Str("fallbackProvider", providerName).Msg("using fallback provider")
 		}
 	}
 
@@ -326,12 +312,8 @@ func rpcMeshVPNDisconnect(params struct {
 		return nil, meshvpn.ErrNoActiveProvider
 	}
 
-	logger.Info().Str("provider", providerName).Msg("meshVPNDisconnect disconnecting")
-
 	ctx := context.Background()
-	err = manager.DisconnectProvider(ctx, providerName)
-	if err != nil {
-		logger.Error().Err(err).Msg("meshVPNDisconnect failed")
+	if err := manager.DisconnectProvider(ctx, providerName); err != nil {
 		return nil, err
 	}
 
@@ -357,12 +339,6 @@ func rpcMeshVPNDisconnect(params struct {
 
 	// Ensure provider field is set in the returned status
 	status.Provider = providerName
-
-	logger.Info().
-		Str("provider", providerName).
-		Str("state", string(status.State)).
-		Bool("installed", status.Installed).
-		Msg("meshVPNDisconnect returning status")
 	return status, nil
 }
 
@@ -446,11 +422,6 @@ func rpcMeshVPNGetVersionInfo(params struct {
 }
 
 func rpcMeshVPNUpdate(params RpcMeshVPNUpdateParams) (bool, error) {
-	logger.Info().
-		Str("provider", params.Provider).
-		Str("targetVersion", params.TargetVersion).
-		Msg("meshVPNUpdate RPC called")
-
 	manager, err := requireManager()
 	if err != nil {
 		return false, err
