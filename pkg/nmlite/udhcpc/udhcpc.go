@@ -179,7 +179,8 @@ func (c *DHCPClient) loadLeaseFile() error {
 
 	leaseExpiry, err := lease.SetLeaseExpiry()
 	if err != nil {
-		c.logger.Error().Err(err).Msg("failed to get dhcp lease expiry")
+		// Non-fatal: lease still works, we just can't calculate expiry time
+		c.logger.Debug().Err(err).Msg("could not calculate dhcp lease expiry")
 	} else {
 		expiresIn := time.Until(leaseExpiry)
 		c.logger.Info().

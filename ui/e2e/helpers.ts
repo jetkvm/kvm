@@ -385,6 +385,83 @@ export async function verifyHidAndVideo(page: Page): Promise<void> {
 }
 
 // TypeScript declarations for the test hooks on window
+/**
+ * Send a command to the KVM terminal via the test hooks.
+ *
+ * @param page - Playwright page object
+ * @param command - Command to send (newline will be appended automatically)
+ * @param waitMs - Time to wait after sending (default: 500ms)
+ */
+export async function sendTerminalCommand(
+  page: Page,
+  command: string,
+  waitMs = 500,
+): Promise<boolean> {
+  const result = await page.evaluate(cmd => {
+    return window.__kvmTestHooks?.sendTerminalCommand?.(cmd) ?? false;
+  }, command);
+
+  if (waitMs > 0) {
+    await page.waitForTimeout(waitMs);
+  }
+
+  return result;
+}
+
+/**
+ * Wait for the KVM terminal data channel to be ready.
+ *
+ * @param page - Playwright page object
+ * @param timeout - Maximum time to wait in milliseconds (default: 10000)
+ */
+export async function waitForTerminalReady(page: Page, timeout = 10000): Promise<void> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeout) {
+    const ready = await page.evaluate(() => {
+      return window.__kvmTestHooks?.isTerminalReady?.() ?? false;
+    });
+
+    if (ready) {
+      return;
+    }
+
+    await page.waitForTimeout(200);
+  }
+
+  throw new Error(`Terminal not ready after ${timeout}ms`);
+}
+
+/**
+ * Reconnect to the device after a reboot.
+ * Waits for the device to come back online and re-establishes WebRTC connection.
+ *
+ * @param page - Playwright page object
+ * @param waitBeforeRetry - Initial wait time before starting retries (default: 30000ms)
+ * @param maxRetries - Maximum number of reconnection attempts (default: 15)
+ * @param retryInterval - Time between retry attempts (default: 3000ms)
+ */
+export async function reconnectAfterReboot(
+  page: Page,
+  waitBeforeRetry = 15000,
+  maxRetries = 15,
+  retryInterval = 3000,
+): Promise<void> {
+  await page.waitForTimeout(waitBeforeRetry);
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await page.goto("/", { timeout: 5000 });
+      await waitForWebRTCReady(page, 10000);
+      return;
+    } catch {
+      if (attempt === maxRetries) {
+        throw new Error("Failed to reconnect after reboot");
+      }
+      await page.waitForTimeout(retryInterval);
+    }
+  }
+}
+
 declare global {
   interface Window {
     __kvmTestHooks?: {

@@ -197,7 +197,13 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 			l.Info().Msg("interface is up")
 			return link, nil
 		}
-		l.Warn().Msg("interface is still down, retrying")
+		// Use Info for first 5 attempts (expected during boot while PHY negotiates),
+		// then Warn for persistent failures
+		if attempt < 5 {
+			l.Info().Msg("waiting for interface to come up")
+		} else {
+			l.Warn().Msg("interface is still down, retrying")
+		}
 
 		select {
 		case <-time.After(500 * time.Millisecond):

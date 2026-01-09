@@ -290,6 +290,10 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 
 	d.OnOpen(func() {
 		go func() {
+			if port == nil {
+				return
+			}
+
 			buf := make([]byte, 1024)
 			for {
 				n, err := port.Read(buf)

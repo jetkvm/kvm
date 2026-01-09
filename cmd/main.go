@@ -14,6 +14,7 @@ import (
 
 	"github.com/erikdubbelboer/gspt"
 	"github.com/jetkvm/kvm"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
@@ -142,6 +143,23 @@ func supervise() error {
 	}
 
 	if exiterr, ok := cmdErr.(*exec.ExitError); ok {
+		// Append crash info to the log file
+		fmt.Fprintf(logFile, "\n=== SUPERVISOR CRASH INFO ===\n")
+		fmt.Fprintf(logFile, "Timestamp: %s\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(logFile, "Exit Code: %d\n", exiterr.ExitCode())
+		if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+			if ws.Signaled() {
+				fmt.Fprintf(logFile, "Signal: %s\n", ws.Signal())
+			}
+		}
+
+		// Log full system diagnostics
+		diag := diagnostics.New(diagnostics.Options{Writer: logFile})
+		diag.LogAll("supervisor_crash")
+
+		// Ensure all data is flushed to disk before copying
+		_ = logFile.Sync()
+
 		createErrorDump(logFile)
 		os.Exit(exiterr.ExitCode())
 	}
