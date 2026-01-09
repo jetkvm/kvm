@@ -18,20 +18,15 @@ type Provider struct {
 	tunMode       meshvpn.TUNMode
 	process       *ProcessManager
 	statusMonitor *StatusMonitor
-	httpClient    HTTPClient
+	httpClient    meshvpn.HTTPClient
 	versionClient *VersionClient
 	connectCancel context.CancelFunc
-}
-
-type HTTPClient interface {
-	Get(url string) ([]byte, error)
-	Download(url string, dest string, progress meshvpn.ProgressFunc) error
 }
 
 type ProviderConfig struct {
 	Version    string
 	TUNMode    meshvpn.TUNMode
-	HTTPClient HTTPClient
+	HTTPClient meshvpn.HTTPClient
 }
 
 func NewProvider(cfg ProviderConfig) *Provider {

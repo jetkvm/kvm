@@ -21,6 +21,39 @@ import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { Checkbox } from "@components/Checkbox";
 
+// Helper to get state display label
+function getStateLabel(state: string): string {
+  switch (state) {
+    case "not_installed":
+      return m.meshvpn_not_installed();
+    case "installing":
+      return m.meshvpn_install_progress({ progress: "..." });
+    case "stopped":
+      return m.meshvpn_stopped();
+    case "connecting":
+      return m.meshvpn_connecting();
+    case "needs_auth":
+      return m.meshvpn_needs_auth();
+    case "connected":
+      return m.meshvpn_connected();
+    case "error":
+      return m.meshvpn_status_error();
+    default:
+      return state;
+  }
+}
+
+// Helper to get status text color class
+function getStatusTextColorClass(state: string | undefined): string {
+  if (state === "connected") {
+    return "text-green-600 dark:text-green-400";
+  }
+  if (state === "needs_auth") {
+    return "text-amber-600 dark:text-amber-400";
+  }
+  return "text-slate-500 dark:text-slate-400";
+}
+
 interface ProviderCardProps {
   provider: MeshVPNProviderInfo;
   status: MeshVPNProviderStatus | null;
@@ -93,27 +126,6 @@ function ProviderCard({
   const isConnected = status?.state === "connected";
   const isConnecting = status?.state === "connecting";
   const needsAuth = status?.state === "needs_auth";
-
-  const getStateLabel = (state: string) => {
-    switch (state) {
-      case "not_installed":
-        return m.meshvpn_not_installed();
-      case "installing":
-        return m.meshvpn_install_progress({ progress: "..." });
-      case "stopped":
-        return m.meshvpn_stopped();
-      case "connecting":
-        return m.meshvpn_connecting();
-      case "needs_auth":
-        return m.meshvpn_needs_auth();
-      case "connected":
-        return m.meshvpn_connected();
-      case "error":
-        return m.meshvpn_status_error();
-      default:
-        return state;
-    }
-  };
 
   const handleConnect = () => {
     setActionLoading(true);
@@ -206,15 +218,7 @@ function ProviderCard({
               <h3 className="font-semibold text-slate-900 dark:text-white">
                 {provider.displayName}
               </h3>
-              <p
-                className={`text-sm ${
-                  isConnected
-                    ? "text-green-600 dark:text-green-400"
-                    : needsAuth
-                      ? "text-amber-600 dark:text-amber-400"
-                      : "text-slate-500 dark:text-slate-400"
-                }`}
-              >
+              <p className={`text-sm ${getStatusTextColorClass(status?.state)}`}>
                 {status ? getStateLabel(status.state) : m.meshvpn_not_installed()}
               </p>
             </div>

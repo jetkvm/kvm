@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/meshvpn"
 )
 
 type Track string
@@ -30,12 +32,12 @@ type VersionInfo struct {
 
 // VersionClient fetches and caches version information from Tailscale's API.
 type VersionClient struct {
-	httpClient HTTPClient
+	httpClient meshvpn.HTTPClient
 	mu         sync.RWMutex
 	cache      map[Track]*VersionInfo
 }
 
-func NewVersionClient(httpClient HTTPClient) *VersionClient {
+func NewVersionClient(httpClient meshvpn.HTTPClient) *VersionClient {
 	return &VersionClient{
 		httpClient: httpClient,
 		cache:      make(map[Track]*VersionInfo),

@@ -10,12 +10,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/jetkvm/kvm/internal/meshvpn"
 )
@@ -36,79 +34,7 @@ func isPathSafe(basePath, targetPath string) error {
 // Downloader handles downloading and installing Tailscale binaries.
 type Downloader struct {
 	version    string
-	httpClient HTTPClient
-}
-
-// DefaultHTTPClient implements HTTPClient using net/http.
-type DefaultHTTPClient struct {
-	client *http.Client
-}
-
-func NewDefaultHTTPClient() *DefaultHTTPClient {
-	return &DefaultHTTPClient{client: &http.Client{
-		Timeout: 10 * time.Minute,
-	}}
-}
-
-func (c *DefaultHTTPClient) Get(url string) ([]byte, error) {
-	resp, err := c.client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	return io.ReadAll(resp.Body)
-}
-
-func (c *DefaultHTTPClient) Download(url string, dest string, progress meshvpn.ProgressFunc) error {
-	resp, err := c.client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	totalSize := resp.ContentLength
-	written := int64(0)
-
-	reader := &progressReader{
-		reader: resp.Body,
-		onProgress: func(n int64) {
-			written += n
-			if progress != nil && totalSize > 0 {
-				progress(float64(written) / float64(totalSize))
-			}
-		},
-	}
-
-	_, err = io.Copy(out, reader)
-	return err
-}
-
-type progressReader struct {
-	reader     io.Reader
-	onProgress func(n int64)
-}
-
-func (pr *progressReader) Read(p []byte) (int, error) {
-	n, err := pr.reader.Read(p)
-	if pr.onProgress != nil && n > 0 {
-		pr.onProgress(int64(n))
-	}
-	return n, err
+	httpClient meshvpn.HTTPClient
 }
 
 func (d *Downloader) getPackageURL() string {
@@ -168,7 +94,7 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 
 	httpClient := d.httpClient
 	if httpClient == nil {
-		httpClient = NewDefaultHTTPClient()
+		httpClient = meshvpn.NewDefaultHTTPClient()
 	}
 
 	err = httpClient.Download(d.getPackageURL(), tmpPath, func(p float64) {
@@ -218,7 +144,7 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 func (d *Downloader) downloadChecksum() (string, error) {
 	httpClient := d.httpClient
 	if httpClient == nil {
-		httpClient = NewDefaultHTTPClient()
+		httpClient = meshvpn.NewDefaultHTTPClient()
 	}
 
 	data, err := httpClient.Get(d.getChecksumURL())

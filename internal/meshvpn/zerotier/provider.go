@@ -19,14 +19,14 @@ type Provider struct {
 	version       string
 	process       *ProcessManager
 	statusMonitor *StatusMonitor
-	httpClient    HTTPClient
+	httpClient    meshvpn.HTTPClient
 	versionClient *VersionClient
 }
 
 // ProviderConfig contains configuration for creating a Provider.
 type ProviderConfig struct {
 	Version    string
-	HTTPClient HTTPClient
+	HTTPClient meshvpn.HTTPClient
 }
 
 // NewProvider creates a new ZeroTier provider.
@@ -38,7 +38,7 @@ func NewProvider(cfg ProviderConfig) *Provider {
 
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
-		httpClient = NewDefaultHTTPClient()
+		httpClient = meshvpn.NewDefaultHTTPClient()
 	}
 
 	return &Provider{

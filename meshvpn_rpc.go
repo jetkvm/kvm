@@ -10,6 +10,15 @@ import (
 
 var errMeshVPNNotInitialized = errors.New("mesh VPN not initialized")
 
+// requireManager returns the MeshVPN manager or an error if not initialized.
+func requireManager() (*meshvpn.Manager, error) {
+	manager := getMeshVPNManager()
+	if manager == nil {
+		return nil, errMeshVPNNotInitialized
+	}
+	return manager, nil
+}
+
 // RPC types use camelCase JSON tags vs snake_case in internal types.
 
 type RpcMeshVPNConfig struct {
@@ -69,25 +78,23 @@ type RpcMeshVPNSetAdvertiseExitNodeParams struct {
 }
 
 func rpcGetMeshVPNProviders() ([]meshvpn.ProviderInfo, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
-
 	return manager.ListProviders(), nil
 }
 
 func rpcGetMeshVPNStatus(params struct {
 	Provider string `json:"provider,omitempty"`
 }) (*meshvpn.ProviderStatus, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
 
 	ctx := context.Background()
 	var status *meshvpn.ProviderStatus
-	var err error
 
 	if params.Provider != "" {
 		status, err = manager.GetProviderStatus(ctx, params.Provider)
@@ -110,9 +117,9 @@ func rpcGetMeshVPNStatus(params struct {
 }
 
 func rpcGetMeshVPNConfig() (*RpcMeshVPNConfig, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
 
 	cfg := manager.GetConfig()
@@ -149,9 +156,9 @@ func rpcGetMeshVPNConfig() (*RpcMeshVPNConfig, error) {
 func rpcSetMeshVPNConfig(params struct {
 	Config RpcMeshVPNConfig `json:"config"`
 }) (*RpcMeshVPNConfig, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
 
 	cfg := &meshvpn.Config{
@@ -189,15 +196,15 @@ func rpcSetMeshVPNConfig(params struct {
 }
 
 func rpcMeshVPNInstall(provider string) (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return false, err
 	}
 
 	ctx := context.Background()
 
 	// Install with progress reporting via RPC events
-	err := manager.Install(ctx, provider, func(progress float64) {
+	installErr := manager.Install(ctx, provider, func(progress float64) {
 		if currentSession != nil {
 			writeJSONRPCEvent("meshVPNInstallProgress", map[string]interface{}{
 				"provider": provider,
@@ -206,17 +213,17 @@ func rpcMeshVPNInstall(provider string) (bool, error) {
 		}
 	})
 
-	if err != nil {
-		return false, err
+	if installErr != nil {
+		return false, installErr
 	}
 
 	return true, nil
 }
 
 func rpcMeshVPNUninstall(provider string) (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return false, err
 	}
 
 	ctx := context.Background()
@@ -233,9 +240,9 @@ func rpcMeshVPNUninstall(provider string) (bool, error) {
 }
 
 func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
 
 	providerName := params.Provider
@@ -280,9 +287,9 @@ func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult
 func rpcMeshVPNDisconnect(params struct {
 	Provider string `json:"provider"`
 }) (*meshvpn.ProviderStatus, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
 
 	providerName := params.Provider
@@ -332,9 +339,9 @@ func rpcMeshVPNDisconnect(params struct {
 func rpcMeshVPNLogout(params struct {
 	Provider string `json:"provider"`
 }) (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return false, err
 	}
 
 	providerName := params.Provider
@@ -367,67 +374,57 @@ func rpcMeshVPNLogout(params struct {
 }
 
 func rpcMeshVPNGetExitNodes() ([]meshvpn.ExitNode, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
-
-	ctx := context.Background()
-	return manager.ListExitNodes(ctx)
+	return manager.ListExitNodes(context.Background())
 }
 
 func rpcMeshVPNSetExitNode(params RpcMeshVPNSetExitNodeParams) (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
-	}
-
-	ctx := context.Background()
-	err := manager.SetExitNode(ctx, params.Hostname, params.AllowLAN)
+	manager, err := requireManager()
 	if err != nil {
 		return false, err
 	}
 
+	if err := manager.SetExitNode(context.Background(), params.Hostname, params.AllowLAN); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
 func rpcMeshVPNClearExitNode() (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
-	}
-
-	ctx := context.Background()
-	err := manager.ClearExitNode(ctx)
+	manager, err := requireManager()
 	if err != nil {
 		return false, err
 	}
 
+	if err := manager.ClearExitNode(context.Background()); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
 func rpcMeshVPNGetVersionInfo(params struct {
 	Provider string `json:"provider,omitempty"`
 }) (*meshvpn.VersionInfo, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
-
-	ctx := context.Background()
-	return manager.GetVersionInfo(ctx, params.Provider)
+	return manager.GetVersionInfo(context.Background(), params.Provider)
 }
 
 func rpcMeshVPNUpdate(params RpcMeshVPNUpdateParams) (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return false, err
 	}
 
 	ctx := context.Background()
 
 	// Report update progress via RPC events
-	err := manager.Update(ctx, params.Provider, params.TargetVersion, func(progress float64) {
+	updateErr := manager.Update(ctx, params.Provider, params.TargetVersion, func(progress float64) {
 		if currentSession != nil {
 			writeJSONRPCEvent("meshVPNUpdateProgress", map[string]interface{}{
 				"provider": params.Provider,
@@ -436,35 +433,31 @@ func rpcMeshVPNUpdate(params RpcMeshVPNUpdateParams) (bool, error) {
 		}
 	})
 
-	if err != nil {
-		return false, err
+	if updateErr != nil {
+		return false, updateErr
 	}
-
 	return true, nil
 }
 
 func rpcMeshVPNGetTUNMode(params struct {
 	Provider string `json:"provider,omitempty"`
 }) (*RpcMeshVPNGetTUNModeResult, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return nil, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return nil, err
 	}
 
 	mode, err := manager.GetTUNMode(params.Provider)
 	if err != nil {
 		return nil, err
 	}
-
-	return &RpcMeshVPNGetTUNModeResult{
-		Mode: string(mode),
-	}, nil
+	return &RpcMeshVPNGetTUNModeResult{Mode: string(mode)}, nil
 }
 
 func rpcMeshVPNSetTUNMode(params RpcMeshVPNSetTUNModeParams) (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
+	manager, err := requireManager()
+	if err != nil {
+		return false, err
 	}
 
 	tunMode, err := meshvpn.ParseTUNMode(params.Mode)
@@ -472,8 +465,7 @@ func rpcMeshVPNSetTUNMode(params RpcMeshVPNSetTUNModeParams) (bool, error) {
 		return false, err
 	}
 
-	ctx := context.Background()
-	if err := manager.SetTUNMode(ctx, params.Provider, tunMode); err != nil {
+	if err := manager.SetTUNMode(context.Background(), params.Provider, tunMode); err != nil {
 		return false, err
 	}
 
@@ -494,16 +486,16 @@ func rpcMeshVPNSetTUNMode(params RpcMeshVPNSetTUNModeParams) (bool, error) {
 }
 
 func rpcMeshVPNSetAdvertiseExitNode(params RpcMeshVPNSetAdvertiseExitNodeParams) (bool, error) {
-	manager := getMeshVPNManager()
-	if manager == nil {
-		return false, errMeshVPNNotInitialized
-	}
-
-	ctx := context.Background()
-	if err := manager.SetAdvertiseExitNode(ctx, params.Provider, params.Advertise); err != nil {
+	manager, err := requireManager()
+	if err != nil {
 		return false, err
 	}
 
+	if err := manager.SetAdvertiseExitNode(context.Background(), params.Provider, params.Advertise); err != nil {
+		return false, err
+	}
+
+	// Persist setting to config
 	cfg := manager.GetConfig()
 	if cfg == nil {
 		cfg = &meshvpn.Config{}
