@@ -424,14 +424,6 @@ func (m *Manager) AutoStart(ctx context.Context) error {
 	return nil
 }
 
-type VersionInfoProvider interface {
-	GetVersionInfo(ctx context.Context) (*VersionInfo, error)
-}
-
-type UpdateProvider interface {
-	Update(ctx context.Context, targetVersion string, progress ProgressFunc) error
-}
-
 func (m *Manager) getProvider(name string) (Provider, error) {
 	if name != "" {
 		provider, ok := m.registry.Get(name)

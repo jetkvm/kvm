@@ -89,7 +89,31 @@ type ExitNodeAdvertiser interface {
 	SetAdvertiseExitNode(ctx context.Context, advertise bool) error
 }
 
-// Provider is the interface that all VPN providers must implement
+// VersionInfoProvider is an optional interface for providers that support version checking
+type VersionInfoProvider interface {
+	GetVersionInfo(ctx context.Context) (*VersionInfo, error)
+}
+
+// UpdateProvider is an optional interface for providers that support updating
+type UpdateProvider interface {
+	Update(ctx context.Context, targetVersion string, progress ProgressFunc) error
+}
+
+// Provider is the interface that all VPN providers must implement.
+//
+// To add a new provider:
+//  1. Create package under internal/meshvpn/newprovider/
+//  2. Implement Provider interface (see tailscale/ or zerotier/ for examples)
+//  3. Add config struct to config.go and update IsProviderEnabled()
+//  4. Update EnableProvider/DisableProvider in manager.go
+//  5. Register provider in meshvpn.go
+//  6. Add UI components in ui/src/components/MeshVPNSection.tsx
+//
+// Optional interfaces for additional features:
+//   - TUNModeProvider: for TUN mode configuration (userspace vs kernel)
+//   - ExitNodeAdvertiser: for advertising as an exit node
+//   - VersionInfoProvider: for version checking and update detection
+//   - UpdateProvider: for in-place binary updates
 type Provider interface {
 	// Identity
 	Name() string
