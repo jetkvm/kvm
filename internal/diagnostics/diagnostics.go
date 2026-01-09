@@ -3,7 +3,9 @@
 package diagnostics
 
 import (
+	"context"
 	"io"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
@@ -39,7 +41,10 @@ type Options struct {
 type Diagnostics struct {
 	logger  *zerolog.Logger
 	options Options
+	ctx     context.Context // set during LogAll for overall timeout
 }
+
+const defaultLogAllTimeout = 10 * time.Second
 
 // New creates a new Diagnostics instance using the default diagnostics logger.
 // If opts.Writer is set, logs are written there instead of the default logger.
@@ -61,7 +66,13 @@ func NewWithLogger(logger *zerolog.Logger, opts Options) *Diagnostics {
 
 // LogAll runs all diagnostic checks and logs the results.
 // The phase parameter distinguishes context (e.g., "crash" vs "handshake" vs "download").
+// LogAll has an overall timeout of 10 seconds; individual commands have a 2-second timeout.
 func (d *Diagnostics) LogAll(phase string) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultLogAllTimeout)
+	defer cancel()
+	d.ctx = ctx
+	defer func() { d.ctx = nil }()
+
 	d.logger.Error().Str("phase", phase).Msg("=== DIAGNOSTICS ===")
 
 	d.LogSystemInfo()

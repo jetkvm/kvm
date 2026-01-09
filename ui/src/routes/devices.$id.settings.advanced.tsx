@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSettingsStore } from "@hooks/stores";
 import { JsonRpcError, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { Button } from "@components/Button";
+import { Button, LinkButton } from "@components/Button";
 import Checkbox, { CheckboxWithLabel } from "@components/Checkbox";
 import { ConfirmDialog } from "@components/ConfirmDialog";
 import { GridCard } from "@components/Card";
@@ -38,7 +38,6 @@ export default function SettingsAdvancedRoute() {
   const [resetConfig, setResetConfig] = useState(false);
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const settings = useSettingsStore();
 
   useEffect(() => {
@@ -191,37 +190,6 @@ export default function SettingsAdvancedRoute() {
     applyLoopbackOnlyMode(true);
     setShowLoopbackWarning(false);
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
-
-  const handleDownloadDiagnostics = useCallback(() => {
-    setDiagnosticsLoading(true);
-
-    send("getDiagnostics", {}, async (resp: JsonRpcResponse) => {
-      setDiagnosticsLoading(false);
-
-      if ("error" in resp) {
-        notifications.error(
-          m.advanced_error_download_diagnostics({ error: resp.error.data || m.unknown_error() }),
-        );
-        return;
-      }
-
-      const logContent = resp.result as string;
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const filename = `jetkvm-diagnostics-${timestamp}.txt`;
-
-      const blob = new Blob([logContent], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      notifications.success(m.advanced_success_download_diagnostics());
-    });
-  }, [send]);
 
   const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
     notifications.error(
@@ -519,13 +487,13 @@ export default function SettingsAdvancedRoute() {
               title={m.advanced_download_diagnostics_title()}
               description={m.advanced_download_diagnostics_description()}
             >
-              <Button
+              <LinkButton
+                to="/diagnostics"
+                reloadDocument
+                download
                 size="SM"
-                disabled={diagnosticsLoading}
                 theme="light"
                 text={m.advanced_download_diagnostics_button()}
-                loading={diagnosticsLoading}
-                onClick={handleDownloadDiagnostics}
               />
             </SettingsItem>
           </NestedSettingsGroup>

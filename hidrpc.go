@@ -189,12 +189,13 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 
 func reportHidRPC(params any, session *Session) {
 	if session == nil {
-		logger.Warn().Msg("session is nil, skipping reportHidRPC")
+		logger.Debug().Msg("session is nil, skipping reportHidRPC")
 		return
 	}
 
 	if !session.hidRPCAvailable || session.HidChannel == nil {
-		logger.Warn().
+		// Expected during WebRTC handshake before HID channel is ready
+		logger.Debug().
 			Bool("hidRPCAvailable", session.hidRPCAvailable).
 			Bool("HidChannel", session.HidChannel != nil).
 			Msg("HID RPC is not available, skipping reportHidRPC")
