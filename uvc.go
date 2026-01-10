@@ -21,3 +21,14 @@ func reinitUVC() {
 	}
 	mgr.ReinitUVC(config.UsbDevices.UVC)
 }
+
+// stopUVC stops UVC streaming before USB gadget reconfiguration.
+// This ensures the streamer releases the old device path so it can be
+// reinitialized with the new path after reconfiguration.
+func stopUVC() {
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
+		return
+	}
+	mgr.StopUVC()
+}

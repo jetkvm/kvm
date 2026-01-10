@@ -869,6 +869,10 @@ func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	// Stop input audio before reconfiguring USB gadget (output always uses HDMI)
 	stopInputAudio()
 
+	// Stop UVC before reconfiguration - the device path will change
+	// and the streamer needs to be reinitialized with the new path
+	stopUVC()
+
 	// Update USB gadget configuration
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to update gadget config: %w", err)
@@ -883,6 +887,8 @@ func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	if err := startAudio(); err != nil {
 		logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
 	}
+
+	reinitUVC()
 
 	return nil
 }

@@ -230,9 +230,15 @@ func (u *UsbGadget) CloseHidFiles() {
 // Uses retry logic since USB re-enumeration on the host can take 1-2 seconds.
 // With UVC enabled, enumeration can take 3+ seconds due to complex descriptor negotiation.
 func (u *UsbGadget) PreOpenHidFiles() {
-	// Initial delay for USB gadget to bind and create device files
-	// 500ms gives the kernel time to create device nodes after UDC binding
-	time.Sleep(500 * time.Millisecond)
+	// Initial delay for USB gadget to bind and create device files.
+	// With UVC enabled, the host takes significantly longer to enumerate the device
+	// and may reset the connection during enumeration. Wait longer to ensure stability.
+	initialDelay := 500 * time.Millisecond
+	if u.enabledDevices.UVC {
+		initialDelay = 3 * time.Second
+		u.log.Info().Msg("UVC enabled: waiting 3s for USB enumeration before opening HID files")
+	}
+	time.Sleep(initialDelay)
 
 	// Retry configuration: try up to 15 times with 300ms intervals (total ~5s)
 	// This accommodates UVC which requires longer USB enumeration time
@@ -286,5 +292,55 @@ func (u *UsbGadget) PreOpenHidFiles() {
 
 	if u.enabledDevices.RelativeMouse {
 		openHidFileWithRetry(&u.relMouseHidFile, "/dev/hidg2", "relative mouse")
+	}
+
+	// With UVC enabled, wait an additional period after opening to ensure
+	// the USB connection has stabilized. The host may still be negotiating
+	// video formats and could reset the connection.
+	if u.enabledDevices.UVC {
+		u.log.Info().Msg("UVC enabled: waiting 2s for USB connection to stabilize")
+		time.Sleep(2 * time.Second)
+
+		u.verifyAndReopenHidFiles()
+	}
+}
+
+// verifyAndReopenHidFiles checks if HID file handles are still valid and reopens them if stale.
+func (u *UsbGadget) verifyAndReopenHidFiles() {
+	if u.keyboardHidFile != nil {
+		if _, err := u.keyboardHidFile.Stat(); err != nil {
+			u.log.Warn().Err(err).Msg("keyboard HID file became stale, reopening")
+			u.keyboardHidFile.Close()
+			u.keyboardHidFile = nil
+			if err := u.openKeyboardHidFile(); err != nil {
+				u.log.Error().Err(err).Msg("failed to reopen keyboard HID file")
+			}
+		}
+	}
+
+	if u.absMouseHidFile != nil {
+		if _, err := u.absMouseHidFile.Stat(); err != nil {
+			u.log.Warn().Err(err).Msg("absolute mouse HID file became stale, reopening")
+			u.absMouseHidFile.Close()
+			u.absMouseHidFile = nil
+			if f, err := os.OpenFile("/dev/hidg1", os.O_RDWR, 0666); err == nil {
+				u.absMouseHidFile = f
+			} else {
+				u.log.Error().Err(err).Msg("failed to reopen absolute mouse HID file")
+			}
+		}
+	}
+
+	if u.relMouseHidFile != nil {
+		if _, err := u.relMouseHidFile.Stat(); err != nil {
+			u.log.Warn().Err(err).Msg("relative mouse HID file became stale, reopening")
+			u.relMouseHidFile.Close()
+			u.relMouseHidFile = nil
+			if f, err := os.OpenFile("/dev/hidg2", os.O_RDWR, 0666); err == nil {
+				u.relMouseHidFile = f
+			} else {
+				u.log.Error().Err(err).Msg("failed to reopen relative mouse HID file")
+			}
+		}
 	}
 }
