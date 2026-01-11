@@ -24,7 +24,6 @@ type PanicHandler func(panicValue interface{})
 //   - enabled, uvcStreamingFast, uvcMjpegFast: atomic, lock-free access for hot paths
 //   - streamer: atomic pointer, lock-free load for frame dispatch
 //   - streamerMu: protects streamer creation/destruction and streaming state changes
-//   - stopChan: protected by streamerMu
 //   - eventLoopRun: atomic, controls event loop lifecycle
 //   - formatChanMu: protects formatChangeChan and lastNotifiedFormat; held during non-blocking sends
 //   - onPanic: set once during configuration, read-only during operation
@@ -34,7 +33,6 @@ type Manager struct {
 	camLog       *zerolog.Logger
 	streamer     atomic.Pointer[usbgadget.UVCStreamer]
 	streamerMu   sync.Mutex
-	stopChan     chan struct{}
 	eventLoopRun atomic.Bool
 	enabled      atomic.Bool
 

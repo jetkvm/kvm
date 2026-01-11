@@ -104,7 +104,6 @@ func (m *Manager) InitUVC(uvcEnabled bool) error {
 	}
 	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
 
-	m.stopChan = make(chan struct{})
 	m.eventLoopRun.Store(true)
 	go m.eventLoop()
 	return nil
@@ -116,11 +115,8 @@ func (m *Manager) StopUVC() {
 	m.streamerMu.Lock()
 	defer m.streamerMu.Unlock()
 
-	if m.stopChan != nil {
-		m.eventLoopRun.Store(false)
-		close(m.stopChan)
-		m.stopChan = nil
-	}
+	// Signal event loop to stop (it checks this atomic at each iteration)
+	m.eventLoopRun.Store(false)
 
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.StopStreaming(); err != nil && m.uvcLog != nil {
@@ -177,8 +173,8 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	}
 	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
 
-	if !m.eventLoopRun.Load() && m.stopChan == nil {
-		m.stopChan = make(chan struct{})
+	// Start event loop if not already running
+	if !m.eventLoopRun.Load() {
 		m.eventLoopRun.Store(true)
 		go m.eventLoop()
 	}

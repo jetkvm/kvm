@@ -2,7 +2,22 @@
 
 package usbgadget
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrNotStreaming is returned when WriteFrame is called but streaming is not active.
+var ErrNotStreaming = errors.New("uvc: device not streaming")
+
+// ErrFrameTooLarge is returned when a frame exceeds the maximum buffer size.
+var ErrFrameTooLarge = errors.New("uvc: frame exceeds maximum size")
+
+// ErrFrameEmpty is returned when WriteFrame is called with empty data.
+var ErrFrameEmpty = errors.New("uvc: empty frame")
+
+// ErrDeviceNotReady is returned when the device is not ready for operations.
+var ErrDeviceNotReady = errors.New("uvc: device not ready")
 
 // UVC event constants (stubs for non-linux builds)
 const (

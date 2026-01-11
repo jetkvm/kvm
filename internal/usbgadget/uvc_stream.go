@@ -895,14 +895,14 @@ func (s *UVCStreamer) IsOpen() bool {
 }
 
 // IsValid returns true if the V4L2 device is open and the fd is valid.
+// Lock is held during the ioctl to prevent Close() from invalidating the fd.
 func (s *UVCStreamer) IsValid() bool {
 	s.mu.Lock()
-	fd := s.fd
-	s.mu.Unlock()
-	if fd < 0 {
+	defer s.mu.Unlock()
+	if s.fd < 0 {
 		return false
 	}
 	var cap v4l2_capability
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
 	return errno == 0
 }
