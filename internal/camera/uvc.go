@@ -512,8 +512,13 @@ func (m *Manager) HandleCameraH264Frame(frame []byte) {
 	}
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.WriteFrame(frame); err != nil {
-			m.droppedWriteFrames.Add(1)
-			m.logFrameError(err, "H.264")
+			// ErrNotStreaming is a state issue (race), not a write failure
+			if err == usbgadget.ErrNotStreaming {
+				m.droppedStateFrames.Add(1)
+			} else {
+				m.droppedWriteFrames.Add(1)
+				m.logFrameError(err, "H.264")
+			}
 		}
 	} else {
 		m.droppedStateFrames.Add(1)
@@ -534,8 +539,13 @@ func (m *Manager) HandleCameraMjpegFrame(frame []byte) {
 	}
 	if streamer := m.streamer.Load(); streamer != nil {
 		if err := streamer.WriteFrame(frame); err != nil {
-			m.droppedWriteFrames.Add(1)
-			m.logFrameError(err, "MJPEG")
+			// ErrNotStreaming is a state issue (race), not a write failure
+			if err == usbgadget.ErrNotStreaming {
+				m.droppedStateFrames.Add(1)
+			} else {
+				m.droppedWriteFrames.Add(1)
+				m.logFrameError(err, "MJPEG")
+			}
 		}
 	} else {
 		m.droppedStateFrames.Add(1)

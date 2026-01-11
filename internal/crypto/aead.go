@@ -6,6 +6,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"errors"
+	"sync"
 )
 
 // AEAD represents an authenticated encryption with associated data cipher.
@@ -21,9 +22,24 @@ type AEAD interface {
 	IsHardwareAccelerated() bool
 }
 
+// hardwareFallbackReason stores why hardware crypto is unavailable (if at all).
+// Set once on first NewAESGCM call; use HardwareCryptoError() to retrieve.
+var (
+	hardwareFallbackOnce   sync.Once
+	hardwareFallbackReason error
+)
+
+// HardwareCryptoError returns the error that caused hardware crypto to be
+// unavailable, or nil if hardware crypto is being used. This can be called
+// after any NewAESGCM call to check hardware status for logging/diagnostics.
+func HardwareCryptoError() error {
+	return hardwareFallbackReason
+}
+
 // NewAESGCM creates a new AES-GCM cipher.
 // On RV1106, this uses hardware acceleration via /dev/crypto.
 // On other platforms, it uses Go's stdlib AES-GCM.
+// Callers can use HardwareCryptoError() to check why hardware is unavailable.
 func NewAESGCM(key []byte) (AEAD, error) {
 	keyLen := len(key)
 	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
@@ -35,6 +51,11 @@ func NewAESGCM(key []byte) (AEAD, error) {
 	if err == nil {
 		return hw, nil
 	}
+
+	// Record hardware unavailability once for diagnostics
+	hardwareFallbackOnce.Do(func() {
+		hardwareFallbackReason = err
+	})
 
 	// Fall back to software
 	return newSoftwareAESGCM(key)

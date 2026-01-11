@@ -25,7 +25,7 @@
  */
 
 import { CODEC_BYTES } from "../cameraTransport";
-import { RateLimitedLogger } from "./types";
+import { EncoderState } from "./types";
 import type { EncodedFrame, EncoderConfig, InternalEncoderEvents } from "./types";
 
 // requestVideoFrameCallback types
@@ -79,15 +79,10 @@ export class MjpegEncoder {
   private mediaStream: MediaStream;
 
   private lastCaptureTime = 0;
-  private minFrameIntervalMs: number;
   private actualFrameRate: number;
 
-  private readonly logger = new RateLimitedLogger("MjpegEncoder");
-  private running = false;
-
-  // Consecutive capture error tracking for escalation
-  private consecutiveCaptureErrors = 0;
-  private static readonly MAX_CONSECUTIVE_ERRORS = 10;
+  // Shared encoder state for error handling and frame rate management
+  private readonly state: EncoderState;
 
   constructor(
     mediaStream: MediaStream,
@@ -99,7 +94,7 @@ export class MjpegEncoder {
     this.config = { ...config }; // Clone to prevent external mutation
     this.events = events;
     this.actualFrameRate = actualFrameRate;
-    this.minFrameIntervalMs = (1000 / config.frameRate) * 0.9;
+    this.state = new EncoderState("MjpegEncoder", config.frameRate, events);
   }
 
   async start(width: number, height: number): Promise<void> {
@@ -149,12 +144,12 @@ export class MjpegEncoder {
 
     await this.videoElement.play();
 
-    this.running = true;
+    this.state.running = true;
     this.startCapture();
   }
 
   stop(): void {
-    this.running = false;
+    this.state.running = false;
 
     if (this.videoFrameCallbackId !== null && this.videoElement && hasRequestVideoFrameCallback()) {
       this.videoElement.cancelVideoFrameCallback(this.videoFrameCallbackId);
@@ -177,7 +172,7 @@ export class MjpegEncoder {
       this.videoElement = null;
     }
 
-    this.logger.reset();
+    this.state.reset();
   }
 
   forceKeyFrame(): void {
@@ -186,7 +181,7 @@ export class MjpegEncoder {
 
   setFrameRate(fps: number): void {
     this.config.frameRate = fps;
-    this.minFrameIntervalMs = (1000 / fps) * 0.9;
+    this.state.setFrameRate(fps);
   }
 
   setQuality(quality: number): void {
@@ -215,7 +210,7 @@ export class MjpegEncoder {
   }
 
   private captureWithVideoFrameCallback(): void {
-    if (!this.running || !this.videoElement || !hasRequestVideoFrameCallback()) {
+    if (!this.state.running || !this.videoElement || !hasRequestVideoFrameCallback()) {
       return;
     }
 
@@ -223,47 +218,39 @@ export class MjpegEncoder {
       this.videoElement
         .play()
         .then(() => {
-          if (this.running) this.captureWithVideoFrameCallback();
+          if (this.state.running) this.captureWithVideoFrameCallback();
         })
         .catch((err: unknown) => {
-          this.logger.logError("video.play failed", err);
+          this.state.logger.logError("video.play failed", err);
           this.events.onError(err instanceof Error ? err : new Error(String(err)));
         });
       return;
     }
 
     this.videoFrameCallbackId = this.videoElement.requestVideoFrameCallback((now, metadata) => {
-      if (now - this.lastCaptureTime >= this.minFrameIntervalMs) {
+      if (now - this.lastCaptureTime >= this.state.minFrameIntervalMs) {
         this.lastCaptureTime = now;
         this.captureFrame(metadata.presentationTime);
       }
-      if (this.running) this.captureWithVideoFrameCallback();
+      if (this.state.running) this.captureWithVideoFrameCallback();
     });
   }
 
   private async captureFrame(timestamp?: number): Promise<void> {
-    if (!this.running || !this.videoElement || !this.worker) return;
+    if (!this.state.running || !this.videoElement || !this.worker) return;
 
     let bitmap: ImageBitmap | null = null;
     try {
       bitmap = await createImageBitmap(this.videoElement);
-      this.consecutiveCaptureErrors = 0; // Reset on success
+      this.state.recordSuccess();
       this.worker.postMessage(
         { type: "frame", bitmap, timestamp: timestamp ?? performance.now() * 1000 },
         [bitmap],
       );
       bitmap = null;
     } catch (err) {
-      this.consecutiveCaptureErrors++;
-      this.logger.logError("createImageBitmap failed", err);
+      this.state.recordError("createImageBitmap failed", err);
       bitmap?.close();
-
-      // Escalate to error handler after too many consecutive failures
-      if (this.consecutiveCaptureErrors >= MjpegEncoder.MAX_CONSECUTIVE_ERRORS) {
-        this.events.onError(
-          new Error(`Frame capture failed ${this.consecutiveCaptureErrors} times consecutively`),
-        );
-      }
     }
   }
 

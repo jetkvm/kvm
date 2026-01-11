@@ -206,59 +206,21 @@ func (u *UsbGadget) SetupUVCFunction(formats []UVCFormatConfig) error {
 	return nil
 }
 
-// setupMJPEGFormat configures MJPEG format in the UVC streaming interface.
-func (u *UsbGadget) setupMJPEGFormat(streamingPath, headerPath string, formats []UVCFormat) error {
-	mjpegPath := filepath.Join(streamingPath, "mjpeg", "m")
-	if err := os.MkdirAll(mjpegPath, 0755); err != nil {
-		return fmt.Errorf("failed to create mjpeg directory: %w", err)
-	}
-
-	for i, format := range formats {
-		frameName := fmt.Sprintf("%dp", format.Height)
-		if i > 0 {
-			frameName = fmt.Sprintf("%dp_%d", format.Height, i)
-		}
-
-		framePath := filepath.Join(mjpegPath, frameName)
-		if err := os.MkdirAll(framePath, 0755); err != nil {
-			return fmt.Errorf("failed to create MJPEG frame directory: %w", err)
-		}
-
-		fps := UVCFrameIntervalUnit / format.FrameInterval
-		pixels := format.Width * format.Height
-		// MJPEG bitrates: ~10-30 Mbps for 1080p
-		minBitRate := pixels * fps / 20
-		maxBitRate := pixels * fps / 5
-
-		params := map[string]int{
-			"wWidth":                    format.Width,
-			"wHeight":                   format.Height,
-			"dwDefaultFrameInterval":    format.FrameInterval,
-			"dwMinBitRate":              minBitRate,
-			"dwMaxBitRate":              maxBitRate,
-			"dwFrameInterval":           format.FrameInterval,
-			"dwMaxVideoFrameBufferSize": pixels * 2, // Conservative estimate
-		}
-		for name, value := range params {
-			if err := writeFile(filepath.Join(framePath, name), fmt.Sprintf("%d", value)); err != nil {
-				return fmt.Errorf("failed to write MJPEG %s: %w", name, err)
-			}
-		}
-	}
-
-	// Link MJPEG format to header
-	if err := createConfigFSSymlink(mjpegPath, filepath.Join(headerPath, "m")); err != nil {
-		return fmt.Errorf("failed to create MJPEG symlink: %w", err)
-	}
-
-	return nil
+// uvcFormatSetup contains parameters for setting up a UVC format in ConfigFS.
+type uvcFormatSetup struct {
+	formatPath  string                               // Path to format directory (e.g., "mjpeg/m")
+	linkName    string                               // Symlink name in header (e.g., "m" or "h264")
+	codecName   string                               // Human-readable name for error messages
+	calcBitrate func(pixels, fps int) (min, max int) // Codec-specific bitrate calculation
+	extraParams map[string]int                       // Additional params beyond common ones
 }
 
-// setupH264Format configures H.264 framebased format in the UVC streaming interface.
-func (u *UsbGadget) setupH264Format(streamingPath, headerPath string, formats []UVCFormat) error {
-	h264Path := filepath.Join(streamingPath, "framebased", "h264")
-	if err := os.MkdirAll(h264Path, 0755); err != nil {
-		return fmt.Errorf("failed to create framebased/h264 directory: %w", err)
+// setupUVCFormat is a generic helper for setting up UVC formats in ConfigFS.
+// Used by setupMJPEGFormat and setupH264Format to reduce duplication.
+func (u *UsbGadget) setupUVCFormat(streamingPath, headerPath string, formats []UVCFormat, setup uvcFormatSetup) error {
+	formatPath := filepath.Join(streamingPath, setup.formatPath)
+	if err := os.MkdirAll(formatPath, 0755); err != nil {
+		return fmt.Errorf("failed to create %s directory: %w", setup.codecName, err)
 	}
 
 	for i, format := range formats {
@@ -267,17 +229,16 @@ func (u *UsbGadget) setupH264Format(streamingPath, headerPath string, formats []
 			frameName = fmt.Sprintf("%dp_%d", format.Height, i)
 		}
 
-		framePath := filepath.Join(h264Path, frameName)
+		framePath := filepath.Join(formatPath, frameName)
 		if err := os.MkdirAll(framePath, 0755); err != nil {
-			return fmt.Errorf("failed to create H.264 frame directory: %w", err)
+			return fmt.Errorf("failed to create %s frame directory: %w", setup.codecName, err)
 		}
 
 		fps := UVCFrameIntervalUnit / format.FrameInterval
 		pixels := format.Width * format.Height
-		// H.264 bitrates: ~2-8 Mbps for 1080p
-		minBitRate := pixels * fps / 100
-		maxBitRate := pixels * fps / 25
+		minBitRate, maxBitRate := setup.calcBitrate(pixels, fps)
 
+		// Common parameters for all formats
 		params := map[string]int{
 			"wWidth":                 format.Width,
 			"wHeight":                format.Height,
@@ -285,21 +246,64 @@ func (u *UsbGadget) setupH264Format(streamingPath, headerPath string, formats []
 			"dwMinBitRate":           minBitRate,
 			"dwMaxBitRate":           maxBitRate,
 			"dwFrameInterval":        format.FrameInterval,
-			"dwBytesPerLine":         0, // Not applicable for compressed
 		}
+
+		// Add codec-specific extra parameters
+		for k, v := range setup.extraParams {
+			params[k] = v
+		}
+
 		for name, value := range params {
 			if err := writeFile(filepath.Join(framePath, name), fmt.Sprintf("%d", value)); err != nil {
-				return fmt.Errorf("failed to write H.264 %s: %w", name, err)
+				return fmt.Errorf("failed to write %s %s: %w", setup.codecName, name, err)
 			}
 		}
 	}
 
-	// Link H.264 format to header
-	if err := createConfigFSSymlink(h264Path, filepath.Join(headerPath, "h264")); err != nil {
-		return fmt.Errorf("failed to create H.264 symlink: %w", err)
+	// Link format to header
+	if err := createConfigFSSymlink(formatPath, filepath.Join(headerPath, setup.linkName)); err != nil {
+		return fmt.Errorf("failed to create %s symlink: %w", setup.codecName, err)
 	}
 
 	return nil
+}
+
+// setupMJPEGFormat configures MJPEG format in the UVC streaming interface.
+func (u *UsbGadget) setupMJPEGFormat(streamingPath, headerPath string, formats []UVCFormat) error {
+	// Calculate dwMaxVideoFrameBufferSize based on first format (1080p)
+	bufferSize := 0
+	if len(formats) > 0 {
+		bufferSize = formats[0].Width * formats[0].Height * 2 // Conservative estimate
+	}
+
+	return u.setupUVCFormat(streamingPath, headerPath, formats, uvcFormatSetup{
+		formatPath: filepath.Join("mjpeg", "m"),
+		linkName:   "m",
+		codecName:  "MJPEG",
+		calcBitrate: func(pixels, fps int) (min, max int) {
+			// MJPEG bitrates: ~10-30 Mbps for 1080p
+			return pixels * fps / 20, pixels * fps / 5
+		},
+		extraParams: map[string]int{
+			"dwMaxVideoFrameBufferSize": bufferSize,
+		},
+	})
+}
+
+// setupH264Format configures H.264 framebased format in the UVC streaming interface.
+func (u *UsbGadget) setupH264Format(streamingPath, headerPath string, formats []UVCFormat) error {
+	return u.setupUVCFormat(streamingPath, headerPath, formats, uvcFormatSetup{
+		formatPath: filepath.Join("framebased", "h264"),
+		linkName:   "h264",
+		codecName:  "H.264",
+		calcBitrate: func(pixels, fps int) (min, max int) {
+			// H.264 bitrates: ~2-8 Mbps for 1080p
+			return pixels * fps / 100, pixels * fps / 25
+		},
+		extraParams: map[string]int{
+			"dwBytesPerLine": 0, // Not applicable for compressed
+		},
+	})
 }
 
 // GetUVCVideoDevice returns the video device path for UVC gadget.

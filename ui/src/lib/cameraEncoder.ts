@@ -28,6 +28,28 @@ import type {
 // Re-export types for public API
 export type { VideoCodec, EncoderConfig, EncodedFrame };
 
+/**
+ * Configuration limits for encoder parameters.
+ * Centralized to avoid duplication across constructor and setter methods.
+ */
+const CONFIG_LIMITS = {
+  width: { min: 320, max: 3840 },
+  height: { min: 240, max: 2160 },
+  frameRate: { min: 1, max: 120 },
+  bitrate: { min: 100_000, max: 50_000_000 },
+  quality: { min: 0.0, max: 1.0 },
+} as const;
+
+/** Clamp a value to the specified range */
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/** Check if a value is within the specified range */
+function isInRange(value: number, min: number, max: number): boolean {
+  return value >= min && value <= max;
+}
+
 export type EncoderState = "idle" | "initializing" | "running" | "paused" | "error" | "stopped";
 
 export interface CameraEncoderEvents {
@@ -94,11 +116,11 @@ export class CameraEncoder {
     // We build a new object rather than mutating since EncoderConfig is readonly.
     const merged = { ...DEFAULT_CONFIG, ...config };
     this.config = {
-      width: Math.max(320, Math.min(3840, merged.width)),
-      height: Math.max(240, Math.min(2160, merged.height)),
-      frameRate: Math.max(1, Math.min(120, merged.frameRate)),
-      bitrate: Math.max(100_000, Math.min(50_000_000, merged.bitrate)),
-      quality: Math.max(0.0, Math.min(1.0, merged.quality)),
+      width: clamp(merged.width, CONFIG_LIMITS.width.min, CONFIG_LIMITS.width.max),
+      height: clamp(merged.height, CONFIG_LIMITS.height.min, CONFIG_LIMITS.height.max),
+      frameRate: clamp(merged.frameRate, CONFIG_LIMITS.frameRate.min, CONFIG_LIMITS.frameRate.max),
+      bitrate: clamp(merged.bitrate, CONFIG_LIMITS.bitrate.min, CONFIG_LIMITS.bitrate.max),
+      quality: clamp(merged.quality, CONFIG_LIMITS.quality.min, CONFIG_LIMITS.quality.max),
       keyFrameInterval: merged.keyFrameInterval,
     };
   }
@@ -150,8 +172,9 @@ export class CameraEncoder {
    * @returns true if the value was accepted, false if invalid or unchanged
    */
   setFrameRate(fps: number): boolean {
-    if (fps < 1 || fps > 120) {
-      console.warn(`[CameraEncoder] setFrameRate: invalid fps ${fps} (must be 1-120)`);
+    const { min, max } = CONFIG_LIMITS.frameRate;
+    if (!isInRange(fps, min, max)) {
+      console.warn(`[CameraEncoder] setFrameRate: invalid fps ${fps} (must be ${min}-${max})`);
       return false;
     }
     if (this.config.frameRate === fps) return true;
@@ -166,8 +189,11 @@ export class CameraEncoder {
    * @returns true if the value was accepted, false if invalid or unchanged
    */
   setBitrate(bitrate: number): boolean {
-    if (bitrate < 100_000 || bitrate > 50_000_000) {
-      console.warn(`[CameraEncoder] setBitrate: invalid bitrate ${bitrate} (must be 100k-50M)`);
+    const { min, max } = CONFIG_LIMITS.bitrate;
+    if (!isInRange(bitrate, min, max)) {
+      console.warn(
+        `[CameraEncoder] setBitrate: invalid bitrate ${bitrate} (must be ${min}-${max})`,
+      );
       return false;
     }
     if (this.config.bitrate === bitrate) return true;
@@ -181,8 +207,11 @@ export class CameraEncoder {
    * @returns true if the value was accepted, false if invalid or unchanged
    */
   setQuality(quality: number): boolean {
-    if (quality < 0.0 || quality > 1.0) {
-      console.warn(`[CameraEncoder] setQuality: invalid quality ${quality} (must be 0.0-1.0)`);
+    const { min, max } = CONFIG_LIMITS.quality;
+    if (!isInRange(quality, min, max)) {
+      console.warn(
+        `[CameraEncoder] setQuality: invalid quality ${quality} (must be ${min}-${max})`,
+      );
       return false;
     }
     if (this.config.quality === quality) return true;
@@ -201,9 +230,14 @@ export class CameraEncoder {
    * @returns true if the value was accepted, false if invalid or unchanged
    */
   async setResolution(width: number, height: number): Promise<boolean> {
-    if (width < 320 || width > 3840 || height < 240 || height > 2160) {
+    const wLimits = CONFIG_LIMITS.width;
+    const hLimits = CONFIG_LIMITS.height;
+    if (
+      !isInRange(width, wLimits.min, wLimits.max) ||
+      !isInRange(height, hLimits.min, hLimits.max)
+    ) {
       console.warn(
-        `[CameraEncoder] setResolution: invalid ${width}x${height} (must be 320-3840 x 240-2160)`,
+        `[CameraEncoder] setResolution: invalid ${width}x${height} (must be ${wLimits.min}-${wLimits.max} x ${hLimits.min}-${hLimits.max})`,
       );
       return false;
     }
