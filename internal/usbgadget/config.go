@@ -328,7 +328,6 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 	// 3. When host selects MJPEG, we transcode H.264→MJPEG in software
 	// 4. When host selects H.264 (macOS/Windows), we pass through directly
 	// H.264 is listed first to be preferred when the host supports it
-	uvcSetupOK := false
 	if u.enabledDevices.UVC {
 		// Get ALL supported formats - no USB rebind needed when camera settings change
 		formats := GetAllUVCFormats()
@@ -345,13 +344,9 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 			uvcFuncPath := joinPath(u.kvmGadgetPath, []string{"functions", "uvc.usb0"})
 			if err := createConfigFSSymlink(uvcFuncPath, uvcConfigPath); err != nil {
 				u.log.Warn().Err(err).Msg("failed to create UVC config symlink")
-			} else {
-				uvcSetupOK = true
 			}
 		}
 	}
-
-	_ = uvcSetupOK // Currently unused, but kept for potential future use
 
 	// Bind to UDC (single bind operation)
 	// For initial setup (resetUsb=false), this is the first bind.

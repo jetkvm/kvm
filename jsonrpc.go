@@ -882,6 +882,7 @@ func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	// Restart audio if needed
 	if err := startAudio(); err != nil {
 		logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
+		return fmt.Errorf("USB reconfigured but audio restart failed: %w", err)
 	}
 
 	return nil
@@ -1023,8 +1024,7 @@ func rpcGetCameraEnabled() (bool, error) {
 
 func rpcSetCameraEnabled(enabled bool) error {
 	cameraLog.Info().Bool("enabled", enabled).Msg("RPC setCameraEnabled called")
-	setCameraEnabled(enabled)
-	return nil
+	return setCameraEnabled(enabled)
 }
 
 // CameraSettingsResponse contains all camera/UVC configuration

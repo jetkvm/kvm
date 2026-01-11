@@ -26,7 +26,7 @@ type PanicHandler func(panicValue interface{})
 //   - streamerMu: protects streamer creation/destruction and streaming state changes
 //   - stopChan: protected by streamerMu
 //   - eventLoopRun: atomic, controls event loop lifecycle
-//   - formatChanMu: protects format notification channel and lastNotifiedFormat
+//   - formatChanMu: protects formatChangeChan and lastNotifiedFormat; held during non-blocking sends
 //   - onPanic: set once during configuration, read-only during operation
 type Manager struct {
 	gadget       GadgetController

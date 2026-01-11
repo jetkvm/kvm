@@ -12,7 +12,8 @@
  * - ARM NEON SIMD optimization for all audio operations
  * - SpeexDSP high-quality resampling (SPEEX_RESAMPLER_QUALITY_DESKTOP)
  * - Opus in-band FEC for packet loss resilience
- * - S16_LE stereo, 20ms frames at 48kHz (hardware rate auto-negotiated)
+ * - Capture: S16_LE stereo, 20ms frames at hardware-negotiated rate
+ * - Playback: S16_LE mono (USB gadget), 20ms frames at 48kHz
  * - Direct hardware access with userspace resampling (no ALSA plugin layer)
  */
 
