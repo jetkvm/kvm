@@ -869,17 +869,23 @@ func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	// Stop input audio before reconfiguring USB gadget (output always uses HDMI)
 	stopInputAudio()
 
-	// Update USB gadget configuration
+	// Stop UVC before reconfiguring USB gadget to prevent kernel hangs.
+	// The UVC event loop holds a file handle to /dev/videoX which gets destroyed
+	// during gadget unbind. Not closing it can cause the kernel to block indefinitely.
+	stopUVC()
+
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to update gadget config: %w", err)
 	}
 
-	// Save configuration
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// Restart audio if needed
+	// Reinitialize UVC event loop with the new video device path
+	reinitUVC()
+
+	// Restart audio
 	if err := startAudio(); err != nil {
 		logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
 		return fmt.Errorf("USB reconfigured but audio restart failed: %w", err)
