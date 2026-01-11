@@ -46,6 +46,9 @@ type Session struct {
 var (
 	actionSessions      int = 0
 	activeSessionsMutex     = &sync.Mutex{}
+
+	// logHardwareCryptoOnce ensures we log hardware crypto status only once
+	logHardwareCryptoOnce sync.Once
 )
 
 func incrActiveSessions() int {
@@ -258,6 +261,10 @@ func newSession(config SessionConfig) (*Session, error) {
 	// This offloads AES-GCM encryption/decryption to the RV1106 crypto engine
 	webrtcSettingEngine.SetDTLSCustomerCipherSuites(crypto.HardwareCipherSuites)
 
+	// Note: SRTP uses AES-CM-HMAC-SHA1 (default) rather than AES-GCM because
+	// GHASH (used in GCM) is slower than SHA1 in pure software on ARM without
+	// PMULL instructions. Hardware SRTP would require forking pion/srtp.
+
 	mDNSNetworkTypes := make([]webrtc.NetworkType, 0)
 	if config.MDNSMode == "auto" || config.MDNSMode == "ipv4_only" {
 		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP4)
@@ -323,6 +330,15 @@ func newSession(config SessionConfig) (*Session, error) {
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
 	session.initKeysDownStateQueue()
+
+	// Log hardware crypto status once (after first DTLS-enabled session is created)
+	logHardwareCryptoOnce.Do(func() {
+		if err := crypto.HardwareCryptoError(); err != nil {
+			scopedLogger.Warn().Err(err).Msg("Hardware crypto unavailable, using software AES-GCM for DTLS")
+		} else {
+			scopedLogger.Info().Msg("Using hardware-accelerated AES-GCM for DTLS")
+		}
+	})
 
 	go func() {
 		for msg := range session.rpcQueue {

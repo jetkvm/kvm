@@ -125,7 +125,9 @@ func newHardwareAESGCM(key []byte) (AEAD, error) {
 	// Set finalizer to release /dev/crypto session if Close() is not called.
 	// This prevents session leaks when DTLS connections are garbage collected.
 	runtime.SetFinalizer(aead, func(a *hardwareAESGCM) {
-		_ = a.Close()
+		if err := a.Close(); err != nil {
+			cryptoLogger.Debug().Err(err).Msg("finalizer: error closing hardware AEAD")
+		}
 	})
 
 	return aead, nil
@@ -157,11 +159,17 @@ func (g *hardwareAESGCM) IsHardwareAccelerated() bool {
 	return true
 }
 
+// sealMaxRetries is the number of times to retry hardware encryption on transient failures.
+const sealMaxRetries = 2
+
 // Seal encrypts and authenticates plaintext with the given nonce and additional data.
 //
 // Panics: This method panics in two cases (matching Go's crypto/cipher.AEAD contract):
 //   - If nonce length != NonceSize() - caller error, unrecoverable
-//   - If hardware encryption fails - system-level failure, should not occur in normal operation
+//   - If hardware encryption fails after retries - system-level failure
+//
+// Retry behavior: Transient hardware failures are retried up to sealMaxRetries times
+// before panicking, as the RV1106 crypto engine can occasionally return temporary errors.
 func (g *hardwareAESGCM) Seal(dst, nonce, plaintext, additionalData []byte) []byte {
 	if len(nonce) != g.nonceSize {
 		panic("crypto: incorrect nonce length")
@@ -200,7 +208,18 @@ func (g *hardwareAESGCM) Seal(dst, nonce, plaintext, additionalData []byte) []by
 		authOp.Dst = unsafe.Pointer(&ciphertext[0])
 	}
 
-	err := ioctl(g.fd, ciocauthcrypt, unsafe.Pointer(authOp))
+	// Retry on transient hardware failures
+	var err error
+	for attempt := 0; attempt < sealMaxRetries; attempt++ {
+		err = ioctl(g.fd, ciocauthcrypt, unsafe.Pointer(authOp))
+		if err == nil {
+			break
+		}
+		// Small delay before retry to allow hardware to recover
+		if attempt < sealMaxRetries-1 {
+			runtime.Gosched()
+		}
+	}
 
 	// Keep slices alive until after ioctl completes to prevent GC from
 	// moving the backing arrays during the syscall
@@ -209,7 +228,7 @@ func (g *hardwareAESGCM) Seal(dst, nonce, plaintext, additionalData []byte) []by
 	runtime.KeepAlive(nonceCopy)
 
 	if err != nil {
-		panic("crypto: hardware encryption failed: " + err.Error())
+		panic("crypto: hardware encryption failed after retries: " + err.Error())
 	}
 
 	return ret

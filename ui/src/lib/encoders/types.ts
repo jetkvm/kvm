@@ -72,6 +72,73 @@ export interface InternalEncoder {
 }
 
 /**
+ * Maximum consecutive errors before escalating to error handler.
+ * Shared between H264Encoder and MjpegEncoder.
+ */
+export const MAX_CONSECUTIVE_ERRORS = 10;
+
+/**
+ * Common encoder state shared between H264Encoder and MjpegEncoder.
+ * Provides unified error handling and frame rate management.
+ *
+ * @internal Used by encoder implementations
+ */
+export class EncoderState {
+  public running = false;
+  public consecutiveErrors = 0;
+  public minFrameIntervalMs: number;
+  public readonly logger: RateLimitedLogger;
+  private readonly events: InternalEncoderEvents;
+
+  constructor(name: string, frameRate: number, events: InternalEncoderEvents) {
+    this.logger = new RateLimitedLogger(name);
+    this.events = events;
+    this.minFrameIntervalMs = (1000 / frameRate) * 0.9;
+  }
+
+  /**
+   * Update frame rate and recalculate minimum interval.
+   */
+  setFrameRate(fps: number): void {
+    this.minFrameIntervalMs = (1000 / fps) * 0.9;
+  }
+
+  /**
+   * Record a successful operation, resetting error counter.
+   */
+  recordSuccess(): void {
+    this.consecutiveErrors = 0;
+  }
+
+  /**
+   * Record a failed operation with rate-limited logging.
+   * Escalates to error handler after MAX_CONSECUTIVE_ERRORS.
+   * @returns true if error was escalated
+   */
+  recordError(context: string, err: unknown): boolean {
+    this.consecutiveErrors++;
+    this.logger.logError(context, err);
+
+    if (this.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+      this.events.onError(
+        new Error(`${context} failed ${this.consecutiveErrors} times consecutively`),
+      );
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Reset state on stop.
+   */
+  reset(): void {
+    this.running = false;
+    this.consecutiveErrors = 0;
+    this.logger.reset();
+  }
+}
+
+/**
  * Rate-limited error logger to prevent log spam during error storms.
  * Accumulates error counts and logs at most once per interval.
  *

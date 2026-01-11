@@ -24,9 +24,8 @@ type PanicHandler func(panicValue interface{})
 //   - enabled, uvcStreamingFast, uvcMjpegFast: atomic, lock-free access for hot paths
 //   - streamer: atomic pointer, lock-free load for frame dispatch
 //   - streamerMu: protects streamer creation/destruction and streaming state changes
-//   - stopChan: protected by streamerMu
 //   - eventLoopRun: atomic, controls event loop lifecycle
-//   - formatChanMu: protects format notification channel and lastNotifiedFormat
+//   - formatChanMu: protects formatChangeChan and lastNotifiedFormat; held during non-blocking sends
 //   - onPanic: set once during configuration, read-only during operation
 type Manager struct {
 	gadget       GadgetController
@@ -34,7 +33,6 @@ type Manager struct {
 	camLog       *zerolog.Logger
 	streamer     atomic.Pointer[usbgadget.UVCStreamer]
 	streamerMu   sync.Mutex
-	stopChan     chan struct{}
 	eventLoopRun atomic.Bool
 	enabled      atomic.Bool
 
@@ -159,24 +157,24 @@ func (f FormatInfo) Validate() error {
 // Use StopFormat() for stop notifications instead of this constructor.
 // Returns error if any parameter is invalid.
 func NewFormatInfo(codec VideoCodec, width, height, frameRate int) (FormatInfo, error) {
-	if !codec.IsValid() || codec == CodecStop {
+	// CodecStop is not valid for streaming formats - use StopFormat() instead
+	if codec == CodecStop {
 		return FormatInfo{}, ErrInvalidCodec
 	}
-	if width <= 0 {
-		return FormatInfo{}, ErrInvalidWidth
-	}
-	if height <= 0 {
-		return FormatInfo{}, ErrInvalidHeight
-	}
-	if frameRate < 1 || frameRate > MaxFrameRate {
-		return FormatInfo{}, ErrInvalidFrameRate
-	}
-	return FormatInfo{
+
+	f := FormatInfo{
 		Codec:     codec,
 		Width:     width,
 		Height:    height,
 		FrameRate: frameRate,
-	}, nil
+	}
+
+	// Reuse Validate() to avoid duplicating validation logic
+	if err := f.Validate(); err != nil {
+		return FormatInfo{}, err
+	}
+
+	return f, nil
 }
 
 // Config holds configuration for creating a Manager.
@@ -248,12 +246,25 @@ func (m *Manager) GetCurrentFormat() *FormatInfo {
 
 // SubscribeFormatChanges returns a channel for format notifications.
 // Only one subscriber is supported; calling again replaces the previous subscription.
-// The old channel is not closed to avoid races with concurrent sends.
+//
+// IMPORTANT: If an existing subscription is active, this will close the old channel
+// before creating a new one. Callers must ensure the old subscriber has stopped
+// reading before calling SubscribeFormatChanges again (typically via UnsubscribeFormatChanges).
+//
 // Buffer size 4 allows bursty format changes (e.g., rapid USB reconnects) without
 // blocking the UVC event loop while the WebSocket goroutine processes them.
 func (m *Manager) SubscribeFormatChanges() <-chan FormatInfo {
 	m.formatChanMu.Lock()
 	defer m.formatChanMu.Unlock()
+
+	// Close old channel if exists - caller should have called UnsubscribeFormatChanges first
+	if m.formatChangeChan != nil {
+		if m.camLog != nil {
+			m.camLog.Warn().Msg("SubscribeFormatChanges: replacing existing subscription (old channel closed)")
+		}
+		close(m.formatChangeChan)
+	}
+
 	m.formatChangeChan = make(chan FormatInfo, 4)
 	return m.formatChangeChan
 }

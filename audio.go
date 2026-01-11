@@ -15,7 +15,7 @@ import (
 
 var (
 	audioMutex         sync.Mutex
-	inputSourceMutex   sync.Mutex // Prevents concurrent WebRTC packets from racing during lazy connect + write
+	inputSourceMutex   sync.Mutex // Serializes input audio packet handling: connection lifecycle and writes cannot overlap
 	outputSource       atomic.Pointer[audio.AudioSource]
 	inputSource        atomic.Pointer[audio.AudioSource]
 	outputRelay        atomic.Pointer[audio.OutputRelay]
@@ -360,6 +360,8 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 
 	trackLogger.Debug().Msg("starting input track handler")
 
+	var consecutiveReadErrors int
+
 	for {
 		// Check if we've been superseded by another track
 		currentTrackID := currentInputTrack.Load()
@@ -377,9 +379,17 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 				trackLogger.Debug().Msg("input track ended")
 				return
 			}
-			trackLogger.Warn().Err(err).Msg("failed to read RTP packet")
+			consecutiveReadErrors++
+			if consecutiveReadErrors == 1 || consecutiveReadErrors%100 == 0 {
+				trackLogger.Warn().Err(err).Int("consecutive", consecutiveReadErrors).Msg("failed to read RTP packet")
+			}
+			// Backoff on persistent errors to prevent CPU spin
+			if consecutiveReadErrors > 5 {
+				time.Sleep(time.Duration(min(consecutiveReadErrors, 10)) * 10 * time.Millisecond)
+			}
 			continue
 		}
+		consecutiveReadErrors = 0
 
 		// Skip empty payloads
 		if len(rtpPacket.Payload) == 0 {

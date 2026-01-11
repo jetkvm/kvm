@@ -4,12 +4,26 @@ package usbgadget
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
+
+// ErrNotStreaming is returned by WriteFrame when the UVC device is not actively streaming.
+// This is expected during startup/shutdown and can be used by callers to track frame drops.
+var ErrNotStreaming = errors.New("uvc: device not streaming")
+
+// ErrFrameTooLarge is returned by WriteFrame when the frame exceeds USB 2.0 bandwidth limits.
+var ErrFrameTooLarge = errors.New("uvc: frame exceeds maximum size")
+
+// ErrFrameEmpty is returned by WriteFrame when an empty frame is provided.
+var ErrFrameEmpty = errors.New("uvc: empty frame")
+
+// ErrDeviceNotReady is returned when the UVC device is not open or has no buffers.
+var ErrDeviceNotReady = errors.New("uvc: device not ready")
 
 const (
 	maxFrameSizeBytes int32 = 1536 * 1024     // USB 2.0 bandwidth limit per frame
@@ -451,6 +465,10 @@ func (s *UVCStreamer) StartStreaming() error {
 		}
 	}
 
+	if s.queuedBufs == 0 {
+		return fmt.Errorf("failed to queue any V4L2 buffers")
+	}
+
 	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
 	if errno != 0 {
 		return fmt.Errorf("UVC device invalidated during setup (errno=%d), aborting STREAMON", errno)
@@ -503,16 +521,27 @@ const dropLogInterval = 100
 
 // WriteFrame writes a video frame to the UVC device.
 // HOTPATH: Optimized for minimal overhead at 1080p up to 60fps on 32-bit ARM.
+//
+// Returns:
+//   - ErrNotStreaming: device not streaming (expected during startup/shutdown)
+//   - ErrFrameTooLarge: frame exceeds USB 2.0 bandwidth limit
+//   - ErrFrameEmpty: empty frame provided
+//   - ErrDeviceNotReady: device not open or no buffers allocated
+//   - other errors: V4L2 ioctl failures
 func (s *UVCStreamer) WriteFrame(data []byte) error {
 	// Fast path rejection without lock
 	if !s.streaming.Load() {
-		return nil
+		return ErrNotStreaming
 	}
 
 	dataLen := int32(len(data))
-	if dataLen > maxFrameSizeBytes || dataLen == 0 {
+	if dataLen == 0 {
 		s.trackDroppedFrame()
-		return nil
+		return ErrFrameEmpty
+	}
+	if dataLen > maxFrameSizeBytes {
+		s.trackDroppedFrame()
+		return ErrFrameTooLarge
 	}
 
 	s.mu.Lock()
@@ -520,7 +549,7 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	if s.fd < 0 || s.bufCount == 0 {
 		s.mu.Unlock()
 		s.trackDroppedFrame()
-		return nil
+		return ErrDeviceNotReady
 	}
 
 	bufIdx := int(s.curBufIdx.Load())
@@ -606,15 +635,19 @@ func (s *UVCStreamer) SubscribeEvents() error {
 
 // PollEventsWithData polls for a UVC event and returns its type and data.
 // Returns (0, nil, nil) if no event is pending (non-blocking).
+// Thread-safe: holds mutex to prevent race with Close().
 func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
+	s.mu.Lock()
 	fd := s.fd
 	if fd < 0 {
+		s.mu.Unlock()
 		return 0, nil, fmt.Errorf("UVC device not open")
 	}
 
 	var ev v4l2_event
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), VIDIOC_DQEVENT, uintptr(unsafe.Pointer(&ev)))
 	if errno != 0 {
+		s.mu.Unlock()
 		if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK || errno == syscall.ENOENT {
 			return 0, nil, nil
 		}
@@ -622,6 +655,7 @@ func (s *UVCStreamer) PollEventsWithData() (uint32, []byte, error) {
 	}
 
 	copy(s.eventDataBuf[:], ev.U[:])
+	s.mu.Unlock()
 	return ev.Type, s.eventDataBuf[:], nil
 }
 
@@ -822,13 +856,14 @@ func (s *UVCStreamer) sendAcceptResponse(length int) error {
 func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 	s.mu.Lock()
 	fd := s.fd
-	s.mu.Unlock()
-
 	if fd < 0 {
+		s.mu.Unlock()
 		return fmt.Errorf("UVC device not open")
 	}
 
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), UVCIOC_SEND_RESPONSE, uintptr(unsafe.Pointer(resp)))
+	s.mu.Unlock()
+
 	if errno != 0 {
 		return fmt.Errorf("UVCIOC_SEND_RESPONSE failed: %v", errno)
 	}
@@ -860,14 +895,14 @@ func (s *UVCStreamer) IsOpen() bool {
 }
 
 // IsValid returns true if the V4L2 device is open and the fd is valid.
+// Lock is held during the ioctl to prevent Close() from invalidating the fd.
 func (s *UVCStreamer) IsValid() bool {
 	s.mu.Lock()
-	fd := s.fd
-	s.mu.Unlock()
-	if fd < 0 {
+	defer s.mu.Unlock()
+	if s.fd < 0 {
 		return false
 	}
 	var cap v4l2_capability
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
 	return errno == 0
 }

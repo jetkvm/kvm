@@ -31,8 +31,22 @@ type HardwareGCM struct {
 	localWriteIV, remoteWriteIV []byte
 }
 
+// minIVLength is the minimum IV length required for GCM nonce construction.
+// The first 4 bytes of the IV are used as the implicit nonce; the remaining
+// 8 bytes come from the DTLS record explicit nonce.
+const minIVLength = 4
+
 // NewHardwareGCM creates a DTLS GCM cipher using hardware crypto.
+// Returns error if IV lengths are less than minIVLength (4 bytes).
 func NewHardwareGCM(localKey, localWriteIV, remoteKey, remoteWriteIV []byte) (*HardwareGCM, error) {
+	// Validate IV lengths before creating expensive AEAD sessions
+	if len(localWriteIV) < minIVLength {
+		return nil, fmt.Errorf("localWriteIV too short: got %d bytes, need at least %d", len(localWriteIV), minIVLength)
+	}
+	if len(remoteWriteIV) < minIVLength {
+		return nil, fmt.Errorf("remoteWriteIV too short: got %d bytes, need at least %d", len(remoteWriteIV), minIVLength)
+	}
+
 	localAEAD, err := NewAESGCM(localKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create local AEAD: %w", err)
@@ -65,10 +79,7 @@ func (g *HardwareGCM) Close() error {
 			errs = append(errs, err)
 		}
 	}
-	if len(errs) > 0 {
-		return errs[0]
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // Encrypt encrypts a DTLS RecordLayer message.
@@ -221,6 +232,10 @@ func (c *TLSEcdheEcdsaWithAes128GcmSha256Hardware) Deinit() error {
 
 // Init initializes the internal Cipher with keying material.
 func (c *TLSEcdheEcdsaWithAes128GcmSha256Hardware) Init(masterSecret, clientRandom, serverRandom []byte, isClient bool) error {
+	if c.IsInitialized() {
+		return errors.New("cipher suite already initialized")
+	}
+
 	const (
 		prfMacLen = 0
 		prfKeyLen = 16

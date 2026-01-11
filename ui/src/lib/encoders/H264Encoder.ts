@@ -9,7 +9,7 @@
  */
 
 import { CODEC_BYTES } from "../cameraTransport";
-import { RateLimitedLogger } from "./types";
+import { EncoderState } from "./types";
 import type { EncodedFrame, EncoderConfig, InternalEncoderEvents } from "./types";
 
 // Type declarations for APIs not yet in TypeScript lib
@@ -65,25 +65,20 @@ export class H264Encoder {
   private keyFrameCounter = 0;
   private framesPerKeyFrame: number;
   private lastCaptureTime = 0;
-  private minFrameIntervalMs: number;
 
   // Cached SPS/PPS NAL units (with start codes)
   private spsNalu: Uint8Array | null = null;
   private ppsNalu: Uint8Array | null = null;
 
-  private readonly logger = new RateLimitedLogger("H264Encoder");
-  private running = false;
-
-  // Consecutive encode error tracking for escalation
-  private consecutiveEncodeErrors = 0;
-  private static readonly MAX_CONSECUTIVE_ERRORS = 10;
+  // Shared encoder state for error handling and frame rate management
+  private readonly state: EncoderState;
 
   constructor(videoTrack: MediaStreamTrack, config: EncoderConfig, events: InternalEncoderEvents) {
     this.videoTrack = videoTrack;
     this.config = { ...config }; // Clone to prevent external mutation
     this.events = events;
     this.framesPerKeyFrame = Math.round(config.frameRate * config.keyFrameInterval);
-    this.minFrameIntervalMs = (1000 / config.frameRate) * 0.9;
+    this.state = new EncoderState("H264Encoder", config.frameRate, events);
   }
 
   async start(width: number, height: number): Promise<void> {
@@ -111,12 +106,12 @@ export class H264Encoder {
     // @ts-expect-error - MediaStreamTrackProcessor not in TS types yet
     this.trackProcessor = new MediaStreamTrackProcessor({ track: this.videoTrack });
     this.frameReader = this.trackProcessor.readable.getReader();
-    this.running = true;
+    this.state.running = true;
     this.readFrames();
   }
 
   stop(): void {
-    this.running = false;
+    this.state.running = false;
 
     if (this.frameReader) {
       this.frameReader.cancel().catch((err: unknown) => {
@@ -139,8 +134,7 @@ export class H264Encoder {
     this.keyFrameCounter = 0;
     this.spsNalu = null;
     this.ppsNalu = null;
-    this.consecutiveEncodeErrors = 0;
-    this.logger.reset();
+    this.state.reset();
   }
 
   forceKeyFrame(): void {
@@ -149,7 +143,7 @@ export class H264Encoder {
 
   setFrameRate(fps: number): void {
     this.config.frameRate = fps;
-    this.minFrameIntervalMs = (1000 / fps) * 0.9;
+    this.state.setFrameRate(fps);
     this.framesPerKeyFrame = Math.round(fps * this.config.keyFrameInterval);
   }
 
@@ -157,14 +151,14 @@ export class H264Encoder {
     if (!this.frameReader) return;
 
     try {
-      while (this.running) {
+      while (this.state.running) {
         const { value: frame, done } = await this.frameReader.read();
         if (done) break;
 
         if (frame) {
           try {
             const now = performance.now();
-            if (now - this.lastCaptureTime >= this.minFrameIntervalMs) {
+            if (now - this.lastCaptureTime >= this.state.minFrameIntervalMs) {
               this.lastCaptureTime = now;
 
               if (this.encoder && this.encoder.state === "configured") {
@@ -174,28 +168,18 @@ export class H264Encoder {
                 this.encoder.encode(frame, { keyFrame: isKeyFrame });
                 this.frameCount++;
                 this.keyFrameCounter++;
-                this.consecutiveEncodeErrors = 0; // Reset on success
+                this.state.recordSuccess();
               }
             }
           } catch (err) {
-            this.consecutiveEncodeErrors++;
-            this.logger.logError("frame encode error", err);
-
-            // Escalate to error handler after too many consecutive failures
-            if (this.consecutiveEncodeErrors >= H264Encoder.MAX_CONSECUTIVE_ERRORS) {
-              this.events.onError(
-                new Error(
-                  `Frame encode failed ${this.consecutiveEncodeErrors} times consecutively`,
-                ),
-              );
-            }
+            this.state.recordError("frame encode error", err);
           } finally {
             frame.close();
           }
         }
       }
     } catch (error) {
-      if (this.running) {
+      if (this.state.running) {
         this.events.onError(error instanceof Error ? error : new Error(String(error)));
       }
     }
