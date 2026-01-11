@@ -323,6 +323,11 @@ func LoadConfig() {
 		loadedConfig.KeyboardLayout = "en-US"
 	}
 
+	// Migrate old verbose log level to sensible default
+	if loadedConfig.DefaultLogLevel == "INFO" {
+		loadedConfig.DefaultLogLevel = "WARN"
+	}
+
 	config = &loadedConfig
 
 	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
