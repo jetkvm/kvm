@@ -3,6 +3,7 @@ package kvm
 import (
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/camera"
 	"github.com/pion/rtp/codecs"
@@ -82,6 +83,8 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 	frameBuffer := make([]byte, 0, h264FrameBufferSize)
 	var lastTimestamp uint32
 	var depacketErrors uint32
+	var consecutiveReadErrors int
+	var lastReadError string
 
 	for {
 		// Check if we've been superseded by another track
@@ -100,9 +103,20 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 				cameraLog.Debug().Str("track_id", trackID).Msg("Camera video track ended")
 				return
 			}
-			cameraLog.Warn().Err(err).Msg("Failed to read RTP packet from camera track")
+			consecutiveReadErrors++
+			errStr := err.Error()
+			errTypeChanged := errStr != lastReadError
+			if consecutiveReadErrors == 1 || consecutiveReadErrors%100 == 0 || errTypeChanged {
+				cameraLog.Warn().Err(err).Int("consecutive", consecutiveReadErrors).Msg("RTP read error")
+			}
+			lastReadError = errStr
+			// Backoff on persistent errors to prevent CPU spin
+			if consecutiveReadErrors > 5 {
+				time.Sleep(time.Duration(min(consecutiveReadErrors, 10)) * 10 * time.Millisecond)
+			}
 			continue
 		}
+		consecutiveReadErrors = 0
 
 		if !mgr.IsEnabled() {
 			continue

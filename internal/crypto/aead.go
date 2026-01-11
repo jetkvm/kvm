@@ -7,7 +7,11 @@ import (
 	"crypto/cipher"
 	"errors"
 	"sync"
+
+	"github.com/jetkvm/kvm/internal/logging"
 )
+
+var cryptoLogger = logging.GetSubsystemLogger("crypto")
 
 // AEAD represents an authenticated encryption with associated data cipher.
 // On supported platforms (RV1106), this uses hardware acceleration.
@@ -52,9 +56,10 @@ func NewAESGCM(key []byte) (AEAD, error) {
 		return hw, nil
 	}
 
-	// Record hardware unavailability once for diagnostics
+	// Record hardware unavailability once and log for diagnostics
 	hardwareFallbackOnce.Do(func() {
 		hardwareFallbackReason = err
+		cryptoLogger.Warn().Err(err).Msg("hardware AES-GCM unavailable, using software")
 	})
 
 	// Fall back to software

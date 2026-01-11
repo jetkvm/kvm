@@ -79,10 +79,7 @@ func (g *HardwareGCM) Close() error {
 			errs = append(errs, err)
 		}
 	}
-	if len(errs) > 0 {
-		return errs[0]
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // Encrypt encrypts a DTLS RecordLayer message.
@@ -235,6 +232,10 @@ func (c *TLSEcdheEcdsaWithAes128GcmSha256Hardware) Deinit() error {
 
 // Init initializes the internal Cipher with keying material.
 func (c *TLSEcdheEcdsaWithAes128GcmSha256Hardware) Init(masterSecret, clientRandom, serverRandom []byte, isClient bool) error {
+	if c.IsInitialized() {
+		return errors.New("cipher suite already initialized")
+	}
+
 	const (
 		prfMacLen = 0
 		prfKeyLen = 16

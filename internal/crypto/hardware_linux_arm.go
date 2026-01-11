@@ -125,7 +125,9 @@ func newHardwareAESGCM(key []byte) (AEAD, error) {
 	// Set finalizer to release /dev/crypto session if Close() is not called.
 	// This prevents session leaks when DTLS connections are garbage collected.
 	runtime.SetFinalizer(aead, func(a *hardwareAESGCM) {
-		_ = a.Close()
+		if err := a.Close(); err != nil {
+			cryptoLogger.Debug().Err(err).Msg("finalizer: error closing hardware AEAD")
+		}
 	})
 
 	return aead, nil

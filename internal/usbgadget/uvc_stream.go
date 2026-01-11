@@ -465,6 +465,10 @@ func (s *UVCStreamer) StartStreaming() error {
 		}
 	}
 
+	if s.queuedBufs == 0 {
+		return fmt.Errorf("failed to queue any V4L2 buffers")
+	}
+
 	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, uintptr(s.fd), VIDIOC_QUERYCAP, uintptr(unsafe.Pointer(&cap)))
 	if errno != 0 {
 		return fmt.Errorf("UVC device invalidated during setup (errno=%d), aborting STREAMON", errno)
