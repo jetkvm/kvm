@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
-	"github.com/rs/zerolog"
 )
 
 // uvcBufferCount is the number of V4L2 buffers to allocate.
@@ -24,60 +23,6 @@ func codecName(isMjpeg bool) string {
 		return "MJPEG"
 	}
 	return "H.264"
-}
-
-// zerologAdapter wraps zerolog for usbgadget.Logger.
-type zerologAdapter struct {
-	logger *zerolog.Logger
-}
-
-func (l *zerologAdapter) Info() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Info()}
-}
-
-func (l *zerologAdapter) Warn() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Warn()}
-}
-
-func (l *zerologAdapter) Error() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Error()}
-}
-
-func (l *zerologAdapter) Debug() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Debug()}
-}
-
-type zerologEventAdapter struct {
-	event *zerolog.Event
-}
-
-func (e *zerologEventAdapter) Str(key, val string) usbgadget.LogEvent {
-	e.event = e.event.Str(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Int(key string, val int) usbgadget.LogEvent {
-	e.event = e.event.Int(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Uint32(key string, val uint32) usbgadget.LogEvent {
-	e.event = e.event.Uint32(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Bool(key string, val bool) usbgadget.LogEvent {
-	e.event = e.event.Bool(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Err(err error) usbgadget.LogEvent {
-	e.event = e.event.Err(err)
-	return e
-}
-
-func (e *zerologEventAdapter) Msg(msg string) {
-	e.event.Msg(msg)
 }
 
 // InitUVC initializes the UVC subsystem and starts the event loop.
@@ -102,7 +47,7 @@ func (m *Manager) InitUVC(uvcEnabled bool) error {
 	if m.uvcLog != nil {
 		m.uvcLog.Info().Str("device", devicePath).Msg("UVC initialized")
 	}
-	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
+	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, m.uvcLog))
 
 	m.eventLoopRun.Store(true)
 	go m.eventLoop()
@@ -171,7 +116,7 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	if m.uvcLog != nil {
 		m.uvcLog.Info().Str("device", devicePath).Msg("UVC reinitialized")
 	}
-	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
+	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, m.uvcLog))
 
 	// Start event loop if not already running
 	if !m.eventLoopRun.Load() {
@@ -276,7 +221,7 @@ func (m *Manager) eventLoop() {
 					if m.uvcLog != nil {
 						m.uvcLog.Info().Str("device", devicePath).Msg("UVC device path rediscovered")
 					}
-					m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
+					m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, m.uvcLog))
 					time.Sleep(recoveryDelay)
 					continue
 				}

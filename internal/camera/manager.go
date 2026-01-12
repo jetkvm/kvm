@@ -82,8 +82,6 @@ func (c VideoCodec) IsValid() bool {
 		return false
 	}
 }
-
-// String returns the string representation of the codec.
 func (c VideoCodec) String() string {
 	return string(c)
 }
@@ -209,8 +207,6 @@ func (m *Manager) SetEnabled(enabled bool) {
 		m.camLog.Info().Bool("enabled", enabled).Msg("Camera passthrough state changed")
 	}
 }
-
-// IsEnabled returns true if camera passthrough is enabled.
 func (m *Manager) IsEnabled() bool { return m.enabled.Load() }
 
 // GetCurrentFormat returns the current streaming format, or nil if not streaming.

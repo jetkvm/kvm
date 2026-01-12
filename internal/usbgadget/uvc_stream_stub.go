@@ -5,6 +5,8 @@ package usbgadget
 import (
 	"errors"
 	"fmt"
+
+	"github.com/rs/zerolog"
 )
 
 // ErrNotStreaming is returned when WriteFrame is called but streaming is not active.
@@ -41,23 +43,7 @@ const (
 // UVCStreamer stub for non-linux builds
 type UVCStreamer struct{}
 
-type Logger interface {
-	Info() LogEvent
-	Warn() LogEvent
-	Error() LogEvent
-	Debug() LogEvent
-}
-
-type LogEvent interface {
-	Str(key, val string) LogEvent
-	Int(key string, val int) LogEvent
-	Uint32(key string, val uint32) LogEvent
-	Bool(key string, val bool) LogEvent
-	Err(err error) LogEvent
-	Msg(msg string)
-}
-
-func NewUVCStreamer(devicePath string, log Logger) *UVCStreamer {
+func NewUVCStreamer(devicePath string, log *zerolog.Logger) *UVCStreamer {
 	return &UVCStreamer{}
 }
 
