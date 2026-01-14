@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
-	"github.com/rs/zerolog"
 )
 
 // uvcBufferCount is the number of V4L2 buffers to allocate.
@@ -24,60 +23,6 @@ func codecName(isMjpeg bool) string {
 		return "MJPEG"
 	}
 	return "H.264"
-}
-
-// zerologAdapter wraps zerolog for usbgadget.Logger.
-type zerologAdapter struct {
-	logger *zerolog.Logger
-}
-
-func (l *zerologAdapter) Info() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Info()}
-}
-
-func (l *zerologAdapter) Warn() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Warn()}
-}
-
-func (l *zerologAdapter) Error() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Error()}
-}
-
-func (l *zerologAdapter) Debug() usbgadget.LogEvent {
-	return &zerologEventAdapter{event: l.logger.Debug()}
-}
-
-type zerologEventAdapter struct {
-	event *zerolog.Event
-}
-
-func (e *zerologEventAdapter) Str(key, val string) usbgadget.LogEvent {
-	e.event = e.event.Str(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Int(key string, val int) usbgadget.LogEvent {
-	e.event = e.event.Int(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Uint32(key string, val uint32) usbgadget.LogEvent {
-	e.event = e.event.Uint32(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Bool(key string, val bool) usbgadget.LogEvent {
-	e.event = e.event.Bool(key, val)
-	return e
-}
-
-func (e *zerologEventAdapter) Err(err error) usbgadget.LogEvent {
-	e.event = e.event.Err(err)
-	return e
-}
-
-func (e *zerologEventAdapter) Msg(msg string) {
-	e.event.Msg(msg)
 }
 
 // InitUVC initializes the UVC subsystem and starts the event loop.
@@ -102,7 +47,7 @@ func (m *Manager) InitUVC(uvcEnabled bool) error {
 	if m.uvcLog != nil {
 		m.uvcLog.Info().Str("device", devicePath).Msg("UVC initialized")
 	}
-	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
+	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, m.uvcLog))
 
 	m.eventLoopRun.Store(true)
 	go m.eventLoop()
@@ -171,7 +116,7 @@ func (m *Manager) ReinitUVC(uvcEnabled bool) {
 	if m.uvcLog != nil {
 		m.uvcLog.Info().Str("device", devicePath).Msg("UVC reinitialized")
 	}
-	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, &zerologAdapter{logger: m.uvcLog}))
+	m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, m.uvcLog))
 
 	// Start event loop if not already running
 	if !m.eventLoopRun.Load() {
@@ -207,17 +152,21 @@ func (m *Manager) eventLoop() {
 	}()
 
 	const (
-		pollInterval     = 20 * time.Millisecond  // Balance latency vs CPU usage (50 polls/sec)
-		retryInterval    = time.Second            // Backoff on open/subscribe failures
-		recoveryDelay    = 500 * time.Millisecond // Allow USB stack to stabilize after errors
-		settlingDelay    = 50 * time.Millisecond  // Debounce rapid USB connect/disconnect events
-		maxEventsPerPoll = 16                     // Drain event queue to find final state
+		pollInterval       = 20 * time.Millisecond  // Balance latency vs CPU usage (50 polls/sec)
+		retryInterval      = time.Second            // Backoff on open/subscribe failures
+		recoveryDelay      = 500 * time.Millisecond // Allow USB stack to stabilize after errors
+		settlingDelay      = 50 * time.Millisecond  // Debounce rapid USB connect/disconnect events
+		maxEventsPerPoll   = 16                     // Drain event queue to find final state
+		maxOpenFailures    = 5                      // Rediscover device path after this many failures
+		rediscoveryBackoff = 2 * time.Second        // Wait before rediscovering device path
 	)
 
 	type pendingEvent struct {
 		eventType uint32
 		eventData []byte
 	}
+
+	openFailureCount := 0
 
 	for m.eventLoopRun.Load() {
 		streamer := m.streamer.Load()
@@ -234,18 +183,53 @@ func (m *Manager) eventLoop() {
 			if err := streamer.Close(); err != nil && m.uvcLog != nil {
 				m.uvcLog.Warn().Err(err).Msg("Close failed during recovery")
 			}
+			openFailureCount = 0 // Reset on intentional close
 			time.Sleep(recoveryDelay)
 			continue
 		}
 
 		if !streamer.IsOpen() {
 			if err := streamer.Open(); err != nil {
+				openFailureCount++
 				if m.uvcLog != nil {
-					m.uvcLog.Warn().Err(err).Msg("Failed to open UVC device, retrying")
+					m.uvcLog.Warn().Err(err).Int("failures", openFailureCount).Msg("Failed to open UVC device, retrying")
 				}
+
+				// After too many failures, the device path may have changed (USB reconfiguration)
+				// Rediscover the device path by creating a new streamer
+				if openFailureCount >= maxOpenFailures {
+					if m.uvcLog != nil {
+						m.uvcLog.Info().Msg("Too many open failures, rediscovering UVC device path")
+					}
+					openFailureCount = 0
+
+					// Close old streamer and rediscover device
+					if err := streamer.Close(); err != nil && m.uvcLog != nil {
+						m.uvcLog.Warn().Err(err).Msg("Close failed during rediscovery")
+					}
+
+					devicePath, err := m.gadget.GetUVCVideoDevice()
+					if err != nil {
+						if m.uvcLog != nil {
+							m.uvcLog.Warn().Err(err).Msg("UVC device not found during rediscovery")
+						}
+						m.streamer.Store(nil)
+						time.Sleep(rediscoveryBackoff)
+						continue
+					}
+
+					if m.uvcLog != nil {
+						m.uvcLog.Info().Str("device", devicePath).Msg("UVC device path rediscovered")
+					}
+					m.streamer.Store(usbgadget.NewUVCStreamer(devicePath, m.uvcLog))
+					time.Sleep(recoveryDelay)
+					continue
+				}
+
 				time.Sleep(retryInterval)
 				continue
 			}
+			openFailureCount = 0 // Reset on successful open
 			if err := streamer.SubscribeEvents(); err != nil {
 				if m.uvcLog != nil {
 					m.uvcLog.Error().Err(err).Msg("Failed to subscribe to UVC events")

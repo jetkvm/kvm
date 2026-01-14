@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"unsafe"
+
+	"github.com/rs/zerolog"
 )
 
 // ErrNotStreaming is returned by WriteFrame when the UVC device is not actively streaming.
@@ -34,19 +36,15 @@ const (
 const (
 	V4L2_BUF_TYPE_VIDEO_OUTPUT = 2
 	V4L2_FIELD_NONE            = 1
-	V4L2_MEMORY_MMAP           = 1
 	V4L2_MEMORY_USERPTR        = 2
-	V4L2_MEMORY_DMABUF         = 4 // Zero-copy via dmabuf file descriptor
 
 	// Buffer timestamp flags - GStreamer requires MONOTONIC timestamps
-	V4L2_BUF_FLAG_TIMESTAMP_MASK      = 0x0000e000
 	V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC = 0x00002000
 
 	// V4L2 ioctls (32-bit ARM values)
 	VIDIOC_QUERYCAP        = 0x80685600
 	VIDIOC_S_FMT           = 0xc0d05605
 	VIDIOC_REQBUFS         = 0xc0145608
-	VIDIOC_QUERYBUF        = 0xc0445609
 	VIDIOC_QBUF            = 0xc044560f
 	VIDIOC_DQBUF           = 0xc0445611
 	VIDIOC_STREAMON        = 0x40045612
@@ -70,7 +68,6 @@ const (
 	// USB/UVC constants
 	USB_TYPE_MASK  = 0x60
 	USB_TYPE_CLASS = 0x20
-	USB_DIR_IN     = 0x80
 
 	UVC_SET_CUR  = 0x01
 	UVC_GET_CUR  = 0x81
@@ -183,14 +180,14 @@ type uvc_streaming_control struct {
 	wKeyFrameRate, wPFrameRate, wCompQuality, wCompWindowSize, wDelay uint16
 	dwMaxVideoFrameSize, dwMaxPayloadTransferSize                     uint32
 	dwClockFrequency                                                  uint32
-	// UVC 1.1 spec fields - unused but required for correct binary struct layout
+	// UVC 1.1 spec fields - required for correct binary struct layout
 	bmFramingInfo, bPreferedVersion, bMinVersion, bMaxVersion uint8 //nolint:unused
 }
 
 type UVCStreamer struct {
 	devicePath    string
 	mu            sync.Mutex
-	log           Logger
+	log           *zerolog.Logger
 	buffers       [][]byte
 	bufferPtrs    []uintptr // Pre-computed buffer pointers for zero-overhead access
 	fd            int
@@ -210,22 +207,6 @@ type UVCStreamer struct {
 	streamReady   bool
 }
 
-type Logger interface {
-	Info() LogEvent
-	Warn() LogEvent
-	Error() LogEvent
-	Debug() LogEvent
-}
-
-type LogEvent interface {
-	Str(key, val string) LogEvent
-	Int(key string, val int) LogEvent
-	Uint32(key string, val uint32) LogEvent
-	Bool(key string, val bool) LogEvent
-	Err(err error) LogEvent
-	Msg(msg string)
-}
-
 // frameResolutions maps UVC frame index to resolution.
 var frameResolutions = map[uint8][2]uint32{
 	FrameIndex1080p: {1920, 1080},
@@ -235,7 +216,7 @@ var frameResolutions = map[uint8][2]uint32{
 
 // NewUVCStreamer creates a new UVC streamer for the given V4L2 device path.
 // The device is not opened until Open() is called.
-func NewUVCStreamer(devicePath string, log Logger) *UVCStreamer {
+func NewUVCStreamer(devicePath string, log *zerolog.Logger) *UVCStreamer {
 	s := &UVCStreamer{
 		devicePath: devicePath,
 		fd:         -1,
@@ -351,7 +332,6 @@ func (s *UVCStreamer) SetFormatWithCodec(width, height uint32, isMjpeg bool) err
 
 	s.width = width
 	s.height = height
-	// Compressed frames are typically much smaller than raw
 	s.bufferSize = uvcBufferSize
 
 	pixelFormat := uint32(V4L2_PIX_FMT_H264)
@@ -555,8 +535,6 @@ func (s *UVCStreamer) WriteFrame(data []byte) error {
 	bufIdx := int(s.curBufIdx.Load())
 	bufPtr := s.bufferPtrs[bufIdx]
 	buf := s.buffers[bufIdx]
-
-	// Copy frame data to buffer
 	copy(buf, data)
 
 	// Dequeue completed buffers if all are in use
@@ -682,12 +660,12 @@ func (s *UVCStreamer) HandleSetupEvent(eventData []byte) error {
 	entityId := uint8(ctrl.wIndex >> 8)
 
 	if entityId != 0 {
-		return s.handleControlUnitRequest(&ctrl, cs)
+		return s.handleControlUnitRequest(&ctrl)
 	}
 	return s.handleStreamingRequest(&ctrl, cs)
 }
 
-func (s *UVCStreamer) handleControlUnitRequest(ctrl *usb_ctrlrequest, cs uint8) error {
+func (s *UVCStreamer) handleControlUnitRequest(ctrl *usb_ctrlrequest) error {
 	switch ctrl.bRequest {
 	case UVC_GET_INFO:
 		return s.sendInfoResponse(0x03)
@@ -869,8 +847,6 @@ func (s *UVCStreamer) sendResponse(resp *uvc_request_data) error {
 	}
 	return nil
 }
-
-// IsStreaming returns true if V4L2 streaming is active.
 func (s *UVCStreamer) IsStreaming() bool { return s.streaming.Load() }
 
 // trackDroppedFrame increments the drop counter and logs periodically.

@@ -207,23 +207,38 @@ func (u *UsbGadget) Close() error {
 func (u *UsbGadget) CloseHidFiles() {
 	u.log.Debug().Msg("closing HID files")
 
+	// Close keyboard with proper locking to prevent race conditions with openKeyboardHidFile
+	u.keyboardLock.Lock()
 	// Cancel keyboard listener first to prevent it from using stale file handles
 	if u.keyboardStateCancel != nil {
 		u.keyboardStateCancel()
 	}
-
-	closeFile := func(file **os.File, name string) {
-		if *file != nil {
-			if err := (*file).Close(); err != nil {
-				u.log.Debug().Err(err).Msgf("failed to close %s HID file", name)
-			}
-			*file = nil
+	if u.keyboardHidFile != nil {
+		if err := u.keyboardHidFile.Close(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to close keyboard HID file")
 		}
+		u.keyboardHidFile = nil
 	}
+	u.keyboardLock.Unlock()
 
-	closeFile(&u.keyboardHidFile, "keyboard")
-	closeFile(&u.absMouseHidFile, "absolute mouse")
-	closeFile(&u.relMouseHidFile, "relative mouse")
+	// Close mouse files with their respective locks
+	u.absMouseLock.Lock()
+	if u.absMouseHidFile != nil {
+		if err := u.absMouseHidFile.Close(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to close absolute mouse HID file")
+		}
+		u.absMouseHidFile = nil
+	}
+	u.absMouseLock.Unlock()
+
+	u.relMouseLock.Lock()
+	if u.relMouseHidFile != nil {
+		if err := u.relMouseHidFile.Close(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to close relative mouse HID file")
+		}
+		u.relMouseHidFile = nil
+	}
+	u.relMouseLock.Unlock()
 }
 
 // PreOpenHidFiles opens all HID files to reduce input latency.
@@ -245,35 +260,8 @@ func (u *UsbGadget) PreOpenHidFiles() {
 	const maxRetries = 15
 	const retryDelay = 300 * time.Millisecond
 
-	openHidFileWithRetry := func(file **os.File, path string, name string) {
-		if *file != nil {
-			return // Already open
-		}
-
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			f, err := os.OpenFile(path, os.O_RDWR, 0666)
-			if err == nil {
-				*file = f
-				u.log.Debug().
-					Str("path", path).
-					Int("attempt", attempt).
-					Msgf("successfully opened %s HID file", name)
-				return
-			}
-
-			if attempt < maxRetries {
-				time.Sleep(retryDelay)
-			} else {
-				u.log.Warn().
-					Err(err).
-					Str("path", path).
-					Msgf("failed to open %s HID file after %d attempts", name, maxRetries)
-			}
-		}
-	}
-
 	if u.enabledDevices.Keyboard {
-		// Keyboard uses a different open method, so retry it separately
+		// Keyboard uses openKeyboardHidFile which has its own locking
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			if err := u.openKeyboardHidFile(); err == nil {
 				u.log.Debug().Int("attempt", attempt).Msg("successfully opened keyboard HID file")
@@ -287,11 +275,51 @@ func (u *UsbGadget) PreOpenHidFiles() {
 	}
 
 	if u.enabledDevices.AbsoluteMouse {
-		openHidFileWithRetry(&u.absMouseHidFile, "/dev/hidg1", "absolute mouse")
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			u.absMouseLock.Lock()
+			if u.absMouseHidFile != nil {
+				u.absMouseLock.Unlock()
+				u.log.Debug().Int("attempt", attempt).Msg("absolute mouse HID file already open")
+				break
+			}
+			f, err := os.OpenFile("/dev/hidg1", os.O_RDWR, 0666)
+			if err == nil {
+				u.absMouseHidFile = f
+				u.absMouseLock.Unlock()
+				u.log.Debug().Int("attempt", attempt).Msg("successfully opened absolute mouse HID file")
+				break
+			}
+			u.absMouseLock.Unlock()
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+			} else {
+				u.log.Warn().Err(err).Msgf("failed to open absolute mouse HID file after %d attempts", maxRetries)
+			}
+		}
 	}
 
 	if u.enabledDevices.RelativeMouse {
-		openHidFileWithRetry(&u.relMouseHidFile, "/dev/hidg2", "relative mouse")
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			u.relMouseLock.Lock()
+			if u.relMouseHidFile != nil {
+				u.relMouseLock.Unlock()
+				u.log.Debug().Int("attempt", attempt).Msg("relative mouse HID file already open")
+				break
+			}
+			f, err := os.OpenFile("/dev/hidg2", os.O_RDWR, 0666)
+			if err == nil {
+				u.relMouseHidFile = f
+				u.relMouseLock.Unlock()
+				u.log.Debug().Int("attempt", attempt).Msg("successfully opened relative mouse HID file")
+				break
+			}
+			u.relMouseLock.Unlock()
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+			} else {
+				u.log.Warn().Err(err).Msgf("failed to open relative mouse HID file after %d attempts", maxRetries)
+			}
+		}
 	}
 
 	// With UVC enabled, wait an additional period after opening to ensure

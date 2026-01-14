@@ -298,6 +298,9 @@ func (u *UsbGadget) listenKeyboardEvents() {
 }
 
 func (u *UsbGadget) openKeyboardHidFile() error {
+	u.keyboardLock.Lock()
+	defer u.keyboardLock.Unlock()
+
 	if u.keyboardHidFile != nil {
 		return nil
 	}
