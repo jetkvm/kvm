@@ -36,12 +36,14 @@ type nativeProxyOptions struct {
 	DefaultQualityFactor  float64         `env:"JETKVM_NATIVE_DEFAULT_QUALITY_FACTOR"`
 	CtrlUnixSocket        string          `env:"JETKVM_NATIVE_CTRL_UNIX_SOCKET"`
 	VideoStreamUnixSocket string          `env:"JETKVM_NATIVE_VIDEO_STREAM_UNIX_SOCKET"`
+	JpegStreamUnixSocket  string          `env:"JETKVM_NATIVE_JPEG_STREAM_UNIX_SOCKET"`
 	BinaryPath            string          `env:"JETKVM_NATIVE_BINARY_PATH"`
 	LoggerLevel           zerolog.Level   `env:"JETKVM_NATIVE_LOGGER_LEVEL"`
 	HandshakeMessage      string          `env:"JETKVM_NATIVE_HANDSHAKE_MESSAGE"`
 	MaxRestartAttempts    uint
 
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
+	OnJpegFrameReceived  func(frame []byte)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnVideoStateChange   func(state VideoState)
@@ -72,6 +74,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		DisplayRotation:      n.DisplayRotation,
 		DefaultQualityFactor: n.DefaultQualityFactor,
 		OnVideoFrameReceived: n.OnVideoFrameReceived,
+		OnJpegFrameReceived:  n.OnJpegFrameReceived,
 		OnIndevEvent:         n.OnIndevEvent,
 		OnRpcEvent:           n.OnRpcEvent,
 		OnVideoStateChange:   n.OnVideoStateChange,
@@ -124,6 +127,8 @@ type NativeProxy struct {
 	nativeUnixSocket      string
 	videoStreamUnixSocket string
 	videoStreamListener   net.Listener
+	jpegStreamUnixSocket  string
+	jpegStreamListener    net.Listener
 	binaryPath            string
 
 	startMu sync.Mutex // mutex for the start process (context and isStopped)
@@ -147,6 +152,7 @@ type NativeProxy struct {
 func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 	proxyOptions := opts.toProxyOptions()
 	proxyOptions.VideoStreamUnixSocket = fmt.Sprintf("@jetkvm/native/video-stream/%s", randomId(4))
+	proxyOptions.JpegStreamUnixSocket = fmt.Sprintf("@jetkvm/native/jpeg-stream/%s", randomId(4))
 
 	// Get the current executable path to spawn itself
 	exePath, err := os.Executable()
@@ -162,6 +168,7 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 	proxy := &NativeProxy{
 		nativeUnixSocket:      proxyOptions.CtrlUnixSocket,
 		videoStreamUnixSocket: proxyOptions.VideoStreamUnixSocket,
+		jpegStreamUnixSocket:  proxyOptions.JpegStreamUnixSocket,
 		binaryPath:            exePath,
 		logger:                nativeLogger,
 		options:               proxyOptions,
@@ -196,6 +203,36 @@ func (p *NativeProxy) startVideoStreamListener() error {
 
 			logger.Info().Msg("video stream socket accepted")
 			go p.handleVideoFrame(conn)
+		}
+	}()
+
+	return nil
+}
+
+func (p *NativeProxy) startJpegStreamListener() error {
+	if p.jpegStreamListener != nil {
+		return nil
+	}
+
+	logger := p.logger.With().Str("socketPath", p.jpegStreamUnixSocket).Logger()
+	listener, err := net.Listen("unix", p.jpegStreamUnixSocket)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to start JPEG stream listener")
+		return fmt.Errorf("failed to start JPEG stream listener: %w", err)
+	}
+	logger.Info().Msg("JPEG stream listener started")
+	p.jpegStreamListener = listener
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				logger.Warn().Err(err).Msg("failed to accept JPEG socket")
+				continue
+			}
+
+			logger.Info().Msg("JPEG stream socket accepted")
+			go p.handleJpegFrame(conn)
 		}
 	}()
 
@@ -300,6 +337,51 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	}
 }
 
+func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
+	defer conn.Close()
+
+	inboundPacket := make([]byte, maxFrameSize)
+	var frameSizeBuffer [4]byte
+	frameCount := 0
+
+	p.logger.Warn().Msg("handleJpegFrame started, waiting for JPEG frames from native subprocess")
+
+	for {
+		// Read 4-byte frame length prefix
+		_, err := io.ReadFull(conn, frameSizeBuffer[:])
+		if err != nil {
+			if err != io.EOF {
+				p.logger.Warn().Err(err).Msg("failed to read JPEG frame size from socket")
+			}
+			break
+		}
+
+		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
+		if frameSize == 0 || frameSize > maxFrameSize {
+			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
+				Msg("received invalid JPEG frame size")
+			break
+		}
+
+		// Read the actual frame data
+		_, err = io.ReadFull(conn, inboundPacket[:frameSize])
+		if err != nil {
+			p.logger.Warn().Err(err).Msg("failed to read JPEG frame from socket")
+			break
+		}
+
+		frameCount++
+		if frameCount <= 3 || frameCount%100 == 0 {
+			p.logger.Warn().Int("frameCount", frameCount).Uint32("frameSize", frameSize).Msg("received JPEG frame from native subprocess")
+		}
+
+		if p.options.OnJpegFrameReceived != nil {
+			p.options.OnJpegFrameReceived(inboundPacket[:frameSize])
+		}
+	}
+	p.logger.Warn().Int("totalFrames", frameCount).Msg("handleJpegFrame exiting")
+}
+
 // it should be only called by start() method, as it isn't thread-safe
 func (p *NativeProxy) setUpGRPCClient() error {
 	// wait until handshake completed
@@ -392,6 +474,10 @@ func (p *NativeProxy) Start() error {
 
 	if err := p.startVideoStreamListener(); err != nil {
 		return fmt.Errorf("failed to start video stream listener: %w", err)
+	}
+
+	if err := p.startJpegStreamListener(); err != nil {
+		return fmt.Errorf("failed to start JPEG stream listener: %w", err)
 	}
 
 	if err := p.doStart(); err != nil {
@@ -721,4 +807,45 @@ func (p *NativeProxy) DoNotUseThisIsForCrashTestingOnly() {
 		client.DoNotUseThisIsForCrashTestingOnly()
 		return nil
 	})
+}
+
+// JPEG encoder methods
+func (p *NativeProxy) JpegStart(quality int) error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.JpegStart(quality)
+	})
+}
+
+func (p *NativeProxy) JpegStop() error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.JpegStop()
+	})
+}
+
+func (p *NativeProxy) JpegSetQuality(quality int) error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.JpegSetQuality(quality)
+	})
+}
+
+func (p *NativeProxy) JpegGetQuality() (int, error) {
+	p.clientMu.RLock()
+	defer p.clientMu.RUnlock()
+
+	if p.client == nil {
+		return 0, fmt.Errorf("gRPC client not initialized")
+	}
+
+	return p.client.JpegGetQuality()
+}
+
+func (p *NativeProxy) JpegIsRunning() (bool, error) {
+	p.clientMu.RLock()
+	defer p.clientMu.RUnlock()
+
+	if p.client == nil {
+		return false, fmt.Errorf("gRPC client not initialized")
+	}
+
+	return p.client.JpegIsRunning()
 }

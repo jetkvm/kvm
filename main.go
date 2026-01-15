@@ -171,6 +171,11 @@ func Main() {
 
 	initSerialPort()
 
+	// Initialize VNC server if enabled
+	if config.VNCEnabled {
+		initVNCServer()
+	}
+
 	setProcTitle("ready")
 
 	sigs := make(chan os.Signal, 1)

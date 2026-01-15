@@ -649,6 +649,7 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
+	config.LocalAuthPassword = req.Password // Store plaintext for VNC auth
 	config.LocalAuthToken = uuid.New().String()
 	config.LocalAuthMode = "password"
 	if err := SaveConfig(); err != nil {
@@ -693,6 +694,7 @@ func handleUpdatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
+	config.LocalAuthPassword = req.NewPassword // Store plaintext for VNC auth
 	config.LocalAuthToken = uuid.New().String()
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})

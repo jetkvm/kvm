@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <errno.h>
@@ -16,10 +17,26 @@
 #include "log.h"
 #include "log_handler.h"
 
-jetkvm_video_state_t state;
+// Making state extern to ensure single definition across compilation units
+volatile jetkvm_video_state_t state = {0};
 jetkvm_video_state_handler_t *video_state_handler = NULL;
+// Non-static for debugging - ensures single definition
+volatile uint32_t video_report_call_count = 0;
+volatile uint32_t video_get_status_call_count = 0;
+// Unique identifier to verify same compilation unit
+const char *ctrl_build_id = __FILE__ " " __DATE__ " " __TIME__;
+
+// Setter function to allow video.c to modify the counter (avoids extern issues)
+void ctrl_set_report_count(uint32_t value) {
+    video_report_call_count = value;
+    fprintf(stderr, "INFO: ctrl_set_report_count: Set counter=%u at addr=%p\n",
+            video_report_call_count, (void*)&video_report_call_count);
+    fflush(stderr);
+}
+
 jetkvm_rpc_handler_t *rpc_handler = NULL;
 jetkvm_video_handler_t *video_handler = NULL;
+jetkvm_jpeg_handler_t *jpeg_handler = NULL;
 
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
@@ -28,6 +45,10 @@ void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
 
 void jetkvm_set_video_handler(jetkvm_video_handler_t *handler) {
     video_handler = handler;
+}
+
+void jetkvm_set_jpeg_handler(jetkvm_jpeg_handler_t *handler) {
+    jpeg_handler = handler;
 }
 
 static jetkvm_indev_handler_t *jetkvm_indev_handler = NULL;
@@ -59,12 +80,24 @@ const char *jetkvm_ui_event_code_to_name(int code) {
 
 void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second)
 {
+    video_report_call_count++;
+    if (video_report_call_count == 1) {
+        fprintf(stderr, "INFO: video_report_format: BUILD_ID=%s, state=%p, counter=%p\n",
+                ctrl_build_id, (void*)&state, (void*)&video_report_call_count);
+    }
+    fprintf(stderr, "INFO: video_report_format[%u]: state address=%p, setting ready=%d, width=%d, height=%d, error=%s\n",
+            video_report_call_count, (void*)&state, ready, width, height, error ? error : "none");
+    fflush(stderr);
     state.streaming = video_get_streaming_status();
     state.ready = ready;
     state.error = error;
     state.width = width;
     state.height = height;
     state.frame_per_second = frame_per_second;
+    // Verify the values were written correctly
+    fprintf(stderr, "INFO: video_report_format[%u]: AFTER SET: state.ready=%d, state.width=%d, state.height=%d\n",
+            video_report_call_count, state.ready, state.width, state.height);
+    fflush(stderr);
     if (video_state_handler != NULL) {
         (*video_state_handler)(&state);
     }
@@ -83,6 +116,14 @@ int video_send_frame(const uint8_t *frame, ssize_t len)
         (*video_handler)(frame, len);
     } else {
         log_error("video handler is not set");
+    }
+    return 0;
+}
+
+int video_send_jpeg_frame(const uint8_t *frame, ssize_t len)
+{
+    if (jpeg_handler != NULL) {
+        (*jpeg_handler)(frame, len);
     }
     return 0;
 }
@@ -410,6 +451,27 @@ char *jetkvm_video_get_edid_hex() {
 }
 
 jetkvm_video_state_t *jetkvm_video_get_status() {
+    video_get_status_call_count++;
+    if (video_get_status_call_count == 1) {
+        fprintf(stderr, "INFO: jetkvm_video_get_status: BUILD_ID=%s, state=%p, counter=%p\n",
+                ctrl_build_id, (void*)&state, (void*)&video_report_call_count);
+    }
+    // Read values into local variables first to ensure atomic read
+    bool local_ready = state.ready;
+    uint16_t local_width = state.width;
+    uint16_t local_height = state.height;
+    fprintf(stderr, "INFO: jetkvm_video_get_status[%u]: state addr=%p, report_calls=%u, ready=%d, width=%d, height=%d\n",
+            video_get_status_call_count, (void*)&state, video_report_call_count, local_ready, local_width, local_height);
+    // Print raw bytes of state struct for debugging (only first few calls to avoid spam)
+    if (video_get_status_call_count <= 5) {
+        unsigned char *bytes = (unsigned char *)&state;
+        fprintf(stderr, "INFO: jetkvm_video_get_status: raw bytes (first 20): ");
+        for (int i = 0; i < 20 && i < sizeof(state); i++) {
+            fprintf(stderr, "%02x ", bytes[i]);
+        }
+        fprintf(stderr, "\n");
+    }
+    fflush(stderr);
     return &state;
 }
 
@@ -429,4 +491,25 @@ void jetkvm_crash() {
     // let's call a function that will crash the program
     int* p = 0;
     *p = 0;
+}
+
+// JPEG encoder wrapper functions
+int jetkvm_jpeg_start(int quality) {
+    return jpeg_encoder_start(quality);
+}
+
+void jetkvm_jpeg_stop() {
+    jpeg_encoder_stop();
+}
+
+int jetkvm_jpeg_set_quality(int quality) {
+    return jpeg_encoder_set_quality(quality);
+}
+
+int jetkvm_jpeg_get_quality() {
+    return jpeg_encoder_get_quality();
+}
+
+bool jetkvm_jpeg_is_running() {
+    return jpeg_encoder_is_running();
 }

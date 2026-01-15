@@ -1476,4 +1476,12 @@ var rpcHandlers = map[string]RPCHandler{
 	"meshVPNGetTUNMode":           {Func: rpcMeshVPNGetTUNMode, Params: []string{"params"}},
 	"meshVPNSetTUNMode":           {Func: rpcMeshVPNSetTUNMode, Params: []string{"params"}},
 	"meshVPNSetAdvertiseExitNode": {Func: rpcMeshVPNSetAdvertiseExitNode, Params: []string{"params"}},
+
+	// VNC handlers
+	"getVNCState":    {Func: rpcGetVNCState},
+	"setVNCEnabled":  {Func: rpcSetVNCEnabled, Params: []string{"enabled"}},
+	"setVNCPort":     {Func: rpcSetVNCPort, Params: []string{"port"}},
+	"setVNCQuality":  {Func: rpcSetVNCQuality, Params: []string{"quality"}},
+	"setVNCPassword": {Func: rpcSetVNCPassword, Params: []string{"password"}},
+	"setVNCTLS":      {Func: rpcSetVNCTLS, Params: []string{"enabled"}},
 }

@@ -1,6 +1,9 @@
 #ifndef VIDEO_DAEMON_VIDEO_H
 #define VIDEO_DAEMON_VIDEO_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 /**
  * @brief Initialize the video subsystem
  *
@@ -51,5 +54,40 @@ void video_set_quality_factor(float factor);
  * @return float The quality factor of the video
  */
 float video_get_quality_factor();
+
+/**
+ * @brief Start the JPEG encoder
+ *
+ * @param quality The JPEG quality (1-99)
+ * @return int 0 on success, -1 on failure
+ */
+int jpeg_encoder_start(int quality);
+
+/**
+ * @brief Stop the JPEG encoder
+ */
+void jpeg_encoder_stop();
+
+/**
+ * @brief Set the JPEG encoder quality
+ *
+ * @param quality The JPEG quality (1-99)
+ * @return int 0 on success, -1 on failure
+ */
+int jpeg_encoder_set_quality(int quality);
+
+/**
+ * @brief Get the JPEG encoder quality
+ *
+ * @return int The JPEG quality (1-99)
+ */
+int jpeg_encoder_get_quality();
+
+/**
+ * @brief Check if the JPEG encoder is running
+ *
+ * @return bool true if the JPEG encoder is running, false otherwise
+ */
+bool jpeg_encoder_is_running();
 
 #endif //VIDEO_DAEMON_VIDEO_H

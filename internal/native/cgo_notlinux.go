@@ -131,3 +131,28 @@ func videoGetStreamingStatus() VideoStreamingStatus {
 func crash() {
 	panicPlatformNotSupported()
 }
+
+// JPEG encoder stubs for non-Linux platforms
+func jpegStart(quality int) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func jpegStop() {
+	panicPlatformNotSupported()
+}
+
+func jpegSetQuality(quality int) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func jpegGetQuality() int {
+	panicPlatformNotSupported()
+	return 0
+}
+
+func jpegIsRunning() bool {
+	panicPlatformNotSupported()
+	return false
+}

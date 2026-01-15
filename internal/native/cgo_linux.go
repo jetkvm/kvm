@@ -15,7 +15,7 @@ import (
 
 /*
 #cgo LDFLAGS: -Lcgo/lib -ljknative -llvgl
-#cgo CFLAGS: -Icgo/include
+#cgo CFLAGS: -Icgo -Icgo/include
 #include "ctrl.h"
 #include <stdlib.h>
 
@@ -35,6 +35,11 @@ static inline void jetkvm_cgo_setup_video_state_handler() {
 extern void jetkvm_go_video_handler(cuint8_t *frame, ssize_t len);
 static inline void jetkvm_cgo_setup_video_handler() {
     jetkvm_set_video_handler(&jetkvm_go_video_handler);
+}
+
+extern void jetkvm_go_jpeg_handler(cuint8_t *frame, ssize_t len);
+static inline void jetkvm_cgo_setup_jpeg_handler() {
+    jetkvm_set_jpeg_handler(&jetkvm_go_jpeg_handler);
 }
 
 extern void jetkvm_go_indev_handler(int code);
@@ -84,6 +89,15 @@ func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t) {
 	videoFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
 }
 
+//export jetkvm_go_jpeg_handler
+func jetkvm_go_jpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
+	select {
+	case jpegFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len)):
+	default:
+		// Drop frame if channel is full (non-blocking)
+	}
+}
+
 //export jetkvm_go_indev_handler
 func jetkvm_go_indev_handler(code C.int) {
 	indevEventChan <- int(code)
@@ -115,6 +129,7 @@ func setUpNativeHandlers() {
 	C.jetkvm_cgo_setup_log_handler()
 	C.jetkvm_cgo_setup_video_state_handler()
 	C.jetkvm_cgo_setup_video_handler()
+	C.jetkvm_cgo_setup_jpeg_handler()
 	C.jetkvm_cgo_setup_indev_handler()
 	C.jetkvm_cgo_setup_rpc_handler()
 }
@@ -409,4 +424,48 @@ func videoSetEDID(edid string) error {
 // This is only for testing purposes
 func crash() {
 	C.jetkvm_crash()
+}
+
+// JPEG encoder functions
+func jpegStart(quality int) error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	ret := C.jetkvm_jpeg_start(C.int(quality))
+	if ret != 0 {
+		return fmt.Errorf("failed to start JPEG encoder: %d", ret)
+	}
+	return nil
+}
+
+func jpegStop() {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	C.jetkvm_jpeg_stop()
+}
+
+func jpegSetQuality(quality int) error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	ret := C.jetkvm_jpeg_set_quality(C.int(quality))
+	if ret != 0 {
+		return fmt.Errorf("failed to set JPEG quality: %d", ret)
+	}
+	return nil
+}
+
+func jpegGetQuality() int {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return int(C.jetkvm_jpeg_get_quality())
+}
+
+func jpegIsRunning() bool {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return bool(C.jetkvm_jpeg_is_running())
 }

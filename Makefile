@@ -35,7 +35,7 @@ GO_ARGS := GOOS=linux GOARCH=arm GOARM=7 ARCHFLAGS="-arch arm"
 ifneq ($(wildcard $(BUILDKIT_PATH)),)
 	GO_ARGS := $(GO_ARGS) \
 		CGO_CFLAGS="-I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include" \
-		CGO_LDFLAGS="-L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -lpthread -lm" \
+		CGO_LDFLAGS="-L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -Wl,-Bstatic -lssl -lcrypto -lz -Wl,-Bdynamic -lpthread -lm" \
 		CC="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc" \
 		LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld" \
 		CGO_ENABLED=1

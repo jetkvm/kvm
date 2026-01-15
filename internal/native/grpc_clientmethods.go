@@ -210,3 +210,35 @@ func (c *GRPCClient) SwitchToScreenIfDifferent(screenName string) {
 func (c *GRPCClient) DoNotUseThisIsForCrashTestingOnly() {
 	_, _ = c.client.DoNotUseThisIsForCrashTestingOnly(context.Background(), &pb.Empty{})
 }
+
+// JPEG encoder methods
+func (c *GRPCClient) JpegStart(quality int) error {
+	_, err := c.client.JpegStart(context.Background(), &pb.JpegStartRequest{Quality: int32(quality)})
+	return err
+}
+
+func (c *GRPCClient) JpegStop() error {
+	_, err := c.client.JpegStop(context.Background(), &pb.Empty{})
+	return err
+}
+
+func (c *GRPCClient) JpegSetQuality(quality int) error {
+	_, err := c.client.JpegSetQuality(context.Background(), &pb.JpegSetQualityRequest{Quality: int32(quality)})
+	return err
+}
+
+func (c *GRPCClient) JpegGetQuality() (int, error) {
+	resp, err := c.client.JpegGetQuality(context.Background(), &pb.Empty{})
+	if err != nil {
+		return 0, err
+	}
+	return int(resp.Quality), nil
+}
+
+func (c *GRPCClient) JpegIsRunning() (bool, error) {
+	resp, err := c.client.JpegIsRunning(context.Background(), &pb.Empty{})
+	if err != nil {
+		return false, err
+	}
+	return resp.Running, nil
+}

@@ -19,10 +19,12 @@ typedef void (jetkvm_video_state_handler_t)(jetkvm_video_state_t *state);
 typedef void (jetkvm_log_handler_t)(int level, const char *filename, const char *funcname, int line, const char *message);
 typedef void (jetkvm_rpc_handler_t)(const char *method, const char *params);
 typedef void (jetkvm_video_handler_t)(const uint8_t *frame, ssize_t len);
+typedef void (jetkvm_jpeg_handler_t)(const uint8_t *frame, ssize_t len);
 typedef void (jetkvm_indev_handler_t)(int code);
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler);
 void jetkvm_set_video_handler(jetkvm_video_handler_t *handler);
+void jetkvm_set_jpeg_handler(jetkvm_jpeg_handler_t *handler);
 void jetkvm_set_indev_handler(jetkvm_indev_handler_t *handler);
 void jetkvm_set_rpc_handler(jetkvm_rpc_handler_t *handler);
 void jetkvm_call_rpc_handler(const char *method, const char *params);
@@ -68,6 +70,14 @@ jetkvm_video_state_t *jetkvm_video_get_status();
 void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second);
 void video_send_format_report();
 int video_send_frame(const uint8_t *frame, ssize_t len);
+int video_send_jpeg_frame(const uint8_t *frame, ssize_t len);
+
+// JPEG encoder control
+int jetkvm_jpeg_start(int quality);
+void jetkvm_jpeg_stop();
+int jetkvm_jpeg_set_quality(int quality);
+int jetkvm_jpeg_get_quality();
+bool jetkvm_jpeg_is_running();
 
 
 

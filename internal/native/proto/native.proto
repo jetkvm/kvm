@@ -21,6 +21,13 @@ service NativeService {
   rpc VideoStop(Empty) returns (Empty);
   rpc VideoStart(Empty) returns (Empty);
 
+  // JPEG encoder methods
+  rpc JpegStart(JpegStartRequest) returns (Empty);
+  rpc JpegStop(Empty) returns (Empty);
+  rpc JpegSetQuality(JpegSetQualityRequest) returns (Empty);
+  rpc JpegGetQuality(Empty) returns (JpegGetQualityResponse);
+  rpc JpegIsRunning(Empty) returns (JpegIsRunningResponse);
+
   // UI methods
   rpc GetLVGLVersion(Empty) returns (GetLVGLVersionResponse);
   rpc UIObjHide(UIObjHideRequest) returns (UIObjHideResponse);
@@ -98,6 +105,23 @@ message VideoGetEDIDResponse {
 
 message VideoLogStatusResponse {
   string status = 1;
+}
+
+// JPEG encoder messages
+message JpegStartRequest {
+  int32 quality = 1;
+}
+
+message JpegSetQualityRequest {
+  int32 quality = 1;
+}
+
+message JpegGetQualityResponse {
+  int32 quality = 1;
+}
+
+message JpegIsRunningResponse {
+  bool running = 1;
 }
 
 message GetLVGLVersionResponse {
@@ -248,7 +272,12 @@ message Event {
     string indev_event = 3;
     string rpc_event = 4;
     VideoFrame video_frame = 5;
+    JpegFrame jpeg_frame = 6;
   }
+}
+
+message JpegFrame {
+  bytes frame = 1;
 }
 
 message VideoFrame {

@@ -36,6 +36,7 @@ type NativeOptions struct {
 	MaxRestartAttempts   uint
 	OnVideoStateChange   func(state VideoState)
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
+	OnJpegFrameReceived  func(frame []byte)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnNativeRestart      func()
@@ -160,4 +161,64 @@ func (n *Native) DoNotUseThisIsForCrashTestingOnly() {
 // GetLVGLVersion returns the LVGL version
 func GetLVGLVersion() string {
 	return uiGetLVGLVersion()
+}
+
+// JPEG encoder public API
+
+// StartJPEGEncoder starts the hardware JPEG encoder with the given quality (1-99)
+func StartJPEGEncoder(quality int) error {
+	return jpegStart(quality)
+}
+
+// StopJPEGEncoder stops the hardware JPEG encoder
+func StopJPEGEncoder() {
+	jpegStop()
+}
+
+// SetJPEGQuality sets the JPEG encoder quality (1-99)
+func SetJPEGQuality(quality int) error {
+	return jpegSetQuality(quality)
+}
+
+// GetJPEGQuality returns the current JPEG encoder quality
+func GetJPEGQuality() int {
+	return jpegGetQuality()
+}
+
+// IsJPEGEncoderRunning returns true if the JPEG encoder is running
+func IsJPEGEncoderRunning() bool {
+	return jpegIsRunning()
+}
+
+// GetJPEGFrameChannel returns the channel for receiving JPEG frames
+func GetJPEGFrameChannel() <-chan []byte {
+	return jpegFrameChan
+}
+
+// Native instance methods that implement NativeInterface
+
+// JpegStart starts the hardware JPEG encoder with the given quality (1-99)
+func (n *Native) JpegStart(quality int) error {
+	return jpegStart(quality)
+}
+
+// JpegStop stops the hardware JPEG encoder
+func (n *Native) JpegStop() error {
+	jpegStop()
+	return nil
+}
+
+// JpegSetQuality sets the JPEG encoder quality (1-99)
+func (n *Native) JpegSetQuality(quality int) error {
+	return jpegSetQuality(quality)
+}
+
+// JpegGetQuality returns the current JPEG encoder quality
+func (n *Native) JpegGetQuality() (int, error) {
+	return jpegGetQuality(), nil
+}
+
+// JpegIsRunning returns true if the JPEG encoder is running
+func (n *Native) JpegIsRunning() (bool, error) {
+	return jpegIsRunning(), nil
 }

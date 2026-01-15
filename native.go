@@ -74,6 +74,11 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 				}
 			}
 		},
+		OnJpegFrameReceived: func(frame []byte) {
+			// Hot potato: send directly to VNC clients synchronously
+			// Frame buffer is only valid during this call
+			GetVNCServer().BroadcastJPEGFrame(frame)
+		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{
 				ActiveSessions:    getActiveSessions(),

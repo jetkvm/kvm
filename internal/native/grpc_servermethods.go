@@ -222,3 +222,41 @@ func (s *grpcServer) DoNotUseThisIsForCrashTestingOnly(ctx context.Context, req 
 	s.native.DoNotUseThisIsForCrashTestingOnly()
 	return &pb.Empty{}, nil
 }
+
+// JPEG encoder methods
+func (s *grpcServer) JpegStart(ctx context.Context, req *pb.JpegStartRequest) (*pb.Empty, error) {
+	if err := s.native.JpegStart(int(req.Quality)); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) JpegStop(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	if err := s.native.JpegStop(); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) JpegSetQuality(ctx context.Context, req *pb.JpegSetQualityRequest) (*pb.Empty, error) {
+	if err := s.native.JpegSetQuality(int(req.Quality)); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) JpegGetQuality(ctx context.Context, req *pb.Empty) (*pb.JpegGetQualityResponse, error) {
+	quality, err := s.native.JpegGetQuality()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.JpegGetQualityResponse{Quality: int32(quality)}, nil
+}
+
+func (s *grpcServer) JpegIsRunning(ctx context.Context, req *pb.Empty) (*pb.JpegIsRunningResponse, error) {
+	running, err := s.native.JpegIsRunning()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.JpegIsRunningResponse{Running: running}, nil
+}

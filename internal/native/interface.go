@@ -33,4 +33,11 @@ type NativeInterface interface {
 	SwitchToScreenIf(screenName string, shouldSwitch []string)
 	SwitchToScreenIfDifferent(screenName string)
 	DoNotUseThisIsForCrashTestingOnly()
+
+	// JPEG encoder methods
+	JpegStart(quality int) error
+	JpegStop() error
+	JpegSetQuality(quality int) error
+	JpegGetQuality() (int, error)
+	JpegIsRunning() (bool, error)
 }

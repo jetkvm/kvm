@@ -131,6 +131,15 @@ type Config struct {
 	CameraFrameRate    int    `json:"camera_frame_rate"`    // 15, 24, 30
 	CameraH264Bitrate  int    `json:"camera_h264_bitrate"`  // 1-10 Mbps
 	CameraMjpegQuality int    `json:"camera_mjpeg_quality"` // 0-100%
+
+	// VNC settings
+	VNCEnabled         bool   `json:"vnc_enabled"`
+	VNCPort            int    `json:"vnc_port"`              // default: 5900
+	VNCQuality         int    `json:"vnc_quality"`           // JPEG quality 1-99, default: 80
+	VNCUseTLS          bool   `json:"vnc_use_tls"`           // Use TLS for VNC connections
+	VNCPassword        string `json:"vnc_password"`          // Separate VNC password (if not using same password)
+	VNCUseSamePassword bool   `json:"vnc_use_same_password"` // Use same password as local auth
+	LocalAuthPassword  string `json:"local_auth_password"`   // Plaintext password for VNC auth
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -230,6 +239,11 @@ func getDefaultConfig() Config {
 		CameraFrameRate:    24, // Cinema rate - good balance of quality and CPU
 		CameraH264Bitrate:  3,  // 3 Mbps for 1080p24
 		CameraMjpegQuality: 35, // 35% - reasonable quality/size balance
+
+		// VNC defaults
+		VNCEnabled: false,
+		VNCPort:    5900,
+		VNCQuality: 80,
 	}
 }
 
@@ -318,6 +332,13 @@ func LoadConfig() {
 		loadedConfig.CameraFrameRate = defaults.CameraFrameRate
 		loadedConfig.CameraH264Bitrate = defaults.CameraH264Bitrate
 		loadedConfig.CameraMjpegQuality = defaults.CameraMjpegQuality
+	}
+
+	// Apply VNC defaults for new configs
+	if loadedConfig.VNCPort == 0 {
+		defaults := getDefaultConfig()
+		loadedConfig.VNCPort = defaults.VNCPort
+		loadedConfig.VNCQuality = defaults.VNCQuality
 	}
 
 	// fixup old keyboard layout value

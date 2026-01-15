@@ -109,3 +109,14 @@ func (e *EmptyNativeInterface) SwitchToScreenIf(screenName string, shouldSwitch 
 func (e *EmptyNativeInterface) SwitchToScreenIfDifferent(screenName string) {}
 
 func (e *EmptyNativeInterface) DoNotUseThisIsForCrashTestingOnly() {}
+
+// JPEG encoder methods
+func (e *EmptyNativeInterface) JpegStart(quality int) error { return nil }
+
+func (e *EmptyNativeInterface) JpegStop() error { return nil }
+
+func (e *EmptyNativeInterface) JpegSetQuality(quality int) error { return nil }
+
+func (e *EmptyNativeInterface) JpegGetQuality() (int, error) { return 0, nil }
+
+func (e *EmptyNativeInterface) JpegIsRunning() (bool, error) { return false, nil }

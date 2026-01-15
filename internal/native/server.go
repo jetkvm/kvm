@@ -95,6 +95,16 @@ func RunNativeProcess(binaryName string) {
 	}
 	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
 
+	// Connect to JPEG stream socket
+	var jpegConn net.Conn
+	if proxyOptions.JpegStreamUnixSocket != "" {
+		jpegConn, err = net.Dial("unix", proxyOptions.JpegStreamUnixSocket)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("failed to connect to JPEG stream socket")
+		}
+		logger.Info().Str("jpegStreamSocketPath", proxyOptions.JpegStreamUnixSocket).Msg("connected to JPEG stream socket")
+	}
+
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
 		// Write 4-byte frame length prefix, then frame data
@@ -119,6 +129,26 @@ func RunNativeProcess(binaryName string) {
 	// Start native instance
 	if err := nativeInstance.Start(); err != nil {
 		logger.Fatal().Err(err).Msg("failed to start native instance")
+	}
+
+	// Start goroutine to forward JPEG frames to parent process
+	if jpegConn != nil {
+		go func() {
+			jpegChan := GetJPEGFrameChannel()
+			for frame := range jpegChan {
+				var frameSizeBuffer [4]byte
+				binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
+
+				if _, err := jpegConn.Write(frameSizeBuffer[:]); err != nil {
+					logger.Warn().Err(err).Msg("failed to write JPEG frame size to socket")
+					return
+				}
+				if _, err := jpegConn.Write(frame); err != nil {
+					logger.Warn().Err(err).Msg("failed to write JPEG frame to socket")
+					return
+				}
+			}
+		}()
 	}
 
 	grpcLogger := logger.With().Str("socketPath", fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket)).Logger()

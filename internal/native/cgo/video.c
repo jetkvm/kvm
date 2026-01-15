@@ -38,13 +38,27 @@
 
 int sub_dev_fd = -1;
 #define VENC_CHANNEL 0
+#define JPEG_CHANNEL 1
 MB_POOL memPool = MB_INVALID_POOLID;
 
 bool sleep_mode_available = false;
 bool should_exit = false;
 float quality_factor = 1.0f;
 
+// Video detection state - volatile because accessed from multiple threads
+volatile uint32_t detected_width = 0, detected_height = 0;
+volatile bool detected_signal = false;
+
+// JPEG encoder state
+static pthread_t *jpeg_read_thread = NULL;
+static volatile bool jpeg_running = false;
+static int jpeg_quality = 80;  // Default quality 1-99
+static uint32_t jpeg_width = 0;
+static uint32_t jpeg_height = 0;
+static pthread_mutex_t jpeg_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static void *venc_read_stream(void *arg);
+static void *jpeg_read_stream(void *arg);
 
 RK_U64 get_us()
 {
@@ -138,6 +152,26 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
     stAttr->stVencAttr.enMirror = MIRROR_NONE;
 }
 
+static void populate_jpeg_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 width, RK_U32 height, RK_U32 quality)
+{
+    memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
+
+    // MJPEG doesn't use rate control like H.264, it uses quality-based compression
+    stAttr->stRcAttr.enRcMode = VENC_RC_MODE_MJPEGCBR;
+    // Set a reasonable bitrate for MJPEG (will be quality-controlled)
+    stAttr->stRcAttr.stMjpegCbr.u32BitRate = 10000; // 10 Mbps default
+
+    stAttr->stVencAttr.enType = RK_VIDEO_ID_MJPEG;
+    stAttr->stVencAttr.enPixelFormat = RK_FMT_YUV422_YUYV;
+    stAttr->stVencAttr.u32PicWidth = width;
+    stAttr->stVencAttr.u32PicHeight = height;
+    stAttr->stVencAttr.u32VirWidth = RK_ALIGN_2(width);
+    stAttr->stVencAttr.u32VirHeight = RK_ALIGN_2(height);
+    stAttr->stVencAttr.u32StreamBufCnt = 2;  // JPEG needs fewer buffers
+    stAttr->stVencAttr.u32BufSize = width * height * 3 / 2;
+    stAttr->stVencAttr.enMirror = MIRROR_NONE;
+}
+
 pthread_t *venc_read_thread = NULL;
 volatile bool venc_running = false;
 static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height)
@@ -203,6 +237,275 @@ static int32_t venc_stop()
     return RK_SUCCESS;
 }
 
+// JPEG encoder functions
+static int32_t jpeg_channel_start(int32_t width, int32_t height, int32_t quality)
+{
+    int32_t ret;
+    VENC_CHN_ATTR_S stAttr;
+    populate_jpeg_attr(&stAttr, width, height, quality);
+
+    ret = RK_MPI_VENC_CreateChn(JPEG_CHANNEL, &stAttr);
+    if (ret < 0)
+    {
+        RK_LOGE("error creating JPEG_CHANNEL, %d", ret);
+        return ret;
+    }
+
+    // Set JPEG quality parameter
+    VENC_JPEG_PARAM_S stJpegParam;
+    memset(&stJpegParam, 0, sizeof(VENC_JPEG_PARAM_S));
+    stJpegParam.u32Qfactor = quality;
+    ret = RK_MPI_VENC_SetJpegParam(JPEG_CHANNEL, &stJpegParam);
+    if (ret != RK_SUCCESS)
+    {
+        RK_LOGE("Failed to set JPEG quality, error code: %d", ret);
+        // Continue anyway, quality will be default
+    }
+
+    VENC_RECV_PIC_PARAM_S stRecvParam;
+    memset(&stRecvParam, 0, sizeof(VENC_RECV_PIC_PARAM_S));
+    stRecvParam.s32RecvPicNum = -1;
+    ret = RK_MPI_VENC_StartRecvFrame(JPEG_CHANNEL, &stRecvParam);
+    if (ret < 0)
+    {
+        RK_LOGE("error RK_MPI_VENC_StartRecvFrame for JPEG, %d", ret);
+        RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
+        return ret;
+    }
+
+    return RK_SUCCESS;
+}
+
+static int32_t jpeg_channel_stop()
+{
+    int32_t ret;
+    ret = RK_MPI_VENC_StopRecvFrame(JPEG_CHANNEL);
+    if (ret != RK_SUCCESS)
+    {
+        RK_LOGE("Failed to stop receiving frames for JPEG_CHANNEL, error code: %d", ret);
+    }
+
+    ret = RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
+    if (ret != RK_SUCCESS)
+    {
+        RK_LOGE("Failed to destroy JPEG_CHANNEL, error code: %d", ret);
+        return ret;
+    }
+
+    return RK_SUCCESS;
+}
+
+static void *jpeg_read_stream(void *arg)
+{
+    (void)arg;
+    void *pData = RK_NULL;
+    int s32Ret;
+
+    VENC_STREAM_S stFrame;
+    stFrame.pstPack = malloc(sizeof(VENC_PACK_S));
+
+    while (jpeg_running)
+    {
+        log_trace("JPEG: RK_MPI_VENC_GetStream");
+        s32Ret = RK_MPI_VENC_GetStream(JPEG_CHANNEL, &stFrame, 200); // blocks max 200ms
+        if (s32Ret == RK_SUCCESS)
+        {
+            pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
+            video_send_jpeg_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
+            s32Ret = RK_MPI_VENC_ReleaseStream(JPEG_CHANNEL, &stFrame);
+            if (s32Ret != RK_SUCCESS)
+            {
+                log_error("JPEG: RK_MPI_VENC_ReleaseStream fail %x", s32Ret);
+            }
+        }
+        else
+        {
+            if (s32Ret == RK_ERR_VENC_BUF_EMPTY)
+            {
+                continue;
+            }
+            log_error("JPEG: RK_MPI_VENC_GetStream fail %x", s32Ret);
+            break;
+        }
+    }
+
+    log_info("exiting jpeg_read_stream");
+    free(stFrame.pstPack);
+    return NULL;
+}
+
+// Public JPEG encoder API
+int jpeg_encoder_start(int quality)
+{
+    // Use jetkvm_video_get_status() to get the video state from ctrl.c
+    // This is more reliable than the local volatile variables for cross-thread visibility
+    jetkvm_video_state_t *video_state = jetkvm_video_get_status();
+
+    // Also log the local volatile variables for debugging (use fprintf to bypass log level filter)
+    fprintf(stderr, "INFO: JPEG START: quality=%d, variable addresses: detected_width=%p, detected_height=%p, detected_signal=%p\n",
+            quality, (void*)&detected_width, (void*)&detected_height, (void*)&detected_signal);
+    fprintf(stderr, "INFO: JPEG START: local volatile vars: detected_width=%d, detected_height=%d, detected_signal=%d\n",
+            detected_width, detected_height, detected_signal ? 1 : 0);
+    fprintf(stderr, "INFO: JPEG START: jetkvm_video_get_status: ready=%d, width=%d, height=%d\n",
+            video_state->ready, video_state->width, video_state->height);
+    fflush(stderr);
+
+    // Wait for video signal to be detected (up to 10 seconds)
+    // Try using local volatile variables first since they're updated directly by FORMAT THREAD
+    int retries = 0;
+    const int max_retries = 100; // 100 * 100ms = 10 seconds
+    while ((detected_width == 0 || detected_height == 0 || !detected_signal) && retries < max_retries)
+    {
+        if (retries == 0)
+        {
+            fprintf(stderr, "INFO: JPEG: Waiting for video signal...\n");
+            fflush(stderr);
+        }
+        usleep(100000); // 100ms
+        retries++;
+        if (retries % 10 == 0)
+        {
+            fprintf(stderr, "INFO: JPEG: Still waiting... retry %d\n", retries);
+            fprintf(stderr, "INFO: JPEG: local: detected_width=%d, detected_height=%d, detected_signal=%d\n",
+                    detected_width, detected_height, detected_signal ? 1 : 0);
+            video_state = jetkvm_video_get_status();
+            fprintf(stderr, "INFO: JPEG: state: ready=%d, width=%d, height=%d\n",
+                    video_state->ready, video_state->width, video_state->height);
+            fflush(stderr);
+        }
+    }
+
+    if (retries > 0)
+    {
+        fprintf(stderr, "INFO: JPEG: After %d retries:\n", retries);
+        fprintf(stderr, "INFO: JPEG: local: detected_width=%d, detected_height=%d, detected_signal=%d\n",
+                detected_width, detected_height, detected_signal ? 1 : 0);
+        video_state = jetkvm_video_get_status();
+        fprintf(stderr, "INFO: JPEG: state: ready=%d, width=%d, height=%d\n",
+                video_state->ready, video_state->width, video_state->height);
+        fflush(stderr);
+    }
+
+    pthread_mutex_lock(&jpeg_mutex);
+
+    if (jpeg_running)
+    {
+        log_warn("JPEG encoder already running");
+        pthread_mutex_unlock(&jpeg_mutex);
+        return 0;
+    }
+
+    // Use local volatile variables which are directly updated by FORMAT THREAD
+    if (detected_width == 0 || detected_height == 0 || !detected_signal)
+    {
+        fprintf(stderr, "ERROR: Cannot start JPEG encoder: no video signal detected after %d retries\n", retries);
+        fprintf(stderr, "ERROR: JPEG: local: detected_width=%d, detected_height=%d, detected_signal=%d\n",
+                  detected_width, detected_height, detected_signal ? 1 : 0);
+        fflush(stderr);
+        pthread_mutex_unlock(&jpeg_mutex);
+        return -1;
+    }
+
+    jpeg_width = detected_width;
+    jpeg_height = detected_height;
+    jpeg_quality = (quality > 0 && quality <= 99) ? quality : 80;
+
+    fprintf(stderr, "INFO: JPEG: Starting channel with %dx%d quality=%d\n", jpeg_width, jpeg_height, jpeg_quality);
+    fflush(stderr);
+
+    int32_t ret = jpeg_channel_start(jpeg_width, jpeg_height, jpeg_quality);
+    if (ret != RK_SUCCESS)
+    {
+        fprintf(stderr, "ERROR: Failed to start JPEG channel: %d\n", ret);
+        fflush(stderr);
+        pthread_mutex_unlock(&jpeg_mutex);
+        return -1;
+    }
+
+    jpeg_running = true;
+    jpeg_read_thread = malloc(sizeof(pthread_t));
+    if (pthread_create(jpeg_read_thread, NULL, jpeg_read_stream, NULL) != 0)
+    {
+        fprintf(stderr, "ERROR: Failed to create jpeg_read_thread\n");
+        fflush(stderr);
+        jpeg_running = false;
+        jpeg_channel_stop();
+        free(jpeg_read_thread);
+        jpeg_read_thread = NULL;
+        pthread_mutex_unlock(&jpeg_mutex);
+        return -1;
+    }
+
+    fprintf(stderr, "INFO: JPEG encoder started: %dx%d quality=%d\n", jpeg_width, jpeg_height, jpeg_quality);
+    fflush(stderr);
+    pthread_mutex_unlock(&jpeg_mutex);
+    return 0;
+}
+
+void jpeg_encoder_stop()
+{
+    pthread_mutex_lock(&jpeg_mutex);
+
+    if (!jpeg_running)
+    {
+        log_info("JPEG encoder already stopped");
+        pthread_mutex_unlock(&jpeg_mutex);
+        return;
+    }
+
+    jpeg_running = false;
+
+    if (jpeg_read_thread != NULL)
+    {
+        pthread_join(*jpeg_read_thread, NULL);
+        free(jpeg_read_thread);
+        jpeg_read_thread = NULL;
+    }
+
+    jpeg_channel_stop();
+    log_info("JPEG encoder stopped");
+    pthread_mutex_unlock(&jpeg_mutex);
+}
+
+int jpeg_encoder_set_quality(int quality)
+{
+    if (quality < 1 || quality > 99)
+    {
+        return -1;
+    }
+
+    pthread_mutex_lock(&jpeg_mutex);
+    jpeg_quality = quality;
+
+    if (jpeg_running)
+    {
+        // Update quality on running encoder
+        VENC_JPEG_PARAM_S stJpegParam;
+        memset(&stJpegParam, 0, sizeof(VENC_JPEG_PARAM_S));
+        stJpegParam.u32Qfactor = quality;
+        int32_t ret = RK_MPI_VENC_SetJpegParam(JPEG_CHANNEL, &stJpegParam);
+        if (ret != RK_SUCCESS)
+        {
+            log_error("Failed to update JPEG quality: %d", ret);
+            pthread_mutex_unlock(&jpeg_mutex);
+            return -1;
+        }
+    }
+
+    pthread_mutex_unlock(&jpeg_mutex);
+    return 0;
+}
+
+int jpeg_encoder_get_quality()
+{
+    return jpeg_quality;
+}
+
+bool jpeg_encoder_is_running()
+{
+    return jpeg_running;
+}
+
 struct buffer
 {
     struct v4l2_plane plane_buffer;
@@ -231,8 +534,14 @@ static int32_t buf_init()
 
 pthread_t *format_thread = NULL;
 
+// Function in ctrl.c to set counter (avoids extern linker issues with CGO)
+extern void ctrl_set_report_count(uint32_t value);
+
 int video_init(float factor)
 {
+    // Test: use function call instead of extern variable to see if CGO can read it
+    ctrl_set_report_count(999);
+
     detect_sleep_mode();
 
     if (factor <= 0 || factor > 1) {
@@ -348,8 +657,7 @@ static void *venc_read_stream(void *arg)
     return NULL;
 }
 
-uint32_t detected_width, detected_height;
-bool detected_signal = false, streaming_flag = false;
+bool streaming_flag = false;
 
 bool streaming_stopped = true;
 pthread_mutex_t streaming_stopped_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -618,6 +926,16 @@ void *run_video_stream(void *arg)
                 }
             }
 
+            // Also send frame to JPEG encoder if running
+            if (jpeg_running)
+            {
+                if (RK_MPI_VENC_SendFrame(JPEG_CHANNEL, &stFrame, 100) != RK_SUCCESS)
+                {
+                    // Don't retry for JPEG - it's secondary and shouldn't block H.264
+                    log_trace("JPEG: RK_MPI_VENC_SendFrame failed (non-critical)");
+                }
+            }
+
             num++;
 
             if (ioctl(video_dev_fd, VIDIOC_QBUF, &buf) < 0)
@@ -791,6 +1109,10 @@ void video_restart_streaming()
 
 void *run_detect_format(void *arg)
 {
+    fprintf(stderr, "INFO: FORMAT THREAD: starting, variable addresses: detected_width=%p, detected_height=%p, detected_signal=%p\n",
+            (void*)&detected_width, (void*)&detected_height, (void*)&detected_signal);
+    fflush(stderr);
+
     struct v4l2_event_subscription sub;
     struct v4l2_event ev;
     struct v4l2_dv_timings dv_timings;
@@ -799,13 +1121,15 @@ void *run_detect_format(void *arg)
     sub.type = V4L2_EVENT_SOURCE_CHANGE;
     if (ioctl(sub_dev_fd, VIDIOC_SUBSCRIBE_EVENT, &sub) == -1)
     {
-        log_error("cannot subscribe to event");
+        fprintf(stderr, "ERROR: FORMAT THREAD: cannot subscribe to event\n");
+        fflush(stderr);
         goto exit;
     }
+    fprintf(stderr, "INFO: FORMAT THREAD: subscribed to events, entering loop\n");
+    fflush(stderr);
 
     while (!should_exit)
     {
-
         memset(&dv_timings, 0, sizeof(dv_timings));
         if (ioctl(sub_dev_fd, VIDIOC_QUERY_DV_TIMINGS, &dv_timings) != 0)
         {
@@ -851,6 +1175,9 @@ void *run_detect_format(void *arg)
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
             detected_signal = true;
+            fprintf(stderr, "INFO: FORMAT THREAD: Signal detected! Set detected_width=%d, detected_height=%d, detected_signal=true\n",
+                    detected_width, detected_height);
+            fflush(stderr);
             video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
 
             if (should_restart) {
