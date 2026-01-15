@@ -12,6 +12,7 @@
 
 void jetkvm_c_log_handler(int level, const char *filename, const char *funcname, int line, const char *message);
 void jetkvm_video_handler(const uint8_t *frame, ssize_t len);
+void jetkvm_jpeg_handler(const uint8_t *frame, ssize_t len);
 void jetkvm_video_state_handler(jetkvm_video_state_t *state);
 void jetkvm_indev_handler(int code);
 void jetkvm_rpc_handler(const char *method, const char *params);

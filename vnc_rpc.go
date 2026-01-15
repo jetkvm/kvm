@@ -4,7 +4,6 @@ import (
 	"fmt"
 )
 
-// VNCState represents the current state of the VNC server
 type VNCState struct {
 	Enabled         bool `json:"enabled"`
 	Running         bool `json:"running"`
@@ -14,7 +13,19 @@ type VNCState struct {
 	TLSEnabled      bool `json:"tlsEnabled"`
 }
 
-// rpcGetVNCState returns the current VNC server state
+func restartVNCServerIfRunning() error {
+	server := GetVNCServer()
+	if server.IsRunning() {
+		if err := server.Stop(); err != nil {
+			return fmt.Errorf("failed to stop VNC server: %w", err)
+		}
+		if err := server.Start(); err != nil {
+			return fmt.Errorf("failed to start VNC server: %w", err)
+		}
+	}
+	return nil
+}
+
 func rpcGetVNCState() (VNCState, error) {
 	server := GetVNCServer()
 	return VNCState{
@@ -27,7 +38,6 @@ func rpcGetVNCState() (VNCState, error) {
 	}, nil
 }
 
-// rpcSetVNCEnabled enables or disables the VNC server
 func rpcSetVNCEnabled(enabled bool) error {
 	config.VNCEnabled = enabled
 
@@ -53,7 +63,6 @@ func rpcSetVNCEnabled(enabled bool) error {
 	return nil
 }
 
-// rpcSetVNCPort sets the VNC server port (requires restart)
 func rpcSetVNCPort(port int) error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("invalid port number: %d", port)
@@ -66,21 +75,9 @@ func rpcSetVNCPort(port int) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// If server is running, restart it with new port
-	server := GetVNCServer()
-	if server.IsRunning() {
-		if err := server.Stop(); err != nil {
-			return fmt.Errorf("failed to stop VNC server: %w", err)
-		}
-		if err := server.Start(); err != nil {
-			return fmt.Errorf("failed to start VNC server: %w", err)
-		}
-	}
-
-	return nil
+	return restartVNCServerIfRunning()
 }
 
-// rpcSetVNCQuality sets the VNC JPEG quality (1-99)
 func rpcSetVNCQuality(quality int) error {
 	if quality < 1 || quality > 99 {
 		return fmt.Errorf("invalid quality value: %d (must be 1-99)", quality)
@@ -95,7 +92,6 @@ func rpcSetVNCQuality(quality int) error {
 	return nil
 }
 
-// rpcSetVNCPassword sets the VNC password
 func rpcSetVNCPassword(password string) error {
 	if len(password) > 8 {
 		password = password[:8] // VNC auth only uses first 8 characters
@@ -110,25 +106,13 @@ func rpcSetVNCPassword(password string) error {
 	return nil
 }
 
-// rpcSetVNCTLS enables or disables TLS for VNC connections
 func rpcSetVNCTLS(enabled bool) error {
 	config.VNCUseTLS = enabled
+	GetVNCServer().SetTLSEnabled(enabled)
 
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// If server is running, restart it with new TLS setting
-	server := GetVNCServer()
-	server.SetTLSEnabled(enabled)
-	if server.IsRunning() {
-		if err := server.Stop(); err != nil {
-			return fmt.Errorf("failed to stop VNC server: %w", err)
-		}
-		if err := server.Start(); err != nil {
-			return fmt.Errorf("failed to start VNC server: %w", err)
-		}
-	}
-
-	return nil
+	return restartVNCServerIfRunning()
 }

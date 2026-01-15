@@ -7,27 +7,21 @@ import (
 	"sync/atomic"
 )
 
-// VNCServer manages the VNC server instance
 type VNCServer struct {
 	listener    net.Listener
-	connections sync.Map // map[*VNCConnection]bool
+	connections sync.Map
 	connCount   atomic.Int32
 
-	// Settings
 	port       int
-	enabled    bool
 	tlsEnabled bool
 
-	// Lifecycle
 	mu       sync.Mutex
 	running  bool
 	stopChan chan struct{}
 
-	// Current video state
 	width  uint16
 	height uint16
 
-	// JPEG encoder demand tracking
 	jpegClientCount atomic.Int32
 	jpegEncoderOn   bool
 }
@@ -37,19 +31,16 @@ var (
 	vncServerOnce sync.Once
 )
 
-// GetVNCServer returns the singleton VNC server instance
 func GetVNCServer() *VNCServer {
 	vncServerOnce.Do(func() {
 		vncServer = &VNCServer{
 			port:     5900,
-			enabled:  false,
 			stopChan: make(chan struct{}),
 		}
 	})
 	return vncServer
 }
 
-// Start starts the VNC server
 func (s *VNCServer) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -58,8 +49,6 @@ func (s *VNCServer) Start() error {
 		return fmt.Errorf("VNC server already running")
 	}
 
-	// Create listener - always plain TCP
-	// VeNCrypt handles TLS upgrade after protocol negotiation
 	addr := fmt.Sprintf(":%d", s.port)
 	listener, err := net.Listen("tcp4", addr)
 	if err != nil {
@@ -76,17 +65,11 @@ func (s *VNCServer) Start() error {
 	s.running = true
 	s.stopChan = make(chan struct{})
 
-	// Note: JPEG encoder is started on-demand when a client needs it
-	// (i.e., when a client doesn't support H.264 encoding)
-
-	// Start accepting connections
 	go s.acceptLoop()
 
 	return nil
 }
 
-// requestJPEGEncoder is called when a client needs JPEG encoding
-// It starts the encoder if this is the first client needing it
 func (s *VNCServer) requestJPEGEncoder() {
 	count := s.jpegClientCount.Add(1)
 	vncLogger.Debug().Int32("jpegClients", count).Msg("client requesting JPEG encoder")
@@ -104,8 +87,6 @@ func (s *VNCServer) requestJPEGEncoder() {
 	}
 }
 
-// releaseJPEGEncoder is called when a client no longer needs JPEG encoding
-// It stops the encoder if no clients need it anymore
 func (s *VNCServer) releaseJPEGEncoder() {
 	count := s.jpegClientCount.Add(-1)
 	vncLogger.Debug().Int32("jpegClients", count).Msg("client releasing JPEG encoder")
@@ -122,7 +103,6 @@ func (s *VNCServer) releaseJPEGEncoder() {
 	}
 }
 
-// Stop stops the VNC server
 func (s *VNCServer) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -133,15 +113,12 @@ func (s *VNCServer) Stop() error {
 
 	vncLogger.Info().Msg("stopping VNC server")
 
-	// Signal stop
 	close(s.stopChan)
 
-	// Close listener
 	if s.listener != nil {
 		s.listener.Close()
 	}
 
-	// Close all connections
 	s.connections.Range(func(key, value interface{}) bool {
 		if conn, ok := key.(*VNCConnection); ok {
 			conn.Close()
@@ -149,7 +126,6 @@ func (s *VNCServer) Stop() error {
 		return true
 	})
 
-	// Stop JPEG encoder if running
 	if s.jpegEncoderOn {
 		_ = nativeInstance.JpegStop()
 		s.jpegEncoderOn = false
@@ -162,47 +138,40 @@ func (s *VNCServer) Stop() error {
 	return nil
 }
 
-// IsRunning returns true if the VNC server is running
 func (s *VNCServer) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.running
 }
 
-// GetConnectionCount returns the number of active connections
 func (s *VNCServer) GetConnectionCount() int {
 	return int(s.connCount.Load())
 }
 
-// SetPort sets the VNC server port (requires restart to take effect)
 func (s *VNCServer) SetPort(port int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.port = port
 }
 
-// GetPort returns the VNC server port
 func (s *VNCServer) GetPort() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.port
 }
 
-// SetTLSEnabled sets whether TLS should be used
 func (s *VNCServer) SetTLSEnabled(enabled bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tlsEnabled = enabled
 }
 
-// UpdateVideoState updates the current video resolution
 func (s *VNCServer) UpdateVideoState(width, height uint16) {
 	s.mu.Lock()
 	s.width = width
 	s.height = height
 	s.mu.Unlock()
 
-	// Notify all connections of resolution change
 	s.connections.Range(func(key, value interface{}) bool {
 		if conn, ok := key.(*VNCConnection); ok {
 			conn.onResolutionChange(width, height)
@@ -211,7 +180,6 @@ func (s *VNCServer) UpdateVideoState(width, height uint16) {
 	})
 }
 
-// GetVideoState returns the current video resolution
 func (s *VNCServer) GetVideoState() (uint16, uint16) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -239,7 +207,6 @@ func (s *VNCServer) acceptLoop() {
 
 		vncLogger.Info().Str("remote", conn.RemoteAddr().String()).Msg("new VNC connection")
 
-		// Create VNC connection handler
 		vncConn := NewVNCConnection(conn, s)
 		s.connections.Store(vncConn, true)
 		s.connCount.Add(1)
@@ -248,13 +215,17 @@ func (s *VNCServer) acceptLoop() {
 			defer func() {
 				s.connections.Delete(vc)
 				s.connCount.Add(-1)
-				// Release JPEG encoder if this client was using it
-				if vc.needsJPEGEncoder {
+
+				needsJPEG := vc.needsJPEGEncoder.Load()
+				vc.mu.Lock()
+				unsubscribe := vc.h264Unsubscribe
+				vc.mu.Unlock()
+
+				if needsJPEG {
 					s.releaseJPEGEncoder()
 				}
-				// Unsubscribe from H.264 frames if subscribed
-				if vc.h264Unsubscribe != nil {
-					vc.h264Unsubscribe()
+				if unsubscribe != nil {
+					unsubscribe()
 				}
 				vncLogger.Info().Str("remote", vc.conn.RemoteAddr().String()).Msg("VNC connection closed")
 			}()
@@ -266,38 +237,38 @@ func (s *VNCServer) acceptLoop() {
 	}
 }
 
-// VNCConnection represents a single VNC client connection
 type VNCConnection struct {
 	conn   net.Conn
 	server *VNCServer
 
-	// Protocol state
 	authenticated bool
 	width         uint16
 	height        uint16
 	pixelFormat   PixelFormat
 	encodings     []int32
 
-	// Encoding capabilities
 	hasTight         bool
 	hasH264          bool
-	needsJPEGEncoder bool // true if this client needs JPEG (no H.264 support)
+	needsJPEGEncoder atomic.Bool
 
-	// H.264 state
-	h264ContextInitialized bool        // true after first keyframe sent
-	h264FrameChan          chan []byte // channel for receiving H.264 frames
-	h264Unsubscribe        func()      // function to unsubscribe from H.264 frames
+	h264ContextInitialized bool
+	h264FrameChan          chan []byte
+	h264Unsubscribe        func()
 
-	// Frame sending
-	frameChan       chan []byte
-	stopChan        chan struct{}
-	frameRequested  atomic.Bool // True when client has requested at least one frame
-	streamingActive atomic.Bool // True when continuous streaming is active
+	stopChan       chan struct{}
+	frameRequested atomic.Bool
 
 	mu sync.Mutex
+
+	msgBuf       [1]byte
+	keyBuf       [7]byte
+	pointerBuf   [5]byte
+	fbReqBuf     [9]byte
+	pixelFmtBuf  [19]byte
+	encHeaderBuf [3]byte
+	encBuf       [4]byte
 }
 
-// PixelFormat represents the VNC pixel format
 type PixelFormat struct {
 	BitsPerPixel uint8
 	Depth        uint8
@@ -311,7 +282,6 @@ type PixelFormat struct {
 	BlueShift    uint8
 }
 
-// DefaultPixelFormat returns the default pixel format (32-bit BGRA)
 func DefaultPixelFormat() PixelFormat {
 	return PixelFormat{
 		BitsPerPixel: 32,
@@ -327,7 +297,6 @@ func DefaultPixelFormat() PixelFormat {
 	}
 }
 
-// NewVNCConnection creates a new VNC connection handler
 func NewVNCConnection(conn net.Conn, server *VNCServer) *VNCConnection {
 	w, h := server.GetVideoState()
 	if w == 0 {
@@ -343,51 +312,41 @@ func NewVNCConnection(conn net.Conn, server *VNCServer) *VNCConnection {
 		width:         w,
 		height:        h,
 		pixelFormat:   DefaultPixelFormat(),
-		frameChan:     make(chan []byte, 2),
 		h264FrameChan: make(chan []byte, 2),
 		stopChan:      make(chan struct{}),
 	}
 }
 
-// Handle handles the VNC connection
 func (c *VNCConnection) Handle() error {
 	defer c.conn.Close()
 
-	// Perform RFB handshake
 	if err := c.handshake(); err != nil {
 		return fmt.Errorf("handshake failed: %w", err)
 	}
 
-	// Perform authentication
 	if err := c.authenticate(); err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	// Client initialization
 	if err := c.clientInit(); err != nil {
 		return fmt.Errorf("client init failed: %w", err)
 	}
 
-	// Server initialization
 	if err := c.serverInit(); err != nil {
 		return fmt.Errorf("server init failed: %w", err)
 	}
 
-	// Start frame sender goroutine
 	go c.frameSender()
 
-	// Main message loop
 	return c.messageLoop()
 }
 
-// Close closes the connection
 func (c *VNCConnection) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	select {
 	case <-c.stopChan:
-		// Already closed
 	default:
 		close(c.stopChan)
 	}
@@ -399,22 +358,17 @@ func (c *VNCConnection) onResolutionChange(width, height uint16) {
 	c.width = width
 	c.height = height
 	c.mu.Unlock()
-
-	// Send DesktopSize pseudo-encoding if client supports it
-	// This will be handled in the next frame update
 }
 
 func (c *VNCConnection) frameSender() {
-	vncLogger.Debug().Str("remote", c.conn.RemoteAddr().String()).Msg("frameSender started (H.264 only)")
+	vncLogger.Debug().Str("remote", c.conn.RemoteAddr().String()).Msg("frameSender started")
 
 	for {
 		select {
 		case <-c.stopChan:
-			vncLogger.Debug().Str("remote", c.conn.RemoteAddr().String()).Msg("frameSender stopping")
 			return
 
 		case frame := <-c.h264FrameChan:
-			// Only process H.264 frames if client supports them
 			c.mu.Lock()
 			hasH264 := c.hasH264
 			c.mu.Unlock()
@@ -423,9 +377,7 @@ func (c *VNCConnection) frameSender() {
 				continue
 			}
 
-			// Only send if client has requested a frame update
-			if c.frameRequested.Load() {
-				c.frameRequested.Store(false)
+			if c.frameRequested.CompareAndSwap(true, false) {
 				isKeyframe := isH264Keyframe(frame)
 				if err := c.sendH264FrameUpdate(frame, isKeyframe); err != nil {
 					vncLogger.Error().Err(err).Msg("failed to send H.264 frame update")
@@ -436,21 +388,15 @@ func (c *VNCConnection) frameSender() {
 	}
 }
 
-// SendJPEGFrameDirect sends a JPEG frame directly if the client is waiting for one.
-// This is called synchronously from the native callback (hot potato approach).
-// Returns true if the frame was sent, false if client wasn't ready or doesn't need JPEG.
 func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
-	// Quick checks without locking
-	if !c.needsJPEGEncoder {
+	if !c.needsJPEGEncoder.Load() {
 		return false
 	}
 
-	// VNC request-response: only send if client requested a frame
 	if !c.frameRequested.CompareAndSwap(true, false) {
 		return false
 	}
 
-	// Send frame synchronously
 	if err := c.sendFrameUpdate(frame); err != nil {
 		vncLogger.Error().Err(err).Str("remote", c.conn.RemoteAddr().String()).Msg("failed to send JPEG frame")
 		return false
@@ -459,11 +405,7 @@ func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
 	return true
 }
 
-// BroadcastJPEGFrame sends a JPEG frame to all connected clients that need it.
-// This is called synchronously from the native callback (hot potato approach).
-// The frame buffer is only valid during this call.
 func (s *VNCServer) BroadcastJPEGFrame(frame []byte) {
-	// Iterate over all connections and send to those that need JPEG
 	s.connections.Range(func(key, value interface{}) bool {
 		if conn, ok := key.(*VNCConnection); ok {
 			conn.SendJPEGFrameDirect(frame)
@@ -472,28 +414,19 @@ func (s *VNCServer) BroadcastJPEGFrame(frame []byte) {
 	})
 }
 
-// isH264Keyframe checks if the H.264 frame is a keyframe (IDR frame)
 func isH264Keyframe(frame []byte) bool {
-	// Look for NAL unit header
-	// Start code: 0x00 0x00 0x00 0x01 or 0x00 0x00 0x01
-	// NAL type is in lower 5 bits of the first byte after start code
-	// Type 5 = IDR slice (keyframe), Type 7 = SPS, Type 8 = PPS
-
-	for i := 0; i < len(frame)-4; i++ {
-		// Check for 4-byte start code
-		if frame[i] == 0 && frame[i+1] == 0 && frame[i+2] == 0 && frame[i+3] == 1 {
-			if i+4 < len(frame) {
+	// NAL type 5 = IDR slice (keyframe), type 7 = SPS
+	n := len(frame)
+	for i := 0; i < n-4; i++ {
+		if frame[i] == 0 && frame[i+1] == 0 {
+			if frame[i+2] == 0 && frame[i+3] == 1 && i+4 < n {
 				nalType := frame[i+4] & 0x1F
-				if nalType == 5 || nalType == 7 { // IDR or SPS (keyframe indicators)
+				if nalType == 5 || nalType == 7 {
 					return true
 				}
-			}
-		}
-		// Check for 3-byte start code
-		if frame[i] == 0 && frame[i+1] == 0 && frame[i+2] == 1 {
-			if i+3 < len(frame) {
+			} else if frame[i+2] == 1 {
 				nalType := frame[i+3] & 0x1F
-				if nalType == 5 || nalType == 7 { // IDR or SPS
+				if nalType == 5 || nalType == 7 {
 					return true
 				}
 			}
@@ -502,11 +435,8 @@ func isH264Keyframe(frame []byte) bool {
 	return false
 }
 
-// initVNCServer initializes and starts the VNC server
 func initVNCServer() {
 	server := GetVNCServer()
-
-	// Apply configuration
 	server.SetPort(config.VNCPort)
 	server.SetTLSEnabled(config.VNCUseTLS)
 

@@ -18,6 +18,10 @@
 static int client_fd = -1;
 static pthread_mutex_t client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// JPEG stream socket
+static int jpeg_client_fd = -1;
+static pthread_mutex_t jpeg_client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void jetkvm_c_log_handler(int level, const char *filename, const char *funcname, int line, const char *message) {
     // printf("[%s] %s:%d %s: %s\n", filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
     fprintf(stderr, "[%s] %s:%d %s: %s\n", filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
@@ -26,25 +30,49 @@ void jetkvm_c_log_handler(int level, const char *filename, const char *funcname,
 // Video handler that pipes frames to the Unix socket
 // This will be called by the video subsystem via video_send_frame -> jetkvm_set_video_handler's handler
 void jetkvm_video_handler(const uint8_t *frame, ssize_t len) {
-    // pthread_mutex_lock(&client_fd_mutex);
-    // if (client_fd >= 0 && frame != NULL && len > 0) {
-    //     ssize_t bytes_written = 0;
-    //     while (bytes_written < len) {
-    //         ssize_t n = write(client_fd, frame + bytes_written, len - bytes_written);
-    //         if (n < 0) {
-    //             if (errno == EPIPE || errno == ECONNRESET) {
-    //                 // Client disconnected
-    //                 close(client_fd);
-    //                 client_fd = -1;
-    //                 break;
-    //             }
-    //             perror("write");
-    //             break;
-    //         }
-    //         bytes_written += n;
-    //     }
-    // }
-    // pthread_mutex_unlock(&client_fd_mutex);
+    (void)frame;
+    (void)len;
+    // H.264 frames are handled via gRPC, not this handler
+}
+
+// JPEG handler that sends frames to the JPEG stream socket
+// Called by video_send_jpeg_frame when JPEG encoder produces a frame
+void jetkvm_jpeg_handler(const uint8_t *frame, ssize_t len) {
+    pthread_mutex_lock(&jpeg_client_fd_mutex);
+    if (jpeg_client_fd >= 0 && frame != NULL && len > 0) {
+        // Write 4-byte frame length prefix (little-endian)
+        uint32_t frame_size = (uint32_t)len;
+        uint8_t size_buf[4];
+        size_buf[0] = (frame_size >> 0) & 0xFF;
+        size_buf[1] = (frame_size >> 8) & 0xFF;
+        size_buf[2] = (frame_size >> 16) & 0xFF;
+        size_buf[3] = (frame_size >> 24) & 0xFF;
+
+        ssize_t n = write(jpeg_client_fd, size_buf, 4);
+        if (n != 4) {
+            if (errno == EPIPE || errno == ECONNRESET || n == 0) {
+                close(jpeg_client_fd);
+                jpeg_client_fd = -1;
+            }
+            pthread_mutex_unlock(&jpeg_client_fd_mutex);
+            return;
+        }
+
+        // Write frame data
+        ssize_t bytes_written = 0;
+        while (bytes_written < len) {
+            n = write(jpeg_client_fd, frame + bytes_written, len - bytes_written);
+            if (n <= 0) {
+                if (errno == EPIPE || errno == ECONNRESET) {
+                    close(jpeg_client_fd);
+                    jpeg_client_fd = -1;
+                }
+                break;
+            }
+            bytes_written += n;
+        }
+    }
+    pthread_mutex_unlock(&jpeg_client_fd_mutex);
 }
 
 void jetkvm_video_state_handler(jetkvm_video_state_t *state) {
@@ -83,10 +111,40 @@ int main(int argc, char *argv[]) {
     // Set handlers
     jetkvm_set_log_handler(&jetkvm_c_log_handler);
     jetkvm_set_video_handler(&jetkvm_video_handler);
+    jetkvm_set_jpeg_handler(&jetkvm_jpeg_handler);
     jetkvm_set_video_state_handler(&jetkvm_video_state_handler);
     jetkvm_set_indev_handler(&jetkvm_indev_handler);
     jetkvm_set_rpc_handler(&jetkvm_rpc_handler);
-    
+
+    // Connect to JPEG stream socket if provided
+    const char *jpeg_socket_path = getenv("JETKVM_NATIVE_JPEG_STREAM_UNIX_SOCKET");
+    if (jpeg_socket_path != NULL && jpeg_socket_path[0] != '\0') {
+        int jpeg_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (jpeg_fd >= 0) {
+            struct sockaddr_un jpeg_addr;
+            memset(&jpeg_addr, 0, sizeof(jpeg_addr));
+            jpeg_addr.sun_family = AF_UNIX;
+
+            // Handle abstract socket (starts with @)
+            if (jpeg_socket_path[0] == '@') {
+                jpeg_addr.sun_path[0] = '\0';
+                strncpy(jpeg_addr.sun_path + 1, jpeg_socket_path + 1, sizeof(jpeg_addr.sun_path) - 2);
+            } else {
+                strncpy(jpeg_addr.sun_path, jpeg_socket_path, sizeof(jpeg_addr.sun_path) - 1);
+            }
+
+            if (connect(jpeg_fd, (struct sockaddr *)&jpeg_addr, sizeof(jpeg_addr)) == 0) {
+                pthread_mutex_lock(&jpeg_client_fd_mutex);
+                jpeg_client_fd = jpeg_fd;
+                pthread_mutex_unlock(&jpeg_client_fd_mutex);
+                fprintf(stderr, "Connected to JPEG stream socket: %s\n", jpeg_socket_path);
+            } else {
+                perror("connect JPEG socket");
+                close(jpeg_fd);
+            }
+        }
+    }
+
     // Initialize video first (before accepting connections)
     fprintf(stderr, "Initializing video...\n");
     if (jetkvm_video_init(1.0) != 0) {

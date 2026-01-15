@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -33,7 +33,7 @@ export default function SettingsVNCRoute() {
   const [tlsEnabled, setTlsEnabled] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadVNCState = () => {
+  const loadVNCState = useCallback(() => {
     send("getVNCState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
@@ -51,14 +51,13 @@ export default function SettingsVNCRoute() {
       setTlsEnabled(state.tlsEnabled);
       setIsLoading(false);
     });
-  };
+  }, [send]);
 
   useEffect(() => {
     loadVNCState();
-    // Poll for connection count updates
     const interval = setInterval(loadVNCState, 5000);
     return () => clearInterval(interval);
-  }, [send]);
+  }, [loadVNCState]);
 
   const handleToggleEnabled = () => {
     const newEnabled = !enabled;
@@ -70,9 +69,7 @@ export default function SettingsVNCRoute() {
         return;
       }
       setEnabled(newEnabled);
-      notifications.success(
-        newEnabled ? m.vnc_settings_enabled() : m.vnc_settings_disabled(),
-      );
+      notifications.success(newEnabled ? m.vnc_settings_enabled() : m.vnc_settings_disabled());
       // Reload state to get running status
       setTimeout(loadVNCState, 500);
     });
@@ -151,7 +148,7 @@ export default function SettingsVNCRoute() {
               onChange={handleToggleEnabled}
               className="peer sr-only"
             />
-            <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+            <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
           </label>
         </SettingsItem>
 
@@ -241,7 +238,7 @@ export default function SettingsVNCRoute() {
                   onChange={handleTlsToggle}
                   className="peer sr-only"
                 />
-                <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+                <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
               </label>
             </SettingsItem>
           </>
