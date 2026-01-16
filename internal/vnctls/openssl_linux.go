@@ -1,22 +1,68 @@
 //go:build linux && arm
 
+// Package vnctls provides TLS support for VNC using OpenSSL via CGO.
+//
+// OpenSSL 3.0 Deprecation Notes:
+// This implementation uses the ENGINE API for hardware crypto acceleration
+// (devcrypto/AF_ALG for Rockchip RV1106). The ENGINE API is deprecated in
+// OpenSSL 3.0 in favor of the Provider architecture, but:
+//
+// 1. The Provider API for hardware crypto is not yet mature
+// 2. No production-ready devcrypto/AF_ALG provider exists as of OpenSSL 3.3
+// 3. ENGINE API still functions in OpenSSL 3.x (deprecated != removed)
+//
+// The DH API (DH_new, DH_set0_pqg, etc.) is also deprecated. This code uses
+// version-conditional compilation:
+//   - OpenSSL 3.0+: Uses EVP_PKEY_fromdata() for DH parameters (modern API)
+//   - OpenSSL 1.x:  Uses legacy DH_* functions
+//
+// Future migration path when OpenSSL Provider API matures:
+//   1. Replace ENGINE_by_id("devcrypto") with OSSL_PROVIDER_load(NULL, "devcrypto")
+//   2. Engine initialization becomes provider configuration
+//   3. The rest of the code (SSL_CTX, SSL) remains unchanged
+//
+// References:
+//   - OpenSSL 3.0 Migration: https://www.openssl.org/docs/man3.0/man7/migration_guide.html
+//   - Provider concept: https://www.openssl.org/docs/man3.0/man7/provider.html
+
 package vnctls
 
 /*
+// Suppress ENGINE API deprecation warnings.
+// The ENGINE API is deprecated in OpenSSL 3.0 in favor of Providers, but:
+// 1. The Provider API for hardware crypto (devcrypto, AF_ALG) is not yet mature
+// 2. ENGINE API still works in OpenSSL 3.x, it's just marked deprecated
+// 3. Hardware crypto acceleration on Rockchip RV1106 requires ENGINE for now
+// TODO: Migrate to Provider API when OpenSSL's hardware crypto providers mature
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <openssl/dh.h>
 #include <openssl/bn.h>
 #include <openssl/engine.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
+
+// OpenSSL 3.0+ uses EVP_PKEY for DH instead of deprecated DH API
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/param_build.h>
+#include <openssl/core_names.h>
+#else
+#include <openssl/dh.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+// Buffer sizes for error handling
+#define SSL_ERROR_BUF_SIZE 512
+#define SSL_ERROR_MAX_POS 400
+#define SSL_ERROR_TMP_SIZE 128
+#define ENGINE_ERROR_BUF_SIZE 256
 
 static int set_blocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -50,7 +96,7 @@ static ENGINE* try_load_engine(const char* engine_id) {
 
     if (!ENGINE_init(e)) {
         unsigned long err = ERR_get_error();
-        char err_buf[256];
+        char err_buf[ENGINE_ERROR_BUF_SIZE];
         ERR_error_string_n(err, err_buf, sizeof(err_buf));
         fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' init FAILED: %s\n", engine_id, err_buf);
         ENGINE_free(e);
@@ -129,46 +175,101 @@ static void openssl_init() {
     }
 }
 
+// RFC 3526 MODP Group 14 (2048-bit) - much stronger than 1024-bit
+static const unsigned char dh2048_p[] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
+    0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1,
+    0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
+    0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22,
+    0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
+    0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B,
+    0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
+    0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45,
+    0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
+    0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B,
+    0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
+    0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
+    0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
+    0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D,
+    0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
+    0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A,
+    0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
+    0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96,
+    0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
+    0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D,
+    0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
+    0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C,
+    0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
+    0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03,
+    0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
+    0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9,
+    0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
+    0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5,
+    0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
+    0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+};
+static const unsigned char dh2048_g[] = { 0x02 };
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+// OpenSSL 3.0+ uses EVP_PKEY API instead of deprecated DH functions
+static EVP_PKEY* create_dh_pkey() {
+    BIGNUM *p = BN_bin2bn(dh2048_p, sizeof(dh2048_p), NULL);
+    BIGNUM *g = BN_bin2bn(dh2048_g, sizeof(dh2048_g), NULL);
+    if (p == NULL || g == NULL) {
+        BN_free(p);
+        BN_free(g);
+        return NULL;
+    }
+
+    OSSL_PARAM_BLD *bld = OSSL_PARAM_BLD_new();
+    if (bld == NULL) {
+        BN_free(p);
+        BN_free(g);
+        return NULL;
+    }
+
+    if (!OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_P, p) ||
+        !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_G, g)) {
+        OSSL_PARAM_BLD_free(bld);
+        BN_free(p);
+        BN_free(g);
+        return NULL;
+    }
+
+    OSSL_PARAM *params = OSSL_PARAM_BLD_to_param(bld);
+    OSSL_PARAM_BLD_free(bld);
+    BN_free(p);
+    BN_free(g);
+
+    if (params == NULL) {
+        return NULL;
+    }
+
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_from_name(NULL, "DH", NULL);
+    if (pctx == NULL) {
+        OSSL_PARAM_free(params);
+        return NULL;
+    }
+
+    EVP_PKEY *pkey = NULL;
+    if (EVP_PKEY_fromdata_init(pctx) <= 0 ||
+        EVP_PKEY_fromdata(pctx, &pkey, EVP_PKEY_KEY_PARAMETERS, params) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        OSSL_PARAM_free(params);
+        return NULL;
+    }
+
+    EVP_PKEY_CTX_free(pctx);
+    OSSL_PARAM_free(params);
+    return pkey;
+}
+#else
+// OpenSSL 1.x uses legacy DH API
 static DH* create_dh_params() {
     DH *dh = DH_new();
     if (dh == NULL) return NULL;
-
-    // RFC 3526 MODP Group 14 (2048-bit) - much stronger than 1024-bit
-    static const unsigned char dh2048_p[] = {
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
-        0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1,
-        0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
-        0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22,
-        0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
-        0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B,
-        0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
-        0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45,
-        0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
-        0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B,
-        0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
-        0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
-        0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
-        0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D,
-        0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
-        0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A,
-        0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
-        0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96,
-        0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
-        0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D,
-        0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
-        0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C,
-        0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
-        0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03,
-        0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
-        0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9,
-        0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
-        0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5,
-        0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
-        0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-    };
-    static const unsigned char dh2048_g[] = { 0x02 };
 
     BIGNUM *p = BN_bin2bn(dh2048_p, sizeof(dh2048_p), NULL);
     BIGNUM *g = BN_bin2bn(dh2048_g, sizeof(dh2048_g), NULL);
@@ -182,6 +283,7 @@ static DH* create_dh_params() {
 
     return dh;
 }
+#endif
 
 static SSL_CTX* create_vnc_ssl_ctx(int use_cert, const char* cert_pem, const char* key_pem) {
     SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());
@@ -280,6 +382,20 @@ static SSL_CTX* create_vnc_ssl_ctx(int use_cert, const char* cert_pem, const cha
             "ADH-AES128-SHA256");
     }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    // OpenSSL 3.0+ uses EVP_PKEY for DH parameters
+    EVP_PKEY *dhpkey = create_dh_pkey();
+    if (dhpkey == NULL) {
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+    // SSL_CTX_set0_tmp_dh_pkey takes ownership, don't free
+    if (SSL_CTX_set0_tmp_dh_pkey(ctx, dhpkey) != 1) {
+        EVP_PKEY_free(dhpkey);
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+#else
     DH *dh = create_dh_params();
     if (dh == NULL) {
         SSL_CTX_free(ctx);
@@ -287,6 +403,7 @@ static SSL_CTX* create_vnc_ssl_ctx(int use_cert, const char* cert_pem, const cha
     }
     SSL_CTX_set_tmp_dh(ctx, dh);
     DH_free(dh);
+#endif
 
     SSL_CTX_set_ecdh_auto(ctx, 1);
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
@@ -296,15 +413,15 @@ static SSL_CTX* create_vnc_ssl_ctx(int use_cert, const char* cert_pem, const cha
 }
 
 static char* get_ssl_error_string() {
-    char *buf = (char*)malloc(512);
+    char *buf = (char*)malloc(SSL_ERROR_BUF_SIZE);
     buf[0] = '\0';
     int pos = 0;
     unsigned long err;
-    while ((err = ERR_get_error()) != 0 && pos < 400) {
-        if (pos > 0) pos += snprintf(buf + pos, 512 - pos, "; ");
-        char tmp[128];
+    while ((err = ERR_get_error()) != 0 && pos < SSL_ERROR_MAX_POS) {
+        if (pos > 0) pos += snprintf(buf + pos, SSL_ERROR_BUF_SIZE - pos, "; ");
+        char tmp[SSL_ERROR_TMP_SIZE];
         ERR_error_string_n(err, tmp, sizeof(tmp));
-        pos += snprintf(buf + pos, 512 - pos, "%s", tmp);
+        pos += snprintf(buf + pos, SSL_ERROR_BUF_SIZE - pos, "%s", tmp);
     }
     if (pos == 0) strcpy(buf, "unknown error");
     return buf;

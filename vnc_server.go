@@ -1,3 +1,16 @@
+// VNC Server Implementation
+//
+// This file implements the VNC server lifecycle management including:
+//   - Server start/stop with graceful shutdown
+//   - Connection acceptance with rate limiting
+//   - JPEG encoder lifecycle (on-demand start/stop)
+//   - Resolution change notifications to clients
+//
+// The server supports up to maxVNCConnections concurrent clients and
+// integrates with the native JPEG hardware encoder for video streaming.
+//
+// See vnc_rfb.go for the RFB protocol implementation.
+
 package kvm
 
 import (

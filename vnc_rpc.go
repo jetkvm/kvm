@@ -1,7 +1,32 @@
+// VNC RPC Handlers
+//
+// This file implements JSON-RPC handlers for VNC server configuration:
+//   - getVNCState: Query current VNC server status
+//   - setVNCEnabled: Enable/disable VNC server
+//   - setVNCPort: Configure listening port
+//   - setVNCQuality: Set JPEG compression quality
+//   - setVNCPassword: Set VNC authentication password
+//   - setVNCTLS: Enable/disable TLS encryption
+//
+// Configuration is persisted to disk and changes take effect immediately.
+
 package kvm
 
 import (
 	"fmt"
+)
+
+const (
+	// Port range for TCP ports (IANA assigned range)
+	minPort = 1
+	maxPort = 65535
+
+	// JPEG quality range (1-99, 100 would be lossless which JPEG doesn't support well)
+	minJPEGQuality = 1
+	maxJPEGQuality = 99
+
+	// VNC password max length (DES key limitation)
+	vncPasswordMaxLength = 8
 )
 
 type VNCState struct {
@@ -64,8 +89,8 @@ func rpcSetVNCEnabled(enabled bool) error {
 }
 
 func rpcSetVNCPort(port int) error {
-	if port < 1 || port > 65535 {
-		return fmt.Errorf("invalid port number: %d", port)
+	if port < minPort || port > maxPort {
+		return fmt.Errorf("invalid port number: %d (must be %d-%d)", port, minPort, maxPort)
 	}
 
 	config.VNCPort = port
@@ -79,8 +104,8 @@ func rpcSetVNCPort(port int) error {
 }
 
 func rpcSetVNCQuality(quality int) error {
-	if quality < 1 || quality > 99 {
-		return fmt.Errorf("invalid quality value: %d (must be 1-99)", quality)
+	if quality < minJPEGQuality || quality > maxJPEGQuality {
+		return fmt.Errorf("invalid quality value: %d (must be %d-%d)", quality, minJPEGQuality, maxJPEGQuality)
 	}
 
 	config.VNCQuality = quality
@@ -95,9 +120,9 @@ func rpcSetVNCQuality(quality int) error {
 // rpcSetVNCPassword sets the VNC authentication password.
 // VNC uses DES encryption which only supports 8-byte keys, so passwords are truncated.
 func rpcSetVNCPassword(password string) error {
-	if len(password) > 8 {
-		vncLogger.Warn().Int("originalLen", len(password)).Msg("VNC password truncated to 8 characters (protocol limitation)")
-		password = password[:8]
+	if len(password) > vncPasswordMaxLength {
+		vncLogger.Warn().Int("originalLen", len(password)).Int("maxLen", vncPasswordMaxLength).Msg("VNC password truncated (protocol limitation)")
+		password = password[:vncPasswordMaxLength]
 	}
 
 	config.LocalAuthPassword = password

@@ -1,3 +1,19 @@
+// RFB Protocol Implementation for VNC
+//
+// This file implements the Remote Framebuffer (RFB) protocol as specified in:
+//   - RFC 6143: The Remote Framebuffer Protocol
+//     https://datatracker.ietf.org/doc/html/rfc6143
+//
+// Extensions supported:
+//   - VeNCrypt (security type 19): TLS encryption with X509 or anonymous DH
+//   - Tight encoding (type 7): JPEG compression for efficient video streaming
+//
+// Authentication methods:
+//   - VNC Authentication (type 2): DES challenge-response
+//   - VeNCrypt TLS subtypes: X509Vnc, X509Plain, X509None, TLSVnc, TLSPlain, TLSNone
+//
+// See vnc_server.go for server lifecycle management.
+
 package kvm
 
 import (
@@ -18,8 +34,8 @@ import (
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
-		// 256 bytes is sufficient for ServerInit message (~30 bytes + name)
-		return bytes.NewBuffer(make([]byte, 0, 256))
+		// serverInitBufSize is sufficient for ServerInit message (~30 bytes + name)
+		return bytes.NewBuffer(make([]byte, 0, serverInitBufSize))
 	},
 }
 
@@ -71,6 +87,18 @@ const (
 
 	// Maximum clipboard text size (1MB to prevent OOM on embedded device)
 	maxCutTextLength = 1024 * 1024
+
+	// Tight encoding compact length thresholds (RFB protocol)
+	// Length < 128: 1 byte (7 bits), < 16384: 2 bytes (14 bits), else: 3 bytes (21 bits)
+	tightLen1Byte = 128
+	tightLen2Byte = 16384
+
+	// Buffer pool capacity for ServerInit message assembly
+	serverInitBufSize = 256
+
+	// JPEG Start of Image marker bytes (validates JPEG data)
+	jpegSOIByte0 = 0xFF
+	jpegSOIByte1 = 0xD8
 )
 
 func (c *VNCConnection) handshake() error {
@@ -413,7 +441,7 @@ func (c *VNCConnection) authenticateNone() error {
 }
 
 func (c *VNCConnection) vncAuth() error {
-	var challenge [16]byte
+	var challenge [vncChallengeSize]byte
 	if _, err := rand.Read(challenge[:]); err != nil {
 		return fmt.Errorf("failed to generate challenge: %w", err)
 	}
@@ -422,7 +450,7 @@ func (c *VNCConnection) vncAuth() error {
 		return fmt.Errorf("failed to send challenge: %w", err)
 	}
 
-	var response [16]byte
+	var response [vncChallengeSize]byte
 	if _, err := io.ReadFull(c.conn, response[:]); err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
@@ -501,9 +529,9 @@ func computeVNCResponse(challenge []byte, password string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create DES cipher: %w", err)
 	}
 
-	response := make([]byte, 16)
+	response := make([]byte, vncChallengeSize)
 	block.Encrypt(response[0:8], challenge[0:8])
-	block.Encrypt(response[8:16], challenge[8:16])
+	block.Encrypt(response[8:vncChallengeSize], challenge[8:vncChallengeSize])
 
 	return response, nil
 }
@@ -783,8 +811,8 @@ func (c *VNCConnection) sendFrameUpdate(jpegData []byte) error {
 		return nil
 	}
 
-	// Validate JPEG data (must start with SOI marker 0xFFD8)
-	if len(jpegData) < 2 || jpegData[0] != 0xFF || jpegData[1] != 0xD8 {
+	// Validate JPEG data (must start with SOI marker)
+	if len(jpegData) < 2 || jpegData[0] != jpegSOIByte0 || jpegData[1] != jpegSOIByte1 {
 		vncLogger.Debug().Int("len", len(jpegData)).Msg("invalid JPEG data, skipping frame")
 		return nil
 	}
@@ -815,10 +843,10 @@ func (c *VNCConnection) sendFrameUpdate(jpegData []byte) error {
 	// Tight compact length encoding (inline for zero overhead)
 	jpegLen := len(jpegData)
 	var headerLen int
-	if jpegLen < 128 {
+	if jpegLen < tightLen1Byte {
 		header[17] = byte(jpegLen)
 		headerLen = 18
-	} else if jpegLen < 16384 {
+	} else if jpegLen < tightLen2Byte {
 		header[17] = byte(jpegLen&0x7F) | 0x80
 		header[18] = byte(jpegLen >> 7)
 		headerLen = 19
@@ -907,7 +935,13 @@ func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
 }
 
 // keysymToHID converts X11 keysym codes (used by VNC/RFB protocol) to USB HID usage codes.
-// Keysyms are defined in X11/keysymdef.h. HID codes follow USB HID Usage Tables specification.
+//
+// References:
+//   - X11 Keysyms: https://www.x.org/releases/current/doc/xproto/x11protocol.html#keysym_encoding
+//     Source header: /usr/include/X11/keysymdef.h
+//   - USB HID Usage Tables: https://usb.org/document-library/hid-usage-tables-15
+//     Section 10: Keyboard/Keypad Page (0x07)
+//
 // Returns 0 for unsupported keysyms.
 func keysymToHID(keysym uint32) uint8 {
 	switch keysym {
