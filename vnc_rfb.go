@@ -1413,10 +1413,14 @@ func textToMacroStepsWithDelays(text []byte, layoutCode string, pressDelayMs, re
 	return steps, skipped
 }
 
+// Maximum clipboard text size for typing (100KB - matches typical use cases, larger content takes too long)
+const maxClipboardTypeSize = 100 * 1024
+
 // typeClipboardText types the given text via keyboard macro.
 // Uses config.KeyboardLayout to determine the keyboard mapping.
 // This implements VNC clipboard-as-keystrokes functionality.
 // Respects config.VNCClipboardEnabled setting.
+// Rejects text larger than 10KB to prevent accidental paste of large content.
 func typeClipboardText(text []byte) error {
 	if !config.VNCClipboardEnabled {
 		vncLogger.Debug().Int("bytes", len(text)).Msg("VNC clipboard: typing disabled, ignoring")
@@ -1424,6 +1428,11 @@ func typeClipboardText(text []byte) error {
 	}
 
 	if len(text) == 0 {
+		return nil
+	}
+
+	if len(text) > maxClipboardTypeSize {
+		vncLogger.Info().Int("bytes", len(text)).Int("maxBytes", maxClipboardTypeSize).Msg("VNC clipboard: text too large, ignoring (likely not intended for typing)")
 		return nil
 	}
 

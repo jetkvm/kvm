@@ -24,7 +24,10 @@ import (
 )
 
 const (
-	maxFrameSize                   = 1920 * 1080 / 2
+	// H.264 frame size limit - typically much smaller than raw
+	maxFrameSize = 1920 * 1080 / 2
+	// JPEG frame size limit - high quality JPEG can be 1-2MB for 1080p
+	maxJpegFrameSize               = 2 * 1024 * 1024
 	defaultMaxRestartAttempts uint = 5
 )
 
@@ -342,7 +345,7 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 	defer conn.Close()
 
-	inboundPacket := make([]byte, maxFrameSize)
+	inboundPacket := make([]byte, maxJpegFrameSize)
 	var frameSizeBuffer [4]byte
 	frameCount := 0
 
@@ -359,8 +362,8 @@ func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 		}
 
 		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
-		if frameSize == 0 || frameSize > maxFrameSize {
-			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
+		if frameSize == 0 || frameSize > maxJpegFrameSize {
+			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxJpegFrameSize).
 				Msg("JPEG frame handler: invalid frame size")
 			break
 		}
