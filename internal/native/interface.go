@@ -40,4 +40,7 @@ type NativeInterface interface {
 	JpegSetQuality(quality int) error
 	JpegGetQuality() (int, error)
 	JpegIsRunning() (bool, error)
+
+	// H.264 encoder methods
+	VideoRequestKeyframe() error
 }

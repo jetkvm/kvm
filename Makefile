@@ -31,11 +31,25 @@ GO_LDFLAGS := \
   -X $(KVM_PKG_NAME).builtTimestamp=$(BUILDTS)
 
 GO_ARGS := GOOS=linux GOARCH=arm GOARM=7 ARCHFLAGS="-arch arm"
+# Custom OpenSSL with devcrypto hardware acceleration support
+SSL_LIBS_DIR ?= /opt/jetkvm-ssl-libs/install
 # if BUILDKIT_PATH exists, use buildkit to build
 ifneq ($(wildcard $(BUILDKIT_PATH)),)
+	# Check if custom OpenSSL with devcrypto exists, use it for hardware crypto acceleration
+	ifneq ($(wildcard $(SSL_LIBS_DIR)/lib64/libssl.a),)
+		SSL_CFLAGS := -I$(SSL_LIBS_DIR)/include
+		SSL_LDFLAGS := -L$(SSL_LIBS_DIR)/lib64 -L$(SSL_LIBS_DIR)/lib
+	else ifneq ($(wildcard $(SSL_LIBS_DIR)/lib/libssl.a),)
+		SSL_CFLAGS := -I$(SSL_LIBS_DIR)/include
+		SSL_LDFLAGS := -L$(SSL_LIBS_DIR)/lib
+	else
+		# Fall back to buildkit's OpenSSL (no devcrypto support)
+		SSL_CFLAGS :=
+		SSL_LDFLAGS :=
+	endif
 	GO_ARGS := $(GO_ARGS) \
-		CGO_CFLAGS="-I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include" \
-		CGO_LDFLAGS="-L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -Wl,-Bstatic -lssl -lcrypto -lz -Wl,-Bdynamic -lpthread -lm" \
+		CGO_CFLAGS="-I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include $(SSL_CFLAGS)" \
+		CGO_LDFLAGS="$(SSL_LDFLAGS) -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -Wl,-Bstatic -lssl -lcrypto -lz -Wl,-Bdynamic -lpthread -lm" \
 		CC="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc" \
 		LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld" \
 		CGO_ENABLED=1

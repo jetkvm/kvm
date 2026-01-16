@@ -156,3 +156,8 @@ func jpegIsRunning() bool {
 	panicPlatformNotSupported()
 	return false
 }
+
+func videoRequestKeyframe() error {
+	panicPlatformNotSupported()
+	return nil
+}

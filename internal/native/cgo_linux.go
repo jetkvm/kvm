@@ -407,6 +407,10 @@ func videoGetEDID() (string, error) {
 	defer cgoLock.Unlock()
 
 	edidCStr := C.jetkvm_video_get_edid_hex()
+	if edidCStr == nil {
+		return "", nil
+	}
+	defer C.free(unsafe.Pointer(edidCStr))
 	return C.GoString(edidCStr), nil
 }
 
@@ -468,4 +472,16 @@ func jpegIsRunning() bool {
 	defer cgoLock.Unlock()
 
 	return bool(C.jetkvm_jpeg_is_running())
+}
+
+// Request an IDR (keyframe) from the H.264 encoder
+func videoRequestKeyframe() error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	ret := C.jetkvm_video_request_keyframe()
+	if ret != 0 {
+		return fmt.Errorf("failed to request keyframe: %d", ret)
+	}
+	return nil
 }

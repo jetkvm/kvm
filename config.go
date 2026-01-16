@@ -136,7 +136,7 @@ type Config struct {
 	VNCEnabled         bool   `json:"vnc_enabled"`
 	VNCPort            int    `json:"vnc_port"`              // default: 5900
 	VNCQuality         int    `json:"vnc_quality"`           // JPEG quality 1-99, default: 80
-	VNCUseTLS          bool   `json:"vnc_use_tls"`           // Use TLS for VNC connections
+	VNCUseTLS          bool   `json:"vnc_use_tls"`           // Use TLS for VNC (VeNCrypt) - when enabled and available, rejects insecure connections
 	VNCPassword        string `json:"vnc_password"`          // Separate VNC password (if not using same password)
 	VNCUseSamePassword bool   `json:"vnc_use_same_password"` // Use same password as local auth
 	LocalAuthPassword  string `json:"local_auth_password"`   // Plaintext password for VNC auth

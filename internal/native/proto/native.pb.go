@@ -2645,7 +2645,7 @@ const file_internal_native_proto_native_proto_rawDesc = "" +
 	"VideoFrame\x12\x14\n" +
 	"\x05frame\x18\x01 \x01(\fR\x05frame\x12\x1f\n" +
 	"\vduration_ns\x18\x02 \x01(\x03R\n" +
-	"durationNs2\x9d\x14\n" +
+	"durationNs2\xd3\x14\n" +
 	"\rNativeService\x12:\n" +
 	"\aIsReady\x12\x16.native.IsReadyRequest\x1a\x17.native.IsReadyResponse\x12D\n" +
 	"\x11VideoSetSleepMode\x12 .native.VideoSetSleepModeRequest\x1a\r.native.Empty\x12E\n" +
@@ -2659,6 +2659,7 @@ const file_internal_native_proto_native_proto_rawDesc = "" +
 	"\tVideoStop\x12\r.native.Empty\x1a\r.native.Empty\x12*\n" +
 	"\n" +
 	"VideoStart\x12\r.native.Empty\x1a\r.native.Empty\x124\n" +
+	"\x14VideoRequestKeyframe\x12\r.native.Empty\x1a\r.native.Empty\x124\n" +
 	"\tJpegStart\x12\x18.native.JpegStartRequest\x1a\r.native.Empty\x12(\n" +
 	"\bJpegStop\x12\r.native.Empty\x1a\r.native.Empty\x12>\n" +
 	"\x0eJpegSetQuality\x12\x1d.native.JpegSetQualityRequest\x1a\r.native.Empty\x12?\n" +
@@ -2767,71 +2768,73 @@ var file_internal_native_proto_native_proto_depIdxs = []int32{
 	0,  // 11: native.NativeService.VideoLogStatus:input_type -> native.Empty
 	0,  // 12: native.NativeService.VideoStop:input_type -> native.Empty
 	0,  // 13: native.NativeService.VideoStart:input_type -> native.Empty
-	12, // 14: native.NativeService.JpegStart:input_type -> native.JpegStartRequest
-	0,  // 15: native.NativeService.JpegStop:input_type -> native.Empty
-	13, // 16: native.NativeService.JpegSetQuality:input_type -> native.JpegSetQualityRequest
-	0,  // 17: native.NativeService.JpegGetQuality:input_type -> native.Empty
-	0,  // 18: native.NativeService.JpegIsRunning:input_type -> native.Empty
-	0,  // 19: native.NativeService.GetLVGLVersion:input_type -> native.Empty
-	17, // 20: native.NativeService.UIObjHide:input_type -> native.UIObjHideRequest
-	19, // 21: native.NativeService.UIObjShow:input_type -> native.UIObjShowRequest
-	21, // 22: native.NativeService.UISetVar:input_type -> native.UISetVarRequest
-	22, // 23: native.NativeService.UIGetVar:input_type -> native.UIGetVarRequest
-	24, // 24: native.NativeService.UIObjAddState:input_type -> native.UIObjAddStateRequest
-	26, // 25: native.NativeService.UIObjClearState:input_type -> native.UIObjClearStateRequest
-	28, // 26: native.NativeService.UIObjAddFlag:input_type -> native.UIObjAddFlagRequest
-	30, // 27: native.NativeService.UIObjClearFlag:input_type -> native.UIObjClearFlagRequest
-	32, // 28: native.NativeService.UIObjSetOpacity:input_type -> native.UIObjSetOpacityRequest
-	34, // 29: native.NativeService.UIObjFadeIn:input_type -> native.UIObjFadeInRequest
-	36, // 30: native.NativeService.UIObjFadeOut:input_type -> native.UIObjFadeOutRequest
-	38, // 31: native.NativeService.UIObjSetLabelText:input_type -> native.UIObjSetLabelTextRequest
-	40, // 32: native.NativeService.UIObjSetImageSrc:input_type -> native.UIObjSetImageSrcRequest
-	42, // 33: native.NativeService.DisplaySetRotation:input_type -> native.DisplaySetRotationRequest
-	44, // 34: native.NativeService.UpdateLabelIfChanged:input_type -> native.UpdateLabelIfChangedRequest
-	45, // 35: native.NativeService.UpdateLabelAndChangeVisibility:input_type -> native.UpdateLabelAndChangeVisibilityRequest
-	46, // 36: native.NativeService.SwitchToScreenIf:input_type -> native.SwitchToScreenIfRequest
-	47, // 37: native.NativeService.SwitchToScreenIfDifferent:input_type -> native.SwitchToScreenIfDifferentRequest
-	0,  // 38: native.NativeService.DoNotUseThisIsForCrashTestingOnly:input_type -> native.Empty
-	0,  // 39: native.NativeService.StreamEvents:input_type -> native.Empty
-	2,  // 40: native.NativeService.IsReady:output_type -> native.IsReadyResponse
-	0,  // 41: native.NativeService.VideoSetSleepMode:output_type -> native.Empty
-	5,  // 42: native.NativeService.VideoGetSleepMode:output_type -> native.VideoGetSleepModeResponse
-	6,  // 43: native.NativeService.VideoSleepModeSupported:output_type -> native.VideoSleepModeSupportedResponse
-	0,  // 44: native.NativeService.VideoSetQualityFactor:output_type -> native.Empty
-	8,  // 45: native.NativeService.VideoGetQualityFactor:output_type -> native.VideoGetQualityFactorResponse
-	0,  // 46: native.NativeService.VideoSetEDID:output_type -> native.Empty
-	10, // 47: native.NativeService.VideoGetEDID:output_type -> native.VideoGetEDIDResponse
-	11, // 48: native.NativeService.VideoLogStatus:output_type -> native.VideoLogStatusResponse
-	0,  // 49: native.NativeService.VideoStop:output_type -> native.Empty
-	0,  // 50: native.NativeService.VideoStart:output_type -> native.Empty
-	0,  // 51: native.NativeService.JpegStart:output_type -> native.Empty
-	0,  // 52: native.NativeService.JpegStop:output_type -> native.Empty
-	0,  // 53: native.NativeService.JpegSetQuality:output_type -> native.Empty
-	14, // 54: native.NativeService.JpegGetQuality:output_type -> native.JpegGetQualityResponse
-	15, // 55: native.NativeService.JpegIsRunning:output_type -> native.JpegIsRunningResponse
-	16, // 56: native.NativeService.GetLVGLVersion:output_type -> native.GetLVGLVersionResponse
-	18, // 57: native.NativeService.UIObjHide:output_type -> native.UIObjHideResponse
-	20, // 58: native.NativeService.UIObjShow:output_type -> native.UIObjShowResponse
-	0,  // 59: native.NativeService.UISetVar:output_type -> native.Empty
-	23, // 60: native.NativeService.UIGetVar:output_type -> native.UIGetVarResponse
-	25, // 61: native.NativeService.UIObjAddState:output_type -> native.UIObjAddStateResponse
-	27, // 62: native.NativeService.UIObjClearState:output_type -> native.UIObjClearStateResponse
-	29, // 63: native.NativeService.UIObjAddFlag:output_type -> native.UIObjAddFlagResponse
-	31, // 64: native.NativeService.UIObjClearFlag:output_type -> native.UIObjClearFlagResponse
-	33, // 65: native.NativeService.UIObjSetOpacity:output_type -> native.UIObjSetOpacityResponse
-	35, // 66: native.NativeService.UIObjFadeIn:output_type -> native.UIObjFadeInResponse
-	37, // 67: native.NativeService.UIObjFadeOut:output_type -> native.UIObjFadeOutResponse
-	39, // 68: native.NativeService.UIObjSetLabelText:output_type -> native.UIObjSetLabelTextResponse
-	41, // 69: native.NativeService.UIObjSetImageSrc:output_type -> native.UIObjSetImageSrcResponse
-	43, // 70: native.NativeService.DisplaySetRotation:output_type -> native.DisplaySetRotationResponse
-	0,  // 71: native.NativeService.UpdateLabelIfChanged:output_type -> native.Empty
-	0,  // 72: native.NativeService.UpdateLabelAndChangeVisibility:output_type -> native.Empty
-	0,  // 73: native.NativeService.SwitchToScreenIf:output_type -> native.Empty
-	0,  // 74: native.NativeService.SwitchToScreenIfDifferent:output_type -> native.Empty
-	0,  // 75: native.NativeService.DoNotUseThisIsForCrashTestingOnly:output_type -> native.Empty
-	48, // 76: native.NativeService.StreamEvents:output_type -> native.Event
-	40, // [40:77] is the sub-list for method output_type
-	3,  // [3:40] is the sub-list for method input_type
+	0,  // 14: native.NativeService.VideoRequestKeyframe:input_type -> native.Empty
+	12, // 15: native.NativeService.JpegStart:input_type -> native.JpegStartRequest
+	0,  // 16: native.NativeService.JpegStop:input_type -> native.Empty
+	13, // 17: native.NativeService.JpegSetQuality:input_type -> native.JpegSetQualityRequest
+	0,  // 18: native.NativeService.JpegGetQuality:input_type -> native.Empty
+	0,  // 19: native.NativeService.JpegIsRunning:input_type -> native.Empty
+	0,  // 20: native.NativeService.GetLVGLVersion:input_type -> native.Empty
+	17, // 21: native.NativeService.UIObjHide:input_type -> native.UIObjHideRequest
+	19, // 22: native.NativeService.UIObjShow:input_type -> native.UIObjShowRequest
+	21, // 23: native.NativeService.UISetVar:input_type -> native.UISetVarRequest
+	22, // 24: native.NativeService.UIGetVar:input_type -> native.UIGetVarRequest
+	24, // 25: native.NativeService.UIObjAddState:input_type -> native.UIObjAddStateRequest
+	26, // 26: native.NativeService.UIObjClearState:input_type -> native.UIObjClearStateRequest
+	28, // 27: native.NativeService.UIObjAddFlag:input_type -> native.UIObjAddFlagRequest
+	30, // 28: native.NativeService.UIObjClearFlag:input_type -> native.UIObjClearFlagRequest
+	32, // 29: native.NativeService.UIObjSetOpacity:input_type -> native.UIObjSetOpacityRequest
+	34, // 30: native.NativeService.UIObjFadeIn:input_type -> native.UIObjFadeInRequest
+	36, // 31: native.NativeService.UIObjFadeOut:input_type -> native.UIObjFadeOutRequest
+	38, // 32: native.NativeService.UIObjSetLabelText:input_type -> native.UIObjSetLabelTextRequest
+	40, // 33: native.NativeService.UIObjSetImageSrc:input_type -> native.UIObjSetImageSrcRequest
+	42, // 34: native.NativeService.DisplaySetRotation:input_type -> native.DisplaySetRotationRequest
+	44, // 35: native.NativeService.UpdateLabelIfChanged:input_type -> native.UpdateLabelIfChangedRequest
+	45, // 36: native.NativeService.UpdateLabelAndChangeVisibility:input_type -> native.UpdateLabelAndChangeVisibilityRequest
+	46, // 37: native.NativeService.SwitchToScreenIf:input_type -> native.SwitchToScreenIfRequest
+	47, // 38: native.NativeService.SwitchToScreenIfDifferent:input_type -> native.SwitchToScreenIfDifferentRequest
+	0,  // 39: native.NativeService.DoNotUseThisIsForCrashTestingOnly:input_type -> native.Empty
+	0,  // 40: native.NativeService.StreamEvents:input_type -> native.Empty
+	2,  // 41: native.NativeService.IsReady:output_type -> native.IsReadyResponse
+	0,  // 42: native.NativeService.VideoSetSleepMode:output_type -> native.Empty
+	5,  // 43: native.NativeService.VideoGetSleepMode:output_type -> native.VideoGetSleepModeResponse
+	6,  // 44: native.NativeService.VideoSleepModeSupported:output_type -> native.VideoSleepModeSupportedResponse
+	0,  // 45: native.NativeService.VideoSetQualityFactor:output_type -> native.Empty
+	8,  // 46: native.NativeService.VideoGetQualityFactor:output_type -> native.VideoGetQualityFactorResponse
+	0,  // 47: native.NativeService.VideoSetEDID:output_type -> native.Empty
+	10, // 48: native.NativeService.VideoGetEDID:output_type -> native.VideoGetEDIDResponse
+	11, // 49: native.NativeService.VideoLogStatus:output_type -> native.VideoLogStatusResponse
+	0,  // 50: native.NativeService.VideoStop:output_type -> native.Empty
+	0,  // 51: native.NativeService.VideoStart:output_type -> native.Empty
+	0,  // 52: native.NativeService.VideoRequestKeyframe:output_type -> native.Empty
+	0,  // 53: native.NativeService.JpegStart:output_type -> native.Empty
+	0,  // 54: native.NativeService.JpegStop:output_type -> native.Empty
+	0,  // 55: native.NativeService.JpegSetQuality:output_type -> native.Empty
+	14, // 56: native.NativeService.JpegGetQuality:output_type -> native.JpegGetQualityResponse
+	15, // 57: native.NativeService.JpegIsRunning:output_type -> native.JpegIsRunningResponse
+	16, // 58: native.NativeService.GetLVGLVersion:output_type -> native.GetLVGLVersionResponse
+	18, // 59: native.NativeService.UIObjHide:output_type -> native.UIObjHideResponse
+	20, // 60: native.NativeService.UIObjShow:output_type -> native.UIObjShowResponse
+	0,  // 61: native.NativeService.UISetVar:output_type -> native.Empty
+	23, // 62: native.NativeService.UIGetVar:output_type -> native.UIGetVarResponse
+	25, // 63: native.NativeService.UIObjAddState:output_type -> native.UIObjAddStateResponse
+	27, // 64: native.NativeService.UIObjClearState:output_type -> native.UIObjClearStateResponse
+	29, // 65: native.NativeService.UIObjAddFlag:output_type -> native.UIObjAddFlagResponse
+	31, // 66: native.NativeService.UIObjClearFlag:output_type -> native.UIObjClearFlagResponse
+	33, // 67: native.NativeService.UIObjSetOpacity:output_type -> native.UIObjSetOpacityResponse
+	35, // 68: native.NativeService.UIObjFadeIn:output_type -> native.UIObjFadeInResponse
+	37, // 69: native.NativeService.UIObjFadeOut:output_type -> native.UIObjFadeOutResponse
+	39, // 70: native.NativeService.UIObjSetLabelText:output_type -> native.UIObjSetLabelTextResponse
+	41, // 71: native.NativeService.UIObjSetImageSrc:output_type -> native.UIObjSetImageSrcResponse
+	43, // 72: native.NativeService.DisplaySetRotation:output_type -> native.DisplaySetRotationResponse
+	0,  // 73: native.NativeService.UpdateLabelIfChanged:output_type -> native.Empty
+	0,  // 74: native.NativeService.UpdateLabelAndChangeVisibility:output_type -> native.Empty
+	0,  // 75: native.NativeService.SwitchToScreenIf:output_type -> native.Empty
+	0,  // 76: native.NativeService.SwitchToScreenIfDifferent:output_type -> native.Empty
+	0,  // 77: native.NativeService.DoNotUseThisIsForCrashTestingOnly:output_type -> native.Empty
+	48, // 78: native.NativeService.StreamEvents:output_type -> native.Event
+	41, // [41:79] is the sub-list for method output_type
+	3,  // [3:41] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name
 	3,  // [3:3] is the sub-list for extension extendee
 	0,  // [0:3] is the sub-list for field type_name

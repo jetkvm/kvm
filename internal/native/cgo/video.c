@@ -300,6 +300,11 @@ static void *jpeg_read_stream(void *arg)
     (void)arg;
     void *pData = RK_NULL;
     int s32Ret;
+    int frameCount = 0;
+    int emptyCount = 0;
+
+    fprintf(stderr, "INFO: JPEG READ THREAD: started, streaming_status=%d\n", video_get_streaming_status());
+    fflush(stderr);
 
     VENC_STREAM_S stFrame;
     stFrame.pstPack = malloc(sizeof(VENC_PACK_S));
@@ -310,6 +315,13 @@ static void *jpeg_read_stream(void *arg)
         s32Ret = RK_MPI_VENC_GetStream(JPEG_CHANNEL, &stFrame, 200); // blocks max 200ms
         if (s32Ret == RK_SUCCESS)
         {
+            frameCount++;
+            emptyCount = 0;
+            if (frameCount <= 3 || frameCount % 100 == 0)
+            {
+                fprintf(stderr, "INFO: JPEG READ THREAD: got frame %d, size=%d\n", frameCount, stFrame.pstPack->u32Len);
+                fflush(stderr);
+            }
             pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
             video_send_jpeg_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
             s32Ret = RK_MPI_VENC_ReleaseStream(JPEG_CHANNEL, &stFrame);
@@ -322,14 +334,22 @@ static void *jpeg_read_stream(void *arg)
         {
             if (s32Ret == RK_ERR_VENC_BUF_EMPTY)
             {
+                emptyCount++;
+                if (emptyCount == 1 || emptyCount % 50 == 0)
+                {
+                    fprintf(stderr, "INFO: JPEG READ THREAD: buffer empty (count=%d), streaming_status=%d\n", emptyCount, video_get_streaming_status());
+                    fflush(stderr);
+                }
                 continue;
             }
-            log_error("JPEG: RK_MPI_VENC_GetStream fail %x", s32Ret);
+            fprintf(stderr, "ERROR: JPEG READ THREAD: RK_MPI_VENC_GetStream fail %x\n", s32Ret);
+            fflush(stderr);
             break;
         }
     }
 
-    log_info("exiting jpeg_read_stream");
+    fprintf(stderr, "INFO: JPEG READ THREAD: exiting, total frames=%d, jpeg_running=%d\n", frameCount, jpeg_running ? 1 : 0);
+    fflush(stderr);
     free(stFrame.pstPack);
     return NULL;
 }
@@ -412,6 +432,24 @@ int jpeg_encoder_start(int quality)
 
     fprintf(stderr, "INFO: JPEG: Starting channel with %dx%d quality=%d\n", jpeg_width, jpeg_height, jpeg_quality);
     fflush(stderr);
+
+    // Check if video streaming is running - JPEG encoder needs it to receive frames
+    uint8_t streaming_status = video_get_streaming_status();
+    fprintf(stderr, "INFO: JPEG: streaming_status=%d (0=stopped, 1=running, 2=stopping)\n", streaming_status);
+    fflush(stderr);
+
+    if (streaming_status == 0)
+    {
+        // Streaming is stopped - need to start it for JPEG to work
+        fprintf(stderr, "INFO: JPEG: video streaming is stopped, starting it now\n");
+        fflush(stderr);
+        video_start_streaming();
+        // Wait a bit for streaming to start
+        usleep(500000); // 500ms
+        streaming_status = video_get_streaming_status();
+        fprintf(stderr, "INFO: JPEG: after starting, streaming_status=%d\n", streaming_status);
+        fflush(stderr);
+    }
 
     int32_t ret = jpeg_channel_start(jpeg_width, jpeg_height, jpeg_quality);
     if (ret != RK_SUCCESS)
@@ -1215,4 +1253,25 @@ void video_set_quality_factor(float factor)
 
 float video_get_quality_factor() {
     return quality_factor;
+}
+
+// Request an IDR (keyframe) from the H.264 encoder
+// This is useful for new clients that need to start decoding from a keyframe
+int video_request_keyframe()
+{
+    if (!venc_running)
+    {
+        log_warn("Cannot request keyframe: encoder not running");
+        return -1;
+    }
+
+    int32_t ret = RK_MPI_VENC_RequestIDR(VENC_CHANNEL, RK_FALSE);
+    if (ret != RK_SUCCESS)
+    {
+        log_error("RK_MPI_VENC_RequestIDR failed: %d", ret);
+        return -1;
+    }
+
+    log_info("Keyframe (IDR) requested from encoder");
+    return 0;
 }

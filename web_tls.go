@@ -2,7 +2,11 @@ package kvm
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -64,6 +68,76 @@ func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 
 	websecureLogger.Info().Msg("TLS mode is disabled but WebSecure is running, returning nil")
 	return nil, nil
+}
+
+// getVNCCertificatePEM returns the certificate and private key as PEM strings
+// for use with OpenSSL-based VNC TLS. This allows hardware-accelerated crypto.
+func getVNCCertificatePEM() (certPEM string, keyPEM string, err error) {
+	var tlsCert *tls.Certificate
+
+	switch config.TLSMode {
+	case "self-signed":
+		if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
+			return "", "", fmt.Errorf("time is not synced")
+		}
+		// For self-signed, use the default domain certificate
+		// Create a mock ClientHelloInfo to trigger certificate generation
+		tlsCert, err = certSigner.GetCertificate(&tls.ClientHelloInfo{
+			ServerName: webSecureSelfSignedDefaultDomain,
+		})
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get self-signed certificate: %w", err)
+		}
+	case "custom":
+		tlsCert = certStore.GetCertificate(webSecureCustomCertificateName)
+		if tlsCert == nil {
+			return "", "", fmt.Errorf("custom certificate not found")
+		}
+	default:
+		return "", "", fmt.Errorf("TLS mode is disabled")
+	}
+
+	if tlsCert == nil {
+		return "", "", fmt.Errorf("no certificate available")
+	}
+
+	// Convert certificate chain to PEM
+	var certPEMBytes []byte
+	for _, certDER := range tlsCert.Certificate {
+		block := pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: certDER,
+		}
+		certPEMBytes = append(certPEMBytes, pem.EncodeToMemory(&block)...)
+	}
+
+	// Convert private key to PEM
+	var keyBlock pem.Block
+	switch k := tlsCert.PrivateKey.(type) {
+	case *rsa.PrivateKey:
+		keyBlock = pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(k),
+		}
+	case *ecdsa.PrivateKey:
+		b, e := x509.MarshalECPrivateKey(k)
+		if e != nil {
+			return "", "", fmt.Errorf("failed to marshal EC private key: %v", e)
+		}
+		keyBlock = pem.Block{
+			Type:  "EC PRIVATE KEY",
+			Bytes: b,
+		}
+	case ed25519.PrivateKey:
+		keyBlock = pem.Block{
+			Type:  "ED25519 PRIVATE KEY",
+			Bytes: k,
+		}
+	default:
+		return "", "", fmt.Errorf("unknown private key type: %T", tlsCert.PrivateKey)
+	}
+
+	return string(certPEMBytes), string(pem.EncodeToMemory(&keyBlock)), nil
 }
 
 func getTLSState() TLSState {

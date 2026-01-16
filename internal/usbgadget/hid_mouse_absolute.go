@@ -51,16 +51,24 @@ var absoluteMouseCombinedReportDesc = []byte{
 	0x81, 0x02, //         Input (Data, Var, Abs)
 	0xC0, //     End Collection
 
-	// Report ID 2: Relative Wheel Movement
+	// Report ID 2: Vertical and Horizontal Wheel
 	0x85, 0x02, //     Report ID (2)
-	0x09, 0x38, //     Usage (Wheel)
+	0x09, 0x38, //     Usage (Wheel) - Vertical scroll
 	0x15, 0x81, //     Logical Minimum (-127)
 	0x25, 0x7F, //     Logical Maximum (127)
-	0x35, 0x00, //     Physical Minimum (0) = Reset Physical Minimum
-	0x45, 0x00, //     Physical Maximum (0) = Reset Physical Maximum
+	0x35, 0x00, //     Physical Minimum (0)
+	0x45, 0x00, //     Physical Maximum (0)
 	0x75, 0x08, //     Report Size (8)
 	0x95, 0x01, //     Report Count (1)
 	0x81, 0x06, //     Input (Data, Var, Rel)
+
+	0x05, 0x0C,       //     Usage Page (Consumer)
+	0x0A, 0x38, 0x02, //     Usage (AC Pan) - Horizontal scroll
+	0x15, 0x81,       //     Logical Minimum (-127)
+	0x25, 0x7F,       //     Logical Maximum (127)
+	0x75, 0x08,       //     Report Size (8)
+	0x95, 0x01,       //     Report Count (1)
+	0x81, 0x06,       //     Input (Data, Var, Rel)
 
 	0xC0, // End Collection
 }
@@ -105,18 +113,19 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	return nil
 }
 
-func (u *UsbGadget) AbsMouseWheelReport(wheelY int8) error {
+func (u *UsbGadget) AbsMouseWheelReport(wheelY int8, wheelX int8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
-	// Only send a report if the value is non-zero
-	if wheelY == 0 {
+	// Only send a report if at least one value is non-zero
+	if wheelY == 0 && wheelX == 0 {
 		return nil
 	}
 
 	err := u.absMouseWriteHidFile([]byte{
 		2,            // Report ID 2
-		byte(wheelY), // Wheel Y (signed)
+		byte(wheelY), // Wheel Y - vertical scroll (signed)
+		byte(wheelX), // Wheel X - horizontal scroll (signed)
 	})
 
 	u.resetUserInputTime()

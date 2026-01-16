@@ -25,3 +25,9 @@ func (c *TLSConn) LocalAddr() net.Addr         { return nil }
 func (c *TLSConn) RemoteAddr() net.Addr        { return nil }
 func (c *TLSConn) GetCipherName() string       { return "" }
 func (c *TLSConn) GetProtocolVersion() string  { return "" }
+
+// IsHardwareCryptoEnabled returns false on non-Linux/ARM platforms
+func IsHardwareCryptoEnabled() bool { return false }
+
+// GetHardwareCryptoEngine returns "none" on non-Linux/ARM platforms
+func GetHardwareCryptoEngine() string { return "none (platform not supported)" }

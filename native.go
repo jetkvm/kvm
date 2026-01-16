@@ -38,6 +38,11 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			lastVideoState = state
 			triggerVideoStateUpdate()
 			requestDisplayUpdate(true, "video_state_changed")
+
+			// Update VNC server with video resolution
+			if state.Width > 0 && state.Height > 0 {
+				GetVNCServer().UpdateVideoState(uint16(state.Width), uint16(state.Height))
+			}
 		},
 		OnIndevEvent: func(event string) {
 			nativeLogger.Trace().Str("event", event).Msg("indev event received")
@@ -67,6 +72,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
+			// Send to WebRTC session
 			if currentSession != nil {
 				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
 				if err != nil {

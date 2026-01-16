@@ -97,12 +97,15 @@ func RunNativeProcess(binaryName string) {
 
 	// Connect to JPEG stream socket
 	var jpegConn net.Conn
+	logger.Warn().Str("jpegStreamSocketPath", proxyOptions.JpegStreamUnixSocket).Msg("JPEG socket: attempting to connect...")
 	if proxyOptions.JpegStreamUnixSocket != "" {
 		jpegConn, err = net.Dial("unix", proxyOptions.JpegStreamUnixSocket)
 		if err != nil {
-			logger.Fatal().Err(err).Msg("failed to connect to JPEG stream socket")
+			logger.Fatal().Err(err).Msg("JPEG socket: FAILED to connect")
 		}
-		logger.Info().Str("jpegStreamSocketPath", proxyOptions.JpegStreamUnixSocket).Msg("connected to JPEG stream socket")
+		logger.Warn().Str("jpegStreamSocketPath", proxyOptions.JpegStreamUnixSocket).Msg("JPEG socket: CONNECTED successfully")
+	} else {
+		logger.Warn().Msg("JPEG socket: path is EMPTY, skipping connection")
 	}
 
 	nativeOptions := proxyOptions.toNativeOptions()
@@ -135,20 +138,29 @@ func RunNativeProcess(binaryName string) {
 	if jpegConn != nil {
 		go func() {
 			jpegChan := GetJPEGFrameChannel()
+			frameCount := 0
+			logger.Warn().Msg("JPEG forwarder: goroutine started, waiting for frames...")
 			for frame := range jpegChan {
+				frameCount++
+				if frameCount <= 3 || frameCount%100 == 0 {
+					logger.Warn().Int("frameCount", frameCount).Int("frameSize", len(frame)).Msg("JPEG forwarder: forwarding frame to parent")
+				}
 				var frameSizeBuffer [4]byte
 				binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
 
 				if _, err := jpegConn.Write(frameSizeBuffer[:]); err != nil {
-					logger.Warn().Err(err).Msg("failed to write JPEG frame size to socket")
+					logger.Warn().Err(err).Msg("JPEG forwarder: failed to write frame size to socket")
 					return
 				}
 				if _, err := jpegConn.Write(frame); err != nil {
-					logger.Warn().Err(err).Msg("failed to write JPEG frame to socket")
+					logger.Warn().Err(err).Msg("JPEG forwarder: failed to write frame to socket")
 					return
 				}
 			}
+			logger.Warn().Int("totalFrames", frameCount).Msg("JPEG forwarder: channel closed")
 		}()
+	} else {
+		logger.Warn().Msg("JPEG forwarder: jpegConn is nil, not starting forwarder")
 	}
 
 	grpcLogger := logger.With().Str("socketPath", fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket)).Logger()

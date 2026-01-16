@@ -222,3 +222,8 @@ func (n *Native) JpegGetQuality() (int, error) {
 func (n *Native) JpegIsRunning() (bool, error) {
 	return jpegIsRunning(), nil
 }
+
+// VideoRequestKeyframe requests an IDR (keyframe) from the H.264 encoder
+func (n *Native) VideoRequestKeyframe() error {
+	return videoRequestKeyframe()
+}

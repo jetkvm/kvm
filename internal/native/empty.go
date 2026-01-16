@@ -120,3 +120,6 @@ func (e *EmptyNativeInterface) JpegSetQuality(quality int) error { return nil }
 func (e *EmptyNativeInterface) JpegGetQuality() (int, error) { return 0, nil }
 
 func (e *EmptyNativeInterface) JpegIsRunning() (bool, error) { return false, nil }
+
+// H.264 encoder methods
+func (e *EmptyNativeInterface) VideoRequestKeyframe() error { return nil }

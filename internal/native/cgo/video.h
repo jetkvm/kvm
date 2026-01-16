@@ -90,4 +90,14 @@ int jpeg_encoder_get_quality();
  */
 bool jpeg_encoder_is_running();
 
+/**
+ * @brief Request an IDR (keyframe) from the H.264 encoder
+ *
+ * This forces the encoder to produce an instant decoder refresh frame,
+ * which is useful for new clients that need to start decoding from a keyframe.
+ *
+ * @return int 0 on success, -1 on failure
+ */
+int video_request_keyframe();
+
 #endif //VIDEO_DAEMON_VIDEO_H

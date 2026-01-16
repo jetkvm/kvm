@@ -30,6 +30,7 @@ const (
 	NativeService_VideoLogStatus_FullMethodName                    = "/native.NativeService/VideoLogStatus"
 	NativeService_VideoStop_FullMethodName                         = "/native.NativeService/VideoStop"
 	NativeService_VideoStart_FullMethodName                        = "/native.NativeService/VideoStart"
+	NativeService_VideoRequestKeyframe_FullMethodName              = "/native.NativeService/VideoRequestKeyframe"
 	NativeService_JpegStart_FullMethodName                         = "/native.NativeService/JpegStart"
 	NativeService_JpegStop_FullMethodName                          = "/native.NativeService/JpegStop"
 	NativeService_JpegSetQuality_FullMethodName                    = "/native.NativeService/JpegSetQuality"
@@ -77,6 +78,7 @@ type NativeServiceClient interface {
 	VideoLogStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*VideoLogStatusResponse, error)
 	VideoStop(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
 	VideoStart(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
+	VideoRequestKeyframe(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
 	// JPEG encoder methods
 	JpegStart(ctx context.Context, in *JpegStartRequest, opts ...grpc.CallOption) (*Empty, error)
 	JpegStop(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
@@ -221,6 +223,16 @@ func (c *nativeServiceClient) VideoStart(ctx context.Context, in *Empty, opts ..
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Empty)
 	err := c.cc.Invoke(ctx, NativeService_VideoStart_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nativeServiceClient) VideoRequestKeyframe(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, NativeService_VideoRequestKeyframe_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -515,6 +527,7 @@ type NativeServiceServer interface {
 	VideoLogStatus(context.Context, *Empty) (*VideoLogStatusResponse, error)
 	VideoStop(context.Context, *Empty) (*Empty, error)
 	VideoStart(context.Context, *Empty) (*Empty, error)
+	VideoRequestKeyframe(context.Context, *Empty) (*Empty, error)
 	// JPEG encoder methods
 	JpegStart(context.Context, *JpegStartRequest) (*Empty, error)
 	JpegStop(context.Context, *Empty) (*Empty, error)
@@ -587,6 +600,9 @@ func (UnimplementedNativeServiceServer) VideoStop(context.Context, *Empty) (*Emp
 }
 func (UnimplementedNativeServiceServer) VideoStart(context.Context, *Empty) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method VideoStart not implemented")
+}
+func (UnimplementedNativeServiceServer) VideoRequestKeyframe(context.Context, *Empty) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method VideoRequestKeyframe not implemented")
 }
 func (UnimplementedNativeServiceServer) JpegStart(context.Context, *JpegStartRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method JpegStart not implemented")
@@ -881,6 +897,24 @@ func _NativeService_VideoStart_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NativeServiceServer).VideoStart(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NativeService_VideoRequestKeyframe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NativeServiceServer).VideoRequestKeyframe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NativeService_VideoRequestKeyframe_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NativeServiceServer).VideoRequestKeyframe(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1396,6 +1430,10 @@ var NativeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VideoStart",
 			Handler:    _NativeService_VideoStart_Handler,
+		},
+		{
+			MethodName: "VideoRequestKeyframe",
+			Handler:    _NativeService_VideoRequestKeyframe_Handler,
 		},
 		{
 			MethodName: "JpegStart",

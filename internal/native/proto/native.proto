@@ -20,6 +20,7 @@ service NativeService {
   rpc VideoLogStatus(Empty) returns (VideoLogStatusResponse);
   rpc VideoStop(Empty) returns (Empty);
   rpc VideoStart(Empty) returns (Empty);
+  rpc VideoRequestKeyframe(Empty) returns (Empty);
 
   // JPEG encoder methods
   rpc JpegStart(JpegStartRequest) returns (Empty);

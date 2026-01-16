@@ -513,3 +513,8 @@ int jetkvm_jpeg_get_quality() {
 bool jetkvm_jpeg_is_running() {
     return jpeg_encoder_is_running();
 }
+
+// Request an IDR (keyframe) from the H.264 encoder
+int jetkvm_video_request_keyframe() {
+    return video_request_keyframe();
+}

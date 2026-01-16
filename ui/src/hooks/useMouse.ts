@@ -120,25 +120,22 @@ export default function useMouse() {
         return;
       }
 
-      // Determine if the wheel event is an accel scroll value
-      const isAccel = Math.abs(e.deltaY) >= 100;
+      // Calculate vertical scroll
+      const isAccelY = Math.abs(e.deltaY) >= 100;
+      const scrollValueY = isAccelY ? e.deltaY / 100 : Math.sign(e.deltaY);
+      const clampedScrollY = Math.max(-127, Math.min(127, scrollValueY));
+      const wheelY = -clampedScrollY; // Invert to match expected behavior
 
-      // Calculate the accel scroll value
-      const accelScrollValue = e.deltaY / 100;
+      // Calculate horizontal scroll
+      const isAccelX = Math.abs(e.deltaX) >= 100;
+      const scrollValueX = isAccelX ? e.deltaX / 100 : Math.sign(e.deltaX);
+      const clampedScrollX = Math.max(-127, Math.min(127, scrollValueX));
+      const wheelX = clampedScrollX;
 
-      // Calculate the no accel scroll value
-      const noAccelScrollValue = Math.sign(e.deltaY);
-
-      // Get scroll value
-      const scrollValue = isAccel ? accelScrollValue : noAccelScrollValue;
-
-      // Apply clamping (i.e. min and max mouse wheel hardware value)
-      const clampedScrollValue = Math.max(-127, Math.min(127, scrollValue));
-
-      // Invert the clamped scroll value to match expected behavior
-      const invertedScrollValue = -clampedScrollValue;
-
-      send("wheelReport", { wheelY: invertedScrollValue });
+      // Only send if there's actual scroll movement
+      if (wheelY !== 0 || wheelX !== 0) {
+        send("wheelReport", { wheelY, wheelX });
+      }
 
       // Apply blocking delay based of throttling settings
       if (scrollThrottling && !blockWheelEvent) {

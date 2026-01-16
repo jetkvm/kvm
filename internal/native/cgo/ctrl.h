@@ -79,6 +79,7 @@ int jetkvm_jpeg_set_quality(int quality);
 int jetkvm_jpeg_get_quality();
 bool jetkvm_jpeg_is_running();
 
-
+// H.264 encoder control
+int jetkvm_video_request_keyframe();
 
 #endif //VIDEO_DAEMON_CTRL_H

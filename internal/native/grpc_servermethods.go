@@ -83,6 +83,13 @@ func (s *grpcServer) VideoStart(ctx context.Context, req *pb.Empty) (*pb.Empty, 
 	return &pb.Empty{}, nil
 }
 
+func (s *grpcServer) VideoRequestKeyframe(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	if err := s.native.VideoRequestKeyframe(); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
 // UI methods
 func (s *grpcServer) GetLVGLVersion(ctx context.Context, req *pb.Empty) (*pb.GetLVGLVersionResponse, error) {
 	version, err := s.native.GetLVGLVersion()

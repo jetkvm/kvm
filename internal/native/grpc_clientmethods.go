@@ -242,3 +242,9 @@ func (c *GRPCClient) JpegIsRunning() (bool, error) {
 	}
 	return resp.Running, nil
 }
+
+// H.264 encoder methods
+func (c *GRPCClient) VideoRequestKeyframe() error {
+	_, err := c.client.VideoRequestKeyframe(context.Background(), &pb.Empty{})
+	return err
+}

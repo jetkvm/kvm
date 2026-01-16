@@ -215,23 +215,25 @@ func (p *NativeProxy) startJpegStreamListener() error {
 	}
 
 	logger := p.logger.With().Str("socketPath", p.jpegStreamUnixSocket).Logger()
+	logger.Warn().Msg("JPEG stream listener: starting...")
 	listener, err := net.Listen("unix", p.jpegStreamUnixSocket)
 	if err != nil {
-		logger.Warn().Err(err).Msg("failed to start JPEG stream listener")
+		logger.Error().Err(err).Msg("JPEG stream listener: FAILED to start")
 		return fmt.Errorf("failed to start JPEG stream listener: %w", err)
 	}
-	logger.Info().Msg("JPEG stream listener started")
+	logger.Warn().Msg("JPEG stream listener: STARTED successfully")
 	p.jpegStreamListener = listener
 
 	go func() {
+		logger.Warn().Msg("JPEG stream listener: waiting for connections...")
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logger.Warn().Err(err).Msg("failed to accept JPEG socket")
+				logger.Warn().Err(err).Msg("JPEG stream listener: failed to accept connection")
 				continue
 			}
 
-			logger.Info().Msg("JPEG stream socket accepted")
+			logger.Warn().Msg("JPEG stream listener: CONNECTION ACCEPTED from subprocess")
 			go p.handleJpegFrame(conn)
 		}
 	}()
@@ -344,14 +346,14 @@ func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 	var frameSizeBuffer [4]byte
 	frameCount := 0
 
-	p.logger.Info().Msg("JPEG frame handler started")
+	p.logger.Warn().Msg("JPEG frame handler: STARTED, waiting for frames from subprocess...")
 
 	for {
 		// Read 4-byte frame length prefix
 		_, err := io.ReadFull(conn, frameSizeBuffer[:])
 		if err != nil {
 			if err != io.EOF {
-				p.logger.Warn().Err(err).Msg("failed to read JPEG frame size from socket")
+				p.logger.Warn().Err(err).Msg("JPEG frame handler: failed to read frame size")
 			}
 			break
 		}
@@ -359,23 +361,26 @@ func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
 		if frameSize == 0 || frameSize > maxFrameSize {
 			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
-				Msg("received invalid JPEG frame size")
+				Msg("JPEG frame handler: invalid frame size")
 			break
 		}
 
 		// Read the actual frame data
 		_, err = io.ReadFull(conn, inboundPacket[:frameSize])
 		if err != nil {
-			p.logger.Warn().Err(err).Msg("failed to read JPEG frame from socket")
+			p.logger.Warn().Err(err).Msg("JPEG frame handler: failed to read frame data")
 			break
 		}
 
 		frameCount++
+		if frameCount <= 3 || frameCount%100 == 0 {
+			p.logger.Warn().Int("frameCount", frameCount).Uint32("frameSize", frameSize).Msg("JPEG frame handler: received frame, calling callback")
+		}
 		if p.options.OnJpegFrameReceived != nil {
 			p.options.OnJpegFrameReceived(inboundPacket[:frameSize])
 		}
 	}
-	p.logger.Info().Int("totalFrames", frameCount).Msg("JPEG frame handler stopped")
+	p.logger.Warn().Int("totalFrames", frameCount).Msg("JPEG frame handler: STOPPED")
 }
 
 // it should be only called by start() method, as it isn't thread-safe
@@ -844,4 +849,11 @@ func (p *NativeProxy) JpegIsRunning() (bool, error) {
 	}
 
 	return p.client.JpegIsRunning()
+}
+
+// VideoRequestKeyframe requests an IDR (keyframe) from the H.264 encoder
+func (p *NativeProxy) VideoRequestKeyframe() error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoRequestKeyframe()
+	})
 }
