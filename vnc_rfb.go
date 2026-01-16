@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/vnctls"
 )
 
@@ -920,8 +921,12 @@ func (c *VNCConnection) handleClientCutText() error {
 		if _, err := io.ReadFull(c.conn, c.cutTextBuf); err != nil {
 			return fmt.Errorf("failed to read cut text: %w", err)
 		}
-		// Clipboard sharing cannot be implemented in hardware KVM - USB HID has no clipboard injection capability
-		vncLogger.Info().Uint32("bytes", length).Msg("VNC clipboard data received (hardware KVM cannot inject clipboard via USB HID)")
+
+		// Type clipboard text as keyboard input (en-US layout)
+		// This emulates clipboard paste by typing each character via USB HID
+		if err := typeClipboardText(c.cutTextBuf); err != nil {
+			vncLogger.Warn().Err(err).Uint32("bytes", length).Msg("VNC clipboard: failed to type text")
+		}
 	}
 
 	return nil
@@ -1063,6 +1068,156 @@ func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
 			}
 		}
 	}
+}
+
+// Clipboard typing constants
+const (
+	// Delay between keystrokes when typing clipboard text (milliseconds)
+	clipboardTypeDelayMs = 20
+	// Delay after releasing keys before next character
+	clipboardReleaseDelayMs = 20
+)
+
+// keystroke represents a single key press with optional modifiers
+type keystroke struct {
+	hidKey   uint8 // HID key code
+	modifier uint8 // Modifier bitmask (Shift=0x02)
+}
+
+// HID modifier constants
+const (
+	hidModShiftLeft = 0x02
+)
+
+// charToKeystroke maps ASCII printable characters to HID keystrokes for en-US layout.
+// This enables VNC clipboard text to be typed as keyboard input.
+var charToKeystroke = map[byte]keystroke{
+	// Lowercase letters (no modifier)
+	'a': {0x04, 0}, 'b': {0x05, 0}, 'c': {0x06, 0}, 'd': {0x07, 0},
+	'e': {0x08, 0}, 'f': {0x09, 0}, 'g': {0x0A, 0}, 'h': {0x0B, 0},
+	'i': {0x0C, 0}, 'j': {0x0D, 0}, 'k': {0x0E, 0}, 'l': {0x0F, 0},
+	'm': {0x10, 0}, 'n': {0x11, 0}, 'o': {0x12, 0}, 'p': {0x13, 0},
+	'q': {0x14, 0}, 'r': {0x15, 0}, 's': {0x16, 0}, 't': {0x17, 0},
+	'u': {0x18, 0}, 'v': {0x19, 0}, 'w': {0x1A, 0}, 'x': {0x1B, 0},
+	'y': {0x1C, 0}, 'z': {0x1D, 0},
+
+	// Uppercase letters (Shift modifier)
+	'A': {0x04, hidModShiftLeft}, 'B': {0x05, hidModShiftLeft}, 'C': {0x06, hidModShiftLeft}, 'D': {0x07, hidModShiftLeft},
+	'E': {0x08, hidModShiftLeft}, 'F': {0x09, hidModShiftLeft}, 'G': {0x0A, hidModShiftLeft}, 'H': {0x0B, hidModShiftLeft},
+	'I': {0x0C, hidModShiftLeft}, 'J': {0x0D, hidModShiftLeft}, 'K': {0x0E, hidModShiftLeft}, 'L': {0x0F, hidModShiftLeft},
+	'M': {0x10, hidModShiftLeft}, 'N': {0x11, hidModShiftLeft}, 'O': {0x12, hidModShiftLeft}, 'P': {0x13, hidModShiftLeft},
+	'Q': {0x14, hidModShiftLeft}, 'R': {0x15, hidModShiftLeft}, 'S': {0x16, hidModShiftLeft}, 'T': {0x17, hidModShiftLeft},
+	'U': {0x18, hidModShiftLeft}, 'V': {0x19, hidModShiftLeft}, 'W': {0x1A, hidModShiftLeft}, 'X': {0x1B, hidModShiftLeft},
+	'Y': {0x1C, hidModShiftLeft}, 'Z': {0x1D, hidModShiftLeft},
+
+	// Digits (no modifier)
+	'1': {0x1E, 0}, '2': {0x1F, 0}, '3': {0x20, 0}, '4': {0x21, 0},
+	'5': {0x22, 0}, '6': {0x23, 0}, '7': {0x24, 0}, '8': {0x25, 0},
+	'9': {0x26, 0}, '0': {0x27, 0},
+
+	// Shifted digits -> symbols
+	'!': {0x1E, hidModShiftLeft}, // Shift+1
+	'@': {0x1F, hidModShiftLeft}, // Shift+2
+	'#': {0x20, hidModShiftLeft}, // Shift+3
+	'$': {0x21, hidModShiftLeft}, // Shift+4
+	'%': {0x22, hidModShiftLeft}, // Shift+5
+	'^': {0x23, hidModShiftLeft}, // Shift+6
+	'&': {0x24, hidModShiftLeft}, // Shift+7
+	'*': {0x25, hidModShiftLeft}, // Shift+8
+	'(': {0x26, hidModShiftLeft}, // Shift+9
+	')': {0x27, hidModShiftLeft}, // Shift+0
+
+	// Common punctuation (en-US layout)
+	'-':  {0x2D, 0},              // Minus
+	'_':  {0x2D, hidModShiftLeft}, // Underscore (Shift+Minus)
+	'=':  {0x2E, 0},              // Equal
+	'+':  {0x2E, hidModShiftLeft}, // Plus (Shift+Equal)
+	'[':  {0x2F, 0},              // Left bracket
+	'{':  {0x2F, hidModShiftLeft}, // Left brace (Shift+[)
+	']':  {0x30, 0},              // Right bracket
+	'}':  {0x30, hidModShiftLeft}, // Right brace (Shift+])
+	'\\': {0x31, 0},              // Backslash
+	'|':  {0x31, hidModShiftLeft}, // Pipe (Shift+\)
+	';':  {0x33, 0},              // Semicolon
+	':':  {0x33, hidModShiftLeft}, // Colon (Shift+;)
+	'\'': {0x34, 0},              // Single quote
+	'"':  {0x34, hidModShiftLeft}, // Double quote (Shift+')
+	'`':  {0x35, 0},              // Grave accent
+	'~':  {0x35, hidModShiftLeft}, // Tilde (Shift+`)
+	',':  {0x36, 0},              // Comma
+	'<':  {0x36, hidModShiftLeft}, // Less than (Shift+,)
+	'.':  {0x37, 0},              // Period
+	'>':  {0x37, hidModShiftLeft}, // Greater than (Shift+.)
+	'/':  {0x38, 0},              // Slash
+	'?':  {0x38, hidModShiftLeft}, // Question mark (Shift+/)
+
+	// Whitespace
+	' ':  {0x2C, 0}, // Space
+	'\t': {0x2B, 0}, // Tab
+	'\n': {0x28, 0}, // Enter (newline)
+	'\r': {0x28, 0}, // Enter (carriage return)
+}
+
+// textToMacroSteps converts text to keyboard macro steps for typing via USB HID.
+// Characters not in the en-US keyboard mapping are skipped.
+// Returns the macro steps and count of skipped characters.
+func textToMacroSteps(text []byte) ([]hidrpc.KeyboardMacroStep, int) {
+	// Pre-allocate: each character needs 2 steps (press + release)
+	steps := make([]hidrpc.KeyboardMacroStep, 0, len(text)*2)
+	skipped := 0
+
+	// Pre-allocate key buffers (reused for efficiency)
+	emptyKeys := make([]byte, hidrpc.HidKeyBufferSize)
+
+	for _, char := range text {
+		ks, ok := charToKeystroke[char]
+		if !ok {
+			skipped++
+			continue
+		}
+
+		// Key press step
+		keys := make([]byte, hidrpc.HidKeyBufferSize)
+		keys[0] = ks.hidKey
+		steps = append(steps, hidrpc.KeyboardMacroStep{
+			Modifier: ks.modifier,
+			Keys:     keys,
+			Delay:    clipboardTypeDelayMs,
+		})
+
+		// Key release step (all zeros)
+		releaseKeys := make([]byte, hidrpc.HidKeyBufferSize)
+		copy(releaseKeys, emptyKeys)
+		steps = append(steps, hidrpc.KeyboardMacroStep{
+			Modifier: 0,
+			Keys:     releaseKeys,
+			Delay:    clipboardReleaseDelayMs,
+		})
+	}
+
+	return steps, skipped
+}
+
+// typeClipboardText types the given text via keyboard macro.
+// This implements VNC clipboard-as-keystrokes functionality.
+func typeClipboardText(text []byte) error {
+	if len(text) == 0 {
+		return nil
+	}
+
+	steps, skipped := textToMacroSteps(text)
+	if len(steps) == 0 {
+		vncLogger.Debug().Int("skipped", skipped).Msg("VNC clipboard: no typeable characters")
+		return nil
+	}
+
+	if skipped > 0 {
+		vncLogger.Debug().Int("skipped", skipped).Int("typed", len(steps)/2).Msg("VNC clipboard: some characters skipped (not in en-US layout)")
+	}
+
+	vncLogger.Info().Int("chars", len(steps)/2).Msg("VNC clipboard: typing text via keyboard")
+
+	return rpcExecuteKeyboardMacro(steps)
 }
 
 // keysymToHID converts X11 keysym codes (used by VNC/RFB protocol) to USB HID usage codes.
