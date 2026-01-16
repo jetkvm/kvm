@@ -16,6 +16,17 @@ const (
 	maxVNCConnections = 10
 	// Rate limit: minimum time between new connections from same IP
 	connectionRateLimitMs = 100
+	// Default VNC port (standard RFB port)
+	defaultVNCPort = 5900
+	// Default resolution when no video signal detected
+	defaultWidth  = 1920
+	defaultHeight = 1080
+	// Rate limit map cleanup threshold
+	rateLimitCleanupThreshold = 50
+	// Rate limit entry expiry duration
+	rateLimitExpirySeconds = 60
+	// Frame stats logging interval in seconds
+	frameStatsIntervalSeconds = 5
 )
 
 type VNCServer struct {
@@ -53,7 +64,7 @@ var (
 func GetVNCServer() *VNCServer {
 	vncServerOnce.Do(func() {
 		vncServer = &VNCServer{
-			port:         5900,
+			port:         defaultVNCPort,
 			stopChan:     make(chan struct{}),
 			lastConnTime: make(map[string]time.Time),
 		}
@@ -252,9 +263,9 @@ func (s *VNCServer) checkRateLimit(ip string) bool {
 	}
 	s.lastConnTime[ip] = now
 
-	// Clean up entries older than 1 minute when map exceeds 50 entries
-	if len(s.lastConnTime) > 50 {
-		cutoff := now.Add(-time.Minute)
+	// Clean up entries older than rateLimitExpirySeconds when map exceeds threshold
+	if len(s.lastConnTime) > rateLimitCleanupThreshold {
+		cutoff := now.Add(-time.Duration(rateLimitExpirySeconds) * time.Second)
 		for k, v := range s.lastConnTime {
 			if v.Before(cutoff) {
 				delete(s.lastConnTime, k)
@@ -451,10 +462,10 @@ func NewVNCConnection(conn net.Conn, server *VNCServer) *VNCConnection {
 
 	// Use detected resolution, or default if no video signal yet
 	if w == 0 {
-		w = 1920
+		w = defaultWidth
 	}
 	if h == 0 {
-		h = 1080
+		h = defaultHeight
 	}
 
 	vc := &VNCConnection{
@@ -539,10 +550,10 @@ func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
 	c.framesSent.Add(1)
 	c.intervalSent.Add(1)
 
-	// Log frame stats every 5 seconds
+	// Log frame stats periodically
 	now := time.Now().Unix()
 	lastLog := c.lastFrameLog.Load()
-	if now-lastLog >= 5 && c.lastFrameLog.CompareAndSwap(lastLog, now) {
+	if now-lastLog >= frameStatsIntervalSeconds && c.lastFrameLog.CompareAndSwap(lastLog, now) {
 		// Cumulative stats
 		totalSent := c.framesSent.Load()
 		totalDropped := c.framesDropped.Load()

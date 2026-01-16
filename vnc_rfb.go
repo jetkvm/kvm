@@ -57,10 +57,24 @@ const (
 
 	// Authentication failure delay to prevent brute-force attacks
 	authFailureDelay = 2 * time.Second
+
+	// Timeouts for various operations
+	handshakeTimeout = 30 * time.Second
+	readTimeout      = 60 * time.Second
+	writeTimeout     = 5 * time.Second
+
+	// VNC auth challenge/response size (DES block size * 2)
+	vncChallengeSize = 16
+
+	// Maximum plaintext auth credential length
+	maxCredentialLength = 256
+
+	// Maximum clipboard text size (1MB to prevent OOM on embedded device)
+	maxCutTextLength = 1024 * 1024
 )
 
 func (c *VNCConnection) handshake() error {
-	if err := c.conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+	if err := c.conn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
 		return fmt.Errorf("failed to set handshake deadline: %w", err)
 	}
 	defer func() {
@@ -103,7 +117,7 @@ func isTLSAvailable() bool {
 }
 
 func (c *VNCConnection) authenticate() error {
-	if err := c.conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+	if err := c.conn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
 		return fmt.Errorf("failed to set auth deadline: %w", err)
 	}
 	defer func() {
@@ -329,7 +343,7 @@ func (c *VNCConnection) upgradeTLSX509() error {
 
 	tlsConn := tls.Server(c.conn, tlsConfig)
 
-	if err := tlsConn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+	if err := tlsConn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
 		return fmt.Errorf("failed to set TLS deadline: %w", err)
 	}
 
@@ -439,7 +453,7 @@ func (c *VNCConnection) plainAuth() error {
 	usernameLen := binary.BigEndian.Uint32(lenBuf[0:4])
 	passwordLen := binary.BigEndian.Uint32(lenBuf[4:8])
 
-	if usernameLen > 256 || passwordLen > 256 {
+	if usernameLen > maxCredentialLength || passwordLen > maxCredentialLength {
 		return fmt.Errorf("username or password too long")
 	}
 
@@ -587,7 +601,7 @@ func (c *VNCConnection) messageLoop() error {
 		default:
 		}
 
-		if err := c.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		if err := c.conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
 			vncLogger.Debug().Err(err).Msg("failed to set read deadline")
 		}
 
@@ -749,10 +763,8 @@ func (c *VNCConnection) handleClientCutText() error {
 
 	length := binary.BigEndian.Uint32(header[3:7])
 
-	// Limit to 1MB to prevent OOM on resource-limited device
-	const maxCutTextLen = 1024 * 1024
-	if length > maxCutTextLen {
-		return fmt.Errorf("cut text too large: %d bytes", length)
+	if length > maxCutTextLength {
+		return fmt.Errorf("cut text too large: %d bytes (max %d)", length, maxCutTextLength)
 	}
 
 	if length > 0 {
@@ -821,7 +833,7 @@ func (c *VNCConnection) sendFrameUpdate(jpegData []byte) error {
 	// This avoids copying ~100KB JPEG data into a buffer
 	bufs := net.Buffers{header[:headerLen], jpegData}
 
-	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 		vncLogger.Debug().Err(err).Msg("failed to set write deadline")
 	}
 	_, err := bufs.WriteTo(c.conn)
