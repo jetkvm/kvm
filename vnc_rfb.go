@@ -920,8 +920,8 @@ func (c *VNCConnection) handleClientCutText() error {
 		if _, err := io.ReadFull(c.conn, c.cutTextBuf); err != nil {
 			return fmt.Errorf("failed to read cut text: %w", err)
 		}
-		// Clipboard sharing is not implemented - log receipt for user awareness
-		vncLogger.Info().Uint32("bytes", length).Msg("VNC clipboard data received (clipboard sharing not supported)")
+		// Clipboard sharing cannot be implemented in hardware KVM - USB HID has no clipboard injection capability
+		vncLogger.Info().Uint32("bytes", length).Msg("VNC clipboard data received (hardware KVM cannot inject clipboard via USB HID)")
 	}
 
 	return nil

@@ -432,9 +432,10 @@ type VNCConnection struct {
 	// === Diagnostic counters (int32 for lock-free atomics on 32-bit ARM) ===
 	framesSent      atomic.Int32
 	framesDropped   atomic.Int32
-	lastFrameLog    atomic.Int32 // Unix timestamp (valid until 2038)
+	lastFrameLog    atomic.Int32 // elapsed seconds since startTime (monotonic, no Y2038 issue)
 	intervalSent    atomic.Int32
 	intervalDropped atomic.Int32
+	startTime       time.Time // connection start time for monotonic elapsed calculation
 
 	// === Cold path: Setup/handshake fields ===
 	server           *VNCServer
@@ -534,6 +535,7 @@ func NewVNCConnection(conn net.Conn, server *VNCServer) *VNCConnection {
 		server:      server,
 		pixelFormat: DefaultPixelFormat(),
 		stopChan:    make(chan struct{}),
+		startTime:   time.Now(),
 	}
 	vc.setResolution(w, h)
 	return vc
@@ -611,10 +613,10 @@ func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
 	// Only check time every ~60 frames (at 60fps = ~1 second between checks)
 	totalSent := c.framesSent.Load()
 	if totalSent%60 == 0 {
-		// Cast to int32 for 32-bit ARM efficiency (valid until 2038)
-		now := int32(time.Now().Unix()) //nolint:gosec // Intentional int32 for 32-bit ARM
+		// Use monotonic elapsed time since connection start (avoids Y2038 issue)
+		elapsed := int32(time.Since(c.startTime).Seconds()) //nolint:gosec // Intentional int32 for 32-bit ARM
 		lastLog := c.lastFrameLog.Load()
-		if now-lastLog >= int32(frameStatsIntervalSeconds) && c.lastFrameLog.CompareAndSwap(lastLog, now) {
+		if elapsed-lastLog >= int32(frameStatsIntervalSeconds) && c.lastFrameLog.CompareAndSwap(lastLog, elapsed) {
 			// Only log if debug is enabled to avoid allocation
 			if vncLogger.Debug().Enabled() {
 				// Cumulative stats
@@ -628,7 +630,7 @@ func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
 				// Per-interval stats (reset after reading for next interval)
 				intervalSent := c.intervalSent.Swap(0)
 				intervalDropped := c.intervalDropped.Swap(0)
-				intervalDuration := now - lastLog
+				intervalDuration := elapsed - lastLog
 				if intervalDuration < 1 {
 					intervalDuration = 1
 				}
