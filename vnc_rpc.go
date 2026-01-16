@@ -45,7 +45,9 @@ func restartVNCServerIfRunning() error {
 			return fmt.Errorf("failed to stop VNC server: %w", err)
 		}
 		if err := server.Start(); err != nil {
-			return fmt.Errorf("failed to start VNC server: %w", err)
+			// Server stopped successfully but failed to restart - critical state
+			vncLogger.Error().Err(err).Msg("VNC server stopped but failed to restart - server is now DOWN")
+			return fmt.Errorf("VNC server failed to restart (server is now stopped): %w", err)
 		}
 	}
 	return nil
@@ -64,9 +66,11 @@ func rpcGetVNCState() (VNCState, error) {
 }
 
 func rpcSetVNCEnabled(enabled bool) error {
+	oldValue := config.VNCEnabled
 	config.VNCEnabled = enabled
 
 	if err := SaveConfig(); err != nil {
+		config.VNCEnabled = oldValue // Rollback on failure
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -93,10 +97,13 @@ func rpcSetVNCPort(port int) error {
 		return fmt.Errorf("invalid port number: %d (must be %d-%d)", port, minPort, maxPort)
 	}
 
+	oldPort := config.VNCPort
 	config.VNCPort = port
 	GetVNCServer().SetPort(port)
 
 	if err := SaveConfig(); err != nil {
+		config.VNCPort = oldPort // Rollback on failure
+		GetVNCServer().SetPort(oldPort)
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -108,9 +115,11 @@ func rpcSetVNCQuality(quality int) error {
 		return fmt.Errorf("invalid quality value: %d (must be %d-%d)", quality, minJPEGQuality, maxJPEGQuality)
 	}
 
+	oldQuality := config.VNCQuality
 	config.VNCQuality = quality
 
 	if err := SaveConfig(); err != nil {
+		config.VNCQuality = oldQuality // Rollback on failure
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -125,9 +134,11 @@ func rpcSetVNCPassword(password string) error {
 		password = password[:vncPasswordMaxLength]
 	}
 
+	oldPassword := config.LocalAuthPassword
 	config.LocalAuthPassword = password
 
 	if err := SaveConfig(); err != nil {
+		config.LocalAuthPassword = oldPassword // Rollback on failure
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -135,10 +146,13 @@ func rpcSetVNCPassword(password string) error {
 }
 
 func rpcSetVNCTLS(enabled bool) error {
+	oldValue := config.VNCUseTLS
 	config.VNCUseTLS = enabled
 	GetVNCServer().SetTLSEnabled(enabled)
 
 	if err := SaveConfig(); err != nil {
+		config.VNCUseTLS = oldValue // Rollback on failure
+		GetVNCServer().SetTLSEnabled(oldValue)
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

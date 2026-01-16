@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,8 +41,14 @@ const (
 	rateLimitExpirySeconds = 60
 	// Frame stats logging interval in seconds
 	frameStatsIntervalSeconds = 5
+	// JPEG encoder circuit breaker settings
+	jpegEncoderMaxFailures    = 3               // failures before cooldown
+	jpegEncoderCooldownPeriod = 30 * time.Second // wait before retrying
 )
 
+// VNCServer manages VNC client connections and JPEG encoder lifecycle.
+//
+// Lock ordering: When acquiring multiple locks, always acquire mu before rateLimitMu.
 type VNCServer struct {
 	listener    net.Listener
 	connections sync.Map
@@ -50,23 +57,23 @@ type VNCServer struct {
 	port       int
 	tlsEnabled bool
 
-	mu       sync.Mutex
+	mu       sync.Mutex // protects running, stopChan, width, height, jpegClientCount, jpegEncoderOn
 	running  bool
 	stopChan chan struct{}
 
 	width  uint16
 	height uint16
 
-	// JPEG encoder state - all access protected by mu
-	jpegClientCount int32
-	jpegEncoderOn   bool
+	// JPEG encoder state - protected by mu
+	jpegClientCount      int32
+	jpegEncoderOn        bool
+	jpegEncoderFailures  int       // consecutive failures for circuit breaker
+	jpegEncoderCooldown  time.Time // don't retry until after this time
 
-	// Rate limiting per IP
-	rateLimitMu  sync.Mutex
-	lastConnTime map[string]time.Time
+	rateLimitMu  sync.Mutex           // protects lastConnTime only; acquire after mu
+	lastConnTime map[string]time.Time // rate limiting per IP
 
-	// Track if server failed to start for status reporting
-	startError error
+	startError error // track if server failed to start for status reporting
 }
 
 var (
@@ -117,10 +124,21 @@ func (s *VNCServer) Start() error {
 }
 
 // requestJPEGEncoder increments the JPEG client count and starts the encoder if needed.
-// Returns an error if the encoder fails to start.
+// Returns an error if the encoder fails to start or is in cooldown due to repeated failures.
 func (s *VNCServer) requestJPEGEncoder() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Circuit breaker: check if we're in cooldown after repeated failures
+	if s.jpegEncoderFailures >= jpegEncoderMaxFailures {
+		if time.Now().Before(s.jpegEncoderCooldown) {
+			remaining := time.Until(s.jpegEncoderCooldown).Round(time.Second)
+			return fmt.Errorf("JPEG encoder in cooldown after %d failures (retry in %v)", s.jpegEncoderFailures, remaining)
+		}
+		// Cooldown expired, reset failures and try again
+		vncLogger.Info().Msg("JPEG encoder cooldown expired, retrying")
+		s.jpegEncoderFailures = 0
+	}
 
 	s.jpegClientCount++
 	vncLogger.Debug().Int32("jpegClients", s.jpegClientCount).Msg("client requesting JPEG encoder")
@@ -128,10 +146,19 @@ func (s *VNCServer) requestJPEGEncoder() error {
 	if !s.jpegEncoderOn {
 		if err := nativeInstance.JpegStart(config.VNCQuality); err != nil {
 			s.jpegClientCount-- // Rollback count on failure
-			vncLogger.Error().Err(err).Msg("failed to start JPEG encoder")
+			s.jpegEncoderFailures++
+			if s.jpegEncoderFailures >= jpegEncoderMaxFailures {
+				s.jpegEncoderCooldown = time.Now().Add(jpegEncoderCooldownPeriod)
+				vncLogger.Error().Err(err).Int("failures", s.jpegEncoderFailures).
+					Dur("cooldown", jpegEncoderCooldownPeriod).
+					Msg("JPEG encoder failed repeatedly, entering cooldown")
+			} else {
+				vncLogger.Error().Err(err).Int("failures", s.jpegEncoderFailures).Msg("failed to start JPEG encoder")
+			}
 			return fmt.Errorf("failed to start JPEG encoder: %w", err)
 		}
 		s.jpegEncoderOn = true
+		s.jpegEncoderFailures = 0 // Reset on success
 		vncLogger.Info().Int("quality", config.VNCQuality).Msg("JPEG encoder started on-demand")
 	}
 	return nil
@@ -314,19 +341,25 @@ func (s *VNCServer) acceptLoop() {
 		host, _, err := net.SplitHostPort(remoteAddr)
 		if err != nil {
 			vncLogger.Warn().Err(err).Str("remote", remoteAddr).Msg("failed to parse remote address, rejecting")
-			_ = conn.Close()
+			if closeErr := conn.Close(); closeErr != nil && vncLogger.Debug().Enabled() {
+				vncLogger.Debug().Err(closeErr).Str("remote", remoteAddr).Msg("failed to close rejected connection")
+			}
 			continue
 		}
 
 		if s.checkRateLimit(host) {
 			vncLogger.Warn().Str("remote", remoteAddr).Msg("VNC connection rate limited")
-			_ = conn.Close()
+			if closeErr := conn.Close(); closeErr != nil && vncLogger.Debug().Enabled() {
+				vncLogger.Debug().Err(closeErr).Str("remote", remoteAddr).Msg("failed to close rate-limited connection")
+			}
 			continue
 		}
 
 		if s.connCount.Load() >= maxVNCConnections {
 			vncLogger.Warn().Str("remote", remoteAddr).Int("max", maxVNCConnections).Msg("VNC connection rejected: max connections reached")
-			_ = conn.Close()
+			if closeErr := conn.Close(); closeErr != nil && vncLogger.Debug().Enabled() {
+				vncLogger.Debug().Err(closeErr).Str("remote", remoteAddr).Msg("failed to close max-connections connection")
+			}
 			continue
 		}
 
@@ -336,14 +369,17 @@ func (s *VNCServer) acceptLoop() {
 		s.connections.Store(vncConn, true)
 		s.connCount.Add(1)
 
-		go func(vc *VNCConnection) {
+		go func(vc *VNCConnection, remoteAddr string) {
 			defer func() {
 				if r := recover(); r != nil {
+					// Include error ID for tracking and potential alerting
+					// Use captured remoteAddr in case vc.conn is nil during panic
 					vncLogger.Error().
 						Interface("panic", r).
 						Str("stack", string(debug.Stack())).
-						Str("remote", vc.conn.RemoteAddr().String()).
-						Msg("VNC connection handler panicked")
+						Str("remote", remoteAddr).
+						Str("errorId", "VNC_HANDLER_PANIC").
+						Msg("VNC connection handler panicked - this is a bug, please report")
 				}
 
 				s.connections.Delete(vc)
@@ -352,57 +388,69 @@ func (s *VNCServer) acceptLoop() {
 				if vc.needsJPEGEncoder.Load() {
 					s.releaseJPEGEncoder()
 				}
-				vncLogger.Info().Str("remote", vc.conn.RemoteAddr().String()).Msg("VNC connection closed")
+				vncLogger.Info().Str("remote", remoteAddr).Msg("VNC connection closed")
 			}()
 
 			if err := vc.Handle(); err != nil {
-				vncLogger.Debug().Err(err).Str("remote", vc.conn.RemoteAddr().String()).Msg("VNC connection ended")
+				// Differentiate between normal disconnects and unexpected errors
+				// EOF and timeout are expected when client disconnects
+				errStr := err.Error()
+				if errStr == "EOF" || strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection reset") ||
+					strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "use of closed") {
+					vncLogger.Debug().Err(err).Str("remote", remoteAddr).Msg("VNC connection ended")
+				} else {
+					vncLogger.Warn().Err(err).Str("remote", remoteAddr).Msg("VNC connection ended with unexpected error")
+				}
 			}
-		}(vncConn)
+		}(vncConn, remoteAddr)
 	}
 }
 
+// VNCConnection represents a single VNC client connection.
+//
+// Struct layout groups fields by access pattern for cache efficiency on 32-bit ARM.
+// Hot path fields (atomics, conn) are placed first to minimize cache misses.
 type VNCConnection struct {
-	conn   net.Conn
-	server *VNCServer
-
-	// Atomic width/height for lock-free reads on hot path
-	// Packed as uint32: high 16 bits = width, low 16 bits = height
-	resolution  atomic.Uint32
-	pixelFormat PixelFormat
-
-	hasTight         atomic.Bool
-	needsJPEGEncoder atomic.Bool
-
-	stopChan       chan struct{}
+	// === Hot path: Control atomics and connection ===
+	resolution     atomic.Uint32 // packed: high=width, low=height
 	frameRequested atomic.Bool
 	closed         atomic.Bool
+	hasTight       atomic.Bool
+	conn           net.Conn
+	stopChan       chan struct{}
 
-	mu sync.Mutex // Only for pixelFormat updates
+	// === Hot path: Frame header buffer ===
+	frameHeaderBuf [rfbFrameHeaderBufSize]byte
 
-	// Pre-allocated buffers for hot path (avoid heap allocations)
-	msgBuf       [1]byte
-	keyBuf       [7]byte
-	pointerBuf   [5]byte
-	fbReqBuf     [9]byte
-	pixelFmtBuf  [19]byte
-	encHeaderBuf [3]byte
-	encBuf       [4]byte
-	// Frame header buffer: 16 (RFB header) + 1 (tight ctrl) + 3 (max length) = 20 bytes
-	frameHeaderBuf [20]byte
+	// === Hot path: Input message buffers ===
+	msgBuf     [rfbMsgBufSize]byte
+	keyBuf     [rfbKeyBufSize]byte
+	pointerBuf [rfbPointerBufSize]byte
+	fbReqBuf   [rfbFBReqBufSize]byte
+	encBuf     [rfbEncBufSize]byte
 
-	// Per-connection pointer event logging (thread-safe without global state)
+	// === Diagnostic counters (int32 for lock-free atomics on 32-bit ARM) ===
+	framesSent      atomic.Int32
+	framesDropped   atomic.Int32
+	lastFrameLog    atomic.Int32 // Unix timestamp (valid until 2038)
+	intervalSent    atomic.Int32
+	intervalDropped atomic.Int32
+
+	// === Cold path: Setup/handshake fields ===
+	server           *VNCServer
+	pixelFormat      PixelFormat
+	pixelFormatMu    sync.Mutex // protects pixelFormat only
+	needsJPEGEncoder atomic.Bool
+	authFailures     int // auth failure count for rate limiting (no lock needed - single goroutine)
+
+	// === Cold path: Rarely used buffers ===
+	pixelFmtBuf  [rfbPixelFmtBufSize]byte
+	encHeaderBuf [rfbEncHeaderBufSize]byte
+	cutTextBuf   []byte
+
+	// === Very cold: Logging ===
 	lastPointerLogTime time.Time
 	pointerEventCount  int32
-
-	// Frame delivery diagnostics
-	framesSent    atomic.Int64
-	framesDropped atomic.Int64
-	lastFrameLog  atomic.Int64
-
-	// Per-interval stats for FPS calculation
-	intervalSent    atomic.Int64
-	intervalDropped atomic.Int64
 }
 
 type PixelFormat struct {
@@ -514,18 +562,14 @@ func (c *VNCConnection) Handle() error {
 }
 
 func (c *VNCConnection) Close() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+	// Atomic swap ensures exactly-once close semantics without lock contention
 	if c.closed.Swap(true) {
-		return
+		return // Already closed by another goroutine
 	}
 
-	select {
-	case <-c.stopChan:
-	default:
-		close(c.stopChan)
-	}
+	// stopChan is only closed here, and atomic swap guarantees single execution
+	close(c.stopChan)
+
 	if err := c.conn.Close(); err != nil {
 		vncLogger.Debug().Err(err).Msg("error closing VNC connection")
 	}
@@ -563,42 +607,57 @@ func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
 	c.framesSent.Add(1)
 	c.intervalSent.Add(1)
 
-	// Log frame stats periodically
-	now := time.Now().Unix()
-	lastLog := c.lastFrameLog.Load()
-	if now-lastLog >= frameStatsIntervalSeconds && c.lastFrameLog.CompareAndSwap(lastLog, now) {
-		// Cumulative stats
-		totalSent := c.framesSent.Load()
-		totalDropped := c.framesDropped.Load()
-		total := totalSent + totalDropped
-		var dropRate float64
-		if total > 0 {
-			dropRate = float64(totalDropped) * 100 / float64(total)
-		}
+	// Log frame stats periodically - check frame count first to avoid time.Now() syscall
+	// Only check time every ~60 frames (at 60fps = ~1 second between checks)
+	totalSent := c.framesSent.Load()
+	if totalSent%60 == 0 {
+		// Cast to int32 for 32-bit ARM efficiency (valid until 2038)
+		now := int32(time.Now().Unix()) //nolint:gosec // Intentional int32 for 32-bit ARM
+		lastLog := c.lastFrameLog.Load()
+		if now-lastLog >= int32(frameStatsIntervalSeconds) && c.lastFrameLog.CompareAndSwap(lastLog, now) {
+			// Only log if debug is enabled to avoid allocation
+			if vncLogger.Debug().Enabled() {
+				// Cumulative stats
+				totalDropped := c.framesDropped.Load()
+				total := totalSent + totalDropped
+				var dropRate float64
+				if total > 0 {
+					dropRate = float64(totalDropped) * 100 / float64(total)
+				}
 
-		// Per-interval stats (reset after reading for next interval)
-		intervalSent := c.intervalSent.Swap(0)
-		intervalDropped := c.intervalDropped.Swap(0)
-		intervalDuration := now - lastLog
-		if intervalDuration < 1 {
-			intervalDuration = 1
-		}
-		fps := float64(intervalSent) / float64(intervalDuration)
+				// Per-interval stats (reset after reading for next interval)
+				intervalSent := c.intervalSent.Swap(0)
+				intervalDropped := c.intervalDropped.Swap(0)
+				intervalDuration := now - lastLog
+				if intervalDuration < 1 {
+					intervalDuration = 1
+				}
+				fps := float64(intervalSent) / float64(intervalDuration)
 
-		vncLogger.Debug().
-			Float64("fps", fps).
-			Int64("intervalSent", intervalSent).
-			Int64("intervalDropped", intervalDropped).
-			Int64("totalSent", totalSent).
-			Int64("totalDropped", totalDropped).
-			Float64("dropRate", dropRate).
-			Str("remote", c.conn.RemoteAddr().String()).
-			Msg("VNC frame stats")
+				vncLogger.Debug().
+					Float64("fps", fps).
+					Int("intervalSent", int(intervalSent)).
+					Int("intervalDropped", int(intervalDropped)).
+					Int("totalSent", int(totalSent)).
+					Int("totalDropped", int(totalDropped)).
+					Float64("dropRate", dropRate).
+					Str("remote", c.conn.RemoteAddr().String()).
+					Msg("VNC frame stats")
+			}
+		}
 	}
 
 	return true
 }
 
+// BroadcastJPEGFrame sends a JPEG frame to all connected clients that have requested one.
+// Design note: This uses synchronous iteration which means a slow client can delay others.
+// However, this is intentional for an embedded device because:
+// 1. Each client has a 5-second write timeout (writeTimeout) preventing complete stalls
+// 2. Async dispatch would create goroutine allocation GC pressure per frame
+// 3. Frame channels would add memory overhead and frame duplication complexity
+// 4. Maximum 10 clients (maxVNCConnections) limits worst-case latency
+// If a client is consistently slow, frames are dropped via frameRequested flag backpressure.
 func (s *VNCServer) BroadcastJPEGFrame(frame []byte) {
 	s.connections.Range(func(key, value interface{}) bool {
 		if conn, ok := key.(*VNCConnection); ok {
