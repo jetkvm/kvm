@@ -346,7 +346,7 @@ func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 	var frameSizeBuffer [4]byte
 	frameCount := 0
 
-	p.logger.Warn().Msg("JPEG frame handler: STARTED, waiting for frames from subprocess...")
+	p.logger.Info().Msg("JPEG frame handler: started, waiting for frames from subprocess")
 
 	for {
 		// Read 4-byte frame length prefix
@@ -374,13 +374,13 @@ func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 
 		frameCount++
 		if frameCount <= 3 || frameCount%100 == 0 {
-			p.logger.Warn().Int("frameCount", frameCount).Uint32("frameSize", frameSize).Msg("JPEG frame handler: received frame, calling callback")
+			p.logger.Debug().Int("frameCount", frameCount).Uint32("frameSize", frameSize).Msg("JPEG frame received")
 		}
 		if p.options.OnJpegFrameReceived != nil {
 			p.options.OnJpegFrameReceived(inboundPacket[:frameSize])
 		}
 	}
-	p.logger.Warn().Int("totalFrames", frameCount).Msg("JPEG frame handler: STOPPED")
+	p.logger.Info().Int("totalFrames", frameCount).Msg("JPEG frame handler: stopped")
 }
 
 // it should be only called by start() method, as it isn't thread-safe

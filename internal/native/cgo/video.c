@@ -303,8 +303,7 @@ static void *jpeg_read_stream(void *arg)
     int frameCount = 0;
     int emptyCount = 0;
 
-    fprintf(stderr, "INFO: JPEG READ THREAD: started, streaming_status=%d\n", video_get_streaming_status());
-    fflush(stderr);
+    log_info("JPEG read thread started");
 
     VENC_STREAM_S stFrame;
     stFrame.pstPack = malloc(sizeof(VENC_PACK_S));
@@ -317,10 +316,10 @@ static void *jpeg_read_stream(void *arg)
         {
             frameCount++;
             emptyCount = 0;
-            if (frameCount <= 3 || frameCount % 100 == 0)
+            // Frame logging handled by Go proxy - only log first frame here for confirmation
+            if (frameCount == 1)
             {
-                fprintf(stderr, "INFO: JPEG READ THREAD: got frame %d, size=%d\n", frameCount, stFrame.pstPack->u32Len);
-                fflush(stderr);
+                log_info("JPEG: first frame received, size=%d", stFrame.pstPack->u32Len);
             }
             pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
             video_send_jpeg_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
@@ -335,21 +334,19 @@ static void *jpeg_read_stream(void *arg)
             if (s32Ret == RK_ERR_VENC_BUF_EMPTY)
             {
                 emptyCount++;
-                if (emptyCount == 1 || emptyCount % 50 == 0)
+                // Only log buffer empty on first occurrence
+                if (emptyCount == 1)
                 {
-                    fprintf(stderr, "INFO: JPEG READ THREAD: buffer empty (count=%d), streaming_status=%d\n", emptyCount, video_get_streaming_status());
-                    fflush(stderr);
+                    log_trace("JPEG: buffer empty, waiting for frames");
                 }
                 continue;
             }
-            fprintf(stderr, "ERROR: JPEG READ THREAD: RK_MPI_VENC_GetStream fail %x\n", s32Ret);
-            fflush(stderr);
+            log_error("JPEG: RK_MPI_VENC_GetStream fail %x", s32Ret);
             break;
         }
     }
 
-    fprintf(stderr, "INFO: JPEG READ THREAD: exiting, total frames=%d, jpeg_running=%d\n", frameCount, jpeg_running ? 1 : 0);
-    fflush(stderr);
+    log_info("JPEG read thread stopped, total frames=%d", frameCount);
     free(stFrame.pstPack);
     return NULL;
 }
