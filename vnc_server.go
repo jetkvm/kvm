@@ -355,8 +355,13 @@ func (s *VNCServer) acceptLoop() {
 			continue
 		}
 
-		if s.connCount.Load() >= maxVNCConnections {
-			vncLogger.Warn().Str("remote", remoteAddr).Int("max", maxVNCConnections).Msg("VNC connection rejected: max connections reached")
+		// Use configured max or hardware limit, whichever is lower
+		maxConns := config.VNCMaxConnections
+		if maxConns <= 0 || maxConns > maxVNCConnections {
+			maxConns = maxVNCConnections
+		}
+		if s.connCount.Load() >= int32(maxConns) {
+			vncLogger.Warn().Str("remote", remoteAddr).Int("max", maxConns).Msg("VNC connection rejected: max connections reached")
 			if closeErr := conn.Close(); closeErr != nil && vncLogger.Debug().Enabled() {
 				vncLogger.Debug().Err(closeErr).Str("remote", remoteAddr).Msg("failed to close max-connections connection")
 			}
@@ -690,7 +695,7 @@ func initVNCServer() error {
 		Bool("tls", config.VNCUseTLS).
 		Bool("hwCrypto", vnctls.IsHardwareCryptoEnabled()).
 		Str("hwEngine", vnctls.GetHardwareCryptoEngine()).
-		Int("maxConnections", maxVNCConnections).
+		Int("maxConnections", config.VNCMaxConnections).
 		Msg("initializing VNC server")
 
 	if err := server.Start(); err != nil {

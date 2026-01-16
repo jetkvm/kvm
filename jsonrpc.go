@@ -1486,10 +1486,13 @@ var rpcHandlers = map[string]RPCHandler{
 	"meshVPNSetAdvertiseExitNode": {Func: rpcMeshVPNSetAdvertiseExitNode, Params: []string{"params"}},
 
 	// VNC handlers
-	"getVNCState":    {Func: rpcGetVNCState},
-	"setVNCEnabled":  {Func: rpcSetVNCEnabled, Params: []string{"enabled"}},
-	"setVNCPort":     {Func: rpcSetVNCPort, Params: []string{"port"}},
-	"setVNCQuality":  {Func: rpcSetVNCQuality, Params: []string{"quality"}},
-	"setVNCPassword": {Func: rpcSetVNCPassword, Params: []string{"password"}},
-	"setVNCTLS":      {Func: rpcSetVNCTLS, Params: []string{"enabled"}},
+	"getVNCState":           {Func: rpcGetVNCState},
+	"setVNCEnabled":         {Func: rpcSetVNCEnabled, Params: []string{"enabled"}},
+	"setVNCPort":            {Func: rpcSetVNCPort, Params: []string{"port"}},
+	"setVNCQuality":         {Func: rpcSetVNCQuality, Params: []string{"quality"}},
+	"setVNCPassword":        {Func: rpcSetVNCPassword, Params: []string{"password"}},
+	"setVNCTLS":             {Func: rpcSetVNCTLS, Params: []string{"enabled"}},
+	"setVNCPasteSpeed":      {Func: rpcSetVNCPasteSpeed, Params: []string{"speed"}},
+	"setVNCMaxConnections":  {Func: rpcSetVNCMaxConnections, Params: []string{"max"}},
+	"setVNCClipboardEnabled": {Func: rpcSetVNCClipboardEnabled, Params: []string{"enabled"}},
 }

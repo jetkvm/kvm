@@ -15,11 +15,16 @@ interface VNCStateResult {
   quality: number;
   connectionCount: number;
   tlsEnabled: boolean;
+  pasteSpeed: string;
+  maxConnections: number;
+  clipboardEnabled: boolean;
 }
 
 const VNC_DEFAULTS = {
   port: 5900,
   quality: 80,
+  pasteSpeed: "fast",
+  maxConnections: 3,
 } as const;
 
 export default function SettingsVNCRoute() {
@@ -31,6 +36,9 @@ export default function SettingsVNCRoute() {
   const [quality, setQuality] = useState<number>(VNC_DEFAULTS.quality);
   const [connectionCount, setConnectionCount] = useState<number>(0);
   const [tlsEnabled, setTlsEnabled] = useState<boolean>(false);
+  const [pasteSpeed, setPasteSpeed] = useState<string>(VNC_DEFAULTS.pasteSpeed);
+  const [maxConnections, setMaxConnections] = useState<number>(VNC_DEFAULTS.maxConnections);
+  const [clipboardEnabled, setClipboardEnabled] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadVNCState = useCallback(() => {
@@ -49,6 +57,9 @@ export default function SettingsVNCRoute() {
       setQuality(state.quality);
       setConnectionCount(state.connectionCount);
       setTlsEnabled(state.tlsEnabled);
+      setPasteSpeed(state.pasteSpeed || VNC_DEFAULTS.pasteSpeed);
+      setMaxConnections(state.maxConnections || VNC_DEFAULTS.maxConnections);
+      setClipboardEnabled(state.clipboardEnabled ?? true);
       setIsLoading(false);
     });
   }, [send]);
@@ -112,6 +123,46 @@ export default function SettingsVNCRoute() {
       }
       setTlsEnabled(newTlsEnabled);
       notifications.success(m.vnc_settings_tls_changed());
+    });
+  };
+
+  const handlePasteSpeedChange = (newSpeed: string) => {
+    send("setVNCPasteSpeed", { speed: newSpeed }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.vnc_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setPasteSpeed(newSpeed);
+      notifications.success(m.vnc_settings_paste_speed_changed());
+    });
+  };
+
+  const handleMaxConnectionsChange = (newMax: number) => {
+    send("setVNCMaxConnections", { max: newMax }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.vnc_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setMaxConnections(newMax);
+      notifications.success(m.vnc_settings_max_connections_changed());
+    });
+  };
+
+  const handleClipboardToggle = () => {
+    const newClipboardEnabled = !clipboardEnabled;
+    send("setVNCClipboardEnabled", { enabled: newClipboardEnabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.vnc_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setClipboardEnabled(newClipboardEnabled);
+      notifications.success(m.vnc_settings_clipboard_changed());
     });
   };
 
@@ -228,6 +279,27 @@ export default function SettingsVNCRoute() {
             </SettingsItem>
 
             <SettingsItem
+              title={m.vnc_settings_max_connections_title()}
+              description={m.vnc_settings_max_connections_description()}
+            >
+              <SelectMenuBasic
+                size="SM"
+                value={String(maxConnections)}
+                options={[
+                  { value: "1", label: "1" },
+                  { value: "2", label: "2" },
+                  {
+                    value: "3",
+                    label: `3${maxConnections === VNC_DEFAULTS.maxConnections ? m.vnc_settings_default_suffix() : ""}`,
+                  },
+                  { value: "5", label: "5" },
+                  { value: "10", label: "10" },
+                ]}
+                onChange={e => handleMaxConnectionsChange(parseInt(e.target.value))}
+              />
+            </SettingsItem>
+
+            <SettingsItem
               title={m.vnc_settings_tls_title()}
               description={m.vnc_settings_tls_description()}
             >
@@ -240,6 +312,40 @@ export default function SettingsVNCRoute() {
                 />
                 <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
               </label>
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.vnc_settings_clipboard_title()}
+              description={m.vnc_settings_clipboard_description()}
+            >
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={clipboardEnabled}
+                  onChange={handleClipboardToggle}
+                  className="peer sr-only"
+                />
+                <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+              </label>
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.vnc_settings_paste_speed_title()}
+              description={m.vnc_settings_paste_speed_description()}
+            >
+              <SelectMenuBasic
+                size="SM"
+                value={pasteSpeed}
+                options={[
+                  {
+                    value: "fast",
+                    label: `${m.vnc_settings_paste_speed_fast()}${pasteSpeed === VNC_DEFAULTS.pasteSpeed ? m.vnc_settings_default_suffix() : ""}`,
+                  },
+                  { value: "normal", label: m.vnc_settings_paste_speed_normal() },
+                  { value: "slow", label: m.vnc_settings_paste_speed_slow() },
+                ]}
+                onChange={e => handlePasteSpeedChange(e.target.value)}
+              />
             </SettingsItem>
           </>
         )}

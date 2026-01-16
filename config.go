@@ -133,13 +133,16 @@ type Config struct {
 	CameraMjpegQuality int    `json:"camera_mjpeg_quality"` // 0-100%
 
 	// VNC settings
-	VNCEnabled         bool   `json:"vnc_enabled"`
-	VNCPort            int    `json:"vnc_port"`              // default: 5900
-	VNCQuality         int    `json:"vnc_quality"`           // JPEG quality 1-99, default: 80
-	VNCUseTLS          bool   `json:"vnc_use_tls"`           // Use TLS for VNC (VeNCrypt) - when enabled and available, rejects insecure connections
-	VNCPassword        string `json:"vnc_password"`          // Separate VNC password (if not using same password)
-	VNCUseSamePassword bool   `json:"vnc_use_same_password"` // Use same password as local auth
-	LocalAuthPassword  string `json:"local_auth_password"`   // Plaintext password for VNC auth
+	VNCEnabled          bool   `json:"vnc_enabled"`
+	VNCPort             int    `json:"vnc_port"`               // default: 5900
+	VNCQuality          int    `json:"vnc_quality"`            // JPEG quality 1-99, default: 80
+	VNCUseTLS           bool   `json:"vnc_use_tls"`            // Use TLS for VNC (VeNCrypt) - when enabled and available, rejects insecure connections
+	VNCPassword         string `json:"vnc_password"`           // Separate VNC password (if not using same password)
+	VNCUseSamePassword  bool   `json:"vnc_use_same_password"`  // Use same password as local auth
+	LocalAuthPassword   string `json:"local_auth_password"`    // Plaintext password for VNC auth
+	VNCPasteSpeed       string `json:"vnc_paste_speed"`        // "fast", "normal", "slow" - default: "fast"
+	VNCMaxConnections   int    `json:"vnc_max_connections"`    // Max concurrent VNC connections (1-10), default: 3
+	VNCClipboardEnabled bool   `json:"vnc_clipboard_enabled"`  // Enable clipboard-as-keystrokes, default: true
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -241,9 +244,12 @@ func getDefaultConfig() Config {
 		CameraMjpegQuality: 35, // 35% - reasonable quality/size balance
 
 		// VNC defaults
-		VNCEnabled: false,
-		VNCPort:    5900,
-		VNCQuality: 80,
+		VNCEnabled:          false,
+		VNCPort:             5900,
+		VNCQuality:          80,
+		VNCPasteSpeed:       "fast",
+		VNCMaxConnections:   3,
+		VNCClipboardEnabled: true,
 	}
 }
 
@@ -340,6 +346,15 @@ func LoadConfig() {
 		loadedConfig.VNCPort = defaults.VNCPort
 		loadedConfig.VNCQuality = defaults.VNCQuality
 	}
+	// Apply VNC defaults for configs created before these settings existed
+	if loadedConfig.VNCPasteSpeed == "" {
+		loadedConfig.VNCPasteSpeed = "fast"
+	}
+	if loadedConfig.VNCMaxConnections == 0 {
+		loadedConfig.VNCMaxConnections = 3
+	}
+	// VNCClipboardEnabled defaults to true; only set if config is being created fresh
+	// (existing configs with explicit false should be preserved)
 
 	// fixup old keyboard layout value
 	if loadedConfig.KeyboardLayout == "en_US" {

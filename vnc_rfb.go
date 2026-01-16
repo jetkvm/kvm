@@ -1097,14 +1097,18 @@ func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
 	}
 }
 
-// Clipboard typing constants
-const (
-	// Delay between keystrokes when typing clipboard text (milliseconds)
-	// 2ms total (1+1) = 500 chars/sec, safe for all hosts including VMs
-	clipboardTypeDelayMs = 1
-	// Delay after key release before next character
-	clipboardReleaseDelayMs = 1
-)
+// getClipboardDelays returns press and release delays based on config.VNCPasteSpeed.
+// Returns (pressDelayMs, releaseDelayMs).
+func getClipboardDelays() (int, int) {
+	switch config.VNCPasteSpeed {
+	case "slow":
+		return 15, 15 // 30ms total per char, ~33 chars/sec
+	case "normal":
+		return 5, 5 // 10ms total per char, ~100 chars/sec
+	default: // "fast" or unset
+		return 1, 1 // 2ms total per char, ~500 chars/sec
+	}
+}
 
 // HID modifier constants (matches USB HID spec)
 const (
@@ -1351,11 +1355,12 @@ func getKeyboardLayout(layoutCode string) keyboardLayout {
 	return layoutEnUS
 }
 
-// textToMacroSteps converts text to keyboard macro steps for typing via USB HID.
+// textToMacroStepsWithDelays converts text to keyboard macro steps for typing via USB HID.
 // Uses the keyboard layout from config.KeyboardLayout.
 // Characters not in the layout mapping are skipped.
+// pressDelayMs and releaseDelayMs control typing speed.
 // Returns the macro steps and count of skipped characters.
-func textToMacroSteps(text []byte, layoutCode string) ([]hidrpc.KeyboardMacroStep, int) {
+func textToMacroStepsWithDelays(text []byte, layoutCode string, pressDelayMs, releaseDelayMs int) ([]hidrpc.KeyboardMacroStep, int) {
 	layout := getKeyboardLayout(layoutCode)
 
 	// Pre-allocate: each character needs 2 steps (press + release)
@@ -1393,7 +1398,7 @@ func textToMacroSteps(text []byte, layoutCode string) ([]hidrpc.KeyboardMacroSte
 		steps = append(steps, hidrpc.KeyboardMacroStep{
 			Modifier: modifier,
 			Keys:     keys,
-			Delay:    clipboardTypeDelayMs,
+			Delay:    uint16(pressDelayMs),
 		})
 
 		// Key release step (all zeros)
@@ -1401,7 +1406,7 @@ func textToMacroSteps(text []byte, layoutCode string) ([]hidrpc.KeyboardMacroSte
 		steps = append(steps, hidrpc.KeyboardMacroStep{
 			Modifier: 0,
 			Keys:     releaseKeys,
-			Delay:    clipboardReleaseDelayMs,
+			Delay:    uint16(releaseDelayMs),
 		})
 	}
 
@@ -1411,7 +1416,13 @@ func textToMacroSteps(text []byte, layoutCode string) ([]hidrpc.KeyboardMacroSte
 // typeClipboardText types the given text via keyboard macro.
 // Uses config.KeyboardLayout to determine the keyboard mapping.
 // This implements VNC clipboard-as-keystrokes functionality.
+// Respects config.VNCClipboardEnabled setting.
 func typeClipboardText(text []byte) error {
+	if !config.VNCClipboardEnabled {
+		vncLogger.Debug().Int("bytes", len(text)).Msg("VNC clipboard: typing disabled, ignoring")
+		return nil
+	}
+
 	if len(text) == 0 {
 		return nil
 	}
@@ -1421,7 +1432,8 @@ func typeClipboardText(text []byte) error {
 		layoutCode = "en-US"
 	}
 
-	steps, skipped := textToMacroSteps(text, layoutCode)
+	pressDelay, releaseDelay := getClipboardDelays()
+	steps, skipped := textToMacroStepsWithDelays(text, layoutCode, pressDelay, releaseDelay)
 	if len(steps) == 0 {
 		vncLogger.Info().Int("skipped", skipped).Str("layout", layoutCode).Int("textLen", len(text)).Msg("VNC clipboard: no typeable characters in text")
 		return nil
