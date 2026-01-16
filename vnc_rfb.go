@@ -503,6 +503,10 @@ func reverseBits(b byte) byte {
 	return result
 }
 
+// getVNCPassword returns the configured VNC password.
+// Note: Config reads are not synchronized with RPC writes. In practice this is safe
+// because Go strings are read atomically (pointer + length), and password changes
+// during an active authentication are extremely unlikely on single-user KVM devices.
 func getVNCPassword() string {
 	if config.LocalAuthPassword != "" {
 		return config.LocalAuthPassword

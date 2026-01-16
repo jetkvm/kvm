@@ -154,6 +154,8 @@ func (s *VNCServer) Stop() error {
 
 	if s.jpegEncoderOn {
 		if err := nativeInstance.JpegStop(); err != nil {
+			// Best-effort cleanup. On restart, JpegStart will reinitialize the encoder.
+			// Keeping jpegEncoderOn=true would prevent future starts, so we clear it.
 			vncLogger.Warn().Err(err).Msg("failed to stop JPEG encoder during shutdown")
 		}
 		s.jpegEncoderOn = false
