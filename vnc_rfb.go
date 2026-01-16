@@ -1393,19 +1393,29 @@ func typeClipboardText(text []byte) error {
 	}
 
 	layoutCode := config.KeyboardLayout
+	if layoutCode == "" {
+		layoutCode = "en-US"
+	}
+
 	steps, skipped := textToMacroSteps(text, layoutCode)
 	if len(steps) == 0 {
-		vncLogger.Debug().Int("skipped", skipped).Str("layout", layoutCode).Msg("VNC clipboard: no typeable characters")
+		vncLogger.Info().Int("skipped", skipped).Str("layout", layoutCode).Int("textLen", len(text)).Msg("VNC clipboard: no typeable characters in text")
 		return nil
 	}
 
 	if skipped > 0 {
-		vncLogger.Debug().Int("skipped", skipped).Int("typed", len(steps)/2).Str("layout", layoutCode).Msg("VNC clipboard: some characters not in layout")
+		vncLogger.Info().Int("skipped", skipped).Int("typed", len(steps)/2).Str("layout", layoutCode).Msg("VNC clipboard: some characters not in layout")
 	}
 
 	vncLogger.Info().Int("chars", len(steps)/2).Str("layout", layoutCode).Msg("VNC clipboard: typing text via keyboard")
 
-	return rpcExecuteKeyboardMacro(steps)
+	err := rpcExecuteKeyboardMacro(steps)
+	if err != nil {
+		vncLogger.Error().Err(err).Msg("VNC clipboard: keyboard macro failed")
+	} else {
+		vncLogger.Info().Int("chars", len(steps)/2).Msg("VNC clipboard: typing completed")
+	}
+	return err
 }
 
 // keysymToHID converts X11 keysym codes (used by VNC/RFB protocol) to USB HID usage codes.
