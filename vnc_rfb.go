@@ -922,11 +922,15 @@ func (c *VNCConnection) handleClientCutText() error {
 			return fmt.Errorf("failed to read cut text: %w", err)
 		}
 
-		// Type clipboard text as keyboard input (en-US layout)
-		// This emulates clipboard paste by typing each character via USB HID
-		if err := typeClipboardText(c.cutTextBuf); err != nil {
-			vncLogger.Warn().Err(err).Uint32("bytes", length).Msg("VNC clipboard: failed to type text")
-		}
+		// Type clipboard text asynchronously to avoid blocking the message loop.
+		// Must copy the buffer since it may be reused before the goroutine runs.
+		textCopy := make([]byte, length)
+		copy(textCopy, c.cutTextBuf)
+		go func() {
+			if err := typeClipboardText(textCopy); err != nil {
+				vncLogger.Warn().Err(err).Int("bytes", len(textCopy)).Msg("VNC clipboard: failed to type text")
+			}
+		}()
 	}
 
 	return nil
