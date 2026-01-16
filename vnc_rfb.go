@@ -60,7 +60,7 @@ const (
 
 func (c *VNCConnection) handshake() error {
 	if err := c.conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
-		vncLogger.Debug().Err(err).Msg("failed to set handshake deadline")
+		return fmt.Errorf("failed to set handshake deadline: %w", err)
 	}
 	defer func() {
 		if err := c.conn.SetDeadline(time.Time{}); err != nil {
@@ -103,7 +103,7 @@ func isTLSAvailable() bool {
 
 func (c *VNCConnection) authenticate() error {
 	if err := c.conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
-		vncLogger.Debug().Err(err).Msg("failed to set auth deadline")
+		return fmt.Errorf("failed to set auth deadline: %w", err)
 	}
 	defer func() {
 		if err := c.conn.SetDeadline(time.Time{}); err != nil {
@@ -113,7 +113,7 @@ func (c *VNCConnection) authenticate() error {
 
 	if tcpConn, ok := c.conn.(*net.TCPConn); ok {
 		if err := tcpConn.SetNoDelay(true); err != nil {
-			vncLogger.Debug().Err(err).Msg("failed to set TCP_NODELAY")
+			vncLogger.Info().Err(err).Msg("failed to set TCP_NODELAY, latency may be higher")
 		}
 	}
 
@@ -546,28 +546,25 @@ func (c *VNCConnection) serverInit() error {
 	buf.Reset()
 	defer bufferPool.Put(buf)
 
-	if err := binary.Write(buf, binary.BigEndian, width); err != nil {
-		vncLogger.Debug().Err(err).Msg("failed to write width to buffer")
-	}
-	if err := binary.Write(buf, binary.BigEndian, height); err != nil {
-		vncLogger.Debug().Err(err).Msg("failed to write height to buffer")
-	}
+	// All writes to bytes.Buffer are infallible for in-memory operations
+	_ = binary.Write(buf, binary.BigEndian, width)
+	_ = binary.Write(buf, binary.BigEndian, height)
 
 	pf := c.pixelFormat
 	buf.WriteByte(pf.BitsPerPixel)
 	buf.WriteByte(pf.Depth)
 	buf.WriteByte(pf.BigEndian)
 	buf.WriteByte(pf.TrueColor)
-	binary.Write(buf, binary.BigEndian, pf.RedMax)
-	binary.Write(buf, binary.BigEndian, pf.GreenMax)
-	binary.Write(buf, binary.BigEndian, pf.BlueMax)
+	_ = binary.Write(buf, binary.BigEndian, pf.RedMax)
+	_ = binary.Write(buf, binary.BigEndian, pf.GreenMax)
+	_ = binary.Write(buf, binary.BigEndian, pf.BlueMax)
 	buf.WriteByte(pf.RedShift)
 	buf.WriteByte(pf.GreenShift)
 	buf.WriteByte(pf.BlueShift)
 	buf.Write([]byte{0, 0, 0}) // Padding
 
 	name := "JetKVM"
-	binary.Write(buf, binary.BigEndian, uint32(len(name)))
+	_ = binary.Write(buf, binary.BigEndian, uint32(len(name)))
 	buf.WriteString(name)
 
 	if _, err := c.conn.Write(buf.Bytes()); err != nil {
@@ -621,6 +618,9 @@ func (c *VNCConnection) messageLoop() error {
 			if err := c.handleClientCutText(); err != nil {
 				return err
 			}
+		default:
+			vncLogger.Warn().Uint8("msgType", c.msgBuf[0]).Msg("unknown VNC message type")
+			return fmt.Errorf("unknown message type: %d", c.msgBuf[0])
 		}
 	}
 }
@@ -644,7 +644,8 @@ func (c *VNCConnection) handleSetPixelFormat() error {
 	}
 
 	if err := pf.Validate(); err != nil {
-		vncLogger.Warn().Err(err).Msg("client sent invalid pixel format, using anyway")
+		vncLogger.Warn().Err(err).Msg("client sent invalid pixel format, keeping server default")
+		return nil
 	}
 
 	c.mu.Lock()
@@ -723,7 +724,7 @@ func (c *VNCConnection) handlePointerEvent() error {
 	x := binary.BigEndian.Uint16(c.pointerBuf[1:3])
 	y := binary.BigEndian.Uint16(c.pointerBuf[3:5])
 
-	// Per-connection pointer event logging (thread-safe)
+	// Rate-limited logging (safe: single-goroutine message loop per connection)
 	c.pointerEventCount++
 	if c.pointerEventCount <= 3 || c.pointerEventCount%100 == 0 || time.Since(c.lastPointerLogTime) > 5*time.Second {
 		vncLogger.Debug().Uint16("x", x).Uint16("y", y).Uint8("buttons", buttonMask).Int("count", c.pointerEventCount).Msg("VNC pointer event")
@@ -888,8 +889,10 @@ func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
 	}
 }
 
+// keysymToHID converts X11 keysym codes (used by VNC/RFB protocol) to USB HID usage codes.
+// Keysyms are defined in X11/keysymdef.h. HID codes follow USB HID Usage Tables specification.
+// Returns 0 for unsupported keysyms.
 func keysymToHID(keysym uint32) uint8 {
-	// Modifier keys
 	switch keysym {
 	case 0xFFE1:
 		return 0xE1 // Left Shift

@@ -3,6 +3,7 @@ package kvm
 import (
 	"fmt"
 	"net"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -249,8 +250,8 @@ func (s *VNCServer) checkRateLimit(ip string) bool {
 	}
 	s.lastConnTime[ip] = now
 
-	// Clean up old entries periodically (keep last 100)
-	if len(s.lastConnTime) > 100 {
+	// Clean up entries older than 1 minute when map exceeds 50 entries
+	if len(s.lastConnTime) > 50 {
 		cutoff := now.Add(-time.Minute)
 		for k, v := range s.lastConnTime {
 			if v.Before(cutoff) {
@@ -262,6 +263,8 @@ func (s *VNCServer) checkRateLimit(ip string) bool {
 	return false
 }
 
+// acceptLoop handles incoming VNC connections until the server stops.
+// Each connection runs in its own goroutine with panic recovery.
 func (s *VNCServer) acceptLoop() {
 	for {
 		select {
@@ -281,9 +284,13 @@ func (s *VNCServer) acceptLoop() {
 			}
 		}
 
-		// Get remote IP for rate limiting
 		remoteAddr := conn.RemoteAddr().String()
-		host, _, _ := net.SplitHostPort(remoteAddr)
+		host, _, err := net.SplitHostPort(remoteAddr)
+		if err != nil {
+			vncLogger.Warn().Err(err).Str("remote", remoteAddr).Msg("failed to parse remote address, rejecting")
+			_ = conn.Close()
+			continue
+		}
 
 		if s.checkRateLimit(host) {
 			vncLogger.Warn().Str("remote", remoteAddr).Msg("VNC connection rate limited")
@@ -306,7 +313,11 @@ func (s *VNCServer) acceptLoop() {
 		go func(vc *VNCConnection) {
 			defer func() {
 				if r := recover(); r != nil {
-					vncLogger.Error().Interface("panic", r).Str("remote", vc.conn.RemoteAddr().String()).Msg("VNC connection handler panicked")
+					vncLogger.Error().
+						Interface("panic", r).
+						Str("stack", string(debug.Stack())).
+						Str("remote", vc.conn.RemoteAddr().String()).
+						Msg("VNC connection handler panicked")
 				}
 
 				s.connections.Delete(vc)
@@ -473,12 +484,12 @@ func (c *VNCConnection) Handle() error {
 }
 
 func (c *VNCConnection) Close() {
-	if c.closed.Swap(true) {
-		return // Already closed
-	}
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if c.closed.Swap(true) {
+		return
+	}
 
 	select {
 	case <-c.stopChan:

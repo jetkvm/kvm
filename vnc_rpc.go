@@ -92,9 +92,12 @@ func rpcSetVNCQuality(quality int) error {
 	return nil
 }
 
+// rpcSetVNCPassword sets the VNC authentication password.
+// VNC uses DES encryption which only supports 8-byte keys, so passwords are truncated.
 func rpcSetVNCPassword(password string) error {
 	if len(password) > 8 {
-		password = password[:8] // VNC auth only uses first 8 characters
+		vncLogger.Warn().Int("originalLen", len(password)).Msg("VNC password truncated to 8 characters (protocol limitation)")
+		password = password[:8]
 	}
 
 	config.LocalAuthPassword = password
