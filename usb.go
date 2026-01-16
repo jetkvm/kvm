@@ -56,18 +56,34 @@ func rpcKeyboardReport(modifier byte, keys []byte) error {
 }
 
 func rpcKeypressReport(key byte, press bool) error {
+	// Block keyboard input while paste is in progress (paste uses rpcKeyboardReport directly)
+	if isKeyboardMacroInProgress() {
+		return nil // Silently drop - not an error, just blocked
+	}
 	return gadget.KeypressReport(key, press)
 }
 
 func rpcAbsMouseReport(x int, y int, buttons uint8) error {
+	// Block mouse input while paste is in progress
+	if isKeyboardMacroInProgress() {
+		return nil // Silently drop
+	}
 	return gadget.AbsMouseReport(x, y, buttons)
 }
 
 func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
+	// Block mouse input while paste is in progress
+	if isKeyboardMacroInProgress() {
+		return nil // Silently drop
+	}
 	return gadget.RelMouseReport(dx, dy, buttons)
 }
 
 func rpcWheelReport(wheelY int8, wheelX int8) error {
+	// Block scroll input while paste is in progress
+	if isKeyboardMacroInProgress() {
+		return nil // Silently drop
+	}
 	return gadget.AbsMouseWheelReport(wheelY, wheelX)
 }
 

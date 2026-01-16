@@ -1100,10 +1100,10 @@ func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
 // Clipboard typing constants
 const (
 	// Delay between keystrokes when typing clipboard text (milliseconds)
-	// USB HID operates at 125Hz-1000Hz (1-8ms intervals), so 5ms is reliable
-	clipboardTypeDelayMs = 5
-	// Delay after releasing keys before next character
-	clipboardReleaseDelayMs = 5
+	// 2ms total (1+1) = 500 chars/sec, safe for all hosts including VMs
+	clipboardTypeDelayMs = 1
+	// Delay after key release before next character
+	clipboardReleaseDelayMs = 1
 )
 
 // HID modifier constants (matches USB HID spec)
