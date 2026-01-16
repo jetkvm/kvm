@@ -1010,7 +1010,25 @@ func (c *VNCConnection) sendFrameUpdate(jpegData []byte) error {
 	return nil
 }
 
+// X11 keysym for Escape key (used to cancel paste operations)
+const keysymEscape = 0xFF1B
+
 func (c *VNCConnection) handleVNCKey(keysym uint32, down bool) {
+	// Allow Escape key to cancel ongoing paste operations
+	if keysym == keysymEscape && down && isKeyboardMacroInProgress() {
+		vncLogger.Info().Msg("VNC: Escape pressed, canceling paste operation")
+		cancelKeyboardMacro()
+		return
+	}
+
+	// Block all other keyboard input while paste is in progress
+	if isKeyboardMacroInProgress() {
+		if vncLogger.Debug().Enabled() {
+			vncLogger.Debug().Uint32("keysym", keysym).Msg("VNC key event blocked: paste in progress")
+		}
+		return
+	}
+
 	hidKey := keysymToHID(keysym)
 	if hidKey == 0 {
 		// Check log level first to avoid allocations when debug is disabled
@@ -1026,6 +1044,11 @@ func (c *VNCConnection) handleVNCKey(keysym uint32, down bool) {
 }
 
 func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
+	// Block mouse input while paste is in progress
+	if isKeyboardMacroInProgress() {
+		return
+	}
+
 	width, height := c.getResolution()
 
 	if width == 0 || height == 0 {
@@ -1077,9 +1100,10 @@ func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
 // Clipboard typing constants
 const (
 	// Delay between keystrokes when typing clipboard text (milliseconds)
-	clipboardTypeDelayMs = 20
+	// USB HID operates at 125Hz-1000Hz (1-8ms intervals), so 5ms is reliable
+	clipboardTypeDelayMs = 5
 	// Delay after releasing keys before next character
-	clipboardReleaseDelayMs = 20
+	clipboardReleaseDelayMs = 5
 )
 
 // HID modifier constants (matches USB HID spec)

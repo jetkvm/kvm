@@ -1276,6 +1276,14 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 	keyboardMacroCancel = cancel
 }
 
+// isKeyboardMacroInProgress returns true if a keyboard macro (paste) is currently executing
+func isKeyboardMacroInProgress() bool {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	return keyboardMacroCancel != nil
+}
+
 func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	cancelKeyboardMacro()
 
