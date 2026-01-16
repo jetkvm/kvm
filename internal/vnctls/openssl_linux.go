@@ -344,14 +344,14 @@ func Init() {
 }
 
 type TLSConn struct {
-	ssl    *C.SSL
-	ctx    *C.SSL_CTX
-	conn   net.Conn
-	fd     int
-	closed bool
-	mu     sync.Mutex    // protects closed flag
-	readMu sync.Mutex    // protects SSL_read
-	writeMu sync.Mutex   // protects SSL_write
+	ssl     *C.SSL
+	ctx     *C.SSL_CTX
+	conn    net.Conn
+	fd      int
+	closed  bool
+	mu      sync.Mutex // protects closed flag
+	readMu  sync.Mutex // protects SSL_read
+	writeMu sync.Mutex // protects SSL_write
 }
 
 func UpgradeToTLS(conn net.Conn, useCert bool, certPEM, keyPEM string) (*TLSConn, error) {
