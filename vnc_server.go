@@ -38,8 +38,8 @@ type VNCServer struct {
 	jpegEncoderOn   bool
 
 	// Rate limiting per IP
-	rateLimitMu   sync.Mutex
-	lastConnTime  map[string]time.Time
+	rateLimitMu  sync.Mutex
+	lastConnTime map[string]time.Time
 
 	// Track if server failed to start for status reporting
 	startError error
@@ -342,7 +342,7 @@ type VNCConnection struct {
 
 	// Atomic width/height for lock-free reads on hot path
 	// Packed as uint32: high 16 bits = width, low 16 bits = height
-	resolution atomic.Uint32
+	resolution  atomic.Uint32
 	pixelFormat PixelFormat
 
 	hasTight         atomic.Bool
@@ -367,12 +367,16 @@ type VNCConnection struct {
 
 	// Per-connection pointer event logging (thread-safe without global state)
 	lastPointerLogTime time.Time
-	pointerEventCount  int
+	pointerEventCount  int32
 
 	// Frame delivery diagnostics
 	framesSent    atomic.Int64
 	framesDropped atomic.Int64
 	lastFrameLog  atomic.Int64
+
+	// Per-interval stats for FPS calculation
+	intervalSent    atomic.Int64
+	intervalDropped atomic.Int64
 }
 
 type PixelFormat struct {
@@ -520,6 +524,7 @@ func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
 	if !c.frameRequested.CompareAndSwap(true, false) {
 		// Frame dropped - client hasn't requested a new frame yet
 		c.framesDropped.Add(1)
+		c.intervalDropped.Add(1)
 		return false
 	}
 
@@ -530,21 +535,36 @@ func (c *VNCConnection) SendJPEGFrameDirect(frame []byte) bool {
 	}
 
 	c.framesSent.Add(1)
+	c.intervalSent.Add(1)
 
 	// Log frame stats every 5 seconds
 	now := time.Now().Unix()
 	lastLog := c.lastFrameLog.Load()
 	if now-lastLog >= 5 && c.lastFrameLog.CompareAndSwap(lastLog, now) {
-		sent := c.framesSent.Load()
-		dropped := c.framesDropped.Load()
-		total := sent + dropped
+		// Cumulative stats
+		totalSent := c.framesSent.Load()
+		totalDropped := c.framesDropped.Load()
+		total := totalSent + totalDropped
 		var dropRate float64
 		if total > 0 {
-			dropRate = float64(dropped) * 100 / float64(total)
+			dropRate = float64(totalDropped) * 100 / float64(total)
 		}
+
+		// Per-interval stats (reset after reading for next interval)
+		intervalSent := c.intervalSent.Swap(0)
+		intervalDropped := c.intervalDropped.Swap(0)
+		intervalDuration := now - lastLog
+		if intervalDuration < 1 {
+			intervalDuration = 1
+		}
+		fps := float64(intervalSent) / float64(intervalDuration)
+
 		vncLogger.Debug().
-			Int64("sent", sent).
-			Int64("dropped", dropped).
+			Float64("fps", fps).
+			Int64("intervalSent", intervalSent).
+			Int64("intervalDropped", intervalDropped).
+			Int64("totalSent", totalSent).
+			Int64("totalDropped", totalDropped).
 			Float64("dropRate", dropRate).
 			Str("remote", c.conn.RemoteAddr().String()).
 			Msg("VNC frame stats")

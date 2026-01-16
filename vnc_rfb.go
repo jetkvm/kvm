@@ -18,7 +18,8 @@ import (
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
-		return bytes.NewBuffer(make([]byte, 0, 4096))
+		// 256 bytes is sufficient for ServerInit message (~30 bytes + name)
+		return bytes.NewBuffer(make([]byte, 0, 256))
 	},
 }
 
@@ -727,7 +728,7 @@ func (c *VNCConnection) handlePointerEvent() error {
 	// Rate-limited logging (safe: single-goroutine message loop per connection)
 	c.pointerEventCount++
 	if c.pointerEventCount <= 3 || c.pointerEventCount%100 == 0 || time.Since(c.lastPointerLogTime) > 5*time.Second {
-		vncLogger.Debug().Uint16("x", x).Uint16("y", y).Uint8("buttons", buttonMask).Int("count", c.pointerEventCount).Msg("VNC pointer event")
+		vncLogger.Debug().Uint16("x", x).Uint16("y", y).Uint8("buttons", buttonMask).Int32("count", c.pointerEventCount).Msg("VNC pointer event")
 		c.lastPointerLogTime = time.Now()
 	}
 
