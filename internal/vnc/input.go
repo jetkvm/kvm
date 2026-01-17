@@ -12,6 +12,10 @@ const (
 	keysymMetaRight    = 0xFFE8
 	keysymSuperLeft    = 0xFFEB
 	keysymSuperRight   = 0xFFEC
+	keysymC            = 0x63 // lowercase 'c'
+	keysymCUpper       = 0x43 // uppercase 'C'
+	keysymX            = 0x78 // lowercase 'x'
+	keysymXUpper       = 0x58 // uppercase 'X'
 	keysymV            = 0x76 // lowercase 'v'
 	keysymVUpper       = 0x56 // uppercase 'V'
 )
@@ -33,7 +37,7 @@ func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 		return
 	}
 
-	// Track modifier key states for paste detection
+	// Track modifier key states for clipboard detection
 	switch keysym {
 	case keysymShiftLeft, keysymShiftRight:
 		c.shiftDown = down
@@ -43,8 +47,22 @@ func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 		c.metaDown = down
 	}
 
-	// Detect paste key combinations (on key down)
+	// Detect copy/cut and paste key combinations (on key down)
 	if down {
+		// Detect copy/cut: Ctrl+C, Ctrl+X, Cmd+C, Cmd+X
+		// When user copies on VNC-controlled machine, clear VNC clipboard
+		// so next paste uses native clipboard instead of stale VNC client content
+		isCopyCombo := (c.ctrlDown || c.metaDown) &&
+			(keysym == keysymC || keysym == keysymCUpper ||
+				keysym == keysymX || keysym == keysymXUpper)
+
+		if isCopyCombo {
+			c.clipboardMu.Lock()
+			c.clipboardText = nil
+			c.clipboardMu.Unlock()
+			// Don't return - still forward the key for native copy/cut
+		}
+
 		isPasteCombo := false
 
 		// Ctrl+V or Cmd+V (lowercase or uppercase V)
