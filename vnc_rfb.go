@@ -922,15 +922,16 @@ func (c *VNCConnection) handleClientCutText() error {
 			return fmt.Errorf("failed to read cut text: %w", err)
 		}
 
-		// Type clipboard text asynchronously to avoid blocking the message loop.
-		// Must copy the buffer since it may be reused before the goroutine runs.
-		textCopy := make([]byte, length)
-		copy(textCopy, c.cutTextBuf)
-		go func() {
-			if err := typeClipboardText(textCopy); err != nil {
-				vncLogger.Warn().Err(err).Int("bytes", len(textCopy)).Msg("VNC clipboard: failed to type text")
-			}
-		}()
+		// Store clipboard text for paste-on-demand (when user presses Ctrl+V, Cmd+V, etc.)
+		// This prevents auto-pasting when a VNC client connects with clipboard content.
+		c.clipboardMu.Lock()
+		c.clipboardText = make([]byte, length)
+		copy(c.clipboardText, c.cutTextBuf)
+		c.clipboardMu.Unlock()
+
+		if vncLogger.Debug().Enabled() {
+			vncLogger.Debug().Int("bytes", int(length)).Msg("VNC clipboard: stored text (will type on paste)")
+		}
 	}
 
 	return nil
@@ -1010,8 +1011,21 @@ func (c *VNCConnection) sendFrameUpdate(jpegData []byte) error {
 	return nil
 }
 
-// X11 keysym for Escape key (used to cancel paste operations)
-const keysymEscape = 0xFF1B
+// X11 keysyms for special keys
+const (
+	keysymEscape       = 0xFF1B
+	keysymInsert       = 0xFF63
+	keysymShiftLeft    = 0xFFE1
+	keysymShiftRight   = 0xFFE2
+	keysymControlLeft  = 0xFFE3
+	keysymControlRight = 0xFFE4
+	keysymMetaLeft     = 0xFFE7
+	keysymMetaRight    = 0xFFE8
+	keysymSuperLeft    = 0xFFEB
+	keysymSuperRight   = 0xFFEC
+	keysymV            = 0x76 // lowercase 'v'
+	keysymVUpper       = 0x56 // uppercase 'V'
+)
 
 func (c *VNCConnection) handleVNCKey(keysym uint32, down bool) {
 	// Allow Escape key to cancel ongoing paste operations
@@ -1027,6 +1041,56 @@ func (c *VNCConnection) handleVNCKey(keysym uint32, down bool) {
 			vncLogger.Debug().Uint32("keysym", keysym).Msg("VNC key event blocked: paste in progress")
 		}
 		return
+	}
+
+	// Track modifier key states for paste detection
+	switch keysym {
+	case keysymShiftLeft, keysymShiftRight:
+		c.shiftDown = down
+	case keysymControlLeft, keysymControlRight:
+		c.ctrlDown = down
+	case keysymMetaLeft, keysymMetaRight, keysymSuperLeft, keysymSuperRight:
+		c.metaDown = down
+	}
+
+	// Detect paste key combinations (on key down)
+	if down {
+		isPasteCombo := false
+
+		// Ctrl+V or Cmd+V (lowercase or uppercase V)
+		if (c.ctrlDown || c.metaDown) && (keysym == keysymV || keysym == keysymVUpper) {
+			isPasteCombo = true
+		}
+
+		// Shift+Insert
+		if c.shiftDown && keysym == keysymInsert {
+			isPasteCombo = true
+		}
+
+		if isPasteCombo {
+			// Get stored clipboard text
+			c.clipboardMu.Lock()
+			text := c.clipboardText
+			c.clipboardMu.Unlock()
+
+			if len(text) > 0 {
+				vncLogger.Info().Int("bytes", len(text)).Msg("VNC: paste combo detected, typing clipboard")
+				// Type clipboard text asynchronously
+				textCopy := make([]byte, len(text))
+				copy(textCopy, text)
+				go func() {
+					if err := typeClipboardText(textCopy); err != nil {
+						vncLogger.Warn().Err(err).Int("bytes", len(textCopy)).Msg("VNC clipboard: failed to type text")
+					}
+				}()
+			} else {
+				if vncLogger.Debug().Enabled() {
+					vncLogger.Debug().Msg("VNC: paste combo detected but clipboard is empty")
+				}
+			}
+			// Don't forward the paste key to the target - we handled it
+			return
+		}
 	}
 
 	hidKey := keysymToHID(keysym)

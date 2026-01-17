@@ -454,6 +454,13 @@ type VNCConnection struct {
 	encHeaderBuf [rfbEncHeaderBufSize]byte
 	cutTextBuf   []byte
 
+	// === Cold path: Clipboard for paste-on-demand ===
+	clipboardText []byte     // stored clipboard text from ClientCutText
+	clipboardMu   sync.Mutex // protects clipboardText
+	ctrlDown      bool       // Left or Right Control is pressed
+	metaDown      bool       // Left or Right Meta/Super is pressed (macOS Cmd)
+	shiftDown     bool       // Left or Right Shift is pressed
+
 	// === Very cold: Logging ===
 	lastPointerLogTime time.Time
 	pointerEventCount  int32
