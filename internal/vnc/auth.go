@@ -9,22 +9,35 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"time"
 )
 
-// net.Conn is used for TLS connections
+// TLS Hook Functions
+//
+// These hooks are set by the kvm package during initialization, BEFORE calling Server.Start().
+// They enable TLS features without creating import cycles between vnc and kvm packages.
+//
+// IMPORTANT: All hooks MUST be set before Server.Start() is called if TLS is enabled.
+// The server validates this requirement at startup when TLS is configured.
+// These are safe to read concurrently after initialization (write-once pattern).
+var (
+	// TLSAvailabilityChecker returns true if TLS certificates are ready and valid.
+	TLSAvailabilityChecker func() bool
 
-// TLSAvailabilityChecker is called to determine if TLS is currently available.
-// This is set by the kvm package during initialization.
-var TLSAvailabilityChecker func() bool
+	// GetCertificateFunc returns the TLS certificate for X509 authentication.
+	GetCertificateFunc func(*tls.ClientHelloInfo) (*tls.Certificate, error)
 
-// GetCertificateFunc is called to get the TLS certificate.
-// This is set by the kvm package during initialization.
-var GetCertificateFunc func(*tls.ClientHelloInfo) (*tls.Certificate, error)
+	// TLSConnUpgrader upgrades a plain connection to TLS using OpenSSL.
+	// Used for anonymous TLS (VeNCrypt TLSVnc/TLSNone subtypes).
+	TLSConnUpgrader func(conn net.Conn, useX509 bool, certFile, keyFile string) (TLSConnection, error)
 
-// TLSConnUpgrader upgrades a connection to TLS using OpenSSL.
-// This is set by the kvm package during initialization.
-var TLSConnUpgrader func(conn net.Conn, useX509 bool, certFile, keyFile string) (TLSConnection, error)
+	// IsHardwareCryptoEnabledFunc returns true if hardware crypto acceleration is enabled.
+	IsHardwareCryptoEnabledFunc func() bool
+
+	// GetHardwareCryptoEngineFunc returns the hardware crypto engine name (e.g., "devcrypto").
+	GetHardwareCryptoEngineFunc func() string
+)
 
 // TLSConnection represents an upgraded TLS connection.
 type TLSConnection interface {
@@ -32,12 +45,6 @@ type TLSConnection interface {
 	GetProtocolVersion() string
 	GetCipherName() string
 }
-
-// IsHardwareCryptoEnabledFunc returns true if hardware crypto is enabled.
-var IsHardwareCryptoEnabledFunc func() bool
-
-// GetHardwareCryptoEngineFunc returns the hardware crypto engine name.
-var GetHardwareCryptoEngineFunc func() string
 
 // isTLSAvailable checks if TLS is currently available for VNC connections.
 func (c *Connection) isTLSAvailable() bool {
@@ -173,14 +180,7 @@ func (c *Connection) authenticateVeNCrypt(hasPassword bool) error {
 	}
 	selectedSubtype := veNCryptSubtype(binary.BigEndian.Uint32(selectedBuf[:]))
 
-	validSubtype := false
-	for _, st := range subtypes {
-		if st == selectedSubtype {
-			validSubtype = true
-			break
-		}
-	}
-	if !validSubtype {
+	if !slices.Contains(subtypes, selectedSubtype) {
 		// VeNCrypt spec: non-zero = rejection
 		if _, err := c.conn.Write([]byte{1}); err != nil {
 			c.server.deps.Logger.Debug().Err(err).Msg("failed to send subtype rejection")
@@ -472,7 +472,7 @@ func computeVNCResponse(challenge []byte, password string) ([]byte, error) {
 // reverseBits reverses the bits in a byte (VNC DES quirk).
 func reverseBits(b byte) byte {
 	var result byte
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		result = (result << 1) | (b & 1)
 		b >>= 1
 	}

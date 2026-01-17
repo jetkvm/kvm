@@ -62,6 +62,18 @@ func (s *Server) Start() error {
 		return fmt.Errorf("VNC server already running")
 	}
 
+	// Validate TLS hooks are configured when TLS is enabled
+	tlsMode := s.deps.Config.GetTLSMode()
+	tlsWanted := s.tlsEnabled && tlsMode != "" && tlsMode != "disabled"
+	if tlsWanted {
+		if GetCertificateFunc == nil {
+			return fmt.Errorf("TLS enabled but GetCertificateFunc not set - call vnc.SetTLSHooks() first")
+		}
+		if TLSConnUpgrader == nil {
+			return fmt.Errorf("TLS enabled but TLSConnUpgrader not set - call vnc.SetTLSHooks() first")
+		}
+	}
+
 	addr := fmt.Sprintf(":%d", s.port)
 	listener, err := net.Listen("tcp4", addr)
 	if err != nil {
@@ -69,8 +81,7 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to create listener: %w", err)
 	}
 
-	tlsMode := s.deps.Config.GetTLSMode()
-	if s.tlsEnabled && tlsMode != "" && tlsMode != "disabled" {
+	if tlsWanted {
 		s.deps.Logger.Info().Int("port", s.port).Msg("VNC server starting with VeNCrypt TLS support")
 	} else {
 		s.deps.Logger.Info().Int("port", s.port).Msg("VNC server starting without TLS")
@@ -184,7 +195,7 @@ func (s *Server) Stop() error {
 	s.lastConnTime = make(map[string]time.Time)
 	s.rateLimitMu.Unlock()
 
-	s.connections.Range(func(key, value interface{}) bool {
+	s.connections.Range(func(key, value any) bool {
 		if conn, ok := key.(*Connection); ok {
 			conn.Close()
 		}
@@ -253,7 +264,7 @@ func (s *Server) UpdateVideoState(width, height uint16) {
 			Msg("VNC: video resolution changed")
 	}
 
-	s.connections.Range(func(key, value interface{}) bool {
+	s.connections.Range(func(key, value any) bool {
 		if conn, ok := key.(*Connection); ok {
 			conn.onResolutionChange(width, height)
 		}
@@ -274,14 +285,23 @@ func (s *Server) checkRateLimit(ip string) bool {
 	defer s.rateLimitMu.Unlock()
 
 	now := time.Now()
+	rateLimited := false
+
 	if lastTime, ok := s.lastConnTime[ip]; ok {
 		if now.Sub(lastTime) < time.Duration(connectionRateLimitMs)*time.Millisecond {
-			return true
+			rateLimited = true
 		}
 	}
-	s.lastConnTime[ip] = now
 
-	// Clean up entries older than rateLimitExpirySeconds when map exceeds threshold
+	// Always update timestamp for legitimate connections to track last activity
+	if !rateLimited {
+		s.lastConnTime[ip] = now
+	}
+
+	// Clean up stale entries when map exceeds threshold.
+	// Use len check before expensive iteration. The map is capped at ~MaxConnections
+	// worth of legitimate IPs, plus stale entries. With 60s expiry and 100ms rate limit,
+	// at most 600 IPs per minute could accumulate before expiring.
 	if len(s.lastConnTime) > rateLimitCleanupThreshold {
 		cutoff := now.Add(-time.Duration(rateLimitExpirySeconds) * time.Second)
 		for k, v := range s.lastConnTime {
@@ -291,7 +311,7 @@ func (s *Server) checkRateLimit(ip string) bool {
 		}
 	}
 
-	return false
+	return rateLimited
 }
 
 // acceptLoop handles incoming VNC connections until the server stops.
@@ -398,7 +418,7 @@ func (s *Server) acceptLoop() {
 // 4. Maximum 10 clients (MaxConnections) limits worst-case latency
 // If a client is consistently slow, frames are dropped via frameRequested flag backpressure.
 func (s *Server) BroadcastJPEGFrame(frame []byte) {
-	s.connections.Range(func(key, value interface{}) bool {
+	s.connections.Range(func(key, value any) bool {
 		if conn, ok := key.(*Connection); ok {
 			conn.SendJPEGFrameDirect(frame)
 		}

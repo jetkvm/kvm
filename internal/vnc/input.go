@@ -20,6 +20,17 @@ const (
 	keysymVUpper       = 0x56 // uppercase 'V'
 )
 
+// USB HID codes for modifier keys (from HID Usage Tables 1.5, Section 10).
+// Used to release stuck modifiers when connection closes.
+const (
+	hidLeftShift    = 0xE1
+	hidRightShift   = 0xE5
+	hidLeftControl  = 0xE0
+	hidRightControl = 0xE4
+	hidLeftMeta     = 0xE3 // Command/GUI/Super
+	hidRightMeta    = 0xE7
+)
+
 // handleVNCKey processes a key event from the VNC client.
 func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 	// Allow Escape key to cancel ongoing paste operations
@@ -69,7 +80,14 @@ func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 
 		if isPasteCombo {
 			c.clipboardMu.Lock()
-			text := c.clipboardText
+			// Deep copy clipboard data to avoid race with concurrent ClientCutText updates.
+			// Without this, a new ClientCutText could overwrite the underlying array
+			// while typeClipboardText is reading it in its goroutine.
+			var text []byte
+			if len(c.clipboardText) > 0 {
+				text = make([]byte, len(c.clipboardText))
+				copy(text, c.clipboardText)
+			}
 			c.clipboardMu.Unlock()
 
 			if len(text) > 0 {

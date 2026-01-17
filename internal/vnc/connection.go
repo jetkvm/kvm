@@ -183,10 +183,35 @@ func (c *Connection) Close() {
 		return // Already closed
 	}
 
+	// Release any held modifier keys to prevent stuck keys on the target machine
+	c.releaseHeldModifiers()
+
 	close(c.stopChan)
 
 	if err := c.conn.Close(); err != nil {
 		c.server.deps.Logger.Debug().Err(err).Msg("error closing VNC connection")
+	}
+}
+
+// releaseHeldModifiers releases any modifier keys that were held when the connection closed.
+// This prevents stuck modifier keys on the target machine.
+func (c *Connection) releaseHeldModifiers() {
+	hid := c.server.deps.HID
+
+	// Release modifiers in the order they're typically used (least to most common)
+	// to minimize the chance of brief unexpected key combos
+	if c.metaDown {
+		// Release both left and right Meta/Command/Super keys
+		_ = hid.KeypressReport(hidLeftMeta, false)
+		_ = hid.KeypressReport(hidRightMeta, false)
+	}
+	if c.ctrlDown {
+		_ = hid.KeypressReport(hidLeftControl, false)
+		_ = hid.KeypressReport(hidRightControl, false)
+	}
+	if c.shiftDown {
+		_ = hid.KeypressReport(hidLeftShift, false)
+		_ = hid.KeypressReport(hidRightShift, false)
 	}
 }
 
