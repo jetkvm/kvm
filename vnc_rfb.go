@@ -1075,7 +1075,6 @@ func (c *VNCConnection) handleVNCKey(keysym uint32, down bool) {
 		if isPasteCombo {
 			// Get and clear stored clipboard text atomically
 			// This prevents the same content from being pasted multiple times
-			// and allows the target machine's native paste to work after our paste
 			c.clipboardMu.Lock()
 			text := c.clipboardText
 			c.clipboardText = nil // Clear clipboard after use
@@ -1089,13 +1088,11 @@ func (c *VNCConnection) handleVNCKey(keysym uint32, down bool) {
 						vncLogger.Warn().Err(err).Int("bytes", len(text)).Msg("VNC clipboard: failed to type text")
 					}
 				}()
-			} else {
-				if vncLogger.Debug().Enabled() {
-					vncLogger.Debug().Msg("VNC: paste combo detected but clipboard is empty")
-				}
+				// Don't forward the paste key - we handled it with VNC clipboard
+				return
 			}
-			// Don't forward the paste key to the target - we handled it
-			return
+			// VNC clipboard is empty - fall through to forward the key
+			// so the target machine's native paste works
 		}
 	}
 
