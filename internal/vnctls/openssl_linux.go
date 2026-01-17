@@ -1,4 +1,4 @@
-//go:build linux && arm
+//go:build cgo && linux && arm
 
 // Package vnctls provides TLS support for VNC using OpenSSL via CGO.
 //
@@ -449,6 +449,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -642,6 +643,18 @@ func (c *TLSConn) LocalAddr() net.Addr {
 
 func (c *TLSConn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
+}
+
+func (c *TLSConn) SetDeadline(t time.Time) error {
+	return c.conn.SetDeadline(t)
+}
+
+func (c *TLSConn) SetReadDeadline(t time.Time) error {
+	return c.conn.SetReadDeadline(t)
+}
+
+func (c *TLSConn) SetWriteDeadline(t time.Time) error {
+	return c.conn.SetWriteDeadline(t)
 }
 
 func (c *TLSConn) GetCipherName() string {

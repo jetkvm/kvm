@@ -173,7 +173,9 @@ func Main() {
 
 	// Initialize VNC server if enabled
 	if config.VNCEnabled {
-		initVNCServer()
+		if err := initVNCServer(); err != nil {
+			logger.Error().Err(err).Msg("failed to initialize VNC server")
+		}
 	}
 
 	setProcTitle("ready")

@@ -17,6 +17,8 @@ package kvm
 
 import (
 	"fmt"
+
+	"github.com/jetkvm/kvm/internal/vnc"
 )
 
 const (
@@ -31,7 +33,7 @@ const (
 	// VNC password max length (DES key limitation)
 	vncPasswordMaxLength = 8
 
-	// VNC max connections range (used for validation only; maxVNCConnections in vnc_server.go is hardware limit)
+	// VNC max connections range (used for validation only; vnc.MaxConnections in vnc_server.go is hardware limit)
 	minVNCConnections = 1
 
 	// VNC paste delay range in milliseconds (0 = fastest, relies on USB polling; 50 = very slow)
@@ -196,8 +198,8 @@ func rpcSetVNCPasteDelayMs(delayMs int) error {
 // rpcSetVNCMaxConnections sets the maximum concurrent VNC connections.
 // Valid range: 1-10 (hardware limit defined in vnc_server.go)
 func rpcSetVNCMaxConnections(max int) error {
-	if max < minVNCConnections || max > maxVNCConnections {
-		return fmt.Errorf("invalid max connections: %d (must be %d-%d)", max, minVNCConnections, maxVNCConnections)
+	if max < minVNCConnections || max > vnc.MaxConnections {
+		return fmt.Errorf("invalid max connections: %d (must be %d-%d)", max, minVNCConnections, vnc.MaxConnections)
 	}
 
 	oldMax := config.VNCMaxConnections

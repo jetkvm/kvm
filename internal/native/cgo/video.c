@@ -355,52 +355,29 @@ static void *jpeg_read_stream(void *arg)
 int jpeg_encoder_start(int quality)
 {
     // Use jetkvm_video_get_status() to get the video state from ctrl.c
-    // This is more reliable than the local volatile variables for cross-thread visibility
     jetkvm_video_state_t *video_state = jetkvm_video_get_status();
 
-    // Also log the local volatile variables for debugging (use fprintf to bypass log level filter)
-    fprintf(stderr, "INFO: JPEG START: quality=%d, variable addresses: detected_width=%p, detected_height=%p, detected_signal=%p\n",
-            quality, (void*)&detected_width, (void*)&detected_height, (void*)&detected_signal);
-    fprintf(stderr, "INFO: JPEG START: local volatile vars: detected_width=%d, detected_height=%d, detected_signal=%d\n",
-            detected_width, detected_height, detected_signal ? 1 : 0);
-    fprintf(stderr, "INFO: JPEG START: jetkvm_video_get_status: ready=%d, width=%d, height=%d\n",
-            video_state->ready, video_state->width, video_state->height);
-    fflush(stderr);
+    log_debug("JPEG start: quality=%d, detected=%dx%d signal=%d, state ready=%d %dx%d",
+              quality, detected_width, detected_height, detected_signal ? 1 : 0,
+              video_state->ready, video_state->width, video_state->height);
 
     // Wait for video signal to be detected (up to 10 seconds)
-    // Try using local volatile variables first since they're updated directly by FORMAT THREAD
     int retries = 0;
     const int max_retries = 100; // 100 * 100ms = 10 seconds
     while ((detected_width == 0 || detected_height == 0 || !detected_signal) && retries < max_retries)
     {
         if (retries == 0)
         {
-            fprintf(stderr, "INFO: JPEG: Waiting for video signal...\n");
-            fflush(stderr);
+            log_debug("JPEG: waiting for video signal...");
         }
         usleep(100000); // 100ms
         retries++;
         if (retries % 10 == 0)
         {
-            fprintf(stderr, "INFO: JPEG: Still waiting... retry %d\n", retries);
-            fprintf(stderr, "INFO: JPEG: local: detected_width=%d, detected_height=%d, detected_signal=%d\n",
-                    detected_width, detected_height, detected_signal ? 1 : 0);
             video_state = jetkvm_video_get_status();
-            fprintf(stderr, "INFO: JPEG: state: ready=%d, width=%d, height=%d\n",
-                    video_state->ready, video_state->width, video_state->height);
-            fflush(stderr);
+            log_debug("JPEG: waiting retry %d, detected=%dx%d signal=%d",
+                      retries, detected_width, detected_height, detected_signal ? 1 : 0);
         }
-    }
-
-    if (retries > 0)
-    {
-        fprintf(stderr, "INFO: JPEG: After %d retries:\n", retries);
-        fprintf(stderr, "INFO: JPEG: local: detected_width=%d, detected_height=%d, detected_signal=%d\n",
-                detected_width, detected_height, detected_signal ? 1 : 0);
-        video_state = jetkvm_video_get_status();
-        fprintf(stderr, "INFO: JPEG: state: ready=%d, width=%d, height=%d\n",
-                video_state->ready, video_state->width, video_state->height);
-        fflush(stderr);
     }
 
     pthread_mutex_lock(&jpeg_mutex);
@@ -415,10 +392,8 @@ int jpeg_encoder_start(int quality)
     // Use local volatile variables which are directly updated by FORMAT THREAD
     if (detected_width == 0 || detected_height == 0 || !detected_signal)
     {
-        fprintf(stderr, "ERROR: Cannot start JPEG encoder: no video signal detected after %d retries\n", retries);
-        fprintf(stderr, "ERROR: JPEG: local: detected_width=%d, detected_height=%d, detected_signal=%d\n",
-                  detected_width, detected_height, detected_signal ? 1 : 0);
-        fflush(stderr);
+        log_error("Cannot start JPEG encoder: no video signal after %d retries (detected=%dx%d signal=%d)",
+                  retries, detected_width, detected_height, detected_signal ? 1 : 0);
         pthread_mutex_unlock(&jpeg_mutex);
         return -1;
     }
@@ -427,32 +402,21 @@ int jpeg_encoder_start(int quality)
     jpeg_height = detected_height;
     jpeg_quality = (quality > 0 && quality <= 99) ? quality : 80;
 
-    fprintf(stderr, "INFO: JPEG: Starting channel with %dx%d quality=%d\n", jpeg_width, jpeg_height, jpeg_quality);
-    fflush(stderr);
-
     // Check if video streaming is running - JPEG encoder needs it to receive frames
     uint8_t streaming_status = video_get_streaming_status();
-    fprintf(stderr, "INFO: JPEG: streaming_status=%d (0=stopped, 1=running, 2=stopping)\n", streaming_status);
-    fflush(stderr);
+    log_debug("JPEG: streaming_status=%d", streaming_status);
 
     if (streaming_status == 0)
     {
-        // Streaming is stopped - need to start it for JPEG to work
-        fprintf(stderr, "INFO: JPEG: video streaming is stopped, starting it now\n");
-        fflush(stderr);
+        log_debug("JPEG: video streaming stopped, starting it");
         video_start_streaming();
-        // Wait a bit for streaming to start
         usleep(500000); // 500ms
-        streaming_status = video_get_streaming_status();
-        fprintf(stderr, "INFO: JPEG: after starting, streaming_status=%d\n", streaming_status);
-        fflush(stderr);
     }
 
     int32_t ret = jpeg_channel_start(jpeg_width, jpeg_height, jpeg_quality);
     if (ret != RK_SUCCESS)
     {
-        fprintf(stderr, "ERROR: Failed to start JPEG channel: %d\n", ret);
-        fflush(stderr);
+        log_error("Failed to start JPEG channel: %d", ret);
         pthread_mutex_unlock(&jpeg_mutex);
         return -1;
     }
@@ -461,8 +425,7 @@ int jpeg_encoder_start(int quality)
     jpeg_read_thread = malloc(sizeof(pthread_t));
     if (pthread_create(jpeg_read_thread, NULL, jpeg_read_stream, NULL) != 0)
     {
-        fprintf(stderr, "ERROR: Failed to create jpeg_read_thread\n");
-        fflush(stderr);
+        log_error("Failed to create jpeg_read_thread");
         jpeg_running = false;
         jpeg_channel_stop();
         free(jpeg_read_thread);
@@ -471,8 +434,7 @@ int jpeg_encoder_start(int quality)
         return -1;
     }
 
-    fprintf(stderr, "INFO: JPEG encoder started: %dx%d quality=%d\n", jpeg_width, jpeg_height, jpeg_quality);
-    fflush(stderr);
+    log_info("JPEG encoder started: %dx%d quality=%d", jpeg_width, jpeg_height, jpeg_quality);
     pthread_mutex_unlock(&jpeg_mutex);
     return 0;
 }
