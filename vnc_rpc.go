@@ -7,6 +7,9 @@
 //   - setVNCQuality: Set JPEG compression quality
 //   - setVNCPassword: Set VNC authentication password
 //   - setVNCTLS: Enable/disable TLS encryption
+//   - setVNCPasteDelayMs: Set clipboard paste keystroke delay
+//   - setVNCMaxConnections: Set maximum concurrent connections
+//   - setVNCClipboardEnabled: Enable/disable clipboard typing
 //
 // Configuration is persisted to disk and changes take effect immediately.
 

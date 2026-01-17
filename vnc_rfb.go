@@ -1485,7 +1485,7 @@ const maxClipboardTypeSize = 100 * 1024
 // Uses config.KeyboardLayout to determine the keyboard mapping.
 // This implements VNC clipboard-as-keystrokes functionality.
 // Respects config.VNCClipboardEnabled setting.
-// Rejects text larger than 10KB to prevent accidental paste of large content.
+// Rejects text larger than 100KB to prevent accidental paste of large content.
 func typeClipboardText(text []byte) error {
 	if !config.VNCClipboardEnabled {
 		vncLogger.Debug().Int("bytes", len(text)).Msg("VNC clipboard: typing disabled, ignoring")
