@@ -60,12 +60,12 @@ func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 		if isPasteCombo {
 			c.clipboardMu.Lock()
 
-			// On first paste after connection: clear VNC clipboard and forward paste key
+			// On first paste after connection: skip VNC clipboard and forward paste key
 			// This allows copy-paste within the VNC-controlled machine to work
 			// (e.g., user copies text on remote machine, then pastes it)
+			// Note: we keep the VNC clipboard content for subsequent pastes
 			if !c.firstPasteDone {
 				c.firstPasteDone = true
-				c.clipboardText = nil // Clear any clipboard content from VNC client
 				c.clipboardMu.Unlock()
 				c.server.deps.Logger.Debug().Msg("VNC: first paste after connect, forwarding to allow native paste")
 				// Fall through to forward the paste key
