@@ -140,7 +140,7 @@ type Config struct {
 	VNCPassword         string `json:"vnc_password"`           // Separate VNC password (if not using same password)
 	VNCUseSamePassword  bool   `json:"vnc_use_same_password"`  // Use same password as local auth
 	LocalAuthPassword   string `json:"local_auth_password"`    // Plaintext password for VNC auth
-	VNCPasteSpeed       string `json:"vnc_paste_speed"`        // "fast", "normal", "slow" - default: "fast"
+	VNCPasteDelayMs     int    `json:"vnc_paste_delay_ms"`     // Delay per keystroke in ms (0-50), default: 2
 	VNCMaxConnections   int    `json:"vnc_max_connections"`    // Max concurrent VNC connections (1-10), default: 3
 	VNCClipboardEnabled bool   `json:"vnc_clipboard_enabled"`  // Enable clipboard-as-keystrokes, default: true
 }
@@ -247,7 +247,7 @@ func getDefaultConfig() Config {
 		VNCEnabled:          false,
 		VNCPort:             5900,
 		VNCQuality:          80,
-		VNCPasteSpeed:       "fast",
+		VNCPasteDelayMs:     2,
 		VNCMaxConnections:   3,
 		VNCClipboardEnabled: true,
 	}
@@ -347,9 +347,8 @@ func LoadConfig() {
 		loadedConfig.VNCQuality = defaults.VNCQuality
 	}
 	// Apply VNC defaults for configs created before these settings existed
-	if loadedConfig.VNCPasteSpeed == "" {
-		loadedConfig.VNCPasteSpeed = "fast"
-	}
+	// VNCPasteDelayMs: 0 is a valid value (fastest), so we use -1 or check differently
+	// Since 0 is valid (no delay), we don't need migration - new default is 2ms
 	if loadedConfig.VNCMaxConnections == 0 {
 		loadedConfig.VNCMaxConnections = 3
 	}

@@ -15,7 +15,7 @@ interface VNCStateResult {
   quality: number;
   connectionCount: number;
   tlsEnabled: boolean;
-  pasteSpeed: string;
+  pasteDelayMs: number;
   maxConnections: number;
   clipboardEnabled: boolean;
 }
@@ -23,7 +23,7 @@ interface VNCStateResult {
 const VNC_DEFAULTS = {
   port: 5900,
   quality: 80,
-  pasteSpeed: "fast",
+  pasteDelayMs: 2,
   maxConnections: 3,
 } as const;
 
@@ -36,7 +36,7 @@ export default function SettingsVNCRoute() {
   const [quality, setQuality] = useState<number>(VNC_DEFAULTS.quality);
   const [connectionCount, setConnectionCount] = useState<number>(0);
   const [tlsEnabled, setTlsEnabled] = useState<boolean>(false);
-  const [pasteSpeed, setPasteSpeed] = useState<string>(VNC_DEFAULTS.pasteSpeed);
+  const [pasteDelayMs, setPasteDelayMs] = useState<number>(VNC_DEFAULTS.pasteDelayMs);
   const [maxConnections, setMaxConnections] = useState<number>(VNC_DEFAULTS.maxConnections);
   const [clipboardEnabled, setClipboardEnabled] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,7 +57,7 @@ export default function SettingsVNCRoute() {
       setQuality(state.quality);
       setConnectionCount(state.connectionCount);
       setTlsEnabled(state.tlsEnabled);
-      setPasteSpeed(state.pasteSpeed || VNC_DEFAULTS.pasteSpeed);
+      setPasteDelayMs(state.pasteDelayMs ?? VNC_DEFAULTS.pasteDelayMs);
       setMaxConnections(state.maxConnections || VNC_DEFAULTS.maxConnections);
       setClipboardEnabled(state.clipboardEnabled ?? true);
       setIsLoading(false);
@@ -126,16 +126,18 @@ export default function SettingsVNCRoute() {
     });
   };
 
-  const handlePasteSpeedChange = (newSpeed: string) => {
-    send("setVNCPasteSpeed", { speed: newSpeed }, (resp: JsonRpcResponse) => {
+  const handlePasteDelayChange = (newDelayMs: number) => {
+    // Clamp to valid range
+    const clampedDelay = Math.max(0, Math.min(50, newDelayMs));
+    send("setVNCPasteDelayMs", { delayMs: clampedDelay }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.vnc_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
         );
         return;
       }
-      setPasteSpeed(newSpeed);
-      notifications.success(m.vnc_settings_paste_speed_changed());
+      setPasteDelayMs(clampedDelay);
+      notifications.success(m.vnc_settings_paste_delay_changed());
     });
   };
 
@@ -330,22 +332,23 @@ export default function SettingsVNCRoute() {
             </SettingsItem>
 
             <SettingsItem
-              title={m.vnc_settings_paste_speed_title()}
-              description={m.vnc_settings_paste_speed_description()}
+              title={m.vnc_settings_paste_delay_title()}
+              description={m.vnc_settings_paste_delay_description()}
             >
-              <SelectMenuBasic
-                size="SM"
-                value={pasteSpeed}
-                options={[
-                  {
-                    value: "fast",
-                    label: `${m.vnc_settings_paste_speed_fast()}${pasteSpeed === VNC_DEFAULTS.pasteSpeed ? m.vnc_settings_default_suffix() : ""}`,
-                  },
-                  { value: "normal", label: m.vnc_settings_paste_speed_normal() },
-                  { value: "slow", label: m.vnc_settings_paste_speed_slow() },
-                ]}
-                onChange={e => handlePasteSpeedChange(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={pasteDelayMs}
+                  onChange={e => setPasteDelayMs(parseInt(e.target.value) || 0)}
+                  onBlur={e => handlePasteDelayChange(parseInt(e.target.value) || 0)}
+                  className="w-20 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                />
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  {m.vnc_settings_paste_delay_unit()}
+                </span>
+              </div>
             </SettingsItem>
           </>
         )}

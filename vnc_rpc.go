@@ -30,18 +30,22 @@ const (
 
 	// VNC max connections range (used for validation only; maxVNCConnections in vnc_server.go is hardware limit)
 	minVNCConnections = 1
+
+	// VNC paste delay range in milliseconds (0 = fastest, relies on USB polling; 50 = very slow)
+	minPasteDelayMs = 0
+	maxPasteDelayMs = 50
 )
 
 type VNCState struct {
-	Enabled          bool   `json:"enabled"`
-	Running          bool   `json:"running"`
-	Port             int    `json:"port"`
-	Quality          int    `json:"quality"`
-	ConnectionCount  int    `json:"connectionCount"`
-	TLSEnabled       bool   `json:"tlsEnabled"`
-	PasteSpeed       string `json:"pasteSpeed"`
-	MaxConnections   int    `json:"maxConnections"`
-	ClipboardEnabled bool   `json:"clipboardEnabled"`
+	Enabled          bool `json:"enabled"`
+	Running          bool `json:"running"`
+	Port             int  `json:"port"`
+	Quality          int  `json:"quality"`
+	ConnectionCount  int  `json:"connectionCount"`
+	TLSEnabled       bool `json:"tlsEnabled"`
+	PasteDelayMs     int  `json:"pasteDelayMs"`
+	MaxConnections   int  `json:"maxConnections"`
+	ClipboardEnabled bool `json:"clipboardEnabled"`
 }
 
 func restartVNCServerIfRunning() error {
@@ -68,7 +72,7 @@ func rpcGetVNCState() (VNCState, error) {
 		Quality:          config.VNCQuality,
 		ConnectionCount:  server.GetConnectionCount(),
 		TLSEnabled:       config.VNCUseTLS,
-		PasteSpeed:       config.VNCPasteSpeed,
+		PasteDelayMs:     config.VNCPasteDelayMs,
 		MaxConnections:   config.VNCMaxConnections,
 		ClipboardEnabled: config.VNCClipboardEnabled,
 	}, nil
@@ -168,21 +172,18 @@ func rpcSetVNCTLS(enabled bool) error {
 	return restartVNCServerIfRunning()
 }
 
-// rpcSetVNCPasteSpeed sets the clipboard paste typing speed.
-// Valid values: "fast" (1ms delays), "normal" (5ms), "slow" (15ms)
-func rpcSetVNCPasteSpeed(speed string) error {
-	switch speed {
-	case "fast", "normal", "slow":
-		// valid
-	default:
-		return fmt.Errorf("invalid paste speed: %q (must be fast, normal, or slow)", speed)
+// rpcSetVNCPasteDelayMs sets the clipboard paste delay per keystroke in milliseconds.
+// Valid range: 0-50 (0 = fastest, relies on USB polling; higher = slower but more compatible)
+func rpcSetVNCPasteDelayMs(delayMs int) error {
+	if delayMs < minPasteDelayMs || delayMs > maxPasteDelayMs {
+		return fmt.Errorf("invalid paste delay: %d (must be %d-%d ms)", delayMs, minPasteDelayMs, maxPasteDelayMs)
 	}
 
-	oldSpeed := config.VNCPasteSpeed
-	config.VNCPasteSpeed = speed
+	oldDelay := config.VNCPasteDelayMs
+	config.VNCPasteDelayMs = delayMs
 
 	if err := SaveConfig(); err != nil {
-		config.VNCPasteSpeed = oldSpeed
+		config.VNCPasteDelayMs = oldDelay
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

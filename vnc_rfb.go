@@ -1161,17 +1161,18 @@ func (c *VNCConnection) handleVNCPointer(x, y uint16, buttonMask byte) {
 	}
 }
 
-// getClipboardDelays returns press and release delays based on config.VNCPasteSpeed.
-// Returns (pressDelayMs, releaseDelayMs).
+// getClipboardDelays returns press and release delays based on config.VNCPasteDelayMs.
+// Returns (pressDelayMs, releaseDelayMs) - each is half the configured delay.
 func getClipboardDelays() (int, int) {
-	switch config.VNCPasteSpeed {
-	case "slow":
-		return 15, 15 // 30ms total per char, ~33 chars/sec
-	case "normal":
-		return 5, 5 // 10ms total per char, ~100 chars/sec
-	default: // "fast" or unset
-		return 1, 1 // 2ms total per char, ~500 chars/sec
+	delay := config.VNCPasteDelayMs
+	if delay < 0 {
+		delay = 0
 	}
+	// Split delay evenly between press and release
+	// For odd values, give extra ms to release for better compatibility
+	pressDelay := delay / 2
+	releaseDelay := delay - pressDelay
+	return pressDelay, releaseDelay
 }
 
 // HID modifier constants (matches USB HID spec)
