@@ -79,11 +79,6 @@ func (c *Connection) SendJPEGFrameDirect(frame []byte) bool {
 
 // sendFrameUpdate sends a single JPEG frame to the client.
 func (c *Connection) sendFrameUpdate(jpegData []byte) error {
-	// Lock-free checks on hot path
-	if !c.hasTight.Load() {
-		return nil
-	}
-
 	// Validate JPEG data (must start with SOI marker)
 	if len(jpegData) < 2 || jpegData[0] != jpegSOIByte0 || jpegData[1] != jpegSOIByte1 {
 		c.server.deps.Logger.Warn().Int("len", len(jpegData)).Msg("invalid JPEG data from encoder - frame dropped")

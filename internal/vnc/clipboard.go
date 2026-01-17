@@ -267,7 +267,9 @@ func (c *Connection) typeClipboardText(text []byte) error {
 	}
 
 	if len(text) > maxClipboardTypeSize {
-		c.server.deps.Logger.Info().Int("bytes", len(text)).Int("maxBytes", maxClipboardTypeSize).Msg("VNC clipboard: text too large, ignoring (likely not intended for typing)")
+		if c.server.deps.Logger.Debug().Enabled() {
+			c.server.deps.Logger.Debug().Int("bytes", len(text)).Int("maxBytes", maxClipboardTypeSize).Msg("VNC clipboard: text too large, ignoring")
+		}
 		return nil
 	}
 
@@ -278,21 +280,19 @@ func (c *Connection) typeClipboardText(text []byte) error {
 	pressDelay, releaseDelay := c.getClipboardDelays()
 	steps, skipped := c.textToMacroSteps(text, layoutCode, pressDelay, releaseDelay)
 	if len(steps) == 0 {
-		c.server.deps.Logger.Info().Int("skipped", skipped).Str("layout", layoutCode).Int("textLen", len(text)).Msg("VNC clipboard: no typeable characters in text")
+		if c.server.deps.Logger.Debug().Enabled() {
+			c.server.deps.Logger.Debug().Int("skipped", skipped).Str("layout", layoutCode).Msg("VNC clipboard: no typeable characters")
+		}
 		return nil
 	}
 
-	if skipped > 0 {
-		c.server.deps.Logger.Info().Int("skipped", skipped).Int("typed", len(steps)/2).Str("layout", layoutCode).Msg("VNC clipboard: some characters not in layout")
+	if skipped > 0 && c.server.deps.Logger.Debug().Enabled() {
+		c.server.deps.Logger.Debug().Int("skipped", skipped).Int("typed", len(steps)/2).Str("layout", layoutCode).Msg("VNC clipboard: some characters not in layout")
 	}
-
-	c.server.deps.Logger.Info().Int("chars", len(steps)/2).Str("layout", layoutCode).Msg("VNC clipboard: typing text via keyboard")
 
 	err := c.server.deps.HID.KeyboardMacro(steps)
 	if err != nil {
-		c.server.deps.Logger.Error().Err(err).Msg("VNC clipboard: keyboard macro failed")
-	} else {
-		c.server.deps.Logger.Info().Int("chars", len(steps)/2).Msg("VNC clipboard: typing completed")
+		c.server.deps.Logger.Error().Err(err).Int("chars", len(steps)/2).Msg("VNC clipboard: keyboard macro failed")
 	}
 	return err
 }
@@ -300,10 +300,7 @@ func (c *Connection) typeClipboardText(text []byte) error {
 // getClipboardDelays returns press and release delays based on config.VNCPasteDelayMs.
 // Returns (pressDelayMs, releaseDelayMs) - each is half the configured delay.
 func (c *Connection) getClipboardDelays() (int, int) {
-	delay := c.server.deps.Config.GetVNCPasteDelayMs()
-	if delay < 0 {
-		delay = 0
-	}
+	delay := max(c.server.deps.Config.GetVNCPasteDelayMs(), 0)
 	// Split delay evenly between press and release
 	// For odd values, give extra ms to release for better compatibility
 	pressDelay := delay / 2

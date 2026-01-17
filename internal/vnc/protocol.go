@@ -78,7 +78,6 @@ const (
 type rfbEncodingType int32
 
 const (
-	encodingRaw   rfbEncodingType = 0 // Raw pixels (fallback)
 	encodingTight rfbEncodingType = 7 // Tight encoding with JPEG compression
 )
 

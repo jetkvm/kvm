@@ -63,52 +63,25 @@ func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 			// Don't return - still forward the key for native copy/cut
 		}
 
-		isPasteCombo := false
-
-		// Ctrl+V or Cmd+V (lowercase or uppercase V)
-		if (c.ctrlDown || c.metaDown) && (keysym == keysymV || keysym == keysymVUpper) {
-			isPasteCombo = true
-		}
-
-		// Shift+Insert
-		if c.shiftDown && keysym == keysymInsert {
-			isPasteCombo = true
-		}
+		// Ctrl+V, Cmd+V, or Shift+Insert
+		isPasteCombo := ((c.ctrlDown || c.metaDown) && (keysym == keysymV || keysym == keysymVUpper)) ||
+			(c.shiftDown && keysym == keysymInsert)
 
 		if isPasteCombo {
 			c.clipboardMu.Lock()
+			text := c.clipboardText
+			c.clipboardMu.Unlock()
 
-			// On first paste after connection: skip VNC clipboard and forward paste key
-			// This allows copy-paste within the VNC-controlled machine to work
-			// (e.g., user copies text on remote machine, then pastes it)
-			// Note: we keep the VNC clipboard content for subsequent pastes
-			if !c.firstPasteDone {
-				c.firstPasteDone = true
-				c.clipboardMu.Unlock()
-				c.server.deps.Logger.Debug().Msg("VNC: first paste after connect, forwarding to allow native paste")
-				// Fall through to forward the paste key
-			} else {
-				// Subsequent pastes: use VNC clipboard if available
-				// Get and clear stored clipboard text atomically
-				// This prevents the same content from being pasted multiple times
-				text := c.clipboardText
-				c.clipboardText = nil // Clear clipboard after use
-				c.clipboardMu.Unlock()
-
-				if len(text) > 0 {
-					c.server.deps.Logger.Info().Int("bytes", len(text)).Msg("VNC: paste combo detected, typing clipboard")
-					// Type clipboard text asynchronously (text is already copied out)
-					go func() {
-						if err := c.typeClipboardText(text); err != nil {
-							c.server.deps.Logger.Warn().Err(err).Int("bytes", len(text)).Msg("VNC clipboard: failed to type text")
-						}
-					}()
-					// Don't forward the paste key - we handled it with VNC clipboard
-					return
-				}
-				// VNC clipboard is empty - fall through to forward the key
-				// so the target machine's native paste works
+			if len(text) > 0 {
+				c.server.deps.Logger.Info().Int("bytes", len(text)).Msg("VNC: paste combo detected, typing clipboard")
+				go func() {
+					if err := c.typeClipboardText(text); err != nil {
+						c.server.deps.Logger.Warn().Err(err).Int("bytes", len(text)).Msg("VNC clipboard: failed to type text")
+					}
+				}()
+				return
 			}
+			// Clipboard empty - fall through to forward key for native paste
 		}
 	}
 

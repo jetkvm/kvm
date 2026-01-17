@@ -52,14 +52,13 @@ type Connection struct {
 	cutTextBuf   []byte
 
 	// === Cold path: Clipboard for paste-on-demand ===
-	clipboardText  []byte
-	clipboardMu    sync.Mutex // protects clipboardText
-	firstPasteDone bool       // true after first paste attempt (allows native paste on first try)
-	ctrlDown       bool       // Left or Right Control is pressed
-	metaDown       bool       // Left or Right Meta/Super is pressed
-	shiftDown      bool       // Left or Right Shift is pressed
+	clipboardText []byte
+	clipboardMu   sync.Mutex // protects clipboardText
+	ctrlDown      bool       // Left or Right Control is pressed
+	metaDown      bool       // Left or Right Meta/Super is pressed
+	shiftDown     bool       // Left or Right Shift is pressed
 
-	// === Very cold: Logging ===
+	// === Very cold: Logging (message loop only, no lock needed) ===
 	lastPointerLogTime time.Time
 	pointerEventCount  int32
 }
