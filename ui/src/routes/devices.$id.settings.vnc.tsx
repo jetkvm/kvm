@@ -40,6 +40,7 @@ export default function SettingsVNCRoute() {
   const [maxConnections, setMaxConnections] = useState<number>(VNC_DEFAULTS.maxConnections);
   const [clipboardEnabled, setClipboardEnabled] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isEditingDelay, setIsEditingDelay] = useState(false);
 
   const loadVNCState = useCallback(() => {
     send("getVNCState", {}, (resp: JsonRpcResponse) => {
@@ -57,12 +58,15 @@ export default function SettingsVNCRoute() {
       setQuality(state.quality);
       setConnectionCount(state.connectionCount);
       setTlsEnabled(state.tlsEnabled);
-      setPasteDelayMs(state.pasteDelayMs ?? VNC_DEFAULTS.pasteDelayMs);
+      // Don't overwrite paste delay while user is editing the input
+      if (!isEditingDelay) {
+        setPasteDelayMs(state.pasteDelayMs ?? VNC_DEFAULTS.pasteDelayMs);
+      }
       setMaxConnections(state.maxConnections || VNC_DEFAULTS.maxConnections);
       setClipboardEnabled(state.clipboardEnabled ?? true);
       setIsLoading(false);
     });
-  }, [send]);
+  }, [send, isEditingDelay]);
 
   useEffect(() => {
     loadVNCState();
@@ -341,8 +345,24 @@ export default function SettingsVNCRoute() {
                   min={0}
                   max={50}
                   value={pasteDelayMs}
-                  onChange={e => setPasteDelayMs(parseInt(e.target.value) || 0)}
-                  onBlur={e => handlePasteDelayChange(parseInt(e.target.value) || 0)}
+                  onFocus={() => setIsEditingDelay(true)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val === "") {
+                      setPasteDelayMs(0);
+                    } else {
+                      const num = parseInt(val, 10);
+                      if (!isNaN(num)) {
+                        setPasteDelayMs(Math.max(0, Math.min(50, num)));
+                      }
+                    }
+                  }}
+                  onBlur={e => {
+                    setIsEditingDelay(false);
+                    const num = parseInt(e.target.value, 10);
+                    const finalVal = isNaN(num) ? 0 : Math.max(0, Math.min(50, num));
+                    handlePasteDelayChange(finalVal);
+                  }}
                   className="w-20 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                 />
                 <span className="text-sm text-slate-500 dark:text-slate-400">

@@ -1073,19 +1073,20 @@ func (c *VNCConnection) handleVNCKey(keysym uint32, down bool) {
 		}
 
 		if isPasteCombo {
-			// Get stored clipboard text
+			// Get and clear stored clipboard text atomically
+			// This prevents the same content from being pasted multiple times
+			// and allows the target machine's native paste to work after our paste
 			c.clipboardMu.Lock()
 			text := c.clipboardText
+			c.clipboardText = nil // Clear clipboard after use
 			c.clipboardMu.Unlock()
 
 			if len(text) > 0 {
 				vncLogger.Info().Int("bytes", len(text)).Msg("VNC: paste combo detected, typing clipboard")
-				// Type clipboard text asynchronously
-				textCopy := make([]byte, len(text))
-				copy(textCopy, text)
+				// Type clipboard text asynchronously (text is already copied out)
 				go func() {
-					if err := typeClipboardText(textCopy); err != nil {
-						vncLogger.Warn().Err(err).Int("bytes", len(textCopy)).Msg("VNC clipboard: failed to type text")
+					if err := typeClipboardText(text); err != nil {
+						vncLogger.Warn().Err(err).Int("bytes", len(text)).Msg("VNC clipboard: failed to type text")
 					}
 				}()
 			} else {
