@@ -924,8 +924,13 @@ func (c *VNCConnection) handleClientCutText() error {
 
 		// Store clipboard text for paste-on-demand (when user presses Ctrl+V, Cmd+V, etc.)
 		// This prevents auto-pasting when a VNC client connects with clipboard content.
+		// Reuse buffer to avoid allocation per clipboard event.
 		c.clipboardMu.Lock()
-		c.clipboardText = make([]byte, length)
+		if cap(c.clipboardText) < int(length) {
+			c.clipboardText = make([]byte, length)
+		} else {
+			c.clipboardText = c.clipboardText[:length]
+		}
 		copy(c.clipboardText, c.cutTextBuf)
 		c.clipboardMu.Unlock()
 

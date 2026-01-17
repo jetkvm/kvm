@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/webrtc/v4"
@@ -1255,6 +1256,7 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 var (
 	keyboardMacroCancel context.CancelFunc
 	keyboardMacroLock   sync.Mutex
+	keyboardMacroActive atomic.Bool // Hot path: lock-free check for VNC input handlers
 )
 
 // cancelKeyboardMacro cancels any ongoing keyboard macro execution
@@ -1266,6 +1268,7 @@ func cancelKeyboardMacro() {
 		keyboardMacroCancel()
 		logger.Info().Msg("canceled keyboard macro")
 		keyboardMacroCancel = nil
+		keyboardMacroActive.Store(false)
 	}
 }
 
@@ -1274,14 +1277,13 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 	defer keyboardMacroLock.Unlock()
 
 	keyboardMacroCancel = cancel
+	keyboardMacroActive.Store(cancel != nil)
 }
 
-// isKeyboardMacroInProgress returns true if a keyboard macro (paste) is currently executing
+// isKeyboardMacroInProgress returns true if a keyboard macro (paste) is currently executing.
+// Uses atomic load for zero-overhead hot path access from VNC input handlers.
 func isKeyboardMacroInProgress() bool {
-	keyboardMacroLock.Lock()
-	defer keyboardMacroLock.Unlock()
-
-	return keyboardMacroCancel != nil
+	return keyboardMacroActive.Load()
 }
 
 func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
