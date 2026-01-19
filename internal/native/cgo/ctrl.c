@@ -450,7 +450,7 @@ char *jetkvm_video_get_edid_hex() {
     return (char *)bytes_to_hex(edid, edid_len);
 }
 
-jetkvm_video_state_t *jetkvm_video_get_status() {
+volatile jetkvm_video_state_t *jetkvm_video_get_status() {
     video_get_status_call_count++;
     if (video_get_status_call_count == 1) {
         fprintf(stderr, "INFO: jetkvm_video_get_status: BUILD_ID=%s, state=%p, counter=%p\n",

@@ -24,7 +24,7 @@ static pthread_mutex_t jpeg_client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void jetkvm_c_log_handler(int level, const char *filename, const char *funcname, int line, const char *message) {
     // printf("[%s] %s:%d %s: %s\n", filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
-    fprintf(stderr, "[%s] %s:%d %s: %s\n", filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
+    fprintf(stderr, "[%d] %s:%s:%d: %s\n", level, filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
 }
 
 // Video handler that pipes frames to the Unix socket

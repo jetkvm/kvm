@@ -355,7 +355,7 @@ static void *jpeg_read_stream(void *arg)
 int jpeg_encoder_start(int quality)
 {
     // Use jetkvm_video_get_status() to get the video state from ctrl.c
-    jetkvm_video_state_t *video_state = jetkvm_video_get_status();
+    volatile jetkvm_video_state_t *video_state = jetkvm_video_get_status();
 
     log_debug("JPEG start: quality=%d, detected=%dx%d signal=%d, state ready=%d %dx%d",
               quality, detected_width, detected_height, detected_signal ? 1 : 0,

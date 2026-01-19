@@ -1497,4 +1497,15 @@ var rpcHandlers = map[string]RPCHandler{
 	"setVNCPasteDelayMs":     {Func: rpcSetVNCPasteDelayMs, Params: []string{"delayMs"}},
 	"setVNCMaxConnections":   {Func: rpcSetVNCMaxConnections, Params: []string{"max"}},
 	"setVNCClipboardEnabled": {Func: rpcSetVNCClipboardEnabled, Params: []string{"enabled"}},
+
+	// RDP handlers
+	"getRDPState":          {Func: rpcGetRDPState},
+	"setRDPEnabled":        {Func: rpcSetRDPEnabled, Params: []string{"enabled"}},
+	"setRDPPort":           {Func: rpcSetRDPPort, Params: []string{"port"}},
+	"setRDPTLS":            {Func: rpcSetRDPTLS, Params: []string{"enabled"}},
+	"setRDPMaxConnections": {Func: rpcSetRDPMaxConnections, Params: []string{"max"}},
+	"setRDPVideoEnabled":   {Func: rpcSetRDPVideoEnabled, Params: []string{"enabled"}},
+	"setRDPAudioEnabled":   {Func: rpcSetRDPAudioEnabled, Params: []string{"enabled"}},
+	"setRDPMicEnabled":     {Func: rpcSetRDPMicEnabled, Params: []string{"enabled"}},
+	"setRDPCameraEnabled":  {Func: rpcSetRDPCameraEnabled, Params: []string{"enabled"}},
 }

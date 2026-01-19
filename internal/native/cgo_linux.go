@@ -29,7 +29,8 @@ static inline void jetkvm_cgo_setup_log_handler() {
 
 extern void jetkvm_go_video_state_handler(jetkvm_video_state_t *state);
 static inline void jetkvm_cgo_setup_video_state_handler() {
-    jetkvm_set_video_state_handler(&jetkvm_go_video_state_handler);
+    // Cast required because Go export doesn't support volatile qualifier
+    jetkvm_set_video_state_handler((jetkvm_video_state_handler_t *)&jetkvm_go_video_state_handler);
 }
 
 extern void jetkvm_go_video_handler(cuint8_t *frame, ssize_t len);

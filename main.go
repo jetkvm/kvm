@@ -178,6 +178,13 @@ func Main() {
 		}
 	}
 
+	// Initialize RDP server if enabled
+	if config.RDPEnabled {
+		if err := initRDPServer(); err != nil {
+			logger.Error().Err(err).Msg("failed to initialize RDP server")
+		}
+	}
+
 	setProcTitle("ready")
 
 	sigs := make(chan os.Signal, 1)

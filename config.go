@@ -143,6 +143,16 @@ type Config struct {
 	VNCPasteDelayMs     int    `json:"vnc_paste_delay_ms"`    // Delay per keystroke in ms (0-50), default: 2
 	VNCMaxConnections   int    `json:"vnc_max_connections"`   // Max concurrent VNC connections (1-10), default: 3
 	VNCClipboardEnabled bool   `json:"vnc_clipboard_enabled"` // Enable clipboard-as-keystrokes, default: true
+
+	// RDP settings
+	RDPEnabled        bool `json:"rdp_enabled"`
+	RDPPort           int  `json:"rdp_port"`            // default: 3389
+	RDPMaxConnections int  `json:"rdp_max_connections"` // Max concurrent RDP connections (1-10), default: 3
+	RDPUseTLS         bool `json:"rdp_use_tls"`         // Use TLS for RDP - when enabled and available, provides NLA security
+	RDPVideoEnabled   bool `json:"rdp_video_enabled"`   // Enable H.264 video via RDPGFX, default: true
+	RDPAudioEnabled   bool `json:"rdp_audio_enabled"`   // Enable audio output to client, default: true
+	RDPMicEnabled     bool `json:"rdp_mic_enabled"`     // Enable microphone input from client, default: true
+	RDPCameraEnabled  bool `json:"rdp_camera_enabled"`  // Enable webcam redirection from client, default: false
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -250,6 +260,16 @@ func getDefaultConfig() Config {
 		VNCPasteDelayMs:     2,
 		VNCMaxConnections:   3,
 		VNCClipboardEnabled: true,
+
+		// RDP defaults
+		RDPEnabled:        false,
+		RDPPort:           3389,
+		RDPMaxConnections: 3,
+		RDPUseTLS:         true, // Enable TLS by default for security
+		RDPVideoEnabled:   true,
+		RDPAudioEnabled:   true,
+		RDPMicEnabled:     true,
+		RDPCameraEnabled:  false, // Camera redirection off by default
 	}
 }
 
@@ -354,6 +374,21 @@ func LoadConfig() {
 	}
 	// VNCClipboardEnabled defaults to true; only set if config is being created fresh
 	// (existing configs with explicit false should be preserved)
+
+	// Apply RDP defaults for new configs
+	if loadedConfig.RDPPort == 0 {
+		defaults := getDefaultConfig()
+		loadedConfig.RDPPort = defaults.RDPPort
+		loadedConfig.RDPMaxConnections = defaults.RDPMaxConnections
+		loadedConfig.RDPUseTLS = defaults.RDPUseTLS
+		loadedConfig.RDPVideoEnabled = defaults.RDPVideoEnabled
+		loadedConfig.RDPAudioEnabled = defaults.RDPAudioEnabled
+		loadedConfig.RDPMicEnabled = defaults.RDPMicEnabled
+		// RDPCameraEnabled defaults to false, so no migration needed
+	}
+	if loadedConfig.RDPMaxConnections == 0 {
+		loadedConfig.RDPMaxConnections = 3
+	}
 
 	// fixup old keyboard layout value
 	if loadedConfig.KeyboardLayout == "en_US" {

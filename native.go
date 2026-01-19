@@ -42,6 +42,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			// Update VNC server with video resolution
 			if state.Width > 0 && state.Height > 0 {
 				GetVNCServer().UpdateVideoState(uint16(state.Width), uint16(state.Height))
+				// Update RDP server with video resolution
+				UpdateRDPVideoState(uint16(state.Width), uint16(state.Height))
 			}
 		},
 		OnIndevEvent: func(event string) {
@@ -79,6 +81,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 					nativeLogger.Warn().Err(err).Msg("error writing sample")
 				}
 			}
+			// Send H.264 frames to RDP clients
+			BroadcastRDPFrame(frame)
 		},
 		OnJpegFrameReceived: func(frame []byte) {
 			// Hot potato: send directly to VNC clients synchronously
