@@ -2,9 +2,12 @@ package rdp
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -27,13 +30,15 @@ type Connection struct {
 	resolution atomic.Uint32
 
 	// MCS layer state
-	userID     uint16
-	ioChannel  uint16
-	channels   []ChannelInfo
-	channelsMu sync.RWMutex
+	userID       uint16
+	ioChannel    uint16
+	msgChannelID uint16 // Message channel (0 if not used)
+	channels     []ChannelInfo
+	channelsMu   sync.RWMutex
 
 	// Negotiated protocol (from X.224)
-	selectedProtocol uint32
+	selectedProtocol          uint32
+	clientRequestedProtocols  uint32 // Original X.224 requested protocols from client
 
 	// Client capabilities
 	clientInfo *ClientInfo
@@ -64,6 +69,9 @@ type Connection struct {
 
 	// Keyframe tracking - only send frames after first keyframe
 	hasReceivedKeyframe atomic.Bool
+
+	// Graphics mode - true if RDPGFX is available, false for bitmap updates
+	gfxSupported atomic.Bool
 }
 
 // ConnectionPhase represents the current protocol phase.
@@ -227,9 +235,20 @@ func (c *Connection) handleX224Connection() error {
 
 	// Build connection confirm - must include RDP_NEG_RSP if client sent RDP_NEG_REQ
 	clientSentNegReq := cr.NegReq != nil
-	// Set EXTENDED_CLIENT_DATA_SUPPORTED flag
-	negFlags := uint8(protocol.NegFlagExtendedClientDataSupported)
+	// Set negotiation flags based on what we support
+	// Per MS-RDPBCGR 2.2.1.2.1 (RDP Negotiation Response):
+	// - EXTENDED_CLIENT_DATA_SUPPORTED (0x01): Server supports Extended Client Data Blocks
+	// - DYNVC_GFX_PROTOCOL_SUPPORTED (0x02): Server supports Graphics Pipeline Extension
+	// NOTE: RDP_NEG_REQ flags and RDP_NEG_RSP flags have DIFFERENT meanings!
+	// We should NOT intersect them - just set what our server supports.
+	negFlags := uint8(protocol.NegFlagExtendedClientDataSupported | protocol.NegFlagDynvcGfxProtocolSupported)
 	cc := protocol.BuildConnectionConfirm(selectedProto, negFlags, clientSentNegReq)
+
+	// Log the negotiation details
+	c.server.deps.Logger.Warn().
+		Uint8("negFlags", negFlags).
+		Uint32("selectedProto", selectedProto).
+		Msg("RDP: X.224 negotiation flags")
 
 	// Log the exact bytes being sent for debugging
 	c.server.deps.Logger.Warn().
@@ -243,6 +262,10 @@ func (c *Connection) handleX224Connection() error {
 
 	// Store the selected protocol for later use in MCS Connect
 	c.selectedProtocol = selectedProto
+	// Store the client's original requested protocols for SC_CORE
+	if cr.NegReq != nil {
+		c.clientRequestedProtocols = cr.NegReq.RequestedProto
+	}
 
 	// Temporary WARN-level logging for debugging
 	c.server.deps.Logger.Warn().
@@ -344,10 +367,38 @@ func (c *Connection) handleMCSConnect() error {
 		Int("userDataLen", len(ci.UserData)).
 		Msg("RDP: MCS Connect-Initial parsed successfully")
 
+	// Log client's domain parameters for debugging
+	c.server.deps.Logger.Warn().
+		Int("targetMaxChannels", ci.TargetParams.MaxChannelIDs).
+		Int("targetMaxUsers", ci.TargetParams.MaxUserIDs).
+		Int("targetMaxPDU", ci.TargetParams.MaxMCSPDUSize).
+		Int("minMaxChannels", ci.MinParams.MaxChannelIDs).
+		Int("minMaxUsers", ci.MinParams.MaxUserIDs).
+		Int("maxMaxChannels", ci.MaxParams.MaxChannelIDs).
+		Int("maxMaxUsers", ci.MaxParams.MaxUserIDs).
+		Msg("RDP: client domain parameters")
+
 	// Parse GCC user data
 	ccr, err := protocol.ParseConferenceCreateRequest(ci.UserData)
 	if err != nil {
 		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to parse GCC data, continuing")
+	}
+
+	// Log what client data blocks were parsed
+	if ccr != nil {
+		c.server.deps.Logger.Warn().
+			Bool("hasCoreData", ccr.CoreData != nil).
+			Bool("hasSecurityData", ccr.SecurityData != nil).
+			Bool("hasNetworkData", ccr.NetworkData != nil).
+			Bool("hasMsgChannelData", ccr.MsgChannelData != nil).
+			Msg("RDP: client GCC data blocks")
+
+		if ccr.CoreData != nil {
+			c.server.deps.Logger.Warn().
+				Uint16("earlyCapFlags", ccr.CoreData.EarlyCapabilityFlags).
+				Uint32("version", ccr.CoreData.Version).
+				Msg("RDP: client core data details")
+		}
 	}
 
 	// Extract client info
@@ -372,52 +423,84 @@ func (c *Connection) handleMCSConnect() error {
 
 	// Extract channel definitions
 	if ccr != nil && ccr.NetworkData != nil {
-		// Log the raw channelCount from client
+		// Log ALL raw channels from client for debugging
+		rawNames := make([]string, len(ccr.NetworkData.Channels))
+		for i, ch := range ccr.NetworkData.Channels {
+			rawNames[i] = fmt.Sprintf("[%d]=%q", i, ch.Name.String())
+		}
 		c.server.deps.Logger.Warn().
 			Uint32("rawChannelCount", ccr.NetworkData.ChannelCount).
 			Int("parsedChannels", len(ccr.NetworkData.Channels)).
-			Msg("RDP: client NetworkData")
+			Strs("rawChannelNames", rawNames).
+			Msg("RDP: client NetworkData (raw)")
 
+		// Only include channels with non-empty names (per xrdp fix for Jump Desktop)
+		// Some clients send empty channel names for disabled channels
 		c.channels = make([]ChannelInfo, 0, len(ccr.NetworkData.Channels))
 		for _, ch := range ccr.NetworkData.Channels {
-			c.channels = append(c.channels, ChannelInfo{
-				Name:    ch.Name.String(),
-				Options: ch.Options,
-			})
+			name := ch.Name.String()
+			if name != "" {
+				c.channels = append(c.channels, ChannelInfo{
+					Name:    name,
+					Options: ch.Options,
+				})
+			}
 		}
 
-		// Log detailed channel info
+		// Log filtered channel info
 		channelNames := make([]string, len(c.channels))
 		for i, ch := range c.channels {
 			channelNames[i] = ch.Name
 		}
 		c.server.deps.Logger.Warn().
-			Int("channelCount", len(c.channels)).
-			Strs("channelNames", channelNames).
-			Msg("RDP: client requested virtual channels")
+			Int("filteredCount", len(c.channels)).
+			Strs("filteredNames", channelNames).
+			Msg("RDP: client requested virtual channels (after filtering)")
 	}
 
 	// Build MCS Connect-Response
+	// Use RDP 5.0 version for maximum compatibility with older clients like Jump Desktop
+	// Jump Desktop is RDP 5.0 and may not handle newer version numbers correctly
+	// Per MS-RDPBCGR 2.2.1.4.2, clientRequestedProtocols should be set to
+	// the value from the client's CS_CORE. In practice, Windows Desktop seems to
+	// expect it to match the original X.224 requested protocols.
+	clientReqProto := c.clientRequestedProtocols
+	if clientReqProto == 0 {
+		clientReqProto = c.selectedProtocol // Fallback
+	}
 	serverCore := &protocol.ServerCoreData{
-		Version:              0x00080004, // RDP 5.0 minimum
-		ClientRequestedProto: c.selectedProtocol,
-		EarlyCapFlags:        0,
+		Version:              0x00080004, // RDP 5.0/5.1/5.2 - maximum compatibility
+		ClientRequestedProto: clientReqProto,
+		EarlyCapFlags:        0, // No early cap flags for RDP 5.0 compatibility
 	}
 
-	// Assign channel IDs
-	// Virtual channels must start AFTER the I/O channel (1003)
-	// So we start at 1004 to avoid conflicts
-	channelIDs := make([]uint16, len(c.channels))
+	// Assign channel IDs to filtered channels only
+	// Note: MS-RDPBCGR says channelCount SHOULD match client, but xrdp only returns
+	// IDs for valid channels (per PR #615 Jump Desktop fix)
 	baseChannelID := uint16(protocol.ChannelMCSGlobalID + 1) // 1004
+	channelIDs := make([]uint16, len(c.channels))
 	for i := range c.channels {
 		c.channels[i].ID = baseChannelID + uint16(i)
 		channelIDs[i] = c.channels[i].ID
 	}
 
+	// Determine message channel ID if client requested it
+	var msgChannelID uint16
+	if ccr != nil && ccr.MsgChannelData != nil {
+		// Assign message channel ID after virtual channels
+		msgChannelID = baseChannelID + uint16(len(c.channels))
+		c.msgChannelID = msgChannelID
+		c.server.deps.Logger.Debug().
+			Uint32("clientFlags", ccr.MsgChannelData.Flags).
+			Uint16("msgChannelID", msgChannelID).
+			Msg("RDP: client requested message channel")
+	}
+
 	serverNetwork := &protocol.ServerNetworkData{
 		MCSChannelID: protocol.ChannelMCSGlobalID,
-		ChannelCount: uint16(len(c.channels)),
+		ChannelCount: uint16(len(c.channels)), // Only return valid channels
 		ChannelIDs:   channelIDs,
+		MsgChannelID: msgChannelID,
 	}
 
 	// No encryption for now (TLS handles security)
@@ -429,15 +512,22 @@ func (c *Connection) handleMCSConnect() error {
 	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity)
 	domainParams := protocol.DefaultDomainParameters()
 
+	// Build the full MCS Connect-Response for logging
+	mcsResponse := protocol.BuildConnectResponse(protocol.MCSResultSuccessful, 0, domainParams, gccResponse)
+
 	c.server.deps.Logger.Warn().
 		Int("gccResponseLen", len(gccResponse)).
+		Uint32("clientReqProto", clientReqProto).
 		Uint16("mcsChannelID", serverNetwork.MCSChannelID).
 		Uint16("channelCount", serverNetwork.ChannelCount).
 		Interface("channelIDs", serverNetwork.ChannelIDs).
+		Uint16("msgChannelID", serverNetwork.MsgChannelID).
 		Str("gccResponseHex", fmt.Sprintf("% 02X", gccResponse)).
+		Int("mcsResponseLen", len(mcsResponse)).
+		Str("mcsResponseHex", fmt.Sprintf("% 02X", mcsResponse)).
 		Msg("RDP: building MCS Connect-Response")
 
-	if err := protocol.WriteConnectResponse(c.conn, protocol.MCSResultSuccessful, 0, domainParams, gccResponse); err != nil {
+	if err := protocol.WriteX224Data(c.conn, mcsResponse); err != nil {
 		return fmt.Errorf("write connect-response: %w", err)
 	}
 
@@ -483,8 +573,14 @@ func (c *Connection) handleMCSChannelSetup() error {
 	// 2. Receive Attach User Request
 	data, err = protocol.ReadX224Data(c.reader)
 	if err != nil {
+		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to read Attach User Request")
 		return fmt.Errorf("read attach user: %w", err)
 	}
+
+	c.server.deps.Logger.Warn().
+		Int("dataLen", len(data)).
+		Str("dataHex", fmt.Sprintf("% X", data)).
+		Msg("RDP: received Attach User Request")
 
 	pduType, err = protocol.ParseMCSPDUType(data)
 	if err != nil {
@@ -497,20 +593,39 @@ func (c *Connection) handleMCSChannelSetup() error {
 	// Assign user ID and send confirm
 	c.userID = protocol.MCSUserIDBase
 	confirm := protocol.BuildAttachUserConfirm(protocol.MCSResultSuccessful, c.userID)
+
+	c.server.deps.Logger.Warn().
+		Uint16("userID", c.userID).
+		Int("confirmLen", len(confirm)).
+		Str("confirmHex", fmt.Sprintf("% X", confirm)).
+		Msg("RDP: sending Attach User Confirm")
+
 	if err := protocol.WriteMCSPDU(c.conn, confirm); err != nil {
 		return fmt.Errorf("write attach user confirm: %w", err)
 	}
 
-	c.server.deps.Logger.Debug().Uint16("userID", c.userID).
-		Msg("RDP: sent attach user confirm")
+	c.server.deps.Logger.Warn().Uint16("userID", c.userID).
+		Msg("RDP: sent attach user confirm successfully")
 
 	// 3. Handle Channel Join Requests
 	// Client will join: user channel, I/O channel, and virtual channels
+	// Note: c.channels only contains channels with non-empty names (filtered earlier)
 	expectedJoins := 2 + len(c.channels) // user + IO + virtual channels
+	if c.msgChannelID != 0 {
+		expectedJoins++ // message channel
+	}
 
-	for range expectedJoins {
+	c.server.deps.Logger.Warn().
+		Int("expectedJoins", expectedJoins).
+		Int("virtualChannels", len(c.channels)).
+		Uint16("msgChannelID", c.msgChannelID).
+		Msg("RDP: waiting for channel join requests")
+
+	for i := range expectedJoins {
+		c.server.deps.Logger.Warn().Int("joinIndex", i).Msg("RDP: waiting for channel join request")
 		data, err = protocol.ReadX224Data(c.reader)
 		if err != nil {
+			c.server.deps.Logger.Warn().Err(err).Int("joinIndex", i).Msg("RDP: failed to read channel join")
 			return fmt.Errorf("read channel join: %w", err)
 		}
 
@@ -622,11 +737,18 @@ func (c *Connection) handleLicensing() error {
 	// Wrap in MCS Send Data Indication
 	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.ioChannel, licenseError)
 
+	c.server.deps.Logger.Warn().
+		Int("licenseLen", len(licenseError)).
+		Int("mcsLen", len(mcsPDU)).
+		Uint16("ioChannel", c.ioChannel).
+		Str("licenseHex", fmt.Sprintf("% X", licenseError)).
+		Msg("RDP: sending license error PDU")
+
 	if err := protocol.WriteMCSPDU(c.conn, mcsPDU); err != nil {
 		return fmt.Errorf("write license error: %w", err)
 	}
 
-	c.server.deps.Logger.Debug().Msg("RDP: sent license error (valid client)")
+	c.server.deps.Logger.Warn().Msg("RDP: sent license error (valid client)")
 
 	c.phase = PhaseCapabilities
 	return nil
@@ -647,7 +769,7 @@ func buildLicenseErrorPDU() []byte {
 
 	// License PDU Preamble (4 bytes per MS-RDPELE 2.2.1.1)
 	buf[4] = 0xFF // bMsgType = ERROR_ALERT (0xFF)
-	buf[5] = 0x03 // flags = PREAMBLE_VERSION_3_0 (0x03)
+	buf[5] = 0x02 // flags = PREAMBLE_VERSION_2_0 (0x02) - Windows 2000, compatible with RDP 5.0
 	buf[6] = 0x10 // wMsgSize low (16 = size of preamble + message body)
 	buf[7] = 0x00 // wMsgSize high
 
@@ -664,7 +786,9 @@ func buildLicenseErrorPDU() []byte {
 	buf[14] = 0x00
 	buf[15] = 0x00
 
-	// bbErrorInfo = LICENSE_BINARY_BLOB with BB_ANY_BLOB type, zero length
+	// bbErrorInfo = LICENSE_BINARY_BLOB with BB_ANY_BLOB type
+	// Per MS-RDPELE 2.2.2.3, when wBlobLen is 0, wBlobType SHOULD be ignored.
+	// However, FreeRDP and some clients expect BB_ANY_BLOB (0x0000) for empty blobs.
 	buf[16] = 0x00 // wBlobType low (BB_ANY_BLOB = 0x0000)
 	buf[17] = 0x00 // wBlobType high
 	buf[18] = 0x00 // wBlobLen low
@@ -684,27 +808,28 @@ func (c *Connection) handleCapabilities() error {
 	// Wrap in MCS Send Data Indication
 	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.ioChannel, demandActive)
 
-	// Debug: dump MCS PDU header
-	fmt.Printf("DEBUG MCS SDI PDU len=%d, first 16 bytes: % 02X\n", len(mcsPDU), mcsPDU[:min(16, len(mcsPDU))])
-	fmt.Printf("DEBUG MCS SDI: userID=%d (0x%04X), channelID=%d (0x%04X)\n", c.userID, c.userID, c.ioChannel, c.ioChannel)
+	// Log first 64 bytes of the demand active for debugging
+	hexLen := 64
+	if len(demandActive) < hexLen {
+		hexLen = len(demandActive)
+	}
+	c.server.deps.Logger.Warn().
+		Int("demandActiveLen", len(demandActive)).
+		Int("mcsLen", len(mcsPDU)).
+		Uint16("ioChannel", c.ioChannel).
+		Uint16("userID", c.userID).
+		Str("demandActiveFirst64", fmt.Sprintf("% X", demandActive[:hexLen])).
+		Msg("RDP: sending demand active PDU")
 
 	if err := protocol.WriteMCSPDU(c.conn, mcsPDU); err != nil {
 		return fmt.Errorf("write demand active: %w", err)
 	}
 
-	c.server.deps.Logger.Debug().Msg("RDP: sent demand active")
+	c.server.deps.Logger.Warn().Msg("RDP: sent demand active")
 
 	// Set deadline for client response
 	if err := c.conn.SetReadDeadline(time.Now().Add(protocol.NegotiationTimeout)); err != nil {
 		return err
-	}
-
-	// Debug: peek at what's in the buffer before reading
-	peekBytes, peekErr := c.reader.Peek(16)
-	if peekErr == nil {
-		fmt.Printf("DEBUG PRE-READ: first 16 bytes in buffer: % 02X\n", peekBytes)
-	} else {
-		fmt.Printf("DEBUG PRE-READ: peek error: %v\n", peekErr)
 	}
 
 	// Read Confirm Active PDU
@@ -756,15 +881,17 @@ func (c *Connection) buildDemandActivePDU() []byte {
 	// Share control header + Share ID + capabilities
 
 	// Pre-allocate buffer
-	buf := make([]byte, 0, 512)
+	buf := make([]byte, 0, 1024)
 
 	// Share Control Header will be added after we know the size
 	// For now, build the PDU data
 
-	// Share ID (4 bytes)
-	shareID := []byte{0x66, 0x72, 0x65, 0x64} // "fred" as share ID
+	// Share ID (4 bytes) - MS-RDPBCGR says: 0x000103EA + userID
+	shareIDVal := uint32(0x000103EA) + uint32(c.userID)
+	shareID := []byte{byte(shareIDVal), byte(shareIDVal >> 8), byte(shareIDVal >> 16), byte(shareIDVal >> 24)}
 
-	// Length of source descriptor
+	// Length of source descriptor - use "RDP" as required by Jump Desktop
+	// MS-RDPBCGR 2.2.1.13.1.1 says "typically a string such as 'RDP'"
 	sourceDesc := []byte("RDP\x00")
 	sourceDescLen := uint16(len(sourceDesc))
 
@@ -780,7 +907,7 @@ func (c *Connection) buildDemandActivePDU() []byte {
 	// Calculate total length for share control header
 	// Share Control Header (6) + shareId(4) + lengthSourceDescriptor(2) + lengthCombinedCapabilities(2) +
 	// sourceDescriptor + numberCapabilities(2) + pad2Octets(2) + capabilitySets + sessionId(4)
-	pduDataLen := 4 + 2 + 2 + len(sourceDesc) + 2 + 2 + len(caps) + 4 // +4 for sessionId
+	pduDataLen := 4 + 2 + 2 + len(sourceDesc) + 2 + 2 + len(caps) + 4
 	totalLen := 6 + pduDataLen
 
 	// Log for debugging
@@ -793,17 +920,11 @@ func (c *Connection) buildDemandActivePDU() []byte {
 		Int("capsLen", len(caps)).
 		Msg("RDP: building Demand Active PDU")
 
-	// Debug: dump first 64 bytes of caps
-	capsHexLen := len(caps)
-	if capsHexLen > 64 {
-		capsHexLen = 64
-	}
-	fmt.Printf("DEBUG Demand Active caps first %d bytes: % 02X\n", capsHexLen, caps[:capsHexLen])
-
 	// Share Control Header
 	buf = append(buf, byte(totalLen), byte(totalLen>>8)) // totalLength
 	buf = append(buf, 0x11, 0x00)                        // pduType (PDUTYPE_DEMANDACTIVEPDU = 0x0011)
-	buf = append(buf, byte(c.userID), byte(c.userID>>8)) // PDUSource
+	// PDUSource - use IO channel (FreeRDP expects this)
+	buf = append(buf, byte(c.ioChannel), byte(c.ioChannel>>8))
 
 	// Share ID
 	buf = append(buf, shareID...)
@@ -826,73 +947,59 @@ func (c *Connection) buildDemandActivePDU() []byte {
 	// Capability sets
 	buf = append(buf, caps...)
 
-	// Session ID (4 bytes) - required per MS-RDPBCGR 2.2.1.13.1.1
+	// Session ID (4 bytes) - required by FreeRDP and modern clients
 	buf = append(buf, 0x00, 0x00, 0x00, 0x00)
-
-	// Debug: dump full PDU
-	fmt.Printf("DEBUG Demand Active PDU len=%d\n", len(buf))
-	fmt.Printf("DEBUG Demand Active PDU first 32 bytes: % 02X\n", buf[:min(32, len(buf))])
-	fmt.Printf("DEBUG Demand Active PDU bytes 32-64: % 02X\n", buf[min(32, len(buf)):min(64, len(buf))])
 
 	return buf
 }
 
 // buildCapabilitySets builds the server capability sets.
+// Note: FreeRDP explicitly rejects certain capabilities from servers (Brush, GlyphCache, etc.)
+// Only send capabilities that are expected from servers per MS-RDPBCGR.
 func (c *Connection) buildCapabilitySets(width, height uint16) []byte {
-	buf := make([]byte, 0, 256)
+	buf := make([]byte, 0, 512)
 
-	// General Capability Set
-	generalCap := buildGeneralCapability()
-	buf = append(buf, generalCap...)
-	fmt.Printf("DEBUG Cap 1 (General): type=%d, len=%d, bytes=% 02X\n",
-		int(generalCap[0])|int(generalCap[1])<<8,
-		int(generalCap[2])|int(generalCap[3])<<8,
-		generalCap[:min(16, len(generalCap))])
+	// General Capability Set (required per MS-RDPBCGR 2.2.7)
+	buf = append(buf, buildGeneralCapability()...)
 
-	// Bitmap Capability Set
-	bitmapCap := buildBitmapCapability(width, height)
-	buf = append(buf, bitmapCap...)
-	fmt.Printf("DEBUG Cap 2 (Bitmap): type=%d, len=%d, bytes=% 02X\n",
-		int(bitmapCap[0])|int(bitmapCap[1])<<8,
-		int(bitmapCap[2])|int(bitmapCap[3])<<8,
-		bitmapCap[:min(16, len(bitmapCap))])
+	// Bitmap Capability Set (required per MS-RDPBCGR 2.2.7)
+	buf = append(buf, buildBitmapCapability(width, height)...)
 
-	// Order Capability Set
-	orderCap := buildOrderCapability()
-	buf = append(buf, orderCap...)
-	fmt.Printf("DEBUG Cap 3 (Order): type=%d, len=%d, bytes=% 02X\n",
-		int(orderCap[0])|int(orderCap[1])<<8,
-		int(orderCap[2])|int(orderCap[3])<<8,
-		orderCap[:min(16, len(orderCap))])
+	// Order Capability Set (required per MS-RDPBCGR 2.2.7, even if no order support)
+	buf = append(buf, buildOrderCapability()...)
 
-	// Pointer Capability Set
-	pointerCap := buildPointerCapability()
-	buf = append(buf, pointerCap...)
-	fmt.Printf("DEBUG Cap 4 (Pointer): type=%d, len=%d, actualLen=%d, bytes=% 02X\n",
-		int(pointerCap[0])|int(pointerCap[1])<<8,
-		int(pointerCap[2])|int(pointerCap[3])<<8,
-		len(pointerCap),
-		pointerCap)
+	// Pointer Capability Set (required per MS-RDPBCGR 2.2.7)
+	buf = append(buf, buildPointerCapability()...)
 
-	// Input Capability Set
-	inputCap := buildInputCapability()
-	buf = append(buf, inputCap...)
-	fmt.Printf("DEBUG Cap 5 (Input): type=%d, len=%d, bytes=% 02X\n",
-		int(inputCap[0])|int(inputCap[1])<<8,
-		int(inputCap[2])|int(inputCap[3])<<8,
-		inputCap[:min(16, len(inputCap))])
+	// Input Capability Set (may be required by older clients)
+	buf = append(buf, buildInputCapability()...)
 
-	// Virtual Channel Capability Set
-	vcCap := buildVirtualChannelCapability()
-	buf = append(buf, vcCap...)
-	fmt.Printf("DEBUG Cap 6 (VirtualChannel): type=%d, len=%d, actualLen=%d, bytes=% 02X\n",
-		int(vcCap[0])|int(vcCap[1])<<8,
-		int(vcCap[2])|int(vcCap[3])<<8,
-		len(vcCap),
-		vcCap)
+	// Multifragment Update Capability Set - required for large updates (> 16KB)
+	// Windows Desktop client specifically checks for this capability
+	buf = append(buf, buildMultifragUpdateCapability()...)
 
-	fmt.Printf("DEBUG Total caps buffer len=%d\n", len(buf))
+	// Large Pointer Capability Set - for large cursor support
+	buf = append(buf, buildLargePointerCapability()...)
 
+	return buf
+}
+
+// buildShareCapability builds the Share capability set (TS_SHARE_CAPABILITYSET).
+// This capability is optional but some older clients may expect it.
+func buildShareCapability() []byte {
+	buf := make([]byte, 8)
+	// Type
+	buf[0] = byte(protocol.CapabilityShare)
+	buf[1] = byte(protocol.CapabilityShare >> 8)
+	// Length
+	buf[2] = 8
+	buf[3] = 0
+	// Node ID (should be 0 per spec - filled in later)
+	buf[4] = 0
+	buf[5] = 0
+	// Pad
+	buf[6] = 0
+	buf[7] = 0
 	return buf
 }
 
@@ -929,7 +1036,8 @@ func buildGeneralCapability() []byte {
 	buf[9] = 0x02
 	// Compression types
 	buf[12] = 0x00
-	// Extra flags
+	// Extra flags - set to 0 for RDP 5.0 compatibility (no FASTPATH_OUTPUT_SUPPORTED)
+	// FASTPATH was added in RDP 5.1, older clients like Jump Desktop may reject it
 	buf[14] = 0x00
 	buf[15] = 0x00
 	// Update capability
@@ -971,16 +1079,19 @@ func buildBitmapCapability(width, height uint16) []byte {
 	// Pad
 	buf[16] = 0
 	buf[17] = 0
-	// Desktop resize
+	// Desktop resize (2 bytes at offset 18-19)
 	buf[18] = 1
-	// Bitmap compression
+	buf[19] = 0
+	// Bitmap compression (2 bytes at offset 20-21)
 	buf[20] = 1
-	// High color flags
 	buf[21] = 0
-	// Drawing flags
-	buf[22] = 0x01 // DRAW_ALLOW_DYNAMIC_COLOR_FIDELITY
-	// Multiple rectangle support
+	// High color flags (1 byte at offset 22) - 0 = no specific color depth preference
+	buf[22] = 0
+	// Drawing flags (1 byte at offset 23)
+	buf[23] = 0x01 // DRAW_ALLOW_DYNAMIC_COLOR_FIDELITY
+	// Multiple rectangle support (2 bytes at offset 24-25)
 	buf[24] = 1
+	buf[25] = 0
 	// Pad
 	buf[26] = 0
 	buf[27] = 0
@@ -1032,20 +1143,22 @@ func buildOrderCapability() []byte {
 }
 
 func buildPointerCapability() []byte {
+	// Per MS-RDPBCGR 2.2.7.1.5, the Pointer Capability Set sent in a Demand Active PDU
+	// MUST include the pointerCacheSize field, making it 10 bytes minimum.
 	buf := make([]byte, 10)
 	// Type
 	buf[0] = byte(protocol.CapabilityPointer)
 	buf[1] = byte(protocol.CapabilityPointer >> 8)
-	// Length
+	// Length (10 bytes including pointerCacheSize)
 	buf[2] = 10
 	buf[3] = 0
-	// Color pointer
+	// Color pointer flag (1 = supported)
 	buf[4] = 1
 	buf[5] = 0
-	// Color pointer cache size
+	// Color pointer cache size (25 is the default)
 	buf[6] = 25
 	buf[7] = 0
-	// Pointer cache size
+	// Pointer cache size (25 is the default) - REQUIRED in server Demand Active PDU
 	buf[8] = 25
 	buf[9] = 0
 	return buf
@@ -1059,8 +1172,9 @@ func buildInputCapability() []byte {
 	// Length
 	buf[2] = 88
 	buf[3] = 0
-	// Input flags
-	buf[4] = 0x35 // SCANCODES | MOUSEX | FASTPATH | UNICODE | FASTPATH2
+	// Input flags - no FASTPATH for RDP 5.0 compatibility
+	// 0x25 = SCANCODES (0x01) | MOUSEX (0x04) | UNICODE (0x20)
+	buf[4] = 0x25
 	buf[5] = 0
 	// Pad
 	// Keyboard layout (US)
@@ -1097,6 +1211,129 @@ func buildVirtualChannelCapability() []byte {
 	buf[9] = 0x40 // 16384
 	buf[10] = 0
 	buf[11] = 0
+	return buf
+}
+
+// buildMultifragUpdateCapability builds the Multifragment Update capability set.
+// Per MS-RDPBCGR 2.2.7.2.6 - Required for updates larger than 16KB.
+func buildMultifragUpdateCapability() []byte {
+	buf := make([]byte, 8)
+	// Type
+	buf[0] = byte(protocol.CapabilityMultifragUpdate)
+	buf[1] = byte(protocol.CapabilityMultifragUpdate >> 8)
+	// Length
+	buf[2] = 8
+	buf[3] = 0
+	// MaxRequestSize - maximum size of a single update in bytes
+	// 0x3E8000 = 4,096,000 bytes (roughly 4MB) - sufficient for 1080p frames
+	binary.LittleEndian.PutUint32(buf[4:8], 0x3E8000)
+	return buf
+}
+
+// buildLargePointerCapability builds the Large Pointer capability set.
+// Per MS-RDPBCGR 2.2.7.2.7 - For large cursor support (> 32x32).
+func buildLargePointerCapability() []byte {
+	buf := make([]byte, 6)
+	// Type
+	buf[0] = byte(protocol.CapabilityLargePointer)
+	buf[1] = byte(protocol.CapabilityLargePointer >> 8)
+	// Length
+	buf[2] = 6
+	buf[3] = 0
+	// LargePointerSupportFlags
+	// 0x0001 = LARGE_POINTER_FLAG_96x96 - support 96x96 pointers
+	buf[4] = 0x01
+	buf[5] = 0x00
+	return buf
+}
+
+func buildBrushCapability() []byte {
+	buf := make([]byte, 8)
+	// Type
+	buf[0] = byte(protocol.CapabilityBrush)
+	buf[1] = byte(protocol.CapabilityBrush >> 8)
+	// Length
+	buf[2] = 8
+	buf[3] = 0
+	// SupportLevel
+	buf[4] = 0x02 // BRUSH_COLOR_FULL
+	buf[5] = 0
+	buf[6] = 0
+	buf[7] = 0
+	return buf
+}
+
+func buildGlyphCacheCapability() []byte {
+	// Glyph Cache Capability Set - MS-RDPBCGR 2.2.7.1.8
+	buf := make([]byte, 52)
+	// Type
+	buf[0] = byte(protocol.CapabilityGlyphCache)
+	buf[1] = byte(protocol.CapabilityGlyphCache >> 8)
+	// Length
+	buf[2] = 52
+	buf[3] = 0
+	// GlyphCache (10 cache definitions, each 4 bytes)
+	// Cache 0: 254 entries, 4 bytes max
+	buf[4] = 0xFE
+	buf[5] = 0x00
+	buf[6] = 0x04
+	buf[7] = 0x00
+	// Cache 1: 254 entries, 4 bytes max
+	buf[8] = 0xFE
+	buf[9] = 0x00
+	buf[10] = 0x04
+	buf[11] = 0x00
+	// Cache 2: 254 entries, 8 bytes max
+	buf[12] = 0xFE
+	buf[13] = 0x00
+	buf[14] = 0x08
+	buf[15] = 0x00
+	// Cache 3: 254 entries, 8 bytes max
+	buf[16] = 0xFE
+	buf[17] = 0x00
+	buf[18] = 0x08
+	buf[19] = 0x00
+	// Cache 4: 254 entries, 16 bytes max
+	buf[20] = 0xFE
+	buf[21] = 0x00
+	buf[22] = 0x10
+	buf[23] = 0x00
+	// Cache 5: 254 entries, 32 bytes max
+	buf[24] = 0xFE
+	buf[25] = 0x00
+	buf[26] = 0x20
+	buf[27] = 0x00
+	// Cache 6: 254 entries, 64 bytes max
+	buf[28] = 0xFE
+	buf[29] = 0x00
+	buf[30] = 0x40
+	buf[31] = 0x00
+	// Cache 7: 254 entries, 128 bytes max
+	buf[32] = 0xFE
+	buf[33] = 0x00
+	buf[34] = 0x80
+	buf[35] = 0x00
+	// Cache 8: 254 entries, 256 bytes max
+	buf[36] = 0xFE
+	buf[37] = 0x00
+	buf[38] = 0x00
+	buf[39] = 0x01
+	// Cache 9: 64 entries, 256 bytes max
+	buf[40] = 0x40
+	buf[41] = 0x00
+	buf[42] = 0x00
+	buf[43] = 0x01
+	// FragCache: 256 entries, 256 bytes max
+	buf[44] = 0x00
+	buf[45] = 0x01
+	buf[46] = 0x00
+	buf[47] = 0x01
+	// GlyphSupportLevel
+	buf[48] = 0x03 // GLYPH_SUPPORT_ENCODE
+	buf[49] = 0x00
+	// Pad
+	buf[50] = 0x00
+	buf[51] = 0x00
 	return buf
 }
 
@@ -2122,10 +2359,44 @@ func (c *Connection) initDynamicChannels() error {
 		return c.sendDVCData(data)
 	})
 
+	// Wire up DVC logging (using Warn level so it shows with default log level)
+	c.dvcManager.SetLogger(func(msg string, channel string, channelID uint32, args ...interface{}) {
+		if channel != "" {
+			c.server.deps.Logger.Warn().
+				Str("channel", channel).
+				Uint32("channelID", channelID).
+				Interface("args", args).
+				Msg(msg)
+		} else {
+			c.server.deps.Logger.Warn().
+				Interface("args", args).
+				Msg(msg)
+		}
+	})
+
 	// Send capability request
 	if err := c.dvcManager.SendCapabilityRequest(); err != nil {
 		return err
 	}
+
+	// Create DVC channels in a goroutine after capability exchange completes
+	// This is necessary because the capability response arrives through the message loop
+	go c.initDVCChannelsAfterCapability()
+
+	return nil
+}
+
+// initDVCChannelsAfterCapability waits for DVC capability exchange then creates channels.
+func (c *Connection) initDVCChannelsAfterCapability() {
+	// Wait for capability response (timeout after 5 seconds)
+	if !c.dvcManager.WaitForCapability(5 * time.Second) {
+		c.server.deps.Logger.Warn().Msg("RDP: DVC capability timeout, skipping dynamic channels")
+		return
+	}
+
+	c.server.deps.Logger.Warn().
+		Uint16("version", c.dvcManager.GetNegotiatedVersion()).
+		Msg("RDP: DVC capability exchange complete, creating channels")
 
 	// Create RDPGFX channel
 	c.gfxChannel = channels.NewGFXChannel(c.dvcManager)
@@ -2133,7 +2404,7 @@ func (c *Connection) initDynamicChannels() error {
 	// Set callback to initialize surface when channel is ready
 	c.gfxChannel.SetReadyCallback(func(g *channels.GFXChannel) {
 		w, h := c.GetResolution()
-		c.server.deps.Logger.Info().
+		c.server.deps.Logger.Warn().
 			Uint16("width", w).
 			Uint16("height", h).
 			Bool("avc420", g.SupportsAVC420()).
@@ -2142,14 +2413,18 @@ func (c *Connection) initDynamicChannels() error {
 
 		if err := g.Initialize(w, h); err != nil {
 			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to initialize GFX surface")
+			return
 		}
+
+		// Mark RDPGFX as supported
+		c.gfxSupported.Store(true)
 
 		// Start video capture now that the channel is ready
 		if c.server.deps.Video != nil {
 			if err := c.server.deps.Video.StartVideo(); err != nil {
 				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
 			} else {
-				c.server.deps.Logger.Info().Msg("RDP: video capture started")
+				c.server.deps.Logger.Warn().Msg("RDP: video capture started (RDPGFX mode)")
 			}
 		}
 	})
@@ -2224,8 +2499,41 @@ func (c *Connection) initDynamicChannels() error {
 		// Non-fatal - we can still work without camera
 	}
 
-	c.server.deps.Logger.Info().Msg("RDP: dynamic virtual channels initialized")
-	return nil
+	c.server.deps.Logger.Warn().Msg("RDP: dynamic virtual channels initialized")
+
+	// Start a goroutine to check if RDPGFX becomes ready, otherwise fall back to bitmap mode
+	go c.checkGFXReadinessAndFallback()
+}
+
+// checkGFXReadinessAndFallback waits for RDPGFX to become ready.
+// If it doesn't become ready within timeout, falls back to bitmap updates.
+func (c *Connection) checkGFXReadinessAndFallback() {
+	// Wait up to 3 seconds for RDPGFX to become ready
+	timeout := time.After(3 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		case <-timeout:
+			// RDPGFX didn't become ready - fall back to bitmap mode
+			if !c.gfxSupported.Load() {
+				c.server.deps.Logger.Warn().Msg("RDP: RDPGFX not supported, falling back to bitmap updates")
+				if c.server.deps.Video != nil {
+					jpegChan := c.server.deps.Video.SubscribeJPEG()
+					c.startBitmapStreaming(jpegChan)
+				}
+			}
+			return
+		case <-ticker.C:
+			if c.gfxSupported.Load() {
+				// RDPGFX is ready, no need for fallback
+				return
+			}
+		}
+	}
 }
 
 // sendDVCData sends data on the drdynvc static channel.
@@ -2452,4 +2760,239 @@ func (c *Connection) stopAudioStream() {
 		close(c.audioStopCh)
 		c.audioStopCh = nil
 	}
+}
+
+// SendBitmapUpdate sends a bitmap update PDU to the client.
+// This is used for clients that don't support RDPGFX (like Jump Desktop).
+// The frame should be JPEG data which will be decoded and sent as RGB bitmap.
+// Tile size for bitmap updates (must fit within TPKT limits)
+// 64x64 at 32bpp = 16KB per tile, allowing ~3 tiles per PDU
+const bitmapTileSize = 64
+
+func (c *Connection) SendBitmapUpdate(jpegData []byte) error {
+	if c.closed.Load() {
+		return nil
+	}
+
+	// Decode JPEG
+	img, err := jpeg.Decode(bytes.NewReader(jpegData))
+	if err != nil {
+		return fmt.Errorf("failed to decode JPEG: %w", err)
+	}
+
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// Send bitmap update using tiles
+	return c.sendTiledBitmapUpdate(img, width, height)
+}
+
+// tileRect represents a single bitmap tile for RDP updates.
+type tileRect struct {
+	left, top     int
+	right, bottom int
+	data          []byte
+}
+
+// sendTiledBitmapUpdate sends an image as tiled bitmap updates.
+// This splits the image into tiles that fit within RDP PDU limits.
+func (c *Connection) sendTiledBitmapUpdate(img image.Image, width, height int) error {
+	// Calculate tile grid
+	tilesX := (width + bitmapTileSize - 1) / bitmapTileSize
+	tilesY := (height + bitmapTileSize - 1) / bitmapTileSize
+
+	// Maximum tiles per PDU (stay well under 64KB TPKT limit)
+	// Each tile: 64*64*4 = 16384 bytes + 18 byte header ≈ 16.5KB
+	// Allow 2 tiles per PDU (≈33KB) leaving headroom
+	const maxTilesPerPDU = 2
+
+	// Build list of all tiles
+	var tiles []tileRect
+
+	for ty := 0; ty < tilesY; ty++ {
+		for tx := 0; tx < tilesX; tx++ {
+			// Calculate tile bounds
+			left := tx * bitmapTileSize
+			top := ty * bitmapTileSize
+			right := left + bitmapTileSize - 1
+			bottom := top + bitmapTileSize - 1
+
+			// Clamp to image bounds
+			if right >= width {
+				right = width - 1
+			}
+			if bottom >= height {
+				bottom = height - 1
+			}
+
+			tileW := right - left + 1
+			tileH := bottom - top + 1
+
+			// Convert tile to BGRX format (bottom-up scanlines for RDP)
+			tileData := make([]byte, tileW*tileH*4)
+			for y := 0; y < tileH; y++ {
+				// RDP expects bottom-up scanlines
+				srcY := top + y
+				dstY := tileH - 1 - y
+				for x := 0; x < tileW; x++ {
+					r, g, b, _ := img.At(left+x, srcY).RGBA()
+					offset := (dstY*tileW + x) * 4
+					tileData[offset+0] = byte(b >> 8) // B
+					tileData[offset+1] = byte(g >> 8) // G
+					tileData[offset+2] = byte(r >> 8) // R
+					tileData[offset+3] = 0            // X (padding)
+				}
+			}
+
+			tiles = append(tiles, tileRect{
+				left:   left,
+				top:    top,
+				right:  right,
+				bottom: bottom,
+				data:   tileData,
+			})
+		}
+	}
+
+	// Send tiles in batches
+	for i := 0; i < len(tiles); i += maxTilesPerPDU {
+		end := i + maxTilesPerPDU
+		if end > len(tiles) {
+			end = len(tiles)
+		}
+		batch := tiles[i:end]
+
+		if err := c.sendBitmapUpdatePDU(batch); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// sendBitmapUpdatePDU builds and sends a bitmap update PDU with multiple rectangles.
+// Per MS-RDPBCGR 2.2.9.1.1.3.1.2
+func (c *Connection) sendBitmapUpdatePDU(tiles []tileRect) error {
+	// Calculate total data size
+	// TS_BITMAP_DATA header is 18 bytes per tile
+	totalDataLen := 0
+	for _, tile := range tiles {
+		totalDataLen += 18 + len(tile.data)
+	}
+
+	// TS_UPDATE_BITMAP_DATA structure:
+	// - updateType (2 bytes)
+	// - numberRectangles (2 bytes)
+	// - rectangles (variable)
+	updateDataLen := 4 + totalDataLen
+
+	// Share Data Header is 18 bytes
+	totalLen := 18 + updateDataLen
+
+	buf := make([]byte, totalLen)
+
+	// Share Control Header (6 bytes)
+	binary.LittleEndian.PutUint16(buf[0:2], uint16(totalLen))
+	buf[2] = 0x17 // PDUTYPE_DATAPDU (0x07) | (version 1 << 4)
+	buf[3] = 0x00
+	binary.LittleEndian.PutUint16(buf[4:6], c.userID)
+
+	// Share Data Header (12 bytes)
+	buf[6] = 0x66 // ShareID
+	buf[7] = 0x72
+	buf[8] = 0x65
+	buf[9] = 0x64
+	buf[10] = 0                                              // Pad
+	buf[11] = 1                                              // StreamID (STREAM_LOW = 1)
+	binary.LittleEndian.PutUint16(buf[12:14], uint16(updateDataLen))
+	buf[14] = protocol.DataPDUTypeUpdate // PDUType2
+	buf[15] = 0                          // CompressedType
+	buf[16] = 0                          // CompressedLength
+	buf[17] = 0
+
+	// TS_UPDATE_BITMAP_DATA
+	pos := 18
+	binary.LittleEndian.PutUint16(buf[pos:pos+2], protocol.UpdateTypeBitmap) // updateType
+	binary.LittleEndian.PutUint16(buf[pos+2:pos+4], uint16(len(tiles)))      // numberRectangles
+	pos += 4
+
+	// TS_BITMAP_DATA structures
+	for _, tile := range tiles {
+		tileW := tile.right - tile.left + 1
+		tileH := tile.bottom - tile.top + 1
+
+		binary.LittleEndian.PutUint16(buf[pos:pos+2], uint16(tile.left))            // destLeft
+		binary.LittleEndian.PutUint16(buf[pos+2:pos+4], uint16(tile.top))           // destTop
+		binary.LittleEndian.PutUint16(buf[pos+4:pos+6], uint16(tile.right))         // destRight
+		binary.LittleEndian.PutUint16(buf[pos+6:pos+8], uint16(tile.bottom))        // destBottom
+		binary.LittleEndian.PutUint16(buf[pos+8:pos+10], uint16(tileW))             // width
+		binary.LittleEndian.PutUint16(buf[pos+10:pos+12], uint16(tileH))            // height
+		binary.LittleEndian.PutUint16(buf[pos+12:pos+14], 32)                       // bitsPerPixel
+		binary.LittleEndian.PutUint16(buf[pos+14:pos+16], protocol.BitmapNoComprHdr) // flags
+		binary.LittleEndian.PutUint16(buf[pos+16:pos+18], uint16(len(tile.data)))   // bitmapLength
+		pos += 18
+
+		copy(buf[pos:], tile.data)
+		pos += len(tile.data)
+	}
+
+	// Send via MCS on I/O channel
+	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.ioChannel, buf)
+	return protocol.WriteMCSPDU(c.conn, mcsPDU)
+}
+
+// startBitmapStreaming starts streaming bitmap updates when RDPGFX is not available.
+func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
+	c.server.deps.Logger.Warn().Msg("RDP: starting bitmap streaming (fallback mode)")
+
+	// Start video capture if not already started
+	if c.server.deps.Video != nil {
+		if err := c.server.deps.Video.StartVideo(); err != nil {
+			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
+		}
+
+		// Start JPEG encoder with medium quality (50)
+		if err := c.server.deps.Video.StartJPEGEncoder(50); err != nil {
+			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start JPEG encoder")
+		} else {
+			c.server.deps.Logger.Warn().Msg("RDP: JPEG encoder started for bitmap mode")
+		}
+	}
+
+	go func() {
+		// Rate limit bitmap updates (max ~5 fps to reduce CPU load from JPEG decoding)
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+
+		var lastFrame []byte
+		frameCount := 0
+
+		for {
+			select {
+			case <-c.stopChan:
+				c.server.deps.Logger.Warn().Int("framesSent", frameCount).Msg("RDP: bitmap streaming stopped")
+				return
+			case frame := <-jpegChan:
+				// Keep latest frame
+				lastFrame = frame
+				if frameCount == 0 {
+					c.server.deps.Logger.Warn().Int("frameSize", len(frame)).Msg("RDP: first JPEG frame received for bitmap mode")
+				}
+			case <-ticker.C:
+				// Send the latest frame if we have one
+				if lastFrame != nil && !c.closed.Load() {
+					if err := c.SendBitmapUpdate(lastFrame); err != nil {
+						c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to send bitmap update")
+					} else {
+						frameCount++
+						if frameCount == 1 || frameCount%50 == 0 {
+							c.server.deps.Logger.Warn().Int("frameCount", frameCount).Msg("RDP: bitmap update sent")
+						}
+					}
+					lastFrame = nil
+				}
+			}
+		}
+	}()
 }

@@ -178,6 +178,21 @@ const (
 	DataPDUTypeFrameAck                  = 0x38
 )
 
+// Update PDU types (used in SlowPath Graphics Update PDUs).
+const (
+	UpdateTypeOrders  = 0x0000 // Orders Update
+	UpdateTypeBitmap  = 0x0001 // Bitmap Update
+	UpdateTypePalette = 0x0002 // Palette Update
+	UpdateTypeSynchr  = 0x0003 // Synchronize Update
+)
+
+// Bitmap data flags (TS_BITMAP_DATA).
+const (
+	BitmapCompressionNone = 0x0000 // No compression
+	BitmapCompression     = 0x0001 // RLE compression used
+	BitmapNoComprHdr      = 0x0400 // No compression header
+)
+
 // Capability set types.
 const (
 	CapabilityGeneral                = 0x0001

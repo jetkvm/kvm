@@ -322,33 +322,12 @@ func (s *Server) acceptLoop() {
 	}
 }
 
-// frameCounter for debug logging
-var broadcastFrameCounter uint64
-
 // BroadcastFrame sends a video frame to all connected clients.
 func (s *Server) BroadcastFrame(frame []byte) {
-	broadcastFrameCounter++
-	connCount := s.connCount.Load()
-
-	// Log more frequently to debug
-	if broadcastFrameCounter%60 == 1 {
-		fmt.Printf("DEBUG RDP BroadcastFrame: frame=%d len=%d connCount=%d\n",
-			broadcastFrameCounter, len(frame), connCount)
-	}
-
-	foundConns := 0
 	s.connections.Range(func(key, value any) bool {
 		if conn, ok := key.(*Connection); ok {
-			foundConns++
-			if broadcastFrameCounter%60 == 1 {
-				fmt.Printf("DEBUG RDP BroadcastFrame: calling SendFrame on conn %p closed=%v gfxNil=%v\n",
-					conn, conn.closed.Load(), conn.gfxChannel == nil)
-			}
 			conn.SendFrame(frame)
 		}
 		return true
 	})
-	if broadcastFrameCounter%60 == 1 && foundConns != int(connCount) {
-		fmt.Printf("DEBUG RDP BroadcastFrame: WARNING connCount=%d but found=%d connections\n", connCount, foundConns)
-	}
 }

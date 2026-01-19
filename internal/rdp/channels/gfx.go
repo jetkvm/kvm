@@ -3,7 +3,6 @@ package channels
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -411,10 +410,10 @@ func (g *GFXChannel) OnData(data []byte) error {
 	case GFXCmdQoEFrameAck:
 		return g.handleQoEFrameAck(data[GFXHeaderSize:])
 	case GFXCmdCacheImportOffer:
-		fmt.Println("DEBUG GFX: received CacheImportOffer (ignoring)")
+		// Client advertising cache, we don't use caching
 		return nil
 	default:
-		fmt.Printf("DEBUG GFX: unhandled cmdID=0x%04X\n", cmdID)
+		// Unhandled command
 	}
 
 	return nil
@@ -428,14 +427,11 @@ func (g *GFXChannel) OnClose() {
 // handleCapsAdvertise processes client capability advertisement.
 func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 	if len(data) < 2 {
-		fmt.Println("DEBUG GFX handleCapsAdvertise: data too short")
 		return nil
 	}
 
 	capsCount := binary.LittleEndian.Uint16(data[0:2])
 	pos := 2
-
-	fmt.Printf("DEBUG GFX handleCapsAdvertise: client advertised %d capability sets\n", capsCount)
 
 	// Find the best capability set (prefer AVC444 > AVC420)
 	bestVersion := uint32(0)
@@ -451,8 +447,6 @@ func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 			flags = binary.LittleEndian.Uint32(data[pos : pos+4])
 		}
 		pos += int(capsLen)
-
-		fmt.Printf("DEBUG GFX handleCapsAdvertise: capset %d: version=0x%08X flags=0x%08X capsLen=%d\n", i, version, flags, capsLen)
 
 		// Check for H.264 support
 		if version >= GFXCapsVersion10 && flags&GFXCapsFlagAVCDisabled == 0 {
@@ -484,17 +478,12 @@ func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 		g.avc420 = true
 	}
 
-	fmt.Printf("DEBUG GFX handleCapsAdvertise: selected version=0x%08X flags=0x%08X avc420=%v avc444=%v\n",
-		g.capsVersion, g.capsFlags, g.avc420, g.avc444)
-
 	// Send capability confirm
 	return g.sendCapsConfirm()
 }
 
 // sendCapsConfirm sends capability confirmation.
 func (g *GFXChannel) sendCapsConfirm() error {
-	fmt.Printf("DEBUG GFX sendCapsConfirm: sending confirm with version=0x%08X flags=0x%08X\n", g.capsVersion, g.capsFlags)
-
 	// Build caps confirm PDU
 	// Header(8) + version(4) + capsDataLen(4) + flags(4) = 20 bytes
 	buf := make([]byte, 20)
@@ -510,16 +499,13 @@ func (g *GFXChannel) sendCapsConfirm() error {
 	binary.LittleEndian.PutUint32(buf[16:20], g.capsFlags)
 
 	if err := g.sendGFXData(buf); err != nil {
-		fmt.Printf("DEBUG GFX sendCapsConfirm: send failed: %v\n", err)
 		return err
 	}
 
-	fmt.Println("DEBUG GFX sendCapsConfirm: sent successfully, marking channel ready")
 	g.ready.Store(true)
 
 	// Notify that channel is ready
 	if g.onReady != nil {
-		fmt.Println("DEBUG GFX sendCapsConfirm: calling onReady callback")
 		g.onReady(g)
 	}
 
@@ -563,6 +549,9 @@ func (g *GFXChannel) handleQoEFrameAck(data []byte) error {
 	if len(data) >= 4 {
 		frameID := binary.LittleEndian.Uint32(data[0:4])
 		g.lastAckFrameID.Store(frameID)
+		// Update ack time to prevent stale connection detection
+		now := time.Now().Unix()
+		g.lastAckTime.Store(int32(now))
 	}
 	return nil
 }
@@ -633,9 +622,6 @@ func (g *GFXChannel) sendResetGraphics(width, height uint16) error {
 	binary.LittleEndian.PutUint32(buf[36:40], 1)              // flags (primary)
 
 	// Remaining bytes (buf[40:340]) are already zero from make()
-
-	fmt.Printf("DEBUG GFX sendResetGraphics: width=%d height=%d pduLength=%d bufLen=%d\n",
-		width, height, pduLength, len(buf))
 
 	return g.sendGFXData(buf)
 }

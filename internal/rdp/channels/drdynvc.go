@@ -4,9 +4,9 @@ package channels
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // DRDYNVC implements the Dynamic Virtual Channel transport.
@@ -54,6 +54,9 @@ const (
 	DVCMaxChannelName = 256
 )
 
+// DVCLogger is a simple logging function for DVC events.
+type DVCLogger func(msg string, channel string, channelID uint32, args ...interface{})
+
 // DVCManager manages dynamic virtual channels.
 type DVCManager struct {
 	channels   map[uint32]*DVCChannel
@@ -64,6 +67,13 @@ type DVCManager struct {
 
 	// Send callback for outgoing PDUs
 	sendFunc func(data []byte) error
+
+	// Optional logger for debugging
+	logger DVCLogger
+
+	// Capability exchange state
+	capabilityReceived chan struct{}
+	capabilityOnce     sync.Once
 }
 
 // DVCChannel represents a single dynamic virtual channel.
@@ -84,12 +94,18 @@ type DVCHandler interface {
 // NewDVCManager creates a new DVC manager.
 func NewDVCManager(sendFunc func(data []byte) error) *DVCManager {
 	m := &DVCManager{
-		channels: make(map[uint32]*DVCChannel),
-		version:  DVCVersion3,
-		sendFunc: sendFunc,
+		channels:           make(map[uint32]*DVCChannel),
+		version:            DVCVersion3,
+		sendFunc:           sendFunc,
+		capabilityReceived: make(chan struct{}),
 	}
 	m.nextChannelID.Store(1)
 	return m
+}
+
+// SetLogger sets the debug logger for the DVC manager.
+func (m *DVCManager) SetLogger(logger DVCLogger) {
+	m.logger = logger
 }
 
 // HandlePDU processes an incoming DRDYNVC PDU.
@@ -103,22 +119,34 @@ func (m *DVCManager) HandlePDU(data []byte) error {
 	pduType := cmdByte & 0xF0
 	cbID := cmdByte & 0x03 // Channel ID size indicator
 
-	fmt.Printf("DEBUG DVC HandlePDU: cmdByte=0x%02X pduType=0x%02X cbID=%d dataLen=%d\n", cmdByte, pduType, cbID, len(data))
-
 	switch pduType {
 	case DVCCapabilityResponse:
-		fmt.Println("DEBUG DVC: received Capability Response")
 		return m.handleCapabilityResponse(data)
 	case DVCCreateResponse:
-		fmt.Println("DEBUG DVC: received Create Response")
 		return m.handleCreateResponse(data, cbID)
 	case DVCDataFirst, DVCData:
 		return m.handleData(data, cbID, pduType == DVCDataFirst)
 	case DVCCloseRequest:
-		fmt.Println("DEBUG DVC: received Close Request")
 		return m.handleClose(data, cbID)
+	case DVCDataCompressed:
+		// Compressed data - log and skip for now (we don't support compression)
+		if m.logger != nil {
+			m.logger("DVC: compressed data received (not supported)", "", 0)
+		}
+		return nil
+	case DVCSoftSyncRequest:
+		// Soft Sync request from client - acknowledge by doing nothing
+		// Per MS-RDPEDYC 2.2.3.1, soft sync is used for reconnection scenarios
+		if m.logger != nil {
+			m.logger("DVC: soft sync request received", "", 0)
+		}
+		return nil
 	default:
-		return fmt.Errorf("dvc: unknown PDU type 0x%02X", pduType)
+		// Log unknown PDU types but don't return error to avoid disrupting the connection
+		if m.logger != nil {
+			m.logger("DVC: unknown PDU type 0x%02X", "", uint32(pduType))
+		}
+		return nil
 	}
 }
 
@@ -129,8 +157,30 @@ func (m *DVCManager) handleCapabilityResponse(data []byte) error {
 	}
 	// Skip pad byte, read version
 	m.version = binary.LittleEndian.Uint16(data[2:4])
-	fmt.Printf("DEBUG DVC: capability response received, client version=%d\n", m.version)
+	if m.logger != nil {
+		m.logger("DVC: capability response received", "", 0, m.version)
+	}
+	// Signal that capability exchange is complete
+	m.capabilityOnce.Do(func() {
+		close(m.capabilityReceived)
+	})
 	return nil
+}
+
+// WaitForCapability waits for the capability response with a timeout.
+// Returns true if capability was received, false if timeout or context canceled.
+func (m *DVCManager) WaitForCapability(timeout time.Duration) bool {
+	select {
+	case <-m.capabilityReceived:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// GetNegotiatedVersion returns the DVC version negotiated with the client.
+func (m *DVCManager) GetNegotiatedVersion() uint16 {
+	return m.version
 }
 
 // handleCreateResponse processes channel creation response.
@@ -149,14 +199,19 @@ func (m *DVCManager) handleCreateResponse(data []byte, cbID byte) error {
 
 	m.channelsMu.Lock()
 	ch, ok := m.channels[channelID]
-	var chName string
 	if ok {
 		ch.Open = status == 0
-		chName = ch.Name
+		// Log channel creation result
+		if m.logger != nil {
+			if status == 0 {
+				m.logger("DVC: channel created successfully", ch.Name, channelID)
+			} else {
+				m.logger("DVC: channel creation failed", ch.Name, channelID, status)
+			}
+		}
 	}
 	m.channelsMu.Unlock()
 
-	fmt.Printf("DEBUG DVC: create response for channelID=%d name=%q status=%d (success=%v)\n", channelID, chName, status, status == 0)
 	return nil
 }
 
@@ -180,12 +235,8 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	m.channelsMu.RUnlock()
 
 	if !ok || !ch.Open || ch.Handler == nil {
-		fmt.Printf("DEBUG DVC handleData: channelID=%d found=%v open=%v handler=%v payloadLen=%d (DROPPING)\n",
-			channelID, ok, ok && ch.Open, ok && ch.Handler != nil, len(payload))
 		return nil
 	}
-
-	fmt.Printf("DEBUG DVC handleData: channelID=%d name=%q payloadLen=%d isFirst=%v\n", channelID, ch.Name, len(payload), isFirst)
 
 	return ch.Handler.OnData(payload)
 }
@@ -280,6 +331,10 @@ func (m *DVCManager) CreateChannel(name string, handler DVCHandler) (*DVCChannel
 
 // sendCreateRequest sends a channel creation request.
 func (m *DVCManager) sendCreateRequest(channelID uint32, name string) error {
+	if m.logger != nil {
+		m.logger("DVC: sending create request", name, channelID)
+	}
+
 	// CREATE_REQ: cmd(1) + channelID(1-4) + name(null-terminated)
 	nameBytes := []byte(name)
 	if len(nameBytes) > DVCMaxChannelName {

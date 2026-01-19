@@ -147,6 +147,55 @@ func BroadcastRDPH264Frame(frame []byte) {
 	}
 }
 
+// Global JPEG video subscriber management for RDP bitmap mode
+var rdpJPEGSubscribers struct {
+	mu   sync.RWMutex
+	subs []chan []byte
+}
+
+func (a *rdpVideoAdapter) SubscribeJPEG() <-chan []byte {
+	ch := make(chan []byte, 5) // Smaller buffer for JPEG (lower rate)
+
+	rdpJPEGSubscribers.mu.Lock()
+	rdpJPEGSubscribers.subs = append(rdpJPEGSubscribers.subs, ch)
+	rdpJPEGSubscribers.mu.Unlock()
+
+	return ch
+}
+
+func (a *rdpVideoAdapter) UnsubscribeJPEG() {
+	// Clean up would need more context about which channel to remove
+}
+
+func (a *rdpVideoAdapter) StartJPEGEncoder(quality int) error {
+	if nativeInstance == nil {
+		return nil
+	}
+	return nativeInstance.JpegStart(quality)
+}
+
+func (a *rdpVideoAdapter) StopJPEGEncoder() error {
+	if nativeInstance == nil {
+		return nil
+	}
+	return nativeInstance.JpegStop()
+}
+
+// BroadcastRDPJPEGFrame sends a JPEG frame to all RDP JPEG subscribers.
+// Used for bitmap mode fallback when RDPGFX is not supported.
+func BroadcastRDPJPEGFrame(frame []byte) {
+	rdpJPEGSubscribers.mu.RLock()
+	defer rdpJPEGSubscribers.mu.RUnlock()
+
+	for _, ch := range rdpJPEGSubscribers.subs {
+		select {
+		case ch <- frame:
+		default:
+			// Channel full, drop frame
+		}
+	}
+}
+
 // rdpAudioAdapter adapts audio to rdp.AudioProvider interface.
 type rdpAudioAdapter struct{}
 

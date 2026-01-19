@@ -82,6 +82,20 @@ type VideoProvider interface {
 
 	// UnsubscribeH264 stops the H.264 subscription.
 	UnsubscribeH264()
+
+	// SubscribeJPEG returns a channel for JPEG video frames.
+	// Used for bitmap mode fallback when RDPGFX is not supported.
+	SubscribeJPEG() <-chan []byte
+
+	// UnsubscribeJPEG stops the JPEG subscription.
+	UnsubscribeJPEG()
+
+	// StartJPEGEncoder starts the hardware JPEG encoder.
+	// Quality is 1-99, higher is better.
+	StartJPEGEncoder(quality int) error
+
+	// StopJPEGEncoder stops the hardware JPEG encoder.
+	StopJPEGEncoder() error
 }
 
 // AudioProvider provides audio capture and playback.

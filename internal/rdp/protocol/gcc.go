@@ -31,6 +31,14 @@ const (
 	GCCBlockServerMultitransport = 0x0C08
 )
 
+// Server early capability flags (MS-RDPBCGR section 2.2.1.4.2).
+const (
+	EarlyCapEdgeActionsV1    = 0x00000001 // RNS_UD_SC_EDGE_ACTIONS_SUPPORTED_V1
+	EarlyCapDynamicDst       = 0x00000002 // RNS_UD_SC_DYNAMIC_DST_SUPPORTED
+	EarlyCapEdgeActionsV2    = 0x00000004 // RNS_UD_SC_EDGE_ACTIONS_SUPPORTED_V2
+	EarlyCapSkipChannelJoin  = 0x00000008 // RNS_UD_SC_SKIP_CHANNELJOIN_SUPPORTED
+)
+
 // ClientCoreData contains core client information.
 type ClientCoreData struct {
 	Version         uint32
@@ -75,6 +83,11 @@ type ClientNetworkData struct {
 	Channels     []ChannelDef
 }
 
+// ClientMsgChannelData contains client message channel request.
+type ClientMsgChannelData struct {
+	Flags uint32
+}
+
 // ChannelDef defines a virtual channel.
 type ChannelDef struct {
 	Name    ChannelName
@@ -83,9 +96,10 @@ type ChannelDef struct {
 
 // ConferenceCreateRequest contains parsed client GCC data.
 type ConferenceCreateRequest struct {
-	CoreData     *ClientCoreData
-	SecurityData *ClientSecurityData
-	NetworkData  *ClientNetworkData
+	CoreData       *ClientCoreData
+	SecurityData   *ClientSecurityData
+	NetworkData    *ClientNetworkData
+	MsgChannelData *ClientMsgChannelData
 }
 
 // ParseConferenceCreateRequest parses a GCC Conference Create Request.
@@ -164,6 +178,11 @@ func parseClientDataBlocks(data []byte) (*ConferenceCreateRequest, error) {
 			ccr.SecurityData = parseClientSecurityData(blockData)
 		case GCCBlockClientNetwork:
 			ccr.NetworkData = parseClientNetworkData(blockData)
+		case GCCBlockClientMsgChan:
+			ccr.MsgChannelData = parseClientMsgChannelData(blockData)
+		default:
+			// Log unknown block types for debugging
+			_ = blockType // Captured for debugging if needed
 		}
 
 		pos += blockLen
@@ -273,6 +292,17 @@ func parseClientNetworkData(data []byte) *ClientNetworkData {
 	return network
 }
 
+// parseClientMsgChannelData parses the message channel data block.
+func parseClientMsgChannelData(data []byte) *ClientMsgChannelData {
+	if len(data) < 4 {
+		return nil
+	}
+
+	return &ClientMsgChannelData{
+		Flags: binary.LittleEndian.Uint32(data[0:4]),
+	}
+}
+
 // ServerCoreData contains core server information.
 type ServerCoreData struct {
 	Version              uint32
@@ -282,9 +312,10 @@ type ServerCoreData struct {
 
 // ServerNetworkData contains server channel assignments.
 type ServerNetworkData struct {
-	MCSChannelID uint16
-	ChannelCount uint16
-	ChannelIDs   []uint16
+	MCSChannelID     uint16
+	ChannelCount     uint16
+	ChannelIDs       []uint16
+	MsgChannelID     uint16 // 0 if not requested by client
 }
 
 // ServerSecurityData contains server security settings.
@@ -299,61 +330,85 @@ type ServerSecurityData struct {
 
 // BuildConferenceCreateResponse builds a GCC Conference Create Response.
 // This follows MS-RDPBCGR section 2.2.1.4 - Server MCS Connect Response PDU.
-// The encoding matches xrdp's implementation exactly.
+// The encoding matches FreeRDP's PER encoding exactly.
 func BuildConferenceCreateResponse(coreData *ServerCoreData, networkData *ServerNetworkData, securityData *ServerSecurityData) []byte {
 	// Build user data blocks first (SC_CORE, SC_SECURITY, SC_NET - order matters!)
 	userData := buildServerDataBlocks(coreData, networkData, securityData)
 
-	// GCC Conference Create Response structure (matching xrdp):
-	// 1. T.124 OID (7 bytes): 00 05 00 14 7c 00 01
-	// 2. Fixed header: 2a 14 76 0a 01 01 00 01 c0 00
-	// 3. H.221 key "McDn": 4d 63 44 6e
-	// 4. User data length (PER encoded)
-	// 5. User data blocks
+	// Calculate userData length encoding size (1 or 2 bytes)
+	userDataLenBytes := 1
+	if len(userData) >= 0x80 {
+		userDataLenBytes = 2
+	}
 
+	// Calculate connectPDU length - everything after the length field:
+	// 1 (choice) + 2 (nodeID) + 2 (tag) + 1 (result) + 1 (userDataCount) +
+	// 1 (h221 choice) + 1 (h221 len) + 4 (h221 key) + userDataLenBytes + len(userData)
+	connectPDULen := 1 + 2 + 2 + 1 + 1 + 1 + 1 + 4 + userDataLenBytes + len(userData)
+
+	// GCC Conference Create Response structure (matching FreeRDP):
+	// Uses PER (Packed Encoding Rules) as defined in T.124
 	result := make([]byte, 0, len(userData)+64)
 
-	// 1. T.124 Object Identifier: {itu-t(0) recommendation(0) t(20) t124(124) version(0) 1}
-	result = append(result, 0x00, 0x05, 0x00, 0x14, 0x7C, 0x00, 0x01)
+	// 1. ConnectData choice (0 = conference-create-response)
+	result = append(result, 0x00)
 
-	// 2. PER-encoded connect-response (matching xrdp exactly)
-	// The bytes 0x2A 0x14 are FIXED values in the T.124 PER encoding for ConnectGCCPDU
-	// 0x2A = part of connect-response encoding
-	// 0x14 = choice indicator for conference-create-response
-	result = append(result, 0x2A, 0x14)
+	// 2. T.124 Object Identifier: {itu-t(0) recommendation(0) t(20) t124(124) version(0) 1}
+	// PER encoded: length=5, then OID bytes (first two tuples merged: 0*40+0=0)
+	result = append(result, 0x05, 0x00, 0x14, 0x7C, 0x00, 0x01)
 
-	// ConferenceCreateResponse fixed bytes (from xrdp)
-	result = append(result,
-		0x76,       // ConferenceCreateResponse start
-		0x0A,       // tag value
-		0x01,       // additional encoding
-		0x01,       // result present
-		0x00,       // result = success
-		0x01,       // userData present
-		0xC0, 0x00, // nodeID encoded
-	)
+	// 3. ConnectData::connectPDU length (OCTET STRING)
+	// PER length encoding for OCTET STRING
+	if connectPDULen < 0x80 {
+		result = append(result, byte(connectPDULen))
+	} else {
+		result = append(result, byte(0x80|(connectPDULen>>8)), byte(connectPDULen))
+	}
 
-	// 3. H.221 NonStandardIdentifier key "McDn"
-	result = append(result, 0x4D, 0x63, 0x44, 0x6E)
+	// 4. ConnectGCCPDU choice (0x14 = conference-create-response)
+	result = append(result, 0x14)
 
-	// 4. User data length (PER encoded)
+	// 5. ConferenceCreateResponse::nodeID (UserID)
+	// PER INTEGER with constraint 1001..65535, encoded as value - 1001
+	// FreeRDP uses 0x79F3 (31219), so we write 0x79F3 - 1001 = 0x75EA
+	result = append(result, 0x75, 0xEA)
+
+	// 6. ConferenceCreateResponse::tag (INTEGER)
+	// PER encoded: length + value = 0x01 0x01
+	result = append(result, 0x01, 0x01)
+
+	// 7. ConferenceCreateResponse::result (ENUMERATED)
+	// 0 = success
+	result = append(result, 0x00)
+
+	// 8. Number of UserData sets (SET OF)
+	// per_read_number_of_set just calls per_read_length, so this is a single length byte
+	result = append(result, 0x01)
+
+	// 9. UserData::value present + select h221NonStandard (1)
+	result = append(result, 0xC0)
+
+	// 10. H.221 NonStandardIdentifier key "McDn" (server-to-client)
+	// PER OCTET STRING with SIZE (4..255): length is encoded as (actual - min) = 4 - 4 = 0
+	result = append(result, 0x00)                   // length = 0 (meaning 4 bytes)
+	result = append(result, 0x4D, 0x63, 0x44, 0x6E) // "McDn"
+
+	// 11. userData (OCTET STRING) - server data blocks
+	// per_write_octet_string(s, userData, len, 0) → mlength = len-0 = len
 	if len(userData) < 0x80 {
 		result = append(result, byte(len(userData)))
 	} else {
 		result = append(result, byte(0x80|(len(userData)>>8)), byte(len(userData)))
 	}
-
-	// 5. User data blocks (SC_CORE, SC_SECURITY, SC_NET)
 	result = append(result, userData...)
 
 	return result
 }
 
 // buildServerDataBlocks builds the server data blocks.
-// Order MUST be: SC_CORE, SC_SECURITY, SC_NET per MS-RDPBCGR section 2.2.1.4
+// Order per MS-RDPBCGR section 2.2.1.4: SC_CORE, SC_SECURITY, SC_NET, SC_MCS_MSGCHANNEL
 func buildServerDataBlocks(coreData *ServerCoreData, networkData *ServerNetworkData, securityData *ServerSecurityData) []byte {
 	result := make([]byte, 0, 256)
-	fmt.Println("DEBUG buildServerDataBlocks: starting")
 
 	// 1. Server Core Data (required, must be first)
 	if coreData != nil {
@@ -366,7 +421,7 @@ func buildServerDataBlocks(coreData *ServerCoreData, networkData *ServerNetworkD
 		result = append(result, core...)
 	}
 
-	// 2. Server Security Data (required, must come before SC_NET)
+	// 2. Server Security Data (per MS-RDPBCGR, must come before SC_NET)
 	if securityData != nil {
 		blockLen := 12 + len(securityData.ServerRandom) + len(securityData.ServerCertificate)
 		security := make([]byte, blockLen)
@@ -387,16 +442,13 @@ func buildServerDataBlocks(coreData *ServerCoreData, networkData *ServerNetworkD
 		result = append(result, security...)
 	}
 
-	// 3. Server Network Data (optional, must come after SC_SECURITY)
+	// 3. Server Network Data
 	if networkData != nil {
 		blockLen := 8 + len(networkData.ChannelIDs)*2
 		// Pad to 4-byte boundary
 		if blockLen%4 != 0 {
 			blockLen += 4 - (blockLen % 4)
 		}
-
-		fmt.Printf("DEBUG SC_NET: MCSChannelID=%d, ChannelCount=%d, blockLen=%d, channelIDs=%v\n",
-			networkData.MCSChannelID, networkData.ChannelCount, blockLen, networkData.ChannelIDs)
 
 		network := make([]byte, blockLen)
 		binary.LittleEndian.PutUint16(network[0:2], GCCBlockServerNetwork)
@@ -410,11 +462,18 @@ func buildServerDataBlocks(coreData *ServerCoreData, networkData *ServerNetworkD
 			pos += 2
 		}
 
-		fmt.Printf("DEBUG SC_NET hex: % 02X\n", network)
 		result = append(result, network...)
 	}
 
-	fmt.Printf("DEBUG Server data blocks total: %d bytes, hex: % 02X\n", len(result), result)
+	// 4. Server Message Channel Data (if requested by client)
+	if networkData != nil && networkData.MsgChannelID != 0 {
+		msgChan := make([]byte, 6)
+		binary.LittleEndian.PutUint16(msgChan[0:2], GCCBlockServerMsgChan)
+		binary.LittleEndian.PutUint16(msgChan[2:4], 6) // Block length
+		binary.LittleEndian.PutUint16(msgChan[4:6], networkData.MsgChannelID)
+		result = append(result, msgChan...)
+	}
+
 	return result
 }
 

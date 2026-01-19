@@ -88,6 +88,9 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			// Hot potato: send directly to VNC clients synchronously
 			// Frame buffer is only valid during this call
 			GetVNCServer().BroadcastJPEGFrame(frame)
+
+			// Also send to RDP bitmap mode subscribers
+			BroadcastRDPJPEGFrame(frame)
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{

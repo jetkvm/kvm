@@ -30,15 +30,16 @@ type DomainParameters struct {
 }
 
 // DefaultDomainParameters returns typical domain parameters for an RDP server.
+// Values are conservative to maximize client compatibility.
 func DefaultDomainParameters() DomainParameters {
 	return DomainParameters{
-		MaxChannelIDs:   65535,
-		MaxUserIDs:      65535,
-		MaxTokenIDs:     65535,
+		MaxChannelIDs:   34,    // Matches typical Windows Server values
+		MaxUserIDs:      2,     // Single user
+		MaxTokenIDs:     0,     // Not using tokens
 		NumPriorities:   1,
 		MinThroughput:   0,
 		MaxHeight:       1,
-		MaxMCSPDUSize:   65535,
+		MaxMCSPDUSize:   65535, // Maximum PDU size
 		ProtocolVersion: 2,
 	}
 }
@@ -65,13 +66,6 @@ type ConnectResponse struct {
 // ParseConnectInitial parses an MCS Connect-Initial PDU.
 func ParseConnectInitial(data []byte) (*ConnectInitial, error) {
 	r := NewBERReader(data)
-
-	// Debug: print first 32 bytes of MCS data
-	debugLen := 32
-	if len(data) < debugLen {
-		debugLen = len(data)
-	}
-	fmt.Printf("DEBUG MCS Connect-Initial first %d bytes: % 02X\n", debugLen, data[:debugLen])
 
 	// Read application tag 101 (Connect-Initial)
 	// In BER, application tags > 30 use long-form encoding:
@@ -245,25 +239,7 @@ func BuildConnectResponse(result int, connectID int, params DomainParameters, us
 	w.WriteLength(content.Len())
 	w.WriteBytes(content.Bytes())
 
-	result_bytes := w.Bytes()
-
-	// Debug: dump the MCS Connect-Response
-	fmt.Printf("DEBUG MCS Connect-Response total len=%d\n", len(result_bytes))
-	debugLen := 64
-	if len(result_bytes) < debugLen {
-		debugLen = len(result_bytes)
-	}
-	fmt.Printf("DEBUG MCS Connect-Response first %d bytes: % 02X\n", debugLen, result_bytes[:debugLen])
-	fmt.Printf("DEBUG MCS Connect-Response GCC userData len=%d\n", len(userData))
-	if len(userData) > 0 {
-		gccDebugLen := 48
-		if len(userData) < gccDebugLen {
-			gccDebugLen = len(userData)
-		}
-		fmt.Printf("DEBUG GCC userData first %d bytes: % 02X\n", gccDebugLen, userData[:gccDebugLen])
-	}
-
-	return result_bytes
+	return w.Bytes()
 }
 
 // encodeDomainParameters encodes DomainParameters as a BER SEQUENCE.
@@ -353,25 +329,24 @@ func ParseAttachUserRequest(data []byte) (*AttachUserRequest, error) {
 }
 
 // BuildAttachUserConfirm builds an Attach User Confirm PDU.
+// Format: choice(1) + result(1) + userId(2) = 4 bytes
+// The choice byte uses (type << 2) | 2 to indicate the optional initiator field is present.
+// User ID is sent as absolute value (matching xrdp exactly for Jump Desktop compatibility).
 func BuildAttachUserConfirm(result int, userID uint16) []byte {
-	// PER encoding:
-	// - Type (1 byte): AttachUserConfirm << 2 = 11 << 2 = 44 = 0x2C
-	// - Result (1 byte): enumerated value
-	// - User ID present flag + User ID (optional based on result)
 	if result == MCSResultSuccessful {
-		// Include user ID
 		buf := make([]byte, 4)
-		buf[0] = byte(MCSAttachUserConfirm << 2)
-		buf[1] = byte(result)
-		// User ID with "present" flag in high bit
-		buf[2] = byte(userID >> 8) // High byte of user ID
+		// Use |2 to indicate optional initiator field is present (matches xrdp)
+		buf[0] = byte((MCSAttachUserConfirm << 2) | 2) // 0x2E
+		buf[1] = byte(result)                          // 0x00 = success
+		// User ID as absolute value (xrdp sends this way and Jump Desktop expects it)
+		buf[2] = byte(userID >> 8)
 		buf[3] = byte(userID)
 		return buf
 	}
 
-	// No user ID on failure
+	// No user ID on failure - no presence bit since initiator is not present
 	buf := make([]byte, 2)
-	buf[0] = byte(MCSAttachUserConfirm << 2)
+	buf[0] = byte(MCSAttachUserConfirm << 2) // 0x2C
 	buf[1] = byte(result)
 	return buf
 }
@@ -390,36 +365,38 @@ func ParseChannelJoinRequest(data []byte) (*ChannelJoinRequest, error) {
 
 	// PER encoding:
 	// - Type (1 byte)
-	// - User ID (2 bytes)
+	// - User ID (2 bytes, relative to MCSUserIDBase)
 	// - Channel ID (2 bytes)
 	return &ChannelJoinRequest{
-		UserID:    binary.BigEndian.Uint16(data[1:3]),
+		UserID:    binary.BigEndian.Uint16(data[1:3]) + MCSUserIDBase,
 		ChannelID: binary.BigEndian.Uint16(data[3:5]),
 	}, nil
 }
 
 // BuildChannelJoinConfirm builds a Channel Join Confirm PDU.
+// Format: choice(1) + result(1) + userId(2) + requested(2) + channelId(2) = 8 bytes
+// The choice byte uses |2 to indicate the optional channelId field is present on success.
+// User ID is sent relative to MCSUserIDBase (per T.125 PER encoding).
 func BuildChannelJoinConfirm(result int, userID, channelID uint16) []byte {
-	// PER encoding:
-	// - Type (1 byte): ChannelJoinConfirm << 2 = 15 << 2 = 60 = 0x3C
-	// - Result (1 byte)
-	// - User ID (2 bytes)
-	// - Channel ID (2 bytes) - optional on failure
+	relativeUserID := userID - MCSUserIDBase
+
 	if result == MCSResultSuccessful {
 		buf := make([]byte, 8)
-		buf[0] = byte(MCSChannelJoinConfirm << 2)
+		// Use |2 to indicate optional channelId field is present (matches xrdp: 0x3E)
+		buf[0] = byte((MCSChannelJoinConfirm << 2) | 2) // 0x3E
 		buf[1] = byte(result)
-		binary.BigEndian.PutUint16(buf[2:4], userID)
-		binary.BigEndian.PutUint16(buf[4:6], channelID)
-		// Requested channel ID (repeated)
-		binary.BigEndian.PutUint16(buf[6:8], channelID)
+		binary.BigEndian.PutUint16(buf[2:4], relativeUserID)
+		binary.BigEndian.PutUint16(buf[4:6], channelID) // requested
+		binary.BigEndian.PutUint16(buf[6:8], channelID) // channelId (confirmed)
 		return buf
 	}
 
-	buf := make([]byte, 4)
-	buf[0] = byte(MCSChannelJoinConfirm << 2)
+	// Failure - no channelId field, no presence bit
+	buf := make([]byte, 6)
+	buf[0] = byte(MCSChannelJoinConfirm << 2) // 0x3C (no presence bit)
 	buf[1] = byte(result)
-	binary.BigEndian.PutUint16(buf[2:4], userID)
+	binary.BigEndian.PutUint16(buf[2:4], relativeUserID)
+	binary.BigEndian.PutUint16(buf[4:6], channelID) // requested only
 	return buf
 }
 
@@ -440,14 +417,14 @@ func ParseSendDataRequest(data []byte) (*SendDataRequest, error) {
 
 	// PER encoding:
 	// - Type (1 byte)
-	// - User ID (2 bytes)
+	// - User ID (2 bytes, relative to MCSUserIDBase)
 	// - Channel ID (2 bytes)
 	// - Priority + Segmentation (1 byte)
 	// - Length (1-2 bytes, PER encoded)
 	// - User Data
 
 	sdr := &SendDataRequest{
-		UserID:       binary.BigEndian.Uint16(data[1:3]),
+		UserID:       binary.BigEndian.Uint16(data[1:3]) + MCSUserIDBase,
 		ChannelID:    binary.BigEndian.Uint16(data[3:5]),
 		DataPriority: (data[5] >> 6) & 0x03,
 		Segmentation: (data[5] >> 4) & 0x03,
@@ -488,8 +465,9 @@ func BuildSendDataIndication(userID, channelID uint16, data []byte) []byte {
 	// Type
 	buf[0] = byte(MCSSendDataIndication << 2)
 
-	// User ID
-	binary.BigEndian.PutUint16(buf[1:3], userID)
+	// User ID (PER encoded relative to MCSUserIDBase)
+	relativeUserID := userID - MCSUserIDBase
+	binary.BigEndian.PutUint16(buf[1:3], relativeUserID)
 
 	// Channel ID
 	binary.BigEndian.PutUint16(buf[3:5], channelID)
@@ -526,20 +504,6 @@ func BuildDisconnectUltimatum(reason int) []byte {
 // WriteConnectResponse writes an MCS Connect-Response wrapped in X.224 and TPKT.
 func WriteConnectResponse(w io.Writer, result int, connectID int, params DomainParameters, userData []byte) error {
 	mcsData := BuildConnectResponse(result, connectID, params, userData)
-
-	// Build the full TPKT+X.224+MCS packet for debug
-	x224Data := BuildDataTPDU(mcsData)
-	totalLen := TPKTHeaderLength + len(x224Data)
-	fullPacket := make([]byte, totalLen)
-	fullPacket[0] = TPKTVersion
-	fullPacket[1] = 0
-	binary.BigEndian.PutUint16(fullPacket[2:4], uint16(totalLen))
-	copy(fullPacket[4:], x224Data)
-	fmt.Printf("DEBUG Full TPKT+X.224+MCS packet len=%d, first 64 bytes: % 02X\n", len(fullPacket), fullPacket[:min(64, len(fullPacket))])
-	if len(fullPacket) > 64 {
-		fmt.Printf("DEBUG Full packet bytes 64-end (%d more): % 02X\n", len(fullPacket)-64, fullPacket[64:])
-	}
-
 	return WriteX224Data(w, mcsData)
 }
 
