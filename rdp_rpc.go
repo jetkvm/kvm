@@ -10,6 +10,10 @@
 //   - setRDPAudioEnabled: Enable/disable audio output to client
 //   - setRDPMicEnabled: Enable/disable microphone input from client
 //   - setRDPCameraEnabled: Enable/disable webcam redirection from client
+//   - setRDPClipboardEnabled: Enable/disable clipboard-as-keystrokes
+//   - setRDPPasteDelayMs: Set clipboard paste keystroke delay
+//   - setRDPTargetOS: Set target OS for clipboard encoding
+//   - setRDPClipboardMode: Set clipboard mode (text, base64-markers, base64-script)
 //
 // Configuration is persisted to disk and changes take effect immediately.
 
@@ -24,20 +28,28 @@ import (
 const (
 	// RDP max connections range
 	minRDPConnections = 1
+
+	// RDP paste delay range in milliseconds (same as VNC)
+	minRDPPasteDelayMs = 0
+	maxRDPPasteDelayMs = 50
 )
 
 // RDPState represents the current RDP server state for the UI.
 type RDPState struct {
-	Enabled         bool `json:"enabled"`
-	Running         bool `json:"running"`
-	Port            int  `json:"port"`
-	ConnectionCount int  `json:"connectionCount"`
-	TLSEnabled      bool `json:"tlsEnabled"`
-	MaxConnections  int  `json:"maxConnections"`
-	VideoEnabled    bool `json:"videoEnabled"`
-	AudioEnabled    bool `json:"audioEnabled"`
-	MicEnabled      bool `json:"micEnabled"`
-	CameraEnabled   bool `json:"cameraEnabled"`
+	Enabled          bool   `json:"enabled"`
+	Running          bool   `json:"running"`
+	Port             int    `json:"port"`
+	ConnectionCount  int    `json:"connectionCount"`
+	TLSEnabled       bool   `json:"tlsEnabled"`
+	MaxConnections   int    `json:"maxConnections"`
+	VideoEnabled     bool   `json:"videoEnabled"`
+	AudioEnabled     bool   `json:"audioEnabled"`
+	MicEnabled       bool   `json:"micEnabled"`
+	CameraEnabled    bool   `json:"cameraEnabled"`
+	ClipboardEnabled bool   `json:"clipboardEnabled"`
+	PasteDelayMs     int    `json:"pasteDelayMs"`
+	TargetOS         string `json:"targetOS"`
+	ClipboardMode    string `json:"clipboardMode"`
 }
 
 func restartRDPServerIfRunning() error {
@@ -66,16 +78,20 @@ func rpcGetRDPState() (RDPState, error) {
 		connCount = server.GetConnectionCount()
 	}
 	return RDPState{
-		Enabled:         config.RDPEnabled,
-		Running:         running,
-		Port:            config.RDPPort,
-		ConnectionCount: connCount,
-		TLSEnabled:      config.RDPUseTLS,
-		MaxConnections:  config.RDPMaxConnections,
-		VideoEnabled:    config.RDPVideoEnabled,
-		AudioEnabled:    config.RDPAudioEnabled,
-		MicEnabled:      config.RDPMicEnabled,
-		CameraEnabled:   config.RDPCameraEnabled,
+		Enabled:          config.RDPEnabled,
+		Running:          running,
+		Port:             config.RDPPort,
+		ConnectionCount:  connCount,
+		TLSEnabled:       config.RDPUseTLS,
+		MaxConnections:   config.RDPMaxConnections,
+		VideoEnabled:     config.RDPVideoEnabled,
+		AudioEnabled:     config.RDPAudioEnabled,
+		MicEnabled:       config.RDPMicEnabled,
+		CameraEnabled:    config.RDPCameraEnabled,
+		ClipboardEnabled: config.RDPClipboardEnabled,
+		PasteDelayMs:     config.RDPPasteDelayMs,
+		TargetOS:         config.RDPTargetOS,
+		ClipboardMode:    config.RDPClipboardMode,
 	}, nil
 }
 
@@ -210,6 +226,80 @@ func rpcSetRDPCameraEnabled(enabled bool) error {
 
 	if err := SaveConfig(); err != nil {
 		config.RDPCameraEnabled = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPClipboardEnabled enables or disables clipboard-as-keystrokes.
+// When disabled, clipboard text from RDP clients is ignored.
+func rpcSetRDPClipboardEnabled(enabled bool) error {
+	oldValue := config.RDPClipboardEnabled
+	config.RDPClipboardEnabled = enabled
+
+	if err := SaveConfig(); err != nil {
+		config.RDPClipboardEnabled = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPPasteDelayMs sets the clipboard paste delay per keystroke in milliseconds.
+// Valid range: 0-50 (0 = fastest, relies on USB polling; higher = slower but more compatible)
+func rpcSetRDPPasteDelayMs(delayMs int) error {
+	if delayMs < minRDPPasteDelayMs || delayMs > maxRDPPasteDelayMs {
+		return fmt.Errorf("invalid paste delay: %d (must be %d-%d ms)", delayMs, minRDPPasteDelayMs, maxRDPPasteDelayMs)
+	}
+
+	oldDelay := config.RDPPasteDelayMs
+	config.RDPPasteDelayMs = delayMs
+
+	if err := SaveConfig(); err != nil {
+		config.RDPPasteDelayMs = oldDelay
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPTargetOS sets the target OS for clipboard encoding.
+// Valid values: "windows", "macos", "linux"
+func rpcSetRDPTargetOS(targetOS string) error {
+	switch targetOS {
+	case "windows", "macos", "linux":
+		// Valid
+	default:
+		return fmt.Errorf("invalid target OS: %s (must be windows, macos, or linux)", targetOS)
+	}
+
+	oldValue := config.RDPTargetOS
+	config.RDPTargetOS = targetOS
+
+	if err := SaveConfig(); err != nil {
+		config.RDPTargetOS = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPClipboardMode sets the clipboard mode for handling non-ASCII content.
+// Valid values: "text" (skip non-typeable), "base64-markers" (wrap in markers), "base64-script" (OS script)
+func rpcSetRDPClipboardMode(mode string) error {
+	switch mode {
+	case "text", "base64-markers", "base64-script":
+		// Valid
+	default:
+		return fmt.Errorf("invalid clipboard mode: %s (must be text, base64-markers, or base64-script)", mode)
+	}
+
+	oldValue := config.RDPClipboardMode
+	config.RDPClipboardMode = mode
+
+	if err := SaveConfig(); err != nil {
+		config.RDPClipboardMode = oldValue
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

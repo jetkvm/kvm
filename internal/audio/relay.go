@@ -11,6 +11,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// PCMCallback is called with raw PCM audio data (16-bit stereo 48kHz).
+// This is used for RDP audio output which requires raw PCM.
+type PCMCallback func(pcm []byte)
+
 type OutputRelay struct {
 	source     *AudioSource
 	audioTrack *webrtc.TrackLocalStaticSample
@@ -18,6 +22,9 @@ type OutputRelay struct {
 	running    atomic.Bool
 	sample     media.Sample
 	stopped    chan struct{}
+
+	// Callback for raw PCM data (for RDP audio)
+	pcmCallback PCMCallback
 
 	framesRelayed atomic.Uint32
 	framesDropped atomic.Uint32
@@ -35,6 +42,12 @@ func NewOutputRelay(source *AudioSource, audioTrack *webrtc.TrackLocalStaticSamp
 			Duration: 20 * time.Millisecond,
 		},
 	}
+}
+
+// SetPCMCallback sets a callback to receive raw PCM audio data.
+// This is called for each audio frame with 16-bit stereo 48kHz PCM.
+func (r *OutputRelay) SetPCMCallback(cb PCMCallback) {
+	r.pcmCallback = cb
 }
 
 func (r *OutputRelay) Start() error {
@@ -103,6 +116,13 @@ func (r *OutputRelay) relayLoop() {
 
 		consecutiveFailures = 0
 		retryDelay = 1 * time.Second
+
+		// Call PCM callback for RDP audio output (if set)
+		if r.pcmCallback != nil {
+			if pcm := GetLastPCM(); pcm != nil {
+				r.pcmCallback(pcm)
+			}
+		}
 
 		if msgType == ipcMsgTypeOpus && len(payload) > 0 {
 			r.sample.Data = payload

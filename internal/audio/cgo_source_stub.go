@@ -1,4 +1,4 @@
-//go:build !linux || (!arm && !arm64)
+//go:build !cgo || !linux || (!arm && !arm64)
 
 package audio
 
@@ -34,4 +34,14 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 
 func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 	panic("audio CGO source not supported on this platform")
+}
+
+// GetLastPCM returns nil on non-ARM platforms.
+func GetLastPCM() []byte {
+	return nil
+}
+
+// WritePCM is a stub on non-ARM platforms.
+func WritePCM(pcmData []byte) error {
+	return nil
 }

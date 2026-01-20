@@ -9,6 +9,8 @@ import (
 	"crypto/tls"
 	"sync"
 
+	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/jetkvm/kvm/internal/keyboard"
 	"github.com/jetkvm/kvm/internal/rdp"
 )
 
@@ -48,6 +50,10 @@ func (a *rdpConfigAdapter) GetRDPMaxConnections() int {
 	return config.RDPMaxConnections
 }
 
+func (a *rdpConfigAdapter) GetRDPClipboardEnabled() bool {
+	return config.RDPClipboardEnabled
+}
+
 func (a *rdpConfigAdapter) GetTLSMode() string {
 	return config.TLSMode
 }
@@ -72,11 +78,56 @@ func (a *rdpHIDAdapter) WheelReport(vertical, horizontal int8) error {
 }
 
 func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
-	// RDP handles Unicode input directly via handleUnicodeEvent in connection.go
-	// This function is primarily for clipboard paste operations
-	// For now, return nil as Unicode input is the primary method
-	// TODO: Implement text-to-keystroke conversion if needed for clipboard paste
-	return nil
+	// Check text size limit
+	if len(text) > keyboard.MaxClipboardSize {
+		return nil // Silently ignore oversized clipboard
+	}
+
+	// Get clipboard mode and target OS from config
+	mode := keyboard.ClipboardMode(config.RDPClipboardMode)
+	if mode == "" {
+		mode = keyboard.ClipboardModeText
+	}
+	targetOS := keyboard.TargetOS(config.RDPTargetOS)
+	if targetOS == "" {
+		targetOS = keyboard.TargetOSWindows
+	}
+
+	// Prepare clipboard text based on mode (handles encoding if needed)
+	preparedText, encoded := keyboard.PrepareClipboardText([]byte(text), mode, targetOS)
+	if preparedText == "" {
+		return nil // Nothing to type (binary content in text mode)
+	}
+
+	if encoded {
+		rdpLogger.Info().
+			Str("mode", string(mode)).
+			Str("targetOS", string(targetOS)).
+			Int("originalLen", len(text)).
+			Int("encodedLen", len(preparedText)).
+			Msg("RDP: clipboard content encoded for typing")
+	}
+
+	// Get configurable delay
+	totalDelay := config.RDPPasteDelayMs
+	if totalDelay < 0 {
+		totalDelay = 0
+	}
+	pressDelay, releaseDelay := keyboard.ComputeDelays(totalDelay)
+
+	// Convert text to keyboard macro steps using shared keyboard package
+	steps, skipped := keyboard.TextToMacroSteps(preparedText, "en-US", pressDelay, releaseDelay)
+	if len(steps) == 0 {
+		return nil
+	}
+
+	if skipped > 0 {
+		rdpLogger.Debug().
+			Int("skipped", skipped).
+			Msg("RDP: some characters skipped during paste")
+	}
+
+	return rpcExecuteKeyboardMacro(steps)
 }
 
 func (a *rdpHIDAdapter) IsKeyboardMacroInProgress() bool {
@@ -220,9 +271,9 @@ func (a *rdpAudioAdapter) UnsubscribeAudio() {
 }
 
 func (a *rdpAudioAdapter) PlayAudio(data []byte) error {
-	// TODO: Implement audio playback to USB audio gadget
-	// This would forward microphone audio from RDP client to the managed PC
-	return nil
+	// Forward RDP client microphone audio to USB audio gadget
+	// The AUDIN channel sends 16-bit PCM, stereo, 48kHz which we write directly
+	return audio.WritePCM(data)
 }
 
 // BroadcastRDPAudio sends audio data to all RDP audio subscribers.
@@ -243,15 +294,54 @@ func BroadcastRDPAudio(data []byte) {
 // rdpCameraAdapter adapts UVC camera to rdp.CameraProvider interface.
 type rdpCameraAdapter struct{}
 
+// Camera pixel format FourCC codes (must match internal/rdp/channels/camera.go)
+const (
+	rdpCamPixelFormatMJPEG = 0x47504A4D // 'MJPG'
+	rdpCamPixelFormatH264  = 0x34363248 // 'H264'
+)
+
 func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFormat uint32) error {
-	// TODO: Implement camera frame forwarding to UVC gadget
-	// This would send webcam frames from RDP client to the managed PC
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil || !mgr.IsEnabled() {
+		return nil
+	}
+
+	// Route based on pixel format
+	switch pixelFormat {
+	case rdpCamPixelFormatH264:
+		mgr.HandleCameraH264Frame(data)
+	case rdpCamPixelFormatMJPEG:
+		mgr.HandleCameraMjpegFrame(data)
+	default:
+		// NV12, I420, YUY2 need conversion - skip for now
+		// In the future, could add software conversion to MJPEG
+		return nil
+	}
 	return nil
 }
 
 func (a *rdpCameraAdapter) IsConnected() bool {
-	// TODO: Check if UVC gadget is connected
-	return false
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
+		return false
+	}
+	return mgr.IsStreaming()
+}
+
+func (a *rdpCameraAdapter) SetEnabled(enabled bool) {
+	mgr := cameraManagerPtr.Load()
+	if mgr != nil {
+		mgr.SetEnabled(enabled)
+		rdpLogger.Warn().Bool("enabled", enabled).Msg("RDP: camera passthrough state changed")
+	}
+}
+
+func (a *rdpCameraAdapter) IsEnabled() bool {
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
+		return false
+	}
+	return mgr.IsEnabled()
 }
 
 // initRDPServer initializes and starts the RDP server if enabled.

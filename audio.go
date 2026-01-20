@@ -138,6 +138,11 @@ func startOutputAudioUnderMutex(alsaOutputDevice string) error {
 	newSource := audio.NewCgoOutputSource(alsaOutputDevice, getAudioConfig())
 	newRelay := audio.NewOutputRelay(&newSource, currentAudioTrack)
 
+	// Set PCM callback for RDP audio output
+	newRelay.SetPCMCallback(func(pcm []byte) {
+		BroadcastRDPAudio(pcm)
+	})
+
 	if err := newRelay.Start(); err != nil {
 		audioLogger.Error().Err(err).Str("alsaOutputDevice", alsaOutputDevice).Msg("Failed to start audio output relay")
 		return err

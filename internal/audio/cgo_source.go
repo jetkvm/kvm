@@ -248,3 +248,37 @@ func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 
 	return nil
 }
+
+// GetLastPCM returns the last captured PCM audio data.
+// This retrieves the raw PCM that was captured in the last ReadMessage() call.
+// Format: 16-bit signed PCM, stereo interleaved, 48kHz.
+// Returns nil if no data is available.
+func GetLastPCM() []byte {
+	// 960 frames * 2 channels * 2 bytes per sample = 3840 bytes
+	const maxPCMSize = 960 * 2 * 2
+	buf := make([]byte, maxPCMSize)
+
+	size := C.jetkvm_audio_get_last_pcm(unsafe.Pointer(&buf[0]), C.int(maxPCMSize))
+	if size <= 0 {
+		return nil
+	}
+
+	return buf[:size]
+}
+
+// WritePCM writes raw PCM audio data to the playback device.
+// This is used for RDP audio input (client microphone → USB gadget).
+// Format: 16-bit signed PCM, mono, 48kHz.
+// Returns the number of frames written, or an error.
+func WritePCM(pcmData []byte) error {
+	if len(pcmData) == 0 {
+		return nil
+	}
+
+	rc := C.jetkvm_audio_write_pcm(unsafe.Pointer(&pcmData[0]), C.int(len(pcmData)))
+	if rc < 0 {
+		return fmt.Errorf("jetkvm_audio_write_pcm failed: %d", rc)
+	}
+
+	return nil
+}

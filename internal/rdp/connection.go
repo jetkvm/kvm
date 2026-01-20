@@ -57,8 +57,14 @@ type Connection struct {
 	drdynvcID     uint16 // Static channel ID for drdynvc
 
 	// Static virtual channels
-	soundChannel *channels.SoundChannel
-	rdpsndID     uint16 // Static channel ID for rdpsnd
+	soundChannel     *channels.SoundChannel
+	rdpsndID         uint16 // Static channel ID for rdpsnd
+	clipboardChannel *channels.ClipboardChannel
+	cliprdrdID       uint16 // Static channel ID for cliprdr
+
+	// Modifier key tracking for paste detection
+	ctrlPressed     atomic.Bool
+	pasteInProgress atomic.Bool // Suppress V key events during paste
 
 	// Audio streaming
 	audioChan   <-chan []byte
@@ -981,6 +987,10 @@ func (c *Connection) buildCapabilitySets(width, height uint16) []byte {
 	// Large Pointer Capability Set - for large cursor support
 	buf = append(buf, buildLargePointerCapability()...)
 
+	// TEMPORARILY DISABLED - testing if this breaks DVC
+	// // Sound Capability Set - required for RDPSND audio output
+	// buf = append(buf, buildSoundCapability()...)
+
 	return buf
 }
 
@@ -1244,6 +1254,25 @@ func buildLargePointerCapability() []byte {
 	// 0x0001 = LARGE_POINTER_FLAG_96x96 - support 96x96 pointers
 	buf[4] = 0x01
 	buf[5] = 0x00
+	return buf
+}
+
+// buildSoundCapability builds the Sound capability set.
+// Per MS-RDPBCGR 2.2.7.1.11 (TS_SOUND_CAPABILITYSET) - Required for RDPSND audio output.
+func buildSoundCapability() []byte {
+	buf := make([]byte, 8)
+	// Type: CAPSTYPE_SOUND (0x000C)
+	buf[0] = byte(protocol.CapabilitySound)
+	buf[1] = byte(protocol.CapabilitySound >> 8)
+	// Length: 8 bytes
+	buf[2] = 8
+	buf[3] = 0
+	// soundFlags: SOUND_BEEPS_FLAG (0x0001) - enable beep redirection
+	buf[4] = 0x01
+	buf[5] = 0x00
+	// pad2OctetsA
+	buf[6] = 0
+	buf[7] = 0
 	return buf
 }
 
@@ -1711,14 +1740,25 @@ func (c *Connection) handleMouseEvent(data []byte) {
 		c.server.deps.Logger.Debug().Err(err).Msg("RDP: mouse report failed")
 	}
 
-	// Handle wheel
-	if pointerFlags&0x0200 != 0 { // PTRFLAGS_WHEEL
+	// Handle vertical wheel (PTRFLAGS_WHEEL = 0x0200)
+	if pointerFlags&0x0200 != 0 {
 		wheelDelta := int8(pointerFlags & 0x00FF)
 		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
 			wheelDelta = -wheelDelta
 		}
 		if err := c.server.deps.HID.WheelReport(wheelDelta/30, 0); err != nil {
-			c.server.deps.Logger.Debug().Err(err).Msg("RDP: wheel report failed")
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: vertical wheel report failed")
+		}
+	}
+
+	// Handle horizontal wheel (PTRFLAGS_HWHEEL = 0x0400)
+	if pointerFlags&0x0400 != 0 {
+		wheelDelta := int8(pointerFlags & 0x00FF)
+		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
+			wheelDelta = -wheelDelta
+		}
+		if err := c.server.deps.HID.WheelReport(0, wheelDelta/30); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: horizontal wheel report failed")
 		}
 	}
 }
@@ -1738,14 +1778,69 @@ func (c *Connection) handleScancodeEvent(data []byte) {
 	keyboardFlags := binary.LittleEndian.Uint16(data[0:2])
 	scancode := binary.LittleEndian.Uint16(data[2:4])
 
+	// Key up or down
+	pressed := keyboardFlags&0x8000 == 0 // KBDFLAGS_RELEASE
+
+	// Track Ctrl key state for paste/copy detection
+	// Left Ctrl: scancode 0x1D, Right Ctrl: scancode 0x1D with extended flag
+	if scancode == 0x1D {
+		c.ctrlPressed.Store(pressed)
+		c.server.deps.Logger.Warn().
+			Bool("pressed", pressed).
+			Msg("RDP: Ctrl key state changed")
+	}
+
+	// Handle clipboard-related key combinations (only on key down)
+	if pressed && c.ctrlPressed.Load() && c.clipboardChannel != nil && c.server.deps.Config.GetRDPClipboardEnabled() {
+		c.server.deps.Logger.Warn().
+			Uint16("scancode", scancode).
+			Msg("RDP: key pressed with Ctrl held")
+
+		switch scancode {
+		case 0x2E, 0x2D: // C key (0x2E) or X key (0x2D) - copy/cut
+			// Clear RDP clipboard when user copies on managed PC
+			// This prevents stale clipboard data from being pasted
+			c.clipboardChannel.ClearClipboardText()
+			c.server.deps.Logger.Warn().
+				Uint16("scancode", scancode).
+				Msg("RDP: copy/cut detected, cleared clipboard")
+			// Don't return - still forward the key for native copy/cut
+
+		case 0x2F: // V key - paste
+			text := c.clipboardChannel.GetClipboardText()
+			c.server.deps.Logger.Warn().
+				Bool("hasText", text != nil).
+				Int("textLen", len(text)).
+				Msg("RDP: V key with Ctrl - checking clipboard")
+
+			if text != nil {
+				c.server.deps.Logger.Warn().
+					Int("textLen", len(text)).
+					Str("preview", string(text[:min(len(text), 50)])).
+					Msg("RDP: paste detected, typing clipboard text")
+
+				c.pasteInProgress.Store(true)
+
+				// Type the clipboard text using keyboard macro
+				if err := c.server.deps.HID.KeyboardMacro(string(text)); err != nil {
+					c.server.deps.Logger.Warn().Err(err).Msg("RDP: clipboard paste failed")
+				}
+				return // Don't forward the V key down
+			}
+		}
+	}
+
+	// Handle V key release after paste - suppress to avoid orphan key-up
+	if scancode == 0x2F && !pressed && c.pasteInProgress.Load() {
+		c.pasteInProgress.Store(false)
+		return // Don't forward the V key up
+	}
+
 	// Convert scancode to HID code
 	hidCode := scancodeToHID(scancode, keyboardFlags)
 	if hidCode == 0 {
 		return
 	}
-
-	// Key up or down
-	pressed := keyboardFlags&0x8000 == 0 // KBDFLAGS_RELEASE
 
 	if err := c.server.deps.HID.KeypressReport(hidCode, pressed); err != nil {
 		c.server.deps.Logger.Debug().Err(err).Msg("RDP: key report failed")
@@ -1907,6 +2002,7 @@ func (c *Connection) handleFastPathScancode(scancode byte, flags byte) {
 	// Flags: bit 0 = release, bit 1 = extended
 	released := flags&0x01 != 0
 	extended := flags&0x02 != 0
+	pressed := !released
 
 	var kbdFlags uint16
 	if released {
@@ -1916,12 +2012,65 @@ func (c *Connection) handleFastPathScancode(scancode byte, flags byte) {
 		kbdFlags |= 0x0100 // KBDFLAGS_EXTENDED
 	}
 
+	// Track Ctrl key state for paste/copy detection
+	// Left Ctrl: scancode 0x1D, Right Ctrl: scancode 0x1D with extended flag
+	if scancode == 0x1D {
+		c.ctrlPressed.Store(pressed)
+		c.server.deps.Logger.Warn().
+			Bool("pressed", pressed).
+			Msg("RDP: Ctrl key state changed (fast-path)")
+	}
+
+	// Handle clipboard-related key combinations (only on key down)
+	if pressed && c.ctrlPressed.Load() && c.clipboardChannel != nil && c.server.deps.Config.GetRDPClipboardEnabled() {
+		c.server.deps.Logger.Warn().
+			Uint8("scancode", scancode).
+			Msg("RDP: key pressed with Ctrl held (fast-path)")
+
+		switch scancode {
+		case 0x2E, 0x2D: // C key (0x2E) or X key (0x2D) - copy/cut
+			c.clipboardChannel.ClearClipboardText()
+			c.server.deps.Logger.Warn().
+				Uint8("scancode", scancode).
+				Msg("RDP: copy/cut detected, cleared clipboard (fast-path)")
+			// Don't return - still forward the key for native copy/cut
+
+		case 0x2F: // V key - paste
+			text := c.clipboardChannel.GetClipboardText()
+			c.server.deps.Logger.Warn().
+				Bool("hasText", text != nil).
+				Int("textLen", len(text)).
+				Msg("RDP: V key with Ctrl - checking clipboard (fast-path)")
+
+			if text != nil {
+				c.server.deps.Logger.Warn().
+					Int("textLen", len(text)).
+					Str("preview", string(text[:min(len(text), 50)])).
+					Msg("RDP: paste detected, typing clipboard text (fast-path)")
+
+				c.pasteInProgress.Store(true)
+
+				// Type the clipboard text using keyboard macro
+				if err := c.server.deps.HID.KeyboardMacro(string(text)); err != nil {
+					c.server.deps.Logger.Warn().Err(err).Msg("RDP: clipboard paste failed (fast-path)")
+				}
+				return // Don't forward the V key down
+			}
+		}
+	}
+
+	// Handle V key release after paste - suppress to avoid orphan key-up
+	if scancode == 0x2F && released && c.pasteInProgress.Load() {
+		c.pasteInProgress.Store(false)
+		return // Don't forward the V key up
+	}
+
 	hidCode := scancodeToHID(uint16(scancode), kbdFlags)
 	if hidCode == 0 {
 		return
 	}
 
-	if err := c.server.deps.HID.KeypressReport(hidCode, !released); err != nil {
+	if err := c.server.deps.HID.KeypressReport(hidCode, pressed); err != nil {
 		c.server.deps.Logger.Debug().Err(err).Msg("RDP: fast-path key report failed")
 	}
 }
@@ -2221,6 +2370,13 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	}
 	c.channelsMu.RUnlock()
 
+	// Log all virtual channel data for debugging
+	c.server.deps.Logger.Warn().
+		Str("channel", channelName).
+		Uint16("channelID", channelID).
+		Int("payloadLen", len(payload)).
+		Msg("RDP: virtual channel data received")
+
 	switch channelName {
 	case "drdynvc":
 		// Dynamic Virtual Channel - for RDPGFX, audio, etc.
@@ -2228,6 +2384,9 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	case "rdpsnd":
 		// Audio output
 		c.handleRdpsnd(payload)
+	case "cliprdr":
+		// Clipboard redirection
+		c.handleClipboard(payload)
 	case "rdpdr":
 		// Device redirection
 		c.server.deps.Logger.Debug().Msg("RDP: rdpdr channel data")
@@ -2253,11 +2412,25 @@ func (c *Connection) handleDrdynvc(data []byte) {
 // handleRdpsnd handles audio output channel.
 func (c *Connection) handleRdpsnd(data []byte) {
 	if c.soundChannel == nil {
+		c.server.deps.Logger.Warn().Msg("RDP: rdpsnd data but channel is nil")
 		return
 	}
 
+	c.server.deps.Logger.Warn().Int("dataLen", len(data)).Msg("RDP: rdpsnd data received")
+
 	if err := c.soundChannel.HandlePDU(data); err != nil {
-		c.server.deps.Logger.Debug().Err(err).Msg("RDP: rdpsnd error")
+		c.server.deps.Logger.Warn().Err(err).Msg("RDP: rdpsnd error")
+	}
+}
+
+// handleClipboard handles clipboard channel.
+func (c *Connection) handleClipboard(data []byte) {
+	if c.clipboardChannel == nil {
+		return
+	}
+
+	if err := c.clipboardChannel.HandlePDU(data); err != nil {
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: cliprdr error")
 	}
 }
 
@@ -2340,6 +2513,8 @@ func (c *Connection) initDynamicChannels() error {
 			c.drdynvcID = ch.ID
 		case "rdpsnd":
 			c.rdpsndID = ch.ID
+		case "cliprdr":
+			c.cliprdrdID = ch.ID
 		}
 	}
 	c.channelsMu.RUnlock()
@@ -2349,8 +2524,15 @@ func (c *Connection) initDynamicChannels() error {
 		c.initSoundChannel()
 	}
 
+	// NOTE: Clipboard channel initialization is deferred until AFTER DVC setup
+	// to avoid interfering with DVC capability exchange
+
 	if c.drdynvcID == 0 {
 		// Client doesn't support dynamic channels
+		// Initialize clipboard now since no DVC to worry about
+		if c.cliprdrdID != 0 {
+			c.initClipboardChannel()
+		}
 		return nil
 	}
 
@@ -2375,9 +2557,14 @@ func (c *Connection) initDynamicChannels() error {
 	})
 
 	// Send capability request
+	c.server.deps.Logger.Warn().
+		Uint16("drdynvcID", c.drdynvcID).
+		Msg("RDP: sending DVC capability request")
 	if err := c.dvcManager.SendCapabilityRequest(); err != nil {
+		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to send DVC capability request")
 		return err
 	}
+	c.server.deps.Logger.Warn().Msg("RDP: DVC capability request sent successfully")
 
 	// Create DVC channels in a goroutine after capability exchange completes
 	// This is necessary because the capability response arrives through the message loop
@@ -2391,12 +2578,22 @@ func (c *Connection) initDVCChannelsAfterCapability() {
 	// Wait for capability response (timeout after 5 seconds)
 	if !c.dvcManager.WaitForCapability(5 * time.Second) {
 		c.server.deps.Logger.Warn().Msg("RDP: DVC capability timeout, skipping dynamic channels")
+		// Still initialize clipboard even if DVC failed
+		if c.cliprdrdID != 0 {
+			c.initClipboardChannel()
+		}
 		return
 	}
 
 	c.server.deps.Logger.Warn().
 		Uint16("version", c.dvcManager.GetNegotiatedVersion()).
 		Msg("RDP: DVC capability exchange complete, creating channels")
+
+	// Initialize clipboard channel AFTER DVC capability exchange completes
+	// to avoid any interference
+	if c.cliprdrdID != 0 {
+		c.initClipboardChannel()
+	}
 
 	// Create RDPGFX channel
 	c.gfxChannel = channels.NewGFXChannel(c.dvcManager)
@@ -2541,6 +2738,7 @@ func (c *Connection) checkGFXReadinessAndFallback() {
 // so concurrent calls to this function are safe.
 func (c *Connection) sendDVCData(data []byte) error {
 	if c.drdynvcID == 0 {
+		c.server.deps.Logger.Warn().Msg("RDP: sendDVCData called but drdynvcID is 0")
 		return nil
 	}
 
@@ -2555,6 +2753,17 @@ func (c *Connection) sendDVCData(data []byte) error {
 	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data))) // totalLength
 	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast) // flags (single chunk)
 	copy(vcPDU[8:], data)
+
+	// Log the DVC data being sent
+	hexLen := 20
+	if len(data) < hexLen {
+		hexLen = len(data)
+	}
+	c.server.deps.Logger.Warn().
+		Uint16("channelID", c.drdynvcID).
+		Int("dataLen", len(data)).
+		Str("dataHex", fmt.Sprintf("% X", data[:hexLen])).
+		Msg("RDP: sending DVC data")
 
 	// Wrap in MCS Send Data Indication
 	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.drdynvcID, vcPDU)
@@ -2690,12 +2899,62 @@ func (c *Connection) initSoundChannel() {
 	}
 }
 
+// initClipboardChannel initializes the CLIPRDR static channel.
+func (c *Connection) initClipboardChannel() {
+	// Create clipboard channel with send callback
+	// CLIPRDR requires Virtual Channel PDU header per MS-RDPBCGR 2.2.6.1
+	c.clipboardChannel = channels.NewClipboardChannel(func(data []byte) error {
+		return c.sendClipboardData(data)
+	})
+
+	// Set up logging
+	c.clipboardChannel.SetLogger(func(format string, args ...any) {
+		c.server.deps.Logger.Warn().Msgf(format, args...)
+	})
+
+	// Start clipboard channel (sends Capabilities and Monitor Ready)
+	if err := c.clipboardChannel.Start(); err != nil {
+		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start cliprdr")
+	} else {
+		c.server.deps.Logger.Warn().Msg("RDP: clipboard channel initialized")
+	}
+}
+
 // sendStaticChannelData sends data on a static virtual channel.
 // Note: WriteTPKT uses a single Write() call which is atomic at the TLS level,
 // so concurrent calls to this function are safe.
 func (c *Connection) sendStaticChannelData(channelID uint16, data []byte) error {
 	// Wrap in MCS Send Data Indication
 	mcsPDU := protocol.BuildSendDataIndication(c.userID, channelID, data)
+	return protocol.WriteMCSPDU(c.conn, mcsPDU)
+}
+
+// sendClipboardData sends data on the cliprdr channel with proper VC PDU header.
+// Per MS-RDPBCGR 2.2.6.1, virtual channel data must include the VC PDU header.
+func (c *Connection) sendClipboardData(data []byte) error {
+	if c.cliprdrdID == 0 {
+		return nil
+	}
+
+	// Build Virtual Channel PDU per MS-RDPBCGR 2.2.6.1
+	// Header: totalLength (4 bytes LE) + flags (4 bytes LE) + data
+	const (
+		channelFlagFirst = 0x01
+		channelFlagLast  = 0x02
+	)
+
+	vcPDU := make([]byte, 8+len(data))
+	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))              // totalLength
+	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast) // flags (single chunk)
+	copy(vcPDU[8:], data)
+
+	c.server.deps.Logger.Warn().
+		Int("dataLen", len(data)).
+		Str("dataHex", fmt.Sprintf("% X", data[:min(len(data), 20)])).
+		Msg("RDP: sending clipboard data")
+
+	// Wrap in MCS Send Data Indication
+	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.cliprdrdID, vcPDU)
 	return protocol.WriteMCSPDU(c.conn, mcsPDU)
 }
 

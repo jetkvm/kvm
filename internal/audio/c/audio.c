@@ -106,6 +106,11 @@ static uint32_t max_backoff_us_global = 500000;
 static atomic_int capture_stop_requested = 0;
 static atomic_int playback_stop_requested = 0;
 
+// Last captured PCM buffer for RDP audio output (copied after resampling)
+// Format: 16-bit signed PCM, stereo interleaved, 48kHz, 20ms = 960 frames * 2 channels = 1920 samples
+static short CACHE_ALIGN last_pcm_buffer[960 * 2];
+static atomic_int last_pcm_samples = 0;  // Number of samples (not frames) in last_pcm_buffer
+
 // Mutexes protect handle lifecycle and codec operations, NOT the ALSA I/O itself.
 // The mutex is temporarily released during snd_pcm_readi/writei to prevent blocking.
 // Race conditions are detected via handle pointer comparison after reacquiring the lock.
@@ -115,10 +120,12 @@ static pthread_mutex_t playback_mutex = PTHREAD_MUTEX_INITIALIZER;
 int jetkvm_audio_capture_init();
 void jetkvm_audio_capture_close();
 int jetkvm_audio_read_encode(void *opus_buf);
+int jetkvm_audio_get_last_pcm(void *pcm_buf, int max_size);
 
 int jetkvm_audio_playback_init();
 void jetkvm_audio_playback_close();
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
+int jetkvm_audio_write_pcm(void *pcm_buf, int num_bytes);
 
 void update_audio_constants(uint32_t bitrate, uint8_t complexity,
                            uint8_t ch, uint16_t max_pkt,
@@ -973,6 +980,12 @@ retry_read:
 		pcm_to_encode = pcm_hw_buffer;
 	}
 
+	// Copy PCM to global buffer for RDP audio output (non-blocking, atomic size update)
+	// This is always stereo 48kHz - opus_frame_size * capture_channels samples
+	uint32_t pcm_samples = opus_frame_size * capture_channels;
+	memcpy(last_pcm_buffer, pcm_to_encode, pcm_samples * sizeof(short));
+	atomic_store(&last_pcm_samples, pcm_samples);
+
 	OpusEncoder *enc = encoder;
 	if (!enc) {
 		pthread_mutex_unlock(&capture_mutex);
@@ -988,6 +1001,36 @@ retry_read:
 
 	pthread_mutex_unlock(&capture_mutex);
 	return nb_bytes;
+}
+
+/**
+ * Get the last captured PCM audio data (for RDP audio output)
+ * This function retrieves the raw PCM data that was captured and resampled
+ * in the last call to jetkvm_audio_read_encode().
+ * Format: 16-bit signed PCM, stereo interleaved, 48kHz, 20ms frames
+ *
+ * @param pcm_buf Output buffer for PCM data (must be at least max_size bytes)
+ * @param max_size Maximum number of bytes to copy
+ * @return Number of bytes copied, or 0 if no data available, or -1 on error
+ */
+int jetkvm_audio_get_last_pcm(void * __restrict__ pcm_buf, int max_size) {
+	if (!pcm_buf || max_size <= 0) {
+		return -1;
+	}
+
+	int samples = atomic_load(&last_pcm_samples);
+	if (samples <= 0) {
+		return 0;
+	}
+
+	int bytes_needed = samples * sizeof(short);
+	if (bytes_needed > max_size) {
+		bytes_needed = max_size;
+		samples = bytes_needed / sizeof(short);
+	}
+
+	memcpy(pcm_buf, last_pcm_buffer, bytes_needed);
+	return bytes_needed;
 }
 
 // AUDIO INPUT PATH FUNCTIONS (Client Microphone → Device Speakers)
@@ -1175,6 +1218,79 @@ retry_write:
 			return (err_result == 0) ? 0 : -2;
 		}
 	}
+	pthread_mutex_unlock(&playback_mutex);
+	return pcm_frames;
+}
+
+/**
+ * Write raw PCM audio data to playback device (for RDP audio input)
+ * This function writes raw PCM directly without Opus decoding.
+ * Format: 16-bit signed PCM, mono or stereo (matches playback_channels), 48kHz
+ *
+ * @param pcm_buf Input buffer containing PCM samples
+ * @param num_bytes Number of bytes in the buffer
+ * @return Number of frames written, 0 if skipped, or negative on error
+ */
+__attribute__((hot)) int jetkvm_audio_write_pcm(void * __restrict__ pcm_buf, int num_bytes) {
+	int32_t pcm_rc;
+	uint8_t recovery_attempts = 0;
+	const uint8_t max_recovery_attempts = 3;
+
+	// Validate inputs before acquiring mutex
+	if (__builtin_expect(!pcm_buf || num_bytes <= 0, 0)) {
+		return -1;
+	}
+
+	if (__builtin_expect(atomic_load(&playback_stop_requested), 0)) {
+		return -1;
+	}
+
+	pthread_mutex_lock(&playback_mutex);
+
+	if (__builtin_expect(!playback_initialized || !pcm_playback_handle, 0)) {
+		pthread_mutex_unlock(&playback_mutex);
+		return -1;
+	}
+
+	// Calculate number of frames from bytes
+	// Frame = channels * bytes_per_sample = playback_channels * 2
+	int bytes_per_frame = playback_channels * 2;
+	int32_t pcm_frames = num_bytes / bytes_per_frame;
+
+	if (pcm_frames <= 0) {
+		pthread_mutex_unlock(&playback_mutex);
+		return 0;
+	}
+
+retry_write_pcm:
+	if (__builtin_expect(atomic_load(&playback_stop_requested), 0)) {
+		pthread_mutex_unlock(&playback_mutex);
+		return -1;
+	}
+
+	snd_pcm_t *handle = pcm_playback_handle;
+
+	pthread_mutex_unlock(&playback_mutex);
+	pcm_rc = snd_pcm_writei(handle, pcm_buf, pcm_frames);
+	pthread_mutex_lock(&playback_mutex);
+
+	if (handle != pcm_playback_handle || atomic_load(&playback_stop_requested)) {
+		pthread_mutex_unlock(&playback_mutex);
+		return -1;
+	}
+
+	if (__builtin_expect(pcm_rc < 0, 0)) {
+		int err_result = handle_alsa_error(handle, &pcm_playback_handle, &playback_stop_requested,
+		                                    pcm_rc, &recovery_attempts,
+		                                    sleep_milliseconds, max_recovery_attempts);
+		if (err_result == 1) {
+			goto retry_write_pcm;
+		} else {
+			pthread_mutex_unlock(&playback_mutex);
+			return (err_result == 0) ? 0 : -2;
+		}
+	}
+
 	pthread_mutex_unlock(&playback_mutex);
 	return pcm_frames;
 }

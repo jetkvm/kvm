@@ -36,6 +36,9 @@ type ConfigProvider interface {
 	// GetRDPMaxConnections returns the maximum concurrent connections.
 	GetRDPMaxConnections() int
 
+	// GetRDPClipboardEnabled returns whether clipboard paste is enabled.
+	GetRDPClipboardEnabled() bool
+
 	// GetTLSMode returns the TLS mode ("disabled", "self-signed", "custom").
 	GetTLSMode() string
 
@@ -120,4 +123,11 @@ type CameraProvider interface {
 
 	// IsConnected returns true if a host is connected to the UVC gadget.
 	IsConnected() bool
+
+	// SetEnabled enables or disables camera passthrough.
+	// When enabled, frames sent via SendFrame will be forwarded to the UVC gadget.
+	SetEnabled(enabled bool)
+
+	// IsEnabled returns true if camera passthrough is enabled.
+	IsEnabled() bool
 }
