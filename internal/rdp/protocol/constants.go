@@ -225,6 +225,50 @@ const (
 	CapabilityFrameAck               = 0x001E
 )
 
+// General Capability extraFlags (MS-RDPBCGR 2.2.7.1.1).
+const (
+	ExtraFlagsFastPathOutputSupported = 0x0001 // FASTPATH_OUTPUT_SUPPORTED
+	ExtraFlagsNoBitmapCompressionHdr  = 0x0400 // NO_BITMAP_COMPRESSION_HDR
+	ExtraFlagsLongCredentialsSupported = 0x0004 // LONG_CREDENTIALS_SUPPORTED
+	ExtraFlagsAutoReconnectSupported  = 0x0008 // AUTORECONNECT_SUPPORTED
+	ExtraFlagsEncSaltedChecksum       = 0x0002 // ENC_SALTED_CHECKSUM
+)
+
+// Fast-Path Output PDU constants (MS-RDPBCGR 2.2.9.1.2).
+const (
+	// Fast-Path update codes (bits 0-3 of updateHeader)
+	FastPathUpdateOrders       = 0x00 // FASTPATH_UPDATETYPE_ORDERS
+	FastPathUpdateBitmap       = 0x01 // FASTPATH_UPDATETYPE_BITMAP
+	FastPathUpdatePalette      = 0x02 // FASTPATH_UPDATETYPE_PALETTE
+	FastPathUpdateSynchronize  = 0x03 // FASTPATH_UPDATETYPE_SYNCHRONIZE
+	FastPathUpdateSurfCmds     = 0x04 // FASTPATH_UPDATETYPE_SURFCMDS
+	FastPathUpdatePtrNull      = 0x05 // FASTPATH_UPDATETYPE_PTR_NULL
+	FastPathUpdatePtrDefault   = 0x06 // FASTPATH_UPDATETYPE_PTR_DEFAULT
+	FastPathUpdatePtrPosition  = 0x08 // FASTPATH_UPDATETYPE_PTR_POSITION
+	FastPathUpdateColor        = 0x09 // FASTPATH_UPDATETYPE_COLOR
+	FastPathUpdateCachedPointer = 0x0A // FASTPATH_UPDATETYPE_CACHED
+	FastPathUpdatePointer      = 0x0B // FASTPATH_UPDATETYPE_POINTER
+	FastPathUpdateLargePointer = 0x0C // FASTPATH_UPDATETYPE_LARGE_POINTER
+
+	// Fast-Path fragmentation flags (bits 4-5 of updateHeader)
+	// Per MS-RDPBCGR 2.2.9.1.2.1: bits 4-5 encode: 0=single, 1=last, 2=first, 3=next
+	FastPathFragSingle = 0x00 // FASTPATH_FRAGMENT_SINGLE (0 << 4)
+	FastPathFragLast   = 0x10 // FASTPATH_FRAGMENT_LAST (1 << 4)
+	FastPathFragFirst  = 0x20 // FASTPATH_FRAGMENT_FIRST (2 << 4)
+	FastPathFragNext   = 0x30 // FASTPATH_FRAGMENT_NEXT (3 << 4)
+
+	// Fast-Path compression flag (bit 6 of updateHeader)
+	FastPathOutputCompressed = 0x40 // FASTPATH_OUTPUT_COMPRESSION_USED
+
+	// Fast-Path action codes (bits 0-1 of fpOutputHeader)
+	FastPathActionFastPath = 0x00 // FASTPATH_OUTPUT_ACTION_FASTPATH
+	FastPathActionX224     = 0x03 // FASTPATH_OUTPUT_ACTION_X224
+
+	// Fast-Path encryption flags (bits 6-7 of fpOutputHeader)
+	FastPathOutputSecureChecksum = 0x40 // FASTPATH_OUTPUT_SECURE_CHECKSUM
+	FastPathOutputEncrypted      = 0x80 // FASTPATH_OUTPUT_ENCRYPTED
+)
+
 // Timeouts for various protocol phases.
 const (
 	HandshakeTimeout   = 30 * time.Second

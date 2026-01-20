@@ -252,6 +252,54 @@ func WriteX224Data(w io.Writer, payload []byte) error {
 	return WriteTPKT(w, tpdu)
 }
 
+// WriteX224DataPooled writes an X.224 Data TPDU wrapped in TPKT using a pooled buffer.
+// HOT PATH: Zero allocations for packets that fit in the pool buffer (2KB).
+func WriteX224DataPooled(w io.Writer, payload []byte) error {
+	// Total packet size: TPKT(4) + X.224(3) + payload
+	totalLen := TPKTHeaderLength + X224DataHeaderLen + len(payload)
+
+	if totalLen > MaxTPKTLength {
+		return ErrTPKTLengthTooLarge
+	}
+
+	// Get buffer from pool
+	bufPtr := packetPool.Get().(*[]byte)
+	buf := *bufPtr
+
+	// Check if buffer is large enough
+	if totalLen > len(buf) {
+		// Rare path: packet too large for pooled buffer, fall back to allocation
+		packetPool.Put(bufPtr)
+		return WriteX224Data(w, payload)
+	}
+
+	// Return buffer to pool after use
+	defer packetPool.Put(bufPtr)
+
+	// Build packet in pooled buffer: [TPKT header][X.224 header][payload]
+	packet := buf[:totalLen]
+
+	// TPKT header (4 bytes)
+	packet[0] = TPKTVersion
+	packet[1] = 0 // reserved
+	binary.BigEndian.PutUint16(packet[2:4], uint16(totalLen))
+
+	// X.224 Data TPDU header (3 bytes)
+	packet[4] = 2           // LI = 2
+	packet[5] = X224Data    // Code
+	packet[6] = X224DataEOT // EOT = 0x80
+
+	// Payload
+	copy(packet[TPKTHeaderLength+X224DataHeaderLen:], payload)
+
+	// Single write to socket
+	_, err := w.Write(packet)
+	if err != nil {
+		return fmt.Errorf("tpkt: write: %w", err)
+	}
+	return nil
+}
+
 // ReadX224Data reads an X.224 Data TPDU from a TPKT payload.
 func ReadX224Data(r io.Reader) ([]byte, error) {
 	payload, err := ReadTPKTPayload(r)

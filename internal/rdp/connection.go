@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"net"
 	"sync"
@@ -17,6 +18,25 @@ import (
 	"github.com/jetkvm/kvm/internal/rdp/credssp"
 	"github.com/jetkvm/kvm/internal/rdp/protocol"
 )
+
+// tileBufferPool reduces allocations for bitmap tile data.
+// Max tile size: 256x256x4 = 262144 bytes (256KB per tile)
+var tileBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, bitmapTileSize*bitmapTileSize*4)
+		return &buf
+	},
+}
+
+// vcPDUPool reduces allocations for Virtual Channel PDU data.
+// Max size: 8 (VC header) + ~1609 (DVC fragment) = ~1617 bytes, rounded to 2KB.
+// This pool is used by sendDVCData for zero-allocation hot path.
+var vcPDUPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 2048)
+		return &buf
+	},
+}
 
 // Connection represents a single RDP client connection.
 type Connection struct {
@@ -37,8 +57,8 @@ type Connection struct {
 	channelsMu   sync.RWMutex
 
 	// Negotiated protocol (from X.224)
-	selectedProtocol          uint32
-	clientRequestedProtocols  uint32 // Original X.224 requested protocols from client
+	selectedProtocol         uint32
+	clientRequestedProtocols uint32 // Original X.224 requested protocols from client
 
 	// Client capabilities
 	clientInfo *ClientInfo
@@ -78,6 +98,10 @@ type Connection struct {
 
 	// Graphics mode - true if RDPGFX is available, false for bitmap updates
 	gfxSupported atomic.Bool
+
+	// Mouse button state tracking for RDP events
+	// RDP sends button flags only on click events, not during moves
+	mouseButtons byte
 }
 
 // ConnectionPhase represents the current protocol phase.
@@ -220,7 +244,7 @@ func (c *Connection) handleX224Connection() error {
 		Bool("clientRequestsTLS", cr.RequestsTLS()).
 		Bool("clientRequestsCredSSP", cr.RequestsCredSSP()).
 		Bool("serverTLSEnabled", c.server.tlsEnabled).
-		Bool("serverTLSConfigSet", c.server.tlsConfig != nil).
+		Bool("serverTLSProviderSet", c.server.deps.TLS != nil).
 		Msg("RDP: X.224 connection request received")
 
 	// Build and send Connection Confirm
@@ -229,7 +253,7 @@ func (c *Connection) handleX224Connection() error {
 	// passwords, we can't derive the correct session key. TLS-only mode still provides
 	// encryption but doesn't require NLA authentication.
 	selectedProto := uint32(protocol.ProtocolRDP)
-	if c.server.tlsEnabled && c.server.tlsConfig != nil {
+	if c.server.tlsEnabled && c.server.deps.TLS != nil {
 		// Prefer TLS over CredSSP - simpler and doesn't require pubKeyAuth
 		if cr.RequestsTLS() {
 			selectedProto = protocol.ProtocolTLS
@@ -283,25 +307,36 @@ func (c *Connection) handleX224Connection() error {
 	if selectedProto == protocol.ProtocolTLS || selectedProto == protocol.ProtocolCredSSP {
 		c.server.deps.Logger.Warn().Msg("RDP: upgrading connection to TLS")
 
-		tlsConn := tls.Server(c.conn, c.server.tlsConfig)
-		if err := tlsConn.SetDeadline(time.Now().Add(protocol.HandshakeTimeout)); err != nil {
+		// Set deadline before TLS handshake
+		if err := c.conn.SetDeadline(time.Now().Add(protocol.HandshakeTimeout)); err != nil {
 			return fmt.Errorf("set TLS deadline: %w", err)
 		}
 
-		if err := tlsConn.Handshake(); err != nil {
-			return fmt.Errorf("TLS handshake failed: %w", err)
-		}
-
-		c.server.deps.Logger.Warn().
-			Str("version", tlsVersionString(tlsConn.ConnectionState().Version)).
-			Str("cipher", tls.CipherSuiteName(tlsConn.ConnectionState().CipherSuite)).
-			Msg("RDP: TLS handshake complete")
-
-		// If CredSSP was selected, perform NLA authentication
+		// CredSSP requires Go's *tls.Conn for TLS session binding in pubKeyAuth.
+		// For plain TLS mode, we can use hardware-accelerated TLS if available.
 		if selectedProto == protocol.ProtocolCredSSP {
+			// CredSSP mode: use Go's crypto/tls (required for session binding)
+			credsspConn, err := c.server.deps.TLS.UpgradeServerConnForCredSSP(c.conn)
+			if err != nil {
+				return fmt.Errorf("TLS handshake failed: %w", err)
+			}
+
+			state := credsspConn.ConnectionState()
+			c.server.deps.Logger.Warn().
+				Str("version", tlsVersionString(state.Version)).
+				Str("cipher", tls.CipherSuiteName(state.CipherSuite)).
+				Bool("hwAccel", false).
+				Msg("RDP: TLS handshake complete (CredSSP mode)")
+
 			c.server.deps.Logger.Warn().Msg("RDP: starting CredSSP/NLA authentication")
 
-			handler := credssp.NewHandler(tlsConn)
+			// Type assert to *tls.Conn for CredSSP handler
+			goTLSConn, ok := credsspConn.(*tls.Conn)
+			if !ok {
+				return fmt.Errorf("CredSSP requires Go's *tls.Conn")
+			}
+
+			handler := credssp.NewHandler(goTLSConn)
 			handler.SetDebugLog(func(format string, args ...any) {
 				c.server.deps.Logger.Warn().Msgf(format, args...)
 			})
@@ -314,11 +349,27 @@ func (c *Connection) handleX224Connection() error {
 			c.server.deps.Logger.Warn().
 				Str("username", username).
 				Msg("RDP: CredSSP/NLA authentication complete")
-		}
 
-		// Replace connection and reader with TLS versions
-		c.conn = tlsConn
-		c.reader = bufio.NewReader(tlsConn)
+			// Replace connection and reader with TLS versions
+			c.conn = credsspConn
+			c.reader = bufio.NewReader(credsspConn)
+		} else {
+			// Plain TLS mode: use hardware-accelerated TLS if available
+			tlsConn, err := c.server.deps.TLS.UpgradeServerConn(c.conn)
+			if err != nil {
+				return fmt.Errorf("TLS handshake failed: %w", err)
+			}
+
+			c.server.deps.Logger.Warn().
+				Str("version", tlsConn.GetProtocolVersion()).
+				Str("cipher", tlsConn.GetCipherName()).
+				Bool("hwAccel", tlsConn.IsHardwareAccelerated()).
+				Msg("RDP: TLS handshake complete")
+
+			// Replace connection and reader with TLS versions
+			c.conn = tlsConn
+			c.reader = bufio.NewReader(tlsConn)
+		}
 	}
 
 	// Clear both read and write deadlines that were set during TLS handshake.
@@ -994,25 +1045,6 @@ func (c *Connection) buildCapabilitySets(width, height uint16) []byte {
 	return buf
 }
 
-// buildShareCapability builds the Share capability set (TS_SHARE_CAPABILITYSET).
-// This capability is optional but some older clients may expect it.
-func buildShareCapability() []byte {
-	buf := make([]byte, 8)
-	// Type
-	buf[0] = byte(protocol.CapabilityShare)
-	buf[1] = byte(protocol.CapabilityShare >> 8)
-	// Length
-	buf[2] = 8
-	buf[3] = 0
-	// Node ID (should be 0 per spec - filled in later)
-	buf[4] = 0
-	buf[5] = 0
-	// Pad
-	buf[6] = 0
-	buf[7] = 0
-	return buf
-}
-
 // countCapabilitySets counts the number of capability sets in a buffer.
 func countCapabilitySets(caps []byte) int {
 	count := 0
@@ -1046,10 +1078,11 @@ func buildGeneralCapability() []byte {
 	buf[9] = 0x02
 	// Compression types
 	buf[12] = 0x00
-	// Extra flags - set to 0 for RDP 5.0 compatibility (no FASTPATH_OUTPUT_SUPPORTED)
-	// FASTPATH was added in RDP 5.1, older clients like Jump Desktop may reject it
-	buf[14] = 0x00
-	buf[15] = 0x00
+	// Extra flags - enable FASTPATH_OUTPUT_SUPPORTED for larger bitmap updates
+	// FASTPATH was added in RDP 5.1; modern clients like Windows Desktop support it
+	extraFlags := protocol.ExtraFlagsFastPathOutputSupported | protocol.ExtraFlagsNoBitmapCompressionHdr
+	buf[14] = byte(extraFlags)
+	buf[15] = byte(extraFlags >> 8)
 	// Update capability
 	buf[16] = 0x00
 	// Remote unshare
@@ -1203,27 +1236,6 @@ func buildInputCapability() []byte {
 	return buf
 }
 
-func buildVirtualChannelCapability() []byte {
-	buf := make([]byte, 12)
-	// Type
-	buf[0] = byte(protocol.CapabilityVirtualChannel)
-	buf[1] = byte(protocol.CapabilityVirtualChannel >> 8)
-	// Length
-	buf[2] = 12
-	buf[3] = 0
-	// Flags
-	buf[4] = 0x02 // VCCAPS_COMPR_CS_8K
-	buf[5] = 0
-	buf[6] = 0
-	buf[7] = 0
-	// VCChunkSize
-	buf[8] = 0x00
-	buf[9] = 0x40 // 16384
-	buf[10] = 0
-	buf[11] = 0
-	return buf
-}
-
 // buildMultifragUpdateCapability builds the Multifragment Update capability set.
 // Per MS-RDPBCGR 2.2.7.2.6 - Required for updates larger than 16KB.
 func buildMultifragUpdateCapability() []byte {
@@ -1254,115 +1266,6 @@ func buildLargePointerCapability() []byte {
 	// 0x0001 = LARGE_POINTER_FLAG_96x96 - support 96x96 pointers
 	buf[4] = 0x01
 	buf[5] = 0x00
-	return buf
-}
-
-// buildSoundCapability builds the Sound capability set.
-// Per MS-RDPBCGR 2.2.7.1.11 (TS_SOUND_CAPABILITYSET) - Required for RDPSND audio output.
-func buildSoundCapability() []byte {
-	buf := make([]byte, 8)
-	// Type: CAPSTYPE_SOUND (0x000C)
-	buf[0] = byte(protocol.CapabilitySound)
-	buf[1] = byte(protocol.CapabilitySound >> 8)
-	// Length: 8 bytes
-	buf[2] = 8
-	buf[3] = 0
-	// soundFlags: SOUND_BEEPS_FLAG (0x0001) - enable beep redirection
-	buf[4] = 0x01
-	buf[5] = 0x00
-	// pad2OctetsA
-	buf[6] = 0
-	buf[7] = 0
-	return buf
-}
-
-func buildBrushCapability() []byte {
-	buf := make([]byte, 8)
-	// Type
-	buf[0] = byte(protocol.CapabilityBrush)
-	buf[1] = byte(protocol.CapabilityBrush >> 8)
-	// Length
-	buf[2] = 8
-	buf[3] = 0
-	// SupportLevel
-	buf[4] = 0x02 // BRUSH_COLOR_FULL
-	buf[5] = 0
-	buf[6] = 0
-	buf[7] = 0
-	return buf
-}
-
-func buildGlyphCacheCapability() []byte {
-	// Glyph Cache Capability Set - MS-RDPBCGR 2.2.7.1.8
-	buf := make([]byte, 52)
-	// Type
-	buf[0] = byte(protocol.CapabilityGlyphCache)
-	buf[1] = byte(protocol.CapabilityGlyphCache >> 8)
-	// Length
-	buf[2] = 52
-	buf[3] = 0
-	// GlyphCache (10 cache definitions, each 4 bytes)
-	// Cache 0: 254 entries, 4 bytes max
-	buf[4] = 0xFE
-	buf[5] = 0x00
-	buf[6] = 0x04
-	buf[7] = 0x00
-	// Cache 1: 254 entries, 4 bytes max
-	buf[8] = 0xFE
-	buf[9] = 0x00
-	buf[10] = 0x04
-	buf[11] = 0x00
-	// Cache 2: 254 entries, 8 bytes max
-	buf[12] = 0xFE
-	buf[13] = 0x00
-	buf[14] = 0x08
-	buf[15] = 0x00
-	// Cache 3: 254 entries, 8 bytes max
-	buf[16] = 0xFE
-	buf[17] = 0x00
-	buf[18] = 0x08
-	buf[19] = 0x00
-	// Cache 4: 254 entries, 16 bytes max
-	buf[20] = 0xFE
-	buf[21] = 0x00
-	buf[22] = 0x10
-	buf[23] = 0x00
-	// Cache 5: 254 entries, 32 bytes max
-	buf[24] = 0xFE
-	buf[25] = 0x00
-	buf[26] = 0x20
-	buf[27] = 0x00
-	// Cache 6: 254 entries, 64 bytes max
-	buf[28] = 0xFE
-	buf[29] = 0x00
-	buf[30] = 0x40
-	buf[31] = 0x00
-	// Cache 7: 254 entries, 128 bytes max
-	buf[32] = 0xFE
-	buf[33] = 0x00
-	buf[34] = 0x80
-	buf[35] = 0x00
-	// Cache 8: 254 entries, 256 bytes max
-	buf[36] = 0xFE
-	buf[37] = 0x00
-	buf[38] = 0x00
-	buf[39] = 0x01
-	// Cache 9: 64 entries, 256 bytes max
-	buf[40] = 0x40
-	buf[41] = 0x00
-	buf[42] = 0x00
-	buf[43] = 0x01
-	// FragCache: 256 entries, 256 bytes max
-	buf[44] = 0x00
-	buf[45] = 0x01
-	buf[46] = 0x00
-	buf[47] = 0x01
-	// GlyphSupportLevel
-	buf[48] = 0x03 // GLYPH_SUPPORT_ENCODE
-	buf[49] = 0x00
-	// Pad
-	buf[50] = 0x00
-	buf[51] = 0x00
 	return buf
 }
 
@@ -1706,6 +1609,15 @@ func (c *Connection) handleInputPDU(data []byte) {
 }
 
 // handleMouseEvent handles basic mouse input.
+// RDP mouse flags (MS-RDPBCGR 2.2.8.1.1.3.1.1.3):
+//   - PTRFLAGS_HWHEEL (0x0400): Horizontal wheel event
+//   - PTRFLAGS_WHEEL (0x0200): Vertical wheel event
+//   - PTRFLAGS_WHEEL_NEGATIVE (0x0100): Wheel rotation is negative
+//   - PTRFLAGS_MOVE (0x0800): Mouse moved
+//   - PTRFLAGS_DOWN (0x8000): Button is being pressed (vs released)
+//   - PTRFLAGS_BUTTON1 (0x1000): Left button
+//   - PTRFLAGS_BUTTON2 (0x2000): Right button
+//   - PTRFLAGS_BUTTON3 (0x4000): Middle button
 func (c *Connection) handleMouseEvent(data []byte) {
 	if len(data) < 6 {
 		return
@@ -1724,40 +1636,94 @@ func (c *Connection) handleMouseEvent(data []byte) {
 	absX := int(xPos) * 32767 / int(w)
 	absY := int(yPos) * 32767 / int(h)
 
-	// Convert RDP button flags to HID
-	var buttons byte
-	if pointerFlags&0x1000 != 0 { // PTRFLAGS_BUTTON1
-		buttons |= 0x01 // Left
-	}
-	if pointerFlags&0x2000 != 0 { // PTRFLAGS_BUTTON2
-		buttons |= 0x02 // Right
-	}
-	if pointerFlags&0x4000 != 0 { // PTRFLAGS_BUTTON3
-		buttons |= 0x04 // Middle
+	// Track button state based on RDP events
+	// RDP sends button flags with PTRFLAGS_DOWN on press, without on release
+	// Button flags are only set during actual button events, not during moves
+	hasButtonEvent := (pointerFlags & 0x7000) != 0 // Any of BUTTON1/2/3
+	if hasButtonEvent {
+		isDown := (pointerFlags & 0x8000) != 0 // PTRFLAGS_DOWN
+		if isDown {
+			// Button press - set bits
+			if pointerFlags&0x1000 != 0 { // PTRFLAGS_BUTTON1
+				c.mouseButtons |= 0x01 // Left
+			}
+			if pointerFlags&0x2000 != 0 { // PTRFLAGS_BUTTON2
+				c.mouseButtons |= 0x02 // Right
+			}
+			if pointerFlags&0x4000 != 0 { // PTRFLAGS_BUTTON3
+				c.mouseButtons |= 0x04 // Middle
+			}
+		} else {
+			// Button release - clear bits
+			if pointerFlags&0x1000 != 0 { // PTRFLAGS_BUTTON1
+				c.mouseButtons &^= 0x01 // Left
+			}
+			if pointerFlags&0x2000 != 0 { // PTRFLAGS_BUTTON2
+				c.mouseButtons &^= 0x02 // Right
+			}
+			if pointerFlags&0x4000 != 0 { // PTRFLAGS_BUTTON3
+				c.mouseButtons &^= 0x04 // Middle
+			}
+		}
 	}
 
-	if err := c.server.deps.HID.AbsMouseReport(absX, absY, buttons); err != nil {
+	if err := c.server.deps.HID.AbsMouseReport(absX, absY, c.mouseButtons); err != nil {
 		c.server.deps.Logger.Debug().Err(err).Msg("RDP: mouse report failed")
 	}
 
 	// Handle vertical wheel (PTRFLAGS_WHEEL = 0x0200)
+	// RDP wheel delta: WHEEL_DELTA (120) = one notch. Lower 8 bits contain magnitude.
+	// HID wheel: signed 8-bit value, typically 1-3 per notch.
+	// We scale by dividing by 40 (120/40 ≈ 3 HID units per notch) and ensure
+	// small movements aren't lost. Minimum movement is ±1 if delta is non-zero.
 	if pointerFlags&0x0200 != 0 {
-		wheelDelta := int8(pointerFlags & 0x00FF)
+		delta := int(pointerFlags & 0x00FF)
 		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
-			wheelDelta = -wheelDelta
+			delta = -delta
 		}
-		if err := c.server.deps.HID.WheelReport(wheelDelta/30, 0); err != nil {
+		// Scale to small values like VNC uses (±1 to ±3)
+		// RDP deltas can be large (120+ per notch), so we scale down significantly
+		wheelY := int8(delta / 120) // One notch = 1 HID unit
+		if wheelY == 0 && delta != 0 {
+			if delta > 0 {
+				wheelY = 1
+			} else {
+				wheelY = -1
+			}
+		}
+		// Cap to reasonable range
+		if wheelY > 3 {
+			wheelY = 3
+		} else if wheelY < -3 {
+			wheelY = -3
+		}
+		if err := c.server.deps.HID.WheelReport(wheelY, 0); err != nil {
 			c.server.deps.Logger.Debug().Err(err).Msg("RDP: vertical wheel report failed")
 		}
 	}
 
 	// Handle horizontal wheel (PTRFLAGS_HWHEEL = 0x0400)
 	if pointerFlags&0x0400 != 0 {
-		wheelDelta := int8(pointerFlags & 0x00FF)
+		delta := int(pointerFlags & 0x00FF)
 		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
-			wheelDelta = -wheelDelta
+			delta = -delta
 		}
-		if err := c.server.deps.HID.WheelReport(0, wheelDelta/30); err != nil {
+		// Scale to small values like VNC uses (±1 to ±3)
+		wheelX := int8(delta / 120)
+		if wheelX == 0 && delta != 0 {
+			if delta > 0 {
+				wheelX = 1
+			} else {
+				wheelX = -1
+			}
+		}
+		// Cap to reasonable range
+		if wheelX > 3 {
+			wheelX = 3
+		} else if wheelX < -3 {
+			wheelX = -3
+		}
+		if err := c.server.deps.HID.WheelReport(0, wheelX); err != nil {
 			c.server.deps.Logger.Debug().Err(err).Msg("RDP: horizontal wheel report failed")
 		}
 	}
@@ -1785,45 +1751,32 @@ func (c *Connection) handleScancodeEvent(data []byte) {
 	// Left Ctrl: scancode 0x1D, Right Ctrl: scancode 0x1D with extended flag
 	if scancode == 0x1D {
 		c.ctrlPressed.Store(pressed)
-		c.server.deps.Logger.Warn().
-			Bool("pressed", pressed).
-			Msg("RDP: Ctrl key state changed")
 	}
 
 	// Handle clipboard-related key combinations (only on key down)
 	if pressed && c.ctrlPressed.Load() && c.clipboardChannel != nil && c.server.deps.Config.GetRDPClipboardEnabled() {
-		c.server.deps.Logger.Warn().
-			Uint16("scancode", scancode).
-			Msg("RDP: key pressed with Ctrl held")
-
 		switch scancode {
 		case 0x2E, 0x2D: // C key (0x2E) or X key (0x2D) - copy/cut
 			// Clear RDP clipboard when user copies on managed PC
 			// This prevents stale clipboard data from being pasted
 			c.clipboardChannel.ClearClipboardText()
-			c.server.deps.Logger.Warn().
+			c.server.deps.Logger.Debug().
 				Uint16("scancode", scancode).
 				Msg("RDP: copy/cut detected, cleared clipboard")
 			// Don't return - still forward the key for native copy/cut
 
 		case 0x2F: // V key - paste
 			text := c.clipboardChannel.GetClipboardText()
-			c.server.deps.Logger.Warn().
-				Bool("hasText", text != nil).
-				Int("textLen", len(text)).
-				Msg("RDP: V key with Ctrl - checking clipboard")
-
 			if text != nil {
-				c.server.deps.Logger.Warn().
+				c.server.deps.Logger.Debug().
 					Int("textLen", len(text)).
-					Str("preview", string(text[:min(len(text), 50)])).
-					Msg("RDP: paste detected, typing clipboard text")
+					Msg("RDP: pasting clipboard text via keyboard")
 
 				c.pasteInProgress.Store(true)
 
 				// Type the clipboard text using keyboard macro
 				if err := c.server.deps.HID.KeyboardMacro(string(text)); err != nil {
-					c.server.deps.Logger.Warn().Err(err).Msg("RDP: clipboard paste failed")
+					c.server.deps.Logger.Debug().Err(err).Msg("RDP: clipboard paste failed")
 				}
 				return // Don't forward the V key down
 			}
@@ -2016,43 +1969,30 @@ func (c *Connection) handleFastPathScancode(scancode byte, flags byte) {
 	// Left Ctrl: scancode 0x1D, Right Ctrl: scancode 0x1D with extended flag
 	if scancode == 0x1D {
 		c.ctrlPressed.Store(pressed)
-		c.server.deps.Logger.Warn().
-			Bool("pressed", pressed).
-			Msg("RDP: Ctrl key state changed (fast-path)")
 	}
 
 	// Handle clipboard-related key combinations (only on key down)
 	if pressed && c.ctrlPressed.Load() && c.clipboardChannel != nil && c.server.deps.Config.GetRDPClipboardEnabled() {
-		c.server.deps.Logger.Warn().
-			Uint8("scancode", scancode).
-			Msg("RDP: key pressed with Ctrl held (fast-path)")
-
 		switch scancode {
 		case 0x2E, 0x2D: // C key (0x2E) or X key (0x2D) - copy/cut
 			c.clipboardChannel.ClearClipboardText()
-			c.server.deps.Logger.Warn().
+			c.server.deps.Logger.Debug().
 				Uint8("scancode", scancode).
-				Msg("RDP: copy/cut detected, cleared clipboard (fast-path)")
+				Msg("RDP: copy/cut detected, cleared clipboard")
 			// Don't return - still forward the key for native copy/cut
 
 		case 0x2F: // V key - paste
 			text := c.clipboardChannel.GetClipboardText()
-			c.server.deps.Logger.Warn().
-				Bool("hasText", text != nil).
-				Int("textLen", len(text)).
-				Msg("RDP: V key with Ctrl - checking clipboard (fast-path)")
-
 			if text != nil {
-				c.server.deps.Logger.Warn().
+				c.server.deps.Logger.Debug().
 					Int("textLen", len(text)).
-					Str("preview", string(text[:min(len(text), 50)])).
-					Msg("RDP: paste detected, typing clipboard text (fast-path)")
+					Msg("RDP: pasting clipboard text via keyboard")
 
 				c.pasteInProgress.Store(true)
 
 				// Type the clipboard text using keyboard macro
 				if err := c.server.deps.HID.KeyboardMacro(string(text)); err != nil {
-					c.server.deps.Logger.Warn().Err(err).Msg("RDP: clipboard paste failed (fast-path)")
+					c.server.deps.Logger.Debug().Err(err).Msg("RDP: clipboard paste failed")
 				}
 				return // Don't forward the V key down
 			}
@@ -2370,8 +2310,8 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	}
 	c.channelsMu.RUnlock()
 
-	// Log all virtual channel data for debugging
-	c.server.deps.Logger.Warn().
+	// Log virtual channel data at trace level (too verbose for warn)
+	c.server.deps.Logger.Trace().
 		Str("channel", channelName).
 		Uint16("channelID", channelID).
 		Int("payloadLen", len(payload)).
@@ -2412,14 +2352,11 @@ func (c *Connection) handleDrdynvc(data []byte) {
 // handleRdpsnd handles audio output channel.
 func (c *Connection) handleRdpsnd(data []byte) {
 	if c.soundChannel == nil {
-		c.server.deps.Logger.Warn().Msg("RDP: rdpsnd data but channel is nil")
 		return
 	}
 
-	c.server.deps.Logger.Warn().Int("dataLen", len(data)).Msg("RDP: rdpsnd data received")
-
 	if err := c.soundChannel.HandlePDU(data); err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: rdpsnd error")
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: rdpsnd error")
 	}
 }
 
@@ -2595,40 +2532,44 @@ func (c *Connection) initDVCChannelsAfterCapability() {
 		c.initClipboardChannel()
 	}
 
-	// Create RDPGFX channel
-	c.gfxChannel = channels.NewGFXChannel(c.dvcManager)
+	// Create RDPGFX channel only if video is enabled in config
+	if !c.server.deps.Config.GetRDPVideoEnabled() {
+		c.server.deps.Logger.Info().Msg("RDP: H.264 video disabled in config, skipping RDPGFX channel")
+	} else {
+		c.gfxChannel = channels.NewGFXChannel(c.dvcManager)
 
-	// Set callback to initialize surface when channel is ready
-	c.gfxChannel.SetReadyCallback(func(g *channels.GFXChannel) {
-		w, h := c.GetResolution()
-		c.server.deps.Logger.Warn().
-			Uint16("width", w).
-			Uint16("height", h).
-			Bool("avc420", g.SupportsAVC420()).
-			Bool("avc444", g.SupportsAVC444()).
-			Msg("RDP: RDPGFX channel ready, initializing surface")
+		// Set callback to initialize surface when channel is ready
+		c.gfxChannel.SetReadyCallback(func(g *channels.GFXChannel) {
+			w, h := c.GetResolution()
+			c.server.deps.Logger.Warn().
+				Uint16("width", w).
+				Uint16("height", h).
+				Bool("avc420", g.SupportsAVC420()).
+				Bool("avc444", g.SupportsAVC444()).
+				Msg("RDP: RDPGFX channel ready, initializing surface")
 
-		if err := g.Initialize(w, h); err != nil {
-			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to initialize GFX surface")
-			return
-		}
-
-		// Mark RDPGFX as supported
-		c.gfxSupported.Store(true)
-
-		// Start video capture now that the channel is ready
-		if c.server.deps.Video != nil {
-			if err := c.server.deps.Video.StartVideo(); err != nil {
-				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
-			} else {
-				c.server.deps.Logger.Warn().Msg("RDP: video capture started (RDPGFX mode)")
+			if err := g.Initialize(w, h); err != nil {
+				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to initialize GFX surface")
+				return
 			}
-		}
-	})
 
-	if err := c.gfxChannel.Open(); err != nil {
-		c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to open RDPGFX channel")
-		// Non-fatal - we can still work without graphics channel
+			// Mark RDPGFX as supported
+			c.gfxSupported.Store(true)
+
+			// Start video capture now that the channel is ready
+			if c.server.deps.Video != nil {
+				if err := c.server.deps.Video.StartVideo(); err != nil {
+					c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
+				} else {
+					c.server.deps.Logger.Warn().Msg("RDP: video capture started (RDPGFX mode)")
+				}
+			}
+		})
+
+		if err := c.gfxChannel.Open(); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to open RDPGFX channel")
+			// Non-fatal - we can still work without graphics channel
+		}
 	}
 
 	// Create AUDIN channel for microphone input
@@ -2734,38 +2675,108 @@ func (c *Connection) checkGFXReadinessAndFallback() {
 }
 
 // sendDVCData sends data on the drdynvc static channel.
-// Note: WriteTPKT uses a single Write() call which is atomic at the TLS level,
+// Note: The single Write() call is atomic at the TLS level,
 // so concurrent calls to this function are safe.
+//
+// HOT PATH: Builds entire packet (TPKT + X.224 + MCS + VC) in a single pooled
+// buffer with zero heap allocations.
 func (c *Connection) sendDVCData(data []byte) error {
 	if c.drdynvcID == 0 {
-		c.server.deps.Logger.Warn().Msg("RDP: sendDVCData called but drdynvcID is 0")
 		return nil
 	}
 
-	// Build Virtual Channel PDU per MS-RDPBCGR 2.2.6.1
-	// Header: totalLength (4 bytes LE) + flags (4 bytes LE) + data
+	// Packet layout:
+	// [TPKT header 4][X.224 header 3][MCS header 6-8][VC header 8][DVC data]
+	// MCS header is 6 bytes for data < 128, 8 bytes otherwise
 	const (
+		tpktHeaderLen    = 4
+		x224HeaderLen    = 3
+		mcsHeaderBaseLen = 6
+		vcHeaderLen      = 8
 		channelFlagFirst = 0x01
 		channelFlagLast  = 0x02
 	)
 
-	vcPDU := make([]byte, 8+len(data))
-	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data))) // totalLength
-	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast) // flags (single chunk)
+	vcPayloadLen := len(data)
+	mcsLenFieldSize := 1
+	if vcPayloadLen+vcHeaderLen >= 128 {
+		mcsLenFieldSize = 2
+	}
+	mcsHeaderLen := mcsHeaderBaseLen + mcsLenFieldSize
+
+	totalPacketLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen + vcPayloadLen
+
+	// Get buffer from pool
+	bufPtr := vcPDUPool.Get().(*[]byte)
+	buf := *bufPtr
+
+	if totalPacketLen > len(buf) {
+		// Rare path: packet too large for pool
+		vcPDUPool.Put(bufPtr)
+		return c.sendDVCDataFallback(data)
+	}
+	defer vcPDUPool.Put(bufPtr)
+
+	packet := buf[:totalPacketLen]
+	pos := 0
+
+	// TPKT header (4 bytes, big-endian length)
+	packet[pos] = protocol.TPKTVersion
+	packet[pos+1] = 0
+	binary.BigEndian.PutUint16(packet[pos+2:pos+4], uint16(totalPacketLen))
+	pos += tpktHeaderLen
+
+	// X.224 Data TPDU header (3 bytes)
+	packet[pos] = 2                    // LI
+	packet[pos+1] = protocol.X224Data  // Code
+	packet[pos+2] = protocol.X224DataEOT // EOT
+	pos += x224HeaderLen
+
+	// MCS Send Data Indication header
+	packet[pos] = byte(protocol.MCSSendDataIndication << 2)
+	relativeUserID := c.userID - protocol.MCSUserIDBase
+	binary.BigEndian.PutUint16(packet[pos+1:pos+3], relativeUserID)
+	binary.BigEndian.PutUint16(packet[pos+3:pos+5], c.drdynvcID)
+	packet[pos+5] = 0x70 // High priority, begin+end segment
+	pos += 6
+
+	// MCS length field (PER encoded)
+	mcsDataLen := vcHeaderLen + vcPayloadLen
+	if mcsDataLen < 128 {
+		packet[pos] = byte(mcsDataLen)
+		pos++
+	} else {
+		packet[pos] = byte(0x80 | (mcsDataLen >> 8))
+		packet[pos+1] = byte(mcsDataLen)
+		pos += 2
+	}
+
+	// VC PDU header (8 bytes, little-endian)
+	binary.LittleEndian.PutUint32(packet[pos:pos+4], uint32(vcPayloadLen))
+	binary.LittleEndian.PutUint32(packet[pos+4:pos+8], channelFlagFirst|channelFlagLast)
+	pos += vcHeaderLen
+
+	// DVC data payload
+	copy(packet[pos:], data)
+
+	// Single write to connection
+	_, err := c.conn.Write(packet)
+	return err
+}
+
+// sendDVCDataFallback handles oversized packets that don't fit in the pool.
+func (c *Connection) sendDVCDataFallback(data []byte) error {
+	const (
+		channelFlagFirst = 0x01
+		channelFlagLast  = 0x02
+		vcHeaderSize     = 8
+	)
+
+	vcPDU := make([]byte, vcHeaderSize+len(data))
+	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))
+	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast)
 	copy(vcPDU[8:], data)
 
-	// Log the DVC data being sent
-	hexLen := 20
-	if len(data) < hexLen {
-		hexLen = len(data)
-	}
-	c.server.deps.Logger.Warn().
-		Uint16("channelID", c.drdynvcID).
-		Int("dataLen", len(data)).
-		Str("dataHex", fmt.Sprintf("% X", data[:hexLen])).
-		Msg("RDP: sending DVC data")
-
-	// Wrap in MCS Send Data Indication
 	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.drdynvcID, vcPDU)
 	return protocol.WriteMCSPDU(c.conn, mcsPDU)
 }
@@ -2807,7 +2818,19 @@ func (c *Connection) SendFrame(frame []byte) {
 	if err := c.gfxChannel.SendH264Frame(frame, isKeyframe); err != nil {
 		if err == channels.ErrGFXBackpressure {
 			// Too many frames pending - skip this one
-			c.server.deps.Logger.Debug().Msg("RDP: frame dropped due to backpressure")
+			// CRITICAL: When ANY frame is dropped (keyframe OR P-frame), we must
+			// wait for the next keyframe. Dropping a P-frame breaks the reference
+			// chain, causing subsequent P-frames to decode as green/corrupted.
+			c.hasReceivedKeyframe.Store(false)
+			c.server.deps.Logger.Debug().
+				Bool("keyframe", isKeyframe).
+				Msg("RDP: frame dropped due to backpressure, waiting for next keyframe")
+		} else if err == channels.ErrGFXNoCodec {
+			// Client doesn't support AVC420/AVC444 - log once and stop sending frames
+			// This is not a transient error, so don't count against write errors
+			if c.hasReceivedKeyframe.CompareAndSwap(true, false) {
+				c.server.deps.Logger.Warn().Msg("RDP: client does not support H.264 (AVC420/AVC444), video disabled")
+			}
 		} else {
 			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send frame")
 
@@ -2944,7 +2967,7 @@ func (c *Connection) sendClipboardData(data []byte) error {
 	)
 
 	vcPDU := make([]byte, 8+len(data))
-	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))              // totalLength
+	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))                // totalLength
 	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast) // flags (single chunk)
 	copy(vcPDU[8:], data)
 
@@ -3024,9 +3047,135 @@ func (c *Connection) stopAudioStream() {
 // SendBitmapUpdate sends a bitmap update PDU to the client.
 // This is used for clients that don't support RDPGFX (like Jump Desktop).
 // The frame should be JPEG data which will be decoded and sent as RGB bitmap.
-// Tile size for bitmap updates (must fit within TPKT limits)
-// 64x64 at 32bpp = 16KB per tile, allowing ~3 tiles per PDU
-const bitmapTileSize = 64
+//
+// Tile size for bitmap updates is limited by MCS PDU encoding:
+// Tile size for Fast-Path bitmap updates with fragmentation support.
+// With fragmentation enabled (via Multifragment Update Capability), we can use
+// larger tiles that get split across multiple PDUs automatically.
+// Using 256x256 tiles for better visual experience and reduced overhead.
+// Each tile: 256x256 at 32bpp = 262144 bytes (fragmented into ~16KB chunks)
+const bitmapTileSize = 256
+
+// bgrxBufferPool reduces allocations for YUV→BGRX conversion.
+// Max size: 1920x1080x4 = ~8MB (handles 1080p)
+var bgrxBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 1920*1080*4)
+		return &buf
+	},
+}
+
+// convertYUV422ToBGRX converts YUV422 YUYV format to BGRX.
+// Input: YUYV packed (2 pixels in 4 bytes: Y0 U0 Y1 V0)
+// Output: BGRX (4 bytes per pixel: B G R X)
+// This is optimized for speed with integer arithmetic (no floats).
+func convertYUV422ToBGRX(yuv []byte, width, height int) []byte {
+	// Get pooled buffer
+	bufPtr := bgrxBufferPool.Get().(*[]byte)
+	bgrx := *bufPtr
+
+	// Ensure buffer is large enough
+	bgrxSize := width * height * 4
+	if len(bgrx) < bgrxSize {
+		bgrx = make([]byte, bgrxSize)
+		*bufPtr = bgrx
+	}
+
+	// YUV422 YUYV: 2 bytes per pixel average (4 bytes for 2 pixels)
+	// Process 2 pixels at a time
+	yuvStride := width * 2
+	bgrxStride := width * 4
+
+	for row := 0; row < height; row++ {
+		yuvOffset := row * yuvStride
+		bgrxOffset := row * bgrxStride
+
+		for col := 0; col < width; col += 2 {
+			// Extract YUYV components (4 bytes = 2 pixels)
+			y0 := int(yuv[yuvOffset])
+			u := int(yuv[yuvOffset+1])
+			y1 := int(yuv[yuvOffset+2])
+			v := int(yuv[yuvOffset+3])
+			yuvOffset += 4
+
+			// Precompute UV terms (integer approximation of BT.601)
+			// R = Y + 1.402*(V-128) ≈ Y + (359*(V-128))>>8
+			// G = Y - 0.344*(U-128) - 0.714*(V-128) ≈ Y - (88*(U-128) + 183*(V-128))>>8
+			// B = Y + 1.772*(U-128) ≈ Y + (454*(U-128))>>8
+			u128 := u - 128
+			v128 := v - 128
+
+			rComp := (359 * v128) >> 8
+			gComp := (88*u128 + 183*v128) >> 8
+			bComp := (454 * u128) >> 8
+
+			// Pixel 0
+			r0 := y0 + rComp
+			g0 := y0 - gComp
+			b0 := y0 + bComp
+
+			// Clamp to [0, 255]
+			if r0 < 0 {
+				r0 = 0
+			} else if r0 > 255 {
+				r0 = 255
+			}
+			if g0 < 0 {
+				g0 = 0
+			} else if g0 > 255 {
+				g0 = 255
+			}
+			if b0 < 0 {
+				b0 = 0
+			} else if b0 > 255 {
+				b0 = 255
+			}
+
+			// BGRX format
+			bgrx[bgrxOffset] = byte(b0)
+			bgrx[bgrxOffset+1] = byte(g0)
+			bgrx[bgrxOffset+2] = byte(r0)
+			bgrx[bgrxOffset+3] = 0xFF
+			bgrxOffset += 4
+
+			// Pixel 1
+			r1 := y1 + rComp
+			g1 := y1 - gComp
+			b1 := y1 + bComp
+
+			// Clamp to [0, 255]
+			if r1 < 0 {
+				r1 = 0
+			} else if r1 > 255 {
+				r1 = 255
+			}
+			if g1 < 0 {
+				g1 = 0
+			} else if g1 > 255 {
+				g1 = 255
+			}
+			if b1 < 0 {
+				b1 = 0
+			} else if b1 > 255 {
+				b1 = 255
+			}
+
+			bgrx[bgrxOffset] = byte(b1)
+			bgrx[bgrxOffset+1] = byte(g1)
+			bgrx[bgrxOffset+2] = byte(r1)
+			bgrx[bgrxOffset+3] = 0xFF
+			bgrxOffset += 4
+		}
+	}
+
+	return bgrx[:bgrxSize]
+}
+
+// releaseBGRXBuffer returns a BGRX buffer to the pool.
+// Must be called after the buffer is no longer needed.
+func releaseBGRXBuffer(buf []byte) {
+	bgrxBufferPool.Put(&buf)
+}
 
 func (c *Connection) SendBitmapUpdate(jpegData []byte) error {
 	if c.closed.Load() {
@@ -3043,8 +3192,8 @@ func (c *Connection) SendBitmapUpdate(jpegData []byte) error {
 	width := bounds.Dx()
 	height := bounds.Dy()
 
-	// Send bitmap update using tiles
-	return c.sendTiledBitmapUpdate(img, width, height)
+	// Send bitmap update using tiles - optimized path for YCbCr (common JPEG format)
+	return c.sendTiledBitmapUpdateFast(img, width, height)
 }
 
 // tileRect represents a single bitmap tile for RDP updates.
@@ -3054,21 +3203,36 @@ type tileRect struct {
 	data          []byte
 }
 
-// sendTiledBitmapUpdate sends an image as tiled bitmap updates.
-// This splits the image into tiles that fit within RDP PDU limits.
-func (c *Connection) sendTiledBitmapUpdate(img image.Image, width, height int) error {
+// sendTiledBitmapUpdateFast is an optimized version that:
+// - Uses buffer pooling to reduce GC pressure
+// - Sends tiles immediately without building a full list
+// - Optimizes YCbCr→BGRX conversion with direct pixel access
+func (c *Connection) sendTiledBitmapUpdateFast(img image.Image, width, height int) error {
 	// Calculate tile grid
 	tilesX := (width + bitmapTileSize - 1) / bitmapTileSize
 	tilesY := (height + bitmapTileSize - 1) / bitmapTileSize
 
-	// Maximum tiles per PDU (stay well under 64KB TPKT limit)
-	// Each tile: 64*64*4 = 16384 bytes + 18 byte header ≈ 16.5KB
-	// Allow 2 tiles per PDU (≈33KB) leaving headroom
-	const maxTilesPerPDU = 2
+	// Get pooled buffer for tile data (reused across tiles)
+	bufPtr := tileBufferPool.Get().(*[]byte)
+	tileBuffer := *bufPtr
+	defer tileBufferPool.Put(bufPtr)
 
-	// Build list of all tiles
-	var tiles []tileRect
+	// Try to get direct pixel access based on image type
+	var ycbcr *image.YCbCr
+	var rgba *image.RGBA
+	var nrgba *image.NRGBA
 
+	switch v := img.(type) {
+	case *image.YCbCr:
+		ycbcr = v
+	case *image.RGBA:
+		rgba = v
+	case *image.NRGBA:
+		nrgba = v
+	}
+
+	// Process and send each tile immediately
+	var tile tileRect
 	for ty := 0; ty < tilesY; ty++ {
 		for tx := 0; tx < tilesX; tx++ {
 			// Calculate tile bounds
@@ -3087,22 +3251,458 @@ func (c *Connection) sendTiledBitmapUpdate(img image.Image, width, height int) e
 
 			tileW := right - left + 1
 			tileH := bottom - top + 1
+			dataSize := tileW * tileH * 4
 
-			// Convert tile to BGRX format (bottom-up scanlines for RDP)
-			tileData := make([]byte, tileW*tileH*4)
-			for y := 0; y < tileH; y++ {
-				// RDP expects bottom-up scanlines
-				srcY := top + y
-				dstY := tileH - 1 - y
-				for x := 0; x < tileW; x++ {
-					r, g, b, _ := img.At(left+x, srcY).RGBA()
-					offset := (dstY*tileW + x) * 4
-					tileData[offset+0] = byte(b >> 8) // B
-					tileData[offset+1] = byte(g >> 8) // G
-					tileData[offset+2] = byte(r >> 8) // R
-					tileData[offset+3] = 0            // X (padding)
+			// Use appropriate conversion based on image type
+			if ycbcr != nil {
+				convertYCbCrTileToBGRX(ycbcr, left, top, tileW, tileH, tileBuffer)
+			} else if rgba != nil {
+				convertRGBATileToBGRX(rgba, left, top, tileW, tileH, tileBuffer)
+			} else if nrgba != nil {
+				convertNRGBATileToBGRX(nrgba, left, top, tileW, tileH, tileBuffer)
+			} else {
+				// Fallback to generic (slower) conversion
+				convertGenericTileToBGRX(img, left, top, tileW, tileH, tileBuffer)
+			}
+
+			// Setup tile for sending
+			tile.left = left
+			tile.top = top
+			tile.right = right
+			tile.bottom = bottom
+			tile.data = tileBuffer[:dataSize]
+
+			// Send this tile via Fast-Path (supports fragmentation for large tiles)
+			if err := c.sendFastPathBitmapUpdate([]tileRect{tile}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// convertYCbCrTileToBGRX converts a tile from YCbCr to BGRX format (bottom-up scanlines).
+// This is the fast path for JPEG images which are typically YCbCr.
+func convertYCbCrTileToBGRX(img *image.YCbCr, left, top, tileW, tileH int, dst []byte) {
+	for y := 0; y < tileH; y++ {
+		srcY := top + y
+		dstY := tileH - 1 - y // RDP expects bottom-up
+		dstRowOffset := dstY * tileW * 4
+
+		for x := 0; x < tileW; x++ {
+			srcX := left + x
+			r, g, b := color.YCbCrToRGB(
+				img.Y[img.YOffset(srcX, srcY)],
+				img.Cb[img.COffset(srcX, srcY)],
+				img.Cr[img.COffset(srcX, srcY)],
+			)
+			offset := dstRowOffset + x*4
+			dst[offset+0] = b
+			dst[offset+1] = g
+			dst[offset+2] = r
+			dst[offset+3] = 0
+		}
+	}
+}
+
+// convertRGBATileToBGRX converts a tile from RGBA to BGRX format (bottom-up scanlines).
+func convertRGBATileToBGRX(img *image.RGBA, left, top, tileW, tileH int, dst []byte) {
+	stride := img.Stride
+	pix := img.Pix
+	minX := img.Rect.Min.X
+	minY := img.Rect.Min.Y
+
+	for y := 0; y < tileH; y++ {
+		srcY := top + y - minY
+		dstY := tileH - 1 - y
+		srcRowOffset := srcY * stride
+		dstRowOffset := dstY * tileW * 4
+
+		for x := 0; x < tileW; x++ {
+			srcX := left + x - minX
+			srcOffset := srcRowOffset + srcX*4
+			dstOffset := dstRowOffset + x*4
+
+			dst[dstOffset+0] = pix[srcOffset+2] // B
+			dst[dstOffset+1] = pix[srcOffset+1] // G
+			dst[dstOffset+2] = pix[srcOffset+0] // R
+			dst[dstOffset+3] = 0                // X
+		}
+	}
+}
+
+// convertNRGBATileToBGRX converts a tile from NRGBA to BGRX format (bottom-up scanlines).
+func convertNRGBATileToBGRX(img *image.NRGBA, left, top, tileW, tileH int, dst []byte) {
+	stride := img.Stride
+	pix := img.Pix
+	minX := img.Rect.Min.X
+	minY := img.Rect.Min.Y
+
+	for y := 0; y < tileH; y++ {
+		srcY := top + y - minY
+		dstY := tileH - 1 - y
+		srcRowOffset := srcY * stride
+		dstRowOffset := dstY * tileW * 4
+
+		for x := 0; x < tileW; x++ {
+			srcX := left + x - minX
+			srcOffset := srcRowOffset + srcX*4
+			dstOffset := dstRowOffset + x*4
+
+			dst[dstOffset+0] = pix[srcOffset+2] // B
+			dst[dstOffset+1] = pix[srcOffset+1] // G
+			dst[dstOffset+2] = pix[srcOffset+0] // R
+			dst[dstOffset+3] = 0                // X
+		}
+	}
+}
+
+// convertGenericTileToBGRX is the fallback for any image type.
+// It uses the image.Image interface which is slower but always works.
+func convertGenericTileToBGRX(img image.Image, left, top, tileW, tileH int, dst []byte) {
+	for y := 0; y < tileH; y++ {
+		srcY := top + y
+		dstY := tileH - 1 - y
+		dstRowOffset := dstY * tileW * 4
+
+		for x := 0; x < tileW; x++ {
+			r, g, b, _ := img.At(left+x, srcY).RGBA()
+			offset := dstRowOffset + x*4
+			dst[offset+0] = byte(b >> 8)
+			dst[offset+1] = byte(g >> 8)
+			dst[offset+2] = byte(r >> 8)
+			dst[offset+3] = 0
+		}
+	}
+}
+
+// sendFastPathBitmapUpdate sends a bitmap update via Fast-Path with fragmentation support.
+// Per MS-RDPBCGR 2.2.9.1.2 and 2.2.9.1.2.1.2 (TS_FP_UPDATE_BITMAP).
+// This bypasses the MCS 16KB limit by using fragmentation for large updates.
+func (c *Connection) sendFastPathBitmapUpdate(tiles []tileRect) error {
+	// Build the bitmap update data (same format as slow-path)
+	// TS_UPDATE_BITMAP_DATA: updateType(2) + numberRectangles(2) + rectangles
+	totalDataLen := 4 // updateType + numberRectangles
+	for _, tile := range tiles {
+		totalDataLen += 18 + len(tile.data) // TS_BITMAP_DATA header + pixel data
+	}
+
+	bitmapData := make([]byte, totalDataLen)
+	binary.LittleEndian.PutUint16(bitmapData[0:2], protocol.UpdateTypeBitmap)
+	binary.LittleEndian.PutUint16(bitmapData[2:4], uint16(len(tiles)))
+	pos := 4
+
+	for _, tile := range tiles {
+		tileW := tile.right - tile.left + 1
+		tileH := tile.bottom - tile.top + 1
+
+		binary.LittleEndian.PutUint16(bitmapData[pos:pos+2], uint16(tile.left))
+		binary.LittleEndian.PutUint16(bitmapData[pos+2:pos+4], uint16(tile.top))
+		binary.LittleEndian.PutUint16(bitmapData[pos+4:pos+6], uint16(tile.right))
+		binary.LittleEndian.PutUint16(bitmapData[pos+6:pos+8], uint16(tile.bottom))
+		binary.LittleEndian.PutUint16(bitmapData[pos+8:pos+10], uint16(tileW))
+		binary.LittleEndian.PutUint16(bitmapData[pos+10:pos+12], uint16(tileH))
+		binary.LittleEndian.PutUint16(bitmapData[pos+12:pos+14], 32)
+		binary.LittleEndian.PutUint16(bitmapData[pos+14:pos+16], protocol.BitmapCompressionNone)
+		binary.LittleEndian.PutUint16(bitmapData[pos+16:pos+18], uint16(len(tile.data)))
+		pos += 18
+		copy(bitmapData[pos:], tile.data)
+		pos += len(tile.data)
+	}
+
+	// Maximum fragment size (leave room for Fast-Path headers)
+	// Fast-Path PDU max = 16383, headers = ~10 bytes, so use 16000 for safety
+	const maxFragmentSize = 16000
+
+	if len(bitmapData) <= maxFragmentSize {
+		// Single fragment - no fragmentation needed
+		return c.sendFastPathFragment(bitmapData, protocol.FastPathFragSingle)
+	}
+
+	// Fragment the data
+	offset := 0
+	remaining := len(bitmapData)
+	isFirst := true
+
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > maxFragmentSize {
+			chunkSize = maxFragmentSize
+		}
+
+		var fragFlag byte
+		if isFirst {
+			fragFlag = protocol.FastPathFragFirst
+			isFirst = false
+		} else if remaining-chunkSize > 0 {
+			fragFlag = protocol.FastPathFragNext
+		} else {
+			fragFlag = protocol.FastPathFragLast
+		}
+
+		if err := c.sendFastPathFragment(bitmapData[offset:offset+chunkSize], fragFlag); err != nil {
+			return err
+		}
+
+		offset += chunkSize
+		remaining -= chunkSize
+	}
+
+	return nil
+}
+
+// sendFastPathFragment sends a single Fast-Path fragment.
+func (c *Connection) sendFastPathFragment(data []byte, fragFlag byte) error {
+	// Fast-Path Update structure (MS-RDPBCGR 2.2.9.1.2.1):
+	// - updateHeader (1 byte): updateCode(4 bits) | fragmentation(2 bits) | compression(2 bits)
+	//   compression = 0: no compression, NO size field
+	//   compression = 2 (0x80): no compression, HAS size field (required for fragmentation)
+	// - compressionFlags (1 byte): only present if compression != 0
+	// - size (2 bytes): only present if compression != 0
+	// - updateData (variable)
+
+	// Set compression = 2 (0x80) to indicate size field is present
+	updateHeader := protocol.FastPathUpdateBitmap | fragFlag | 0x80
+
+	// Fast-Path PDU structure:
+	// - fpOutputHeader (1 byte): action(2 bits) | reserved(4 bits) | flags(2 bits)
+	// - length1 (1 byte)
+	// - length2 (1 byte, optional)
+	// - fpOutputUpdates (variable)
+
+	// Calculate total PDU length
+	// Update: header(1) + compressionFlags(1) + size(2) + data
+	updateLen := 1 + 1 + 2 + len(data)
+
+	// PDU: fpOutputHeader(1) + length(1-2) + update
+	pduLen := 1 + updateLen
+	if pduLen >= 128 {
+		pduLen++ // Need 2-byte length encoding
+	}
+	pduLen++ // length1 byte
+
+	buf := make([]byte, pduLen)
+	pos := 0
+
+	// fpOutputHeader: action = 0 (Fast-Path), no encryption
+	buf[pos] = protocol.FastPathActionFastPath
+	pos++
+
+	// Length encoding
+	totalLen := pduLen
+	if totalLen < 128 {
+		buf[pos] = byte(totalLen)
+		pos++
+	} else {
+		buf[pos] = byte(0x80 | (totalLen >> 8))
+		buf[pos+1] = byte(totalLen)
+		pos += 2
+	}
+
+	// Fast-Path Update header
+	buf[pos] = updateHeader
+	pos++
+
+	// compressionFlags (required when compression bits != 0)
+	buf[pos] = 0x00 // No compression
+	pos++
+
+	// Size field (2 bytes, little-endian) - size of the update data
+	binary.LittleEndian.PutUint16(buf[pos:pos+2], uint16(len(data)))
+	pos += 2
+
+	// Update data
+	copy(buf[pos:], data)
+
+	// Write directly to connection (no TPKT/X224 wrapper for Fast-Path)
+	_, err := c.conn.Write(buf)
+	return err
+}
+
+// startBitmapStreaming starts streaming bitmap updates when RDPGFX is not available.
+// This uses RGA hardware YUV→BGRX conversion for maximum performance.
+func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
+	c.server.deps.Logger.Warn().Msg("RDP: starting bitmap streaming with raw YUV422 frames")
+
+	// Start video capture if not already started
+	if c.server.deps.Video != nil {
+		if err := c.server.deps.Video.StartVideo(); err != nil {
+			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
+		}
+
+		// Start raw frame encoder (outputs YUV422, Go converts to BGRX)
+		if err := c.server.deps.Video.StartRGBEncoder(); err != nil {
+			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start raw frame encoder, falling back to JPEG")
+			// Fall back to JPEG if raw frames fail
+			if err := c.server.deps.Video.StartJPEGEncoder(50); err != nil {
+				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start JPEG encoder")
+			} else {
+				c.server.deps.Logger.Warn().Msg("RDP: using JPEG fallback for bitmap mode")
+				c.startJPEGBitmapStreaming(jpegChan)
+				return
+			}
+		} else {
+			c.server.deps.Logger.Warn().Msg("RDP: raw YUV422 encoder started for bitmap mode")
+		}
+	}
+
+	// Subscribe to YUV422 frames (misnamed rgbChan for historical reasons)
+	rgbChan := c.server.deps.Video.SubscribeRGB()
+
+	go func() {
+		// Send frames as they arrive - no artificial rate limiting
+		// Native code produces frames at up to 60fps
+		frameCount := 0
+		startTime := time.Now()
+
+		for {
+			select {
+			case <-c.stopChan:
+				elapsed := time.Since(startTime).Seconds()
+				fps := float64(frameCount) / elapsed
+				c.server.deps.Logger.Debug().Int("framesSent", frameCount).Float64("avgFps", fps).Msg("RDP: RGB bitmap streaming stopped")
+				return
+			case frame := <-rgbChan:
+				if c.closed.Load() {
+					continue
+				}
+
+				if frameCount == 0 {
+					c.server.deps.Logger.Info().
+						Int("frameSize", len(frame.Data)).
+						Uint32("width", frame.Width).
+						Uint32("height", frame.Height).
+						Msg("RDP: first YUV422 frame received")
+				}
+
+				// Convert YUV422 YUYV to BGRX (native outputs YUV, Go converts)
+				bgrxData := convertYUV422ToBGRX(frame.Data, int(frame.Width), int(frame.Height))
+
+				if err := c.SendRGBBitmapUpdate(bgrxData, int(frame.Width), int(frame.Height)); err != nil {
+					c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send RGB bitmap update")
+				} else {
+					frameCount++
+					if frameCount == 1 || frameCount%100 == 0 {
+						elapsed := time.Since(startTime).Seconds()
+						fps := float64(frameCount) / elapsed
+						c.server.deps.Logger.Debug().Int("frameCount", frameCount).Float64("avgFps", fps).Msg("RDP: RGB bitmap update sent")
+					}
+				}
+				// Return buffer to pool (data was copied in SendRGBBitmapUpdate)
+				releaseBGRXBuffer(bgrxData)
+			}
+		}
+	}()
+}
+
+// startJPEGBitmapStreaming is the fallback for when RGA is not available.
+func (c *Connection) startJPEGBitmapStreaming(jpegChan <-chan []byte) {
+	go func() {
+		frameCount := 0
+		startTime := time.Now()
+
+		for {
+			select {
+			case <-c.stopChan:
+				elapsed := time.Since(startTime).Seconds()
+				fps := float64(frameCount) / elapsed
+				c.server.deps.Logger.Debug().Int("framesSent", frameCount).Float64("avgFps", fps).Msg("RDP: JPEG bitmap streaming stopped")
+				return
+			case frame := <-jpegChan:
+				if c.closed.Load() {
+					continue
+				}
+
+				if err := c.SendBitmapUpdate(frame); err != nil {
+					c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send JPEG bitmap update")
+				} else {
+					frameCount++
+					if frameCount%100 == 0 {
+						elapsed := time.Since(startTime).Seconds()
+						fps := float64(frameCount) / elapsed
+						c.server.deps.Logger.Debug().Int("frameCount", frameCount).Float64("avgFps", fps).Msg("RDP: JPEG bitmap update sent")
+					}
 				}
 			}
+		}
+	}()
+}
+
+// rgbTileSize is smaller than bitmapTileSize to fit within Fast-Path reassembly limits.
+// 64x64 at 32bpp = 16384 bytes per tile.
+const rgbTileSize = 64
+
+// maxTilesPerRGBUpdate is the maximum tiles per bitmap update to stay under 64KB reassembly limit.
+// 64x64 tile = 16384 bytes + 18 byte header = 16402 bytes per tile
+// 3 tiles = ~49KB, safely under 64KB
+const maxTilesPerRGBUpdate = 3
+
+// rgbTileBufferPool provides reusable buffers for RGB tile data.
+var rgbTileBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, rgbTileSize*rgbTileSize*4)
+		return &buf
+	},
+}
+
+// SendRGBBitmapUpdate sends a raw BGRX frame as RDP bitmap updates.
+// This is the fast path - no JPEG decode needed, just tile and send.
+// The data is expected in BGRX format (4 bytes per pixel, top-down).
+func (c *Connection) SendRGBBitmapUpdate(bgrxData []byte, width, height int) error {
+	if c.closed.Load() {
+		return nil
+	}
+
+	// Verify data size
+	expectedSize := width * height * 4
+	if len(bgrxData) < expectedSize {
+		return fmt.Errorf("insufficient data: expected %d bytes, got %d", expectedSize, len(bgrxData))
+	}
+
+	// Calculate tile grid using smaller tiles for Fast-Path
+	tilesX := (width + rgbTileSize - 1) / rgbTileSize
+	tilesY := (height + rgbTileSize - 1) / rgbTileSize
+
+	// Get pooled buffer for tile data
+	bufPtr := rgbTileBufferPool.Get().(*[]byte)
+	tileBuffer := *bufPtr
+	defer rgbTileBufferPool.Put(bufPtr)
+
+	// Batch tiles to reduce PDU overhead while staying under reassembly limits
+	var tiles []tileRect
+
+	for ty := 0; ty < tilesY; ty++ {
+		for tx := 0; tx < tilesX; tx++ {
+			left := tx * rgbTileSize
+			top := ty * rgbTileSize
+			right := left + rgbTileSize - 1
+			bottom := top + rgbTileSize - 1
+
+			// Clamp to image bounds
+			if right >= width {
+				right = width - 1
+			}
+			if bottom >= height {
+				bottom = height - 1
+			}
+
+			tileW := right - left + 1
+			tileH := bottom - top + 1
+			tileSize := tileW * tileH * 4
+
+			// Copy tile data with vertical flip (RDP expects bottom-up scanlines)
+			for y := 0; y < tileH; y++ {
+				srcY := top + y
+				dstY := tileH - 1 - y
+				srcOffset := (srcY*width + left) * 4
+				dstOffset := dstY * tileW * 4
+				copy(tileBuffer[dstOffset:dstOffset+tileW*4], bgrxData[srcOffset:srcOffset+tileW*4])
+			}
+
+			// Copy tile data to new slice
+			tileData := make([]byte, tileSize)
+			copy(tileData, tileBuffer[:tileSize])
 
 			tiles = append(tiles, tileRect{
 				left:   left,
@@ -3111,147 +3711,21 @@ func (c *Connection) sendTiledBitmapUpdate(img image.Image, width, height int) e
 				bottom: bottom,
 				data:   tileData,
 			})
+
+			// Send batch when we reach the limit
+			if len(tiles) >= maxTilesPerRGBUpdate {
+				if err := c.sendFastPathBitmapUpdate(tiles); err != nil {
+					return err
+				}
+				tiles = tiles[:0] // Reset slice, keep capacity
+			}
 		}
 	}
 
-	// Send tiles in batches
-	for i := 0; i < len(tiles); i += maxTilesPerPDU {
-		end := i + maxTilesPerPDU
-		if end > len(tiles) {
-			end = len(tiles)
-		}
-		batch := tiles[i:end]
-
-		if err := c.sendBitmapUpdatePDU(batch); err != nil {
-			return err
-		}
+	// Send any remaining tiles
+	if len(tiles) > 0 {
+		return c.sendFastPathBitmapUpdate(tiles)
 	}
 
 	return nil
-}
-
-// sendBitmapUpdatePDU builds and sends a bitmap update PDU with multiple rectangles.
-// Per MS-RDPBCGR 2.2.9.1.1.3.1.2
-func (c *Connection) sendBitmapUpdatePDU(tiles []tileRect) error {
-	// Calculate total data size
-	// TS_BITMAP_DATA header is 18 bytes per tile
-	totalDataLen := 0
-	for _, tile := range tiles {
-		totalDataLen += 18 + len(tile.data)
-	}
-
-	// TS_UPDATE_BITMAP_DATA structure:
-	// - updateType (2 bytes)
-	// - numberRectangles (2 bytes)
-	// - rectangles (variable)
-	updateDataLen := 4 + totalDataLen
-
-	// Share Data Header is 18 bytes
-	totalLen := 18 + updateDataLen
-
-	buf := make([]byte, totalLen)
-
-	// Share Control Header (6 bytes)
-	binary.LittleEndian.PutUint16(buf[0:2], uint16(totalLen))
-	buf[2] = 0x17 // PDUTYPE_DATAPDU (0x07) | (version 1 << 4)
-	buf[3] = 0x00
-	binary.LittleEndian.PutUint16(buf[4:6], c.userID)
-
-	// Share Data Header (12 bytes)
-	buf[6] = 0x66 // ShareID
-	buf[7] = 0x72
-	buf[8] = 0x65
-	buf[9] = 0x64
-	buf[10] = 0                                              // Pad
-	buf[11] = 1                                              // StreamID (STREAM_LOW = 1)
-	binary.LittleEndian.PutUint16(buf[12:14], uint16(updateDataLen))
-	buf[14] = protocol.DataPDUTypeUpdate // PDUType2
-	buf[15] = 0                          // CompressedType
-	buf[16] = 0                          // CompressedLength
-	buf[17] = 0
-
-	// TS_UPDATE_BITMAP_DATA
-	pos := 18
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], protocol.UpdateTypeBitmap) // updateType
-	binary.LittleEndian.PutUint16(buf[pos+2:pos+4], uint16(len(tiles)))      // numberRectangles
-	pos += 4
-
-	// TS_BITMAP_DATA structures
-	for _, tile := range tiles {
-		tileW := tile.right - tile.left + 1
-		tileH := tile.bottom - tile.top + 1
-
-		binary.LittleEndian.PutUint16(buf[pos:pos+2], uint16(tile.left))            // destLeft
-		binary.LittleEndian.PutUint16(buf[pos+2:pos+4], uint16(tile.top))           // destTop
-		binary.LittleEndian.PutUint16(buf[pos+4:pos+6], uint16(tile.right))         // destRight
-		binary.LittleEndian.PutUint16(buf[pos+6:pos+8], uint16(tile.bottom))        // destBottom
-		binary.LittleEndian.PutUint16(buf[pos+8:pos+10], uint16(tileW))             // width
-		binary.LittleEndian.PutUint16(buf[pos+10:pos+12], uint16(tileH))            // height
-		binary.LittleEndian.PutUint16(buf[pos+12:pos+14], 32)                       // bitsPerPixel
-		binary.LittleEndian.PutUint16(buf[pos+14:pos+16], protocol.BitmapNoComprHdr) // flags
-		binary.LittleEndian.PutUint16(buf[pos+16:pos+18], uint16(len(tile.data)))   // bitmapLength
-		pos += 18
-
-		copy(buf[pos:], tile.data)
-		pos += len(tile.data)
-	}
-
-	// Send via MCS on I/O channel
-	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.ioChannel, buf)
-	return protocol.WriteMCSPDU(c.conn, mcsPDU)
-}
-
-// startBitmapStreaming starts streaming bitmap updates when RDPGFX is not available.
-func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
-	c.server.deps.Logger.Warn().Msg("RDP: starting bitmap streaming (fallback mode)")
-
-	// Start video capture if not already started
-	if c.server.deps.Video != nil {
-		if err := c.server.deps.Video.StartVideo(); err != nil {
-			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
-		}
-
-		// Start JPEG encoder with medium quality (50)
-		if err := c.server.deps.Video.StartJPEGEncoder(50); err != nil {
-			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start JPEG encoder")
-		} else {
-			c.server.deps.Logger.Warn().Msg("RDP: JPEG encoder started for bitmap mode")
-		}
-	}
-
-	go func() {
-		// Rate limit bitmap updates (max ~5 fps to reduce CPU load from JPEG decoding)
-		ticker := time.NewTicker(200 * time.Millisecond)
-		defer ticker.Stop()
-
-		var lastFrame []byte
-		frameCount := 0
-
-		for {
-			select {
-			case <-c.stopChan:
-				c.server.deps.Logger.Warn().Int("framesSent", frameCount).Msg("RDP: bitmap streaming stopped")
-				return
-			case frame := <-jpegChan:
-				// Keep latest frame
-				lastFrame = frame
-				if frameCount == 0 {
-					c.server.deps.Logger.Warn().Int("frameSize", len(frame)).Msg("RDP: first JPEG frame received for bitmap mode")
-				}
-			case <-ticker.C:
-				// Send the latest frame if we have one
-				if lastFrame != nil && !c.closed.Load() {
-					if err := c.SendBitmapUpdate(lastFrame); err != nil {
-						c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to send bitmap update")
-					} else {
-						frameCount++
-						if frameCount == 1 || frameCount%50 == 0 {
-							c.server.deps.Logger.Warn().Int("frameCount", frameCount).Msg("RDP: bitmap update sent")
-						}
-					}
-					lastFrame = nil
-				}
-			}
-		}
-	}()
 }

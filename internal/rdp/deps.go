@@ -1,7 +1,12 @@
 // Package rdp implements an RDP server for JetKVM.
 package rdp
 
-import "github.com/rs/zerolog"
+import (
+	"crypto/tls"
+	"net"
+
+	"github.com/rs/zerolog"
+)
 
 // Dependencies defines external dependencies for the RDP server.
 // This allows the server to be decoupled from the main kvm package.
@@ -23,6 +28,50 @@ type Dependencies struct {
 
 	// Camera provides UVC camera output.
 	Camera CameraProvider
+
+	// TLS provides TLS/SSL connection upgrading.
+	// If nil, the server will use Go's standard crypto/tls.
+	TLS TLSProvider
+}
+
+// TLSProvider provides TLS connection upgrading with optional hardware acceleration.
+type TLSProvider interface {
+	// UpgradeServerConn upgrades a net.Conn to a TLS server connection.
+	// Returns a TLSConn that provides the encrypted connection.
+	// Uses hardware acceleration when available.
+	UpgradeServerConn(conn net.Conn) (TLSConn, error)
+
+	// UpgradeServerConnForCredSSP upgrades a net.Conn to a TLS server connection
+	// for CredSSP/NLA authentication. This returns a Go *tls.Conn because CredSSP
+	// requires access to the TLS session binding for pubKeyAuth calculation.
+	// Does not use hardware acceleration.
+	UpgradeServerConnForCredSSP(conn net.Conn) (CredSSPTLSConn, error)
+
+	// IsHardwareAccelerated returns true if hardware crypto acceleration is available.
+	IsHardwareAccelerated() bool
+
+	// HardwareEngine returns the name of the hardware crypto engine in use.
+	HardwareEngine() string
+}
+
+// CredSSPTLSConn is a TLS connection that supports CredSSP authentication.
+// This must be a Go *tls.Conn for access to ConnectionState().
+type CredSSPTLSConn interface {
+	net.Conn
+	// ConnectionState returns the TLS connection state.
+	// This is required for CredSSP pubKeyAuth calculation.
+	ConnectionState() tls.ConnectionState
+}
+
+// TLSConn represents a TLS connection with introspection capabilities.
+type TLSConn interface {
+	net.Conn
+	// GetCipherName returns the name of the negotiated cipher suite.
+	GetCipherName() string
+	// GetProtocolVersion returns the negotiated TLS version string.
+	GetProtocolVersion() string
+	// IsHardwareAccelerated returns true if hardware crypto is being used.
+	IsHardwareAccelerated() bool
 }
 
 // ConfigProvider provides RDP configuration access.
@@ -38,6 +87,9 @@ type ConfigProvider interface {
 
 	// GetRDPClipboardEnabled returns whether clipboard paste is enabled.
 	GetRDPClipboardEnabled() bool
+
+	// GetRDPVideoEnabled returns whether H.264 video (RDPGFX) is enabled.
+	GetRDPVideoEnabled() bool
 
 	// GetTLSMode returns the TLS mode ("disabled", "self-signed", "custom").
 	GetTLSMode() string
@@ -65,6 +117,13 @@ type HIDProvider interface {
 
 	// CancelKeyboardMacro cancels an in-progress macro.
 	CancelKeyboardMacro()
+}
+
+// RGBFrame represents a raw BGRX frame from RGA hardware conversion.
+type RGBFrame struct {
+	Data   []byte
+	Width  uint32
+	Height uint32
 }
 
 // VideoProvider provides access to video frames.
@@ -99,6 +158,20 @@ type VideoProvider interface {
 
 	// StopJPEGEncoder stops the hardware JPEG encoder.
 	StopJPEGEncoder() error
+
+	// SubscribeRGB returns a channel for raw BGRX frames from RGA hardware.
+	// This provides the fastest bitmap updates by bypassing JPEG encode/decode.
+	SubscribeRGB() <-chan RGBFrame
+
+	// UnsubscribeRGB stops the RGB subscription.
+	UnsubscribeRGB()
+
+	// StartRGBEncoder starts the RGA hardware RGB encoder.
+	// This converts YUV422 to BGRX in hardware with zero CPU overhead.
+	StartRGBEncoder() error
+
+	// StopRGBEncoder stops the RGA hardware RGB encoder.
+	StopRGBEncoder() error
 }
 
 // AudioProvider provides audio capture and playback.

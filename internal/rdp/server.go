@@ -1,7 +1,6 @@
 package rdp
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net"
 	"runtime/debug"
@@ -32,7 +31,6 @@ type Server struct {
 
 	port       int
 	tlsEnabled bool
-	tlsConfig  *tls.Config
 
 	mu       sync.Mutex // protects running, stopChan, width, height
 	running  bool
@@ -85,8 +83,12 @@ func (s *Server) Start() error {
 	// TLS to be negotiated after the X.224 Connection Request/Confirm exchange.
 	// The TLS upgrade happens in Connection.handleX224Connection() if both
 	// client and server support TLS.
-	if s.tlsEnabled && s.tlsConfig != nil {
-		s.deps.Logger.Info().Int("port", s.port).Msg("RDP server starting with TLS support")
+	if s.tlsEnabled && s.deps.TLS != nil {
+		hwAccel := ""
+		if s.deps.TLS.IsHardwareAccelerated() {
+			hwAccel = " (hardware accelerated: " + s.deps.TLS.HardwareEngine() + ")"
+		}
+		s.deps.Logger.Info().Int("port", s.port).Msgf("RDP server starting with TLS support%s", hwAccel)
 	} else {
 		s.deps.Logger.Info().Int("port", s.port).Msg("RDP server starting without TLS")
 	}
@@ -164,13 +166,6 @@ func (s *Server) GetPort() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.port
-}
-
-// SetTLSConfig sets the TLS configuration for the server.
-func (s *Server) SetTLSConfig(config *tls.Config) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.tlsConfig = config
 }
 
 // UpdateVideoState notifies all connections of a resolution change.

@@ -76,6 +76,14 @@ type DVCManager struct {
 	capabilityOnce     sync.Once
 }
 
+// DVC fragment buffer sizes for zero-allocation hot path.
+const (
+	// Max DVC header size: cmd(1) + channelID(4) + length(4) = 9 bytes
+	DVCMaxHeaderSize = 9
+	// Fragment buffer size: header + max data
+	DVCFragmentBufSize = DVCMaxHeaderSize + DVCMaxDataSize
+)
+
 // DVCChannel represents a single dynamic virtual channel.
 type DVCChannel struct {
 	ID      uint32
@@ -83,6 +91,10 @@ type DVCChannel struct {
 	Open    bool
 	Handler DVCHandler
 	manager *DVCManager
+
+	// Pre-allocated fragment buffer for zero-allocation hot path
+	// Used by SendDataZeroAlloc to avoid per-fragment allocations
+	fragBuf [DVCFragmentBufSize]byte
 }
 
 // DVCHandler handles incoming data on a DVC.
@@ -371,48 +383,15 @@ func (m *DVCManager) sendCreateRequest(channelID uint32, name string) error {
 	return m.sendFunc(buf)
 }
 
-// SendData sends data on a channel.
+// SendData sends data on a channel using zero-allocation hot path.
+// HOT PATH: This function is called for every DVC fragment.
+// Uses pre-allocated fragBuf to avoid heap allocations.
 func (ch *DVCChannel) SendData(data []byte) error {
 	if !ch.Open {
 		return ErrDVCChannelClosed
 	}
 
-	// For small data, send in single PDU
-	if len(data) <= DVCMaxDataSize {
-		return ch.sendDataPDU(data, false, 0)
-	}
-
-	// Fragment large data
-	totalLen := len(data)
-	pos := 0
-	first := true
-
-	for pos < totalLen {
-		chunkSize := totalLen - pos
-		if chunkSize > DVCMaxDataSize {
-			chunkSize = DVCMaxDataSize
-		}
-
-		var err error
-		if first {
-			err = ch.sendDataPDU(data[pos:pos+chunkSize], true, uint32(totalLen))
-			first = false
-		} else {
-			err = ch.sendDataPDU(data[pos:pos+chunkSize], false, 0)
-		}
-
-		if err != nil {
-			return err
-		}
-		pos += chunkSize
-	}
-
-	return nil
-}
-
-// sendDataPDU sends a single data PDU.
-func (ch *DVCChannel) sendDataPDU(data []byte, isFirst bool, totalLen uint32) error {
-	// Determine channel ID encoding
+	// Determine channel ID encoding (constant for the lifetime of the channel)
 	cbID := byte(0)
 	idLen := 1
 	if ch.ID > 0xFF {
@@ -424,24 +403,64 @@ func (ch *DVCChannel) sendDataPDU(data []byte, isFirst bool, totalLen uint32) er
 		idLen = 4
 	}
 
+	totalLen := len(data)
+
+	// For small data, send in single PDU
+	if totalLen <= DVCMaxDataSize {
+		return ch.sendDataPDUZeroAlloc(data, false, 0, cbID, idLen)
+	}
+
+	// Fragment large data
+	pos := 0
+	first := true
+
+	for pos < totalLen {
+		chunkSize := totalLen - pos
+		if chunkSize > DVCMaxDataSize {
+			chunkSize = DVCMaxDataSize
+		}
+
+		var err error
+		if first {
+			err = ch.sendDataPDUZeroAlloc(data[pos:pos+chunkSize], true, uint32(totalLen), cbID, idLen)
+			first = false
+		} else {
+			err = ch.sendDataPDUZeroAlloc(data[pos:pos+chunkSize], false, 0, cbID, idLen)
+		}
+
+		if err != nil {
+			return err
+		}
+		pos += chunkSize
+	}
+
+	return nil
+}
+
+// sendDataPDUZeroAlloc sends a single data PDU using the pre-allocated fragment buffer.
+// HOT PATH: Zero heap allocations.
+func (ch *DVCChannel) sendDataPDUZeroAlloc(data []byte, isFirst bool, totalLen uint32, cbID byte, idLen int) error {
 	pduType := byte(DVCData)
 	lenFieldSize := 0
+	cbIDLocal := cbID // Don't modify the passed-in cbID
+
 	if isFirst {
 		pduType = DVCDataFirst
 		// Add length field for first PDU
 		if totalLen > 0xFFFF {
 			lenFieldSize = 4
-			cbID |= 0x08 // Length indicator for 4 bytes
+			cbIDLocal |= 0x08 // Length indicator for 4 bytes
 		} else if totalLen > 0xFF {
 			lenFieldSize = 2
-			cbID |= 0x04 // Length indicator for 2 bytes
+			cbIDLocal |= 0x04 // Length indicator for 2 bytes
 		} else {
 			lenFieldSize = 1
 		}
 	}
 
-	buf := make([]byte, 1+idLen+lenFieldSize+len(data))
-	buf[0] = pduType | cbID
+	// Build PDU in pre-allocated buffer (zero allocation)
+	buf := ch.fragBuf[:1+idLen+lenFieldSize+len(data)]
+	buf[0] = pduType | cbIDLocal
 
 	pos := 1
 	switch idLen {

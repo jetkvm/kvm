@@ -5,7 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 )
+
+// packetPool provides pre-allocated buffers for zero-allocation packet building.
+// Max packet size: TPKT(4) + X.224(3) + MCS(8) + VC(8) + DVC(~1609) = ~1632 bytes.
+// Rounded up to 2KB for safety margin.
+var packetPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 2048)
+		return &buf
+	},
+}
 
 // TPKT implements RFC 1006 Transport Protocol over TCP.
 // It provides the framing layer for ISO transport classes over TCP.

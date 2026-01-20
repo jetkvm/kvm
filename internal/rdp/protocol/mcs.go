@@ -508,6 +508,7 @@ func WriteConnectResponse(w io.Writer, result int, connectID int, params DomainP
 }
 
 // WriteMCSPDU writes an MCS PDU wrapped in X.224 and TPKT.
+// HOT PATH: Uses pooled buffers for zero-allocation packet building.
 func WriteMCSPDU(w io.Writer, pdu []byte) error {
-	return WriteX224Data(w, pdu)
+	return WriteX224DataPooled(w, pdu)
 }
