@@ -751,7 +751,7 @@
     "search_placeholder": "検索…",
     "serial_console": "シリアルコンソール",
     "serial_console_baud_rate": "ボーレート",
-[O    "serial_console_configure_description": "シリアルコンソールの設定を構成します",
+    "serial_console_configure_description": "シリアルコンソールの設定を構成します",
     "serial_console_data_bits": "データビット",
     "serial_console_get_settings_error": "シリアルコンソール設定の取得に失敗しました: {error}",
     "serial_console_open_console": "コンソールを開く",
