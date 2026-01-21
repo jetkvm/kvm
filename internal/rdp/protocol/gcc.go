@@ -33,10 +33,10 @@ const (
 
 // Server early capability flags (MS-RDPBCGR section 2.2.1.4.2).
 const (
-	EarlyCapEdgeActionsV1    = 0x00000001 // RNS_UD_SC_EDGE_ACTIONS_SUPPORTED_V1
-	EarlyCapDynamicDst       = 0x00000002 // RNS_UD_SC_DYNAMIC_DST_SUPPORTED
-	EarlyCapEdgeActionsV2    = 0x00000004 // RNS_UD_SC_EDGE_ACTIONS_SUPPORTED_V2
-	EarlyCapSkipChannelJoin  = 0x00000008 // RNS_UD_SC_SKIP_CHANNELJOIN_SUPPORTED
+	EarlyCapEdgeActionsV1   = 0x00000001 // RNS_UD_SC_EDGE_ACTIONS_SUPPORTED_V1
+	EarlyCapDynamicDst      = 0x00000002 // RNS_UD_SC_DYNAMIC_DST_SUPPORTED
+	EarlyCapEdgeActionsV2   = 0x00000004 // RNS_UD_SC_EDGE_ACTIONS_SUPPORTED_V2
+	EarlyCapSkipChannelJoin = 0x00000008 // RNS_UD_SC_SKIP_CHANNELJOIN_SUPPORTED
 )
 
 // ClientCoreData contains core client information.
@@ -312,10 +312,10 @@ type ServerCoreData struct {
 
 // ServerNetworkData contains server channel assignments.
 type ServerNetworkData struct {
-	MCSChannelID     uint16
-	ChannelCount     uint16
-	ChannelIDs       []uint16
-	MsgChannelID     uint16 // 0 if not requested by client
+	MCSChannelID uint16
+	ChannelCount uint16
+	ChannelIDs   []uint16
+	MsgChannelID uint16 // 0 if not requested by client
 }
 
 // ServerSecurityData contains server security settings.

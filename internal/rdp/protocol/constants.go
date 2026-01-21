@@ -227,28 +227,28 @@ const (
 
 // General Capability extraFlags (MS-RDPBCGR 2.2.7.1.1).
 const (
-	ExtraFlagsFastPathOutputSupported = 0x0001 // FASTPATH_OUTPUT_SUPPORTED
-	ExtraFlagsNoBitmapCompressionHdr  = 0x0400 // NO_BITMAP_COMPRESSION_HDR
+	ExtraFlagsFastPathOutputSupported  = 0x0001 // FASTPATH_OUTPUT_SUPPORTED
+	ExtraFlagsNoBitmapCompressionHdr   = 0x0400 // NO_BITMAP_COMPRESSION_HDR
 	ExtraFlagsLongCredentialsSupported = 0x0004 // LONG_CREDENTIALS_SUPPORTED
-	ExtraFlagsAutoReconnectSupported  = 0x0008 // AUTORECONNECT_SUPPORTED
-	ExtraFlagsEncSaltedChecksum       = 0x0002 // ENC_SALTED_CHECKSUM
+	ExtraFlagsAutoReconnectSupported   = 0x0008 // AUTORECONNECT_SUPPORTED
+	ExtraFlagsEncSaltedChecksum        = 0x0002 // ENC_SALTED_CHECKSUM
 )
 
 // Fast-Path Output PDU constants (MS-RDPBCGR 2.2.9.1.2).
 const (
 	// Fast-Path update codes (bits 0-3 of updateHeader)
-	FastPathUpdateOrders       = 0x00 // FASTPATH_UPDATETYPE_ORDERS
-	FastPathUpdateBitmap       = 0x01 // FASTPATH_UPDATETYPE_BITMAP
-	FastPathUpdatePalette      = 0x02 // FASTPATH_UPDATETYPE_PALETTE
-	FastPathUpdateSynchronize  = 0x03 // FASTPATH_UPDATETYPE_SYNCHRONIZE
-	FastPathUpdateSurfCmds     = 0x04 // FASTPATH_UPDATETYPE_SURFCMDS
-	FastPathUpdatePtrNull      = 0x05 // FASTPATH_UPDATETYPE_PTR_NULL
-	FastPathUpdatePtrDefault   = 0x06 // FASTPATH_UPDATETYPE_PTR_DEFAULT
-	FastPathUpdatePtrPosition  = 0x08 // FASTPATH_UPDATETYPE_PTR_POSITION
-	FastPathUpdateColor        = 0x09 // FASTPATH_UPDATETYPE_COLOR
+	FastPathUpdateOrders        = 0x00 // FASTPATH_UPDATETYPE_ORDERS
+	FastPathUpdateBitmap        = 0x01 // FASTPATH_UPDATETYPE_BITMAP
+	FastPathUpdatePalette       = 0x02 // FASTPATH_UPDATETYPE_PALETTE
+	FastPathUpdateSynchronize   = 0x03 // FASTPATH_UPDATETYPE_SYNCHRONIZE
+	FastPathUpdateSurfCmds      = 0x04 // FASTPATH_UPDATETYPE_SURFCMDS
+	FastPathUpdatePtrNull       = 0x05 // FASTPATH_UPDATETYPE_PTR_NULL
+	FastPathUpdatePtrDefault    = 0x06 // FASTPATH_UPDATETYPE_PTR_DEFAULT
+	FastPathUpdatePtrPosition   = 0x08 // FASTPATH_UPDATETYPE_PTR_POSITION
+	FastPathUpdateColor         = 0x09 // FASTPATH_UPDATETYPE_COLOR
 	FastPathUpdateCachedPointer = 0x0A // FASTPATH_UPDATETYPE_CACHED
-	FastPathUpdatePointer      = 0x0B // FASTPATH_UPDATETYPE_POINTER
-	FastPathUpdateLargePointer = 0x0C // FASTPATH_UPDATETYPE_LARGE_POINTER
+	FastPathUpdatePointer       = 0x0B // FASTPATH_UPDATETYPE_POINTER
+	FastPathUpdateLargePointer  = 0x0C // FASTPATH_UPDATETYPE_LARGE_POINTER
 
 	// Fast-Path fragmentation flags (bits 4-5 of updateHeader)
 	// Per MS-RDPBCGR 2.2.9.1.2.1: bits 4-5 encode: 0=single, 1=last, 2=first, 3=next

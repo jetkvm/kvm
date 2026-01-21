@@ -1483,26 +1483,31 @@ func (c *Connection) messageLoop() error {
 		}
 
 		// Slow-Path (TPKT/X.224/MCS)
-		data, err := protocol.ReadX224Data(c.reader)
+		// HOT PATH: Use pooled buffer to avoid allocations
+		buf, err := protocol.ReadX224DataPooled(c.reader)
 		if err != nil {
 			return err
 		}
 
-		pduType, err := protocol.ParseMCSPDUType(data)
+		pduType, err := protocol.ParseMCSPDUType(buf.Data)
 		if err != nil {
+			buf.Release()
 			return err
 		}
 
 		switch pduType {
 		case protocol.MCSSendDataRequest:
-			sdr, err := protocol.ParseSendDataRequest(data)
+			sdr, err := protocol.ParseSendDataRequest(buf.Data)
 			if err != nil {
 				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to parse SendDataRequest")
+				buf.Release()
 				continue
 			}
+			// handleDataPDU processes data synchronously (DVC handlers copy if needed)
 			c.handleDataPDU(sdr)
 
 		case protocol.MCSDisconnectUltimatum:
+			buf.Release()
 			c.server.deps.Logger.Info().Str("remote", c.RemoteAddr()).
 				Msg("RDP: client disconnected")
 			return nil
@@ -1510,9 +1515,10 @@ func (c *Connection) messageLoop() error {
 		default:
 			c.server.deps.Logger.Warn().
 				Str("type", pduType.String()).
-				Hex("firstBytes", data[:min(len(data), 16)]).
+				Hex("firstBytes", buf.Data[:min(len(buf.Data), 16)]).
 				Msg("RDP: unhandled MCS PDU type")
 		}
+		buf.Release()
 	}
 }
 
@@ -2792,8 +2798,8 @@ func (c *Connection) sendDVCDataHotPath(data []byte) error {
 	pos += tpktHeaderLen
 
 	// X.224 Data TPDU header (3 bytes)
-	packet[pos] = 2                    // LI
-	packet[pos+1] = protocol.X224Data  // Code
+	packet[pos] = 2                      // LI
+	packet[pos+1] = protocol.X224Data    // Code
 	packet[pos+2] = protocol.X224DataEOT // EOT
 	pos += x224HeaderLen
 
@@ -2831,21 +2837,110 @@ func (c *Connection) sendDVCDataHotPath(data []byte) error {
 
 // sendDVCDataFallback handles oversized packets that don't fit in the pool.
 func (c *Connection) sendDVCDataFallback(data []byte) error {
+	return c.sendStaticChannelDataFallback(c.drdynvcID, data)
+}
+
+// sendStaticChannelDataHotPath sends data on a static channel using zero-allocation hot path.
+// Used for RDPSND (audio output) and Clipboard.
+// HOT PATH: Zero heap allocations for typical packet sizes.
+func (c *Connection) sendStaticChannelDataHotPath(channelID uint16, data []byte) error {
+	if channelID == 0 {
+		return nil
+	}
+
+	// Packet layout:
+	// [TPKT header 4][X.224 header 3][MCS header 6-8][VC header 8][data]
+	// MCS header is 6 bytes for data < 128, 8 bytes otherwise
+	const (
+		tpktHeaderLen    = 4
+		x224HeaderLen    = 3
+		mcsHeaderBaseLen = 6
+		vcHeaderLen      = 8
+		channelFlagFirst = 0x01
+		channelFlagLast  = 0x02
+	)
+
+	vcPayloadLen := len(data)
+	mcsLenFieldSize := 1
+	if vcPayloadLen+vcHeaderLen >= 128 {
+		mcsLenFieldSize = 2
+	}
+	mcsHeaderLen := mcsHeaderBaseLen + mcsLenFieldSize
+
+	totalPacketLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen + vcPayloadLen
+
+	// Get buffer from pool
+	bufPtr := vcPDUPool.Get().(*[]byte)
+	buf := *bufPtr
+
+	if totalPacketLen > len(buf) {
+		// Rare path: packet too large for pool
+		vcPDUPool.Put(bufPtr)
+		return c.sendStaticChannelDataFallback(channelID, data)
+	}
+	defer vcPDUPool.Put(bufPtr)
+
+	packet := buf[:totalPacketLen]
+	pos := 0
+
+	// TPKT header (4 bytes, big-endian length)
+	packet[pos] = protocol.TPKTVersion
+	packet[pos+1] = 0
+	binary.BigEndian.PutUint16(packet[pos+2:pos+4], uint16(totalPacketLen))
+	pos += tpktHeaderLen
+
+	// X.224 Data TPDU header (3 bytes)
+	packet[pos] = 2                      // LI
+	packet[pos+1] = protocol.X224Data    // Code
+	packet[pos+2] = protocol.X224DataEOT // EOT
+	pos += x224HeaderLen
+
+	// MCS Send Data Indication header
+	packet[pos] = byte(protocol.MCSSendDataIndication << 2)
+	relativeUserID := c.userID - protocol.MCSUserIDBase
+	binary.BigEndian.PutUint16(packet[pos+1:pos+3], relativeUserID)
+	binary.BigEndian.PutUint16(packet[pos+3:pos+5], channelID)
+	packet[pos+5] = 0x70 // High priority, begin+end segment
+	pos += 6
+
+	// MCS length field (PER encoded)
+	mcsDataLen := vcHeaderLen + vcPayloadLen
+	if mcsDataLen < 128 {
+		packet[pos] = byte(mcsDataLen)
+		pos++
+	} else {
+		packet[pos] = byte(0x80 | (mcsDataLen >> 8))
+		packet[pos+1] = byte(mcsDataLen)
+		pos += 2
+	}
+
+	// VC PDU header (8 bytes, little-endian)
+	binary.LittleEndian.PutUint32(packet[pos:pos+4], uint32(vcPayloadLen))
+	binary.LittleEndian.PutUint32(packet[pos+4:pos+8], channelFlagFirst|channelFlagLast)
+	pos += vcHeaderLen
+
+	// Data payload
+	copy(packet[pos:], data)
+
+	// Single write to connection
+	_, err := c.conn.Write(packet)
+	return err
+}
+
+// sendStaticChannelDataFallback handles oversized packets that don't fit in the pool.
+func (c *Connection) sendStaticChannelDataFallback(channelID uint16, data []byte) error {
 	const (
 		channelFlagFirst = 0x01
 		channelFlagLast  = 0x02
 		vcHeaderSize     = 8
 	)
 
-	// Debug: Log what we're sending
-
 	vcPDU := make([]byte, vcHeaderSize+len(data))
 	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))
 	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast)
 	copy(vcPDU[8:], data)
 
-	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.drdynvcID, vcPDU)
-	return protocol.WriteMCSPDU(c.conn, mcsPDU)
+	return protocol.WriteSendDataIndicationPooled(c.conn, c.userID, channelID, vcPDU)
 }
 
 // SendFrame sends an H.264 video frame to the client.
@@ -2963,13 +3058,8 @@ func isH264Keyframe(data []byte) bool {
 func (c *Connection) initSoundChannel() {
 	// Create sound channel with send callback
 	// RDPSND requires Virtual Channel PDU header per MS-RDPBCGR 2.2.6.1
+	// HOT PATH: Uses zero-allocation pooled buffers for audio streaming.
 	c.soundChannel = channels.NewSoundChannel(func(data []byte) error {
-		// Build Virtual Channel PDU: header (8 bytes) + data
-		const (
-			channelFlagFirst = 0x01
-			channelFlagLast  = 0x02
-		)
-
 		// Debug: Log what we're sending (only for first packet which is SNDC_FORMATS)
 		if len(data) > 0 && data[0] == 0x07 { // SNDCFormats = 0x07
 			c.server.deps.Logger.Warn().
@@ -2980,13 +3070,8 @@ func (c *Connection) initSoundChannel() {
 				Msg("RDP: initSoundChannel - sending SNDC_FORMATS")
 		}
 
-		vcPDU := make([]byte, 8+len(data))
-		binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))                // totalLength
-		binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast) // flags
-		copy(vcPDU[8:], data)
-
-		mcsPDU := protocol.BuildSendDataIndication(c.userID, c.rdpsndID, vcPDU)
-		return protocol.WriteMCSPDU(c.conn, mcsPDU)
+		// HOT PATH: Zero allocations for typical audio packets
+		return c.sendStaticChannelDataHotPath(c.rdpsndID, data)
 	})
 
 	// Set ready callback to start audio streaming
@@ -3037,31 +3122,19 @@ func (c *Connection) initClipboardChannel() {
 
 // sendClipboardData sends data on the cliprdr channel with proper VC PDU header.
 // Per MS-RDPBCGR 2.2.6.1, virtual channel data must include the VC PDU header.
+// Uses zero-allocation pooled buffers for better performance.
 func (c *Connection) sendClipboardData(data []byte) error {
 	if c.cliprdrdID == 0 {
 		return nil
 	}
-
-	// Build Virtual Channel PDU per MS-RDPBCGR 2.2.6.1
-	// Header: totalLength (4 bytes LE) + flags (4 bytes LE) + data
-	const (
-		channelFlagFirst = 0x01
-		channelFlagLast  = 0x02
-	)
-
-	vcPDU := make([]byte, 8+len(data))
-	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))                // totalLength
-	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast) // flags (single chunk)
-	copy(vcPDU[8:], data)
 
 	c.server.deps.Logger.Warn().
 		Int("dataLen", len(data)).
 		Str("dataHex", fmt.Sprintf("% X", data[:min(len(data), 20)])).
 		Msg("RDP: sending clipboard data")
 
-	// Wrap in MCS Send Data Indication
-	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.cliprdrdID, vcPDU)
-	return protocol.WriteMCSPDU(c.conn, mcsPDU)
+	// HOT PATH: Zero allocations using pooled buffers
+	return c.sendStaticChannelDataHotPath(c.cliprdrdID, data)
 }
 
 // startAudioStream starts the audio streaming goroutine.

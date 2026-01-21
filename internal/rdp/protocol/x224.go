@@ -314,3 +314,29 @@ func ReadX224Data(r io.Reader) ([]byte, error) {
 
 	return dt.Data, nil
 }
+
+// ReadX224DataPooled reads an X.224 Data TPDU using a pooled buffer.
+// Returns a ReadBuffer that MUST be Released after use.
+// The Data field contains the MCS payload (after X.224 header).
+//
+// HOT PATH: Zero allocations for typical packets.
+func ReadX224DataPooled(r io.Reader) (*ReadBuffer, error) {
+	buf, err := ReadTPKTPayloadPooled(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(buf.Data) == 0 {
+		return buf, nil
+	}
+
+	dt, err := ParseDataTPDU(buf.Data)
+	if err != nil {
+		buf.Release()
+		return nil, err
+	}
+
+	// Update Data to point to the MCS payload (same underlying buffer)
+	buf.Data = dt.Data
+	return buf, nil
+}

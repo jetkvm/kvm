@@ -109,7 +109,7 @@ func (c *ClipboardChannel) sendCapabilities() error {
 
 	// Header
 	binary.LittleEndian.PutUint16(buf[0:2], CBClipCaps)
-	binary.LittleEndian.PutUint16(buf[2:4], 0) // msgFlags
+	binary.LittleEndian.PutUint16(buf[2:4], 0)  // msgFlags
 	binary.LittleEndian.PutUint32(buf[4:8], 16) // dataLen (4 + 12)
 
 	// Capabilities header
@@ -282,8 +282,8 @@ func (c *ClipboardChannel) requestFormatData(formatID uint32) error {
 	// CLIPRDR_FORMAT_DATA_REQUEST (MS-RDPECLIP 2.2.5.1)
 	buf := make([]byte, 12)
 	binary.LittleEndian.PutUint16(buf[0:2], CBFormatDataReq)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)  // msgFlags
-	binary.LittleEndian.PutUint32(buf[4:8], 4)  // dataLen
+	binary.LittleEndian.PutUint16(buf[2:4], 0) // msgFlags
+	binary.LittleEndian.PutUint32(buf[4:8], 4) // dataLen
 	binary.LittleEndian.PutUint32(buf[8:12], formatID)
 	return c.sendFunc(buf)
 }

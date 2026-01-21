@@ -83,14 +83,14 @@ const (
 
 // GFX PDU header size.
 const (
-	GFXHeaderSize         = 8   // cmdId(2) + flags(2) + pduLength(4)
-	GFXStartFrameSize     = 8   // timestamp(4) + frameId(4)
-	GFXEndFrameSize       = 4   // frameId(4)
-	GFXWireToSurface1Size = 17  // surfaceId(2) + codecId(2) + pixelFormat(1) + rect(8) + bitmapDataLen(4)
-	GFXCreateSurfaceSize  = 7   // surfaceId(2) + width(2) + height(2) + pixelFormat(1)
-	GFXDeleteSurfaceSize  = 2   // surfaceId(2)
-	GFXMapSurfaceSize = 12 // surfaceId(2) + reserved(2) + outputOriginX(4) + outputOriginY(4)
-	GFXFrameAckSize   = 12 // queueDepth(4) + frameId(4) + totalDecoded(4)
+	GFXHeaderSize         = 8  // cmdId(2) + flags(2) + pduLength(4)
+	GFXStartFrameSize     = 8  // timestamp(4) + frameId(4)
+	GFXEndFrameSize       = 4  // frameId(4)
+	GFXWireToSurface1Size = 17 // surfaceId(2) + codecId(2) + pixelFormat(1) + rect(8) + bitmapDataLen(4)
+	GFXCreateSurfaceSize  = 7  // surfaceId(2) + width(2) + height(2) + pixelFormat(1)
+	GFXDeleteSurfaceSize  = 2  // surfaceId(2)
+	GFXMapSurfaceSize     = 12 // surfaceId(2) + reserved(2) + outputOriginX(4) + outputOriginY(4)
+	GFXFrameAckSize       = 12 // queueDepth(4) + frameId(4) + totalDecoded(4)
 )
 
 // Maximum values.
@@ -177,7 +177,6 @@ func NewGFXChannel(manager *DVCManager) *GFXChannel {
 		frameBuf:  make([]byte, GFXFrameBufSize), // Pre-allocate for zero-alloc hot path
 	}
 }
-
 
 // ZGFX segment size limits.
 // FreeRDP's OutputBuffer is 65536 bytes, so uncompressed segment data must fit.
@@ -564,9 +563,9 @@ func (g *GFXChannel) sendResetGraphics(width, height uint16) error {
 	// - Total PDU must be exactly 340 bytes (FreeRDP RDPGFX_RESET_GRAPHICS_PDU_SIZE)
 	//
 	// pduLength in header = total PDU size = 340
-	const totalPDUSize = 340                              // RDPGFX_RESET_GRAPHICS_PDU_SIZE
-	const bodySize = totalPDUSize - GFXHeaderSize         // 340 - 8 = 332
-	const pduLength = totalPDUSize                        // pduLength = total size including header
+	const totalPDUSize = 340                      // RDPGFX_RESET_GRAPHICS_PDU_SIZE
+	const bodySize = totalPDUSize - GFXHeaderSize // 340 - 8 = 332
+	const pduLength = totalPDUSize                // pduLength = total size including header
 
 	buf := make([]byte, totalPDUSize)
 
@@ -623,9 +622,9 @@ func (g *GFXChannel) sendMapSurfaceToOutput(surfaceID uint16, x, y uint32) error
 
 	// Mapping - coordinates are 4 bytes each per MS-RDPEGFX
 	binary.LittleEndian.PutUint16(buf[8:10], surfaceID)
-	binary.LittleEndian.PutUint16(buf[10:12], 0)  // reserved
-	binary.LittleEndian.PutUint32(buf[12:16], x)  // outputOriginX (4 bytes)
-	binary.LittleEndian.PutUint32(buf[16:20], y)  // outputOriginY (4 bytes)
+	binary.LittleEndian.PutUint16(buf[10:12], 0) // reserved
+	binary.LittleEndian.PutUint32(buf[12:16], x) // outputOriginX (4 bytes)
+	binary.LittleEndian.PutUint32(buf[16:20], y) // outputOriginY (4 bytes)
 
 	return g.sendGFXData(buf)
 }
@@ -768,10 +767,10 @@ func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
 
 	// Build AVC420 metadata inline (14 bytes) - avoids function call overhead
 	metaPos := pos + 25
-	binary.LittleEndian.PutUint32(buf[metaPos:], 1)          // numRegionRects
-	binary.LittleEndian.PutUint16(buf[metaPos+4:], 0)        // left
-	binary.LittleEndian.PutUint16(buf[metaPos+6:], 0)        // top
-	binary.LittleEndian.PutUint16(buf[metaPos+8:], g.width)  // right
+	binary.LittleEndian.PutUint32(buf[metaPos:], 1)           // numRegionRects
+	binary.LittleEndian.PutUint16(buf[metaPos+4:], 0)         // left
+	binary.LittleEndian.PutUint16(buf[metaPos+6:], 0)         // top
+	binary.LittleEndian.PutUint16(buf[metaPos+8:], g.width)   // right
 	binary.LittleEndian.PutUint16(buf[metaPos+10:], g.height) // bottom
 	// qpVal with progressive flag + qualityVal
 	if isKeyframe {
@@ -922,13 +921,13 @@ func (g *GFXChannel) SendH264FrameAVC444(luma, chroma []byte, isKeyframe bool) e
 	if lcMode == 0 {
 		// Build chroma metadata inline (same structure as luma but always 14 bytes)
 		chromaMeta = make([]byte, 14)
-		binary.LittleEndian.PutUint32(chromaMeta[0:4], 1)    // numRegionRects
-		binary.LittleEndian.PutUint16(chromaMeta[4:6], 0)    // left
-		binary.LittleEndian.PutUint16(chromaMeta[6:8], 0)    // top
-		binary.LittleEndian.PutUint16(chromaMeta[8:10], g.width)  // right
+		binary.LittleEndian.PutUint32(chromaMeta[0:4], 1)          // numRegionRects
+		binary.LittleEndian.PutUint16(chromaMeta[4:6], 0)          // left
+		binary.LittleEndian.PutUint16(chromaMeta[6:8], 0)          // top
+		binary.LittleEndian.PutUint16(chromaMeta[8:10], g.width)   // right
 		binary.LittleEndian.PutUint16(chromaMeta[10:12], g.height) // bottom
-		chromaMeta[12] = 22 | 0x80 // qpVal with progressive flag
-		chromaMeta[13] = 100       // qualityVal
+		chromaMeta[12] = 22 | 0x80                                 // qpVal with progressive flag
+		chromaMeta[13] = 100                                       // qualityVal
 	}
 
 	// Calculate sizes

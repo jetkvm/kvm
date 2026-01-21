@@ -33,9 +33,9 @@ type DomainParameters struct {
 // Values are conservative to maximize client compatibility.
 func DefaultDomainParameters() DomainParameters {
 	return DomainParameters{
-		MaxChannelIDs:   34,    // Matches typical Windows Server values
-		MaxUserIDs:      2,     // Single user
-		MaxTokenIDs:     0,     // Not using tokens
+		MaxChannelIDs:   34, // Matches typical Windows Server values
+		MaxUserIDs:      2,  // Single user
+		MaxTokenIDs:     0,  // Not using tokens
 		NumPriorities:   1,
 		MinThroughput:   0,
 		MaxHeight:       1,
@@ -511,4 +511,79 @@ func WriteConnectResponse(w io.Writer, result int, connectID int, params DomainP
 // HOT PATH: Uses pooled buffers for zero-allocation packet building.
 func WriteMCSPDU(w io.Writer, pdu []byte) error {
 	return WriteX224DataPooled(w, pdu)
+}
+
+// WriteSendDataIndicationPooled writes a complete Send Data Indication PDU with all
+// layers (TPKT + X.224 + MCS + data) built in a single pooled buffer.
+// HOT PATH: Zero allocations for typical RDP data packets.
+func WriteSendDataIndicationPooled(w io.Writer, userID, channelID uint16, data []byte) error {
+	// Calculate MCS header size (6-8 bytes depending on length encoding)
+	lengthSize := 1
+	if len(data) >= 128 {
+		lengthSize = 2
+	}
+	mcsHeaderSize := 6 + lengthSize
+
+	// Total packet: TPKT(4) + X.224(3) + MCS header + data
+	totalLen := TPKTHeaderLength + X224DataHeaderLen + mcsHeaderSize + len(data)
+
+	if totalLen > MaxTPKTLength {
+		return ErrTPKTLengthTooLarge
+	}
+
+	// Get buffer from pool
+	bufPtr := packetPool.Get().(*[]byte)
+	buf := *bufPtr
+
+	// Check if buffer is large enough
+	if totalLen > len(buf) {
+		// Rare path: packet too large for pooled buffer, fall back to allocation
+		packetPool.Put(bufPtr)
+		mcsPDU := BuildSendDataIndication(userID, channelID, data)
+		return WriteMCSPDU(w, mcsPDU)
+	}
+
+	// Return buffer to pool after use
+	defer packetPool.Put(bufPtr)
+
+	packet := buf[:totalLen]
+
+	// TPKT header (4 bytes)
+	packet[0] = TPKTVersion
+	packet[1] = 0 // reserved
+	binary.BigEndian.PutUint16(packet[2:4], uint16(totalLen))
+
+	// X.224 Data TPDU header (3 bytes)
+	packet[4] = 2           // LI = 2
+	packet[5] = X224Data    // Code
+	packet[6] = X224DataEOT // EOT = 0x80
+
+	// MCS Send Data Indication header
+	pos := TPKTHeaderLength + X224DataHeaderLen
+	packet[pos] = byte(MCSSendDataIndication << 2)
+	relativeUserID := userID - MCSUserIDBase
+	binary.BigEndian.PutUint16(packet[pos+1:pos+3], relativeUserID)
+	binary.BigEndian.PutUint16(packet[pos+3:pos+5], channelID)
+	packet[pos+5] = 0x70 // High priority, begin+end segment
+
+	// Length (PER encoded)
+	pos += 6
+	if len(data) < 128 {
+		packet[pos] = byte(len(data))
+		pos++
+	} else {
+		packet[pos] = byte(0x80 | (len(data) >> 8))
+		packet[pos+1] = byte(len(data))
+		pos += 2
+	}
+
+	// Data
+	copy(packet[pos:], data)
+
+	// Single write to socket
+	_, err := w.Write(packet)
+	if err != nil {
+		return fmt.Errorf("tpkt: write: %w", err)
+	}
+	return nil
 }

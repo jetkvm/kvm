@@ -38,12 +38,12 @@ const (
 
 // Preferred audio input format: 16-bit PCM, mono/stereo, 48kHz.
 const (
-	AudinPreferredChannels        = 2
-	AudinPreferredSampleRate      = 48000
-	AudinPreferredBitsPerSample   = 16
-	AudinPreferredBlockAlign      = AudinPreferredChannels * (AudinPreferredBitsPerSample / 8)
-	AudinPreferredBytesPerSec     = AudinPreferredSampleRate * AudinPreferredBlockAlign
-	AudinDefaultFramesPerPacket   = AudinPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
+	AudinPreferredChannels      = 2
+	AudinPreferredSampleRate    = 48000
+	AudinPreferredBitsPerSample = 16
+	AudinPreferredBlockAlign    = AudinPreferredChannels * (AudinPreferredBitsPerSample / 8)
+	AudinPreferredBytesPerSec   = AudinPreferredSampleRate * AudinPreferredBlockAlign
+	AudinDefaultFramesPerPacket = AudinPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
 )
 
 // Common errors.

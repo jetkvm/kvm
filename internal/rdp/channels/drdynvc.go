@@ -355,6 +355,11 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	}
 
 	// Fragment reassembly per MS-RDPEDYC section 3.1.5.2.2
+	//
+	// IMPORTANT: Data passed to handlers is only valid during the callback.
+	// The underlying buffer may be reused for the next packet after the handler returns.
+	// Handlers that need data for async processing MUST make their own copy.
+	// (e.g., AUDIN callback copies data before sending to async channel)
 	if isFirst {
 		// DATA_FIRST: Start new reassembly or deliver if complete
 		if totalLength > 0 && uint32(len(payload)) < totalLength {
@@ -371,6 +376,7 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 			return nil // Wait for more DATA PDUs
 		}
 		// Single-fragment message (fits in one PDU) - deliver directly
+		// Zero-allocation: pass slice of the read buffer (handler copies if needed)
 		ch.reassemblyTotal = 0
 		ch.reassemblyOffset = 0
 		return ch.Handler.OnData(payload)
@@ -389,13 +395,14 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 
 		// Check if reassembly is complete
 		if ch.reassemblyOffset >= ch.reassemblyTotal {
-			// Deliver complete message - make a copy so reassemblyBuf can be reused safely
-			// This prevents data corruption if handler stores the slice for async processing
-			completeMsg := make([]byte, ch.reassemblyTotal)
-			copy(completeMsg, ch.reassemblyBuf[:ch.reassemblyTotal])
+			// Deliver complete message from reassembly buffer
+			// The reassemblyBuf is a stable buffer owned by this channel,
+			// so handlers can use it safely (no copy needed here).
+			// If handler needs data beyond callback, it copies.
+			data := ch.reassemblyBuf[:ch.reassemblyTotal]
 			ch.reassemblyTotal = 0
 			ch.reassemblyOffset = 0
-			return ch.Handler.OnData(completeMsg)
+			return ch.Handler.OnData(data)
 		}
 		return nil // Still waiting for more data
 	}
@@ -464,9 +471,9 @@ func (m *DVCManager) SendCapabilityRequest() error {
 		buf[1] = 0                           // Pad
 		binary.LittleEndian.PutUint16(buf[2:4], m.version)
 		// PriorityCharge0-3: default bandwidth allocation (equal distribution)
-		binary.LittleEndian.PutUint16(buf[4:6], 0)  // PriorityCharge0
-		binary.LittleEndian.PutUint16(buf[6:8], 0)  // PriorityCharge1
-		binary.LittleEndian.PutUint16(buf[8:10], 0) // PriorityCharge2
+		binary.LittleEndian.PutUint16(buf[4:6], 0)   // PriorityCharge0
+		binary.LittleEndian.PutUint16(buf[6:8], 0)   // PriorityCharge1
+		binary.LittleEndian.PutUint16(buf[8:10], 0)  // PriorityCharge2
 		binary.LittleEndian.PutUint16(buf[10:12], 0) // PriorityCharge3
 	} else {
 		// Version 1: no priority charges

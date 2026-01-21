@@ -18,6 +18,62 @@ var packetPool = sync.Pool{
 	},
 }
 
+// ReadBuffer provides reusable buffers for zero-allocation read operations.
+// The buffer must be Released after use to return it to the pool.
+type ReadBuffer struct {
+	Data []byte     // The actual data slice
+	buf  *[]byte    // Pointer to the underlying buffer for pool return
+	pool *sync.Pool // The pool to return to
+}
+
+// Release returns the buffer to the pool for reuse.
+// The Data slice must not be used after calling Release.
+// Safe to call multiple times (becomes a no-op after first call).
+func (b *ReadBuffer) Release() {
+	if b.pool != nil && b.buf != nil {
+		b.pool.Put(b.buf)
+		b.buf = nil
+		b.pool = nil
+		b.Data = nil
+	}
+}
+
+// Size-tiered buffer pools to minimize memory waste.
+// Small: <2KB (control messages, small DVC)
+// Medium: <16KB (typical DVC, most GFX PDUs)
+// Large: <64KB (max TPKT, large GFX frames)
+var (
+	readPoolSmall = sync.Pool{
+		New: func() any {
+			buf := make([]byte, 2048)
+			return &buf
+		},
+	}
+	readPoolMedium = sync.Pool{
+		New: func() any {
+			buf := make([]byte, 16384)
+			return &buf
+		},
+	}
+	readPoolLarge = sync.Pool{
+		New: func() any {
+			buf := make([]byte, 65536)
+			return &buf
+		},
+	}
+)
+
+// getReadBuffer returns a buffer from the appropriate pool based on size.
+func getReadBuffer(size int) (*[]byte, *sync.Pool) {
+	if size <= 2048 {
+		return readPoolSmall.Get().(*[]byte), &readPoolSmall
+	}
+	if size <= 16384 {
+		return readPoolMedium.Get().(*[]byte), &readPoolMedium
+	}
+	return readPoolLarge.Get().(*[]byte), &readPoolLarge
+}
+
 // TPKT implements RFC 1006 Transport Protocol over TCP.
 // It provides the framing layer for ISO transport classes over TCP.
 //
@@ -72,6 +128,8 @@ func (t *TPKT) PayloadLength() int {
 }
 
 // ReadTPKTPayload reads a complete TPKT packet and returns the payload.
+// NOTE: This allocates a new buffer for each call. For hot paths, use
+// ReadTPKTPayloadPooled instead to reuse buffers.
 func ReadTPKTPayload(r io.Reader) ([]byte, error) {
 	header, err := ReadTPKT(r)
 	if err != nil {
@@ -89,6 +147,54 @@ func ReadTPKTPayload(r io.Reader) ([]byte, error) {
 	}
 
 	return payload, nil
+}
+
+// ReadTPKTPayloadPooled reads a complete TPKT packet using a pooled buffer.
+// Returns a ReadBuffer that MUST be Released after use to return the buffer to the pool.
+// For zero-allocation hot paths.
+//
+// Usage:
+//
+//	buf, err := ReadTPKTPayloadPooled(reader)
+//	if err != nil { return err }
+//	defer buf.Release()
+//	// Process buf.Data...
+func ReadTPKTPayloadPooled(r io.Reader) (*ReadBuffer, error) {
+	header, err := ReadTPKT(r)
+	if err != nil {
+		return nil, err
+	}
+
+	payloadLen := header.PayloadLength()
+	if payloadLen == 0 {
+		return &ReadBuffer{}, nil
+	}
+
+	// Get appropriately-sized buffer from pool
+	bufPtr, pool := getReadBuffer(payloadLen)
+	buf := *bufPtr
+
+	// Ensure buffer is large enough (should always be true with our pools)
+	if len(buf) < payloadLen {
+		pool.Put(bufPtr)
+		// Fallback: allocate new buffer (rare path for >64KB)
+		buf = make([]byte, payloadLen)
+		bufPtr = &buf
+		pool = nil
+	}
+
+	if _, err := io.ReadFull(r, buf[:payloadLen]); err != nil {
+		if pool != nil {
+			pool.Put(bufPtr)
+		}
+		return nil, fmt.Errorf("tpkt: read payload: %w", err)
+	}
+
+	return &ReadBuffer{
+		Data: buf[:payloadLen],
+		buf:  bufPtr,
+		pool: pool,
+	}, nil
 }
 
 // WriteTPKT writes a TPKT packet to the writer.
