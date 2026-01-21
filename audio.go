@@ -168,8 +168,15 @@ func startInputAudioUnderMutex(alsaPlaybackDevice string) error {
 	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
 	newRelay := audio.NewInputRelay()
 
+	// Connect the source to initialize ALSA playback device
+	if err := newSource.Connect(); err != nil {
+		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to connect input source")
+		return err
+	}
+
 	if err := newRelay.Start(); err != nil {
 		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to start input relay")
+		newSource.Disconnect()
 		return err
 	}
 
@@ -253,19 +260,17 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	audioMutex.Lock()
 	defer audioMutex.Unlock()
 
-	outRelay := outputRelay.Swap(nil)
-	outSource := outputSource.Swap(nil)
-	if outRelay != nil {
-		outRelay.Stop()
-	}
-	if outSource != nil {
-		(*outSource).Disconnect()
-	}
-
 	currentAudioTrack = audioTrack
 
-	// Restart audio if there are active connections (WebRTC or RDP).
-	// The relay handles nil audioTrack gracefully for RDP-only mode.
+	// If relay is already running (e.g., RDP connected first), just update the track
+	// without stopping/restarting - this allows seamless WebRTC + RDP concurrent use
+	if relay := outputRelay.Load(); relay != nil {
+		relay.SetAudioTrack(audioTrack)
+		audioLogger.Debug().Msg("Updated WebRTC audio track on existing relay")
+		return
+	}
+
+	// No relay running - start one if there are active connections
 	if audioInitialized && activeConnections.Load() > 0 && audioOutputEnabled.Load() {
 		if err := startOutputAudioUnderMutex(getAlsaDevice("hdmi")); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start output audio after track change")

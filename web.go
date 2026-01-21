@@ -15,6 +15,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -82,6 +83,14 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
+
+	// Yield to scheduler at the start of each request to ensure RDP/VNC
+	// goroutines get CPU time during heavy web traffic (e.g., page load)
+	r.Use(func(c *gin.Context) {
+		runtime.Gosched()
+		c.Next()
+	})
+
 	r.Use(gin_logger.SetLogger(
 		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
 			return *ginLogger

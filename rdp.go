@@ -359,10 +359,64 @@ func (a *rdpAudioAdapter) UnsubscribeAudio() {
 	// Clean up would need more context
 }
 
+// monoBufferPool reduces allocations for stereo→mono conversion.
+// Max size: 480 frames * 2 bytes = 960 bytes (10ms at 48kHz)
+var monoBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 960)
+		return &buf
+	},
+}
+
 func (a *rdpAudioAdapter) PlayAudio(data []byte) error {
 	// Forward RDP client microphone audio to USB audio gadget
-	// The AUDIN channel sends 16-bit PCM, stereo, 48kHz which we write directly
-	return audio.WritePCM(data)
+	// AUDIN sends 16-bit PCM stereo (4 bytes/frame), USB gadget expects mono (2 bytes/frame)
+	// Convert stereo to mono by averaging left and right channels
+
+	if len(data) < 4 {
+		return nil
+	}
+
+	// Get a pooled buffer for mono output
+	bufPtr := monoBufferPool.Get().(*[]byte)
+	monoBuf := *bufPtr
+
+	stereoFrames := len(data) / 4 // 4 bytes per stereo frame (2 channels * 2 bytes)
+	monoBytes := stereoFrames * 2 // 2 bytes per mono sample
+
+	// Ensure buffer is large enough (should always be true for typical 10ms packets)
+	if monoBytes > cap(monoBuf) {
+		monoBuf = make([]byte, monoBytes)
+	} else {
+		monoBuf = monoBuf[:monoBytes]
+	}
+
+	// Convert stereo to mono: average L and R channels
+	// Input: L0_lo L0_hi R0_lo R0_hi L1_lo L1_hi R1_lo R1_hi ...
+	// Output: M0_lo M0_hi M1_lo M1_hi ... where M = (L + R) / 2
+	for i := 0; i < stereoFrames; i++ {
+		srcIdx := i * 4
+		dstIdx := i * 2
+
+		// Read L and R as 16-bit little-endian signed integers
+		left := int16(data[srcIdx]) | int16(data[srcIdx+1])<<8
+		right := int16(data[srcIdx+2]) | int16(data[srcIdx+3])<<8
+
+		// Average to mono (with proper rounding)
+		mono := int16((int32(left) + int32(right)) / 2)
+
+		// Write mono sample as little-endian
+		monoBuf[dstIdx] = byte(mono)
+		monoBuf[dstIdx+1] = byte(mono >> 8)
+	}
+
+	err := audio.WritePCM(monoBuf)
+
+	// Return buffer to pool
+	*bufPtr = monoBuf[:cap(monoBuf)]
+	monoBufferPool.Put(bufPtr)
+
+	return err
 }
 
 func (a *rdpAudioAdapter) EnableAudioInput() error {

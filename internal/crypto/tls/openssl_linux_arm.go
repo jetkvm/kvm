@@ -431,6 +431,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 	"unsafe"
@@ -486,6 +487,11 @@ func (c *opensslConn) Read(b []byte) (int, error) {
 	defer c.readMu.Unlock()
 
 	n := C.SSL_read(c.ssl, unsafe.Pointer(&b[0]), C.int(len(b)))
+
+	// Yield to Go scheduler after CGO call to prevent starving other goroutines
+	// (e.g., HTTPS TLS handshakes) on single-core ARM systems
+	runtime.Gosched()
+
 	if n <= 0 {
 		err := C.SSL_get_error(c.ssl, n)
 		if err == C.SSL_ERROR_ZERO_RETURN {
@@ -515,6 +521,11 @@ func (c *opensslConn) Write(b []byte) (int, error) {
 	defer c.writeMu.Unlock()
 
 	n := C.SSL_write(c.ssl, unsafe.Pointer(&b[0]), C.int(len(b)))
+
+	// Yield to Go scheduler after CGO call to prevent starving other goroutines
+	// (e.g., HTTPS TLS handshakes) on single-core ARM systems
+	runtime.Gosched()
+
 	if n <= 0 {
 		errStr := C.get_ssl_error_string()
 		defer C.free(unsafe.Pointer(errStr))

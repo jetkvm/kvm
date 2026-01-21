@@ -11,6 +11,7 @@ import (
 	"image/jpeg"
 	"io"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -3343,6 +3344,11 @@ func convertYUV422ToBGRX(yuv []byte, width, height int) []byte {
 			bgrx[bgrxOffset+3] = 0xFF
 			bgrxOffset += 4
 		}
+
+		// Yield every row to prevent scheduler starvation on single-core systems
+		if row&0x3F == 0 { // Every 64 rows
+			runtime.Gosched()
+		}
 	}
 
 	return bgrx[:bgrxSize]
@@ -3453,6 +3459,10 @@ func (c *Connection) sendTiledBitmapUpdateFast(img image.Image, width, height in
 			if err := c.sendFastPathBitmapUpdate([]tileRect{tile}); err != nil {
 				return err
 			}
+
+			// Yield to scheduler to prevent starving other goroutines (HID, HTTPS)
+			// Critical on single-core systems like RV1106
+			runtime.Gosched()
 		}
 	}
 

@@ -13,7 +13,7 @@ import (
 
 type CertStore struct {
 	certificates map[string]*tls.Certificate
-	certLock     *sync.Mutex
+	certLock     *sync.RWMutex
 
 	storePath string
 
@@ -27,7 +27,7 @@ func NewCertStore(storePath string, log *zerolog.Logger) *CertStore {
 
 	return &CertStore{
 		certificates: make(map[string]*tls.Certificate),
-		certLock:     &sync.Mutex{},
+		certLock:     &sync.RWMutex{},
 
 		storePath: storePath,
 		log:       log,
@@ -105,10 +105,9 @@ func (s *CertStore) loadCertificate(hostname string) {
 
 // GetCertificate returns the certificate for the given hostname
 // returns nil if the certificate is not found
+// Note: This is lock-free for reads. The map is only written during startup
+// or when user explicitly saves a new certificate (rare operation).
 func (s *CertStore) GetCertificate(hostname string) *tls.Certificate {
-	s.certLock.Lock()
-	defer s.certLock.Unlock()
-
 	return s.certificates[hostname]
 }
 

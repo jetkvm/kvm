@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -26,6 +27,11 @@ func setProcTitle(status string) {
 }
 
 func Main() {
+	// Set GOMAXPROCS higher than CPU count to improve concurrency when goroutines
+	// are blocked in I/O (TLS, sockets, CGO). This helps RDP/VNC/Web run in parallel
+	// on the single-core RV1106 by allowing more OS threads for blocking operations.
+	runtime.GOMAXPROCS(4)
+
 	setProcTitle("starting")
 
 	logger.Log().Msg("JetKVM Starting Up")

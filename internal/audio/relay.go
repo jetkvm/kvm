@@ -17,7 +17,7 @@ type PCMCallback func(pcm []byte)
 
 type OutputRelay struct {
 	source     *AudioSource
-	audioTrack *webrtc.TrackLocalStaticSample
+	audioTrack atomic.Pointer[webrtc.TrackLocalStaticSample]
 	logger     zerolog.Logger
 	running    atomic.Bool
 	sample     media.Sample
@@ -33,15 +33,25 @@ type OutputRelay struct {
 func NewOutputRelay(source *AudioSource, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-relay").Logger()
 
-	return &OutputRelay{
-		source:     source,
-		audioTrack: audioTrack,
-		logger:     logger,
-		stopped:    make(chan struct{}),
+	r := &OutputRelay{
+		source:  source,
+		logger:  logger,
+		stopped: make(chan struct{}),
 		sample: media.Sample{
 			Duration: 20 * time.Millisecond,
 		},
 	}
+	if audioTrack != nil {
+		r.audioTrack.Store(audioTrack)
+	}
+	return r
+}
+
+// SetAudioTrack updates the WebRTC audio track dynamically.
+// This allows the track to be set after the relay is created,
+// enabling RDP and WebRTC to connect in any order.
+func (r *OutputRelay) SetAudioTrack(track *webrtc.TrackLocalStaticSample) {
+	r.audioTrack.Store(track)
 }
 
 // SetPCMCallback sets a callback to receive raw PCM audio data.
@@ -126,10 +136,10 @@ func (r *OutputRelay) relayLoop() {
 		}
 
 		if msgType == ipcMsgTypeOpus && len(payload) > 0 {
-			// Write to WebRTC track if available
-			if r.audioTrack != nil {
+			// Write to WebRTC track if available (load atomically for thread-safety)
+			if track := r.audioTrack.Load(); track != nil {
 				r.sample.Data = payload
-				if err := r.audioTrack.WriteSample(r.sample); err != nil {
+				if err := track.WriteSample(r.sample); err != nil {
 					r.framesDropped.Add(1)
 					consecutiveWriteFailures++
 

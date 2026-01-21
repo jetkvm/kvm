@@ -150,6 +150,7 @@ var (
 )
 
 // RunWebSecureServer runs a web server with TLS.
+// Uses Go's crypto/tls which handles browser certificate warnings gracefully.
 func runWebSecureServer() {
 	tlsServiceLock.Lock()
 	defer tlsServiceLock.Unlock()
