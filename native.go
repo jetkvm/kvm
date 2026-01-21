@@ -92,6 +92,10 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			// Also send to RDP bitmap mode subscribers
 			BroadcastRDPJPEGFrame(frame)
 		},
+		OnRGBFrameReceived: func(frame native.RGBFrame) {
+			// Send raw RGB frames to RDP bitmap mode subscribers (RGA hardware acceleration)
+			BroadcastRDPRGBFrame(frame.Data, frame.Width, frame.Height)
+		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{
 				ActiveSessions:    getActiveSessions(),

@@ -176,6 +176,13 @@ type VideoProvider interface {
 
 // AudioProvider provides audio capture and playback.
 type AudioProvider interface {
+	// Connect signals that an RDP client needs audio.
+	// This ensures audio capture is running.
+	Connect()
+
+	// Disconnect signals that an RDP client no longer needs audio.
+	Disconnect()
+
 	// SubscribeAudio returns a channel for captured HDMI audio.
 	// Format: 16-bit signed PCM, stereo, 48kHz.
 	SubscribeAudio() <-chan []byte
@@ -186,6 +193,10 @@ type AudioProvider interface {
 	// PlayAudio plays audio data to the USB audio gadget.
 	// Format: 16-bit signed PCM, stereo, 48kHz.
 	PlayAudio(data []byte) error
+
+	// EnableAudioInput enables the audio input subsystem for RDP mic passthrough.
+	// This is called when the AUDIN channel becomes ready.
+	EnableAudioInput() error
 }
 
 // CameraProvider provides UVC camera output capabilities.

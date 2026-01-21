@@ -35,7 +35,14 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 			"bcdDevice": "0x0100", // USB2
 		},
 		configAttrs: gadgetAttributes{
-			"MaxPower": "250", // in unit of 2mA
+			// bmAttributes is a bitmask for USB configuration descriptor:
+			//   Bit 7: Must be 1 (reserved)
+			//   Bit 6: Self-powered (1 = device is self-powered)
+			//   Bit 5: Remote Wakeup (1 = device supports remote wakeup)
+			// 0xE0 = 0b11100000 = Self-powered + Remote Wakeup enabled
+			// This allows keyboard/mouse input to wake the host PC from sleep/suspend.
+			"bmAttributes": "0xE0",
+			"MaxPower":     "250", // in unit of 2mA
 		},
 	},
 	"base_info": {

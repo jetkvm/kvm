@@ -273,7 +273,7 @@ const (
 const (
 	HandshakeTimeout   = 30 * time.Second
 	NegotiationTimeout = 30 * time.Second
-	ReadTimeout        = 60 * time.Second
+	ReadTimeout        = 0 // No timeout - blocking read for maximum responsiveness
 	WriteTimeout       = 5 * time.Second
 	KeepAliveInterval  = 30 * time.Second
 )

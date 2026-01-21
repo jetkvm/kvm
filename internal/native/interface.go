@@ -43,4 +43,9 @@ type NativeInterface interface {
 
 	// H.264 encoder methods
 	VideoRequestKeyframe() error
+
+	// RGA RGB encoder methods (hardware YUV to BGRX conversion)
+	RgbStart() error
+	RgbStop() error
+	RgbIsRunning() (bool, error)
 }

@@ -43,6 +43,11 @@ static inline void jetkvm_cgo_setup_jpeg_handler() {
     jetkvm_set_jpeg_handler(&jetkvm_go_jpeg_handler);
 }
 
+extern void jetkvm_go_rgb_handler(cuint8_t *frame, ssize_t len, uint32_t width, uint32_t height);
+static inline void jetkvm_cgo_setup_rgb_handler() {
+    jetkvm_set_rgb_handler(&jetkvm_go_rgb_handler);
+}
+
 extern void jetkvm_go_indev_handler(int code);
 static inline void jetkvm_cgo_setup_indev_handler() {
     jetkvm_set_indev_handler(&jetkvm_go_indev_handler);
@@ -99,6 +104,19 @@ func jetkvm_go_jpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
 	}
 }
 
+//export jetkvm_go_rgb_handler
+func jetkvm_go_rgb_handler(frame *C.cuint8_t, len C.ssize_t, width C.uint32_t, height C.uint32_t) {
+	select {
+	case rgbFrameChan <- RGBFrame{
+		Data:   C.GoBytes(unsafe.Pointer(frame), C.int(len)),
+		Width:  uint32(width),
+		Height: uint32(height),
+	}:
+	default:
+		// Drop frame if channel is full (non-blocking)
+	}
+}
+
 //export jetkvm_go_indev_handler
 func jetkvm_go_indev_handler(code C.int) {
 	indevEventChan <- int(code)
@@ -131,6 +149,7 @@ func setUpNativeHandlers() {
 	C.jetkvm_cgo_setup_video_state_handler()
 	C.jetkvm_cgo_setup_video_handler()
 	C.jetkvm_cgo_setup_jpeg_handler()
+	C.jetkvm_cgo_setup_rgb_handler()
 	C.jetkvm_cgo_setup_indev_handler()
 	C.jetkvm_cgo_setup_rpc_handler()
 }
@@ -485,4 +504,30 @@ func videoRequestKeyframe() error {
 		return fmt.Errorf("failed to request keyframe: %d", ret)
 	}
 	return nil
+}
+
+// RGA RGB encoder functions (hardware YUV to BGRX conversion)
+func rgbStart() error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	ret := C.jetkvm_rgb_start()
+	if ret != 0 {
+		return fmt.Errorf("failed to start RGB encoder: %d", ret)
+	}
+	return nil
+}
+
+func rgbStop() {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	C.jetkvm_rgb_stop()
+}
+
+func rgbIsRunning() bool {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return bool(C.jetkvm_rgb_is_running())
 }

@@ -37,6 +37,7 @@ void ctrl_set_report_count(uint32_t value) {
 jetkvm_rpc_handler_t *rpc_handler = NULL;
 jetkvm_video_handler_t *video_handler = NULL;
 jetkvm_jpeg_handler_t *jpeg_handler = NULL;
+jetkvm_rgb_handler_t *rgb_handler = NULL;
 
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
@@ -49,6 +50,10 @@ void jetkvm_set_video_handler(jetkvm_video_handler_t *handler) {
 
 void jetkvm_set_jpeg_handler(jetkvm_jpeg_handler_t *handler) {
     jpeg_handler = handler;
+}
+
+void jetkvm_set_rgb_handler(jetkvm_rgb_handler_t *handler) {
+    rgb_handler = handler;
 }
 
 static jetkvm_indev_handler_t *jetkvm_indev_handler = NULL;
@@ -124,6 +129,14 @@ int video_send_jpeg_frame(const uint8_t *frame, ssize_t len)
 {
     if (jpeg_handler != NULL) {
         (*jpeg_handler)(frame, len);
+    }
+    return 0;
+}
+
+int video_send_rgb_frame(const uint8_t *frame, ssize_t len, uint32_t width, uint32_t height)
+{
+    if (rgb_handler != NULL) {
+        (*rgb_handler)(frame, len, width, height);
     }
     return 0;
 }
@@ -517,4 +530,17 @@ bool jetkvm_jpeg_is_running() {
 // Request an IDR (keyframe) from the H.264 encoder
 int jetkvm_video_request_keyframe() {
     return video_request_keyframe();
+}
+
+// RGA RGB encoder wrapper functions (hardware YUV to RGB)
+int jetkvm_rgb_start() {
+    return rgb_encoder_start();
+}
+
+void jetkvm_rgb_stop() {
+    rgb_encoder_stop();
+}
+
+bool jetkvm_rgb_is_running() {
+    return rgb_encoder_is_running();
 }

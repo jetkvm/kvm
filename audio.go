@@ -98,8 +98,9 @@ func startAudio() error {
 
 	var outputErr, inputErr error
 
-	// Start output audio if enabled and track is available (always uses HDMI)
-	if audioOutputEnabled.Load() && currentAudioTrack != nil {
+	// Start output audio if enabled (always uses HDMI)
+	// Audio capture works even without WebRTC track - for RDP audio output
+	if audioOutputEnabled.Load() {
 		outputErr = startOutputAudioUnderMutex(getAlsaDevice("hdmi"))
 	}
 
@@ -227,6 +228,27 @@ func onWebRTCDisconnect() {
 	}
 }
 
+// OnRDPAudioConnect is called when an RDP client needs audio.
+// This allows audio capture to start for RDP even without WebRTC.
+func OnRDPAudioConnect() {
+	count := activeConnections.Add(1)
+	audioLogger.Debug().Int32("connections", count).Msg("RDP audio connected")
+	if count == 1 {
+		if err := startAudio(); err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to start audio for RDP")
+		}
+	}
+}
+
+// OnRDPAudioDisconnect is called when an RDP client disconnects audio.
+func OnRDPAudioDisconnect() {
+	count := activeConnections.Add(-1)
+	audioLogger.Debug().Int32("connections", count).Msg("RDP audio disconnected")
+	if count <= 0 {
+		stopAudio()
+	}
+}
+
 func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	audioMutex.Lock()
 	defer audioMutex.Unlock()
@@ -242,7 +264,9 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 
 	currentAudioTrack = audioTrack
 
-	if audioInitialized && activeConnections.Load() > 0 && audioOutputEnabled.Load() && currentAudioTrack != nil {
+	// Restart audio if there are active connections (WebRTC or RDP).
+	// The relay handles nil audioTrack gracefully for RDP-only mode.
+	if audioInitialized && activeConnections.Load() > 0 && audioOutputEnabled.Load() {
 		if err := startOutputAudioUnderMutex(getAlsaDevice("hdmi")); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start output audio after track change")
 		}

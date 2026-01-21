@@ -20,6 +20,7 @@ type Native struct {
 	defaultQualityFactor float64
 	onVideoStateChange   func(state VideoState)
 	onVideoFrameReceived func(frame []byte, duration time.Duration)
+	onRGBFrameReceived   func(frame RGBFrame)
 	onIndevEvent         func(event string)
 	onRpcEvent           func(event string)
 	sleepModeSupported   bool
@@ -37,6 +38,7 @@ type NativeOptions struct {
 	OnVideoStateChange   func(state VideoState)
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
 	OnJpegFrameReceived  func(frame []byte)
+	OnRGBFrameReceived   func(frame RGBFrame)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnNativeRestart      func()
@@ -97,6 +99,13 @@ func NewNative(opts NativeOptions) *Native {
 		}
 	}
 
+	onRGBFrameReceived := opts.OnRGBFrameReceived
+	if onRGBFrameReceived == nil {
+		onRGBFrameReceived = func(frame RGBFrame) {
+			nativeLogger.Trace().Int("frameSize", len(frame.Data)).Uint32("width", frame.Width).Uint32("height", frame.Height).Msg("RGB frame received")
+		}
+	}
+
 	sleepModeSupported := isSleepModeSupported()
 
 	defaultQualityFactor := opts.DefaultQualityFactor
@@ -114,6 +123,7 @@ func NewNative(opts NativeOptions) *Native {
 		defaultQualityFactor: defaultQualityFactor,
 		onVideoStateChange:   onVideoStateChange,
 		onVideoFrameReceived: onVideoFrameReceived,
+		onRGBFrameReceived:   onRGBFrameReceived,
 		onIndevEvent:         onIndevEvent,
 		onRpcEvent:           onRpcEvent,
 		sleepModeSupported:   sleepModeSupported,
@@ -131,6 +141,7 @@ func (n *Native) Start() error {
 	go n.handleLogChan()
 	go n.handleVideoStateChan()
 	go n.handleVideoFrameChan()
+	go n.handleRGBFrameChan()
 	go n.handleIndevEventChan()
 	go n.handleRpcEventChan()
 
@@ -226,4 +237,27 @@ func (n *Native) JpegIsRunning() (bool, error) {
 // VideoRequestKeyframe requests an IDR (keyframe) from the H.264 encoder
 func (n *Native) VideoRequestKeyframe() error {
 	return videoRequestKeyframe()
+}
+
+// RGA RGB encoder public API (hardware YUV to BGRX conversion)
+
+// RgbStart starts the RGA RGB encoder for hardware YUV to BGRX conversion
+func (n *Native) RgbStart() error {
+	return rgbStart()
+}
+
+// RgbStop stops the RGA RGB encoder
+func (n *Native) RgbStop() error {
+	rgbStop()
+	return nil
+}
+
+// RgbIsRunning returns true if the RGA RGB encoder is running
+func (n *Native) RgbIsRunning() (bool, error) {
+	return rgbIsRunning(), nil
+}
+
+// GetRGBFrameChannel returns the channel for receiving raw RGB frames
+func GetRGBFrameChannel() <-chan RGBFrame {
+	return rgbFrameChan
 }

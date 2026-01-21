@@ -17,6 +17,7 @@ import (
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/pion/dtls/v3"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
@@ -261,9 +262,11 @@ func newSession(config SessionConfig) (*Session, error) {
 	// This offloads AES-GCM encryption/decryption to the RV1106 crypto engine
 	webrtcSettingEngine.SetDTLSCustomerCipherSuites(crypto.HardwareCipherSuites)
 
-	// Note: SRTP uses AES-CM-HMAC-SHA1 (default) rather than AES-GCM because
-	// GHASH (used in GCM) is slower than SHA1 in pure software on ARM without
-	// PMULL instructions. Hardware SRTP would require forking pion/srtp.
+	// Use SRTP_AEAD_AES_128_GCM for SRTP media encryption.
+	// AES-GCM is preferred because we have hardware acceleration for AES-GCM via /dev/crypto.
+	// Note: pion/srtp still uses software AES-GCM; full hardware acceleration would require
+	// forking pion/srtp to use our crypto.AEAD interface.
+	webrtcSettingEngine.SetSRTPProtectionProfiles(dtls.SRTP_AEAD_AES_128_GCM)
 
 	mDNSNetworkTypes := make([]webrtc.NetworkType, 0)
 	if config.MDNSMode == "auto" || config.MDNSMode == "ipv4_only" {

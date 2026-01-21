@@ -107,14 +107,15 @@ type SoundChannel struct {
 	selectedFmt   AudioFormat
 	formatMu      sync.RWMutex
 
-	// Block tracking for flow control
-	blockNo       uint8
+	// Block tracking for flow control (all atomic for lock-free hot path)
+	blockNo       atomic.Uint32 // Wraps at 256, cast to uint8 when used
 	blocksPending atomic.Int32
 	lastConfirmed atomic.Uint32
 	timestamp     atomic.Uint32
 
-	// Mutex for send operations
-	sendMu sync.Mutex
+	// Pre-allocated buffer for zero-allocation hot path
+	// Layout: [Header 4][Wave2Header 12][Audio data up to SNDCBlockSize]
+	audioBuf [SNDCHeaderSize + SNDCWave2HeaderSize + SNDCBlockSize]byte
 
 	ready atomic.Bool
 }
@@ -265,9 +266,11 @@ func (s *SoundChannel) handleClientFormats(data []byte) error {
 	s.selectedIndex = selectedIndex
 	s.ready.Store(true)
 
-	// Notify that channel is ready
+	// Notify that channel is ready - run in goroutine to avoid blocking message loop
+	// The audio initialization can take time (CGO calls), but we need to let the
+	// message loop continue to process DVC create responses
 	if s.onReady != nil {
-		s.onReady(s)
+		go s.onReady(s)
 	}
 
 	return nil
@@ -312,30 +315,33 @@ func (s *SoundChannel) handleTraining(data []byte) error {
 // SendAudio sends audio data to the client.
 // Data should be in the negotiated format (typically 16-bit PCM, stereo, 48kHz).
 // Returns ErrSoundBackpressure if too many blocks are pending acknowledgment.
+//
+// HOT PATH: Zero allocations, lock-free atomic operations.
 func (s *SoundChannel) SendAudio(data []byte) error {
 	if !s.ready.Load() {
 		return ErrSoundNotReady
 	}
 
-	// Flow control - check pending blocks
+	// Flow control - check pending blocks (lock-free)
 	if s.blocksPending.Load() >= SNDCMaxBlocksPending {
 		return ErrSoundBackpressure
 	}
 
-	s.sendMu.Lock()
-	defer s.sendMu.Unlock()
+	// LOCK-FREE: Get block number and increment atomically (wraps at 256)
+	blockNo := uint8(s.blockNo.Add(1) - 1) // Add returns new value, we want old value
 
-	// Get block number and increment (wraps at 256)
-	blockNo := s.blockNo
-	s.blockNo++
-
-	// Get timestamp
+	// Get timestamp (lock-free)
 	timestamp := uint16(s.timestamp.Add(1))
 
-	// Use WAVE2 format (Windows 8+, more efficient)
-	// Header(4) + Wave2Header(12) + data
+	// Check data size fits in pre-allocated buffer
+	if len(data) > SNDCBlockSize {
+		data = data[:SNDCBlockSize] // Truncate to max block size
+	}
+
+	// ZERO-ALLOCATION: Use pre-allocated buffer
 	bodySize := SNDCWave2HeaderSize + len(data)
-	buf := make([]byte, SNDCHeaderSize+bodySize)
+	totalSize := SNDCHeaderSize + bodySize
+	buf := s.audioBuf[:totalSize]
 
 	// Header
 	buf[0] = SNDCWave2
@@ -357,7 +363,7 @@ func (s *SoundChannel) SendAudio(data []byte) error {
 	// Audio data
 	copy(buf[pos:], data)
 
-	// Increment pending before sending
+	// Increment pending before sending (lock-free)
 	s.blocksPending.Add(1)
 
 	return s.sendFunc(buf)

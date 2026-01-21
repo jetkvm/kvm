@@ -248,3 +248,22 @@ func (c *GRPCClient) VideoRequestKeyframe() error {
 	_, err := c.client.VideoRequestKeyframe(context.Background(), &pb.Empty{})
 	return err
 }
+
+// RGB encoder methods
+func (c *GRPCClient) RgbStart() error {
+	_, err := c.client.RgbStart(context.Background(), &pb.Empty{})
+	return err
+}
+
+func (c *GRPCClient) RgbStop() error {
+	_, err := c.client.RgbStop(context.Background(), &pb.Empty{})
+	return err
+}
+
+func (c *GRPCClient) RgbIsRunning() (bool, error) {
+	resp, err := c.client.RgbIsRunning(context.Background(), &pb.Empty{})
+	if err != nil {
+		return false, err
+	}
+	return resp.Running, nil
+}

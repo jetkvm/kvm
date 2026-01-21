@@ -41,6 +41,9 @@ func GetLastPCM() []byte {
 	return nil
 }
 
+// ReleasePCMBuffer is a no-op on non-ARM platforms.
+func ReleasePCMBuffer(buf []byte) {}
+
 // WritePCM is a stub on non-ARM platforms.
 func WritePCM(pcmData []byte) error {
 	return nil

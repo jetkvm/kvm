@@ -123,3 +123,10 @@ func (e *EmptyNativeInterface) JpegIsRunning() (bool, error) { return false, nil
 
 // H.264 encoder methods
 func (e *EmptyNativeInterface) VideoRequestKeyframe() error { return nil }
+
+// RGA RGB encoder methods
+func (e *EmptyNativeInterface) RgbStart() error { return nil }
+
+func (e *EmptyNativeInterface) RgbStop() error { return nil }
+
+func (e *EmptyNativeInterface) RgbIsRunning() (bool, error) { return false, nil }

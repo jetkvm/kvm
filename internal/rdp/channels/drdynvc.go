@@ -57,10 +57,18 @@ const (
 // DVCLogger is a simple logging function for DVC events.
 type DVCLogger func(msg string, channel string, channelID uint32, args ...interface{})
 
+// Maximum number of DVC channels for lock-free lookup array.
+// Typical RDP sessions use 4-6 channels (GFX, RDPSND, AUDIN, RDPCAM, CLIPRDR, etc.)
+const DVCMaxChannels = 16
+
 // DVCManager manages dynamic virtual channels.
 type DVCManager struct {
 	channels   map[uint32]*DVCChannel
 	channelsMu sync.RWMutex
+
+	// Lock-free channel lookup for hot path (indexed by channel ID)
+	// Uses atomic.Pointer for safe concurrent access without locks
+	channelPtrs [DVCMaxChannels]atomic.Pointer[DVCChannel]
 
 	nextChannelID atomic.Uint32
 	version       uint16
@@ -74,6 +82,9 @@ type DVCManager struct {
 	// Capability exchange state
 	capabilityReceived chan struct{}
 	capabilityOnce     sync.Once
+
+	// Callback for when capability is received (called synchronously from message loop)
+	onCapabilityReceived func()
 }
 
 // DVC fragment buffer sizes for zero-allocation hot path.
@@ -95,12 +106,24 @@ type DVCChannel struct {
 	// Pre-allocated fragment buffer for zero-allocation hot path
 	// Used by SendDataZeroAlloc to avoid per-fragment allocations
 	fragBuf [DVCFragmentBufSize]byte
+
+	// Fragment reassembly state (for incoming fragmented messages)
+	// Per MS-RDPEDYC: DATA_FIRST + DATA PDUs must be reassembled before delivery
+	reassemblyBuf    []byte // Accumulated data from DATA_FIRST and DATA PDUs
+	reassemblyTotal  uint32 // Expected total length from DATA_FIRST
+	reassemblyOffset uint32 // Current accumulated length
 }
 
 // DVCHandler handles incoming data on a DVC.
 type DVCHandler interface {
 	OnData(data []byte) error
 	OnClose()
+}
+
+// DVCOpenHandler is an optional interface that handlers can implement
+// to be notified when the channel is successfully opened.
+type DVCOpenHandler interface {
+	OnChannelOpen()
 }
 
 // NewDVCManager creates a new DVC manager.
@@ -130,6 +153,24 @@ func (m *DVCManager) HandlePDU(data []byte) error {
 	cmdByte := data[0]
 	pduType := cmdByte & 0xF0
 	cbID := cmdByte & 0x03 // Channel ID size indicator
+
+	// Log all PDU types for debugging (at trace level)
+	if m.logger != nil {
+		pduNames := map[byte]string{
+			DVCCapabilityResponse: "CAP_RSP",
+			DVCCreateResponse:     "CREATE_RSP",
+			DVCDataFirst:          "DATA_FIRST",
+			DVCData:               "DATA",
+			DVCCloseRequest:       "CLOSE",
+			DVCDataCompressed:     "DATA_COMPRESSED",
+			DVCSoftSyncRequest:    "SOFT_SYNC",
+		}
+		name, ok := pduNames[pduType]
+		if !ok {
+			name = "UNKNOWN"
+		}
+		m.logger("DVC: received PDU %s (cmd=0x%02X type=0x%02X cbID=%d) len=%d", "", uint32(0), name, cmdByte, pduType, cbID, len(data))
+	}
 
 	switch pduType {
 	case DVCCapabilityResponse:
@@ -176,7 +217,20 @@ func (m *DVCManager) handleCapabilityResponse(data []byte) error {
 	m.capabilityOnce.Do(func() {
 		close(m.capabilityReceived)
 	})
+
+	// Call the capability received callback synchronously
+	// This allows channel creation to happen in the same execution context as the message loop
+	if m.onCapabilityReceived != nil {
+		m.onCapabilityReceived()
+	}
+
 	return nil
+}
+
+// SetOnCapabilityReceived sets a callback that is called synchronously when capability is received.
+// This should be used instead of WaitForCapability for synchronous channel creation.
+func (m *DVCManager) SetOnCapabilityReceived(callback func()) {
+	m.onCapabilityReceived = callback
 }
 
 // WaitForCapability waits for the capability response with a timeout.
@@ -221,13 +275,30 @@ func (m *DVCManager) handleCreateResponse(data []byte, cbID byte) error {
 				m.logger("DVC: channel creation failed", ch.Name, channelID, status)
 			}
 		}
+		// Store in lock-free array for hot path access (if channel ID fits)
+		if status == 0 && channelID < DVCMaxChannels {
+			m.channelPtrs[channelID].Store(ch)
+		}
 	}
 	m.channelsMu.Unlock()
+
+	// Notify handler that channel is open (outside lock)
+	if ok && status == 0 && ch.Handler != nil {
+		if openHandler, hasOpen := ch.Handler.(DVCOpenHandler); hasOpen {
+			openHandler.OnChannelOpen()
+		}
+	}
 
 	return nil
 }
 
-// handleData processes incoming data.
+// handleData processes incoming data with fragment reassembly.
+// Per MS-RDPEDYC, large messages are fragmented:
+// - DATA_FIRST PDU contains Length field (total size) + first chunk
+// - Subsequent DATA PDUs contain continuation chunks (no length field)
+// The receiver must reassemble all fragments before delivering to handler.
+//
+// HOT PATH: Uses lock-free channel lookup for low-latency data handling.
 func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	channelID, pos := m.readChannelID(data[1:], cbID)
 	if pos < 0 {
@@ -235,27 +306,113 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	}
 
 	payload := data[1+pos:]
+	var totalLength uint32
 
-	// If first PDU, skip the length field
-	if isFirst && len(payload) >= 4 {
-		// Length is at start (4 bytes for large data)
-		payload = payload[4:]
+	// If first PDU, parse the length field (indicates total message size)
+	// The Len field is in bits 2-3 of the cmd byte:
+	//   00 = 1 byte, 01 = 2 bytes, 10 = 4 bytes
+	if isFirst && len(payload) > 0 {
+		cmdByte := data[0]
+		lenBits := (cmdByte >> 2) & 0x03
+		var lenFieldSize int
+		switch lenBits {
+		case 0:
+			lenFieldSize = 1
+			if len(payload) >= 1 {
+				totalLength = uint32(payload[0])
+			}
+		case 1:
+			lenFieldSize = 2
+			if len(payload) >= 2 {
+				totalLength = uint32(binary.LittleEndian.Uint16(payload[0:2]))
+			}
+		default: // 2 or 3
+			lenFieldSize = 4
+			if len(payload) >= 4 {
+				totalLength = binary.LittleEndian.Uint32(payload[0:4])
+			}
+		}
+		if len(payload) >= lenFieldSize {
+			payload = payload[lenFieldSize:]
+		}
 	}
 
-	m.channelsMu.RLock()
-	ch, ok := m.channels[channelID]
-	m.channelsMu.RUnlock()
+	// LOCK-FREE HOT PATH: Try atomic pointer array first (no locks)
+	var ch *DVCChannel
+	if channelID < DVCMaxChannels {
+		ch = m.channelPtrs[channelID].Load()
+	}
 
-	if !ok || !ch.Open || ch.Handler == nil {
+	// Fallback to map lookup only if not in atomic array (rare)
+	if ch == nil {
+		m.channelsMu.RLock()
+		ch = m.channels[channelID]
+		m.channelsMu.RUnlock()
+	}
+
+	if ch == nil || !ch.Open || ch.Handler == nil {
 		return nil
 	}
 
+	// Fragment reassembly per MS-RDPEDYC section 3.1.5.2.2
+	if isFirst {
+		// DATA_FIRST: Start new reassembly or deliver if complete
+		if totalLength > 0 && uint32(len(payload)) < totalLength {
+			// Fragmented message - start reassembly
+			// Allocate buffer for total message size (reuse if possible)
+			if cap(ch.reassemblyBuf) >= int(totalLength) {
+				ch.reassemblyBuf = ch.reassemblyBuf[:totalLength]
+			} else {
+				ch.reassemblyBuf = make([]byte, totalLength)
+			}
+			copy(ch.reassemblyBuf, payload)
+			ch.reassemblyTotal = totalLength
+			ch.reassemblyOffset = uint32(len(payload))
+			return nil // Wait for more DATA PDUs
+		}
+		// Single-fragment message (fits in one PDU) - deliver directly
+		ch.reassemblyTotal = 0
+		ch.reassemblyOffset = 0
+		return ch.Handler.OnData(payload)
+	}
+
+	// DATA (continuation): Append to reassembly buffer
+	if ch.reassemblyTotal > 0 {
+		// Append payload to reassembly buffer
+		remaining := ch.reassemblyTotal - ch.reassemblyOffset
+		copyLen := uint32(len(payload))
+		if copyLen > remaining {
+			copyLen = remaining
+		}
+		copy(ch.reassemblyBuf[ch.reassemblyOffset:], payload[:copyLen])
+		ch.reassemblyOffset += copyLen
+
+		// Check if reassembly is complete
+		if ch.reassemblyOffset >= ch.reassemblyTotal {
+			// Deliver complete message - make a copy so reassemblyBuf can be reused safely
+			// This prevents data corruption if handler stores the slice for async processing
+			completeMsg := make([]byte, ch.reassemblyTotal)
+			copy(completeMsg, ch.reassemblyBuf[:ch.reassemblyTotal])
+			ch.reassemblyTotal = 0
+			ch.reassemblyOffset = 0
+			return ch.Handler.OnData(completeMsg)
+		}
+		return nil // Still waiting for more data
+	}
+
+	// No reassembly in progress - treat as single-fragment DATA
+	// (This can happen if DATA_FIRST was never received, e.g., protocol error)
 	return ch.Handler.OnData(payload)
 }
 
 // handleClose processes channel close.
 func (m *DVCManager) handleClose(data []byte, cbID byte) error {
 	channelID, _ := m.readChannelID(data[1:], cbID)
+
+	// Clear lock-free pointer first (if in range)
+	if channelID < DVCMaxChannels {
+		m.channelPtrs[channelID].Store(nil)
+	}
 
 	m.channelsMu.Lock()
 	ch, ok := m.channels[channelID]
@@ -447,14 +604,17 @@ func (ch *DVCChannel) sendDataPDUZeroAlloc(data []byte, isFirst bool, totalLen u
 	if isFirst {
 		pduType = DVCDataFirst
 		// Add length field for first PDU
+		// The Len field is in bits 2-3 of the cmd byte:
+		//   00 = 1 byte, 01 = 2 bytes, 10 = 4 bytes
 		if totalLen > 0xFFFF {
 			lenFieldSize = 4
-			cbIDLocal |= 0x08 // Length indicator for 4 bytes
+			cbIDLocal |= 0x08 // Len=10 (bits 2-3) for 4-byte length
 		} else if totalLen > 0xFF {
 			lenFieldSize = 2
-			cbIDLocal |= 0x04 // Length indicator for 2 bytes
+			cbIDLocal |= 0x04 // Len=01 (bits 2-3) for 2-byte length
 		} else {
 			lenFieldSize = 1
+			// Len=00 (no bits set) for 1-byte length
 		}
 	}
 
@@ -527,6 +687,11 @@ func (ch *DVCChannel) Close() error {
 
 // Close closes the DVC manager and all its channels.
 func (m *DVCManager) Close() {
+	// Clear all lock-free pointers first
+	for i := range m.channelPtrs {
+		m.channelPtrs[i].Store(nil)
+	}
+
 	m.channelsMu.Lock()
 	defer m.channelsMu.Unlock()
 

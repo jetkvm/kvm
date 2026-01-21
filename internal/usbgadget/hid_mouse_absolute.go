@@ -122,6 +122,8 @@ func (u *UsbGadget) AbsMouseWheelReport(wheelY int8, wheelX int8) error {
 		return nil
 	}
 
+	u.log.Warn().Int8("wheelY", wheelY).Int8("wheelX", wheelX).Msg("HID: AbsMouseWheelReport sending")
+
 	err := u.absMouseWriteHidFile([]byte{
 		2,            // Report ID 2
 		byte(wheelY), // Wheel Y - vertical scroll (signed)

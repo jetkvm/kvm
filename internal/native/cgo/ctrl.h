@@ -20,11 +20,13 @@ typedef void (jetkvm_log_handler_t)(int level, const char *filename, const char 
 typedef void (jetkvm_rpc_handler_t)(const char *method, const char *params);
 typedef void (jetkvm_video_handler_t)(const uint8_t *frame, ssize_t len);
 typedef void (jetkvm_jpeg_handler_t)(const uint8_t *frame, ssize_t len);
+typedef void (jetkvm_rgb_handler_t)(const uint8_t *frame, ssize_t len, uint32_t width, uint32_t height);
 typedef void (jetkvm_indev_handler_t)(int code);
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler);
 void jetkvm_set_video_handler(jetkvm_video_handler_t *handler);
 void jetkvm_set_jpeg_handler(jetkvm_jpeg_handler_t *handler);
+void jetkvm_set_rgb_handler(jetkvm_rgb_handler_t *handler);
 void jetkvm_set_indev_handler(jetkvm_indev_handler_t *handler);
 void jetkvm_set_rpc_handler(jetkvm_rpc_handler_t *handler);
 void jetkvm_call_rpc_handler(const char *method, const char *params);
@@ -71,6 +73,7 @@ void video_report_format(bool ready, const char *error, u_int16_t width, u_int16
 void video_send_format_report();
 int video_send_frame(const uint8_t *frame, ssize_t len);
 int video_send_jpeg_frame(const uint8_t *frame, ssize_t len);
+int video_send_rgb_frame(const uint8_t *frame, ssize_t len, uint32_t width, uint32_t height);
 
 // JPEG encoder control
 int jetkvm_jpeg_start(int quality);
@@ -78,6 +81,11 @@ void jetkvm_jpeg_stop();
 int jetkvm_jpeg_set_quality(int quality);
 int jetkvm_jpeg_get_quality();
 bool jetkvm_jpeg_is_running();
+
+// RGA RGB encoder control (hardware YUV to RGB conversion)
+int jetkvm_rgb_start();
+void jetkvm_rgb_stop();
+bool jetkvm_rgb_is_running();
 
 // H.264 encoder control
 int jetkvm_video_request_keyframe();

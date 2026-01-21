@@ -29,6 +29,11 @@ service NativeService {
   rpc JpegGetQuality(Empty) returns (JpegGetQualityResponse);
   rpc JpegIsRunning(Empty) returns (JpegIsRunningResponse);
 
+  // RGB/YUV encoder methods (raw frame output for RDP bitmap mode)
+  rpc RgbStart(Empty) returns (Empty);
+  rpc RgbStop(Empty) returns (Empty);
+  rpc RgbIsRunning(Empty) returns (RgbIsRunningResponse);
+
   // UI methods
   rpc GetLVGLVersion(Empty) returns (GetLVGLVersionResponse);
   rpc UIObjHide(UIObjHideRequest) returns (UIObjHideResponse);
@@ -122,6 +127,10 @@ message JpegGetQualityResponse {
 }
 
 message JpegIsRunningResponse {
+  bool running = 1;
+}
+
+message RgbIsRunningResponse {
   bool running = 1;
 }
 

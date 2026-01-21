@@ -9,9 +9,9 @@ import (
 	"net"
 	"sync"
 
+	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/vnc"
-	"github.com/jetkvm/kvm/internal/vnctls"
 )
 
 var (
@@ -141,23 +141,25 @@ func initVNCServer() error {
 		return nil
 	}
 
-	// Initialize OpenSSL TLS subsystem early to check hardware crypto availability
-	vnctls.Init()
+	// Initialize TLS subsystem early to check hardware crypto availability
+	cryptotls.Init()
 
 	// Set up the TLS and crypto hooks in the vnc package
 	vnc.TLSAvailabilityChecker = func() bool {
 		return (&vncTLSAdapter{}).IsTLSAvailable()
 	}
 	vnc.GetCertificateFunc = getCertificate
-	vnc.TLSConnUpgrader = func(conn net.Conn, useX509 bool, certFile, keyFile string) (vnc.TLSConnection, error) {
-		tlsConn, err := vnctls.UpgradeToTLS(conn, useX509, certFile, keyFile)
-		if err != nil {
-			return nil, err
+	vnc.TLSConnUpgrader = func(conn net.Conn, useX509 bool, certPEM, keyPEM string) (vnc.TLSConnection, error) {
+		tlsConfig := cryptotls.VNCConfig()
+		if useX509 {
+			tlsConfig.Mode = cryptotls.ModeX509
+			tlsConfig.CertPEM = certPEM
+			tlsConfig.KeyPEM = keyPEM
 		}
-		return tlsConn, nil
+		return cryptotls.Server(conn, tlsConfig)
 	}
-	vnc.IsHardwareCryptoEnabledFunc = vnctls.IsHardwareCryptoEnabled
-	vnc.GetHardwareCryptoEngineFunc = vnctls.GetHardwareCryptoEngine
+	vnc.IsHardwareCryptoEnabledFunc = cryptotls.IsHardwareAvailable
+	vnc.GetHardwareCryptoEngineFunc = cryptotls.HardwareEngine
 
 	server := GetVNCServer()
 	server.SetPort(config.VNCPort)
@@ -167,8 +169,8 @@ func initVNCServer() error {
 		Int("port", config.VNCPort).
 		Int("quality", config.VNCQuality).
 		Bool("tls", config.VNCUseTLS).
-		Bool("hwCrypto", vnctls.IsHardwareCryptoEnabled()).
-		Str("hwEngine", vnctls.GetHardwareCryptoEngine()).
+		Bool("hwCrypto", cryptotls.IsHardwareAvailable()).
+		Str("hwEngine", cryptotls.HardwareEngine()).
 		Int("maxConnections", config.VNCMaxConnections).
 		Msg("initializing VNC server")
 

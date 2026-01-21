@@ -6,9 +6,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// RGBFrame represents a raw RGB frame from RGA hardware conversion
+type RGBFrame struct {
+	Data   []byte
+	Width  uint32
+	Height uint32
+}
+
 var (
 	videoFrameChan chan []byte           = make(chan []byte)
 	jpegFrameChan  chan []byte           = make(chan []byte, 2) // Buffered for non-blocking JPEG delivery
+	rgbFrameChan   chan RGBFrame         = make(chan RGBFrame, 2) // Buffered for non-blocking RGB delivery
 	videoStateChan chan VideoState       = make(chan VideoState)
 	logChan        chan nativeLogMessage = make(chan nativeLogMessage)
 	indevEventChan chan int              = make(chan int)
@@ -79,5 +87,12 @@ func (n *Native) handleRpcEventChan() {
 	for {
 		event := <-rpcEventChan
 		n.onRpcEvent(event)
+	}
+}
+
+func (n *Native) handleRGBFrameChan() {
+	for {
+		frame := <-rgbFrameChan
+		n.onRGBFrameReceived(frame)
 	}
 }

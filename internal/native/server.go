@@ -108,6 +108,19 @@ func RunNativeProcess(binaryName string) {
 		logger.Warn().Msg("JPEG socket: path is EMPTY, skipping connection")
 	}
 
+	// Connect to RGB stream socket
+	var rgbConn net.Conn
+	logger.Warn().Str("rgbStreamSocketPath", proxyOptions.RgbStreamUnixSocket).Msg("RGB socket: attempting to connect...")
+	if proxyOptions.RgbStreamUnixSocket != "" {
+		rgbConn, err = net.Dial("unix", proxyOptions.RgbStreamUnixSocket)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("RGB socket: FAILED to connect")
+		}
+		logger.Warn().Str("rgbStreamSocketPath", proxyOptions.RgbStreamUnixSocket).Msg("RGB socket: CONNECTED successfully")
+	} else {
+		logger.Warn().Msg("RGB socket: path is EMPTY, skipping connection")
+	}
+
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
 		// Write 4-byte frame length prefix, then frame data
@@ -161,6 +174,40 @@ func RunNativeProcess(binaryName string) {
 		}()
 	} else {
 		logger.Warn().Msg("JPEG forwarder: jpegConn is nil, not starting forwarder")
+	}
+
+	// Start goroutine to forward RGB frames to parent process
+	if rgbConn != nil {
+		go func() {
+			rgbChan := GetRGBFrameChannel()
+			frameCount := 0
+			logger.Warn().Msg("RGB forwarder: goroutine started, waiting for frames...")
+			for frame := range rgbChan {
+				frameCount++
+				if frameCount <= 3 || frameCount%100 == 0 {
+					logger.Warn().Int("frameCount", frameCount).Int("frameSize", len(frame.Data)).
+						Uint32("width", frame.Width).Uint32("height", frame.Height).
+						Msg("RGB forwarder: forwarding frame to parent")
+				}
+				// Write 12-byte header: frame_size (4) + width (4) + height (4)
+				var headerBuffer [12]byte
+				binary.LittleEndian.PutUint32(headerBuffer[0:4], uint32(len(frame.Data)))
+				binary.LittleEndian.PutUint32(headerBuffer[4:8], frame.Width)
+				binary.LittleEndian.PutUint32(headerBuffer[8:12], frame.Height)
+
+				if _, err := rgbConn.Write(headerBuffer[:]); err != nil {
+					logger.Warn().Err(err).Msg("RGB forwarder: failed to write header to socket")
+					return
+				}
+				if _, err := rgbConn.Write(frame.Data); err != nil {
+					logger.Warn().Err(err).Msg("RGB forwarder: failed to write frame to socket")
+					return
+				}
+			}
+			logger.Warn().Int("totalFrames", frameCount).Msg("RGB forwarder: channel closed")
+		}()
+	} else {
+		logger.Warn().Msg("RGB forwarder: rgbConn is nil, not starting forwarder")
 	}
 
 	grpcLogger := logger.With().Str("socketPath", fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket)).Logger()

@@ -13,14 +13,15 @@ import (
 // AUDIN channel name.
 const AudinChannelName = "AUDIO_INPUT"
 
-// AUDIN message types.
+// AUDIN message types (per MS-RDPEAI 2.2.2).
 const (
-	AudinMsgVersion      = 0x01
-	AudinMsgFormats      = 0x02
-	AudinMsgOpen         = 0x03
-	AudinMsgOpenReply    = 0x04
-	AudinMsgData         = 0x05
-	AudinMsgFormatChange = 0x06
+	AudinMsgVersion      = 0x01 // CYCAP_REQ / SNDIN_VERSION
+	AudinMsgFormats      = 0x02 // SNDIN_FORMATS
+	AudinMsgOpen         = 0x03 // SNDIN_OPEN
+	AudinMsgOpenReply    = 0x04 // SNDIN_OPEN_REPLY
+	AudinMsgDataIncoming = 0x05 // SNDIN_DATA_INCOMING (client notification before data)
+	AudinMsgData         = 0x06 // SNDIN_DATA (actual audio data)
+	AudinMsgFormatChange = 0x07 // SNDIN_FORMATCHANGE
 )
 
 // AUDIN version.
@@ -28,22 +29,21 @@ const AudinVersion = 0x00000001
 
 // AUDIN sizes.
 const (
-	AudinHeaderSize     = 1 // msgType(1)
-	AudinVersionSize    = 4 // version(4)
-	AudinFormatsHdrSize = 4 // numFormats(4)
-	AudinOpenSize       = 8 // frameSize(4) + initialFormat(4)
-	AudinOpenReplySize  = 4 // result(4)
-	AudinDataSize       = 4 // data(variable)
+	AudinHeaderSize     = 1  // msgType(1)
+	AudinVersionSize    = 4  // version(4)
+	AudinFormatsHdrSize = 8  // numFormats(4) + cbSizeFormatsPacket(4)
+	AudinOpenSize       = 26 // frameSize(4) + initialFormat(4) + WAVEFORMATEX(18)
+	AudinOpenReplySize  = 4  // result(4)
 )
 
 // Preferred audio input format: 16-bit PCM, mono/stereo, 48kHz.
 const (
-	AudinPreferredChannels      = 2
-	AudinPreferredSampleRate    = 48000
-	AudinPreferredBitsPerSample = 16
-	AudinPreferredBlockAlign    = AudinPreferredChannels * (AudinPreferredBitsPerSample / 8)
-	AudinPreferredBytesPerSec   = AudinPreferredSampleRate * AudinPreferredBlockAlign
-	AudinDefaultFrameSize       = 960 // 10ms at 48kHz stereo 16-bit
+	AudinPreferredChannels        = 2
+	AudinPreferredSampleRate      = 48000
+	AudinPreferredBitsPerSample   = 16
+	AudinPreferredBlockAlign      = AudinPreferredChannels * (AudinPreferredBitsPerSample / 8)
+	AudinPreferredBytesPerSec     = AudinPreferredSampleRate * AudinPreferredBlockAlign
+	AudinDefaultFramesPerPacket   = AudinPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
 )
 
 // Common errors.
@@ -59,6 +59,9 @@ type AudinDataCallback func(data []byte)
 // AudinReadyCallback is called when the audin channel is ready to receive audio.
 type AudinReadyCallback func(a *AudinChannel)
 
+// AudinLogFunc is a simple logging function for AUDIN events.
+type AudinLogFunc func(msg string, args ...interface{})
+
 // AudinChannel implements the AUDIN dynamic virtual channel.
 type AudinChannel struct {
 	channel *DVCChannel
@@ -68,6 +71,9 @@ type AudinChannel struct {
 	onReady AudinReadyCallback
 	onData  AudinDataCallback
 
+	// Optional logger for debugging
+	logger AudinLogFunc
+
 	// Negotiated formats
 	formats       []AudioFormat
 	selectedIndex int
@@ -75,8 +81,8 @@ type AudinChannel struct {
 	formatMu      sync.RWMutex
 
 	// Channel state
-	isOpen    atomic.Bool
-	frameSize uint32
+	isOpen          atomic.Bool
+	framesPerPacket uint32
 
 	ready atomic.Bool
 }
@@ -84,9 +90,9 @@ type AudinChannel struct {
 // NewAudinChannel creates a new AUDIN channel.
 func NewAudinChannel(manager *DVCManager) *AudinChannel {
 	return &AudinChannel{
-		manager:       manager,
-		selectedIndex: -1,
-		frameSize:     AudinDefaultFrameSize,
+		manager:         manager,
+		selectedIndex:   -1,
+		framesPerPacket: AudinDefaultFramesPerPacket,
 	}
 }
 
@@ -100,6 +106,11 @@ func (a *AudinChannel) SetDataCallback(cb AudinDataCallback) {
 	a.onData = cb
 }
 
+// SetLogger sets the debug logger for the AUDIN channel.
+func (a *AudinChannel) SetLogger(logger AudinLogFunc) {
+	a.logger = logger
+}
+
 // Open opens the AUDIN channel.
 func (a *AudinChannel) Open() error {
 	ch, err := a.manager.CreateChannel(AudinChannelName, a)
@@ -107,18 +118,50 @@ func (a *AudinChannel) Open() error {
 		return err
 	}
 	a.channel = ch
+	// VERSION will be sent when OnChannelOpen is called
+	return nil
+}
 
-	// Send initial version
-	return a.sendVersion()
+// OnChannelOpen is called when the DVC channel is successfully created.
+// This implements the DVCOpenHandler interface.
+func (a *AudinChannel) OnChannelOpen() {
+	if a.logger != nil {
+		a.logger("AUDIN: channel opened, sending version")
+	}
+	if err := a.sendVersion(); err != nil {
+		if a.logger != nil {
+			a.logger("AUDIN: failed to send version: %v", err)
+		}
+	}
 }
 
 // OnData handles incoming AUDIN data from the DVC.
 func (a *AudinChannel) OnData(data []byte) error {
 	if len(data) < AudinHeaderSize {
+		if a.logger != nil {
+			a.logger("AUDIN: received data too short: len=%d", len(data))
+		}
 		return nil
 	}
 
 	msgType := data[0]
+
+	// Log non-routine message types for debugging
+	// Skip DATA and DATA_INCOMING as they're high-frequency (100/sec)
+	if a.logger != nil && msgType != AudinMsgData && msgType != AudinMsgDataIncoming {
+		msgNames := map[byte]string{
+			AudinMsgVersion:      "VERSION",
+			AudinMsgFormats:      "FORMATS",
+			AudinMsgOpen:         "OPEN",
+			AudinMsgOpenReply:    "OPEN_REPLY",
+			AudinMsgFormatChange: "FORMAT_CHANGE",
+		}
+		name, ok := msgNames[msgType]
+		if !ok {
+			name = "UNKNOWN"
+		}
+		a.logger("AUDIN: received %s (0x%02X) len=%d isOpen=%v", name, msgType, len(data), a.isOpen.Load())
+	}
 
 	switch msgType {
 	case AudinMsgVersion:
@@ -127,10 +170,18 @@ func (a *AudinChannel) OnData(data []byte) error {
 		return a.handleFormats(data[AudinHeaderSize:])
 	case AudinMsgOpenReply:
 		return a.handleOpenReply(data[AudinHeaderSize:])
+	case AudinMsgDataIncoming:
+		// Client is about to send audio data - this is just a notification
+		// No action needed, actual data follows in AudinMsgData
+		return nil
 	case AudinMsgData:
 		return a.handleData(data[AudinHeaderSize:])
 	case AudinMsgFormatChange:
 		return a.handleFormatChange(data[AudinHeaderSize:])
+	default:
+		if a.logger != nil {
+			a.logger("AUDIN: ignoring unknown message type 0x%02X", msgType)
+		}
 	}
 
 	return nil
@@ -156,8 +207,10 @@ func (a *AudinChannel) handleVersion(data []byte) error {
 		return nil
 	}
 
-	// clientVersion := binary.LittleEndian.Uint32(data[0:4])
-	// We accept any version >= 1
+	clientVersion := binary.LittleEndian.Uint32(data[0:4])
+	if a.logger != nil {
+		a.logger("AUDIN: received client version %d", clientVersion)
+	}
 
 	// After version exchange, send supported formats
 	return a.sendFormats()
@@ -165,6 +218,10 @@ func (a *AudinChannel) handleVersion(data []byte) error {
 
 // sendFormats sends the server's supported audio formats.
 func (a *AudinChannel) sendFormats() error {
+	if a.logger != nil {
+		a.logger("AUDIN: sending server formats (PCM stereo 48kHz)")
+	}
+
 	// We support one format: 16-bit PCM, stereo, 48kHz
 	formatData := make([]byte, SNDCAudioFormatSize)
 	binary.LittleEndian.PutUint16(formatData[0:2], WaveFormatPCM)
@@ -177,26 +234,61 @@ func (a *AudinChannel) sendFormats() error {
 
 	buf := make([]byte, AudinHeaderSize+AudinFormatsHdrSize+len(formatData))
 	buf[0] = AudinMsgFormats
-	binary.LittleEndian.PutUint32(buf[1:5], 1) // numFormats = 1
+	binary.LittleEndian.PutUint32(buf[1:5], 1)                       // numFormats = 1
+	binary.LittleEndian.PutUint32(buf[5:9], uint32(len(formatData))) // cbSizeFormatsPacket
 	copy(buf[AudinHeaderSize+AudinFormatsHdrSize:], formatData)
 
 	return a.channel.SendData(buf)
 }
 
+// Maximum number of formats we'll accept (sanity limit to prevent OOM).
+const AudinMaxFormats = 256
+
 // handleFormats processes the client's format list.
 func (a *AudinChannel) handleFormats(data []byte) error {
+	// Guard: Don't process FORMATS if we've already completed format negotiation
+	// This prevents data corruption from being misinterpreted as a FORMATS message
+	if a.ready.Load() {
+		if a.logger != nil {
+			a.logger("AUDIN: ignoring FORMATS - already negotiated (data corruption?)")
+		}
+		return nil
+	}
+
 	if len(data) < AudinFormatsHdrSize {
 		return nil
 	}
 
 	numFormats := binary.LittleEndian.Uint32(data[0:4])
+	cbSizeFormatsPacket := binary.LittleEndian.Uint32(data[4:8])
+	if a.logger != nil {
+		a.logger("AUDIN: received client formats: numFormats=%d cbSize=%d dataLen=%d", numFormats, cbSizeFormatsPacket, len(data))
+	}
+
+	// Sanity check: prevent OOM from malformed/corrupted data
+	if numFormats > AudinMaxFormats {
+		if a.logger != nil {
+			a.logger("AUDIN: rejecting formats - numFormats=%d exceeds max %d (data corruption?)", numFormats, AudinMaxFormats)
+		}
+		return nil
+	}
+
+	// Note: cbSizeFormatsPacket is supposed to be the size of SoundFormats,
+	// but some clients report incorrect values. We proceed with what data we have
+	// and let the format parsing handle any truncation.
+	availableFormatData := len(data) - AudinFormatsHdrSize
+	if a.logger != nil && int(cbSizeFormatsPacket) != availableFormatData {
+		a.logger("AUDIN: cbSize=%d doesn't match available data %d (proceeding anyway)", cbSizeFormatsPacket, availableFormatData)
+	}
+
 	pos := AudinFormatsHdrSize
 
-	a.formatMu.Lock()
-	defer a.formatMu.Unlock()
+	// Parse formats under lock, but release before callbacks to avoid deadlock
+	var selectedIndex int = -1
+	var selectedFmt AudioFormat
 
+	a.formatMu.Lock()
 	a.formats = make([]AudioFormat, 0, numFormats)
-	selectedIndex := -1
 
 	// Parse client formats
 	for i := uint32(0); i < numFormats && pos+SNDCAudioFormatSize <= len(data); i++ {
@@ -219,7 +311,7 @@ func (a *AudinChannel) handleFormats(data []byte) error {
 			fmt.SamplesPerSec == AudinPreferredSampleRate &&
 			fmt.BitsPerSample == AudinPreferredBitsPerSample {
 			selectedIndex = int(i)
-			a.selectedFmt = fmt
+			selectedFmt = fmt
 		}
 
 		pos += SNDCAudioFormatSize + int(cbSize)
@@ -230,42 +322,73 @@ func (a *AudinChannel) handleFormats(data []byte) error {
 		for i, fmt := range a.formats {
 			if fmt.FormatTag == WaveFormatPCM {
 				selectedIndex = i
-				a.selectedFmt = fmt
+				selectedFmt = fmt
 				break
 			}
 		}
 	}
 
 	if selectedIndex < 0 {
+		a.formatMu.Unlock()
+		if a.logger != nil {
+			a.logger("AUDIN: no compatible format found")
+		}
 		return ErrAudinNoFormat
 	}
 
 	a.selectedIndex = selectedIndex
+	a.selectedFmt = selectedFmt
 	a.ready.Store(true)
+	a.formatMu.Unlock() // Release lock BEFORE callbacks to avoid deadlock
 
-	// Notify ready
+	if a.logger != nil {
+		a.logger("AUDIN: selected format index %d (tag=%d ch=%d rate=%d bits=%d)",
+			selectedIndex, selectedFmt.FormatTag, selectedFmt.Channels,
+			selectedFmt.SamplesPerSec, selectedFmt.BitsPerSample)
+	}
+
+	// Notify ready (outside lock to avoid deadlock with GetSelectedFormat)
 	if a.onReady != nil {
 		a.onReady(a)
 	}
 
-	// Open the audio stream with selected format
-	return a.sendOpen(uint32(selectedIndex))
+	// Open the audio stream with format index 0 (the only format we advertised)
+	// The initialFormat in OPEN refers to the SERVER's format list, not the client's
+	return a.sendOpen(0)
 }
 
 // sendOpen sends the open request to start audio capture.
 func (a *AudinChannel) sendOpen(formatIndex uint32) error {
+	if a.logger != nil {
+		a.logger("AUDIN: sending OPEN (formatIndex=%d, framesPerPacket=%d)", formatIndex, AudinPreferredSampleRate/100)
+	}
 	buf := make([]byte, AudinHeaderSize+AudinOpenSize)
 	buf[0] = AudinMsgOpen
 
-	// Frame size in bytes (10ms of audio)
-	a.frameSize = AudinDefaultFrameSize
-	if a.selectedFmt.BlockAlign > 0 {
-		// Calculate 10ms frame size
-		a.frameSize = a.selectedFmt.SamplesPerSec / 100 * uint32(a.selectedFmt.BlockAlign)
-	}
+	// Frames per packet (10ms of audio at sample rate)
+	// This is the number of FRAMES (samples per channel), not bytes
+	framesPerPacket := AudinPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
 
-	binary.LittleEndian.PutUint32(buf[1:5], a.frameSize)
-	binary.LittleEndian.PutUint32(buf[5:9], formatIndex)
+	pos := AudinHeaderSize
+	binary.LittleEndian.PutUint32(buf[pos:pos+4], uint32(framesPerPacket))
+	pos += 4
+	binary.LittleEndian.PutUint32(buf[pos:pos+4], formatIndex)
+	pos += 4
+
+	// WAVEFORMATEX structure (captureFormat)
+	binary.LittleEndian.PutUint16(buf[pos:pos+2], WaveFormatPCM)
+	pos += 2
+	binary.LittleEndian.PutUint16(buf[pos:pos+2], AudinPreferredChannels)
+	pos += 2
+	binary.LittleEndian.PutUint32(buf[pos:pos+4], AudinPreferredSampleRate)
+	pos += 4
+	binary.LittleEndian.PutUint32(buf[pos:pos+4], AudinPreferredBytesPerSec)
+	pos += 4
+	binary.LittleEndian.PutUint16(buf[pos:pos+2], AudinPreferredBlockAlign)
+	pos += 2
+	binary.LittleEndian.PutUint16(buf[pos:pos+2], AudinPreferredBitsPerSample)
+	pos += 2
+	binary.LittleEndian.PutUint16(buf[pos:pos+2], 0) // cbSize (no extra data)
 
 	return a.channel.SendData(buf)
 }
@@ -277,6 +400,10 @@ func (a *AudinChannel) handleOpenReply(data []byte) error {
 	}
 
 	result := binary.LittleEndian.Uint32(data[0:4])
+
+	if a.logger != nil {
+		a.logger("AUDIN: received open reply: result=%d (0=success)", result)
+	}
 
 	if result == 0 {
 		// Success - client is now sending audio
@@ -309,12 +436,18 @@ func (a *AudinChannel) handleFormatChange(data []byte) error {
 	newFormat := binary.LittleEndian.Uint32(data[0:4])
 
 	a.formatMu.Lock()
-	if int(newFormat) < len(a.formats) {
-		a.selectedIndex = int(newFormat)
-		a.selectedFmt = a.formats[newFormat]
-	}
-	a.formatMu.Unlock()
+	defer a.formatMu.Unlock()
 
+	// Bounds check to prevent panic from corrupted data
+	if a.formats == nil || newFormat >= uint32(len(a.formats)) {
+		if a.logger != nil {
+			a.logger("AUDIN: ignoring format change to invalid index %d (have %d formats)", newFormat, len(a.formats))
+		}
+		return nil
+	}
+
+	a.selectedIndex = int(newFormat)
+	a.selectedFmt = a.formats[newFormat]
 	return nil
 }
 

@@ -882,6 +882,11 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	static short CACHE_ALIGN pcm_hw_buffer[MAX_HARDWARE_FRAME_SIZE * 2];    // Max hardware rate * stereo
 	static short CACHE_ALIGN pcm_opus_buffer[960 * 2];   // 48kHz @ 20ms * 2 channels
 	static uint16_t sample_rate_check_counter = 0;
+	// Hysteresis for sample rate change detection - require 3 consecutive detections
+	// of the same new rate before triggering reconnection (filters transient glitches)
+	static unsigned int pending_new_rate = 0;
+	static uint8_t rate_change_confirm_count = 0;
+	#define RATE_CHANGE_CONFIRM_THRESHOLD 3
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	int32_t pcm_rc, nb_bytes;
 	uint8_t recovery_attempts = 0;
@@ -937,12 +942,32 @@ retry_read:
 		sample_rate_check_counter = 0;
 		unsigned int current_rate = get_hdmi_audio_sample_rate();
 		if (current_rate != 0 && current_rate != hardware_sample_rate) {
-			fprintf(stderr, "ERROR: capture: HDMI sample rate changed from %u to %u Hz\n",
-			        hardware_sample_rate, current_rate);
-			fprintf(stderr, "       Triggering reconnection for automatic reconfiguration\n");
-			fflush(stderr);
-			pthread_mutex_unlock(&capture_mutex);
-			return -1;
+			// Hysteresis: require multiple consecutive detections of the same new rate
+			// to filter transient glitches from the TC358743 HDMI chip
+			if (current_rate == pending_new_rate) {
+				rate_change_confirm_count++;
+				if (rate_change_confirm_count >= RATE_CHANGE_CONFIRM_THRESHOLD) {
+					fprintf(stderr, "ERROR: capture: HDMI sample rate changed from %u to %u Hz (confirmed %d times)\n",
+					        hardware_sample_rate, current_rate, rate_change_confirm_count);
+					fprintf(stderr, "       Triggering reconnection for automatic reconfiguration\n");
+					fflush(stderr);
+					// Reset hysteresis state for next detection cycle
+					pending_new_rate = 0;
+					rate_change_confirm_count = 0;
+					pthread_mutex_unlock(&capture_mutex);
+					return -1;
+				}
+			} else {
+				// Different rate detected, start new confirmation cycle
+				pending_new_rate = current_rate;
+				rate_change_confirm_count = 1;
+			}
+		} else {
+			// Rate is stable or detection failed, reset hysteresis state
+			if (rate_change_confirm_count > 0) {
+				pending_new_rate = 0;
+				rate_change_confirm_count = 0;
+			}
 		}
 	}
 

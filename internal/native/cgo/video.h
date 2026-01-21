@@ -100,4 +100,26 @@ bool jpeg_encoder_is_running();
  */
 int video_request_keyframe();
 
+/**
+ * @brief Start the RGA RGB encoder (hardware YUV to RGB conversion)
+ *
+ * This uses the RGA 2D graphics accelerator to convert YUV422 frames
+ * to BGRX format in hardware with zero CPU overhead.
+ *
+ * @return int 0 on success, -1 on failure
+ */
+int rgb_encoder_start();
+
+/**
+ * @brief Stop the RGA RGB encoder
+ */
+void rgb_encoder_stop();
+
+/**
+ * @brief Check if the RGA RGB encoder is running
+ *
+ * @return bool true if the RGB encoder is running, false otherwise
+ */
+bool rgb_encoder_is_running();
+
 #endif //VIDEO_DAEMON_VIDEO_H

@@ -249,21 +249,41 @@ func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 	return nil
 }
 
+// pcmBufferPool is used to avoid allocations in GetLastPCM hot path.
+// 960 frames * 2 channels * 2 bytes per sample = 3840 bytes
+const maxPCMSize = 960 * 2 * 2
+
+var pcmBufferPool = sync.Pool{
+	New: func() any {
+		return make([]byte, maxPCMSize)
+	},
+}
+
 // GetLastPCM returns the last captured PCM audio data.
 // This retrieves the raw PCM that was captured in the last ReadMessage() call.
 // Format: 16-bit signed PCM, stereo interleaved, 48kHz.
 // Returns nil if no data is available.
+// IMPORTANT: The returned slice is from a pool - caller must not retain it
+// after use. Copy the data if you need to keep it.
 func GetLastPCM() []byte {
-	// 960 frames * 2 channels * 2 bytes per sample = 3840 bytes
-	const maxPCMSize = 960 * 2 * 2
-	buf := make([]byte, maxPCMSize)
+	buf := pcmBufferPool.Get().([]byte)
 
 	size := C.jetkvm_audio_get_last_pcm(unsafe.Pointer(&buf[0]), C.int(maxPCMSize))
 	if size <= 0 {
+		pcmBufferPool.Put(buf)
 		return nil
 	}
 
+	// Return the pooled buffer - caller must return it via ReleasePCMBuffer
 	return buf[:size]
+}
+
+// ReleasePCMBuffer returns a PCM buffer to the pool.
+// Must be called after GetLastPCM when done with the data.
+func ReleasePCMBuffer(buf []byte) {
+	if buf != nil && cap(buf) == maxPCMSize {
+		pcmBufferPool.Put(buf[:maxPCMSize])
+	}
 }
 
 // WritePCM writes raw PCM audio data to the playback device.

@@ -84,6 +84,7 @@ func rpcWheelReport(wheelY int8, wheelX int8) error {
 	if isKeyboardMacroInProgress() {
 		return nil // Silently drop
 	}
+	logger.Warn().Int8("wheelY", wheelY).Int8("wheelX", wheelX).Msg("rpcWheelReport called")
 	return gadget.AbsMouseWheelReport(wheelY, wheelX)
 }
 

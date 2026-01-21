@@ -141,6 +141,7 @@ type GFXChannel struct {
 	lastAckFrameID atomic.Uint32
 	totalDecoded   atomic.Uint32
 	lastAckTime    atomic.Int32 // Unix timestamp (lower 32 bits) of last ack
+	startTime      atomic.Int64 // UnixMilli timestamp when channel became ready
 
 	// Pre-allocated buffers for surface management to avoid GC pressure
 	createBuf [GFXHeaderSize + GFXCreateSurfaceSize]byte
@@ -458,6 +459,8 @@ func (g *GFXChannel) sendCapsConfirm() error {
 		return err
 	}
 
+	// Record start time for frame timestamps (wall-clock time in milliseconds)
+	g.startTime.Store(time.Now().UnixMilli())
 	g.ready.Store(true)
 
 	// Notify that channel is ready
@@ -681,7 +684,7 @@ var ErrGFXNoCodec = errors.New("gfx: no H.264 codec available")
 // Returns ErrGFXNoCodec if client doesn't support AVC420/AVC444.
 //
 // HOT PATH: This function is called for every video frame (~30-60 fps).
-// It uses pre-allocated buffers to achieve zero heap allocations.
+// It uses pre-allocated buffers to achieve zero heap allocations for small frames.
 func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
 	if !g.ready.Load() {
 		return ErrGFXNotReady
@@ -700,7 +703,9 @@ func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
 
 	// Get next frame ID (lock-free atomic increment)
 	frameID := g.frameID.Add(1)
-	timestamp := frameID * 33 // ~30fps in milliseconds
+	// Use synthetic timestamp based on frame ID (~30fps timing)
+	// Client expects consistent frame-rate-based timestamps, not wall-clock time
+	timestamp := frameID * 33
 
 	// Increment pending before sending (lock-free)
 	g.framesPending.Add(1)
@@ -713,16 +718,21 @@ func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
 	endSize := GFXHeaderSize + GFXEndFrameSize
 	gfxPDUSize := startSize + wireSize + endSize
 
-	// ZERO-ALLOCATION PATH: Use pre-allocated frameBuf
+	// Check if we need multi-segment ZGFX format
+	// ZGFX single-segment max data is 65535 bytes
+	if gfxPDUSize > ZGFXMaxSegmentData {
+		// Large frame - must use multi-segment format (allocates)
+		// Note: Don't decrement pending here - sendH264FrameMultiSegment manages it
+		return g.sendH264FrameMultiSegment(h264Data, isKeyframe, frameID, timestamp)
+	}
+
+	// ZERO-ALLOCATION PATH: Use pre-allocated frameBuf for small frames
 	// Layout: [ZGFX header 2 bytes][GFX PDU]
 	totalSize := 2 + gfxPDUSize
 
-	// Check if frame fits in pre-allocated buffer
+	// Check if frame fits in pre-allocated buffer (shouldn't happen since we check segment size first)
 	if totalSize > len(g.frameBuf) {
-		// Frame too large - this shouldn't happen with 512KB buffer
-		// Fall back to allocation (rare path for huge frames)
-		g.framesPending.Add(-1)
-		return g.sendH264FrameFallback(h264Data, isKeyframe, frameID, timestamp)
+		return g.sendH264FrameMultiSegment(h264Data, isKeyframe, frameID, timestamp)
 	}
 
 	// Build directly in pre-allocated buffer
@@ -790,50 +800,57 @@ func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
 	return nil
 }
 
-// sendH264FrameFallback is used when the frame is too large for the pre-allocated buffer.
-// This path allocates but should be extremely rare (>512KB frames).
-func (g *GFXChannel) sendH264FrameFallback(h264Data []byte, isKeyframe bool, frameID, timestamp uint32) error {
+// sendH264FrameMultiSegment is used when the GFX PDU exceeds ZGFX single-segment limit (65KB).
+// This happens for large H.264 keyframes. Uses ZGFX multi-segment format.
+// Note: framesPending was already incremented by caller.
+func (g *GFXChannel) sendH264FrameMultiSegment(h264Data []byte, isKeyframe bool, frameID, timestamp uint32) error {
 	meta := g.buildAVC420Metadata(isKeyframe)
 
 	startSize := GFXHeaderSize + GFXStartFrameSize
 	wireSize := GFXHeaderSize + GFXWireToSurface1Size + len(meta) + len(h264Data)
 	endSize := GFXHeaderSize + GFXEndFrameSize
-	totalSize := startSize + wireSize + endSize
+	gfxPDUSize := startSize + wireSize + endSize
 
-	buf := make([]byte, totalSize)
+	// Build GFX PDU
+	gfxBuf := make([]byte, gfxPDUSize)
 	pos := 0
 
 	// START_FRAME
-	binary.LittleEndian.PutUint16(buf[pos:], GFXCmdStartFrame)
-	binary.LittleEndian.PutUint16(buf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:], uint32(startSize))
-	binary.LittleEndian.PutUint32(buf[pos+8:], timestamp)
-	binary.LittleEndian.PutUint32(buf[pos+12:], frameID)
+	binary.LittleEndian.PutUint16(gfxBuf[pos:], GFXCmdStartFrame)
+	binary.LittleEndian.PutUint16(gfxBuf[pos+2:], 0)
+	binary.LittleEndian.PutUint32(gfxBuf[pos+4:], uint32(startSize))
+	binary.LittleEndian.PutUint32(gfxBuf[pos+8:], timestamp)
+	binary.LittleEndian.PutUint32(gfxBuf[pos+12:], frameID)
 	pos += startSize
 
 	// WIRETOSURFACE_1
-	binary.LittleEndian.PutUint16(buf[pos:], GFXCmdWireToSurface1)
-	binary.LittleEndian.PutUint16(buf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:], uint32(wireSize))
-	binary.LittleEndian.PutUint16(buf[pos+8:], g.surfaceID)
-	binary.LittleEndian.PutUint16(buf[pos+10:], GFXCodecAVC420)
-	buf[pos+12] = GFXPixelFormatXRGB
-	binary.LittleEndian.PutUint16(buf[pos+13:], 0)
-	binary.LittleEndian.PutUint16(buf[pos+15:], 0)
-	binary.LittleEndian.PutUint16(buf[pos+17:], g.width)
-	binary.LittleEndian.PutUint16(buf[pos+19:], g.height)
-	binary.LittleEndian.PutUint32(buf[pos+21:], uint32(len(meta)+len(h264Data)))
-	copy(buf[pos+25:], meta)
-	copy(buf[pos+25+len(meta):], h264Data)
+	binary.LittleEndian.PutUint16(gfxBuf[pos:], GFXCmdWireToSurface1)
+	binary.LittleEndian.PutUint16(gfxBuf[pos+2:], 0)
+	binary.LittleEndian.PutUint32(gfxBuf[pos+4:], uint32(wireSize))
+	binary.LittleEndian.PutUint16(gfxBuf[pos+8:], g.surfaceID)
+	binary.LittleEndian.PutUint16(gfxBuf[pos+10:], GFXCodecAVC420)
+	gfxBuf[pos+12] = GFXPixelFormatXRGB
+	binary.LittleEndian.PutUint16(gfxBuf[pos+13:], 0)
+	binary.LittleEndian.PutUint16(gfxBuf[pos+15:], 0)
+	binary.LittleEndian.PutUint16(gfxBuf[pos+17:], g.width)
+	binary.LittleEndian.PutUint16(gfxBuf[pos+19:], g.height)
+	binary.LittleEndian.PutUint32(gfxBuf[pos+21:], uint32(len(meta)+len(h264Data)))
+	copy(gfxBuf[pos+25:], meta)
+	copy(gfxBuf[pos+25+len(meta):], h264Data)
 	pos += wireSize
 
 	// END_FRAME
-	binary.LittleEndian.PutUint16(buf[pos:], GFXCmdEndFrame)
-	binary.LittleEndian.PutUint16(buf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:], uint32(endSize))
-	binary.LittleEndian.PutUint32(buf[pos+8:], frameID)
+	binary.LittleEndian.PutUint16(gfxBuf[pos:], GFXCmdEndFrame)
+	binary.LittleEndian.PutUint16(gfxBuf[pos+2:], 0)
+	binary.LittleEndian.PutUint32(gfxBuf[pos+4:], uint32(endSize))
+	binary.LittleEndian.PutUint32(gfxBuf[pos+8:], frameID)
 
-	return g.sendGFXData(buf)
+	// Wrap with ZGFX multi-segment and send
+	if err := g.sendGFXData(gfxBuf); err != nil {
+		g.framesPending.Add(-1)
+		return err
+	}
+	return nil
 }
 
 // buildAVC420Metadata builds the RFX_AVC420_METABLOCK structure.
@@ -886,6 +903,7 @@ func (g *GFXChannel) SendH264FrameAVC444(luma, chroma []byte, isKeyframe bool) e
 	}
 
 	frameID := g.frameID.Add(1)
+	// Use synthetic timestamp based on frame ID (~30fps timing)
 	timestamp := frameID * 33
 
 	g.framesPending.Add(1)

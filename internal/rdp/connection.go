@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -38,6 +39,16 @@ var vcPDUPool = sync.Pool{
 	},
 }
 
+// inputPayloadPool reduces allocations for fast-path input payloads.
+// Fast-path input events are typically small (keyboard: 2 bytes, mouse: 7 bytes).
+// Max realistic size: ~64 bytes for batched events. Pool uses 256 bytes for safety.
+var inputPayloadPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 256)
+		return &buf
+	},
+}
+
 // Connection represents a single RDP client connection.
 type Connection struct {
 	conn     net.Conn
@@ -55,6 +66,8 @@ type Connection struct {
 	msgChannelID uint16 // Message channel (0 if not used)
 	channels     []ChannelInfo
 	channelsMu   sync.RWMutex
+	// Fast lookup for hot path - populated once during channel setup, never modified
+	channelNames [8]string // Index = channelID - baseChannelID, supports up to 8 channels
 
 	// Negotiated protocol (from X.224)
 	selectedProtocol         uint32
@@ -86,9 +99,14 @@ type Connection struct {
 	ctrlPressed     atomic.Bool
 	pasteInProgress atomic.Bool // Suppress V key events during paste
 
-	// Audio streaming
+	// Audio streaming (output - HDMI audio to client)
 	audioChan   <-chan []byte
 	audioStopCh chan struct{}
+
+	// Audio input (AUDIN - client mic to USB gadget)
+	// Uses buffered channel to avoid blocking DVC message loop
+	audinDataChan chan []byte
+	audinStopCh   chan struct{}
 
 	// Write error tracking for connection health
 	consecutiveWriteErrors atomic.Int32
@@ -539,6 +557,10 @@ func (c *Connection) handleMCSConnect() error {
 	for i := range c.channels {
 		c.channels[i].ID = baseChannelID + uint16(i)
 		channelIDs[i] = c.channels[i].ID
+		// Populate fast lookup array (lock-free hot path)
+		if i < len(c.channelNames) {
+			c.channelNames[i] = c.channels[i].Name
+		}
 	}
 
 	// Determine message channel ID if client requested it
@@ -1437,22 +1459,19 @@ func (c *Connection) messageLoop() error {
 		// Continue without DVC - basic RDP still works
 	}
 
+	// Clear read deadline for maximum responsiveness - blocking reads are fastest
+	// The connection will be closed on shutdown, causing the read to return with an error
+	if err := c.conn.SetReadDeadline(time.Time{}); err != nil {
+		return err
+	}
+
 	for {
-		select {
-		case <-c.stopChan:
-			return nil
-		default:
-		}
-
-		// Set read timeout
-		if err := c.conn.SetReadDeadline(time.Now().Add(protocol.ReadTimeout)); err != nil {
-			return err
-		}
-
 		// Peek at first byte to detect Fast-Path vs Slow-Path
+		// This is a blocking read for maximum responsiveness
 		firstByte, err := c.reader.Peek(1)
 		if err != nil {
-			return fmt.Errorf("peek first byte: %w", err)
+			// Connection closed or error - exit gracefully
+			return nil
 		}
 
 		if firstByte[0] != 0x03 {
@@ -1478,7 +1497,7 @@ func (c *Connection) messageLoop() error {
 		case protocol.MCSSendDataRequest:
 			sdr, err := protocol.ParseSendDataRequest(data)
 			if err != nil {
-				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to parse SendDataRequest")
+				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to parse SendDataRequest")
 				continue
 			}
 			c.handleDataPDU(sdr)
@@ -1489,8 +1508,9 @@ func (c *Connection) messageLoop() error {
 			return nil
 
 		default:
-			c.server.deps.Logger.Debug().
+			c.server.deps.Logger.Warn().
 				Str("type", pduType.String()).
+				Hex("firstBytes", data[:min(len(data), 16)]).
 				Msg("RDP: unhandled MCS PDU type")
 		}
 	}
@@ -1870,11 +1890,31 @@ func (c *Connection) handleFastPathInput() error {
 		return nil
 	}
 
-	// Read payload
-	payload := make([]byte, payloadSize)
-	if _, err := c.reader.Read(payload); err != nil {
+	// Read payload using pool for zero-allocation hot path
+	var payload []byte
+	var poolBuf *[]byte
+	if payloadSize <= 256 {
+		// Use pool for typical small payloads
+		poolBuf = inputPayloadPool.Get().(*[]byte)
+		payload = (*poolBuf)[:payloadSize]
+	} else {
+		// Rare: large payload, allocate (shouldn't happen in practice)
+		payload = make([]byte, payloadSize)
+	}
+
+	if _, err := io.ReadFull(c.reader, payload); err != nil {
+		if poolBuf != nil {
+			inputPayloadPool.Put(poolBuf)
+		}
 		return fmt.Errorf("read fast-path payload: %w", err)
 	}
+
+	// Process events, then return buffer to pool
+	defer func() {
+		if poolBuf != nil {
+			inputPayloadPool.Put(poolBuf)
+		}
+	}()
 
 	// If numEvents is 0, first byte of payload is the event count
 	pos := 0
@@ -2300,22 +2340,14 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	// For now, we don't handle chunked data (FIRST without LAST), just pass payload
 	payload := data[8:]
 
-	c.channelsMu.RLock()
+	// LOCK-FREE FAST PATH: Use pre-computed channel name lookup
+	// Base channel ID is 1004, so index = channelID - 1004
+	const baseChannelID = protocol.ChannelMCSGlobalID + 1 // 1004
+	idx := int(channelID - baseChannelID)
 	var channelName string
-	for _, ch := range c.channels {
-		if ch.ID == channelID {
-			channelName = ch.Name
-			break
-		}
+	if idx >= 0 && idx < len(c.channelNames) {
+		channelName = c.channelNames[idx]
 	}
-	c.channelsMu.RUnlock()
-
-	// Log virtual channel data at trace level (too verbose for warn)
-	c.server.deps.Logger.Trace().
-		Str("channel", channelName).
-		Uint16("channelID", channelID).
-		Int("payloadLen", len(payload)).
-		Msg("RDP: virtual channel data received")
 
 	switch channelName {
 	case "drdynvc":
@@ -2343,7 +2375,6 @@ func (c *Connection) handleDrdynvc(data []byte) {
 	if c.dvcManager == nil {
 		return
 	}
-
 	if err := c.dvcManager.HandlePDU(data); err != nil {
 		c.server.deps.Logger.Debug().Err(err).Msg("RDP: drdynvc error")
 	}
@@ -2388,6 +2419,17 @@ func (c *Connection) Close() {
 	// Close sound channel
 	if c.soundChannel != nil {
 		c.soundChannel.Close()
+	}
+
+	// Signal audio system that RDP no longer needs audio
+	if c.server.deps.Audio != nil {
+		c.server.deps.Audio.Disconnect()
+	}
+
+	// Stop AUDIN data processing goroutine
+	if c.audinStopCh != nil {
+		close(c.audinStopCh)
+		c.audinStopCh = nil
 	}
 
 	// Close AUDIN channel
@@ -2456,17 +2498,16 @@ func (c *Connection) initDynamicChannels() error {
 	}
 	c.channelsMu.RUnlock()
 
-	// Initialize rdpsnd static channel if available
-	if c.rdpsndID != 0 {
-		c.initSoundChannel()
-	}
-
-	// NOTE: Clipboard channel initialization is deferred until AFTER DVC setup
-	// to avoid interfering with DVC capability exchange
+	// NOTE: Channel initialization is deferred until AFTER DVC setup
+	// to avoid interfering with DVC capability exchange.
+	// RDPSND is still needed for audio output even when DVC is available.
 
 	if c.drdynvcID == 0 {
 		// Client doesn't support dynamic channels
-		// Initialize clipboard now since no DVC to worry about
+		// Initialize RDPSND and clipboard now
+		if c.rdpsndID != 0 {
+			c.initSoundChannel()
+		}
 		if c.cliprdrdID != 0 {
 			c.initClipboardChannel()
 		}
@@ -2478,53 +2519,39 @@ func (c *Connection) initDynamicChannels() error {
 		return c.sendDVCData(data)
 	})
 
-	// Wire up DVC logging (using Warn level so it shows with default log level)
-	c.dvcManager.SetLogger(func(msg string, channel string, channelID uint32, args ...interface{}) {
-		if channel != "" {
-			c.server.deps.Logger.Warn().
-				Str("channel", channel).
-				Uint32("channelID", channelID).
-				Interface("args", args).
-				Msg(msg)
-		} else {
-			c.server.deps.Logger.Warn().
-				Interface("args", args).
-				Msg(msg)
-		}
+	// NOTE: Logger disabled for maximum performance - DVC is hot path
+
+	// Set up synchronous callback for when capability response is received.
+	// This runs in the message loop context, ensuring proper sequencing of create requests and responses.
+	c.dvcManager.SetOnCapabilityReceived(func() {
+		c.server.deps.Logger.Warn().
+			Uint16("version", c.dvcManager.GetNegotiatedVersion()).
+			Msg("RDP: DVC capability received (synchronous callback), creating channels")
+		c.initDVCChannelsSync()
 	})
 
 	// Send capability request
 	c.server.deps.Logger.Warn().
 		Uint16("drdynvcID", c.drdynvcID).
-		Msg("RDP: sending DVC capability request")
+		Uint16("userID", c.userID).
+		Uint16("rdpsndID", c.rdpsndID).
+		Msg("RDP: sending DVC capability request (both IDs for comparison)")
 	if err := c.dvcManager.SendCapabilityRequest(); err != nil {
 		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to send DVC capability request")
 		return err
 	}
 	c.server.deps.Logger.Warn().Msg("RDP: DVC capability request sent successfully")
 
-	// Create DVC channels in a goroutine after capability exchange completes
-	// This is necessary because the capability response arrives through the message loop
-	go c.initDVCChannelsAfterCapability()
-
 	return nil
 }
 
-// initDVCChannelsAfterCapability waits for DVC capability exchange then creates channels.
-func (c *Connection) initDVCChannelsAfterCapability() {
-	// Wait for capability response (timeout after 5 seconds)
-	if !c.dvcManager.WaitForCapability(5 * time.Second) {
-		c.server.deps.Logger.Warn().Msg("RDP: DVC capability timeout, skipping dynamic channels")
-		// Still initialize clipboard even if DVC failed
-		if c.cliprdrdID != 0 {
-			c.initClipboardChannel()
-		}
-		return
+// initDVCChannelsSync creates DVC channels synchronously.
+// Called from the capability response handler in the message loop context.
+func (c *Connection) initDVCChannelsSync() {
+	// Initialize RDPSND for audio output (static channel, not DVC)
+	if c.rdpsndID != 0 {
+		c.initSoundChannel()
 	}
-
-	c.server.deps.Logger.Warn().
-		Uint16("version", c.dvcManager.GetNegotiatedVersion()).
-		Msg("RDP: DVC capability exchange complete, creating channels")
 
 	// Initialize clipboard channel AFTER DVC capability exchange completes
 	// to avoid any interference
@@ -2575,6 +2602,11 @@ func (c *Connection) initDVCChannelsAfterCapability() {
 	// Create AUDIN channel for microphone input
 	c.audinChannel = channels.NewAudinChannel(c.dvcManager)
 
+	// Set logger for debugging (Warn level to ensure visibility)
+	c.audinChannel.SetLogger(func(msg string, args ...interface{}) {
+		c.server.deps.Logger.Warn().Msgf(msg, args...)
+	})
+
 	// Set ready callback for AUDIN
 	c.audinChannel.SetReadyCallback(func(a *channels.AudinChannel) {
 		fmt, ok := a.GetSelectedFormat()
@@ -2587,15 +2619,37 @@ func (c *Connection) initDVCChannelsAfterCapability() {
 			Uint32("sampleRate", fmt.SamplesPerSec).
 			Uint16("bitsPerSample", fmt.BitsPerSample).
 			Msg("RDP: AUDIN channel ready for microphone input")
+
+		// Automatically enable audio input when RDP client has mic enabled
+		// This initializes the USB audio gadget playback without requiring manual UI toggle
+		if c.server.deps.Audio != nil {
+			if err := c.server.deps.Audio.EnableAudioInput(); err != nil {
+				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to enable audio input for AUDIN")
+			} else {
+				c.server.deps.Logger.Info().Msg("RDP: audio input enabled for AUDIN")
+			}
+		}
 	})
 
-	// Set data callback to forward audio to UAC gadget
+	// Create AUDIN async buffer and processing goroutine
+	// This prevents AUDIN data processing from blocking the DVC message loop
+	// which would delay GFX frame ACKs and cause video stuttering
+	c.audinDataChan = make(chan []byte, 30) // Buffer for ~300ms at 10ms packets
+	c.audinStopCh = make(chan struct{})
+	go c.audinDataLoop()
+
+	// Set data callback to forward audio to buffer (non-blocking)
 	c.audinChannel.SetDataCallback(func(data []byte) {
-		if c.server.deps.Audio == nil {
-			return
-		}
-		if err := c.server.deps.Audio.PlayAudio(data); err != nil {
-			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to play client audio")
+		// Make a copy since the underlying buffer may be reused by the connection
+		dataCopy := make([]byte, len(data))
+		copy(dataCopy, data)
+
+		// Non-blocking send - drop if buffer is full
+		select {
+		case c.audinDataChan <- dataCopy:
+			// Data queued successfully
+		default:
+			// Buffer full, drop the audio packet (acceptable for real-time audio)
 		}
 	})
 
@@ -2678,9 +2732,20 @@ func (c *Connection) checkGFXReadinessAndFallback() {
 // Note: The single Write() call is atomic at the TLS level,
 // so concurrent calls to this function are safe.
 //
-// HOT PATH: Builds entire packet (TPKT + X.224 + MCS + VC) in a single pooled
-// buffer with zero heap allocations.
+// HOT PATH: Zero allocations using pooled buffers for typical packet sizes.
 func (c *Connection) sendDVCData(data []byte) error {
+	if c.drdynvcID == 0 {
+		return nil
+	}
+
+	// Use zero-allocation hot path for typical packet sizes
+	return c.sendDVCDataHotPath(data)
+}
+
+// sendDVCDataHotPath sends DVC data using zero-allocation hot path.
+// Uses pooled buffers to avoid heap allocations on every packet.
+// Falls back to sendDVCDataFallback for packets too large for the pool.
+func (c *Connection) sendDVCDataHotPath(data []byte) error {
 	if c.drdynvcID == 0 {
 		return nil
 	}
@@ -2771,6 +2836,8 @@ func (c *Connection) sendDVCDataFallback(data []byte) error {
 		channelFlagLast  = 0x02
 		vcHeaderSize     = 8
 	)
+
+	// Debug: Log what we're sending
 
 	vcPDU := make([]byte, vcHeaderSize+len(data))
 	binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))
@@ -2895,8 +2962,31 @@ func isH264Keyframe(data []byte) bool {
 // initSoundChannel initializes the RDPSND static channel.
 func (c *Connection) initSoundChannel() {
 	// Create sound channel with send callback
+	// RDPSND requires Virtual Channel PDU header per MS-RDPBCGR 2.2.6.1
 	c.soundChannel = channels.NewSoundChannel(func(data []byte) error {
-		return c.sendStaticChannelData(c.rdpsndID, data)
+		// Build Virtual Channel PDU: header (8 bytes) + data
+		const (
+			channelFlagFirst = 0x01
+			channelFlagLast  = 0x02
+		)
+
+		// Debug: Log what we're sending (only for first packet which is SNDC_FORMATS)
+		if len(data) > 0 && data[0] == 0x07 { // SNDCFormats = 0x07
+			c.server.deps.Logger.Warn().
+				Uint16("rdpsndID", c.rdpsndID).
+				Uint16("userID", c.userID).
+				Int("dataLen", len(data)).
+				Hex("firstBytes", data[:min(len(data), 16)]).
+				Msg("RDP: initSoundChannel - sending SNDC_FORMATS")
+		}
+
+		vcPDU := make([]byte, 8+len(data))
+		binary.LittleEndian.PutUint32(vcPDU[0:4], uint32(len(data)))                // totalLength
+		binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast) // flags
+		copy(vcPDU[8:], data)
+
+		mcsPDU := protocol.BuildSendDataIndication(c.userID, c.rdpsndID, vcPDU)
+		return protocol.WriteMCSPDU(c.conn, mcsPDU)
 	})
 
 	// Set ready callback to start audio streaming
@@ -2911,6 +3001,11 @@ func (c *Connection) initSoundChannel() {
 			Uint32("sampleRate", fmt.SamplesPerSec).
 			Uint16("bitsPerSample", fmt.BitsPerSample).
 			Msg("RDP: RDPSND channel ready, starting audio stream")
+
+		// Signal audio system that RDP needs audio
+		if c.server.deps.Audio != nil {
+			c.server.deps.Audio.Connect()
+		}
 
 		// Start audio streaming goroutine
 		c.startAudioStream()
@@ -2930,10 +3025,7 @@ func (c *Connection) initClipboardChannel() {
 		return c.sendClipboardData(data)
 	})
 
-	// Set up logging
-	c.clipboardChannel.SetLogger(func(format string, args ...any) {
-		c.server.deps.Logger.Warn().Msgf(format, args...)
-	})
+	// NOTE: Logger disabled for maximum performance
 
 	// Start clipboard channel (sends Capabilities and Monitor Ready)
 	if err := c.clipboardChannel.Start(); err != nil {
@@ -2941,15 +3033,6 @@ func (c *Connection) initClipboardChannel() {
 	} else {
 		c.server.deps.Logger.Warn().Msg("RDP: clipboard channel initialized")
 	}
-}
-
-// sendStaticChannelData sends data on a static virtual channel.
-// Note: WriteTPKT uses a single Write() call which is atomic at the TLS level,
-// so concurrent calls to this function are safe.
-func (c *Connection) sendStaticChannelData(channelID uint16, data []byte) error {
-	// Wrap in MCS Send Data Indication
-	mcsPDU := protocol.BuildSendDataIndication(c.userID, channelID, data)
-	return protocol.WriteMCSPDU(c.conn, mcsPDU)
 }
 
 // sendClipboardData sends data on the cliprdr channel with proper VC PDU header.
@@ -3041,6 +3124,27 @@ func (c *Connection) stopAudioStream() {
 	if c.audioStopCh != nil {
 		close(c.audioStopCh)
 		c.audioStopCh = nil
+	}
+}
+
+// audinDataLoop processes AUDIN audio data asynchronously.
+// This runs in its own goroutine to prevent blocking the DVC message loop.
+func (c *Connection) audinDataLoop() {
+	for {
+		select {
+		case <-c.audinStopCh:
+			return
+		case data, ok := <-c.audinDataChan:
+			if !ok {
+				return
+			}
+			if c.server.deps.Audio == nil {
+				continue
+			}
+			if err := c.server.deps.Audio.PlayAudio(data); err != nil {
+				c.server.deps.Logger.Debug().Err(err).Int("len", len(data)).Msg("RDP: failed to play AUDIN audio")
+			}
+		}
 	}
 }
 

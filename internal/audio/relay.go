@@ -121,34 +121,41 @@ func (r *OutputRelay) relayLoop() {
 		if r.pcmCallback != nil {
 			if pcm := GetLastPCM(); pcm != nil {
 				r.pcmCallback(pcm)
+				ReleasePCMBuffer(pcm)
 			}
 		}
 
 		if msgType == ipcMsgTypeOpus && len(payload) > 0 {
-			r.sample.Data = payload
-			if err := r.audioTrack.WriteSample(r.sample); err != nil {
-				r.framesDropped.Add(1)
-				consecutiveWriteFailures++
+			// Write to WebRTC track if available
+			if r.audioTrack != nil {
+				r.sample.Data = payload
+				if err := r.audioTrack.WriteSample(r.sample); err != nil {
+					r.framesDropped.Add(1)
+					consecutiveWriteFailures++
 
-				// Log warning on first failure and every 10th failure
-				if consecutiveWriteFailures == 1 || consecutiveWriteFailures%10 == 0 {
-					r.logger.Warn().
-						Err(err).
-						Int("consecutive_failures", consecutiveWriteFailures).
-						Msg("Failed to write sample to WebRTC")
-				}
+					// Log warning on first failure and every 10th failure
+					if consecutiveWriteFailures == 1 || consecutiveWriteFailures%10 == 0 {
+						r.logger.Warn().
+							Err(err).
+							Int("consecutive_failures", consecutiveWriteFailures).
+							Msg("Failed to write sample to WebRTC")
+					}
 
-				if consecutiveWriteFailures >= maxConsecutiveWriteFailures {
-					r.logger.Error().
-						Int("failures", consecutiveWriteFailures).
-						Msg("Too many consecutive WebRTC write failures, reconnecting source")
-					(*r.source).Disconnect()
+					if consecutiveWriteFailures >= maxConsecutiveWriteFailures {
+						r.logger.Error().
+							Int("failures", consecutiveWriteFailures).
+							Msg("Too many consecutive WebRTC write failures, reconnecting source")
+						(*r.source).Disconnect()
+						consecutiveWriteFailures = 0
+						consecutiveFailures = 0
+					}
+				} else {
+					r.framesRelayed.Add(1)
 					consecutiveWriteFailures = 0
-					consecutiveFailures = 0
 				}
 			} else {
+				// No WebRTC track - just count frames for RDP-only mode
 				r.framesRelayed.Add(1)
-				consecutiveWriteFailures = 0
 			}
 		}
 	}

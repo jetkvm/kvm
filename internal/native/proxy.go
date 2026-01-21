@@ -27,7 +27,9 @@ const (
 	// H.264 frame size limit - typically much smaller than raw
 	maxFrameSize = 1920 * 1080 / 2
 	// JPEG frame size limit - high quality JPEG can be 1-2MB for 1080p
-	maxJpegFrameSize               = 2 * 1024 * 1024
+	maxJpegFrameSize = 2 * 1024 * 1024
+	// RGB frame size limit - 1920x1080 YUV422 = 1920*1080*2 = ~4MB
+	maxRgbFrameSize                = 1920 * 1080 * 2
 	defaultMaxRestartAttempts uint = 5
 )
 
@@ -40,6 +42,7 @@ type nativeProxyOptions struct {
 	CtrlUnixSocket        string          `env:"JETKVM_NATIVE_CTRL_UNIX_SOCKET"`
 	VideoStreamUnixSocket string          `env:"JETKVM_NATIVE_VIDEO_STREAM_UNIX_SOCKET"`
 	JpegStreamUnixSocket  string          `env:"JETKVM_NATIVE_JPEG_STREAM_UNIX_SOCKET"`
+	RgbStreamUnixSocket   string          `env:"JETKVM_NATIVE_RGB_STREAM_UNIX_SOCKET"`
 	BinaryPath            string          `env:"JETKVM_NATIVE_BINARY_PATH"`
 	LoggerLevel           zerolog.Level   `env:"JETKVM_NATIVE_LOGGER_LEVEL"`
 	HandshakeMessage      string          `env:"JETKVM_NATIVE_HANDSHAKE_MESSAGE"`
@@ -47,6 +50,7 @@ type nativeProxyOptions struct {
 
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
 	OnJpegFrameReceived  func(frame []byte)
+	OnRGBFrameReceived   func(frame RGBFrame)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnVideoStateChange   func(state VideoState)
@@ -78,6 +82,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		DefaultQualityFactor: n.DefaultQualityFactor,
 		OnVideoFrameReceived: n.OnVideoFrameReceived,
 		OnJpegFrameReceived:  n.OnJpegFrameReceived,
+		OnRGBFrameReceived:   n.OnRGBFrameReceived,
 		OnIndevEvent:         n.OnIndevEvent,
 		OnRpcEvent:           n.OnRpcEvent,
 		OnVideoStateChange:   n.OnVideoStateChange,
@@ -132,6 +137,8 @@ type NativeProxy struct {
 	videoStreamListener   net.Listener
 	jpegStreamUnixSocket  string
 	jpegStreamListener    net.Listener
+	rgbStreamUnixSocket   string
+	rgbStreamListener     net.Listener
 	binaryPath            string
 
 	startMu sync.Mutex // mutex for the start process (context and isStopped)
@@ -156,6 +163,7 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 	proxyOptions := opts.toProxyOptions()
 	proxyOptions.VideoStreamUnixSocket = fmt.Sprintf("@jetkvm/native/video-stream/%s", randomId(4))
 	proxyOptions.JpegStreamUnixSocket = fmt.Sprintf("@jetkvm/native/jpeg-stream/%s", randomId(4))
+	proxyOptions.RgbStreamUnixSocket = fmt.Sprintf("@jetkvm/native/rgb-stream/%s", randomId(4))
 
 	// Get the current executable path to spawn itself
 	exePath, err := os.Executable()
@@ -172,6 +180,7 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 		nativeUnixSocket:      proxyOptions.CtrlUnixSocket,
 		videoStreamUnixSocket: proxyOptions.VideoStreamUnixSocket,
 		jpegStreamUnixSocket:  proxyOptions.JpegStreamUnixSocket,
+		rgbStreamUnixSocket:   proxyOptions.RgbStreamUnixSocket,
 		binaryPath:            exePath,
 		logger:                nativeLogger,
 		options:               proxyOptions,
@@ -238,6 +247,38 @@ func (p *NativeProxy) startJpegStreamListener() error {
 
 			logger.Warn().Msg("JPEG stream listener: CONNECTION ACCEPTED from subprocess")
 			go p.handleJpegFrame(conn)
+		}
+	}()
+
+	return nil
+}
+
+func (p *NativeProxy) startRgbStreamListener() error {
+	if p.rgbStreamListener != nil {
+		return nil
+	}
+
+	logger := p.logger.With().Str("socketPath", p.rgbStreamUnixSocket).Logger()
+	logger.Warn().Msg("RGB stream listener: starting...")
+	listener, err := net.Listen("unix", p.rgbStreamUnixSocket)
+	if err != nil {
+		logger.Error().Err(err).Msg("RGB stream listener: FAILED to start")
+		return fmt.Errorf("failed to start RGB stream listener: %w", err)
+	}
+	logger.Warn().Msg("RGB stream listener: STARTED successfully")
+	p.rgbStreamListener = listener
+
+	go func() {
+		logger.Warn().Msg("RGB stream listener: waiting for connections...")
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				logger.Warn().Err(err).Msg("RGB stream listener: failed to accept connection")
+				continue
+			}
+
+			logger.Warn().Msg("RGB stream listener: CONNECTION ACCEPTED from subprocess")
+			go p.handleRgbFrame(conn)
 		}
 	}()
 
@@ -386,6 +427,58 @@ func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 	p.logger.Info().Int("totalFrames", frameCount).Msg("JPEG frame handler: stopped")
 }
 
+func (p *NativeProxy) handleRgbFrame(conn net.Conn) {
+	defer conn.Close()
+
+	inboundPacket := make([]byte, maxRgbFrameSize)
+	var headerBuffer [12]byte // frame_size (4) + width (4) + height (4)
+	frameCount := 0
+
+	p.logger.Info().Msg("RGB frame handler: started, waiting for frames from subprocess")
+
+	for {
+		// Read 12-byte header: frame_size + width + height
+		_, err := io.ReadFull(conn, headerBuffer[:])
+		if err != nil {
+			if err != io.EOF {
+				p.logger.Warn().Err(err).Msg("RGB frame handler: failed to read header")
+			}
+			break
+		}
+
+		frameSize := binary.LittleEndian.Uint32(headerBuffer[0:4])
+		width := binary.LittleEndian.Uint32(headerBuffer[4:8])
+		height := binary.LittleEndian.Uint32(headerBuffer[8:12])
+
+		if frameSize == 0 || frameSize > maxRgbFrameSize {
+			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxRgbFrameSize).
+				Msg("RGB frame handler: invalid frame size")
+			break
+		}
+
+		// Read the actual frame data
+		_, err = io.ReadFull(conn, inboundPacket[:frameSize])
+		if err != nil {
+			p.logger.Warn().Err(err).Msg("RGB frame handler: failed to read frame data")
+			break
+		}
+
+		frameCount++
+		if frameCount <= 3 || frameCount%100 == 0 {
+			p.logger.Debug().Int("frameCount", frameCount).Uint32("frameSize", frameSize).
+				Uint32("width", width).Uint32("height", height).Msg("RGB frame received")
+		}
+		if p.options.OnRGBFrameReceived != nil {
+			p.options.OnRGBFrameReceived(RGBFrame{
+				Data:   inboundPacket[:frameSize],
+				Width:  width,
+				Height: height,
+			})
+		}
+	}
+	p.logger.Info().Int("totalFrames", frameCount).Msg("RGB frame handler: stopped")
+}
+
 // it should be only called by start() method, as it isn't thread-safe
 func (p *NativeProxy) setUpGRPCClient() error {
 	// wait until handshake completed
@@ -482,6 +575,10 @@ func (p *NativeProxy) Start() error {
 
 	if err := p.startJpegStreamListener(); err != nil {
 		return fmt.Errorf("failed to start JPEG stream listener: %w", err)
+	}
+
+	if err := p.startRgbStreamListener(); err != nil {
+		return fmt.Errorf("failed to start RGB stream listener: %w", err)
 	}
 
 	if err := p.doStart(); err != nil {
@@ -859,4 +956,28 @@ func (p *NativeProxy) VideoRequestKeyframe() error {
 	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
 		return client.VideoRequestKeyframe()
 	})
+}
+
+// RGA RGB encoder methods
+func (p *NativeProxy) RgbStart() error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.RgbStart()
+	})
+}
+
+func (p *NativeProxy) RgbStop() error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.RgbStop()
+	})
+}
+
+func (p *NativeProxy) RgbIsRunning() (bool, error) {
+	p.clientMu.RLock()
+	defer p.clientMu.RUnlock()
+
+	if p.client == nil {
+		return false, fmt.Errorf("gRPC client not initialized")
+	}
+
+	return p.client.RgbIsRunning()
 }

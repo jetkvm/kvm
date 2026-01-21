@@ -267,3 +267,26 @@ func (s *grpcServer) JpegIsRunning(ctx context.Context, req *pb.Empty) (*pb.Jpeg
 	}
 	return &pb.JpegIsRunningResponse{Running: running}, nil
 }
+
+// RGB encoder methods
+func (s *grpcServer) RgbStart(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	if err := s.native.RgbStart(); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) RgbStop(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	if err := s.native.RgbStop(); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) RgbIsRunning(ctx context.Context, req *pb.Empty) (*pb.RgbIsRunningResponse, error) {
+	running, err := s.native.RgbIsRunning()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.RgbIsRunningResponse{Running: running}, nil
+}

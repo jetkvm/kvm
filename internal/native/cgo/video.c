@@ -57,8 +57,15 @@ static uint32_t jpeg_width = 0;
 static uint32_t jpeg_height = 0;
 static pthread_mutex_t jpeg_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Raw frame encoder state (outputs YUV422 directly, Go converts to RGB)
+static volatile bool rgb_running = false;
+static uint32_t rgb_width = 0;
+static uint32_t rgb_height = 0;
+static pthread_mutex_t rgb_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static void *venc_read_stream(void *arg);
 static void *jpeg_read_stream(void *arg);
+static int send_yuv_frame(const uint8_t *yuv_data, uint32_t width, uint32_t height, uint32_t yuv_size);
 
 RK_U64 get_us()
 {
@@ -933,6 +940,18 @@ void *run_video_stream(void *arg)
                 }
             }
 
+            // Send raw YUV422 frame if RGB encoder is running (Go converts to RGB)
+            if (rgb_running)
+            {
+                void *yuv_data = RK_MPI_MB_Handle2VirAddr(blk);
+                if (yuv_data != NULL)
+                {
+                    // YUV422 YUYV = 2 bytes per pixel
+                    uint32_t yuv_size = RK_ALIGN_2(width) * height * 2;
+                    send_yuv_frame((const uint8_t *)yuv_data, width, height, yuv_size);
+                }
+            }
+
             num++;
 
             if (ioctl(video_dev_fd, VIDIOC_QBUF, &buf) < 0)
@@ -1233,4 +1252,94 @@ int video_request_keyframe()
 
     log_info("Keyframe (IDR) requested from encoder");
     return 0;
+}
+
+// Send raw YUV422 frame to Go for conversion (no RGA - Go does YUV→RGB)
+static int send_yuv_frame(const uint8_t *yuv_data, uint32_t width, uint32_t height, uint32_t yuv_size)
+{
+    if (!rgb_running)
+    {
+        return -1;
+    }
+
+    // Send the raw YUV frame to Go - Go will convert to RGB
+    video_send_rgb_frame(yuv_data, yuv_size, width, height);
+    return 0;
+}
+
+// Public RGB encoder API (outputs raw YUV422 for Go to convert)
+int rgb_encoder_start()
+{
+    log_debug("RGB encoder start requested");
+
+    // Wait for video signal to be detected (up to 10 seconds)
+    int retries = 0;
+    const int max_retries = 100; // 100 * 100ms = 10 seconds
+    while ((detected_width == 0 || detected_height == 0 || !detected_signal) && retries < max_retries)
+    {
+        if (retries == 0)
+        {
+            log_debug("RGB: waiting for video signal...");
+        }
+        usleep(100000); // 100ms
+        retries++;
+    }
+
+    pthread_mutex_lock(&rgb_mutex);
+
+    if (rgb_running)
+    {
+        log_warn("RGB encoder already running");
+        pthread_mutex_unlock(&rgb_mutex);
+        return 0;
+    }
+
+    if (detected_width == 0 || detected_height == 0 || !detected_signal)
+    {
+        log_error("Cannot start RGB encoder: no video signal (detected=%dx%d signal=%d)",
+                  detected_width, detected_height, detected_signal ? 1 : 0);
+        pthread_mutex_unlock(&rgb_mutex);
+        return -1;
+    }
+
+    rgb_width = detected_width;
+    rgb_height = detected_height;
+
+    // Check if video streaming is running - RGB encoder needs it to receive frames
+    uint8_t streaming_status = video_get_streaming_status();
+    log_debug("RGB: streaming_status=%d", streaming_status);
+
+    if (streaming_status == 0)
+    {
+        log_debug("RGB: video streaming stopped, starting it");
+        video_start_streaming();
+        usleep(500000); // 500ms
+    }
+
+    rgb_running = true;
+    log_info("RGB encoder started: %dx%d (YUV422 output)", rgb_width, rgb_height);
+    pthread_mutex_unlock(&rgb_mutex);
+    return 0;
+}
+
+void rgb_encoder_stop()
+{
+    pthread_mutex_lock(&rgb_mutex);
+
+    if (!rgb_running)
+    {
+        log_info("RGB encoder already stopped");
+        pthread_mutex_unlock(&rgb_mutex);
+        return;
+    }
+
+    rgb_running = false;
+
+    log_info("RGB encoder stopped");
+    pthread_mutex_unlock(&rgb_mutex);
+}
+
+bool rgb_encoder_is_running()
+{
+    return rgb_running;
 }

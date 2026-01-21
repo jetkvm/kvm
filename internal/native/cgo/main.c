@@ -22,6 +22,10 @@ static pthread_mutex_t client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int jpeg_client_fd = -1;
 static pthread_mutex_t jpeg_client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// RGB/YUV stream socket (raw frames for RDP bitmap mode)
+static int rgb_client_fd = -1;
+static pthread_mutex_t rgb_client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void jetkvm_c_log_handler(int level, const char *filename, const char *funcname, int line, const char *message) {
     // printf("[%s] %s:%d %s: %s\n", filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
     fprintf(stderr, "[%d] %s:%s:%d: %s\n", level, filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
@@ -75,6 +79,54 @@ void jetkvm_jpeg_handler(const uint8_t *frame, ssize_t len) {
     pthread_mutex_unlock(&jpeg_client_fd_mutex);
 }
 
+// RGB handler that sends raw YUV422 frames to the RGB stream socket
+// Called by video_send_rgb_frame when RGB encoder produces a frame
+void jetkvm_rgb_handler(const uint8_t *frame, ssize_t len, uint32_t width, uint32_t height) {
+    pthread_mutex_lock(&rgb_client_fd_mutex);
+    if (rgb_client_fd >= 0 && frame != NULL && len > 0) {
+        // Write 12-byte header: frame_size (4) + width (4) + height (4)
+        uint8_t header[12];
+        uint32_t frame_size = (uint32_t)len;
+        header[0] = (frame_size >> 0) & 0xFF;
+        header[1] = (frame_size >> 8) & 0xFF;
+        header[2] = (frame_size >> 16) & 0xFF;
+        header[3] = (frame_size >> 24) & 0xFF;
+        header[4] = (width >> 0) & 0xFF;
+        header[5] = (width >> 8) & 0xFF;
+        header[6] = (width >> 16) & 0xFF;
+        header[7] = (width >> 24) & 0xFF;
+        header[8] = (height >> 0) & 0xFF;
+        header[9] = (height >> 8) & 0xFF;
+        header[10] = (height >> 16) & 0xFF;
+        header[11] = (height >> 24) & 0xFF;
+
+        ssize_t n = write(rgb_client_fd, header, 12);
+        if (n != 12) {
+            if (errno == EPIPE || errno == ECONNRESET || n == 0) {
+                close(rgb_client_fd);
+                rgb_client_fd = -1;
+            }
+            pthread_mutex_unlock(&rgb_client_fd_mutex);
+            return;
+        }
+
+        // Write frame data
+        ssize_t bytes_written = 0;
+        while (bytes_written < len) {
+            n = write(rgb_client_fd, frame + bytes_written, len - bytes_written);
+            if (n <= 0) {
+                if (errno == EPIPE || errno == ECONNRESET) {
+                    close(rgb_client_fd);
+                    rgb_client_fd = -1;
+                }
+                break;
+            }
+            bytes_written += n;
+        }
+    }
+    pthread_mutex_unlock(&rgb_client_fd_mutex);
+}
+
 void jetkvm_video_state_handler(jetkvm_video_state_t *state) {
     fprintf(stderr, "Video state: {\n"
         "\"ready\": %d,\n"
@@ -112,6 +164,7 @@ int main(int argc, char *argv[]) {
     jetkvm_set_log_handler(&jetkvm_c_log_handler);
     jetkvm_set_video_handler(&jetkvm_video_handler);
     jetkvm_set_jpeg_handler(&jetkvm_jpeg_handler);
+    jetkvm_set_rgb_handler(&jetkvm_rgb_handler);
     jetkvm_set_video_state_handler(&jetkvm_video_state_handler);
     jetkvm_set_indev_handler(&jetkvm_indev_handler);
     jetkvm_set_rpc_handler(&jetkvm_rpc_handler);
@@ -141,6 +194,35 @@ int main(int argc, char *argv[]) {
             } else {
                 perror("connect JPEG socket");
                 close(jpeg_fd);
+            }
+        }
+    }
+
+    // Connect to RGB/YUV stream socket if provided
+    const char *rgb_socket_path = getenv("JETKVM_NATIVE_RGB_STREAM_UNIX_SOCKET");
+    if (rgb_socket_path != NULL && rgb_socket_path[0] != '\0') {
+        int rgb_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (rgb_fd >= 0) {
+            struct sockaddr_un rgb_addr;
+            memset(&rgb_addr, 0, sizeof(rgb_addr));
+            rgb_addr.sun_family = AF_UNIX;
+
+            // Handle abstract socket (starts with @)
+            if (rgb_socket_path[0] == '@') {
+                rgb_addr.sun_path[0] = '\0';
+                strncpy(rgb_addr.sun_path + 1, rgb_socket_path + 1, sizeof(rgb_addr.sun_path) - 2);
+            } else {
+                strncpy(rgb_addr.sun_path, rgb_socket_path, sizeof(rgb_addr.sun_path) - 1);
+            }
+
+            if (connect(rgb_fd, (struct sockaddr *)&rgb_addr, sizeof(rgb_addr)) == 0) {
+                pthread_mutex_lock(&rgb_client_fd_mutex);
+                rgb_client_fd = rgb_fd;
+                pthread_mutex_unlock(&rgb_client_fd_mutex);
+                fprintf(stderr, "Connected to RGB stream socket: %s\n", rgb_socket_path);
+            } else {
+                perror("connect RGB socket");
+                close(rgb_fd);
             }
         }
     }
