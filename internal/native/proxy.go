@@ -28,8 +28,8 @@ const (
 	maxFrameSize = 1920 * 1080 / 2
 	// JPEG frame size limit - high quality JPEG can be 1-2MB for 1080p
 	maxJpegFrameSize = 2 * 1024 * 1024
-	// RGB frame size limit - 1920x1080 YUV422 = 1920*1080*2 = ~4MB
-	maxRgbFrameSize                = 1920 * 1080 * 2
+	// RGB frame size limit - 1920x1080 BGRX = 1920*1080*4 = ~8MB (RGA hardware outputs BGRX)
+	maxRgbFrameSize                = 1920 * 1080 * 4
 	defaultMaxRestartAttempts uint = 5
 )
 
@@ -469,10 +469,18 @@ func (p *NativeProxy) handleRgbFrame(conn net.Conn) {
 				Uint32("width", width).Uint32("height", height).Msg("RGB frame received")
 		}
 		if p.options.OnRGBFrameReceived != nil {
+			// Detect format based on frame size:
+			// BGRX = 4 bytes/pixel, YUV422 = 2 bytes/pixel
+			expectedBGRXSize := width * height * 4
+			format := RGBFrameFormatYUV422
+			if frameSize == expectedBGRXSize {
+				format = RGBFrameFormatBGRX
+			}
 			p.options.OnRGBFrameReceived(RGBFrame{
 				Data:   inboundPacket[:frameSize],
 				Width:  width,
 				Height: height,
+				Format: format,
 			})
 		}
 	}

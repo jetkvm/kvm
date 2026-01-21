@@ -33,7 +33,7 @@ go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 # Install buildkit
-BUILDKIT_VERSION="v0.2.5"
+BUILDKIT_VERSION="v0.2.7"
 BUILDKIT_TMPDIR="$(mktemp -d)"
 pushd "${BUILDKIT_TMPDIR}" > /dev/null
 

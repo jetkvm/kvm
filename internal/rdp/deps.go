@@ -91,6 +91,15 @@ type ConfigProvider interface {
 	// GetRDPVideoEnabled returns whether H.264 video (RDPGFX) is enabled.
 	GetRDPVideoEnabled() bool
 
+	// GetRDPAudioEnabled returns whether audio output to client (RDPSND) is enabled.
+	GetRDPAudioEnabled() bool
+
+	// GetRDPMicEnabled returns whether microphone input from client (AUDIN) is enabled.
+	GetRDPMicEnabled() bool
+
+	// GetRDPCameraEnabled returns whether webcam redirection from client is enabled.
+	GetRDPCameraEnabled() bool
+
 	// GetTLSMode returns the TLS mode ("disabled", "self-signed", "custom").
 	GetTLSMode() string
 
@@ -119,11 +128,25 @@ type HIDProvider interface {
 	CancelKeyboardMacro()
 }
 
-// RGBFrame represents a raw BGRX frame from RGA hardware conversion.
+// RGBFrameFormat indicates the pixel format of the frame data
+type RGBFrameFormat int
+
+const (
+	// RGBFrameFormatYUV422 indicates YUV422 YUYV format (needs software conversion)
+	RGBFrameFormatYUV422 RGBFrameFormat = iota
+	// RGBFrameFormatBGRX indicates BGRX format (ready to use, from RGA hardware)
+	RGBFrameFormatBGRX
+)
+
+// RGBFrame represents a video frame for RDP bitmap mode.
+// When RGA hardware acceleration is available, Format will be RGBFrameFormatBGRX
+// and Data contains ready-to-use BGRX pixels. Otherwise, Format is RGBFrameFormatYUV422
+// and Data needs software conversion.
 type RGBFrame struct {
 	Data   []byte
 	Width  uint32
 	Height uint32
+	Format RGBFrameFormat
 }
 
 // VideoProvider provides access to video frames.

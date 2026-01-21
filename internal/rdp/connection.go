@@ -2555,9 +2555,16 @@ func (c *Connection) initDynamicChannels() error {
 // initDVCChannelsSync creates DVC channels synchronously.
 // Called from the capability response handler in the message loop context.
 func (c *Connection) initDVCChannelsSync() {
+	c.server.deps.Logger.Warn().Msg("DEBUG: initDVCChannelsSync ENTER")
+
 	// Initialize RDPSND for audio output (static channel, not DVC)
+	// Only initialize if audio is enabled in config
 	if c.rdpsndID != 0 {
-		c.initSoundChannel()
+		if !c.server.deps.Config.GetRDPAudioEnabled() {
+			c.server.deps.Logger.Info().Msg("RDP: audio output disabled in config, skipping RDPSND channel")
+		} else {
+			c.initSoundChannel()
+		}
 	}
 
 	// Initialize clipboard channel AFTER DVC capability exchange completes
@@ -2606,97 +2613,116 @@ func (c *Connection) initDVCChannelsSync() {
 		}
 	}
 
-	// Create AUDIN channel for microphone input
-	c.audinChannel = channels.NewAudinChannel(c.dvcManager)
+	// Create AUDIN channel for microphone input (only if mic is enabled in config)
+	if !c.server.deps.Config.GetRDPMicEnabled() {
+		c.server.deps.Logger.Info().Msg("RDP: microphone input disabled in config, skipping AUDIN channel")
+	} else {
+		c.audinChannel = channels.NewAudinChannel(c.dvcManager)
 
-	// Set logger for debugging (Warn level to ensure visibility)
-	c.audinChannel.SetLogger(func(msg string, args ...interface{}) {
-		c.server.deps.Logger.Warn().Msgf(msg, args...)
-	})
+		// Set logger for debugging (Warn level to ensure visibility)
+		c.audinChannel.SetLogger(func(msg string, args ...interface{}) {
+			c.server.deps.Logger.Warn().Msgf(msg, args...)
+		})
 
-	// Set ready callback for AUDIN
-	c.audinChannel.SetReadyCallback(func(a *channels.AudinChannel) {
-		fmt, ok := a.GetSelectedFormat()
-		if !ok {
-			return
-		}
-
-		c.server.deps.Logger.Info().
-			Uint16("channels", fmt.Channels).
-			Uint32("sampleRate", fmt.SamplesPerSec).
-			Uint16("bitsPerSample", fmt.BitsPerSample).
-			Msg("RDP: AUDIN channel ready for microphone input")
-
-		// Automatically enable audio input when RDP client has mic enabled
-		// This initializes the USB audio gadget playback without requiring manual UI toggle
-		if c.server.deps.Audio != nil {
-			if err := c.server.deps.Audio.EnableAudioInput(); err != nil {
-				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to enable audio input for AUDIN")
-			} else {
-				c.server.deps.Logger.Info().Msg("RDP: audio input enabled for AUDIN")
+		// Set ready callback for AUDIN
+		c.audinChannel.SetReadyCallback(func(a *channels.AudinChannel) {
+			c.server.deps.Logger.Warn().Msg("DEBUG: AUDIN ready callback ENTER")
+			fmt, ok := a.GetSelectedFormat()
+			if !ok {
+				c.server.deps.Logger.Warn().Msg("DEBUG: AUDIN ready callback - no format, returning")
+				return
 			}
+
+			c.server.deps.Logger.Warn().
+				Uint16("channels", fmt.Channels).
+				Uint32("sampleRate", fmt.SamplesPerSec).
+				Uint16("bitsPerSample", fmt.BitsPerSample).
+				Msg("RDP: AUDIN channel ready for microphone input")
+
+			// Automatically enable audio input when RDP client has mic enabled
+			// This initializes the USB audio gadget playback without requiring manual UI toggle
+			if c.server.deps.Audio != nil {
+				c.server.deps.Logger.Warn().Msg("DEBUG: calling EnableAudioInput - may call native code")
+				if err := c.server.deps.Audio.EnableAudioInput(); err != nil {
+					c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to enable audio input for AUDIN")
+				} else {
+					c.server.deps.Logger.Warn().Msg("RDP: audio input enabled for AUDIN")
+				}
+				c.server.deps.Logger.Warn().Msg("DEBUG: EnableAudioInput completed")
+			}
+			c.server.deps.Logger.Warn().Msg("DEBUG: AUDIN ready callback EXIT")
+		})
+
+		// Create AUDIN async buffer and processing goroutine
+		// This prevents AUDIN data processing from blocking the DVC message loop
+		// which would delay GFX frame ACKs and cause video stuttering
+		c.audinDataChan = make(chan []byte, 30) // Buffer for ~300ms at 10ms packets
+		c.audinStopCh = make(chan struct{})
+		go c.audinDataLoop()
+
+		// Set data callback to forward audio to buffer (non-blocking)
+		c.audinChannel.SetDataCallback(func(data []byte) {
+			// Make a copy since the underlying buffer may be reused by the connection
+			dataCopy := make([]byte, len(data))
+			copy(dataCopy, data)
+
+			// Non-blocking send - drop if buffer is full
+			select {
+			case c.audinDataChan <- dataCopy:
+				// Data queued successfully
+			default:
+				// Buffer full, drop the audio packet (acceptable for real-time audio)
+			}
+		})
+
+		if err := c.audinChannel.Open(); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to open AUDIN channel")
+			// Non-fatal - we can still work without audio input
 		}
-	})
-
-	// Create AUDIN async buffer and processing goroutine
-	// This prevents AUDIN data processing from blocking the DVC message loop
-	// which would delay GFX frame ACKs and cause video stuttering
-	c.audinDataChan = make(chan []byte, 30) // Buffer for ~300ms at 10ms packets
-	c.audinStopCh = make(chan struct{})
-	go c.audinDataLoop()
-
-	// Set data callback to forward audio to buffer (non-blocking)
-	c.audinChannel.SetDataCallback(func(data []byte) {
-		// Make a copy since the underlying buffer may be reused by the connection
-		dataCopy := make([]byte, len(data))
-		copy(dataCopy, data)
-
-		// Non-blocking send - drop if buffer is full
-		select {
-		case c.audinDataChan <- dataCopy:
-			// Data queued successfully
-		default:
-			// Buffer full, drop the audio packet (acceptable for real-time audio)
-		}
-	})
-
-	if err := c.audinChannel.Open(); err != nil {
-		c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to open AUDIN channel")
-		// Non-fatal - we can still work without audio input
 	}
 
-	// Create camera channel for webcam redirection
-	c.cameraChannel = channels.NewCameraChannel(c.dvcManager)
+	// Create camera channel for webcam redirection (only if camera is enabled in config)
+	c.server.deps.Logger.Warn().Bool("enabled", c.server.deps.Config.GetRDPCameraEnabled()).Msg("DEBUG: camera channel setup BEGIN")
+	if !c.server.deps.Config.GetRDPCameraEnabled() {
+		c.server.deps.Logger.Info().Msg("RDP: camera redirection disabled in config, skipping camera channel")
+	} else {
+		c.server.deps.Logger.Warn().Msg("DEBUG: creating NewCameraChannel")
+		c.cameraChannel = channels.NewCameraChannel(c.dvcManager)
+		c.server.deps.Logger.Warn().Msg("DEBUG: NewCameraChannel created")
 
-	// Set ready callback for camera
-	c.cameraChannel.SetReadyCallback(func(cam *channels.CameraChannel) {
-		cameras := cam.GetCameras()
-		c.server.deps.Logger.Info().
-			Int("numCameras", len(cameras)).
-			Msg("RDP: Camera channel ready")
+		// Set ready callback for camera
+		c.cameraChannel.SetReadyCallback(func(cam *channels.CameraChannel) {
+			cameras := cam.GetCameras()
+			c.server.deps.Logger.Info().
+				Int("numCameras", len(cameras)).
+				Msg("RDP: Camera channel ready")
 
-		// Activate first camera if UVC gadget is connected
-		if c.server.deps.Camera != nil && c.server.deps.Camera.IsConnected() {
-			if err := cam.Activate(); err != nil {
-				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to activate camera")
+			// Activate first camera if UVC gadget is connected
+			if c.server.deps.Camera != nil && c.server.deps.Camera.IsConnected() {
+				if err := cam.Activate(); err != nil {
+					c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to activate camera")
+				}
 			}
-		}
-	})
+		})
 
-	// Set frame callback to forward to UVC gadget
-	c.cameraChannel.SetFrameCallback(func(frame []byte, width, height, pixelFormat uint32) {
-		if c.server.deps.Camera == nil {
-			return
-		}
-		if err := c.server.deps.Camera.SendFrame(frame, width, height, pixelFormat); err != nil {
-			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send camera frame")
-		}
-	})
+		// Set frame callback to forward to UVC gadget
+		c.cameraChannel.SetFrameCallback(func(frame []byte, width, height, pixelFormat uint32) {
+			if c.server.deps.Camera == nil {
+				return
+			}
+			if err := c.server.deps.Camera.SendFrame(frame, width, height, pixelFormat); err != nil {
+				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send camera frame")
+			}
+		})
 
-	if err := c.cameraChannel.Open(); err != nil {
-		c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to open camera channel")
-		// Non-fatal - we can still work without camera
+		c.server.deps.Logger.Warn().Msg("DEBUG: calling cameraChannel.Open()")
+		if err := c.cameraChannel.Open(); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to open camera channel")
+			// Non-fatal - we can still work without camera
+		}
+		c.server.deps.Logger.Warn().Msg("DEBUG: cameraChannel.Open() completed")
 	}
+	c.server.deps.Logger.Warn().Msg("DEBUG: camera channel setup END")
 
 	c.server.deps.Logger.Warn().Msg("RDP: dynamic virtual channels initialized")
 
@@ -2707,6 +2733,7 @@ func (c *Connection) initDVCChannelsSync() {
 // checkGFXReadinessAndFallback waits for RDPGFX to become ready.
 // If it doesn't become ready within timeout, falls back to bitmap updates.
 func (c *Connection) checkGFXReadinessAndFallback() {
+	c.server.deps.Logger.Warn().Msg("DEBUG: checkGFXReadinessAndFallback ENTER - waiting 3s for RDPGFX")
 	// Wait up to 3 seconds for RDPGFX to become ready
 	timeout := time.After(3 * time.Second)
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -2715,20 +2742,28 @@ func (c *Connection) checkGFXReadinessAndFallback() {
 	for {
 		select {
 		case <-c.stopChan:
+			c.server.deps.Logger.Warn().Msg("DEBUG: checkGFXReadinessAndFallback - stopChan received")
 			return
 		case <-timeout:
 			// RDPGFX didn't become ready - fall back to bitmap mode
+			c.server.deps.Logger.Warn().Bool("gfxSupported", c.gfxSupported.Load()).Msg("DEBUG: checkGFXReadinessAndFallback - 3s timeout reached")
 			if !c.gfxSupported.Load() {
 				c.server.deps.Logger.Warn().Msg("RDP: RDPGFX not supported, falling back to bitmap updates")
 				if c.server.deps.Video != nil {
+					c.server.deps.Logger.Warn().Msg("DEBUG: about to call SubscribeJPEG")
 					jpegChan := c.server.deps.Video.SubscribeJPEG()
+					c.server.deps.Logger.Warn().Msg("DEBUG: SubscribeJPEG returned, about to call startBitmapStreaming")
 					c.startBitmapStreaming(jpegChan)
+					c.server.deps.Logger.Warn().Msg("DEBUG: startBitmapStreaming returned")
+				} else {
+					c.server.deps.Logger.Warn().Msg("DEBUG: Video provider is nil, skipping bitmap streaming")
 				}
 			}
 			return
 		case <-ticker.C:
 			if c.gfxSupported.Load() {
 				// RDPGFX is ready, no need for fallback
+				c.server.deps.Logger.Warn().Msg("DEBUG: checkGFXReadinessAndFallback - RDPGFX became ready")
 				return
 			}
 		}
@@ -3710,18 +3745,23 @@ func (c *Connection) sendFastPathFragment(data []byte, fragFlag byte) error {
 // startBitmapStreaming starts streaming bitmap updates when RDPGFX is not available.
 // This uses RGA hardware YUV→BGRX conversion for maximum performance.
 func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
+	c.server.deps.Logger.Warn().Msg("DEBUG: startBitmapStreaming ENTER")
 	c.server.deps.Logger.Warn().Msg("RDP: starting bitmap streaming with raw YUV422 frames")
 
 	// Start video capture if not already started
 	if c.server.deps.Video != nil {
+		c.server.deps.Logger.Warn().Msg("DEBUG: about to call StartVideo()")
 		if err := c.server.deps.Video.StartVideo(); err != nil {
 			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
 		}
+		c.server.deps.Logger.Warn().Msg("DEBUG: StartVideo() returned")
 
 		// Start raw frame encoder (outputs YUV422, Go converts to BGRX)
+		c.server.deps.Logger.Warn().Msg("DEBUG: about to call StartRGBEncoder() - THIS CALLS RGA NATIVE CODE")
 		if err := c.server.deps.Video.StartRGBEncoder(); err != nil {
 			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start raw frame encoder, falling back to JPEG")
 			// Fall back to JPEG if raw frames fail
+			c.server.deps.Logger.Warn().Msg("DEBUG: about to call StartJPEGEncoder(50)")
 			if err := c.server.deps.Video.StartJPEGEncoder(50); err != nil {
 				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start JPEG encoder")
 			} else {
@@ -3730,8 +3770,11 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 				return
 			}
 		} else {
+			c.server.deps.Logger.Warn().Msg("DEBUG: StartRGBEncoder() returned SUCCESS")
 			c.server.deps.Logger.Warn().Msg("RDP: raw YUV422 encoder started for bitmap mode")
 		}
+	} else {
+		c.server.deps.Logger.Warn().Msg("DEBUG: Video provider is nil!")
 	}
 
 	// Subscribe to YUV422 frames (misnamed rgbChan for historical reasons)
@@ -3756,15 +3799,30 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 				}
 
 				if frameCount == 0 {
-					c.server.deps.Logger.Info().
+					formatName := "YUV422"
+					if frame.Format == RGBFrameFormatBGRX {
+						formatName = "BGRX (RGA hardware)"
+					}
+					c.server.deps.Logger.Warn().
 						Int("frameSize", len(frame.Data)).
 						Uint32("width", frame.Width).
 						Uint32("height", frame.Height).
-						Msg("RDP: first YUV422 frame received")
+						Str("format", formatName).
+						Msg("RDP: first RGB frame received")
 				}
 
-				// Convert YUV422 YUYV to BGRX (native outputs YUV, Go converts)
-				bgrxData := convertYUV422ToBGRX(frame.Data, int(frame.Width), int(frame.Height))
+				var bgrxData []byte
+				var needsPoolRelease bool
+
+				if frame.Format == RGBFrameFormatBGRX {
+					// RGA hardware already converted to BGRX - use directly
+					bgrxData = frame.Data
+					needsPoolRelease = false
+				} else {
+					// Software fallback: convert YUV422 YUYV to BGRX
+					bgrxData = convertYUV422ToBGRX(frame.Data, int(frame.Width), int(frame.Height))
+					needsPoolRelease = true
+				}
 
 				if err := c.SendRGBBitmapUpdate(bgrxData, int(frame.Width), int(frame.Height)); err != nil {
 					c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send RGB bitmap update")
@@ -3773,11 +3831,14 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 					if frameCount == 1 || frameCount%100 == 0 {
 						elapsed := time.Since(startTime).Seconds()
 						fps := float64(frameCount) / elapsed
-						c.server.deps.Logger.Debug().Int("frameCount", frameCount).Float64("avgFps", fps).Msg("RDP: RGB bitmap update sent")
+						hwAccel := frame.Format == RGBFrameFormatBGRX
+						c.server.deps.Logger.Debug().Int("frameCount", frameCount).Float64("avgFps", fps).Bool("hwAccel", hwAccel).Msg("RDP: RGB bitmap update sent")
 					}
 				}
-				// Return buffer to pool (data was copied in SendRGBBitmapUpdate)
-				releaseBGRXBuffer(bgrxData)
+				// Return buffer to pool only if we allocated it (software conversion)
+				if needsPoolRelease {
+					releaseBGRXBuffer(bgrxData)
+				}
 			}
 		}
 	}()

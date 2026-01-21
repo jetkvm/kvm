@@ -34,10 +34,12 @@ VERBOSE=1 cmake -B "${BUILD_DIR}" \
     -DCONFIG_LV_BUILD_DEMOS=OFF \
     -DSKIP_GLIBC_NAMES=ON \
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
-    -DCMAKE_INSTALL_PREFIX="${TMP_DIR}"
+    -DCMAKE_INSTALL_PREFIX="${TMP_DIR}" \
+    -DBUILD_JKNATIVE_BIN=OFF
 
 msg_info "▶ Copying built library and header files"
-cmake --build "${BUILD_DIR}" --target install
+cmake --build "${BUILD_DIR}" --target jknative
+cmake --install "${BUILD_DIR}"
 cp -r "${TMP_DIR}/include" "${CGO_PATH}"
 cp -r "${TMP_DIR}/lib" "${CGO_PATH}"
 rm -rf "${TMP_DIR}"

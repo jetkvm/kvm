@@ -106,11 +106,21 @@ func jetkvm_go_jpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
 
 //export jetkvm_go_rgb_handler
 func jetkvm_go_rgb_handler(frame *C.cuint8_t, len C.ssize_t, width C.uint32_t, height C.uint32_t) {
+	// Determine format based on frame size:
+	// - BGRX = 4 bytes/pixel, so len = width * height * 4
+	// - YUV422 = 2 bytes/pixel, so len = width * height * 2
+	expectedBGRXSize := uint32(width) * uint32(height) * 4
+	format := RGBFrameFormatYUV422
+	if uint32(len) == expectedBGRXSize {
+		format = RGBFrameFormatBGRX
+	}
+
 	select {
 	case rgbFrameChan <- RGBFrame{
 		Data:   C.GoBytes(unsafe.Pointer(frame), C.int(len)),
 		Width:  uint32(width),
 		Height: uint32(height),
+		Format: format,
 	}:
 	default:
 		// Drop frame if channel is full (non-blocking)

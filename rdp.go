@@ -80,6 +80,18 @@ func (a *rdpConfigAdapter) GetRDPVideoEnabled() bool {
 	return config.RDPVideoEnabled
 }
 
+func (a *rdpConfigAdapter) GetRDPAudioEnabled() bool {
+	return config.RDPAudioEnabled
+}
+
+func (a *rdpConfigAdapter) GetRDPMicEnabled() bool {
+	return config.RDPMicEnabled
+}
+
+func (a *rdpConfigAdapter) GetRDPCameraEnabled() bool {
+	return config.RDPCameraEnabled
+}
+
 func (a *rdpConfigAdapter) GetTLSMode() string {
 	return config.TLSMode
 }
@@ -307,9 +319,9 @@ func (a *rdpVideoAdapter) StopRGBEncoder() error {
 	return nativeInstance.RgbStop()
 }
 
-// BroadcastRDPRGBFrame sends a raw BGRX frame to all RDP RGB subscribers.
-// Used for bitmap mode with RGA hardware acceleration.
-func BroadcastRDPRGBFrame(data []byte, width, height uint32) {
+// BroadcastRDPRGBFrame sends a video frame to all RDP RGB subscribers.
+// The format indicates whether data is BGRX (from RGA hardware) or YUV422 (needs conversion).
+func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrameFormat) {
 	rdpRGBSubscribers.mu.RLock()
 	defer rdpRGBSubscribers.mu.RUnlock()
 
@@ -317,6 +329,7 @@ func BroadcastRDPRGBFrame(data []byte, width, height uint32) {
 		Data:   data,
 		Width:  width,
 		Height: height,
+		Format: format,
 	}
 
 	for _, ch := range rdpRGBSubscribers.subs {

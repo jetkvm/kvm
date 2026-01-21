@@ -155,33 +155,44 @@ func startOutputAudioUnderMutex(alsaOutputDevice string) error {
 }
 
 func startInputAudioUnderMutex(alsaPlaybackDevice string) error {
+	audioLogger.Warn().Str("device", alsaPlaybackDevice).Msg("DEBUG: startInputAudioUnderMutex ENTER")
+
 	oldRelay := inputRelay.Swap(nil)
 	oldSource := inputSource.Swap(nil)
 
 	if oldRelay != nil {
+		audioLogger.Warn().Msg("DEBUG: stopping old input relay")
 		oldRelay.Stop()
 	}
 	if oldSource != nil {
+		audioLogger.Warn().Msg("DEBUG: disconnecting old input source")
 		(*oldSource).Disconnect()
 	}
 
+	audioLogger.Warn().Str("device", alsaPlaybackDevice).Msg("DEBUG: creating NewCgoInputSource")
 	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
+	audioLogger.Warn().Msg("DEBUG: creating NewInputRelay")
 	newRelay := audio.NewInputRelay()
 
 	// Connect the source to initialize ALSA playback device
+	audioLogger.Warn().Msg("DEBUG: calling newSource.Connect() - NATIVE CODE AHEAD")
 	if err := newSource.Connect(); err != nil {
 		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to connect input source")
 		return err
 	}
+	audioLogger.Warn().Msg("DEBUG: newSource.Connect() completed successfully")
 
+	audioLogger.Warn().Msg("DEBUG: calling newRelay.Start()")
 	if err := newRelay.Start(); err != nil {
 		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to start input relay")
 		newSource.Disconnect()
 		return err
 	}
+	audioLogger.Warn().Msg("DEBUG: newRelay.Start() completed successfully")
 
 	inputSource.Swap(&newSource)
 	inputRelay.Swap(newRelay)
+	audioLogger.Warn().Msg("DEBUG: startInputAudioUnderMutex EXIT success")
 	return nil
 }
 

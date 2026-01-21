@@ -7,6 +7,7 @@
 #include <string.h>
 #include <rk_debug.h>
 #include <malloc.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <rk_mpi_mb.h>
 #include <fcntl.h>
@@ -26,6 +27,13 @@
 #include "video.h"
 #include "ctrl.h"
 #include "log.h"
+
+// RGA hardware 2D graphics acceleration for YUV→BGRX conversion
+// Conditional compilation: HAS_RGA is defined by CMake if RGA headers are available
+#ifdef HAS_RGA
+#include <im2d.h>
+#include <rga.h>
+#endif
 
 #define VIDEO_DEV "/dev/video0"
 #define SUB_DEV "/dev/v4l-subdev2"
@@ -57,15 +65,48 @@ static uint32_t jpeg_width = 0;
 static uint32_t jpeg_height = 0;
 static pthread_mutex_t jpeg_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Raw frame encoder state (outputs YUV422 directly, Go converts to RGB)
+// Raw frame encoder state (uses RGA hardware for YUV→BGRX conversion if available)
 static volatile bool rgb_running = false;
 static uint32_t rgb_width = 0;
 static uint32_t rgb_height = 0;
 static pthread_mutex_t rgb_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+#ifdef HAS_RGA
+// RGA hardware acceleration state using DMA buffers (no IOMMU required)
+static bool rga_initialized = false;
+static bool rga_ready = false;                  // Fast-path flag: true when buffers are allocated and ready
+static MB_BLK rga_output_blk = NULL;           // DMA buffer for output BGRX data
+static int rga_output_fd = -1;                  // DMA fd for output buffer
+static uint8_t *rga_output_vaddr = NULL;        // Virtual address for reading output
+static rga_buffer_handle_t rga_output_handle = 0; // RGA handle for output buffer
+static rga_buffer_t rga_output_buffer;          // Pre-computed wrapped buffer (avoids call per frame)
+static size_t rga_output_buffer_size = 0;       // Current buffer size
+static uint32_t rga_output_width = 0;           // Current output dimensions
+static uint32_t rga_output_height = 0;
+static pthread_mutex_t rga_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Pool for RGA output buffers (separate from video capture pool)
+static MB_POOL rga_output_pool = MB_INVALID_POOLID;
+
+// Input handle cache - video capture uses triple-buffering with 3 fds
+// Caching handles avoids expensive importbuffer_fd/releasebuffer_handle on every frame
+#define RGA_INPUT_CACHE_SIZE 8
+static struct {
+    int fd;
+    rga_buffer_handle_t handle;
+    rga_buffer_t buffer;                        // Pre-computed wrapped buffer
+    uint32_t width;
+    uint32_t height;
+} rga_input_cache[RGA_INPUT_CACHE_SIZE];
+static int rga_input_cache_count = 0;
+#endif
+
 static void *venc_read_stream(void *arg);
 static void *jpeg_read_stream(void *arg);
-static int send_yuv_frame(const uint8_t *yuv_data, uint32_t width, uint32_t height, uint32_t yuv_size);
+static int send_yuv_frame_fd(int yuv_fd, uint32_t width, uint32_t height, uint32_t yuv_size);
+#ifdef HAS_RGA
+static void rga_cleanup(void);
+#endif
 
 RK_U64 get_us()
 {
@@ -940,15 +981,17 @@ void *run_video_stream(void *arg)
                 }
             }
 
-            // Send raw YUV422 frame if RGB encoder is running (Go converts to RGB)
+            // Send raw YUV422 frame if RGB encoder is running
+            // Use DMA fd for RGA hardware acceleration (no IOMMU required on RV1106)
             if (rgb_running)
             {
-                void *yuv_data = RK_MPI_MB_Handle2VirAddr(blk);
-                if (yuv_data != NULL)
+                // Get the DMA fd from the memory block (already a DMA buffer from V4L2)
+                int yuv_fd = RK_MPI_MB_Handle2Fd(blk);
+                if (yuv_fd >= 0)
                 {
                     // YUV422 YUYV = 2 bytes per pixel
                     uint32_t yuv_size = RK_ALIGN_2(width) * height * 2;
-                    send_yuv_frame((const uint8_t *)yuv_data, width, height, yuv_size);
+                    send_yuv_frame_fd(yuv_fd, width, height, yuv_size);
                 }
             }
 
@@ -1005,6 +1048,11 @@ void video_shutdown()
         return;
     }
     video_stop_streaming();
+
+#ifdef HAS_RGA
+    // Clean up RGA hardware resources
+    rga_cleanup();
+#endif
 
     should_exit = true;
     if (sub_dev_fd > 0)
@@ -1254,23 +1302,450 @@ int video_request_keyframe()
     return 0;
 }
 
-// Send raw YUV422 frame to Go for conversion (no RGA - Go does YUV→RGB)
-static int send_yuv_frame(const uint8_t *yuv_data, uint32_t width, uint32_t height, uint32_t yuv_size)
+#ifdef HAS_RGA
+// Track whether RGA hardware is available (checked once at first use)
+static bool rga_available_checked = false;
+static bool rga_available = false;
+// Global flag to disable RGA at runtime (can be set via env var)
+static bool rga_env_checked = false;
+// RGA is ENABLED by default (DMA buffer mode works on RV1106 without IOMMU)
+// Set JETKVM_DISABLE_RGA=1 to disable for debugging
+static bool rga_enabled = true;
+
+// Check if RGA is enabled (can be disabled by environment variable)
+static bool rga_check_enabled(void)
+{
+    if (rga_env_checked)
+    {
+        return rga_enabled;
+    }
+    rga_env_checked = true;
+
+    // Check for explicit disable
+    const char *disable_rga = getenv("JETKVM_DISABLE_RGA");
+    if (disable_rga != NULL && (strcmp(disable_rga, "1") == 0 || strcmp(disable_rga, "true") == 0))
+    {
+        log_warn("RGA: Disabled by JETKVM_DISABLE_RGA environment variable");
+        rga_enabled = false;
+        return false;
+    }
+
+    // Default: RGA is ENABLED (DMA buffer mode works on RV1106)
+    log_info("RGA: Enabled by default (DMA buffer mode)");
+    rga_enabled = true;
+    return true;
+}
+
+// Check if RGA hardware is available by testing /dev/rga
+static bool rga_check_available(void)
+{
+    if (!rga_check_enabled())
+    {
+        rga_available_checked = true;
+        rga_available = false;
+        return false;
+    }
+
+    if (rga_available_checked)
+    {
+        return rga_available;
+    }
+
+    // Check if /dev/rga exists and is accessible
+    int fd = open("/dev/rga", O_RDWR);
+    if (fd < 0)
+    {
+        log_warn("RGA: /dev/rga not available (errno=%d), using software fallback", errno);
+        rga_available = false;
+    }
+    else
+    {
+        close(fd);
+        rga_available = true;
+        log_info("RGA: /dev/rga is available");
+    }
+    rga_available_checked = true;
+    return rga_available;
+}
+
+// Initialize RGA hardware for color space conversion using DMA buffers
+// This works on RV1106 which has no IOMMU for RGA
+static int rga_init_if_needed(uint32_t width, uint32_t height)
+{
+    // Fast path: if already ready with same dimensions, skip mutex entirely
+    // Use memory barriers implicitly via volatile reads
+    if (rga_ready && rga_output_width == width && rga_output_height == height)
+    {
+        return 0;
+    }
+
+    // Check if RGA hardware is available first
+    if (!rga_check_available())
+    {
+        return -1;
+    }
+
+    pthread_mutex_lock(&rga_mutex);
+
+    // Double-check after acquiring mutex (another thread might have initialized)
+    if (rga_ready && rga_output_width == width && rga_output_height == height)
+    {
+        pthread_mutex_unlock(&rga_mutex);
+        return 0;
+    }
+
+    // Calculate required buffer size: BGRX = 4 bytes per pixel
+    size_t required_size = (size_t)width * height * 4;
+
+    // Check if we need to reallocate (size changed or not allocated)
+    bool need_realloc = (rga_output_blk == NULL ||
+                         rga_output_buffer_size < required_size ||
+                         rga_output_width != width ||
+                         rga_output_height != height);
+
+    if (need_realloc)
+    {
+        // Mark not ready during reallocation
+        rga_ready = false;
+        // Clean up old resources
+        if (rga_output_handle != 0)
+        {
+            releasebuffer_handle(rga_output_handle);
+            rga_output_handle = 0;
+        }
+
+        if (rga_output_blk != NULL)
+        {
+            RK_MPI_MB_ReleaseMB(rga_output_blk);
+            rga_output_blk = NULL;
+            rga_output_fd = -1;
+            rga_output_vaddr = NULL;
+        }
+
+        if (rga_output_pool != MB_INVALID_POOLID)
+        {
+            RK_MPI_MB_DestroyPool(rga_output_pool);
+            rga_output_pool = MB_INVALID_POOLID;
+        }
+
+        // Create a memory pool for RGA output buffer
+        MB_POOL_CONFIG_S pool_cfg;
+        memset(&pool_cfg, 0, sizeof(MB_POOL_CONFIG_S));
+        pool_cfg.u64MBSize = required_size;
+        pool_cfg.u32MBCnt = 1;  // Single buffer for output
+        pool_cfg.enAllocType = MB_ALLOC_TYPE_DMA;
+        pool_cfg.bPreAlloc = RK_TRUE;
+
+        rga_output_pool = RK_MPI_MB_CreatePool(&pool_cfg);
+        if (rga_output_pool == MB_INVALID_POOLID)
+        {
+            log_error("RGA: Failed to create output memory pool");
+            pthread_mutex_unlock(&rga_mutex);
+            return -1;
+        }
+
+        // Get a buffer from the pool
+        rga_output_blk = RK_MPI_MB_GetMB(rga_output_pool, required_size, RK_TRUE);
+        if (rga_output_blk == NULL)
+        {
+            log_error("RGA: Failed to get output buffer from pool");
+            RK_MPI_MB_DestroyPool(rga_output_pool);
+            rga_output_pool = MB_INVALID_POOLID;
+            pthread_mutex_unlock(&rga_mutex);
+            return -1;
+        }
+
+        // Get the DMA fd for the output buffer
+        rga_output_fd = RK_MPI_MB_Handle2Fd(rga_output_blk);
+        if (rga_output_fd < 0)
+        {
+            log_error("RGA: Failed to get fd from output buffer");
+            RK_MPI_MB_ReleaseMB(rga_output_blk);
+            rga_output_blk = NULL;
+            RK_MPI_MB_DestroyPool(rga_output_pool);
+            rga_output_pool = MB_INVALID_POOLID;
+            pthread_mutex_unlock(&rga_mutex);
+            return -1;
+        }
+
+        // Get virtual address for reading the output (to send to Go)
+        rga_output_vaddr = (uint8_t *)RK_MPI_MB_Handle2VirAddr(rga_output_blk);
+        if (rga_output_vaddr == NULL)
+        {
+            log_error("RGA: Failed to get virtual address from output buffer");
+            RK_MPI_MB_ReleaseMB(rga_output_blk);
+            rga_output_blk = NULL;
+            rga_output_fd = -1;
+            RK_MPI_MB_DestroyPool(rga_output_pool);
+            rga_output_pool = MB_INVALID_POOLID;
+            pthread_mutex_unlock(&rga_mutex);
+            return -1;
+        }
+
+        // Import the output buffer fd into RGA
+        im_handle_param_t output_param = {width, height, RK_FORMAT_BGRX_8888};
+        rga_output_handle = importbuffer_fd(rga_output_fd, &output_param);
+        if (rga_output_handle == 0)
+        {
+            log_error("RGA: Failed to import output buffer into RGA");
+            RK_MPI_MB_ReleaseMB(rga_output_blk);
+            rga_output_blk = NULL;
+            rga_output_fd = -1;
+            rga_output_vaddr = NULL;
+            RK_MPI_MB_DestroyPool(rga_output_pool);
+            rga_output_pool = MB_INVALID_POOLID;
+            pthread_mutex_unlock(&rga_mutex);
+            return -1;
+        }
+
+        rga_output_buffer_size = required_size;
+        rga_output_width = width;
+        rga_output_height = height;
+
+        // Pre-compute the wrapped output buffer (avoids wrapbuffer_handle call per frame)
+        rga_output_buffer = wrapbuffer_handle(rga_output_handle, width, height, RK_FORMAT_BGRX_8888);
+
+        log_info("RGA: Allocated DMA output buffer: %zu bytes for %dx%d, fd=%d, handle=%u",
+                 required_size, width, height, rga_output_fd, (unsigned)rga_output_handle);
+    }
+
+    if (!rga_initialized)
+    {
+        // Query RGA hardware capabilities using im2d API
+        const char *version_str = querystring(RGA_VERSION);
+        if (version_str != NULL && version_str[0] != '\0')
+        {
+            log_info("RGA: Hardware initialized (DMA mode), version: %s", version_str);
+        }
+        else
+        {
+            log_info("RGA: Hardware initialized (DMA mode)");
+        }
+        rga_initialized = true;
+    }
+
+    // Mark as ready for fast-path
+    rga_ready = true;
+
+    pthread_mutex_unlock(&rga_mutex);
+    return 0;
+}
+
+// Cleanup RGA resources (DMA buffers and handles)
+static void rga_cleanup(void)
+{
+    pthread_mutex_lock(&rga_mutex);
+
+    // Release cached input handles
+    for (int i = 0; i < rga_input_cache_count; i++)
+    {
+        if (rga_input_cache[i].handle != 0)
+        {
+            releasebuffer_handle(rga_input_cache[i].handle);
+            rga_input_cache[i].handle = 0;
+            rga_input_cache[i].fd = -1;
+        }
+    }
+    rga_input_cache_count = 0;
+
+    // Release RGA output handle
+    if (rga_output_handle != 0)
+    {
+        releasebuffer_handle(rga_output_handle);
+        rga_output_handle = 0;
+    }
+
+    // Release DMA buffer
+    if (rga_output_blk != NULL)
+    {
+        RK_MPI_MB_ReleaseMB(rga_output_blk);
+        rga_output_blk = NULL;
+        rga_output_fd = -1;
+        rga_output_vaddr = NULL;
+    }
+
+    // Destroy memory pool
+    if (rga_output_pool != MB_INVALID_POOLID)
+    {
+        RK_MPI_MB_DestroyPool(rga_output_pool);
+        rga_output_pool = MB_INVALID_POOLID;
+    }
+
+    rga_output_buffer_size = 0;
+    rga_output_width = 0;
+    rga_output_height = 0;
+    rga_initialized = false;
+    rga_ready = false;
+
+    pthread_mutex_unlock(&rga_mutex);
+    log_info("RGA: DMA resources cleaned up");
+}
+
+// Get or create a cached RGA buffer for the input fd
+// Returns pointer to cached rga_buffer_t (valid until cache is modified)
+// Must be called with rga_mutex held
+static rga_buffer_t *rga_get_input_buffer(int fd, uint32_t width, uint32_t height)
+{
+    // Fast path: look for exact match (most common case)
+    for (int i = 0; i < rga_input_cache_count; i++)
+    {
+        if (rga_input_cache[i].fd == fd)
+        {
+            // Found fd - check if dimensions match
+            if (rga_input_cache[i].width == width && rga_input_cache[i].height == height)
+            {
+                return &rga_input_cache[i].buffer;
+            }
+            // Same fd but different dimensions (resolution change) - release old handle
+            // This prevents memory leak when resolution changes
+            releasebuffer_handle(rga_input_cache[i].handle);
+            // Remove this entry by shifting remaining entries down
+            for (int j = i + 1; j < rga_input_cache_count; j++)
+            {
+                rga_input_cache[j-1] = rga_input_cache[j];
+            }
+            rga_input_cache_count--;
+            break;
+        }
+    }
+
+    // Not found or removed due to dimension mismatch - need to import
+    if (rga_input_cache_count >= RGA_INPUT_CACHE_SIZE)
+    {
+        // Cache full - release oldest entry (shouldn't happen with triple-buffering)
+        log_warn("RGA: input cache full, releasing oldest entry");
+        releasebuffer_handle(rga_input_cache[0].handle);
+        for (int i = 1; i < rga_input_cache_count; i++)
+        {
+            rga_input_cache[i-1] = rga_input_cache[i];
+        }
+        rga_input_cache_count--;
+    }
+
+    // Import the new buffer
+    im_handle_param_t src_param = {width, height, RK_FORMAT_YUYV_422};
+    rga_buffer_handle_t handle = importbuffer_fd(fd, &src_param);
+    if (handle == 0)
+    {
+        log_error("RGA: failed to import input buffer fd=%d", fd);
+        return NULL;
+    }
+
+    // Cache the handle and pre-compute the wrapped buffer
+    int idx = rga_input_cache_count;
+    rga_input_cache[idx].fd = fd;
+    rga_input_cache[idx].handle = handle;
+    rga_input_cache[idx].width = width;
+    rga_input_cache[idx].height = height;
+    rga_input_cache[idx].buffer = wrapbuffer_handle(handle, width, height, RK_FORMAT_YUYV_422);
+    rga_input_cache_count++;
+
+    log_info("RGA: cached input handle=%u for fd=%d (%dx%d), cache_size=%d",
+             (unsigned)handle, fd, width, height, rga_input_cache_count);
+
+    return &rga_input_cache[idx].buffer;
+}
+
+// Convert YUV422 YUYV to BGRX using RGA hardware acceleration with DMA buffers
+// Uses fd-based buffers which work on RV1106 (no IOMMU required)
+// Returns pointer to converted BGRX data (in rga_output_vaddr), or NULL on failure
+// HOT PATH - optimized for minimal overhead per frame
+static uint8_t *rga_convert_yuv422_to_bgrx_fd(int yuv_fd, uint32_t width, uint32_t height, uint32_t yuv_size)
+{
+    // Fast validation (common case: valid input)
+    if (__builtin_expect(yuv_fd < 0 || width == 0 || height == 0, 0))
+    {
+        return NULL;
+    }
+
+    // Initialize RGA and allocate output DMA buffer if needed
+    // Has fast-path when already initialized with same dimensions
+    if (__builtin_expect(rga_init_if_needed(width, height) != 0, 0))
+    {
+        return NULL;
+    }
+
+    pthread_mutex_lock(&rga_mutex);
+
+    // Get pre-computed input buffer from cache (or create new entry)
+    rga_buffer_t *src = rga_get_input_buffer(yuv_fd, width, height);
+    if (__builtin_expect(src == NULL, 0))
+    {
+        pthread_mutex_unlock(&rga_mutex);
+        return NULL;
+    }
+
+    // Perform color space conversion using RGA hardware
+    // Use BT.601 limited range (16-235) which is standard for HDMI video
+    // sync=1 means synchronous operation (wait for completion)
+    // Uses pre-computed src and dst buffers to avoid wrapbuffer_handle calls
+    IM_STATUS status = imcvtcolor(*src, rga_output_buffer, src->format, rga_output_buffer.format,
+                                   IM_YUV_TO_RGB_BT601_LIMIT, 1);
+
+    pthread_mutex_unlock(&rga_mutex);
+
+    // Check for success (common case)
+    if (__builtin_expect(status != IM_STATUS_SUCCESS && status != IM_STATUS_NOERROR, 0))
+    {
+        log_error("RGA: imcvtcolor failed with status %d: %s", status, imStrError(status));
+        return NULL;
+    }
+
+    return rga_output_vaddr;
+}
+#endif // HAS_RGA
+
+// Send YUV frame to Go using DMA fd (with RGA hardware conversion if available)
+// This version takes a DMA fd instead of virtual address, which is required for
+// RGA on RV1106 (no IOMMU)
+static int send_yuv_frame_fd(int yuv_fd, uint32_t width, uint32_t height, uint32_t yuv_size)
 {
     if (!rgb_running)
     {
         return -1;
     }
 
-    // Send the raw YUV frame to Go - Go will convert to RGB
+#ifdef HAS_RGA
+    // Convert YUV422 to BGRX using RGA hardware acceleration with DMA fd
+    uint8_t *bgrx_data = rga_convert_yuv422_to_bgrx_fd(yuv_fd, width, height, yuv_size);
+    if (bgrx_data != NULL)
+    {
+        // Send the hardware-converted BGRX frame to Go
+        // BGRX = 4 bytes per pixel
+        size_t bgrx_size = (size_t)width * height * 4;
+        video_send_rgb_frame(bgrx_data, bgrx_size, width, height);
+        return 0;
+    }
+    // Fallback: need to map the fd to virtual address for software conversion
+    log_trace("RGA conversion failed, falling back to software conversion");
+#endif
+    // No RGA or RGA failed: need to get virtual address from fd
+    // Use RK_MPI_MMZ_Fd2Handle to get the MB handle, then get vaddr
+    MB_BLK blk = RK_MPI_MMZ_Fd2Handle(yuv_fd);
+    if (blk == NULL)
+    {
+        log_error("send_yuv_frame_fd: failed to get MB from fd=%d", yuv_fd);
+        return -1;
+    }
+    const uint8_t *yuv_data = (const uint8_t *)RK_MPI_MB_Handle2VirAddr(blk);
+    if (yuv_data == NULL)
+    {
+        log_error("send_yuv_frame_fd: failed to get vaddr from fd=%d", yuv_fd);
+        return -1;
+    }
+    // Send raw YUV for software conversion in Go
     video_send_rgb_frame(yuv_data, yuv_size, width, height);
     return 0;
 }
 
-// Public RGB encoder API (outputs raw YUV422 for Go to convert)
+// Public RGB encoder API (uses RGA hardware for YUV422→BGRX conversion if available)
 int rgb_encoder_start()
 {
-    log_debug("RGB encoder start requested");
+#ifdef HAS_RGA
+    log_info("RGB encoder start requested (RGA hardware acceleration available)");
+#else
+    log_info("RGB encoder start requested (software conversion mode)");
+#endif
 
     // Wait for video signal to be detected (up to 10 seconds)
     int retries = 0;
@@ -1279,7 +1754,7 @@ int rgb_encoder_start()
     {
         if (retries == 0)
         {
-            log_debug("RGB: waiting for video signal...");
+            log_info("RGB: waiting for video signal...");
         }
         usleep(100000); // 100ms
         retries++;
@@ -1289,7 +1764,7 @@ int rgb_encoder_start()
 
     if (rgb_running)
     {
-        log_warn("RGB encoder already running");
+        log_info("RGB encoder already running");
         pthread_mutex_unlock(&rgb_mutex);
         return 0;
     }
@@ -1304,6 +1779,22 @@ int rgb_encoder_start()
 
     rgb_width = detected_width;
     rgb_height = detected_height;
+    log_info("RGB: detected resolution %dx%d", rgb_width, rgb_height);
+
+#ifdef HAS_RGA
+    // Pre-initialize RGA buffers
+    int rga_ret = rga_init_if_needed(rgb_width, rgb_height);
+    if (rga_ret != 0)
+    {
+        log_warn("RGB: RGA initialization failed, will use software fallback");
+    }
+    else
+    {
+        log_info("RGB: RGA hardware acceleration enabled for %dx%d", rgb_width, rgb_height);
+    }
+#else
+    log_info("RGB: Software conversion mode for %dx%d", rgb_width, rgb_height);
+#endif
 
     // Check if video streaming is running - RGB encoder needs it to receive frames
     uint8_t streaming_status = video_get_streaming_status();
@@ -1317,7 +1808,11 @@ int rgb_encoder_start()
     }
 
     rgb_running = true;
-    log_info("RGB encoder started: %dx%d (YUV422 output)", rgb_width, rgb_height);
+#ifdef HAS_RGA
+    log_info("RGB encoder started: %dx%d (RGA hardware YUV422→BGRX)", rgb_width, rgb_height);
+#else
+    log_info("RGB encoder started: %dx%d (software YUV422→BGRX)", rgb_width, rgb_height);
+#endif
     pthread_mutex_unlock(&rgb_mutex);
     return 0;
 }
@@ -1337,9 +1832,36 @@ void rgb_encoder_stop()
 
     log_info("RGB encoder stopped");
     pthread_mutex_unlock(&rgb_mutex);
+
+#ifdef HAS_RGA
+    // Clean up RGA resources when encoder stops
+    rga_cleanup();
+#endif
 }
 
 bool rgb_encoder_is_running()
 {
     return rgb_running;
+}
+
+// Query RGA hardware status for diagnostics
+const char *rga_get_status(void)
+{
+    static char status_buf[256];
+#ifdef HAS_RGA
+    pthread_mutex_lock(&rga_mutex);
+    snprintf(status_buf, sizeof(status_buf),
+             "RGA: initialized=%s, buffer=%zu bytes, fd=%d, handle=%u, running=%s",
+             rga_initialized ? "yes" : "no",
+             rga_output_buffer_size,
+             rga_output_fd,
+             (unsigned)rga_output_handle,
+             rgb_running ? "yes" : "no");
+    pthread_mutex_unlock(&rga_mutex);
+#else
+    snprintf(status_buf, sizeof(status_buf),
+             "RGA: not available (software conversion), running=%s",
+             rgb_running ? "yes" : "no");
+#endif
+    return status_buf;
 }

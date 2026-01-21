@@ -8,6 +8,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/native"
+	"github.com/jetkvm/kvm/internal/rdp"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
@@ -93,8 +94,13 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			BroadcastRDPJPEGFrame(frame)
 		},
 		OnRGBFrameReceived: func(frame native.RGBFrame) {
-			// Send raw RGB frames to RDP bitmap mode subscribers (RGA hardware acceleration)
-			BroadcastRDPRGBFrame(frame.Data, frame.Width, frame.Height)
+			// Send frames to RDP bitmap mode subscribers
+			// Convert format from native to rdp package format
+			format := rdp.RGBFrameFormatYUV422
+			if frame.Format == native.RGBFrameFormatBGRX {
+				format = rdp.RGBFrameFormatBGRX
+			}
+			BroadcastRDPRGBFrame(frame.Data, frame.Width, frame.Height, format)
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{
