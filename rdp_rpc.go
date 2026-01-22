@@ -50,6 +50,8 @@ type RDPState struct {
 	PasteDelayMs     int    `json:"pasteDelayMs"`
 	TargetOS         string `json:"targetOS"`
 	ClipboardMode    string `json:"clipboardMode"`
+	Username         string `json:"username"`
+	Domain           string `json:"domain"`
 }
 
 func restartRDPServerIfRunning() error {
@@ -92,6 +94,8 @@ func rpcGetRDPState() (RDPState, error) {
 		PasteDelayMs:     config.RDPPasteDelayMs,
 		TargetOS:         config.RDPTargetOS,
 		ClipboardMode:    config.RDPClipboardMode,
+		Username:         config.RDPUsername,
+		Domain:           config.RDPDomain,
 	}, nil
 }
 
@@ -300,6 +304,44 @@ func rpcSetRDPClipboardMode(mode string) error {
 
 	if err := SaveConfig(); err != nil {
 		config.RDPClipboardMode = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPUsername sets the expected username for RDP authentication.
+// If empty, any username is accepted (only password is validated).
+func rpcSetRDPUsername(username string) error {
+	// Validate username length (allow empty for "any username" mode)
+	if len(username) > 256 {
+		return fmt.Errorf("username too long: max 256 characters")
+	}
+
+	oldValue := config.RDPUsername
+	config.RDPUsername = username
+
+	if err := SaveConfig(); err != nil {
+		config.RDPUsername = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPDomain sets the expected domain for RDP authentication.
+// If empty, any domain is accepted (only username and password are validated).
+func rpcSetRDPDomain(domain string) error {
+	// Validate domain length (allow empty for "any domain" mode)
+	if len(domain) > 256 {
+		return fmt.Errorf("domain too long: max 256 characters")
+	}
+
+	oldValue := config.RDPDomain
+	config.RDPDomain = domain
+
+	if err := SaveConfig(); err != nil {
+		config.RDPDomain = oldValue
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

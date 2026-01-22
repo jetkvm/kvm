@@ -47,8 +47,13 @@ func (c *Connection) initDynamicChannels() error {
 		return c.sendDVCData(data)
 	})
 
-	// DVC logger disabled for production - too verbose (logs every frame)
-	c.dvcManager.SetLogger(nil)
+	// Enable DVC logger for debugging capability exchange
+	c.dvcManager.SetLogger(func(msg string, channel string, channelID uint32, args ...interface{}) {
+		c.server.deps.Logger.Warn().
+			Str("channel", channel).
+			Uint32("channelID", channelID).
+			Msgf("DVC: "+msg, args...)
+	})
 
 	// Set up synchronous callback for when capability response is received.
 	c.dvcManager.SetOnCapabilityReceived(func() {

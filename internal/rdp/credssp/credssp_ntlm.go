@@ -37,11 +37,44 @@ const (
 // buildTargetInfo creates the AV_PAIR list for NTLM CHALLENGE
 func (h *Handler) buildTargetInfo() []byte {
 	h.debugLog("CredSSP: building TargetInfo AV_PAIRs")
+
+	// Use configured domain or default to "JETKVM"
+	nbDomain := h.expectedDomain
+	if nbDomain == "" {
+		nbDomain = "JETKVM"
+	}
+
+	// Build DNS domain name (lowercase with .local suffix if no dots present)
+	dnsDomain := nbDomain
+	if len(dnsDomain) > 0 {
+		// Convert to lowercase for DNS
+		dnsDomainLower := make([]byte, len(dnsDomain))
+		for i := 0; i < len(dnsDomain); i++ {
+			c := dnsDomain[i]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			dnsDomainLower[i] = c
+		}
+		dnsDomain = string(dnsDomainLower)
+		// Add .local suffix if no dots present (not a FQDN)
+		hasDot := false
+		for i := 0; i < len(dnsDomain); i++ {
+			if dnsDomain[i] == '.' {
+				hasDot = true
+				break
+			}
+		}
+		if !hasDot {
+			dnsDomain = dnsDomain + ".local"
+		}
+	}
+
 	// Build AV_PAIRs for TargetInfo
-	domainName := encodeUTF16LE("JETKVM")
+	domainName := encodeUTF16LE(nbDomain)
 	computerName := encodeUTF16LE("JETKVM")
-	dnsDomainName := encodeUTF16LE("jetkvm.local")
-	dnsComputerName := encodeUTF16LE("jetkvm.local")
+	dnsDomainName := encodeUTF16LE(dnsDomain)
+	dnsComputerName := encodeUTF16LE("jetkvm." + dnsDomain)
 
 	// Timestamp in Windows FILETIME format (100-ns intervals since Jan 1, 1601)
 	// For simplicity, use current Unix time converted to FILETIME
@@ -111,7 +144,12 @@ func (h *Handler) buildNTLMChallengeWithFlags(clientFlags uint32) []byte {
 	// - 48-55: Version
 	// - 56+: Payload (TargetName, then TargetInfo)
 
-	targetName := encodeUTF16LE("JETKVM")
+	// Use configured domain or default to "JETKVM"
+	nbDomain := h.expectedDomain
+	if nbDomain == "" {
+		nbDomain = "JETKVM"
+	}
+	targetName := encodeUTF16LE(nbDomain)
 	targetInfo := h.buildTargetInfo()
 
 	// PayloadOffset = 56 (includes Version)

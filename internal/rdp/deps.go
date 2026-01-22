@@ -47,6 +47,10 @@ type TLSProvider interface {
 	// Does not use hardware acceleration.
 	UpgradeServerConnForCredSSP(conn net.Conn) (CredSSPTLSConn, error)
 
+	// GetServerCertificate returns the server's TLS certificate for a given SNI.
+	// This is used by CredSSP to compute pubKeyAuth over the server's public key.
+	GetServerCertificate(serverName string) *tls.Certificate
+
 	// IsHardwareAccelerated returns true if hardware crypto acceleration is available.
 	IsHardwareAccelerated() bool
 
@@ -105,6 +109,18 @@ type ConfigProvider interface {
 
 	// GetHashedPassword returns the hashed password for authentication.
 	GetHashedPassword() string
+
+	// GetLocalAuthPassword returns the plaintext password for NTLM authentication.
+	// This is the same password used for VNC authentication.
+	GetLocalAuthPassword() string
+
+	// GetRDPUsername returns the expected username for RDP authentication.
+	// If empty, any username is accepted.
+	GetRDPUsername() string
+
+	// GetRDPDomain returns the expected domain for RDP authentication.
+	// If empty, any domain is accepted.
+	GetRDPDomain() string
 }
 
 // HIDProvider provides keyboard and mouse input capabilities.

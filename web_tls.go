@@ -169,9 +169,11 @@ func runWebSecureServer() {
 		Addr:    bindAddress,
 		Handler: r,
 		TLSConfig: &tls.Config{
-			MaxVersion:       tls.VersionTLS13,
-			CurvePreferences: []tls.CurveID{},
-			GetCertificate:   getCertificate,
+			MinVersion: tls.VersionTLS12,
+			MaxVersion: tls.VersionTLS13,
+			// Use default curves by not setting CurvePreferences (nil uses Go defaults)
+			// Empty slice [] was causing TLS negotiation issues with some clients
+			GetCertificate: getCertificate,
 		},
 	}
 	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting websecure server")

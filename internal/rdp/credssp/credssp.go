@@ -45,6 +45,14 @@ type Handler struct {
 	clientNonce      []byte // For CredSSP v3+ (CVE-2018-0886 fix)
 	clientUsesSPNEGO bool   // True if client wraps NTLM in SPNEGO
 
+	// Authentication
+	password        string    // Plaintext password for NTLM validation
+	expectedUser    string    // Expected username (empty = accept any)
+	expectedDomain  string    // Expected domain (empty = accept any)
+	ntlmAuth        *NTLMAuth // NTLM authenticator (created after challenge sent)
+	serverPublicKey []byte    // Server's RawSubjectPublicKeyInfo for pubKeyAuth
+	serverCertDER   []byte    // Full certificate DER (for debugging different formats)
+
 	// For logging
 	debugLog func(string, ...interface{})
 }
@@ -60,6 +68,40 @@ func NewHandler(tlsConn *tls.Conn) *Handler {
 // SetDebugLog sets a debug logging function.
 func (h *Handler) SetDebugLog(fn func(string, ...interface{})) {
 	h.debugLog = fn
+}
+
+// SetPassword sets the password for NTLM authentication validation.
+// If not set, authentication is permissive (accepts any credentials).
+func (h *Handler) SetPassword(password string) {
+	h.password = password
+}
+
+// SetExpectedUsername sets the expected username for authentication validation.
+// If not set, any username is accepted (only password is validated).
+func (h *Handler) SetExpectedUsername(username string) {
+	h.expectedUser = username
+}
+
+// SetExpectedDomain sets the expected domain for authentication validation.
+// If not set, any domain is accepted.
+func (h *Handler) SetExpectedDomain(domain string) {
+	h.expectedDomain = domain
+}
+
+// SetServerPublicKey sets the server's public key for pubKeyAuth computation.
+// This should be the RawSubjectPublicKeyInfo from the TLS certificate.
+func (h *Handler) SetServerPublicKey(pubKey []byte) {
+	h.serverPublicKey = pubKey
+}
+
+// SetServerCertificateDER sets the full certificate DER for debugging different formats.
+func (h *Handler) SetServerCertificateDER(certDER []byte) {
+	h.serverCertDER = certDER
+}
+
+// GetServerCertificateDER returns the full certificate DER.
+func (h *Handler) GetServerCertificateDER() []byte {
+	return h.serverCertDER
 }
 
 // Authenticate performs the CredSSP authentication exchange.
@@ -156,12 +198,58 @@ func (h *Handler) Authenticate() (username string, err error) {
 		return "", ErrUnexpectedMessage
 	}
 
-	username = h.extractUsername(authToken)
-	h.debugLog("CredSSP: received NTLM AUTHENTICATE from user: %s", username)
+	// Create NTLM authenticator if password validation is enabled
+	if h.password != "" {
+		h.ntlmAuth = NewNTLMAuth(h.password, h.serverChallenge)
+		h.ntlmAuth.SetDebugLog(h.debugLog)
+		h.ntlmAuth.SetClientNonce(h.clientNonce)
+	}
 
-	// Step 4: Send final TSRequest (accept authentication)
-	// We're permissive - accept any credentials
-	// For pubKeyAuth, we need to send something the client will accept
+	var domain string
+	if h.ntlmAuth != nil {
+		// Parse AUTHENTICATE message and validate credentials
+		var parseErr error
+		username, domain, parseErr = h.ntlmAuth.ParseAuthenticateMessage(authToken)
+		if parseErr != nil {
+			return "", fmt.Errorf("parse NTLM AUTHENTICATE: %w", parseErr)
+		}
+		h.debugLog("CredSSP: received NTLM AUTHENTICATE from user=%s domain=%s", username, domain)
+
+		// Validate NTLMv2 response
+		if !h.ntlmAuth.ValidateResponse(username, domain) {
+			h.debugLog("CredSSP: NTLM authentication FAILED for user=%s", username)
+			return username, ErrAuthFailed
+		}
+		h.debugLog("CredSSP: NTLM authentication SUCCEEDED for user=%s", username)
+
+		// Validate username if expected username is configured
+		if h.expectedUser != "" && !equalFoldASCII(username, h.expectedUser) {
+			h.debugLog("CredSSP: username mismatch - expected=%s got=%s", h.expectedUser, username)
+			return username, ErrAuthFailed
+		}
+
+		// Validate domain if expected domain is configured
+		if h.expectedDomain != "" && !equalFoldASCII(domain, h.expectedDomain) {
+			h.debugLog("CredSSP: domain mismatch - expected=%s got=%s", h.expectedDomain, domain)
+			return username, ErrAuthFailed
+		}
+
+		// Verify client's pubKeyAuth to debug hash mismatches
+		if len(tsReq2.PubKeyAuth) > 0 && len(h.serverPublicKey) > 0 {
+			h.debugLog("CredSSP: verifying client pubKeyAuth...")
+			// Pass certificate DER for additional format testing
+			if len(h.serverCertDER) > 0 {
+				h.ntlmAuth.SetServerCertificateDER(h.serverCertDER)
+			}
+			h.ntlmAuth.VerifyClientPubKeyAuth(tsReq2.PubKeyAuth, h.serverPublicKey, h.clientVersion)
+		}
+	} else {
+		// Permissive mode - just extract username
+		username = h.extractUsername(authToken)
+		h.debugLog("CredSSP: permissive mode - received NTLM AUTHENTICATE from user: %s", username)
+	}
+
+	// Step 4: Send final TSRequest with pubKeyAuth
 	pubKeyAuth := h.buildPubKeyAuth()
 	h.debugLog("CredSSP: building final TSRequest with pubKeyAuth len=%d", len(pubKeyAuth))
 	finalResp := h.buildTSRequestFinal(pubKeyAuth)
@@ -169,6 +257,28 @@ func (h *Handler) Authenticate() (username string, err error) {
 	if err := h.writeTSRequest(finalResp); err != nil {
 		return "", fmt.Errorf("write final: %w", err)
 	}
+
+	// Step 5: Receive final TSRequest with authInfo (encrypted credentials)
+	// After the client validates our pubKeyAuth, it sends the final TSRequest
+	// containing encrypted credentials in the authInfo field.
+	h.debugLog("CredSSP: waiting for client credentials (authInfo)...")
+	tsReq3, err := h.readTSRequest()
+	if err != nil {
+		return "", fmt.Errorf("read credentials: %w", err)
+	}
+
+	h.debugLog("CredSSP: received final TSRequest - version=%d, hasNegoTokens=%v, hasAuthInfo=%v, authInfoLen=%d",
+		tsReq3.Version, len(tsReq3.NegoTokens) > 0, len(tsReq3.AuthInfo) > 0, len(tsReq3.AuthInfo))
+
+	// The authInfo contains TSCredentials (encrypted with NTLM session key)
+	// We don't need to decrypt it for permissive authentication,
+	// but we should at least acknowledge we received it.
+	if len(tsReq3.AuthInfo) > 0 {
+		h.debugLog("CredSSP: received encrypted credentials, authInfo len=%d", len(tsReq3.AuthInfo))
+	} else {
+		h.debugLog("CredSSP: WARNING - no authInfo in final TSRequest")
+	}
+
 	h.debugLog("CredSSP: authentication complete")
 
 	return username, nil
@@ -341,6 +451,27 @@ func decodeUTF16LE(data []byte) string {
 	return string(runes)
 }
 
+// equalFoldASCII compares two strings case-insensitively (ASCII only).
+// Used for username comparison since NTLM usernames are case-insensitive.
+func equalFoldASCII(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		ca, cb := a[i], b[i]
+		if ca >= 'A' && ca <= 'Z' {
+			ca += 'a' - 'A'
+		}
+		if cb >= 'A' && cb <= 'Z' {
+			cb += 'a' - 'A'
+		}
+		if ca != cb {
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Handler) buildTSRequest(version int, ntlmToken []byte) []byte {
 	var responseToken []byte
 
@@ -416,21 +547,56 @@ func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) []byte {
 func (h *Handler) buildPubKeyAuth() []byte {
 	// Build pubKeyAuth for the final TSRequest
 	// This binds the authentication to the TLS channel
-	// For simplicity, we use a minimal value that clients accept
 
-	// Get server's public key from TLS connection
-	state := h.tlsConn.ConnectionState()
-	if len(state.PeerCertificates) == 0 {
-		// Use our own cert's public key
-		certs := state.PeerCertificates
-		if len(certs) == 0 {
-			// Fallback: return empty (some clients accept this)
-			return nil
+	// Use the server's public key that was set via SetServerPublicKey
+	serverPubKey := h.serverPublicKey
+
+	// If not set, try to get from TLS connection state
+	if len(serverPubKey) == 0 {
+		state := h.tlsConn.ConnectionState()
+
+		// For a TLS server, PeerCertificates would only be populated in mutual TLS
+		for _, cert := range state.PeerCertificates {
+			serverPubKey = cert.RawSubjectPublicKeyInfo
+			h.debugLog("CredSSP: found peer cert public key len=%d", len(serverPubKey))
+			break
+		}
+
+		// Check verified chains
+		if len(serverPubKey) == 0 {
+			for _, chain := range state.VerifiedChains {
+				if len(chain) > 0 {
+					serverPubKey = chain[0].RawSubjectPublicKeyInfo
+					h.debugLog("CredSSP: found verified chain cert public key len=%d", len(serverPubKey))
+					break
+				}
+			}
+		}
+
+		if len(serverPubKey) == 0 {
+			h.debugLog("CredSSP: WARNING - no server public key available for pubKeyAuth")
+		}
+	} else {
+		h.debugLog("CredSSP: using pre-set server public key len=%d", len(serverPubKey))
+	}
+
+	// If we have a valid NTLM authenticator with session key, compute proper pubKeyAuth
+	if h.ntlmAuth != nil {
+		sessionKey := h.ntlmAuth.GetSessionKey()
+		if len(sessionKey) > 0 {
+			if len(serverPubKey) == 0 {
+				h.debugLog("CredSSP: computing pubKeyAuth with empty public key (will likely fail)")
+				serverPubKey = []byte{}
+			}
+			pubKeyAuth := h.ntlmAuth.ComputePubKeyAuth(serverPubKey, h.clientVersion)
+			h.debugLog("CredSSP: computed pubKeyAuth len=%d", len(pubKeyAuth))
+			return pubKeyAuth
 		}
 	}
 
-	// For permissive mode, return minimal pubKeyAuth
-	// Real implementation would compute proper channel binding
+	// Permissive mode fallback - return minimal value
+	// Note: This will likely cause authentication to fail with proper clients
+	h.debugLog("CredSSP: permissive mode - returning minimal pubKeyAuth")
 	return []byte{0x01}
 }
 

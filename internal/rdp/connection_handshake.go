@@ -3,6 +3,7 @@ package rdp
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"time"
 
@@ -44,18 +45,33 @@ func (c *Connection) handleX224Connection() error {
 		Msg("RDP: X.224 connection request received")
 
 	// Build and send Connection Confirm
-	// Note: We prefer TLS over CredSSP because CredSSP/NLA requires computing pubKeyAuth
-	// which needs the NTLM session key. For a "permissive" server that doesn't validate
-	// passwords, we can't derive the correct session key. TLS-only mode still provides
-	// encryption but doesn't require NLA authentication.
+	// Select the best security protocol based on client capabilities and server config:
+	// - CredSSP (NLA): Required when password is configured, provides authentication before session
+	// - TLS: Only allowed when no password is configured (no authentication)
+	// - RDP: Unencrypted fallback (not recommended)
 	selectedProto := uint32(protocol.ProtocolRDP)
 	if c.server.tlsEnabled && c.server.deps.TLS != nil {
-		// Prefer TLS over CredSSP - simpler and doesn't require pubKeyAuth
-		if cr.RequestsTLS() {
-			selectedProto = protocol.ProtocolTLS
+		// Check if we have a password configured for NTLM authentication
+		hasPassword := c.server.deps.Config.GetLocalAuthPassword() != ""
+
+		if hasPassword {
+			// When password is configured, require CredSSP for authentication
+			if cr.RequestsCredSSP() {
+				selectedProto = protocol.ProtocolCredSSP
+				c.server.deps.Logger.Debug().Msg("RDP: selecting CredSSP (password configured)")
+			} else {
+				// Client doesn't support CredSSP but password is required - reject connection
+				c.server.deps.Logger.Warn().Msg("RDP: rejecting connection - client doesn't support NLA but password authentication is required")
+				return fmt.Errorf("client does not support NLA (CredSSP) but password authentication is required")
+			}
 		} else if cr.RequestsCredSSP() {
-			// Fall back to CredSSP only if client doesn't support plain TLS
+			// CredSSP without password - will work in permissive mode (may fail with some clients)
 			selectedProto = protocol.ProtocolCredSSP
+			c.server.deps.Logger.Debug().Msg("RDP: selecting CredSSP (permissive mode)")
+		} else if cr.RequestsTLS() {
+			// TLS without password - no authentication
+			selectedProto = protocol.ProtocolTLS
+			c.server.deps.Logger.Debug().Msg("RDP: selecting TLS (no password)")
 		}
 	}
 
@@ -136,6 +152,47 @@ func (c *Connection) handleX224Connection() error {
 			handler.SetDebugLog(func(format string, args ...any) {
 				c.server.deps.Logger.Warn().Msgf(format, args...)
 			})
+
+			// Set password for NTLM validation if configured
+			password := c.server.deps.Config.GetLocalAuthPassword()
+			if password != "" {
+				handler.SetPassword(password)
+				c.server.deps.Logger.Debug().Msg("RDP: CredSSP password validation enabled")
+			} else {
+				c.server.deps.Logger.Debug().Msg("RDP: CredSSP in permissive mode (no password)")
+			}
+
+			// Set expected username if configured
+			expectedUsername := c.server.deps.Config.GetRDPUsername()
+			if expectedUsername != "" {
+				handler.SetExpectedUsername(expectedUsername)
+				c.server.deps.Logger.Debug().Str("username", expectedUsername).Msg("RDP: CredSSP username validation enabled")
+			}
+
+			// Set expected domain if configured
+			expectedDomain := c.server.deps.Config.GetRDPDomain()
+			if expectedDomain != "" {
+				handler.SetExpectedDomain(expectedDomain)
+				c.server.deps.Logger.Debug().Str("domain", expectedDomain).Msg("RDP: CredSSP domain validation enabled")
+			}
+
+			// Set server's public key for pubKeyAuth computation
+			// For a TLS server, we need to get the certificate we sent to the client
+			if c.server.deps.TLS != nil {
+				// Get server certificate using the TLS provider
+				serverCert := c.server.deps.TLS.GetServerCertificate(state.ServerName)
+				if serverCert != nil && len(serverCert.Certificate) > 0 {
+					// Parse the certificate to get the public key info
+					if parsedCert, parseErr := x509.ParseCertificate(serverCert.Certificate[0]); parseErr == nil {
+						handler.SetServerPublicKey(parsedCert.RawSubjectPublicKeyInfo)
+						handler.SetServerCertificateDER(serverCert.Certificate[0])
+						c.server.deps.Logger.Debug().
+							Int("pubKeyLen", len(parsedCert.RawSubjectPublicKeyInfo)).
+							Int("certDERLen", len(serverCert.Certificate[0])).
+							Msg("RDP: set server public key for CredSSP")
+					}
+				}
+			}
 
 			username, err := handler.Authenticate()
 			if err != nil {
@@ -366,13 +423,10 @@ func (c *Connection) handleMCSConnect() error {
 		EncryptionLevel:  0,
 	}
 
-	// Advertise multitransport support - even without full UDP implementation,
-	// advertising this capability may influence client codec selection
-	serverMultitransport := &protocol.ServerMultitransportData{
-		Flags: 0, // No actual UDP support yet, but presence of block signals modern server
-	}
-
-	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity, serverMultitransport)
+	// Don't send SC_MULTITRANSPORT - some clients (Jump Desktop) don't recognize
+	// this optional block type (0x0C08 = 3080 decimal) and fail with
+	// "Unknown server header type: 3080". We don't support UDP transport anyway.
+	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity, nil)
 	domainParams := protocol.DefaultDomainParameters()
 
 	// Build the full MCS Connect-Response for logging

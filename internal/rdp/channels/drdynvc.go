@@ -478,8 +478,8 @@ func (m *DVCManager) SendCapabilityRequest() error {
 	if m.version >= DVCVersion2 {
 		// Version 2/3: include priority charges
 		buf = make([]byte, 12)
-		buf[0] = DVCCapabilityRequest | 0x03 // Sp=0, cbChId=3 (version 3)
-		buf[1] = 0                           // Pad
+		buf[0] = DVCCapabilityRequest // Cmd=5, Sp=0, cbChId=0 (cbChId not used in CAPS PDU)
+		buf[1] = 0                    // Pad
 		binary.LittleEndian.PutUint16(buf[2:4], m.version)
 		// PriorityCharge0-3: default bandwidth allocation (equal distribution)
 		binary.LittleEndian.PutUint16(buf[4:6], 0)   // PriorityCharge0

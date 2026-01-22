@@ -1512,4 +1512,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRDPPasteDelayMs":     {Func: rpcSetRDPPasteDelayMs, Params: []string{"delayMs"}},
 	"setRDPTargetOS":         {Func: rpcSetRDPTargetOS, Params: []string{"targetOS"}},
 	"setRDPClipboardMode":    {Func: rpcSetRDPClipboardMode, Params: []string{"mode"}},
+	"setRDPUsername":         {Func: rpcSetRDPUsername, Params: []string{"username"}},
+	"setRDPDomain":           {Func: rpcSetRDPDomain, Params: []string{"domain"}},
 }

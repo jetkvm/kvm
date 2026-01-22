@@ -55,9 +55,13 @@ func (s *SelfSigner) getCA() *tls.Certificate {
 }
 
 func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
+	// Fast path: check with read lock for existing certificate
+	s.store.certLock.RLock()
 	if tlsCert := s.store.certificates[hostname]; tlsCert != nil {
+		s.store.certLock.RUnlock()
 		return tlsCert
 	}
+	s.store.certLock.RUnlock()
 
 	// check if hostname is the CA magic name
 	var ca *tls.Certificate
@@ -71,10 +75,8 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	s.log.Info().Str("hostname", hostname).Msg("Creating self-signed certificate")
 
-	// lock the store while creating the certificate (do not move upwards)
-	s.store.certLock.Lock()
-	defer s.store.certLock.Unlock()
-
+	// Generate certificate OUTSIDE the lock to avoid blocking other goroutines
+	// during CPU-intensive crypto operations
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		s.log.Error().Err(err).Msg("Failed to generate private key")
@@ -159,7 +161,18 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 		tlsCert.Certificate = append(tlsCert.Certificate, ca.Certificate...)
 	}
 
+	// Only hold write lock for the brief moment of storing the certificate
+	// Double-check that another goroutine didn't create it while we were generating
+	s.store.certLock.Lock()
+	if existing := s.store.certificates[hostname]; existing != nil {
+		// Another goroutine created it while we were generating - use theirs
+		s.store.certLock.Unlock()
+		return existing
+	}
 	s.store.certificates[hostname] = tlsCert
+	s.store.certLock.Unlock()
+
+	// Save to disk outside the lock (non-blocking for other certificate requests)
 	s.store.saveCertificate(hostname)
 
 	return tlsCert

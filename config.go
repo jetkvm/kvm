@@ -157,6 +157,8 @@ type Config struct {
 	RDPPasteDelayMs     int    `json:"rdp_paste_delay_ms"`    // Delay per keystroke in ms (0-50), default: 0
 	RDPTargetOS         string `json:"rdp_target_os"`         // Target OS for clipboard encoding: "windows", "macos", "linux", default: "windows"
 	RDPClipboardMode    string `json:"rdp_clipboard_mode"`    // Clipboard mode: "text", "base64-markers", "base64-script", default: "text"
+	RDPUsername         string `json:"rdp_username"`          // Username for RDP authentication (any username allowed if empty)
+	RDPDomain           string `json:"rdp_domain"`            // Domain for RDP authentication (any domain allowed if empty)
 }
 
 // GetUpdateAPIURL returns the update API URL

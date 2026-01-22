@@ -19,6 +19,8 @@ interface RDPStateResult {
   audioEnabled: boolean;
   micEnabled: boolean;
   cameraEnabled: boolean;
+  username: string;
+  domain: string;
 }
 
 const RDP_DEFAULTS = {
@@ -39,6 +41,8 @@ export default function SettingsRDPRoute() {
   const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
   const [micEnabled, setMicEnabled] = useState<boolean>(true);
   const [cameraEnabled, setCameraEnabled] = useState<boolean>(false);
+  const [username, setUsername] = useState<string>("");
+  const [domain, setDomain] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
 
   const loadRDPState = useCallback(() => {
@@ -61,6 +65,8 @@ export default function SettingsRDPRoute() {
       setAudioEnabled(state.audioEnabled ?? true);
       setMicEnabled(state.micEnabled ?? true);
       setCameraEnabled(state.cameraEnabled ?? false);
+      setUsername(state.username ?? "");
+      setDomain(state.domain ?? "");
       setIsLoading(false);
     });
   }, [send]);
@@ -180,6 +186,32 @@ export default function SettingsRDPRoute() {
       }
       setCameraEnabled(newCameraEnabled);
       notifications.success(m.rdp_settings_camera_changed());
+    });
+  };
+
+  const handleUsernameChange = (newUsername: string) => {
+    send("setRDPUsername", { username: newUsername }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setUsername(newUsername);
+      notifications.success(m.rdp_settings_username_changed());
+    });
+  };
+
+  const handleDomainChange = (newDomain: string) => {
+    send("setRDPDomain", { domain: newDomain }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setDomain(newDomain);
+      notifications.success(m.rdp_settings_domain_changed());
     });
   };
 
@@ -308,6 +340,34 @@ export default function SettingsRDPRoute() {
                 />
                 <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
               </label>
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.rdp_settings_username_title()}
+              description={m.rdp_settings_username_description()}
+            >
+              <input
+                type="text"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                onBlur={e => handleUsernameChange(e.target.value)}
+                placeholder={m.rdp_settings_username_placeholder()}
+                className="w-40 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 dark:focus:border-blue-400"
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.rdp_settings_domain_title()}
+              description={m.rdp_settings_domain_description()}
+            >
+              <input
+                type="text"
+                value={domain}
+                onChange={e => setDomain(e.target.value)}
+                onBlur={e => handleDomainChange(e.target.value)}
+                placeholder={m.rdp_settings_domain_placeholder()}
+                className="w-40 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 dark:focus:border-blue-400"
+              />
             </SettingsItem>
 
             <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
