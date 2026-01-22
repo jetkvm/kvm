@@ -545,9 +545,9 @@ func (c *Connection) handleMCSConnect() error {
 		clientReqProto = c.selectedProtocol // Fallback
 	}
 	serverCore := &protocol.ServerCoreData{
-		Version:              0x00080004, // RDP 5.0/5.1/5.2 - maximum compatibility
+		Version:              protocol.RDPVersion104, // RDP 10.4 - needed for modern codecs
 		ClientRequestedProto: clientReqProto,
-		EarlyCapFlags:        0, // No early cap flags for RDP 5.0 compatibility
+		EarlyCapFlags:        protocol.EarlyCapDynamicDst | protocol.EarlyCapSkipChannelJoin, // Modern capabilities
 	}
 
 	// Assign channel IDs to filtered channels only
@@ -589,7 +589,13 @@ func (c *Connection) handleMCSConnect() error {
 		EncryptionLevel:  0,
 	}
 
-	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity)
+	// Advertise multitransport support - even without full UDP implementation,
+	// advertising this capability may influence client codec selection
+	serverMultitransport := &protocol.ServerMultitransportData{
+		Flags: 0, // No actual UDP support yet, but presence of block signals modern server
+	}
+
+	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity, serverMultitransport)
 	domainParams := protocol.DefaultDomainParameters()
 
 	// Build the full MCS Connect-Response for logging
@@ -2409,6 +2415,56 @@ func (c *Connection) handleClipboard(data []byte) {
 	}
 }
 
+// handleCameraFormatChanges handles USB host format changes for dynamic camera format negotiation.
+// When the USB host requests a different video format from the UVC gadget, this method
+// re-activates the RDP camera channel with the matching format.
+func (c *Connection) handleCameraFormatChanges(formatChan <-chan CameraFormatInfo) {
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		case fmt, ok := <-formatChan:
+			if !ok {
+				// Channel closed
+				return
+			}
+
+			// Skip if camera channel not ready
+			if c.cameraChannel == nil || !c.cameraChannel.IsReady() {
+				continue
+			}
+
+			// Map codec string to MS-RDPECAM pixel format constant
+			var pixelFormat uint32
+			switch fmt.Codec {
+			case "h264":
+				pixelFormat = channels.CamPixelFormatH264
+			case "mjpeg":
+				pixelFormat = channels.CamPixelFormatMJPEG
+			default:
+				c.server.deps.Logger.Debug().
+					Str("codec", fmt.Codec).
+					Msg("RDP: unknown camera codec requested by host, ignoring")
+				continue
+			}
+
+			c.server.deps.Logger.Info().
+				Str("codec", fmt.Codec).
+				Int("width", fmt.Width).
+				Int("height", fmt.Height).
+				Int("fps", fmt.FrameRate).
+				Msg("RDP: USB host requested new camera format, re-activating RDP camera")
+
+			if err := c.cameraChannel.ActivateWithFormat(pixelFormat); err != nil {
+				c.server.deps.Logger.Warn().
+					Err(err).
+					Str("codec", fmt.Codec).
+					Msg("RDP: failed to re-activate camera with new format")
+			}
+		}
+	}
+}
+
 // Close closes the connection.
 func (c *Connection) Close() {
 	if c.closed.Swap(true) {
@@ -2444,7 +2500,10 @@ func (c *Connection) Close() {
 		c.audinChannel.Close()
 	}
 
-	// Close camera channel
+	// Unsubscribe from camera format changes and close camera channel
+	if c.server.deps.Camera != nil {
+		c.server.deps.Camera.UnsubscribeFormatChanges()
+	}
 	if c.cameraChannel != nil {
 		c.cameraChannel.Close()
 	}
@@ -2526,14 +2585,11 @@ func (c *Connection) initDynamicChannels() error {
 		return c.sendDVCData(data)
 	})
 
-	// NOTE: Logger disabled for maximum performance - DVC is hot path
+	// DVC logger disabled for production - too verbose (logs every frame)
+	c.dvcManager.SetLogger(nil)
 
 	// Set up synchronous callback for when capability response is received.
-	// This runs in the message loop context, ensuring proper sequencing of create requests and responses.
 	c.dvcManager.SetOnCapabilityReceived(func() {
-		c.server.deps.Logger.Warn().
-			Uint16("version", c.dvcManager.GetNegotiatedVersion()).
-			Msg("RDP: DVC capability received (synchronous callback), creating channels")
 		c.initDVCChannelsSync()
 	})
 
@@ -2578,6 +2634,11 @@ func (c *Connection) initDVCChannelsSync() {
 		c.server.deps.Logger.Info().Msg("RDP: H.264 video disabled in config, skipping RDPGFX channel")
 	} else {
 		c.gfxChannel = channels.NewGFXChannel(c.dvcManager)
+
+		// Set logger for debugging capability negotiation
+		c.gfxChannel.SetLogger(func(msg string, args ...interface{}) {
+			c.server.deps.Logger.Warn().Msgf(msg, args...)
+		})
 
 		// Set callback to initialize surface when channel is ready
 		c.gfxChannel.SetReadyCallback(func(g *channels.GFXChannel) {
@@ -2686,19 +2747,17 @@ func (c *Connection) initDVCChannelsSync() {
 	if !c.server.deps.Config.GetRDPCameraEnabled() {
 		c.server.deps.Logger.Info().Msg("RDP: camera redirection disabled in config, skipping camera channel")
 	} else {
-		c.server.deps.Logger.Warn().Msg("DEBUG: creating NewCameraChannel")
 		c.cameraChannel = channels.NewCameraChannel(c.dvcManager)
-		c.server.deps.Logger.Warn().Msg("DEBUG: NewCameraChannel created")
+		// Use Warn level logger to ensure format negotiation logs are visible
+		c.cameraChannel.SetLogger(func(msg string, args ...interface{}) {
+			c.server.deps.Logger.Warn().Msgf(msg, args...)
+		})
 
 		// Set ready callback for camera
 		c.cameraChannel.SetReadyCallback(func(cam *channels.CameraChannel) {
-			cameras := cam.GetCameras()
-			c.server.deps.Logger.Info().
-				Int("numCameras", len(cameras)).
-				Msg("RDP: Camera channel ready")
-
-			// Activate first camera if UVC gadget is connected
-			if c.server.deps.Camera != nil && c.server.deps.Camera.IsConnected() {
+			// Auto-enable camera passthrough when RDP client has cameras available.
+			if c.server.deps.Camera != nil {
+				c.server.deps.Camera.SetEnabled(true)
 				if err := cam.Activate(); err != nil {
 					c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to activate camera")
 				}
@@ -2710,19 +2769,21 @@ func (c *Connection) initDVCChannelsSync() {
 			if c.server.deps.Camera == nil {
 				return
 			}
-			if err := c.server.deps.Camera.SendFrame(frame, width, height, pixelFormat); err != nil {
-				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send camera frame")
-			}
+			// Hot path - no logging here
+			_ = c.server.deps.Camera.SendFrame(frame, width, height, pixelFormat)
 		})
 
-		c.server.deps.Logger.Warn().Msg("DEBUG: calling cameraChannel.Open()")
+		// Subscribe to USB host format changes for dynamic format negotiation
+		if c.server.deps.Camera != nil {
+			if formatChan := c.server.deps.Camera.SubscribeFormatChanges(); formatChan != nil {
+				go c.handleCameraFormatChanges(formatChan)
+			}
+		}
+
 		if err := c.cameraChannel.Open(); err != nil {
 			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to open camera channel")
-			// Non-fatal - we can still work without camera
 		}
-		c.server.deps.Logger.Warn().Msg("DEBUG: cameraChannel.Open() completed")
 	}
-	c.server.deps.Logger.Warn().Msg("DEBUG: camera channel setup END")
 
 	c.server.deps.Logger.Warn().Msg("RDP: dynamic virtual channels initialized")
 

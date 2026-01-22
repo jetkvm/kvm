@@ -222,6 +222,14 @@ type AudioProvider interface {
 	EnableAudioInput() error
 }
 
+// CameraFormatInfo describes the video format requested by the USB host.
+type CameraFormatInfo struct {
+	Codec     string // "h264" or "mjpeg"
+	Width     int
+	Height    int
+	FrameRate int
+}
+
 // CameraProvider provides UVC camera output capabilities.
 type CameraProvider interface {
 	// SendFrame sends a camera frame to the UVC gadget.
@@ -237,4 +245,12 @@ type CameraProvider interface {
 
 	// IsEnabled returns true if camera passthrough is enabled.
 	IsEnabled() bool
+
+	// SubscribeFormatChanges returns a channel that receives notifications
+	// when the USB host requests a different camera format.
+	// Returns nil if format subscription is not supported.
+	SubscribeFormatChanges() <-chan CameraFormatInfo
+
+	// UnsubscribeFormatChanges stops the format change subscription.
+	UnsubscribeFormatChanges()
 }

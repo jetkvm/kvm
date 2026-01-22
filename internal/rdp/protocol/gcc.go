@@ -39,6 +39,26 @@ const (
 	EarlyCapSkipChannelJoin = 0x00000008 // RNS_UD_SC_SKIP_CHANNELJOIN_SUPPORTED
 )
 
+// Multitransport flags (MS-RDPBCGR section 2.2.1.4.6).
+const (
+	TransportTypeUDPFECR     = 0x00000001 // RDP-UDP Forward Error Correction reliable transport
+	TransportTypeUDPFECL     = 0x00000004 // RDP-UDP FEC lossy transport
+	TransportUDPPreferred    = 0x00000100 // Tunneling of static virtual channel traffic over UDP
+	TransportSoftSyncTCPUDP  = 0x00000200 // Switching dynamic virtual channels from TCP to UDP
+)
+
+// RDP version constants (MS-RDPBCGR section 2.2.1.4.2).
+const (
+	RDPVersion50  = 0x00080004 // RDP 5.0, 5.1, 5.2
+	RDPVersion100 = 0x00080005 // RDP 10.0
+	RDPVersion101 = 0x00080006 // RDP 10.1
+	RDPVersion102 = 0x00080007 // RDP 10.2
+	RDPVersion103 = 0x00080008 // RDP 10.3
+	RDPVersion104 = 0x00080009 // RDP 10.4
+	RDPVersion105 = 0x0008000A // RDP 10.5
+	RDPVersion106 = 0x0008000B // RDP 10.6
+)
+
 // ClientCoreData contains core client information.
 type ClientCoreData struct {
 	Version         uint32
@@ -328,12 +348,17 @@ type ServerSecurityData struct {
 	ServerCertificate []byte
 }
 
+// ServerMultitransportData contains multitransport settings (MS-RDPBCGR 2.2.1.4.6).
+type ServerMultitransportData struct {
+	Flags uint32 // Combination of TransportType* flags
+}
+
 // BuildConferenceCreateResponse builds a GCC Conference Create Response.
 // This follows MS-RDPBCGR section 2.2.1.4 - Server MCS Connect Response PDU.
 // The encoding matches FreeRDP's PER encoding exactly.
-func BuildConferenceCreateResponse(coreData *ServerCoreData, networkData *ServerNetworkData, securityData *ServerSecurityData) []byte {
+func BuildConferenceCreateResponse(coreData *ServerCoreData, networkData *ServerNetworkData, securityData *ServerSecurityData, multitransportData *ServerMultitransportData) []byte {
 	// Build user data blocks first (SC_CORE, SC_SECURITY, SC_NET - order matters!)
-	userData := buildServerDataBlocks(coreData, networkData, securityData)
+	userData := buildServerDataBlocks(coreData, networkData, securityData, multitransportData)
 
 	// Calculate userData length encoding size (1 or 2 bytes)
 	userDataLenBytes := 1
@@ -406,8 +431,8 @@ func BuildConferenceCreateResponse(coreData *ServerCoreData, networkData *Server
 }
 
 // buildServerDataBlocks builds the server data blocks.
-// Order per MS-RDPBCGR section 2.2.1.4: SC_CORE, SC_SECURITY, SC_NET, SC_MCS_MSGCHANNEL
-func buildServerDataBlocks(coreData *ServerCoreData, networkData *ServerNetworkData, securityData *ServerSecurityData) []byte {
+// Order per MS-RDPBCGR section 2.2.1.4: SC_CORE, SC_SECURITY, SC_NET, SC_MCS_MSGCHANNEL, SC_MULTITRANSPORT
+func buildServerDataBlocks(coreData *ServerCoreData, networkData *ServerNetworkData, securityData *ServerSecurityData, multitransportData *ServerMultitransportData) []byte {
 	result := make([]byte, 0, 256)
 
 	// 1. Server Core Data (required, must be first)
@@ -472,6 +497,15 @@ func buildServerDataBlocks(coreData *ServerCoreData, networkData *ServerNetworkD
 		binary.LittleEndian.PutUint16(msgChan[2:4], 6) // Block length
 		binary.LittleEndian.PutUint16(msgChan[4:6], networkData.MsgChannelID)
 		result = append(result, msgChan...)
+	}
+
+	// 5. Server Multitransport Channel Data (MS-RDPBCGR 2.2.1.4.6)
+	if multitransportData != nil {
+		multiTrans := make([]byte, 8)
+		binary.LittleEndian.PutUint16(multiTrans[0:2], GCCBlockServerMultitransport)
+		binary.LittleEndian.PutUint16(multiTrans[2:4], 8) // Block length: 4 (header) + 4 (flags)
+		binary.LittleEndian.PutUint32(multiTrans[4:8], multitransportData.Flags)
+		result = append(result, multiTrans...)
 	}
 
 	return result

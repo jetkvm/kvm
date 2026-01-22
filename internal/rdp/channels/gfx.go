@@ -116,6 +116,9 @@ var (
 // GFXReadyCallback is called when the GFX channel is ready to send frames.
 type GFXReadyCallback func(g *GFXChannel)
 
+// GFXLogFunc is a logging callback for GFX channel events.
+type GFXLogFunc func(msg string, args ...interface{})
+
 // GFXChannel implements the RDPGFX channel with optimized H.264 passthrough.
 type GFXChannel struct {
 	channel *DVCChannel
@@ -123,6 +126,9 @@ type GFXChannel struct {
 
 	// Callback when channel becomes ready
 	onReady GFXReadyCallback
+
+	// Logger callback
+	logger GFXLogFunc
 
 	// Negotiated capabilities
 	capsVersion uint32
@@ -175,6 +181,18 @@ func NewGFXChannel(manager *DVCManager) *GFXChannel {
 		manager:   manager,
 		surfaceID: GFXDefaultSurfaceID,
 		frameBuf:  make([]byte, GFXFrameBufSize), // Pre-allocate for zero-alloc hot path
+	}
+}
+
+// SetLogger sets the logging callback for debugging.
+func (g *GFXChannel) SetLogger(logger GFXLogFunc) {
+	g.logger = logger
+}
+
+// log writes a log message if logger is set.
+func (g *GFXChannel) log(msg string, args ...interface{}) {
+	if g.logger != nil {
+		g.logger(msg, args...)
 	}
 }
 
@@ -393,6 +411,9 @@ func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 	bestVersion := uint32(0)
 	bestFlags := uint32(0)
 
+	// Log all capabilities for debugging
+	g.log("RDPGFX: CapsAdvertise received, capsCount=%d", capsCount)
+
 	for i := uint16(0); i < capsCount && pos+8 <= len(data); i++ {
 		version := binary.LittleEndian.Uint32(data[pos : pos+4])
 		capsLen := binary.LittleEndian.Uint32(data[pos+4 : pos+8])
@@ -404,20 +425,52 @@ func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 		}
 		pos += int(capsLen)
 
+		// Log each capability set
+		versionStr := "unknown"
+		switch version {
+		case GFXCapsVersion8:
+			versionStr = "8.0"
+		case GFXCapsVersion81:
+			versionStr = "8.1"
+		case GFXCapsVersion10:
+			versionStr = "10.0"
+		case GFXCapsVersion101:
+			versionStr = "10.1"
+		case GFXCapsVersion102:
+			versionStr = "10.2"
+		case GFXCapsVersion103:
+			versionStr = "10.3"
+		case GFXCapsVersion104:
+			versionStr = "10.4"
+		case GFXCapsVersion105:
+			versionStr = "10.5"
+		case GFXCapsVersion106:
+			versionStr = "10.6"
+		case GFXCapsVersion107:
+			versionStr = "10.7"
+		}
+		g.log("RDPGFX: Cap[%d] version=0x%08X (%s) flags=0x%08X capsLen=%d", i, version, versionStr, flags, capsLen)
+		g.log("RDPGFX: Cap[%d] ThinClient=%v SmallCache=%v AVC420Enabled=%v AVCDisabled=%v",
+			i, flags&GFXCapsFlagThinClient != 0, flags&GFXCapsFlagSmallCache != 0,
+			flags&GFXCapsFlagAVC420Enabled != 0, flags&GFXCapsFlagAVCDisabled != 0)
+
 		// Check for H.264 support
 		if version >= GFXCapsVersion10 && flags&GFXCapsFlagAVCDisabled == 0 {
 			// AVC444 capable
+			g.log("RDPGFX: Cap[%d] -> AVC444 capable (v10+ without AVC_DISABLED)", i)
 			if version > bestVersion {
 				bestVersion = version
 				bestFlags = flags
 			}
 		} else if version >= GFXCapsVersion81 && flags&GFXCapsFlagAVC420Enabled != 0 {
 			// AVC420 capable
+			g.log("RDPGFX: Cap[%d] -> AVC420 capable (v8.1+ with AVC420_ENABLED)", i)
 			if version > bestVersion {
 				bestVersion = version
 				bestFlags = flags
 			}
 		} else if version > bestVersion {
+			g.log("RDPGFX: Cap[%d] -> No AVC support (version too old or AVC disabled)", i)
 			bestVersion = version
 			bestFlags = flags
 		}
@@ -433,6 +486,8 @@ func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 	} else if bestVersion >= GFXCapsVersion81 && bestFlags&GFXCapsFlagAVC420Enabled != 0 {
 		g.avc420 = true
 	}
+
+	g.log("RDPGFX: Selected version=0x%08X flags=0x%08X AVC420=%v AVC444=%v", bestVersion, bestFlags, g.avc420, g.avc444)
 
 	// Send capability confirm
 	return g.sendCapsConfirm()

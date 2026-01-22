@@ -29,7 +29,7 @@ type RGBFrame struct {
 
 var (
 	videoFrameChan chan []byte           = make(chan []byte)
-	jpegFrameChan  chan []byte           = make(chan []byte, 2) // Buffered for non-blocking JPEG delivery
+	jpegFrameChan  chan []byte           = make(chan []byte, 2)   // Buffered for non-blocking JPEG delivery
 	rgbFrameChan   chan RGBFrame         = make(chan RGBFrame, 2) // Buffered for non-blocking RGB delivery
 	videoStateChan chan VideoState       = make(chan VideoState)
 	logChan        chan nativeLogMessage = make(chan nativeLogMessage)

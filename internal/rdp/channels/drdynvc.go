@@ -307,6 +307,7 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 
 	payload := data[1+pos:]
 	var totalLength uint32
+	var lenFieldSize int
 
 	// If first PDU, parse the length field (indicates total message size)
 	// The Len field is in bits 2-3 of the cmd byte:
@@ -314,7 +315,6 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	if isFirst && len(payload) > 0 {
 		cmdByte := data[0]
 		lenBits := (cmdByte >> 2) & 0x03
-		var lenFieldSize int
 		switch lenBits {
 		case 0:
 			lenFieldSize = 1
@@ -335,6 +335,11 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 		if len(payload) >= lenFieldSize {
 			payload = payload[lenFieldSize:]
 		}
+	}
+
+	// Debug log for DATA_FIRST PDU parsing (helps debug camera frame reassembly)
+	if m.logger != nil && isFirst {
+		m.logger("DATA_FIRST totalLen=%d payloadLen=%d", "", channelID, totalLength, len(payload))
 	}
 
 	// LOCK-FREE HOT PATH: Try atomic pointer array first (no locks)

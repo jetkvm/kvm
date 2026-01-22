@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/jetkvm/kvm/internal/camera"
 	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/keyboard"
 	"github.com/jetkvm/kvm/internal/rdp"
@@ -456,11 +457,18 @@ func BroadcastRDPAudio(data []byte) {
 // rdpCameraAdapter adapts UVC camera to rdp.CameraProvider interface.
 type rdpCameraAdapter struct{}
 
-// Camera pixel format FourCC codes (must match internal/rdp/channels/camera.go)
+// Camera pixel format codes (MS-RDPECAM format identifiers, must match internal/rdp/channels/camera.go)
 const (
-	rdpCamPixelFormatMJPEG = 0x47504A4D // 'MJPG'
-	rdpCamPixelFormatH264  = 0x34363248 // 'H264'
+	rdpCamPixelFormatH264  = 0x01 // H.264 video
+	rdpCamPixelFormatMJPEG = 0x02 // Motion JPEG
+	rdpCamPixelFormatYUY2  = 0x03 // YUY2 (4:2:2)
+	rdpCamPixelFormatNV12  = 0x04 // NV12 (4:2:0)
+	rdpCamPixelFormatI420  = 0x05 // I420/YV12
 )
+
+// cameraFrameCount tracks frames for throttled logging
+var cameraFrameCount uint32
+var cameraH264WarningLogged bool
 
 func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFormat uint32) error {
 	mgr := cameraManagerPtr.Load()
@@ -471,23 +479,55 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 	// Route based on pixel format
 	switch pixelFormat {
 	case rdpCamPixelFormatH264:
+		// Pass H.264 directly to camera manager
+		// Note: RV1106 has NO VDEC hardware. If USB host wants MJPEG but RDP client
+		// sends H.264, we cannot transcode. The camera channel should have negotiated
+		// MJPEG format during StartStreamsRequest to avoid this situation.
+		currentFmt := mgr.GetCurrentFormat()
+		if currentFmt != nil && currentFmt.Codec == camera.CodecMJPEG {
+			// Log warning (throttled) - this shouldn't happen if format negotiation worked
+			cameraFrameCount++
+			if !cameraH264WarningLogged || cameraFrameCount%300 == 0 {
+				rdpLogger.Warn().
+					Uint32("width", width).
+					Uint32("height", height).
+					Uint32("frameCount", cameraFrameCount).
+					Msg("RDP: H.264 frame received but host wants MJPEG (RV1106 has no VDEC, cannot transcode)")
+				cameraH264WarningLogged = true
+			}
+			return nil // Drop frame - cannot transcode without VDEC
+		}
 		mgr.HandleCameraH264Frame(data)
 	case rdpCamPixelFormatMJPEG:
+		// RDP sends MJPEG - pass through directly
 		mgr.HandleCameraMjpegFrame(data)
 	default:
-		// NV12, I420, YUY2 need conversion - skip for now
-		// In the future, could add software conversion to MJPEG
+		// NV12, I420, YUY2 need conversion - not currently supported
+		cameraFrameCount++
+		if cameraFrameCount == 1 || cameraFrameCount%300 == 0 {
+			rdpLogger.Warn().
+				Uint32("pixelFormat", pixelFormat).
+				Uint32("width", width).
+				Uint32("height", height).
+				Uint32("frameCount", cameraFrameCount).
+				Msg("RDP: camera frame dropped - unsupported pixel format (expected H264 or MJPEG)")
+		}
 		return nil
 	}
 	return nil
 }
 
 func (a *rdpCameraAdapter) IsConnected() bool {
+	// Returns true if UVC gadget is available and ready to receive frames
+	// Note: We don't check IsStreaming() because we want to accept frames
+	// before the host starts capturing - frames will be forwarded when ready
 	mgr := cameraManagerPtr.Load()
 	if mgr == nil {
 		return false
 	}
-	return mgr.IsStreaming()
+	// Check if UVC is initialized and can receive frames
+	// The manager exists and is enabled means we can accept frames
+	return mgr.IsEnabled()
 }
 
 func (a *rdpCameraAdapter) SetEnabled(enabled bool) {
@@ -504,6 +544,92 @@ func (a *rdpCameraAdapter) IsEnabled() bool {
 		return false
 	}
 	return mgr.IsEnabled()
+}
+
+// rdpCameraFormatBridge manages the camera format change subscription bridge.
+// It converts camera.FormatInfo to rdp.CameraFormatInfo in a safe manner.
+type rdpCameraFormatBridge struct {
+	mu       sync.Mutex
+	outChan  chan rdp.CameraFormatInfo
+	stopChan chan struct{}
+}
+
+var rdpCameraFormatBridgeInstance rdpCameraFormatBridge
+
+func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo {
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil {
+		return nil
+	}
+
+	// Subscribe to the underlying camera manager
+	srcChan := mgr.SubscribeFormatChanges()
+	if srcChan == nil {
+		return nil
+	}
+
+	rdpCameraFormatBridgeInstance.mu.Lock()
+	defer rdpCameraFormatBridgeInstance.mu.Unlock()
+
+	// Stop any existing bridge goroutine
+	if rdpCameraFormatBridgeInstance.stopChan != nil {
+		close(rdpCameraFormatBridgeInstance.stopChan)
+	}
+
+	// Create new channels for this subscription
+	outChan := make(chan rdp.CameraFormatInfo, 4)
+	stopChan := make(chan struct{})
+	rdpCameraFormatBridgeInstance.outChan = outChan
+	rdpCameraFormatBridgeInstance.stopChan = stopChan
+
+	go func() {
+		defer func() {
+			// Safely close outChan - use recover to handle any edge cases
+			defer func() { recover() }()
+			close(outChan)
+		}()
+
+		for {
+			select {
+			case <-stopChan:
+				return
+			case fmt, ok := <-srcChan:
+				if !ok {
+					// Source channel closed
+					return
+				}
+				// Non-blocking send with stop check
+				select {
+				case <-stopChan:
+					return
+				case outChan <- rdp.CameraFormatInfo{
+					Codec:     string(fmt.Codec),
+					Width:     fmt.Width,
+					Height:    fmt.Height,
+					FrameRate: fmt.FrameRate,
+				}:
+				}
+			}
+		}
+	}()
+
+	return outChan
+}
+
+func (a *rdpCameraAdapter) UnsubscribeFormatChanges() {
+	rdpCameraFormatBridgeInstance.mu.Lock()
+	if rdpCameraFormatBridgeInstance.stopChan != nil {
+		close(rdpCameraFormatBridgeInstance.stopChan)
+		rdpCameraFormatBridgeInstance.stopChan = nil
+	}
+	rdpCameraFormatBridgeInstance.outChan = nil
+	rdpCameraFormatBridgeInstance.mu.Unlock()
+
+	// Also unsubscribe from the camera manager
+	mgr := cameraManagerPtr.Load()
+	if mgr != nil {
+		mgr.UnsubscribeFormatChanges()
+	}
 }
 
 // rdpTLSAdapter provides TLS connection upgrading for RDP with hardware acceleration.
