@@ -145,14 +145,14 @@ type Config struct {
 	VNCClipboardEnabled bool   `json:"vnc_clipboard_enabled"` // Enable clipboard-as-keystrokes, default: true
 
 	// RDP settings
-	RDPEnabled          bool `json:"rdp_enabled"`
-	RDPPort             int  `json:"rdp_port"`              // default: 3389
-	RDPMaxConnections   int  `json:"rdp_max_connections"`   // Max concurrent RDP connections (1-10), default: 3
-	RDPUseTLS           bool `json:"rdp_use_tls"`           // Use TLS for RDP - when enabled and available, provides NLA security
-	RDPVideoEnabled     bool `json:"rdp_video_enabled"`     // Enable H.264 video via RDPGFX, default: true
-	RDPAudioEnabled     bool `json:"rdp_audio_enabled"`     // Enable audio output to client, default: true
-	RDPMicEnabled       bool `json:"rdp_mic_enabled"`       // Enable microphone input from client, default: true
-	RDPCameraEnabled    bool `json:"rdp_camera_enabled"`    // Enable webcam redirection from client, default: false
+	RDPEnabled          bool   `json:"rdp_enabled"`
+	RDPPort             int    `json:"rdp_port"`              // default: 3389
+	RDPMaxConnections   int    `json:"rdp_max_connections"`   // Max concurrent RDP connections (1-10), default: 3
+	RDPUseTLS           bool   `json:"rdp_use_tls"`           // Use TLS for RDP - when enabled and available, provides NLA security
+	RDPVideoEnabled     bool   `json:"rdp_video_enabled"`     // Enable H.264 video via RDPGFX, default: true
+	RDPAudioEnabled     bool   `json:"rdp_audio_enabled"`     // Enable audio output to client, default: true
+	RDPMicEnabled       bool   `json:"rdp_mic_enabled"`       // Enable microphone input from client, default: true
+	RDPCameraEnabled    bool   `json:"rdp_camera_enabled"`    // Enable webcam redirection from client, default: false
 	RDPClipboardEnabled bool   `json:"rdp_clipboard_enabled"` // Enable clipboard-as-keystrokes, default: true
 	RDPPasteDelayMs     int    `json:"rdp_paste_delay_ms"`    // Delay per keystroke in ms (0-50), default: 0
 	RDPTargetOS         string `json:"rdp_target_os"`         // Target OS for clipboard encoding: "windows", "macos", "linux", default: "windows"

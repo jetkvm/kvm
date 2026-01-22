@@ -95,8 +95,8 @@ const (
 
 // Maximum values.
 const (
-	GFXMaxFramesPending = 8 // Maximum frames in flight before backpressure
-	GFXDefaultSurfaceID = 1 // Default surface for main display
+	GFXMaxFramesPending = 16 // Maximum frames in flight before backpressure (~266ms at 60fps)
+	GFXDefaultSurfaceID = 1  // Default surface for main display
 )
 
 // ZGFX compression constants.
@@ -112,6 +112,16 @@ var (
 	ErrGFXNotReady     = errors.New("gfx: channel not ready")
 	ErrGFXBackpressure = errors.New("gfx: too many frames pending")
 )
+
+// gfxLargeBufferPool reduces GC pressure for large keyframe allocations.
+// Used when frames exceed the pre-allocated frameBuf (>65KB, needing multi-segment ZGFX).
+// Sized to accommodate typical 1080p keyframes with ZGFX overhead.
+var gfxLargeBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, GFXFrameBufSize)
+		return &buf
+	},
+}
 
 // GFXReadyCallback is called when the GFX channel is ready to send frames.
 type GFXReadyCallback func(g *GFXChannel)
@@ -164,8 +174,11 @@ type GFXChannel struct {
 	// Max size: 2 + 16 + (25 + 14 + 300KB) + 12 ≈ 320KB for large keyframes
 	frameBuf []byte
 
-	// Mutex for send operations (only for surface creation, not frames)
+	// Mutex for surface operations (creation, deletion, resolution changes)
 	sendMu sync.Mutex
+
+	// Mutex for frame operations (protects frameBuf and metaBuf from concurrent access)
+	frameMu sync.Mutex
 
 	ready atomic.Bool
 }
@@ -207,8 +220,10 @@ const (
 // sendGFXData sends GFX PDU data wrapped with ZGFX header.
 // FreeRDP expects ZGFX-wrapped data (runs zgfx_decompress on received data).
 // ZGFX format for uncompressed single segment: [0xE0 descriptor][0x04 flags][raw data]
+// Uses pooled buffers for large keyframes to reduce GC pressure.
 func (g *GFXChannel) sendGFXData(data []byte) error {
 	var wrapped []byte
+	var poolBuf *[]byte // Track if we're using a pooled buffer
 
 	if len(data) <= ZGFXMaxSegmentData {
 		// Small data: use single-segment format
@@ -218,7 +233,7 @@ func (g *GFXChannel) sendGFXData(data []byte) error {
 		wrapped[1] = 0x04 // ZGFX_PACKET_COMPR_TYPE_RDP8 (uncompressed)
 		copy(wrapped[2:], data)
 	} else {
-		// Large data: use multi-segment format
+		// Large data: use multi-segment format with pooled buffer
 		// [0xE1 descriptor][segmentCount:2][uncompressedSize:4][segments...]
 		// Each segment: [segmentSize:4][flags:1][data]
 		numSegments := (len(data) + ZGFXMaxSegmentData - 1) / ZGFXMaxSegmentData
@@ -234,7 +249,13 @@ func (g *GFXChannel) sendGFXData(data []byte) error {
 			totalSize += 4 + 1 + segDataSize // segmentSize(4) + flags(1) + data
 		}
 
-		wrapped = make([]byte, totalSize)
+		// Use pooled buffer for large ZGFX multi-segment wrapping
+		poolBuf = gfxLargeBufferPool.Get().(*[]byte)
+		if cap(*poolBuf) < totalSize {
+			// Pool buffer too small, allocate a larger one
+			*poolBuf = make([]byte, totalSize)
+		}
+		wrapped = (*poolBuf)[:totalSize]
 		pos := 0
 
 		// Header
@@ -265,7 +286,14 @@ func (g *GFXChannel) sendGFXData(data []byte) error {
 		}
 	}
 
-	return g.channel.SendData(wrapped)
+	err := g.channel.SendData(wrapped)
+
+	// Return buffer to pool if we used one (after SendData copies data)
+	if poolBuf != nil {
+		gfxLargeBufferPool.Put(poolBuf)
+	}
+
+	return err
 }
 
 // unwrapZGFX unwraps ZGFX-compressed data. Only handles uncompressed passthrough.
@@ -293,7 +321,6 @@ func (g *GFXChannel) unwrapZGFX(data []byte) ([]byte, error) {
 
 		// Return the raw data after descriptor and flags
 		return data[2:], nil
-
 	} else if descriptor == ZGFXSegmentedMulti {
 		// Multipart segment: [descriptor] [segmentCount:2] [uncompressedSize:4] [segments...]
 		if len(data) < 7 {
@@ -398,6 +425,28 @@ func (g *GFXChannel) OnClose() {
 	g.ready.Store(false)
 }
 
+// gfxVersionNames maps GFX capability versions to human-readable names.
+var gfxVersionNames = map[uint32]string{
+	GFXCapsVersion8:   "8.0",
+	GFXCapsVersion81:  "8.1",
+	GFXCapsVersion10:  "10.0",
+	GFXCapsVersion101: "10.1",
+	GFXCapsVersion102: "10.2",
+	GFXCapsVersion103: "10.3",
+	GFXCapsVersion104: "10.4",
+	GFXCapsVersion105: "10.5",
+	GFXCapsVersion106: "10.6",
+	GFXCapsVersion107: "10.7",
+}
+
+// gfxVersionString returns the human-readable name for a GFX capability version.
+func gfxVersionString(version uint32) string {
+	if name, ok := gfxVersionNames[version]; ok {
+		return name
+	}
+	return "unknown"
+}
+
 // handleCapsAdvertise processes client capability advertisement.
 func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 	if len(data) < 2 {
@@ -425,31 +474,7 @@ func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 		}
 		pos += int(capsLen)
 
-		// Log each capability set
-		versionStr := "unknown"
-		switch version {
-		case GFXCapsVersion8:
-			versionStr = "8.0"
-		case GFXCapsVersion81:
-			versionStr = "8.1"
-		case GFXCapsVersion10:
-			versionStr = "10.0"
-		case GFXCapsVersion101:
-			versionStr = "10.1"
-		case GFXCapsVersion102:
-			versionStr = "10.2"
-		case GFXCapsVersion103:
-			versionStr = "10.3"
-		case GFXCapsVersion104:
-			versionStr = "10.4"
-		case GFXCapsVersion105:
-			versionStr = "10.5"
-		case GFXCapsVersion106:
-			versionStr = "10.6"
-		case GFXCapsVersion107:
-			versionStr = "10.7"
-		}
-		g.log("RDPGFX: Cap[%d] version=0x%08X (%s) flags=0x%08X capsLen=%d", i, version, versionStr, flags, capsLen)
+		g.log("RDPGFX: Cap[%d] version=0x%08X (%s) flags=0x%08X capsLen=%d", i, version, gfxVersionString(version), flags, capsLen)
 		g.log("RDPGFX: Cap[%d] ThinClient=%v SmallCache=%v AVC420Enabled=%v AVCDisabled=%v",
 			i, flags&GFXCapsFlagThinClient != 0, flags&GFXCapsFlagSmallCache != 0,
 			flags&GFXCapsFlagAVC420Enabled != 0, flags&GFXCapsFlagAVCDisabled != 0)
@@ -574,526 +599,6 @@ func (g *GFXChannel) handleQoEFrameAck(data []byte) error {
 			pending = 0
 		}
 		g.framesPending.Store(pending)
-	}
-	return nil
-}
-
-// Initialize creates the surface and maps it to output.
-func (g *GFXChannel) Initialize(width, height uint16) error {
-	if !g.ready.Load() {
-		return ErrGFXNotReady
-	}
-
-	g.sendMu.Lock()
-	defer g.sendMu.Unlock()
-
-	g.width = width
-	g.height = height
-
-	// Send reset graphics
-	if err := g.sendResetGraphics(width, height); err != nil {
-		return err
-	}
-
-	// Create surface
-	if err := g.sendCreateSurface(g.surfaceID, width, height); err != nil {
-		return err
-	}
-
-	// Map surface to output
-	if err := g.sendMapSurfaceToOutput(g.surfaceID, 0, 0); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// sendResetGraphics sends a reset graphics command.
-// NOTE: FreeRDP requires the total ResetGraphics PDU to be exactly 340 bytes.
-// This is RDPGFX_RESET_GRAPHICS_PDU_SIZE in FreeRDP code.
-func (g *GFXChannel) sendResetGraphics(width, height uint16) error {
-	// ResetGraphics PDU format (MS-RDPEGFX 2.2.2.4):
-	// - Header: cmdId(2) + flags(2) + pduLength(4) = 8 bytes
-	// - Body: width(4) + height(4) + monitorCount(4) + monitors(20*n) + padding
-	// - Total PDU must be exactly 340 bytes (FreeRDP RDPGFX_RESET_GRAPHICS_PDU_SIZE)
-	//
-	// pduLength in header = total PDU size = 340
-	const totalPDUSize = 340                      // RDPGFX_RESET_GRAPHICS_PDU_SIZE
-	const bodySize = totalPDUSize - GFXHeaderSize // 340 - 8 = 332
-	const pduLength = totalPDUSize                // pduLength = total size including header
-
-	buf := make([]byte, totalPDUSize)
-
-	// Header - pduLength is the total PDU size (340)
-	binary.LittleEndian.PutUint16(buf[0:2], GFXCmdResetGraphics)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)
-	binary.LittleEndian.PutUint32(buf[4:8], pduLength) // 340
-
-	// Width, height
-	binary.LittleEndian.PutUint32(buf[8:12], uint32(width))
-	binary.LittleEndian.PutUint32(buf[12:16], uint32(height))
-
-	// Monitor count = 1
-	binary.LittleEndian.PutUint32(buf[16:20], 1)
-
-	// Monitor definition (primary monitor) - MONITOR_DEF structure (20 bytes)
-	binary.LittleEndian.PutUint32(buf[20:24], 0)              // left
-	binary.LittleEndian.PutUint32(buf[24:28], 0)              // top
-	binary.LittleEndian.PutUint32(buf[28:32], uint32(width))  // right
-	binary.LittleEndian.PutUint32(buf[32:36], uint32(height)) // bottom
-	binary.LittleEndian.PutUint32(buf[36:40], 1)              // flags (primary)
-
-	// Remaining bytes (buf[40:340]) are already zero from make()
-
-	return g.sendGFXData(buf)
-}
-
-// sendCreateSurface sends a create surface command.
-func (g *GFXChannel) sendCreateSurface(surfaceID, width, height uint16) error {
-	buf := g.createBuf[:]
-
-	// Header
-	binary.LittleEndian.PutUint16(buf[0:2], GFXCmdCreateSurface)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)
-	binary.LittleEndian.PutUint32(buf[4:8], GFXHeaderSize+GFXCreateSurfaceSize)
-
-	// Surface definition
-	binary.LittleEndian.PutUint16(buf[8:10], surfaceID)
-	binary.LittleEndian.PutUint16(buf[10:12], width)
-	binary.LittleEndian.PutUint16(buf[12:14], height)
-	buf[14] = GFXPixelFormatXRGB
-
-	return g.sendGFXData(buf)
-}
-
-// sendMapSurfaceToOutput sends a map surface to output command.
-func (g *GFXChannel) sendMapSurfaceToOutput(surfaceID uint16, x, y uint32) error {
-	buf := g.mapBuf[:]
-
-	// Header
-	binary.LittleEndian.PutUint16(buf[0:2], GFXCmdMapSurfaceToOutput)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)
-	binary.LittleEndian.PutUint32(buf[4:8], GFXHeaderSize+GFXMapSurfaceSize)
-
-	// Mapping - coordinates are 4 bytes each per MS-RDPEGFX
-	binary.LittleEndian.PutUint16(buf[8:10], surfaceID)
-	binary.LittleEndian.PutUint16(buf[10:12], 0) // reserved
-	binary.LittleEndian.PutUint32(buf[12:16], x) // outputOriginX (4 bytes)
-	binary.LittleEndian.PutUint32(buf[16:20], y) // outputOriginY (4 bytes)
-
-	return g.sendGFXData(buf)
-}
-
-// UpdateResolution handles resolution change.
-func (g *GFXChannel) UpdateResolution(width, height uint16) error {
-	if !g.ready.Load() {
-		return ErrGFXNotReady
-	}
-
-	if width == g.width && height == g.height {
-		return nil
-	}
-
-	g.sendMu.Lock()
-	defer g.sendMu.Unlock()
-
-	// Delete old surface
-	if err := g.sendDeleteSurface(g.surfaceID); err != nil {
-		return err
-	}
-
-	g.width = width
-	g.height = height
-
-	// Create new surface
-	if err := g.sendCreateSurface(g.surfaceID, width, height); err != nil {
-		return err
-	}
-
-	// Remap
-	return g.sendMapSurfaceToOutput(g.surfaceID, 0, 0)
-}
-
-// sendDeleteSurface sends a delete surface command.
-func (g *GFXChannel) sendDeleteSurface(surfaceID uint16) error {
-	buf := g.deleteBuf[:]
-
-	// Header
-	binary.LittleEndian.PutUint16(buf[0:2], GFXCmdDeleteSurface)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)
-	binary.LittleEndian.PutUint32(buf[4:8], GFXHeaderSize+GFXDeleteSurfaceSize)
-
-	// Surface ID
-	binary.LittleEndian.PutUint16(buf[8:10], surfaceID)
-
-	return g.sendGFXData(buf)
-}
-
-// ErrGFXNoCodec is returned when no H.264 codec is available.
-var ErrGFXNoCodec = errors.New("gfx: no H.264 codec available")
-
-// SendH264Frame sends an H.264 frame with zero-allocation optimization.
-// The h264Data should contain raw H.264 NAL units.
-// Returns ErrGFXBackpressure if too many frames are pending.
-// Returns ErrGFXNoCodec if client doesn't support AVC420/AVC444.
-//
-// HOT PATH: This function is called for every video frame (~30-60 fps).
-// It uses pre-allocated buffers to achieve zero heap allocations for small frames.
-func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
-	if !g.ready.Load() {
-		return ErrGFXNotReady
-	}
-
-	// Check if client supports AVC420 codec
-	if !g.avc420 {
-		return ErrGFXNoCodec
-	}
-
-	// Flow control - check pending frames (lock-free atomic check)
-	pending := g.framesPending.Load()
-	if pending >= GFXMaxFramesPending {
-		return ErrGFXBackpressure
-	}
-
-	// Get next frame ID (lock-free atomic increment)
-	frameID := g.frameID.Add(1)
-	// Use synthetic timestamp based on frame ID (~30fps timing)
-	// Client expects consistent frame-rate-based timestamps, not wall-clock time
-	timestamp := frameID * 33
-
-	// Increment pending before sending (lock-free)
-	g.framesPending.Add(1)
-
-	// Calculate total size for GFX PDU (excluding ZGFX header)
-	// START_FRAME + WIRETOSURFACE_1 + END_FRAME
-	const metaSize = 14 // RFX_AVC420_METABLOCK size
-	startSize := GFXHeaderSize + GFXStartFrameSize
-	wireSize := GFXHeaderSize + GFXWireToSurface1Size + metaSize + len(h264Data)
-	endSize := GFXHeaderSize + GFXEndFrameSize
-	gfxPDUSize := startSize + wireSize + endSize
-
-	// Check if we need multi-segment ZGFX format
-	// ZGFX single-segment max data is 65535 bytes
-	if gfxPDUSize > ZGFXMaxSegmentData {
-		// Large frame - must use multi-segment format (allocates)
-		// Note: Don't decrement pending here - sendH264FrameMultiSegment manages it
-		return g.sendH264FrameMultiSegment(h264Data, isKeyframe, frameID, timestamp)
-	}
-
-	// ZERO-ALLOCATION PATH: Use pre-allocated frameBuf for small frames
-	// Layout: [ZGFX header 2 bytes][GFX PDU]
-	totalSize := 2 + gfxPDUSize
-
-	// Check if frame fits in pre-allocated buffer (shouldn't happen since we check segment size first)
-	if totalSize > len(g.frameBuf) {
-		return g.sendH264FrameMultiSegment(h264Data, isKeyframe, frameID, timestamp)
-	}
-
-	// Build directly in pre-allocated buffer
-	buf := g.frameBuf[:totalSize]
-
-	// ZGFX single-segment header (2 bytes) - uncompressed passthrough
-	buf[0] = 0xE0 // ZGFX_SEGMENTED_SINGLE
-	buf[1] = 0x04 // ZGFX_PACKET_COMPR_TYPE_RDP8 (uncompressed)
-
-	// GFX PDU starts at offset 2
-	pos := 2
-
-	// START_FRAME (16 bytes)
-	binary.LittleEndian.PutUint16(buf[pos:], GFXCmdStartFrame)
-	binary.LittleEndian.PutUint16(buf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:], uint32(startSize))
-	binary.LittleEndian.PutUint32(buf[pos+8:], timestamp)
-	binary.LittleEndian.PutUint32(buf[pos+12:], frameID)
-	pos += startSize
-
-	// WIRETOSURFACE_1 header (25 bytes) + metadata (14 bytes) + H.264 data
-	binary.LittleEndian.PutUint16(buf[pos:], GFXCmdWireToSurface1)
-	binary.LittleEndian.PutUint16(buf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:], uint32(wireSize))
-	binary.LittleEndian.PutUint16(buf[pos+8:], g.surfaceID)
-	binary.LittleEndian.PutUint16(buf[pos+10:], GFXCodecAVC420)
-	buf[pos+12] = GFXPixelFormatXRGB
-	binary.LittleEndian.PutUint16(buf[pos+13:], 0)        // left
-	binary.LittleEndian.PutUint16(buf[pos+15:], 0)        // top
-	binary.LittleEndian.PutUint16(buf[pos+17:], g.width)  // right
-	binary.LittleEndian.PutUint16(buf[pos+19:], g.height) // bottom
-	binary.LittleEndian.PutUint32(buf[pos+21:], uint32(metaSize+len(h264Data)))
-
-	// Build AVC420 metadata inline (14 bytes) - avoids function call overhead
-	metaPos := pos + 25
-	binary.LittleEndian.PutUint32(buf[metaPos:], 1)           // numRegionRects
-	binary.LittleEndian.PutUint16(buf[metaPos+4:], 0)         // left
-	binary.LittleEndian.PutUint16(buf[metaPos+6:], 0)         // top
-	binary.LittleEndian.PutUint16(buf[metaPos+8:], g.width)   // right
-	binary.LittleEndian.PutUint16(buf[metaPos+10:], g.height) // bottom
-	// qpVal with progressive flag + qualityVal
-	if isKeyframe {
-		buf[metaPos+12] = 18 | 0x80 // Lower QP for keyframes
-	} else {
-		buf[metaPos+12] = 22 | 0x80 // Default QP for P-frames
-	}
-	buf[metaPos+13] = 100 // Quality value
-
-	// Copy H.264 data (this copy is unavoidable)
-	copy(buf[metaPos+14:], h264Data)
-	pos += wireSize
-
-	// END_FRAME (12 bytes)
-	binary.LittleEndian.PutUint16(buf[pos:], GFXCmdEndFrame)
-	binary.LittleEndian.PutUint16(buf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:], uint32(endSize))
-	binary.LittleEndian.PutUint32(buf[pos+8:], frameID)
-
-	// Send ZGFX-wrapped GFX PDU directly to DVC channel
-	// Note: buf is a slice of g.frameBuf, no allocation here
-	if err := g.channel.SendData(buf); err != nil {
-		g.framesPending.Add(-1)
-		return err
-	}
-	return nil
-}
-
-// sendH264FrameMultiSegment is used when the GFX PDU exceeds ZGFX single-segment limit (65KB).
-// This happens for large H.264 keyframes. Uses ZGFX multi-segment format.
-// Note: framesPending was already incremented by caller.
-func (g *GFXChannel) sendH264FrameMultiSegment(h264Data []byte, isKeyframe bool, frameID, timestamp uint32) error {
-	meta := g.buildAVC420Metadata(isKeyframe)
-
-	startSize := GFXHeaderSize + GFXStartFrameSize
-	wireSize := GFXHeaderSize + GFXWireToSurface1Size + len(meta) + len(h264Data)
-	endSize := GFXHeaderSize + GFXEndFrameSize
-	gfxPDUSize := startSize + wireSize + endSize
-
-	// Build GFX PDU
-	gfxBuf := make([]byte, gfxPDUSize)
-	pos := 0
-
-	// START_FRAME
-	binary.LittleEndian.PutUint16(gfxBuf[pos:], GFXCmdStartFrame)
-	binary.LittleEndian.PutUint16(gfxBuf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(gfxBuf[pos+4:], uint32(startSize))
-	binary.LittleEndian.PutUint32(gfxBuf[pos+8:], timestamp)
-	binary.LittleEndian.PutUint32(gfxBuf[pos+12:], frameID)
-	pos += startSize
-
-	// WIRETOSURFACE_1
-	binary.LittleEndian.PutUint16(gfxBuf[pos:], GFXCmdWireToSurface1)
-	binary.LittleEndian.PutUint16(gfxBuf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(gfxBuf[pos+4:], uint32(wireSize))
-	binary.LittleEndian.PutUint16(gfxBuf[pos+8:], g.surfaceID)
-	binary.LittleEndian.PutUint16(gfxBuf[pos+10:], GFXCodecAVC420)
-	gfxBuf[pos+12] = GFXPixelFormatXRGB
-	binary.LittleEndian.PutUint16(gfxBuf[pos+13:], 0)
-	binary.LittleEndian.PutUint16(gfxBuf[pos+15:], 0)
-	binary.LittleEndian.PutUint16(gfxBuf[pos+17:], g.width)
-	binary.LittleEndian.PutUint16(gfxBuf[pos+19:], g.height)
-	binary.LittleEndian.PutUint32(gfxBuf[pos+21:], uint32(len(meta)+len(h264Data)))
-	copy(gfxBuf[pos+25:], meta)
-	copy(gfxBuf[pos+25+len(meta):], h264Data)
-	pos += wireSize
-
-	// END_FRAME
-	binary.LittleEndian.PutUint16(gfxBuf[pos:], GFXCmdEndFrame)
-	binary.LittleEndian.PutUint16(gfxBuf[pos+2:], 0)
-	binary.LittleEndian.PutUint32(gfxBuf[pos+4:], uint32(endSize))
-	binary.LittleEndian.PutUint32(gfxBuf[pos+8:], frameID)
-
-	// Wrap with ZGFX multi-segment and send
-	if err := g.sendGFXData(gfxBuf); err != nil {
-		g.framesPending.Add(-1)
-		return err
-	}
-	return nil
-}
-
-// buildAVC420Metadata builds the RFX_AVC420_METABLOCK structure.
-// Uses pre-allocated buffer to avoid allocations.
-// See MS-RDPEGFX 2.2.4.4.1 for the specification.
-func (g *GFXChannel) buildAVC420Metadata(isKeyframe bool) []byte {
-	// RFX_AVC420_METABLOCK structure (MS-RDPEGFX 2.2.4.4.1):
-	//   numRegionRects (4 bytes) - UINT32
-	//   regionRects (8 bytes each) - RDPGFX_RECT16 array
-	//   quantQualityVals (2 bytes each) - RDPGFX_AVC420_QUANT_QUALITY array
-	// Total for 1 region: 4 + 8 + 2 = 14 bytes
-	//
-	// Note: The H.264 data follows immediately after the metadata with NO length prefix.
-	// The bitmapDataLength in RDPGFX_WIRE_TO_SURFACE_PDU_1 specifies the total size.
-
-	buf := g.metaBuf[:14]
-
-	// Number of region rectangles = 1
-	binary.LittleEndian.PutUint32(buf[0:4], 1)
-
-	// RDPGFX_RECT16 (MS-RDPEGFX 2.2.1.2): left, top, right, bottom as UINT16
-	binary.LittleEndian.PutUint16(buf[4:6], 0)          // left
-	binary.LittleEndian.PutUint16(buf[6:8], 0)          // top
-	binary.LittleEndian.PutUint16(buf[8:10], g.width)   // right
-	binary.LittleEndian.PutUint16(buf[10:12], g.height) // bottom
-
-	// RDPGFX_AVC420_QUANT_QUALITY (MS-RDPEGFX 2.2.4.5):
-	//   qpVal (1 byte): bits[5:0]=QP, bit[6]=reserved, bit[7]=progressive flag
-	//   qualityVal (1 byte): quality value 0-100
-	qp := byte(22) // Default QP for P-frames
-	if isKeyframe {
-		qp = 18 // Lower QP (higher quality) for keyframes
-	}
-	buf[12] = qp | 0x80 // Set progressive flag (bit 7)
-	buf[13] = 100       // Quality value (0-100)
-
-	return buf
-}
-
-// SendH264FrameAVC444 sends an H.264 frame using AVC444 format (higher quality).
-// luma contains the Y plane H.264 data, chroma contains UV plane data.
-func (g *GFXChannel) SendH264FrameAVC444(luma, chroma []byte, isKeyframe bool) error {
-	if !g.ready.Load() || !g.avc444 {
-		// Fall back to AVC420
-		return g.SendH264Frame(luma, isKeyframe)
-	}
-
-	if g.framesPending.Load() >= GFXMaxFramesPending {
-		return ErrGFXBackpressure
-	}
-
-	frameID := g.frameID.Add(1)
-	// Use synthetic timestamp based on frame ID (~30fps timing)
-	timestamp := frameID * 33
-
-	g.framesPending.Add(1)
-
-	// Build AVC444 structure
-	// cbAvc420EncodedBitstream1 with LC mode in high bits
-	lcMode := uint32(0) // Both streams present
-	if len(chroma) == 0 {
-		lcMode = 1 // Luma only
-	}
-
-	// Build metadata for both streams (RFX_AVC420_METABLOCK, 14 bytes each for 1 region)
-	lumaMeta := g.buildAVC420Metadata(isKeyframe)
-
-	var chromaMeta []byte
-	if lcMode == 0 {
-		// Build chroma metadata inline (same structure as luma but always 14 bytes)
-		chromaMeta = make([]byte, 14)
-		binary.LittleEndian.PutUint32(chromaMeta[0:4], 1)          // numRegionRects
-		binary.LittleEndian.PutUint16(chromaMeta[4:6], 0)          // left
-		binary.LittleEndian.PutUint16(chromaMeta[6:8], 0)          // top
-		binary.LittleEndian.PutUint16(chromaMeta[8:10], g.width)   // right
-		binary.LittleEndian.PutUint16(chromaMeta[10:12], g.height) // bottom
-		chromaMeta[12] = 22 | 0x80                                 // qpVal with progressive flag
-		chromaMeta[13] = 100                                       // qualityVal
-	}
-
-	// Calculate sizes
-	avc444DataLen := 4 + len(lumaMeta) + len(luma) + len(chromaMeta) + len(chroma)
-	startSize := GFXHeaderSize + GFXStartFrameSize
-	wireSize := GFXHeaderSize + GFXWireToSurface1Size + avc444DataLen
-	endSize := GFXHeaderSize + GFXEndFrameSize
-	totalSize := startSize + wireSize + endSize
-
-	buf := make([]byte, totalSize)
-	pos := 0
-
-	// START_FRAME
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], GFXCmdStartFrame)
-	binary.LittleEndian.PutUint16(buf[pos+2:pos+4], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:pos+8], uint32(startSize))
-	binary.LittleEndian.PutUint32(buf[pos+8:pos+12], timestamp)
-	binary.LittleEndian.PutUint32(buf[pos+12:pos+16], frameID)
-	pos += startSize
-
-	// WIRETOSURFACE_1 with AVC444
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], GFXCmdWireToSurface1)
-	binary.LittleEndian.PutUint16(buf[pos+2:pos+4], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:pos+8], uint32(wireSize))
-	binary.LittleEndian.PutUint16(buf[pos+8:pos+10], g.surfaceID)
-	binary.LittleEndian.PutUint16(buf[pos+10:pos+12], GFXCodecAVC444)
-	buf[pos+12] = GFXPixelFormatXRGB
-	binary.LittleEndian.PutUint16(buf[pos+13:pos+15], 0)
-	binary.LittleEndian.PutUint16(buf[pos+15:pos+17], 0)
-	binary.LittleEndian.PutUint16(buf[pos+17:pos+19], g.width)
-	binary.LittleEndian.PutUint16(buf[pos+19:pos+21], g.height)
-	binary.LittleEndian.PutUint32(buf[pos+21:pos+25], uint32(avc444DataLen))
-
-	// AVC444 data
-	dataPos := pos + 25
-
-	// cbAvc420EncodedBitstream1 with LC mode
-	stream1Len := len(lumaMeta) + len(luma)
-	binary.LittleEndian.PutUint32(buf[dataPos:dataPos+4], uint32(stream1Len)|(lcMode<<30))
-	dataPos += 4
-
-	// Luma stream
-	copy(buf[dataPos:], lumaMeta)
-	dataPos += len(lumaMeta)
-	copy(buf[dataPos:], luma)
-	dataPos += len(luma)
-
-	// Chroma stream (if present)
-	if lcMode == 0 {
-		copy(buf[dataPos:], chromaMeta)
-		dataPos += len(chromaMeta)
-		copy(buf[dataPos:], chroma)
-	}
-
-	pos = startSize + wireSize
-
-	// END_FRAME
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], GFXCmdEndFrame)
-	binary.LittleEndian.PutUint16(buf[pos+2:pos+4], 0)
-	binary.LittleEndian.PutUint32(buf[pos+4:pos+8], uint32(endSize))
-	binary.LittleEndian.PutUint32(buf[pos+8:pos+12], frameID)
-
-	if err := g.sendGFXData(buf); err != nil {
-		// Send failed - decrement pending count to avoid leak
-		g.framesPending.Add(-1)
-		return err
-	}
-	return nil
-}
-
-// IsReady returns true if the channel is ready to send frames.
-func (g *GFXChannel) IsReady() bool {
-	return g.ready.Load()
-}
-
-// SupportsAVC420 returns true if AVC420 (H.264) is supported.
-func (g *GFXChannel) SupportsAVC420() bool {
-	return g.avc420
-}
-
-// SupportsAVC444 returns true if AVC444 (H.264 high quality) is supported.
-func (g *GFXChannel) SupportsAVC444() bool {
-	return g.avc444
-}
-
-// GetPendingFrames returns the number of frames awaiting acknowledgment.
-func (g *GFXChannel) GetPendingFrames() int {
-	return int(g.framesPending.Load())
-}
-
-// IsConnectionStale returns true if we haven't received frame acks in too long.
-// This indicates the client has likely disconnected or frozen.
-func (g *GFXChannel) IsConnectionStale() bool {
-	lastAck := g.lastAckTime.Load()
-	if lastAck == 0 {
-		// No acks received yet - not stale (still initializing)
-		return false
-	}
-
-	now := int32(time.Now().Unix())
-	elapsed := now - lastAck
-
-	// If no ack for more than 5 seconds AND we have pending frames, connection is stale
-	return elapsed > 5 && g.framesPending.Load() > 2
-}
-
-// Close closes the GFX channel.
-func (g *GFXChannel) Close() error {
-	g.ready.Store(false)
-	if g.channel != nil {
-		return g.channel.Close()
 	}
 	return nil
 }

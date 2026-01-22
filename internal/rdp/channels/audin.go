@@ -284,7 +284,7 @@ func (a *AudinChannel) handleFormats(data []byte) error {
 	pos := AudinFormatsHdrSize
 
 	// Parse formats under lock, but release before callbacks to avoid deadlock
-	var selectedIndex int = -1
+	var selectedIndex = -1
 	var selectedFmt AudioFormat
 
 	a.formatMu.Lock()

@@ -320,6 +320,13 @@ func (a *rdpVideoAdapter) StopRGBEncoder() error {
 	return nativeInstance.RgbStop()
 }
 
+func (a *rdpVideoAdapter) RequestKeyframe() {
+	if nativeInstance == nil {
+		return
+	}
+	_ = nativeInstance.VideoRequestKeyframe()
+}
+
 // BroadcastRDPRGBFrame sends a video frame to all RDP RGB subscribers.
 // The format indicates whether data is BGRX (from RGA hardware) or YUV422 (needs conversion).
 func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrameFormat) {
@@ -585,7 +592,7 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 	go func() {
 		defer func() {
 			// Safely close outChan - use recover to handle any edge cases
-			defer func() { recover() }()
+			defer func() { _ = recover() }()
 			close(outChan)
 		}()
 

@@ -41,10 +41,10 @@ const (
 
 // Multitransport flags (MS-RDPBCGR section 2.2.1.4.6).
 const (
-	TransportTypeUDPFECR     = 0x00000001 // RDP-UDP Forward Error Correction reliable transport
-	TransportTypeUDPFECL     = 0x00000004 // RDP-UDP FEC lossy transport
-	TransportUDPPreferred    = 0x00000100 // Tunneling of static virtual channel traffic over UDP
-	TransportSoftSyncTCPUDP  = 0x00000200 // Switching dynamic virtual channels from TCP to UDP
+	TransportTypeUDPFECR    = 0x00000001 // RDP-UDP Forward Error Correction reliable transport
+	TransportTypeUDPFECL    = 0x00000004 // RDP-UDP FEC lossy transport
+	TransportUDPPreferred   = 0x00000100 // Tunneling of static virtual channel traffic over UDP
+	TransportSoftSyncTCPUDP = 0x00000200 // Switching dynamic virtual channels from TCP to UDP
 )
 
 // RDP version constants (MS-RDPBCGR section 2.2.1.4.2).

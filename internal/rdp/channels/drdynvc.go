@@ -43,15 +43,30 @@ const (
 
 // Common errors.
 var (
-	ErrDVCChannelNotFound = errors.New("dvc: channel not found")
-	ErrDVCChannelClosed   = errors.New("dvc: channel closed")
-	ErrDVCDataTooLarge    = errors.New("dvc: data exceeds maximum size")
+	ErrDVCChannelNotFound    = errors.New("dvc: channel not found")
+	ErrDVCChannelClosed      = errors.New("dvc: channel closed")
+	ErrDVCDataTooLarge       = errors.New("dvc: data exceeds maximum size")
+	ErrDVCEmptyPDU           = errors.New("dvc: empty PDU")
+	ErrDVCInvalidChannelID   = errors.New("dvc: invalid channel ID")
+	ErrDVCReassemblyTooLarge = errors.New("dvc: reassembly size exceeds maximum")
 )
+
+// pduTypeNames maps PDU types to names for logging (package-level to avoid allocation).
+var pduTypeNames = [256]string{
+	DVCCapabilityResponse: "CAP_RSP",
+	DVCCreateResponse:     "CREATE_RSP",
+	DVCDataFirst:          "DATA_FIRST",
+	DVCData:               "DATA",
+	DVCCloseRequest:       "CLOSE",
+	DVCDataCompressed:     "DATA_COMPRESSED",
+	DVCSoftSyncRequest:    "SOFT_SYNC",
+}
 
 // Maximum sizes.
 const (
-	DVCMaxDataSize    = 1600 // Max data per PDU (fits in single MCS PDU)
-	DVCMaxChannelName = 256
+	DVCMaxDataSize       = 1600             // Max data per PDU (fits in single MCS PDU)
+	DVCMaxChannelName    = 256              // Max channel name length
+	DVCMaxReassemblySize = 16 * 1024 * 1024 // 16MB max reassembly buffer (prevents memory exhaustion)
 )
 
 // DVCLogger is a simple logging function for DVC events.
@@ -144,9 +159,10 @@ func (m *DVCManager) SetLogger(logger DVCLogger) {
 }
 
 // HandlePDU processes an incoming DRDYNVC PDU.
+// HOT PATH: Called for every DVC message. Optimized to avoid allocations.
 func (m *DVCManager) HandlePDU(data []byte) error {
 	if len(data) < 1 {
-		return errors.New("dvc: empty PDU")
+		return ErrDVCEmptyPDU
 	}
 
 	// Extract PDU type and channel ID size from first byte
@@ -154,22 +170,13 @@ func (m *DVCManager) HandlePDU(data []byte) error {
 	pduType := cmdByte & 0xF0
 	cbID := cmdByte & 0x03 // Channel ID size indicator
 
-	// Log all PDU types for debugging (at trace level)
-	if m.logger != nil {
-		pduNames := map[byte]string{
-			DVCCapabilityResponse: "CAP_RSP",
-			DVCCreateResponse:     "CREATE_RSP",
-			DVCDataFirst:          "DATA_FIRST",
-			DVCData:               "DATA",
-			DVCCloseRequest:       "CLOSE",
-			DVCDataCompressed:     "DATA_COMPRESSED",
-			DVCSoftSyncRequest:    "SOFT_SYNC",
-		}
-		name, ok := pduNames[pduType]
-		if !ok {
+	// Log non-data PDUs only (DATA/DATA_FIRST are hot path - no logging)
+	if m.logger != nil && pduType != DVCData && pduType != DVCDataFirst {
+		name := pduTypeNames[pduType]
+		if name == "" {
 			name = "UNKNOWN"
 		}
-		m.logger("DVC: received PDU %s (cmd=0x%02X type=0x%02X cbID=%d) len=%d", "", uint32(0), name, cmdByte, pduType, cbID, len(data))
+		m.logger("DVC: received PDU %s (cmd=0x%02X)", "", uint32(0), name, cmdByte)
 	}
 
 	switch pduType {
@@ -253,7 +260,7 @@ func (m *DVCManager) GetNegotiatedVersion() uint16 {
 func (m *DVCManager) handleCreateResponse(data []byte, cbID byte) error {
 	channelID, pos := m.readChannelID(data[1:], cbID)
 	if pos < 0 {
-		return errors.New("dvc: invalid channel ID")
+		return ErrDVCInvalidChannelID
 	}
 
 	if len(data) < 1+pos+4 {
@@ -302,7 +309,7 @@ func (m *DVCManager) handleCreateResponse(data []byte, cbID byte) error {
 func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	channelID, pos := m.readChannelID(data[1:], cbID)
 	if pos < 0 {
-		return errors.New("dvc: invalid channel ID")
+		return ErrDVCInvalidChannelID
 	}
 
 	payload := data[1+pos:]
@@ -337,11 +344,6 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 		}
 	}
 
-	// Debug log for DATA_FIRST PDU parsing (helps debug camera frame reassembly)
-	if m.logger != nil && isFirst {
-		m.logger("DATA_FIRST totalLen=%d payloadLen=%d", "", channelID, totalLength, len(payload))
-	}
-
 	// LOCK-FREE HOT PATH: Try atomic pointer array first (no locks)
 	var ch *DVCChannel
 	if channelID < DVCMaxChannels {
@@ -368,6 +370,10 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	if isFirst {
 		// DATA_FIRST: Start new reassembly or deliver if complete
 		if totalLength > 0 && uint32(len(payload)) < totalLength {
+			// Validate size to prevent memory exhaustion attacks
+			if totalLength > DVCMaxReassemblySize {
+				return ErrDVCReassemblyTooLarge
+			}
 			// Fragmented message - start reassembly
 			// Allocate buffer for total message size (reuse if possible)
 			if cap(ch.reassemblyBuf) >= int(totalLength) {
@@ -550,151 +556,6 @@ func (m *DVCManager) sendCreateRequest(channelID uint32, name string) error {
 	buf[len(buf)-1] = 0 // Null terminator
 
 	return m.sendFunc(buf)
-}
-
-// SendData sends data on a channel using zero-allocation hot path.
-// HOT PATH: This function is called for every DVC fragment.
-// Uses pre-allocated fragBuf to avoid heap allocations.
-func (ch *DVCChannel) SendData(data []byte) error {
-	if !ch.Open {
-		return ErrDVCChannelClosed
-	}
-
-	// Determine channel ID encoding (constant for the lifetime of the channel)
-	cbID := byte(0)
-	idLen := 1
-	if ch.ID > 0xFF {
-		cbID = 1
-		idLen = 2
-	}
-	if ch.ID > 0xFFFF {
-		cbID = 2
-		idLen = 4
-	}
-
-	totalLen := len(data)
-
-	// For small data, send in single PDU
-	if totalLen <= DVCMaxDataSize {
-		return ch.sendDataPDUZeroAlloc(data, false, 0, cbID, idLen)
-	}
-
-	// Fragment large data
-	pos := 0
-	first := true
-
-	for pos < totalLen {
-		chunkSize := totalLen - pos
-		if chunkSize > DVCMaxDataSize {
-			chunkSize = DVCMaxDataSize
-		}
-
-		var err error
-		if first {
-			err = ch.sendDataPDUZeroAlloc(data[pos:pos+chunkSize], true, uint32(totalLen), cbID, idLen)
-			first = false
-		} else {
-			err = ch.sendDataPDUZeroAlloc(data[pos:pos+chunkSize], false, 0, cbID, idLen)
-		}
-
-		if err != nil {
-			return err
-		}
-		pos += chunkSize
-	}
-
-	return nil
-}
-
-// sendDataPDUZeroAlloc sends a single data PDU using the pre-allocated fragment buffer.
-// HOT PATH: Zero heap allocations.
-func (ch *DVCChannel) sendDataPDUZeroAlloc(data []byte, isFirst bool, totalLen uint32, cbID byte, idLen int) error {
-	pduType := byte(DVCData)
-	lenFieldSize := 0
-	cbIDLocal := cbID // Don't modify the passed-in cbID
-
-	if isFirst {
-		pduType = DVCDataFirst
-		// Add length field for first PDU
-		// The Len field is in bits 2-3 of the cmd byte:
-		//   00 = 1 byte, 01 = 2 bytes, 10 = 4 bytes
-		if totalLen > 0xFFFF {
-			lenFieldSize = 4
-			cbIDLocal |= 0x08 // Len=10 (bits 2-3) for 4-byte length
-		} else if totalLen > 0xFF {
-			lenFieldSize = 2
-			cbIDLocal |= 0x04 // Len=01 (bits 2-3) for 2-byte length
-		} else {
-			lenFieldSize = 1
-			// Len=00 (no bits set) for 1-byte length
-		}
-	}
-
-	// Build PDU in pre-allocated buffer (zero allocation)
-	buf := ch.fragBuf[:1+idLen+lenFieldSize+len(data)]
-	buf[0] = pduType | cbIDLocal
-
-	pos := 1
-	switch idLen {
-	case 1:
-		buf[pos] = byte(ch.ID)
-	case 2:
-		binary.LittleEndian.PutUint16(buf[pos:pos+2], uint16(ch.ID))
-	case 4:
-		binary.LittleEndian.PutUint32(buf[pos:pos+4], ch.ID)
-	}
-	pos += idLen
-
-	if isFirst {
-		switch lenFieldSize {
-		case 1:
-			buf[pos] = byte(totalLen)
-		case 2:
-			binary.LittleEndian.PutUint16(buf[pos:pos+2], uint16(totalLen))
-		case 4:
-			binary.LittleEndian.PutUint32(buf[pos:pos+4], totalLen)
-		}
-		pos += lenFieldSize
-	}
-
-	copy(buf[pos:], data)
-
-	return ch.manager.sendFunc(buf)
-}
-
-// Close closes the channel.
-func (ch *DVCChannel) Close() error {
-	if !ch.Open {
-		return nil
-	}
-
-	ch.Open = false
-
-	// Send close request
-	cbID := byte(0)
-	idLen := 1
-	if ch.ID > 0xFF {
-		cbID = 1
-		idLen = 2
-	}
-	if ch.ID > 0xFFFF {
-		cbID = 2
-		idLen = 4
-	}
-
-	buf := make([]byte, 1+idLen)
-	buf[0] = DVCCloseRequest | cbID
-
-	switch idLen {
-	case 1:
-		buf[1] = byte(ch.ID)
-	case 2:
-		binary.LittleEndian.PutUint16(buf[1:3], uint16(ch.ID))
-	case 4:
-		binary.LittleEndian.PutUint32(buf[1:5], ch.ID)
-	}
-
-	return ch.manager.sendFunc(buf)
 }
 
 // Close closes the DVC manager and all its channels.

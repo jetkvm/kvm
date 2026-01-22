@@ -195,6 +195,10 @@ type VideoProvider interface {
 
 	// StopRGBEncoder stops the RGA hardware RGB encoder.
 	StopRGBEncoder() error
+
+	// RequestKeyframe requests the encoder to produce an immediate keyframe.
+	// This is used after frame drops to minimize video recovery time.
+	RequestKeyframe()
 }
 
 // AudioProvider provides audio capture and playback.
