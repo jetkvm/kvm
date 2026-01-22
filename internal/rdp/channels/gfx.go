@@ -95,7 +95,7 @@ const (
 
 // Maximum values.
 const (
-	GFXMaxFramesPending = 16 // Maximum frames in flight before backpressure (~266ms at 60fps)
+	GFXMaxFramesPending = 64 // Maximum frames in flight before backpressure (~1s at 60fps, important for high-latency connections)
 	GFXDefaultSurfaceID = 1  // Default surface for main display
 )
 

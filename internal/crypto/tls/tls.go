@@ -40,6 +40,21 @@ type Conn interface {
 	IsHardwareAccelerated() bool
 }
 
+// KTLSConn extends Conn with kernel TLS (kTLS) capabilities.
+// When kTLS is enabled, the kernel handles TLS encryption, enabling:
+// - Zero-copy scatter-gather writes via sendmsg()
+// - Reduced context switches (encryption in kernel space)
+// - Hardware crypto offload via kernel crypto API (e.g., RV1106 crypto accelerator)
+type KTLSConn interface {
+	Conn
+	// IsKTLSSendEnabled returns true if kernel TLS is enabled for sending.
+	IsKTLSSendEnabled() bool
+	// IsKTLSRecvEnabled returns true if kernel TLS is enabled for receiving.
+	IsKTLSRecvEnabled() bool
+	// GetFD returns the underlying socket file descriptor for scatter-gather I/O.
+	GetFD() int
+}
+
 // Config holds configuration for TLS connections.
 type Config struct {
 	// Mode specifies anonymous DH vs X.509 certificate mode.

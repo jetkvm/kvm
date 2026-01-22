@@ -64,6 +64,21 @@ package tls
 #define SSL_ERROR_TMP_SIZE 128
 #define ENGINE_ERROR_BUF_SIZE 256
 
+// kTLS support detection - SSL_OP_ENABLE_KTLS added in OpenSSL 3.0
+#ifndef SSL_OP_ENABLE_KTLS
+#define SSL_OP_ENABLE_KTLS 0
+#define KTLS_NOT_AVAILABLE 1
+#else
+#define KTLS_NOT_AVAILABLE 0
+#endif
+
+// kTLS send/recv detection - added in OpenSSL 3.0
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#define HAS_KTLS_FUNCTIONS 1
+#else
+#define HAS_KTLS_FUNCTIONS 0
+#endif
+
 static int set_blocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) return -1;
@@ -391,6 +406,17 @@ static SSL_CTX* create_ssl_ctx(int use_cert, const char* cert_pem, const char* k
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_SERVER);
 
+    // kTLS (kernel TLS) disabled for now - causes handshake issues on ARM
+    // The devcrypto hardware acceleration is already active for bulk encryption.
+    // kTLS would add zero-copy scatter-gather but isn't critical for performance.
+    // TODO: Investigate kTLS handshake issues (SSL_ERROR_WANT_READ loop too slow)
+#if 0 && !KTLS_NOT_AVAILABLE
+    SSL_CTX_set_options(ctx, SSL_OP_ENABLE_KTLS);
+    fprintf(stderr, "INFO: OpenSSL crypto/tls: kTLS (kernel TLS) ENABLED in SSL context\n");
+#else
+    fprintf(stderr, "INFO: OpenSSL crypto/tls: kTLS disabled (hardware crypto via devcrypto still active)\n");
+#endif
+
     return ctx;
 }
 
@@ -422,6 +448,31 @@ static const char* get_hw_crypto_engine_name() {
         return NULL;
     }
     return ENGINE_get_name(devcrypto_engine);
+}
+
+// Check if kTLS is enabled for sending on this SSL connection
+static int is_ktls_send_enabled(SSL *ssl) {
+#if HAS_KTLS_FUNCTIONS
+    return BIO_get_ktls_send(SSL_get_wbio(ssl));
+#else
+    (void)ssl;
+    return 0;
+#endif
+}
+
+// Check if kTLS is enabled for receiving on this SSL connection
+static int is_ktls_recv_enabled(SSL *ssl) {
+#if HAS_KTLS_FUNCTIONS
+    return BIO_get_ktls_recv(SSL_get_rbio(ssl));
+#else
+    (void)ssl;
+    return 0;
+#endif
+}
+
+// Get the underlying socket fd for scatter-gather writes
+static int get_ssl_fd(SSL *ssl) {
+    return SSL_get_fd(ssl);
 }
 */
 import "C"
@@ -612,6 +663,37 @@ func (c *opensslConn) IsHardwareAccelerated() bool {
 	return isHardwareAvailable()
 }
 
+// IsKTLSSendEnabled returns true if kernel TLS is enabled for sending.
+// When enabled, writes can use scatter-gather I/O for zero-copy encryption.
+func (c *opensslConn) IsKTLSSendEnabled() bool {
+	c.mu.Lock()
+	closed := c.closed
+	c.mu.Unlock()
+	if closed {
+		return false
+	}
+
+	return C.is_ktls_send_enabled(c.ssl) != 0
+}
+
+// IsKTLSRecvEnabled returns true if kernel TLS is enabled for receiving.
+func (c *opensslConn) IsKTLSRecvEnabled() bool {
+	c.mu.Lock()
+	closed := c.closed
+	c.mu.Unlock()
+	if closed {
+		return false
+	}
+
+	return C.is_ktls_recv_enabled(c.ssl) != 0
+}
+
+// GetFD returns the underlying socket file descriptor.
+// This can be used for scatter-gather writes when kTLS is enabled.
+func (c *opensslConn) GetFD() int {
+	return c.fd
+}
+
 func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 	initImpl()
 
@@ -707,6 +789,7 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		return nil, fmt.Errorf("failed to create SSL connection: %s", C.GoString(errStr))
 	}
 
+	// Set socket to blocking mode for SSL_accept
 	if C.set_blocking(C.int(fd)) != 0 {
 		C.SSL_free(ssl)
 		C.SSL_CTX_free(ctx)
@@ -728,15 +811,52 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		errMsg := C.GoString(errStr)
 		C.free(unsafe.Pointer(errStr))
 
-		var errnoStr string
-		if sslErr == C.SSL_ERROR_SYSCALL {
-			errnoStr = fmt.Sprintf(", errno=%d", C.get_errno())
+		// Get errno early before it gets clobbered
+		savedErrno := C.get_errno()
+
+		// Build detailed error message
+		var details string
+		switch sslErr {
+		case C.SSL_ERROR_NONE:
+			details = "SSL_ERROR_NONE"
+		case C.SSL_ERROR_SSL:
+			details = "SSL_ERROR_SSL"
+		case C.SSL_ERROR_WANT_READ:
+			details = "SSL_ERROR_WANT_READ (socket not ready)"
+		case C.SSL_ERROR_WANT_WRITE:
+			details = "SSL_ERROR_WANT_WRITE (socket not ready)"
+		case C.SSL_ERROR_SYSCALL:
+			if savedErrno == 0 {
+				details = "SSL_ERROR_SYSCALL (EOF/connection closed)"
+			} else {
+				details = fmt.Sprintf("SSL_ERROR_SYSCALL errno=%d", savedErrno)
+			}
+		case C.SSL_ERROR_ZERO_RETURN:
+			details = "SSL_ERROR_ZERO_RETURN (clean shutdown)"
+		default:
+			details = fmt.Sprintf("SSL_ERROR_%d", sslErr)
 		}
 
 		C.SSL_free(ssl)
 		C.SSL_CTX_free(ctx)
-		return nil, fmt.Errorf("TLS handshake failed: %s%s", errMsg, errnoStr)
+
+		if errMsg == "" || errMsg == "unknown error" {
+			return nil, fmt.Errorf("TLS handshake failed: %s", details)
+		}
+		return nil, fmt.Errorf("TLS handshake failed: %s (%s)", errMsg, details)
 	}
+
+	// Log kTLS status after handshake for diagnostics (one-time per connection, not hot path)
+	ktlsSend := C.is_ktls_send_enabled(ssl) != 0
+	ktlsRecv := C.is_ktls_recv_enabled(ssl) != 0
+	cipher := C.SSL_get_current_cipher(ssl)
+	var cipherName string
+	if cipher != nil {
+		cipherName = C.GoString(C.SSL_CIPHER_get_name(cipher))
+	}
+	tlsVersion := C.GoString(C.SSL_get_version(ssl))
+	fmt.Fprintf(os.Stderr, "INFO: OpenSSL TLS handshake complete: version=%s cipher=%s kTLS_send=%v kTLS_recv=%v ktls_available=%d\n",
+		tlsVersion, cipherName, ktlsSend, ktlsRecv, 1-C.KTLS_NOT_AVAILABLE)
 
 	return &opensslConn{
 		ssl:  ssl,

@@ -43,6 +43,9 @@ if [ ! -f .built ]; then
   # Configure OpenSSL for ARM cross-compile with static libs only
   # - no-shared: Build only static libraries (.a files)
   # - enable-devcryptoeng: Enable /dev/crypto hardware acceleration (RV1106 Rockchip crypto)
+  # - enable-ktls: Enable kernel TLS (kTLS) for zero-copy encryption via sendmsg()
+  #   When kernel has CONFIG_TLS=y, OpenSSL will offload TLS encryption to kernel,
+  #   which uses hardware crypto via CONFIG_CRYPTO_DEV_ROCKCHIP
   # - enable-weak-ssl-ciphers: Enable ADH (anonymous DH) ciphers for VNC TLS compatibility
   # - threads: Enable thread safety
   # Note: We keep engines enabled for devcrypto hardware acceleration
@@ -52,6 +55,7 @@ if [ ! -f .built ]; then
     --openssldir="$SSL_LIBS_DIR/install/ssl" \
     no-shared \
     enable-devcryptoeng \
+    enable-ktls \
     enable-weak-ssl-ciphers \
     threads \
     $OPTIM_CFLAGS

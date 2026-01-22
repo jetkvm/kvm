@@ -279,9 +279,18 @@ func (c *Connection) checkGFXReadinessAndFallback() {
 // so concurrent calls to this function are safe.
 //
 // HOT PATH: Zero allocations using pooled buffers for typical packet sizes.
+// For large payloads with kTLS enabled, uses scatter-gather for zero-copy.
 func (c *Connection) sendDVCData(data []byte) error {
 	if c.drdynvcID == 0 {
 		return nil
+	}
+
+	// For large payloads, check if scatter-gather is available (kTLS enabled)
+	// Scatter-gather avoids copying the payload into the header buffer
+	if len(data) >= ScatterGatherThreshold {
+		if sg := c.supportsScatterGather(); sg != nil {
+			return c.sendDVCDataScatterGather(sg, data)
+		}
 	}
 
 	// Use zero-allocation hot path for typical packet sizes
@@ -485,28 +494,43 @@ func (c *Connection) sendStaticChannelDataFallback(channelID uint16, data []byte
 
 // SendFrame sends an H.264 video frame to the client.
 // The frame should contain raw H.264 NAL units.
+//
+// HOT PATH: Called for every video frame (~30-60 fps).
+// Early bailout checks are ordered by cost (cheapest first).
 func (c *Connection) SendFrame(frame []byte) {
-	// Don't send to closed connections
+	// Track all attempted frames for diagnostics
+	c.frameStats.attempted.Add(1)
+
+	// Fast path: single atomic check for closed connection
 	if c.closed.Load() {
 		return
 	}
 
+	// Fast path: nil check (no atomic)
 	if c.gfxChannel == nil {
 		c.frameRequested.Store(false)
 		return
 	}
 
+	// Fast path: check if channel is ready
 	if !c.gfxChannel.IsReady() {
+		c.frameStats.dropNotReady.Add(1)
 		c.frameRequested.Store(false)
 		return
 	}
 
 	// Detect keyframe by checking NAL unit type
+	// This is more expensive (scans up to 1KB) so we do it after backpressure check
 	isKeyframe := isH264Keyframe(frame)
 
 	// Don't send non-keyframes until we've sent a keyframe first
 	// The H.264 decoder needs SPS/PPS (which come with keyframes) before it can decode
 	if !isKeyframe && !c.hasReceivedKeyframe.Load() {
+		dropped := c.frameStats.dropNoKeyframe.Add(1)
+		// If we've dropped 30+ frames waiting for keyframe (~1 sec at 30fps), request one
+		if dropped%30 == 0 && c.server.deps.Video != nil {
+			c.server.deps.Video.RequestKeyframe()
+		}
 		c.frameRequested.Store(false)
 		return
 	}
@@ -524,6 +548,7 @@ func (c *Connection) SendFrame(frame []byte) {
 			// CRITICAL: When ANY frame is dropped (keyframe OR P-frame), we must
 			// wait for the next keyframe. Dropping a P-frame breaks the reference
 			// chain, causing subsequent P-frames to decode as green/corrupted.
+			c.frameStats.dropBackpressure.Add(1)
 			c.hasReceivedKeyframe.Store(false)
 			c.server.deps.Logger.Warn().
 				Bool("keyframe", isKeyframe).
@@ -553,6 +578,9 @@ func (c *Connection) SendFrame(frame []byte) {
 			}
 		}
 	} else {
+		// Successfully sent frame
+		c.frameStats.sent.Add(1)
+
 		// Reset error counter on successful send
 		c.consecutiveWriteErrors.Store(0)
 
@@ -563,6 +591,29 @@ func (c *Connection) SendFrame(frame []byte) {
 				Msg("RDP: closing stale connection (no frame acks received)")
 			go c.Close()
 		}
+	}
+
+	// Diagnostic logging: only log when frames are being dropped (indicates a problem)
+	// Uses 30-second intervals to avoid log spam
+	now := time.Now().UnixMilli()
+	lastLog := c.frameStats.lastLogTime.Load()
+	dropNotReady := c.frameStats.dropNotReady.Load()
+	dropNoKeyframe := c.frameStats.dropNoKeyframe.Load()
+	dropBackpressure := c.frameStats.dropBackpressure.Load()
+
+	// Only log if: (1) frames are being dropped AND (2) 30 seconds since last log
+	totalDropped := dropNotReady + dropNoKeyframe + dropBackpressure
+	if totalDropped > 0 && now-lastLog > 30000 && c.frameStats.lastLogTime.CompareAndSwap(lastLog, now) {
+		c.server.deps.Logger.Warn().
+			Uint64("attempted", c.frameStats.attempted.Load()).
+			Uint64("sent", c.frameStats.sent.Load()).
+			Uint64("dropNotReady", dropNotReady).
+			Uint64("dropNoKeyframe", dropNoKeyframe).
+			Uint64("dropBackpressure", dropBackpressure).
+			Int("pending", c.gfxChannel.GetPendingFrames()).
+			Bool("ready", c.gfxChannel.IsReady()).
+			Bool("hasKeyframe", c.hasReceivedKeyframe.Load()).
+			Msg("RDP: video frames being dropped - check connection health")
 	}
 
 	c.frameRequested.Store(false)

@@ -387,6 +387,13 @@ func (g *GFXChannel) GetPendingFrames() int {
 	return int(g.framesPending.Load())
 }
 
+// CanAcceptFrame returns true if the channel can accept another frame.
+// This is a fast check that avoids work when backpressure would cause a drop anyway.
+// HOT PATH: Single atomic load, always inlined.
+func (g *GFXChannel) CanAcceptFrame() bool {
+	return g.ready.Load() && g.avc420 && g.framesPending.Load() < GFXMaxFramesPending
+}
+
 // IsConnectionStale returns true if we haven't received frame acks in too long.
 // This indicates the client has likely disconnected or frozen.
 func (g *GFXChannel) IsConnectionStale() bool {
@@ -399,8 +406,9 @@ func (g *GFXChannel) IsConnectionStale() bool {
 	now := int32(time.Now().Unix())
 	elapsed := now - lastAck
 
-	// If no ack for more than 5 seconds AND we have pending frames, connection is stale
-	return elapsed > 5 && g.framesPending.Load() > 2
+	// If no ack for more than 30 seconds AND we have significant pending frames, connection is stale
+	// High timeout needed for high-latency connections (e.g., Tailscale over internet)
+	return elapsed > 30 && g.framesPending.Load() > 16
 }
 
 // Close closes the GFX channel.
