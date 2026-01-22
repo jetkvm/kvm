@@ -385,6 +385,7 @@ func (g *GFXChannel) Open() error {
 // OnData handles incoming RDPGFX data.
 func (g *GFXChannel) OnData(data []byte) error {
 	if len(data) < 2 {
+		g.log("RDPGFX: dropped short data (%d bytes)", len(data))
 		return nil
 	}
 
@@ -396,6 +397,7 @@ func (g *GFXChannel) OnData(data []byte) error {
 	data = unwrapped
 
 	if len(data) < GFXHeaderSize {
+		g.log("RDPGFX: dropped short unwrapped data (%d bytes, need %d)", len(data), GFXHeaderSize)
 		return nil
 	}
 
@@ -450,6 +452,7 @@ func gfxVersionString(version uint32) string {
 // handleCapsAdvertise processes client capability advertisement.
 func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 	if len(data) < 2 {
+		g.log("RDPGFX: CapsAdvertise too short (%d bytes)", len(data))
 		return nil
 	}
 
@@ -553,6 +556,7 @@ func (g *GFXChannel) sendCapsConfirm() error {
 // handleFrameAck processes frame acknowledgment.
 func (g *GFXChannel) handleFrameAck(data []byte) error {
 	if len(data) < GFXFrameAckSize {
+		g.log("RDPGFX: FrameAck too short (%d bytes, need %d)", len(data), GFXFrameAckSize)
 		return nil
 	}
 

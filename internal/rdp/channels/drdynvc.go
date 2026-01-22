@@ -110,6 +110,10 @@ const (
 	DVCFragmentBufSize = DVCMaxHeaderSize + DVCMaxDataSize
 )
 
+// Reassembly timeout (in seconds) - if no data received for this long, reset reassembly.
+// This prevents stalled connections due to incomplete fragmented messages.
+const DVCReassemblyTimeoutSec = 5
+
 // DVCChannel represents a single dynamic virtual channel.
 type DVCChannel struct {
 	ID      uint32
@@ -124,9 +128,10 @@ type DVCChannel struct {
 
 	// Fragment reassembly state (for incoming fragmented messages)
 	// Per MS-RDPEDYC: DATA_FIRST + DATA PDUs must be reassembled before delivery
-	reassemblyBuf    []byte // Accumulated data from DATA_FIRST and DATA PDUs
-	reassemblyTotal  uint32 // Expected total length from DATA_FIRST
-	reassemblyOffset uint32 // Current accumulated length
+	reassemblyBuf       []byte // Accumulated data from DATA_FIRST and DATA PDUs
+	reassemblyTotal     uint32 // Expected total length from DATA_FIRST
+	reassemblyOffset    uint32 // Current accumulated length
+	reassemblyStartTime int64  // Unix timestamp when reassembly started (for timeout)
 }
 
 // DVCHandler handles incoming data on a DVC.
@@ -358,7 +363,30 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	}
 
 	if ch == nil || !ch.Open || ch.Handler == nil {
+		// Log silent drops (helps diagnose connection issues)
+		if m.logger != nil {
+			if ch == nil {
+				m.logger("DVC: dropped data for unknown channel %d", "", channelID)
+			} else if !ch.Open {
+				m.logger("DVC: dropped data for closed channel", ch.Name, channelID)
+			} else {
+				m.logger("DVC: dropped data for channel with no handler", ch.Name, channelID)
+			}
+		}
 		return nil
+	}
+
+	// Check for stale reassembly (timeout prevents indefinite stalls)
+	if ch.reassemblyTotal > 0 {
+		now := time.Now().Unix()
+		if now-ch.reassemblyStartTime > DVCReassemblyTimeoutSec {
+			if m.logger != nil {
+				m.logger("DVC: reassembly timeout, discarding %d/%d bytes", ch.Name, channelID,
+					ch.reassemblyOffset, ch.reassemblyTotal)
+			}
+			ch.reassemblyTotal = 0
+			ch.reassemblyOffset = 0
+		}
 	}
 
 	// Fragment reassembly per MS-RDPEDYC section 3.1.5.2.2
@@ -384,7 +412,8 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 			copy(ch.reassemblyBuf, payload)
 			ch.reassemblyTotal = totalLength
 			ch.reassemblyOffset = uint32(len(payload))
-			return nil // Wait for more DATA PDUs
+			ch.reassemblyStartTime = time.Now().Unix() // Start timeout
+			return nil                                 // Wait for more DATA PDUs
 		}
 		// Single-fragment message (fits in one PDU) - deliver directly
 		// Zero-allocation: pass slice of the read buffer (handler copies if needed)
