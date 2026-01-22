@@ -280,6 +280,22 @@ func (s *Server) acceptLoop() {
 
 		s.deps.Logger.Info().Str("remote", remoteAddr).Msg("new RDP connection")
 
+		// TCP tuning for low latency
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			// Disable Nagle's algorithm - critical for low-latency streaming
+			// Nagle buffers small writes which adds 40ms+ latency
+			_ = tcpConn.SetNoDelay(true)
+
+			// Set socket buffer sizes for video streaming
+			// Larger buffers reduce syscall overhead for burst traffic
+			_ = tcpConn.SetWriteBuffer(256 * 1024) // 256KB send buffer
+			_ = tcpConn.SetReadBuffer(64 * 1024)   // 64KB receive buffer
+
+			// Enable TCP keepalive to detect dead connections
+			_ = tcpConn.SetKeepAlive(true)
+			_ = tcpConn.SetKeepAlivePeriod(30 * time.Second)
+		}
+
 		rdpConn := NewConnection(conn, s)
 		s.connections.Store(rdpConn, true)
 		s.connCount.Add(1)
