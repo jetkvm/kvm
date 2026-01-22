@@ -369,10 +369,7 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 		return
 	}
 
-	// Parse VC PDU header
-	// totalLength := binary.LittleEndian.Uint32(data[0:4])
-	// flags := binary.LittleEndian.Uint32(data[4:8])
-	// For now, we don't handle chunked data (FIRST without LAST), just pass payload
+	// Skip 8-byte VC PDU header (totalLength + flags), pass payload directly
 	payload := data[8:]
 
 	// LOCK-FREE FAST PATH: Use pre-computed channel name lookup

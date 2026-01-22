@@ -36,14 +36,15 @@ const (
 	AudinOpenReplySize  = 4  // result(4)
 )
 
-// Preferred audio input format: 16-bit PCM, mono/stereo, 48kHz.
+// Preferred format constants are defined in audio_format.go (shared with RDPSND).
+// Aliased here for backward compatibility.
 const (
-	AudinPreferredChannels      = 2
-	AudinPreferredSampleRate    = 48000
-	AudinPreferredBitsPerSample = 16
-	AudinPreferredBlockAlign    = AudinPreferredChannels * (AudinPreferredBitsPerSample / 8)
-	AudinPreferredBytesPerSec   = AudinPreferredSampleRate * AudinPreferredBlockAlign
-	AudinDefaultFramesPerPacket = AudinPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
+	AudinPreferredChannels      = AudioPreferredChannels
+	AudinPreferredSampleRate    = AudioPreferredSampleRate
+	AudinPreferredBitsPerSample = AudioPreferredBitsPerSample
+	AudinPreferredBlockAlign    = AudioPreferredBlockAlign
+	AudinPreferredBytesPerSec   = AudioPreferredBytesPerSec
+	AudinDefaultFramesPerPacket = AudioPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
 )
 
 // Common errors.
@@ -222,15 +223,9 @@ func (a *AudinChannel) sendFormats() error {
 		a.logger("AUDIN: sending server formats (PCM stereo 48kHz)")
 	}
 
-	// We support one format: 16-bit PCM, stereo, 48kHz
-	formatData := make([]byte, SNDCAudioFormatSize)
-	binary.LittleEndian.PutUint16(formatData[0:2], WaveFormatPCM)
-	binary.LittleEndian.PutUint16(formatData[2:4], AudinPreferredChannels)
-	binary.LittleEndian.PutUint32(formatData[4:8], AudinPreferredSampleRate)
-	binary.LittleEndian.PutUint32(formatData[8:12], AudinPreferredBytesPerSec)
-	binary.LittleEndian.PutUint16(formatData[12:14], AudinPreferredBlockAlign)
-	binary.LittleEndian.PutUint16(formatData[14:16], AudinPreferredBitsPerSample)
-	binary.LittleEndian.PutUint16(formatData[16:18], 0) // cbSize
+	// We support one format: 16-bit PCM, stereo, 48kHz (uses shared helper)
+	formatData := make([]byte, WAVEFORMATEXSize)
+	EncodePreferredWAVEFORMATEX(formatData, 0)
 
 	buf := make([]byte, AudinHeaderSize+AudinFormatsHdrSize+len(formatData))
 	buf[0] = AudinMsgFormats
@@ -284,50 +279,21 @@ func (a *AudinChannel) handleFormats(data []byte) error {
 	pos := AudinFormatsHdrSize
 
 	// Parse formats under lock, but release before callbacks to avoid deadlock
-	var selectedIndex = -1
-	var selectedFmt AudioFormat
-
 	a.formatMu.Lock()
 	a.formats = make([]AudioFormat, 0, numFormats)
 
-	// Parse client formats
-	for i := uint32(0); i < numFormats && pos+SNDCAudioFormatSize <= len(data); i++ {
-		fmt := AudioFormat{
-			FormatTag:      binary.LittleEndian.Uint16(data[pos : pos+2]),
-			Channels:       binary.LittleEndian.Uint16(data[pos+2 : pos+4]),
-			SamplesPerSec:  binary.LittleEndian.Uint32(data[pos+4 : pos+8]),
-			AvgBytesPerSec: binary.LittleEndian.Uint32(data[pos+8 : pos+12]),
-			BlockAlign:     binary.LittleEndian.Uint16(data[pos+12 : pos+14]),
-			BitsPerSample:  binary.LittleEndian.Uint16(data[pos+14 : pos+16]),
+	// Parse client formats (uses shared WAVEFORMATEX parser)
+	for i := uint32(0); i < numFormats && pos+WAVEFORMATEXSize <= len(data); i++ {
+		fmt, cbSize, ok := ParseWAVEFORMATEX(data, pos)
+		if !ok {
+			break
 		}
-		cbSize := binary.LittleEndian.Uint16(data[pos+16 : pos+18])
-
 		a.formats = append(a.formats, fmt)
-
-		// Select our preferred format: 16-bit PCM, stereo, 48kHz
-		if selectedIndex < 0 &&
-			fmt.FormatTag == WaveFormatPCM &&
-			fmt.Channels == AudinPreferredChannels &&
-			fmt.SamplesPerSec == AudinPreferredSampleRate &&
-			fmt.BitsPerSample == AudinPreferredBitsPerSample {
-			selectedIndex = int(i)
-			selectedFmt = fmt
-		}
-
-		pos += SNDCAudioFormatSize + int(cbSize)
+		pos += WAVEFORMATEXSize + int(cbSize)
 	}
 
-	// Fallback: accept any PCM format
-	if selectedIndex < 0 {
-		for i, fmt := range a.formats {
-			if fmt.FormatTag == WaveFormatPCM {
-				selectedIndex = i
-				selectedFmt = fmt
-				break
-			}
-		}
-	}
-
+	// Find best match (uses shared format selection logic)
+	selectedIndex, selectedFmt := FindPreferredFormat(a.formats)
 	if selectedIndex < 0 {
 		a.formatMu.Unlock()
 		if a.logger != nil {
@@ -375,20 +341,8 @@ func (a *AudinChannel) sendOpen(formatIndex uint32) error {
 	binary.LittleEndian.PutUint32(buf[pos:pos+4], formatIndex)
 	pos += 4
 
-	// WAVEFORMATEX structure (captureFormat)
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], WaveFormatPCM)
-	pos += 2
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], AudinPreferredChannels)
-	pos += 2
-	binary.LittleEndian.PutUint32(buf[pos:pos+4], AudinPreferredSampleRate)
-	pos += 4
-	binary.LittleEndian.PutUint32(buf[pos:pos+4], AudinPreferredBytesPerSec)
-	pos += 4
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], AudinPreferredBlockAlign)
-	pos += 2
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], AudinPreferredBitsPerSample)
-	pos += 2
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], 0) // cbSize (no extra data)
+	// WAVEFORMATEX structure (captureFormat) - uses shared helper
+	EncodePreferredWAVEFORMATEX(buf, pos)
 
 	return a.channel.SendData(buf)
 }

@@ -28,8 +28,7 @@ func (c *Connection) handleInputPDU(data []byte) {
 	pos := 4 // Skip numEvents and pad
 
 	for i := 0; i < numEvents && pos+6 <= len(data); i++ {
-		// Each event: 4 bytes time, 2 bytes type, variable data
-		// eventTime := binary.LittleEndian.Uint32(data[pos : pos+4])
+		// Each event: 4 bytes time (unused), 2 bytes type, variable data
 		eventType := binary.LittleEndian.Uint16(data[pos+4 : pos+6])
 		pos += 6
 
@@ -300,13 +299,8 @@ func (c *Connection) handleFastPathInput() error {
 		return fmt.Errorf("read fast-path header: %w", err)
 	}
 
-	// Extract fields from header
-	// Bits 0-1: action (0 = Fast-Path)
-	// Bits 2-3: number of events (0 means events in payload)
-	// Bits 4-5: secFlags
-	// Bits 6-7: reserved
+	// Header bits 2-3: number of events (0 means count in payload)
 	numEvents := int((header >> 2) & 0x03)
-	// secFlags := (header >> 4) & 0x03
 
 	// Read length (1 or 2 bytes)
 	length1, err := c.reader.ReadByte()

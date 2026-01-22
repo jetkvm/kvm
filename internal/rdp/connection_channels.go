@@ -606,5 +606,3 @@ func isH264Keyframe(data []byte) bool {
 
 	return false
 }
-
-// initSoundChannel initializes the RDPSND static channel.

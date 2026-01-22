@@ -62,13 +62,14 @@ const (
 	SNDCBlockSize        = 4096 // Optimal audio block size (matches typical audio buffer)
 )
 
-// Preferred audio format: 16-bit PCM, stereo, 48kHz.
+// Preferred format constants are defined in audio_format.go (shared with AUDIN).
+// Aliased here for backward compatibility.
 const (
-	PreferredChannels      = 2
-	PreferredSampleRate    = 48000
-	PreferredBitsPerSample = 16
-	PreferredBlockAlign    = PreferredChannels * (PreferredBitsPerSample / 8) // 4 bytes
-	PreferredBytesPerSec   = PreferredSampleRate * PreferredBlockAlign        // 192000 bytes/sec
+	PreferredChannels      = AudioPreferredChannels
+	PreferredSampleRate    = AudioPreferredSampleRate
+	PreferredBitsPerSample = AudioPreferredBitsPerSample
+	PreferredBlockAlign    = AudioPreferredBlockAlign
+	PreferredBytesPerSec   = AudioPreferredBytesPerSec
 )
 
 // Common errors.
@@ -145,7 +146,6 @@ func (s *SoundChannel) HandlePDU(data []byte) error {
 	}
 
 	msgType := data[0]
-	// bodySize := binary.LittleEndian.Uint16(data[2:4])
 
 	switch msgType {
 	case SNDCFormats:
@@ -187,14 +187,8 @@ func (s *SoundChannel) sendServerFormats() error {
 	buf[pos+19] = 0                                                     // bPad
 	pos += SNDCFormatsHeaderSize
 
-	// Audio format: 16-bit PCM, stereo, 48kHz
-	binary.LittleEndian.PutUint16(buf[pos:pos+2], WaveFormatPCM)
-	binary.LittleEndian.PutUint16(buf[pos+2:pos+4], PreferredChannels)
-	binary.LittleEndian.PutUint32(buf[pos+4:pos+8], PreferredSampleRate)
-	binary.LittleEndian.PutUint32(buf[pos+8:pos+12], PreferredBytesPerSec)
-	binary.LittleEndian.PutUint16(buf[pos+12:pos+14], PreferredBlockAlign)
-	binary.LittleEndian.PutUint16(buf[pos+14:pos+16], PreferredBitsPerSample)
-	binary.LittleEndian.PutUint16(buf[pos+16:pos+18], 0) // cbSize (no extra data)
+	// Audio format: 16-bit PCM, stereo, 48kHz (uses shared helper)
+	EncodePreferredWAVEFORMATEX(buf, pos)
 
 	return s.sendFunc(buf)
 }
@@ -205,14 +199,7 @@ func (s *SoundChannel) handleClientFormats(data []byte) error {
 		return nil
 	}
 
-	// Parse format header
-	// dwFlags := binary.LittleEndian.Uint32(data[0:4])
-	// dwVolume := binary.LittleEndian.Uint32(data[4:8])
-	// dwPitch := binary.LittleEndian.Uint32(data[8:12])
-	// wDGramPort := binary.LittleEndian.Uint16(data[12:14])
 	numFormats := binary.LittleEndian.Uint16(data[14:16])
-	// cLastBlockConfirmed := data[16]
-	// wVersion := binary.LittleEndian.Uint16(data[17:19])
 
 	pos := SNDCFormatsHeaderSize
 	s.formatMu.Lock()
@@ -221,43 +208,18 @@ func (s *SoundChannel) handleClientFormats(data []byte) error {
 	s.formats = make([]AudioFormat, 0, numFormats)
 	selectedIndex := -1
 
-	// Parse client formats and find best match
-	for i := uint16(0); i < numFormats && pos+SNDCAudioFormatSize <= len(data); i++ {
-		fmt := AudioFormat{
-			FormatTag:      binary.LittleEndian.Uint16(data[pos : pos+2]),
-			Channels:       binary.LittleEndian.Uint16(data[pos+2 : pos+4]),
-			SamplesPerSec:  binary.LittleEndian.Uint32(data[pos+4 : pos+8]),
-			AvgBytesPerSec: binary.LittleEndian.Uint32(data[pos+8 : pos+12]),
-			BlockAlign:     binary.LittleEndian.Uint16(data[pos+12 : pos+14]),
-			BitsPerSample:  binary.LittleEndian.Uint16(data[pos+14 : pos+16]),
+	// Parse client formats (uses shared WAVEFORMATEX parser)
+	for i := uint16(0); i < numFormats && pos+WAVEFORMATEXSize <= len(data); i++ {
+		fmt, cbSize, ok := ParseWAVEFORMATEX(data, pos)
+		if !ok {
+			break
 		}
-		cbSize := binary.LittleEndian.Uint16(data[pos+16 : pos+18])
-
 		s.formats = append(s.formats, fmt)
-
-		// Select our preferred format: 16-bit PCM, stereo, 48kHz
-		if selectedIndex < 0 &&
-			fmt.FormatTag == WaveFormatPCM &&
-			fmt.Channels == PreferredChannels &&
-			fmt.SamplesPerSec == PreferredSampleRate &&
-			fmt.BitsPerSample == PreferredBitsPerSample {
-			selectedIndex = int(i)
-			s.selectedFmt = fmt
-		}
-
-		pos += SNDCAudioFormatSize + int(cbSize)
+		pos += WAVEFORMATEXSize + int(cbSize)
 	}
 
-	// Fallback: accept any PCM format
-	if selectedIndex < 0 {
-		for i, fmt := range s.formats {
-			if fmt.FormatTag == WaveFormatPCM {
-				selectedIndex = i
-				s.selectedFmt = fmt
-				break
-			}
-		}
-	}
+	// Find best match (uses shared format selection logic)
+	selectedIndex, s.selectedFmt = FindPreferredFormat(s.formats)
 
 	if selectedIndex < 0 {
 		return ErrSoundNoFormat
@@ -282,7 +244,6 @@ func (s *SoundChannel) handleWaveConfirm(data []byte) error {
 		return nil
 	}
 
-	// wTimeStamp := binary.LittleEndian.Uint16(data[0:2])
 	confirmedBlock := data[2]
 
 	s.lastConfirmed.Store(uint32(confirmedBlock))

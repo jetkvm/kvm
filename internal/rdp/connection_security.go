@@ -49,9 +49,6 @@ func (c *Connection) handleSecurityExchange() error {
 		Int("dataLen", len(sdr.UserData)).
 		Msg("RDP: received security/client info PDU")
 
-	// TODO: Parse Client Info PDU for username, domain, etc.
-	// For now, we proceed to licensing
-
 	// Clear deadline
 	if err := c.conn.SetReadDeadline(time.Time{}); err != nil {
 		return err
@@ -191,7 +188,6 @@ func (c *Connection) handleCapabilities() error {
 		return err
 	}
 
-	// TODO: Parse Confirm Active and extract client capabilities
 	c.server.deps.Logger.Debug().
 		Int("dataLen", len(sdr.UserData)).
 		Msg("RDP: received confirm active")
