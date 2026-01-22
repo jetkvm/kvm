@@ -72,12 +72,12 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 					if frame.Format == RGBFrameFormatBGRX {
 						formatName = "BGRX (RGA hardware)"
 					}
-					c.server.deps.Logger.Warn().
+					c.server.deps.Logger.Info().
 						Int("frameSize", len(frame.Data)).
 						Uint32("width", frame.Width).
 						Uint32("height", frame.Height).
 						Str("format", formatName).
-						Msg("RDP: first RGB frame received")
+						Msg("RDP: first bitmap frame received")
 				}
 
 				var bgrxData []byte

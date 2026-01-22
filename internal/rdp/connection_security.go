@@ -73,18 +73,11 @@ func (c *Connection) handleLicensing() error {
 	// Wrap in MCS Send Data Indication
 	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.ioChannel, licenseError)
 
-	c.server.deps.Logger.Warn().
-		Int("licenseLen", len(licenseError)).
-		Int("mcsLen", len(mcsPDU)).
-		Uint16("ioChannel", c.ioChannel).
-		Str("licenseHex", fmt.Sprintf("% X", licenseError)).
-		Msg("RDP: sending license error PDU")
-
 	if err := protocol.WriteMCSPDU(c.conn, mcsPDU); err != nil {
 		return fmt.Errorf("write license error: %w", err)
 	}
 
-	c.server.deps.Logger.Warn().Msg("RDP: sent license error (valid client)")
+	c.server.deps.Logger.Debug().Msg("RDP: sent license (valid client)")
 
 	c.phase = PhaseCapabilities
 	return nil
@@ -144,24 +137,11 @@ func (c *Connection) handleCapabilities() error {
 	// Wrap in MCS Send Data Indication
 	mcsPDU := protocol.BuildSendDataIndication(c.userID, c.ioChannel, demandActive)
 
-	// Log first 64 bytes of the demand active for debugging
-	hexLen := 64
-	if len(demandActive) < hexLen {
-		hexLen = len(demandActive)
-	}
-	c.server.deps.Logger.Warn().
-		Int("demandActiveLen", len(demandActive)).
-		Int("mcsLen", len(mcsPDU)).
-		Uint16("ioChannel", c.ioChannel).
-		Uint16("userID", c.userID).
-		Str("demandActiveFirst64", fmt.Sprintf("% X", demandActive[:hexLen])).
-		Msg("RDP: sending demand active PDU")
-
 	if err := protocol.WriteMCSPDU(c.conn, mcsPDU); err != nil {
 		return fmt.Errorf("write demand active: %w", err)
 	}
 
-	c.server.deps.Logger.Warn().Msg("RDP: sent demand active")
+	c.server.deps.Logger.Debug().Msg("RDP: sent demand active")
 
 	// Set deadline for client response
 	if err := c.conn.SetReadDeadline(time.Now().Add(protocol.NegotiationTimeout)); err != nil {
@@ -244,16 +224,6 @@ func (c *Connection) buildDemandActivePDU() []byte {
 	// sourceDescriptor + numberCapabilities(2) + pad2Octets(2) + capabilitySets + sessionId(4)
 	pduDataLen := 4 + 2 + 2 + len(sourceDesc) + 2 + 2 + len(caps) + 4
 	totalLen := 6 + pduDataLen
-
-	// Log for debugging
-	c.server.deps.Logger.Warn().
-		Int("totalLen", totalLen).
-		Int("pduDataLen", pduDataLen).
-		Int("sourceDescLen", int(sourceDescLen)).
-		Int("combinedLen", combinedLen).
-		Int("numCaps", numCaps).
-		Int("capsLen", len(caps)).
-		Msg("RDP: building Demand Active PDU")
 
 	// Share Control Header
 	buf = append(buf, byte(totalLen), byte(totalLen>>8)) // totalLength

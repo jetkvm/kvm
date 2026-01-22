@@ -49,7 +49,7 @@ func (c *Connection) initDynamicChannels() error {
 
 	// Enable DVC logger for debugging capability exchange
 	c.dvcManager.SetLogger(func(msg string, channel string, channelID uint32, args ...interface{}) {
-		c.server.deps.Logger.Warn().
+		c.server.deps.Logger.Debug().
 			Str("channel", channel).
 			Uint32("channelID", channelID).
 			Msgf("DVC: "+msg, args...)
@@ -61,16 +61,10 @@ func (c *Connection) initDynamicChannels() error {
 	})
 
 	// Send capability request
-	c.server.deps.Logger.Warn().
-		Uint16("drdynvcID", c.drdynvcID).
-		Uint16("userID", c.userID).
-		Uint16("rdpsndID", c.rdpsndID).
-		Msg("RDP: sending DVC capability request (both IDs for comparison)")
 	if err := c.dvcManager.SendCapabilityRequest(); err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to send DVC capability request")
 		return err
 	}
-	c.server.deps.Logger.Warn().Msg("RDP: DVC capability request sent successfully")
+	c.server.deps.Logger.Debug().Msg("RDP: DVC capability request sent")
 
 	return nil
 }
@@ -102,18 +96,18 @@ func (c *Connection) initDVCChannelsSync() {
 
 		// Set logger for debugging capability negotiation
 		c.gfxChannel.SetLogger(func(msg string, args ...interface{}) {
-			c.server.deps.Logger.Warn().Msgf(msg, args...)
+			c.server.deps.Logger.Debug().Msgf(msg, args...)
 		})
 
 		// Set callback to initialize surface when channel is ready
 		c.gfxChannel.SetReadyCallback(func(g *channels.GFXChannel) {
 			w, h := c.GetResolution()
-			c.server.deps.Logger.Warn().
+			c.server.deps.Logger.Info().
 				Uint16("width", w).
 				Uint16("height", h).
 				Bool("avc420", g.SupportsAVC420()).
 				Bool("avc444", g.SupportsAVC444()).
-				Msg("RDP: RDPGFX channel ready, initializing surface")
+				Msg("RDP: RDPGFX channel ready")
 
 			if err := g.Initialize(w, h); err != nil {
 				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to initialize GFX surface")
@@ -128,7 +122,7 @@ func (c *Connection) initDVCChannelsSync() {
 				if err := c.server.deps.Video.StartVideo(); err != nil {
 					c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
 				} else {
-					c.server.deps.Logger.Warn().Msg("RDP: video capture started (RDPGFX mode)")
+					c.server.deps.Logger.Info().Msg("RDP: video capture started (RDPGFX)")
 				}
 			}
 		})
@@ -145,9 +139,9 @@ func (c *Connection) initDVCChannelsSync() {
 	} else {
 		c.audinChannel = channels.NewAudinChannel(c.dvcManager)
 
-		// Set logger for debugging (Warn level to ensure visibility)
+		// Set logger for debugging
 		c.audinChannel.SetLogger(func(msg string, args ...interface{}) {
-			c.server.deps.Logger.Warn().Msgf(msg, args...)
+			c.server.deps.Logger.Debug().Msgf(msg, args...)
 		})
 
 		// Set ready callback for AUDIN
@@ -205,9 +199,9 @@ func (c *Connection) initDVCChannelsSync() {
 		c.server.deps.Logger.Info().Msg("RDP: camera redirection disabled in config, skipping camera channel")
 	} else {
 		c.cameraChannel = channels.NewCameraChannel(c.dvcManager)
-		// Use Warn level logger to ensure format negotiation logs are visible
+		// Set logger for debugging format negotiation
 		c.cameraChannel.SetLogger(func(msg string, args ...interface{}) {
-			c.server.deps.Logger.Warn().Msgf(msg, args...)
+			c.server.deps.Logger.Debug().Msgf(msg, args...)
 		})
 
 		// Set ready callback for camera

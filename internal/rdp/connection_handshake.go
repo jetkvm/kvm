@@ -35,8 +35,7 @@ func (c *Connection) handleX224Connection() error {
 		return fmt.Errorf("parse connection request: %w", err)
 	}
 
-	// Temporary WARN-level logging for debugging
-	c.server.deps.Logger.Warn().
+	c.server.deps.Logger.Debug().
 		Str("cookie", cr.Cookie).
 		Bool("clientRequestsTLS", cr.RequestsTLS()).
 		Bool("clientRequestsCredSSP", cr.RequestsCredSSP()).
@@ -86,17 +85,10 @@ func (c *Connection) handleX224Connection() error {
 	negFlags := uint8(protocol.NegFlagExtendedClientDataSupported | protocol.NegFlagDynvcGfxProtocolSupported)
 	cc := protocol.BuildConnectionConfirm(selectedProto, negFlags, clientSentNegReq)
 
-	// Log the negotiation details
-	c.server.deps.Logger.Warn().
+	c.server.deps.Logger.Debug().
 		Uint8("negFlags", negFlags).
 		Uint32("selectedProto", selectedProto).
 		Msg("RDP: X.224 negotiation flags")
-
-	// Log the exact bytes being sent for debugging
-	c.server.deps.Logger.Warn().
-		Int("ccLen", len(cc)).
-		Str("ccHex", fmt.Sprintf("%x", cc)).
-		Msg("RDP: X.224 Connection Confirm bytes")
 
 	if err := protocol.WriteTPKT(c.conn, cc); err != nil {
 		return fmt.Errorf("write connection confirm: %w", err)
@@ -109,15 +101,14 @@ func (c *Connection) handleX224Connection() error {
 		c.clientRequestedProtocols = cr.NegReq.RequestedProto
 	}
 
-	// Temporary WARN-level logging for debugging
-	c.server.deps.Logger.Warn().
+	c.server.deps.Logger.Debug().
 		Uint32("selectedProtocol", selectedProto).
 		Bool("negRspIncluded", clientSentNegReq).
 		Msg("RDP: X.224 connection confirm sent")
 
 	// If TLS or CredSSP was negotiated, upgrade to TLS first
 	if selectedProto == protocol.ProtocolTLS || selectedProto == protocol.ProtocolCredSSP {
-		c.server.deps.Logger.Warn().Msg("RDP: upgrading connection to TLS")
+		c.server.deps.Logger.Debug().Msg("RDP: upgrading connection to TLS")
 
 		// Set deadline before TLS handshake
 		if err := c.conn.SetDeadline(time.Now().Add(protocol.HandshakeTimeout)); err != nil {
@@ -134,13 +125,13 @@ func (c *Connection) handleX224Connection() error {
 			}
 
 			state := credsspConn.ConnectionState()
-			c.server.deps.Logger.Warn().
+			c.server.deps.Logger.Debug().
 				Str("version", tlsVersionString(state.Version)).
 				Str("cipher", tls.CipherSuiteName(state.CipherSuite)).
 				Bool("hwAccel", false).
 				Msg("RDP: TLS handshake complete (CredSSP mode)")
 
-			c.server.deps.Logger.Warn().Msg("RDP: starting CredSSP/NLA authentication")
+			c.server.deps.Logger.Debug().Msg("RDP: starting CredSSP/NLA authentication")
 
 			// Type assert to *tls.Conn for CredSSP handler
 			goTLSConn, ok := credsspConn.(*tls.Conn)
@@ -150,7 +141,7 @@ func (c *Connection) handleX224Connection() error {
 
 			handler := credssp.NewHandler(goTLSConn)
 			handler.SetDebugLog(func(format string, args ...any) {
-				c.server.deps.Logger.Warn().Msgf(format, args...)
+				c.server.deps.Logger.Debug().Msgf(format, args...)
 			})
 
 			// Set password for NTLM validation if configured
@@ -199,7 +190,7 @@ func (c *Connection) handleX224Connection() error {
 				return fmt.Errorf("CredSSP authentication failed: %w", err)
 			}
 
-			c.server.deps.Logger.Warn().
+			c.server.deps.Logger.Info().
 				Str("username", username).
 				Msg("RDP: CredSSP/NLA authentication complete")
 
@@ -213,7 +204,7 @@ func (c *Connection) handleX224Connection() error {
 				return fmt.Errorf("TLS handshake failed: %w", err)
 			}
 
-			c.server.deps.Logger.Warn().
+			c.server.deps.Logger.Debug().
 				Str("version", tlsConn.GetProtocolVersion()).
 				Str("cipher", tlsConn.GetCipherName()).
 				Bool("hwAccel", tlsConn.IsHardwareAccelerated()).
@@ -270,45 +261,16 @@ func (c *Connection) handleMCSConnect() error {
 
 	ci, err := protocol.ParseConnectInitial(mcsData)
 	if err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to parse MCS Connect-Initial")
 		return fmt.Errorf("parse connect-initial: %w", err)
 	}
-	c.server.deps.Logger.Warn().
+	c.server.deps.Logger.Debug().
 		Int("userDataLen", len(ci.UserData)).
-		Msg("RDP: MCS Connect-Initial parsed successfully")
-
-	// Log client's domain parameters for debugging
-	c.server.deps.Logger.Warn().
-		Int("targetMaxChannels", ci.TargetParams.MaxChannelIDs).
-		Int("targetMaxUsers", ci.TargetParams.MaxUserIDs).
-		Int("targetMaxPDU", ci.TargetParams.MaxMCSPDUSize).
-		Int("minMaxChannels", ci.MinParams.MaxChannelIDs).
-		Int("minMaxUsers", ci.MinParams.MaxUserIDs).
-		Int("maxMaxChannels", ci.MaxParams.MaxChannelIDs).
-		Int("maxMaxUsers", ci.MaxParams.MaxUserIDs).
-		Msg("RDP: client domain parameters")
+		Msg("RDP: MCS Connect-Initial parsed")
 
 	// Parse GCC user data
 	ccr, err := protocol.ParseConferenceCreateRequest(ci.UserData)
 	if err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to parse GCC data, continuing")
-	}
-
-	// Log what client data blocks were parsed
-	if ccr != nil {
-		c.server.deps.Logger.Warn().
-			Bool("hasCoreData", ccr.CoreData != nil).
-			Bool("hasSecurityData", ccr.SecurityData != nil).
-			Bool("hasNetworkData", ccr.NetworkData != nil).
-			Bool("hasMsgChannelData", ccr.MsgChannelData != nil).
-			Msg("RDP: client GCC data blocks")
-
-		if ccr.CoreData != nil {
-			c.server.deps.Logger.Warn().
-				Uint16("earlyCapFlags", ccr.CoreData.EarlyCapabilityFlags).
-				Uint32("version", ccr.CoreData.Version).
-				Msg("RDP: client core data details")
-		}
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to parse GCC data, continuing")
 	}
 
 	// Extract client info
@@ -333,17 +295,6 @@ func (c *Connection) handleMCSConnect() error {
 
 	// Extract channel definitions
 	if ccr != nil && ccr.NetworkData != nil {
-		// Log ALL raw channels from client for debugging
-		rawNames := make([]string, len(ccr.NetworkData.Channels))
-		for i, ch := range ccr.NetworkData.Channels {
-			rawNames[i] = fmt.Sprintf("[%d]=%q", i, ch.Name.String())
-		}
-		c.server.deps.Logger.Warn().
-			Uint32("rawChannelCount", ccr.NetworkData.ChannelCount).
-			Int("parsedChannels", len(ccr.NetworkData.Channels)).
-			Strs("rawChannelNames", rawNames).
-			Msg("RDP: client NetworkData (raw)")
-
 		// Only include channels with non-empty names (per xrdp fix for Jump Desktop)
 		// Some clients send empty channel names for disabled channels
 		c.channels = make([]ChannelInfo, 0, len(ccr.NetworkData.Channels))
@@ -362,10 +313,10 @@ func (c *Connection) handleMCSConnect() error {
 		for i, ch := range c.channels {
 			channelNames[i] = ch.Name
 		}
-		c.server.deps.Logger.Warn().
-			Int("filteredCount", len(c.channels)).
-			Strs("filteredNames", channelNames).
-			Msg("RDP: client requested virtual channels (after filtering)")
+		c.server.deps.Logger.Debug().
+			Int("channelCount", len(c.channels)).
+			Strs("channels", channelNames).
+			Msg("RDP: client virtual channels")
 	}
 
 	// Build MCS Connect-Response
@@ -429,26 +380,14 @@ func (c *Connection) handleMCSConnect() error {
 	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity, nil)
 	domainParams := protocol.DefaultDomainParameters()
 
-	// Build the full MCS Connect-Response for logging
+	// Build the full MCS Connect-Response
 	mcsResponse := protocol.BuildConnectResponse(protocol.MCSResultSuccessful, 0, domainParams, gccResponse)
-
-	c.server.deps.Logger.Warn().
-		Int("gccResponseLen", len(gccResponse)).
-		Uint32("clientReqProto", clientReqProto).
-		Uint16("mcsChannelID", serverNetwork.MCSChannelID).
-		Uint16("channelCount", serverNetwork.ChannelCount).
-		Interface("channelIDs", serverNetwork.ChannelIDs).
-		Uint16("msgChannelID", serverNetwork.MsgChannelID).
-		Str("gccResponseHex", fmt.Sprintf("% 02X", gccResponse)).
-		Int("mcsResponseLen", len(mcsResponse)).
-		Str("mcsResponseHex", fmt.Sprintf("% 02X", mcsResponse)).
-		Msg("RDP: building MCS Connect-Response")
 
 	if err := protocol.WriteX224Data(c.conn, mcsResponse); err != nil {
 		return fmt.Errorf("write connect-response: %w", err)
 	}
 
-	c.server.deps.Logger.Warn().Msg("RDP: sent MCS Connect-Response successfully")
+	c.server.deps.Logger.Debug().Msg("RDP: sent MCS Connect-Response")
 
 	// Clear deadline
 	if err := c.conn.SetReadDeadline(time.Time{}); err != nil {
@@ -461,8 +400,8 @@ func (c *Connection) handleMCSConnect() error {
 
 // handleMCSChannelSetup handles MCS Erect Domain, Attach User, and Channel Join.
 func (c *Connection) handleMCSChannelSetup() error {
-	c.server.deps.Logger.Warn().Str("remote", c.RemoteAddr()).
-		Msg("RDP: starting MCS channel setup, waiting for Erect Domain Request...")
+	c.server.deps.Logger.Debug().Str("remote", c.RemoteAddr()).
+		Msg("RDP: starting MCS channel setup")
 
 	// Set deadline
 	if err := c.conn.SetReadDeadline(time.Now().Add(protocol.NegotiationTimeout)); err != nil {
@@ -472,10 +411,8 @@ func (c *Connection) handleMCSChannelSetup() error {
 	// 1. Receive Erect Domain Request
 	data, err := protocol.ReadX224Data(c.reader)
 	if err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to read Erect Domain Request")
 		return fmt.Errorf("read erect domain: %w", err)
 	}
-	c.server.deps.Logger.Warn().Int("dataLen", len(data)).Msg("RDP: received data for Erect Domain")
 
 	pduType, err := protocol.ParseMCSPDUType(data)
 	if err != nil {
@@ -490,14 +427,8 @@ func (c *Connection) handleMCSChannelSetup() error {
 	// 2. Receive Attach User Request
 	data, err = protocol.ReadX224Data(c.reader)
 	if err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to read Attach User Request")
 		return fmt.Errorf("read attach user: %w", err)
 	}
-
-	c.server.deps.Logger.Warn().
-		Int("dataLen", len(data)).
-		Str("dataHex", fmt.Sprintf("% X", data)).
-		Msg("RDP: received Attach User Request")
 
 	pduType, err = protocol.ParseMCSPDUType(data)
 	if err != nil {
@@ -511,18 +442,12 @@ func (c *Connection) handleMCSChannelSetup() error {
 	c.userID = protocol.MCSUserIDBase
 	confirm := protocol.BuildAttachUserConfirm(protocol.MCSResultSuccessful, c.userID)
 
-	c.server.deps.Logger.Warn().
-		Uint16("userID", c.userID).
-		Int("confirmLen", len(confirm)).
-		Str("confirmHex", fmt.Sprintf("% X", confirm)).
-		Msg("RDP: sending Attach User Confirm")
-
 	if err := protocol.WriteMCSPDU(c.conn, confirm); err != nil {
 		return fmt.Errorf("write attach user confirm: %w", err)
 	}
 
-	c.server.deps.Logger.Warn().Uint16("userID", c.userID).
-		Msg("RDP: sent attach user confirm successfully")
+	c.server.deps.Logger.Debug().Uint16("userID", c.userID).
+		Msg("RDP: attached user")
 
 	// 3. Handle Channel Join Requests
 	// Client will join: user channel, I/O channel, and virtual channels
@@ -532,18 +457,10 @@ func (c *Connection) handleMCSChannelSetup() error {
 		expectedJoins++ // message channel
 	}
 
-	c.server.deps.Logger.Warn().
-		Int("expectedJoins", expectedJoins).
-		Int("virtualChannels", len(c.channels)).
-		Uint16("msgChannelID", c.msgChannelID).
-		Msg("RDP: waiting for channel join requests")
-
 	for i := range expectedJoins {
-		c.server.deps.Logger.Warn().Int("joinIndex", i).Msg("RDP: waiting for channel join request")
 		data, err = protocol.ReadX224Data(c.reader)
 		if err != nil {
-			c.server.deps.Logger.Warn().Err(err).Int("joinIndex", i).Msg("RDP: failed to read channel join")
-			return fmt.Errorf("read channel join: %w", err)
+			return fmt.Errorf("read channel join %d: %w", i, err)
 		}
 
 		pduType, err = protocol.ParseMCSPDUType(data)

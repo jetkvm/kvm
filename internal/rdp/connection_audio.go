@@ -4,8 +4,6 @@ package rdp
 // This file contains sound channel initialization and audio streaming loops.
 
 import (
-	"fmt"
-
 	"github.com/jetkvm/kvm/internal/rdp/channels"
 )
 
@@ -15,16 +13,6 @@ import (
 func (c *Connection) initSoundChannel() {
 	// Create sound channel with send callback
 	c.soundChannel = channels.NewSoundChannel(func(data []byte) error {
-		// Debug: Log what we're sending (only for first packet which is SNDC_FORMATS)
-		if len(data) > 0 && data[0] == 0x07 { // SNDCFormats = 0x07
-			c.server.deps.Logger.Warn().
-				Uint16("rdpsndID", c.rdpsndID).
-				Uint16("userID", c.userID).
-				Int("dataLen", len(data)).
-				Hex("firstBytes", data[:min(len(data), 16)]).
-				Msg("RDP: initSoundChannel - sending SNDC_FORMATS")
-		}
-
 		// HOT PATH: Zero allocations for typical audio packets
 		return c.sendStaticChannelDataHotPath(c.rdpsndID, data)
 	})
@@ -69,26 +57,20 @@ func (c *Connection) initClipboardChannel() {
 
 	// Start clipboard channel (sends Capabilities and Monitor Ready)
 	if err := c.clipboardChannel.Start(); err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start cliprdr")
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to start cliprdr")
 	} else {
-		c.server.deps.Logger.Warn().Msg("RDP: clipboard channel initialized")
+		c.server.deps.Logger.Debug().Msg("RDP: clipboard channel initialized")
 	}
 }
 
 // sendClipboardData sends data on the cliprdr channel with proper VC PDU header.
 // Per MS-RDPBCGR 2.2.6.1, virtual channel data must include the VC PDU header.
 // Uses zero-allocation pooled buffers for better performance.
+// HOT PATH: No logging here to avoid performance impact.
 func (c *Connection) sendClipboardData(data []byte) error {
 	if c.cliprdrdID == 0 {
 		return nil
 	}
-
-	c.server.deps.Logger.Warn().
-		Int("dataLen", len(data)).
-		Str("dataHex", fmt.Sprintf("% X", data[:min(len(data), 20)])).
-		Msg("RDP: sending clipboard data")
-
-	// HOT PATH: Zero allocations using pooled buffers
 	return c.sendStaticChannelDataHotPath(c.cliprdrdID, data)
 }
 
