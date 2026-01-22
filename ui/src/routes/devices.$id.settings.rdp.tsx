@@ -44,6 +44,8 @@ export default function SettingsRDPRoute() {
   const [username, setUsername] = useState<string>("");
   const [domain, setDomain] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [isEditingDomain, setIsEditingDomain] = useState(false);
 
   const loadRDPState = useCallback(() => {
     send("getRDPState", {}, (resp: JsonRpcResponse) => {
@@ -65,11 +67,16 @@ export default function SettingsRDPRoute() {
       setAudioEnabled(state.audioEnabled ?? true);
       setMicEnabled(state.micEnabled ?? true);
       setCameraEnabled(state.cameraEnabled ?? false);
-      setUsername(state.username ?? "");
-      setDomain(state.domain ?? "");
+      // Only update username/domain if user is not actively editing
+      if (!isEditingUsername) {
+        setUsername(state.username ?? "");
+      }
+      if (!isEditingDomain) {
+        setDomain(state.domain ?? "");
+      }
       setIsLoading(false);
     });
-  }, [send]);
+  }, [send, isEditingUsername, isEditingDomain]);
 
   useEffect(() => {
     loadRDPState();
@@ -350,7 +357,11 @@ export default function SettingsRDPRoute() {
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                onBlur={e => handleUsernameChange(e.target.value)}
+                onFocus={() => setIsEditingUsername(true)}
+                onBlur={e => {
+                  setIsEditingUsername(false);
+                  handleUsernameChange(e.target.value);
+                }}
                 placeholder={m.rdp_settings_username_placeholder()}
                 className="w-40 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 dark:focus:border-blue-400"
               />
@@ -364,7 +375,11 @@ export default function SettingsRDPRoute() {
                 type="text"
                 value={domain}
                 onChange={e => setDomain(e.target.value)}
-                onBlur={e => handleDomainChange(e.target.value)}
+                onFocus={() => setIsEditingDomain(true)}
+                onBlur={e => {
+                  setIsEditingDomain(false);
+                  handleDomainChange(e.target.value);
+                }}
                 placeholder={m.rdp_settings_domain_placeholder()}
                 className="w-40 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 dark:focus:border-blue-400"
               />
