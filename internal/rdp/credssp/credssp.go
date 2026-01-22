@@ -2,18 +2,19 @@
 // protocol as defined in MS-CSSP. This is used for Network Level Authentication (NLA)
 // in RDP connections.
 //
-// This implementation is "permissive" - it accepts any credentials without validation.
-// This allows RDP connections to proceed through NLA negotiation.
+// This implementation supports both password validation mode (when SetPassword is called)
+// and permissive mode (when no password is set). In validation mode, NTLM credentials
+// are verified against the configured password with proper NTSTATUS error responses.
 package credssp
 
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/asn1"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"time"
 )
 
@@ -37,9 +38,18 @@ var ntlmSignature = []byte("NTLMSSP\x00")
 // SPNEGO OIDs
 var oidNTLM = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 2, 10}
 
+// TLSConn is the interface required for a TLS connection used by CredSSP.
+// This allows CredSSP to work with any TLS implementation (Go's crypto/tls or OpenSSL).
+// The server MUST set the server public key via SetServerPublicKey() before calling
+// Authenticate(), as CredSSP needs this for pubKeyAuth channel binding.
+type TLSConn interface {
+	net.Conn
+	// Note: SetReadDeadline and SetWriteDeadline are part of net.Conn
+}
+
 // Handler manages CredSSP authentication for an RDP connection.
 type Handler struct {
-	tlsConn          *tls.Conn
+	tlsConn          TLSConn
 	serverChallenge  []byte
 	clientVersion    int    // CredSSP version from client
 	clientNonce      []byte // For CredSSP v3+ (CVE-2018-0886 fix)
@@ -50,7 +60,7 @@ type Handler struct {
 	expectedUser    string    // Expected username (empty = accept any)
 	expectedDomain  string    // Expected domain (empty = accept any)
 	ntlmAuth        *NTLMAuth // NTLM authenticator (created after challenge sent)
-	serverPublicKey []byte    // Server's RawSubjectPublicKeyInfo for pubKeyAuth
+	serverPublicKey []byte    // Server's RawSubjectPublicKeyInfo for pubKeyAuth (REQUIRED)
 	serverCertDER   []byte    // Full certificate DER (for debugging different formats)
 
 	// For logging
@@ -58,7 +68,9 @@ type Handler struct {
 }
 
 // NewHandler creates a new CredSSP handler.
-func NewHandler(tlsConn *tls.Conn) *Handler {
+// The tlsConn must be a TLS connection (any implementation).
+// IMPORTANT: Caller MUST call SetServerPublicKey() before Authenticate().
+func NewHandler(tlsConn TLSConn) *Handler {
 	return &Handler{
 		tlsConn:  tlsConn,
 		debugLog: func(string, ...interface{}) {}, // No-op by default
@@ -218,20 +230,26 @@ func (h *Handler) Authenticate() (username string, err error) {
 		// Validate NTLMv2 response
 		if !h.ntlmAuth.ValidateResponse(username, domain) {
 			h.debugLog("CredSSP: NTLM authentication FAILED for user=%s", username)
-			return username, ErrAuthFailed
+			h.sendErrorResponse(STATUS_LOGON_FAILURE)
+			return username, fmt.Errorf("%w: NTLM password validation failed for user=%s", ErrAuthFailed, username)
 		}
 		h.debugLog("CredSSP: NTLM authentication SUCCEEDED for user=%s", username)
 
 		// Validate username if expected username is configured
-		if h.expectedUser != "" && !equalFoldASCII(username, h.expectedUser) {
+		// Handle UPN format (user@domain) by extracting just the username part
+		if h.expectedUser != "" && !usernameMatches(username, h.expectedUser) {
 			h.debugLog("CredSSP: username mismatch - expected=%s got=%s", h.expectedUser, username)
-			return username, ErrAuthFailed
+			h.sendErrorResponse(STATUS_LOGON_FAILURE)
+			return username, fmt.Errorf("%w: username mismatch expected=%s got=%s", ErrAuthFailed, h.expectedUser, username)
 		}
 
 		// Validate domain if expected domain is configured
-		if h.expectedDomain != "" && !equalFoldASCII(domain, h.expectedDomain) {
-			h.debugLog("CredSSP: domain mismatch - expected=%s got=%s", h.expectedDomain, domain)
-			return username, ErrAuthFailed
+		// Handle UPN format (user@domain) where the NTLM domain field may be empty
+		// but the domain is embedded in the username
+		if h.expectedDomain != "" && !domainMatches(domain, username, h.expectedDomain) {
+			h.debugLog("CredSSP: domain mismatch - expected=%s got=%s (username=%s)", h.expectedDomain, domain, username)
+			h.sendErrorResponse(STATUS_LOGON_FAILURE)
+			return username, fmt.Errorf("%w: domain mismatch expected=%s got=%s", ErrAuthFailed, h.expectedDomain, domain)
 		}
 
 		// Verify client's pubKeyAuth to debug hash mismatches
@@ -290,8 +308,15 @@ type tsRequest struct {
 	NegoTokens  []negoToken `asn1:"optional,explicit,tag:1"`
 	AuthInfo    []byte      `asn1:"optional,explicit,tag:2"`
 	PubKeyAuth  []byte      `asn1:"optional,explicit,tag:3"`
+	ErrorCode   int64       `asn1:"optional,explicit,tag:4"` // NTSTATUS error code (MS-CSSP 2.2.1)
 	ClientNonce []byte      `asn1:"optional,explicit,tag:5"` // Added in CredSSP v3 (CVE-2018-0886)
 }
+
+// NTSTATUS error codes for CredSSP (MS-ERREF 2.3.1)
+// These are unsigned 32-bit values but we use int64 to avoid overflow on 32-bit systems
+const (
+	STATUS_LOGON_FAILURE int64 = 0xC000006D // Bad username or password
+)
 
 type negoToken struct {
 	Token []byte `asn1:"explicit,tag:0"`
@@ -359,6 +384,35 @@ func (h *Handler) writeTSRequest(data []byte) error {
 	}
 	_, err := h.tlsConn.Write(data)
 	return err
+}
+
+// sendErrorResponse sends a TSRequest with an NTSTATUS error code to the client.
+// Per MS-CSSP 3.1.5, when authentication fails the server sends a TSRequest
+// containing only the version and errorCode fields before closing the connection.
+func (h *Handler) sendErrorResponse(errorCode int64) {
+	// Build TSRequest with error code
+	// Use client's version or minimum version 3
+	version := h.clientVersion
+	if version < 3 {
+		version = 3
+	}
+
+	errReq := tsRequest{
+		Version:   version,
+		ErrorCode: errorCode,
+	}
+
+	data, err := asn1.Marshal(errReq)
+	if err != nil {
+		h.debugLog("CredSSP: failed to marshal error response: %v", err)
+		return
+	}
+
+	if err := h.writeTSRequest(data); err != nil {
+		h.debugLog("CredSSP: failed to send error response: %v", err)
+	} else {
+		h.debugLog("CredSSP: sent error response with NTSTATUS 0x%08X", errorCode)
+	}
 }
 
 func (h *Handler) extractNegoToken(req *tsRequest) []byte {
@@ -472,6 +526,81 @@ func equalFoldASCII(a, b string) bool {
 	return true
 }
 
+// usernameMatches checks if the provided username matches the expected username.
+// It handles UPN format (user@domain) by extracting just the username part.
+// For example, "admin@jetkvm" matches expected "admin".
+func usernameMatches(provided, expected string) bool {
+	// Direct match (case-insensitive)
+	if equalFoldASCII(provided, expected) {
+		return true
+	}
+
+	// Check if provided is in UPN format (user@domain)
+	// Extract just the user part and compare
+	for i := 0; i < len(provided); i++ {
+		if provided[i] == '@' {
+			userPart := provided[:i]
+			if equalFoldASCII(userPart, expected) {
+				return true
+			}
+			break
+		}
+	}
+
+	// Check if provided is in DOMAIN\user format
+	// Extract just the user part and compare
+	for i := 0; i < len(provided); i++ {
+		if provided[i] == '\\' {
+			userPart := provided[i+1:]
+			if equalFoldASCII(userPart, expected) {
+				return true
+			}
+			break
+		}
+	}
+
+	return false
+}
+
+// domainMatches checks if the provided domain matches the expected domain.
+// It handles UPN format where the NTLM domain field may be empty but the domain
+// is embedded in the username (user@domain).
+// For example, domain="" with username="admin@jetkvm" matches expected "jetkvm".
+func domainMatches(providedDomain, username, expectedDomain string) bool {
+	// Direct match (case-insensitive)
+	if equalFoldASCII(providedDomain, expectedDomain) {
+		return true
+	}
+
+	// If provided domain is empty, check if username contains the domain (UPN format)
+	if providedDomain == "" {
+		// Extract domain from UPN format (user@domain)
+		for i := 0; i < len(username); i++ {
+			if username[i] == '@' {
+				upnDomain := username[i+1:]
+				if equalFoldASCII(upnDomain, expectedDomain) {
+					return true
+				}
+				break
+			}
+		}
+	}
+
+	// Check if provided domain is in DOMAIN\user format prefix
+	// (Some clients send "DOMAIN" in the domain field for DOMAIN\user logins)
+	for i := 0; i < len(username); i++ {
+		if username[i] == '\\' {
+			domainPart := username[:i]
+			if equalFoldASCII(domainPart, expectedDomain) {
+				return true
+			}
+			break
+		}
+	}
+
+	return false
+}
+
 func (h *Handler) buildTSRequest(version int, ntlmToken []byte) []byte {
 	var responseToken []byte
 
@@ -545,39 +674,20 @@ func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) []byte {
 }
 
 func (h *Handler) buildPubKeyAuth() []byte {
-	// Build pubKeyAuth for the final TSRequest
-	// This binds the authentication to the TLS channel
+	// Build pubKeyAuth for the final TSRequest.
+	// This binds the authentication to the TLS channel using the server's public key.
+	//
+	// IMPORTANT: The server public key MUST be set via SetServerPublicKey() before
+	// calling Authenticate(). This allows CredSSP to work with any TLS implementation
+	// (Go's crypto/tls or OpenSSL) since it doesn't need TLS-specific APIs.
 
-	// Use the server's public key that was set via SetServerPublicKey
 	serverPubKey := h.serverPublicKey
 
-	// If not set, try to get from TLS connection state
 	if len(serverPubKey) == 0 {
-		state := h.tlsConn.ConnectionState()
-
-		// For a TLS server, PeerCertificates would only be populated in mutual TLS
-		for _, cert := range state.PeerCertificates {
-			serverPubKey = cert.RawSubjectPublicKeyInfo
-			h.debugLog("CredSSP: found peer cert public key len=%d", len(serverPubKey))
-			break
-		}
-
-		// Check verified chains
-		if len(serverPubKey) == 0 {
-			for _, chain := range state.VerifiedChains {
-				if len(chain) > 0 {
-					serverPubKey = chain[0].RawSubjectPublicKeyInfo
-					h.debugLog("CredSSP: found verified chain cert public key len=%d", len(serverPubKey))
-					break
-				}
-			}
-		}
-
-		if len(serverPubKey) == 0 {
-			h.debugLog("CredSSP: WARNING - no server public key available for pubKeyAuth")
-		}
+		h.debugLog("CredSSP: WARNING - no server public key set, pubKeyAuth will fail")
+		h.debugLog("CredSSP: caller must use SetServerPublicKey() before Authenticate()")
 	} else {
-		h.debugLog("CredSSP: using pre-set server public key len=%d", len(serverPubKey))
+		h.debugLog("CredSSP: using server public key len=%d", len(serverPubKey))
 	}
 
 	// If we have a valid NTLM authenticator with session key, compute proper pubKeyAuth

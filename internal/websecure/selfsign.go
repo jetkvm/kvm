@@ -182,18 +182,31 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 // returns nil if the certificate is not found
 func (s *SelfSigner) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	var hostname string
-	if info.ServerName != "" && info.ServerName != selfSignerCAMagicName {
-		hostname = info.ServerName
-	} else {
-		hostname = strings.Split(info.Conn.LocalAddr().String(), ":")[0]
-	}
 
-	s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
+	// Handle nil info (e.g., from OpenSSL wrapper which doesn't have ClientHelloInfo)
+	if info == nil {
+		hostname = s.DefaultDomain
+		s.log.Info().Str("hostname", hostname).Msg("TLS handshake (nil ClientHelloInfo, using default)")
+	} else if info.ServerName != "" && info.ServerName != selfSignerCAMagicName {
+		hostname = info.ServerName
+		s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
+	} else if info.Conn != nil {
+		hostname = strings.Split(info.Conn.LocalAddr().String(), ":")[0]
+		s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
+	} else {
+		// info is non-nil but Conn is nil (e.g., fake ClientHelloInfo for certificate lookup)
+		hostname = s.DefaultDomain
+		s.log.Info().Str("hostname", hostname).Msg("TLS handshake (nil Conn, using default)")
+	}
 
 	// convert hostname to punycode
 	h, err := idna.Lookup.ToASCII(hostname)
 	if err != nil {
-		s.log.Warn().Str("hostname", hostname).Err(err).Str("remote_addr", info.Conn.RemoteAddr().String()).Msg("Hostname is not valid")
+		remoteAddr := ""
+		if info != nil && info.Conn != nil {
+			remoteAddr = info.Conn.RemoteAddr().String()
+		}
+		s.log.Warn().Str("hostname", hostname).Err(err).Str("remote_addr", remoteAddr).Msg("Hostname is not valid")
 		hostname = s.DefaultDomain
 	} else {
 		hostname = h

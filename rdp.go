@@ -25,25 +25,6 @@ var (
 // GetRDPServer returns the global RDP server instance.
 func GetRDPServer() *rdp.Server {
 	rdpServerOnce.Do(func() {
-		// Create Go TLS config for CredSSP (requires session binding)
-		goTLSConfig := &tls.Config{
-			GetCertificate: getCertificate,
-			MinVersion:     tls.VersionTLS12,
-			MaxVersion:     tls.VersionTLS12, // CredSSP requires TLS 1.2
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-			},
-			CurvePreferences: []tls.CurveID{
-				tls.X25519,
-				tls.CurveP256,
-			},
-		}
-
 		deps := rdp.Dependencies{
 			Logger: *rdpLogger,
 			Config: &rdpConfigAdapter{},
@@ -51,7 +32,7 @@ func GetRDPServer() *rdp.Server {
 			Video:  &rdpVideoAdapter{},
 			Audio:  &rdpAudioAdapter{},
 			Camera: &rdpCameraAdapter{},
-			TLS:    &rdpTLSAdapter{goConfig: goTLSConfig},
+			TLS:    &rdpTLSAdapter{},
 		}
 		rdpServer = rdp.NewServer(deps)
 	})
@@ -553,7 +534,7 @@ func (a *rdpCameraAdapter) SetEnabled(enabled bool) {
 	mgr := cameraManagerPtr.Load()
 	if mgr != nil {
 		mgr.SetEnabled(enabled)
-		rdpLogger.Warn().Bool("enabled", enabled).Msg("RDP: camera passthrough state changed")
+		rdpLogger.Debug().Bool("enabled", enabled).Msg("RDP: camera passthrough state changed")
 	}
 }
 
@@ -652,52 +633,30 @@ func (a *rdpCameraAdapter) UnsubscribeFormatChanges() {
 }
 
 // rdpTLSAdapter provides TLS connection upgrading for RDP with hardware acceleration.
+// Both TLS and CredSSP modes use hardware-accelerated TLS via OpenSSL.
 type rdpTLSAdapter struct {
-	// goConfig is kept for CredSSP which requires Go's *tls.Conn for session binding
-	goConfig *tls.Config
-
-	// lastCredSSPCert tracks the certificate used in the most recent CredSSP handshake.
-	// This is needed because GetServerCertificate must return the exact same certificate
-	// that was used during the TLS handshake for pubKeyAuth computation.
-	lastCredSSPCert   *tls.Certificate
-	lastCredSSPCertMu sync.Mutex
+	// lastCert tracks the certificate used in the most recent TLS handshake.
+	// This is needed because CredSSP's GetServerCertificate must return the exact
+	// certificate that was used during the TLS handshake for pubKeyAuth computation.
+	lastCert   *tls.Certificate
+	lastCertMu sync.Mutex
 }
 
 func (a *rdpTLSAdapter) UpgradeServerConn(conn net.Conn) (rdp.TLSConn, error) {
-	// Use hardware-accelerated TLS for plain TLS mode
+	// Use hardware-accelerated TLS for all RDP connections (TLS and CredSSP).
+	// CredSSP needs the exact certificate used during TLS handshake for pubKeyAuth.
+	// Wrap GetCertificate to capture the certificate for later retrieval.
 	tlsConfig := cryptotls.RDPConfig()
-	tlsConfig.GetCertificate = getCertificate
-	return cryptotls.Server(conn, tlsConfig)
-}
-
-func (a *rdpTLSAdapter) UpgradeServerConnForCredSSP(conn net.Conn) (rdp.CredSSPTLSConn, error) {
-	// CredSSP requires Go's *tls.Conn for TLS session binding in pubKeyAuth.
-	// We wrap GetCertificate to capture the exact certificate used during handshake,
-	// since dynamic certificate generation (like self-signed) may produce different
-	// certificates for different ClientHelloInfo contents.
-	wrappedConfig := a.goConfig.Clone()
-	originalGetCert := a.goConfig.GetCertificate
-	wrappedConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		cert, err := originalGetCert(info)
+	tlsConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		cert, err := getCertificate(info)
 		if err == nil && cert != nil {
-			a.lastCredSSPCertMu.Lock()
-			a.lastCredSSPCert = cert
-			a.lastCredSSPCertMu.Unlock()
-			rdpLogger.Warn().
-				Str("serverName", info.ServerName).
-				Int("certChainLen", len(cert.Certificate)).
-				Msg("RDP: captured CredSSP certificate during handshake")
-		} else {
-			rdpLogger.Warn().Err(err).Str("serverName", info.ServerName).Msg("RDP: GetCertificate returned error or nil")
+			a.lastCertMu.Lock()
+			a.lastCert = cert
+			a.lastCertMu.Unlock()
 		}
 		return cert, err
 	}
-
-	tlsConn := tls.Server(conn, wrappedConfig)
-	if err := tlsConn.Handshake(); err != nil {
-		return nil, err
-	}
-	return tlsConn, nil
+	return cryptotls.Server(conn, tlsConfig)
 }
 
 func (a *rdpTLSAdapter) IsHardwareAccelerated() bool {
@@ -709,31 +668,24 @@ func (a *rdpTLSAdapter) HardwareEngine() string {
 }
 
 func (a *rdpTLSAdapter) GetServerCertificate(serverName string) *tls.Certificate {
-	// Return the certificate captured during the most recent CredSSP handshake.
-	// This ensures we use the exact same certificate the client saw.
-	a.lastCredSSPCertMu.Lock()
-	if a.lastCredSSPCert != nil {
-		cert := a.lastCredSSPCert
-		a.lastCredSSPCertMu.Unlock()
-		rdpLogger.Warn().
-			Str("serverName", serverName).
-			Int("certLen", len(cert.Certificate[0])).
-			Msg("RDP: returning captured CredSSP certificate")
+	// Return the certificate captured during the most recent TLS handshake.
+	// This ensures we use the exact same certificate the client saw for pubKeyAuth.
+	a.lastCertMu.Lock()
+	cert := a.lastCert
+	a.lastCertMu.Unlock()
+
+	if cert != nil {
 		return cert
 	}
-	a.lastCredSSPCertMu.Unlock()
 
 	// Fallback: get certificate using the callback (may not match handshake cert)
 	rdpLogger.Warn().Str("serverName", serverName).Msg("RDP: no captured cert, falling back to GetCertificate callback")
-	if a.goConfig.GetCertificate == nil {
-		return nil
-	}
 	hello := &tls.ClientHelloInfo{
 		ServerName: serverName,
 	}
-	cert, err := a.goConfig.GetCertificate(hello)
+	cert, err := getCertificate(hello)
 	if err != nil {
-		rdpLogger.Warn().Err(err).Str("serverName", serverName).Msg("RDP: failed to get server certificate")
+		rdpLogger.Debug().Err(err).Str("serverName", serverName).Msg("RDP: failed to get server certificate")
 		return nil
 	}
 	return cert

@@ -2,9 +2,9 @@ package rdp
 
 import (
 	"bufio"
-	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/rdp/credssp"
@@ -116,31 +116,25 @@ func (c *Connection) handleX224Connection() error {
 			return fmt.Errorf("set TLS deadline: %w", err)
 		}
 
-		// CredSSP requires Go's *tls.Conn for TLS session binding in pubKeyAuth.
-		// For plain TLS mode, we can use hardware-accelerated TLS if available.
+		// Use hardware-accelerated TLS for both plain TLS and CredSSP modes.
+		// CredSSP now only needs net.Conn - the server public key is provided separately
+		// via SetServerPublicKey(), so we can use hardware crypto for all TLS traffic.
+		tlsConn, err := c.server.deps.TLS.UpgradeServerConn(c.conn)
+		if err != nil {
+			return fmt.Errorf("TLS handshake failed: %w", err)
+		}
+
+		c.server.deps.Logger.Debug().
+			Str("version", tlsConn.GetProtocolVersion()).
+			Str("cipher", tlsConn.GetCipherName()).
+			Bool("hwAccel", tlsConn.IsHardwareAccelerated()).
+			Msg("RDP: TLS handshake complete")
+
 		if selectedProto == protocol.ProtocolCredSSP {
-			// CredSSP mode: use Go's crypto/tls (required for session binding)
-			credsspConn, err := c.server.deps.TLS.UpgradeServerConnForCredSSP(c.conn)
-			if err != nil {
-				return fmt.Errorf("TLS handshake failed: %w", err)
-			}
-
-			state := credsspConn.ConnectionState()
-			c.server.deps.Logger.Debug().
-				Str("version", tlsVersionString(state.Version)).
-				Str("cipher", tls.CipherSuiteName(state.CipherSuite)).
-				Bool("hwAccel", false).
-				Msg("RDP: TLS handshake complete (CredSSP mode)")
-
 			c.server.deps.Logger.Debug().Msg("RDP: starting CredSSP/NLA authentication")
 
-			// Type assert to *tls.Conn for CredSSP handler
-			goTLSConn, ok := credsspConn.(*tls.Conn)
-			if !ok {
-				return fmt.Errorf("CredSSP requires Go's *tls.Conn")
-			}
-
-			handler := credssp.NewHandler(goTLSConn)
+			// CredSSP now accepts any net.Conn - no longer needs *tls.Conn
+			handler := credssp.NewHandler(tlsConn)
 			handler.SetDebugLog(func(format string, args ...any) {
 				c.server.deps.Logger.Debug().Msgf(format, args...)
 			})
@@ -169,52 +163,56 @@ func (c *Connection) handleX224Connection() error {
 			}
 
 			// Set server's public key for pubKeyAuth computation
-			// For a TLS server, we need to get the certificate we sent to the client
+			// This is provided externally so CredSSP doesn't need TLS-specific APIs
 			if c.server.deps.TLS != nil {
-				// Get server certificate using the TLS provider
-				serverCert := c.server.deps.TLS.GetServerCertificate(state.ServerName)
+				// Get the local address from the TLS connection to match the certificate
+				// that was used during TLS handshake (SelfSigner uses LocalAddr when SNI is empty)
+				localHost := ""
+				if localAddr := tlsConn.LocalAddr(); localAddr != nil {
+					if host, _, err := net.SplitHostPort(localAddr.String()); err == nil {
+						localHost = host
+					}
+				}
+				c.server.deps.Logger.Debug().Str("localHost", localHost).Msg("RDP: looking up certificate for CredSSP")
+				serverCert := c.server.deps.TLS.GetServerCertificate(localHost)
 				if serverCert != nil && len(serverCert.Certificate) > 0 {
 					// Parse the certificate to get the public key info
 					if parsedCert, parseErr := x509.ParseCertificate(serverCert.Certificate[0]); parseErr == nil {
 						handler.SetServerPublicKey(parsedCert.RawSubjectPublicKeyInfo)
 						handler.SetServerCertificateDER(serverCert.Certificate[0])
 						c.server.deps.Logger.Debug().
+							Str("localHost", localHost).
 							Int("pubKeyLen", len(parsedCert.RawSubjectPublicKeyInfo)).
 							Int("certDERLen", len(serverCert.Certificate[0])).
+							Str("certSerial", parsedCert.SerialNumber.String()).
 							Msg("RDP: set server public key for CredSSP")
+					} else {
+						c.server.deps.Logger.Warn().Err(parseErr).Msg("RDP: failed to parse server certificate")
 					}
+				} else {
+					c.server.deps.Logger.Warn().
+						Str("localHost", localHost).
+						Bool("certNil", serverCert == nil).
+						Msg("RDP: failed to get server certificate for CredSSP pubKeyAuth")
 				}
 			}
 
+			c.server.deps.Logger.Debug().Msg("RDP: starting CredSSP Authenticate()")
 			username, err := handler.Authenticate()
 			if err != nil {
+				c.server.deps.Logger.Debug().Err(err).Msg("RDP: CredSSP authentication failed")
 				return fmt.Errorf("CredSSP authentication failed: %w", err)
 			}
 
 			c.server.deps.Logger.Info().
 				Str("username", username).
-				Msg("RDP: CredSSP/NLA authentication complete")
-
-			// Replace connection and reader with TLS versions
-			c.conn = credsspConn
-			c.reader = bufio.NewReader(credsspConn)
-		} else {
-			// Plain TLS mode: use hardware-accelerated TLS if available
-			tlsConn, err := c.server.deps.TLS.UpgradeServerConn(c.conn)
-			if err != nil {
-				return fmt.Errorf("TLS handshake failed: %w", err)
-			}
-
-			c.server.deps.Logger.Debug().
-				Str("version", tlsConn.GetProtocolVersion()).
-				Str("cipher", tlsConn.GetCipherName()).
 				Bool("hwAccel", tlsConn.IsHardwareAccelerated()).
-				Msg("RDP: TLS handshake complete")
-
-			// Replace connection and reader with TLS versions
-			c.conn = tlsConn
-			c.reader = bufio.NewReader(tlsConn)
+				Msg("RDP: CredSSP/NLA authentication complete")
 		}
+
+		// Replace connection and reader with TLS versions
+		c.conn = tlsConn
+		c.reader = bufio.NewReader(tlsConn)
 	}
 
 	// Clear both read and write deadlines that were set during TLS handshake.
@@ -226,22 +224,6 @@ func (c *Connection) handleX224Connection() error {
 
 	c.phase = PhaseBasicSettings
 	return nil
-}
-
-// tlsVersionString returns a human-readable TLS version string.
-func tlsVersionString(version uint16) string {
-	switch version {
-	case tls.VersionTLS10:
-		return "TLS 1.0"
-	case tls.VersionTLS11:
-		return "TLS 1.1"
-	case tls.VersionTLS12:
-		return "TLS 1.2"
-	case tls.VersionTLS13:
-		return "TLS 1.3"
-	default:
-		return fmt.Sprintf("unknown (0x%04x)", version)
-	}
 }
 
 // handleMCSConnect handles the MCS Connect-Initial/Response exchange.

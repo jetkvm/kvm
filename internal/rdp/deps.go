@@ -38,14 +38,9 @@ type Dependencies struct {
 type TLSProvider interface {
 	// UpgradeServerConn upgrades a net.Conn to a TLS server connection.
 	// Returns a TLSConn that provides the encrypted connection.
-	// Uses hardware acceleration when available.
+	// Uses hardware acceleration when available for both TLS and CredSSP modes.
+	// CredSSP only needs net.Conn - the server public key is provided separately.
 	UpgradeServerConn(conn net.Conn) (TLSConn, error)
-
-	// UpgradeServerConnForCredSSP upgrades a net.Conn to a TLS server connection
-	// for CredSSP/NLA authentication. This returns a Go *tls.Conn because CredSSP
-	// requires access to the TLS session binding for pubKeyAuth calculation.
-	// Does not use hardware acceleration.
-	UpgradeServerConnForCredSSP(conn net.Conn) (CredSSPTLSConn, error)
 
 	// GetServerCertificate returns the server's TLS certificate for a given SNI.
 	// This is used by CredSSP to compute pubKeyAuth over the server's public key.
@@ -56,15 +51,6 @@ type TLSProvider interface {
 
 	// HardwareEngine returns the name of the hardware crypto engine in use.
 	HardwareEngine() string
-}
-
-// CredSSPTLSConn is a TLS connection that supports CredSSP authentication.
-// This must be a Go *tls.Conn for access to ConnectionState().
-type CredSSPTLSConn interface {
-	net.Conn
-	// ConnectionState returns the TLS connection state.
-	// This is required for CredSSP pubKeyAuth calculation.
-	ConnectionState() tls.ConnectionState
 }
 
 // TLSConn represents a TLS connection with introspection capabilities.
