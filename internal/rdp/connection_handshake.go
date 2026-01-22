@@ -63,14 +63,15 @@ func (c *Connection) handleX224Connection() error {
 				c.server.deps.Logger.Warn().Msg("RDP: rejecting connection - client doesn't support NLA but password authentication is required")
 				return fmt.Errorf("client does not support NLA (CredSSP) but password authentication is required")
 			}
-		} else if cr.RequestsCredSSP() {
-			// CredSSP without password - will work in permissive mode (may fail with some clients)
-			selectedProto = protocol.ProtocolCredSSP
-			c.server.deps.Logger.Debug().Msg("RDP: selecting CredSSP (permissive mode)")
 		} else if cr.RequestsTLS() {
-			// TLS without password - no authentication
+			// Prefer TLS when no password - uses hardware-accelerated crypto
 			selectedProto = protocol.ProtocolTLS
-			c.server.deps.Logger.Debug().Msg("RDP: selecting TLS (no password)")
+			c.server.deps.Logger.Debug().Msg("RDP: selecting TLS (hardware accelerated, no password)")
+		} else if cr.RequestsCredSSP() {
+			// Fallback to CredSSP if client doesn't support plain TLS
+			// Note: CredSSP uses software crypto (Go's crypto/tls)
+			selectedProto = protocol.ProtocolCredSSP
+			c.server.deps.Logger.Debug().Msg("RDP: selecting CredSSP (software crypto fallback)")
 		}
 	}
 
