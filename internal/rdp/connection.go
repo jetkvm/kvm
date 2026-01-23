@@ -87,9 +87,13 @@ type Connection struct {
 	audioStopCh chan struct{}
 
 	// Audio input (AUDIN - client mic to USB gadget)
-	// Uses buffered channel to avoid blocking DVC message loop
 	audinDataChan chan []byte
 	audinStopCh   chan struct{}
+
+	// Video streaming channels (for proper cleanup on disconnect)
+	h264Chan <-chan []byte
+	jpegChan <-chan []byte
+	rgbChan  <-chan RGBFrame
 
 	// Write error tracking for connection health
 	consecutiveWriteErrors atomic.Int32
@@ -543,8 +547,25 @@ func (c *Connection) Close() {
 		c.dvcManager.Close()
 	}
 
-	// Signal the message loop to exit
+	// Signal the message loop to exit - this triggers goroutine cleanup
 	close(c.stopChan)
+
+	// Cleanup video subscriptions (safety net - goroutines should cleanup in defer)
+	// These may already be nil if goroutines exited cleanly via stopChan
+	if c.server.deps.Video != nil {
+		if c.h264Chan != nil {
+			c.server.deps.Video.UnsubscribeH264(c.h264Chan)
+			c.h264Chan = nil
+		}
+		if c.jpegChan != nil {
+			c.server.deps.Video.UnsubscribeJPEG(c.jpegChan)
+			c.jpegChan = nil
+		}
+		if c.rgbChan != nil {
+			c.server.deps.Video.UnsubscribeRGB(c.rgbChan)
+			c.rgbChan = nil
+		}
+	}
 
 	// Close the underlying TCP connection
 	if err := c.conn.Close(); err != nil {

@@ -164,18 +164,17 @@ type VideoProvider interface {
 	StopVideo() error
 
 	// SubscribeH264 returns a channel for H.264 video frames.
-	// The channel is closed when the subscription ends.
 	SubscribeH264() <-chan []byte
 
-	// UnsubscribeH264 stops the H.264 subscription.
-	UnsubscribeH264()
+	// UnsubscribeH264 removes the subscription and releases resources.
+	UnsubscribeH264(ch <-chan []byte)
 
 	// SubscribeJPEG returns a channel for JPEG video frames.
 	// Used for bitmap mode fallback when RDPGFX is not supported.
 	SubscribeJPEG() <-chan []byte
 
-	// UnsubscribeJPEG stops the JPEG subscription.
-	UnsubscribeJPEG()
+	// UnsubscribeJPEG removes the subscription and releases resources.
+	UnsubscribeJPEG(ch <-chan []byte)
 
 	// StartJPEGEncoder starts the hardware JPEG encoder.
 	// Quality is 1-99, higher is better.
@@ -185,11 +184,10 @@ type VideoProvider interface {
 	StopJPEGEncoder() error
 
 	// SubscribeRGB returns a channel for raw BGRX frames from RGA hardware.
-	// This provides the fastest bitmap updates by bypassing JPEG encode/decode.
 	SubscribeRGB() <-chan RGBFrame
 
-	// UnsubscribeRGB stops the RGB subscription.
-	UnsubscribeRGB()
+	// UnsubscribeRGB removes the subscription and releases resources.
+	UnsubscribeRGB(ch <-chan RGBFrame)
 
 	// StartRGBEncoder starts the RGA hardware RGB encoder.
 	// This converts YUV422 to BGRX in hardware with zero CPU overhead.
@@ -216,8 +214,8 @@ type AudioProvider interface {
 	// Format: 16-bit signed PCM, stereo, 48kHz.
 	SubscribeAudio() <-chan []byte
 
-	// UnsubscribeAudio stops the audio subscription.
-	UnsubscribeAudio()
+	// UnsubscribeAudio removes the subscription and releases resources.
+	UnsubscribeAudio(ch <-chan []byte)
 
 	// PlayAudio plays audio data to the USB audio gadget.
 	// Format: 16-bit signed PCM, stereo, 48kHz.

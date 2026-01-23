@@ -191,7 +191,15 @@ func (a *rdpVideoAdapter) SubscribeH264() <-chan []byte {
 	return ch
 }
 
-func (a *rdpVideoAdapter) UnsubscribeH264() {
+func (a *rdpVideoAdapter) UnsubscribeH264(ch <-chan []byte) {
+	rdpVideoSubscribers.mu.Lock()
+	defer rdpVideoSubscribers.mu.Unlock()
+	for i, sub := range rdpVideoSubscribers.subs {
+		if sub == ch {
+			rdpVideoSubscribers.subs = append(rdpVideoSubscribers.subs[:i], rdpVideoSubscribers.subs[i+1:]...)
+			return
+		}
+	}
 }
 
 // BroadcastRDPH264Frame sends an H.264 frame to all RDP subscribers.
@@ -220,7 +228,15 @@ func (a *rdpVideoAdapter) SubscribeJPEG() <-chan []byte {
 	return ch
 }
 
-func (a *rdpVideoAdapter) UnsubscribeJPEG() {
+func (a *rdpVideoAdapter) UnsubscribeJPEG(ch <-chan []byte) {
+	rdpJPEGSubscribers.mu.Lock()
+	defer rdpJPEGSubscribers.mu.Unlock()
+	for i, sub := range rdpJPEGSubscribers.subs {
+		if sub == ch {
+			rdpJPEGSubscribers.subs = append(rdpJPEGSubscribers.subs[:i], rdpJPEGSubscribers.subs[i+1:]...)
+			return
+		}
+	}
 }
 
 func (a *rdpVideoAdapter) StartJPEGEncoder(quality int) error {
@@ -263,7 +279,15 @@ func (a *rdpVideoAdapter) SubscribeRGB() <-chan rdp.RGBFrame {
 	return ch
 }
 
-func (a *rdpVideoAdapter) UnsubscribeRGB() {
+func (a *rdpVideoAdapter) UnsubscribeRGB(ch <-chan rdp.RGBFrame) {
+	rdpRGBSubscribers.mu.Lock()
+	defer rdpRGBSubscribers.mu.Unlock()
+	for i, sub := range rdpRGBSubscribers.subs {
+		if sub == ch {
+			rdpRGBSubscribers.subs = append(rdpRGBSubscribers.subs[:i], rdpRGBSubscribers.subs[i+1:]...)
+			return
+		}
+	}
 }
 
 func (a *rdpVideoAdapter) StartRGBEncoder() error {
@@ -332,7 +356,15 @@ func (a *rdpAudioAdapter) SubscribeAudio() <-chan []byte {
 	return ch
 }
 
-func (a *rdpAudioAdapter) UnsubscribeAudio() {
+func (a *rdpAudioAdapter) UnsubscribeAudio(ch <-chan []byte) {
+	rdpAudioSubscribers.mu.Lock()
+	defer rdpAudioSubscribers.mu.Unlock()
+	for i, sub := range rdpAudioSubscribers.subs {
+		if sub == ch {
+			rdpAudioSubscribers.subs = append(rdpAudioSubscribers.subs[:i], rdpAudioSubscribers.subs[i+1:]...)
+			return
+		}
+	}
 }
 
 var monoBufferPool = sync.Pool{
