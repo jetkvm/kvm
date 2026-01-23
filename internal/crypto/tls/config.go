@@ -51,7 +51,8 @@ func cipherSuitesX509() []uint16 {
 }
 
 // cipherSuitesX509String returns the cipher suite string for OpenSSL.
-func cipherSuitesX509String() string {
+// Reserved for future use with hardware TLS acceleration.
+func cipherSuitesX509String() string { //nolint:unused // Reserved for future hardware TLS support
 	return "ECDHE-ECDSA-AES128-GCM-SHA256:" +
 		"ECDHE-ECDSA-AES256-GCM-SHA384:" +
 		"ECDHE-ECDSA-CHACHA20-POLY1305:" +
@@ -64,7 +65,8 @@ func cipherSuitesX509String() string {
 }
 
 // cipherSuitesAnonymousDHString returns the cipher suite string for OpenSSL anonymous DH mode.
-func cipherSuitesAnonymousDHString() string {
+// Reserved for future use with hardware TLS acceleration.
+func cipherSuitesAnonymousDHString() string { //nolint:unused // Reserved for future hardware TLS support
 	return "ADH-AES256-GCM-SHA384:" +
 		"ADH-AES128-GCM-SHA256:" +
 		"ADH-AES256-SHA256:" +

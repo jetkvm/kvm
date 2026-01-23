@@ -11,7 +11,7 @@ import (
 	"crypto/sha256"
 	"unicode/utf16"
 
-	"golang.org/x/crypto/md4"
+	"golang.org/x/crypto/md4" //nolint:staticcheck // MD4 required for NTLM authentication compatibility
 )
 
 // NTLMAuth handles NTLM authentication validation and session key derivation.
@@ -563,7 +563,7 @@ func extractPublicKeyFromSPKI(spki []byte) []byte {
 		return nil
 	}
 	offset += algoIdLenBytes + algoIdLen // skip past AlgorithmIdentifier entirely
-	_ = algoIdStart // unused
+	_ = algoIdStart                      // unused
 
 	// Now we should be at the BIT STRING containing the RSA public key
 	if offset >= len(spki) || spki[offset] != 0x03 {
@@ -605,7 +605,8 @@ func extractPublicKeyFromSPKI(spki []byte) []byte {
 
 // extractModulusFromSPKI extracts just the RSA modulus from SubjectPublicKeyInfo.
 // This is in case some implementations use only the modulus for the hash.
-func extractModulusFromSPKI(spki []byte) []byte {
+// Reserved for potential compatibility with non-standard CredSSP implementations.
+func extractModulusFromSPKI(spki []byte) []byte { //nolint:unused // Reserved for CredSSP compatibility
 	// First extract the RSA public key
 	rsaKey := extractPublicKeyFromSPKI(spki)
 	if rsaKey == nil {

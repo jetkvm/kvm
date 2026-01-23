@@ -102,3 +102,48 @@ func HardwareEngine() string {
 func Init() {
 	initImpl()
 }
+
+// Listener wraps a net.Listener to provide TLS connections using hardware
+// acceleration when available. Each accepted connection is upgraded to TLS.
+type Listener struct {
+	inner  net.Listener
+	config *Config
+}
+
+// NewListener creates a TLS listener that wraps the given net.Listener.
+// All accepted connections will be upgraded to TLS using the provided config.
+// On ARM Linux with CGO, this uses OpenSSL with hardware acceleration.
+func NewListener(inner net.Listener, config *Config) *Listener {
+	// Initialize TLS subsystem early to avoid delay on first connection
+	Init()
+	return &Listener{
+		inner:  inner,
+		config: config,
+	}
+}
+
+// Accept accepts a connection and performs the TLS handshake.
+func (l *Listener) Accept() (net.Conn, error) {
+	conn, err := l.inner.Accept()
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConn, err := Server(conn, l.config)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	return tlsConn, nil
+}
+
+// Close closes the underlying listener.
+func (l *Listener) Close() error {
+	return l.inner.Close()
+}
+
+// Addr returns the listener's network address.
+func (l *Listener) Addr() net.Addr {
+	return l.inner.Addr()
+}

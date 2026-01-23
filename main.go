@@ -12,6 +12,7 @@ import (
 
 	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
+	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
@@ -119,6 +120,16 @@ func Main() {
 	}
 
 	initJiggler()
+
+	// Initialize TLS subsystem early to check hardware crypto availability.
+	// This ensures OpenSSL is fully initialized before any TLS connections
+	// (HTTPS web server, VNC, RDP) which prevents first-connection delays.
+	setProcTitle("initTLS")
+	cryptotls.Init()
+	logger.Info().
+		Bool("hardwareAccelerated", cryptotls.IsHardwareAvailable()).
+		Str("engine", cryptotls.HardwareEngine()).
+		Msg("TLS subsystem initialized")
 
 	// start video sleep mode timer
 	startVideoSleepModeTicker()

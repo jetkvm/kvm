@@ -1487,6 +1487,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"meshVPNSetTUNMode":           {Func: rpcMeshVPNSetTUNMode, Params: []string{"params"}},
 	"meshVPNSetAdvertiseExitNode": {Func: rpcMeshVPNSetAdvertiseExitNode, Params: []string{"params"}},
 
+	// Logging handlers
+	"getLogLevelState": {Func: rpcGetLogLevelState},
+	"setLogLevel":      {Func: rpcSetLogLevel, Params: []string{"params"}},
+
 	// VNC handlers
 	"getVNCState":            {Func: rpcGetVNCState},
 	"setVNCEnabled":          {Func: rpcSetVNCEnabled, Params: []string{"enabled"}},

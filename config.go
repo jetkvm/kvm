@@ -114,17 +114,21 @@ type Config struct {
 	NetworkConfig        *types.NetworkConfig `json:"network_config"`
 	MeshVPNConfig        *meshvpn.Config      `json:"meshvpn_config,omitempty"`
 	DefaultLogLevel      string               `json:"default_log_level"`
-	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
-	VideoQualityFactor   float64              `json:"video_quality_factor"`
-	AudioInputAutoEnable bool                 `json:"audio_input_auto_enable"`
-	AudioOutputEnabled   bool                 `json:"audio_output_enabled"`
-	AudioBitrate         int                  `json:"audio_bitrate"`    // kbps (64-256)
-	AudioComplexity      int                  `json:"audio_complexity"` // 0-10
-	AudioDTXEnabled      bool                 `json:"audio_dtx_enabled"`
-	AudioFECEnabled      bool                 `json:"audio_fec_enabled"`
-	AudioBufferPeriods   int                  `json:"audio_buffer_periods"`   // 2-24
-	AudioPacketLossPerc  int                  `json:"audio_packet_loss_perc"` // 0-100
-	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
+	// LogLevelOverrides contains log level configuration.
+	// Format: "LEVEL" for global, or "subsystem:LEVEL,subsystem:LEVEL" for per-subsystem.
+	// Examples: "DEBUG", "rdp:TRACE,vnc:DEBUG", "INFO,rdp:TRACE"
+	LogLevelOverrides    string  `json:"log_level_overrides"`
+	VideoSleepAfterSec   int     `json:"video_sleep_after_sec"`
+	VideoQualityFactor   float64 `json:"video_quality_factor"`
+	AudioInputAutoEnable bool    `json:"audio_input_auto_enable"`
+	AudioOutputEnabled   bool    `json:"audio_output_enabled"`
+	AudioBitrate         int     `json:"audio_bitrate"`    // kbps (64-256)
+	AudioComplexity      int     `json:"audio_complexity"` // 0-10
+	AudioDTXEnabled      bool    `json:"audio_dtx_enabled"`
+	AudioFECEnabled      bool    `json:"audio_fec_enabled"`
+	AudioBufferPeriods   int     `json:"audio_buffer_periods"`   // 2-24
+	AudioPacketLossPerc  int     `json:"audio_packet_loss_perc"` // 0-100
+	NativeMaxRestart     uint    `json:"native_max_restart_attempts"`
 
 	// Camera/UVC settings
 	CameraResolution   string `json:"camera_resolution"`    // "1080p", "720p", "480p"
@@ -413,6 +417,7 @@ func LoadConfig() {
 	config = &loadedConfig
 
 	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
+	logging.GetRootLogger().SetSubsystemLevels(config.LogLevelOverrides)
 
 	configSuccess.Set(1.0)
 	configSuccessTime.SetToCurrentTime()

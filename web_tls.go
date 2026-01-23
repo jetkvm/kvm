@@ -6,9 +6,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 
+	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/websecure"
 )
 
@@ -150,7 +152,7 @@ var (
 )
 
 // RunWebSecureServer runs a web server with TLS.
-// Uses Go's crypto/tls which handles browser certificate warnings gracefully.
+// Uses hardware-accelerated TLS on ARM Linux via OpenSSL, with fallback to Go's crypto/tls.
 func runWebSecureServer() {
 	tlsServiceLock.Lock()
 	defer tlsServiceLock.Unlock()
@@ -165,18 +167,34 @@ func runWebSecureServer() {
 	// Determine the binding address based on the config
 	bindAddress := getBindAddress(443)
 
-	server := &http.Server{
-		Addr:    bindAddress,
-		Handler: r,
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			MaxVersion: tls.VersionTLS13,
-			// Use default curves by not setting CurvePreferences (nil uses Go defaults)
-			// Empty slice [] was causing TLS negotiation issues with some clients
-			GetCertificate: getCertificate,
-		},
+	// Create plain TCP listener
+	tcpListener, err := net.Listen("tcp", bindAddress)
+	if err != nil {
+		websecureLogger.Error().Err(err).Str("bindAddress", bindAddress).Msg("Failed to create TCP listener")
+		return
 	}
-	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting websecure server")
+
+	// Configure hardware-accelerated TLS
+	tlsConfig := cryptotls.DefaultConfig()
+	tlsConfig.GetCertificate = getCertificate
+
+	// Wrap with hardware-accelerated TLS (falls back to software TLS on non-ARM)
+	tlsListener := cryptotls.NewListener(tcpListener, tlsConfig)
+
+	// Log TLS engine status
+	hwAccel := cryptotls.IsHardwareAvailable()
+	hwEngine := cryptotls.HardwareEngine()
+	websecureLogger.Info().
+		Str("bindAddress", bindAddress).
+		Bool("loopbackOnly", config.LocalLoopbackOnly).
+		Bool("hardwareAccelerated", hwAccel).
+		Str("tlsEngine", hwEngine).
+		Msg("Starting websecure server")
+
+	server := &http.Server{
+		Handler: r,
+		// TLSConfig not needed - our listener handles TLS
+	}
 
 	go func() {
 		for range stopTLS {
@@ -188,9 +206,9 @@ func runWebSecureServer() {
 		}
 	}()
 
-	err := server.ListenAndServeTLS("", "")
+	err = server.Serve(tlsListener)
 	if !errors.Is(err, http.ErrServerClosed) {
-		panic(err)
+		websecureLogger.Error().Err(err).Msg("websecure server error")
 	}
 }
 

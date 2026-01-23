@@ -108,12 +108,12 @@ type Connection struct {
 
 	// Diagnostic counters for video frame tracking (debugging freeze issues)
 	frameStats struct {
-		attempted       atomic.Uint64 // Total frames received from encoder
-		sent            atomic.Uint64 // Successfully sent via GFX channel
-		dropNotReady    atomic.Uint64 // Dropped: channel not ready
-		dropNoKeyframe  atomic.Uint64 // Dropped: waiting for keyframe
+		attempted        atomic.Uint64 // Total frames received from encoder
+		sent             atomic.Uint64 // Successfully sent via GFX channel
+		dropNotReady     atomic.Uint64 // Dropped: channel not ready
+		dropNoKeyframe   atomic.Uint64 // Dropped: waiting for keyframe
 		dropBackpressure atomic.Uint64 // Dropped: backpressure
-		lastLogTime     atomic.Int64  // UnixMilli of last stats log
+		lastLogTime      atomic.Int64  // UnixMilli of last stats log
 	}
 }
 

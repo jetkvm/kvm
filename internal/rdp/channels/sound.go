@@ -206,7 +206,6 @@ func (s *SoundChannel) handleClientFormats(data []byte) error {
 	defer s.formatMu.Unlock()
 
 	s.formats = make([]AudioFormat, 0, numFormats)
-	selectedIndex := -1
 
 	// Parse client formats (uses shared WAVEFORMATEX parser)
 	for i := uint16(0); i < numFormats && pos+WAVEFORMATEXSize <= len(data); i++ {
@@ -219,6 +218,7 @@ func (s *SoundChannel) handleClientFormats(data []byte) error {
 	}
 
 	// Find best match (uses shared format selection logic)
+	var selectedIndex int
 	selectedIndex, s.selectedFmt = FindPreferredFormat(s.formats)
 
 	if selectedIndex < 0 {

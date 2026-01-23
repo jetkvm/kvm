@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
+import clsx from "clsx";
 
 import { useSettingsStore } from "@hooks/stores";
 import { JsonRpcError, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
@@ -22,6 +23,104 @@ import { SystemVersionInfo } from "@hooks/useVersion";
 
 import { FeatureFlag } from "../components/FeatureFlag";
 
+// LogLevelState from the backend
+interface LogLevelState {
+  globalLevel: string;
+  subsystemLevels: Record<string, string>;
+  availableLevels: string[];
+  subsystems: string[];
+  overrides: string;
+}
+
+// Parsed subsystem override tag
+interface SubsystemOverride {
+  subsystem: string;
+  level: string;
+}
+
+// Parse overrides string into global level and subsystem overrides
+function parseOverrides(overrides: string): {
+  global: string | null;
+  subsystems: SubsystemOverride[];
+} {
+  const result: { global: string | null; subsystems: SubsystemOverride[] } = {
+    global: null,
+    subsystems: [],
+  };
+
+  if (!overrides) return result;
+
+  const parts = overrides.split(",");
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.includes(":")) {
+      const [subsystem, level] = trimmed.split(":", 2);
+      result.subsystems.push({
+        subsystem: subsystem.trim().toLowerCase(),
+        level: level.trim().toUpperCase(),
+      });
+    } else {
+      result.global = trimmed.toUpperCase();
+    }
+  }
+
+  return result;
+}
+
+// Build overrides string from global level and subsystem overrides
+function buildOverrides(global: string | null, subsystems: SubsystemOverride[]): string {
+  const parts: string[] = [];
+  if (global) {
+    parts.push(global);
+  }
+  for (const sub of subsystems) {
+    parts.push(`${sub.subsystem}:${sub.level}`);
+  }
+  return parts.join(",");
+}
+
+// Get translated label for log level
+function getLevelLabel(level: string): string {
+  switch (level) {
+    case "DISABLE":
+      return m.advanced_logging_level_disable();
+    case "ERROR":
+      return m.advanced_logging_level_error();
+    case "WARN":
+      return m.advanced_logging_level_warn();
+    case "INFO":
+      return m.advanced_logging_level_info();
+    case "DEBUG":
+      return m.advanced_logging_level_debug();
+    case "TRACE":
+      return m.advanced_logging_level_trace();
+    default:
+      return level;
+  }
+}
+
+// Get color class for log level tag
+function getLevelColorClass(level: string): string {
+  switch (level) {
+    case "TRACE":
+      return "text-purple-600 dark:text-purple-400";
+    case "DEBUG":
+      return "text-blue-600 dark:text-blue-400";
+    case "INFO":
+      return "text-green-600 dark:text-green-400";
+    case "WARN":
+      return "text-amber-600 dark:text-amber-400";
+    case "ERROR":
+      return "text-red-600 dark:text-red-400";
+    case "DISABLE":
+      return "text-slate-500 dark:text-slate-400";
+    default:
+      return "text-slate-700 dark:text-slate-300";
+  }
+}
+
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
@@ -39,6 +138,18 @@ export default function SettingsAdvancedRoute() {
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
+
+  // Logging state
+  const [logLevelState, setLogLevelState] = useState<LogLevelState | null>(null);
+  const [logGlobalLevel, setLogGlobalLevel] = useState<string>("");
+  const [logSubsystemOverrides, setLogSubsystemOverrides] = useState<SubsystemOverride[]>([]);
+  const [newSubsystem, setNewSubsystem] = useState<string>("");
+  const [newSubsystemLevel, setNewSubsystemLevel] = useState<string>("DEBUG");
+
+  // Parse current overrides when state changes
+  const currentOverrides = useMemo(() => {
+    return buildOverrides(logGlobalLevel || null, logSubsystemOverrides);
+  }, [logGlobalLevel, logSubsystemOverrides]);
 
   useEffect(() => {
     send("getDevModeState", {}, (resp: JsonRpcResponse) => {
@@ -65,6 +176,16 @@ export default function SettingsAdvancedRoute() {
     send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setLocalLoopbackOnly(resp.result as boolean);
+    });
+
+    // Load log level state
+    send("getLogLevelState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const state = resp.result as LogLevelState;
+      setLogLevelState(state);
+      const parsed = parseOverrides(state.overrides);
+      setLogGlobalLevel(parsed.global || "");
+      setLogSubsystemOverrides(parsed.subsystems);
     });
   }, [send, setDeveloperMode]);
 
@@ -253,6 +374,76 @@ export default function SettingsAdvancedRoute() {
     systemVersion,
     updateTarget,
   ]);
+
+  // Log level handlers
+  const applyLogLevelChanges = useCallback(
+    (global: string, subsystems: SubsystemOverride[]) => {
+      const overrides = buildOverrides(global || null, subsystems);
+      send("setLogLevel", { params: { overrides } }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(
+            m.advanced_logging_error({ error: resp.error.data || m.unknown_error() }),
+          );
+          return;
+        }
+        notifications.success(m.advanced_logging_updated());
+        // Refresh state
+        send("getLogLevelState", {}, (refreshResp: JsonRpcResponse) => {
+          if ("error" in refreshResp) return;
+          setLogLevelState(refreshResp.result as LogLevelState);
+        });
+      });
+    },
+    [send],
+  );
+
+  const handleGlobalLevelChange = useCallback(
+    (level: string) => {
+      setLogGlobalLevel(level);
+      applyLogLevelChanges(level, logSubsystemOverrides);
+    },
+    [applyLogLevelChanges, logSubsystemOverrides],
+  );
+
+  const handleAddSubsystemOverride = useCallback(() => {
+    if (!newSubsystem.trim()) return;
+    const subsystem = newSubsystem.trim().toLowerCase();
+    // Check if already exists
+    if (logSubsystemOverrides.some(s => s.subsystem === subsystem)) {
+      notifications.error(m.advanced_logging_subsystem_exists());
+      return;
+    }
+    const newOverrides = [...logSubsystemOverrides, { subsystem, level: newSubsystemLevel }];
+    setLogSubsystemOverrides(newOverrides);
+    setNewSubsystem("");
+    applyLogLevelChanges(logGlobalLevel, newOverrides);
+  }, [
+    newSubsystem,
+    newSubsystemLevel,
+    logSubsystemOverrides,
+    logGlobalLevel,
+    applyLogLevelChanges,
+  ]);
+
+  const handleRemoveSubsystemOverride = useCallback(
+    (subsystem: string) => {
+      const newOverrides = logSubsystemOverrides.filter(s => s.subsystem !== subsystem);
+      setLogSubsystemOverrides(newOverrides);
+      applyLogLevelChanges(logGlobalLevel, newOverrides);
+    },
+    [logSubsystemOverrides, logGlobalLevel, applyLogLevelChanges],
+  );
+
+  const handleSubsystemLevelChange = useCallback(
+    (subsystem: string, level: string) => {
+      const newOverrides = logSubsystemOverrides.map(s =>
+        s.subsystem === subsystem ? { ...s, level } : s,
+      );
+      setLogSubsystemOverrides(newOverrides);
+      applyLogLevelChanges(logGlobalLevel, newOverrides);
+    },
+    [logSubsystemOverrides, logGlobalLevel, applyLogLevelChanges],
+  );
 
   return (
     <div className="space-y-4">
@@ -496,6 +687,156 @@ export default function SettingsAdvancedRoute() {
                 text={m.advanced_download_diagnostics_button()}
               />
             </SettingsItem>
+
+            {/* Logging Configuration */}
+            <div className="space-y-4 pt-2">
+              <SettingsItem
+                title={m.advanced_logging_title()}
+                description={m.advanced_logging_description()}
+              />
+
+              {logLevelState && (
+                <div className="space-y-4">
+                  {/* Global Log Level */}
+                  <SelectMenuBasic
+                    label={m.advanced_logging_global_level()}
+                    options={[
+                      { value: "", label: m.advanced_logging_level_default() },
+                      ...(logLevelState.availableLevels.map(level => ({
+                        value: level,
+                        label: getLevelLabel(level),
+                      })) || []),
+                    ]}
+                    value={logGlobalLevel}
+                    onChange={e => handleGlobalLevelChange(e.target.value)}
+                  />
+
+                  {/* Subsystem Overrides */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      {m.advanced_logging_overrides()}
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {m.advanced_logging_overrides_description()}
+                    </p>
+
+                    {/* Current overrides as tags */}
+                    {logSubsystemOverrides.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {logSubsystemOverrides.map(override => (
+                          <div
+                            key={override.subsystem}
+                            className={clsx(
+                              "flex items-center gap-1 rounded-md px-2 py-1",
+                              "bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+                              "border border-blue-200 dark:border-blue-700",
+                            )}
+                          >
+                            <span className="font-mono text-xs font-medium">
+                              {override.subsystem}
+                            </span>
+                            <span className="text-blue-400">:</span>
+                            <select
+                              className={clsx(
+                                "cursor-pointer appearance-none border-none bg-transparent text-xs font-semibold focus:outline-none",
+                                getLevelColorClass(override.level),
+                              )}
+                              value={override.level}
+                              onChange={e =>
+                                handleSubsystemLevelChange(override.subsystem, e.target.value)
+                              }
+                            >
+                              {logLevelState.availableLevels.map(level => (
+                                <option key={level} value={level}>
+                                  {level}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSubsystemOverride(override.subsystem)}
+                              className={clsx(
+                                "ml-1 rounded-full p-0.5 hover:bg-blue-200 dark:hover:bg-blue-800",
+                                "text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200",
+                              )}
+                              aria-label={`Remove ${override.subsystem} override`}
+                            >
+                              <svg
+                                className="h-3 w-3"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add new override */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <select
+                        className={clsx(
+                          "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs dark:border-slate-600 dark:bg-slate-800",
+                          "focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none",
+                        )}
+                        value={newSubsystem}
+                        onChange={e => setNewSubsystem(e.target.value)}
+                      >
+                        <option value="">{m.advanced_logging_select_subsystem()}</option>
+                        {logLevelState.subsystems
+                          .filter(s => !logSubsystemOverrides.some(o => o.subsystem === s))
+                          .map(subsystem => (
+                            <option key={subsystem} value={subsystem}>
+                              {subsystem}
+                            </option>
+                          ))}
+                      </select>
+                      <select
+                        className={clsx(
+                          "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs dark:border-slate-600 dark:bg-slate-800",
+                          "focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none",
+                        )}
+                        value={newSubsystemLevel}
+                        onChange={e => setNewSubsystemLevel(e.target.value)}
+                      >
+                        {logLevelState.availableLevels.map(level => (
+                          <option key={level} value={level}>
+                            {level}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="SM"
+                        theme="light"
+                        text={m.advanced_logging_add_override()}
+                        disabled={!newSubsystem}
+                        onClick={handleAddSubsystemOverride}
+                      />
+                    </div>
+
+                    {/* Current config string (read-only) */}
+                    {currentOverrides && (
+                      <div className="pt-2">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {m.advanced_logging_current_config()}:{" "}
+                          <code className="font-mono text-xs text-slate-700 dark:text-slate-300">
+                            {currentOverrides || m.advanced_logging_level_default()}
+                          </code>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </NestedSettingsGroup>
         )}
       </div>
