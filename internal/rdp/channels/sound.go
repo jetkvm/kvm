@@ -7,11 +7,10 @@ import (
 	"sync/atomic"
 )
 
-// RDPSND implements the RDP Audio Output Virtual Channel Extension.
-// This is a static virtual channel implementation for maximum compatibility.
-// Optimized for low-latency audio streaming from HDMI capture to RDP client.
+// RDPSND implements MS-RDPEA (Audio Output Virtual Channel Extension).
+// Static virtual channel for maximum compatibility.
 
-// RDPSND PDU types.
+// RDPSND PDU types (MS-RDPEA 2.2.2).
 const (
 	SNDCClose       = 0x01
 	SNDCWave        = 0x02 // Audio data (legacy)

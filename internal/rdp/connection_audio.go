@@ -1,5 +1,7 @@
 package rdp
 
+// Audio channel wiring: RDPSND (MS-RDPEA) and CLIPRDR (MS-RDPECLIP).
+
 import (
 	"github.com/jetkvm/kvm/internal/rdp/channels"
 )
@@ -66,8 +68,8 @@ func (c *Connection) startAudioStream() {
 
 func (c *Connection) audioStreamLoop() {
 	defer func() {
-		if c.server.deps.Audio != nil {
-			c.server.deps.Audio.UnsubscribeAudio()
+		if c.server.deps.Audio != nil && c.audioChan != nil {
+			c.server.deps.Audio.UnsubscribeAudio(c.audioChan)
 		}
 	}()
 

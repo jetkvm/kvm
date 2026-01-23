@@ -8,8 +8,8 @@ import (
 	"github.com/jetkvm/kvm/internal/rdp/protocol"
 )
 
-// RDP Dynamic Virtual Channel (DVC) and static channel management.
-// This file contains all channel initialization, data routing, and GFX setup.
+// Dynamic Virtual Channel (MS-RDPEDYC) and static channel management.
+// Initializes RDPGFX (MS-RDPEGFX), AUDIN (MS-RDPEAI), camera (MS-RDPECAM).
 
 func (c *Connection) initDynamicChannels() error {
 	// Find static channel IDs
@@ -259,8 +259,8 @@ func (c *Connection) checkGFXReadinessAndFallback() {
 			if !c.gfxSupported.Load() {
 				c.server.deps.Logger.Info().Msg("RDP: RDPGFX not supported, falling back to bitmap updates")
 				if c.server.deps.Video != nil {
-					jpegChan := c.server.deps.Video.SubscribeJPEG()
-					c.startBitmapStreaming(jpegChan)
+					c.jpegChan = c.server.deps.Video.SubscribeJPEG()
+					c.startBitmapStreaming()
 				}
 			}
 			return

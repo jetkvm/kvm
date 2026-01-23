@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-// Bitmap streaming goroutines for RDP connections.
-// This file contains the streaming loops for bitmap mode (non-RDPGFX clients).
+// Bitmap streaming via MS-RDPBCGR (non-RDPGFX fallback for older clients).
 
 // startBitmapStreaming starts streaming bitmap updates when RDPGFX is not available.
 // This uses RGA hardware YUV→BGRX conversion for maximum performance.
-func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
+// The caller must have stored the JPEG channel in c.jpegChan before calling.
+func (c *Connection) startBitmapStreaming() {
 	c.server.deps.Logger.Info().Msg("RDP: starting bitmap streaming")
 
 	// Start video capture if not already started
@@ -28,7 +28,7 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start JPEG encoder")
 			} else {
 				c.server.deps.Logger.Info().Msg("RDP: using JPEG fallback for bitmap mode")
-				c.startJPEGBitmapStreaming(jpegChan)
+				c.startJPEGBitmapStreaming()
 				return
 			}
 		} else {
@@ -36,8 +36,14 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 		}
 	}
 
-	// Subscribe to YUV422 frames (misnamed rgbChan for historical reasons)
-	rgbChan := c.server.deps.Video.SubscribeRGB()
+	// RGB path taken - unsubscribe unused JPEG channel to prevent resource leak
+	if c.jpegChan != nil && c.server.deps.Video != nil {
+		c.server.deps.Video.UnsubscribeJPEG(c.jpegChan)
+		c.jpegChan = nil
+	}
+
+	// Subscribe to RGB frames and store for cleanup
+	c.rgbChan = c.server.deps.Video.SubscribeRGB()
 
 	go func() {
 		defer func() {
@@ -47,6 +53,11 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 					Str("stack", string(debug.Stack())).
 					Str("remote", c.RemoteAddr()).
 					Msg("RDP: RGB bitmap streaming goroutine panicked")
+			}
+			// Cleanup subscription on exit
+			if c.rgbChan != nil && c.server.deps.Video != nil {
+				c.server.deps.Video.UnsubscribeRGB(c.rgbChan)
+				c.rgbChan = nil
 			}
 		}()
 
@@ -62,7 +73,7 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 				fps := float64(frameCount) / elapsed
 				c.server.deps.Logger.Debug().Int("framesSent", frameCount).Float64("avgFps", fps).Msg("RDP: RGB bitmap streaming stopped")
 				return
-			case frame := <-rgbChan:
+			case frame := <-c.rgbChan:
 				if c.closed.Load() {
 					continue
 				}
@@ -114,7 +125,8 @@ func (c *Connection) startBitmapStreaming(jpegChan <-chan []byte) {
 }
 
 // startJPEGBitmapStreaming is the fallback for when RGA is not available.
-func (c *Connection) startJPEGBitmapStreaming(jpegChan <-chan []byte) {
+// Uses c.jpegChan which must be set before calling.
+func (c *Connection) startJPEGBitmapStreaming() {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -123,6 +135,11 @@ func (c *Connection) startJPEGBitmapStreaming(jpegChan <-chan []byte) {
 					Str("stack", string(debug.Stack())).
 					Str("remote", c.RemoteAddr()).
 					Msg("RDP: JPEG bitmap streaming goroutine panicked")
+			}
+			// Cleanup subscription on exit
+			if c.jpegChan != nil && c.server.deps.Video != nil {
+				c.server.deps.Video.UnsubscribeJPEG(c.jpegChan)
+				c.jpegChan = nil
 			}
 		}()
 
@@ -136,7 +153,7 @@ func (c *Connection) startJPEGBitmapStreaming(jpegChan <-chan []byte) {
 				fps := float64(frameCount) / elapsed
 				c.server.deps.Logger.Debug().Int("framesSent", frameCount).Float64("avgFps", fps).Msg("RDP: JPEG bitmap streaming stopped")
 				return
-			case frame := <-jpegChan:
+			case frame := <-c.jpegChan:
 				if c.closed.Load() {
 					continue
 				}
