@@ -13,10 +13,8 @@ import (
 	"github.com/jetkvm/kvm/internal/rdp/protocol"
 )
 
-// vcPDUPool reduces allocations for Virtual Channel PDU data.
-// vcPDUPool provides pooled buffers for virtual channel PDUs.
-// Audio packets can be up to 4096 bytes + headers, so we use 8KB to avoid fallback allocations.
-// This pool is used by sendStaticChannelDataHotPath for zero-allocation hot path.
+// vcPDUPool provides pooled buffers for virtual channel PDUs per MS-RDPBCGR 2.2.6.1.
+// Audio packets can reach 4096 bytes + headers, so 8KB avoids fallback allocations.
 var vcPDUPool = sync.Pool{
 	New: func() any {
 		buf := make([]byte, 8192)

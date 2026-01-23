@@ -124,13 +124,10 @@ func (c *CgoSource) connectOutput() error {
 }
 
 func (c *CgoSource) connectInput() error {
-	c.logger.Warn().Str("device", c.alsaDevice).Msg("DEBUG: connectInput ENTER")
-
 	if err := os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice); err != nil {
-		c.logger.Warn().Err(err).Str("device", c.alsaDevice).Msg("Failed to set ALSA_PLAYBACK_DEVICE")
+		c.logger.Warn().Err(err).Str("device", c.alsaDevice).Msg("failed to set ALSA_PLAYBACK_DEVICE")
 	}
 
-	c.logger.Warn().Msg("DEBUG: calling update_audio_decoder_constants")
 	C.update_audio_decoder_constants(
 		C.uchar(1), // Mono for USB audio gadget
 		C.ushort(1500),
@@ -139,18 +136,15 @@ func (c *CgoSource) connectInput() error {
 		C.uint(500000),
 		C.uchar(c.config.BufferPeriods),
 	)
-	c.logger.Warn().Msg("DEBUG: update_audio_decoder_constants completed")
 
-	c.logger.Warn().Msg("DEBUG: calling jetkvm_audio_playback_init - NATIVE INIT")
 	rc := C.jetkvm_audio_playback_init()
-	c.logger.Warn().Int("rc", int(rc)).Msg("DEBUG: jetkvm_audio_playback_init returned")
 	if rc != 0 {
-		c.logger.Error().Int("rc", int(rc)).Msg("Failed to initialize audio playback")
+		c.logger.Error().Int("rc", int(rc)).Msg("failed to initialize audio playback")
 		return fmt.Errorf("jetkvm_audio_playback_init failed: %d", rc)
 	}
 
 	c.connected = true
-	c.logger.Warn().Msg("DEBUG: connectInput EXIT success")
+	c.logger.Debug().Str("device", c.alsaDevice).Msg("audio input connected")
 	return nil
 }
 
@@ -178,6 +172,7 @@ func (c *CgoSource) Disconnect() {
 	}
 
 	c.connected = false
+	c.logger.Debug().Str("device", c.alsaDevice).Msg("audio disconnected")
 }
 
 func (c *CgoSource) IsConnected() bool {

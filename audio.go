@@ -155,44 +155,34 @@ func startOutputAudioUnderMutex(alsaOutputDevice string) error {
 }
 
 func startInputAudioUnderMutex(alsaPlaybackDevice string) error {
-	audioLogger.Warn().Str("device", alsaPlaybackDevice).Msg("DEBUG: startInputAudioUnderMutex ENTER")
-
 	oldRelay := inputRelay.Swap(nil)
 	oldSource := inputSource.Swap(nil)
 
 	if oldRelay != nil {
-		audioLogger.Warn().Msg("DEBUG: stopping old input relay")
 		oldRelay.Stop()
 	}
 	if oldSource != nil {
-		audioLogger.Warn().Msg("DEBUG: disconnecting old input source")
 		(*oldSource).Disconnect()
 	}
 
-	audioLogger.Warn().Str("device", alsaPlaybackDevice).Msg("DEBUG: creating NewCgoInputSource")
 	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
-	audioLogger.Warn().Msg("DEBUG: creating NewInputRelay")
 	newRelay := audio.NewInputRelay()
 
 	// Connect the source to initialize ALSA playback device
-	audioLogger.Warn().Msg("DEBUG: calling newSource.Connect() - NATIVE CODE AHEAD")
 	if err := newSource.Connect(); err != nil {
-		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to connect input source")
+		audioLogger.Error().Err(err).Str("device", alsaPlaybackDevice).Msg("failed to connect input source")
 		return err
 	}
-	audioLogger.Warn().Msg("DEBUG: newSource.Connect() completed successfully")
 
-	audioLogger.Warn().Msg("DEBUG: calling newRelay.Start()")
 	if err := newRelay.Start(); err != nil {
-		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to start input relay")
+		audioLogger.Error().Err(err).Str("device", alsaPlaybackDevice).Msg("failed to start input relay")
 		newSource.Disconnect()
 		return err
 	}
-	audioLogger.Warn().Msg("DEBUG: newRelay.Start() completed successfully")
 
 	inputSource.Swap(&newSource)
 	inputRelay.Swap(newRelay)
-	audioLogger.Warn().Msg("DEBUG: startInputAudioUnderMutex EXIT success")
+	audioLogger.Debug().Str("device", alsaPlaybackDevice).Msg("audio input started")
 	return nil
 }
 
@@ -476,4 +466,60 @@ func processInputPacket(opusData []byte) error {
 	}
 
 	return nil
+}
+
+// Audio input failure tracking for automatic recovery.
+// Uses atomic operations to avoid mutex overhead on the hot path.
+var (
+	audioInputFailures      atomic.Int32
+	audioInputRecovering    atomic.Bool
+	audioInputFailThreshold int32 = 5 // Trigger recovery after 5 consecutive failures
+)
+
+// WriteInputPCM writes raw PCM audio data to the input audio device (USB audio gadget).
+// This is the hot path for RDP audio input - optimized for minimal overhead.
+// Format: 16-bit signed PCM, mono, 48kHz.
+func WriteInputPCM(pcmData []byte) error {
+	// Fast path: direct write to ALSA without locks or connection checks
+	err := audio.WritePCM(pcmData)
+	if err == nil {
+		// Success - reset failure counter only if non-zero (avoids cache line bounce)
+		if audioInputFailures.Load() != 0 {
+			audioInputFailures.Store(0)
+		}
+		return nil
+	}
+
+	// Slow path: failure handling
+	failures := audioInputFailures.Add(1)
+	if failures >= audioInputFailThreshold && audioInputRecovering.CompareAndSwap(false, true) {
+		// Trigger async recovery - don't block the audio path
+		go recoverAudioInput()
+	}
+
+	return err
+}
+
+// recoverAudioInput attempts to reconnect the audio input device.
+// Called asynchronously when consecutive failures exceed threshold.
+func recoverAudioInput() {
+	defer audioInputRecovering.Store(false)
+
+	audioLogger.Warn().Int32("failures", audioInputFailures.Load()).Msg("audio input: triggering recovery")
+
+	// Disconnect and reconnect the input source
+	inputSourceMutex.Lock()
+	source := inputSource.Load()
+	if source != nil && *source != nil {
+		(*source).Disconnect()
+		if err := (*source).Connect(); err != nil {
+			audioLogger.Error().Err(err).Msg("audio input: recovery failed")
+			inputSourceMutex.Unlock()
+			return
+		}
+	}
+	inputSourceMutex.Unlock()
+
+	audioInputFailures.Store(0)
+	audioLogger.Info().Msg("audio input: recovery successful")
 }

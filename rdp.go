@@ -1,16 +1,11 @@
-// RDP Server Bridge
-//
-// This file provides the bridge between the kvm package and the internal/rdp package.
-// It implements the dependency interfaces and provides initialization functions.
-
 package kvm
 
 import (
 	"crypto/tls"
 	"net"
 	"sync"
+	"sync/atomic"
 
-	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/camera"
 	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/keyboard"
@@ -39,7 +34,6 @@ func GetRDPServer() *rdp.Server {
 	return rdpServer
 }
 
-// rdpConfigAdapter adapts kvm config to rdp.ConfigProvider interface.
 type rdpConfigAdapter struct{}
 
 func (a *rdpConfigAdapter) GetRDPEnabled() bool {
@@ -94,7 +88,6 @@ func (a *rdpConfigAdapter) GetRDPDomain() string {
 	return config.RDPDomain
 }
 
-// rdpHIDAdapter adapts HID RPC calls to rdp.HIDProvider interface.
 type rdpHIDAdapter struct{}
 
 func (a *rdpHIDAdapter) KeypressReport(hidCode uint8, pressed bool) error {
@@ -110,12 +103,10 @@ func (a *rdpHIDAdapter) WheelReport(vertical, horizontal int8) error {
 }
 
 func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
-	// Check text size limit
 	if len(text) > keyboard.MaxClipboardSize {
-		return nil // Silently ignore oversized clipboard
+		return nil
 	}
 
-	// Get clipboard mode and target OS from config
 	mode := keyboard.ClipboardMode(config.RDPClipboardMode)
 	if mode == "" {
 		mode = keyboard.ClipboardModeText
@@ -125,10 +116,9 @@ func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
 		targetOS = keyboard.TargetOSWindows
 	}
 
-	// Prepare clipboard text based on mode (handles encoding if needed)
 	preparedText, encoded := keyboard.PrepareClipboardText([]byte(text), mode, targetOS)
 	if preparedText == "" {
-		return nil // Nothing to type (binary content in text mode)
+		return nil
 	}
 
 	if encoded {
@@ -137,26 +127,22 @@ func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
 			Str("targetOS", string(targetOS)).
 			Int("originalLen", len(text)).
 			Int("encodedLen", len(preparedText)).
-			Msg("RDP: clipboard content encoded for typing")
+			Msg("clipboard content encoded")
 	}
 
-	// Get configurable delay
 	totalDelay := config.RDPPasteDelayMs
 	if totalDelay < 0 {
 		totalDelay = 0
 	}
 	pressDelay, releaseDelay := keyboard.ComputeDelays(totalDelay)
 
-	// Convert text to keyboard macro steps using shared keyboard package
 	steps, skipped := keyboard.TextToMacroSteps(preparedText, "en-US", pressDelay, releaseDelay)
 	if len(steps) == 0 {
 		return nil
 	}
 
 	if skipped > 0 {
-		rdpLogger.Debug().
-			Int("skipped", skipped).
-			Msg("RDP: some characters skipped during paste")
+		rdpLogger.Debug().Int("skipped", skipped).Msg("characters skipped during paste")
 	}
 
 	return rpcExecuteKeyboardMacro(steps)
@@ -170,10 +156,8 @@ func (a *rdpHIDAdapter) CancelKeyboardMacro() {
 	cancelKeyboardMacro()
 }
 
-// rdpVideoAdapter adapts video capture to rdp.VideoProvider interface.
 type rdpVideoAdapter struct{}
 
-// Global video subscriber management for RDP
 var rdpVideoSubscribers struct {
 	mu   sync.RWMutex
 	subs []chan []byte
@@ -195,28 +179,22 @@ func (a *rdpVideoAdapter) StartVideo() error {
 }
 
 func (a *rdpVideoAdapter) StopVideo() error {
-	// Video is shared with WebRTC, so we don't stop it when RDP disconnects.
-	// The native system will stop video automatically when there are no active sessions.
+	// Video is shared with WebRTC - native layer manages lifecycle
 	return nil
 }
 
 func (a *rdpVideoAdapter) SubscribeH264() <-chan []byte {
-	ch := make(chan []byte, 10) // Buffered channel for frames
-
+	ch := make(chan []byte, 10)
 	rdpVideoSubscribers.mu.Lock()
 	rdpVideoSubscribers.subs = append(rdpVideoSubscribers.subs, ch)
 	rdpVideoSubscribers.mu.Unlock()
-
 	return ch
 }
 
 func (a *rdpVideoAdapter) UnsubscribeH264() {
-	// Clean up would need more context about which channel to remove
-	// For now, this is a no-op - in a real implementation we'd track the channel
 }
 
 // BroadcastRDPH264Frame sends an H.264 frame to all RDP subscribers.
-// This should be called from native.go's OnVideoFrameReceived.
 func BroadcastRDPH264Frame(frame []byte) {
 	rdpVideoSubscribers.mu.RLock()
 	defer rdpVideoSubscribers.mu.RUnlock()
@@ -225,29 +203,24 @@ func BroadcastRDPH264Frame(frame []byte) {
 		select {
 		case ch <- frame:
 		default:
-			// Channel full, drop frame
 		}
 	}
 }
 
-// Global JPEG video subscriber management for RDP bitmap mode
 var rdpJPEGSubscribers struct {
 	mu   sync.RWMutex
 	subs []chan []byte
 }
 
 func (a *rdpVideoAdapter) SubscribeJPEG() <-chan []byte {
-	ch := make(chan []byte, 5) // Smaller buffer for JPEG (lower rate)
-
+	ch := make(chan []byte, 5)
 	rdpJPEGSubscribers.mu.Lock()
 	rdpJPEGSubscribers.subs = append(rdpJPEGSubscribers.subs, ch)
 	rdpJPEGSubscribers.mu.Unlock()
-
 	return ch
 }
 
 func (a *rdpVideoAdapter) UnsubscribeJPEG() {
-	// Clean up would need more context about which channel to remove
 }
 
 func (a *rdpVideoAdapter) StartJPEGEncoder(quality int) error {
@@ -265,7 +238,6 @@ func (a *rdpVideoAdapter) StopJPEGEncoder() error {
 }
 
 // BroadcastRDPJPEGFrame sends a JPEG frame to all RDP JPEG subscribers.
-// Used for bitmap mode fallback when RDPGFX is not supported.
 func BroadcastRDPJPEGFrame(frame []byte) {
 	rdpJPEGSubscribers.mu.RLock()
 	defer rdpJPEGSubscribers.mu.RUnlock()
@@ -274,29 +246,24 @@ func BroadcastRDPJPEGFrame(frame []byte) {
 		select {
 		case ch <- frame:
 		default:
-			// Channel full, drop frame
 		}
 	}
 }
 
-// Global RGB video subscriber management for RDP bitmap mode (RGA hardware acceleration)
 var rdpRGBSubscribers struct {
 	mu   sync.RWMutex
 	subs []chan rdp.RGBFrame
 }
 
 func (a *rdpVideoAdapter) SubscribeRGB() <-chan rdp.RGBFrame {
-	ch := make(chan rdp.RGBFrame, 5) // Buffered for non-blocking delivery
-
+	ch := make(chan rdp.RGBFrame, 5)
 	rdpRGBSubscribers.mu.Lock()
 	rdpRGBSubscribers.subs = append(rdpRGBSubscribers.subs, ch)
 	rdpRGBSubscribers.mu.Unlock()
-
 	return ch
 }
 
 func (a *rdpVideoAdapter) UnsubscribeRGB() {
-	// Clean up would need more context about which channel to remove
 }
 
 func (a *rdpVideoAdapter) StartRGBEncoder() error {
@@ -317,11 +284,12 @@ func (a *rdpVideoAdapter) RequestKeyframe() {
 	if nativeInstance == nil {
 		return
 	}
-	_ = nativeInstance.VideoRequestKeyframe()
+	if err := nativeInstance.VideoRequestKeyframe(); err != nil {
+		rdpLogger.Debug().Err(err).Msg("keyframe request failed")
+	}
 }
 
 // BroadcastRDPRGBFrame sends a video frame to all RDP RGB subscribers.
-// The format indicates whether data is BGRX (from RGA hardware) or YUV422 (needs conversion).
 func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrameFormat) {
 	rdpRGBSubscribers.mu.RLock()
 	defer rdpRGBSubscribers.mu.RUnlock()
@@ -337,15 +305,12 @@ func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrame
 		select {
 		case ch <- frame:
 		default:
-			// Channel full, drop frame
 		}
 	}
 }
 
-// rdpAudioAdapter adapts audio to rdp.AudioProvider interface.
 type rdpAudioAdapter struct{}
 
-// Global audio subscriber management for RDP
 var rdpAudioSubscribers struct {
 	mu   sync.RWMutex
 	subs []chan []byte
@@ -360,21 +325,16 @@ func (a *rdpAudioAdapter) Disconnect() {
 }
 
 func (a *rdpAudioAdapter) SubscribeAudio() <-chan []byte {
-	ch := make(chan []byte, 30) // Buffered channel for audio
-
+	ch := make(chan []byte, 30)
 	rdpAudioSubscribers.mu.Lock()
 	rdpAudioSubscribers.subs = append(rdpAudioSubscribers.subs, ch)
 	rdpAudioSubscribers.mu.Unlock()
-
 	return ch
 }
 
 func (a *rdpAudioAdapter) UnsubscribeAudio() {
-	// Clean up would need more context
 }
 
-// monoBufferPool reduces allocations for stereo→mono conversion.
-// Max size: 480 frames * 2 bytes = 960 bytes (10ms at 48kHz)
 var monoBufferPool = sync.Pool{
 	New: func() interface{} {
 		buf := make([]byte, 960)
@@ -383,50 +343,36 @@ var monoBufferPool = sync.Pool{
 }
 
 func (a *rdpAudioAdapter) PlayAudio(data []byte) error {
-	// Forward RDP client microphone audio to USB audio gadget
-	// AUDIN sends 16-bit PCM stereo (4 bytes/frame), USB gadget expects mono (2 bytes/frame)
-	// Convert stereo to mono by averaging left and right channels
-
+	// AUDIN channel sends 16-bit stereo PCM per MS-RDPEAI 2.2.3.1
+	// USB audio gadget expects mono - convert by averaging L+R
 	if len(data) < 4 {
 		return nil
 	}
 
-	// Get a pooled buffer for mono output
 	bufPtr := monoBufferPool.Get().(*[]byte)
 	monoBuf := *bufPtr
 
-	stereoFrames := len(data) / 4 // 4 bytes per stereo frame (2 channels * 2 bytes)
-	monoBytes := stereoFrames * 2 // 2 bytes per mono sample
+	stereoFrames := len(data) / 4
+	monoBytes := stereoFrames * 2
 
-	// Ensure buffer is large enough (should always be true for typical 10ms packets)
 	if monoBytes > cap(monoBuf) {
 		monoBuf = make([]byte, monoBytes)
 	} else {
 		monoBuf = monoBuf[:monoBytes]
 	}
 
-	// Convert stereo to mono: average L and R channels
-	// Input: L0_lo L0_hi R0_lo R0_hi L1_lo L1_hi R1_lo R1_hi ...
-	// Output: M0_lo M0_hi M1_lo M1_hi ... where M = (L + R) / 2
 	for i := 0; i < stereoFrames; i++ {
 		srcIdx := i * 4
 		dstIdx := i * 2
-
-		// Read L and R as 16-bit little-endian signed integers
 		left := int16(data[srcIdx]) | int16(data[srcIdx+1])<<8
 		right := int16(data[srcIdx+2]) | int16(data[srcIdx+3])<<8
-
-		// Average to mono (with proper rounding)
 		mono := int16((int32(left) + int32(right)) / 2)
-
-		// Write mono sample as little-endian
 		monoBuf[dstIdx] = byte(mono)
 		monoBuf[dstIdx+1] = byte(mono >> 8)
 	}
 
-	err := audio.WritePCM(monoBuf)
+	err := WriteInputPCM(monoBuf)
 
-	// Return buffer to pool
 	*bufPtr = monoBuf[:cap(monoBuf)]
 	monoBufferPool.Put(bufPtr)
 
@@ -434,13 +380,10 @@ func (a *rdpAudioAdapter) PlayAudio(data []byte) error {
 }
 
 func (a *rdpAudioAdapter) EnableAudioInput() error {
-	// Enable audio input when RDP client's AUDIN channel becomes ready
-	// This automatically starts the USB audio gadget playback for mic passthrough
 	return SetAudioInputEnabled(true)
 }
 
 // BroadcastRDPAudio sends audio data to all RDP audio subscribers.
-// This should be called from the HDMI audio capture system.
 func BroadcastRDPAudio(data []byte) {
 	rdpAudioSubscribers.mu.RLock()
 	defer rdpAudioSubscribers.mu.RUnlock()
@@ -449,26 +392,25 @@ func BroadcastRDPAudio(data []byte) {
 		select {
 		case ch <- data:
 		default:
-			// Channel full, drop audio
 		}
 	}
 }
 
-// rdpCameraAdapter adapts UVC camera to rdp.CameraProvider interface.
 type rdpCameraAdapter struct{}
 
-// Camera pixel format codes (MS-RDPECAM format identifiers, must match internal/rdp/channels/camera.go)
+// MS-RDPECAM pixel format codes
 const (
-	rdpCamPixelFormatH264  = 0x01 // H.264 video
+	rdpCamPixelFormatH264  = 0x01 // H.264
 	rdpCamPixelFormatMJPEG = 0x02 // Motion JPEG
 	rdpCamPixelFormatYUY2  = 0x03 // YUY2 (4:2:2)
 	rdpCamPixelFormatNV12  = 0x04 // NV12 (4:2:0)
 	rdpCamPixelFormatI420  = 0x05 // I420/YV12
 )
 
-// cameraFrameCount tracks frames for throttled logging
-var cameraFrameCount uint32
-var cameraH264WarningLogged bool
+var (
+	cameraFrameCount        atomic.Uint32
+	cameraH264WarningLogged atomic.Bool
+)
 
 func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFormat uint32) error {
 	mgr := cameraManagerPtr.Load()
@@ -476,41 +418,31 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 		return nil
 	}
 
-	// Route based on pixel format
 	switch pixelFormat {
 	case rdpCamPixelFormatH264:
-		// Pass H.264 directly to camera manager
-		// Note: RV1106 has NO VDEC hardware. If USB host wants MJPEG but RDP client
-		// sends H.264, we cannot transcode. The camera channel should have negotiated
-		// MJPEG format during StartStreamsRequest to avoid this situation.
 		currentFmt := mgr.GetCurrentFormat()
 		if currentFmt != nil && currentFmt.Codec == camera.CodecMJPEG {
-			// Log warning (throttled) - this shouldn't happen if format negotiation worked
-			cameraFrameCount++
-			if !cameraH264WarningLogged || cameraFrameCount%300 == 0 {
+			count := cameraFrameCount.Add(1)
+			if !cameraH264WarningLogged.Load() || count%300 == 0 {
 				rdpLogger.Warn().
 					Uint32("width", width).
 					Uint32("height", height).
-					Uint32("frameCount", cameraFrameCount).
-					Msg("RDP: H.264 frame received but host wants MJPEG (RV1106 has no VDEC, cannot transcode)")
-				cameraH264WarningLogged = true
+					Uint32("frameCount", count).
+					Msg("RDP: H.264 frame dropped - host wants MJPEG, no hardware transcoder")
+				cameraH264WarningLogged.Store(true)
 			}
-			return nil // Drop frame - cannot transcode without VDEC
+			return nil
 		}
 		mgr.HandleCameraH264Frame(data)
 	case rdpCamPixelFormatMJPEG:
-		// RDP sends MJPEG - pass through directly
 		mgr.HandleCameraMjpegFrame(data)
 	default:
-		// NV12, I420, YUY2 need conversion - not currently supported
-		cameraFrameCount++
-		if cameraFrameCount == 1 || cameraFrameCount%300 == 0 {
+		count := cameraFrameCount.Add(1)
+		if count == 1 || count%300 == 0 {
 			rdpLogger.Warn().
 				Uint32("pixelFormat", pixelFormat).
-				Uint32("width", width).
-				Uint32("height", height).
-				Uint32("frameCount", cameraFrameCount).
-				Msg("RDP: camera frame dropped - unsupported pixel format (expected H264 or MJPEG)")
+				Uint32("frameCount", count).
+				Msg("RDP: camera frame dropped - unsupported pixel format")
 		}
 		return nil
 	}
@@ -518,23 +450,13 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 }
 
 func (a *rdpCameraAdapter) IsConnected() bool {
-	// Returns true if UVC gadget is available and ready to receive frames
-	// Note: We don't check IsStreaming() because we want to accept frames
-	// before the host starts capturing - frames will be forwarded when ready
 	mgr := cameraManagerPtr.Load()
-	if mgr == nil {
-		return false
-	}
-	// Check if UVC is initialized and can receive frames
-	// The manager exists and is enabled means we can accept frames
-	return mgr.IsEnabled()
+	return mgr != nil && mgr.IsEnabled()
 }
 
 func (a *rdpCameraAdapter) SetEnabled(enabled bool) {
-	mgr := cameraManagerPtr.Load()
-	if mgr != nil {
+	if mgr := cameraManagerPtr.Load(); mgr != nil {
 		mgr.SetEnabled(enabled)
-		rdpLogger.Debug().Bool("enabled", enabled).Msg("RDP: camera passthrough state changed")
 	}
 }
 
@@ -546,8 +468,6 @@ func (a *rdpCameraAdapter) IsEnabled() bool {
 	return mgr.IsEnabled()
 }
 
-// rdpCameraFormatBridge manages the camera format change subscription bridge.
-// It converts camera.FormatInfo to rdp.CameraFormatInfo in a safe manner.
 type rdpCameraFormatBridge struct {
 	mu       sync.Mutex
 	outChan  chan rdp.CameraFormatInfo
@@ -562,7 +482,6 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 		return nil
 	}
 
-	// Subscribe to the underlying camera manager
 	srcChan := mgr.SubscribeFormatChanges()
 	if srcChan == nil {
 		return nil
@@ -571,12 +490,10 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 	rdpCameraFormatBridgeInstance.mu.Lock()
 	defer rdpCameraFormatBridgeInstance.mu.Unlock()
 
-	// Stop any existing bridge goroutine
 	if rdpCameraFormatBridgeInstance.stopChan != nil {
 		close(rdpCameraFormatBridgeInstance.stopChan)
 	}
 
-	// Create new channels for this subscription
 	outChan := make(chan rdp.CameraFormatInfo, 4)
 	stopChan := make(chan struct{})
 	rdpCameraFormatBridgeInstance.outChan = outChan
@@ -584,8 +501,11 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 
 	go func() {
 		defer func() {
-			// Safely close outChan - use recover to handle any edge cases
-			defer func() { _ = recover() }()
+			defer func() {
+				if r := recover(); r != nil {
+					rdpLogger.Debug().Interface("panic", r).Msg("camera format bridge cleanup")
+				}
+			}()
 			close(outChan)
 		}()
 
@@ -595,10 +515,8 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 				return
 			case fmt, ok := <-srcChan:
 				if !ok {
-					// Source channel closed
 					return
 				}
-				// Non-blocking send with stop check
 				select {
 				case <-stopChan:
 					return
@@ -625,27 +543,17 @@ func (a *rdpCameraAdapter) UnsubscribeFormatChanges() {
 	rdpCameraFormatBridgeInstance.outChan = nil
 	rdpCameraFormatBridgeInstance.mu.Unlock()
 
-	// Also unsubscribe from the camera manager
-	mgr := cameraManagerPtr.Load()
-	if mgr != nil {
+	if mgr := cameraManagerPtr.Load(); mgr != nil {
 		mgr.UnsubscribeFormatChanges()
 	}
 }
 
-// rdpTLSAdapter provides TLS connection upgrading for RDP with hardware acceleration.
-// Both TLS and CredSSP modes use hardware-accelerated TLS via OpenSSL.
 type rdpTLSAdapter struct {
-	// lastCert tracks the certificate used in the most recent TLS handshake.
-	// This is needed because CredSSP's GetServerCertificate must return the exact
-	// certificate that was used during the TLS handshake for pubKeyAuth computation.
 	lastCert   *tls.Certificate
 	lastCertMu sync.Mutex
 }
 
 func (a *rdpTLSAdapter) UpgradeServerConn(conn net.Conn) (rdp.TLSConn, error) {
-	// Use hardware-accelerated TLS for all RDP connections (TLS and CredSSP).
-	// CredSSP needs the exact certificate used during TLS handshake for pubKeyAuth.
-	// Wrap GetCertificate to capture the certificate for later retrieval.
 	tlsConfig := cryptotls.RDPConfig()
 	tlsConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		cert, err := getCertificate(info)
@@ -668,8 +576,6 @@ func (a *rdpTLSAdapter) HardwareEngine() string {
 }
 
 func (a *rdpTLSAdapter) GetServerCertificate(serverName string) *tls.Certificate {
-	// Return the certificate captured during the most recent TLS handshake.
-	// This ensures we use the exact same certificate the client saw for pubKeyAuth.
 	a.lastCertMu.Lock()
 	cert := a.lastCert
 	a.lastCertMu.Unlock()
@@ -678,28 +584,22 @@ func (a *rdpTLSAdapter) GetServerCertificate(serverName string) *tls.Certificate
 		return cert
 	}
 
-	// Fallback: get certificate using the callback (may not match handshake cert)
-	rdpLogger.Warn().Str("serverName", serverName).Msg("RDP: no captured cert, falling back to GetCertificate callback")
-	hello := &tls.ClientHelloInfo{
-		ServerName: serverName,
-	}
+	rdpLogger.Warn().Str("serverName", serverName).Msg("no captured cert, using fallback")
+	hello := &tls.ClientHelloInfo{ServerName: serverName}
 	cert, err := getCertificate(hello)
 	if err != nil {
-		rdpLogger.Debug().Err(err).Str("serverName", serverName).Msg("RDP: failed to get server certificate")
+		rdpLogger.Debug().Err(err).Msg("failed to get server certificate")
 		return nil
 	}
 	return cert
 }
 
-// initRDPServer initializes and starts the RDP server if enabled.
-// Returns an error if the server fails to start.
 func initRDPServer() error {
 	if !config.RDPEnabled {
-		rdpLogger.Info().Msg("RDP server disabled in configuration")
+		rdpLogger.Info().Msg("RDP server disabled")
 		return nil
 	}
 
-	// Initialize TLS subsystem early to check hardware crypto availability
 	cryptotls.Init()
 
 	server := GetRDPServer()
@@ -725,21 +625,18 @@ func initRDPServer() error {
 	return nil
 }
 
-// BroadcastRDPFrame sends an H.264 frame to all RDP clients.
 func BroadcastRDPFrame(frame []byte) {
 	if rdpServer != nil {
 		rdpServer.BroadcastFrame(frame)
 	}
 }
 
-// UpdateRDPVideoState updates the RDP server with current video resolution.
 func UpdateRDPVideoState(width, height uint16) {
 	if rdpServer != nil {
 		rdpServer.UpdateVideoState(width, height)
 	}
 }
 
-// Compile-time interface checks
 var (
 	_ rdp.ConfigProvider = (*rdpConfigAdapter)(nil)
 	_ rdp.HIDProvider    = (*rdpHIDAdapter)(nil)
