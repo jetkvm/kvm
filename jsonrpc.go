@@ -1518,4 +1518,17 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRDPClipboardMode":    {Func: rpcSetRDPClipboardMode, Params: []string{"mode"}},
 	"setRDPUsername":         {Func: rpcSetRDPUsername, Params: []string{"username"}},
 	"setRDPDomain":           {Func: rpcSetRDPDomain, Params: []string{"domain"}},
+	// RDP file transfer settings
+	"setRDPFileTransferEnabled":  {Func: rpcSetRDPFileTransferEnabled, Params: []string{"enabled"}},
+	"setRDPFileTransferMethod":   {Func: rpcSetRDPFileTransferMethod, Params: []string{"method"}},
+	"setRDPFileTransferPort":     {Func: rpcSetRDPFileTransferPort, Params: []string{"port"}},
+	"setRDPFileTransferMaxMB":      {Func: rpcSetRDPFileTransferMaxMB, Params: []string{"maxMB"}},
+	"setRDPFileTransferTTLSec":     {Func: rpcSetRDPFileTransferTTLSec, Params: []string{"ttlSec"}},
+	"setRDPFileTransferCleanupSec": {Func: rpcSetRDPFileTransferCleanupSec, Params: []string{"cleanupSec"}},
+	"setRDPNetworkCmdWindows":      {Func: rpcSetRDPNetworkCmdWindows, Params: []string{"cmd"}},
+	"setRDPNetworkCmdLinux":      {Func: rpcSetRDPNetworkCmdLinux, Params: []string{"cmd"}},
+	"setRDPNetworkCmdMacOS":      {Func: rpcSetRDPNetworkCmdMacOS, Params: []string{"cmd"}},
+	"setRDPBase64CmdWindows":     {Func: rpcSetRDPBase64CmdWindows, Params: []string{"cmd"}},
+	"setRDPBase64CmdLinux":       {Func: rpcSetRDPBase64CmdLinux, Params: []string{"cmd"}},
+	"setRDPBase64CmdMacOS":       {Func: rpcSetRDPBase64CmdMacOS, Params: []string{"cmd"}},
 }

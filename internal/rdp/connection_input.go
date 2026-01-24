@@ -216,6 +216,21 @@ func (c *Connection) handleClipboardKeys(scancode uint16, pressed bool) bool {
 			// Don't suppress - still forward the key for native copy/cut
 
 		case scancodeV: // Paste
+			// Check for pending files first (file paste takes priority)
+			if c.HasPendingFiles() {
+				c.server.deps.Logger.Debug().Msg("RDP: pasting clipboard files")
+				c.pasteInProgress.Store(true)
+				c.handleFilePaste()
+				return true // Suppress the V key down
+			}
+
+			// If file transfer is in progress, don't paste stale text - wait for transfer
+			if c.clipboardChannel.IsFileTransferInProgress() {
+				c.server.deps.Logger.Debug().Msg("RDP: file transfer in progress, ignoring paste")
+				return true // Suppress the V key - file will be pasted when transfer completes
+			}
+
+			// Then check for text
 			text := c.clipboardChannel.GetClipboardText()
 			if text != nil {
 				c.server.deps.Logger.Debug().

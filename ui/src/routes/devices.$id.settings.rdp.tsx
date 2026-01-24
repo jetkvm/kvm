@@ -19,13 +19,28 @@ interface RDPStateResult {
   audioEnabled: boolean;
   micEnabled: boolean;
   cameraEnabled: boolean;
+  clipboardEnabled: boolean;
+  pasteDelayMs: number;
+  targetOS: string;
+  clipboardMode: string;
   username: string;
   domain: string;
+  // File transfer settings
+  fileTransferEnabled: boolean;
+  fileTransferMethod: string;
+  fileTransferPort: number;
+  fileTransferMaxMB: number;
+  fileTransferTTLSec: number;
+  fileTransferCleanupSec: number;
 }
 
 const RDP_DEFAULTS = {
   port: 3389,
   maxConnections: 3,
+  fileTransferPort: 9000,
+  fileTransferMaxMB: 100,
+  fileTransferTTLSec: 300,
+  fileTransferCleanupSec: 60,
 } as const;
 
 export default function SettingsRDPRoute() {
@@ -43,6 +58,22 @@ export default function SettingsRDPRoute() {
   const [cameraEnabled, setCameraEnabled] = useState<boolean>(false);
   const [username, setUsername] = useState<string>("");
   const [domain, setDomain] = useState<string>("");
+  const [clipboardEnabled, setClipboardEnabled] = useState<boolean>(true);
+  const [pasteDelayMs, setPasteDelayMs] = useState<number>(0);
+  const [targetOS, setTargetOS] = useState<string>("windows");
+  const [clipboardMode, setClipboardMode] = useState<string>("text");
+  const [fileTransferEnabled, setFileTransferEnabled] = useState<boolean>(false);
+  const [fileTransferMethod, setFileTransferMethod] = useState<string>("auto");
+  const [fileTransferPort, setFileTransferPort] = useState<number>(RDP_DEFAULTS.fileTransferPort);
+  const [fileTransferMaxMB, setFileTransferMaxMB] = useState<number>(
+    RDP_DEFAULTS.fileTransferMaxMB,
+  );
+  const [fileTransferTTLSec, setFileTransferTTLSec] = useState<number>(
+    RDP_DEFAULTS.fileTransferTTLSec,
+  );
+  const [fileTransferCleanupSec, setFileTransferCleanupSec] = useState<number>(
+    RDP_DEFAULTS.fileTransferCleanupSec,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [isEditingDomain, setIsEditingDomain] = useState(false);
@@ -67,6 +98,16 @@ export default function SettingsRDPRoute() {
       setAudioEnabled(state.audioEnabled ?? true);
       setMicEnabled(state.micEnabled ?? true);
       setCameraEnabled(state.cameraEnabled ?? false);
+      setClipboardEnabled(state.clipboardEnabled ?? true);
+      setPasteDelayMs(state.pasteDelayMs ?? 0);
+      setTargetOS(state.targetOS || "windows");
+      setClipboardMode(state.clipboardMode || "text");
+      setFileTransferEnabled(state.fileTransferEnabled ?? false);
+      setFileTransferMethod(state.fileTransferMethod || "auto");
+      setFileTransferPort(state.fileTransferPort || RDP_DEFAULTS.fileTransferPort);
+      setFileTransferMaxMB(state.fileTransferMaxMB || RDP_DEFAULTS.fileTransferMaxMB);
+      setFileTransferTTLSec(state.fileTransferTTLSec || RDP_DEFAULTS.fileTransferTTLSec);
+      setFileTransferCleanupSec(state.fileTransferCleanupSec || RDP_DEFAULTS.fileTransferCleanupSec);
       // Only update username/domain if user is not actively editing
       if (!isEditingUsername) {
         setUsername(state.username ?? "");
@@ -219,6 +260,138 @@ export default function SettingsRDPRoute() {
       }
       setDomain(newDomain);
       notifications.success(m.rdp_settings_domain_changed());
+    });
+  };
+
+  const handleClipboardToggle = () => {
+    const newClipboardEnabled = !clipboardEnabled;
+    send("setRDPClipboardEnabled", { enabled: newClipboardEnabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setClipboardEnabled(newClipboardEnabled);
+      notifications.success(m.rdp_settings_clipboard_changed());
+    });
+  };
+
+  const handlePasteDelayChange = (newDelay: number) => {
+    send("setRDPPasteDelayMs", { delayMs: newDelay }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setPasteDelayMs(newDelay);
+      notifications.success(m.rdp_settings_paste_delay_changed());
+    });
+  };
+
+  const handleTargetOSChange = (newTargetOS: string) => {
+    send("setRDPTargetOS", { targetOS: newTargetOS }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setTargetOS(newTargetOS);
+      notifications.success(m.rdp_settings_target_os_changed());
+    });
+  };
+
+  const handleClipboardModeChange = (newMode: string) => {
+    send("setRDPClipboardMode", { mode: newMode }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setClipboardMode(newMode);
+      notifications.success(m.rdp_settings_clipboard_mode_changed());
+    });
+  };
+
+  const handleFileTransferToggle = () => {
+    const newEnabled = !fileTransferEnabled;
+    send("setRDPFileTransferEnabled", { enabled: newEnabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setFileTransferEnabled(newEnabled);
+      notifications.success(m.rdp_settings_file_transfer_changed());
+    });
+  };
+
+  const handleFileTransferMethodChange = (newMethod: string) => {
+    send("setRDPFileTransferMethod", { method: newMethod }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setFileTransferMethod(newMethod);
+      notifications.success(m.rdp_settings_file_transfer_method_changed());
+    });
+  };
+
+  const handleFileTransferPortChange = (newPort: number) => {
+    send("setRDPFileTransferPort", { port: newPort }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setFileTransferPort(newPort);
+      notifications.success(m.rdp_settings_file_transfer_port_changed());
+    });
+  };
+
+  const handleFileTransferMaxMBChange = (newMaxMB: number) => {
+    send("setRDPFileTransferMaxMB", { maxMB: newMaxMB }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setFileTransferMaxMB(newMaxMB);
+      notifications.success(m.rdp_settings_file_transfer_max_size_changed());
+    });
+  };
+
+  const handleFileTransferTTLChange = (newTTL: number) => {
+    send("setRDPFileTransferTTLSec", { ttlSec: newTTL }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setFileTransferTTLSec(newTTL);
+      notifications.success(m.rdp_settings_file_transfer_ttl_changed());
+    });
+  };
+
+  const handleFileTransferCleanupChange = (newCleanup: number) => {
+    send("setRDPFileTransferCleanupSec", { cleanupSec: newCleanup }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setFileTransferCleanupSec(newCleanup);
+      notifications.success(m.rdp_settings_file_transfer_cleanup_changed());
     });
   };
 
@@ -450,6 +623,236 @@ export default function SettingsRDPRoute() {
                     <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
                   </label>
                 </SettingsItem>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
+              <h3 className="mb-3 text-sm font-medium text-slate-900 dark:text-white">
+                {m.rdp_settings_clipboard_title()}
+              </h3>
+
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.rdp_settings_clipboard_title()}
+                  description={m.rdp_settings_clipboard_description()}
+                >
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={clipboardEnabled}
+                      onChange={handleClipboardToggle}
+                      className="peer sr-only"
+                    />
+                    <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+                  </label>
+                </SettingsItem>
+
+                <SettingsItem
+                  title={m.rdp_settings_target_os_title()}
+                  description={m.rdp_settings_target_os_description()}
+                >
+                  <SelectMenuBasic
+                    size="SM"
+                    value={targetOS}
+                    options={[
+                      { value: "windows", label: m.rdp_settings_target_os_windows() },
+                      { value: "linux", label: m.rdp_settings_target_os_linux() },
+                      { value: "macos", label: m.rdp_settings_target_os_macos() },
+                    ]}
+                    onChange={e => handleTargetOSChange(e.target.value)}
+                  />
+                </SettingsItem>
+
+                <SettingsItem
+                  title={m.rdp_settings_clipboard_mode_title()}
+                  description={m.rdp_settings_clipboard_mode_description()}
+                >
+                  <SelectMenuBasic
+                    size="SM"
+                    value={clipboardMode}
+                    options={[
+                      { value: "text", label: m.rdp_settings_clipboard_mode_text() },
+                      {
+                        value: "base64-markers",
+                        label: m.rdp_settings_clipboard_mode_base64_markers(),
+                      },
+                      {
+                        value: "base64-script",
+                        label: m.rdp_settings_clipboard_mode_base64_script(),
+                      },
+                    ]}
+                    onChange={e => handleClipboardModeChange(e.target.value)}
+                  />
+                </SettingsItem>
+
+                <SettingsItem
+                  title={m.rdp_settings_paste_delay_title()}
+                  description={m.rdp_settings_paste_delay_description()}
+                >
+                  <div className="flex items-center gap-2">
+                    <SelectMenuBasic
+                      size="SM"
+                      value={String(pasteDelayMs)}
+                      options={[
+                        { value: "0", label: "0" },
+                        { value: "5", label: "5" },
+                        { value: "10", label: "10" },
+                        { value: "20", label: "20" },
+                        { value: "30", label: "30" },
+                        { value: "50", label: "50" },
+                      ]}
+                      onChange={e => handlePasteDelayChange(parseInt(e.target.value))}
+                    />
+                    <span className="text-sm text-slate-500 dark:text-slate-400">
+                      {m.rdp_settings_paste_delay_unit()}
+                    </span>
+                  </div>
+                </SettingsItem>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
+              <h3 className="mb-3 text-sm font-medium text-slate-900 dark:text-white">
+                {m.rdp_settings_file_transfer_title()}
+              </h3>
+
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.rdp_settings_file_transfer_enable_title()}
+                  description={m.rdp_settings_file_transfer_enable_description()}
+                >
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={fileTransferEnabled}
+                      onChange={handleFileTransferToggle}
+                      className="peer sr-only"
+                    />
+                    <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+                  </label>
+                </SettingsItem>
+
+                {fileTransferEnabled && (
+                  <>
+                    <SettingsItem
+                      title={m.rdp_settings_file_transfer_method_title()}
+                      description={m.rdp_settings_file_transfer_method_description()}
+                    >
+                      <SelectMenuBasic
+                        size="SM"
+                        value={fileTransferMethod}
+                        options={[
+                          { value: "auto", label: m.rdp_settings_file_transfer_method_auto() },
+                          {
+                            value: "network",
+                            label: m.rdp_settings_file_transfer_method_network(),
+                          },
+                          { value: "usb", label: m.rdp_settings_file_transfer_method_usb() },
+                          { value: "base64", label: m.rdp_settings_file_transfer_method_base64() },
+                        ]}
+                        onChange={e => handleFileTransferMethodChange(e.target.value)}
+                      />
+                    </SettingsItem>
+
+                    <SettingsItem
+                      title={m.rdp_settings_file_transfer_port_title()}
+                      description={m.rdp_settings_file_transfer_port_description()}
+                    >
+                      <SelectMenuBasic
+                        size="SM"
+                        value={String(fileTransferPort)}
+                        options={[
+                          {
+                            value: "9000",
+                            label: `9000${fileTransferPort === RDP_DEFAULTS.fileTransferPort ? m.rdp_settings_default_suffix() : ""}`,
+                          },
+                          { value: "9001", label: "9001" },
+                          { value: "9002", label: "9002" },
+                          { value: "8080", label: "8080" },
+                          { value: "8443", label: "8443" },
+                        ]}
+                        onChange={e => handleFileTransferPortChange(parseInt(e.target.value))}
+                      />
+                    </SettingsItem>
+
+                    <SettingsItem
+                      title={m.rdp_settings_file_transfer_max_size_title()}
+                      description={m.rdp_settings_file_transfer_max_size_description()}
+                    >
+                      <div className="flex items-center gap-2">
+                        <SelectMenuBasic
+                          size="SM"
+                          value={String(fileTransferMaxMB)}
+                          options={[
+                            { value: "10", label: "10" },
+                            { value: "50", label: "50" },
+                            {
+                              value: "100",
+                              label: `100${fileTransferMaxMB === RDP_DEFAULTS.fileTransferMaxMB ? m.rdp_settings_default_suffix() : ""}`,
+                            },
+                            { value: "250", label: "250" },
+                            { value: "500", label: "500" },
+                          ]}
+                          onChange={e => handleFileTransferMaxMBChange(parseInt(e.target.value))}
+                        />
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                          {m.rdp_settings_file_transfer_max_size_unit()}
+                        </span>
+                      </div>
+                    </SettingsItem>
+
+                    <SettingsItem
+                      title={m.rdp_settings_file_transfer_ttl_title()}
+                      description={m.rdp_settings_file_transfer_ttl_description()}
+                    >
+                      <div className="flex items-center gap-2">
+                        <SelectMenuBasic
+                          size="SM"
+                          value={String(fileTransferTTLSec)}
+                          options={[
+                            { value: "60", label: "1" },
+                            { value: "120", label: "2" },
+                            {
+                              value: "300",
+                              label: `5${fileTransferTTLSec === RDP_DEFAULTS.fileTransferTTLSec ? m.rdp_settings_default_suffix() : ""}`,
+                            },
+                            { value: "600", label: "10" },
+                            { value: "900", label: "15" },
+                          ]}
+                          onChange={e => handleFileTransferTTLChange(parseInt(e.target.value))}
+                        />
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                          {m.rdp_settings_file_transfer_ttl_unit()}
+                        </span>
+                      </div>
+                    </SettingsItem>
+
+                    <SettingsItem
+                      title={m.rdp_settings_file_transfer_cleanup_title()}
+                      description={m.rdp_settings_file_transfer_cleanup_description()}
+                    >
+                      <div className="flex items-center gap-2">
+                        <SelectMenuBasic
+                          size="SM"
+                          value={String(fileTransferCleanupSec)}
+                          options={[
+                            { value: "30", label: "30" },
+                            {
+                              value: "60",
+                              label: `60${fileTransferCleanupSec === RDP_DEFAULTS.fileTransferCleanupSec ? m.rdp_settings_default_suffix() : ""}`,
+                            },
+                            { value: "120", label: "120" },
+                            { value: "300", label: "300" },
+                          ]}
+                          onChange={e => handleFileTransferCleanupChange(parseInt(e.target.value))}
+                        />
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                          {m.rdp_settings_file_transfer_cleanup_unit()}
+                        </span>
+                      </div>
+                    </SettingsItem>
+                  </>
+                )}
               </div>
             </div>
           </>

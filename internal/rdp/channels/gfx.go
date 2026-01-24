@@ -220,15 +220,20 @@ const (
 // sendGFXData sends GFX PDU data wrapped with ZGFX header.
 // FreeRDP expects ZGFX-wrapped data (runs zgfx_decompress on received data).
 // ZGFX format for uncompressed single segment: [0xE0 descriptor][0x04 flags][raw data]
-// Uses pooled buffers for large keyframes to reduce GC pressure.
+// Uses pooled buffers for ALL frames to eliminate allocations in the hot path.
 func (g *GFXChannel) sendGFXData(data []byte) error {
 	var wrapped []byte
 	var poolBuf *[]byte // Track if we're using a pooled buffer
 
 	if len(data) <= ZGFXMaxSegmentData {
-		// Small data: use single-segment format
+		// Small data: use single-segment format with pooled buffer
 		// [0xE0 descriptor][0x04 flags][raw data]
-		wrapped = make([]byte, 2+len(data))
+		wrappedSize := 2 + len(data)
+		poolBuf = gfxLargeBufferPool.Get().(*[]byte)
+		if cap(*poolBuf) < wrappedSize {
+			*poolBuf = make([]byte, wrappedSize)
+		}
+		wrapped = (*poolBuf)[:wrappedSize]
 		wrapped[0] = 0xE0 // ZGFX_SEGMENTED_SINGLE
 		wrapped[1] = 0x04 // ZGFX_PACKET_COMPR_TYPE_RDP8 (uncompressed)
 		copy(wrapped[2:], data)
@@ -553,6 +558,25 @@ func (g *GFXChannel) sendCapsConfirm() error {
 	return nil
 }
 
+// updateFrameAckState updates frame tracking state when an ack is received.
+// queueDepth is the client's reported queue depth (0 if not available).
+func (g *GFXChannel) updateFrameAckState(ackFrameID uint32, queueDepth int32) {
+	g.lastAckFrameID.Store(ackFrameID)
+	g.lastAckTime.Store(int32(time.Now().Unix()))
+
+	// Calculate pending frames: frames sent - frames acknowledged
+	lastSent := g.frameID.Load()
+	pending := int32(lastSent) - int32(ackFrameID)
+	if pending < 0 {
+		pending = 0
+	}
+	// Use client's queue depth if it's higher
+	if queueDepth > pending {
+		pending = queueDepth
+	}
+	g.framesPending.Store(pending)
+}
+
 // handleFrameAck processes frame acknowledgment.
 func (g *GFXChannel) handleFrameAck(data []byte) error {
 	if len(data) < GFXFrameAckSize {
@@ -564,23 +588,8 @@ func (g *GFXChannel) handleFrameAck(data []byte) error {
 	ackFrameID := binary.LittleEndian.Uint32(data[4:8])
 	totalDecoded := binary.LittleEndian.Uint32(data[8:12])
 
-	g.lastAckFrameID.Store(ackFrameID)
 	g.totalDecoded.Store(totalDecoded)
-	now := time.Now().Unix()
-	g.lastAckTime.Store(int32(now)) // Record when we received this ack
-
-	// Calculate pending frames based on frame IDs
-	// pending = frames sent - frames acknowledged
-	lastSent := g.frameID.Load()
-	pending := int32(lastSent) - int32(ackFrameID)
-	if pending < 0 {
-		pending = 0
-	}
-	// Also consider client's queue depth if it's higher
-	if int32(queueDepth) > pending {
-		pending = int32(queueDepth)
-	}
-	g.framesPending.Store(pending)
+	g.updateFrameAckState(ackFrameID, int32(queueDepth))
 
 	return nil
 }
@@ -590,19 +599,7 @@ func (g *GFXChannel) handleFrameAck(data []byte) error {
 func (g *GFXChannel) handleQoEFrameAck(data []byte) error {
 	if len(data) >= 4 {
 		ackFrameID := binary.LittleEndian.Uint32(data[0:4])
-		g.lastAckFrameID.Store(ackFrameID)
-
-		// Update ack time to prevent stale connection detection
-		now := time.Now().Unix()
-		g.lastAckTime.Store(int32(now))
-
-		// Update pending frames based on frame IDs (same as regular ack)
-		lastSent := g.frameID.Load()
-		pending := int32(lastSent) - int32(ackFrameID)
-		if pending < 0 {
-			pending = 0
-		}
-		g.framesPending.Store(pending)
+		g.updateFrameAckState(ackFrameID, 0)
 	}
 	return nil
 }

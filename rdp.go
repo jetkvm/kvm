@@ -20,14 +20,21 @@ var (
 // GetRDPServer returns the global RDP server instance.
 func GetRDPServer() *rdp.Server {
 	rdpServerOnce.Do(func() {
+		// Determine if TLS is available for clipboard file server
+		tlsEnabled := config.TLSMode == "self-signed" || config.TLSMode == "custom"
+
 		deps := rdp.Dependencies{
-			Logger: *rdpLogger,
-			Config: &rdpConfigAdapter{},
-			HID:    &rdpHIDAdapter{},
-			Video:  &rdpVideoAdapter{},
-			Audio:  &rdpAudioAdapter{},
-			Camera: &rdpCameraAdapter{},
-			TLS:    &rdpTLSAdapter{},
+			Logger:         *rdpLogger,
+			Config:         &rdpConfigAdapter{},
+			HID:            &rdpHIDAdapter{},
+			Video:          &rdpVideoAdapter{},
+			Audio:          &rdpAudioAdapter{},
+			Camera:         &rdpCameraAdapter{},
+			TLS:            &rdpTLSAdapter{},
+			TLSEnabled:     tlsEnabled,
+			GetCertificate: getCertificate,
+			USBStorage:     &rdpUSBStorageAdapter{},
+			ClipboardStore: GetClipboardStore(),
 		}
 		rdpServer = rdp.NewServer(deps)
 	})
@@ -86,6 +93,76 @@ func (a *rdpConfigAdapter) GetRDPUsername() string {
 
 func (a *rdpConfigAdapter) GetRDPDomain() string {
 	return config.RDPDomain
+}
+
+func (a *rdpConfigAdapter) GetRDPTargetOS() string {
+	if config.RDPTargetOS == "" {
+		return "windows"
+	}
+	return config.RDPTargetOS
+}
+
+func (a *rdpConfigAdapter) GetRDPFileTransferEnabled() bool {
+	return config.RDPFileTransferEnabled
+}
+
+func (a *rdpConfigAdapter) GetRDPFileTransferMethod() string {
+	if config.RDPFileTransferMethod == "" {
+		return "auto"
+	}
+	return config.RDPFileTransferMethod
+}
+
+func (a *rdpConfigAdapter) GetRDPFileTransferPort() int {
+	if config.RDPFileTransferPort == 0 {
+		return 9000
+	}
+	return config.RDPFileTransferPort
+}
+
+func (a *rdpConfigAdapter) GetRDPFileTransferMaxMB() int {
+	if config.RDPFileTransferMaxMB == 0 {
+		return 100
+	}
+	return config.RDPFileTransferMaxMB
+}
+
+func (a *rdpConfigAdapter) GetRDPFileTransferTTLSec() int {
+	if config.RDPFileTransferTTLSec == 0 {
+		return 300 // 5 minutes default
+	}
+	return config.RDPFileTransferTTLSec
+}
+
+func (a *rdpConfigAdapter) GetRDPFileTransferCleanupSec() int {
+	if config.RDPFileTransferCleanupSec == 0 {
+		return 60 // 1 minute default
+	}
+	return config.RDPFileTransferCleanupSec
+}
+
+func (a *rdpConfigAdapter) GetRDPNetworkCmdWindows() string {
+	return config.RDPNetworkCmdWindows
+}
+
+func (a *rdpConfigAdapter) GetRDPNetworkCmdLinux() string {
+	return config.RDPNetworkCmdLinux
+}
+
+func (a *rdpConfigAdapter) GetRDPNetworkCmdMacOS() string {
+	return config.RDPNetworkCmdMacOS
+}
+
+func (a *rdpConfigAdapter) GetRDPBase64CmdWindows() string {
+	return config.RDPBase64CmdWindows
+}
+
+func (a *rdpConfigAdapter) GetRDPBase64CmdLinux() string {
+	return config.RDPBase64CmdLinux
+}
+
+func (a *rdpConfigAdapter) GetRDPBase64CmdMacOS() string {
+	return config.RDPBase64CmdMacOS
 }
 
 type rdpHIDAdapter struct{}
@@ -634,6 +711,17 @@ func initRDPServer() error {
 
 	cryptotls.Init()
 
+	// Configure clipboard store with TTL and cleanup settings
+	ttlSec := config.RDPFileTransferTTLSec
+	if ttlSec == 0 {
+		ttlSec = 300 // 5 minutes default
+	}
+	cleanupSec := config.RDPFileTransferCleanupSec
+	if cleanupSec == 0 {
+		cleanupSec = 60 // 1 minute default
+	}
+	GetClipboardStore().Configure(ttlSec, cleanupSec)
+
 	server := GetRDPServer()
 	server.SetPort(config.RDPPort)
 
@@ -669,11 +757,35 @@ func UpdateRDPVideoState(width, height uint16) {
 	}
 }
 
+type rdpUSBStorageAdapter struct{}
+
+func (a *rdpUSBStorageAdapter) IsAvailable() bool {
+	// USB storage is available if nothing is currently mounted
+	state, err := rpcGetVirtualMediaState()
+	if err != nil {
+		return false
+	}
+	return state == nil
+}
+
+func (a *rdpUSBStorageAdapter) MountFile(filename string) error {
+	return rpcMountWithStorage(filename, Disk)
+}
+
+func (a *rdpUSBStorageAdapter) Unmount() error {
+	return rpcUnmountImage()
+}
+
+func (a *rdpUSBStorageAdapter) GetImagesFolder() string {
+	return imagesFolder
+}
+
 var (
-	_ rdp.ConfigProvider = (*rdpConfigAdapter)(nil)
-	_ rdp.HIDProvider    = (*rdpHIDAdapter)(nil)
-	_ rdp.VideoProvider  = (*rdpVideoAdapter)(nil)
-	_ rdp.AudioProvider  = (*rdpAudioAdapter)(nil)
-	_ rdp.CameraProvider = (*rdpCameraAdapter)(nil)
-	_ rdp.TLSProvider    = (*rdpTLSAdapter)(nil)
+	_ rdp.ConfigProvider     = (*rdpConfigAdapter)(nil)
+	_ rdp.HIDProvider        = (*rdpHIDAdapter)(nil)
+	_ rdp.VideoProvider      = (*rdpVideoAdapter)(nil)
+	_ rdp.AudioProvider      = (*rdpAudioAdapter)(nil)
+	_ rdp.CameraProvider     = (*rdpCameraAdapter)(nil)
+	_ rdp.TLSProvider        = (*rdpTLSAdapter)(nil)
+	_ rdp.USBStorageProvider = (*rdpUSBStorageAdapter)(nil)
 )

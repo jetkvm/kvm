@@ -54,6 +54,17 @@ var (
 	ErrAudinNotOpen  = errors.New("audin: channel not open")
 )
 
+// audinMsgNames maps message types to names for logging (package-level to avoid allocation).
+var audinMsgNames = [256]string{
+	AudinMsgVersion:      "VERSION",
+	AudinMsgFormats:      "FORMATS",
+	AudinMsgOpen:         "OPEN",
+	AudinMsgOpenReply:    "OPEN_REPLY",
+	AudinMsgDataIncoming: "DATA_INCOMING",
+	AudinMsgData:         "DATA",
+	AudinMsgFormatChange: "FORMAT_CHANGE",
+}
+
 // AudinDataCallback is called when audio data is received from the client.
 type AudinDataCallback func(data []byte)
 
@@ -150,15 +161,8 @@ func (a *AudinChannel) OnData(data []byte) error {
 	// Log non-routine message types for debugging
 	// Skip DATA and DATA_INCOMING as they're high-frequency (100/sec)
 	if a.logger != nil && msgType != AudinMsgData && msgType != AudinMsgDataIncoming {
-		msgNames := map[byte]string{
-			AudinMsgVersion:      "VERSION",
-			AudinMsgFormats:      "FORMATS",
-			AudinMsgOpen:         "OPEN",
-			AudinMsgOpenReply:    "OPEN_REPLY",
-			AudinMsgFormatChange: "FORMAT_CHANGE",
-		}
-		name, ok := msgNames[msgType]
-		if !ok {
+		name := audinMsgNames[msgType]
+		if name == "" {
 			name = "UNKNOWN"
 		}
 		a.logger("AUDIN: received %s (0x%02X) len=%d isOpen=%v", name, msgType, len(data), a.isOpen.Load())
@@ -369,15 +373,10 @@ func (a *AudinChannel) handleOpenReply(data []byte) error {
 
 // handleData processes incoming audio data from the client.
 func (a *AudinChannel) handleData(data []byte) error {
-	if !a.isOpen.Load() || a.onData == nil {
+	if !a.isOpen.Load() || a.onData == nil || len(data) == 0 {
 		return nil
 	}
-
-	// Data format: raw PCM audio samples
-	if len(data) > 0 && a.onData != nil {
-		a.onData(data)
-	}
-
+	a.onData(data)
 	return nil
 }
 

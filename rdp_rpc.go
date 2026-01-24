@@ -52,6 +52,19 @@ type RDPState struct {
 	ClipboardMode    string `json:"clipboardMode"`
 	Username         string `json:"username"`
 	Domain           string `json:"domain"`
+	// File transfer settings
+	FileTransferEnabled    bool   `json:"fileTransferEnabled"`
+	FileTransferMethod     string `json:"fileTransferMethod"`
+	FileTransferPort       int    `json:"fileTransferPort"`
+	FileTransferMaxMB      int    `json:"fileTransferMaxMB"`
+	FileTransferTTLSec     int    `json:"fileTransferTTLSec"`
+	FileTransferCleanupSec int    `json:"fileTransferCleanupSec"`
+	NetworkCmdWindows      string `json:"networkCmdWindows"`
+	NetworkCmdLinux      string `json:"networkCmdLinux"`
+	NetworkCmdMacOS      string `json:"networkCmdMacOS"`
+	Base64CmdWindows     string `json:"base64CmdWindows"`
+	Base64CmdLinux       string `json:"base64CmdLinux"`
+	Base64CmdMacOS       string `json:"base64CmdMacOS"`
 }
 
 func restartRDPServerIfRunning() error {
@@ -96,6 +109,19 @@ func rpcGetRDPState() (RDPState, error) {
 		ClipboardMode:    config.RDPClipboardMode,
 		Username:         config.RDPUsername,
 		Domain:           config.RDPDomain,
+		// File transfer settings
+		FileTransferEnabled:    config.RDPFileTransferEnabled,
+		FileTransferMethod:     config.RDPFileTransferMethod,
+		FileTransferPort:       config.RDPFileTransferPort,
+		FileTransferMaxMB:      config.RDPFileTransferMaxMB,
+		FileTransferTTLSec:     config.RDPFileTransferTTLSec,
+		FileTransferCleanupSec: config.RDPFileTransferCleanupSec,
+		NetworkCmdWindows:      config.RDPNetworkCmdWindows,
+		NetworkCmdLinux:     config.RDPNetworkCmdLinux,
+		NetworkCmdMacOS:     config.RDPNetworkCmdMacOS,
+		Base64CmdWindows:    config.RDPBase64CmdWindows,
+		Base64CmdLinux:      config.RDPBase64CmdLinux,
+		Base64CmdMacOS:      config.RDPBase64CmdMacOS,
 	}, nil
 }
 
@@ -342,6 +368,218 @@ func rpcSetRDPDomain(domain string) error {
 
 	if err := SaveConfig(); err != nil {
 		config.RDPDomain = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// File Transfer RPC Handlers
+
+// rpcSetRDPFileTransferEnabled enables or disables file transfer via clipboard.
+func rpcSetRDPFileTransferEnabled(enabled bool) error {
+	oldValue := config.RDPFileTransferEnabled
+	config.RDPFileTransferEnabled = enabled
+
+	if err := SaveConfig(); err != nil {
+		config.RDPFileTransferEnabled = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPFileTransferMethod sets the file transfer method.
+// Valid values: "auto", "network", "base64", "usb"
+func rpcSetRDPFileTransferMethod(method string) error {
+	switch method {
+	case "auto", "network", "base64", "usb":
+		// Valid
+	default:
+		return fmt.Errorf("invalid file transfer method: %s (must be auto, network, base64, or usb)", method)
+	}
+
+	oldValue := config.RDPFileTransferMethod
+	config.RDPFileTransferMethod = method
+
+	if err := SaveConfig(); err != nil {
+		config.RDPFileTransferMethod = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPFileTransferPort sets the HTTP server port for network file transfer.
+func rpcSetRDPFileTransferPort(port int) error {
+	if port < minPort || port > maxPort {
+		return fmt.Errorf("invalid port number: %d (must be %d-%d)", port, minPort, maxPort)
+	}
+
+	oldValue := config.RDPFileTransferPort
+	config.RDPFileTransferPort = port
+
+	if err := SaveConfig(); err != nil {
+		config.RDPFileTransferPort = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPFileTransferMaxMB sets the maximum file size for transfer in megabytes.
+func rpcSetRDPFileTransferMaxMB(maxMB int) error {
+	if maxMB < 1 || maxMB > 1000 {
+		return fmt.Errorf("invalid max file size: %d MB (must be 1-1000)", maxMB)
+	}
+
+	oldValue := config.RDPFileTransferMaxMB
+	config.RDPFileTransferMaxMB = maxMB
+
+	if err := SaveConfig(); err != nil {
+		config.RDPFileTransferMaxMB = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPFileTransferTTLSec sets the file expiry time in seconds.
+func rpcSetRDPFileTransferTTLSec(ttlSec int) error {
+	if ttlSec < 30 || ttlSec > 3600 {
+		return fmt.Errorf("invalid TTL: %d seconds (must be 30-3600)", ttlSec)
+	}
+
+	oldValue := config.RDPFileTransferTTLSec
+	config.RDPFileTransferTTLSec = ttlSec
+
+	if err := SaveConfig(); err != nil {
+		config.RDPFileTransferTTLSec = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	// Update the clipboard store with new TTL
+	GetClipboardStore().Configure(ttlSec, 0)
+
+	return nil
+}
+
+// rpcSetRDPFileTransferCleanupSec sets the cleanup interval in seconds.
+func rpcSetRDPFileTransferCleanupSec(cleanupSec int) error {
+	if cleanupSec < 10 || cleanupSec > 600 {
+		return fmt.Errorf("invalid cleanup interval: %d seconds (must be 10-600)", cleanupSec)
+	}
+
+	oldValue := config.RDPFileTransferCleanupSec
+	config.RDPFileTransferCleanupSec = cleanupSec
+
+	if err := SaveConfig(); err != nil {
+		config.RDPFileTransferCleanupSec = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	// Update the clipboard store with new cleanup interval
+	GetClipboardStore().Configure(0, cleanupSec)
+
+	return nil
+}
+
+// rpcSetRDPNetworkCmdWindows sets the custom network download command for Windows.
+func rpcSetRDPNetworkCmdWindows(cmd string) error {
+	if len(cmd) > 1024 {
+		return fmt.Errorf("command too long: max 1024 characters")
+	}
+
+	oldValue := config.RDPNetworkCmdWindows
+	config.RDPNetworkCmdWindows = cmd
+
+	if err := SaveConfig(); err != nil {
+		config.RDPNetworkCmdWindows = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPNetworkCmdLinux sets the custom network download command for Linux.
+func rpcSetRDPNetworkCmdLinux(cmd string) error {
+	if len(cmd) > 1024 {
+		return fmt.Errorf("command too long: max 1024 characters")
+	}
+
+	oldValue := config.RDPNetworkCmdLinux
+	config.RDPNetworkCmdLinux = cmd
+
+	if err := SaveConfig(); err != nil {
+		config.RDPNetworkCmdLinux = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPNetworkCmdMacOS sets the custom network download command for macOS.
+func rpcSetRDPNetworkCmdMacOS(cmd string) error {
+	if len(cmd) > 1024 {
+		return fmt.Errorf("command too long: max 1024 characters")
+	}
+
+	oldValue := config.RDPNetworkCmdMacOS
+	config.RDPNetworkCmdMacOS = cmd
+
+	if err := SaveConfig(); err != nil {
+		config.RDPNetworkCmdMacOS = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPBase64CmdWindows sets the custom base64 decode command for Windows.
+func rpcSetRDPBase64CmdWindows(cmd string) error {
+	if len(cmd) > 1024 {
+		return fmt.Errorf("command too long: max 1024 characters")
+	}
+
+	oldValue := config.RDPBase64CmdWindows
+	config.RDPBase64CmdWindows = cmd
+
+	if err := SaveConfig(); err != nil {
+		config.RDPBase64CmdWindows = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPBase64CmdLinux sets the custom base64 decode command for Linux.
+func rpcSetRDPBase64CmdLinux(cmd string) error {
+	if len(cmd) > 1024 {
+		return fmt.Errorf("command too long: max 1024 characters")
+	}
+
+	oldValue := config.RDPBase64CmdLinux
+	config.RDPBase64CmdLinux = cmd
+
+	if err := SaveConfig(); err != nil {
+		config.RDPBase64CmdLinux = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPBase64CmdMacOS sets the custom base64 decode command for macOS.
+func rpcSetRDPBase64CmdMacOS(cmd string) error {
+	if len(cmd) > 1024 {
+		return fmt.Errorf("command too long: max 1024 characters")
+	}
+
+	oldValue := config.RDPBase64CmdMacOS
+	config.RDPBase64CmdMacOS = cmd
+
+	if err := SaveConfig(); err != nil {
+		config.RDPBase64CmdMacOS = oldValue
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

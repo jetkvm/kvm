@@ -1,6 +1,6 @@
 package rdp
 
-// Audio channel wiring: RDPSND (MS-RDPEA) and CLIPRDR (MS-RDPECLIP).
+// Audio channel wiring: RDPSND (MS-RDPEA) and AUDIN (MS-RDPEAI).
 
 import (
 	"github.com/jetkvm/kvm/internal/rdp/channels"
@@ -33,23 +33,6 @@ func (c *Connection) initSoundChannel() {
 	if err := c.soundChannel.Start(); err != nil {
 		c.server.deps.Logger.Warn().Err(err).Msg("failed to start rdpsnd")
 	}
-}
-
-func (c *Connection) initClipboardChannel() {
-	c.clipboardChannel = channels.NewClipboardChannel(func(data []byte) error {
-		return c.sendClipboardData(data)
-	})
-
-	if err := c.clipboardChannel.Start(); err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("failed to start cliprdr")
-	}
-}
-
-func (c *Connection) sendClipboardData(data []byte) error {
-	if c.cliprdrdID == 0 {
-		return nil
-	}
-	return c.sendStaticChannelDataHotPath(c.cliprdrdID, data)
 }
 
 func (c *Connection) startAudioStream() {

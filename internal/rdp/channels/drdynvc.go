@@ -69,6 +69,18 @@ const (
 	DVCMaxReassemblySize = 16 * 1024 * 1024 // 16MB max reassembly buffer (prevents memory exhaustion)
 )
 
+// channelIDEncoding returns the cbID flag and byte length for a DVC channel ID.
+// Per MS-RDPEDYC 2.2.1, channel IDs are encoded as 1, 2, or 4 bytes.
+func channelIDEncoding(channelID uint32) (cbID byte, idLen int) {
+	if channelID > 0xFFFF {
+		return 2, 4
+	}
+	if channelID > 0xFF {
+		return 1, 2
+	}
+	return 0, 1
+}
+
 // DVCLogger is a simple logging function for DVC events.
 type DVCLogger func(msg string, channel string, channelID uint32, args ...interface{})
 
@@ -557,17 +569,8 @@ func (m *DVCManager) sendCreateRequest(channelID uint32, name string) error {
 		return ErrDVCDataTooLarge
 	}
 
-	// Use 1-byte channel ID if possible
-	cbID := byte(0)
-	idLen := 1
-	if channelID > 0xFF {
-		cbID = 1
-		idLen = 2
-	}
-	if channelID > 0xFFFF {
-		cbID = 2
-		idLen = 4
-	}
+	// Use smallest channel ID encoding possible
+	cbID, idLen := channelIDEncoding(channelID)
 
 	buf := make([]byte, 1+idLen+len(nameBytes)+1)
 	buf[0] = DVCCreateRequest | cbID

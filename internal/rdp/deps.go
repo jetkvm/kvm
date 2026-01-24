@@ -32,6 +32,22 @@ type Dependencies struct {
 	// TLS provides TLS/SSL connection upgrading.
 	// If nil, the server will use Go's standard crypto/tls.
 	TLS TLSProvider
+
+	// TLSEnabled indicates if TLS is configured for HTTPS services.
+	// Used by clipboard file server to determine whether to use HTTPS.
+	TLSEnabled bool
+
+	// GetCertificate returns a TLS certificate for the given ClientHelloInfo.
+	// Used by clipboard file server for HTTPS.
+	GetCertificate func(*tls.ClientHelloInfo) (*tls.Certificate, error)
+
+	// USBStorage provides USB mass storage for clipboard file transfer.
+	// If nil, USB transfer method is not available.
+	USBStorage USBStorageProvider
+
+	// ClipboardStore provides file storage for network-based clipboard transfer.
+	// Files are served via the main HTTPS server on port 443.
+	ClipboardStore ClipboardStoreProvider
 }
 
 // TLSProvider provides TLS connection upgrading with optional hardware acceleration.
@@ -107,6 +123,47 @@ type ConfigProvider interface {
 	// GetRDPDomain returns the expected domain for RDP authentication.
 	// If empty, any domain is accepted.
 	GetRDPDomain() string
+
+	// GetRDPTargetOS returns the target OS for clipboard commands.
+	// Values: "windows", "linux", "macos"
+	GetRDPTargetOS() string
+
+	// GetRDPFileTransferEnabled returns whether file clipboard transfer is enabled.
+	GetRDPFileTransferEnabled() bool
+
+	// GetRDPFileTransferMethod returns the file transfer method.
+	// Values: "auto", "network", "usb", "base64"
+	GetRDPFileTransferMethod() string
+
+	// GetRDPFileTransferPort returns the HTTP server port for network transfer.
+	GetRDPFileTransferPort() int
+
+	// GetRDPFileTransferMaxMB returns the maximum file size in MB.
+	GetRDPFileTransferMaxMB() int
+
+	// GetRDPFileTransferTTLSec returns the file TTL in seconds (default 300).
+	GetRDPFileTransferTTLSec() int
+
+	// GetRDPFileTransferCleanupSec returns the cleanup interval in seconds (default 60).
+	GetRDPFileTransferCleanupSec() int
+
+	// GetRDPNetworkCmdWindows returns custom download command for Windows.
+	GetRDPNetworkCmdWindows() string
+
+	// GetRDPNetworkCmdLinux returns custom download command for Linux.
+	GetRDPNetworkCmdLinux() string
+
+	// GetRDPNetworkCmdMacOS returns custom download command for macOS.
+	GetRDPNetworkCmdMacOS() string
+
+	// GetRDPBase64CmdWindows returns custom decode command for Windows.
+	GetRDPBase64CmdWindows() string
+
+	// GetRDPBase64CmdLinux returns custom decode command for Linux.
+	GetRDPBase64CmdLinux() string
+
+	// GetRDPBase64CmdMacOS returns custom decode command for macOS.
+	GetRDPBase64CmdMacOS() string
 }
 
 // HIDProvider provides keyboard and mouse input capabilities.
@@ -224,6 +281,31 @@ type AudioProvider interface {
 	// EnableAudioInput enables the audio input subsystem for RDP mic passthrough.
 	// This is called when the AUDIN channel becomes ready.
 	EnableAudioInput() error
+}
+
+// USBStorageProvider provides USB mass storage capabilities for clipboard file transfer.
+type USBStorageProvider interface {
+	// IsAvailable returns true if USB mass storage can be used (not already mounted).
+	IsAvailable() bool
+
+	// MountFile mounts a file as USB mass storage (disk mode).
+	// The file should be in the images folder.
+	MountFile(filename string) error
+
+	// Unmount unmounts the current USB mass storage.
+	Unmount() error
+
+	// GetImagesFolder returns the path to the images folder.
+	GetImagesFolder() string
+}
+
+// ClipboardStoreProvider provides file storage for network clipboard transfer.
+type ClipboardStoreProvider interface {
+	// AddFile adds a file to the store and returns a download token.
+	AddFile(path, originalName string) (token string, err error)
+
+	// RemoveFile removes a file from the store.
+	RemoveFile(token string)
 }
 
 // CameraFormatInfo describes the video format requested by the USB host.

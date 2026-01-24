@@ -218,26 +218,26 @@ func BuildConnectResponse(result int, connectID int, params DomainParameters, us
 	content := NewBERWriter()
 
 	// Result (ENUMERATED)
-	content.WriteByte(BERTagEnumerated)
-	content.WriteByte(1)
-	content.WriteByte(byte(result))
+	content.writeByte(BERTagEnumerated)
+	content.writeByte(1)
+	content.writeByte(byte(result))
 
 	// CalledConnectID (INTEGER)
 	content.WriteInteger(connectID)
 
 	// DomainParameters (SEQUENCE)
 	dpBytes := encodeDomainParameters(params)
-	content.WriteBytes(dpBytes)
+	content.writeBytes(dpBytes)
 
 	// UserData (OCTET STRING)
 	content.WriteOctetString(userData)
 
 	// Write the application tag for Connect-Response (102 = 0x66)
 	// Tag 102 requires long-form encoding
-	w.WriteByte(0x7F) // Long-form application tag
-	w.WriteByte(102)
+	w.writeByte(0x7F) // Long-form application tag
+	w.writeByte(102)
 	w.WriteLength(content.Len())
-	w.WriteBytes(content.Bytes())
+	w.writeBytes(content.Bytes())
 
 	return w.Bytes()
 }
@@ -256,7 +256,7 @@ func encodeDomainParameters(dp DomainParameters) []byte {
 
 	w := NewBERWriter()
 	w.WriteSequence(content.Len())
-	w.WriteBytes(content.Bytes())
+	w.writeBytes(content.Bytes())
 
 	return w.Bytes()
 }

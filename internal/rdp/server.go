@@ -311,6 +311,10 @@ func (s *Server) acceptLoop() {
 						Msg("RDP connection handler panicked - this is a bug, please report")
 				}
 
+				// Clean up all connection resources (audio streams, channels, etc.)
+				// This is critical - without it, audio goroutines leak and keep running.
+				c.Close()
+
 				s.connections.Delete(c)
 				s.connCount.Add(-1)
 				s.deps.Logger.Info().Str("remote", addr).Msg("RDP connection closed")

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -77,10 +78,15 @@ type Connection struct {
 	rdpsndID         uint16 // Static channel ID for rdpsnd
 	clipboardChannel *channels.ClipboardChannel
 	cliprdrdID       uint16 // Static channel ID for cliprdr
+	clipboardServer  *channels.ClipboardServer
 
 	// Modifier key tracking for paste detection
 	ctrlPressed     atomic.Bool
 	pasteInProgress atomic.Bool // Suppress V key events during paste
+
+	// Pending file transfer - files received from clipboard, waiting for paste
+	pendingFiles   []*channels.ClipboardFile
+	pendingFilesMu sync.Mutex
 
 	// Audio streaming (output - HDMI audio to client)
 	audioChan   <-chan []byte
@@ -116,6 +122,14 @@ type Connection struct {
 		dropNoKeyframe   atomic.Uint64 // Dropped: waiting for keyframe
 		dropBackpressure atomic.Uint64 // Dropped: backpressure
 		lastLogTime      atomic.Int64  // UnixMilli of last stats log
+	}
+
+	// Virtual channel PDU reassembly buffer for clipboard (MS-RDPBCGR 2.2.6.1)
+	// Large clipboard PDUs (e.g., file contents) are fragmented across multiple packets.
+	clipboardReassembly struct {
+		buffer      []byte // Accumulated data from fragmented PDUs
+		totalLength uint32 // Expected total length from first fragment
+		mu          sync.Mutex
 	}
 }
 
@@ -368,6 +382,18 @@ func (c *Connection) handleShareDataPDU(data []byte) {
 	}
 }
 
+// Virtual channel PDU flags (MS-RDPBCGR 2.2.6.1).
+const (
+	channelFlagFirst       = 0x00000001 // CHANNEL_FLAG_FIRST
+	channelFlagLast        = 0x00000002 // CHANNEL_FLAG_LAST
+	channelFlagShowProtocol = 0x00000010 // CHANNEL_FLAG_SHOW_PROTOCOL
+)
+
+// MaxClipboardReassemblySize is the maximum size for clipboard PDU reassembly.
+// This prevents memory exhaustion from malicious clients sending huge totalLength values.
+// 100MB should be sufficient for even very large file transfers.
+const MaxClipboardReassemblySize = 100 * 1024 * 1024
+
 // handleVirtualChannelPDU handles PDUs on virtual channels.
 func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	// Virtual Channel PDU has an 8-byte header per MS-RDPBCGR 2.2.6.1:
@@ -381,7 +407,9 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 		return
 	}
 
-	// Skip 8-byte VC PDU header (totalLength + flags), pass payload directly
+	// Parse the 8-byte VC PDU header
+	totalLength := binary.LittleEndian.Uint32(data[0:4])
+	flags := binary.LittleEndian.Uint32(data[4:8])
 	payload := data[8:]
 
 	// LOCK-FREE FAST PATH: Use pre-computed channel name lookup
@@ -396,13 +424,14 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	switch channelName {
 	case "drdynvc":
 		// Dynamic Virtual Channel - for RDPGFX, audio, etc.
+		// DVC has its own fragmentation handling, pass directly
 		c.handleDrdynvc(payload)
 	case "rdpsnd":
-		// Audio output
+		// Audio output - typically small PDUs, pass directly
 		c.handleRdpsnd(payload)
 	case "cliprdr":
-		// Clipboard redirection
-		c.handleClipboard(payload)
+		// Clipboard redirection - needs reassembly for large file transfers
+		c.handleClipboardWithReassembly(payload, totalLength, flags)
 	case "rdpdr":
 		// Device redirection
 		c.server.deps.Logger.Debug().Msg("RDP: rdpdr channel data")
@@ -411,6 +440,92 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 			Str("channel", channelName).
 			Uint16("channelID", channelID).
 			Msg("RDP: unhandled virtual channel")
+	}
+}
+
+// handleClipboardWithReassembly handles clipboard PDUs with fragmentation support.
+// Per MS-RDPBCGR 2.2.6.1, large virtual channel PDUs are split across multiple packets.
+// Only the first fragment contains the CLIPRDR PDU header; subsequent fragments are raw data.
+func (c *Connection) handleClipboardWithReassembly(payload []byte, totalLength uint32, flags uint32) {
+	isFirst := (flags & channelFlagFirst) != 0
+	isLast := (flags & channelFlagLast) != 0
+
+	c.server.deps.Logger.Debug().
+		Uint32("totalLength", totalLength).
+		Uint32("flags", flags).
+		Bool("first", isFirst).
+		Bool("last", isLast).
+		Int("payloadLen", len(payload)).
+		Msg("RDP: clipboard VC PDU fragment")
+
+	// Fast path: single-fragment PDU (both FIRST and LAST set, or small PDU)
+	if isFirst && isLast {
+		c.handleClipboard(payload)
+		return
+	}
+
+	// Handle fragmented PDU reassembly
+	var completePDU []byte
+
+	c.clipboardReassembly.mu.Lock()
+	if isFirst {
+		// Validate size to prevent memory exhaustion from malicious clients
+		if totalLength > MaxClipboardReassemblySize {
+			c.clipboardReassembly.mu.Unlock()
+			c.server.deps.Logger.Warn().
+				Uint32("totalLength", totalLength).
+				Uint32("maxAllowed", MaxClipboardReassemblySize).
+				Msg("RDP: clipboard reassembly size exceeds maximum, dropping")
+			return
+		}
+
+		// Start new reassembly buffer
+		// Pre-allocate to expected total size to avoid reallocations
+		c.clipboardReassembly.buffer = make([]byte, 0, totalLength)
+		c.clipboardReassembly.totalLength = totalLength
+		c.clipboardReassembly.buffer = append(c.clipboardReassembly.buffer, payload...)
+
+		c.server.deps.Logger.Debug().
+			Uint32("totalLength", totalLength).
+			Int("firstChunkLen", len(payload)).
+			Msg("RDP: clipboard reassembly started")
+		c.clipboardReassembly.mu.Unlock()
+		return
+	}
+
+	// Middle or last fragment - append to buffer
+	if c.clipboardReassembly.buffer == nil {
+		c.clipboardReassembly.mu.Unlock()
+		c.server.deps.Logger.Warn().
+			Bool("isLast", isLast).
+			Int("payloadLen", len(payload)).
+			Msg("RDP: clipboard fragment received without FIRST flag, discarding")
+		return
+	}
+
+	c.clipboardReassembly.buffer = append(c.clipboardReassembly.buffer, payload...)
+
+	c.server.deps.Logger.Debug().
+		Int("bufferLen", len(c.clipboardReassembly.buffer)).
+		Uint32("expectedLen", c.clipboardReassembly.totalLength).
+		Bool("isLast", isLast).
+		Msg("RDP: clipboard fragment appended")
+
+	if isLast {
+		// Reassembly complete - take ownership of the buffer
+		completePDU = c.clipboardReassembly.buffer
+		c.clipboardReassembly.buffer = nil
+		c.clipboardReassembly.totalLength = 0
+
+		c.server.deps.Logger.Info().
+			Int("totalLen", len(completePDU)).
+			Msg("RDP: clipboard reassembly complete")
+	}
+	c.clipboardReassembly.mu.Unlock()
+
+	// Process complete PDU outside lock to avoid holding it during HandlePDU
+	if completePDU != nil {
+		c.handleClipboard(completePDU)
 	}
 }
 
@@ -434,14 +549,46 @@ func (c *Connection) handleRdpsnd(data []byte) {
 	}
 }
 
-// handleClipboard handles clipboard channel.
+// handleClipboard handles clipboard channel asynchronously to prevent blocking video/input.
 func (c *Connection) handleClipboard(data []byte) {
+	c.server.deps.Logger.Info().Int("dataLen", len(data)).Bool("channelNil", c.clipboardChannel == nil).Msg("RDP: handleClipboard called")
+
 	if c.clipboardChannel == nil {
+		c.server.deps.Logger.Warn().Msg("RDP: clipboard channel is nil, ignoring PDU")
 		return
 	}
-	if err := c.clipboardChannel.HandlePDU(data); err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: cliprdr error")
+
+	// Check if this is a format list PDU (CB_FORMAT_LIST = 0x0002)
+	// If so, clear clipboard text SYNCHRONOUSLY to prevent race conditions
+	// with key event handling that checks clipboardText
+	if len(data) >= 2 {
+		msgType := binary.LittleEndian.Uint16(data[0:2])
+		if msgType == 0x0002 { // CB_FORMAT_LIST
+			c.server.deps.Logger.Debug().Msg("RDP: format list detected, clearing clipboard text synchronously")
+			c.clipboardChannel.ClearClipboardText()
+		}
 	}
+
+	// Make a copy since the buffer may be reused
+	dataCopy := make([]byte, len(data))
+	copy(dataCopy, data)
+
+	// Process asynchronously to avoid blocking the main message loop
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				c.server.deps.Logger.Error().
+					Interface("panic", r).
+					Msg("RDP: clipboard handler panicked")
+			}
+		}()
+
+		c.server.deps.Logger.Info().Int("dataLen", len(dataCopy)).Msg("RDP: processing clipboard PDU async")
+		if err := c.clipboardChannel.HandlePDU(dataCopy); err != nil {
+			c.server.deps.Logger.Warn().Err(err).Msg("RDP: cliprdr error")
+		}
+		c.server.deps.Logger.Info().Msg("RDP: clipboard PDU processing complete")
+	}()
 }
 
 // handleCameraFormatChanges handles USB host format changes for dynamic camera format negotiation.
@@ -546,6 +693,25 @@ func (c *Connection) Close() {
 	if c.dvcManager != nil {
 		c.dvcManager.Close()
 	}
+
+	// Cleanup clipboard resources
+	if c.clipboardChannel != nil {
+		c.clipboardChannel.CleanupFiles()
+	}
+	if c.clipboardServer != nil {
+		_ = c.clipboardServer.Stop()
+		c.clipboardServer = nil
+	}
+
+	// Cleanup pending files (not yet pasted)
+	c.pendingFilesMu.Lock()
+	for _, f := range c.pendingFiles {
+		if f.TempPath != "" {
+			os.Remove(f.TempPath)
+		}
+	}
+	c.pendingFiles = nil
+	c.pendingFilesMu.Unlock()
 
 	// Signal the message loop to exit - this triggers goroutine cleanup
 	close(c.stopChan)

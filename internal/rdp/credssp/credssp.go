@@ -119,6 +119,11 @@ func (h *Handler) GetServerCertificateDER() []byte {
 // Authenticate performs the CredSSP authentication exchange.
 // Returns the username provided by the client (for logging), or error.
 func (h *Handler) Authenticate() (username string, err error) {
+	// Validate required fields
+	if len(h.serverPublicKey) == 0 {
+		return "", errors.New("CredSSP: serverPublicKey not set - call SetServerPublicKey() before Authenticate()")
+	}
+
 	// Step 1: Receive TSRequest with NTLM NEGOTIATE
 	h.debugLog("CredSSP: waiting for NTLM NEGOTIATE")
 	tsReq1, err := h.readTSRequest()

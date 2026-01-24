@@ -14,16 +14,7 @@ func (ch *DVCChannel) SendData(data []byte) error {
 	}
 
 	// Determine channel ID encoding (constant for the lifetime of the channel)
-	cbID := byte(0)
-	idLen := 1
-	if ch.ID > 0xFF {
-		cbID = 1
-		idLen = 2
-	}
-	if ch.ID > 0xFFFF {
-		cbID = 2
-		idLen = 4
-	}
+	cbID, idLen := channelIDEncoding(ch.ID)
 
 	totalLen := len(data)
 
@@ -124,16 +115,7 @@ func (ch *DVCChannel) Close() error {
 	ch.Open = false
 
 	// Send close request
-	cbID := byte(0)
-	idLen := 1
-	if ch.ID > 0xFF {
-		cbID = 1
-		idLen = 2
-	}
-	if ch.ID > 0xFFFF {
-		cbID = 2
-		idLen = 4
-	}
+	cbID, idLen := channelIDEncoding(ch.ID)
 
 	buf := make([]byte, 1+idLen)
 	buf[0] = DVCCloseRequest | cbID

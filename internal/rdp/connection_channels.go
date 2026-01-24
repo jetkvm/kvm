@@ -15,6 +15,7 @@ func (c *Connection) initDynamicChannels() error {
 	// Find static channel IDs
 	c.channelsMu.RLock()
 	for _, ch := range c.channels {
+		c.server.deps.Logger.Info().Str("channel", ch.Name).Uint16("id", ch.ID).Msg("RDP: found static channel")
 		switch ch.Name {
 		case "drdynvc":
 			c.drdynvcID = ch.ID
@@ -22,6 +23,7 @@ func (c *Connection) initDynamicChannels() error {
 			c.rdpsndID = ch.ID
 		case "cliprdr":
 			c.cliprdrdID = ch.ID
+			c.server.deps.Logger.Info().Uint16("id", ch.ID).Msg("RDP: cliprdr channel found")
 		}
 	}
 	c.channelsMu.RUnlock()
@@ -470,8 +472,14 @@ func (c *Connection) sendStaticChannelDataHotPath(channelID uint16, data []byte)
 	// Data payload
 	copy(packet[pos:], data)
 
-	// Single write to connection
+	// Single write to connection with timeout to prevent blocking the message loop.
+	// If the send buffer is full (backpressure), we fail fast rather than freeze.
+	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
 	_, err := c.conn.Write(packet)
+	// Clear deadline for subsequent writes
+	_ = c.conn.SetWriteDeadline(time.Time{})
 	return err
 }
 
@@ -488,7 +496,13 @@ func (c *Connection) sendStaticChannelDataFallback(channelID uint16, data []byte
 	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast)
 	copy(vcPDU[8:], data)
 
-	return protocol.WriteSendDataIndicationPooled(c.conn, c.userID, channelID, vcPDU)
+	// Set write deadline to prevent blocking the message loop on backpressure
+	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
+	err := protocol.WriteSendDataIndicationPooled(c.conn, c.userID, channelID, vcPDU)
+	_ = c.conn.SetWriteDeadline(time.Time{})
+	return err
 }
 
 // SendFrame sends an H.264 video frame to the client.

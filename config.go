@@ -157,12 +157,24 @@ type Config struct {
 	RDPAudioEnabled     bool   `json:"rdp_audio_enabled"`     // Enable audio output to client, default: true
 	RDPMicEnabled       bool   `json:"rdp_mic_enabled"`       // Enable microphone input from client, default: true
 	RDPCameraEnabled    bool   `json:"rdp_camera_enabled"`    // Enable webcam redirection from client, default: false
-	RDPClipboardEnabled bool   `json:"rdp_clipboard_enabled"` // Enable clipboard-as-keystrokes, default: true
-	RDPPasteDelayMs     int    `json:"rdp_paste_delay_ms"`    // Delay per keystroke in ms (0-50), default: 0
-	RDPTargetOS         string `json:"rdp_target_os"`         // Target OS for clipboard encoding: "windows", "macos", "linux", default: "windows"
-	RDPClipboardMode    string `json:"rdp_clipboard_mode"`    // Clipboard mode: "text", "base64-markers", "base64-script", default: "text"
-	RDPUsername         string `json:"rdp_username"`          // Username for RDP authentication (any username allowed if empty)
-	RDPDomain           string `json:"rdp_domain"`            // Domain for RDP authentication (any domain allowed if empty)
+	RDPClipboardEnabled     bool   `json:"rdp_clipboard_enabled"`      // Enable clipboard-as-keystrokes, default: true
+	RDPPasteDelayMs         int    `json:"rdp_paste_delay_ms"`         // Delay per keystroke in ms (0-50), default: 0
+	RDPTargetOS             string `json:"rdp_target_os"`              // Target OS for clipboard: "windows", "macos", "linux", default: "windows"
+	RDPClipboardMode        string `json:"rdp_clipboard_mode"`         // Clipboard mode: "text", "base64-markers", "base64-script", default: "text"
+	RDPFileTransferEnabled  bool   `json:"rdp_file_transfer_enabled"`  // Enable file clipboard transfer, default: false
+	RDPFileTransferMethod   string `json:"rdp_file_transfer_method"`   // Transfer method: "auto", "network", "usb", "base64", default: "auto"
+	RDPFileTransferPort     int    `json:"rdp_file_transfer_port"`     // HTTP server port for network transfer, default: 9000
+	RDPFileTransferMaxMB      int    `json:"rdp_file_transfer_max_mb"`      // Max file size in MB, default: 100
+	RDPFileTransferTTLSec     int    `json:"rdp_file_transfer_ttl_sec"`     // File TTL in seconds before expiry, default: 300 (5 min)
+	RDPFileTransferCleanupSec int    `json:"rdp_file_transfer_cleanup_sec"` // Cleanup interval in seconds, default: 60
+	RDPNetworkCmdWindows      string `json:"rdp_network_cmd_windows"`       // Download command for Windows. Placeholders: {url}, {filename}
+	RDPNetworkCmdLinux      string `json:"rdp_network_cmd_linux"`      // Download command for Linux. Placeholders: {url}, {filename}
+	RDPNetworkCmdMacOS      string `json:"rdp_network_cmd_macos"`      // Download command for macOS. Placeholders: {url}, {filename}
+	RDPBase64CmdWindows     string `json:"rdp_base64_cmd_windows"`     // Decode command for Windows. Placeholders: {data}, {filename}
+	RDPBase64CmdLinux       string `json:"rdp_base64_cmd_linux"`       // Decode command for Linux. Placeholders: {data}, {filename}
+	RDPBase64CmdMacOS       string `json:"rdp_base64_cmd_macos"`       // Decode command for macOS. Placeholders: {data}, {filename}
+	RDPUsername             string `json:"rdp_username"`               // Username for RDP authentication (any username allowed if empty)
+	RDPDomain               string `json:"rdp_domain"`                 // Domain for RDP authentication (any domain allowed if empty)
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -280,10 +292,21 @@ func getDefaultConfig() Config {
 		RDPAudioEnabled:     true,
 		RDPMicEnabled:       true,
 		RDPCameraEnabled:    false, // Camera redirection off by default
-		RDPClipboardEnabled: true,
-		RDPPasteDelayMs:     0,         // No delay - fastest typing speed
-		RDPTargetOS:         "windows", // Most common target
-		RDPClipboardMode:    "text",    // Plain text only (skip non-typeable chars)
+		RDPClipboardEnabled:    true,
+		RDPPasteDelayMs:        0,         // No delay - fastest typing speed
+		RDPTargetOS:            "windows", // Most common target
+		RDPClipboardMode:       "text",    // Plain text only (skip non-typeable chars)
+		RDPFileTransferEnabled: true, // File transfer enabled by default
+		RDPFileTransferMethod:  "auto",
+		RDPFileTransferPort:    9000,
+		RDPFileTransferMaxMB:   100,
+		// Command templates - empty means use built-in defaults
+		RDPNetworkCmdWindows: "",
+		RDPNetworkCmdLinux:   "",
+		RDPNetworkCmdMacOS:   "",
+		RDPBase64CmdWindows:  "",
+		RDPBase64CmdLinux:    "",
+		RDPBase64CmdMacOS:    "",
 	}
 }
 

@@ -287,42 +287,42 @@ func (w *BERWriter) Len() int {
 	return len(w.buf)
 }
 
-// WriteByte writes a single byte.
-func (w *BERWriter) WriteByte(b byte) {
+// writeByte writes a single byte.
+func (w *BERWriter) writeByte(b byte) {
 	w.buf = append(w.buf, b)
 }
 
-// WriteBytes writes multiple bytes.
-func (w *BERWriter) WriteBytes(data []byte) {
+// writeBytes writes multiple bytes.
+func (w *BERWriter) writeBytes(data []byte) {
 	w.buf = append(w.buf, data...)
 }
 
 // WriteLength writes a BER length.
 func (w *BERWriter) WriteLength(length int) {
 	if length < 0x80 {
-		w.WriteByte(byte(length))
+		w.writeByte(byte(length))
 		return
 	}
 
 	// Determine number of bytes needed
 	if length <= 0xFF {
-		w.WriteByte(0x81)
-		w.WriteByte(byte(length))
+		w.writeByte(0x81)
+		w.writeByte(byte(length))
 	} else if length <= 0xFFFF {
-		w.WriteByte(0x82)
-		w.WriteByte(byte(length >> 8))
-		w.WriteByte(byte(length))
+		w.writeByte(0x82)
+		w.writeByte(byte(length >> 8))
+		w.writeByte(byte(length))
 	} else {
-		w.WriteByte(0x83)
-		w.WriteByte(byte(length >> 16))
-		w.WriteByte(byte(length >> 8))
-		w.WriteByte(byte(length))
+		w.writeByte(0x83)
+		w.writeByte(byte(length >> 16))
+		w.writeByte(byte(length >> 8))
+		w.writeByte(byte(length))
 	}
 }
 
 // WriteInteger writes a BER-encoded INTEGER.
 func (w *BERWriter) WriteInteger(value int) {
-	w.WriteByte(BERTagInteger)
+	w.writeByte(BERTagInteger)
 
 	// Determine the minimum number of bytes needed
 	var encoded []byte
@@ -346,42 +346,42 @@ func (w *BERWriter) WriteInteger(value int) {
 	}
 
 	w.WriteLength(len(encoded))
-	w.WriteBytes(encoded)
+	w.writeBytes(encoded)
 }
 
 // WriteBoolean writes a BER-encoded BOOLEAN.
 func (w *BERWriter) WriteBoolean(value bool) {
-	w.WriteByte(BERTagBoolean)
-	w.WriteByte(1)
+	w.writeByte(BERTagBoolean)
+	w.writeByte(1)
 	if value {
-		w.WriteByte(0xFF)
+		w.writeByte(0xFF)
 	} else {
-		w.WriteByte(0x00)
+		w.writeByte(0x00)
 	}
 }
 
 // WriteOctetString writes a BER-encoded OCTET STRING.
 func (w *BERWriter) WriteOctetString(data []byte) {
-	w.WriteByte(BERTagOctetString)
+	w.writeByte(BERTagOctetString)
 	w.WriteLength(len(data))
-	w.WriteBytes(data)
+	w.writeBytes(data)
 }
 
 // WriteApplicationTag writes an application-specific tag.
 func (w *BERWriter) WriteApplicationTag(tag byte, length int) {
-	w.WriteByte(BERClassApplication | BERConstructed | tag)
+	w.writeByte(BERClassApplication | BERConstructed | tag)
 	w.WriteLength(length)
 }
 
 // WriteContextTag writes a context-specific tag.
 func (w *BERWriter) WriteContextTag(tag byte, length int) {
-	w.WriteByte(BERClassContext | BERConstructed | tag)
+	w.writeByte(BERClassContext | BERConstructed | tag)
 	w.WriteLength(length)
 }
 
 // WriteSequence writes a SEQUENCE header.
 func (w *BERWriter) WriteSequence(length int) {
-	w.WriteByte(BERTagSequence | BERConstructed)
+	w.writeByte(BERTagSequence | BERConstructed)
 	w.WriteLength(length)
 }
 
