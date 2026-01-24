@@ -55,7 +55,6 @@ type RDPState struct {
 	// File transfer settings
 	FileTransferEnabled    bool   `json:"fileTransferEnabled"`
 	FileTransferMethod     string `json:"fileTransferMethod"`
-	FileTransferPort       int    `json:"fileTransferPort"`
 	FileTransferMaxMB      int    `json:"fileTransferMaxMB"`
 	FileTransferTTLSec     int    `json:"fileTransferTTLSec"`
 	FileTransferCleanupSec int    `json:"fileTransferCleanupSec"`
@@ -112,7 +111,6 @@ func rpcGetRDPState() (RDPState, error) {
 		// File transfer settings
 		FileTransferEnabled:    config.RDPFileTransferEnabled,
 		FileTransferMethod:     config.RDPFileTransferMethod,
-		FileTransferPort:       config.RDPFileTransferPort,
 		FileTransferMaxMB:      config.RDPFileTransferMaxMB,
 		FileTransferTTLSec:     config.RDPFileTransferTTLSec,
 		FileTransferCleanupSec: config.RDPFileTransferCleanupSec,
@@ -404,23 +402,6 @@ func rpcSetRDPFileTransferMethod(method string) error {
 
 	if err := SaveConfig(); err != nil {
 		config.RDPFileTransferMethod = oldValue
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-
-	return nil
-}
-
-// rpcSetRDPFileTransferPort sets the HTTP server port for network file transfer.
-func rpcSetRDPFileTransferPort(port int) error {
-	if port < minPort || port > maxPort {
-		return fmt.Errorf("invalid port number: %d (must be %d-%d)", port, minPort, maxPort)
-	}
-
-	oldValue := config.RDPFileTransferPort
-	config.RDPFileTransferPort = port
-
-	if err := SaveConfig(); err != nil {
-		config.RDPFileTransferPort = oldValue
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

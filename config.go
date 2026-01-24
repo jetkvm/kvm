@@ -163,7 +163,6 @@ type Config struct {
 	RDPClipboardMode        string `json:"rdp_clipboard_mode"`         // Clipboard mode: "text", "base64-markers", "base64-script", default: "text"
 	RDPFileTransferEnabled  bool   `json:"rdp_file_transfer_enabled"`  // Enable file clipboard transfer, default: false
 	RDPFileTransferMethod   string `json:"rdp_file_transfer_method"`   // Transfer method: "auto", "network", "usb", "base64", default: "auto"
-	RDPFileTransferPort     int    `json:"rdp_file_transfer_port"`     // HTTP server port for network transfer, default: 9000
 	RDPFileTransferMaxMB      int    `json:"rdp_file_transfer_max_mb"`      // Max file size in MB, default: 100
 	RDPFileTransferTTLSec     int    `json:"rdp_file_transfer_ttl_sec"`     // File TTL in seconds before expiry, default: 300 (5 min)
 	RDPFileTransferCleanupSec int    `json:"rdp_file_transfer_cleanup_sec"` // Cleanup interval in seconds, default: 60
@@ -298,7 +297,6 @@ func getDefaultConfig() Config {
 		RDPClipboardMode:       "text",    // Plain text only (skip non-typeable chars)
 		RDPFileTransferEnabled: true, // File transfer enabled by default
 		RDPFileTransferMethod:  "auto",
-		RDPFileTransferPort:    9000,
 		RDPFileTransferMaxMB:   100,
 		// Command templates - empty means use built-in defaults
 		RDPNetworkCmdWindows: "",

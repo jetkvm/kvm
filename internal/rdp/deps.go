@@ -135,9 +135,6 @@ type ConfigProvider interface {
 	// Values: "auto", "network", "usb", "base64"
 	GetRDPFileTransferMethod() string
 
-	// GetRDPFileTransferPort returns the HTTP server port for network transfer.
-	GetRDPFileTransferPort() int
-
 	// GetRDPFileTransferMaxMB returns the maximum file size in MB.
 	GetRDPFileTransferMaxMB() int
 

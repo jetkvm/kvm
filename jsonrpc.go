@@ -1521,7 +1521,6 @@ var rpcHandlers = map[string]RPCHandler{
 	// RDP file transfer settings
 	"setRDPFileTransferEnabled":  {Func: rpcSetRDPFileTransferEnabled, Params: []string{"enabled"}},
 	"setRDPFileTransferMethod":   {Func: rpcSetRDPFileTransferMethod, Params: []string{"method"}},
-	"setRDPFileTransferPort":     {Func: rpcSetRDPFileTransferPort, Params: []string{"port"}},
 	"setRDPFileTransferMaxMB":      {Func: rpcSetRDPFileTransferMaxMB, Params: []string{"maxMB"}},
 	"setRDPFileTransferTTLSec":     {Func: rpcSetRDPFileTransferTTLSec, Params: []string{"ttlSec"}},
 	"setRDPFileTransferCleanupSec": {Func: rpcSetRDPFileTransferCleanupSec, Params: []string{"cleanupSec"}},

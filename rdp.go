@@ -113,13 +113,6 @@ func (a *rdpConfigAdapter) GetRDPFileTransferMethod() string {
 	return config.RDPFileTransferMethod
 }
 
-func (a *rdpConfigAdapter) GetRDPFileTransferPort() int {
-	if config.RDPFileTransferPort == 0 {
-		return 9000
-	}
-	return config.RDPFileTransferPort
-}
-
 func (a *rdpConfigAdapter) GetRDPFileTransferMaxMB() int {
 	if config.RDPFileTransferMaxMB == 0 {
 		return 100

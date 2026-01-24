@@ -28,7 +28,6 @@ interface RDPStateResult {
   // File transfer settings
   fileTransferEnabled: boolean;
   fileTransferMethod: string;
-  fileTransferPort: number;
   fileTransferMaxMB: number;
   fileTransferTTLSec: number;
   fileTransferCleanupSec: number;
@@ -37,7 +36,6 @@ interface RDPStateResult {
 const RDP_DEFAULTS = {
   port: 3389,
   maxConnections: 3,
-  fileTransferPort: 9000,
   fileTransferMaxMB: 100,
   fileTransferTTLSec: 300,
   fileTransferCleanupSec: 60,
@@ -64,7 +62,6 @@ export default function SettingsRDPRoute() {
   const [clipboardMode, setClipboardMode] = useState<string>("text");
   const [fileTransferEnabled, setFileTransferEnabled] = useState<boolean>(false);
   const [fileTransferMethod, setFileTransferMethod] = useState<string>("auto");
-  const [fileTransferPort, setFileTransferPort] = useState<number>(RDP_DEFAULTS.fileTransferPort);
   const [fileTransferMaxMB, setFileTransferMaxMB] = useState<number>(
     RDP_DEFAULTS.fileTransferMaxMB,
   );
@@ -104,7 +101,6 @@ export default function SettingsRDPRoute() {
       setClipboardMode(state.clipboardMode || "text");
       setFileTransferEnabled(state.fileTransferEnabled ?? false);
       setFileTransferMethod(state.fileTransferMethod || "auto");
-      setFileTransferPort(state.fileTransferPort || RDP_DEFAULTS.fileTransferPort);
       setFileTransferMaxMB(state.fileTransferMaxMB || RDP_DEFAULTS.fileTransferMaxMB);
       setFileTransferTTLSec(state.fileTransferTTLSec || RDP_DEFAULTS.fileTransferTTLSec);
       setFileTransferCleanupSec(state.fileTransferCleanupSec || RDP_DEFAULTS.fileTransferCleanupSec);
@@ -340,19 +336,6 @@ export default function SettingsRDPRoute() {
       }
       setFileTransferMethod(newMethod);
       notifications.success(m.rdp_settings_file_transfer_method_changed());
-    });
-  };
-
-  const handleFileTransferPortChange = (newPort: number) => {
-    send("setRDPFileTransferPort", { port: newPort }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
-        );
-        return;
-      }
-      setFileTransferPort(newPort);
-      notifications.success(m.rdp_settings_file_transfer_port_changed());
     });
   };
 
@@ -692,6 +675,7 @@ export default function SettingsRDPRoute() {
                   <div className="flex items-center gap-2">
                     <SelectMenuBasic
                       size="SM"
+                      className="min-w-[70px]"
                       value={String(pasteDelayMs)}
                       options={[
                         { value: "0", label: "0" },
@@ -755,27 +739,6 @@ export default function SettingsRDPRoute() {
                     </SettingsItem>
 
                     <SettingsItem
-                      title={m.rdp_settings_file_transfer_port_title()}
-                      description={m.rdp_settings_file_transfer_port_description()}
-                    >
-                      <SelectMenuBasic
-                        size="SM"
-                        value={String(fileTransferPort)}
-                        options={[
-                          {
-                            value: "9000",
-                            label: `9000${fileTransferPort === RDP_DEFAULTS.fileTransferPort ? m.rdp_settings_default_suffix() : ""}`,
-                          },
-                          { value: "9001", label: "9001" },
-                          { value: "9002", label: "9002" },
-                          { value: "8080", label: "8080" },
-                          { value: "8443", label: "8443" },
-                        ]}
-                        onChange={e => handleFileTransferPortChange(parseInt(e.target.value))}
-                      />
-                    </SettingsItem>
-
-                    <SettingsItem
                       title={m.rdp_settings_file_transfer_max_size_title()}
                       description={m.rdp_settings_file_transfer_max_size_description()}
                     >
@@ -834,6 +797,7 @@ export default function SettingsRDPRoute() {
                       <div className="flex items-center gap-2">
                         <SelectMenuBasic
                           size="SM"
+                          className="min-w-[70px]"
                           value={String(fileTransferCleanupSec)}
                           options={[
                             { value: "30", label: "30" },

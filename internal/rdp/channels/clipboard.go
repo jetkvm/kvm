@@ -809,3 +809,12 @@ func sanitizeFileName(name string) string {
 	}
 	return string(result)
 }
+
+// TargetOS represents the target operating system for command generation.
+type TargetOS string
+
+const (
+	TargetOSWindows TargetOS = "windows"
+	TargetOSLinux   TargetOS = "linux"
+	TargetOSMacOS   TargetOS = "macos"
+)

@@ -78,7 +78,6 @@ type Connection struct {
 	rdpsndID         uint16 // Static channel ID for rdpsnd
 	clipboardChannel *channels.ClipboardChannel
 	cliprdrdID       uint16 // Static channel ID for cliprdr
-	clipboardServer  *channels.ClipboardServer
 
 	// Modifier key tracking for paste detection
 	ctrlPressed     atomic.Bool
@@ -697,10 +696,6 @@ func (c *Connection) Close() {
 	// Cleanup clipboard resources
 	if c.clipboardChannel != nil {
 		c.clipboardChannel.CleanupFiles()
-	}
-	if c.clipboardServer != nil {
-		_ = c.clipboardServer.Stop()
-		c.clipboardServer = nil
 	}
 
 	// Cleanup pending files (not yet pasted)
