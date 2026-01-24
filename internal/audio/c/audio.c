@@ -1374,7 +1374,15 @@ static void close_audio_stream(atomic_int *stop_requested, volatile int *initial
 	}
 
 	if (codec_to_destroy) {
-		destroy_codec(codec_to_destroy);
+		// Validate codec pointer before destroy - must be in heap range
+		// This prevents crashes from double-free or corrupted pointers
+		uintptr_t ptr = (uintptr_t)codec_to_destroy;
+		if (ptr > 0x1000 && ptr < 0xFFFFFFFF) {
+			destroy_codec(codec_to_destroy);
+		} else {
+			fprintf(stderr, "WARN: audio: skipping destroy of invalid codec pointer %p\n", codec_to_destroy);
+			fflush(stderr);
+		}
 	}
 
 	atomic_store(stop_requested, 0);

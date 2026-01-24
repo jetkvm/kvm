@@ -160,18 +160,23 @@ func (c *CgoSource) Disconnect() {
 	defer c.mu.Unlock()
 
 	if !c.connected {
+		c.logger.Debug().Str("device", c.alsaDevice).Msg("audio already disconnected, skipping")
 		return
 	}
 
+	// Mark as disconnected first to prevent race conditions
+	c.connected = false
+
 	if c.outputDevice {
+		c.logger.Debug().Str("device", c.alsaDevice).Msg("closing audio capture")
 		C.jetkvm_audio_capture_close()
 		os.Unsetenv("ALSA_CAPTURE_DEVICE")
 	} else {
+		c.logger.Debug().Str("device", c.alsaDevice).Msg("closing audio playback")
 		C.jetkvm_audio_playback_close()
 		os.Unsetenv("ALSA_PLAYBACK_DEVICE")
 	}
 
-	c.connected = false
 	c.logger.Debug().Str("device", c.alsaDevice).Msg("audio disconnected")
 }
 

@@ -132,6 +132,10 @@ func setupRouter() *gin.Engine {
 		c.String(http.StatusOK, "User-agent: *\nDisallow: /")
 	})
 
+	// Clipboard file download endpoint (for RDP file transfer via network method)
+	// This uses port 443 instead of a separate server, so target machines can access it
+	r.GET("/c/:token", GetClipboardStore().HandleDownload)
+
 	r.Any("/static/*w", func(c *gin.Context) {
 		staticFileServer.ServeHTTP(c.Writer, c.Request)
 	})

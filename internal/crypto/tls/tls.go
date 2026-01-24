@@ -122,7 +122,20 @@ func NewListener(inner net.Listener, config *Config) *Listener {
 	}
 }
 
+// temporaryError wraps an error and marks it as temporary so http.Server.Serve()
+// will retry instead of exiting.
+type temporaryError struct {
+	err error
+}
+
+func (e *temporaryError) Error() string   { return e.err.Error() }
+func (e *temporaryError) Temporary() bool { return true }
+func (e *temporaryError) Timeout() bool   { return false }
+
 // Accept accepts a connection and performs the TLS handshake.
+// If the TLS handshake fails (e.g., client rejects certificate), a temporary
+// error is returned so http.Server.Serve() will retry with the next connection
+// instead of exiting.
 func (l *Listener) Accept() (net.Conn, error) {
 	conn, err := l.inner.Accept()
 	if err != nil {
@@ -131,8 +144,11 @@ func (l *Listener) Accept() (net.Conn, error) {
 
 	tlsConn, err := Server(conn, l.config)
 	if err != nil {
+		// TLS handshake failed - close this connection and return a temporary error.
+		// This allows http.Server.Serve() to retry with the next connection instead
+		// of treating it as a fatal listener error.
 		conn.Close()
-		return nil, err
+		return nil, &temporaryError{err: err}
 	}
 
 	return tlsConn, nil
