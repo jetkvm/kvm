@@ -122,36 +122,33 @@ func NewListener(inner net.Listener, config *Config) *Listener {
 	}
 }
 
-// temporaryError wraps an error and marks it as temporary so http.Server.Serve()
-// will retry instead of exiting.
-type temporaryError struct {
-	err error
-}
-
-func (e *temporaryError) Error() string   { return e.err.Error() }
-func (e *temporaryError) Temporary() bool { return true }
-func (e *temporaryError) Timeout() bool   { return false }
-
 // Accept accepts a connection and performs the TLS handshake.
-// If the TLS handshake fails (e.g., client rejects certificate), a temporary
-// error is returned so http.Server.Serve() will retry with the next connection
-// instead of exiting.
+// If the TLS handshake fails (e.g., client rejects certificate, time not synced),
+// the connection is closed and Accept retries with the next connection.
+// This prevents http.Server.Serve() from exiting on transient TLS errors.
 func (l *Listener) Accept() (net.Conn, error) {
-	conn, err := l.inner.Accept()
-	if err != nil {
-		return nil, err
-	}
+	for {
+		conn, err := l.inner.Accept()
+		if err != nil {
+			// Listener error (e.g., closed) - propagate to caller
+			return nil, err
+		}
 
-	tlsConn, err := Server(conn, l.config)
-	if err != nil {
-		// TLS handshake failed - close this connection and return a temporary error.
-		// This allows http.Server.Serve() to retry with the next connection instead
-		// of treating it as a fatal listener error.
-		conn.Close()
-		return nil, &temporaryError{err: err}
-	}
+		tlsConn, err := Server(conn, l.config)
+		if err != nil {
+			// TLS handshake failed - close this connection and try the next one.
+			// Common causes:
+			// - Client rejected our certificate (self-signed, untrusted CA)
+			// - Certificate not available (time not synced for self-signed)
+			// - Client disconnected during handshake
+			// - Protocol mismatch
+			// These are all transient per-connection errors, not listener failures.
+			conn.Close()
+			continue
+		}
 
-	return tlsConn, nil
+		return tlsConn, nil
+	}
 }
 
 // Close closes the underlying listener.
