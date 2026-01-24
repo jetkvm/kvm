@@ -20,6 +20,21 @@ SSL_LIBS_DIR="/opt/jetkvm-ssl-libs"
 BUILDKIT_PATH="/opt/jetkvm-native-buildkit"
 BUILDKIT_FLAVOR="arm-rockchip830-linux-uclibcgnueabihf"
 CROSS_PREFIX="$BUILDKIT_PATH/bin/$BUILDKIT_FLAVOR"
+SYSROOT="$BUILDKIT_PATH/$BUILDKIT_FLAVOR/sysroot"
+
+# Install cryptodev.h header for /dev/crypto hardware acceleration
+# This header is required for OpenSSL's devcrypto engine to build
+# Source: Luckfox Pico kernel (same RV1106 SoC as JetKVM)
+CRYPTO_HEADER_DIR="$SYSROOT/usr/include/crypto"
+CRYPTO_HEADER="$CRYPTO_HEADER_DIR/cryptodev.h"
+CRYPTO_HEADER_URL="https://raw.githubusercontent.com/LuckfoxTECH/luckfox-pico/5.10.110/sysdrv/source/kernel/include/uapi/linux/cryptodev.h"
+
+if [ ! -f "$CRYPTO_HEADER" ]; then
+  echo "Installing cryptodev.h header for hardware crypto support..."
+  use_sudo mkdir -p "$CRYPTO_HEADER_DIR"
+  curl -sL "$CRYPTO_HEADER_URL" | use_sudo tee "$CRYPTO_HEADER" > /dev/null
+  echo "Installed: $CRYPTO_HEADER"
+fi
 
 # Create directory with proper permissions
 use_sudo mkdir -p "$SSL_LIBS_DIR"
@@ -78,6 +93,12 @@ ls -la "$SSL_LIBS_DIR/install/lib64/"*.a 2>/dev/null || ls -la "$SSL_LIBS_DIR/in
 echo ""
 echo "OpenSSL ${OPENSSL_VERSION} built in $SSL_LIBS_DIR/install (static only)"
 echo ""
-echo "To use with CGO, add to Makefile:"
-echo "  CGO_CFLAGS: -I$SSL_LIBS_DIR/install/include"
-echo "  CGO_LDFLAGS: -L$SSL_LIBS_DIR/install/lib64 -L$SSL_LIBS_DIR/install/lib -l:libssl.a -l:libcrypto.a"
+echo "Hardware crypto support:"
+if [ -f "$CRYPTO_HEADER" ]; then
+  echo "  ✓ cryptodev.h header installed"
+  echo "  ✓ devcrypto engine enabled (uses /dev/crypto on RV1106)"
+else
+  echo "  ✗ cryptodev.h header missing - hardware crypto NOT available"
+fi
+echo ""
+echo "The Makefile will automatically use this OpenSSL when detected."

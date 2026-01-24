@@ -21,7 +21,7 @@
                 "base": "$gcc",
                 "background": {
                     "activeOnStart": true,
-                    "beginsPattern": "${config:BINARY}",
+                    "beginsPattern": ".*",
                     "endsPattern": "Listening on port [0-9]{4}"
                 }
             }
