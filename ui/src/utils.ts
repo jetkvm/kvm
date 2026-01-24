@@ -279,6 +279,8 @@ export function map_locale_code_to_name(
       return [m.locale_it({}, { locale: currentLocale }), m.locale_it({}, { locale })];
     case "nb":
       return [m.locale_nb({}, { locale: currentLocale }), m.locale_nb({}, { locale })];
+    case "pt":
+      return [m.locale_pt({}, { locale: currentLocale }), m.locale_pt({}, { locale })];
     case "sv":
       return [m.locale_sv({}, { locale: currentLocale }), m.locale_sv({}, { locale })];
     case "zh":
