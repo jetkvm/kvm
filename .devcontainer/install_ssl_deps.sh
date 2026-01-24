@@ -24,16 +24,16 @@ SYSROOT="$BUILDKIT_PATH/$BUILDKIT_FLAVOR/sysroot"
 
 # Install cryptodev.h header for /dev/crypto hardware acceleration
 # This header is required for OpenSSL's devcrypto engine to build
-# Source: Luckfox Pico kernel (same RV1106 SoC as JetKVM)
+# The header is included in our source tree (from Luckfox Pico kernel, same RV1106 SoC)
 CRYPTO_HEADER_DIR="$SYSROOT/usr/include/crypto"
 CRYPTO_HEADER="$CRYPTO_HEADER_DIR/cryptodev.h"
-CRYPTO_HEADER_URL="https://raw.githubusercontent.com/LuckfoxTECH/luckfox-pico/5.10.110/sysdrv/source/kernel/include/uapi/linux/cryptodev.h"
+CRYPTO_HEADER_SRC="$(dirname "$0")/../internal/crypto/tls/include/crypto/cryptodev.h"
 
 if [ ! -f "$CRYPTO_HEADER" ]; then
   echo "Installing cryptodev.h header for hardware crypto support..."
   use_sudo mkdir -p "$CRYPTO_HEADER_DIR"
-  curl -sL "$CRYPTO_HEADER_URL" | use_sudo tee "$CRYPTO_HEADER" > /dev/null
-  echo "Installed: $CRYPTO_HEADER"
+  use_sudo cp "$CRYPTO_HEADER_SRC" "$CRYPTO_HEADER"
+  echo "Installed: $CRYPTO_HEADER (from source tree)"
 fi
 
 # Create directory with proper permissions
