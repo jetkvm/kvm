@@ -132,7 +132,7 @@ func (c *Connection) handleMouseEvent(data []byte) {
 	// Handle vertical wheel (PTRFLAGS_WHEEL = 0x0200)
 	// RDP wheel delta: WHEEL_DELTA (120) = one notch. Lower 8 bits contain magnitude.
 	// HID wheel: signed 8-bit value, typically 1-3 per notch.
-	// We scale by dividing by 40 (120/40 ≈ 3 HID units per notch) and ensure
+	// We scale by dividing by 120 (one RDP notch = 1 HID unit) and ensure
 	// small movements aren't lost. Minimum movement is ±1 if delta is non-zero.
 	if pointerFlags&0x0200 != 0 {
 		delta := int(pointerFlags & 0x00FF)

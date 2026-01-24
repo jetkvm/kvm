@@ -174,6 +174,12 @@ type GFXChannel struct {
 	// Max size: 2 + 16 + (25 + 14 + 300KB) + 12 ≈ 320KB for large keyframes
 	frameBuf []byte
 
+	// ===== LOCK ORDERING =====
+	// These locks are independent and protect different operations:
+	// - sendMu: Surface lifecycle (creation, deletion, resolution changes)
+	// - frameMu: Frame data operations (frameBuf, metaBuf access)
+	// These are never held simultaneously - surface ops and frame ops are separate.
+
 	// Mutex for surface operations (creation, deletion, resolution changes)
 	sendMu sync.Mutex
 
@@ -319,8 +325,9 @@ func (g *GFXChannel) unwrapZGFX(data []byte) ([]byte, error) {
 		}
 		flags := data[1]
 
-		// If PACKET_COMPR_TYPE_RDP8 (0x04) is set, it's compressed
-		if flags&0x04 != 0 {
+		// Check PACKET_COMPRESSED flag (0x20) - if set, actual decompression is required
+		// Note: 0x04 is compression TYPE (RDP8), but 0x20 indicates data IS compressed
+		if flags&0x20 != 0 {
 			return nil, errors.New("zgfx: compressed data not supported")
 		}
 

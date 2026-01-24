@@ -384,9 +384,9 @@ func (c *Connection) handleShareDataPDU(data []byte) {
 
 // Virtual channel PDU flags (MS-RDPBCGR 2.2.6.1).
 const (
-	channelFlagFirst       = 0x00000001 // CHANNEL_FLAG_FIRST
-	channelFlagLast        = 0x00000002 // CHANNEL_FLAG_LAST
-	channelFlagShowProtocol = 0x00000010 // CHANNEL_FLAG_SHOW_PROTOCOL
+	channelFlagFirst = 0x00000001 // CHANNEL_FLAG_FIRST
+	channelFlagLast  = 0x00000002 // CHANNEL_FLAG_LAST
+	// channelFlagShowProtocol (0x00000010) reserved for future use
 )
 
 // MaxClipboardReassemblySize is the maximum size for clipboard PDU reassembly.

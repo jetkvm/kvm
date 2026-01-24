@@ -629,7 +629,11 @@ func (h *Handler) buildTSRequest(version int, ntlmToken []byte) []byte {
 		},
 	}
 
-	data, _ := asn1.Marshal(req)
+	data, err := asn1.Marshal(req)
+	if err != nil {
+		h.debugLog("CredSSP: failed to marshal TSRequest: %v", err)
+		return nil
+	}
 	return data
 }
 
@@ -726,6 +730,10 @@ func (h *Handler) buildTSRequestFinal(pubKeyAuth []byte) []byte {
 		PubKeyAuth: pubKeyAuth,
 	}
 
-	data, _ := asn1.Marshal(req)
+	data, err := asn1.Marshal(req)
+	if err != nil {
+		h.debugLog("CredSSP: failed to marshal final TSRequest: %v", err)
+		return nil
+	}
 	return data
 }

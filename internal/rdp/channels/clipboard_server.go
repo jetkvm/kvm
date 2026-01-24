@@ -148,13 +148,25 @@ func (s *ClipboardServer) Start() error {
 	s.stopCh = make(chan struct{})
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.log("clipboard server panicked: %v", r)
+			}
+		}()
 		if err := s.server.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			s.log("clipboard server error: %v", err)
 		}
 	}()
 
 	// Start cleanup goroutine
-	go s.cleanupLoop()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.log("clipboard cleanup goroutine panicked: %v", r)
+			}
+		}()
+		s.cleanupLoop()
+	}()
 
 	return nil
 }
@@ -249,7 +261,9 @@ func (s *ClipboardServer) RemoveFile(token string) {
 
 	if pf, ok := s.pending[token]; ok {
 		if pf.path != "" {
-			os.Remove(pf.path)
+			if err := os.Remove(pf.path); err != nil && !os.IsNotExist(err) {
+				s.log("warning: failed to remove file %s: %v", pf.path, err)
+			}
 		}
 		delete(s.pending, token)
 		s.log("removed file: %s", pf.name)
@@ -310,7 +324,9 @@ func (s *ClipboardServer) handleDownload(w http.ResponseWriter, r *http.Request)
 	if time.Since(pf.createdAt) > s.expiryTime {
 		delete(s.pending, token)
 		if pf.path != "" {
-			os.Remove(pf.path)
+			if err := os.Remove(pf.path); err != nil && !os.IsNotExist(err) {
+				s.log("warning: failed to remove expired file %s: %v", pf.path, err)
+			}
 		}
 		s.mu.Unlock()
 		http.Error(w, "Gone", http.StatusGone)
@@ -340,8 +356,10 @@ func (s *ClipboardServer) handleDownload(w http.ResponseWriter, r *http.Request)
 
 	// Stream file
 	s.log("serving file: %s to %s (TLS=%v)", name, r.RemoteAddr, r.TLS != nil)
-	if _, err := io.Copy(w, f); err != nil {
-		s.log("error streaming file: %v", err)
+	written, err := io.Copy(w, f)
+	if err != nil {
+		s.log("error streaming file %s: %v (wrote %d bytes)", name, err, written)
+		// Connection was likely closed mid-transfer; cleanup will happen below
 	}
 
 	// Cleanup after single use
@@ -349,7 +367,9 @@ func (s *ClipboardServer) handleDownload(w http.ResponseWriter, r *http.Request)
 		s.mu.Lock()
 		delete(s.pending, token)
 		s.mu.Unlock()
-		os.Remove(path)
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			s.log("warning: failed to cleanup served file %s: %v", path, err)
+		}
 		s.log("file served and cleaned up: %s", name)
 	}
 }
@@ -376,7 +396,9 @@ func (s *ClipboardServer) cleanupExpired() {
 	for token, pf := range s.pending {
 		if now.Sub(pf.createdAt) > s.expiryTime {
 			if pf.path != "" {
-				os.Remove(pf.path)
+				if err := os.Remove(pf.path); err != nil && !os.IsNotExist(err) {
+					s.log("warning: failed to remove expired file %s: %v", pf.path, err)
+				}
 			}
 			delete(s.pending, token)
 			s.log("cleaned up expired file: %s (age: %v)", pf.name, now.Sub(pf.createdAt).Round(time.Second))

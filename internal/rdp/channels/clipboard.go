@@ -4,6 +4,7 @@ package channels
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -531,8 +532,13 @@ func (c *ClipboardChannel) handleFileListResponse(data []byte) error {
 		desc := c.parseFileDescriptor(data[pos : pos+592])
 		c.log("CLIPRDR: file[%d]: %s (%d bytes)", i, desc.FileName, desc.FileSize())
 
-		// Create temp file path
-		tempPath := filepath.Join(c.tempDir, "jkvm-clip-"+randomToken(8)+"-"+sanitizeFileName(desc.FileName))
+		// Create temp file path with secure random token
+		token, err := randomToken(8)
+		if err != nil {
+			c.log("CLIPRDR: failed to generate secure token for file %d: %v", i, err)
+			return err
+		}
+		tempPath := filepath.Join(c.tempDir, "jkvm-clip-"+token+"-"+sanitizeFileName(desc.FileName))
 
 		c.files = append(c.files, &ClipboardFile{
 			Descriptor: desc,
@@ -758,26 +764,32 @@ func (c *ClipboardChannel) CleanupFiles() {
 	for _, f := range c.files {
 		c.closeFileHandle(f) // Close any open handle
 		if f.TempPath != "" {
-			os.Remove(f.TempPath)
+			if err := os.Remove(f.TempPath); err != nil && !os.IsNotExist(err) {
+				c.log("CLIPRDR: failed to remove temp file %s: %v", f.TempPath, err)
+			}
 		}
 	}
 	c.files = nil
 }
 
+// Common errors for clipboard operations.
+var (
+	ErrRandomTokenFailed = errors.New("clipboard: crypto/rand failed to generate token")
+)
+
 // Helper functions
 
-func randomToken(n int) string {
+func randomToken(n int) (string, error) {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		// SECURITY: Do not use predictable fallback - return empty to fail operation
-		// crypto/rand failures indicate a serious system issue that should be investigated
-		return ""
+		// SECURITY: crypto/rand failures indicate a serious system issue
+		return "", ErrRandomTokenFailed
 	}
 	for i := range b {
 		b[i] = chars[b[i]%byte(len(chars))]
 	}
-	return string(b)
+	return string(b), nil
 }
 
 func sanitizeFileName(name string) string {
