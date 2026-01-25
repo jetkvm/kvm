@@ -146,14 +146,18 @@ function ProviderCard({
     }
   }, [isAuthDialogOpen, status?.authUrl, provider.name]);
 
-  // Derive installed state - prefer status (live) over provider info (cached)
-  // When status is not yet loaded, use provider.installed as fallback but mark as loading
+  // Derive all state from status when loaded - this ensures consistency
+  // The status.state is the authoritative source of truth
   const statusLoaded = status !== null;
-  const isInstalled = statusLoaded ? status.installed : provider.installed;
+  const isNotInstalled = status?.state === "not_installed";
   const isConnected = status?.state === "connected";
   const isConnecting = status?.state === "connecting";
   const needsAuth = status?.state === "needs_auth";
-  const isNotInstalled = status?.state === "not_installed";
+  const isStopped = status?.state === "stopped";
+  const isError = status?.state === "error";
+  // isInstalled = true if status exists and state is NOT "not_installed"
+  // This ensures consistency between the label and button visibility
+  const isInstalled = statusLoaded ? !isNotInstalled : provider.installed;
 
   const handleConnect = () => {
     setActionLoading(true);
@@ -558,7 +562,7 @@ function ProviderCard({
                   disabled={isEffectivelyLoading}
                 />
               )}
-              {!isConnected && !isConnecting && (
+              {isInstalled && !isConnected && !isConnecting && (
                 <Button
                   size="SM"
                   theme="light"
