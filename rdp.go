@@ -229,8 +229,9 @@ func (a *rdpHIDAdapter) CancelKeyboardMacro() {
 type rdpVideoAdapter struct{}
 
 var rdpVideoSubscribers struct {
-	mu   sync.RWMutex
-	subs []chan []byte
+	mu    sync.RWMutex
+	subs  []chan []byte
+	count atomic.Int32 // Fast-path check without lock
 }
 
 func (a *rdpVideoAdapter) GetResolution() (width, height uint16) {
@@ -257,6 +258,7 @@ func (a *rdpVideoAdapter) SubscribeH264() <-chan []byte {
 	ch := make(chan []byte, 10)
 	rdpVideoSubscribers.mu.Lock()
 	rdpVideoSubscribers.subs = append(rdpVideoSubscribers.subs, ch)
+	rdpVideoSubscribers.count.Add(1)
 	rdpVideoSubscribers.mu.Unlock()
 	return ch
 }
@@ -267,6 +269,7 @@ func (a *rdpVideoAdapter) UnsubscribeH264(ch <-chan []byte) {
 	for i, sub := range rdpVideoSubscribers.subs {
 		if sub == ch {
 			rdpVideoSubscribers.subs = append(rdpVideoSubscribers.subs[:i], rdpVideoSubscribers.subs[i+1:]...)
+			rdpVideoSubscribers.count.Add(-1)
 			return
 		}
 	}
@@ -274,6 +277,9 @@ func (a *rdpVideoAdapter) UnsubscribeH264(ch <-chan []byte) {
 
 // BroadcastRDPH264Frame sends an H.264 frame to all RDP subscribers.
 func BroadcastRDPH264Frame(frame []byte) {
+	if rdpVideoSubscribers.count.Load() == 0 {
+		return // Fast-path: no subscribers
+	}
 	rdpVideoSubscribers.mu.RLock()
 	defer rdpVideoSubscribers.mu.RUnlock()
 
@@ -286,14 +292,16 @@ func BroadcastRDPH264Frame(frame []byte) {
 }
 
 var rdpJPEGSubscribers struct {
-	mu   sync.RWMutex
-	subs []chan []byte
+	mu    sync.RWMutex
+	subs  []chan []byte
+	count atomic.Int32 // Fast-path check without lock
 }
 
 func (a *rdpVideoAdapter) SubscribeJPEG() <-chan []byte {
 	ch := make(chan []byte, 5)
 	rdpJPEGSubscribers.mu.Lock()
 	rdpJPEGSubscribers.subs = append(rdpJPEGSubscribers.subs, ch)
+	rdpJPEGSubscribers.count.Add(1)
 	rdpJPEGSubscribers.mu.Unlock()
 	return ch
 }
@@ -304,6 +312,7 @@ func (a *rdpVideoAdapter) UnsubscribeJPEG(ch <-chan []byte) {
 	for i, sub := range rdpJPEGSubscribers.subs {
 		if sub == ch {
 			rdpJPEGSubscribers.subs = append(rdpJPEGSubscribers.subs[:i], rdpJPEGSubscribers.subs[i+1:]...)
+			rdpJPEGSubscribers.count.Add(-1)
 			return
 		}
 	}
@@ -325,6 +334,9 @@ func (a *rdpVideoAdapter) StopJPEGEncoder() error {
 
 // BroadcastRDPJPEGFrame sends a JPEG frame to all RDP JPEG subscribers.
 func BroadcastRDPJPEGFrame(frame []byte) {
+	if rdpJPEGSubscribers.count.Load() == 0 {
+		return // Fast-path: no subscribers
+	}
 	rdpJPEGSubscribers.mu.RLock()
 	defer rdpJPEGSubscribers.mu.RUnlock()
 
@@ -337,14 +349,16 @@ func BroadcastRDPJPEGFrame(frame []byte) {
 }
 
 var rdpRGBSubscribers struct {
-	mu   sync.RWMutex
-	subs []chan rdp.RGBFrame
+	mu    sync.RWMutex
+	subs  []chan rdp.RGBFrame
+	count atomic.Int32 // Fast-path check without lock
 }
 
 func (a *rdpVideoAdapter) SubscribeRGB() <-chan rdp.RGBFrame {
 	ch := make(chan rdp.RGBFrame, 5)
 	rdpRGBSubscribers.mu.Lock()
 	rdpRGBSubscribers.subs = append(rdpRGBSubscribers.subs, ch)
+	rdpRGBSubscribers.count.Add(1)
 	rdpRGBSubscribers.mu.Unlock()
 	return ch
 }
@@ -355,6 +369,7 @@ func (a *rdpVideoAdapter) UnsubscribeRGB(ch <-chan rdp.RGBFrame) {
 	for i, sub := range rdpRGBSubscribers.subs {
 		if sub == ch {
 			rdpRGBSubscribers.subs = append(rdpRGBSubscribers.subs[:i], rdpRGBSubscribers.subs[i+1:]...)
+			rdpRGBSubscribers.count.Add(-1)
 			return
 		}
 	}
@@ -385,6 +400,9 @@ func (a *rdpVideoAdapter) RequestKeyframe() {
 
 // BroadcastRDPRGBFrame sends a video frame to all RDP RGB subscribers.
 func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrameFormat) {
+	if rdpRGBSubscribers.count.Load() == 0 {
+		return // Fast-path: no subscribers
+	}
 	rdpRGBSubscribers.mu.RLock()
 	defer rdpRGBSubscribers.mu.RUnlock()
 
@@ -406,8 +424,9 @@ func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrame
 type rdpAudioAdapter struct{}
 
 var rdpAudioSubscribers struct {
-	mu   sync.RWMutex
-	subs []chan []byte
+	mu    sync.RWMutex
+	subs  []chan []byte
+	count atomic.Int32 // Fast-path check without lock
 }
 
 func (a *rdpAudioAdapter) Connect() {
@@ -422,6 +441,7 @@ func (a *rdpAudioAdapter) SubscribeAudio() <-chan []byte {
 	ch := make(chan []byte, 30)
 	rdpAudioSubscribers.mu.Lock()
 	rdpAudioSubscribers.subs = append(rdpAudioSubscribers.subs, ch)
+	rdpAudioSubscribers.count.Add(1)
 	rdpAudioSubscribers.mu.Unlock()
 	return ch
 }
@@ -432,6 +452,7 @@ func (a *rdpAudioAdapter) UnsubscribeAudio(ch <-chan []byte) {
 	for i, sub := range rdpAudioSubscribers.subs {
 		if sub == ch {
 			rdpAudioSubscribers.subs = append(rdpAudioSubscribers.subs[:i], rdpAudioSubscribers.subs[i+1:]...)
+			rdpAudioSubscribers.count.Add(-1)
 			return
 		}
 	}
@@ -485,8 +506,17 @@ func (a *rdpAudioAdapter) EnableAudioInput() error {
 	return SetAudioInputEnabled(true)
 }
 
+// HasRDPAudioSubscribers returns true if there are RDP audio subscribers.
+// Used to skip PCM processing when no RDP clients need audio.
+func HasRDPAudioSubscribers() bool {
+	return rdpAudioSubscribers.count.Load() > 0
+}
+
 // BroadcastRDPAudio sends audio data to all RDP audio subscribers.
 func BroadcastRDPAudio(data []byte) {
+	if rdpAudioSubscribers.count.Load() == 0 {
+		return // Fast-path: no subscribers
+	}
 	rdpAudioSubscribers.mu.RLock()
 	defer rdpAudioSubscribers.mu.RUnlock()
 

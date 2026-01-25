@@ -15,6 +15,10 @@ import (
 // This is used for RDP audio output which requires raw PCM.
 type PCMCallback func(pcm []byte)
 
+// PCMEnabledCheck returns true if PCM callback should be invoked.
+// Used to skip GetLastPCM CGO call when no RDP audio subscribers.
+type PCMEnabledCheck func() bool
+
 type OutputRelay struct {
 	source     *AudioSource
 	audioTrack atomic.Pointer[webrtc.TrackLocalStaticSample]
@@ -24,7 +28,8 @@ type OutputRelay struct {
 	stopped    chan struct{}
 
 	// Callback for raw PCM data (for RDP audio)
-	pcmCallback PCMCallback
+	pcmCallback       PCMCallback
+	pcmEnabledCheck   PCMEnabledCheck // Check before calling GetLastPCM
 
 	framesRelayed atomic.Uint32
 	framesDropped atomic.Uint32
@@ -58,6 +63,12 @@ func (r *OutputRelay) SetAudioTrack(track *webrtc.TrackLocalStaticSample) {
 // This is called for each audio frame with 16-bit stereo 48kHz PCM.
 func (r *OutputRelay) SetPCMCallback(cb PCMCallback) {
 	r.pcmCallback = cb
+}
+
+// SetPCMEnabledCheck sets a function to check if PCM callback should be called.
+// This avoids the GetLastPCM CGO overhead when no RDP audio subscribers exist.
+func (r *OutputRelay) SetPCMEnabledCheck(check PCMEnabledCheck) {
+	r.pcmEnabledCheck = check
 }
 
 func (r *OutputRelay) Start() error {
@@ -127,8 +138,8 @@ func (r *OutputRelay) relayLoop() {
 		consecutiveFailures = 0
 		retryDelay = 1 * time.Second
 
-		// Call PCM callback for RDP audio output (if set)
-		if r.pcmCallback != nil {
+		// Call PCM callback for RDP audio output (if enabled and has subscribers)
+		if r.pcmCallback != nil && (r.pcmEnabledCheck == nil || r.pcmEnabledCheck()) {
 			if pcm := GetLastPCM(); pcm != nil {
 				r.pcmCallback(pcm)
 				ReleasePCMBuffer(pcm)

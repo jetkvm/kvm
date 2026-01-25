@@ -264,6 +264,9 @@ func (s *Server) UpdateVideoState(width, height uint16) {
 			Msg("VNC: video resolution changed")
 	}
 
+	if s.connCount.Load() == 0 {
+		return // Fast-path: no connections to notify
+	}
 	s.connections.Range(func(key, value any) bool {
 		if conn, ok := key.(*Connection); ok {
 			conn.onResolutionChange(width, height)
@@ -418,6 +421,9 @@ func (s *Server) acceptLoop() {
 // 4. Maximum 10 clients (MaxConnections) limits worst-case latency
 // If a client is consistently slow, frames are dropped via frameRequested flag backpressure.
 func (s *Server) BroadcastJPEGFrame(frame []byte) {
+	if s.connCount.Load() == 0 {
+		return // Fast-path: no connections
+	}
 	s.connections.Range(func(key, value any) bool {
 		if conn, ok := key.(*Connection); ok {
 			conn.SendJPEGFrameDirect(frame)

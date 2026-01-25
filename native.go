@@ -9,7 +9,6 @@ import (
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/rdp"
-	"github.com/pion/webrtc/v4/pkg/media"
 )
 
 var (
@@ -75,10 +74,9 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
-			// Send to WebRTC session
+			// Send to WebRTC session (allocation-free path)
 			if currentSession != nil {
-				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
-				if err != nil {
+				if err := currentSession.WriteVideoFrame(frame, duration); err != nil {
 					nativeLogger.Warn().Err(err).Msg("error writing sample")
 				}
 			}

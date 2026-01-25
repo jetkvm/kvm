@@ -139,7 +139,8 @@ func startOutputAudioUnderMutex(alsaOutputDevice string) error {
 	newSource := audio.NewCgoOutputSource(alsaOutputDevice, getAudioConfig())
 	newRelay := audio.NewOutputRelay(&newSource, currentAudioTrack)
 
-	// Set PCM callback for RDP audio output
+	// Set PCM callback for RDP audio output (with fast-path check)
+	newRelay.SetPCMEnabledCheck(HasRDPAudioSubscribers)
 	newRelay.SetPCMCallback(func(pcm []byte) {
 		BroadcastRDPAudio(pcm)
 	})

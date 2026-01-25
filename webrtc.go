@@ -17,9 +17,9 @@ import (
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
-	"github.com/pion/dtls/v3"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
+	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/rs/zerolog"
 )
 
@@ -42,6 +42,16 @@ type Session struct {
 	hidQueue                 []chan hidQueueMessage
 
 	keysDownStateQueue chan usbgadget.KeysDownState
+
+	// Pre-allocated sample to avoid allocation per video frame
+	videoSample media.Sample
+}
+
+// WriteVideoFrame writes a video frame without allocating a new Sample struct.
+func (s *Session) WriteVideoFrame(frame []byte, duration time.Duration) error {
+	s.videoSample.Data = frame
+	s.videoSample.Duration = duration
+	return s.VideoTrack.WriteSample(s.videoSample)
 }
 
 var (
@@ -262,11 +272,9 @@ func newSession(config SessionConfig) (*Session, error) {
 	// This offloads AES-GCM encryption/decryption to the RV1106 crypto engine
 	webrtcSettingEngine.SetDTLSCustomerCipherSuites(crypto.HardwareCipherSuites)
 
-	// Use SRTP_AEAD_AES_128_GCM for SRTP media encryption.
-	// AES-GCM is preferred because we have hardware acceleration for AES-GCM via /dev/crypto.
-	// Note: pion/srtp still uses software AES-GCM; full hardware acceleration would require
-	// forking pion/srtp to use our crypto.AEAD interface.
-	webrtcSettingEngine.SetSRTPProtectionProfiles(dtls.SRTP_AEAD_AES_128_GCM)
+	// Note: SRTP uses AES-CM-HMAC-SHA1 (default) rather than AES-GCM because
+	// GHASH (used in GCM) is slower than SHA1 in pure software on ARM without
+	// PMULL instructions. Hardware SRTP would require forking pion/srtp.
 
 	mDNSNetworkTypes := make([]webrtc.NetworkType, 0)
 	if config.MDNSMode == "auto" || config.MDNSMode == "ipv4_only" {

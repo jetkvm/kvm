@@ -339,6 +339,9 @@ func (s *Server) acceptLoop() {
 
 // BroadcastFrame sends a video frame to all connected clients.
 func (s *Server) BroadcastFrame(frame []byte) {
+	if s.connCount.Load() == 0 {
+		return // Fast-path: no connections
+	}
 	s.connections.Range(func(key, value any) bool {
 		if conn, ok := key.(*Connection); ok {
 			conn.SendFrame(frame)
