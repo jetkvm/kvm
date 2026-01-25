@@ -22,7 +22,11 @@ import { m } from "@localizations/messages.js";
 import { Checkbox } from "@components/Checkbox";
 
 // Helper to get state display label
-function getStateLabel(state: string): string {
+function getStateLabel(state: string | undefined, isInstalled: boolean): string {
+  // If no status yet, derive from installed flag
+  if (!state) {
+    return isInstalled ? m.meshvpn_stopped() : m.meshvpn_not_installed();
+  }
   switch (state) {
     case "not_installed":
       return m.meshvpn_not_installed();
@@ -142,10 +146,14 @@ function ProviderCard({
     }
   }, [isAuthDialogOpen, status?.authUrl, provider.name]);
 
-  const isInstalled = status?.installed ?? provider.installed;
+  // Derive installed state - prefer status (live) over provider info (cached)
+  // When status is not yet loaded, use provider.installed as fallback but mark as loading
+  const statusLoaded = status !== null;
+  const isInstalled = statusLoaded ? status.installed : provider.installed;
   const isConnected = status?.state === "connected";
   const isConnecting = status?.state === "connecting";
   const needsAuth = status?.state === "needs_auth";
+  const isNotInstalled = status?.state === "not_installed";
 
   const handleConnect = () => {
     setActionLoading(true);
@@ -239,23 +247,32 @@ function ProviderCard({
                 {provider.displayName}
               </h3>
               <p className={`text-sm ${getStatusTextColorClass(status?.state)}`}>
-                {status ? getStateLabel(status.state) : m.meshvpn_not_installed()}
+                {!statusLoaded ? (
+                  <span className="flex items-center gap-1">
+                    <LoadingSpinner className="h-3 w-3" />
+                    {m.meshvpn_loading ? m.meshvpn_loading() : "Loading..."}
+                  </span>
+                ) : (
+                  getStateLabel(status?.state, isInstalled)
+                )}
               </p>
             </div>
           </div>
 
           {/* Quick Action Buttons */}
           <div className="flex items-center gap-x-2">
-            {!isInstalled && (
+            {/* Show Install button only when we know it's not installed */}
+            {(isNotInstalled || (!statusLoaded && !provider.installed)) && (
               <Button
                 size="SM"
                 theme="primary"
                 text={m.meshvpn_install_button()}
                 onClick={handleInstall}
-                disabled={isEffectivelyLoading || installProgress !== null}
+                disabled={isEffectivelyLoading || installProgress !== null || !statusLoaded}
               />
             )}
-            {isInstalled && !isConnected && !isConnecting && !needsAuth && (
+            {/* Show Connect button only when installed and status is loaded */}
+            {statusLoaded && isInstalled && !isConnected && !isConnecting && !needsAuth && (
               <Button
                 size="SM"
                 theme="primary"
@@ -273,7 +290,7 @@ function ProviderCard({
                 disabled={isEffectivelyLoading}
               />
             )}
-            {isInstalled && (
+            {statusLoaded && isInstalled && (
               <Button
                 size="XS"
                 theme="light"
@@ -390,7 +407,7 @@ function ProviderCard({
         )}
 
         {/* Expanded Settings */}
-        {isExpanded && isInstalled && (
+        {isExpanded && statusLoaded && isInstalled && (
           <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-700">
             {/* Tailscale Configuration */}
             {provider.name === "tailscale" && !isConnected && (
@@ -581,6 +598,11 @@ export function MeshVPNSection() {
     setProviderVersionInfo,
   } = useMeshVPNStore();
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
+
   const handleRpcEvent = useCallback(
     (req: JsonRpcRequest) => {
       if (req.method === "meshVPNState") {
@@ -608,13 +630,25 @@ export function MeshVPNSection() {
 
   const { send } = useJsonRpc(handleRpcEvent);
 
-  // Fetch providers
+  // Fetch providers with retry logic
   const fetchProviders = useCallback(() => {
     send("getMeshVPNProviders", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.meshvpn_get_providers_error({ error: String(resp.error.message) }));
+        const errorMsg = String(resp.error.message);
+        // Retry on "mesh VPN not initialized" - it may still be starting up
+        if (errorMsg.includes("not initialized") && retryCountRef.current < maxRetries) {
+          retryCountRef.current++;
+          setTimeout(() => fetchProviders(), 1000); // Retry after 1 second
+          return;
+        }
+        setLoadError(errorMsg);
+        setIsLoading(false);
+        notifications.error(m.meshvpn_get_providers_error({ error: errorMsg }));
         return;
       }
+      retryCountRef.current = 0;
+      setLoadError(null);
+      setIsLoading(false);
       setProviders(resp.result as MeshVPNProviderInfo[]);
     });
   }, [send, setProviders]);
@@ -887,12 +921,44 @@ export function MeshVPNSection() {
         ))}
       </div>
 
-      {/* Empty State */}
-      {providers.length === 0 && (
+      {/* Loading State */}
+      {isLoading && providers.length === 0 && (
+        <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center dark:border-slate-600">
+          <LoadingSpinner className="mx-auto h-8 w-8 text-slate-400" />
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            {m.meshvpn_loading ? m.meshvpn_loading() : "Loading VPN providers..."}
+          </p>
+        </div>
+      )}
+
+      {/* Error State */}
+      {!isLoading && loadError && providers.length === 0 && (
+        <div className="rounded-lg border border-dashed border-red-300 p-8 text-center dark:border-red-600">
+          <XCircleIcon className="mx-auto h-12 w-12 text-red-400" />
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+            {loadError}
+          </p>
+          <Button
+            size="SM"
+            theme="light"
+            text={m.retry ? m.retry() : "Retry"}
+            onClick={() => {
+              setIsLoading(true);
+              setLoadError(null);
+              retryCountRef.current = 0;
+              fetchProviders();
+            }}
+            className="mt-3"
+          />
+        </div>
+      )}
+
+      {/* Empty State - only show if loaded successfully but no providers */}
+      {!isLoading && !loadError && providers.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center dark:border-slate-600">
           <GlobeAltIcon className="mx-auto h-12 w-12 text-slate-400" />
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            No VPN providers available
+            {m.meshvpn_no_providers ? m.meshvpn_no_providers() : "No VPN providers available"}
           </p>
         </div>
       )}
