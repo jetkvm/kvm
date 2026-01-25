@@ -660,7 +660,7 @@ export function MeshVPNSection() {
   // Fetch status for a specific provider
   const fetchProviderStatus = useCallback(
     (providerName: string) => {
-      send("getMeshVPNStatus", { params: { provider: providerName } }, (resp: JsonRpcResponse) => {
+      send("getMeshVPNStatus", { provider: providerName }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           return;
         }
@@ -698,7 +698,7 @@ export function MeshVPNSection() {
     (providerName: string) => {
       send(
         "meshVPNGetVersionInfo",
-        { params: { provider: providerName } },
+        { provider: providerName },
         (resp: JsonRpcResponse) => {
           if ("error" in resp) {
             return;
@@ -768,11 +768,9 @@ export function MeshVPNSection() {
     send(
       "meshVPNConnect",
       {
-        params: {
-          provider: providerName,
-          controlServer: opts.controlServer,
-          authKey: opts.authKey,
-        },
+        provider: providerName,
+        controlServer: opts.controlServer,
+        authKey: opts.authKey,
       },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
@@ -798,7 +796,7 @@ export function MeshVPNSection() {
   };
 
   const handleDisconnect = (providerName: string) => {
-    send("meshVPNDisconnect", { params: { provider: providerName } }, (resp: JsonRpcResponse) => {
+    send("meshVPNDisconnect", { provider: providerName }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.meshvpn_disconnect_error({ error: String(resp.error.message) }));
         return;
@@ -811,7 +809,7 @@ export function MeshVPNSection() {
   };
 
   const handleLogout = (providerName: string) => {
-    send("meshVPNLogout", { params: { provider: providerName } }, (resp: JsonRpcResponse) => {
+    send("meshVPNLogout", { provider: providerName }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.meshvpn_logout_error({ error: String(resp.error.message) }));
         return;
@@ -824,7 +822,7 @@ export function MeshVPNSection() {
 
   const handleUpdate = (providerName: string) => {
     setProviderUpdateProgress(providerName, 0);
-    send("meshVPNUpdate", { params: { provider: providerName } }, (resp: JsonRpcResponse) => {
+    send("meshVPNUpdate", { provider: providerName }, (resp: JsonRpcResponse) => {
       setProviderUpdateProgress(providerName, null);
       if ("error" in resp) {
         notifications.error(m.meshvpn_update_error({ error: String(resp.error.message) }));
@@ -837,7 +835,7 @@ export function MeshVPNSection() {
   };
 
   const handleSetExitNode = (providerName: string, hostname: string, allowLan: boolean) => {
-    send("meshVPNSetExitNode", { params: { hostname, allowLan } }, (resp: JsonRpcResponse) => {
+    send("meshVPNSetExitNode", { hostname, allowLan }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.meshvpn_exit_node_set_error({ error: String(resp.error.message) }));
         return;
@@ -859,7 +857,7 @@ export function MeshVPNSection() {
   const handleSetTUNMode = (providerName: string, mode: "userspace" | "kernel") => {
     send(
       "meshVPNSetTUNMode",
-      { params: { provider: providerName, mode } },
+      { provider: providerName, mode },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(m.meshvpn_tun_mode_error({ error: String(resp.error.message) }));
@@ -875,7 +873,7 @@ export function MeshVPNSection() {
   const handleSetAdvertiseExitNode = (providerName: string, advertise: boolean) => {
     send(
       "meshVPNSetAdvertiseExitNode",
-      { params: { provider: providerName, advertise } },
+      { provider: providerName, advertise },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
