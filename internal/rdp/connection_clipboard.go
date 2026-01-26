@@ -365,7 +365,7 @@ func (c *Connection) generateOpenUSBCommand(targetOS channels.TargetOS) string {
 	}
 }
 
-// copyFile copies a file from src to dst.
+// copyFile copies a file from src to dst with fsync for durability.
 func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -379,8 +379,12 @@ func copyFile(src, dst string) error {
 	}
 	defer dstFile.Close()
 
-	_, err = io.Copy(dstFile, srcFile)
-	return err
+	if _, err = io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+
+	// Ensure data is flushed to disk before returning
+	return dstFile.Sync()
 }
 
 // generateDecodeScript generates an OS-specific script to decode base64+gzip content.

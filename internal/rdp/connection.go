@@ -470,6 +470,9 @@ func (c *Connection) handleClipboardWithReassembly(payload []byte, totalLength u
 	if isFirst {
 		// Validate size to prevent memory exhaustion from malicious clients
 		if totalLength > MaxClipboardReassemblySize {
+			// Clear any existing buffer state before rejecting
+			c.clipboardReassembly.buffer = nil
+			c.clipboardReassembly.totalLength = 0
 			c.clipboardReassembly.mu.Unlock()
 			c.server.deps.Logger.Warn().
 				Uint32("totalLength", totalLength).

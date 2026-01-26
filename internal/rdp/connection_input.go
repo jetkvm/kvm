@@ -17,6 +17,27 @@ const (
 	scancodeV    = 0x2F
 )
 
+// scaleWheelDelta converts RDP wheel delta to HID wheel units.
+// RDP uses WHEEL_DELTA (120) per notch; HID uses small values (±1 to ±3).
+func scaleWheelDelta(delta int) int8 {
+	scaled := int8(delta / 120)
+	if scaled == 0 && delta != 0 {
+		// Preserve direction for small movements
+		if delta > 0 {
+			return 1
+		}
+		return -1
+	}
+	// Clamp to reasonable range
+	if scaled > 3 {
+		return 3
+	}
+	if scaled < -3 {
+		return -3
+	}
+	return scaled
+}
+
 // handleInputPDU handles slow-path input PDUs containing multiple input events.
 func (c *Connection) handleInputPDU(data []byte) {
 	if len(data) < 4 {
@@ -130,32 +151,12 @@ func (c *Connection) handleMouseEvent(data []byte) {
 	}
 
 	// Handle vertical wheel (PTRFLAGS_WHEEL = 0x0200)
-	// RDP wheel delta: WHEEL_DELTA (120) = one notch. Lower 8 bits contain magnitude.
-	// HID wheel: signed 8-bit value, typically 1-3 per notch.
-	// We scale by dividing by 120 (one RDP notch = 1 HID unit) and ensure
-	// small movements aren't lost. Minimum movement is ±1 if delta is non-zero.
 	if pointerFlags&0x0200 != 0 {
 		delta := int(pointerFlags & 0x00FF)
 		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
 			delta = -delta
 		}
-		// Scale to small values like VNC uses (±1 to ±3)
-		// RDP deltas can be large (120+ per notch), so we scale down significantly
-		wheelY := int8(delta / 120) // One notch = 1 HID unit
-		if wheelY == 0 && delta != 0 {
-			if delta > 0 {
-				wheelY = 1
-			} else {
-				wheelY = -1
-			}
-		}
-		// Cap to reasonable range
-		if wheelY > 3 {
-			wheelY = 3
-		} else if wheelY < -3 {
-			wheelY = -3
-		}
-		if err := c.server.deps.HID.WheelReport(wheelY, 0); err != nil {
+		if err := c.server.deps.HID.WheelReport(scaleWheelDelta(delta), 0); err != nil {
 			c.server.deps.Logger.Debug().Err(err).Msg("RDP: vertical wheel report failed")
 		}
 	}
@@ -166,22 +167,7 @@ func (c *Connection) handleMouseEvent(data []byte) {
 		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
 			delta = -delta
 		}
-		// Scale to small values like VNC uses (±1 to ±3)
-		wheelX := int8(delta / 120)
-		if wheelX == 0 && delta != 0 {
-			if delta > 0 {
-				wheelX = 1
-			} else {
-				wheelX = -1
-			}
-		}
-		// Cap to reasonable range
-		if wheelX > 3 {
-			wheelX = 3
-		} else if wheelX < -3 {
-			wheelX = -3
-		}
-		if err := c.server.deps.HID.WheelReport(0, wheelX); err != nil {
+		if err := c.server.deps.HID.WheelReport(0, scaleWheelDelta(delta)); err != nil {
 			c.server.deps.Logger.Debug().Err(err).Msg("RDP: horizontal wheel report failed")
 		}
 	}

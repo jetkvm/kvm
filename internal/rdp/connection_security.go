@@ -83,47 +83,27 @@ func (c *Connection) handleLicensing() error {
 	return nil
 }
 
-// buildLicenseErrorPDU builds a License Error PDU with STATUS_VALID_CLIENT.
-// The PDU includes a 4-byte basic security header (flags + flagsHi) followed
-// by the licensing PDU preamble and error message.
+// licensePDUValidClient is a pre-built License Error PDU with STATUS_VALID_CLIENT.
+// This is a static PDU that never changes, so we build it once at package init.
+// Layout (20 bytes total):
+//   - Basic Security Header (4 bytes): SEC_LICENSE_PKT flag
+//   - License PDU Preamble (4 bytes): ERROR_ALERT, PREAMBLE_VERSION_2_0
+//   - License Error Message (12 bytes): STATUS_VALID_CLIENT, ST_NO_TRANSITION, empty blob
+var licensePDUValidClient = []byte{
+	// Basic Security Header (MS-RDPBCGR 2.2.8.1.1.2)
+	0x80, 0x00, 0x00, 0x00, // flags = SEC_LICENSE_PKT (0x0080)
+	// License PDU Preamble (MS-RDPELE 2.2.1.1)
+	0xFF, 0x02, 0x10, 0x00, // ERROR_ALERT, VERSION_2_0, wMsgSize=16
+	// License Error Message (MS-RDPELE 2.2.2.7.1)
+	0x07, 0x00, 0x00, 0x00, // dwErrorCode = STATUS_VALID_CLIENT
+	0x02, 0x00, 0x00, 0x00, // dwStateTransition = ST_NO_TRANSITION
+	0x00, 0x00, 0x00, 0x00, // bbErrorInfo = BB_ANY_BLOB, wBlobLen=0
+}
+
+// buildLicenseErrorPDU returns the pre-built License Error PDU.
+// This is safe to return directly as the caller only reads it.
 func buildLicenseErrorPDU() []byte {
-	buf := make([]byte, 20)
-
-	// Basic Security Header (4 bytes per MS-RDPBCGR 2.2.8.1.1.2)
-	// flags = SEC_LICENSE_PKT (0x0080), no encryption
-	buf[0] = 0x80 // flags low (SEC_LICENSE_PKT)
-	buf[1] = 0x00 // flags high
-	buf[2] = 0x00 // flagsHi low
-	buf[3] = 0x00 // flagsHi high
-
-	// License PDU Preamble (4 bytes per MS-RDPELE 2.2.1.1)
-	buf[4] = 0xFF // bMsgType = ERROR_ALERT (0xFF)
-	buf[5] = 0x02 // flags = PREAMBLE_VERSION_2_0 (0x02) - Windows 2000, compatible with RDP 5.0
-	buf[6] = 0x10 // wMsgSize low (16 = size of preamble + message body)
-	buf[7] = 0x00 // wMsgSize high
-
-	// License Error Message (12 bytes per MS-RDPELE 2.2.2.7.1)
-	// dwErrorCode = STATUS_VALID_CLIENT (0x00000007)
-	buf[8] = 0x07
-	buf[9] = 0x00
-	buf[10] = 0x00
-	buf[11] = 0x00
-
-	// dwStateTransition = ST_NO_TRANSITION (0x00000002)
-	buf[12] = 0x02
-	buf[13] = 0x00
-	buf[14] = 0x00
-	buf[15] = 0x00
-
-	// bbErrorInfo = LICENSE_BINARY_BLOB with BB_ANY_BLOB type
-	// Per MS-RDPELE 2.2.2.3, when wBlobLen is 0, wBlobType SHOULD be ignored.
-	// However, FreeRDP and some clients expect BB_ANY_BLOB (0x0000) for empty blobs.
-	buf[16] = 0x00 // wBlobType low (BB_ANY_BLOB = 0x0000)
-	buf[17] = 0x00 // wBlobType high
-	buf[18] = 0x00 // wBlobLen low
-	buf[19] = 0x00 // wBlobLen high
-
-	return buf
+	return licensePDUValidClient
 }
 
 // handleCapabilities handles capability exchange.

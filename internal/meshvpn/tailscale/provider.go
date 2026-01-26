@@ -31,6 +31,7 @@ type Provider struct {
 	httpClient    meshvpn.HTTPClient
 	versionClient *VersionClient
 	connectCancel context.CancelFunc
+	lastUpError   error // Error from most recent tailscale up command
 }
 
 type ProviderConfig struct {
@@ -346,6 +347,9 @@ func (p *Provider) Connect(ctx context.Context, opts meshvpn.ConnectOptions) (*m
 		upCtx, upCancel := context.WithCancel(context.Background())
 		p.connectCancel = upCancel
 
+		// Clear any previous error before starting new connection
+		p.lastUpError = nil
+
 		go func() {
 			_, err := cli.Up(upCtx, UpOptions{
 				ControlServer: opts.ControlServer,
@@ -353,10 +357,17 @@ func (p *Provider) Connect(ctx context.Context, opts meshvpn.ConnectOptions) (*m
 			})
 			if err != nil {
 				if upCtx.Err() == nil {
+					// Not cancelled - real error
 					logger.Warn().Err(err).Msg("tailscale up completed with error")
+					p.mu.Lock()
+					p.lastUpError = err
+					p.mu.Unlock()
 				}
 			} else {
 				logger.Info().Msg("tailscale up completed successfully")
+				p.mu.Lock()
+				p.lastUpError = nil
+				p.mu.Unlock()
 			}
 		}()
 	}()
@@ -594,6 +605,11 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 		status.State = meshvpn.StateStopped
 	default:
 		status.State = meshvpn.StateConnecting
+	}
+
+	// If we have an error from the background Up command, include it
+	if p.lastUpError != nil && status.State == meshvpn.StateConnecting {
+		status.ErrorMessage = p.lastUpError.Error()
 	}
 
 	return status, nil

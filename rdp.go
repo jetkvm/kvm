@@ -12,6 +12,14 @@ import (
 	"github.com/jetkvm/kvm/internal/rdp"
 )
 
+// RDP frame subscribers using generic Subscriber pattern
+var (
+	rdpH264Subscribers Subscriber[[]byte]
+	rdpJPEGSubscribers Subscriber[[]byte]
+	rdpRGBSubscribers  Subscriber[rdp.RGBFrame]
+	rdpAudioSubs       Subscriber[[]byte]
+)
+
 var (
 	rdpServer     *rdp.Server
 	rdpServerOnce sync.Once
@@ -174,6 +182,14 @@ func (a *rdpHIDAdapter) WheelReport(vertical, horizontal int8) error {
 
 func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
 	if len(text) > keyboard.MaxClipboardSize {
+		rdpLogger.Warn().
+			Int("size", len(text)).
+			Int("maxSize", keyboard.MaxClipboardSize).
+			Msg("clipboard text exceeds maximum size, truncating")
+		text = text[:keyboard.MaxClipboardSize]
+	}
+
+	if len(text) == 0 {
 		return nil
 	}
 
@@ -188,6 +204,11 @@ func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
 
 	preparedText, encoded := keyboard.PrepareClipboardText([]byte(text), mode, targetOS)
 	if preparedText == "" {
+		rdpLogger.Warn().
+			Str("mode", string(mode)).
+			Str("targetOS", string(targetOS)).
+			Int("inputLen", len(text)).
+			Msg("clipboard text preparation resulted in empty string - text may contain only unsupported characters")
 		return nil
 	}
 
@@ -208,6 +229,9 @@ func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
 
 	steps, skipped := keyboard.TextToMacroSteps(preparedText, "en-US", pressDelay, releaseDelay)
 	if len(steps) == 0 {
+		rdpLogger.Warn().
+			Int("inputLen", len(preparedText)).
+			Msg("no keyboard macro steps generated - text may contain only unmappable characters")
 		return nil
 	}
 
@@ -227,12 +251,6 @@ func (a *rdpHIDAdapter) CancelKeyboardMacro() {
 }
 
 type rdpVideoAdapter struct{}
-
-var rdpVideoSubscribers struct {
-	mu    sync.RWMutex
-	subs  []chan []byte
-	count atomic.Int32 // Fast-path check without lock
-}
 
 func (a *rdpVideoAdapter) GetResolution() (width, height uint16) {
 	w, h := lastVideoState.Width, lastVideoState.Height
@@ -255,67 +273,24 @@ func (a *rdpVideoAdapter) StopVideo() error {
 }
 
 func (a *rdpVideoAdapter) SubscribeH264() <-chan []byte {
-	ch := make(chan []byte, 10)
-	rdpVideoSubscribers.mu.Lock()
-	rdpVideoSubscribers.subs = append(rdpVideoSubscribers.subs, ch)
-	rdpVideoSubscribers.count.Add(1)
-	rdpVideoSubscribers.mu.Unlock()
-	return ch
+	return rdpH264Subscribers.Subscribe(10)
 }
 
 func (a *rdpVideoAdapter) UnsubscribeH264(ch <-chan []byte) {
-	rdpVideoSubscribers.mu.Lock()
-	defer rdpVideoSubscribers.mu.Unlock()
-	for i, sub := range rdpVideoSubscribers.subs {
-		if sub == ch {
-			rdpVideoSubscribers.subs = append(rdpVideoSubscribers.subs[:i], rdpVideoSubscribers.subs[i+1:]...)
-			rdpVideoSubscribers.count.Add(-1)
-			return
-		}
-	}
+	rdpH264Subscribers.Unsubscribe(ch)
 }
 
 // BroadcastRDPH264Frame sends an H.264 frame to all RDP subscribers.
 func BroadcastRDPH264Frame(frame []byte) {
-	if rdpVideoSubscribers.count.Load() == 0 {
-		return // Fast-path: no subscribers
-	}
-	rdpVideoSubscribers.mu.RLock()
-	defer rdpVideoSubscribers.mu.RUnlock()
-
-	for _, ch := range rdpVideoSubscribers.subs {
-		select {
-		case ch <- frame:
-		default:
-		}
-	}
-}
-
-var rdpJPEGSubscribers struct {
-	mu    sync.RWMutex
-	subs  []chan []byte
-	count atomic.Int32 // Fast-path check without lock
+	rdpH264Subscribers.Broadcast(frame)
 }
 
 func (a *rdpVideoAdapter) SubscribeJPEG() <-chan []byte {
-	ch := make(chan []byte, 5)
-	rdpJPEGSubscribers.mu.Lock()
-	rdpJPEGSubscribers.subs = append(rdpJPEGSubscribers.subs, ch)
-	rdpJPEGSubscribers.count.Add(1)
-	rdpJPEGSubscribers.mu.Unlock()
-	return ch
+	return rdpJPEGSubscribers.Subscribe(5)
 }
 
 func (a *rdpVideoAdapter) UnsubscribeJPEG(ch <-chan []byte) {
-	rdpJPEGSubscribers.mu.Lock()
-	defer rdpJPEGSubscribers.mu.Unlock()
-	for i, sub := range rdpJPEGSubscribers.subs {
-		if sub == ch {
-			rdpJPEGSubscribers.subs = append(rdpJPEGSubscribers.subs[:i], rdpJPEGSubscribers.subs[i+1:]...)
-			rdpJPEGSubscribers.count.Add(-1)
-			return
-		}
-	}
+	rdpJPEGSubscribers.Unsubscribe(ch)
 }
 
 func (a *rdpVideoAdapter) StartJPEGEncoder(quality int) error {
@@ -334,45 +309,15 @@ func (a *rdpVideoAdapter) StopJPEGEncoder() error {
 
 // BroadcastRDPJPEGFrame sends a JPEG frame to all RDP JPEG subscribers.
 func BroadcastRDPJPEGFrame(frame []byte) {
-	if rdpJPEGSubscribers.count.Load() == 0 {
-		return // Fast-path: no subscribers
-	}
-	rdpJPEGSubscribers.mu.RLock()
-	defer rdpJPEGSubscribers.mu.RUnlock()
-
-	for _, ch := range rdpJPEGSubscribers.subs {
-		select {
-		case ch <- frame:
-		default:
-		}
-	}
-}
-
-var rdpRGBSubscribers struct {
-	mu    sync.RWMutex
-	subs  []chan rdp.RGBFrame
-	count atomic.Int32 // Fast-path check without lock
+	rdpJPEGSubscribers.Broadcast(frame)
 }
 
 func (a *rdpVideoAdapter) SubscribeRGB() <-chan rdp.RGBFrame {
-	ch := make(chan rdp.RGBFrame, 5)
-	rdpRGBSubscribers.mu.Lock()
-	rdpRGBSubscribers.subs = append(rdpRGBSubscribers.subs, ch)
-	rdpRGBSubscribers.count.Add(1)
-	rdpRGBSubscribers.mu.Unlock()
-	return ch
+	return rdpRGBSubscribers.Subscribe(5)
 }
 
 func (a *rdpVideoAdapter) UnsubscribeRGB(ch <-chan rdp.RGBFrame) {
-	rdpRGBSubscribers.mu.Lock()
-	defer rdpRGBSubscribers.mu.Unlock()
-	for i, sub := range rdpRGBSubscribers.subs {
-		if sub == ch {
-			rdpRGBSubscribers.subs = append(rdpRGBSubscribers.subs[:i], rdpRGBSubscribers.subs[i+1:]...)
-			rdpRGBSubscribers.count.Add(-1)
-			return
-		}
-	}
+	rdpRGBSubscribers.Unsubscribe(ch)
 }
 
 func (a *rdpVideoAdapter) StartRGBEncoder() error {
@@ -400,34 +345,15 @@ func (a *rdpVideoAdapter) RequestKeyframe() {
 
 // BroadcastRDPRGBFrame sends a video frame to all RDP RGB subscribers.
 func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrameFormat) {
-	if rdpRGBSubscribers.count.Load() == 0 {
-		return // Fast-path: no subscribers
-	}
-	rdpRGBSubscribers.mu.RLock()
-	defer rdpRGBSubscribers.mu.RUnlock()
-
-	frame := rdp.RGBFrame{
+	rdpRGBSubscribers.Broadcast(rdp.RGBFrame{
 		Data:   data,
 		Width:  width,
 		Height: height,
 		Format: format,
-	}
-
-	for _, ch := range rdpRGBSubscribers.subs {
-		select {
-		case ch <- frame:
-		default:
-		}
-	}
+	})
 }
 
 type rdpAudioAdapter struct{}
-
-var rdpAudioSubscribers struct {
-	mu    sync.RWMutex
-	subs  []chan []byte
-	count atomic.Int32 // Fast-path check without lock
-}
 
 func (a *rdpAudioAdapter) Connect() {
 	OnRDPAudioConnect()
@@ -438,24 +364,11 @@ func (a *rdpAudioAdapter) Disconnect() {
 }
 
 func (a *rdpAudioAdapter) SubscribeAudio() <-chan []byte {
-	ch := make(chan []byte, 30)
-	rdpAudioSubscribers.mu.Lock()
-	rdpAudioSubscribers.subs = append(rdpAudioSubscribers.subs, ch)
-	rdpAudioSubscribers.count.Add(1)
-	rdpAudioSubscribers.mu.Unlock()
-	return ch
+	return rdpAudioSubs.Subscribe(30)
 }
 
 func (a *rdpAudioAdapter) UnsubscribeAudio(ch <-chan []byte) {
-	rdpAudioSubscribers.mu.Lock()
-	defer rdpAudioSubscribers.mu.Unlock()
-	for i, sub := range rdpAudioSubscribers.subs {
-		if sub == ch {
-			rdpAudioSubscribers.subs = append(rdpAudioSubscribers.subs[:i], rdpAudioSubscribers.subs[i+1:]...)
-			rdpAudioSubscribers.count.Add(-1)
-			return
-		}
-	}
+	rdpAudioSubs.Unsubscribe(ch)
 }
 
 var monoBufferPool = sync.Pool{
@@ -509,23 +422,12 @@ func (a *rdpAudioAdapter) EnableAudioInput() error {
 // HasRDPAudioSubscribers returns true if there are RDP audio subscribers.
 // Used to skip PCM processing when no RDP clients need audio.
 func HasRDPAudioSubscribers() bool {
-	return rdpAudioSubscribers.count.Load() > 0
+	return rdpAudioSubs.HasSubscribers()
 }
 
 // BroadcastRDPAudio sends audio data to all RDP audio subscribers.
 func BroadcastRDPAudio(data []byte) {
-	if rdpAudioSubscribers.count.Load() == 0 {
-		return // Fast-path: no subscribers
-	}
-	rdpAudioSubscribers.mu.RLock()
-	defer rdpAudioSubscribers.mu.RUnlock()
-
-	for _, ch := range rdpAudioSubscribers.subs {
-		select {
-		case ch <- data:
-		default:
-		}
-	}
+	rdpAudioSubs.Broadcast(data)
 }
 
 type rdpCameraAdapter struct{}
@@ -622,8 +524,10 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 	rdpCameraFormatBridgeInstance.mu.Lock()
 	defer rdpCameraFormatBridgeInstance.mu.Unlock()
 
+	// Close existing stop channel to terminate any previous goroutine
 	if rdpCameraFormatBridgeInstance.stopChan != nil {
 		close(rdpCameraFormatBridgeInstance.stopChan)
+		rdpCameraFormatBridgeInstance.stopChan = nil // Prevent double-close
 	}
 
 	outChan := make(chan rdp.CameraFormatInfo, 4)
@@ -633,11 +537,9 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 
 	go func() {
 		defer func() {
-			defer func() {
-				if r := recover(); r != nil {
-					rdpLogger.Debug().Interface("panic", r).Msg("camera format bridge cleanup")
-				}
-			}()
+			if r := recover(); r != nil {
+				rdpLogger.Debug().Interface("panic", r).Msg("camera format bridge panic")
+			}
 			close(outChan)
 		}()
 
@@ -786,6 +688,7 @@ func (a *rdpUSBStorageAdapter) IsAvailable() bool {
 	// USB storage is available if nothing is currently mounted
 	state, err := rpcGetVirtualMediaState()
 	if err != nil {
+		rdpLogger.Debug().Err(err).Msg("failed to get virtual media state, assuming USB storage unavailable")
 		return false
 	}
 	return state == nil

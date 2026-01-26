@@ -352,6 +352,12 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 		status.State = meshvpn.StateConnecting
 	}
 
+	// Only call CLI if daemon is running - zerotier-cli hangs if daemon isn't running
+	if !processRunning {
+		logger.Debug().Msg("zerotier-one not running, skipping CLI status check")
+		return status, nil
+	}
+
 	cli := NewCLI()
 	cliStatus, err := cli.Status(ctx)
 	if err != nil {

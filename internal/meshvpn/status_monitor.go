@@ -105,14 +105,15 @@ func (m *StatusMonitor) checkStatus(ctx context.Context) {
 		m.mu.Lock()
 		m.consecutiveFailures++
 		failures := m.consecutiveFailures
+		onChange := m.onChange
 		m.mu.Unlock()
 
 		if m.logger != nil {
 			m.logger.Warn("failed to get status", err, failures)
 		}
 
-		if failures >= m.maxFailures && m.onChange != nil {
-			m.onChange(ProviderStatus{
+		if failures >= m.maxFailures && onChange != nil {
+			onChange(ProviderStatus{
 				State:        StateError,
 				ErrorMessage: "Status monitoring failed: " + err.Error(),
 			})
@@ -126,10 +127,11 @@ func (m *StatusMonitor) checkStatus(ctx context.Context) {
 	if changed {
 		m.lastStatus = status
 	}
+	onChange := m.onChange
 	m.mu.Unlock()
 
-	if changed && m.onChange != nil {
-		m.onChange(*status)
+	if changed && onChange != nil {
+		onChange(*status)
 	}
 }
 

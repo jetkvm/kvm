@@ -63,8 +63,22 @@ BIN_DIR := $(shell pwd)/bin
 TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort -u)
 
 # Build ALSA and Opus static libs for ARM in /opt/jetkvm-audio-libs
+# Skip if already built (check for .built marker files)
+# Requires x86_64 architecture (cross-compiler is x86_64)
+AUDIO_LIBS_DIR := /opt/jetkvm-audio-libs
 build_audio_deps:
-	bash .devcontainer/install_audio_deps.sh
+	@if [ -f "$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/.built" ] && \
+	    [ -f "$(AUDIO_LIBS_DIR)/opus-1.5.2/.built" ] && \
+	    [ -f "$(AUDIO_LIBS_DIR)/speexdsp-1.2.1/.built" ]; then \
+		echo "Audio dependencies already built, skipping..."; \
+	elif [ "$$(uname -m)" != "x86_64" ]; then \
+		echo "ERROR: Audio deps build requires x86_64 architecture."; \
+		echo "Current arch: $$(uname -m)"; \
+		echo "Use Docker build mode (remove --disable-docker flag) or run on x86_64 host."; \
+		exit 1; \
+	else \
+		bash .devcontainer/install_audio_deps.sh; \
+	fi
 
 test:
 	go test ./...
