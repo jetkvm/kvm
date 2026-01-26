@@ -657,11 +657,49 @@ export function MeshVPNSection() {
     });
   }, [send, setProviders]);
 
-  // Fetch status for a specific provider
+  // Track pending status requests to handle client-side timeout
+  const pendingStatusRequests = useRef<Map<string, number>>(new Map());
+
+  // Fetch status for a specific provider with client-side timeout
   const fetchProviderStatus = useCallback(
     (providerName: string) => {
+      // Clear any existing timeout for this provider
+      const existingTimeout = pendingStatusRequests.current.get(providerName);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+      }
+
+      // Set a client-side timeout (15 seconds) to handle hung RPC calls
+      const timeoutId = window.setTimeout(() => {
+        pendingStatusRequests.current.delete(providerName);
+        // Set a timeout error status so UI doesn't hang
+        setProviderStatus(providerName, {
+          provider: providerName,
+          state: "error",
+          installed: false,
+          running: false,
+          errorMessage: "Status request timed out. The VPN service may be unresponsive.",
+        });
+      }, 15000);
+
+      pendingStatusRequests.current.set(providerName, timeoutId);
+
       send("getMeshVPNStatus", { provider: providerName }, (resp: JsonRpcResponse) => {
+        // Clear the timeout since we got a response
+        const timeout = pendingStatusRequests.current.get(providerName);
+        if (timeout) {
+          clearTimeout(timeout);
+          pendingStatusRequests.current.delete(providerName);
+        }
+
         if ("error" in resp) {
+          // On error, set a "not_installed" status so UI doesn't hang
+          setProviderStatus(providerName, {
+            provider: providerName,
+            state: "not_installed",
+            installed: false,
+            running: false,
+          });
           return;
         }
         setProviderStatus(providerName, resp.result as MeshVPNProviderStatus);
@@ -683,8 +721,9 @@ export function MeshVPNSection() {
   // Fetch exit nodes for a provider
   const fetchExitNodes = useCallback(
     (providerName: string) => {
-      send("meshVPNGetExitNodes", {}, (resp: JsonRpcResponse) => {
+      send("meshVPNGetExitNodes", { provider: providerName }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
+          // Silently ignore errors - provider may not support exit nodes
           return;
         }
         setProviderExitNodes(providerName, resp.result as MeshVPNExitNode[]);
@@ -765,13 +804,16 @@ export function MeshVPNSection() {
     providerName: string,
     opts: { controlServer?: string; authKey?: string },
   ) => {
-    send(
-      "meshVPNConnect",
-      {
+    const rpcParams = {
+      params: {
         provider: providerName,
         controlServer: opts.controlServer,
         authKey: opts.authKey,
       },
+    };
+    send(
+      "meshVPNConnect",
+      rpcParams,
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(m.meshvpn_connect_error({ error: String(resp.error.message) }));
@@ -835,7 +877,7 @@ export function MeshVPNSection() {
   };
 
   const handleSetExitNode = (providerName: string, hostname: string, allowLan: boolean) => {
-    send("meshVPNSetExitNode", { hostname, allowLan }, (resp: JsonRpcResponse) => {
+    send("meshVPNSetExitNode", { params: { hostname, allowLan } }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.meshvpn_exit_node_set_error({ error: String(resp.error.message) }));
         return;
@@ -857,7 +899,7 @@ export function MeshVPNSection() {
   const handleSetTUNMode = (providerName: string, mode: "userspace" | "kernel") => {
     send(
       "meshVPNSetTUNMode",
-      { provider: providerName, mode },
+      { params: { provider: providerName, mode } },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(m.meshvpn_tun_mode_error({ error: String(resp.error.message) }));
@@ -873,7 +915,7 @@ export function MeshVPNSection() {
   const handleSetAdvertiseExitNode = (providerName: string, advertise: boolean) => {
     send(
       "meshVPNSetAdvertiseExitNode",
-      { provider: providerName, advertise },
+      { params: { provider: providerName, advertise } },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(

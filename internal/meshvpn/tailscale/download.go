@@ -50,6 +50,8 @@ func (d *Downloader) getChecksumURL() string {
 func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
 	logger.Info().Str("version", d.version).Msg("starting Tailscale installation")
 
+	stageNames := []string{"checksum", "download", "verify", "extract", "configure"}
+
 	reportProgress := func(stage int, stageProgress float64) {
 		if progress == nil {
 			return
@@ -68,29 +70,38 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 			overall = 0.95 + stageProgress*0.05
 		}
 		progress(overall)
+		logger.Trace().
+			Str("stage", stageNames[stage]).
+			Float64("stageProgress", stageProgress).
+			Float64("overall", overall).
+			Msg("installation progress")
 	}
 
-	logger.Debug().Msg("downloading checksum")
+	logger.Info().Str("url", d.getChecksumURL()).Msg("downloading checksum")
 	reportProgress(0, 0)
 
 	expectedHash, err := d.downloadChecksum()
 	if err != nil {
+		logger.Error().Err(err).Msg("failed to download checksum")
 		return fmt.Errorf("failed to download checksum: %w", err)
 	}
 	reportProgress(0, 1.0)
 
-	logger.Debug().Str("hash", expectedHash).Msg("got expected hash")
+	logger.Info().Str("hash", expectedHash).Msg("got expected hash")
 
-	logger.Debug().Msg("downloading package")
+	logger.Info().Str("url", d.getPackageURL()).Msg("downloading package")
 	reportProgress(1, 0)
 
 	tmpFile, err := os.CreateTemp("", "tailscale-*.tgz")
 	if err != nil {
+		logger.Error().Err(err).Msg("failed to create temp file")
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
+
+	logger.Debug().Str("tmpPath", tmpPath).Msg("created temp file for download")
 
 	httpClient := d.httpClient
 	if httpClient == nil {
@@ -101,9 +112,11 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 		reportProgress(1, p)
 	})
 	if err != nil {
+		logger.Error().Err(err).Msg("package download failed")
 		return fmt.Errorf("failed to download package: %w", err)
 	}
 	reportProgress(1, 1.0)
+	logger.Info().Str("tmpPath", tmpPath).Msg("package download completed")
 
 	logger.Debug().Msg("verifying checksum")
 	reportProgress(2, 0)

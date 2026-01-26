@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/meshvpn"
 )
@@ -85,17 +86,24 @@ func rpcGetMeshVPNProviders() ([]meshvpn.ProviderInfo, error) {
 	return manager.ListProviders(), nil
 }
 
-func rpcGetMeshVPNStatus(params struct {
-	Provider string `json:"provider,omitempty"`
-}) (*meshvpn.ProviderStatus, error) {
+func rpcGetMeshVPNStatus(provider string) (*meshvpn.ProviderStatus, error) {
+	logger.Info().Str("provider", provider).Msg("rpcGetMeshVPNStatus: starting")
+
 	manager, err := requireManager()
 	if err != nil {
+		logger.Warn().Err(err).Str("provider", provider).Msg("rpcGetMeshVPNStatus: manager not initialized")
 		return nil, err
 	}
 
-	ctx := context.Background()
+	// Use a timeout to prevent hanging when the CLI tries to connect to a non-existent daemon socket.
+	// Tailscale CLI can hang indefinitely if tailscaled is not running.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	var status *meshvpn.ProviderStatus
-	providerName := params.Provider
+	providerName := provider
+
+	logger.Info().Str("provider", providerName).Msg("rpcGetMeshVPNStatus: fetching provider status")
 
 	if providerName != "" {
 		status, err = manager.GetProviderStatus(ctx, providerName)
@@ -109,8 +117,29 @@ func rpcGetMeshVPNStatus(params struct {
 		}
 	}
 
+	logger.Info().Str("provider", providerName).Err(err).Msg("rpcGetMeshVPNStatus: after GetProviderStatus")
+
 	if err != nil {
+		// Check if it was a timeout
+		if ctx.Err() == context.DeadlineExceeded {
+			logger.Warn().Str("provider", providerName).Msg("rpcGetMeshVPNStatus: timeout waiting for status")
+			// Check if provider is installed to return accurate status
+			installed := false
+			if providerName != "" {
+				if p, ok := manager.GetProvider(providerName); ok && p != nil {
+					installed = p.IsInstalled()
+				}
+			}
+			return &meshvpn.ProviderStatus{
+				Provider:     providerName,
+				State:        meshvpn.StateError,
+				Installed:    installed,
+				Running:      false,
+				ErrorMessage: "Status request timed out - VPN service may be unresponsive",
+			}, nil
+		}
 		if errors.Is(err, meshvpn.ErrNoActiveProvider) {
+			logger.Info().Str("provider", providerName).Msg("rpcGetMeshVPNStatus: no active provider")
 			return &meshvpn.ProviderStatus{
 				Provider:  providerName,
 				State:     meshvpn.StateNotInstalled,
@@ -118,6 +147,7 @@ func rpcGetMeshVPNStatus(params struct {
 				Running:   false,
 			}, nil
 		}
+		logger.Warn().Err(err).Str("provider", providerName).Msg("rpcGetMeshVPNStatus: error getting status")
 		return nil, err
 	}
 
@@ -126,6 +156,7 @@ func rpcGetMeshVPNStatus(params struct {
 		status.Provider = providerName
 	}
 
+	logger.Info().Str("provider", providerName).Str("state", string(status.State)).Msg("rpcGetMeshVPNStatus: completed")
 	return status, nil
 }
 
@@ -253,15 +284,25 @@ func rpcMeshVPNUninstall(provider string) (bool, error) {
 }
 
 func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult, error) {
+	logger.Info().
+		Str("provider", params.Provider).
+		Str("controlServer", params.ControlServer).
+		Bool("hasAuthKey", params.AuthKey != "").
+		Msg("rpcMeshVPNConnect: starting")
+
 	manager, err := requireManager()
 	if err != nil {
+		logger.Error().Err(err).Msg("rpcMeshVPNConnect: manager not initialized")
 		return nil, err
 	}
 
 	providerName := params.Provider
 	if providerName == "" {
+		logger.Error().Msg("rpcMeshVPNConnect: provider name is empty")
 		return nil, fmt.Errorf("provider name is required")
 	}
+
+	logger.Info().Str("provider", providerName).Msg("rpcMeshVPNConnect: calling ConnectProvider")
 
 	ctx := context.Background()
 	result, err := manager.ConnectProvider(ctx, providerName, meshvpn.ConnectOptions{
@@ -270,8 +311,14 @@ func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult
 	})
 
 	if err != nil {
+		logger.Error().Err(err).Str("provider", providerName).Msg("rpcMeshVPNConnect: ConnectProvider failed")
 		return nil, err
 	}
+
+	logger.Info().
+		Str("provider", providerName).
+		Str("authUrl", result.AuthURL).
+		Msg("rpcMeshVPNConnect: ConnectProvider succeeded")
 
 	// Enable the provider in config for auto-start on next boot
 	if err := manager.EnableProvider(providerName, params.ControlServer, params.AuthKey); err != nil {
@@ -292,15 +339,13 @@ func rpcMeshVPNConnect(params RpcMeshVPNConnectParams) (*RpcMeshVPNConnectResult
 	}, nil
 }
 
-func rpcMeshVPNDisconnect(params struct {
-	Provider string `json:"provider"`
-}) (*meshvpn.ProviderStatus, error) {
+func rpcMeshVPNDisconnect(provider string) (*meshvpn.ProviderStatus, error) {
 	manager, err := requireManager()
 	if err != nil {
 		return nil, err
 	}
 
-	providerName := params.Provider
+	providerName := provider
 	if providerName == "" {
 		// For backward compatibility, use first running provider
 		if provider := manager.GetActiveProvider(); provider != nil {
@@ -342,15 +387,13 @@ func rpcMeshVPNDisconnect(params struct {
 	return status, nil
 }
 
-func rpcMeshVPNLogout(params struct {
-	Provider string `json:"provider"`
-}) (bool, error) {
+func rpcMeshVPNLogout(provider string) (bool, error) {
 	manager, err := requireManager()
 	if err != nil {
 		return false, err
 	}
 
-	providerName := params.Provider
+	providerName := provider
 	if providerName == "" {
 		// For backward compatibility, use first running provider
 		if provider := manager.GetActiveProvider(); provider != nil {
@@ -379,12 +422,12 @@ func rpcMeshVPNLogout(params struct {
 	return true, nil
 }
 
-func rpcMeshVPNGetExitNodes() ([]meshvpn.ExitNode, error) {
+func rpcMeshVPNGetExitNodes(provider string) ([]meshvpn.ExitNode, error) {
 	manager, err := requireManager()
 	if err != nil {
 		return nil, err
 	}
-	return manager.ListExitNodes(context.Background())
+	return manager.ListExitNodesForProvider(context.Background(), provider)
 }
 
 func rpcMeshVPNSetExitNode(params RpcMeshVPNSetExitNodeParams) (bool, error) {
@@ -411,17 +454,15 @@ func rpcMeshVPNClearExitNode() (bool, error) {
 	return true, nil
 }
 
-func rpcMeshVPNGetVersionInfo(params struct {
-	Provider string `json:"provider,omitempty"`
-}) (*meshvpn.VersionInfo, error) {
+func rpcMeshVPNGetVersionInfo(provider string) (*meshvpn.VersionInfo, error) {
 	manager, err := requireManager()
 	if err != nil {
 		return nil, err
 	}
-	return manager.GetVersionInfo(context.Background(), params.Provider)
+	return manager.GetVersionInfo(context.Background(), provider)
 }
 
-func rpcMeshVPNUpdate(params RpcMeshVPNUpdateParams) (bool, error) {
+func rpcMeshVPNUpdate(provider string) (bool, error) {
 	manager, err := requireManager()
 	if err != nil {
 		return false, err
@@ -429,11 +470,11 @@ func rpcMeshVPNUpdate(params RpcMeshVPNUpdateParams) (bool, error) {
 
 	ctx := context.Background()
 
-	// Report update progress via RPC events
-	updateErr := manager.Update(ctx, params.Provider, params.TargetVersion, func(progress float64) {
+	// Report update progress via RPC events (targetVersion empty = latest)
+	updateErr := manager.Update(ctx, provider, "", func(progress float64) {
 		if currentSession != nil {
 			writeJSONRPCEvent("meshVPNUpdateProgress", map[string]interface{}{
-				"provider": params.Provider,
+				"provider": provider,
 				"progress": progress,
 			}, currentSession)
 		}
@@ -445,15 +486,13 @@ func rpcMeshVPNUpdate(params RpcMeshVPNUpdateParams) (bool, error) {
 	return true, nil
 }
 
-func rpcMeshVPNGetTUNMode(params struct {
-	Provider string `json:"provider,omitempty"`
-}) (*RpcMeshVPNGetTUNModeResult, error) {
+func rpcMeshVPNGetTUNMode(provider string) (*RpcMeshVPNGetTUNModeResult, error) {
 	manager, err := requireManager()
 	if err != nil {
 		return nil, err
 	}
 
-	mode, err := manager.GetTUNMode(params.Provider)
+	mode, err := manager.GetTUNMode(provider)
 	if err != nil {
 		return nil, err
 	}

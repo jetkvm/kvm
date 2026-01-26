@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -79,6 +80,18 @@ func (p *Provider) IsInstalled() bool {
 	return false
 }
 
+// isDaemonRunning checks if tailscaled is running by checking if its socket exists.
+// This detects both our tracked process and orphaned daemons from previous sessions.
+func (p *Provider) isDaemonRunning() bool {
+	// Check if the socket exists - tailscaled creates this when running
+	info, err := os.Stat(SocketPath)
+	if err != nil {
+		return false
+	}
+	// Verify it's a socket
+	return info.Mode()&os.ModeSocket != 0
+}
+
 func (p *Provider) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -135,18 +148,82 @@ func (p *Provider) Uninstall(ctx context.Context) error {
 	return nil
 }
 
+// forceKillDaemon forcefully kills any running tailscaled process without relying on CLI communication.
+// This is used when the daemon is hung and not responding to commands.
+func (p *Provider) forceKillDaemon() error {
+	logger.Info().Msg("forceKillDaemon: starting")
+
+	// Find the tailscaled process by name
+	pgrepCmd := exec.Command("pgrep", "-x", "tailscaled")
+	output, err := pgrepCmd.Output()
+	if err != nil {
+		logger.Info().Err(err).Str("output", string(output)).Msg("forceKillDaemon: pgrep found no process")
+		// No process found - check if socket exists and clean it up
+		if p.isDaemonRunning() {
+			logger.Info().Str("socketPath", SocketPath).Msg("forceKillDaemon: removing stale socket")
+			os.Remove(SocketPath)
+		}
+		return nil
+	}
+	logger.Info().Str("pgrepOutput", string(output)).Msg("forceKillDaemon: found process")
+
+	var pid int
+	if _, parseErr := fmt.Sscanf(string(output), "%d", &pid); parseErr != nil || pid <= 0 {
+		return nil
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return nil
+	}
+
+	// Check if process is actually running
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return nil // Process not running
+	}
+
+	logger.Info().Int("pid", pid).Msg("force killing tailscaled")
+
+	// Skip SIGTERM since daemon is unresponsive - go straight to SIGKILL
+	if err := proc.Kill(); err != nil {
+		return fmt.Errorf("failed to kill tailscaled (pid %d): %w", pid, err)
+	}
+
+	// Wait for process to exit
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			logger.Info().Int("pid", pid).Msg("tailscaled killed successfully")
+			// Clean up the socket
+			os.Remove(SocketPath)
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("tailscaled (pid %d) did not exit after SIGKILL", pid)
+}
+
 // stopOrphanedDaemon stops a tailscaled daemon that was started in a previous session.
 // This handles the case where the app was restarted but the daemon is still running.
 func (p *Provider) stopOrphanedDaemon() error {
 	// Check if daemon is running by trying to communicate with it
+	// Use version check which is faster than status
 	cli := NewCLI()
-	_, err := cli.Status(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_, err := cli.Version(ctx)
+	cancel()
+
 	if err != nil {
-		// Daemon is not running or not responding
+		// Daemon is not responding - force kill it if socket exists
+		if p.isDaemonRunning() {
+			logger.Debug().Msg("daemon socket exists but not responding, force killing")
+			return p.forceKillDaemon()
+		}
 		return nil
 	}
 
-	// Find the tailscaled process by name
+	// Daemon is responding - try graceful shutdown first
 	pgrepCmd := exec.Command("pgrep", "-x", "tailscaled")
 	output, err := pgrepCmd.Output()
 	if err != nil {
@@ -198,58 +275,146 @@ func (p *Provider) stopOrphanedDaemon() error {
 }
 
 func (p *Provider) Connect(ctx context.Context, opts meshvpn.ConnectOptions) (*meshvpn.ConnectResult, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	logger.Info().
+		Str("controlServer", opts.ControlServer).
+		Bool("hasAuthKey", opts.AuthKey != "").
+		Msg("Connect: starting")
 
+	// Use a short lock just to set up the daemon and cancel context
+	// Release the lock before polling so GetStatus can run concurrently
+	cli := NewCLI()
+
+	var startErr error
+	func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		if !p.IsInstalled() {
+			logger.Error().Msg("Connect: Tailscale not installed")
+			return
+		}
+
+		// Kill any hung daemon before starting fresh
+		// This handles the case where daemon exists but doesn't respond
+		processNil := p.process == nil
+		processRunning := false
+		if p.process != nil {
+			processRunning = p.process.IsRunning()
+		}
+		daemonSocketExists := p.isDaemonRunning()
+		logger.Info().
+			Bool("processNil", processNil).
+			Bool("processRunning", processRunning).
+			Bool("daemonSocketExists", daemonSocketExists).
+			Msg("Connect: checking for hung daemon")
+
+		if processNil || !processRunning {
+			if daemonSocketExists {
+				logger.Info().Msg("Connect: found existing daemon, force killing before fresh start")
+				if err := p.forceKillDaemon(); err != nil {
+					logger.Warn().Err(err).Msg("Connect: failed to force kill existing daemon")
+					// Continue anyway - Start() might still work
+				}
+				// Give the system a moment to clean up
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+
+		if p.process == nil {
+			logger.Info().Str("tunMode", string(p.tunMode)).Msg("Connect: creating new ProcessManager")
+			p.process = NewProcessManager(p.tunMode)
+		}
+
+		if !p.process.IsRunning() {
+			logger.Info().Msg("Connect: starting tailscaled process")
+			if err := p.process.Start(); err != nil {
+				logger.Error().Err(err).Msg("Connect: failed to start tailscaled")
+				startErr = err
+				return
+			}
+			logger.Info().Msg("Connect: tailscaled process started")
+		} else {
+			logger.Info().Msg("Connect: tailscaled already running")
+		}
+
+		// Cancel any previous connect operation
+		if p.connectCancel != nil {
+			p.connectCancel()
+		}
+
+		// Create a cancellable context for the background Up operation
+		upCtx, upCancel := context.WithCancel(context.Background())
+		p.connectCancel = upCancel
+
+		go func() {
+			_, err := cli.Up(upCtx, UpOptions{
+				ControlServer: opts.ControlServer,
+				AuthKey:       opts.AuthKey,
+			})
+			if err != nil {
+				if upCtx.Err() == nil {
+					logger.Warn().Err(err).Msg("tailscale up completed with error")
+				}
+			} else {
+				logger.Info().Msg("tailscale up completed successfully")
+			}
+		}()
+	}()
+
+	// Check if installed (without lock since IsInstalled uses atomic)
 	if !p.IsInstalled() {
 		return nil, meshvpn.ErrNotInstalled
 	}
 
-	if p.process == nil {
-		p.process = NewProcessManager(p.tunMode)
+	// Check if daemon failed to start
+	if startErr != nil {
+		return nil, fmt.Errorf("failed to start tailscaled: %w", startErr)
 	}
 
-	if !p.process.IsRunning() {
-		if err := p.process.Start(); err != nil {
-			return nil, err
-		}
-	}
-
-	cli := NewCLI()
-
-	// Cancel any previous connect operation
-	if p.connectCancel != nil {
-		p.connectCancel()
-	}
-
-	// Create a cancellable context for the background Up operation
-	upCtx, upCancel := context.WithCancel(context.Background())
-	p.connectCancel = upCancel
-
-	go func() {
-		_, err := cli.Up(upCtx, UpOptions{
-			ControlServer: opts.ControlServer,
-			AuthKey:       opts.AuthKey,
-		})
-		if err != nil {
-			if upCtx.Err() == nil {
-				logger.Warn().Err(err).Msg("tailscale up completed with error")
-			}
-		} else {
-			logger.Info().Msg("tailscale up completed successfully")
-		}
-	}()
-
+	// Poll for status WITHOUT holding the lock so GetStatus can run
 	var status *StatusResponse
 	var err error
+	pollStart := time.Now()
 	for i := 0; i < 10; i++ {
 		time.Sleep(1 * time.Second)
 
-		status, err = cli.Status(ctx)
-		if err != nil {
-			logger.Warn().Err(err).Int("attempt", i+1).Msg("failed to get status, retrying")
+		// Check if daemon socket exists before calling CLI to avoid blocking
+		socketExists := p.isDaemonRunning()
+		logger.Debug().
+			Int("attempt", i+1).
+			Bool("socketExists", socketExists).
+			Str("socketPath", SocketPath).
+			Msg("Connect: polling for status")
+
+		if !socketExists {
 			continue
 		}
+
+		// First try a quick version check to verify CLI communication works
+		// This is much faster than status and helps detect daemon responsiveness
+		versionStart := time.Now()
+		versionCtx, versionCancel := context.WithTimeout(ctx, 5*time.Second)
+		version, verr := cli.Version(versionCtx)
+		versionCancel()
+		versionDuration := time.Since(versionStart)
+		if verr != nil {
+			logger.Info().Err(verr).Int("attempt", i+1).Dur("duration", versionDuration).Msg("version check failed, daemon not ready")
+			continue
+		}
+		logger.Info().Str("version", version).Dur("duration", versionDuration).Int("attempt", i+1).Msg("version check passed")
+
+		// Use a longer timeout for status check - ARM devices need more time
+		statusStart := time.Now()
+		statusCtx, statusCancel := context.WithTimeout(ctx, 15*time.Second)
+		status, err = cli.Status(statusCtx)
+		statusCancel()
+		statusDuration := time.Since(statusStart)
+
+		if err != nil {
+			logger.Warn().Err(err).Int("attempt", i+1).Dur("statusDuration", statusDuration).Dur("totalPollTime", time.Since(pollStart)).Msg("failed to get status, retrying")
+			continue
+		}
+		logger.Info().Dur("statusDuration", statusDuration).Dur("totalPollTime", time.Since(pollStart)).Msg("status check completed")
 
 		if status.AuthURL != "" || status.BackendState == "Running" {
 			break
@@ -354,6 +519,7 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 	}
 
 	if !p.IsInstalled() {
+		logger.Debug().Msg("Tailscale not installed")
 		return status, nil
 	}
 
@@ -361,22 +527,49 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 	status.State = meshvpn.StateStopped
 	status.Version = p.version
 
+	// Check if daemon is running (either our tracked process or an orphaned one)
+	daemonRunning := false
 	if p.process != nil && p.process.IsRunning() {
+		daemonRunning = true
 		status.Running = true
 		status.State = meshvpn.StateConnecting
+	} else if p.isDaemonRunning() {
+		// Check for orphaned daemon from previous session
+		daemonRunning = true
+		status.Running = true
+		status.State = meshvpn.StateConnecting
+		logger.Debug().Msg("found orphaned tailscaled process")
+	}
+
+	// Only call CLI if daemon is running - tailscale CLI hangs if daemon isn't running
+	if !daemonRunning {
+		logger.Debug().Msg("tailscaled not running, skipping CLI status check")
+		return status, nil
 	}
 
 	cli := NewCLI()
 	cliStatus, err := cli.Status(ctx)
 	if err != nil {
+		logger.Warn().Err(err).Msg("CLI status failed")
+
+		// If daemon just stopped, the socket might still exist briefly
+		// Treat "not running" errors as stopped, not error
+		errStr := err.Error()
+		if strings.Contains(errStr, "doesn't appear to be running") ||
+			strings.Contains(errStr, "not running") ||
+			strings.Contains(errStr, "connection refused") {
+			logger.Debug().Msg("daemon appears to have stopped, returning stopped state")
+			status.State = meshvpn.StateStopped
+			status.Running = false
+			return status, nil
+		}
+
 		if version, verr := cli.Version(ctx); verr == nil && version != "" {
 			status.Version = version
 		}
 
-		if p.process != nil && p.process.IsRunning() {
-			status.State = meshvpn.StateError
-			status.ErrorMessage = err.Error()
-		}
+		status.State = meshvpn.StateError
+		status.ErrorMessage = err.Error()
 		return status, nil
 	}
 

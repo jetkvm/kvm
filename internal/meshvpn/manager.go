@@ -122,6 +122,11 @@ func (m *Manager) GetProviderStatus(ctx context.Context, name string) (*Provider
 	return provider.GetStatus(ctx)
 }
 
+// GetProvider returns a provider by name. Returns (nil, false) if not found.
+func (m *Manager) GetProvider(name string) (Provider, bool) {
+	return m.registry.Get(name)
+}
+
 func (m *Manager) Install(ctx context.Context, name string, progress ProgressFunc) error {
 	provider, ok := m.registry.Get(name)
 	if !ok {
@@ -224,6 +229,15 @@ func (m *Manager) ListExitNodes(ctx context.Context) ([]ExitNode, error) {
 	provider := m.GetActiveProvider()
 	if provider == nil {
 		return nil, ErrNoActiveProvider
+	}
+	return provider.ListExitNodes(ctx)
+}
+
+// ListExitNodesForProvider lists exit nodes for a specific provider by name.
+func (m *Manager) ListExitNodesForProvider(ctx context.Context, providerName string) ([]ExitNode, error) {
+	provider, ok := m.registry.Get(providerName)
+	if !ok {
+		return nil, ErrProviderNotFound
 	}
 	return provider.ListExitNodes(ctx)
 }

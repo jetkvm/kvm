@@ -84,6 +84,14 @@ func (p *ProcessManager) Start() error {
 	tunArg := "--tun=userspace-networking"
 	if p.tunMode == meshvpn.TUNModeKernel {
 		tunArg = "--tun=tailscale0"
+		// Load TUN kernel module if using kernel mode
+		// The module may not be loaded by default on embedded systems
+		modprobeCmd := exec.Command("modprobe", "tun")
+		if err := modprobeCmd.Run(); err != nil {
+			logger.Warn().Err(err).Msg("failed to load tun kernel module, kernel TUN mode may not work")
+		} else {
+			logger.Info().Msg("loaded tun kernel module")
+		}
 	}
 
 	p.cmd = exec.CommandContext(ctx, TailscaledPath,
@@ -108,7 +116,9 @@ func (p *ProcessManager) Start() error {
 
 	logger.Info().Int("pid", p.cmd.Process.Pid).Msg("started tailscaled")
 
-	time.Sleep(500 * time.Millisecond)
+	// Wait for daemon to initialize - ARM devices with limited resources need more time
+	// The daemon creates the socket early but takes time to become fully operational
+	time.Sleep(2 * time.Second)
 
 	return nil
 }
@@ -191,6 +201,12 @@ func (p *ProcessManager) Stop() error {
 
 	p.running = false
 	p.cmd = nil
+
+	// Clean up the socket file to prevent stale socket detection
+	// This avoids race conditions where GetStatus sees the socket but daemon is gone
+	if err := os.Remove(SocketPath); err != nil && !os.IsNotExist(err) {
+		logger.Debug().Err(err).Str("path", SocketPath).Msg("failed to remove socket file")
+	}
 
 	return stopErr
 }

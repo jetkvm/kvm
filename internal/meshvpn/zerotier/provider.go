@@ -376,41 +376,60 @@ func (p *Provider) GetStatus(ctx context.Context) (*meshvpn.ProviderStatus, erro
 
 	status.Hostname = cliStatus.Address
 
-	ip, ipErr := cli.GetPrimaryIP(ctx)
-	if ipErr != nil {
-		logger.Debug().Err(ipErr).Msg("failed to get primary IP")
-	} else if ip != "" {
-		status.IP = ip
+	// Check network status first to determine IP availability
+	networks, netErr := cli.ListNetworks(ctx)
+	if netErr != nil {
+		logger.Warn().Err(netErr).Msg("failed to list networks")
+		// Failed to list networks - daemon is running but can't determine network state
+		// Show as connecting rather than incorrectly claiming connected
+		if cliStatus.Online {
+			status.State = meshvpn.StateConnecting
+			status.ErrorMessage = "Unable to list networks"
+		}
+		return status, nil
 	}
 
-	// Check network status
-	networks, netErr := cli.ListNetworks(ctx)
-	if netErr == nil {
-		hasConnectedNetwork := false
-		hasPendingNetwork := false
+	logger.Debug().Int("networkCount", len(networks)).Msg("listed networks")
 
-		for _, net := range networks {
-			switch net.Status {
-			case "OK":
-				hasConnectedNetwork = true
-			case "ACCESS_DENIED":
-				hasPendingNetwork = true
-			}
-		}
+	hasConnectedNetwork := false
+	hasPendingNetwork := false
 
-		if hasConnectedNetwork {
-			status.State = meshvpn.StateConnected
-		} else if hasPendingNetwork {
-			status.State = meshvpn.StateNeedsAuth
-		} else if cliStatus.Online {
-			// Online but no networks joined - daemon is running and connected to ZT infrastructure
-			status.State = meshvpn.StateConnected
+	for _, net := range networks {
+		logger.Debug().
+			Str("networkID", net.NetworkID).
+			Str("status", net.Status).
+			Str("name", net.Name).
+			Strs("assignedAddrs", net.AssignedAddrs).
+			Msg("network status")
+
+		switch net.Status {
+		case "OK":
+			hasConnectedNetwork = true
+		case "ACCESS_DENIED":
+			hasPendingNetwork = true
 		}
-	} else {
-		// Failed to get networks - if CLI worked but networks failed, check online status
-		if cliStatus.Online {
-			status.State = meshvpn.StateConnected
+	}
+
+	// Get IP only if we have a connected network
+	if hasConnectedNetwork {
+		ip, ipErr := cli.GetPrimaryIP(ctx)
+		if ipErr != nil {
+			logger.Warn().Err(ipErr).Msg("failed to get primary IP")
+		} else if ip != "" {
+			status.IP = ip
+			logger.Debug().Str("ip", ip).Msg("got primary IP")
+		} else {
+			logger.Debug().Msg("no IP assigned yet")
 		}
+		status.State = meshvpn.StateConnected
+	} else if hasPendingNetwork {
+		status.State = meshvpn.StateNeedsAuth
+		logger.Info().Msg("network authorization pending")
+	} else if cliStatus.Online {
+		// Online but no networks joined - daemon is running but no VPN connection
+		// Show as "stopped" since there's no actual VPN connectivity
+		status.State = meshvpn.StateStopped
+		logger.Debug().Msg("daemon online but no networks joined, showing as stopped")
 	}
 
 	return status, nil

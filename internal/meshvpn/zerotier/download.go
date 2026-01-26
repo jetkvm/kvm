@@ -49,6 +49,8 @@ func (d *Downloader) hashFile(path string) (string, error) {
 func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
 	logger.Info().Str("version", d.version).Msg("starting ZeroTier installation")
 
+	stageNames := []string{"checksum", "download", "verify", "extract", "setup"}
+
 	reportProgress := func(stage int, stageProgress float64) {
 		if progress == nil {
 			return
@@ -67,6 +69,11 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 			overall = 0.95 + stageProgress*0.05
 		}
 		progress(overall)
+		logger.Trace().
+			Str("stage", stageNames[stage]).
+			Float64("stageProgress", stageProgress).
+			Float64("overall", overall).
+			Msg("installation progress")
 	}
 
 	httpClient := d.httpClient
@@ -75,41 +82,46 @@ func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc)
 	}
 
 	// Attempt to download checksum (may not be available)
-	logger.Debug().Msg("fetching checksum")
+	logger.Info().Str("url", d.getChecksumURL()).Msg("fetching checksum")
 	reportProgress(0, 0)
 
 	var expectedHash string
 	checksumData, err := httpClient.Get(d.getChecksumURL())
 	if err != nil {
-		logger.Debug().Err(err).Msg("checksum file not available, will rely on HTTPS transport security")
+		logger.Warn().Err(err).Msg("checksum file not available, will rely on HTTPS transport security")
 	} else {
 		expectedHash = strings.TrimSpace(string(checksumData))
 		parts := strings.Fields(expectedHash)
 		if len(parts) > 0 {
 			expectedHash = parts[0]
 		}
-		logger.Debug().Str("hash", expectedHash).Msg("got expected hash")
+		logger.Info().Str("hash", expectedHash).Msg("got expected hash")
 	}
 	reportProgress(0, 1.0)
 
-	logger.Debug().Msg("downloading package")
+	logger.Info().Str("url", d.getPackageURL()).Msg("downloading package")
 	reportProgress(1, 0)
 
 	tmpFile, err := os.CreateTemp("", "zerotier-*.deb")
 	if err != nil {
+		logger.Error().Err(err).Msg("failed to create temp file")
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
+	logger.Debug().Str("tmpPath", tmpPath).Msg("created temp file for download")
+
 	err = httpClient.Download(d.getPackageURL(), tmpPath, func(p float64) {
 		reportProgress(1, p)
 	})
 	if err != nil {
+		logger.Error().Err(err).Msg("package download failed")
 		return fmt.Errorf("failed to download package: %w", err)
 	}
 	reportProgress(1, 1.0)
+	logger.Info().Str("tmpPath", tmpPath).Msg("package download completed")
 
 	// Verify checksum if available
 	if expectedHash != "" {
@@ -171,6 +183,8 @@ func (d *Downloader) extractDeb(debPath string) error {
 
 	// Use a shell pipeline to extract: ar extracts data.tar.xz, tar extracts the binary
 	// Since the device may not have 'ar', we use a workaround that reads the ar format directly
+	// Note: BusyBox xz doesn't support stdin/pipes, so we extract data.tar.xz to a file first,
+	// then decompress it with xz -d, then extract with tar.
 	// Note: All paths are internally generated (MkdirTemp, CreateTemp, constants) so shell
 	// injection risk is minimal, but we quote paths for defense in depth.
 	extractScript := fmt.Sprintf(`
@@ -188,7 +202,13 @@ func (d *Downloader) extractDeb(debPath string) error {
 			offset=$((offset + 60))
 
 			if echo "$filename" | grep -q "^data.tar"; then
-				dd if='%s' bs=1 skip=$offset count=$size 2>/dev/null | xzcat | tar -xf - ./usr/sbin/zerotier-one
+				# Extract data.tar.xz to a temp file (BusyBox xz doesn't support pipes)
+				dd if='%s' bs=1 skip=$offset count=$size of=data.tar.xz 2>/dev/null
+				# Decompress with xz -d (creates data.tar)
+				xz -d data.tar.xz
+				# Extract the binary from the tar
+				tar -xf data.tar ./usr/sbin/zerotier-one
+				rm -f data.tar
 				break
 			fi
 
