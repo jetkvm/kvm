@@ -92,16 +92,18 @@ func (c *Connection) audinDataLoop() {
 		select {
 		case <-c.audinStopCh:
 			return
-		case data, ok := <-c.audinDataChan:
+		case pooled, ok := <-c.audinDataChan:
 			if !ok {
 				return
 			}
 			if c.server.deps.Audio == nil {
+				pooled.Release() // Return buffer even if audio not available
 				continue
 			}
-			if err := c.server.deps.Audio.PlayAudio(data); err != nil {
+			if err := c.server.deps.Audio.PlayAudio(pooled.Data); err != nil {
 				c.server.deps.Logger.Trace().Err(err).Msg("AUDIN playback failed")
 			}
+			pooled.Release() // Return buffer to pool after processing
 		}
 	}
 }

@@ -23,6 +23,32 @@ var vcPDUPool = sync.Pool{
 	},
 }
 
+// audinBufferPool provides pooled buffers for AUDIN audio input data.
+// At 48kHz stereo 16-bit, 10ms of audio = 1920 bytes. Pool uses 2KB for alignment.
+// This eliminates ~715MB of allocations per hour of audio input.
+var audinBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 2048)
+		return &buf
+	},
+}
+
+// audinPooledBuffer wraps a pooled buffer for audio input data.
+// After processing, call Release() to return the buffer to the pool.
+type audinPooledBuffer struct {
+	Data []byte   // Slice of the actual data
+	buf  *[]byte  // Pointer to underlying buffer for pool return
+}
+
+// Release returns the buffer to the pool. Safe to call multiple times.
+func (b *audinPooledBuffer) Release() {
+	if b.buf != nil {
+		audinBufferPool.Put(b.buf)
+		b.buf = nil
+		b.Data = nil
+	}
+}
+
 // inputPayloadPool reduces allocations for fast-path input payloads.
 // Fast-path input events are typically small (keyboard: 2 bytes, mouse: 7 bytes).
 // Max realistic size: ~64 bytes for batched events. Pool uses 256 bytes for safety.
@@ -92,7 +118,7 @@ type Connection struct {
 	audioStopCh chan struct{}
 
 	// Audio input (AUDIN - client mic to USB gadget)
-	audinDataChan chan []byte
+	audinDataChan chan *audinPooledBuffer
 	audinStopCh   chan struct{}
 
 	// Video streaming channels (for proper cleanup on disconnect)

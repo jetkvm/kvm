@@ -742,8 +742,9 @@ func (im *InterfaceManager) monitorInterfaceState() {
 	defer im.wg.Done()
 
 	im.logger.Debug().Msg("monitoring interface state")
-	// TODO: use netlink subscription instead of polling
-	ticker := time.NewTicker(5 * time.Second)
+	// Use longer polling interval since link subscription handles real-time changes.
+	// This reduces netlink allocations from ~7MB/min to ~1MB/min.
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {

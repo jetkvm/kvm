@@ -171,22 +171,36 @@ func (c *Connection) initDVCChannelsSync() {
 		// Create AUDIN async buffer and processing goroutine
 		// This prevents AUDIN data processing from blocking the DVC message loop
 		// which would delay GFX frame ACKs and cause video stuttering
-		c.audinDataChan = make(chan []byte, 30) // Buffer for ~300ms at 10ms packets
+		c.audinDataChan = make(chan *audinPooledBuffer, 30) // Buffer for ~300ms at 10ms packets
 		c.audinStopCh = make(chan struct{})
 		go c.audinDataLoop()
 
 		// Set data callback to forward audio to buffer (non-blocking)
 		c.audinChannel.SetDataCallback(func(data []byte) {
-			// Make a copy since the underlying buffer may be reused by the connection
-			dataCopy := make([]byte, len(data))
-			copy(dataCopy, data)
+			// Get pooled buffer - eliminates ~715MB/hour of allocations
+			bufPtr := audinBufferPool.Get().(*[]byte)
+			buf := *bufPtr
+
+			// Ensure buffer is large enough (rare path for >2KB packets)
+			if len(data) > cap(buf) {
+				audinBufferPool.Put(bufPtr) // Return undersized buffer
+				buf = make([]byte, len(data))
+				bufPtr = &buf
+			}
+
+			// Copy data to pooled buffer
+			buf = buf[:len(data)]
+			copy(buf, data)
+
+			pooled := &audinPooledBuffer{Data: buf, buf: bufPtr}
 
 			// Non-blocking send - drop if buffer is full
 			select {
-			case c.audinDataChan <- dataCopy:
+			case c.audinDataChan <- pooled:
 				// Data queued successfully
 			default:
-				// Buffer full, drop the audio packet (acceptable for real-time audio)
+				// Buffer full, drop and return to pool
+				pooled.Release()
 			}
 		})
 
