@@ -315,7 +315,7 @@ func (c *Connection) handleMCSConnect() error {
 	serverCore := &protocol.ServerCoreData{
 		Version:              protocol.RDPVersion104, // RDP 10.4 - needed for modern codecs
 		ClientRequestedProto: clientReqProto,
-		EarlyCapFlags:        protocol.EarlyCapDynamicDst | protocol.EarlyCapSkipChannelJoin, // Modern capabilities
+		EarlyCapFlags:        protocol.EarlyCapDynamicDst, // Note: Do NOT set EarlyCapSkipChannelJoin - server expects channel join sequence
 	}
 
 	// Assign channel IDs to filtered channels only
