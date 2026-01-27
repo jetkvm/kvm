@@ -48,8 +48,8 @@
 // Transcoder channel ID (separate from main JPEG_CHANNEL)
 #define TRANSCODE_JPEG_CHANNEL 2
 
-// Buffer configuration
-#define TRANSCODE_BUFFER_COUNT 3
+// Buffer configuration - minimized for single-core RV1106
+#define TRANSCODE_BUFFER_COUNT 2  // Reduced from 3 to lower memory pressure
 #define MAX_H264_FRAME_SIZE (512 * 1024)  // 512KB - typical webcam frame
 
 // Branch prediction hints
@@ -115,6 +115,12 @@ static struct __attribute__((aligned(64))) {
     int rga_output_fd;
 #endif
 } tc __attribute__((aligned(64))) = {0};
+
+// Track if stream has duplicate NALs (macOS quirk) - reset on shutdown
+static _Atomic bool h264_stream_has_duplicates = false;
+
+// Static buffer for H.264 deduplication (avoids malloc in hot path)
+static uint8_t h264_dedup_buffer[MAX_H264_FRAME_SIZE] __attribute__((aligned(16)));
 
 // Fast monotonic time (uses VDSO, no syscall)
 static inline uint64_t get_time_us(void) {
@@ -508,7 +514,10 @@ static int decode_h264_frame(const uint8_t *h264_data, size_t h264_len,
         // Initialize decoder parameters
         memset(&tc.dec_param, 0, sizeof(tc.dec_param));
         tc.dec_param.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_AVC;
-        tc.dec_param.eEcActiveIdc = ERROR_CON_DISABLE;  // No error concealment for speed
+        // Use slice-based error concealment - smarter than frame copy,
+        // copies affected slices from previous frame rather than entire frame
+        // ERROR_CON_SLICE_COPY = 2
+        tc.dec_param.eEcActiveIdc = ERROR_CON_SLICE_COPY;
         tc.dec_param.bParseOnly = false;
         tc.dec_param.uiTargetDqLayer = 0xFF;  // Decode all layers
 
@@ -535,11 +544,35 @@ static int decode_h264_frame(const uint8_t *h264_data, size_t h264_len,
         &tc.buffer_info
     );
 
-    if (ret != dsErrorFree && ret != dsFramePending) {
-        return -EINVAL;
+    // OpenH264 DECODING_STATE values (can be combined with |):
+    // - dsErrorFree (0x00): Perfect decode
+    // - dsFramePending (0x01): Need more NAL units
+    // - dsRefLost (0x02): Reference frame lost - common at stream start
+    // - dsBitstreamError (0x04): Bitstream syntax error
+    // - dsNoParamSets (0x10): Missing SPS/PPS
+    // - dsInvalidArgument (0x1000): Invalid argument
+    //
+    // Strategy: Accept frames unless there's a fatal bitstream error.
+    // dsRefLost (0x02) is common and usually recoverable.
+
+    // Log decode state for debugging (first few frames or periodic)
+    static int frame_count = 0;
+    frame_count++;
+    if (ret != dsErrorFree) {
+        static int err_log_count = 0;
+        if (err_log_count++ < 20 || frame_count % 500 == 0) {
+            log_debug("Transcode: frame %d decode=0x%02x bufStatus=%d",
+                      frame_count, ret, tc.buffer_info.iBufferStatus);
+        }
     }
 
-    // Check if we have a decoded frame
+    // Only drop frames with fatal errors (bitstream error, invalid args)
+    if (ret & (dsBitstreamError | dsInvalidArgument)) {
+        *nv12_len = 0;
+        return 0;  // Fatal error, drop frame
+    }
+
+    // Check if we have a decoded frame ready
     if (tc.buffer_info.iBufferStatus != 1) {
         // No frame ready yet (need more NALs)
         *nv12_len = 0;
@@ -654,7 +687,7 @@ int transcode_init(const transcode_config_t *config) {
     }
 
     tc.target_fps = config->target_fps ? config->target_fps : 25;
-    tc.jpeg_quality = config->jpeg_quality ? config->jpeg_quality : 70;
+    tc.jpeg_quality = config->jpeg_quality ? config->jpeg_quality : 80;  // Match HDMI encoder default
     tc.output_cb = config->output_cb;
     tc.user_data = config->user_data;
 
@@ -674,6 +707,15 @@ int transcode_init(const transcode_config_t *config) {
         return -ENOMEM;
     }
 
+    // Initialize buffers to black (prevents green flash on startup)
+    // NV12 black: Y=0 (luma), UV=128 (neutral chroma)
+    size_t y_size_in = max_input_width * max_input_height;
+    size_t y_size_out = tc.output_width * tc.output_height;
+    memset(tc.yuv_buffer, 0, y_size_in);                           // Y plane = 0
+    memset(tc.yuv_buffer + y_size_in, 128, y_size_in / 2);         // UV plane = 128
+    memset(tc.scaled_buffer, 0, y_size_out);                       // Y plane = 0
+    memset(tc.scaled_buffer + y_size_out, 128, y_size_out / 2);    // UV plane = 128
+
 #ifdef __linux__
     if (setup_jpeg_encoder() != 0) {
         free(tc.yuv_buffer);
@@ -686,9 +728,15 @@ int transcode_init(const transcode_config_t *config) {
     atomic_store(&tc.running, true);
 
 #ifdef HAS_OPENH264
-    log_info("Transcode: %ux%u->%ux%u q=%u",
-             tc.input_detected ? tc.input_width : 0, tc.input_detected ? tc.input_height : 0,
-             tc.output_width, tc.output_height, tc.jpeg_quality);
+    if (tc.input_detected) {
+        log_info("Transcode: %ux%u->%ux%u q=%u",
+                 tc.input_width, tc.input_height,
+                 tc.output_width, tc.output_height, tc.jpeg_quality);
+    } else {
+        // H.264: input resolution will be auto-detected from SPS NAL
+        log_info("Transcode: H.264(auto)->%ux%u q=%u",
+                 tc.output_width, tc.output_height, tc.jpeg_quality);
+    }
 #else
     log_error("Transcode: no decoder");
 #endif
@@ -720,11 +768,161 @@ void transcode_shutdown(void) {
     tc.scaled_buffer = NULL;
     tc.initialized = false;
 
+    // Reset duplicate detection for next stream
+    atomic_store(&h264_stream_has_duplicates, false);
+
     log_info("Transcode: shutdown");
 }
 
 bool transcode_is_running(void) {
     return tc.initialized && atomic_load(&tc.running);
+}
+
+/**
+ * Simple NAL deduplication for macOS streams.
+ * macOS sends [SPS,SPS,PPS,PPS,SEI,SEI,IDR,IDR] - each NAL appears twice.
+ * This function removes consecutive duplicates by comparing NAL content.
+ *
+ * Approach: Parse NALs one at a time, copy to output if not identical to previous.
+ * Conservative: Only removes exact duplicates, preserves all other data.
+ *
+ * @param input Input H.264 data
+ * @param input_len Length of input
+ * @param output Output buffer (must be >= input_len)
+ * @param output_len Actual output length
+ * @return Number of duplicates removed (0 = no duplicates found)
+ */
+static int deduplicate_h264_nals(const uint8_t *input, size_t input_len,
+                                  uint8_t *output, size_t *output_len) {
+    // NAL info for previous NAL (for duplicate detection)
+    const uint8_t *prev_nal_data = NULL;
+    size_t prev_nal_len = 0;
+
+    const uint8_t *src = input;
+    const uint8_t *src_end = input + input_len;
+    uint8_t *dst = output;
+    int duplicates_removed = 0;
+
+    while (src < src_end - 4) {
+        // Find start code (00 00 01 or 00 00 00 01)
+        const uint8_t *sc_start = NULL;
+        int sc_len = 0;
+
+        for (const uint8_t *p = src; p < src_end - 2; p++) {
+            if (p[0] == 0 && p[1] == 0) {
+                if (p[2] == 1) {
+                    sc_start = p;
+                    sc_len = 3;
+                    break;
+                }
+                if (p + 3 < src_end && p[2] == 0 && p[3] == 1) {
+                    sc_start = p;
+                    sc_len = 4;
+                    break;
+                }
+            }
+        }
+
+        if (!sc_start) {
+            // No more start codes - copy remaining data
+            size_t remaining = src_end - src;
+            if (remaining > 0) {
+                memcpy(dst, src, remaining);
+                dst += remaining;
+            }
+            break;
+        }
+
+        // Copy any data before this start code
+        if (sc_start > src) {
+            size_t prefix_len = sc_start - src;
+            memcpy(dst, src, prefix_len);
+            dst += prefix_len;
+        }
+
+        // Find end of this NAL (next start code or end of buffer)
+        const uint8_t *nal_data = sc_start + sc_len;
+        const uint8_t *nal_end = src_end;
+
+        for (const uint8_t *p = nal_data; p < src_end - 2; p++) {
+            if (p[0] == 0 && p[1] == 0 && (p[2] == 1 || (p + 3 < src_end && p[2] == 0 && p[3] == 1))) {
+                nal_end = p;
+                break;
+            }
+        }
+
+        size_t nal_len = nal_end - nal_data;
+
+        // Check if this NAL is identical to previous
+        bool is_duplicate = false;
+        if (prev_nal_data && prev_nal_len == nal_len && nal_len > 0) {
+            // Compare NAL content
+            if (memcmp(prev_nal_data, nal_data, nal_len) == 0) {
+                is_duplicate = true;
+                duplicates_removed++;
+            }
+        }
+
+        if (!is_duplicate) {
+            // Copy start code + NAL to output
+            memcpy(dst, sc_start, sc_len + nal_len);
+
+            // Remember this NAL for next comparison (point to output buffer)
+            prev_nal_data = dst + sc_len;
+            prev_nal_len = nal_len;
+
+            dst += sc_len + nal_len;
+        }
+
+        // Move past this NAL
+        src = nal_end;
+    }
+
+    *output_len = dst - output;
+
+    // Log deduplication results (only first few times)
+    if (duplicates_removed > 0) {
+        static int log_count = 0;
+        if (log_count++ < 5) {
+            log_info("Transcode: removed %d duplicate NALs (%zu->%zu bytes)",
+                     duplicates_removed, input_len, *output_len);
+        }
+    }
+
+    return duplicates_removed;
+}
+
+/**
+ * Quick check if stream likely has duplicate NALs.
+ * Looks for consecutive NALs of the same type (SPS,PPS,SEI,IDR only).
+ * Very fast - just scans for NAL type bytes after start codes.
+ */
+static inline bool quick_check_duplicates(const uint8_t *data, size_t len) {
+    // If we've already detected duplicates, don't re-check
+    if (atomic_load(&h264_stream_has_duplicates)) {
+        return true;
+    }
+
+    uint8_t prev_type = 0;
+    const uint8_t *end = data + len - 4;
+
+    for (const uint8_t *p = data; p < end; p++) {
+        // Look for start code
+        if (p[0] == 0 && p[1] == 0 && (p[2] == 1 || (p[2] == 0 && p[3] == 1))) {
+            int sc_len = (p[2] == 1) ? 3 : 4;
+            if (p + sc_len < data + len) {
+                uint8_t nal_type = p[sc_len] & 0x1F;
+                // Check for consecutive same type (only for types 5-8)
+                if (nal_type == prev_type && nal_type >= 5 && nal_type <= 8) {
+                    atomic_store(&h264_stream_has_duplicates, true);
+                    return true;
+                }
+                prev_type = nal_type;
+            }
+            p += sc_len;  // Skip past start code
+        }
+    }
+    return false;
 }
 
 int transcode_feed_h264(const uint8_t *h264_data, size_t h264_len) {
@@ -733,12 +931,30 @@ int transcode_feed_h264(const uint8_t *h264_data, size_t h264_len) {
 
     atomic_fetch_add(&tc.frames_in, 1);
 
+    // Fast path: check if deduplication needed
+    // Most RDP clients (Windows, Linux) don't send duplicates - zero-copy for them
+    // macOS sends [SPS,SPS,PPS,PPS,SEI,SEI,IDR,IDR] - needs deduplication
+    const uint8_t *decode_data;
+    size_t decode_len;
+
+    if (quick_check_duplicates(h264_data, h264_len)) {
+        // macOS or similar: deduplicate to save ~50% CPU on single-core RV1106
+        size_t dedup_len = 0;
+        deduplicate_h264_nals(h264_data, h264_len, h264_dedup_buffer, &dedup_len);
+        decode_data = h264_dedup_buffer;
+        decode_len = dedup_len;
+    } else {
+        // Normal client: zero-copy pass-through
+        decode_data = h264_data;
+        decode_len = h264_len;
+    }
+
 #ifdef HAS_OPENH264
     uint64_t start = get_time_us();
 
     size_t nv12_len = tc.yuv_buffer_size;
     uint32_t decoded_width = 0, decoded_height = 0;
-    int ret = decode_h264_frame(h264_data, h264_len, tc.yuv_buffer, &nv12_len,
+    int ret = decode_h264_frame(decode_data, decode_len, tc.yuv_buffer, &nv12_len,
                                 &decoded_width, &decoded_height);
 
     atomic_fetch_add(&tc.decode_time_us, get_time_us() - start);
@@ -815,10 +1031,19 @@ int transcode_feed_nv12(const uint8_t *nv12_data, size_t nv12_len) {
     atomic_fetch_add(&tc.frames_in, 1);
 
 #ifdef __linux__
-    // Copy to yuv_buffer for potential scaling
-    memcpy(tc.yuv_buffer, nv12_data, nv12_len);
-    const uint8_t *encode_buffer = scale_if_needed(tc.input_width, tc.input_height);
-    size_t encode_size = tc.output_width * tc.output_height * 3 / 2;
+    const uint8_t *encode_buffer;
+    size_t encode_size;
+
+    // Fast path: no scaling needed - encode directly from input
+    if (likely(tc.input_width == tc.output_width && tc.input_height == tc.output_height)) {
+        encode_buffer = nv12_data;
+        encode_size = nv12_len;
+    } else {
+        // Slow path: need to scale - copy to buffer first
+        memcpy(tc.yuv_buffer, nv12_data, nv12_len);
+        encode_buffer = scale_if_needed(tc.input_width, tc.input_height);
+        encode_size = tc.output_width * tc.output_height * 3 / 2;
+    }
     return encode_yuv_to_jpeg(encode_buffer, encode_size);
 #else
     return -ENOSYS;
