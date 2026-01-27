@@ -442,6 +442,7 @@
     "locale_nb": "挪威语(书面)",
     "locale_sv": "瑞典语",
     "locale_zh": "中文 (简体)",
+    "locale_zh_tw": "中文 (繁體)",
     "log_in": "登录",
     "log_out": "退出登录",
     "logged_in_as": "当前登录用户",

@@ -442,6 +442,7 @@
     "locale_nb": "Norsk (bokmål)",
     "locale_sv": "Svensk",
     "locale_zh": "中文 (简体)",
+    "locale_zh_tw": "中文 (繁體)",
     "log_in": "Logg inn",
     "log_out": "Logg ut",
     "logged_in_as": "Logget inn som",

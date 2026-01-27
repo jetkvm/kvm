@@ -283,6 +283,8 @@ export function map_locale_code_to_name(
       return [m.locale_sv({}, { locale: currentLocale }), m.locale_sv({}, { locale })];
     case "zh":
       return [m.locale_zh({}, { locale: currentLocale }), m.locale_zh({}, { locale })];
+    case "zh-tw":
+      return [m.locale_zh_tw({}, { locale: currentLocale }), m.locale_zh_tw({}, { locale })];
     default:
       return [locale, ""];
   }
