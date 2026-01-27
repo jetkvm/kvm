@@ -310,7 +310,7 @@ type AudioProvider interface {
 	// This is called when the AUDIN channel becomes ready.
 	EnableAudioInput() error
 
-	// GetBufferPeriods returns the configured audio buffer periods (2-24).
+	// GetBufferPeriods returns the configured audio buffer periods (2-48).
 	// Higher values indicate more latency tolerance. Used to scale RDPSND flow control.
 	GetBufferPeriods() int
 }

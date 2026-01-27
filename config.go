@@ -126,7 +126,7 @@ type Config struct {
 	AudioComplexity      int     `json:"audio_complexity"` // 0-10
 	AudioDTXEnabled      bool    `json:"audio_dtx_enabled"`
 	AudioFECEnabled      bool    `json:"audio_fec_enabled"`
-	AudioBufferPeriods   int     `json:"audio_buffer_periods"`   // 2-24
+	AudioBufferPeriods   int     `json:"audio_buffer_periods"`   // 2-48
 	AudioPacketLossPerc  int     `json:"audio_packet_loss_perc"` // 0-100
 	NativeMaxRestart     uint    `json:"native_max_restart_attempts"`
 

@@ -142,7 +142,7 @@ func NewSoundChannel(sendFunc SoundSendFunc, maxBlocksPending int) *SoundChannel
 // MaxBlocksPendingFromBufferPeriods calculates the optimal max blocks pending
 // based on the audio buffer periods setting. Higher buffer periods indicate
 // the user expects higher latency (e.g., Tailscale), so we scale accordingly.
-// Formula: max(16, bufferPeriods * 2) - gives 320ms to 960ms of buffer.
+// Formula: max(16, bufferPeriods * 2) - gives 320ms to 1920ms of buffer.
 func MaxBlocksPendingFromBufferPeriods(bufferPeriods int) int {
 	maxBlocks := bufferPeriods * 2
 	if maxBlocks < SNDCMinBlocksPending {

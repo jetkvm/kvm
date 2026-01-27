@@ -97,7 +97,7 @@ func getAudioConfig() audio.AudioConfig {
 		audioLogger.Warn().Int("complexity", config.AudioComplexity).Msg("Invalid audio complexity, using default")
 	}
 
-	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
+	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 48 {
 		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
 	} else if config.AudioBufferPeriods != 0 {
 		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Msg("Invalid buffer periods, using default")

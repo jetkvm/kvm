@@ -456,7 +456,7 @@ func (a *rdpAudioAdapter) EnableAudioInput() error {
 
 func (a *rdpAudioAdapter) GetBufferPeriods() int {
 	ensureConfigLoaded()
-	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
+	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 48 {
 		return config.AudioBufferPeriods
 	}
 	return 12 // Default

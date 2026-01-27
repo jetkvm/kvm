@@ -289,6 +289,8 @@ export default function SettingsAudioRoute() {
               { value: "12", label: "12 (240ms)" },
               { value: "16", label: "16 (320ms)" },
               { value: "24", label: "24 (480ms)" },
+              { value: "32", label: "32 (640ms)" },
+              { value: "48", label: "48 (960ms)" },
             ]}
             onChange={e => handleAudioConfigChange({ bufferPeriods: parseInt(e.target.value) })}
           />

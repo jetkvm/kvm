@@ -986,8 +986,8 @@ func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled 
 	if complexity < 0 || complexity > 10 {
 		return fmt.Errorf("complexity must be between 0 and 10")
 	}
-	if bufferPeriods < 2 || bufferPeriods > 24 {
-		return fmt.Errorf("buffer periods must be between 2 and 24")
+	if bufferPeriods < 2 || bufferPeriods > 48 {
+		return fmt.Errorf("buffer periods must be between 2 and 48")
 	}
 	if packetLossPerc < 0 || packetLossPerc > 100 {
 		return fmt.Errorf("packet loss percentage must be between 0 and 100")
