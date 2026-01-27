@@ -58,6 +58,24 @@ var rgbTileBufferPool = sync.Pool{
 	},
 }
 
+// fastPathBitmapPool provides reusable buffers for Fast-Path bitmap PDUs.
+// Max size: 64x64 tile at 32bpp (16384) + header (22) = 16406 bytes
+var fastPathBitmapPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, rgbTileSize*rgbTileSize*4+32)
+		return &buf
+	},
+}
+
+// fastPathPDUPool provides reusable buffers for Fast-Path PDU framing.
+// Max size: 16000 (max fragment) + 10 (headers) = 16010 bytes
+var fastPathPDUPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 16384)
+		return &buf
+	},
+}
+
 // tileRect represents a single bitmap tile for RDP updates.
 type tileRect struct {
 	left, top     int
@@ -385,6 +403,8 @@ func convertGenericTileToBGRX(img image.Image, left, top, tileW, tileH int, dst 
 // sendFastPathBitmapUpdate sends a bitmap update via Fast-Path with fragmentation support.
 // Per MS-RDPBCGR 2.2.9.1.2 and 2.2.9.1.2.1.2 (TS_FP_UPDATE_BITMAP).
 // This bypasses the MCS 16KB limit by using fragmentation for large updates.
+//
+// Memory optimization: uses pooled buffers to avoid per-frame allocations.
 func (c *Connection) sendFastPathBitmapUpdate(tiles []tileRect) error {
 	// Build the bitmap update data (same format as slow-path)
 	// TS_UPDATE_BITMAP_DATA: updateType(2) + numberRectangles(2) + rectangles
@@ -393,7 +413,16 @@ func (c *Connection) sendFastPathBitmapUpdate(tiles []tileRect) error {
 		totalDataLen += 18 + len(tile.data) // TS_BITMAP_DATA header + pixel data
 	}
 
-	bitmapData := make([]byte, totalDataLen)
+	// Get pooled buffer for bitmap data
+	bufPtr := fastPathBitmapPool.Get().(*[]byte)
+	bitmapBuf := *bufPtr
+	if len(bitmapBuf) < totalDataLen {
+		bitmapBuf = make([]byte, totalDataLen)
+		*bufPtr = bitmapBuf
+	}
+	defer fastPathBitmapPool.Put(bufPtr)
+
+	bitmapData := bitmapBuf[:totalDataLen]
 	binary.LittleEndian.PutUint16(bitmapData[0:2], protocol.UpdateTypeBitmap)
 	binary.LittleEndian.PutUint16(bitmapData[2:4], uint16(len(tiles)))
 	pos := 4
@@ -458,6 +487,7 @@ func (c *Connection) sendFastPathBitmapUpdate(tiles []tileRect) error {
 }
 
 // sendFastPathFragment sends a single Fast-Path fragment.
+// Memory optimization: uses pooled buffers to avoid per-fragment allocations.
 func (c *Connection) sendFastPathFragment(data []byte, fragFlag byte) error {
 	// Fast-Path Update structure (MS-RDPBCGR 2.2.9.1.2.1):
 	// - updateHeader (1 byte): updateCode(4 bits) | fragmentation(2 bits) | compression(2 bits)
@@ -487,7 +517,16 @@ func (c *Connection) sendFastPathFragment(data []byte, fragFlag byte) error {
 	}
 	pduLen++ // length1 byte
 
-	buf := make([]byte, pduLen)
+	// Get pooled buffer for PDU
+	bufPtr := fastPathPDUPool.Get().(*[]byte)
+	pduBuf := *bufPtr
+	if len(pduBuf) < pduLen {
+		pduBuf = make([]byte, pduLen)
+		*bufPtr = pduBuf
+	}
+	defer fastPathPDUPool.Put(bufPtr)
+
+	buf := pduBuf[:pduLen]
 	pos := 0
 
 	// fpOutputHeader: action = 0 (Fast-Path), no encryption

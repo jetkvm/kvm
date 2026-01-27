@@ -176,6 +176,9 @@ func (c *Connection) startJPEGBitmapStreaming() {
 // SendRGBBitmapUpdate sends a raw BGRX frame as RDP bitmap updates.
 // This is the fast path - no JPEG decode needed, just tile and send.
 // The data is expected in BGRX format (4 bytes per pixel, top-down).
+//
+// Memory optimization: sends each tile immediately using a pooled buffer,
+// avoiding per-tile allocations that caused OOM on memory-constrained devices.
 func (c *Connection) SendRGBBitmapUpdate(bgrxData []byte, width, height int) error {
 	if c.closed.Load() {
 		return nil
@@ -191,13 +194,13 @@ func (c *Connection) SendRGBBitmapUpdate(bgrxData []byte, width, height int) err
 	tilesX := (width + rgbTileSize - 1) / rgbTileSize
 	tilesY := (height + rgbTileSize - 1) / rgbTileSize
 
-	// Get pooled buffer for tile data
+	// Get pooled buffer for tile data (reused across all tiles)
 	bufPtr := rgbTileBufferPool.Get().(*[]byte)
 	tileBuffer := *bufPtr
 	defer rgbTileBufferPool.Put(bufPtr)
 
-	// Batch tiles to reduce PDU overhead while staying under reassembly limits
-	var tiles []tileRect
+	// Reusable tile struct to avoid allocations
+	var tile tileRect
 
 	for ty := 0; ty < tilesY; ty++ {
 		for tx := 0; tx < tilesX; tx++ {
@@ -227,31 +230,18 @@ func (c *Connection) SendRGBBitmapUpdate(bgrxData []byte, width, height int) err
 				copy(tileBuffer[dstOffset:dstOffset+tileW*4], bgrxData[srcOffset:srcOffset+tileW*4])
 			}
 
-			// Copy tile data to new slice
-			tileData := make([]byte, tileSize)
-			copy(tileData, tileBuffer[:tileSize])
+			// Setup tile using pooled buffer directly (no allocation)
+			tile.left = left
+			tile.top = top
+			tile.right = right
+			tile.bottom = bottom
+			tile.data = tileBuffer[:tileSize]
 
-			tiles = append(tiles, tileRect{
-				left:   left,
-				top:    top,
-				right:  right,
-				bottom: bottom,
-				data:   tileData,
-			})
-
-			// Send batch when we reach the limit
-			if len(tiles) >= maxTilesPerRGBUpdate {
-				if err := c.sendFastPathBitmapUpdate(tiles); err != nil {
-					return err
-				}
-				tiles = tiles[:0] // Reset slice, keep capacity
+			// Send this tile immediately via Fast-Path
+			if err := c.sendFastPathBitmapUpdate([]tileRect{tile}); err != nil {
+				return err
 			}
 		}
-	}
-
-	// Send any remaining tiles
-	if len(tiles) > 0 {
-		return c.sendFastPathBitmapUpdate(tiles)
 	}
 
 	return nil
