@@ -277,6 +277,8 @@ export function map_locale_code_to_name(
       return [m.locale_fr({}, { locale: currentLocale }), m.locale_fr({}, { locale })];
     case "it":
       return [m.locale_it({}, { locale: currentLocale }), m.locale_it({}, { locale })];
+    case "ja":
+      return [m.locale_ja({}, { locale: currentLocale }), m.locale_ja({}, { locale })];
     case "nb":
       return [m.locale_nb({}, { locale: currentLocale }), m.locale_nb({}, { locale })];
     case "pt":

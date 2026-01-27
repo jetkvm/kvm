@@ -514,6 +514,11 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
    - **Note** you will get an error _DB has been closed_, ignore that message, we're not using a database.
    - **Note** you likely will get errors while running this command due to rate limits and such (it uses anonymous Google Translate).
    Just keep running the command over and over... it'll translate a bunch each time until it says _Machine translate complete_.
+7. Add the new language to the UI selection menu by adding the lines in the _ui/src/utils.ts_ `map_locale_code_to_name()` function following the pattern. For example:
+   ```typescript
+      case "at":
+         return [m.locale_at({}, { locale: currentLocale }), m.locale_at({}, { locale })];
+   ```
 
 ### Other notes
 
