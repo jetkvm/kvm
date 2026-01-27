@@ -12,7 +12,8 @@
     "nb",
     "pt",
     "sv",
-    "zh"
+    "zh",
+    "ja"
   ],
   "languageTags": [
     "en",
@@ -24,7 +25,8 @@
     "nb",
     "pt",
     "sv",
-    "zh"
+    "zh",
+    "ja"
   ],
   "modules": [
     "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@latest/dist/index.js",
