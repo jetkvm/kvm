@@ -48,4 +48,16 @@ type NativeInterface interface {
 	RgbStart() error
 	RgbStop() error
 	RgbIsRunning() (bool, error)
+
+	// H.264/YUV to MJPEG Transcoder methods (BETA feature)
+	// Used for camera redirection to convert various formats to MJPEG
+	// inputWidth/inputHeight: source resolution (0 = auto-detect for H.264)
+	// outputWidth/outputHeight: target resolution for RGA scaling (0 = same as input)
+	TranscodeInit(inputWidth, inputHeight, outputWidth, outputHeight, fps, quality uint32, outputCb func([]byte)) error
+	TranscodeShutdown()
+	TranscodeIsRunning() bool
+	TranscodeFeedH264(data []byte) error  // H.264 (slowest - requires SW decode)
+	TranscodeFeedNV12(data []byte) error  // NV12 (fastest - direct HW encode)
+	TranscodeFeedI420(data []byte) error  // I420 (fast - NEON convert + HW encode)
+	TranscodeFeedYUY2(data []byte) error  // YUY2 (fast - NEON convert + HW encode)
 }

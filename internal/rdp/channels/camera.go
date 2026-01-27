@@ -131,6 +131,15 @@ type CameraChannel struct {
 	// Available formats from MediaTypeListResponse (for format selection)
 	availableFormats []CameraFormat
 
+	// Native H.264 format - the largest H.264 resolution the client advertises.
+	// macOS RDP client ignores format selection and always sends native resolution,
+	// so we use this for H.264 frame dimensions rather than selectedFormat.
+	nativeH264Format CameraFormat
+
+	// Host requested format (from USB host via UVC gadget)
+	// Used as target resolution when selecting formats from RDP client
+	hostRequestedFormat CameraFormat
+
 	// Stream state
 	isActive            atomic.Bool
 	streamIndex         uint32
@@ -483,15 +492,34 @@ func (c *CameraChannel) Deactivate() error {
 	}
 
 	c.isActive.Store(false)
+
+	// Reset cached formats for clean state on next activation
+	c.cameraMu.Lock()
+	c.nativeH264Format = CameraFormat{}
+	c.activeFormat = CameraFormat{}
+	c.cameraMu.Unlock()
+
 	return c.sendStopStreamsRequest()
 }
 
-// ActivateWithFormat activates the camera with a specific pixel format.
+// ActivateWithFormat activates the camera with a specific pixel format and resolution.
+// The host's requested format (from USB host via UVC gadget) is used as the target
+// when selecting formats from the RDP client's available formats.
 // Note: In MS-RDPECAM, the format is negotiated via MediaTypeList, not directly requested.
-// This method will activate and use whatever format the camera/client provides.
-func (c *CameraChannel) ActivateWithFormat(format uint32) error {
-	c.log("Camera: ActivateWithFormat called with format %s (note: format negotiated by client)",
-		pixelFormatName(format))
+func (c *CameraChannel) ActivateWithFormat(format uint32, width, height, fps int) error {
+	c.cameraMu.Lock()
+	c.hostRequestedFormat = CameraFormat{
+		PixelFormat:    format,
+		Width:          uint32(width),
+		Height:         uint32(height),
+		FrameRate:      uint32(fps),
+		FrameRateNum:   uint32(fps),
+		FrameRateDenom: 1,
+	}
+	c.cameraMu.Unlock()
+
+	c.log("Camera: ActivateWithFormat called - host wants %s %dx%d@%dfps",
+		pixelFormatName(format), width, height, fps)
 	return c.Activate()
 }
 

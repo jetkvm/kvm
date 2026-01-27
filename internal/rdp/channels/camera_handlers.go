@@ -290,25 +290,32 @@ func (c *CameraChannel) handleMediaTypeListResponse(payload []byte) error {
 		}
 	}
 
-	// Log ALL available formats at warn level for debugging
+	// Count available format types and find native (largest) H.264 resolution
+	// macOS RDP client ignores format selection and always sends native resolution
 	hasMJPEG := false
 	hasH264 := false
-	c.log("Camera: ========== ALL AVAILABLE FORMATS ==========")
-	for i, f := range c.availableFormats {
-		c.log("Camera: FORMAT[%d]: %s %dx%d @ %d/%d fps (flags=0x%02X)",
-			i, pixelFormatName(f.PixelFormat), f.Width, f.Height,
-			f.FrameRateNum, f.FrameRateDenom, f.Flags)
+	var largestH264 *CameraFormat
+	for i := range c.availableFormats {
+		f := &c.availableFormats[i]
 		if f.PixelFormat == CamPixelFormatMJPEG {
 			hasMJPEG = true
 		}
 		if f.PixelFormat == CamPixelFormatH264 {
 			hasH264 = true
+			// Track largest H.264 resolution (by pixel count)
+			if largestH264 == nil || (f.Width*f.Height > largestH264.Width*largestH264.Height) {
+				largestH264 = f
+			}
 		}
 	}
-	c.log("Camera: ============================================")
+	// Store native H.264 format for use when receiving H.264 frames
+	if largestH264 != nil {
+		c.nativeH264Format = *largestH264
+		c.log("Camera: native H.264 format: %dx%d@%dfps", largestH264.Width, largestH264.Height, largestH264.FrameRate)
+	}
 	c.cameraMu.Unlock()
 
-	c.log("Camera: SUMMARY: MJPEG=%v H264=%v total=%d formats", hasMJPEG, hasH264, len(c.availableFormats))
+	c.log("Camera: %d formats available (MJPEG=%v H264=%v)", len(c.availableFormats), hasMJPEG, hasH264)
 
 	// Request current media type for stream 0 (we'll override in handleCurrentMediaTypeResponse)
 	return c.sendCurrentMediaTypeRequest(0)
@@ -317,8 +324,13 @@ func (c *CameraChannel) handleMediaTypeListResponse(payload []byte) error {
 // handleCurrentMediaTypeResponse processes current media type response.
 // Per FreeRDP reference: Response is just MEDIA_TYPE_DESCRIPTION (26 bytes total).
 //
-// IMPORTANT: This function may override the client's default format with MJPEG
-// if available, since the RV1106 cannot decode H.264 (no VDEC hardware).
+// IMPORTANT: This function may override the client's default format with a more
+// suitable one for the RV1106, which has NO video decoder (VDEC) hardware.
+//
+// Format preference order (best to worst for RV1106):
+// 1. MJPEG - Can pass through directly to UVC gadget
+// 2. NV12/I420/YUY2 - Raw YUV, only needs HW MJPEG encoding (VENC available)
+// 3. H.264 - Requires software decoding (BETA, CPU-intensive)
 func (c *CameraChannel) handleCurrentMediaTypeResponse(payload []byte) error {
 	f := parseMediaTypeDescription(payload)
 	if f == nil {
@@ -326,28 +338,48 @@ func (c *CameraChannel) handleCurrentMediaTypeResponse(payload []byte) error {
 		return nil
 	}
 
-	c.log("Camera: MEDIA_TYPE_DESCRIPTION raw: format=0x%02X width=%d height=%d frameRate=%d/%d pixelAspect=%d/%d flags=0x%02X",
-		f.PixelFormat, f.Width, f.Height, f.FrameRateNum, f.FrameRateDenom, f.PixelAspectRatioNum, f.PixelAspectRatioDen, f.Flags)
-
 	c.cameraMu.Lock()
+
+	// Use host's requested format as target (from USB host via UVC gadget)
+	// Fall back to client's default if host hasn't set a preference
+	targetWidth := c.hostRequestedFormat.Width
+	targetHeight := c.hostRequestedFormat.Height
+	targetFPS := c.hostRequestedFormat.FrameRate
+	if targetWidth == 0 || targetHeight == 0 {
+		targetWidth = f.Width
+		targetHeight = f.Height
+	}
+	if targetFPS == 0 {
+		targetFPS = f.FrameRate
+	}
 
 	// Start with the client's default format
 	c.selectedFormat = *f
 
-	// Check if we should override with MJPEG format
-	// The RV1106 has NO video decoder (VDEC), so if client defaults to H.264
-	// and MJPEG is available, we MUST use MJPEG to avoid transcoding issues.
+	// Check if we should try to find a better format match for any format type
+	// This handles the case where the client defaults to e.g. MJPEG 1080p@60 but host wants 480p@30
+	if f.Width != targetWidth || f.Height != targetHeight || f.FrameRate != targetFPS {
+		betterFormat := c.findBestFormatByPixelType(targetWidth, targetHeight, targetFPS, f.PixelFormat)
+		if betterFormat != nil && (betterFormat.Width != f.Width || betterFormat.Height != f.Height || betterFormat.FrameRate != f.FrameRate) {
+			c.selectedFormat = *betterFormat
+		}
+	}
+
+	// The RV1106 has NO video decoder (VDEC), so we prefer formats that don't
+	// require H.264 decoding. Try to find better formats in order of preference.
 	if f.PixelFormat == CamPixelFormatH264 {
-		// Look for an MJPEG format with similar resolution
-		mjpegFormat := c.findBestMJPEGFormat(f.Width, f.Height)
-		if mjpegFormat != nil {
-			c.log("Camera: OVERRIDING H.264 with MJPEG (RV1106 has no VDEC hardware)")
-			c.log("Camera: selected MJPEG format: %dx%d@%d/%dfps",
-				mjpegFormat.Width, mjpegFormat.Height, mjpegFormat.FrameRateNum, mjpegFormat.FrameRateDenom)
+		// Priority 1: MJPEG - Can pass through directly
+		if mjpegFormat := c.findBestMJPEGFormat(targetWidth, targetHeight, targetFPS); mjpegFormat != nil {
 			c.selectedFormat = *mjpegFormat
+		} else if yuvFormat := c.findBestRawYUVFormat(targetWidth, targetHeight, targetFPS); yuvFormat != nil {
+			// Priority 2: Raw YUV - Only needs HW MJPEG encoding
+			c.selectedFormat = *yuvFormat
 		} else {
-			c.log("Camera: WARNING - client only supports H.264, no MJPEG available")
-			c.log("Camera: H.264 frames will require software decoding (may be slow)")
+			// Priority 3: H.264 - Requires software decoding (BETA)
+			if h264Format := c.findBestFormatByPixelType(targetWidth, targetHeight, targetFPS, CamPixelFormatH264); h264Format != nil {
+				c.selectedFormat = *h264Format
+			}
+			c.log("Camera: H.264 only - will use SW decode (BETA)")
 		}
 	}
 
@@ -365,21 +397,42 @@ func (c *CameraChannel) handleCurrentMediaTypeResponse(payload []byte) error {
 }
 
 // findBestMJPEGFormat finds the best MJPEG format from available formats.
-// Prefers formats with similar resolution to the target, then highest frame rate.
+// Prefers formats matching target resolution and FPS.
 // Must be called with cameraMu held.
-func (c *CameraChannel) findBestMJPEGFormat(targetWidth, targetHeight uint32) *CameraFormat {
+func (c *CameraChannel) findBestMJPEGFormat(targetWidth, targetHeight, targetFPS uint32) *CameraFormat {
+	return c.findBestFormatByPixelType(targetWidth, targetHeight, targetFPS, CamPixelFormatMJPEG)
+}
+
+// findBestRawYUVFormat finds the best raw YUV format from available formats.
+// Prefers NV12 (native for RV1106 VENC), then I420, then YUY2.
+// Must be called with cameraMu held.
+func (c *CameraChannel) findBestRawYUVFormat(targetWidth, targetHeight, targetFPS uint32) *CameraFormat {
+	// Priority: NV12 > I420 > YUY2
+	// NV12 is native for RV1106 VENC, I420 needs simple reformat, YUY2 is 4:2:2
+	yuvFormats := []uint32{CamPixelFormatNV12, CamPixelFormatI420, CamPixelFormatYUY2}
+
+	for _, pixelFmt := range yuvFormats {
+		if f := c.findBestFormatByPixelType(targetWidth, targetHeight, targetFPS, pixelFmt); f != nil {
+			return f
+		}
+	}
+	return nil
+}
+
+// findBestFormatByPixelType finds the best format of a specific pixel type.
+// Prefers formats matching target resolution and FPS (>= target FPS preferred).
+// Must be called with cameraMu held.
+func (c *CameraChannel) findBestFormatByPixelType(targetWidth, targetHeight, targetFPS, pixelFormat uint32) *CameraFormat {
 	var best *CameraFormat
 	var bestScore int64 = -1
 
 	for i := range c.availableFormats {
 		f := &c.availableFormats[i]
-		if f.PixelFormat != CamPixelFormatMJPEG {
+		if f.PixelFormat != pixelFormat {
 			continue
 		}
 
-		// Score based on resolution match and frame rate
-		// Lower resolution difference = higher score
-		// Higher frame rate = higher score (secondary)
+		// Score based on resolution match (primary) and FPS match (secondary)
 		widthDiff := int64(f.Width) - int64(targetWidth)
 		heightDiff := int64(f.Height) - int64(targetHeight)
 		if widthDiff < 0 {
@@ -389,10 +442,22 @@ func (c *CameraChannel) findBestMJPEGFormat(targetWidth, targetHeight uint32) *C
 			heightDiff = -heightDiff
 		}
 
-		// Score: lower diff is better, frame rate breaks ties
-		// Use negative diff so higher score = better match
+		// FPS scoring: prefer formats that meet or exceed target FPS
+		// Formats below target get a penalty, formats at/above get a bonus
+		var fpsScore int64
+		if f.FrameRate >= targetFPS {
+			// At or above target: small bonus, closer to target is better
+			fpsDiff := int64(f.FrameRate) - int64(targetFPS)
+			fpsScore = 1000 - fpsDiff // Slight preference for exact match over higher
+		} else {
+			// Below target: penalty proportional to how far below
+			fpsDiff := int64(targetFPS) - int64(f.FrameRate)
+			fpsScore = -fpsDiff * 10 // Penalize being below target
+		}
+
+		// Score: resolution match is most important, then FPS
 		resScore := int64(10000000) - (widthDiff*1000 + heightDiff*1000)
-		score := resScore + int64(f.FrameRate)
+		score := resScore + fpsScore
 
 		if best == nil || score > bestScore {
 			best = f
@@ -448,8 +513,20 @@ func (c *CameraChannel) handleSampleResponse(payload []byte) error {
 		c.frameCount++
 
 		if c.onFrame != nil {
-			// Use cached activeFormat (set when streaming started) to avoid lock per frame
-			c.onFrame(frameData, c.activeFormat.Width, c.activeFormat.Height, CamPixelFormatH264)
+			// Use nativeH264Format dimensions - macOS ignores format selection and
+			// always sends native camera resolution regardless of what we requested.
+			// Note: Unlocked read is intentional for performance in hot path.
+			// Worst case is one frame with slightly stale dimensions during format change.
+			w, h := c.nativeH264Format.Width, c.nativeH264Format.Height
+			if w == 0 || h == 0 {
+				// Fallback to activeFormat if native not set
+				w, h = c.activeFormat.Width, c.activeFormat.Height
+			}
+			if w == 0 || h == 0 {
+				// Final fallback to defaults if still zero
+				w, h = CamDefaultWidth, CamDefaultHeight
+			}
+			c.onFrame(frameData, w, h, CamPixelFormatH264)
 		}
 
 		// Request next sample if still active

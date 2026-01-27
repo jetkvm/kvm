@@ -42,8 +42,8 @@ type nativeProxyOptions struct {
 	CtrlUnixSocket        string          `env:"JETKVM_NATIVE_CTRL_UNIX_SOCKET"`
 	VideoStreamUnixSocket string          `env:"JETKVM_NATIVE_VIDEO_STREAM_UNIX_SOCKET"`
 	JpegStreamUnixSocket  string          `env:"JETKVM_NATIVE_JPEG_STREAM_UNIX_SOCKET"`
-	RgbStreamUnixSocket   string          `env:"JETKVM_NATIVE_RGB_STREAM_UNIX_SOCKET"`
-	BinaryPath            string          `env:"JETKVM_NATIVE_BINARY_PATH"`
+	RgbStreamUnixSocket string `env:"JETKVM_NATIVE_RGB_STREAM_UNIX_SOCKET"`
+	BinaryPath          string `env:"JETKVM_NATIVE_BINARY_PATH"`
 	LoggerLevel           zerolog.Level   `env:"JETKVM_NATIVE_LOGGER_LEVEL"`
 	HandshakeMessage      string          `env:"JETKVM_NATIVE_HANDSHAKE_MESSAGE"`
 	MaxRestartAttempts    uint
@@ -132,14 +132,14 @@ func (p *processWrapper) Signal(sig interface{}) error {
 
 // NativeProxy is a proxy that communicates with a separate native process
 type NativeProxy struct {
-	nativeUnixSocket      string
-	videoStreamUnixSocket string
-	videoStreamListener   net.Listener
-	jpegStreamUnixSocket  string
-	jpegStreamListener    net.Listener
-	rgbStreamUnixSocket   string
-	rgbStreamListener     net.Listener
-	binaryPath            string
+	nativeUnixSocket           string
+	videoStreamUnixSocket      string
+	videoStreamListener        net.Listener
+	jpegStreamUnixSocket       string
+	jpegStreamListener         net.Listener
+	rgbStreamUnixSocket string
+	rgbStreamListener   net.Listener
+	binaryPath          string
 
 	startMu sync.Mutex // mutex for the start process (context and isStopped)
 	ctx     context.Context
@@ -988,4 +988,48 @@ func (p *NativeProxy) RgbIsRunning() (bool, error) {
 	}
 
 	return p.client.RgbIsRunning()
+}
+
+// H.264 to MJPEG Transcoder methods (BETA feature)
+// NOTE: Transcoding in subprocess mode requires gRPC streaming which is not yet implemented.
+// For now, transcoding only works in direct mode (when CGO is used directly without subprocess).
+// TODO: Implement Unix socket streaming for H.264 input and MJPEG output to enable
+// transcoding in subprocess mode.
+
+func (p *NativeProxy) TranscodeInit(inputWidth, inputHeight, outputWidth, outputHeight, fps, quality uint32, outputCb func([]byte)) error {
+	p.logger.Error().
+		Uint32("inputWidth", inputWidth).
+		Uint32("inputHeight", inputHeight).
+		Uint32("outputWidth", outputWidth).
+		Uint32("outputHeight", outputHeight).
+		Uint32("fps", fps).
+		Msg("H.264→MJPEG transcoding is not yet supported in subprocess mode. " +
+			"The transcoder requires Unix socket streaming between processes which is not implemented. " +
+			"Camera redirection from clients that only send H.264 will not work.")
+	return fmt.Errorf("transcoding not supported in subprocess mode - requires Unix socket streaming implementation")
+}
+
+func (p *NativeProxy) TranscodeShutdown() {
+	// No-op in proxy mode
+}
+
+func (p *NativeProxy) TranscodeIsRunning() bool {
+	return false
+}
+
+func (p *NativeProxy) TranscodeFeedH264(data []byte) error {
+	// Silently fail in proxy mode - error was already logged in TranscodeInit
+	return nil
+}
+
+func (p *NativeProxy) TranscodeFeedNV12(data []byte) error {
+	return nil
+}
+
+func (p *NativeProxy) TranscodeFeedI420(data []byte) error {
+	return nil
+}
+
+func (p *NativeProxy) TranscodeFeedYUY2(data []byte) error {
+	return nil
 }

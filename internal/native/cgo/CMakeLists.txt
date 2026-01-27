@@ -82,8 +82,12 @@ if(ENABLE_RGA)
 
         target_compile_options(rga_static PRIVATE
             -fPIC
+            -fpermissive
             -Wno-unused-parameter
             -Wno-unused-function
+            -Wno-pointer-arith
+            -Wno-int-to-pointer-cast
+            -Wno-pointer-to-int-cast
         )
 
         set(RK_RGA_INCLUDE_PATHS
@@ -103,6 +107,101 @@ endif()
 
 set(LV_USE_KCONFIG ON CACHE BOOL "" FORCE)
 set(LV_BUILD_DEFCONFIG_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lvgl_defconfig CACHE PATH "" FORCE)
+
+# OpenH264 - H.264 software decoder for camera transcoding (BETA feature)
+# Required for H.264→MJPEG transcoding when RDP client only sends H.264
+# Uses Cisco's BSD-licensed OpenH264 with ARM NEON optimizations
+option(ENABLE_OPENH264 "Enable OpenH264 software decoder for camera transcoding" ON)
+
+if(ENABLE_OPENH264)
+    message(STATUS "Fetching Cisco OpenH264 from GitHub...")
+    FetchContent_Declare(
+        openh264
+        GIT_REPOSITORY https://github.com/cisco/openh264.git
+        GIT_TAG v2.5.0
+        GIT_SHALLOW 1
+        UPDATE_DISCONNECTED 1
+    )
+    FetchContent_GetProperties(openh264)
+    if(NOT openh264_POPULATED)
+        FetchContent_Populate(openh264)
+    endif()
+
+    # Check if OpenH264 was fetched successfully
+    if(EXISTS "${openh264_SOURCE_DIR}/codec/api/wels/codec_api.h")
+        set(OPENH264_FOUND TRUE)
+        set(OPENH264_SOURCE_DIR "${openh264_SOURCE_DIR}")
+        message(STATUS "OpenH264: fetched to ${OPENH264_SOURCE_DIR}")
+
+        # Collect OpenH264 decoder source files (decoder only, no encoder needed)
+        file(GLOB_RECURSE OPENH264_DECODER_SOURCES
+            "${OPENH264_SOURCE_DIR}/codec/decoder/core/src/*.cpp"
+            "${OPENH264_SOURCE_DIR}/codec/decoder/plus/src/*.cpp"
+        )
+
+        # Common sources needed by decoder (C++ only, exclude arch-specific)
+        file(GLOB OPENH264_COMMON_SOURCES
+            "${OPENH264_SOURCE_DIR}/codec/common/src/*.cpp"
+        )
+        # Exclude arch-specific .c files (loongarch, x86, etc)
+        # Only include ARM-specific assembly for our target
+
+        # ARM assembly sources for NEON optimizations (32-bit ARM)
+        # Both common and decoder-specific NEON functions
+        file(GLOB OPENH264_ARM_ASM_SOURCES
+            "${OPENH264_SOURCE_DIR}/codec/common/arm/*.S"
+            "${OPENH264_SOURCE_DIR}/codec/decoder/core/arm/*.S"
+        )
+
+        # Create OpenH264 decoder static library
+        add_library(openh264_static STATIC
+            ${OPENH264_DECODER_SOURCES}
+            ${OPENH264_COMMON_SOURCES}
+            ${OPENH264_ARM_ASM_SOURCES}
+        )
+
+        target_include_directories(openh264_static PUBLIC
+            "${OPENH264_SOURCE_DIR}/codec/api/wels"
+            "${OPENH264_SOURCE_DIR}/codec/decoder/core/inc"
+            "${OPENH264_SOURCE_DIR}/codec/decoder/plus/inc"
+            "${OPENH264_SOURCE_DIR}/codec/common/inc"
+            "${OPENH264_SOURCE_DIR}/codec/common/arm"
+            "${OPENH264_SOURCE_DIR}/codec/decoder/core/arm"
+        )
+
+        # ARM32 NEON optimizations for Cortex-A7
+        target_compile_options(openh264_static PRIVATE
+            -fPIC
+            -O3
+            -mfpu=neon-vfpv4
+            -mfloat-abi=hard
+            -Wno-unused-parameter
+            -Wno-unused-function
+            -Wno-sign-compare
+            -Wno-narrowing
+        )
+
+        target_compile_definitions(openh264_static PRIVATE
+            HAVE_NEON=1
+            __ARM_NEON__=1
+        )
+
+        # Enable assembly for ARM
+        enable_language(ASM)
+        set_source_files_properties(${OPENH264_ARM_ASM_SOURCES} PROPERTIES
+            COMPILE_FLAGS "-mfpu=neon-vfpv4 -mfloat-abi=hard"
+        )
+
+        set(OPENH264_INCLUDE_PATH "${OPENH264_SOURCE_DIR}/codec/api/wels")
+        message(STATUS "OpenH264: Cisco decoder enabled with ARM NEON (building from source)")
+    else()
+        set(OPENH264_FOUND FALSE)
+        message(WARNING "OpenH264: Failed to fetch - camera transcoding will be disabled")
+    endif()
+else()
+    set(OPENH264_FOUND FALSE)
+    message(STATUS "OpenH264: Disabled by ENABLE_OPENH264=OFF")
+endif()
 
 # # libgpiod
 
@@ -133,6 +232,9 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS "*.c" "ui/*.c")
 list(FILTER sources EXCLUDE REGEX "CMakeFiles.*CompilerId.*\\.c$")
 # Exclude main.c from library sources (it's used for the binary target)
 list(FILTER sources EXCLUDE REGEX "main\\.c$")
+# Exclude FetchContent downloaded sources (OpenH264, librga, lvgl)
+# These have their own static library targets with explicit source lists
+list(FILTER sources EXCLUDE REGEX "_deps/")
 
 add_library(jknative STATIC ${sources} ${CMAKE_CURRENT_SOURCE_DIR}/ctrl.h)
 
@@ -149,6 +251,12 @@ target_include_directories(jknative PRIVATE
 if(RGA_FOUND)
     target_include_directories(jknative PRIVATE ${RK_RGA_INCLUDE_PATHS})
     target_compile_definitions(jknative PRIVATE HAS_RGA=1)
+endif()
+
+# Add OpenH264 include path and define if available
+if(OPENH264_FOUND)
+    target_include_directories(jknative PRIVATE ${OPENH264_INCLUDE_PATH})
+    target_compile_definitions(jknative PRIVATE HAS_OPENH264=1)
 endif()
 
 # Set library search path
@@ -169,6 +277,11 @@ if(RGA_FOUND)
     target_link_libraries(jknative PRIVATE rga_static)
 endif()
 
+# Link OpenH264 library if available
+if(OPENH264_FOUND)
+    target_link_libraries(jknative PRIVATE openh264_static)
+endif()
+
 # Binary target using main.c as entry point (optional - for testing only)
 # Note: When RGA is enabled, jknative-bin may fail to link due to Android HAL
 # references in librga that are not available. This is fine since Go uses
@@ -183,4 +296,13 @@ if(BUILD_JKNATIVE_BIN)
     install(TARGETS jknative-bin DESTINATION bin)
 endif()
 
+# Install all static libraries to lib/ for CGO linking
 install(TARGETS jknative DESTINATION lib)
+
+if(RGA_FOUND)
+    install(TARGETS rga_static DESTINATION lib)
+endif()
+
+if(OPENH264_FOUND)
+    install(TARGETS openh264_static DESTINATION lib)
+endif()

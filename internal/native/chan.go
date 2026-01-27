@@ -49,6 +49,12 @@ func (n *Native) handleVideoFrameChan() {
 	}
 }
 
+func (n *Native) handleJpegFrameChan() {
+	for frame := range jpegFrameChan {
+		n.onJpegFrameReceived(frame)
+	}
+}
+
 func (n *Native) handleVideoStateChan() {
 	for {
 		state := <-videoStateChan

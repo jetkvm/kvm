@@ -8,16 +8,18 @@ package native
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/rs/zerolog"
 )
 
 /*
-#cgo LDFLAGS: -Lcgo/lib -ljknative -llvgl
+#cgo LDFLAGS: -Lcgo/lib -ljknative -lopenh264_static -lrga_static -llvgl -lstdc++
 #cgo CFLAGS: -Icgo -Icgo/include
 #include "ctrl.h"
 #include <stdlib.h>
+#include <errno.h>
 
 typedef const char cchar_t;
 typedef const uint8_t cuint8_t;
@@ -57,6 +59,9 @@ extern void jetkvm_go_rpc_handler(cchar_t *method, cchar_t *params);
 static inline void jetkvm_cgo_setup_rpc_handler() {
     jetkvm_set_rpc_handler(&jetkvm_go_rpc_handler);
 }
+
+// Transcoder output callback - declared here for CGO export
+extern void goTranscodeOutputCallback(uint8_t *jpeg_data, size_t jpeg_len, void *user_data);
 */
 import "C"
 
@@ -540,4 +545,167 @@ func rgbIsRunning() bool {
 	defer cgoLock.Unlock()
 
 	return bool(C.jetkvm_rgb_is_running())
+}
+
+// H.264 to MJPEG transcoder functions (BETA feature)
+// Used for camera redirection when RDP client only sends H.264
+//
+// Zero-GC design: Uses sync.Pool for buffer reuse and atomic.Pointer for lock-free
+// callback access. No allocations occur in the hot path after initial warmup.
+
+// transcodeCallback is the atomic pointer to the current callback.
+// Using atomic.Pointer instead of mutex for lock-free hot path access.
+var transcodeCallback atomic.Pointer[func([]byte)]
+
+// transcodeBufferPool provides reusable byte slices for JPEG output.
+// Eliminates GC pressure by reusing buffers across frames.
+// Initial capacity of 512KB covers most JPEG frames at high quality.
+var transcodeBufferPool = sync.Pool{
+	New: func() interface{} {
+		// Pre-allocate 512KB buffer - covers most MJPEG frames
+		// MJPEG at 1280x720 quality 75 is typically 30-100KB
+		buf := make([]byte, 0, 512*1024)
+		return &buf
+	},
+}
+
+//export goTranscodeOutputCallback
+func goTranscodeOutputCallback(jpegData *C.uint8_t, jpegLen C.size_t, userData unsafe.Pointer) {
+	// Fast path: load callback atomically (no lock)
+	cbPtr := transcodeCallback.Load()
+	if cbPtr == nil || jpegLen == 0 {
+		return
+	}
+	cb := *cbPtr
+
+	// Get buffer from pool (zero allocation after warmup)
+	bufPtr := transcodeBufferPool.Get().(*[]byte)
+	buf := *bufPtr
+
+	// Ensure capacity (may allocate during warmup, then stable)
+	dataLen := int(jpegLen)
+	if cap(buf) < dataLen {
+		buf = make([]byte, dataLen, dataLen*2) // Double capacity for growth
+	} else {
+		buf = buf[:dataLen]
+	}
+
+	// Zero-copy access to C memory, then copy to Go buffer
+	// This avoids C.GoBytes which allocates a new slice
+	cSlice := unsafe.Slice((*byte)(unsafe.Pointer(jpegData)), dataLen)
+	copy(buf, cSlice)
+
+	// Call user callback with pooled buffer
+	cb(buf)
+
+	// Return buffer to pool for reuse
+	// Reset slice to full capacity for next use
+	*bufPtr = buf[:0]
+	transcodeBufferPool.Put(bufPtr)
+}
+
+func transcodeInit(inputWidth, inputHeight, outputWidth, outputHeight, fps, quality uint32, outputCb func([]byte)) error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	// Store callback atomically
+	transcodeCallback.Store(&outputCb)
+
+	ret := C.jetkvm_transcode_init(
+		C.uint32_t(inputWidth),
+		C.uint32_t(inputHeight),
+		C.uint32_t(outputWidth),
+		C.uint32_t(outputHeight),
+		C.uint32_t(fps),
+		C.uint32_t(quality),
+		C.jetkvm_transcode_output_cb(C.goTranscodeOutputCallback),
+		nil,
+	)
+	if ret != 0 {
+		transcodeCallback.Store(nil)
+		return fmt.Errorf("failed to init transcoder: %d", ret)
+	}
+	return nil
+}
+
+func transcodeShutdown() {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	C.jetkvm_transcode_shutdown()
+	transcodeCallback.Store(nil)
+}
+
+func transcodeIsRunning() bool {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return bool(C.jetkvm_transcode_is_running())
+}
+
+func transcodeFeedH264(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	// Don't hold the lock during feed - designed for hot path
+	// C function is thread-safe (uses atomics internally)
+	ret := C.jetkvm_transcode_feed_h264(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.size_t(len(data)),
+	)
+	if ret != 0 {
+		if ret == -C.ENOSYS {
+			// Decoder not implemented - expected for BETA
+			return fmt.Errorf("H.264 decoder not implemented (BETA)")
+		}
+		return fmt.Errorf("transcode feed failed: %d", ret)
+	}
+	return nil
+}
+
+// transcodeFeedNV12 sends NV12 data directly to hardware MJPEG encoder.
+// This is the fastest path - no conversion needed.
+func transcodeFeedNV12(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	ret := C.jetkvm_transcode_feed_nv12(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.size_t(len(data)),
+	)
+	if ret != 0 {
+		return fmt.Errorf("NV12 encode failed: %d", ret)
+	}
+	return nil
+}
+
+// transcodeFeedI420 converts I420 to NV12 using NEON, then hardware encodes.
+func transcodeFeedI420(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	ret := C.jetkvm_transcode_feed_i420(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.size_t(len(data)),
+	)
+	if ret != 0 {
+		return fmt.Errorf("I420 encode failed: %d", ret)
+	}
+	return nil
+}
+
+// transcodeFeedYUY2 converts YUY2 to NV12 using NEON, then hardware encodes.
+func transcodeFeedYUY2(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	ret := C.jetkvm_transcode_feed_yuy2(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.size_t(len(data)),
+	)
+	if ret != 0 {
+		return fmt.Errorf("YUY2 encode failed: %d", ret)
+	}
+	return nil
 }

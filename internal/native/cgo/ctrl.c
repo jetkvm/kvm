@@ -544,3 +544,48 @@ void jetkvm_rgb_stop() {
 bool jetkvm_rgb_is_running() {
     return rgb_encoder_is_running();
 }
+
+// H.264 to MJPEG transcoder wrapper functions
+#include "h264_transcode.h"
+
+int jetkvm_transcode_init(uint32_t input_width, uint32_t input_height,
+                          uint32_t output_width, uint32_t output_height,
+                          uint32_t fps, uint32_t quality,
+                          jetkvm_transcode_output_cb cb, void *user_data) {
+    transcode_config_t config = {
+        .width = input_width,
+        .height = input_height,
+        .output_width = output_width,
+        .output_height = output_height,
+        .target_fps = fps,
+        .jpeg_quality = quality,
+        .enable_skip = true,
+        .output_cb = cb,
+        .user_data = user_data
+    };
+    return transcode_init(&config);
+}
+
+void jetkvm_transcode_shutdown(void) {
+    transcode_shutdown();
+}
+
+bool jetkvm_transcode_is_running(void) {
+    return transcode_is_running();
+}
+
+int jetkvm_transcode_feed_h264(const uint8_t *data, size_t len) {
+    return transcode_feed_h264(data, len);
+}
+
+int jetkvm_transcode_feed_nv12(const uint8_t *data, size_t len) {
+    return transcode_feed_nv12(data, len);
+}
+
+int jetkvm_transcode_feed_i420(const uint8_t *data, size_t len) {
+    return transcode_feed_i420(data, len);
+}
+
+int jetkvm_transcode_feed_yuy2(const uint8_t *data, size_t len) {
+    return transcode_feed_yuy2(data, len);
+}

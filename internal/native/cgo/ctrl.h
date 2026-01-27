@@ -90,4 +90,19 @@ bool jetkvm_rgb_is_running();
 // H.264 encoder control
 int jetkvm_video_request_keyframe();
 
+// H.264/YUV to MJPEG transcoder control (BETA feature)
+// Used for camera redirection to convert various formats to MJPEG for UVC gadget
+// Supports RGA hardware-accelerated scaling from input to output resolution
+typedef void (*jetkvm_transcode_output_cb)(const uint8_t *jpeg_data, size_t jpeg_len, void *user_data);
+int jetkvm_transcode_init(uint32_t input_width, uint32_t input_height,
+                          uint32_t output_width, uint32_t output_height,
+                          uint32_t fps, uint32_t quality,
+                          jetkvm_transcode_output_cb cb, void *user_data);
+void jetkvm_transcode_shutdown(void);
+bool jetkvm_transcode_is_running(void);
+int jetkvm_transcode_feed_h264(const uint8_t *data, size_t len);
+int jetkvm_transcode_feed_nv12(const uint8_t *data, size_t len); // Direct NV12 (fastest)
+int jetkvm_transcode_feed_i420(const uint8_t *data, size_t len); // I420 (NEON convert)
+int jetkvm_transcode_feed_yuy2(const uint8_t *data, size_t len); // YUY2 (NEON convert)
+
 #endif //VIDEO_DAEMON_CTRL_H

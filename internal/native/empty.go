@@ -130,3 +130,20 @@ func (e *EmptyNativeInterface) RgbStart() error { return nil }
 func (e *EmptyNativeInterface) RgbStop() error { return nil }
 
 func (e *EmptyNativeInterface) RgbIsRunning() (bool, error) { return false, nil }
+
+// H.264/YUV to MJPEG Transcoder methods (BETA)
+func (e *EmptyNativeInterface) TranscodeInit(inputWidth, inputHeight, outputWidth, outputHeight, fps, quality uint32, outputCb func([]byte)) error {
+	return nil
+}
+
+func (e *EmptyNativeInterface) TranscodeShutdown() {}
+
+func (e *EmptyNativeInterface) TranscodeIsRunning() bool { return false }
+
+func (e *EmptyNativeInterface) TranscodeFeedH264(data []byte) error { return nil }
+
+func (e *EmptyNativeInterface) TranscodeFeedNV12(data []byte) error { return nil }
+
+func (e *EmptyNativeInterface) TranscodeFeedI420(data []byte) error { return nil }
+
+func (e *EmptyNativeInterface) TranscodeFeedYUY2(data []byte) error { return nil }

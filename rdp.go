@@ -3,8 +3,10 @@ package kvm
 import (
 	"crypto/tls"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/camera"
 	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
@@ -43,6 +45,15 @@ func GetRDPServer() *rdp.Server {
 			GetCertificate: getCertificate,
 			USBStorage:     &rdpUSBStorageAdapter{},
 			ClipboardStore: GetClipboardStore(),
+			// Track RDP sessions for sleep mode prevention
+			OnSessionStart: func() {
+				count := incrActiveSessions()
+				rdpLogger.Debug().Int("activeSessions", count).Msg("RDP: session started, incremented active sessions")
+			},
+			OnSessionEnd: func() {
+				count := decrActiveSessions()
+				rdpLogger.Debug().Int("activeSessions", count).Msg("RDP: session ended, decremented active sessions")
+			},
 		}
 		rdpServer = rdp.NewServer(deps)
 	})
@@ -81,6 +92,24 @@ func (a *rdpConfigAdapter) GetRDPMicEnabled() bool {
 
 func (a *rdpConfigAdapter) GetRDPCameraEnabled() bool {
 	return config.RDPCameraEnabled
+}
+
+func (a *rdpConfigAdapter) GetRDPCameraTranscodeEnabled() bool {
+	return config.RDPCameraTranscodeEnabled
+}
+
+func (a *rdpConfigAdapter) GetCameraFrameRate() int {
+	if config.CameraFrameRate <= 0 {
+		return cameraDefaultFPS
+	}
+	return config.CameraFrameRate
+}
+
+func (a *rdpConfigAdapter) GetCameraMjpegQuality() int {
+	if config.CameraMjpegQuality <= 0 {
+		return cameraDefaultMjpegQual
+	}
+	return config.CameraMjpegQuality
 }
 
 func (a *rdpConfigAdapter) GetTLSMode() string {
@@ -434,17 +463,324 @@ type rdpCameraAdapter struct{}
 
 // MS-RDPECAM pixel format codes
 const (
-	rdpCamPixelFormatH264  = 0x01 // H.264
-	rdpCamPixelFormatMJPEG = 0x02 // Motion JPEG
-	rdpCamPixelFormatYUY2  = 0x03 // YUY2 (4:2:2)
-	rdpCamPixelFormatNV12  = 0x04 // NV12 (4:2:0)
-	rdpCamPixelFormatI420  = 0x05 // I420/YV12
+	rdpCamPixelFormatH264  = 0x01
+	rdpCamPixelFormatMJPEG = 0x02
+	rdpCamPixelFormatYUY2  = 0x03
+	rdpCamPixelFormatNV12  = 0x04
+	rdpCamPixelFormatI420  = 0x05
 )
 
-var (
-	cameraFrameCount        atomic.Uint32
-	cameraH264WarningLogged atomic.Bool
+// Camera default values and logging intervals
+const (
+	cameraDefaultFPS        = 24    // Default frame rate when not specified
+	cameraDefaultMjpegQual  = 35    // Default MJPEG quality (0-100)
+	cameraLogWarningEvery   = 500   // Log transcode errors every N frames
+	cameraLogDropEvery      = 200   // Log queue drops every N frames
+	cameraFrameQueueSize    = 8     // Buffer for slow software H.264 decode (~250ms latency at 30fps)
+	cameraBufferInitialSize = 512 * 1024 // 512KB - typical H.264 frame size
 )
+
+// cameraFrame represents a camera frame waiting to be transcoded.
+type cameraFrame struct {
+	data        []byte
+	poolBuf     *[]byte // Reference to pooled buffer for return
+	width       uint32
+	height      uint32
+	pixelFormat uint32
+}
+
+// Frame buffer pool to reduce GC pressure - reuse buffers across frames
+var cameraBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, cameraBufferInitialSize)
+		return &buf
+	},
+}
+
+// cameraBufferMaxSize is the maximum buffer size to keep in the pool.
+// Buffers larger than this are discarded to avoid pool pollution from occasional large frames.
+const cameraBufferMaxSize = 1024 * 1024 // 1MB
+
+var (
+	cameraFrameCount             atomic.Uint32
+	cameraH264WarningLogged      atomic.Bool
+	cameraTranscodeWarningLogged atomic.Bool
+	cameraTranscodeInitialized   atomic.Bool
+	cameraTranscodeInitFailed    atomic.Bool // Set when init fails to prevent repeated attempts
+	cameraTranscodeMu            sync.Mutex
+	cameraFrameQueue             chan cameraFrame
+	cameraFrameQueueStop         chan struct{}
+	cameraFrameQueueDone         chan struct{} // Signals worker goroutine has exited
+	cameraFrameQueueRunning      atomic.Bool
+	cameraFrameDropped           atomic.Uint64
+	cameraLastFrameTime          atomic.Pointer[time.Time] // For rate limiting (monotonic)
+)
+
+// initCameraTranscoder initializes the H.264 to MJPEG transcoder if enabled.
+// inputWidth/inputHeight: source resolution from RDP client
+// outputWidth/outputHeight: target resolution for USB host (0 = same as input)
+// hostFPS: FPS requested by USB host (will be capped by config.CameraFrameRate)
+// Returns true if transcoder was initialized or is already running.
+func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, hostFPS uint32) bool {
+	// Check if transcode is enabled in config
+	if !config.RDPCameraTranscodeEnabled {
+		return false
+	}
+
+	// Don't retry if initialization already failed (e.g., subprocess mode doesn't support it)
+	if cameraTranscodeInitFailed.Load() {
+		return false
+	}
+
+	// Fast path: already initialized
+	if cameraTranscodeInitialized.Load() {
+		if nativeInstance != nil && nativeInstance.TranscodeIsRunning() {
+			return true
+		}
+	}
+
+	cameraTranscodeMu.Lock()
+	defer cameraTranscodeMu.Unlock()
+
+	// Double-check after acquiring lock
+	if cameraTranscodeInitialized.Load() {
+		if nativeInstance != nil && nativeInstance.TranscodeIsRunning() {
+			return true
+		}
+	}
+
+	if nativeInstance == nil {
+		return false
+	}
+
+	// FPS: use min(host_requested, config_cap) to respect both
+	configFPS := uint32(config.CameraFrameRate)
+	if configFPS <= 0 {
+		configFPS = cameraDefaultFPS
+	}
+	fps := hostFPS
+	if fps == 0 || fps > configFPS {
+		fps = configFPS
+	}
+
+	quality := uint32(config.CameraMjpegQuality)
+	if quality <= 0 {
+		quality = cameraDefaultMjpegQual
+	}
+
+	rdpLogger.Debug().
+		Uint32("in", inputWidth).
+		Uint32("out", outputWidth).
+		Uint32("fps", fps).
+		Uint32("q", quality).
+		Msg("Transcode init")
+
+	// Initialize transcoder with callback that sends MJPEG to camera manager
+	err := nativeInstance.TranscodeInit(inputWidth, inputHeight, outputWidth, outputHeight, fps, quality, func(jpegData []byte) {
+		mgr := cameraManagerPtr.Load()
+		if mgr != nil && mgr.IsEnabled() {
+			mgr.HandleCameraMjpegFrame(jpegData)
+		}
+	})
+
+	if err != nil {
+		rdpLogger.Warn().Err(err).Msg("RDP: failed to initialize transcoder")
+		// Mark as failed to prevent repeated attempts (especially in subprocess mode)
+		cameraTranscodeInitFailed.Store(true)
+		return false
+	}
+
+	cameraTranscodeInitialized.Store(true)
+	cameraTranscodeInitFailed.Store(false) // Reset failed flag on success
+	return true
+}
+
+// startCameraFrameWorker starts the async frame processing goroutine.
+// The worker runs at lower effective priority by yielding after each frame,
+// ensuring HID and video handlers get CPU time even during heavy transcoding.
+func startCameraFrameWorker() {
+	if cameraFrameQueueRunning.Load() {
+		return
+	}
+
+	cameraTranscodeMu.Lock()
+	defer cameraTranscodeMu.Unlock()
+
+	if cameraFrameQueueRunning.Load() {
+		return
+	}
+
+	cameraFrameQueue = make(chan cameraFrame, cameraFrameQueueSize)
+	cameraFrameQueueStop = make(chan struct{})
+	cameraFrameQueueDone = make(chan struct{})
+	cameraFrameQueueRunning.Store(true)
+
+	go func() {
+		defer close(cameraFrameQueueDone)
+		rdpLogger.Debug().Msg("Camera worker start")
+		for {
+			select {
+			case <-cameraFrameQueueStop:
+				rdpLogger.Debug().Msg("Camera worker stop")
+				return
+			case frame := <-cameraFrameQueue:
+				processCameraFrameSync(frame)
+				// Yield CPU to allow HID/video goroutines to run
+				// This is critical - transcoding is CPU-heavy and would starve other work
+				runtime.Gosched()
+			}
+		}
+	}()
+}
+
+// stopCameraFrameWorker stops the async frame processing goroutine.
+func stopCameraFrameWorker() {
+	if !cameraFrameQueueRunning.Load() {
+		return
+	}
+
+	cameraTranscodeMu.Lock()
+	defer cameraTranscodeMu.Unlock()
+
+	if !cameraFrameQueueRunning.Load() {
+		return
+	}
+
+	close(cameraFrameQueueStop)
+	cameraFrameQueueRunning.Store(false)
+
+	// Wait for worker to exit before draining to avoid race condition
+	// where worker and drain loop both try to process the same frame
+	<-cameraFrameQueueDone
+
+	// Drain any remaining frames, returning pooled buffers
+	for {
+		select {
+		case frame := <-cameraFrameQueue:
+			returnCameraBuffer(frame.poolBuf)
+		default:
+			return
+		}
+	}
+}
+
+// returnCameraBuffer returns a buffer to the pool if it's not oversized.
+// Buffers larger than cameraBufferMaxSize are discarded to avoid pool pollution.
+func returnCameraBuffer(bufPtr *[]byte) {
+	if bufPtr == nil {
+		return
+	}
+	if cap(*bufPtr) <= cameraBufferMaxSize {
+		cameraBufferPool.Put(bufPtr)
+	}
+	// Oversized buffers are left for GC
+}
+
+// processCameraFrameSync processes a single camera frame (called from worker goroutine).
+func processCameraFrameSync(frame cameraFrame) {
+	// Always return buffer to pool when done (unless oversized)
+	defer returnCameraBuffer(frame.poolBuf)
+
+	mgr := cameraManagerPtr.Load()
+	if mgr == nil || !mgr.IsEnabled() {
+		return
+	}
+
+	currentFmt := mgr.GetCurrentFormat()
+	hostWantsMJPEG := currentFmt != nil && currentFmt.Codec == camera.CodecMJPEG
+
+	// Get host's requested output dimensions and FPS for RGA scaling
+	var outW, outH, hostFPS uint32
+	if currentFmt != nil {
+		outW, outH = uint32(currentFmt.Width), uint32(currentFmt.Height)
+		hostFPS = uint32(currentFmt.FrameRate)
+	}
+
+	switch frame.pixelFormat {
+	case rdpCamPixelFormatMJPEG:
+		mgr.HandleCameraMjpegFrame(frame.data)
+
+	case rdpCamPixelFormatNV12:
+		if hostWantsMJPEG && initCameraTranscoder(frame.width, frame.height, outW, outH, hostFPS) {
+			if err := nativeInstance.TranscodeFeedNV12(frame.data); err != nil {
+				count := cameraFrameCount.Add(1)
+				if count == 1 || count%1000 == 0 {
+					rdpLogger.Debug().Err(err).Uint32("n", count).Msg("NV12 encode err")
+				}
+			}
+		}
+
+	case rdpCamPixelFormatI420:
+		if hostWantsMJPEG && initCameraTranscoder(frame.width, frame.height, outW, outH, hostFPS) {
+			if err := nativeInstance.TranscodeFeedI420(frame.data); err != nil {
+				count := cameraFrameCount.Add(1)
+				if count == 1 || count%1000 == 0 {
+					rdpLogger.Debug().Err(err).Uint32("n", count).Msg("I420 encode err")
+				}
+			}
+		}
+
+	case rdpCamPixelFormatYUY2:
+		if hostWantsMJPEG && initCameraTranscoder(frame.width, frame.height, outW, outH, hostFPS) {
+			if err := nativeInstance.TranscodeFeedYUY2(frame.data); err != nil {
+				count := cameraFrameCount.Add(1)
+				if count == 1 || count%1000 == 0 {
+					rdpLogger.Debug().Err(err).Uint32("n", count).Msg("YUY2 encode err")
+				}
+			}
+		}
+
+	case rdpCamPixelFormatH264:
+		if hostWantsMJPEG {
+			if initCameraTranscoder(frame.width, frame.height, outW, outH, hostFPS) {
+				if err := nativeInstance.TranscodeFeedH264(frame.data); err != nil {
+					count := cameraFrameCount.Add(1)
+					if !cameraTranscodeWarningLogged.Load() || count%cameraLogWarningEvery == 0 {
+						rdpLogger.Warn().Err(err).Uint32("n", count).Msg("Transcode err")
+						cameraTranscodeWarningLogged.Store(true)
+					}
+				}
+				return
+			}
+			// Transcode not enabled or failed - drop frame
+			count := cameraFrameCount.Add(1)
+			if !cameraH264WarningLogged.Load() || count%cameraLogWarningEvery == 0 {
+				rdpLogger.Warn().Uint32("n", count).Msg("H.264 dropped - enable transcode")
+				cameraH264WarningLogged.Store(true)
+			}
+			return
+		}
+		mgr.HandleCameraH264Frame(frame.data)
+
+	default:
+		count := cameraFrameCount.Add(1)
+		if count == 1 || count%cameraLogWarningEvery == 0 {
+			rdpLogger.Warn().Uint32("fmt", frame.pixelFormat).Msg("Unsupported format")
+		}
+	}
+}
+
+// shutdownCameraTranscoder shuts down the transcoder if running.
+func shutdownCameraTranscoder() {
+	// Stop frame worker first
+	stopCameraFrameWorker()
+
+	cameraTranscodeMu.Lock()
+	defer cameraTranscodeMu.Unlock()
+
+	if !cameraTranscodeInitialized.Load() {
+		return
+	}
+
+	if nativeInstance != nil {
+		nativeInstance.TranscodeShutdown()
+	}
+	cameraTranscodeInitialized.Store(false)
+	cameraTranscodeWarningLogged.Store(false)
+	// Reset failed flag to allow retry on next connection
+	cameraTranscodeInitFailed.Store(false)
+	rdpLogger.Info().Msg("RDP: transcoder shutdown")
+}
 
 func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFormat uint32) error {
 	mgr := cameraManagerPtr.Load()
@@ -452,34 +788,88 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 		return nil
 	}
 
-	switch pixelFormat {
-	case rdpCamPixelFormatH264:
-		currentFmt := mgr.GetCurrentFormat()
-		if currentFmt != nil && currentFmt.Codec == camera.CodecMJPEG {
-			count := cameraFrameCount.Add(1)
-			if !cameraH264WarningLogged.Load() || count%300 == 0 {
-				rdpLogger.Warn().
-					Uint32("width", width).
-					Uint32("height", height).
-					Uint32("frameCount", count).
-					Msg("RDP: H.264 frame dropped - host wants MJPEG, no hardware transcoder")
-				cameraH264WarningLogged.Store(true)
-			}
-			return nil
-		}
-		mgr.HandleCameraH264Frame(data)
-	case rdpCamPixelFormatMJPEG:
+	currentFmt := mgr.GetCurrentFormat()
+	hostWantsMJPEG := currentFmt != nil && currentFmt.Codec == camera.CodecMJPEG
+
+	// Fast path for MJPEG - no transcoding needed, process synchronously
+	if pixelFormat == rdpCamPixelFormatMJPEG {
 		mgr.HandleCameraMjpegFrame(data)
-	default:
-		count := cameraFrameCount.Add(1)
-		if count == 1 || count%300 == 0 {
-			rdpLogger.Warn().
-				Uint32("pixelFormat", pixelFormat).
-				Uint32("frameCount", count).
-				Msg("RDP: camera frame dropped - unsupported pixel format")
-		}
 		return nil
 	}
+
+	// Fast path for H.264 when host supports it - no transcoding needed
+	if pixelFormat == rdpCamPixelFormatH264 && !hostWantsMJPEG {
+		mgr.HandleCameraH264Frame(data)
+		return nil
+	}
+
+	// Transcoding required - use async queue to avoid blocking RDP message loop
+	// This is critical for RDP HID to work while camera is active
+
+	// Rate limiting: drop frames that come faster than target FPS
+	// This prevents memory allocation and GC pressure from excess frames
+	// Uses monotonic time (time.Time) to avoid issues with clock adjustments
+	targetFPS := uint32(config.CameraFrameRate)
+	if targetFPS == 0 {
+		targetFPS = cameraDefaultFPS
+	}
+	if currentFmt != nil && currentFmt.FrameRate > 0 && uint32(currentFmt.FrameRate) < targetFPS {
+		targetFPS = uint32(currentFmt.FrameRate)
+	}
+	minFrameInterval := time.Second / time.Duration(targetFPS)
+	now := time.Now()
+	if lastFrame := cameraLastFrameTime.Load(); lastFrame != nil {
+		if now.Sub(*lastFrame) < minFrameInterval {
+			// Frame arrived too soon - drop it before allocating memory
+			cameraFrameDropped.Add(1)
+			return nil
+		}
+	}
+	// Don't store timestamp yet - only after successful queue
+
+	if !cameraFrameQueueRunning.Load() {
+		startCameraFrameWorker()
+	}
+
+	// Get buffer from pool to reduce GC pressure
+	bufPtr := cameraBufferPool.Get().(*[]byte)
+	buf := *bufPtr
+
+	// Handle buffer sizing without polluting pool with oversized buffers
+	if cap(buf) < len(data) {
+		// Need larger buffer - return pooled buffer and allocate new one
+		cameraBufferPool.Put(bufPtr)
+		buf = make([]byte, len(data))
+		bufPtr = &buf
+	} else {
+		buf = buf[:len(data)]
+	}
+	copy(buf, data)
+	*bufPtr = buf
+
+	frame := cameraFrame{
+		data:        buf,
+		poolBuf:     bufPtr,
+		width:       width,
+		height:      height,
+		pixelFormat: pixelFormat,
+	}
+
+	// Non-blocking send - drop frame if queue is full
+	select {
+	case cameraFrameQueue <- frame:
+		// Frame queued successfully - NOW update timestamp
+		cameraLastFrameTime.Store(&now)
+	default:
+		// Queue full - return buffer (unless oversized) and drop frame
+		// Don't update timestamp so next frame gets a chance
+		returnCameraBuffer(bufPtr)
+		dropped := cameraFrameDropped.Add(1)
+		if dropped == 1 || dropped%cameraLogDropEvery == 0 {
+			rdpLogger.Warn().Uint64("dropped", dropped).Msg("Camera queue full - CPU overloaded or FPS too high")
+		}
+	}
+
 	return nil
 }
 
@@ -538,7 +928,7 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				rdpLogger.Debug().Interface("panic", r).Msg("camera format bridge panic")
+				rdpLogger.Error().Interface("panic", r).Msg("camera format bridge panic")
 			}
 			close(outChan)
 		}()
@@ -569,6 +959,9 @@ func (a *rdpCameraAdapter) SubscribeFormatChanges() <-chan rdp.CameraFormatInfo 
 }
 
 func (a *rdpCameraAdapter) UnsubscribeFormatChanges() {
+	// Shutdown transcoder when camera session ends
+	shutdownCameraTranscoder()
+
 	rdpCameraFormatBridgeInstance.mu.Lock()
 	if rdpCameraFormatBridgeInstance.stopChan != nil {
 		close(rdpCameraFormatBridgeInstance.stopChan)
