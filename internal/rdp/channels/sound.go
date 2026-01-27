@@ -56,9 +56,11 @@ const (
 )
 
 // Maximum values.
+// Note: Each block is ~21ms at 48kHz stereo 16-bit (4096 bytes / 4 bytes per sample / 48000 * 1000).
 const (
-	SNDCDefaultMaxBlocksPending = 32   // Default maximum audio blocks in flight (640ms at 20ms/block)
-	SNDCMinBlocksPending        = 16   // Minimum blocks pending (320ms)
+	SNDCDefaultMaxBlocksPending = 32   // Default maximum audio blocks in flight (~680ms)
+	SNDCMinBlocksPending        = 16   // Minimum blocks pending (~340ms)
+	SNDCMaxBlocksPending        = 96   // Maximum blocks pending (~2s) - defensive cap
 	SNDCBlockSize               = 4096 // Optimal audio block size (matches typical audio buffer)
 )
 
@@ -142,11 +144,14 @@ func NewSoundChannel(sendFunc SoundSendFunc, maxBlocksPending int) *SoundChannel
 // MaxBlocksPendingFromBufferPeriods calculates the optimal max blocks pending
 // based on the audio buffer periods setting. Higher buffer periods indicate
 // the user expects higher latency (e.g., Tailscale), so we scale accordingly.
-// Formula: max(16, bufferPeriods * 2) - gives 320ms to 1920ms of buffer.
+// Formula: clamp(bufferPeriods * 2, 16, 96) - gives ~340ms to ~2s of buffer.
 func MaxBlocksPendingFromBufferPeriods(bufferPeriods int) int {
 	maxBlocks := bufferPeriods * 2
 	if maxBlocks < SNDCMinBlocksPending {
 		return SNDCMinBlocksPending
+	}
+	if maxBlocks > SNDCMaxBlocksPending {
+		return SNDCMaxBlocksPending
 	}
 	return maxBlocks
 }
