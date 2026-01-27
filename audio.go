@@ -13,6 +13,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// AudioInputOwner tracks which client has claimed audio input (first-come-first-served)
+type AudioInputOwner int32
+
+const (
+	AudioInputOwnerNone   AudioInputOwner = 0
+	AudioInputOwnerWebRTC AudioInputOwner = 1
+	AudioInputOwnerRDP    AudioInputOwner = 2
+)
+
 var (
 	audioMutex         sync.Mutex
 	inputSourceMutex   sync.Mutex // Serializes input audio packet handling: connection lifecycle and writes cannot overlap
@@ -27,6 +36,15 @@ var (
 	currentInputTrack  atomic.Pointer[string]
 	audioOutputEnabled atomic.Bool
 	audioInputEnabled  atomic.Bool
+
+	// Audio input ownership - first-come-first-served
+	// Only one client can send audio input at a time
+	audioInputOwner atomic.Int32
+
+	// Connection state tracking - prevents stale data from claiming ownership
+	// after disconnect (e.g., buffered audio arriving after connection closes)
+	rdpAudioInputActive    atomic.Bool
+	webrtcAudioInputActive atomic.Bool
 )
 
 func getAlsaDevice(source string) string {
@@ -34,6 +52,23 @@ func getAlsaDevice(source string) string {
 		return "hw:0,0" // TC358743 HDMI audio
 	}
 	return "hw:1,0" // USB Audio Gadget
+}
+
+// ClaimAudioInput attempts to claim audio input for the specified owner.
+// Returns true if claimed successfully, false if already claimed by another.
+func ClaimAudioInput(owner AudioInputOwner) bool {
+	return audioInputOwner.CompareAndSwap(int32(AudioInputOwnerNone), int32(owner))
+}
+
+// ReleaseAudioInput releases audio input ownership if currently owned by the specified owner.
+// Returns true if ownership was released, false if not owned by the specified owner.
+func ReleaseAudioInput(owner AudioInputOwner) bool {
+	return audioInputOwner.CompareAndSwap(int32(owner), int32(AudioInputOwnerNone))
+}
+
+// GetAudioInputOwner returns the current audio input owner.
+func GetAudioInputOwner() AudioInputOwner {
+	return AudioInputOwner(audioInputOwner.Load())
 }
 
 func initAudio() {
@@ -183,6 +218,14 @@ func startInputAudioUnderMutex(alsaPlaybackDevice string) error {
 
 	inputSource.Swap(&newSource)
 	inputRelay.Swap(newRelay)
+
+	// Drop any stale audio in the playback buffer.
+	// This prevents accumulated audio from playing back when the host starts recording.
+	// See: https://github.com/jetkvm/kvm/pull/718 (Marvur's observation)
+	if err := audio.DropPlaybackBuffer(); err != nil {
+		audioLogger.Warn().Err(err).Msg("failed to drop playback buffer")
+	}
+
 	audioLogger.Debug().Str("device", alsaPlaybackDevice).Msg("audio input started")
 	return nil
 }
@@ -230,6 +273,25 @@ func onWebRTCConnect() {
 }
 
 func onWebRTCDisconnect() {
+	// Mark WebRTC audio input as inactive FIRST - prevents stale buffered data
+	// from re-claiming ownership after we release it
+	webrtcAudioInputActive.Store(false)
+
+	// Clear input track to stop the track handler from processing/claiming
+	currentInputTrack.Store(nil)
+
+	// Release WebRTC audio input ownership - this allows RDP to claim if connected
+	if ReleaseAudioInput(AudioInputOwnerWebRTC) {
+		// Check if RDP is still connected and can take over
+		if activeConnections.Load() > 1 { // > 1 because we haven't decremented yet
+			audioLogger.Info().Msg("audio input: ownership released by WebRTC, available for RDP")
+		}
+	}
+
+	// Clear the WebRTC audio track since the connection is closing
+	// This prevents the relay from trying to write to a closed track
+	setAudioTrack(nil)
+
 	count := activeConnections.Add(-1)
 	if count <= 0 {
 		// Stop audio immediately to release HDMI audio device which shares hardware with video device
@@ -240,6 +302,7 @@ func onWebRTCDisconnect() {
 // OnRDPAudioConnect is called when an RDP client needs audio.
 // This allows audio capture to start for RDP even without WebRTC.
 func OnRDPAudioConnect() {
+	rdpAudioInputActive.Store(true)
 	count := activeConnections.Add(1)
 	audioLogger.Debug().Int32("connections", count).Msg("RDP audio connected")
 	if count == 1 {
@@ -251,6 +314,19 @@ func OnRDPAudioConnect() {
 
 // OnRDPAudioDisconnect is called when an RDP client disconnects audio.
 func OnRDPAudioDisconnect() {
+	// Mark RDP audio input as inactive FIRST - prevents stale buffered data
+	// from re-claiming ownership after we release it
+	rdpAudioInputActive.Store(false)
+
+	// Release audio input ownership if RDP owned it - this allows WebRTC to claim if connected
+	if ReleaseAudioInput(AudioInputOwnerRDP) {
+		audioLogger.Debug().Msg("RDP released audio input")
+		// Check if WebRTC is still connected and can take over
+		if activeConnections.Load() > 1 { // > 1 because we haven't decremented yet
+			audioLogger.Info().Msg("audio input: ownership released by RDP, available for WebRTC")
+		}
+	}
+
 	count := activeConnections.Add(-1)
 	audioLogger.Debug().Int32("connections", count).Msg("RDP audio disconnected")
 	if count <= 0 {
@@ -281,6 +357,7 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 }
 
 func setPendingInputTrack(track *webrtc.TrackRemote) {
+	webrtcAudioInputActive.Store(true)
 	trackID := track.ID()
 	currentInputTrack.Store(&trackID)
 	go handleInputTrackForSession(track)
@@ -321,16 +398,24 @@ func SetAudioOutputEnabled(enabled bool) error {
 
 // SetAudioInputEnabled blocks up to 5 seconds when enabling.
 // Returns error if audio fails to start within timeout.
+// When enabled is true, this forces audio input to start regardless of config.UsbDevices.Audio
+// and even if activeConnections is 0 (AUDIN may be ready before RDPSND).
 func SetAudioInputEnabled(enabled bool) error {
 	if audioInputEnabled.Swap(enabled) == enabled {
 		return nil
 	}
 
-	if enabled && activeConnections.Load() > 0 {
-		// Start audio synchronously with timeout to provide immediate feedback
+	if enabled {
+		// Start audio input directly (bypassing config check) since this is an explicit enable request.
+		// This allows RDP AUDIN to work even if config.UsbDevices.Audio is false.
+		// Note: we don't check activeConnections here because AUDIN channel may become ready
+		// before RDPSND (which calls Audio.Connect() to increment activeConnections).
 		done := make(chan error, 1)
 		go func() {
-			done <- startAudio()
+			audioMutex.Lock()
+			err := startInputAudioUnderMutex(getAlsaDevice("usb"))
+			audioMutex.Unlock()
+			done <- err
 		}()
 
 		select {
@@ -396,12 +481,23 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 
 	trackLogger.Debug().Msg("starting input track handler")
 
+	// Release audio input ownership when this handler exits
+	defer func() {
+		if ReleaseAudioInput(AudioInputOwnerWebRTC) {
+			trackLogger.Debug().Msg("WebRTC released audio input via track handler exit")
+		}
+	}()
+
 	var consecutiveReadErrors int
 
 	for {
-		// Check if we've been superseded by another track
+		// Check if we've been superseded by another track or connection closed
 		currentTrackID := currentInputTrack.Load()
-		if currentTrackID != nil && *currentTrackID != myTrackID {
+		if currentTrackID == nil {
+			trackLogger.Debug().Msg("input track handler exiting - connection closed")
+			return
+		}
+		if *currentTrackID != myTrackID {
 			trackLogger.Debug().
 				Str("current_track_id", *currentTrackID).
 				Msg("input track handler exiting - superseded")
@@ -445,6 +541,27 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 }
 
 func processInputPacket(opusData []byte) error {
+	// Check if WebRTC audio input is still active - prevents stale buffered data
+	// from claiming ownership after disconnect
+	if !webrtcAudioInputActive.Load() {
+		return nil
+	}
+
+	// First-come-first-served: try to claim ownership
+	owner := GetAudioInputOwner()
+	if owner == AudioInputOwnerNone {
+		if !ClaimAudioInput(AudioInputOwnerWebRTC) {
+			// Someone else claimed it between check and claim
+			return nil
+		}
+		audioLogger.Info().Msg("audio input: WebRTC claimed ownership")
+		// Drop stale audio when claiming ownership
+		_ = audio.DropPlaybackBuffer()
+	} else if owner != AudioInputOwnerWebRTC {
+		// RDP owns audio input, skip our packets
+		return nil
+	}
+
 	inputSourceMutex.Lock()
 	defer inputSourceMutex.Unlock()
 
@@ -481,6 +598,27 @@ var (
 // This is the hot path for RDP audio input - optimized for minimal overhead.
 // Format: 16-bit signed PCM, mono, 48kHz.
 func WriteInputPCM(pcmData []byte) error {
+	// Check if RDP audio input is still active - prevents stale buffered data
+	// from claiming ownership after disconnect
+	if !rdpAudioInputActive.Load() {
+		return nil
+	}
+
+	// First-come-first-served: check ownership
+	owner := GetAudioInputOwner()
+	if owner == AudioInputOwnerNone {
+		if !ClaimAudioInput(AudioInputOwnerRDP) {
+			// Someone else claimed it between check and claim
+			return nil
+		}
+		audioLogger.Info().Msg("audio input: RDP claimed ownership")
+		// Drop stale audio when claiming ownership
+		_ = audio.DropPlaybackBuffer()
+	} else if owner != AudioInputOwnerRDP {
+		// WebRTC owns audio input, skip our packets
+		return nil
+	}
+
 	// Fast path: direct write to ALSA without locks or connection checks
 	err := audio.WritePCM(pcmData)
 	if err == nil {
@@ -506,21 +644,48 @@ func WriteInputPCM(pcmData []byte) error {
 func recoverAudioInput() {
 	defer audioInputRecovering.Store(false)
 
+	// Abort recovery if no active connections (audio is being shut down)
+	if activeConnections.Load() <= 0 {
+		audioLogger.Debug().Msg("audio input: skipping recovery - no active connections")
+		return
+	}
+
+	// Abort recovery if we don't own audio input
+	if GetAudioInputOwner() != AudioInputOwnerRDP {
+		audioLogger.Debug().Msg("audio input: skipping recovery - not RDP owner")
+		return
+	}
+
 	audioLogger.Warn().Int32("failures", audioInputFailures.Load()).Msg("audio input: triggering recovery")
 
+	// Use audioMutex to serialize with stopInputAudio
+	audioMutex.Lock()
+	defer audioMutex.Unlock()
+
+	// Re-check after acquiring lock
+	if activeConnections.Load() <= 0 {
+		audioLogger.Debug().Msg("audio input: aborting recovery - connections dropped")
+		return
+	}
+
 	// Disconnect and reconnect the input source
-	inputSourceMutex.Lock()
 	source := inputSource.Load()
 	if source != nil && *source != nil {
 		(*source).Disconnect()
 		if err := (*source).Connect(); err != nil {
 			audioLogger.Error().Err(err).Msg("audio input: recovery failed")
-			inputSourceMutex.Unlock()
 			return
 		}
+		audioInputFailures.Store(0)
+		audioLogger.Info().Msg("audio input: recovery successful")
+	} else {
+		// No input source exists - create one
+		err := startInputAudioUnderMutex(getAlsaDevice("usb"))
+		if err != nil {
+			audioLogger.Error().Err(err).Msg("audio input: failed to initialize input source during recovery")
+			return
+		}
+		audioLogger.Info().Msg("audio input: initialized new input source during recovery")
+		audioInputFailures.Store(0)
 	}
-	inputSourceMutex.Unlock()
-
-	audioInputFailures.Store(0)
-	audioLogger.Info().Msg("audio input: recovery successful")
 }

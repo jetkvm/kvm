@@ -122,6 +122,17 @@ static _Atomic bool h264_stream_has_duplicates = false;
 // Static buffer for H.264 deduplication (avoids malloc in hot path)
 static uint8_t h264_dedup_buffer[MAX_H264_FRAME_SIZE] __attribute__((aligned(16)));
 
+// SPS/PPS caching for OpenH264 error recovery
+// OpenH264 can lose track of parameter sets after errors - caching them
+// and prepending to IDR frames helps the decoder recover properly.
+#define MAX_SPS_SIZE 256
+#define MAX_PPS_SIZE 256
+static uint8_t cached_sps[MAX_SPS_SIZE] __attribute__((aligned(16)));
+static uint8_t cached_pps[MAX_PPS_SIZE] __attribute__((aligned(16)));
+static size_t cached_sps_len = 0;
+static size_t cached_pps_len = 0;
+static bool sps_pps_cached = false;
+
 // Fast monotonic time (uses VDSO, no syscall)
 static inline uint64_t get_time_us(void) {
     struct timespec ts;
@@ -768,8 +779,11 @@ void transcode_shutdown(void) {
     tc.scaled_buffer = NULL;
     tc.initialized = false;
 
-    // Reset duplicate detection for next stream
+    // Reset state for next stream
     atomic_store(&h264_stream_has_duplicates, false);
+    cached_sps_len = 0;
+    cached_pps_len = 0;
+    sps_pps_cached = false;
 
     log_info("Transcode: shutdown");
 }
@@ -893,6 +907,148 @@ static int deduplicate_h264_nals(const uint8_t *input, size_t input_len,
 }
 
 /**
+ * Extract and cache SPS/PPS NALs from H.264 stream.
+ * Called on every frame to update cache when new SPS/PPS are received.
+ * NAL types: SPS=7, PPS=8
+ */
+static void cache_sps_pps(const uint8_t *data, size_t len) {
+    const uint8_t *p = data;
+    const uint8_t *end = data + len - 4;
+
+    while (p < end) {
+        // Find start code
+        if (p[0] == 0 && p[1] == 0) {
+            int sc_len = 0;
+            if (p[2] == 1) {
+                sc_len = 3;
+            } else if (p + 3 < end && p[2] == 0 && p[3] == 1) {
+                sc_len = 4;
+            }
+
+            if (sc_len > 0 && p + sc_len < data + len) {
+                uint8_t nal_type = p[sc_len] & 0x1F;
+
+                // Find end of this NAL
+                const uint8_t *nal_start = p;
+                const uint8_t *nal_end = data + len;
+                for (const uint8_t *q = p + sc_len + 1; q < end; q++) {
+                    if (q[0] == 0 && q[1] == 0 &&
+                        (q[2] == 1 || (q + 3 < end && q[2] == 0 && q[3] == 1))) {
+                        nal_end = q;
+                        break;
+                    }
+                }
+
+                size_t nal_size = nal_end - nal_start;
+
+                if (nal_type == 7 && nal_size <= MAX_SPS_SIZE) {  // SPS
+                    memcpy(cached_sps, nal_start, nal_size);
+                    cached_sps_len = nal_size;
+                    if (!sps_pps_cached && cached_pps_len > 0) {
+                        sps_pps_cached = true;
+                        log_info("Transcode: SPS/PPS cached (%zu+%zu bytes)",
+                                 cached_sps_len, cached_pps_len);
+                    }
+                } else if (nal_type == 8 && nal_size <= MAX_PPS_SIZE) {  // PPS
+                    memcpy(cached_pps, nal_start, nal_size);
+                    cached_pps_len = nal_size;
+                    if (!sps_pps_cached && cached_sps_len > 0) {
+                        sps_pps_cached = true;
+                        log_info("Transcode: SPS/PPS cached (%zu+%zu bytes)",
+                                 cached_sps_len, cached_pps_len);
+                    }
+                }
+
+                p = nal_end;
+                continue;
+            }
+        }
+        p++;
+    }
+}
+
+/**
+ * Check if H.264 data contains an IDR frame (NAL type 5).
+ */
+static inline bool has_idr_frame(const uint8_t *data, size_t len) {
+    const uint8_t *end = data + len - 4;
+    for (const uint8_t *p = data; p < end; p++) {
+        if (p[0] == 0 && p[1] == 0 &&
+            (p[2] == 1 || (p + 3 < end && p[2] == 0 && p[3] == 1))) {
+            int sc_len = (p[2] == 1) ? 3 : 4;
+            if (p + sc_len < data + len) {
+                uint8_t nal_type = p[sc_len] & 0x1F;
+                if (nal_type == 5) return true;  // IDR
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Check if H.264 data already contains SPS/PPS.
+ */
+static inline bool has_sps_pps(const uint8_t *data, size_t len) {
+    bool has_sps = false, has_pps = false;
+    const uint8_t *end = data + len - 4;
+
+    for (const uint8_t *p = data; p < end && !(has_sps && has_pps); p++) {
+        if (p[0] == 0 && p[1] == 0 &&
+            (p[2] == 1 || (p + 3 < end && p[2] == 0 && p[3] == 1))) {
+            int sc_len = (p[2] == 1) ? 3 : 4;
+            if (p + sc_len < data + len) {
+                uint8_t nal_type = p[sc_len] & 0x1F;
+                if (nal_type == 7) has_sps = true;
+                if (nal_type == 8) has_pps = true;
+            }
+        }
+    }
+    return has_sps && has_pps;
+}
+
+/**
+ * Prepend cached SPS/PPS to IDR frames that don't already have them.
+ * This helps OpenH264 recover from errors by providing parameter sets.
+ *
+ * @param input Original H.264 data
+ * @param input_len Length of input
+ * @param output Output buffer (must have space for input_len + cached SPS/PPS)
+ * @param output_len Actual output length
+ * @return true if SPS/PPS were prepended, false otherwise
+ */
+static bool prepend_sps_pps_if_needed(const uint8_t *input, size_t input_len,
+                                       uint8_t *output, size_t *output_len) {
+    // Only prepend if: we have cached data, frame has IDR, and lacks SPS/PPS
+    if (!sps_pps_cached || !has_idr_frame(input, input_len) ||
+        has_sps_pps(input, input_len)) {
+        *output_len = input_len;
+        if (output != input) {
+            memcpy(output, input, input_len);
+        }
+        return false;
+    }
+
+    // Prepend cached SPS + PPS + original data
+    uint8_t *dst = output;
+    memcpy(dst, cached_sps, cached_sps_len);
+    dst += cached_sps_len;
+    memcpy(dst, cached_pps, cached_pps_len);
+    dst += cached_pps_len;
+    memcpy(dst, input, input_len);
+    dst += input_len;
+
+    *output_len = dst - output;
+
+    static int prepend_count = 0;
+    if (prepend_count++ < 5) {
+        log_debug("Transcode: prepended SPS/PPS to IDR frame (%zu->%zu bytes)",
+                  input_len, *output_len);
+    }
+
+    return true;
+}
+
+/**
  * Quick check if stream likely has duplicate NALs.
  * Looks for consecutive NALs of the same type (SPS,PPS,SEI,IDR only).
  * Very fast - just scans for NAL type bytes after start codes.
@@ -931,6 +1087,9 @@ int transcode_feed_h264(const uint8_t *h264_data, size_t h264_len) {
 
     atomic_fetch_add(&tc.frames_in, 1);
 
+    // Always cache SPS/PPS for error recovery (very cheap operation)
+    cache_sps_pps(h264_data, h264_len);
+
     // Fast path: check if deduplication needed
     // Most RDP clients (Windows, Linux) don't send duplicates - zero-copy for them
     // macOS sends [SPS,SPS,PPS,PPS,SEI,SEI,IDR,IDR] - needs deduplication
@@ -941,12 +1100,28 @@ int transcode_feed_h264(const uint8_t *h264_data, size_t h264_len) {
         // macOS or similar: deduplicate to save ~50% CPU on single-core RV1106
         size_t dedup_len = 0;
         deduplicate_h264_nals(h264_data, h264_len, h264_dedup_buffer, &dedup_len);
+
+        // For IDR frames without SPS/PPS, prepend cached ones (helps recovery)
+        size_t final_len = 0;
+        prepend_sps_pps_if_needed(h264_dedup_buffer, dedup_len,
+                                   h264_dedup_buffer, &final_len);
         decode_data = h264_dedup_buffer;
-        decode_len = dedup_len;
+        decode_len = final_len;
     } else {
-        // Normal client: zero-copy pass-through
-        decode_data = h264_data;
-        decode_len = h264_len;
+        // Normal client: check if IDR needs SPS/PPS prepended
+        if (sps_pps_cached && has_idr_frame(h264_data, h264_len) &&
+            !has_sps_pps(h264_data, h264_len)) {
+            // Need to prepend - use dedup buffer as workspace
+            size_t final_len = 0;
+            prepend_sps_pps_if_needed(h264_data, h264_len,
+                                       h264_dedup_buffer, &final_len);
+            decode_data = h264_dedup_buffer;
+            decode_len = final_len;
+        } else {
+            // Zero-copy pass-through
+            decode_data = h264_data;
+            decode_len = h264_len;
+        }
     }
 
 #ifdef HAS_OPENH264

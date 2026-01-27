@@ -124,6 +124,7 @@ int jetkvm_audio_get_last_pcm(void *pcm_buf, int max_size);
 
 int jetkvm_audio_playback_init();
 void jetkvm_audio_playback_close();
+int jetkvm_audio_playback_drop();
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
 int jetkvm_audio_write_pcm(void *pcm_buf, int num_bytes);
 
@@ -1393,6 +1394,54 @@ void jetkvm_audio_playback_close() {
 	                   &playback_initialized, &playback_mutex,
 	                   &pcm_playback_handle, (void**)&decoder,
 	                   (codec_destroy_fn)opus_decoder_destroy);
+}
+
+/**
+ * Drop any pending audio frames in the playback buffer.
+ * This clears stale audio data that may have accumulated while
+ * the host wasn't consuming from the USB audio gadget.
+ *
+ * Call this when audio input is first enabled to prevent
+ * accumulated audio from playing back when recording starts.
+ *
+ * @return 0 on success, negative error code on failure
+ */
+int jetkvm_audio_playback_drop() {
+	if (!playback_initialized || !pcm_playback_handle) {
+		return 0;  // Not initialized, nothing to drop
+	}
+
+	pthread_mutex_lock(&playback_mutex);
+
+	if (!pcm_playback_handle) {
+		pthread_mutex_unlock(&playback_mutex);
+		return 0;
+	}
+
+	// Drop all pending frames and stop the PCM
+	int rc = snd_pcm_drop(pcm_playback_handle);
+	if (rc < 0) {
+		fprintf(stderr, "audio: snd_pcm_drop failed: %s\n", snd_strerror(rc));
+		fflush(stderr);
+		pthread_mutex_unlock(&playback_mutex);
+		return rc;
+	}
+
+	// Prepare the PCM for playback again
+	rc = snd_pcm_prepare(pcm_playback_handle);
+	if (rc < 0) {
+		fprintf(stderr, "audio: snd_pcm_prepare failed: %s\n", snd_strerror(rc));
+		fflush(stderr);
+		pthread_mutex_unlock(&playback_mutex);
+		return rc;
+	}
+
+	pthread_mutex_unlock(&playback_mutex);
+
+	fprintf(stdout, "INFO: audio: playback buffers dropped\n");
+	fflush(stdout);
+
+	return 0;
 }
 
 void jetkvm_audio_capture_close() {

@@ -26,7 +26,6 @@ type ClipboardStore struct {
 	expiry          time.Duration
 	cleanupInterval time.Duration
 	stopCh          chan struct{}
-	stopOnce        sync.Once
 	logger          zerolog.Logger
 }
 

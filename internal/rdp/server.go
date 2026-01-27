@@ -300,6 +300,11 @@ func (s *Server) acceptLoop() {
 		s.connections.Store(rdpConn, true)
 		s.connCount.Add(1)
 
+		// Track session for sleep mode prevention
+		if s.deps.OnSessionStart != nil {
+			s.deps.OnSessionStart()
+		}
+
 		go func(c *Connection, addr string) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -317,6 +322,12 @@ func (s *Server) acceptLoop() {
 
 				s.connections.Delete(c)
 				s.connCount.Add(-1)
+
+				// Track session end for sleep mode prevention
+				if s.deps.OnSessionEnd != nil {
+					s.deps.OnSessionEnd()
+				}
+
 				s.deps.Logger.Info().Str("remote", addr).Msg("RDP connection closed")
 			}()
 

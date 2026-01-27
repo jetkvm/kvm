@@ -45,7 +45,8 @@ type RDPState struct {
 	VideoEnabled     bool   `json:"videoEnabled"`
 	AudioEnabled     bool   `json:"audioEnabled"`
 	MicEnabled       bool   `json:"micEnabled"`
-	CameraEnabled    bool   `json:"cameraEnabled"`
+	CameraEnabled           bool `json:"cameraEnabled"`
+	CameraTranscodeEnabled  bool `json:"cameraTranscodeEnabled"`
 	ClipboardEnabled bool   `json:"clipboardEnabled"`
 	PasteDelayMs     int    `json:"pasteDelayMs"`
 	TargetOS         string `json:"targetOS"`
@@ -101,7 +102,8 @@ func rpcGetRDPState() (RDPState, error) {
 		VideoEnabled:     config.RDPVideoEnabled,
 		AudioEnabled:     config.RDPAudioEnabled,
 		MicEnabled:       config.RDPMicEnabled,
-		CameraEnabled:    config.RDPCameraEnabled,
+		CameraEnabled:          config.RDPCameraEnabled,
+		CameraTranscodeEnabled: config.RDPCameraTranscodeEnabled,
 		ClipboardEnabled: config.RDPClipboardEnabled,
 		PasteDelayMs:     config.RDPPasteDelayMs,
 		TargetOS:         config.RDPTargetOS,
@@ -255,6 +257,29 @@ func rpcSetRDPCameraEnabled(enabled bool) error {
 	if err := SaveConfig(); err != nil {
 		config.RDPCameraEnabled = oldValue
 		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPCameraTranscodeEnabled enables or disables H.264→MJPEG software transcoding.
+// WARNING: This is a BETA feature with HIGH CPU usage (~80-100% on Cortex-A7).
+// Only enable if your RDP client only sends H.264 and you need MJPEG output.
+func rpcSetRDPCameraTranscodeEnabled(enabled bool) error {
+	oldValue := config.RDPCameraTranscodeEnabled
+	config.RDPCameraTranscodeEnabled = enabled
+
+	if err := SaveConfig(); err != nil {
+		config.RDPCameraTranscodeEnabled = oldValue
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	// Reset the failed flag when config changes, allowing a retry
+	if enabled {
+		cameraTranscodeInitFailed.Store(false)
+	} else {
+		// When disabling, also shutdown any running transcoder
+		shutdownCameraTranscoder()
 	}
 
 	return nil

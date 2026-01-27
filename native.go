@@ -23,9 +23,13 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		return
 	}
 
-	nativeLogger.Info().Msg("initializing native proxy")
-	var err error
-	nativeInstance, err = native.NewNativeProxy(native.NativeOptions{
+	// Check config for native mode: "direct" for CGO mode, "subprocess" (default) for crash isolation
+	nativeMode := config.NativeMode
+	if nativeMode == "" {
+		nativeMode = "subprocess" // default to subprocess for crash isolation
+	}
+
+	opts := native.NativeOptions{
 		SystemVersion:        systemVersion,
 		AppVersion:           appVersion,
 		DisplayRotation:      config.GetDisplayRotation(),
@@ -114,13 +118,23 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 			return info
 		},
-	})
-	if err != nil {
-		nativeLogger.Fatal().Err(err).Msg("failed to create native proxy")
+	}
+
+	// Initialize native based on mode
+	var err error
+	if nativeMode == "direct" {
+		nativeLogger.Info().Msg("initializing native in DIRECT mode (CGO, no subprocess)")
+		nativeInstance = native.NewNative(opts)
+	} else {
+		nativeLogger.Info().Msg("initializing native in SUBPROCESS mode (crash-isolated)")
+		nativeInstance, err = native.NewNativeProxy(opts)
+		if err != nil {
+			nativeLogger.Fatal().Err(err).Msg("failed to create native proxy")
+		}
 	}
 
 	if err := nativeInstance.Start(); err != nil {
-		nativeLogger.Fatal().Err(err).Msg("failed to start native proxy")
+		nativeLogger.Fatal().Err(err).Msg("failed to start native instance")
 	}
 	go func() {
 		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {

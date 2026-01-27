@@ -394,6 +394,20 @@ func (g *GFXChannel) CanAcceptFrame() bool {
 	return g.ready.Load() && g.avc420 && g.framesPending.Load() < GFXMaxFramesPending
 }
 
+// ShouldDropPFrame returns true if P-frames should be dropped due to backpressure.
+// This provides adaptive rate limiting for WAN/high-latency connections.
+// HOT PATH: Single atomic load.
+func (g *GFXChannel) ShouldDropPFrame() bool {
+	return g.framesPending.Load() >= GFXBackpressureDropPFrames
+}
+
+// ShouldRateLimitPFrame returns true if P-frames should be rate-limited (skip every other).
+// This is a softer form of backpressure than ShouldDropPFrame.
+// HOT PATH: Single atomic load.
+func (g *GFXChannel) ShouldRateLimitPFrame() bool {
+	return g.framesPending.Load() >= GFXBackpressureRateLimit
+}
+
 // IsConnectionStale returns true if we haven't received frame acks in too long.
 // This indicates the client has likely disconnected or frozen.
 func (g *GFXChannel) IsConnectionStale() bool {

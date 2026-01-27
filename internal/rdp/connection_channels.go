@@ -222,13 +222,10 @@ func (c *Connection) initDVCChannelsSync() {
 
 		// Set ready callback for camera
 		c.cameraChannel.SetReadyCallback(func(cam *channels.CameraChannel) {
-			// Auto-enable camera passthrough when RDP client has cameras available.
-			if c.server.deps.Camera != nil {
-				c.server.deps.Camera.SetEnabled(true)
-				if err := cam.Activate(); err != nil {
-					c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to activate camera")
-				}
-			}
+			// Camera channel is ready, but DON'T activate yet.
+			// Wait for the USB host to actually start streaming (format change notification).
+			// This prevents the client's camera from staying on when not in use.
+			c.server.deps.Logger.Debug().Msg("RDP: camera channel ready, waiting for USB host to start streaming")
 		})
 
 		// Set frame callback to forward to UVC gadget
@@ -238,6 +235,14 @@ func (c *Connection) initDVCChannelsSync() {
 			}
 			// Hot path - no logging here
 			_ = c.server.deps.Camera.SendFrame(frame, width, height, pixelFormat)
+		})
+
+		// Set stop callback to notify when RDP client stops camera stream
+		c.cameraChannel.SetStopCallback(func() {
+			c.server.deps.Logger.Info().Msg("RDP: camera stream stopped by client")
+			if c.server.deps.Camera != nil {
+				c.server.deps.Camera.SetEnabled(false)
+			}
 		})
 
 		// Subscribe to USB host format changes for dynamic format negotiation
@@ -547,7 +552,7 @@ func (c *Connection) SendFrame(frame []byte) {
 	}
 
 	// Detect keyframe by checking NAL unit type
-	// This is more expensive (scans up to 1KB) so we do it after backpressure check
+	// This is more expensive (scans up to 1KB) so we do it after ready check
 	isKeyframe := isH264Keyframe(frame)
 
 	// Don't send non-keyframes until we've sent a keyframe first
@@ -562,6 +567,26 @@ func (c *Connection) SendFrame(frame []byte) {
 		return
 	}
 
+	// Adaptive backpressure for WAN/high-latency connections:
+	// Drop P-frames proactively when queue is filling up to prevent complete queue saturation.
+	// This gives the network time to catch up while maintaining keyframe delivery.
+	if !isKeyframe {
+		if c.gfxChannel.ShouldDropPFrame() {
+			// Queue >75% full - drop all P-frames, only keyframes through
+			c.frameStats.dropBackpressure.Add(1)
+			c.frameRequested.Store(false)
+			return
+		}
+		if c.gfxChannel.ShouldRateLimitPFrame() {
+			// Queue >50% full - drop every other P-frame (rate limiting)
+			if c.frameStats.attempted.Load()%2 == 0 {
+				c.frameStats.dropBackpressure.Add(1)
+				c.frameRequested.Store(false)
+				return
+			}
+		}
+	}
+
 	// Track that we've sent a keyframe
 	if isKeyframe {
 		c.hasReceivedKeyframe.Store(true)
@@ -571,19 +596,20 @@ func (c *Connection) SendFrame(frame []byte) {
 	if err := c.gfxChannel.SendH264Frame(frame, isKeyframe); err != nil {
 		switch err {
 		case channels.ErrGFXBackpressure:
-			// Too many frames pending - skip this one
-			// CRITICAL: When ANY frame is dropped (keyframe OR P-frame), we must
-			// wait for the next keyframe. Dropping a P-frame breaks the reference
-			// chain, causing subsequent P-frames to decode as green/corrupted.
+			// Queue completely full - drop this frame
+			// With adaptive backpressure, this should rarely happen (P-frames dropped earlier)
+			// Only reset keyframe state if we're dropping a keyframe (rare) since that
+			// breaks the decode chain. Dropping P-frames is less critical with adaptive dropping.
 			c.frameStats.dropBackpressure.Add(1)
-			c.hasReceivedKeyframe.Store(false)
-			c.server.deps.Logger.Warn().
-				Bool("keyframe", isKeyframe).
-				Int("pending", c.gfxChannel.GetPendingFrames()).
-				Msg("RDP: frame dropped due to backpressure, waiting for next keyframe")
-			// Request immediate keyframe from encoder to minimize recovery time
-			if c.server.deps.Video != nil {
-				c.server.deps.Video.RequestKeyframe()
+			if isKeyframe {
+				c.hasReceivedKeyframe.Store(false)
+				c.server.deps.Logger.Warn().
+					Int("pending", c.gfxChannel.GetPendingFrames()).
+					Msg("RDP: keyframe dropped due to full queue, decoder will need reset")
+				// Request immediate keyframe from encoder to minimize recovery time
+				if c.server.deps.Video != nil {
+					c.server.deps.Video.RequestKeyframe()
+				}
 			}
 		case channels.ErrGFXNoCodec:
 			// Client doesn't support AVC420/AVC444 - log once and stop sending frames

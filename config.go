@@ -156,7 +156,8 @@ type Config struct {
 	RDPVideoEnabled     bool   `json:"rdp_video_enabled"`     // Enable H.264 video via RDPGFX, default: true
 	RDPAudioEnabled     bool   `json:"rdp_audio_enabled"`     // Enable audio output to client, default: true
 	RDPMicEnabled       bool   `json:"rdp_mic_enabled"`       // Enable microphone input from client, default: true
-	RDPCameraEnabled    bool   `json:"rdp_camera_enabled"`    // Enable webcam redirection from client, default: false
+	RDPCameraEnabled           bool `json:"rdp_camera_enabled"`            // Enable webcam redirection from client, default: false
+	RDPCameraTranscodeEnabled  bool `json:"rdp_camera_transcode_enabled"`  // Enable H.264→MJPEG software transcode for camera (BETA, high CPU), default: false
 	RDPClipboardEnabled     bool   `json:"rdp_clipboard_enabled"`      // Enable clipboard-as-keystrokes, default: true
 	RDPPasteDelayMs         int    `json:"rdp_paste_delay_ms"`         // Delay per keystroke in ms (0-50), default: 0
 	RDPTargetOS             string `json:"rdp_target_os"`              // Target OS for clipboard: "windows", "macos", "linux", default: "windows"
@@ -174,6 +175,10 @@ type Config struct {
 	RDPBase64CmdMacOS       string `json:"rdp_base64_cmd_macos"`       // Decode command for macOS. Placeholders: {data}, {filename}
 	RDPUsername             string `json:"rdp_username"`               // Username for RDP authentication (any username allowed if empty)
 	RDPDomain               string `json:"rdp_domain"`                 // Domain for RDP authentication (any domain allowed if empty)
+
+	// Native mode: "subprocess" (default, crash-isolated) or "direct" (more efficient, no subprocess)
+	// Direct mode is more resource-efficient but native crashes will bring down the whole app.
+	NativeMode string `json:"native_mode"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -305,6 +310,9 @@ func getDefaultConfig() Config {
 		RDPBase64CmdWindows:  "",
 		RDPBase64CmdLinux:    "",
 		RDPBase64CmdMacOS:    "",
+
+		// Native mode: "subprocess" is crash-isolated (default), "direct" is more efficient
+		NativeMode: "subprocess",
 	}
 }
 

@@ -153,8 +153,8 @@ function ProviderCard({
   const isConnected = status?.state === "connected";
   const isConnecting = status?.state === "connecting";
   const needsAuth = status?.state === "needs_auth";
-  const isStopped = status?.state === "stopped";
-  const isError = status?.state === "error";
+  const _isStopped = status?.state === "stopped";
+  const _isError = status?.state === "error";
   // isInstalled = true if status exists and state is NOT "not_installed"
   // This ensures consistency between the label and button visibility
   const isInstalled = statusLoaded ? !isNotInstalled : provider.installed;
@@ -605,6 +605,7 @@ export function MeshVPNSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const retryCountRef = useRef(0);
+  const fetchProvidersRef = useRef<() => void>(null!);
   const maxRetries = 3;
 
   const handleRpcEvent = useCallback(
@@ -642,7 +643,7 @@ export function MeshVPNSection() {
         // Retry on "mesh VPN not initialized" - it may still be starting up
         if (errorMsg.includes("not initialized") && retryCountRef.current < maxRetries) {
           retryCountRef.current++;
-          setTimeout(() => fetchProviders(), 1000); // Retry after 1 second
+          setTimeout(() => fetchProvidersRef.current(), 1000); // Retry after 1 second
           return;
         }
         setLoadError(errorMsg);
@@ -656,6 +657,11 @@ export function MeshVPNSection() {
       setProviders(resp.result as MeshVPNProviderInfo[]);
     });
   }, [send, setProviders]);
+
+  // Keep ref in sync with the latest fetchProviders
+  useEffect(() => {
+    fetchProvidersRef.current = fetchProviders;
+  }, [fetchProviders]);
 
   // Track pending status requests to handle client-side timeout
   const pendingStatusRequests = useRef<Map<string, number>>(new Map());

@@ -1491,6 +1491,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"getLogLevelState": {Func: rpcGetLogLevelState},
 	"setLogLevel":      {Func: rpcSetLogLevel, Params: []string{"params"}},
 
+	// Native mode handlers
+	"getNativeMode": {Func: rpcGetNativeMode},
+	"setNativeMode": {Func: rpcSetNativeMode, Params: []string{"mode"}},
+
 	// VNC handlers
 	"getVNCState":            {Func: rpcGetVNCState},
 	"setVNCEnabled":          {Func: rpcSetVNCEnabled, Params: []string{"enabled"}},
@@ -1511,8 +1515,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRDPVideoEnabled":     {Func: rpcSetRDPVideoEnabled, Params: []string{"enabled"}},
 	"setRDPAudioEnabled":     {Func: rpcSetRDPAudioEnabled, Params: []string{"enabled"}},
 	"setRDPMicEnabled":       {Func: rpcSetRDPMicEnabled, Params: []string{"enabled"}},
-	"setRDPCameraEnabled":    {Func: rpcSetRDPCameraEnabled, Params: []string{"enabled"}},
-	"setRDPClipboardEnabled": {Func: rpcSetRDPClipboardEnabled, Params: []string{"enabled"}},
+	"setRDPCameraEnabled":          {Func: rpcSetRDPCameraEnabled, Params: []string{"enabled"}},
+	"setRDPCameraTranscodeEnabled": {Func: rpcSetRDPCameraTranscodeEnabled, Params: []string{"enabled"}},
+	"setRDPClipboardEnabled":       {Func: rpcSetRDPClipboardEnabled, Params: []string{"enabled"}},
 	"setRDPPasteDelayMs":     {Func: rpcSetRDPPasteDelayMs, Params: []string{"delayMs"}},
 	"setRDPTargetOS":         {Func: rpcSetRDPTargetOS, Params: []string{"targetOS"}},
 	"setRDPClipboardMode":    {Func: rpcSetRDPClipboardMode, Params: []string{"mode"}},

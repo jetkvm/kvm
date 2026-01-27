@@ -476,9 +476,126 @@ const (
 	cameraDefaultMjpegQual  = 35    // Default MJPEG quality (0-100)
 	cameraLogWarningEvery   = 500   // Log transcode errors every N frames
 	cameraLogDropEvery      = 200   // Log queue drops every N frames
-	cameraFrameQueueSize    = 8     // Buffer for slow software H.264 decode (~250ms latency at 30fps)
-	cameraBufferInitialSize = 512 * 1024 // 512KB - typical H.264 frame size
+	cameraFrameQueueSize    = 4     // Small queue - transcoding is slow, no point buffering
+	cameraBufferInitialSize = 256 * 1024 // 256KB - most H.264 frames are smaller
 )
+
+// H.264 NAL unit types we care about
+const (
+	nalTypeSlice    = 1  // Non-IDR slice (P-frame)
+	nalTypeIDR      = 5  // IDR slice (I-frame/keyframe)
+	nalTypeSEI      = 6  // Supplemental enhancement info (can drop)
+	nalTypeSPS      = 7  // Sequence parameter set (critical - decoder needs this)
+	nalTypePPS      = 8  // Picture parameter set (needed with SPS)
+	nalTypeAUD      = 9  // Access unit delimiter (can drop)
+	nalTypeFillerData = 12 // Filler data (can drop)
+)
+
+// Frame priority levels for intelligent dropping
+const (
+	framePriorityCritical = 3 // SPS - never drop, decoder will fail without it
+	framePriorityHigh     = 2 // IDR without SPS - prefer not to drop, but can recover
+	framePriorityNormal   = 1 // P-frames - can drop freely
+	framePriorityLow      = 0 // SEI/AUD/filler - drop first
+)
+
+// classifyH264Frame analyzes an H.264 frame and returns its priority level.
+// Also returns whether it has SPS (needed for decoder init) and if it's a keyframe (IDR).
+// Optimized to stop scanning early once we find what we need.
+func classifyH264Frame(data []byte) (priority int, hasSPS, hasIDR bool) {
+	priority = framePriorityNormal // Default to normal (P-frame)
+
+	for i := 0; i < len(data)-4; i++ {
+		// Look for NAL start code (0x00 0x00 0x01 or 0x00 0x00 0x00 0x01)
+		if data[i] != 0x00 || data[i+1] != 0x00 {
+			continue
+		}
+
+		nalOffset := -1
+		if data[i+2] == 0x01 {
+			nalOffset = i + 3
+		} else if data[i+2] == 0x00 && i+3 < len(data) && data[i+3] == 0x01 {
+			nalOffset = i + 4
+		}
+
+		if nalOffset <= 0 || nalOffset >= len(data) {
+			continue
+		}
+
+		nalType := data[nalOffset] & 0x1F
+
+		switch nalType {
+		case nalTypeSPS:
+			hasSPS = true
+			priority = framePriorityCritical // SPS is critical - never drop
+			// Keep scanning to also detect IDR for logging purposes
+		case nalTypeIDR:
+			hasIDR = true
+			if !hasSPS && priority < framePriorityHigh {
+				priority = framePriorityHigh // IDR without SPS is high priority
+			}
+		case nalTypeSEI, nalTypeAUD, nalTypeFillerData:
+			// These are droppable metadata - don't change priority
+			if priority == framePriorityNormal {
+				priority = framePriorityLow
+			}
+		}
+
+		// Early exit: if we found SPS, that's the highest priority
+		// No need to scan further unless we want complete NAL list for debugging
+		if hasSPS && hasIDR {
+			return
+		}
+	}
+
+	return
+}
+
+// hasH264SPS checks if an H.264 frame contains SPS (NAL type 7).
+// The decoder REQUIRES SPS before it can decode any frames.
+// Optimized to return early as soon as SPS is found.
+func hasH264SPS(data []byte) bool {
+	for i := 0; i < len(data)-4; i++ {
+		if data[i] != 0x00 || data[i+1] != 0x00 {
+			continue
+		}
+
+		nalOffset := -1
+		if data[i+2] == 0x01 {
+			nalOffset = i + 3
+		} else if data[i+2] == 0x00 && i+3 < len(data) && data[i+3] == 0x01 {
+			nalOffset = i + 4
+		}
+
+		if nalOffset > 0 && nalOffset < len(data) {
+			if (data[nalOffset] & 0x1F) == nalTypeSPS {
+				return true // Found SPS, return immediately
+			}
+		}
+	}
+	return false
+}
+
+// findH264NALTypes scans for NAL start codes and returns all NAL types found.
+// Used for debug logging only - not in hot path.
+func findH264NALTypes(data []byte) []uint8 {
+	var types []uint8
+	for i := 0; i < len(data)-4; i++ {
+		if data[i] == 0x00 && data[i+1] == 0x00 {
+			nalOffset := -1
+			if data[i+2] == 0x01 {
+				nalOffset = i + 3
+			} else if data[i+2] == 0x00 && i+3 < len(data) && data[i+3] == 0x01 {
+				nalOffset = i + 4
+			}
+			if nalOffset > 0 && nalOffset < len(data) {
+				nalType := data[nalOffset] & 0x1F
+				types = append(types, nalType)
+			}
+		}
+	}
+	return types
+}
 
 // cameraFrame represents a camera frame waiting to be transcoded.
 type cameraFrame struct {
@@ -487,6 +604,9 @@ type cameraFrame struct {
 	width       uint32
 	height      uint32
 	pixelFormat uint32
+	priority    int  // Frame priority (0=low/droppable, 3=critical/SPS)
+	hasSPS      bool // Has SPS NAL - needed for decoder init
+	hasIDR      bool // Has IDR NAL - keyframe for logging
 }
 
 // Frame buffer pool to reduce GC pressure - reuse buffers across frames
@@ -507,6 +627,7 @@ var (
 	cameraTranscodeWarningLogged atomic.Bool
 	cameraTranscodeInitialized   atomic.Bool
 	cameraTranscodeInitFailed    atomic.Bool // Set when init fails to prevent repeated attempts
+	cameraH264NeedKeyframe       atomic.Bool // Set when transcoder needs a keyframe before decoding
 	cameraTranscodeMu            sync.Mutex
 	cameraFrameQueue             chan cameraFrame
 	cameraFrameQueueStop         chan struct{}
@@ -568,12 +689,24 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 		quality = cameraDefaultMjpegQual
 	}
 
-	rdpLogger.Debug().
-		Uint32("in", inputWidth).
-		Uint32("out", outputWidth).
-		Uint32("fps", fps).
-		Uint32("q", quality).
-		Msg("Transcode init")
+	// Log init params (0x0 input means H.264 auto-detect from SPS)
+	if inputWidth == 0 && inputHeight == 0 {
+		rdpLogger.Debug().
+			Str("in", "auto").
+			Uint32("out", outputWidth).
+			Uint32("fps", fps).
+			Uint32("q", quality).
+			Msg("Transcode init (H.264)")
+	} else {
+		rdpLogger.Debug().
+			Uint32("inW", inputWidth).
+			Uint32("inH", inputHeight).
+			Uint32("outW", outputWidth).
+			Uint32("outH", outputHeight).
+			Uint32("fps", fps).
+			Uint32("q", quality).
+			Msg("Transcode init")
+	}
 
 	// Initialize transcoder with callback that sends MJPEG to camera manager
 	err := nativeInstance.TranscodeInit(inputWidth, inputHeight, outputWidth, outputHeight, fps, quality, func(jpegData []byte) {
@@ -592,6 +725,7 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 
 	cameraTranscodeInitialized.Store(true)
 	cameraTranscodeInitFailed.Store(false) // Reset failed flag on success
+	cameraH264NeedKeyframe.Store(true)     // Wait for keyframe before starting decode
 	return true
 }
 
@@ -732,13 +866,46 @@ func processCameraFrameSync(frame cameraFrame) {
 
 	case rdpCamPixelFormatH264:
 		if hostWantsMJPEG {
-			if initCameraTranscoder(frame.width, frame.height, outW, outH, hostFPS) {
+			// H.264: pass 0,0 for input dims - actual resolution is in the SPS/PPS
+			// which OpenH264 extracts after decoding. Format list from the client
+			// (used for frame.width/height) may contain garbage (macOS sends invalid data).
+			if initCameraTranscoder(0, 0, outW, outH, hostFPS) {
+				frameNum := cameraFrameCount.Load()
+
+				// Debug: log frame info for first few frames (using pre-computed values)
+				if frameNum < 10 {
+					rdpLogger.Debug().
+						Uint32("frame", frameNum).
+						Int("size", len(frame.data)).
+						Int("priority", frame.priority).
+						Bool("hasSPS", frame.hasSPS).
+						Bool("hasIDR", frame.hasIDR).
+						Msg("H264 frame")
+				}
+
+				// Wait for SPS (NAL type 7) before feeding to decoder.
+				// OpenH264 error 18 (dsNoParamSets | dsRefLost) means decoder doesn't have SPS yet.
+				if cameraH264NeedKeyframe.Load() {
+					if !frame.hasSPS {
+						// Still waiting for SPS - drop frames until we get one
+						if frameNum < 10 {
+							rdpLogger.Debug().Uint32("frame", frameNum).Msg("Waiting for SPS")
+						}
+						return
+					}
+					// Got SPS - clear flag and proceed
+					rdpLogger.Info().Uint32("frame", frameNum).Msg("Got SPS, starting decode")
+					cameraH264NeedKeyframe.Store(false)
+				}
+
 				if err := nativeInstance.TranscodeFeedH264(frame.data); err != nil {
 					count := cameraFrameCount.Add(1)
 					if !cameraTranscodeWarningLogged.Load() || count%cameraLogWarningEvery == 0 {
 						rdpLogger.Warn().Err(err).Uint32("n", count).Msg("Transcode err")
 						cameraTranscodeWarningLogged.Store(true)
 					}
+					// On transcode error, wait for next keyframe to recover
+					cameraH264NeedKeyframe.Store(true)
 				}
 				return
 			}
@@ -777,6 +944,7 @@ func shutdownCameraTranscoder() {
 	}
 	cameraTranscodeInitialized.Store(false)
 	cameraTranscodeWarningLogged.Store(false)
+	cameraH264NeedKeyframe.Store(false)
 	// Reset failed flag to allow retry on next connection
 	cameraTranscodeInitFailed.Store(false)
 	rdpLogger.Info().Msg("RDP: transcoder shutdown")
@@ -803,29 +971,68 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 		return nil
 	}
 
-	// Transcoding required - use async queue to avoid blocking RDP message loop
-	// This is critical for RDP HID to work while camera is active
+	// Transcoding required - classify frame priority for intelligent dropping
+	var priority int
+	var hasSPS, hasIDR bool
+	if pixelFormat == rdpCamPixelFormatH264 && len(data) > 4 {
+		priority, hasSPS, hasIDR = classifyH264Frame(data)
+	} else {
+		priority = framePriorityNormal // Non-H.264 frames can be dropped
+	}
 
-	// Rate limiting: drop frames that come faster than target FPS
-	// This prevents memory allocation and GC pressure from excess frames
-	// Uses monotonic time (time.Time) to avoid issues with clock adjustments
-	targetFPS := uint32(config.CameraFrameRate)
-	if targetFPS == 0 {
-		targetFPS = cameraDefaultFPS
+	// Adaptive backpressure: check queue depth and drop aggressively when filling up
+	// This prevents latency buildup - better to drop frames than accumulate delay
+	queueLen := len(cameraFrameQueue)
+	queueCap := cap(cameraFrameQueue)
+	if queueCap == 0 {
+		queueCap = cameraFrameQueueSize // Queue not created yet, use default
 	}
-	if currentFmt != nil && currentFmt.FrameRate > 0 && uint32(currentFmt.FrameRate) < targetFPS {
-		targetFPS = uint32(currentFmt.FrameRate)
-	}
-	minFrameInterval := time.Second / time.Duration(targetFPS)
-	now := time.Now()
-	if lastFrame := cameraLastFrameTime.Load(); lastFrame != nil {
-		if now.Sub(*lastFrame) < minFrameInterval {
-			// Frame arrived too soon - drop it before allocating memory
+
+	// Drop based on priority and queue fill level:
+	// - Queue 75%+ full: drop low priority (SEI/filler)
+	// - Queue 50%+ full: drop normal priority (P-frames)
+	// - Queue 25%+ full: drop high priority (IDR without SPS) only if very old frame
+	// - Never drop critical (SPS) unless absolutely necessary
+	if queueLen > 0 {
+		fillRatio := float32(queueLen) / float32(queueCap)
+		shouldDrop := false
+
+		switch priority {
+		case framePriorityLow:
+			shouldDrop = fillRatio >= 0.25 // Drop metadata early
+		case framePriorityNormal:
+			shouldDrop = fillRatio >= 0.50 // Drop P-frames when half full
+		case framePriorityHigh:
+			shouldDrop = fillRatio >= 0.75 // Prefer keeping IDR frames
+		case framePriorityCritical:
+			shouldDrop = false // Never proactively drop SPS
+		}
+
+		if shouldDrop {
 			cameraFrameDropped.Add(1)
 			return nil
 		}
 	}
-	// Don't store timestamp yet - only after successful queue
+
+	// Rate limiting for normal/low priority frames
+	// Critical/high priority frames skip rate limiting
+	if priority <= framePriorityNormal {
+		targetFPS := uint32(config.CameraFrameRate)
+		if targetFPS == 0 {
+			targetFPS = cameraDefaultFPS
+		}
+		if currentFmt != nil && currentFmt.FrameRate > 0 && uint32(currentFmt.FrameRate) < targetFPS {
+			targetFPS = uint32(currentFmt.FrameRate)
+		}
+		minFrameInterval := time.Second / time.Duration(targetFPS)
+		now := time.Now()
+		if lastFrame := cameraLastFrameTime.Load(); lastFrame != nil {
+			if now.Sub(*lastFrame) < minFrameInterval {
+				cameraFrameDropped.Add(1)
+				return nil
+			}
+		}
+	}
 
 	if !cameraFrameQueueRunning.Load() {
 		startCameraFrameWorker()
@@ -847,26 +1054,50 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 	copy(buf, data)
 	*bufPtr = buf
 
+	now := time.Now()
 	frame := cameraFrame{
 		data:        buf,
 		poolBuf:     bufPtr,
 		width:       width,
 		height:      height,
 		pixelFormat: pixelFormat,
+		priority:    priority,
+		hasSPS:      hasSPS,
+		hasIDR:      hasIDR,
 	}
 
-	// Non-blocking send - drop frame if queue is full
-	select {
-	case cameraFrameQueue <- frame:
-		// Frame queued successfully - NOW update timestamp
-		cameraLastFrameTime.Store(&now)
-	default:
-		// Queue full - return buffer (unless oversized) and drop frame
-		// Don't update timestamp so next frame gets a chance
-		returnCameraBuffer(bufPtr)
-		dropped := cameraFrameDropped.Add(1)
-		if dropped == 1 || dropped%cameraLogDropEvery == 0 {
-			rdpLogger.Warn().Uint64("dropped", dropped).Msg("Camera queue full - CPU overloaded or FPS too high")
+	// For critical frames (SPS), use blocking send with timeout to ensure they get through
+	// For other frames, use non-blocking send - ok to drop if queue is full
+	if priority == framePriorityCritical {
+		select {
+		case cameraFrameQueue <- frame:
+			cameraLastFrameTime.Store(&now)
+		default:
+			// Queue full - wait briefly for SPS frame (critical for decoder)
+			select {
+			case cameraFrameQueue <- frame:
+				cameraLastFrameTime.Store(&now)
+			case <-time.After(30 * time.Millisecond):
+				// Still full after 30ms - drop as last resort
+				returnCameraBuffer(bufPtr)
+				rdpLogger.Warn().Msg("Camera queue full - SPS frame dropped (decoder will need reset)")
+			}
+		}
+	} else {
+		// Non-critical: non-blocking send, ok to drop
+		select {
+		case cameraFrameQueue <- frame:
+			cameraLastFrameTime.Store(&now)
+		default:
+			returnCameraBuffer(bufPtr)
+			dropped := cameraFrameDropped.Add(1)
+			if dropped == 1 || dropped%cameraLogDropEvery == 0 {
+				rdpLogger.Debug().
+					Uint64("dropped", dropped).
+					Int("priority", priority).
+					Int("queueLen", queueLen).
+					Msg("Frame dropped (queue full)")
+			}
 		}
 	}
 

@@ -19,6 +19,7 @@ interface RDPStateResult {
   audioEnabled: boolean;
   micEnabled: boolean;
   cameraEnabled: boolean;
+  cameraTranscodeEnabled: boolean;
   clipboardEnabled: boolean;
   pasteDelayMs: number;
   targetOS: string;
@@ -54,6 +55,7 @@ export default function SettingsRDPRoute() {
   const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
   const [micEnabled, setMicEnabled] = useState<boolean>(true);
   const [cameraEnabled, setCameraEnabled] = useState<boolean>(false);
+  const [cameraTranscodeEnabled, setCameraTranscodeEnabled] = useState<boolean>(false);
   const [username, setUsername] = useState<string>("");
   const [domain, setDomain] = useState<string>("");
   const [clipboardEnabled, setClipboardEnabled] = useState<boolean>(true);
@@ -95,6 +97,7 @@ export default function SettingsRDPRoute() {
       setAudioEnabled(state.audioEnabled ?? true);
       setMicEnabled(state.micEnabled ?? true);
       setCameraEnabled(state.cameraEnabled ?? false);
+      setCameraTranscodeEnabled(state.cameraTranscodeEnabled ?? false);
       setClipboardEnabled(state.clipboardEnabled ?? true);
       setPasteDelayMs(state.pasteDelayMs ?? 0);
       setTargetOS(state.targetOS || "windows");
@@ -230,6 +233,20 @@ export default function SettingsRDPRoute() {
       }
       setCameraEnabled(newCameraEnabled);
       notifications.success(m.rdp_settings_camera_changed());
+    });
+  };
+
+  const handleCameraTranscodeToggle = () => {
+    const newEnabled = !cameraTranscodeEnabled;
+    send("setRDPCameraTranscodeEnabled", { enabled: newEnabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setCameraTranscodeEnabled(newEnabled);
+      notifications.success(m.rdp_settings_camera_transcode_changed());
     });
   };
 
@@ -606,6 +623,25 @@ export default function SettingsRDPRoute() {
                     <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
                   </label>
                 </SettingsItem>
+
+                {cameraEnabled && (
+                  <SettingsItem
+                    badge="Beta"
+                    badgeVariant="warning"
+                    title={m.rdp_settings_camera_transcode_title()}
+                    description={m.rdp_settings_camera_transcode_description()}
+                  >
+                    <label className="relative inline-flex cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        checked={cameraTranscodeEnabled}
+                        onChange={handleCameraTranscodeToggle}
+                        className="peer sr-only"
+                      />
+                      <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-amber-500 peer-focus:ring-4 peer-focus:ring-amber-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-amber-800"></div>
+                    </label>
+                  </SettingsItem>
+                )}
               </div>
             </div>
 

@@ -638,6 +638,15 @@ func (c *Connection) handleCameraFormatChanges(formatChan <-chan CameraFormatInf
 				continue
 			}
 
+			// Handle stop notification from USB host
+			if fmt.Codec == "stop" {
+				c.server.deps.Logger.Info().Msg("RDP: USB host stopped streaming, deactivating RDP camera")
+				if err := c.cameraChannel.Deactivate(); err != nil {
+					c.server.deps.Logger.Debug().Err(err).Msg("RDP: camera deactivate error")
+				}
+				continue
+			}
+
 			// Map codec string to MS-RDPECAM pixel format constant
 			var pixelFormat uint32
 			switch fmt.Codec {
@@ -657,13 +666,18 @@ func (c *Connection) handleCameraFormatChanges(formatChan <-chan CameraFormatInf
 				Int("width", fmt.Width).
 				Int("height", fmt.Height).
 				Int("fps", fmt.FrameRate).
-				Msg("RDP: USB host requested new camera format, re-activating RDP camera")
+				Msg("RDP: USB host started streaming, activating RDP camera")
 
-			if err := c.cameraChannel.ActivateWithFormat(pixelFormat); err != nil {
+			// Enable camera passthrough when USB host starts streaming
+			if c.server.deps.Camera != nil {
+				c.server.deps.Camera.SetEnabled(true)
+			}
+
+			if err := c.cameraChannel.ActivateWithFormat(pixelFormat, fmt.Width, fmt.Height, fmt.FrameRate); err != nil {
 				c.server.deps.Logger.Warn().
 					Err(err).
 					Str("codec", fmt.Codec).
-					Msg("RDP: failed to re-activate camera with new format")
+					Msg("RDP: failed to activate camera with requested format")
 			}
 		}
 	}
@@ -704,9 +718,10 @@ func (c *Connection) Close() {
 		c.audinChannel.Close()
 	}
 
-	// Unsubscribe from camera format changes and close camera channel
+	// Unsubscribe from camera format changes, disable passthrough, and close camera channel
 	if c.server.deps.Camera != nil {
 		c.server.deps.Camera.UnsubscribeFormatChanges()
+		c.server.deps.Camera.SetEnabled(false) // Stop camera on client when RDP disconnects
 	}
 	if c.cameraChannel != nil {
 		c.cameraChannel.Close()

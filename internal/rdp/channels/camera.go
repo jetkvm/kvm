@@ -86,6 +86,9 @@ type CameraFrameCallback func(frame []byte, width, height uint32, pixelFormat ui
 // CameraReadyCallback is called when the camera channel is ready.
 type CameraReadyCallback func(c *CameraChannel)
 
+// CameraStopCallback is called when the camera stream stops (error or channel close).
+type CameraStopCallback func()
+
 // CameraInfo represents a client camera.
 type CameraInfo struct {
 	Name               string // Display name (UTF-16LE from DeviceAddedNotification)
@@ -120,6 +123,7 @@ type CameraChannel struct {
 	// Callbacks
 	onReady CameraReadyCallback
 	onFrame CameraFrameCallback
+	onStop  CameraStopCallback
 	logger  CameraLogFunc
 
 	// Camera state
@@ -183,6 +187,11 @@ func (c *CameraChannel) SetFrameCallback(cb CameraFrameCallback) {
 // SetLogger sets the logging callback for debugging.
 func (c *CameraChannel) SetLogger(logger CameraLogFunc) {
 	c.logger = logger
+}
+
+// SetStopCallback sets the callback for when streaming stops (error or close).
+func (c *CameraChannel) SetStopCallback(cb CameraStopCallback) {
+	c.onStop = cb
 }
 
 // log writes a log message if logger is set.
@@ -284,8 +293,12 @@ func (c *CameraChannel) OnData(data []byte) error {
 // OnClose handles channel close.
 func (c *CameraChannel) OnClose() {
 	c.log("Camera: channel closed")
+	wasActive := c.isActive.Swap(false)
 	c.ready.Store(false)
-	c.isActive.Store(false)
+	// Notify that streaming has stopped
+	if wasActive && c.onStop != nil {
+		c.onStop()
+	}
 }
 
 // handleSelectVersionRequest handles when the client sends SelectVersionRequest.

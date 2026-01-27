@@ -48,3 +48,8 @@ func ReleasePCMBuffer(buf []byte) {}
 func WritePCM(pcmData []byte) error {
 	return nil
 }
+
+// DropPlaybackBuffer is a stub on non-ARM platforms.
+func DropPlaybackBuffer() error {
+	return nil
+}

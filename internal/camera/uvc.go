@@ -366,12 +366,14 @@ func (m *Manager) prepareStreaming() {
 	codec := codecName(isMjpeg)
 	if err := streamer.SetFormatWithCodec(width, height, isMjpeg); err != nil {
 		if m.uvcLog != nil {
-			m.uvcLog.Warn().
+			// errno=25 (ENOTTY) is expected for UVC gadgets - the USB host negotiates
+			// the format, so VIDIOC_S_FMT is not supported. This is normal and harmless.
+			m.uvcLog.Debug().
 				Err(err).
 				Uint32("width", width).
 				Uint32("height", height).
 				Str("codec", codec).
-				Msg("SetFormatWithCodec not supported - using default format")
+				Msg("UVC format set by host (S_FMT not supported)")
 		}
 	} else if m.uvcLog != nil {
 		m.uvcLog.Info().

@@ -48,6 +48,14 @@ type Dependencies struct {
 	// ClipboardStore provides file storage for network-based clipboard transfer.
 	// Files are served via the main HTTPS server on port 443.
 	ClipboardStore ClipboardStoreProvider
+
+	// OnSessionStart is called when an RDP client enters active session.
+	// Used to track active sessions for sleep mode prevention.
+	OnSessionStart func()
+
+	// OnSessionEnd is called when an RDP client disconnects.
+	// Used to track active sessions for sleep mode prevention.
+	OnSessionEnd func()
 }
 
 // TLSProvider provides TLS connection upgrading with optional hardware acceleration.
@@ -105,6 +113,16 @@ type ConfigProvider interface {
 
 	// GetRDPCameraEnabled returns whether webcam redirection from client is enabled.
 	GetRDPCameraEnabled() bool
+
+	// GetRDPCameraTranscodeEnabled returns whether H.264→MJPEG software transcoding is enabled.
+	// This is a BETA feature with high CPU usage.
+	GetRDPCameraTranscodeEnabled() bool
+
+	// GetCameraFrameRate returns the camera frame rate setting (e.g., 15, 24, 30).
+	GetCameraFrameRate() int
+
+	// GetCameraMjpegQuality returns the MJPEG quality setting (0-100).
+	GetCameraMjpegQuality() int
 
 	// GetTLSMode returns the TLS mode ("disabled", "self-signed", "custom").
 	GetTLSMode() string

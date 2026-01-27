@@ -581,7 +581,11 @@ func (c *CameraChannel) handleSampleErrorResponse(payload []byte) error {
 		errorCode = binary.LittleEndian.Uint32(payload[1:5])
 	}
 	c.log("Camera: ERROR - sample error from client, code=%d", errorCode)
-	c.isActive.Store(false) // Stop streaming on error
+	wasActive := c.isActive.Swap(false) // Stop streaming on error
+	// Notify that streaming has stopped
+	if wasActive && c.onStop != nil {
+		c.onStop()
+	}
 	return fmt.Errorf("camera: sample error code %d", errorCode)
 }
 

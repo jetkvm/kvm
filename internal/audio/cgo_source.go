@@ -309,3 +309,17 @@ func WritePCM(pcmData []byte) error {
 
 	return nil
 }
+
+// DropPlaybackBuffer drops any pending audio frames in the playback buffer.
+// This clears stale audio data that may have accumulated while the host
+// wasn't consuming from the USB audio gadget.
+//
+// Call this when audio input is first enabled to prevent accumulated
+// audio from playing back when recording starts on the host.
+func DropPlaybackBuffer() error {
+	rc := C.jetkvm_audio_playback_drop()
+	if rc < 0 {
+		return fmt.Errorf("jetkvm_audio_playback_drop failed: %d", rc)
+	}
+	return nil
+}

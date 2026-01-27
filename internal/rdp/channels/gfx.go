@@ -99,6 +99,15 @@ const (
 	GFXDefaultSurfaceID = 1  // Default surface for main display
 )
 
+// Adaptive backpressure thresholds for WAN/high-latency connections.
+// These help smooth out video delivery by proactively dropping P-frames
+// when the queue is filling up, rather than waiting until it's completely full.
+const (
+	GFXBackpressureDropPFrames    = 48 // 75% full: only allow keyframes through
+	GFXBackpressureRateLimit      = 32 // 50% full: rate-limit P-frames (every other)
+	GFXBackpressureMinForKeyframe = 60 // 94% full: even keyframes may be dropped
+)
+
 // ZGFX compression constants.
 const (
 	ZGFXSegmentedSingle  = 0xE0 // Single segment descriptor
