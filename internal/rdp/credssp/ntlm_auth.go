@@ -405,10 +405,13 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 
 		// Extract SubjectPublicKey (BIT STRING content from SubjectPublicKeyInfo)
 		pubKeyForHash := extractPublicKeyFromSPKI(serverPublicKey)
+		a.debugLog("PubKeyAuth v5+: extractPublicKeyFromSPKI returned len=%d (input SPKI len=%d)",
+			len(pubKeyForHash), len(serverPublicKey))
 		if pubKeyForHash == nil {
+			a.debugLog("PubKeyAuth v5+: RSA key extraction failed, falling back to full SPKI")
 			pubKeyForHash = serverPublicKey // Fallback to full SPKI if extraction fails
 		}
-		a.debugLog("PubKeyAuth: using SubjectPublicKey for hash, len=%d, first 32 bytes=% 02X", len(pubKeyForHash), pubKeyForHash[:min(32, len(pubKeyForHash))])
+		a.debugLog("PubKeyAuth v5+: using key for hash, len=%d, first 32 bytes=% 02X", len(pubKeyForHash), pubKeyForHash[:min(32, len(pubKeyForHash))])
 
 		// Plain SHA-256 hash: MagicString || Nonce || SubjectPublicKey
 		h := sha256.New()
@@ -424,22 +427,26 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 		return wrapped
 	}
 
-	// CredSSP v3-4: RC4 encrypt the incremented public key, then wrap with NTLM
+	// CredSSP v3-4: Use NTLM SEAL on the incremented public key
 	// For versions < 5, we increment the public key value by 1
 	// This is per MS-CSSP 3.1.5: "...the server MUST encrypt the public key + 1"
-	incrementedKey := incrementPublicKey(serverPublicKey)
-
-	cipher, err := rc4.NewCipher(a.sessionKey)
-	if err != nil {
-		a.debugLog("PubKeyAuth: RC4 cipher creation failed: %v", err)
-		return nil
+	//
+	// IMPORTANT: Use the extracted RSA public key (same as v5+), not the full SPKI.
+	// Some clients (like Remotix) expect only the RSA key portion.
+	//
+	// NOTE: For CredSSP v3-4, we use NTLM SEAL (not raw RC4) per MS-CSSP 3.1.5.
+	// The ntlmSign function handles encryption + signature together.
+	pubKeyForIncrement := extractPublicKeyFromSPKI(serverPublicKey)
+	if pubKeyForIncrement == nil {
+		pubKeyForIncrement = serverPublicKey // Fallback to full SPKI if extraction fails
 	}
-	encrypted := make([]byte, len(incrementedKey))
-	cipher.XORKeyStream(encrypted, incrementedKey)
-	a.debugLog("PubKeyAuth: RC4 encrypted=% 02X", encrypted)
+	a.debugLog("PubKeyAuth v3-4: using RSA key for increment, len=%d", len(pubKeyForIncrement))
+	incrementedKey := incrementPublicKey(pubKeyForIncrement)
+	a.debugLog("PubKeyAuth v3-4: incremented key first 32 bytes=% 02X", incrementedKey[:min(32, len(incrementedKey))])
 
-	// Wrap with NTLM signature
-	wrapped := a.ntlmSign(encrypted, 0)
+	// Wrap in NTLM SEAL format (encrypt + sign) - this is the correct format for v3-4
+	wrapped := a.ntlmSign(incrementedKey, 0)
+	a.debugLog("PubKeyAuth v3-4: NTLM sealed result len=%d", len(wrapped))
 	return wrapped
 }
 
