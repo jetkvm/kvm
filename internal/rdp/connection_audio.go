@@ -7,9 +7,16 @@ import (
 )
 
 func (c *Connection) initSoundChannel() {
+	// Calculate max blocks pending based on audio buffer config
+	// Higher buffer periods = higher latency tolerance (e.g., Tailscale)
+	maxBlocksPending := channels.SNDCDefaultMaxBlocksPending
+	if c.server.deps.Audio != nil {
+		maxBlocksPending = channels.MaxBlocksPendingFromBufferPeriods(c.server.deps.Audio.GetBufferPeriods())
+	}
+
 	c.soundChannel = channels.NewSoundChannel(func(data []byte) error {
 		return c.sendStaticChannelDataHotPath(c.rdpsndID, data)
-	})
+	}, maxBlocksPending)
 
 	c.soundChannel.SetReadyCallback(func(s *channels.SoundChannel) {
 		fmt, ok := s.GetSelectedFormat()

@@ -163,12 +163,14 @@ func (r *OutputRelay) relayLoop() {
 					}
 
 					if consecutiveWriteFailures >= maxConsecutiveWriteFailures {
-						r.logger.Error().
+						r.logger.Warn().
 							Int("failures", consecutiveWriteFailures).
-							Msg("Too many consecutive WebRTC write failures, reconnecting source")
-						(*r.source).Disconnect()
+							Msg("Too many consecutive WebRTC write failures, clearing track")
+						// Don't disconnect the audio source - that would break RDP audio too.
+						// Just clear the WebRTC track so we stop trying to write to it.
+						// WebRTC reconnection will set a new track when ready.
+						r.audioTrack.Store(nil)
 						consecutiveWriteFailures = 0
-						consecutiveFailures = 0
 					}
 				} else {
 					r.framesRelayed.Add(1)

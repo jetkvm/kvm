@@ -309,6 +309,10 @@ type AudioProvider interface {
 	// EnableAudioInput enables the audio input subsystem for RDP mic passthrough.
 	// This is called when the AUDIN channel becomes ready.
 	EnableAudioInput() error
+
+	// GetBufferPeriods returns the configured audio buffer periods (2-24).
+	// Higher values indicate more latency tolerance. Used to scale RDPSND flow control.
+	GetBufferPeriods() int
 }
 
 // USBStorageProvider provides USB mass storage capabilities for clipboard file transfer.

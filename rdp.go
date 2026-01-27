@@ -454,6 +454,14 @@ func (a *rdpAudioAdapter) EnableAudioInput() error {
 	return SetAudioInputEnabled(true)
 }
 
+func (a *rdpAudioAdapter) GetBufferPeriods() int {
+	ensureConfigLoaded()
+	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
+		return config.AudioBufferPeriods
+	}
+	return 12 // Default
+}
+
 // HasRDPAudioSubscribers returns true if there are RDP audio subscribers.
 // Used to skip PCM processing when no RDP clients need audio.
 func HasRDPAudioSubscribers() bool {

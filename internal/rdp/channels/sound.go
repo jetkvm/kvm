@@ -57,8 +57,9 @@ const (
 
 // Maximum values.
 const (
-	SNDCMaxBlocksPending = 16   // Maximum audio blocks in flight before backpressure
-	SNDCBlockSize        = 4096 // Optimal audio block size (matches typical audio buffer)
+	SNDCDefaultMaxBlocksPending = 32   // Default maximum audio blocks in flight (640ms at 20ms/block)
+	SNDCMinBlocksPending        = 16   // Minimum blocks pending (320ms)
+	SNDCBlockSize               = 4096 // Optimal audio block size (matches typical audio buffer)
 )
 
 // Preferred format constants are defined in audio_format.go (shared with AUDIN).
@@ -108,10 +109,11 @@ type SoundChannel struct {
 	formatMu      sync.RWMutex
 
 	// Block tracking for flow control (all atomic for lock-free hot path)
-	blockNo       atomic.Uint32 // Wraps at 256, cast to uint8 when used
-	blocksPending atomic.Int32
-	lastConfirmed atomic.Uint32
-	timestamp     atomic.Uint32
+	blockNo          atomic.Uint32 // Wraps at 256, cast to uint8 when used
+	blocksPending    atomic.Int32
+	lastConfirmed    atomic.Uint32
+	timestamp        atomic.Uint32
+	maxBlocksPending int32 // Configurable max blocks in flight (scaled by audio buffer config)
 
 	// Pre-allocated buffer for zero-allocation hot path
 	// Layout: [Header 4][Wave2Header 12][Audio data up to SNDCBlockSize]
@@ -121,11 +123,32 @@ type SoundChannel struct {
 }
 
 // NewSoundChannel creates a new RDPSND static channel.
-func NewSoundChannel(sendFunc SoundSendFunc) *SoundChannel {
-	return &SoundChannel{
-		sendFunc:      sendFunc,
-		selectedIndex: -1,
+// maxBlocksPending controls flow control - higher values handle more latency but use more memory.
+// Pass 0 to use the default (SNDCDefaultMaxBlocksPending).
+func NewSoundChannel(sendFunc SoundSendFunc, maxBlocksPending int) *SoundChannel {
+	if maxBlocksPending <= 0 {
+		maxBlocksPending = SNDCDefaultMaxBlocksPending
 	}
+	if maxBlocksPending < SNDCMinBlocksPending {
+		maxBlocksPending = SNDCMinBlocksPending
+	}
+	return &SoundChannel{
+		sendFunc:         sendFunc,
+		selectedIndex:    -1,
+		maxBlocksPending: int32(maxBlocksPending),
+	}
+}
+
+// MaxBlocksPendingFromBufferPeriods calculates the optimal max blocks pending
+// based on the audio buffer periods setting. Higher buffer periods indicate
+// the user expects higher latency (e.g., Tailscale), so we scale accordingly.
+// Formula: max(16, bufferPeriods * 2) - gives 320ms to 960ms of buffer.
+func MaxBlocksPendingFromBufferPeriods(bufferPeriods int) int {
+	maxBlocks := bufferPeriods * 2
+	if maxBlocks < SNDCMinBlocksPending {
+		return SNDCMinBlocksPending
+	}
+	return maxBlocks
 }
 
 // SetReadyCallback sets the callback to be called when the channel is ready.
@@ -283,7 +306,7 @@ func (s *SoundChannel) SendAudio(data []byte) error {
 	}
 
 	// Flow control - check pending blocks (lock-free)
-	if s.blocksPending.Load() >= SNDCMaxBlocksPending {
+	if s.blocksPending.Load() >= s.maxBlocksPending {
 		return ErrSoundBackpressure
 	}
 
