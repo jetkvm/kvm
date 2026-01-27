@@ -484,7 +484,7 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
    "thing_edit_this_is_a_test": "This is a test",
    ```
 
-3. Add the key and string to the _en.json_ like this:
+3. Add the key and string to the _ui/localization/messages/en.json_ like this:
 
    - **Note** if the string has replacement parameters (line a user-entered name), the syntax for the localized string has `{ }` around the replacement token (e.g. _This is your name: {name}_). An complex example:
 
@@ -496,7 +496,7 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
    })}
    ```
 
-4. Save the _en.json_ file and execute `npm run i18n` to resort the language files, validate the translations, and create the m-functions
+4. Save the _en.json_ file and execute `npm run i18n:resort` to resort the language files, `npm run i18n:validate` to validate the translations, and `npm run i18n:compile` to create the m-functions (you can use `npm run i18n` to do all three steps in order)
 5. Edit the _.tsx_ file and replace the string with the calls to the new m-function which will be the key-string you chose in snake-case. For example `This is a test` in _thing edit page_ turns into `m.thing_edit_this_is_a_test()`
    - **Note** if the string has a replacement token, supply that to the m-function, for example for the literal `I will call you {name}`, use `m.profile_i_will_call_you({ name: edit.value })`
 6. When all your strings are extracted, run `npm run i18n:machine-translate` to get a first-stab at the translations for the other supported languages. Make sure you use an LLM (you can use [aifiesta](https://chat.aifiesta.ai/chat/) to use multiple LLMs) or a [translator](https://translate.google.com) of some form to back-translate each **new** machine-generation in each _language_ to ensure those terms translate reasonably.
@@ -504,12 +504,16 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
 ### Adding a new language
 
 1. Get the [ISO 3166-1 alpha-2 country code](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) (for example AT for Austria)
-2. Create a new file in the _ui/localization/messages_ directory (example _at.json_)
-3. Add the new country code to the _ui/localizations/settings.json_ file in both the `"locales"` and the `"languageTags"` section (inlang and Sherlock aren't exactly current to each other, so we need it in both places).
-4. That file also declares the baseLocale/sourceLanguageTag which is `"en"` because this project started out in English. Do NOT change that.
-5. Run `npm run i18n:machine-translate` to do an initial pass at localizing all existing messages to the new language.
+2. Create a **new empty** file in the _ui/localization/messages_ directory (example _at.json_)
+3. Add the new country code to the _ui/localization/settings.json_ file in both the `"locales"` and the `"languageTags"` section (inlang and Sherlock aren't exactly current to each other, so we need it in both places).
+4. That file also declares the `baseLocale/sourceLanguageTag` which is `"en"` because this project started out in English. **Do NOT change that**.
+5. Add the locale name of the language to **all** the _ui/localization/messages/_ files (example `"locale_at.json": "Österreichisches Deutsch",`)
+   - In the _en.json_ file, use the name of the language **in that  language**. For example `"locale_es": "Español"`.
+   - In all other translation files, use the name of the language **in the language of the containing file** (example, in _local_da.json_ (Danish), we have `"locale_de": "Tysk",` for German).
+6. Run `npm run i18n:machine-translate` to do an initial pass at localizing all other existing messages to the new language then correct anything that looks incorrect. We're aiming for translations that make sense to the native speakers of the target language.
    - **Note** you will get an error _DB has been closed_, ignore that message, we're not using a database.
-   - **Note** you likely will get errors while running this command due to rate limits and such (it uses anonymous Google Translate). Just keep running the command over and over... it'll translate a bunch each time until it says _Machine translate complete_
+   - **Note** you likely will get errors while running this command due to rate limits and such (it uses anonymous Google Translate).
+   Just keep running the command over and over... it'll translate a bunch each time until it says _Machine translate complete_.
 
 ### Other notes
 
