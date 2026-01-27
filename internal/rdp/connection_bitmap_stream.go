@@ -119,6 +119,8 @@ func (c *Connection) startBitmapStreaming() {
 				if needsPoolRelease {
 					releaseBGRXBuffer(bgrxData)
 				}
+				// Release the native frame buffer back to the pool
+				frame.Release()
 			}
 		}
 	}()

@@ -102,7 +102,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			if frame.Format == native.RGBFrameFormatBGRX {
 				format = rdp.RGBFrameFormatBGRX
 			}
-			BroadcastRDPRGBFrame(frame.Data, frame.Width, frame.Height, format)
+			// Pass the release callback to return the buffer to the native pool
+			BroadcastRDPRGBFrame(frame.Data, frame.Width, frame.Height, format, frame.Release)
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{

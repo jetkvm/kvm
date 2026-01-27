@@ -216,11 +216,24 @@ const (
 // When RGA hardware acceleration is available, Format will be RGBFrameFormatBGRX
 // and Data contains ready-to-use BGRX pixels. Otherwise, Format is RGBFrameFormatYUV422
 // and Data needs software conversion.
+//
+// Memory management: Call Release() after processing to return the buffer to the pool.
 type RGBFrame struct {
-	Data   []byte
-	Width  uint32
-	Height uint32
-	Format RGBFrameFormat
+	Data       []byte
+	Width      uint32
+	Height     uint32
+	Format     RGBFrameFormat
+	OnRelease  func() // Called to return buffer to pool (exported for cross-package use)
+}
+
+// Release returns the frame's buffer to the pool.
+// Must be called after the frame data is no longer needed.
+// Safe to call multiple times or on frames without a release callback.
+func (f *RGBFrame) Release() {
+	if f.OnRelease != nil {
+		f.OnRelease()
+		f.OnRelease = nil
+	}
 }
 
 // VideoProvider provides access to video frames.

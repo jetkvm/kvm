@@ -373,12 +373,15 @@ func (a *rdpVideoAdapter) RequestKeyframe() {
 }
 
 // BroadcastRDPRGBFrame sends a video frame to all RDP RGB subscribers.
-func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrameFormat) {
+// The release callback (if provided) is stored in the frame for the consumer
+// to call after processing, allowing the buffer to be returned to a pool.
+func BroadcastRDPRGBFrame(data []byte, width, height uint32, format rdp.RGBFrameFormat, release func()) {
 	rdpRGBSubscribers.Broadcast(rdp.RGBFrame{
-		Data:   data,
-		Width:  width,
-		Height: height,
-		Format: format,
+		Data:      data,
+		Width:     width,
+		Height:    height,
+		Format:    format,
+		OnRelease: release,
 	})
 }
 
@@ -393,11 +396,14 @@ func (a *rdpAudioAdapter) Disconnect() {
 }
 
 func (a *rdpAudioAdapter) SubscribeAudio() <-chan []byte {
-	return rdpAudioSubs.Subscribe(30)
+	ch := rdpAudioSubs.Subscribe(30)
+	rdpLogger.Debug().Int32("subscribers", rdpAudioSubs.Count()).Msg("RDP audio subscribed")
+	return ch
 }
 
 func (a *rdpAudioAdapter) UnsubscribeAudio(ch <-chan []byte) {
 	rdpAudioSubs.Unsubscribe(ch)
+	rdpLogger.Debug().Int32("subscribers", rdpAudioSubs.Count()).Msg("RDP audio unsubscribed")
 }
 
 var monoBufferPool = sync.Pool{

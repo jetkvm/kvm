@@ -129,6 +129,24 @@ func startAudio() error {
 		return nil
 	}
 
+	return startAudioUnderMutex()
+}
+
+// startAudioForce starts audio without checking activeConnections.
+// Used when relay is nil but we know a connection is active.
+func startAudioForce() error {
+	audioMutex.Lock()
+	defer audioMutex.Unlock()
+
+	if !audioInitialized {
+		audioLogger.Warn().Msg("Audio not initialized, skipping start")
+		return nil
+	}
+
+	return startAudioUnderMutex()
+}
+
+func startAudioUnderMutex() error {
 	ensureConfigLoaded()
 
 	var outputErr, inputErr error
@@ -265,8 +283,16 @@ func stopAudio() {
 
 func onWebRTCConnect() {
 	count := activeConnections.Add(1)
-	if count == 1 {
-		if err := startAudio(); err != nil {
+
+	// Fix corrupted counter from previous sessions
+	if count <= 0 {
+		activeConnections.Store(1)
+		count = 1
+	}
+
+	// Always ensure audio is started - use relay existence as source of truth
+	if outputRelay.Load() == nil {
+		if err := startAudioForce(); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start audio")
 		}
 	}
@@ -282,18 +308,21 @@ func onWebRTCDisconnect() {
 
 	// Release WebRTC audio input ownership - this allows RDP to claim if connected
 	if ReleaseAudioInput(AudioInputOwnerWebRTC) {
-		// Check if RDP is still connected and can take over
-		if activeConnections.Load() > 1 { // > 1 because we haven't decremented yet
-			audioLogger.Info().Msg("audio input: ownership released by WebRTC, available for RDP")
-		}
+		audioLogger.Debug().Msg("audio input: ownership released by WebRTC")
 	}
 
 	// Clear the WebRTC audio track since the connection is closing
 	// This prevents the relay from trying to write to a closed track
 	setAudioTrack(nil)
 
+	// Decrement counter but prevent going negative
 	count := activeConnections.Add(-1)
-	if count <= 0 {
+	if count < 0 {
+		activeConnections.Store(0)
+		count = 0
+	}
+
+	if count == 0 {
 		// Stop audio immediately to release HDMI audio device which shares hardware with video device
 		stopAudio()
 	}
@@ -305,8 +334,17 @@ func OnRDPAudioConnect() {
 	rdpAudioInputActive.Store(true)
 	count := activeConnections.Add(1)
 	audioLogger.Debug().Int32("connections", count).Msg("RDP audio connected")
-	if count == 1 {
-		if err := startAudio(); err != nil {
+
+	// Fix corrupted counter from previous sessions
+	if count <= 0 {
+		// Counter was negative, reset to 1
+		activeConnections.Store(1)
+		count = 1
+	}
+
+	// Always ensure audio is started - use relay existence as source of truth
+	if outputRelay.Load() == nil {
+		if err := startAudioForce(); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start audio for RDP")
 		}
 	}
@@ -321,15 +359,17 @@ func OnRDPAudioDisconnect() {
 	// Release audio input ownership if RDP owned it - this allows WebRTC to claim if connected
 	if ReleaseAudioInput(AudioInputOwnerRDP) {
 		audioLogger.Debug().Msg("RDP released audio input")
-		// Check if WebRTC is still connected and can take over
-		if activeConnections.Load() > 1 { // > 1 because we haven't decremented yet
-			audioLogger.Info().Msg("audio input: ownership released by RDP, available for WebRTC")
-		}
 	}
 
+	// Decrement counter but prevent going negative
 	count := activeConnections.Add(-1)
+	if count < 0 {
+		activeConnections.Store(0)
+		count = 0
+	}
 	audioLogger.Debug().Int32("connections", count).Msg("RDP audio disconnected")
-	if count <= 0 {
+
+	if count == 0 {
 		stopAudio()
 	}
 }
@@ -366,11 +406,16 @@ func setPendingInputTrack(track *webrtc.TrackRemote) {
 // SetAudioOutputEnabled blocks up to 5 seconds when enabling.
 // Returns error if audio fails to start within timeout.
 func SetAudioOutputEnabled(enabled bool) error {
-	if audioOutputEnabled.Swap(enabled) == enabled {
-		return nil
-	}
+	wasEnabled := audioOutputEnabled.Swap(enabled)
 
 	if enabled && activeConnections.Load() > 0 {
+		// Check if output relay is actually running (handles case where stopAudio was called)
+		needsRestart := !wasEnabled || outputRelay.Load() == nil
+
+		if !needsRestart {
+			return nil
+		}
+
 		// Start audio synchronously with timeout to provide immediate feedback
 		done := make(chan error, 1)
 		go func() {
@@ -392,7 +437,10 @@ func SetAudioOutputEnabled(enabled bool) error {
 			return fmt.Errorf("audio output start timed out after 5 seconds")
 		}
 	}
-	stopOutputAudio()
+
+	if wasEnabled && !enabled {
+		stopOutputAudio()
+	}
 	return nil
 }
 
@@ -401,11 +449,16 @@ func SetAudioOutputEnabled(enabled bool) error {
 // When enabled is true, this forces audio input to start regardless of config.UsbDevices.Audio
 // and even if activeConnections is 0 (AUDIN may be ready before RDPSND).
 func SetAudioInputEnabled(enabled bool) error {
-	if audioInputEnabled.Swap(enabled) == enabled {
-		return nil
-	}
+	wasEnabled := audioInputEnabled.Swap(enabled)
 
 	if enabled {
+		// Check if input source is actually running (handles case where stopAudio was called)
+		needsRestart := !wasEnabled || inputSource.Load() == nil
+
+		if !needsRestart {
+			return nil
+		}
+
 		// Start audio input directly (bypassing config check) since this is an explicit enable request.
 		// This allows RDP AUDIN to work even if config.UsbDevices.Audio is false.
 		// Note: we don't check activeConnections here because AUDIN channel may become ready
@@ -433,7 +486,10 @@ func SetAudioInputEnabled(enabled bool) error {
 			return fmt.Errorf("audio input start timed out after 5 seconds")
 		}
 	}
-	stopInputAudio()
+
+	if wasEnabled && !enabled {
+		stopInputAudio()
+	}
 	return nil
 }
 

@@ -111,6 +111,27 @@ func jetkvm_go_jpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
 
 //export jetkvm_go_rgb_handler
 func jetkvm_go_rgb_handler(frame *C.cuint8_t, len C.ssize_t, width C.uint32_t, height C.uint32_t) {
+	// Try to acquire a buffer from the pool BEFORE copying data.
+	// This prevents OOM from allocating 8MB per frame at 60fps.
+	buf := rgbFrameBufferPool.acquire()
+	if buf == nil {
+		// All buffers in use - drop frame to prevent memory exhaustion
+		return
+	}
+
+	// Ensure buffer is large enough (pool is sized for 1080p, but handle edge cases)
+	frameLen := int(len)
+	if cap(buf) < frameLen {
+		// Shouldn't happen with properly sized pool, but handle gracefully
+		rgbFrameBufferPool.release(buf)
+		return
+	}
+
+	// Copy frame data from C memory into pooled Go buffer
+	// This is the only allocation-free way to copy from CGO
+	cSlice := unsafe.Slice((*byte)(unsafe.Pointer(frame)), frameLen)
+	copy(buf[:frameLen], cSlice)
+
 	// Determine format based on frame size:
 	// - BGRX = 4 bytes/pixel, so len = width * height * 4
 	// - YUV422 = 2 bytes/pixel, so len = width * height * 2
@@ -122,13 +143,15 @@ func jetkvm_go_rgb_handler(frame *C.cuint8_t, len C.ssize_t, width C.uint32_t, h
 
 	select {
 	case rgbFrameChan <- RGBFrame{
-		Data:   C.GoBytes(unsafe.Pointer(frame), C.int(len)),
+		Data:   buf[:frameLen],
 		Width:  uint32(width),
 		Height: uint32(height),
 		Format: format,
+		pooled: true, // Mark as pooled so Release() returns it
 	}:
 	default:
-		// Drop frame if channel is full (non-blocking)
+		// Channel full - return buffer to pool and drop frame
+		rgbFrameBufferPool.release(buf)
 	}
 }
 

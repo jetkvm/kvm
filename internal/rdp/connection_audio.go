@@ -42,6 +42,7 @@ func (c *Connection) startAudioStream() {
 
 	c.audioChan = c.server.deps.Audio.SubscribeAudio()
 	if c.audioChan == nil {
+		c.server.deps.Logger.Warn().Msg("RDPSND: SubscribeAudio returned nil channel")
 		return
 	}
 

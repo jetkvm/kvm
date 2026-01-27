@@ -1,6 +1,7 @@
 package native
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -20,11 +21,77 @@ const (
 // When RGA hardware acceleration is available, Format will be RGBFrameFormatBGRX
 // and Data contains ready-to-use BGRX pixels. Otherwise, Format is RGBFrameFormatYUV422
 // and Data needs software conversion.
+//
+// Memory management: Data points to a pooled buffer. Call Release() when done
+// processing the frame to return the buffer to the pool.
 type RGBFrame struct {
 	Data   []byte
 	Width  uint32
 	Height uint32
 	Format RGBFrameFormat
+	pooled bool // true if Data is from the pool and should be released
+}
+
+// Release returns the frame's buffer to the pool.
+// Must be called after the frame data is no longer needed.
+// Safe to call multiple times or on non-pooled frames.
+func (f *RGBFrame) Release() {
+	if f.pooled && f.Data != nil {
+		rgbFrameBufferPool.release(f.Data)
+		f.Data = nil
+		f.pooled = false
+	}
+}
+
+// rgbFrameBufferPool is a bounded pool of pre-allocated frame buffers.
+// This prevents OOM by limiting the number of concurrent frame allocations.
+// Max 3 buffers: 1 being filled by native, 1 in channel, 1 being processed.
+var rgbFrameBufferPool = newBoundedFramePool(3, 1920*1080*4) // 8MB per buffer for 1080p BGRX
+
+// boundedFramePool is a fixed-size pool of frame buffers.
+// Unlike sync.Pool, this has a hard limit on concurrent buffers.
+type boundedFramePool struct {
+	buffers chan []byte
+	size    int
+	dropped atomic.Uint64 // count of frames dropped due to no available buffer
+}
+
+func newBoundedFramePool(maxBuffers, bufSize int) *boundedFramePool {
+	p := &boundedFramePool{
+		buffers: make(chan []byte, maxBuffers),
+		size:    bufSize,
+	}
+	// Pre-allocate all buffers
+	for i := 0; i < maxBuffers; i++ {
+		p.buffers <- make([]byte, bufSize)
+	}
+	return p
+}
+
+// acquire tries to get a buffer from the pool.
+// Returns nil if all buffers are in use (caller should drop the frame).
+func (p *boundedFramePool) acquire() []byte {
+	select {
+	case buf := <-p.buffers:
+		return buf
+	default:
+		p.dropped.Add(1)
+		return nil
+	}
+}
+
+// release returns a buffer to the pool.
+func (p *boundedFramePool) release(buf []byte) {
+	select {
+	case p.buffers <- buf:
+	default:
+		// Pool full - shouldn't happen with bounded pool, but don't leak
+	}
+}
+
+// DroppedFrames returns the count of frames dropped due to buffer exhaustion.
+func (p *boundedFramePool) DroppedFrames() uint64 {
+	return p.dropped.Load()
 }
 
 var (
