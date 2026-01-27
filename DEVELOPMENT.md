@@ -505,7 +505,7 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
 
 1. Get the [ISO 3166-1 alpha-2 country code](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) (for example AT for Austria)
 2. Create a **new empty** file in the _ui/localization/messages_ directory (example _at.json_)
-3. Add the new country code to the _ui/localization/settings.json_ file in both the `"locales"` and the `"languageTags"` section (inlang and Sherlock aren't exactly current to each other, so we need it in both places).
+3. Add the new country code to the _ui/localization/jetKVM.UI.inlang/settings.json_ file in both the `"locales"` and the `"languageTags"` section (inlang and Sherlock aren't exactly current to each other, so we need it in both places).
 4. That file also declares the `baseLocale/sourceLanguageTag` which is `"en"` because this project started out in English. **Do NOT change that**.
 5. Add the locale name of the language to **all** the _ui/localization/messages/_ files (example `"locale_at.json": "Österreichisches Deutsch",`)
    - In the _en.json_ file, use the name of the language **in that  language**. For example `"locale_es": "Español"`.

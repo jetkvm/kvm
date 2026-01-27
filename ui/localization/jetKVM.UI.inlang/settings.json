@@ -9,12 +9,12 @@
     "es",
     "fr",
     "it",
+    "ja",
     "nb",
     "pt",
     "sv",
-    "zh",
     "zh-tw",
-    "ja"
+    "zh"
   ],
   "languageTags": [
     "en",
@@ -23,12 +23,12 @@
     "es",
     "fr",
     "it",
+    "ja",
     "nb",
     "pt",
     "sv",
-    "zh",
     "zh-tw",
-    "ja"
+    "zh"
   ],
   "modules": [
     "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@latest/dist/index.js",
