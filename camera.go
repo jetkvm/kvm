@@ -120,6 +120,11 @@ func handleCameraVideoTrack(track *webrtc.TrackRemote) {
 			if consecutiveReadErrors > 5 {
 				time.Sleep(time.Duration(min(consecutiveReadErrors, 10)) * 10 * time.Millisecond)
 			}
+			// Exit on persistent errors - track is likely dead
+			if consecutiveReadErrors >= 500 {
+				cameraLog.Error().Int("consecutive", consecutiveReadErrors).Msg("too many consecutive read errors, exiting camera track handler")
+				return
+			}
 			continue
 		}
 		consecutiveReadErrors = 0

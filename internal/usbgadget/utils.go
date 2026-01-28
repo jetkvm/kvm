@@ -136,7 +136,8 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 			"write timed out: %s",
 			file.Name(),
 		)
-		err = nil
+		// Return the timeout error to caller - don't silently convert to nil
+		// Callers need to know the write failed so they can recover
 	}
 
 	return
