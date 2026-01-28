@@ -3,7 +3,6 @@ package kvm
 import (
 	"crypto/tls"
 	"net"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -513,18 +512,42 @@ const (
 	framePriorityLow      = 0 // SEI/AUD/filler - drop first
 )
 
-// classifyH264Frame analyzes an H.264 frame and returns its priority level.
-// Also returns whether it has SPS (needed for decoder init) and if it's a keyframe (IDR).
-// Optimized to stop scanning early once we find what we need.
-func classifyH264Frame(data []byte) (priority int, hasSPS, hasIDR bool) {
-	priority = framePriorityNormal // Default to normal (P-frame)
+// h264FrameInfo contains the results of analyzing an H.264 frame.
+// This struct allows a single NAL scan to extract all needed information,
+// avoiding redundant scans of large keyframes (300KB+).
+type h264FrameInfo struct {
+	priority int    // Frame priority for drop decisions
+	hasSPS   bool   // Has SPS NAL (critical for decoder init)
+	hasIDR   bool   // Has IDR NAL (keyframe)
+	spsPPS   []byte // Extracted SPS/PPS NALs (nil if none found)
+}
 
-	for i := 0; i < len(data)-4; i++ {
+// analyzeH264Frame performs a single scan of an H.264 frame to extract all
+// relevant information: priority level, SPS/IDR presence, and SPS/PPS data.
+// This consolidates what was previously 4 separate scanning functions into one,
+// reducing CPU overhead for large keyframes from ~4 scans to 1 scan.
+//
+// The function is optimized to:
+// - Stop early once SPS+IDR are found (for priority-only queries)
+// - Extract SPS/PPS data in the same pass (avoiding separate extraction scan)
+// - Limit scan to first 64KB for priority detection (SPS/IDR are always at frame start)
+func analyzeH264Frame(data []byte, extractSPSPPS bool) h264FrameInfo {
+	info := h264FrameInfo{priority: framePriorityNormal}
+
+	// Limit scan for priority detection - SPS/IDR NALs are always at frame start
+	scanLimit := len(data)
+	if !extractSPSPPS && scanLimit > 65536 {
+		scanLimit = 65536
+	}
+
+	for i := 0; i < scanLimit-4; {
 		// Look for NAL start code (0x00 0x00 0x01 or 0x00 0x00 0x00 0x01)
 		if data[i] != 0x00 || data[i+1] != 0x00 {
+			i++
 			continue
 		}
 
+		startCodePos := i
 		nalOffset := -1
 		if data[i+2] == 0x01 {
 			nalOffset = i + 3
@@ -533,6 +556,7 @@ func classifyH264Frame(data []byte) (priority int, hasSPS, hasIDR bool) {
 		}
 
 		if nalOffset <= 0 || nalOffset >= len(data) {
+			i++
 			continue
 		}
 
@@ -540,75 +564,77 @@ func classifyH264Frame(data []byte) (priority int, hasSPS, hasIDR bool) {
 
 		switch nalType {
 		case nalTypeSPS:
-			hasSPS = true
-			priority = framePriorityCritical // SPS is critical - never drop
-			// Keep scanning to also detect IDR for logging purposes
+			info.hasSPS = true
+			info.priority = framePriorityCritical
+			if extractSPSPPS {
+				// Find end of this NAL and extract
+				nalEnd := findNALEnd(data, nalOffset)
+				info.spsPPS = append(info.spsPPS, data[startCodePos:nalEnd]...)
+				i = nalEnd
+				continue
+			}
+		case nalTypePPS:
+			if extractSPSPPS {
+				nalEnd := findNALEnd(data, nalOffset)
+				info.spsPPS = append(info.spsPPS, data[startCodePos:nalEnd]...)
+				i = nalEnd
+				continue
+			}
 		case nalTypeIDR:
-			hasIDR = true
-			if !hasSPS && priority < framePriorityHigh {
-				priority = framePriorityHigh // IDR without SPS is high priority
+			info.hasIDR = true
+			if !info.hasSPS && info.priority < framePriorityHigh {
+				info.priority = framePriorityHigh
 			}
 		case nalTypeSEI, nalTypeAUD, nalTypeFillerData:
-			// These are droppable metadata - don't change priority
-			if priority == framePriorityNormal {
-				priority = framePriorityLow
+			if info.priority == framePriorityNormal {
+				info.priority = framePriorityLow
 			}
 		}
 
-		// Early exit: if we found SPS, that's the highest priority
-		// No need to scan further unless we want complete NAL list for debugging
-		if hasSPS && hasIDR {
-			return
+		// Early exit if we have what we need and aren't extracting SPS/PPS
+		if !extractSPSPPS && info.hasSPS && info.hasIDR {
+			return info
 		}
+
+		i = nalOffset
 	}
 
-	return
+	return info
 }
 
-// hasH264SPS checks if an H.264 frame contains SPS (NAL type 7).
-// The decoder REQUIRES SPS before it can decode any frames.
-// Optimized to return early as soon as SPS is found.
-func hasH264SPS(data []byte) bool {
-	for i := 0; i < len(data)-4; i++ {
-		if data[i] != 0x00 || data[i+1] != 0x00 {
-			continue
-		}
-
-		nalOffset := -1
-		if data[i+2] == 0x01 {
-			nalOffset = i + 3
-		} else if data[i+2] == 0x00 && i+3 < len(data) && data[i+3] == 0x01 {
-			nalOffset = i + 4
-		}
-
-		if nalOffset > 0 && nalOffset < len(data) {
-			if (data[nalOffset] & 0x1F) == nalTypeSPS {
-				return true // Found SPS, return immediately
+// findNALEnd finds the end of a NAL unit (start of next NAL or end of data).
+// Helper for analyzeH264Frame to avoid code duplication.
+func findNALEnd(data []byte, nalOffset int) int {
+	for j := nalOffset + 1; j < len(data)-3; j++ {
+		if data[j] == 0x00 && data[j+1] == 0x00 {
+			if data[j+2] == 0x01 || (data[j+2] == 0x00 && j+3 < len(data) && data[j+3] == 0x01) {
+				return j
 			}
 		}
 	}
-	return false
+	return len(data)
 }
 
-// findH264NALTypes scans for NAL start codes and returns all NAL types found.
-// Used for debug logging only - not in hot path.
-func findH264NALTypes(data []byte) []uint8 {
-	var types []uint8
-	for i := 0; i < len(data)-4; i++ {
-		if data[i] == 0x00 && data[i+1] == 0x00 {
-			nalOffset := -1
-			if data[i+2] == 0x01 {
-				nalOffset = i + 3
-			} else if data[i+2] == 0x00 && i+3 < len(data) && data[i+3] == 0x01 {
-				nalOffset = i + 4
-			}
-			if nalOffset > 0 && nalOffset < len(data) {
-				nalType := data[nalOffset] & 0x1F
-				types = append(types, nalType)
-			}
-		}
+// classifyH264Frame analyzes an H.264 frame and returns its priority level.
+// Also returns whether it has SPS (needed for decoder init) and if it's a keyframe (IDR).
+// This is a convenience wrapper around analyzeH264Frame for callers that don't need SPS/PPS extraction.
+func classifyH264Frame(data []byte) (priority int, hasSPS, hasIDR bool) {
+	info := analyzeH264Frame(data, false)
+	return info.priority, info.hasSPS, info.hasIDR
+}
+
+// extractAndCacheSPSPPS extracts SPS and PPS NAL units from an H.264 frame
+// and caches them for later use when the transcoder is reinitialized.
+// This allows the decoder to bootstrap without waiting for a new SPS from the client.
+func extractAndCacheSPSPPS(data []byte) {
+	info := analyzeH264Frame(data, true)
+	if len(info.spsPPS) > 0 {
+		// Make a copy to avoid referencing the original buffer
+		cached := make([]byte, len(info.spsPPS))
+		copy(cached, info.spsPPS)
+		cameraCachedSPSPPS.Store(&cached)
+		rdpLogger.Debug().Int("size", len(cached)).Msg("Cached SPS/PPS for decoder reinit")
 	}
-	return types
 }
 
 // cameraFrame represents a camera frame waiting to be transcoded.
@@ -643,12 +669,15 @@ var (
 	cameraTranscodeInitFailed    atomic.Bool // Set when init fails to prevent repeated attempts
 	cameraH264NeedKeyframe       atomic.Bool // Set when transcoder needs a keyframe before decoding
 	cameraTranscodeMu            sync.Mutex
+	cameraTranscodeOutW          atomic.Uint32 // Current transcoder output width
+	cameraTranscodeOutH          atomic.Uint32 // Current transcoder output height
 	cameraFrameQueue             chan cameraFrame
 	cameraFrameQueueStop         chan struct{}
 	cameraFrameQueueDone         chan struct{} // Signals worker goroutine has exited
 	cameraFrameQueueRunning      atomic.Bool
 	cameraFrameDropped           atomic.Uint64
 	cameraLastFrameTime          atomic.Pointer[time.Time] // For rate limiting (monotonic)
+	cameraCachedSPSPPS           atomic.Pointer[[]byte]    // Cached SPS/PPS NALs for decoder reinit
 )
 
 // initCameraTranscoder initializes the H.264 to MJPEG transcoder if enabled.
@@ -667,9 +696,20 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 		return false
 	}
 
-	// Fast path: already initialized
+	// Fast path: already initialized with matching resolution
 	if cameraTranscodeInitialized.Load() {
-		if nativeInstance != nil && nativeInstance.TranscodeIsRunning() {
+		curW := cameraTranscodeOutW.Load()
+		curH := cameraTranscodeOutH.Load()
+		// Check if resolution changed - need to reinitialize
+		if outputWidth != curW || outputHeight != curH {
+			rdpLogger.Debug().
+				Uint32("oldW", curW).
+				Uint32("oldH", curH).
+				Uint32("newW", outputWidth).
+				Uint32("newH", outputHeight).
+				Msg("Transcode resolution changed, reinitializing")
+			// Fall through to reinitialize
+		} else if nativeInstance != nil && nativeInstance.TranscodeIsRunning() {
 			return true
 		}
 	}
@@ -677,11 +717,20 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 	cameraTranscodeMu.Lock()
 	defer cameraTranscodeMu.Unlock()
 
-	// Double-check after acquiring lock
+	// Double-check after acquiring lock - also check resolution
 	if cameraTranscodeInitialized.Load() {
-		if nativeInstance != nil && nativeInstance.TranscodeIsRunning() {
+		curW := cameraTranscodeOutW.Load()
+		curH := cameraTranscodeOutH.Load()
+		resolutionChanged := outputWidth != curW || outputHeight != curH
+		if !resolutionChanged && nativeInstance != nil && nativeInstance.TranscodeIsRunning() {
 			return true
 		}
+		// Resolution changed or not running - shutdown and reinitialize
+		if nativeInstance != nil {
+			nativeInstance.TranscodeShutdown()
+		}
+		cameraTranscodeInitialized.Store(false)
+		cameraH264NeedKeyframe.Store(true) // Need keyframe after reinit
 	}
 
 	if nativeInstance == nil {
@@ -739,13 +788,23 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 
 	cameraTranscodeInitialized.Store(true)
 	cameraTranscodeInitFailed.Store(false) // Reset failed flag on success
-	cameraH264NeedKeyframe.Store(true)     // Wait for keyframe before starting decode
+	cameraTranscodeOutW.Store(outputWidth) // Track current output resolution
+	cameraTranscodeOutH.Store(outputHeight)
+	cameraH264NeedKeyframe.Store(true) // Wait for keyframe before starting decode
 	return true
 }
 
+// Camera transcoding throttle constant.
+const (
+	// cameraTranscodeThrottleMs is the sleep duration after each transcoded frame.
+	// This ensures HID and video handlers get CPU time between frames.
+	// CGO calls (OpenH264 decode) block OS threads and don't yield to the Go scheduler,
+	// so explicit sleep is required to prevent starving other goroutines.
+	// 10ms sleep limits effective throughput to ~100fps max (assuming 0ms processing).
+	cameraTranscodeThrottleMs = 10
+)
+
 // startCameraFrameWorker starts the async frame processing goroutine.
-// The worker runs at lower effective priority by yielding after each frame,
-// ensuring HID and video handlers get CPU time even during heavy transcoding.
 func startCameraFrameWorker() {
 	if cameraFrameQueueRunning.Load() {
 		return
@@ -773,9 +832,8 @@ func startCameraFrameWorker() {
 				return
 			case frame := <-cameraFrameQueue:
 				processCameraFrameSync(frame)
-				// Yield CPU to allow HID/video goroutines to run
-				// This is critical - transcoding is CPU-heavy and would starve other work
-				runtime.Gosched()
+				// Throttle to ensure HID/video get CPU time (see cameraTranscodeThrottleMs)
+				time.Sleep(cameraTranscodeThrottleMs * time.Millisecond)
 			}
 		}
 	}()
@@ -897,22 +955,41 @@ func processCameraFrameSync(frame cameraFrame) {
 						Msg("H264 frame")
 				}
 
+				// Cache SPS/PPS when we see them for later decoder reinit
+				if frame.hasSPS {
+					extractAndCacheSPSPPS(frame.data)
+				}
+
+				// Prepare data to feed to decoder
+				dataToFeed := frame.data
+
 				// Wait for SPS (NAL type 7) before feeding to decoder.
 				// OpenH264 error 18 (dsNoParamSets | dsRefLost) means decoder doesn't have SPS yet.
 				if cameraH264NeedKeyframe.Load() {
 					if !frame.hasSPS {
-						// Still waiting for SPS - drop frames until we get one
-						if frameNum < 10 {
-							rdpLogger.Debug().Uint32("frame", frameNum).Msg("Waiting for SPS")
+						// No SPS in this frame - try to use cached SPS/PPS
+						cached := cameraCachedSPSPPS.Load()
+						if cached != nil && len(*cached) > 0 {
+							// Prepend cached SPS/PPS to the frame data
+							dataToFeed = append(*cached, frame.data...)
+							rdpLogger.Debug().
+								Uint32("frame", frameNum).
+								Int("cachedSize", len(*cached)).
+								Msg("Using cached SPS/PPS for decoder reinit")
+						} else {
+							// No cached SPS/PPS - must wait for one from the stream
+							if frameNum < 10 {
+								rdpLogger.Debug().Uint32("frame", frameNum).Msg("Waiting for SPS (no cache)")
+							}
+							return
 						}
-						return
 					}
-					// Got SPS - clear flag and proceed
-					rdpLogger.Info().Uint32("frame", frameNum).Msg("Got SPS, starting decode")
+					// Got SPS (fresh or cached) - clear flag and proceed
+					rdpLogger.Debug().Uint32("frame", frameNum).Msg("Got SPS, starting decode")
 					cameraH264NeedKeyframe.Store(false)
 				}
 
-				if err := nativeInstance.TranscodeFeedH264(frame.data); err != nil {
+				if err := nativeInstance.TranscodeFeedH264(dataToFeed); err != nil {
 					count := cameraFrameCount.Add(1)
 					if !cameraTranscodeWarningLogged.Load() || count%cameraLogWarningEvery == 0 {
 						rdpLogger.Warn().Err(err).Uint32("n", count).Msg("Transcode err")
@@ -957,11 +1034,14 @@ func shutdownCameraTranscoder() {
 		nativeInstance.TranscodeShutdown()
 	}
 	cameraTranscodeInitialized.Store(false)
+	cameraTranscodeOutW.Store(0) // Reset resolution tracking
+	cameraTranscodeOutH.Store(0)
 	cameraTranscodeWarningLogged.Store(false)
 	cameraH264NeedKeyframe.Store(false)
+	cameraCachedSPSPPS.Store(nil) // Clear cached SPS/PPS (next connection may have different stream)
 	// Reset failed flag to allow retry on next connection
 	cameraTranscodeInitFailed.Store(false)
-	rdpLogger.Info().Msg("RDP: transcoder shutdown")
+	rdpLogger.Debug().Msg("RDP: transcoder shutdown")
 }
 
 func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFormat uint32) error {

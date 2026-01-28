@@ -659,10 +659,9 @@ func transcodeShutdown() {
 	transcodeCallback.Store(nil)
 }
 
+// transcodeIsRunning returns true if the transcoder is active.
+// Lock-free: C function performs atomic read, safe for concurrent access.
 func transcodeIsRunning() bool {
-	cgoLock.Lock()
-	defer cgoLock.Unlock()
-
 	return bool(C.jetkvm_transcode_is_running())
 }
 

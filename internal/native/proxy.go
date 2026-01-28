@@ -226,26 +226,21 @@ func (p *NativeProxy) startJpegStreamListener() error {
 		return nil
 	}
 
-	logger := p.logger.With().Str("socketPath", p.jpegStreamUnixSocket).Logger()
-	logger.Warn().Msg("JPEG stream listener: starting...")
+	logger := p.logger.With().Str("socket", p.jpegStreamUnixSocket).Logger()
 	listener, err := net.Listen("unix", p.jpegStreamUnixSocket)
 	if err != nil {
-		logger.Error().Err(err).Msg("JPEG stream listener: FAILED to start")
 		return fmt.Errorf("failed to start JPEG stream listener: %w", err)
 	}
-	logger.Warn().Msg("JPEG stream listener: STARTED successfully")
+	logger.Debug().Msg("JPEG stream listener started")
 	p.jpegStreamListener = listener
 
 	go func() {
-		logger.Warn().Msg("JPEG stream listener: waiting for connections...")
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logger.Warn().Err(err).Msg("JPEG stream listener: failed to accept connection")
+				logger.Debug().Err(err).Msg("JPEG listener accept error")
 				continue
 			}
-
-			logger.Warn().Msg("JPEG stream listener: CONNECTION ACCEPTED from subprocess")
 			go p.handleJpegFrame(conn)
 		}
 	}()
@@ -258,26 +253,21 @@ func (p *NativeProxy) startRgbStreamListener() error {
 		return nil
 	}
 
-	logger := p.logger.With().Str("socketPath", p.rgbStreamUnixSocket).Logger()
-	logger.Warn().Msg("RGB stream listener: starting...")
+	logger := p.logger.With().Str("socket", p.rgbStreamUnixSocket).Logger()
 	listener, err := net.Listen("unix", p.rgbStreamUnixSocket)
 	if err != nil {
-		logger.Error().Err(err).Msg("RGB stream listener: FAILED to start")
 		return fmt.Errorf("failed to start RGB stream listener: %w", err)
 	}
-	logger.Warn().Msg("RGB stream listener: STARTED successfully")
+	logger.Debug().Msg("RGB stream listener started")
 	p.rgbStreamListener = listener
 
 	go func() {
-		logger.Warn().Msg("RGB stream listener: waiting for connections...")
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logger.Warn().Err(err).Msg("RGB stream listener: failed to accept connection")
+				logger.Debug().Err(err).Msg("RGB listener accept error")
 				continue
 			}
-
-			logger.Warn().Msg("RGB stream listener: CONNECTION ACCEPTED from subprocess")
 			go p.handleRgbFrame(conn)
 		}
 	}()
@@ -424,7 +414,7 @@ func (p *NativeProxy) handleJpegFrame(conn net.Conn) {
 			p.options.OnJpegFrameReceived(inboundPacket[:frameSize])
 		}
 	}
-	p.logger.Info().Int("totalFrames", frameCount).Msg("JPEG frame handler: stopped")
+	p.logger.Debug().Int("frames", frameCount).Msg("JPEG handler stopped")
 }
 
 func (p *NativeProxy) handleRgbFrame(conn net.Conn) {
@@ -434,7 +424,7 @@ func (p *NativeProxy) handleRgbFrame(conn net.Conn) {
 	var headerBuffer [12]byte // frame_size (4) + width (4) + height (4)
 	frameCount := 0
 
-	p.logger.Info().Msg("RGB frame handler: started, waiting for frames from subprocess")
+	p.logger.Debug().Msg("RGB frame handler started")
 
 	for {
 		// Read 12-byte header: frame_size + width + height

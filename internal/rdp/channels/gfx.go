@@ -95,17 +95,17 @@ const (
 
 // Maximum values.
 const (
-	GFXMaxFramesPending = 64 // Maximum frames in flight before backpressure (~1s at 60fps, important for high-latency connections)
-	GFXDefaultSurfaceID = 1  // Default surface for main display
+	GFXMaxFramesPending = 256 // Maximum frames in flight (~4s at 60fps for WAN/VPN tolerance)
+	GFXDefaultSurfaceID = 1   // Default surface for main display
 )
 
-// Adaptive backpressure thresholds for WAN/high-latency connections.
-// These help smooth out video delivery by proactively dropping P-frames
-// when the queue is filling up, rather than waiting until it's completely full.
+// Adaptive backpressure thresholds for high-latency connections.
+// When queue fills, drop P-frames and immediately request keyframe to minimize
+// decoder corruption (green frames). Thresholds set high to avoid unnecessary drops.
 const (
-	GFXBackpressureDropPFrames    = 48 // 75% full: only allow keyframes through
-	GFXBackpressureRateLimit      = 32 // 50% full: rate-limit P-frames (every other)
-	GFXBackpressureMinForKeyframe = 60 // 94% full: even keyframes may be dropped
+	GFXBackpressureRateLimit      = 204 // 80%: rate-limit P-frames (drop every other)
+	GFXBackpressureDropPFrames    = 230 // 90%: drop all P-frames, request keyframe immediately
+	GFXBackpressureMinForKeyframe = 252 // 98%: emergency - even keyframes may be dropped
 )
 
 // ZGFX compression constants.
@@ -195,7 +195,8 @@ type GFXChannel struct {
 	// Mutex for frame operations (protects frameBuf and metaBuf from concurrent access)
 	frameMu sync.Mutex
 
-	ready atomic.Bool
+	ready       atomic.Bool
+	initialized atomic.Bool // Set after Initialize() completes (surface created)
 }
 
 // Frame buffer size for zero-allocation hot path.

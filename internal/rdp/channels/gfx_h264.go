@@ -368,8 +368,11 @@ func (g *GFXChannel) SendH264FrameAVC444(luma, chroma []byte, isKeyframe bool) e
 }
 
 // IsReady returns true if the channel is ready to send frames.
+// This requires both caps negotiation complete (ready) AND surface initialized.
+// The initialized check prevents frames from being sent before the client has
+// received and processed CreateSurface/MapSurfaceToOutput commands.
 func (g *GFXChannel) IsReady() bool {
-	return g.ready.Load()
+	return g.ready.Load() && g.initialized.Load()
 }
 
 // SupportsAVC420 returns true if AVC420 (H.264) is supported.

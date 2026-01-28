@@ -141,12 +141,14 @@ type Connection struct {
 
 	// Diagnostic counters for video frame tracking (debugging freeze issues)
 	frameStats struct {
-		attempted        atomic.Uint64 // Total frames received from encoder
-		sent             atomic.Uint64 // Successfully sent via GFX channel
-		dropNotReady     atomic.Uint64 // Dropped: channel not ready
-		dropNoKeyframe   atomic.Uint64 // Dropped: waiting for keyframe
-		dropBackpressure atomic.Uint64 // Dropped: backpressure
-		lastLogTime      atomic.Int64  // UnixMilli of last stats log
+		attempted                     atomic.Uint64 // Total frames received from encoder
+		sent                          atomic.Uint64 // Successfully sent via GFX channel
+		dropNotReady                  atomic.Uint64 // Dropped: channel not ready
+		dropNoKeyframe                atomic.Uint64 // Dropped: waiting for keyframe
+		dropBackpressure              atomic.Uint64 // Dropped: backpressure
+		lastLogTime                   atomic.Int64  // UnixMilli of last stats log
+		lastLogDrops                  atomic.Uint64 // Total drops at last log (for delta calculation)
+		backpressureKeyframeRequested atomic.Bool   // True if keyframe requested during current backpressure episode
 	}
 
 	// Virtual channel PDU reassembly buffer for clipboard (MS-RDPBCGR 2.2.6.1)
@@ -544,10 +546,6 @@ func (c *Connection) handleClipboardWithReassembly(payload []byte, totalLength u
 		completePDU = c.clipboardReassembly.buffer
 		c.clipboardReassembly.buffer = nil
 		c.clipboardReassembly.totalLength = 0
-
-		c.server.deps.Logger.Info().
-			Int("totalLen", len(completePDU)).
-			Msg("RDP: clipboard reassembly complete")
 	}
 	c.clipboardReassembly.mu.Unlock()
 
@@ -563,7 +561,8 @@ func (c *Connection) handleDrdynvc(data []byte) {
 		return
 	}
 	if err := c.dvcManager.HandlePDU(data); err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: drdynvc error")
+		// Channel closed errors are expected during normal shutdown
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: drdynvc error")
 	}
 }
 
@@ -573,16 +572,13 @@ func (c *Connection) handleRdpsnd(data []byte) {
 		return
 	}
 	if err := c.soundChannel.HandlePDU(data); err != nil {
-		c.server.deps.Logger.Warn().Err(err).Msg("RDP: rdpsnd error")
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: rdpsnd error")
 	}
 }
 
 // handleClipboard handles clipboard channel asynchronously to prevent blocking video/input.
 func (c *Connection) handleClipboard(data []byte) {
-	c.server.deps.Logger.Info().Int("dataLen", len(data)).Bool("channelNil", c.clipboardChannel == nil).Msg("RDP: handleClipboard called")
-
 	if c.clipboardChannel == nil {
-		c.server.deps.Logger.Warn().Msg("RDP: clipboard channel is nil, ignoring PDU")
 		return
 	}
 
@@ -592,7 +588,6 @@ func (c *Connection) handleClipboard(data []byte) {
 	if len(data) >= 2 {
 		msgType := binary.LittleEndian.Uint16(data[0:2])
 		if msgType == 0x0002 { // CB_FORMAT_LIST
-			c.server.deps.Logger.Debug().Msg("RDP: format list detected, clearing clipboard text synchronously")
 			c.clipboardChannel.ClearClipboardText()
 		}
 	}
@@ -611,11 +606,9 @@ func (c *Connection) handleClipboard(data []byte) {
 			}
 		}()
 
-		c.server.deps.Logger.Info().Int("dataLen", len(dataCopy)).Msg("RDP: processing clipboard PDU async")
 		if err := c.clipboardChannel.HandlePDU(dataCopy); err != nil {
-			c.server.deps.Logger.Warn().Err(err).Msg("RDP: cliprdr error")
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: cliprdr error")
 		}
-		c.server.deps.Logger.Info().Msg("RDP: clipboard PDU processing complete")
 	}()
 }
 

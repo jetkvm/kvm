@@ -15,7 +15,7 @@ func (c *Connection) initDynamicChannels() error {
 	// Find static channel IDs
 	c.channelsMu.RLock()
 	for _, ch := range c.channels {
-		c.server.deps.Logger.Info().Str("channel", ch.Name).Uint16("id", ch.ID).Msg("RDP: found static channel")
+		c.server.deps.Logger.Debug().Str("channel", ch.Name).Uint16("id", ch.ID).Msg("RDP: found static channel")
 		switch ch.Name {
 		case "drdynvc":
 			c.drdynvcID = ch.ID
@@ -23,7 +23,7 @@ func (c *Connection) initDynamicChannels() error {
 			c.rdpsndID = ch.ID
 		case "cliprdr":
 			c.cliprdrdID = ch.ID
-			c.server.deps.Logger.Info().Uint16("id", ch.ID).Msg("RDP: cliprdr channel found")
+			c.server.deps.Logger.Debug().Uint16("id", ch.ID).Msg("RDP: cliprdr channel found")
 		}
 	}
 	c.channelsMu.RUnlock()
@@ -78,7 +78,7 @@ func (c *Connection) initDVCChannelsSync() {
 	// Only initialize if audio is enabled in config
 	if c.rdpsndID != 0 {
 		if !c.server.deps.Config.GetRDPAudioEnabled() {
-			c.server.deps.Logger.Info().Msg("RDP: audio output disabled in config, skipping RDPSND channel")
+			c.server.deps.Logger.Debug().Msg("RDP: audio output disabled in config, skipping RDPSND channel")
 		} else {
 			c.initSoundChannel()
 		}
@@ -92,7 +92,7 @@ func (c *Connection) initDVCChannelsSync() {
 
 	// Create RDPGFX channel only if video is enabled in config
 	if !c.server.deps.Config.GetRDPVideoEnabled() {
-		c.server.deps.Logger.Info().Msg("RDP: H.264 video disabled in config, skipping RDPGFX channel")
+		c.server.deps.Logger.Debug().Msg("RDP: H.264 video disabled in config, skipping RDPGFX channel")
 	} else {
 		c.gfxChannel = channels.NewGFXChannel(c.dvcManager)
 
@@ -104,7 +104,7 @@ func (c *Connection) initDVCChannelsSync() {
 		// Set callback to initialize surface when channel is ready
 		c.gfxChannel.SetReadyCallback(func(g *channels.GFXChannel) {
 			w, h := c.GetResolution()
-			c.server.deps.Logger.Info().
+			c.server.deps.Logger.Debug().
 				Uint16("width", w).
 				Uint16("height", h).
 				Bool("avc420", g.SupportsAVC420()).
@@ -124,7 +124,7 @@ func (c *Connection) initDVCChannelsSync() {
 				if err := c.server.deps.Video.StartVideo(); err != nil {
 					c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start video capture")
 				} else {
-					c.server.deps.Logger.Info().Msg("RDP: video capture started (RDPGFX)")
+					c.server.deps.Logger.Debug().Msg("RDP: video capture started (RDPGFX)")
 				}
 			}
 		})
@@ -239,7 +239,7 @@ func (c *Connection) initDVCChannelsSync() {
 
 		// Set stop callback to notify when RDP client stops camera stream
 		c.cameraChannel.SetStopCallback(func() {
-			c.server.deps.Logger.Info().Msg("RDP: camera stream stopped by client")
+			c.server.deps.Logger.Debug().Msg("RDP: camera stream stopped by client")
 			if c.server.deps.Camera != nil {
 				c.server.deps.Camera.SetEnabled(false)
 			}
@@ -538,6 +538,15 @@ func (c *Connection) SendFrame(frame []byte) {
 		return
 	}
 
+	// Debug check for potentially corrupted frames (zeros = green in YUV)
+	// This helps diagnose intermittent green screen issues
+	if len(frame) > 0 && len(frame) < 16 {
+		// Extremely small frame - likely corrupt
+		c.server.deps.Logger.Warn().
+			Int("frameLen", len(frame)).
+			Msg("RDP: suspiciously small frame received")
+	}
+
 	// Fast path: nil check (no atomic)
 	if c.gfxChannel == nil {
 		c.frameRequested.Store(false)
@@ -555,6 +564,28 @@ func (c *Connection) SendFrame(frame []byte) {
 	// This is more expensive (scans up to 1KB) so we do it after ready check
 	isKeyframe := isH264Keyframe(frame)
 
+	// Debug: Validate frame integrity to help diagnose green screen issues
+	// Green frames (zeros in YUV) can occur if frame data is corrupted
+	if len(frame) >= 8 {
+		// Check if frame starts with valid H.264 start code (00 00 00 01 or 00 00 01)
+		hasValidStart := (frame[0] == 0 && frame[1] == 0 && frame[2] == 0 && frame[3] == 1) ||
+			(frame[0] == 0 && frame[1] == 0 && frame[2] == 1)
+
+		// Check if first 8 bytes are all zeros (indicates corrupted frame)
+		allZeros := frame[0] == 0 && frame[1] == 0 && frame[2] == 0 && frame[3] == 0 &&
+			frame[4] == 0 && frame[5] == 0 && frame[6] == 0 && frame[7] == 0
+
+		if allZeros || !hasValidStart {
+			c.server.deps.Logger.Warn().
+				Int("frameLen", len(frame)).
+				Bool("isKeyframe", isKeyframe).
+				Bool("allZeros", allZeros).
+				Bool("hasValidStart", hasValidStart).
+				Hex("firstBytes", frame[:min(16, len(frame))]).
+				Msg("RDP: potentially corrupted frame detected")
+		}
+	}
+
 	// Don't send non-keyframes until we've sent a keyframe first
 	// The H.264 decoder needs SPS/PPS (which come with keyframes) before it can decode
 	if !isKeyframe && !c.hasReceivedKeyframe.Load() {
@@ -570,15 +601,29 @@ func (c *Connection) SendFrame(frame []byte) {
 	// Adaptive backpressure for WAN/high-latency connections:
 	// Drop P-frames proactively when queue is filling up to prevent complete queue saturation.
 	// This gives the network time to catch up while maintaining keyframe delivery.
+	// IMPORTANT: Request keyframe IMMEDIATELY when dropping starts to minimize green frames.
 	if !isKeyframe {
 		if c.gfxChannel.ShouldDropPFrame() {
-			// Queue >75% full - drop all P-frames, only keyframes through
+			// Queue >90% full - drop all P-frames, only keyframes through
 			c.frameStats.dropBackpressure.Add(1)
 			c.frameRequested.Store(false)
+
+			// Request keyframe IMMEDIATELY when entering backpressure (once per episode).
+			// Dropped P-frames break the decode chain - the sooner we get a keyframe, the better.
+			// The flag resets when queue drains, so we request again if backpressure recurs.
+			if !c.frameStats.backpressureKeyframeRequested.Swap(true) && c.server.deps.Video != nil {
+				c.server.deps.Video.RequestKeyframe()
+				c.server.deps.Logger.Debug().
+					Int("pending", c.gfxChannel.GetPendingFrames()).
+					Msg("RDP: requesting keyframe due to P-frame backpressure")
+			}
 			return
 		}
+		// Queue drained below drop threshold - reset keyframe request flag for next episode
+		c.frameStats.backpressureKeyframeRequested.Store(false)
+
 		if c.gfxChannel.ShouldRateLimitPFrame() {
-			// Queue >50% full - drop every other P-frame (rate limiting)
+			// Queue >80% full - drop every other P-frame (rate limiting)
 			if c.frameStats.attempted.Load()%2 == 0 {
 				c.frameStats.dropBackpressure.Add(1)
 				c.frameRequested.Store(false)
@@ -646,27 +691,35 @@ func (c *Connection) SendFrame(frame []byte) {
 		}
 	}
 
-	// Diagnostic logging: only log when frames are being dropped (indicates a problem)
-	// Uses 30-second intervals to avoid log spam
+	// Diagnostic logging: only log if there are NEW drops since last interval.
+	// Uses 30-second intervals to avoid log spam. Only warns on active backpressure.
 	now := time.Now().UnixMilli()
 	lastLog := c.frameStats.lastLogTime.Load()
-	dropNotReady := c.frameStats.dropNotReady.Load()
-	dropNoKeyframe := c.frameStats.dropNoKeyframe.Load()
-	dropBackpressure := c.frameStats.dropBackpressure.Load()
+	if now-lastLog > 30000 && c.frameStats.lastLogTime.CompareAndSwap(lastLog, now) {
+		dropNotReady := c.frameStats.dropNotReady.Load()
+		dropNoKeyframe := c.frameStats.dropNoKeyframe.Load()
+		dropBackpressure := c.frameStats.dropBackpressure.Load()
+		totalDropped := dropNotReady + dropNoKeyframe + dropBackpressure
+		lastDrops := c.frameStats.lastLogDrops.Swap(totalDropped)
+		newDrops := totalDropped - lastDrops
 
-	// Only log if: (1) frames are being dropped AND (2) 30 seconds since last log
-	totalDropped := dropNotReady + dropNoKeyframe + dropBackpressure
-	if totalDropped > 0 && now-lastLog > 30000 && c.frameStats.lastLogTime.CompareAndSwap(lastLog, now) {
-		c.server.deps.Logger.Warn().
-			Uint64("attempted", c.frameStats.attempted.Load()).
-			Uint64("sent", c.frameStats.sent.Load()).
-			Uint64("dropNotReady", dropNotReady).
-			Uint64("dropNoKeyframe", dropNoKeyframe).
-			Uint64("dropBackpressure", dropBackpressure).
-			Int("pending", c.gfxChannel.GetPendingFrames()).
-			Bool("ready", c.gfxChannel.IsReady()).
-			Bool("hasKeyframe", c.hasReceivedKeyframe.Load()).
-			Msg("RDP: video frames being dropped - check connection health")
+		// Only log if there were new drops in this interval
+		if newDrops > 0 {
+			// Use Warn for backpressure (indicates network issues), Debug for startup drops
+			if dropBackpressure > 0 {
+				c.server.deps.Logger.Warn().
+					Uint64("newDrops", newDrops).
+					Uint64("backpressure", dropBackpressure).
+					Int("pending", c.gfxChannel.GetPendingFrames()).
+					Msg("RDP: frames dropped due to backpressure")
+			} else {
+				c.server.deps.Logger.Debug().
+					Uint64("newDrops", newDrops).
+					Uint64("notReady", dropNotReady).
+					Uint64("noKeyframe", dropNoKeyframe).
+					Msg("RDP: frames dropped during initialization")
+			}
+		}
 	}
 
 	c.frameRequested.Store(false)

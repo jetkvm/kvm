@@ -2,9 +2,19 @@ package rdp
 
 import (
 	"encoding/binary"
+	"sync"
 
 	"github.com/jetkvm/kvm/internal/rdp/protocol"
 )
+
+// scatterHeaderPool reuses header buffers for scatter-gather I/O.
+// Max header size: TPKT(4) + X224(3) + MCS(8) + VC(8) = 23 bytes, round to 32.
+var scatterHeaderPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 32)
+		return &buf
+	},
+}
 
 // ScatterGatherWriter is implemented by connections that support scatter-gather I/O.
 // When kTLS is enabled, this allows zero-copy writes of multiple buffers.
@@ -56,9 +66,11 @@ func (c *Connection) sendDVCDataScatterGather(sg ScatterGatherWriter, data []byt
 	totalPacketLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen + vcPayloadLen
 	headerLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen
 
-	// Build header buffer (small, fixed-size allocation is acceptable)
-	// For even better performance, this could use a sync.Pool
-	header := make([]byte, headerLen)
+	// Use pooled buffer for zero-allocation hot path
+	bufPtr := scatterHeaderPool.Get().(*[]byte)
+	header := (*bufPtr)[:headerLen]
+	defer scatterHeaderPool.Put(bufPtr)
+
 	pos := 0
 
 	// TPKT header (4 bytes, big-endian length)

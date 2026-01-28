@@ -32,6 +32,11 @@ func (g *GFXChannel) Initialize(width, height uint16) error {
 		return err
 	}
 
+	// Mark as fully initialized - surface is now ready to receive frames
+	// This must be set AFTER all surface commands are sent to avoid race conditions
+	// where frames arrive before the client has processed CreateSurface/MapSurfaceToOutput
+	g.initialized.Store(true)
+
 	return nil
 }
 
@@ -124,6 +129,9 @@ func (g *GFXChannel) UpdateResolution(width, height uint16) error {
 	g.sendMu.Lock()
 	defer g.sendMu.Unlock()
 
+	// Clear initialized flag to prevent frames from being sent during surface recreation
+	g.initialized.Store(false)
+
 	// Delete old surface
 	if err := g.sendDeleteSurface(g.surfaceID); err != nil {
 		return err
@@ -138,7 +146,14 @@ func (g *GFXChannel) UpdateResolution(width, height uint16) error {
 	}
 
 	// Remap
-	return g.sendMapSurfaceToOutput(g.surfaceID, 0, 0)
+	if err := g.sendMapSurfaceToOutput(g.surfaceID, 0, 0); err != nil {
+		return err
+	}
+
+	// Mark as initialized again - surface is ready to receive frames
+	g.initialized.Store(true)
+
+	return nil
 }
 
 // sendDeleteSurface sends a delete surface command.

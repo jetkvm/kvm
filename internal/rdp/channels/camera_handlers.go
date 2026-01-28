@@ -531,7 +531,13 @@ func (c *CameraChannel) handleSampleResponse(payload []byte) error {
 
 		// Request next sample if still active
 		if c.isActive.Load() {
-			return c.sendSampleRequest(0)
+			if err := c.sendSampleRequest(0); err != nil {
+				// Ignore channel closed errors - expected when client stops streaming
+				if err == ErrDVCChannelClosed {
+					return nil
+				}
+				return err
+			}
 		}
 		return nil
 	}
@@ -567,7 +573,13 @@ func (c *CameraChannel) handleSampleResponse(payload []byte) error {
 
 	// Request next sample if still active
 	if c.isActive.Load() {
-		return c.sendSampleRequest(streamIndex)
+		if err := c.sendSampleRequest(streamIndex); err != nil {
+			// Ignore channel closed errors - expected when client stops streaming
+			if err == ErrDVCChannelClosed {
+				return nil
+			}
+			return err
+		}
 	}
 
 	return nil

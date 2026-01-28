@@ -277,7 +277,7 @@ func getDefaultConfig() Config {
 		CameraResolution:   "1080p",
 		CameraFrameRate:    24, // Cinema rate - good balance of quality and CPU
 		CameraH264Bitrate:  3,  // 3 Mbps for 1080p24
-		CameraMjpegQuality: 35, // 35% - reasonable quality/size balance
+		CameraMjpegQuality: 100, // 100% - maximum quality for camera feed
 
 		// VNC defaults
 		VNCEnabled:          false,

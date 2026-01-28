@@ -18,10 +18,7 @@ import (
 )
 
 func (c *Connection) initClipboardChannel() {
-	c.server.deps.Logger.Info().Uint16("channelID", c.cliprdrdID).Msg("RDP: initializing clipboard channel")
-
 	c.clipboardChannel = channels.NewClipboardChannel(func(data []byte) error {
-		c.server.deps.Logger.Info().Int("dataLen", len(data)).Msg("RDP: clipboard sendFunc called")
 		return c.sendClipboardData(data)
 	})
 
@@ -29,12 +26,11 @@ func (c *Connection) initClipboardChannel() {
 	if c.server.deps.Config.GetRDPFileTransferEnabled() {
 		c.clipboardChannel.EnableFileTransfer(true)
 		c.clipboardChannel.SetFileTransferCallback(c.onFileTransferComplete)
-		c.server.deps.Logger.Debug().Msg("CLIPRDR: file transfer enabled")
 	}
 
-	// Set up logging - use Info level for visibility during debugging
+	// Set up logging at Debug level to avoid log noise
 	c.clipboardChannel.SetLogger(func(format string, args ...any) {
-		c.server.deps.Logger.Info().Msgf(format, args...)
+		c.server.deps.Logger.Debug().Msgf(format, args...)
 	})
 
 	if err := c.clipboardChannel.Start(); err != nil {
@@ -49,7 +45,7 @@ func (c *Connection) onFileTransferComplete(files []*channels.ClipboardFile) {
 		return
 	}
 
-	c.server.deps.Logger.Info().Int("count", len(files)).Msg("CLIPRDR: file transfer complete, waiting for paste")
+	c.server.deps.Logger.Debug().Int("count", len(files)).Msg("CLIPRDR: file transfer complete")
 
 	// Store files for later paste - don't type anything yet
 	c.pendingFilesMu.Lock()
@@ -75,7 +71,7 @@ func (c *Connection) handleFilePaste() bool {
 		return false
 	}
 
-	c.server.deps.Logger.Info().Int("count", len(files)).Msg("CLIPRDR: pasting files")
+	c.server.deps.Logger.Debug().Int("count", len(files)).Msg("CLIPRDR: pasting files")
 
 	method := c.server.deps.Config.GetRDPFileTransferMethod()
 	if method == "" || method == "auto" {
@@ -145,11 +141,9 @@ func (c *Connection) transferFilesViaNetwork(files []*channels.ClipboardFile) {
 		// Generate download command (includes TLS flags for self-signed certs)
 		cmd := generateDownloadCommand(targetOS, scheme, serverIP, port, token, f.Descriptor.FileName, customTemplate)
 
-		c.server.deps.Logger.Info().
+		c.server.deps.Logger.Debug().
 			Str("name", f.Descriptor.FileName).
 			Uint64("size", f.Descriptor.FileSize()).
-			Str("scheme", scheme).
-			Str("command", cmd).
 			Msg("CLIPRDR: typing download command")
 
 		// Type the command
@@ -265,12 +259,9 @@ func (c *Connection) transferFilesViaBase64(files []*channels.ClipboardFile) {
 		outputName := sanitizeOutputFileName(f.Descriptor.FileName)
 		script := c.generateDecodeScript(targetOS, encoded, outputName)
 
-		c.server.deps.Logger.Info().
+		c.server.deps.Logger.Debug().
 			Str("name", f.Descriptor.FileName).
-			Uint64("originalSize", f.Descriptor.FileSize()).
-			Int("compressedSize", compressed.Len()).
-			Int("encodedLen", len(encoded)).
-			Int("scriptLen", len(script)).
+			Uint64("size", f.Descriptor.FileSize()).
 			Msg("CLIPRDR: typing base64 decode script")
 
 		// Type the script
@@ -327,7 +318,7 @@ func (c *Connection) transferFilesViaUSB(files []*channels.ClipboardFile) {
 			continue
 		}
 
-		c.server.deps.Logger.Info().
+		c.server.deps.Logger.Debug().
 			Str("name", f.Descriptor.FileName).
 			Uint64("size", f.Descriptor.FileSize()).
 			Msg("CLIPRDR: file mounted as USB storage")
@@ -335,7 +326,7 @@ func (c *Connection) transferFilesViaUSB(files []*channels.ClipboardFile) {
 		// Type command to open the USB drive
 		cmd := c.generateOpenUSBCommand(targetOS)
 		if cmd != "" {
-			c.server.deps.Logger.Info().Str("command", cmd).Msg("CLIPRDR: typing command to open USB drive")
+			c.server.deps.Logger.Debug().Msg("CLIPRDR: typing command to open USB drive")
 			if err := c.server.deps.HID.KeyboardMacro(cmd); err != nil {
 				c.server.deps.Logger.Error().Err(err).Msg("CLIPRDR: failed to type USB open command")
 			}

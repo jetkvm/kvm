@@ -24,10 +24,9 @@ func (c *Connection) initSoundChannel() {
 			return
 		}
 
-		c.server.deps.Logger.Info().
-			Uint16("channels", fmt.Channels).
-			Uint32("sampleRate", fmt.SamplesPerSec).
-			Uint16("bitsPerSample", fmt.BitsPerSample).
+		c.server.deps.Logger.Debug().
+			Uint16("ch", fmt.Channels).
+			Uint32("hz", fmt.SamplesPerSec).
 			Msg("RDPSND ready")
 
 		if c.server.deps.Audio != nil {

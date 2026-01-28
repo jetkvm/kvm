@@ -117,9 +117,10 @@ type SoundChannel struct {
 	timestamp        atomic.Uint32
 	maxBlocksPending int32 // Configurable max blocks in flight (scaled by audio buffer config)
 
-	// Pre-allocated buffer for zero-allocation hot path
-	// Layout: [Header 4][Wave2Header 12][Audio data up to SNDCBlockSize]
-	audioBuf [SNDCHeaderSize + SNDCWave2HeaderSize + SNDCBlockSize]byte
+	// Pre-allocated buffers for zero-allocation hot path
+	// audioBuf: [Header 4][Wave2Header 12][Audio data up to SNDCBlockSize]
+	audioBuf    [SNDCHeaderSize + SNDCWave2HeaderSize + SNDCBlockSize]byte
+	trainingBuf [SNDCHeaderSize + 4]byte // Training response buffer
 
 	ready atomic.Bool
 }
@@ -285,19 +286,19 @@ func (s *SoundChannel) handleWaveConfirm(data []byte) error {
 }
 
 // handleTraining processes training PDU (latency measurement).
+// Uses pre-allocated buffer for zero allocations.
 func (s *SoundChannel) handleTraining(data []byte) error {
 	if len(data) < 4 {
 		return nil
 	}
 
-	// Echo back the training timestamp
-	buf := make([]byte, SNDCHeaderSize+4)
-	buf[0] = SNDCTraining
-	buf[1] = 0
-	binary.LittleEndian.PutUint16(buf[2:4], 4)
-	copy(buf[SNDCHeaderSize:], data[:4])
+	// Echo back the training timestamp using pre-allocated buffer
+	s.trainingBuf[0] = SNDCTraining
+	s.trainingBuf[1] = 0
+	binary.LittleEndian.PutUint16(s.trainingBuf[2:4], 4)
+	copy(s.trainingBuf[SNDCHeaderSize:], data[:4])
 
-	return s.sendFunc(buf)
+	return s.sendFunc(s.trainingBuf[:])
 }
 
 // SendAudio sends audio data to the client.
