@@ -448,6 +448,9 @@ func LoadConfig() {
 	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
 	logging.GetRootLogger().SetSubsystemLevels(config.LogLevelOverrides)
 
+	// Update all C log levels to match configuration
+	syncCLogLevelsWithDefault(config.LogLevelOverrides, config.DefaultLogLevel)
+
 	configSuccess.Set(1.0)
 	configSuccessTime.SetToCurrentTime()
 
@@ -498,3 +501,4 @@ func ensureConfigLoaded() {
 		LoadConfig()
 	}
 }
+

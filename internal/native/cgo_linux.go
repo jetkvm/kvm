@@ -192,6 +192,13 @@ func setUpNativeHandlers() {
 	C.jetkvm_cgo_setup_rpc_handler()
 }
 
+// SetCLogLevel sets the log level for native C code.
+// Maps zerolog levels to C levels: TRACE=-1, DEBUG=0, INFO=1, WARN=2, ERROR=3, FATAL=4, PANIC=5
+// This is called when log levels are changed via RPC or config.
+func SetCLogLevel(level int) {
+	C.jetkvm_set_log_level(C.int(level))
+}
+
 func uiInit(rotation uint16) {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()

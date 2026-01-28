@@ -161,3 +161,6 @@ func videoRequestKeyframe() error {
 	panicPlatformNotSupported()
 	return nil
 }
+
+// SetCLogLevel is a no-op on non-Linux platforms.
+func SetCLogLevel(level int) {}

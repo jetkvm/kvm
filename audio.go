@@ -72,7 +72,7 @@ func GetAudioInputOwner() AudioInputOwner {
 }
 
 func initAudio() {
-	audioLogger = logging.GetDefaultLogger().With().Str("component", "audio-manager").Logger()
+	audioLogger = *logging.GetSubsystemLogger("audio")
 
 	ensureConfigLoaded()
 	audioOutputEnabled.Store(config.AudioOutputEnabled)

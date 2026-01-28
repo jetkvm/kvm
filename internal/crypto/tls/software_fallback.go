@@ -48,6 +48,9 @@ func hardwareEngine() string {
 	return "none (software)"
 }
 
+// SetCLogLevel is a no-op on non-ARM platforms.
+func SetCLogLevel(level int) {}
+
 func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 	if config.Mode == ModeAnonymousDH {
 		return nil, fmt.Errorf("anonymous DH mode not supported without OpenSSL (requires CGO on ARM Linux)")

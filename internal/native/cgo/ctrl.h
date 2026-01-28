@@ -24,6 +24,7 @@ typedef void (jetkvm_rgb_handler_t)(const uint8_t *frame, ssize_t len, uint32_t 
 typedef void (jetkvm_indev_handler_t)(int code);
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler);
+void jetkvm_set_log_level(int level);  // Runtime log level: TRACE=-1, DEBUG=0, INFO=1, WARN=2, ERROR=3, FATAL=4, PANIC=5
 void jetkvm_set_video_handler(jetkvm_video_handler_t *handler);
 void jetkvm_set_jpeg_handler(jetkvm_jpeg_handler_t *handler);
 void jetkvm_set_rgb_handler(jetkvm_rgb_handler_t *handler);

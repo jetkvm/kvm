@@ -89,8 +89,21 @@ static int set_blocking(int fd) {
 static int hw_crypto_initialized = 0;
 static ENGINE *devcrypto_engine = NULL;
 
+// Log level for OpenSSL info messages: 1=INFO, 2=WARN (default), 3=ERROR
+// Using volatile for single-core RV1106 (no cache coherency issues)
+static volatile int openssl_log_level = 2;  // Default to WARN
+
+// Set the OpenSSL log level from Go
+// Clamps to valid range: TRACE=-1 to DISABLE=6 (zerolog convention)
+void openssl_set_log_level(int level) {
+    if (level < -1) level = -1;
+    if (level > 6) level = 6;
+    openssl_log_level = level;
+}
+
 // List available engines for debugging
 static void list_engines() {
+    if (openssl_log_level > 1) return;  // Skip if log level > INFO
     ENGINE *e;
     fprintf(stderr, "INFO: OpenSSL crypto/tls: Available engines:\n");
     for (e = ENGINE_get_first(); e != NULL; e = ENGINE_get_next(e)) {
@@ -102,28 +115,28 @@ static void list_engines() {
 static ENGINE* try_load_engine(const char* engine_id) {
     ENGINE *e = ENGINE_by_id(engine_id);
     if (e == NULL) {
-        fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' not found\n", engine_id);
+        if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' not found\n", engine_id);
         return NULL;
     }
 
-    fprintf(stderr, "INFO: OpenSSL crypto/tls: Found engine '%s' (%s)\n",
+    if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Found engine '%s' (%s)\n",
             ENGINE_get_id(e), ENGINE_get_name(e));
 
     if (!ENGINE_init(e)) {
         unsigned long err = ERR_get_error();
         char err_buf[ENGINE_ERROR_BUF_SIZE];
         ERR_error_string_n(err, err_buf, sizeof(err_buf));
-        fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' init FAILED: %s\n", engine_id, err_buf);
+        if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' init FAILED: %s\n", engine_id, err_buf);
         ENGINE_free(e);
         return NULL;
     }
 
     // Set as default for ciphers, digests, and asymmetric crypto (if available)
     if (!ENGINE_set_default_ciphers(e)) {
-        fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' set_default_ciphers failed\n", engine_id);
+        if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' set_default_ciphers failed\n", engine_id);
     }
     if (!ENGINE_set_default_digests(e)) {
-        fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' set_default_digests failed\n", engine_id);
+        if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' set_default_digests failed\n", engine_id);
     }
     // Try to enable RSA acceleration if available (may fail if PKA not exposed)
     ENGINE_set_default_RSA(e);
@@ -132,7 +145,7 @@ static ENGINE* try_load_engine(const char* engine_id) {
     // Use hardware RNG if available
     ENGINE_set_default_RAND(e);
 
-    fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' ENABLED for hardware crypto\n", engine_id);
+    if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' ENABLED for hardware crypto\n", engine_id);
     return e;
 }
 
@@ -155,8 +168,10 @@ static void openssl_init() {
     // For static builds, explicitly load built-in engines
     ENGINE_load_builtin_engines();
 
-    fprintf(stderr, "INFO: OpenSSL crypto/tls: OpenSSL %s initialized\n", OPENSSL_VERSION_TEXT);
-    fprintf(stderr, "INFO: OpenSSL crypto/tls: Attempting to load hardware crypto engine...\n");
+    if (openssl_log_level <= 1) {
+        fprintf(stderr, "INFO: OpenSSL crypto/tls: OpenSSL %s initialized\n", OPENSSL_VERSION_TEXT);
+        fprintf(stderr, "INFO: OpenSSL crypto/tls: Attempting to load hardware crypto engine...\n");
+    }
 
     // List what's available
     list_engines();
@@ -171,7 +186,7 @@ static void openssl_init() {
 
     // Fall back to dynamic loading if built-in didn't work
     if (devcrypto_engine == NULL) {
-        fprintf(stderr, "INFO: OpenSSL crypto/tls: Trying dynamic engine load...\n");
+        if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Trying dynamic engine load...\n");
         ENGINE *dyn = ENGINE_by_id("dynamic");
         if (dyn != NULL) {
             if (ENGINE_ctrl_cmd_string(dyn, "SO_PATH", "devcrypto", 0) &&
@@ -179,7 +194,7 @@ static void openssl_init() {
                 devcrypto_engine = dyn;
                 if (ENGINE_init(devcrypto_engine)) {
                     ENGINE_set_default_ciphers(devcrypto_engine);
-                    fprintf(stderr, "INFO: OpenSSL crypto/tls: Dynamic devcrypto engine loaded\n");
+                    if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Dynamic devcrypto engine loaded\n");
                 } else {
                     ENGINE_free(devcrypto_engine);
                     devcrypto_engine = NULL;
@@ -191,8 +206,10 @@ static void openssl_init() {
     }
 
     if (devcrypto_engine == NULL) {
-        fprintf(stderr, "INFO: OpenSSL crypto/tls: NO hardware crypto engine available, using software AES\n");
-        fprintf(stderr, "INFO: OpenSSL crypto/tls: For better performance, ensure /dev/crypto is available\n");
+        if (openssl_log_level <= 1) {
+            fprintf(stderr, "INFO: OpenSSL crypto/tls: NO hardware crypto engine available, using software AES\n");
+            fprintf(stderr, "INFO: OpenSSL crypto/tls: For better performance, ensure /dev/crypto is available\n");
+        }
     }
 }
 
@@ -412,9 +429,9 @@ static SSL_CTX* create_ssl_ctx(int use_cert, const char* cert_pem, const char* k
     // TODO: Investigate kTLS handshake issues (SSL_ERROR_WANT_READ loop too slow)
 #if 0 && !KTLS_NOT_AVAILABLE
     SSL_CTX_set_options(ctx, SSL_OP_ENABLE_KTLS);
-    fprintf(stderr, "INFO: OpenSSL crypto/tls: kTLS (kernel TLS) ENABLED in SSL context\n");
+    if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: kTLS (kernel TLS) ENABLED in SSL context\n");
 #else
-    fprintf(stderr, "INFO: OpenSSL crypto/tls: kTLS disabled (hardware crypto via devcrypto still active)\n");
+    if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: kTLS disabled (hardware crypto via devcrypto still active)\n");
 #endif
 
     return ctx;
@@ -494,6 +511,12 @@ func initImpl() {
 	initOnce.Do(func() {
 		C.openssl_init()
 	})
+}
+
+// SetCLogLevel sets the log level for OpenSSL C code.
+// Maps zerolog levels: TRACE=-1, DEBUG=0, INFO=1, WARN=2, ERROR=3, FATAL=4, PANIC=5
+func SetCLogLevel(level int) {
+	C.openssl_set_log_level(C.int(level))
 }
 
 func isHardwareAvailable() bool {
@@ -847,16 +870,19 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 	}
 
 	// Log kTLS status after handshake for diagnostics (one-time per connection, not hot path)
-	ktlsSend := C.is_ktls_send_enabled(ssl) != 0
-	ktlsRecv := C.is_ktls_recv_enabled(ssl) != 0
-	cipher := C.SSL_get_current_cipher(ssl)
-	var cipherName string
-	if cipher != nil {
-		cipherName = C.GoString(C.SSL_CIPHER_get_name(cipher))
+	// Only log at INFO level (log level <= 1)
+	if C.openssl_log_level <= 1 {
+		ktlsSend := C.is_ktls_send_enabled(ssl) != 0
+		ktlsRecv := C.is_ktls_recv_enabled(ssl) != 0
+		cipher := C.SSL_get_current_cipher(ssl)
+		var cipherName string
+		if cipher != nil {
+			cipherName = C.GoString(C.SSL_CIPHER_get_name(cipher))
+		}
+		tlsVersion := C.GoString(C.SSL_get_version(ssl))
+		fmt.Fprintf(os.Stderr, "INFO: OpenSSL TLS handshake complete: version=%s cipher=%s kTLS_send=%v kTLS_recv=%v ktls_available=%d\n",
+			tlsVersion, cipherName, ktlsSend, ktlsRecv, 1-C.KTLS_NOT_AVAILABLE)
 	}
-	tlsVersion := C.GoString(C.SSL_get_version(ssl))
-	fmt.Fprintf(os.Stderr, "INFO: OpenSSL TLS handshake complete: version=%s cipher=%s kTLS_send=%v kTLS_recv=%v ktls_available=%d\n",
-		tlsVersion, cipherName, ktlsSend, ktlsRecv, 1-C.KTLS_NOT_AVAILABLE)
 
 	return &opensslConn{
 		ssl:  ssl,

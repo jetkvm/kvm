@@ -36,7 +36,7 @@ type OutputRelay struct {
 }
 
 func NewOutputRelay(source *AudioSource, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-relay").Logger()
+	logger := *logging.GetSubsystemLogger("audio-output")
 
 	r := &OutputRelay{
 		source:  source,
@@ -190,7 +190,7 @@ type InputRelay struct {
 }
 
 func NewInputRelay() *InputRelay {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-relay").Logger()
+	logger := *logging.GetSubsystemLogger("audio-input")
 
 	return &InputRelay{
 		logger: logger,

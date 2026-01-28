@@ -1173,9 +1173,8 @@ void video_restart_streaming()
 
 void *run_detect_format(void *arg)
 {
-    fprintf(stderr, "INFO: FORMAT THREAD: starting, variable addresses: detected_width=%p, detected_height=%p, detected_signal=%p\n",
+    log_debug("FORMAT THREAD: starting, variable addresses: detected_width=%p, detected_height=%p, detected_signal=%p",
             (void*)&detected_width, (void*)&detected_height, (void*)&detected_signal);
-    fflush(stderr);
 
     struct v4l2_event_subscription sub;
     struct v4l2_event ev;
@@ -1185,12 +1184,10 @@ void *run_detect_format(void *arg)
     sub.type = V4L2_EVENT_SOURCE_CHANGE;
     if (ioctl(sub_dev_fd, VIDIOC_SUBSCRIBE_EVENT, &sub) == -1)
     {
-        fprintf(stderr, "ERROR: FORMAT THREAD: cannot subscribe to event\n");
-        fflush(stderr);
+        log_error("FORMAT THREAD: cannot subscribe to event");
         goto exit;
     }
-    fprintf(stderr, "INFO: FORMAT THREAD: subscribed to events, entering loop\n");
-    fflush(stderr);
+    log_debug("FORMAT THREAD: subscribed to events, entering loop");
 
     while (!should_exit)
     {
@@ -1239,9 +1236,8 @@ void *run_detect_format(void *arg)
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
             detected_signal = true;
-            fprintf(stderr, "INFO: FORMAT THREAD: Signal detected! Set detected_width=%d, detected_height=%d, detected_signal=true\n",
+            log_debug("FORMAT THREAD: Signal detected! Set detected_width=%d, detected_height=%d, detected_signal=true",
                     detected_width, detected_height);
-            fflush(stderr);
             video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
 
             if (should_restart) {

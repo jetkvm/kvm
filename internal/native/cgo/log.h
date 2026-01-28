@@ -6,11 +6,6 @@
 #include <time.h>
 #include "log_handler.h"
 
-/* Default level */
-#ifndef LOG_LEVEL
-    #define LOG_LEVEL   LEVEL_INFO
-#endif
-
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
 void jetkvm_log(const char *message);
@@ -23,7 +18,7 @@ void jetkvm_log(const char *message);
     log_message(level, file, func, line, msg_buffer);                            \
 } while (0)
 
-/* Level enum */
+/* Level enum - matches zerolog levels for consistency */
 #define LEVEL_PANIC   5
 #define LEVEL_FATAL   4
 #define LEVEL_ERROR   3
@@ -32,63 +27,74 @@ void jetkvm_log(const char *message);
 #define LEVEL_DEBUG   0
 #define LEVEL_TRACE   -1
 
-/* TRACE LOG */
+/*
+ * Runtime log level macros - optimized for single-core RV1106 SoC
+ * Uses __builtin_expect for branch prediction hints:
+ * - TRACE/DEBUG: expected to be disabled (0 = unlikely)
+ * - INFO: expected to be disabled at WARN level (0 = unlikely)
+ * - WARN/ERROR/PANIC: expected to pass (1 = likely)
+ *
+ * Short-circuit evaluation: arguments are not evaluated if level check fails,
+ * avoiding expensive string formatting when logging is disabled.
+ */
+
+/* TRACE LOG - rarely enabled */
 #define log_trace(...) do {                                                        \
-    if (LOG_LEVEL <= LEVEL_TRACE) {                                                \
+    if (__builtin_expect(LEVEL_TRACE >= jetkvm_runtime_log_level, 0)) {            \
         emit_log(                                                                  \
             LEVEL_TRACE, __FILENAME__, __func__, __LINE__, __VA_ARGS__             \
         );                                                                         \
     }                                                                              \
 } while (0)
 
-/* DEBUG LOG */
+/* DEBUG LOG - rarely enabled in production */
 #define log_debug(...) do {                                                        \
-    if (LOG_LEVEL <= LEVEL_DEBUG) {                                                \
+    if (__builtin_expect(LEVEL_DEBUG >= jetkvm_runtime_log_level, 0)) {            \
         emit_log(                                                                  \
             LEVEL_DEBUG, __FILENAME__, __func__, __LINE__, __VA_ARGS__             \
         );                                                                         \
     }                                                                              \
 } while (0)
 
-/* INFO LOG */
+/* INFO LOG - often disabled (default is WARN) */
 #define log_info(...) do {                                                         \
-    if (LOG_LEVEL <= LEVEL_INFO) {                                                 \
+    if (__builtin_expect(LEVEL_INFO >= jetkvm_runtime_log_level, 0)) {             \
         emit_log(                                                                  \
             LEVEL_INFO, __FILENAME__, __func__, __LINE__, __VA_ARGS__              \
         );                                                                         \
     }                                                                              \
 } while (0)
 
-/* NOTICE LOG */
+/* NOTICE LOG - same as INFO */
 #define log_notice(...) do {                                                       \
-    if (LOG_LEVEL <= LEVEL_INFO) {                                                 \
+    if (__builtin_expect(LEVEL_INFO >= jetkvm_runtime_log_level, 0)) {             \
         emit_log(                                                                  \
             LEVEL_INFO, __FILENAME__, __func__, __LINE__, __VA_ARGS__              \
         );                                                                         \
     }                                                                              \
 } while (0)
 
-/* WARN LOG */
+/* WARN LOG - usually enabled */
 #define log_warn(...) do {                                                         \
-    if (LOG_LEVEL <= LEVEL_WARN) {                                                 \
+    if (__builtin_expect(LEVEL_WARN >= jetkvm_runtime_log_level, 1)) {             \
         emit_log(                                                                  \
             LEVEL_WARN, __FILENAME__, __func__, __LINE__, __VA_ARGS__              \
         );                                                                         \
     }                                                                              \
 } while (0)
 
-/* ERROR LOG */
+/* ERROR LOG - always enabled */
 #define log_error(...) do {                                                        \
-    if (LOG_LEVEL <= LEVEL_ERROR) {                                                \
+    if (__builtin_expect(LEVEL_ERROR >= jetkvm_runtime_log_level, 1)) {            \
         emit_log(                                                                  \
             LEVEL_ERROR, __FILENAME__, __func__, __LINE__, __VA_ARGS__             \
         );                                                                         \
     }                                                                              \
 } while (0)
 
-/* PANIC LOG */
+/* PANIC LOG - always enabled */
 #define log_panic(...) do {                                                        \
-    if (LOG_LEVEL <= LEVEL_PANIC) {                                                \
+    if (__builtin_expect(LEVEL_PANIC >= jetkvm_runtime_log_level, 1)) {            \
         emit_log(                                                                  \
             LEVEL_PANIC, __FILENAME__, __func__, __LINE__, __VA_ARGS__             \
         );                                                                         \

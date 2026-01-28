@@ -106,6 +106,61 @@ static uint32_t max_backoff_us_global = 500000;
 static atomic_int capture_stop_requested = 0;
 static atomic_int playback_stop_requested = 0;
 
+// Log level control (matches zerolog levels: 0=panic, 1=fatal, 2=error, 3=warn, 4=info, 5=debug, 6=trace)
+// Default to warn (3) - only errors and warnings print by default
+// Using volatile instead of atomic: single-core RV1106 has no cache coherency issues,
+// and we have single writer (Go) with multiple readers (C threads). Avoids memory barrier overhead.
+static volatile int audio_log_level = 3;  // WARN level
+
+// Log level setters (called from Go)
+void jetkvm_audio_set_log_level(int level);
+
+void jetkvm_audio_set_log_level(int level) {
+    // Clamp to valid range (0-6)
+    if (level < 0) level = 0;
+    if (level > 6) level = 6;
+    audio_log_level = level;  // Simple store - no barrier needed on single-core
+}
+
+// Log level constants
+#define LOG_LEVEL_ERROR 2
+#define LOG_LEVEL_WARN  3
+#define LOG_LEVEL_INFO  4
+#define LOG_LEVEL_DEBUG 5
+#define LOG_LEVEL_TRACE 6
+
+// Optimized logging macros that short-circuit argument evaluation.
+// On single-core RV1106, simple volatile read is sufficient (no atomic needed).
+// INFO/DEBUG skip fflush() to avoid syscall overhead - rely on line buffering.
+// ERROR/WARN always fflush() since they indicate problems that need immediate visibility.
+
+#define LOG_ERROR(fmt, ...) do { \
+    fprintf(stderr, "ERROR: " fmt "\n", ##__VA_ARGS__); \
+    fflush(stderr); \
+} while(0)
+
+#define LOG_WARN(fmt, ...) do { \
+    if (__builtin_expect(audio_log_level >= LOG_LEVEL_WARN, 1)) { \
+        fprintf(stderr, "WARN: " fmt "\n", ##__VA_ARGS__); \
+        fflush(stderr); \
+    } \
+} while(0)
+
+#define LOG_INFO(fmt, ...) do { \
+    if (__builtin_expect(audio_log_level >= LOG_LEVEL_INFO, 0)) { \
+        fprintf(stdout, "INFO: " fmt "\n", ##__VA_ARGS__); \
+    } \
+} while(0)
+
+#define LOG_DEBUG(fmt, ...) do { \
+    if (__builtin_expect(audio_log_level >= LOG_LEVEL_DEBUG, 0)) { \
+        fprintf(stdout, "DEBUG: " fmt "\n", ##__VA_ARGS__); \
+    } \
+} while(0)
+
+// Legacy macro for gradual migration - will be removed
+#define SHOULD_LOG(level) (__builtin_expect(audio_log_level >= (level), 0))
+
 // Last captured PCM buffer for RDP audio output (copied after resampling)
 // Format: 16-bit signed PCM, stereo interleaved, 48kHz, 20ms = 960 frames * 2 channels = 1920 samples
 static short CACHE_ALIGN last_pcm_buffer[960 * 2];
@@ -232,16 +287,14 @@ static unsigned int get_hdmi_audio_sample_rate(void) {
 	if (fd < 0) {
 		// Distinguish between different failure modes for better diagnostics
 		if (errno == ENOENT) {
-			fprintf(stdout, "INFO: TC358743 device not found (USB audio mode or device not present)\n");
+			LOG_INFO("TC358743 device not found (USB audio mode or device not present)");
 		} else if (errno == EACCES || errno == EPERM) {
-			fprintf(stderr, "ERROR: Permission denied accessing TC358743 (/dev/v4l-subdev2)\n");
-			fprintf(stderr, "       Check device permissions or run with appropriate privileges\n");
+			LOG_ERROR("Permission denied accessing TC358743 (/dev/v4l-subdev2)");
+			LOG_ERROR("Check device permissions or run with appropriate privileges");
 		} else {
-			fprintf(stderr, "WARNING: Could not open /dev/v4l-subdev2: %s (errno=%d)\n", strerror(errno), errno);
-			fprintf(stderr, "       HDMI audio sample rate detection unavailable, will use 48kHz default\n");
+			LOG_WARN("Could not open /dev/v4l-subdev2: %s (errno=%d)", strerror(errno), errno);
+			LOG_WARN("HDMI audio sample rate detection unavailable, will use 48kHz default");
 		}
-		fflush(stderr);
-		fflush(stdout);
 		return 0;
 	}
 
@@ -257,13 +310,12 @@ static unsigned int get_hdmi_audio_sample_rate(void) {
 	if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &ext_ctrls) == -1) {
 		// Provide specific error messages based on errno
 		if (errno == EINVAL) {
-			fprintf(stderr, "ERROR: TC358743 sample rate control not supported (driver version mismatch?)\n");
-			fprintf(stderr, "       Ensure kernel driver supports audio_sampling_rate control\n");
+			LOG_ERROR("TC358743 sample rate control not supported (driver version mismatch?)");
+			LOG_ERROR("Ensure kernel driver supports audio_sampling_rate control");
 		} else {
-			fprintf(stderr, "WARNING: TC358743 ioctl failed: %s (errno=%d)\n", strerror(errno), errno);
-			fprintf(stderr, "       Will use 48kHz default sample rate\n");
+			LOG_WARN("TC358743 ioctl failed: %s (errno=%d)", strerror(errno), errno);
+			LOG_WARN("Will use 48kHz default sample rate");
 		}
-		fflush(stderr);
 		close(fd);
 		return 0;
 	}
@@ -275,9 +327,8 @@ static unsigned int get_hdmi_audio_sample_rate(void) {
 
 	if (detected_rate == 0) {
 		if (last_logged_rate != 0) {
-			fprintf(stdout, "INFO: TC358743 reports 0 Hz (no HDMI signal or audio not detected yet)\n");
-			fprintf(stdout, "      Will use 48kHz default and resample if needed when signal detected\n");
-			fflush(stdout);
+			LOG_INFO("TC358743 reports 0 Hz (no HDMI signal or audio not detected yet)");
+			LOG_INFO("Will use 48kHz default and resample if needed when signal detected");
 			last_logged_rate = 0;
 		}
 		return 0;
@@ -286,17 +337,15 @@ static unsigned int get_hdmi_audio_sample_rate(void) {
 	// Validate detected rate is reasonable (log warning only on rate changes)
 	if (detected_rate < 8000 || detected_rate > 192000) {
 		if (detected_rate != last_logged_rate) {
-			fprintf(stderr, "WARNING: TC358743 reported unusual sample rate: %u Hz (expected 32k-192k)\n", detected_rate);
-			fprintf(stderr, "         Using detected rate anyway, but audio may not work correctly\n");
-			fflush(stderr);
+			LOG_WARN("TC358743 reported unusual sample rate: %u Hz (expected 32k-192k)", detected_rate);
+			LOG_WARN("Using detected rate anyway, but audio may not work correctly");
 			last_logged_rate = detected_rate;
 		}
 	}
 
 	// Log rate changes and update tracking state to suppress duplicate logging
 	if (detected_rate != last_logged_rate) {
-		fprintf(stdout, "INFO: TC358743 detected HDMI audio sample rate: %u Hz\n", detected_rate);
-		fflush(stdout);
+		LOG_INFO("TC358743 detected HDMI audio sample rate: %u Hz", detected_rate);
 		last_logged_rate = detected_rate;
 	}
 
@@ -322,9 +371,7 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 			// Validate that we can switch to blocking mode
 			err = snd_pcm_nonblock(*handle, 0);
 			if (err < 0) {
-				fprintf(stderr, "ERROR: Failed to set blocking mode on %s: %s\n",
-				        device, snd_strerror(err));
-				fflush(stderr);
+				LOG_ERROR("Failed to set blocking mode on %s: %s", device, snd_strerror(err));
 				snd_pcm_close(*handle);
 				*handle = NULL;
 				return err;
@@ -568,30 +615,26 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 
 	err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (err < 0) {
-		fprintf(stderr, "ERROR: %s: Failed to set access mode: %s\n", device_name, snd_strerror(err));
-		fflush(stderr);
+		LOG_ERROR("%s: Failed to set access mode: %s", device_name, snd_strerror(err));
 		return err;
 	}
 
 	err = snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE);
 	if (err < 0) {
-		fprintf(stderr, "ERROR: %s: Failed to set format S16_LE: %s\n", device_name, snd_strerror(err));
-		fflush(stderr);
+		LOG_ERROR("%s: Failed to set format S16_LE: %s", device_name, snd_strerror(err));
 		return err;
 	}
 
 	err = snd_pcm_hw_params_set_channels(handle, params, num_channels);
 	if (err < 0) {
-		fprintf(stderr, "ERROR: %s: Failed to set %u channels: %s\n", device_name, num_channels, snd_strerror(err));
-		fflush(stderr);
+		LOG_ERROR("%s: Failed to set %u channels: %s", device_name, num_channels, snd_strerror(err));
 		return err;
 	}
 
 	// Disable ALSA resampling - we handle it with SpeexDSP
 	err = snd_pcm_hw_params_set_rate_resample(handle, params, 0);
 	if (err < 0) {
-		fprintf(stderr, "ERROR: %s: Failed to disable ALSA resampling: %s\n", device_name, snd_strerror(err));
-		fflush(stderr);
+		LOG_ERROR("%s: Failed to disable ALSA resampling: %s", device_name, snd_strerror(err));
 		return err;
 	}
 
@@ -620,9 +663,8 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	err = snd_pcm_hw_params_get_rate(params, &negotiated_rate, 0);
 	if (err < 0) return err;
 
-	fprintf(stdout, "INFO: %s: Hardware negotiated %u Hz (Opus uses %u Hz with SpeexDSP resampling)\n",
-	        device_name, negotiated_rate, opus_sample_rate);
-	fflush(stdout);
+	LOG_INFO("%s: Hardware negotiated %u Hz (Opus uses %u Hz with SpeexDSP resampling)",
+	         device_name, negotiated_rate, opus_sample_rate);
 
 	err = snd_pcm_sw_params_current(handle, sw_params);
 	if (err < 0) return err;
@@ -643,27 +685,19 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 		snd_pcm_chmap_t *chmap = snd_pcm_get_chmap(handle);
 		if (chmap != NULL) {
 			if (chmap->channels != 2) {
-				fprintf(stderr, "WARN: %s: Expected 2 channels but channel map has %u\n",
-				        device_name, chmap->channels);
-				fflush(stderr);
+				LOG_WARN("%s: Expected 2 channels but channel map has %u", device_name, chmap->channels);
 			} else if (chmap->pos[0] == SND_CHMAP_UNKNOWN || chmap->pos[1] == SND_CHMAP_UNKNOWN) {
-				fprintf(stderr, "WARN: %s: Channel map positions are unknown, cannot detect swap\n",
-				        device_name);
-				fflush(stderr);
+				LOG_WARN("%s: Channel map positions are unknown, cannot detect swap", device_name);
 			} else {
 				bool is_swapped = (chmap->pos[0] == SND_CHMAP_FR && chmap->pos[1] == SND_CHMAP_FL);
 				if (is_swapped) {
-					fprintf(stdout, "INFO: %s: Hardware reports swapped channel map (R,L instead of L,R)\n",
-					        device_name);
-					fflush(stdout);
+					LOG_INFO("%s: Hardware reports swapped channel map (R,L instead of L,R)", device_name);
 				}
 				*channels_swapped_out = is_swapped;
 			}
 			free(chmap);
 		} else {
-			fprintf(stdout, "INFO: %s: Channel map not available, assuming standard L/R order\n",
-			        device_name);
-			fflush(stdout);
+			LOG_INFO("%s: Channel map not available, assuming standard L/R order", device_name);
 		}
 	}
 
@@ -724,9 +758,7 @@ int jetkvm_audio_capture_init() {
 
 	err = safe_alsa_open(&pcm_capture_handle, alsa_capture_device, SND_PCM_STREAM_CAPTURE);
 	if (err < 0) {
-		fprintf(stderr, "Failed to open ALSA capture device %s: %s\n",
-		        alsa_capture_device, snd_strerror(err));
-		fflush(stderr);
+		LOG_ERROR("Failed to open ALSA capture device %s: %s", alsa_capture_device, snd_strerror(err));
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
 		return ERR_ALSA_OPEN_FAILED;
@@ -758,9 +790,8 @@ int jetkvm_audio_capture_init() {
 	hardware_sample_rate = actual_rate;
 	hardware_frame_size = actual_frame_size;
 	if (hardware_frame_size > MAX_HARDWARE_FRAME_SIZE) {
-		fprintf(stderr, "ERROR: capture: Hardware frame size %u exceeds buffer capacity %u\n",
-		        hardware_frame_size, MAX_HARDWARE_FRAME_SIZE);
-		fflush(stderr);
+		LOG_ERROR("capture: Hardware frame size %u exceeds buffer capacity %u",
+		          hardware_frame_size, MAX_HARDWARE_FRAME_SIZE);
 		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
 		if (handle) {
@@ -784,9 +815,8 @@ int jetkvm_audio_capture_init() {
 		                                          opus_sample_rate, SPEEX_RESAMPLER_QUALITY_DESKTOP,
 		                                          &speex_err);
 		if (!capture_resampler || speex_err != 0) {
-			fprintf(stderr, "ERROR: capture: Failed to create SpeexDSP resampler (%u Hz → %u Hz): %d\n",
-			        hardware_sample_rate, opus_sample_rate, speex_err);
-			fflush(stderr);
+			LOG_ERROR("capture: Failed to create SpeexDSP resampler (%u Hz → %u Hz): %d",
+			          hardware_sample_rate, opus_sample_rate, speex_err);
 			snd_pcm_t *handle = pcm_capture_handle;
 			pcm_capture_handle = NULL;
 			if (handle) {
@@ -798,11 +828,9 @@ int jetkvm_audio_capture_init() {
 		}
 	}
 
-	fprintf(stdout, "INFO: capture: Initializing Opus encoder %sat (%u Hz → %u Hz), %u channels, frame size %u\n",
-	        hardware_sample_rate == opus_sample_rate ? "" : "SpeexDSP resampled ",
-	        hardware_sample_rate, opus_sample_rate,
-	        capture_channels, opus_frame_size);
-	fflush(stdout);
+	LOG_INFO("capture: Initializing Opus encoder %sat (%u Hz → %u Hz), %u channels, frame size %u",
+	         hardware_sample_rate == opus_sample_rate ? "" : "SpeexDSP resampled ",
+	         hardware_sample_rate, opus_sample_rate, capture_channels, opus_frame_size);
 
 	int opus_err = 0;
 	encoder = opus_encoder_create(opus_sample_rate, capture_channels, OPUS_APPLICATION_AUDIO, &opus_err);
@@ -827,8 +855,7 @@ int jetkvm_audio_capture_init() {
 	#define OPUS_CTL_CRITICAL(call, desc) do { \
 		int _err = call; \
 		if (_err != OPUS_OK) { \
-			fprintf(stderr, "ERROR: capture: Failed to set " desc ": %s\n", opus_strerror(_err)); \
-			fflush(stderr); \
+			LOG_ERROR("capture: Failed to set " desc ": %s", opus_strerror(_err)); \
 			opus_encoder_destroy(encoder); \
 			encoder = NULL; \
 			if (capture_resampler) { \
@@ -850,8 +877,7 @@ int jetkvm_audio_capture_init() {
 	#define OPUS_CTL_WARN(call, desc) do { \
 		int _err = call; \
 		if (_err != OPUS_OK) { \
-			fprintf(stderr, "WARN: capture: Failed to set " desc ": %s (non-critical, continuing)\n", opus_strerror(_err)); \
-			fflush(stderr); \
+			LOG_WARN("capture: Failed to set " desc ": %s (non-critical, continuing)", opus_strerror(_err)); \
 		} \
 	} while(0)
 
@@ -948,10 +974,9 @@ retry_read:
 			if (current_rate == pending_new_rate) {
 				rate_change_confirm_count++;
 				if (rate_change_confirm_count >= RATE_CHANGE_CONFIRM_THRESHOLD) {
-					fprintf(stderr, "ERROR: capture: HDMI sample rate changed from %u to %u Hz (confirmed %d times)\n",
-					        hardware_sample_rate, current_rate, rate_change_confirm_count);
-					fprintf(stderr, "       Triggering reconnection for automatic reconfiguration\n");
-					fflush(stderr);
+					LOG_ERROR("capture: HDMI sample rate changed from %u to %u Hz (confirmed %d times)",
+					          hardware_sample_rate, current_rate, rate_change_confirm_count);
+					LOG_ERROR("Triggering reconnection for automatic reconfiguration");
 					// Reset hysteresis state for next detection cycle
 					pending_new_rate = 0;
 					rate_change_confirm_count = 0;
@@ -995,9 +1020,8 @@ retry_read:
 		                                                        pcm_hw_buffer, &in_len,
 		                                                        pcm_opus_buffer, &out_len);
 		if (res_err != 0 || out_len != opus_frame_size) {
-			fprintf(stderr, "ERROR: capture: Resampling failed (err=%d, out_len=%u, expected=%u)\n",
-			        res_err, out_len, opus_frame_size);
-			fflush(stderr);
+			LOG_ERROR("capture: Resampling failed (err=%d, out_len=%u, expected=%u)",
+			          res_err, out_len, opus_frame_size);
 			pthread_mutex_unlock(&capture_mutex);
 			return -1;
 		}
@@ -1021,8 +1045,7 @@ retry_read:
 	nb_bytes = opus_encode(enc, pcm_to_encode, opus_frame_size, out, max_packet_size);
 
 	if (__builtin_expect(nb_bytes < 0, 0)) {
-		fprintf(stderr, "ERROR: capture: Opus encoding failed: %s\n", opus_strerror(nb_bytes));
-		fflush(stderr);
+		LOG_ERROR("capture: Opus encoding failed: %s", opus_strerror(nb_bytes));
 	}
 
 	pthread_mutex_unlock(&capture_mutex);
@@ -1109,9 +1132,7 @@ int jetkvm_audio_playback_init() {
 
 	err = safe_alsa_open(&pcm_playback_handle, alsa_playback_device, SND_PCM_STREAM_PLAYBACK);
 	if (err < 0) {
-		fprintf(stderr, "Failed to open ALSA playback device %s: %s\n",
-		        alsa_playback_device, snd_strerror(err));
-		fflush(stderr);
+		LOG_ERROR("Failed to open ALSA playback device %s: %s", alsa_playback_device, snd_strerror(err));
 		atomic_store(&playback_stop_requested, 0);
 		playback_initializing = 0;
 		return ERR_ALSA_OPEN_FAILED;
@@ -1131,9 +1152,8 @@ int jetkvm_audio_playback_init() {
 		return ERR_ALSA_CONFIG_FAILED;
 	}
 
-	fprintf(stdout, "INFO: playback: Initializing Opus decoder at %u Hz, %u channels, frame size %u\n",
-	        actual_rate, playback_channels, actual_frame_size);
-	fflush(stdout);
+	LOG_INFO("playback: Initializing Opus decoder at %u Hz, %u channels, frame size %u",
+	         actual_rate, playback_channels, actual_frame_size);
 
 	int opus_err = 0;
 	decoder = opus_decoder_create(actual_rate, playback_channels, &opus_err);
@@ -1189,21 +1209,18 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 
 	if (__builtin_expect(pcm_frames < 0, 0)) {
 		// Initial decode failed, try Forward Error Correction from previous packets
-		fprintf(stderr, "WARN: playback: Opus decode failed (%d), attempting FEC recovery\n", pcm_frames);
-		fflush(stderr);
+		LOG_WARN("playback: Opus decode failed (%d), attempting FEC recovery", pcm_frames);
 
 		pcm_frames = opus_decode(dec, NULL, 0, pcm_buffer, opus_frame_size, 1);
 
 		if (pcm_frames < 0) {
-			fprintf(stderr, "ERROR: playback: FEC recovery also failed (%d), dropping frame\n", pcm_frames);
-			fflush(stderr);
+			LOG_ERROR("playback: FEC recovery also failed (%d), dropping frame", pcm_frames);
 			pthread_mutex_unlock(&playback_mutex);
 			return -1;
 		}
 
 		if (pcm_frames > 0) {
-			fprintf(stdout, "INFO: playback: FEC recovered %d frames\n", pcm_frames);
-			fflush(stdout);
+			LOG_INFO("playback: FEC recovered %d frames", pcm_frames);
 		} else {
 			pthread_mutex_unlock(&playback_mutex);
 			return 0;  // FEC returned no frames, nothing to write
@@ -1381,8 +1398,7 @@ static void close_audio_stream(atomic_int *stop_requested, volatile int *initial
 		if (ptr > 0x1000 && ptr < 0xFFFFFFFF) {
 			destroy_codec(codec_to_destroy);
 		} else {
-			fprintf(stderr, "WARN: audio: skipping destroy of invalid codec pointer %p\n", codec_to_destroy);
-			fflush(stderr);
+			LOG_WARN("audio: skipping destroy of invalid codec pointer %p", codec_to_destroy);
 		}
 	}
 
@@ -1421,8 +1437,7 @@ int jetkvm_audio_playback_drop() {
 	// Drop all pending frames and stop the PCM
 	int rc = snd_pcm_drop(pcm_playback_handle);
 	if (rc < 0) {
-		fprintf(stderr, "audio: snd_pcm_drop failed: %s\n", snd_strerror(rc));
-		fflush(stderr);
+		LOG_ERROR("audio: snd_pcm_drop failed: %s", snd_strerror(rc));
 		pthread_mutex_unlock(&playback_mutex);
 		return rc;
 	}
@@ -1430,16 +1445,14 @@ int jetkvm_audio_playback_drop() {
 	// Prepare the PCM for playback again
 	rc = snd_pcm_prepare(pcm_playback_handle);
 	if (rc < 0) {
-		fprintf(stderr, "audio: snd_pcm_prepare failed: %s\n", snd_strerror(rc));
-		fflush(stderr);
+		LOG_ERROR("audio: snd_pcm_prepare failed: %s", snd_strerror(rc));
 		pthread_mutex_unlock(&playback_mutex);
 		return rc;
 	}
 
 	pthread_mutex_unlock(&playback_mutex);
 
-	fprintf(stdout, "INFO: audio: playback buffers dropped\n");
-	fflush(stdout);
+	LOG_INFO("audio: playback buffers dropped");
 
 	return 0;
 }

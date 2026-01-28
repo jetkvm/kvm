@@ -5,7 +5,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/native"
 )
 
 // LogLevelState represents the current logging configuration state for the UI.
@@ -81,6 +84,9 @@ func rpcSetLogLevel(params SetLogLevelParams) error {
 	// Apply to logger immediately
 	logging.GetRootLogger().SetSubsystemLevels(overrides)
 
+	// Update all C subsystem log levels
+	syncCLogLevels(overrides)
+
 	// Save to config for persistence
 	config.LogLevelOverrides = overrides
 	if err := SaveConfig(); err != nil {
@@ -91,25 +97,19 @@ func rpcSetLogLevel(params SetLogLevelParams) error {
 	return nil
 }
 
+// isValidLogLevel checks if a level name is valid (exists in nativeLevelMap).
+func isValidLogLevel(level string) bool {
+	_, ok := nativeLevelMap[strings.ToUpper(level)]
+	return ok
+}
+
 // validateLogOverrides validates the log level override string format.
 func validateLogOverrides(overrides string) error {
 	if overrides == "" {
 		return nil
 	}
 
-	validLevels := map[string]bool{
-		"DISABLE": true,
-		"PANIC":   true,
-		"FATAL":   true,
-		"ERROR":   true,
-		"WARN":    true,
-		"INFO":    true,
-		"DEBUG":   true,
-		"TRACE":   true,
-	}
-
-	parts := strings.Split(overrides, ",")
-	for _, part := range parts {
+	for _, part := range strings.Split(overrides, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -122,21 +122,76 @@ func validateLogOverrides(overrides string) error {
 				return fmt.Errorf("invalid format: %s", part)
 			}
 			subsystem := strings.TrimSpace(kv[0])
-			level := strings.TrimSpace(strings.ToUpper(kv[1]))
+			level := strings.TrimSpace(kv[1])
 			if subsystem == "" {
 				return fmt.Errorf("empty subsystem name in: %s", part)
 			}
-			if !validLevels[level] {
+			if !isValidLogLevel(level) {
 				return fmt.Errorf("invalid log level '%s' in: %s", level, part)
 			}
 		} else {
 			// Global level
-			level := strings.ToUpper(part)
-			if !validLevels[level] {
+			if !isValidLogLevel(part) {
 				return fmt.Errorf("invalid log level: %s", part)
 			}
 		}
 	}
 
 	return nil
+}
+
+// C log level maps - defined once to avoid allocation on every call.
+// Audio C levels: DISABLE=-1, PANIC=0, FATAL=1, ERROR=2, WARN=3, INFO=4, DEBUG=5, TRACE=6
+// Native/zerolog levels: TRACE=-1, DEBUG=0, INFO=1, WARN=2, ERROR=3, FATAL=4, PANIC=5, DISABLE=6
+var (
+	audioLevelMap = map[string]int{
+		"DISABLE": -1, "PANIC": 0, "FATAL": 1, "ERROR": 2,
+		"WARN": 3, "INFO": 4, "DEBUG": 5, "TRACE": 6,
+	}
+	nativeLevelMap = map[string]int{
+		"TRACE": -1, "DEBUG": 0, "INFO": 1, "WARN": 2,
+		"ERROR": 3, "FATAL": 4, "PANIC": 5, "DISABLE": 6,
+	}
+)
+
+// parseGlobalLogLevel extracts the global log level from an overrides string
+// using the provided level map and default value.
+func parseGlobalLogLevel(overrides string, defaultLevel int, levelMap map[string]int) int {
+	level := defaultLevel
+	for _, part := range strings.Split(overrides, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" && !strings.Contains(part, ":") {
+			if l, ok := levelMap[strings.ToUpper(part)]; ok {
+				level = l
+			}
+		}
+	}
+	return level
+}
+
+// syncCLogLevels updates all C subsystem log levels from an overrides string.
+func syncCLogLevels(overrides string) {
+	syncCLogLevelsWithDefault(overrides, "WARN")
+}
+
+// syncCLogLevelsWithDefault updates all C subsystem log levels with a custom default.
+// Called by config loading which may have a different default level.
+func syncCLogLevelsWithDefault(overrides string, defaultLevel string) {
+	// Get base levels from default, then override from string
+	audioBase := 3 // WARN default for audio
+	nativeBase := 2 // WARN default for native
+	if defaultLevel != "" {
+		if l, ok := audioLevelMap[strings.ToUpper(defaultLevel)]; ok {
+			audioBase = l
+		}
+		if l, ok := nativeLevelMap[strings.ToUpper(defaultLevel)]; ok {
+			nativeBase = l
+		}
+	}
+
+	cLevel := parseGlobalLogLevel(overrides, audioBase, audioLevelMap)
+	nativeLevel := parseGlobalLogLevel(overrides, nativeBase, nativeLevelMap)
+	audio.SetCLogLevel(cLevel)
+	native.SetCLogLevel(nativeLevel)
+	tls.SetCLogLevel(nativeLevel)
 }

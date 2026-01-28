@@ -29,9 +29,8 @@ const char *ctrl_build_id = __FILE__ " " __DATE__ " " __TIME__;
 // Setter function to allow video.c to modify the counter (avoids extern issues)
 void ctrl_set_report_count(uint32_t value) {
     video_report_call_count = value;
-    fprintf(stderr, "INFO: ctrl_set_report_count: Set counter=%u at addr=%p\n",
+    log_debug("ctrl_set_report_count: Set counter=%u at addr=%p",
             video_report_call_count, (void*)&video_report_call_count);
-    fflush(stderr);
 }
 
 jetkvm_rpc_handler_t *rpc_handler = NULL;
@@ -87,12 +86,11 @@ void video_report_format(bool ready, const char *error, u_int16_t width, u_int16
 {
     video_report_call_count++;
     if (video_report_call_count == 1) {
-        fprintf(stderr, "INFO: video_report_format: BUILD_ID=%s, state=%p, counter=%p\n",
+        log_debug("video_report_format: BUILD_ID=%s, state=%p, counter=%p",
                 ctrl_build_id, (void*)&state, (void*)&video_report_call_count);
     }
-    fprintf(stderr, "INFO: video_report_format[%u]: state address=%p, setting ready=%d, width=%d, height=%d, error=%s\n",
+    log_debug("video_report_format[%u]: state address=%p, setting ready=%d, width=%d, height=%d, error=%s",
             video_report_call_count, (void*)&state, ready, width, height, error ? error : "none");
-    fflush(stderr);
     state.streaming = video_get_streaming_status();
     state.ready = ready;
     state.error = error;
@@ -100,9 +98,8 @@ void video_report_format(bool ready, const char *error, u_int16_t width, u_int16
     state.height = height;
     state.frame_per_second = frame_per_second;
     // Verify the values were written correctly
-    fprintf(stderr, "INFO: video_report_format[%u]: AFTER SET: state.ready=%d, state.width=%d, state.height=%d\n",
+    log_debug("video_report_format[%u]: AFTER SET: state.ready=%d, state.width=%d, state.height=%d",
             video_report_call_count, state.ready, state.width, state.height);
-    fflush(stderr);
     if (video_state_handler != NULL) {
         (*video_state_handler)(&state);
     }
@@ -466,25 +463,16 @@ char *jetkvm_video_get_edid_hex() {
 volatile jetkvm_video_state_t *jetkvm_video_get_status() {
     video_get_status_call_count++;
     if (video_get_status_call_count == 1) {
-        fprintf(stderr, "INFO: jetkvm_video_get_status: BUILD_ID=%s, state=%p, counter=%p\n",
+        log_debug("jetkvm_video_get_status: BUILD_ID=%s, state=%p, counter=%p",
                 ctrl_build_id, (void*)&state, (void*)&video_report_call_count);
     }
     // Read values into local variables first to ensure atomic read
     bool local_ready = state.ready;
     uint16_t local_width = state.width;
     uint16_t local_height = state.height;
-    fprintf(stderr, "INFO: jetkvm_video_get_status[%u]: state addr=%p, report_calls=%u, ready=%d, width=%d, height=%d\n",
+    log_debug("jetkvm_video_get_status[%u]: state addr=%p, report_calls=%u, ready=%d, width=%d, height=%d",
             video_get_status_call_count, (void*)&state, video_report_call_count, local_ready, local_width, local_height);
-    // Print raw bytes of state struct for debugging (only first few calls to avoid spam)
-    if (video_get_status_call_count <= 5) {
-        unsigned char *bytes = (unsigned char *)&state;
-        fprintf(stderr, "INFO: jetkvm_video_get_status: raw bytes (first 20): ");
-        for (int i = 0; i < 20 && i < sizeof(state); i++) {
-            fprintf(stderr, "%02x ", bytes[i]);
-        }
-        fprintf(stderr, "\n");
-    }
-    fflush(stderr);
+    // Raw bytes logging removed - too verbose even for debug level
     return &state;
 }
 

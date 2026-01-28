@@ -53,3 +53,6 @@ func WritePCM(pcmData []byte) error {
 func DropPlaybackBuffer() error {
 	return nil
 }
+
+// SetCLogLevel is a no-op on non-ARM platforms.
+func SetCLogLevel(level int) {}

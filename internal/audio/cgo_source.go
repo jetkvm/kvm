@@ -37,8 +37,7 @@ type CgoSource struct {
 var _ AudioSource = (*CgoSource)(nil)
 
 func NewCgoOutputSource(alsaDevice string, cfg AudioConfig) AudioSource {
-	logger := logging.GetDefaultLogger().With().
-		Str("component", "audio-output-cgo").
+	logger := logging.GetSubsystemLogger("audio-capture").With().
 		Str("alsa_device", alsaDevice).
 		Logger()
 
@@ -52,8 +51,7 @@ func NewCgoOutputSource(alsaDevice string, cfg AudioConfig) AudioSource {
 }
 
 func NewCgoInputSource(alsaDevice string, cfg AudioConfig) AudioSource {
-	logger := logging.GetDefaultLogger().With().
-		Str("component", "audio-input-cgo").
+	logger := logging.GetSubsystemLogger("audio-playback").With().
 		Str("alsa_device", alsaDevice).
 		Logger()
 
@@ -322,4 +320,11 @@ func DropPlaybackBuffer() error {
 		return fmt.Errorf("jetkvm_audio_playback_drop failed: %d", rc)
 	}
 	return nil
+}
+
+// SetCLogLevel sets the log level for C audio code.
+// Maps zerolog levels (0=panic..6=trace) to C code log filtering.
+// Call this when global log level changes to update C code filtering.
+func SetCLogLevel(level int) {
+	C.jetkvm_audio_set_log_level(C.int(level))
 }
