@@ -1108,6 +1108,10 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 		}
 	}
 
+	// Get current time once for rate limiting and frame timestamp
+	// (time.Now() is a syscall, avoid calling it multiple times per frame)
+	now := time.Now()
+
 	// Rate limiting for normal/low priority frames
 	// Critical/high priority frames skip rate limiting
 	if priority <= framePriorityNormal {
@@ -1119,7 +1123,6 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 			targetFPS = uint32(currentFmt.FrameRate)
 		}
 		minFrameInterval := time.Second / time.Duration(targetFPS)
-		now := time.Now()
 		if lastFrame := cameraLastFrameTime.Load(); lastFrame != nil {
 			if now.Sub(*lastFrame) < minFrameInterval {
 				cameraFrameDropped.Add(1)
@@ -1147,8 +1150,6 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 	}
 	copy(buf, data)
 	*bufPtr = buf
-
-	now := time.Now()
 	frame := cameraFrame{
 		data:        buf,
 		poolBuf:     bufPtr,

@@ -43,6 +43,7 @@ func (g *GFXChannel) Initialize(width, height uint16) error {
 // sendResetGraphics sends a reset graphics command.
 // NOTE: FreeRDP requires the total ResetGraphics PDU to be exactly 340 bytes.
 // This is RDPGFX_RESET_GRAPHICS_PDU_SIZE in FreeRDP code.
+// Uses pre-allocated buffer to avoid allocation per call.
 func (g *GFXChannel) sendResetGraphics(width, height uint16) error {
 	// ResetGraphics PDU format (MS-RDPEGFX 2.2.2.4):
 	// - Header: cmdId(2) + flags(2) + pduLength(4) = 8 bytes
@@ -53,7 +54,9 @@ func (g *GFXChannel) sendResetGraphics(width, height uint16) error {
 	const totalPDUSize = 340       // RDPGFX_RESET_GRAPHICS_PDU_SIZE
 	const pduLength = totalPDUSize // pduLength = total size including header
 
-	buf := make([]byte, totalPDUSize)
+	// Use pre-allocated buffer and clear it (padding must be zeros)
+	buf := g.resetGraphicsBuf[:]
+	clear(buf)
 
 	// Header - pduLength is the total PDU size (340)
 	binary.LittleEndian.PutUint16(buf[0:2], GFXCmdResetGraphics)

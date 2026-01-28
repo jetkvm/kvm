@@ -169,9 +169,11 @@ type GFXChannel struct {
 	startTime      atomic.Int64 // UnixMilli timestamp when channel became ready
 
 	// Pre-allocated buffers for surface management to avoid GC pressure
-	createBuf [GFXHeaderSize + GFXCreateSurfaceSize]byte
-	deleteBuf [GFXHeaderSize + GFXDeleteSurfaceSize]byte
-	mapBuf    [GFXHeaderSize + GFXMapSurfaceSize]byte // 8+12=20 bytes
+	createBuf        [GFXHeaderSize + GFXCreateSurfaceSize]byte
+	deleteBuf        [GFXHeaderSize + GFXDeleteSurfaceSize]byte
+	mapBuf           [GFXHeaderSize + GFXMapSurfaceSize]byte // 8+12=20 bytes
+	resetGraphicsBuf [340]byte                               // RDPGFX_RESET_GRAPHICS_PDU_SIZE
+	capsConfirmBuf   [20]byte                                // Header(8) + version(4) + capsDataLen(4) + flags(4)
 
 	// H.264 metadata buffer (reused for each frame)
 	// RFX_AVC420_METABLOCK: numRects(4) + rect(8) + quantQuality(2) = 14 bytes for single region
@@ -544,10 +546,11 @@ func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
 }
 
 // sendCapsConfirm sends capability confirmation.
+// Uses pre-allocated buffer to avoid allocation per call.
 func (g *GFXChannel) sendCapsConfirm() error {
-	// Build caps confirm PDU
+	// Build caps confirm PDU using pre-allocated buffer
 	// Header(8) + version(4) + capsDataLen(4) + flags(4) = 20 bytes
-	buf := make([]byte, 20)
+	buf := g.capsConfirmBuf[:]
 
 	// Header
 	binary.LittleEndian.PutUint16(buf[0:2], GFXCmdCapsConfirm)
