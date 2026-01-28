@@ -93,6 +93,11 @@ func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 			if len(text) > 0 {
 				c.server.deps.Logger.Info().Int("bytes", len(text)).Msg("VNC: paste combo detected, typing clipboard")
 				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							c.server.deps.Logger.Error().Interface("panic", r).Msg("VNC clipboard: panic in typeClipboardText")
+						}
+					}()
 					if err := c.typeClipboardText(text); err != nil {
 						c.server.deps.Logger.Warn().Err(err).Int("bytes", len(text)).Msg("VNC clipboard: failed to type text")
 					}

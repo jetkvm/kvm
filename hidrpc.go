@@ -90,14 +90,14 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 
 	t := time.Now()
 
-	r := make(chan interface{})
+	r := make(chan interface{}, 1) // Buffered to prevent goroutine leak if timeout fires first
 	go func() {
 		handleHidRPCMessage(message, session)
 		r <- nil
 	}()
 	select {
 	case <-time.After(1 * time.Second):
-		scopedLogger.Warn().Msg("HID RPC message timed out")
+		scopedLogger.Warn().Msg("HID RPC message timed out (handler still running in background)")
 	case <-r:
 		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
 	}

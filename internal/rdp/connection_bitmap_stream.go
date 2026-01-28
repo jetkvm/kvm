@@ -44,6 +44,10 @@ func (c *Connection) startBitmapStreaming() {
 
 	// Subscribe to RGB frames and store for cleanup
 	c.rgbChan = c.server.deps.Video.SubscribeRGB()
+	if c.rgbChan == nil {
+		c.server.deps.Logger.Warn().Msg("RDP: failed to subscribe to RGB frames, video streaming disabled")
+		return
+	}
 
 	go func() {
 		defer func() {
@@ -129,6 +133,11 @@ func (c *Connection) startBitmapStreaming() {
 // startJPEGBitmapStreaming is the fallback for when RGA is not available.
 // Uses c.jpegChan which must be set before calling.
 func (c *Connection) startJPEGBitmapStreaming() {
+	if c.jpegChan == nil {
+		c.server.deps.Logger.Warn().Msg("RDP: JPEG channel is nil, cannot start JPEG streaming")
+		return
+	}
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

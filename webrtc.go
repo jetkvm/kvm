@@ -222,6 +222,12 @@ func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
 
 func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {
 	return func(msg webrtc.DataChannelMessage) {
+		// Recover from send-on-closed-channel if ICE closes during callback
+		defer func() {
+			if r := recover(); r != nil {
+				scopedLogger.Debug().Interface("recover", r).Msg("HID queue send recovered (connection closing)")
+			}
+		}()
 		l := scopedLogger.With().
 			Str("channel", channel).
 			Int("length", len(msg.Data)).
@@ -383,7 +389,12 @@ func newSession(config SessionConfig) (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				// Enqueue to ensure ordered processing
+				// Recover from send-on-closed-channel if ICE closes during callback
+				defer func() {
+					if r := recover(); r != nil {
+						scopedLogger.Debug().Interface("recover", r).Msg("RPC queue send recovered (connection closing)")
+					}
+				}()
 				session.rpcQueue <- msg
 			})
 			// Wait for channel to be open before sending initial state
@@ -449,6 +460,9 @@ func newSession(config SessionConfig) (*Session, error) {
 		rtpSender := videoTransceiver.Sender()
 		for {
 			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+				// Log RTCP reader exit - silent exit here causes video quality degradation
+				// as NACK/retransmission stops working
+				scopedLogger.Debug().Err(rtcpErr).Msg("RTCP reader exiting")
 				return
 			}
 		}
