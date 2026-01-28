@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	hwcrypto "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/rs/zerolog"
 )
 
@@ -94,6 +95,15 @@ func (s *CertStore) loadCertificate(hostname string) {
 		return
 	}
 
+	// Wrap RSA keys with OpenSSL-backed signer for better TLS performance on ARM
+	if wrapped, err := hwcrypto.WrapRSAKey(cert.PrivateKey); err != nil {
+		s.log.Warn().Err(err).Str("hostname", hostname).Msg("RSA key wrapping failed, using Go crypto")
+		// Keep original key as fallback
+	} else if wrapped != cert.PrivateKey {
+		cert.PrivateKey = wrapped
+		s.log.Info().Str("hostname", hostname).Msg("using OpenSSL RSA signer")
+	}
+
 	s.certificates[hostname] = &cert
 
 	if hostname == selfSignerCAMagicName {
@@ -136,6 +146,14 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 			}
 			s.log.Warn().Err(err).Msg("certificate does not match hostname")
 		}
+	}
+
+	// Wrap RSA keys with OpenSSL-backed signer for better TLS performance on ARM
+	if wrapped, err := hwcrypto.WrapRSAKey(tlsCert.PrivateKey); err != nil {
+		s.log.Warn().Err(err).Str("hostname", hostname).Msg("RSA key wrapping failed, using Go crypto")
+	} else if wrapped != tlsCert.PrivateKey {
+		tlsCert.PrivateKey = wrapped
+		s.log.Info().Str("hostname", hostname).Msg("using OpenSSL RSA signer")
 	}
 
 	s.certLock.Lock()
