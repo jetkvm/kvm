@@ -23,43 +23,65 @@ package tls
 #include <stdlib.h>
 #include <string.h>
 
-// Sign a pre-computed digest using RSA-PSS.
-// The digest has already been hashed by Go - we apply RSA-PSS padding and sign.
-// Returns signature length on success, -1 on error.
-static int openssl_rsa_sign_pss(
+// Parse PEM key and return EVP_PKEY pointer. Caller must free with EVP_PKEY_free.
+static EVP_PKEY* openssl_parse_rsa_key(
     const unsigned char *key_pem, int key_pem_len,
+    char *error_buf, int error_buf_len
+) {
+    ERR_clear_error();
+
+    BIO *bio = BIO_new_mem_buf(key_pem, key_pem_len);
+    if (!bio) {
+        snprintf(error_buf, error_buf_len, "BIO_new_mem_buf failed");
+        return NULL;
+    }
+
+    EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+
+    if (!pkey) {
+        unsigned long err = ERR_get_error();
+        ERR_error_string_n(err, error_buf, error_buf_len);
+        return NULL;
+    }
+
+    if (EVP_PKEY_base_id(pkey) != EVP_PKEY_RSA) {
+        snprintf(error_buf, error_buf_len, "Key is not RSA");
+        EVP_PKEY_free(pkey);
+        return NULL;
+    }
+
+    return pkey;
+}
+
+// Free EVP_PKEY (called from Go finalizer).
+static void openssl_free_pkey(EVP_PKEY *pkey) {
+    if (pkey) {
+        EVP_PKEY_free(pkey);
+    }
+}
+
+// Get RSA key size in bits from cached EVP_PKEY.
+static int openssl_pkey_bits(EVP_PKEY *pkey) {
+    return EVP_PKEY_bits(pkey);
+}
+
+// Sign a pre-computed digest using cached EVP_PKEY.
+// Set use_pss=1 for RSA-PSS (TLS 1.3), use_pss=0 for PKCS#1 v1.5 (TLS 1.2).
+// Returns signature length on success, -1 on error.
+static int openssl_rsa_sign_cached(
+    EVP_PKEY *pkey,
     const unsigned char *digest, int digest_len,
-    int hash_nid,
+    int hash_nid, int use_pss,
     unsigned char *sig_out, int sig_out_len,
     char *error_buf, int error_buf_len
 ) {
-    BIO *bio = NULL;
-    EVP_PKEY *pkey = NULL;
     EVP_PKEY_CTX *ctx = NULL;
     const EVP_MD *md = NULL;
     size_t sig_len = 0;
     int ret = -1;
 
-    // Clear any stale errors from previous operations
     ERR_clear_error();
-
-    bio = BIO_new_mem_buf(key_pem, key_pem_len);
-    if (!bio) {
-        snprintf(error_buf, error_buf_len, "BIO_new_mem_buf failed");
-        goto cleanup;
-    }
-
-    pkey = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
-    if (!pkey) {
-        unsigned long err = ERR_get_error();
-        ERR_error_string_n(err, error_buf, error_buf_len);
-        goto cleanup;
-    }
-
-    if (EVP_PKEY_base_id(pkey) != EVP_PKEY_RSA) {
-        snprintf(error_buf, error_buf_len, "Key is not RSA");
-        goto cleanup;
-    }
 
     md = EVP_get_digestbynid(hash_nid);
     if (!md) {
@@ -79,7 +101,8 @@ static int openssl_rsa_sign_pss(
         goto cleanup;
     }
 
-    if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_PSS_PADDING) <= 0) {
+    int padding = use_pss ? RSA_PKCS1_PSS_PADDING : RSA_PKCS1_PADDING;
+    if (EVP_PKEY_CTX_set_rsa_padding(ctx, padding) <= 0) {
         unsigned long err = ERR_get_error();
         ERR_error_string_n(err, error_buf, error_buf_len);
         goto cleanup;
@@ -92,7 +115,7 @@ static int openssl_rsa_sign_pss(
     }
 
     // Salt length = digest length per RFC 8446 Section 4.2.3 (TLS 1.3)
-    if (EVP_PKEY_CTX_set_rsa_pss_saltlen(ctx, RSA_PSS_SALTLEN_DIGEST) <= 0) {
+    if (use_pss && EVP_PKEY_CTX_set_rsa_pss_saltlen(ctx, RSA_PSS_SALTLEN_DIGEST) <= 0) {
         unsigned long err = ERR_get_error();
         ERR_error_string_n(err, error_buf, error_buf_len);
         goto cleanup;
@@ -109,117 +132,7 @@ static int openssl_rsa_sign_pss(
 
 cleanup:
     if (ctx) EVP_PKEY_CTX_free(ctx);
-    if (pkey) EVP_PKEY_free(pkey);
-    if (bio) BIO_free(bio);
     return ret;
-}
-
-// Sign a pre-computed digest using PKCS#1 v1.5.
-// Returns signature length on success, -1 on error.
-static int openssl_rsa_sign_pkcs1(
-    const unsigned char *key_pem, int key_pem_len,
-    const unsigned char *digest, int digest_len,
-    int hash_nid,
-    unsigned char *sig_out, int sig_out_len,
-    char *error_buf, int error_buf_len
-) {
-    BIO *bio = NULL;
-    EVP_PKEY *pkey = NULL;
-    EVP_PKEY_CTX *ctx = NULL;
-    const EVP_MD *md = NULL;
-    size_t sig_len = 0;
-    int ret = -1;
-
-    ERR_clear_error();
-
-    bio = BIO_new_mem_buf(key_pem, key_pem_len);
-    if (!bio) {
-        snprintf(error_buf, error_buf_len, "BIO_new_mem_buf failed");
-        goto cleanup;
-    }
-
-    pkey = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
-    if (!pkey) {
-        unsigned long err = ERR_get_error();
-        ERR_error_string_n(err, error_buf, error_buf_len);
-        goto cleanup;
-    }
-
-    if (EVP_PKEY_base_id(pkey) != EVP_PKEY_RSA) {
-        snprintf(error_buf, error_buf_len, "Key is not RSA");
-        goto cleanup;
-    }
-
-    md = EVP_get_digestbynid(hash_nid);
-    if (!md) {
-        snprintf(error_buf, error_buf_len, "Unknown hash NID: %d", hash_nid);
-        goto cleanup;
-    }
-
-    ctx = EVP_PKEY_CTX_new(pkey, NULL);
-    if (!ctx) {
-        snprintf(error_buf, error_buf_len, "EVP_PKEY_CTX_new failed");
-        goto cleanup;
-    }
-
-    if (EVP_PKEY_sign_init(ctx) <= 0) {
-        unsigned long err = ERR_get_error();
-        ERR_error_string_n(err, error_buf, error_buf_len);
-        goto cleanup;
-    }
-
-    if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_PADDING) <= 0) {
-        unsigned long err = ERR_get_error();
-        ERR_error_string_n(err, error_buf, error_buf_len);
-        goto cleanup;
-    }
-
-    if (EVP_PKEY_CTX_set_signature_md(ctx, md) <= 0) {
-        unsigned long err = ERR_get_error();
-        ERR_error_string_n(err, error_buf, error_buf_len);
-        goto cleanup;
-    }
-
-    sig_len = sig_out_len;
-    if (EVP_PKEY_sign(ctx, sig_out, &sig_len, digest, digest_len) <= 0) {
-        unsigned long err = ERR_get_error();
-        ERR_error_string_n(err, error_buf, error_buf_len);
-        goto cleanup;
-    }
-
-    ret = (int)sig_len;
-
-cleanup:
-    if (ctx) EVP_PKEY_CTX_free(ctx);
-    if (pkey) EVP_PKEY_free(pkey);
-    if (bio) BIO_free(bio);
-    return ret;
-}
-
-// Get RSA key size in bits. Returns -1 on error.
-static int openssl_rsa_key_bits(
-    const unsigned char *key_pem, int key_pem_len,
-    char *error_buf, int error_buf_len
-) {
-    ERR_clear_error();
-
-    BIO *bio = BIO_new_mem_buf(key_pem, key_pem_len);
-    if (!bio) {
-        snprintf(error_buf, error_buf_len, "BIO_new_mem_buf failed");
-        return -1;
-    }
-
-    EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
-    BIO_free(bio);
-    if (!pkey) {
-        unsigned long err = ERR_get_error();
-        ERR_error_string_n(err, error_buf, error_buf_len);
-        return -1;
-    }
-
-    int bits = EVP_PKEY_bits(pkey);
-    EVP_PKEY_free(pkey);
-    return bits;
 }
 */
 import "C"
@@ -231,6 +144,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"runtime"
+	"sync"
 	"unsafe"
 )
 
@@ -243,21 +158,33 @@ const (
 	nidSHA512 = 674 // NID_sha512
 )
 
+// Expected digest sizes for validation.
+var hashSizes = map[crypto.Hash]int{
+	crypto.SHA1:   20,
+	crypto.SHA256: 32,
+	crypto.SHA384: 48,
+	crypto.SHA512: 64,
+}
+
 // OpenSSLRSASigner implements crypto.Signer using OpenSSL for RSA operations.
 // This provides better performance than Go's crypto/rsa on ARM processors.
+// Thread-safe: uses mutex to protect OpenSSL operations.
 type OpenSSLRSASigner struct {
-	keyPEM     []byte
-	publicKey  *rsa.PublicKey
+	pkey       *C.EVP_PKEY     // Cached OpenSSL key (parsed once at creation)
+	publicKey  *rsa.PublicKey  // Go public key for Public() method
 	privateKey *rsa.PrivateKey // Original key for serialization (e.g., RDP needs PKCS#8)
 	keyBits    int
+	mu         sync.Mutex // Protects OpenSSL operations
 }
 
 // NewOpenSSLRSASigner creates an RSA signer backed by OpenSSL.
+// The key is parsed once and cached for the lifetime of the signer.
 func NewOpenSSLRSASigner(keyPEM []byte) (*OpenSSLRSASigner, error) {
 	if len(keyPEM) == 0 {
 		return nil, fmt.Errorf("empty key PEM data")
 	}
 
+	// Parse with Go to extract public key and validate
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM block")
@@ -287,24 +214,46 @@ func NewOpenSSLRSASigner(keyPEM []byte) (*OpenSSLRSASigner, error) {
 		return nil, fmt.Errorf("failed to parse RSA key: %w", err)
 	}
 
+	// Parse with OpenSSL and cache the EVP_PKEY
 	errBuf := make([]byte, 256)
-	keyBits := int(C.openssl_rsa_key_bits(
+	var pinner runtime.Pinner
+	pinner.Pin(&keyPEM[0])
+	pinner.Pin(&errBuf[0])
+
+	pkey := C.openssl_parse_rsa_key(
 		(*C.uchar)(unsafe.Pointer(&keyPEM[0])),
 		C.int(len(keyPEM)),
 		(*C.char)(unsafe.Pointer(&errBuf[0])),
 		C.int(len(errBuf)),
-	))
-	if keyBits <= 0 {
+	)
+
+	pinner.Unpin()
+
+	if pkey == nil {
 		errStr := C.GoString((*C.char)(unsafe.Pointer(&errBuf[0])))
 		return nil, fmt.Errorf("OpenSSL failed to parse RSA key: %s", errStr)
 	}
 
-	return &OpenSSLRSASigner{
-		keyPEM:     keyPEM,
+	keyBits := int(C.openssl_pkey_bits(pkey))
+
+	signer := &OpenSSLRSASigner{
+		pkey:       pkey,
 		publicKey:  &privateKey.PublicKey,
 		privateKey: privateKey,
 		keyBits:    keyBits,
-	}, nil
+	}
+
+	// Set finalizer to free OpenSSL resources when signer is garbage collected
+	runtime.SetFinalizer(signer, func(s *OpenSSLRSASigner) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.pkey != nil {
+			C.openssl_free_pkey(s.pkey)
+			s.pkey = nil
+		}
+	})
+
+	return signer, nil
 }
 
 // RSAPrivateKey returns the underlying RSA private key.
@@ -319,6 +268,7 @@ func (s *OpenSSLRSASigner) Public() crypto.PublicKey {
 }
 
 // Sign signs digest with the private key using OpenSSL.
+// Thread-safe: uses mutex to protect OpenSSL operations.
 func (s *OpenSSLRSASigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if len(digest) == 0 {
 		return nil, fmt.Errorf("empty digest")
@@ -329,6 +279,12 @@ func (s *OpenSSLRSASigner) Sign(rand io.Reader, digest []byte, opts crypto.Signe
 		return nil, fmt.Errorf("hash function not specified")
 	}
 
+	// Validate digest length
+	expectedLen, ok := hashSizes[hash]
+	if ok && len(digest) != expectedLen {
+		return nil, fmt.Errorf("invalid digest length: expected %d, got %d", expectedLen, len(digest))
+	}
+
 	hashNID, err := hashToNID(hash)
 	if err != nil {
 		return nil, err
@@ -337,33 +293,29 @@ func (s *OpenSSLRSASigner) Sign(rand io.Reader, digest []byte, opts crypto.Signe
 	sigBuf := make([]byte, (s.keyBits+7)/8)
 	errBuf := make([]byte, 256)
 
-	var sigLen C.int
+	_, usePSS := opts.(*rsa.PSSOptions)
 
-	if _, ok := opts.(*rsa.PSSOptions); ok {
-		sigLen = C.openssl_rsa_sign_pss(
-			(*C.uchar)(unsafe.Pointer(&s.keyPEM[0])),
-			C.int(len(s.keyPEM)),
-			(*C.uchar)(unsafe.Pointer(&digest[0])),
-			C.int(len(digest)),
-			C.int(hashNID),
-			(*C.uchar)(unsafe.Pointer(&sigBuf[0])),
-			C.int(len(sigBuf)),
-			(*C.char)(unsafe.Pointer(&errBuf[0])),
-			C.int(len(errBuf)),
-		)
-	} else {
-		sigLen = C.openssl_rsa_sign_pkcs1(
-			(*C.uchar)(unsafe.Pointer(&s.keyPEM[0])),
-			C.int(len(s.keyPEM)),
-			(*C.uchar)(unsafe.Pointer(&digest[0])),
-			C.int(len(digest)),
-			C.int(hashNID),
-			(*C.uchar)(unsafe.Pointer(&sigBuf[0])),
-			C.int(len(sigBuf)),
-			(*C.char)(unsafe.Pointer(&errBuf[0])),
-			C.int(len(errBuf)),
-		)
-	}
+	// Pin Go memory before passing to C
+	var pinner runtime.Pinner
+	pinner.Pin(&digest[0])
+	pinner.Pin(&sigBuf[0])
+	pinner.Pin(&errBuf[0])
+
+	s.mu.Lock()
+	sigLen := C.openssl_rsa_sign_cached(
+		s.pkey,
+		(*C.uchar)(unsafe.Pointer(&digest[0])),
+		C.int(len(digest)),
+		C.int(hashNID),
+		C.int(boolToInt(usePSS)),
+		(*C.uchar)(unsafe.Pointer(&sigBuf[0])),
+		C.int(len(sigBuf)),
+		(*C.char)(unsafe.Pointer(&errBuf[0])),
+		C.int(len(errBuf)),
+	)
+	s.mu.Unlock()
+
+	pinner.Unpin()
 
 	if sigLen < 0 {
 		errStr := C.GoString((*C.char)(unsafe.Pointer(&errBuf[0])))
@@ -388,7 +340,15 @@ func hashToNID(h crypto.Hash) (int, error) {
 	}
 }
 
-// WrapRSAKey wraps an RSA private key with an OpenSSL-backed signer.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// WrapRSAKey wraps an RSA private key with a hardware-accelerated signer.
+// It tries in order: Rockchip PKA hardware, then OpenSSL.
 // Returns the wrapped signer and nil error on success.
 // Returns the original key and an error if wrapping fails.
 // The caller can use the original key as fallback if desired.
@@ -398,6 +358,16 @@ func WrapRSAKey(key crypto.PrivateKey) (crypto.PrivateKey, error) {
 		return key, nil // Not RSA, return as-is (not an error)
 	}
 
+	// Try Rockchip PKA hardware first (fastest, dedicated RSA accelerator)
+	if PKAAvailable() {
+		pkaSigner, err := NewPKARSASigner(rsaKey)
+		if err == nil {
+			return pkaSigner, nil
+		}
+		// PKA failed, fall through to OpenSSL
+	}
+
+	// Fall back to OpenSSL (optimized assembly, but software)
 	keyDER := x509.MarshalPKCS1PrivateKey(rsaKey)
 	keyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
@@ -406,7 +376,7 @@ func WrapRSAKey(key crypto.PrivateKey) (crypto.PrivateKey, error) {
 
 	signer, err := NewOpenSSLRSASigner(keyPEM)
 	if err != nil {
-		return key, fmt.Errorf("OpenSSL RSA signer unavailable: %w", err)
+		return key, fmt.Errorf("RSA hardware acceleration unavailable: %w", err)
 	}
 
 	return signer, nil
