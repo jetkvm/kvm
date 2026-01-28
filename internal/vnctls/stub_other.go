@@ -35,3 +35,6 @@ func IsHardwareCryptoEnabled() bool { return false }
 
 // GetHardwareCryptoEngine returns "none" on non-Linux/ARM platforms
 func GetHardwareCryptoEngine() string { return "none (platform not supported)" }
+
+// SetCLogLevel is a no-op on non-ARM platforms.
+func SetCLogLevel(level int) {}

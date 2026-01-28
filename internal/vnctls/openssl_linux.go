@@ -74,8 +74,19 @@ static int set_blocking(int fd) {
 static int hw_crypto_initialized = 0;
 static ENGINE *devcrypto_engine = NULL;
 
+// Runtime log level: 2=WARN (default), 1=INFO, 0=DEBUG
+// Non-static so Go can access it
+volatile int vnctls_log_level = 2;
+
+void vnctls_set_log_level(int level) {
+    if (level < -1) level = -1;
+    if (level > 6) level = 6;
+    vnctls_log_level = level;
+}
+
 // List available engines for debugging
 static void list_engines() {
+    if (vnctls_log_level > 1) return;  // Skip if log level > INFO
     ENGINE *e;
     fprintf(stderr, "INFO: OpenSSL VNC TLS: Available engines:\n");
     for (e = ENGINE_get_first(); e != NULL; e = ENGINE_get_next(e)) {
@@ -87,31 +98,31 @@ static void list_engines() {
 static ENGINE* try_load_engine(const char* engine_id) {
     ENGINE *e = ENGINE_by_id(engine_id);
     if (e == NULL) {
-        fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' not found\n", engine_id);
+        if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' not found\n", engine_id);
         return NULL;
     }
 
-    fprintf(stderr, "INFO: OpenSSL VNC TLS: Found engine '%s' (%s)\n",
+    if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Found engine '%s' (%s)\n",
             ENGINE_get_id(e), ENGINE_get_name(e));
 
     if (!ENGINE_init(e)) {
         unsigned long err = ERR_get_error();
         char err_buf[ENGINE_ERROR_BUF_SIZE];
         ERR_error_string_n(err, err_buf, sizeof(err_buf));
-        fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' init FAILED: %s\n", engine_id, err_buf);
+        if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' init FAILED: %s\n", engine_id, err_buf);
         ENGINE_free(e);
         return NULL;
     }
 
     // Set as default for ciphers and digests
     if (!ENGINE_set_default_ciphers(e)) {
-        fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' set_default_ciphers failed\n", engine_id);
+        if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' set_default_ciphers failed\n", engine_id);
     }
     if (!ENGINE_set_default_digests(e)) {
-        fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' set_default_digests failed\n", engine_id);
+        if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' set_default_digests failed\n", engine_id);
     }
 
-    fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' ENABLED for hardware crypto\n", engine_id);
+    if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Engine '%s' ENABLED for hardware crypto\n", engine_id);
     return e;
 }
 
@@ -134,8 +145,10 @@ static void openssl_init() {
     // For static builds, explicitly load built-in engines
     ENGINE_load_builtin_engines();
 
-    fprintf(stderr, "INFO: OpenSSL VNC TLS: OpenSSL %s initialized\n", OPENSSL_VERSION_TEXT);
-    fprintf(stderr, "INFO: OpenSSL VNC TLS: Attempting to load hardware crypto engine...\n");
+    if (vnctls_log_level <= 1) {
+        fprintf(stderr, "INFO: OpenSSL VNC TLS: OpenSSL %s initialized\n", OPENSSL_VERSION_TEXT);
+        fprintf(stderr, "INFO: OpenSSL VNC TLS: Attempting to load hardware crypto engine...\n");
+    }
 
     // List what's available
     list_engines();
@@ -150,7 +163,7 @@ static void openssl_init() {
 
     // Fall back to dynamic loading if built-in didn't work
     if (devcrypto_engine == NULL) {
-        fprintf(stderr, "INFO: OpenSSL VNC TLS: Trying dynamic engine load...\n");
+        if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Trying dynamic engine load...\n");
         ENGINE *dyn = ENGINE_by_id("dynamic");
         if (dyn != NULL) {
             if (ENGINE_ctrl_cmd_string(dyn, "SO_PATH", "devcrypto", 0) &&
@@ -158,7 +171,7 @@ static void openssl_init() {
                 devcrypto_engine = dyn;
                 if (ENGINE_init(devcrypto_engine)) {
                     ENGINE_set_default_ciphers(devcrypto_engine);
-                    fprintf(stderr, "INFO: OpenSSL VNC TLS: Dynamic devcrypto engine loaded\n");
+                    if (vnctls_log_level <= 1) fprintf(stderr, "INFO: OpenSSL VNC TLS: Dynamic devcrypto engine loaded\n");
                 } else {
                     ENGINE_free(devcrypto_engine);
                     devcrypto_engine = NULL;
@@ -170,8 +183,10 @@ static void openssl_init() {
     }
 
     if (devcrypto_engine == NULL) {
-        fprintf(stderr, "INFO: OpenSSL VNC TLS: NO hardware crypto engine available, using software AES\n");
-        fprintf(stderr, "INFO: OpenSSL VNC TLS: For better performance, ensure /dev/crypto is available\n");
+        if (vnctls_log_level <= 1) {
+            fprintf(stderr, "INFO: OpenSSL VNC TLS: NO hardware crypto engine available, using software AES\n");
+            fprintf(stderr, "INFO: OpenSSL VNC TLS: For better performance, ensure /dev/crypto is available\n");
+        }
     }
 }
 
@@ -712,4 +727,9 @@ func GetHardwareCryptoEngine() string {
 		return "none (software)"
 	}
 	return C.GoString(name)
+}
+
+// SetCLogLevel sets the C log level for VNC TLS (uses native log level convention).
+func SetCLogLevel(level int) {
+	C.vnctls_set_log_level(C.int(level))
 }

@@ -91,7 +91,7 @@ static ENGINE *devcrypto_engine = NULL;
 
 // Log level for OpenSSL info messages: 1=INFO, 2=WARN (default), 3=ERROR
 // Using volatile for single-core RV1106 (no cache coherency issues)
-static volatile int openssl_log_level = 2;  // Default to WARN
+volatile int openssl_log_level = 2;  // Default to WARN (non-static for Go access)
 
 // Set the OpenSSL log level from Go
 // Clamps to valid range: TRACE=-1 to DISABLE=6 (zerolog convention)

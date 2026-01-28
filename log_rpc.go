@@ -9,6 +9,7 @@ import (
 	"github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/native"
+	"github.com/jetkvm/kvm/internal/vnctls"
 )
 
 // LogLevelState represents the current logging configuration state for the UI.
@@ -194,4 +195,5 @@ func syncCLogLevelsWithDefault(overrides string, defaultLevel string) {
 	audio.SetCLogLevel(cLevel)
 	native.SetCLogLevel(nativeLevel)
 	tls.SetCLogLevel(nativeLevel)
+	vnctls.SetCLogLevel(nativeLevel)
 }
