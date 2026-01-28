@@ -95,6 +95,9 @@ func (c *Connection) stopAudioStream() {
 }
 
 func (c *Connection) audinDataLoop() {
+	var consecutiveFailures int
+	const maxConsecutiveFailures = 100 // ~1 second of failures at 10ms packets
+
 	for {
 		select {
 		case <-c.audinStopCh:
@@ -108,7 +111,19 @@ func (c *Connection) audinDataLoop() {
 				continue
 			}
 			if err := c.server.deps.Audio.PlayAudio(pooled.Data); err != nil {
-				c.server.deps.Logger.Trace().Err(err).Msg("AUDIN playback failed")
+				consecutiveFailures++
+				if consecutiveFailures == 1 || consecutiveFailures%50 == 0 {
+					c.server.deps.Logger.Warn().Err(err).Int("consecutive", consecutiveFailures).Msg("AUDIN playback failed")
+				}
+				// Log critical warning if failures persist
+				if consecutiveFailures >= maxConsecutiveFailures && consecutiveFailures%maxConsecutiveFailures == 0 {
+					c.server.deps.Logger.Error().Int("consecutive", consecutiveFailures).Msg("AUDIN: persistent playback failures - USB audio gadget may be unresponsive")
+				}
+			} else {
+				if consecutiveFailures > 10 {
+					c.server.deps.Logger.Debug().Int("previous_failures", consecutiveFailures).Msg("AUDIN playback recovered")
+				}
+				consecutiveFailures = 0
 			}
 			pooled.Release() // Return buffer to pool after processing
 		}

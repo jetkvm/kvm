@@ -409,8 +409,9 @@ func SetAudioOutputEnabled(enabled bool) error {
 	wasEnabled := audioOutputEnabled.Swap(enabled)
 
 	if enabled && activeConnections.Load() > 0 {
-		// Check if output relay is actually running (handles case where stopAudio was called)
-		needsRestart := !wasEnabled || outputRelay.Load() == nil
+		// Check if output relay is actually running (handles case where relay died or was stopped)
+		relay := outputRelay.Load()
+		needsRestart := !wasEnabled || relay == nil || !relay.IsRunning()
 
 		if !needsRestart {
 			return nil
@@ -570,6 +571,11 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			consecutiveReadErrors++
 			if consecutiveReadErrors == 1 || consecutiveReadErrors%100 == 0 {
 				trackLogger.Warn().Err(err).Int("consecutive", consecutiveReadErrors).Msg("failed to read RTP packet")
+			}
+			// Exit on persistent errors - connection is likely dead
+			if consecutiveReadErrors >= 500 {
+				trackLogger.Error().Int("consecutive", consecutiveReadErrors).Msg("too many consecutive read errors, exiting track handler")
+				return
 			}
 			// Backoff on persistent errors to prevent CPU spin
 			if consecutiveReadErrors > 5 {

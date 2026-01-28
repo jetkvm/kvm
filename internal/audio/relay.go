@@ -71,10 +71,20 @@ func (r *OutputRelay) SetPCMEnabledCheck(check PCMEnabledCheck) {
 	r.pcmEnabledCheck = check
 }
 
+// IsRunning returns true if the relay goroutine is actively running.
+// This can be false even if the relay object exists, if the goroutine
+// exited due to errors.
+func (r *OutputRelay) IsRunning() bool {
+	return r.running.Load()
+}
+
 func (r *OutputRelay) Start() error {
 	if r.running.Swap(true) {
 		return fmt.Errorf("output relay already running")
 	}
+
+	// Create new stopped channel for this run (allows restart after previous stop)
+	r.stopped = make(chan struct{})
 
 	go r.relayLoop()
 	r.logger.Debug().Msg("output relay started")
@@ -95,7 +105,12 @@ func (r *OutputRelay) Stop() {
 }
 
 func (r *OutputRelay) relayLoop() {
-	defer close(r.stopped)
+	defer func() {
+		// Mark as not running when loop exits for any reason
+		// This allows the relay to be restarted if needed
+		r.running.Store(false)
+		close(r.stopped)
+	}()
 
 	const maxRetries = 10
 	const maxConsecutiveWriteFailures = 50 // Allow some WebRTC write failures before reconnecting

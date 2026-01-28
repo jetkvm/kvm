@@ -1006,7 +1006,9 @@ retry_read:
 		}
 	}
 
-	if (__builtin_expect(pcm_rc < hardware_frame_size, 0)) {
+	// Zero-fill any missing samples if we got a short read
+	// Guard: pcm_rc must be non-negative and less than frame size
+	if (__builtin_expect(pcm_rc >= 0 && pcm_rc < hardware_frame_size, 0)) {
 		uint32_t remaining_samples = (hardware_frame_size - pcm_rc) * capture_channels;
 		simd_clear_samples_s16(&pcm_hw_buffer[pcm_rc * capture_channels], remaining_samples);
 	}
