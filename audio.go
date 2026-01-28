@@ -703,12 +703,16 @@ func recoverAudioInput() {
 	// Abort recovery if no active connections (audio is being shut down)
 	if activeConnections.Load() <= 0 {
 		audioLogger.Debug().Msg("audio input: skipping recovery - no active connections")
+		// Reset counter to prevent repeated abort cycles
+		audioInputFailures.Store(0)
 		return
 	}
 
 	// Abort recovery if we don't own audio input
 	if GetAudioInputOwner() != AudioInputOwnerRDP {
 		audioLogger.Debug().Msg("audio input: skipping recovery - not RDP owner")
+		// Reset counter to prevent repeated abort cycles
+		audioInputFailures.Store(0)
 		return
 	}
 
@@ -721,6 +725,8 @@ func recoverAudioInput() {
 	// Re-check after acquiring lock
 	if activeConnections.Load() <= 0 {
 		audioLogger.Debug().Msg("audio input: aborting recovery - connections dropped")
+		// Reset counter to prevent repeated abort cycles
+		audioInputFailures.Store(0)
 		return
 	}
 

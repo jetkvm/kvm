@@ -172,6 +172,12 @@ static atomic_int last_pcm_samples = 0;  // Number of samples (not frames) in la
 static pthread_mutex_t capture_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t playback_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Reference counters to track active ALSA I/O operations.
+// Incremented before releasing mutex for snd_pcm_readi/writei, decremented after.
+// close_audio_stream waits for these to reach 0 before closing handles.
+static atomic_int capture_in_io = 0;
+static atomic_int playback_in_io = 0;
+
 int jetkvm_audio_capture_init();
 void jetkvm_audio_capture_close();
 int jetkvm_audio_read_encode(void *opus_buf);
@@ -942,9 +948,12 @@ retry_read:
 
 	snd_pcm_t *handle = pcm_capture_handle;
 
+	// Increment I/O counter before releasing mutex - prevents close from proceeding
+	atomic_fetch_add(&capture_in_io, 1);
 	pthread_mutex_unlock(&capture_mutex);
 	pcm_rc = snd_pcm_readi(handle, pcm_hw_buffer, hardware_frame_size);
 	pthread_mutex_lock(&capture_mutex);
+	atomic_fetch_sub(&capture_in_io, 1);
 
 	if (handle != pcm_capture_handle || atomic_load(&capture_stop_requested)) {
 		pthread_mutex_unlock(&capture_mutex);
@@ -1240,9 +1249,12 @@ retry_write:
 
 	snd_pcm_t *handle = pcm_playback_handle;
 
+	// Increment I/O counter before releasing mutex - prevents close from proceeding
+	atomic_fetch_add(&playback_in_io, 1);
 	pthread_mutex_unlock(&playback_mutex);
 	pcm_rc = snd_pcm_writei(handle, pcm_buffer, pcm_frames);
 	pthread_mutex_lock(&playback_mutex);
+	atomic_fetch_sub(&playback_in_io, 1);
 
 	if (handle != pcm_playback_handle || atomic_load(&playback_stop_requested)) {
 		pthread_mutex_unlock(&playback_mutex);
@@ -1313,9 +1325,12 @@ retry_write_pcm:
 
 	snd_pcm_t *handle = pcm_playback_handle;
 
+	// Increment I/O counter before releasing mutex - prevents close from proceeding
+	atomic_fetch_add(&playback_in_io, 1);
 	pthread_mutex_unlock(&playback_mutex);
 	pcm_rc = snd_pcm_writei(handle, pcm_buf, pcm_frames);
 	pthread_mutex_lock(&playback_mutex);
+	atomic_fetch_sub(&playback_in_io, 1);
 
 	if (handle != pcm_playback_handle || atomic_load(&playback_stop_requested)) {
 		pthread_mutex_unlock(&playback_mutex);
@@ -1355,7 +1370,7 @@ typedef void (*codec_destroy_fn)(void*);
 static void close_audio_stream(atomic_int *stop_requested, volatile int *initializing,
                                 volatile int *initialized, pthread_mutex_t *mutex,
                                 snd_pcm_t **pcm_handle, void **codec,
-                                codec_destroy_fn destroy_codec) {
+                                codec_destroy_fn destroy_codec, atomic_int *in_io_counter) {
 	atomic_store(stop_requested, 1);
 
 	while (*initializing) {
@@ -1365,6 +1380,18 @@ static void close_audio_stream(atomic_int *stop_requested, volatile int *initial
 	if (__sync_bool_compare_and_swap(initialized, 1, 0) == 0) {
 		atomic_store(stop_requested, 0);
 		return;
+	}
+
+	// Wait for any active ALSA I/O operations to complete
+	// The stop_requested flag will cause them to return after their current operation
+	int wait_count = 0;
+	while (atomic_load(in_io_counter) > 0 && wait_count < 100) {
+		struct timespec io_wait = { .tv_sec = 0, .tv_nsec = 1000000 }; // 1ms
+		nanosleep(&io_wait, NULL);
+		wait_count++;
+	}
+	if (wait_count >= 100) {
+		LOG_WARN("audio: close timed out waiting for I/O to complete (counter=%d)", atomic_load(in_io_counter));
 	}
 
 	struct timespec short_delay = { .tv_sec = 0, .tv_nsec = 5000000 };
@@ -1409,7 +1436,7 @@ void jetkvm_audio_playback_close() {
 	close_audio_stream(&playback_stop_requested, &playback_initializing,
 	                   &playback_initialized, &playback_mutex,
 	                   &pcm_playback_handle, (void**)&decoder,
-	                   (codec_destroy_fn)opus_decoder_destroy);
+	                   (codec_destroy_fn)opus_decoder_destroy, &playback_in_io);
 }
 
 /**
@@ -1461,5 +1488,5 @@ void jetkvm_audio_capture_close() {
 	close_audio_stream(&capture_stop_requested, &capture_initializing,
 	                   &capture_initialized, &capture_mutex,
 	                   &pcm_capture_handle, (void**)&encoder,
-	                   (codec_destroy_fn)opus_encoder_destroy);
+	                   (codec_destroy_fn)opus_encoder_destroy, &capture_in_io);
 }
