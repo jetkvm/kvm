@@ -1,11 +1,9 @@
 package kvm
 
 import (
-	"context"
 	"errors"
 	"net"
 	"os"
-	"time"
 
 	"github.com/pojntfx/go-nbd/pkg/server"
 	"github.com/rs/zerolog"
@@ -19,13 +17,11 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
 	logger.Debug().Int64("read size", int64(len(p))).Int64("off", off).Msg("read size and off")
 	if currentVirtualMediaState == nil {
+		virtualMediaStateMutex.RUnlock()
 		return 0, errors.New("image not mounted")
 	}
 	source := currentVirtualMediaState.Source
 	virtualMediaStateMutex.RUnlock()
-
-	_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	switch source {
 	case HTTP:
