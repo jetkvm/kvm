@@ -85,15 +85,7 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 		hidRPCLogger.Debug().Str("channel", msg.channel).Str("descr", message.String()).Msg("HID RPC dispatching")
 	}
 
-	t := time.Now()
 	handleHidRPCMessage(message, session)
-	elapsed := time.Since(t)
-
-	if elapsed >= 1*time.Second {
-		hidRPCLogger.Warn().Str("channel", msg.channel).Dur("duration", elapsed).Msg("HID RPC message handler slow")
-	} else if hidRPCLogger.GetLevel() <= zerolog.DebugLevel {
-		hidRPCLogger.Debug().Str("channel", msg.channel).Dur("duration", elapsed).Msg("HID RPC message handled")
-	}
 }
 
 // Tunables

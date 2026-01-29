@@ -345,6 +345,21 @@ func newSession(config SessionConfig) (*Session, error) {
 	session.initQueues()
 	session.initKeysDownStateQueue()
 
+	// Cleanup goroutines and resources if newSession fails after this point.
+	// The queue consumer goroutines (spawned below) block on range over channels,
+	// so we must close the channels to unblock them on error.
+	cleanupOnError := true
+	defer func() {
+		if cleanupOnError {
+			close(session.rpcQueue)
+			for i := range session.hidQueue {
+				close(session.hidQueue[i])
+			}
+			close(session.keysDownStateQueue)
+			_ = peerConnection.Close()
+		}
+	}()
+
 	// Log hardware crypto status once (after first DTLS-enabled session is created)
 	logHardwareCryptoOnce.Do(func() {
 		if err := crypto.HardwareCryptoError(); err != nil {
@@ -356,8 +371,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	go func() {
 		for msg := range session.rpcQueue {
-			// TODO: only use goroutine if the task is asynchronous
-			go onRPCMessage(msg, session)
+			onRPCMessage(msg, session)
 		}
 	}()
 
@@ -572,6 +586,8 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 		}
 	})
+
+	cleanupOnError = false
 	return session, nil
 }
 

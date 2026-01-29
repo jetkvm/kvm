@@ -213,11 +213,9 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 		return 0, nil, fmt.Errorf("opus packet too large: %d > %d", opusSize, len(c.opusBuf))
 	}
 
-	// Return a copy to prevent buffer aliasing - the caller may hold this slice
-	// while the next ReadMessage overwrites the internal buffer
-	result := make([]byte, opusSize)
-	copy(result, c.opusBuf[:opusSize])
-	return ipcMsgTypeOpus, result, nil
+	// Return a slice of the internal buffer directly. The caller (relayLoop) must
+	// consume the data before the next ReadMessage call, as it will be overwritten.
+	return ipcMsgTypeOpus, c.opusBuf[:opusSize], nil
 }
 
 func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {

@@ -22,6 +22,8 @@ const (
 	AudioInputOwnerRDP    AudioInputOwner = 2
 )
 
+var audioNopLogger = zerolog.Nop()
+
 var (
 	audioMutex         sync.Mutex
 	inputSourceMutex   sync.Mutex // Serializes input audio packet handling: connection lifecycle and writes cannot overlap
@@ -31,7 +33,7 @@ var (
 	inputRelay         atomic.Pointer[audio.InputRelay]
 	audioInitialized   bool
 	activeConnections  atomic.Int32
-	audioLogger        *zerolog.Logger
+	audioLogger        = &audioNopLogger
 	currentAudioTrack  *webrtc.TrackLocalStaticSample
 	currentInputTrack  atomic.Pointer[string]
 	audioOutputEnabled atomic.Bool
@@ -120,9 +122,7 @@ func startAudio() error {
 	defer audioMutex.Unlock()
 
 	if !audioInitialized {
-		if audioLogger != nil {
-			audioLogger.Warn().Msg("Audio not initialized, skipping start")
-		}
+		audioLogger.Warn().Msg("Audio not initialized, skipping start")
 		return nil
 	}
 
@@ -141,9 +141,7 @@ func startAudioForce() error {
 	defer audioMutex.Unlock()
 
 	if !audioInitialized {
-		if audioLogger != nil {
-			audioLogger.Warn().Msg("Audio not initialized, skipping start")
-		}
+		audioLogger.Warn().Msg("Audio not initialized, skipping start")
 		return nil
 	}
 
@@ -414,6 +412,9 @@ func SetAudioOutputEnabled(enabled bool) error {
 			done <- startAudio()
 		}()
 
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+
 		select {
 		case err := <-done:
 			if err != nil {
@@ -422,7 +423,7 @@ func SetAudioOutputEnabled(enabled bool) error {
 				return fmt.Errorf("failed to start audio output: %w", err)
 			}
 			return nil
-		case <-time.After(5 * time.Second):
+		case <-timer.C:
 			audioLogger.Error().Msg("Audio output start timed out after 5 seconds")
 			audioOutputEnabled.Store(false) // Revert state on timeout
 			go stopOutputAudio()            // Clean up any partial initialization asynchronously
@@ -463,6 +464,9 @@ func SetAudioInputEnabled(enabled bool) error {
 			done <- err
 		}()
 
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+
 		select {
 		case err := <-done:
 			if err != nil {
@@ -471,7 +475,7 @@ func SetAudioInputEnabled(enabled bool) error {
 				return fmt.Errorf("failed to start audio input: %w", err)
 			}
 			return nil
-		case <-time.After(5 * time.Second):
+		case <-timer.C:
 			audioLogger.Error().Msg("Audio input start timed out after 5 seconds")
 			audioInputEnabled.Store(false) // Revert state on timeout
 			go stopInputAudio()            // Clean up any partial initialization asynchronously
@@ -506,6 +510,9 @@ func RestartAudioOutput() error {
 		done <- startAudio()
 	}()
 
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -513,7 +520,7 @@ func RestartAudioOutput() error {
 			return fmt.Errorf("failed to restart audio output: %w", err)
 		}
 		return nil
-	case <-time.After(5 * time.Second):
+	case <-timer.C:
 		audioLogger.Error().Msg("Audio output restart timed out")
 		return fmt.Errorf("audio output restart timed out after 5 seconds")
 	}

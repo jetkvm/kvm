@@ -425,6 +425,10 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 
 		// Wrap in NTLM SEAL format (encrypt + sign)
 		wrapped := a.ntlmSign(hashResult, 0) // SeqNum 0 for server response
+		if wrapped == nil {
+			a.logger.Warn().Msg("PubKeyAuth: ntlmSign failed for v5+ binding hash")
+			return nil
+		}
 		a.logger.Debug().Msgf("PubKeyAuth: v5+ NTLM wrapped len=%d", len(wrapped))
 		return wrapped
 	}
@@ -448,6 +452,10 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 
 	// Wrap in NTLM SEAL format (encrypt + sign) - this is the correct format for v3-4
 	wrapped := a.ntlmSign(incrementedKey, 0)
+	if wrapped == nil {
+		a.logger.Warn().Msg("PubKeyAuth: ntlmSign failed for v3-4 incremented key")
+		return nil
+	}
 	a.logger.Debug().Msgf("PubKeyAuth v3-4: NTLM sealed result len=%d", len(wrapped))
 	return wrapped
 }

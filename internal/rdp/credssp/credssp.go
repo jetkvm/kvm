@@ -280,7 +280,10 @@ func (h *Handler) Authenticate() (username string, err error) {
 	}
 
 	// Step 4: Send final TSRequest with pubKeyAuth
-	pubKeyAuth := h.buildPubKeyAuth()
+	pubKeyAuth, err := h.buildPubKeyAuth()
+	if err != nil {
+		return "", fmt.Errorf("build pubKeyAuth: %w", err)
+	}
 	h.logger.Debug().Msgf("CredSSP: building final TSRequest with pubKeyAuth len=%d", len(pubKeyAuth))
 	finalResp, err := h.buildTSRequestFinal(pubKeyAuth)
 	if err != nil {
@@ -695,7 +698,7 @@ func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) ([]byte, error) {
 	return result.Bytes(), nil
 }
 
-func (h *Handler) buildPubKeyAuth() []byte {
+func (h *Handler) buildPubKeyAuth() ([]byte, error) {
 	// Build pubKeyAuth for the final TSRequest.
 	// This binds the authentication to the TLS channel using the server's public key.
 	//
@@ -720,15 +723,18 @@ func (h *Handler) buildPubKeyAuth() []byte {
 				serverPubKey = []byte{}
 			}
 			pubKeyAuth := h.ntlmAuth.ComputePubKeyAuth(serverPubKey, h.clientVersion)
+			if pubKeyAuth == nil {
+				return nil, fmt.Errorf("ComputePubKeyAuth failed (session key or crypto error)")
+			}
 			h.logger.Debug().Msgf("CredSSP: computed pubKeyAuth len=%d", len(pubKeyAuth))
-			return pubKeyAuth
+			return pubKeyAuth, nil
 		}
 	}
 
 	// Permissive mode fallback - return minimal value
 	// Note: This will likely cause authentication to fail with proper clients
 	h.logger.Debug().Msg("CredSSP: permissive mode - returning minimal pubKeyAuth")
-	return []byte{0x01}
+	return []byte{0x01}, nil
 }
 
 func (h *Handler) buildTSRequestFinal(pubKeyAuth []byte) ([]byte, error) {
