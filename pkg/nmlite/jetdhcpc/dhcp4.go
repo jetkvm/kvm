@@ -62,9 +62,14 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 		lease  *nclient4.Lease
 		reqErr error
 	)
-	if c.currentLease4 != nil {
+
+	c.lease4Mu.Lock()
+	existingLease := c.currentLease4
+	c.lease4Mu.Unlock()
+
+	if existingLease != nil {
 		l.Info().Msg("current lease is not nil, renewing")
-		lease, reqErr = client.Renew(c.ctx, c.currentLease4.p4, reqmods...)
+		lease, reqErr = client.Renew(c.ctx, existingLease.p4, reqmods...)
 	} else {
 		l.Info().Msg("current lease is nil, requesting new lease")
 		lease, reqErr = client.Request(c.ctx, reqmods...)

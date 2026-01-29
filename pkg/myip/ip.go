@@ -166,30 +166,28 @@ func (ps *PublicIPState) timerLoop(ctx context.Context) {
 	// Store timer reference for Stop() to access
 	ps.mu.Lock()
 	ps.timer = timer
-	checkIPv4 := ps.ipv4
-	checkIPv6 := ps.ipv6
 	ps.mu.Unlock()
 
-	// Perform initial check immediately
+	// Re-read ipv4/ipv6 under lock each time to pick up SetIPv4AndIPv6 changes.
 	checkIPs := func() {
-		if err := ps.checkIPs(ctx, checkIPv4, checkIPv6); err != nil {
+		ps.mu.Lock()
+		v4, v6 := ps.ipv4, ps.ipv6
+		ps.mu.Unlock()
+		if err := ps.checkIPs(ctx, v4, v6); err != nil {
 			ps.logger.Error().Err(err).Msg("failed to check public IP addresses")
 		}
 	}
 
+	// Perform initial check immediately
 	checkIPs()
 
 	for {
 		select {
 		case <-timer.C:
-			// Perform the check
 			checkIPs()
-
-			// Reset the timer for the next check
 			timer.Reset(5 * time.Minute)
 
 		case <-ctx.Done():
-			// Timer was stopped
 			return
 		}
 	}

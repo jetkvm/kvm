@@ -200,18 +200,27 @@ func (nm *NetworkManager) RenewDHCPLease(iface string) error {
 	return im.RenewDHCPLease()
 }
 
-// SetOnInterfaceStateChange sets the callback for interface state changes
+// SetOnInterfaceStateChange sets the callback for interface state changes.
+// Must be called before AddInterface.
 func (nm *NetworkManager) SetOnInterfaceStateChange(callback func(iface string, state types.InterfaceState)) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
 	nm.onInterfaceStateChange = callback
 }
 
-// SetOnConfigChange sets the callback for configuration changes
+// SetOnConfigChange sets the callback for configuration changes.
+// Must be called before AddInterface.
 func (nm *NetworkManager) SetOnConfigChange(callback func(iface string, config *types.NetworkConfig)) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
 	nm.onConfigChange = callback
 }
 
-// SetOnDHCPLeaseChange sets the callback for DHCP lease changes
+// SetOnDHCPLeaseChange sets the callback for DHCP lease changes.
+// Must be called before AddInterface.
 func (nm *NetworkManager) SetOnDHCPLeaseChange(callback func(iface string, lease *types.DHCPLease)) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
 	nm.onDHCPLeaseChange = callback
 }
 

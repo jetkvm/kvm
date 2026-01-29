@@ -30,6 +30,7 @@ type DHCPClient struct {
 	logger        *zerolog.Logger
 	process       *os.Process
 	runOnce       sync.Once
+	stopCh        chan struct{}
 	onLeaseChange func(lease *types.DHCPLease)
 }
 
@@ -53,6 +54,7 @@ func NewDHCPClient(options *DHCPClientOptions) *DHCPClient {
 		logger:        &l,
 		leaseFile:     fmt.Sprintf(DHCPLeaseFile, options.InterfaceName),
 		pidFile:       options.PidFile,
+		stopCh:        make(chan struct{}),
 		onLeaseChange: options.OnLeaseChange,
 	}
 }
@@ -91,7 +93,7 @@ func (c *DHCPClient) run() error {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
-					continue
+					return
 				}
 				if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) {
 					continue
@@ -109,6 +111,8 @@ func (c *DHCPClient) run() error {
 					return
 				}
 				c.logger.Error().Err(err).Msg("error watching lease file")
+			case <-c.stopCh:
+				return
 			}
 		}
 	}()
@@ -124,15 +128,8 @@ func (c *DHCPClient) run() error {
 		}
 	}
 
-	// TODO: update udhcpc pid file
-	// we'll comment this out for now because the pid might change
-	// process := c.GetProcess()
-	// if process == nil {
-	// 	c.logger.Error().Msg("udhcpc process not found")
-	// }
-
-	// block the goroutine
-	<-make(chan struct{})
+	// Block until stopped
+	<-c.stopCh
 
 	return nil
 }
@@ -205,6 +202,9 @@ func (c *DHCPClient) GetLease() *Lease {
 }
 
 func (c *DHCPClient) Domain() string {
+	if c.lease == nil {
+		return ""
+	}
 	return c.lease.Domain
 }
 
@@ -245,5 +245,12 @@ func (c *DHCPClient) Start() error {
 }
 
 func (c *DHCPClient) Stop() error {
-	return c.KillProcess() // udhcpc already has KillProcess()
+	// Signal the run goroutine and watcher to exit
+	select {
+	case <-c.stopCh:
+		// Already closed
+	default:
+		close(c.stopCh)
+	}
+	return c.KillProcess()
 }

@@ -24,8 +24,11 @@ func (hm *ResolvConfManager) SetHostname(hostname, domain string) error {
 		return fmt.Errorf("invalid hostname: %s", hostname)
 	}
 
+	// DO NOT USE defer HERE, hm.reconcileHostname() also locks the mutex
+	hm.mu.Lock()
 	hm.hostname = hostname
 	hm.domain = domain
+	hm.mu.Unlock()
 
 	return hm.reconcileHostname()
 }

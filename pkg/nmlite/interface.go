@@ -341,7 +341,8 @@ func (im *InterfaceManager) Domain() string {
 
 // GetConfig returns the current interface configuration
 func (im *InterfaceManager) GetConfig() *types.NetworkConfig {
-	// Return a copy to avoid race conditions
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
 	config := *im.config
 	return &config
 }
@@ -362,7 +363,9 @@ func (im *InterfaceManager) SetConfig(config *types.NetworkConfig) error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
+	im.stateMu.Lock()
 	im.config = config
+	im.stateMu.Unlock()
 
 	// Apply the new configuration
 	if err := im.applyConfiguration(); err != nil {
@@ -626,21 +629,18 @@ func (im *InterfaceManager) disableIPv6() error {
 	return im.staticConfig.DisableIPv6()
 }
 
-func (im *InterfaceManager) handleLinkStateChange(link *link.Link) {
-	{
-		im.stateMu.Lock()
-		defer im.stateMu.Unlock()
-
-		if link.IsSame(im.linkState) {
-			return
-		}
-
-		im.linkState = link
+func (im *InterfaceManager) handleLinkStateChange(l *link.Link) {
+	im.stateMu.Lock()
+	if l.IsSame(im.linkState) {
+		im.stateMu.Unlock()
+		return
 	}
+	im.linkState = l
+	im.stateMu.Unlock()
 
-	im.logger.Info().Interface("link", link).Msg("link state changed")
+	im.logger.Info().Interface("link", l).Msg("link state changed")
 
-	operState := link.Attrs().OperState
+	operState := l.Attrs().OperState
 	if operState == netlink.OperUp {
 		im.handleLinkUp()
 	} else {
@@ -676,6 +676,7 @@ func (im *InterfaceManager) SendRouterSolicitation() error {
 	if err != nil {
 		return fmt.Errorf("failed to create NDP listener on %s: %w", im.ifaceName, err)
 	}
+	defer c.Close()
 
 	m.Options = append(m.Options, &ndp.LinkLayerAddress{
 		Addr:      hwAddr,
@@ -685,12 +686,10 @@ func (im *InterfaceManager) SendRouterSolicitation() error {
 	targetAddr := netip.MustParseAddr("ff02::2")
 
 	if err := c.WriteTo(m, nil, targetAddr); err != nil {
-		c.Close()
 		return fmt.Errorf("failed to write to %s: %w", targetAddr.String(), err)
 	}
 
 	im.logger.Info().Msg("router solicitation sent")
-	c.Close()
 
 	return nil
 }
@@ -825,6 +824,9 @@ func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 
 	// Convert DHCP lease to IPv4Config
 	ipv4Config := im.convertDHCPLeaseToIPv4Config(lease)
+	if ipv4Config == nil {
+		return fmt.Errorf("failed to convert DHCP lease to IPv4 config (missing IP network or routers)")
+	}
 
 	// Apply the configuration using ReconcileLinkAddrs
 	return im.ReconcileLinkAddrs([]types.IPAddress{*ipv4Config}, link.AfInet)
@@ -834,6 +836,11 @@ func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease) *types.IPAddress {
 	ipNet := lease.IPNet()
 	if ipNet == nil {
+		return nil
+	}
+
+	if len(lease.Routers) == 0 {
+		im.logger.Warn().Msg("DHCP lease has no routers, cannot create IPv4 config")
 		return nil
 	}
 

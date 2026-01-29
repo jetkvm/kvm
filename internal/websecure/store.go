@@ -115,9 +115,9 @@ func (s *CertStore) loadCertificate(hostname string) {
 
 // GetCertificate returns the certificate for the given hostname
 // returns nil if the certificate is not found
-// Note: This is lock-free for reads. The map is only written during startup
-// or when user explicitly saves a new certificate (rare operation).
 func (s *CertStore) GetCertificate(hostname string) *tls.Certificate {
+	s.certLock.RLock()
+	defer s.certLock.RUnlock()
 	return s.certificates[hostname]
 }
 
@@ -167,7 +167,9 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 
 func (s *CertStore) saveCertificate(hostname string) {
 	// check if certificate already exists
+	s.certLock.RLock()
 	tlsCert := s.certificates[hostname]
+	s.certLock.RUnlock()
 	if tlsCert == nil {
 		s.log.Error().Str("hostname", hostname).Msg("Certificate for hostname does not exist, skipping saving certificate")
 		return

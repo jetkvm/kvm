@@ -255,11 +255,12 @@ func (c *Client) Lease6() *types.DHCPLease {
 // Domain returns the current domain
 func (c *Client) Domain() string {
 	c.lease4Mu.Lock()
-	defer c.lease4Mu.Unlock()
-
 	if c.currentLease4 != nil {
-		return c.currentLease4.Domain
+		domain := c.currentLease4.Domain
+		c.lease4Mu.Unlock()
+		return domain
 	}
+	c.lease4Mu.Unlock()
 
 	c.lease6Mu.Lock()
 	defer c.lease6Mu.Unlock()
@@ -299,8 +300,15 @@ func (c *Client) handleLeaseChange(lease *Lease) {
 }
 
 func (c *Client) Renew() error {
-	c.timer4.Reset(defaultTimerDuration)
-	c.timer6.Reset(defaultTimerDuration)
+	c.cfgMu.Lock()
+	defer c.cfgMu.Unlock()
+
+	if c.cfg.IPv4 {
+		c.timer4.Reset(defaultTimerDuration)
+	}
+	if c.cfg.IPv6 {
+		c.timer6.Reset(defaultTimerDuration)
+	}
 	return nil
 }
 
@@ -326,9 +334,9 @@ func (c *Client) SetIPv4(ipv4 bool) {
 		c.lease4Mu.Unlock()
 
 		c.timer4.Stop()
+	} else {
+		c.timer4.Reset(defaultTimerDuration)
 	}
-
-	c.timer4.Reset(defaultTimerDuration)
 }
 
 func (c *Client) SetIPv6(ipv6 bool) {
@@ -348,9 +356,9 @@ func (c *Client) SetIPv6(ipv6 bool) {
 		c.lease6Mu.Unlock()
 
 		c.timer6.Stop()
+	} else {
+		c.timer6.Reset(defaultTimerDuration)
 	}
-
-	c.timer6.Reset(defaultTimerDuration)
 }
 
 func (c *Client) Start() error {
@@ -378,18 +386,26 @@ func (c *Client) apply() {
 		domain      string
 	)
 
-	if c.currentLease4 != nil {
-		iface = c.currentLease4.InterfaceName
-		nameservers = c.currentLease4.DNS
-		searchList = c.currentLease4.SearchList
-		domain = c.currentLease4.Domain
+	c.lease4Mu.Lock()
+	lease4 := c.currentLease4
+	c.lease4Mu.Unlock()
+
+	c.lease6Mu.Lock()
+	lease6 := c.currentLease6
+	c.lease6Mu.Unlock()
+
+	if lease4 != nil {
+		iface = lease4.InterfaceName
+		nameservers = lease4.DNS
+		searchList = lease4.SearchList
+		domain = lease4.Domain
 	}
 
-	if c.currentLease6 != nil {
-		iface = c.currentLease6.InterfaceName
-		nameservers = append(nameservers, c.currentLease6.DNS...)
-		searchList = append(searchList, c.currentLease6.SearchList...)
-		domain = c.currentLease6.Domain
+	if lease6 != nil {
+		iface = lease6.InterfaceName
+		nameservers = append(nameservers, lease6.DNS...)
+		searchList = append(searchList, lease6.SearchList...)
+		domain = lease6.Domain
 	}
 
 	// deduplicate searchList

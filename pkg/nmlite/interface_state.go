@@ -94,15 +94,20 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	}
 
 	im.state.LastUpdated = time.Now()
+	// Copy state under lock before releasing, so the callback gets a consistent snapshot.
+	var stateCopy types.InterfaceState
+	if stateChanged {
+		stateCopy = *im.state
+	}
 	im.stateMu.Unlock()
 
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
 		im.logger.Debug().
 			Stringer("changeReasons", changeReasons).
-			Interface("state", im.state).
+			Interface("state", stateCopy).
 			Msg("notifying state change")
-		im.onStateChange(*im.state)
+		im.onStateChange(stateCopy)
 	}
 
 	return nil

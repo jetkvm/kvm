@@ -3,9 +3,13 @@ package usbgadget
 import "time"
 
 func (u *UsbGadget) resetUserInputTime() {
-	u.lastUserInput = time.Now()
+	u.lastUserInput.Store(time.Now().UnixNano())
 }
 
 func (u *UsbGadget) GetLastUserInputTime() time.Time {
-	return u.lastUserInput
+	nano := u.lastUserInput.Load()
+	if nano == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, nano)
 }

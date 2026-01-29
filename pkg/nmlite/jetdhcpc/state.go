@@ -61,15 +61,23 @@ func (c *Client) SaveState(state *DHCPState) error {
 	if err != nil {
 		return fmt.Errorf("failed to create temporary file: %w", err)
 	}
-	defer tmpFile.Close()
+	tmpPath := tmpFile.Name()
 
-	if err := os.WriteFile(tmpFile.Name(), data, 0644); err != nil {
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("failed to write state file: %w", err)
 	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to sync state file: %w", err)
+	}
+	tmpFile.Close()
 
 	stateFile := filepath.Join(c.stateDir, DHCPStateFile)
-	if err := os.Rename(tmpFile.Name(), stateFile); err != nil {
-		os.Remove(tmpFile.Name())
+	if err := os.Rename(tmpPath, stateFile); err != nil {
+		os.Remove(tmpPath)
 		return fmt.Errorf("failed to rename state file: %w", err)
 	}
 

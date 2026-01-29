@@ -3,6 +3,8 @@ package nmlite
 import "net"
 
 func (nm *NetworkManager) IsOnline() bool {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		if iface.IsOnline() {
 			return true
@@ -12,6 +14,8 @@ func (nm *NetworkManager) IsOnline() bool {
 }
 
 func (nm *NetworkManager) IsUp() bool {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		if iface.IsUp() {
 			return true
@@ -29,6 +33,8 @@ func (nm *NetworkManager) FQDN() string {
 }
 
 func (nm *NetworkManager) NTPServers() []net.IP {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	servers := []net.IP{}
 	for _, iface := range nm.interfaces {
 		servers = append(servers, iface.NTPServers()...)
@@ -45,6 +51,8 @@ func (nm *NetworkManager) NTPServerStrings() []string {
 }
 
 func (nm *NetworkManager) GetIPv4Addresses() []string {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		return iface.GetIPv4Addresses()
 	}
@@ -52,6 +60,8 @@ func (nm *NetworkManager) GetIPv4Addresses() []string {
 }
 
 func (nm *NetworkManager) GetIPv4Address() string {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		return iface.GetIPv4Address()
 	}
@@ -59,6 +69,8 @@ func (nm *NetworkManager) GetIPv4Address() string {
 }
 
 func (nm *NetworkManager) GetIPv6Address() string {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		return iface.GetIPv6Address()
 	}
@@ -66,6 +78,8 @@ func (nm *NetworkManager) GetIPv6Address() string {
 }
 
 func (nm *NetworkManager) GetIPv6Addresses() []string {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		return iface.GetIPv6Addresses()
 	}
@@ -73,6 +87,8 @@ func (nm *NetworkManager) GetIPv6Addresses() []string {
 }
 
 func (nm *NetworkManager) GetMACAddress() string {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		return iface.GetMACAddress()
 	}
@@ -80,6 +96,8 @@ func (nm *NetworkManager) GetMACAddress() string {
 }
 
 func (nm *NetworkManager) IPv4Ready() bool {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		return iface.IPv4Ready()
 	}
@@ -87,6 +105,8 @@ func (nm *NetworkManager) IPv4Ready() bool {
 }
 
 func (nm *NetworkManager) IPv6Ready() bool {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
 	for _, iface := range nm.interfaces {
 		return iface.IPv6Ready()
 	}

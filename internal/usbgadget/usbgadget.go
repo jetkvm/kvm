@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
@@ -95,7 +96,7 @@ type UsbGadget struct {
 
 	absMouseAccumulatedWheelY float64
 
-	lastUserInput time.Time
+	lastUserInput atomic.Int64
 
 	tx     *UsbGadgetTransaction
 	txLock sync.Mutex
@@ -151,9 +152,8 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		keyboardState:        0,
 		keysDownState:        KeysDownState{Modifier: 0, Keys: []byte{0, 0, 0, 0, 0, 0}}, // must be initialized to hidKeyBufferSize (6) zero bytes
 		kbdAutoReleaseTimers: make(map[byte]*time.Timer),
-		enabledDevices:       *enabledDevices,
-		lastUserInput:        time.Now(),
-		log:                  logger,
+		enabledDevices: *enabledDevices,
+		log:            logger,
 
 		strictMode: config.strictMode,
 
@@ -161,6 +161,8 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 
 		absMouseAccumulatedWheelY: 0,
 	}
+	g.lastUserInput.Store(time.Now().UnixNano())
+
 	if err := g.Init(); err != nil {
 		logger.Error().Err(err).Msg("failed to init USB gadget")
 		return nil
@@ -335,17 +337,21 @@ func (u *UsbGadget) PreOpenHidFiles() {
 
 // verifyAndReopenHidFiles checks if HID file handles are still valid and reopens them if stale.
 func (u *UsbGadget) verifyAndReopenHidFiles() {
+	u.keyboardLock.Lock()
 	if u.keyboardHidFile != nil {
 		if _, err := u.keyboardHidFile.Stat(); err != nil {
 			u.log.Warn().Err(err).Msg("keyboard HID file became stale, reopening")
 			u.keyboardHidFile.Close()
 			u.keyboardHidFile = nil
-			if err := u.openKeyboardHidFile(); err != nil {
-				u.log.Error().Err(err).Msg("failed to reopen keyboard HID file")
-			}
 		}
 	}
+	u.keyboardLock.Unlock()
+	// openKeyboardHidFile has its own locking
+	if err := u.openKeyboardHidFile(); err != nil {
+		u.log.Error().Err(err).Msg("failed to reopen keyboard HID file")
+	}
 
+	u.absMouseLock.Lock()
 	if u.absMouseHidFile != nil {
 		if _, err := u.absMouseHidFile.Stat(); err != nil {
 			u.log.Warn().Err(err).Msg("absolute mouse HID file became stale, reopening")
@@ -358,7 +364,9 @@ func (u *UsbGadget) verifyAndReopenHidFiles() {
 			}
 		}
 	}
+	u.absMouseLock.Unlock()
 
+	u.relMouseLock.Lock()
 	if u.relMouseHidFile != nil {
 		if _, err := u.relMouseHidFile.Stat(); err != nil {
 			u.log.Warn().Err(err).Msg("relative mouse HID file became stale, reopening")
@@ -371,4 +379,5 @@ func (u *UsbGadget) verifyAndReopenHidFiles() {
 			}
 		}
 	}
+	u.relMouseLock.Unlock()
 }

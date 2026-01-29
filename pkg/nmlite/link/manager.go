@@ -365,12 +365,12 @@ func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
 
 	for _, route := range routes {
 		if route.Dst != nil {
-			if family == AfInet && route.Dst.IP.Equal(net.IPv4zero) && route.Dst.Mask.String() == "0.0.0.0/0" {
+			if family == AfInet && route.Dst.String() == "0.0.0.0/0" {
 				if err := nm.RouteDel(&route); err != nil {
 					nm.logger.Warn().Err(err).Msg("failed to remove IPv4 default route")
 				}
 			}
-			if family == AfInet6 && route.Dst.IP.Equal(net.IPv6zero) && route.Dst.Mask.String() == "::/0" {
+			if family == AfInet6 && route.Dst.String() == "::/0" {
 				if err := nm.RouteDel(&route); err != nil {
 					nm.logger.Warn().Err(err).Msg("failed to remove IPv6 default route")
 				}
@@ -511,13 +511,6 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 		}
 		// we'll add it again later
 		toAdd = append(toAdd, addr)
-	}
-
-	for _, addr := range toAdd {
-		netlinkAddr := addr.NetlinkAddr()
-		if err := nm.AddrAdd(link, &netlinkAddr); err != nil {
-			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to add address")
-		}
 	}
 
 	for _, netlinkAddr := range toRemove {

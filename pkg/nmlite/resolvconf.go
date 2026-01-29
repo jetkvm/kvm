@@ -92,9 +92,10 @@ func (rcm *ResolvConfManager) SetConfig(resolvConf *types.ResolvConf) error {
 		return fmt.Errorf("resolvConf cannot be nil")
 	}
 
+	// DO NOT USE defer HERE, rcm.update() also locks the mutex
 	rcm.mu.Lock()
 	rcm.conf = resolvConf
-	defer rcm.mu.Unlock()
+	rcm.mu.Unlock()
 
 	return rcm.update()
 }

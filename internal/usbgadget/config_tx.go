@@ -67,10 +67,18 @@ func (u *UsbGadget) WithTransactionTimeout(fn func() error, timeout time.Duratio
 	// Channel to signal when the transaction is complete
 	done := make(chan error, 1)
 
-	// Execute the transaction in a goroutine
+	// Execute the transaction in a goroutine.
+	// On timeout, the goroutine still holds txLock until it finishes.
+	// The caller must not retry until the previous goroutine completes.
 	go func() {
 		u.txLock.Lock()
 		defer u.txLock.Unlock()
+
+		// Check if context already expired while waiting for lock
+		if ctx.Err() != nil {
+			done <- ctx.Err()
+			return
+		}
 
 		err := u.newUsbGadgetTransaction(false)
 		if err != nil {
@@ -81,6 +89,7 @@ func (u *UsbGadget) WithTransactionTimeout(fn func() error, timeout time.Duratio
 
 		if err := fn(); err != nil {
 			u.log.Error().Err(err).Msg("transaction failed")
+			u.tx = nil
 			done <- err
 			return
 		}
@@ -95,6 +104,7 @@ func (u *UsbGadget) WithTransactionTimeout(fn func() error, timeout time.Duratio
 	case err := <-done:
 		return err
 	case <-ctx.Done():
+		u.log.Warn().Dur("timeout", timeout).Msg("USB gadget transaction timed out; txLock held until goroutine completes")
 		return fmt.Errorf("USB gadget transaction timed out after %v: %w", timeout, ctx.Err())
 	}
 }
