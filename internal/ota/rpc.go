@@ -89,7 +89,7 @@ func applyComponentStatusToRPCState(component string, status componentUpdateStat
 // ToRPCState converts the State to the RPCState
 func (s *State) ToRPCState() *RPCState {
 	r := &RPCState{
-		Updating:          s.updating,
+		Updating:          s.updating.Load(),
 		Error:             s.error,
 		MetadataFetchedAt: &s.metadataFetchedAt,
 	}

@@ -2,6 +2,7 @@ package ota
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -120,7 +121,7 @@ type State struct {
 	releaseAPIEndpoint      string
 	l                       *zerolog.Logger
 	mu                      sync.Mutex
-	updating                bool
+	updating                atomic.Bool
 	error                   string
 	metadataFetchedAt       time.Time
 	rebootNeeded            bool
@@ -156,8 +157,12 @@ func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpd
 	}
 }
 
-// ToUpdateStatus converts the State to the UpdateStatus
+// ToUpdateStatus converts the State to the UpdateStatus.
+// Must not be called while mu is held (use toUpdateStatus directly instead).
 func (s *State) ToUpdateStatus() *UpdateStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	appUpdate, ok := s.componentUpdateStatuses["app"]
 	if !ok {
 		return nil
@@ -173,7 +178,7 @@ func (s *State) ToUpdateStatus() *UpdateStatus {
 
 // IsUpdatePending returns true if an update is pending
 func (s *State) IsUpdatePending() bool {
-	return s.updating
+	return s.updating.Load()
 }
 
 // Options represents the options for the OTA state

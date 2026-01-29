@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/network/types"
@@ -20,10 +21,6 @@ const (
 	timeSyncTimeout       = 2 * time.Second
 )
 
-var (
-	timeSyncRetryInterval = 0 * time.Second
-)
-
 type PreCheckFunc func() (bool, error)
 
 type TimeSync struct {
@@ -37,8 +34,9 @@ type TimeSync struct {
 	rtcDevice     *os.File //nolint:unused
 	rtcLock       *sync.Mutex
 
-	syncSuccess bool
-	timer       *time.Timer
+	syncSuccess   atomic.Bool
+	retryInterval time.Duration
+	timer         *time.Timer
 
 	preCheckFunc PreCheckFunc
 	preCheckIPv4 PreCheckFunc
@@ -91,6 +89,8 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 }
 
 func (t *TimeSync) SetDhcpNtpAddresses(addresses []string) {
+	t.syncLock.Lock()
+	defer t.syncLock.Unlock()
 	t.dhcpNtpAddresses = addresses
 }
 
@@ -153,17 +153,17 @@ func (t *TimeSync) timeSyncLoop() {
 			t.l.Error().Str("error", err.Error()).Msg("failed to sync system time")
 
 			// retry after a delay
-			timeSyncRetryInterval += timeSyncRetryStep
-			t.timer.Reset(timeSyncRetryInterval)
+			t.retryInterval += timeSyncRetryStep
+			t.timer.Reset(t.retryInterval)
 			// reset the retry interval if it exceeds the max interval
-			if timeSyncRetryInterval > timeSyncRetryMaxInt {
-				timeSyncRetryInterval = 0
+			if t.retryInterval > timeSyncRetryMaxInt {
+				t.retryInterval = 0
 			}
 			continue
 		}
 
-		isInitialSync := !t.syncSuccess
-		t.syncSuccess = true
+		isInitialSync := !t.syncSuccess.Load()
+		t.syncSuccess.Store(true)
 
 		t.l.Info().Str("now", time.Now().Format(time.RFC3339)).
 			Str("time_taken", time.Since(start).String()).
@@ -179,7 +179,11 @@ func (t *TimeSync) timeSyncLoop() {
 func (t *TimeSync) sync() error {
 	t.syncLock.Lock()
 	defer t.syncLock.Unlock()
+	return t.syncLocked()
+}
 
+// syncLocked performs the actual sync. Caller must hold syncLock.
+func (t *TimeSync) syncLocked() error {
 	var (
 		now    *time.Time
 		offset *time.Duration
@@ -270,14 +274,13 @@ func (t *TimeSync) Sync() error {
 		t.l.Warn().Msg("sync already in progress, skipping")
 		return nil
 	}
-	t.syncLock.Unlock()
-
-	return t.sync()
+	defer t.syncLock.Unlock()
+	return t.syncLocked()
 }
 
 // IsSyncSuccess returns true if the system time is synchronized
 func (t *TimeSync) IsSyncSuccess() bool {
-	return t.syncSuccess
+	return t.syncSuccess.Load()
 }
 
 // Start starts the time sync

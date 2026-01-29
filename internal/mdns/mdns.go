@@ -69,6 +69,7 @@ func (m *MDNS) start(allowRestart bool) error {
 		}
 
 		m.conn.Close()
+		m.conn = nil
 	}
 
 	if m.listenOptions == nil {
@@ -110,6 +111,9 @@ func (m *MDNS) start(allowRestart bool) error {
 
 		l6, err = net.ListenUDP("udp6", addr6)
 		if err != nil {
+			if l4 != nil {
+				l4.Close()
+			}
 			return err
 		}
 
@@ -133,6 +137,12 @@ func (m *MDNS) start(allowRestart bool) error {
 	mDNSConn, err := pion_mdns.Server(p4, p6, &pion_mdns.Config{LocalNames: newLocalNames})
 
 	if err != nil {
+		if l4 != nil {
+			l4.Close()
+		}
+		if l6 != nil {
+			l6.Close()
+		}
 		scopeLogger.Warn().Err(err).Msg("failed to start mDNS server")
 		return err
 	}
@@ -162,7 +172,9 @@ func (m *MDNS) Stop() error {
 		return nil
 	}
 
-	return m.conn.Close()
+	err := m.conn.Close()
+	m.conn = nil
+	return err
 }
 
 func (m *MDNS) setLocalNames(localNames []string) {

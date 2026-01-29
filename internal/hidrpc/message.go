@@ -67,6 +67,9 @@ func (m *Message) KeypressReport() (KeypressReport, error) {
 	if m.t != TypeKeypressReport {
 		return KeypressReport{}, fmt.Errorf("invalid message type: %d", m.t)
 	}
+	if len(m.d) < 2 {
+		return KeypressReport{}, fmt.Errorf("malformed keypress report: need 2 bytes, got %d", len(m.d))
+	}
 
 	return KeypressReport{
 		Key:   m.d[0],
@@ -84,6 +87,9 @@ type KeyboardReport struct {
 func (m *Message) KeyboardReport() (KeyboardReport, error) {
 	if m.t != TypeKeyboardReport {
 		return KeyboardReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+	if len(m.d) < 2 {
+		return KeyboardReport{}, fmt.Errorf("malformed keyboard report: need at least 2 bytes, got %d", len(m.d))
 	}
 
 	return KeyboardReport{
@@ -111,6 +117,9 @@ const HidKeyBufferSize = 6
 func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
 	if m.t != TypeKeyboardMacroReport {
 		return KeyboardMacroReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+	if len(m.d) < 5 {
+		return KeyboardMacroReport{}, fmt.Errorf("malformed macro report: need at least 5 bytes, got %d", len(m.d))
 	}
 
 	isPaste := m.d[0] == uint8(1)
@@ -181,6 +190,9 @@ func (m *Message) MouseReport() (MouseReport, error) {
 	if m.t != TypeMouseReport {
 		return MouseReport{}, fmt.Errorf("invalid message type: %d", m.t)
 	}
+	if len(m.d) < 3 {
+		return MouseReport{}, fmt.Errorf("malformed mouse report: need 3 bytes, got %d", len(m.d))
+	}
 
 	return MouseReport{
 		DX:     int8(m.d[0]),
@@ -198,6 +210,9 @@ type KeyboardMacroState struct {
 func (m *Message) KeyboardMacroState() (KeyboardMacroState, error) {
 	if m.t != TypeKeyboardMacroState {
 		return KeyboardMacroState{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+	if len(m.d) < 2 {
+		return KeyboardMacroState{}, fmt.Errorf("malformed macro state: need 2 bytes, got %d", len(m.d))
 	}
 
 	return KeyboardMacroState{

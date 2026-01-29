@@ -740,7 +740,7 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 
 	// FPS: use min(host_requested, config_cap) to respect both
 	configFPS := uint32(config.CameraFrameRate)
-	if configFPS <= 0 {
+	if configFPS == 0 {
 		configFPS = cameraDefaultFPS
 	}
 	fps := hostFPS
@@ -749,7 +749,7 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 	}
 
 	quality := uint32(config.CameraMjpegQuality)
-	if quality <= 0 {
+	if quality == 0 {
 		quality = cameraDefaultMjpegQual
 	}
 

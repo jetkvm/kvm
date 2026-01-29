@@ -79,10 +79,8 @@ func (c *NetworkConfig) GetTransportProxyFunc() func(*http.Request) (*url.URL, e
 	return func(*http.Request) (*url.URL, error) {
 		if c.HTTPProxy.String == "" {
 			return nil, nil
-		} else {
-			proxyURL, _ := url.Parse(c.HTTPProxy.String)
-			return proxyURL, nil
 		}
+		return url.Parse(c.HTTPProxy.String)
 	}
 }
 

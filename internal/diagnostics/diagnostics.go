@@ -38,10 +38,11 @@ type Options struct {
 }
 
 // Diagnostics provides comprehensive system diagnostics logging.
+// Not safe for concurrent use — LogAll must not be called concurrently.
 type Diagnostics struct {
 	logger  *zerolog.Logger
 	options Options
-	ctx     context.Context // set during LogAll for overall timeout
+	ctx     context.Context // set during LogAll for overall timeout; not safe for concurrent access
 }
 
 const defaultLogAllTimeout = 10 * time.Second

@@ -392,18 +392,19 @@ func (f *FieldConfig) validateSingleValue(val string, index int) error {
 				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", fieldRef, val)
 			}
 		case "ipv4":
-			if net.ParseIP(val).To4() == nil {
+			ip := net.ParseIP(val)
+			if ip == nil || ip.To4() == nil {
 				return fmt.Errorf("field `%s` is not a valid IPv4 address: %s", fieldRef, val)
 			}
 		case "ipv6":
-			if net.ParseIP(val).To16() == nil {
+			ip := net.ParseIP(val)
+			if ip == nil || ip.To16() == nil {
 				return fmt.Errorf("field `%s` is not a valid IPv6 address: %s", fieldRef, val)
 			}
 		case "ipv6_prefix":
-			if i, _, err := net.ParseCIDR(val); err != nil {
-				if i.To16() == nil {
-					return fmt.Errorf("field `%s` is not a valid IPv6 prefix: %s", fieldRef, val)
-				}
+			i, _, err := net.ParseCIDR(val)
+			if err != nil || i == nil || i.To16() == nil {
+				return fmt.Errorf("field `%s` is not a valid IPv6 prefix: %s", fieldRef, val)
 			}
 		case "ipv4_or_ipv6":
 			if net.ParseIP(val) == nil {

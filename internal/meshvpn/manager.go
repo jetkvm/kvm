@@ -44,18 +44,20 @@ func (m *Manager) GetConfig() *Config {
 
 func (m *Manager) SetConfig(config *Config) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.config = config
 
 	if m.saveConfig != nil {
 		if err := m.saveConfig(config); err != nil {
+			m.mu.Unlock()
 			return err
 		}
 	}
 
-	if m.onConfigChange != nil {
-		m.onConfigChange(config)
+	onChange := m.onConfigChange
+	m.mu.Unlock()
+
+	if onChange != nil {
+		onChange(config)
 	}
 
 	return nil

@@ -22,11 +22,15 @@ type HttpClient interface {
 
 // UpdateReleaseAPIEndpoint updates the release API endpoint
 func (s *State) UpdateReleaseAPIEndpoint(endpoint string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.releaseAPIEndpoint = endpoint
 }
 
 // GetReleaseAPIEndpoint returns the release API endpoint
 func (s *State) GetReleaseAPIEndpoint() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.releaseAPIEndpoint
 }
 
@@ -186,11 +190,11 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		Logger()
 
 	scopedLogger.Info().Msg("checking for updates")
-	if s.updating {
+	if s.updating.Load() {
 		return fmt.Errorf("update already in progress")
 	}
 
-	s.updating = true
+	s.updating.Store(true)
 	s.triggerStateUpdate()
 
 	if len(params.Components) == 0 {
@@ -218,19 +222,19 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 	if shouldUpdateApp && appUpdate.available {
 		appUpdate.pending = true
-		s.updating = true
+		s.updating.Store(true)
 		s.triggerComponentUpdateState("app", appUpdate)
 	}
 
 	if shouldUpdateSystem && systemUpdate.available {
 		systemUpdate.pending = true
-		s.updating = true
+		s.updating.Store(true)
 		s.triggerComponentUpdateState("system", systemUpdate)
 	}
 
 	if !appUpdate.pending && !systemUpdate.pending {
 		scopedLogger.Info().Msg("No updates available")
-		s.updating = false
+		s.updating.Store(false)
 		s.triggerStateUpdate()
 		return nil
 	}

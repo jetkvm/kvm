@@ -66,7 +66,7 @@ func (t *TimeSync) filterNTPServers(ntpServers []string) ([]string, error) {
 		if hasIPv4 && ip.To4() != nil {
 			filteredServers = append(filteredServers, server)
 		}
-		if hasIPv6 && ip.To16() != nil {
+		if hasIPv6 && ip.To4() == nil {
 			filteredServers = append(filteredServers, server)
 		}
 	}

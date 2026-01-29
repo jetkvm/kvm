@@ -4,6 +4,7 @@ package keyboard
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
@@ -224,6 +225,11 @@ func EncodeBase64WithMarkers(data []byte) string {
 	return fmt.Sprintf("---BEGIN CLIPBOARD (base64)---\n%s\n---END CLIPBOARD---", encoded)
 }
 
+// shellEscape escapes a string for safe use in single-quoted shell arguments.
+func shellEscape(s string) string {
+	return strings.ReplaceAll(s, "'", `'\''`)
+}
+
 // GenerateDecodeScript generates an OS-specific script to decode base64 content.
 // The script writes decoded content to clipboard or a file.
 func GenerateDecodeScript(data []byte, targetOS TargetOS, filename string) string {
@@ -233,30 +239,34 @@ func GenerateDecodeScript(data []byte, targetOS TargetOS, filename string) strin
 		filename = "clipboard_content.txt"
 	}
 
+	// Sanitize filename to prevent shell injection.
+	// Base64 encoded string is safe (only [A-Za-z0-9+/=]).
+	safeFilename := shellEscape(filename)
+
 	switch targetOS {
 	case TargetOSWindows:
 		// PowerShell command to decode base64 and save to file
 		return fmt.Sprintf(
 			`powershell -Command "[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('%s')) | Set-Content -Path '%s' -NoNewline"`,
-			encoded, filename)
+			encoded, safeFilename)
 
 	case TargetOSMacOS:
 		// macOS bash command to decode base64 and save to file
 		return fmt.Sprintf(
 			`echo '%s' | base64 -D > '%s'`,
-			encoded, filename)
+			encoded, safeFilename)
 
 	case TargetOSLinux:
 		// Linux bash command to decode base64 and save to file
 		return fmt.Sprintf(
 			`echo '%s' | base64 -d > '%s'`,
-			encoded, filename)
+			encoded, safeFilename)
 
 	default:
 		// Fallback to Linux syntax
 		return fmt.Sprintf(
 			`echo '%s' | base64 -d > '%s'`,
-			encoded, filename)
+			encoded, safeFilename)
 	}
 }
 
