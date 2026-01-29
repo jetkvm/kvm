@@ -237,7 +237,7 @@ static void openssl_init() {
     }
 }
 
-// RFC 3526 MODP Group 14 (2048-bit) - for anonymous DH mode
+// RFC 3526 MODP Group 14 (2048-bit) - for DHE key exchange
 static const unsigned char dh2048_p[] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
@@ -352,7 +352,7 @@ static SSL_CTX* create_ssl_ctx(int use_cert, const char* cert_pem, const char* k
     SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());
     if (ctx == NULL) return NULL;
 
-    // Security level 1 for anonymous DH compatibility, 2 for X.509 mode
+    // Security level 2 for X.509 certificate mode
     SSL_CTX_set_security_level(ctx, use_cert ? 2 : 1);
     SSL_CTX_set_min_proto_version(ctx, min_version);
     SSL_CTX_set_max_proto_version(ctx, max_version);
@@ -821,17 +821,10 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		keyPEM = config.KeyPEM
 	}
 
-	// Determine cipher suite and certificate usage
-	var cipherList string
-	useCert := 1
-	if config.Mode == ModeAnonymousDH {
-		cipherList = cipherSuitesAnonymousDHString()
-		useCert = 0
-	} else {
-		cipherList = cipherSuitesX509String()
-		if certPEM == "" || keyPEM == "" {
-			return nil, fmt.Errorf("X.509 mode requires certificate and key")
-		}
+	// Validate certificate is available
+	cipherList := cipherSuitesX509String()
+	if certPEM == "" || keyPEM == "" {
+		return nil, fmt.Errorf("X.509 mode requires certificate and key")
 	}
 
 	// Determine TLS version
@@ -844,22 +837,14 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		maxVersion = tls.VersionTLS13
 	}
 
-	var ctx *C.SSL_CTX
-	if useCert == 1 {
-		certC := C.CString(certPEM)
-		keyC := C.CString(keyPEM)
-		cipherC := C.CString(cipherList)
-		defer C.free(unsafe.Pointer(certC))
-		defer C.free(unsafe.Pointer(keyC))
-		defer C.free(unsafe.Pointer(cipherC))
-		ctx = C.create_ssl_ctx(C.int(useCert), certC, keyC, cipherC,
-			C.int(opensslVersion(minVersion)), C.int(opensslVersion(maxVersion)))
-	} else {
-		cipherC := C.CString(cipherList)
-		defer C.free(unsafe.Pointer(cipherC))
-		ctx = C.create_ssl_ctx(0, nil, nil, cipherC,
-			C.int(opensslVersion(minVersion)), C.int(opensslVersion(maxVersion)))
-	}
+	certC := C.CString(certPEM)
+	keyC := C.CString(keyPEM)
+	cipherC := C.CString(cipherList)
+	defer C.free(unsafe.Pointer(certC))
+	defer C.free(unsafe.Pointer(keyC))
+	defer C.free(unsafe.Pointer(cipherC))
+	ctx := C.create_ssl_ctx(1, certC, keyC, cipherC,
+		C.int(opensslVersion(minVersion)), C.int(opensslVersion(maxVersion)))
 
 	if ctx == nil {
 		errStr := C.get_ssl_error_string()

@@ -53,15 +53,11 @@ type HIDController interface {
 	CancelKeyboardMacro()
 }
 
-// TLSProvider provides TLS availability check and certificate access.
+// TLSProvider provides TLS availability checking.
 // Implemented by the kvm package's TLS adapter.
 type TLSProvider interface {
 	// IsTLSAvailable returns true if TLS certificates are ready
 	IsTLSAvailable() bool
-
-	// GetCertificate returns the TLS certificate for the server
-	// Returns nil if not available
-	GetCertificate() interface{} // *tls.Certificate or equivalent
 }
 
 // Logger is the logging interface - using zerolog directly for zero-allocation logging.

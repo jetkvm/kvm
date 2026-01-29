@@ -7,9 +7,8 @@
 //
 // Usage:
 //
-//	config := tls.VNCConfig()
-//	config.CertPEM = certPEM
-//	config.KeyPEM = keyPEM
+//	config := tls.DefaultConfig()
+//	config.GetCertificate = getCertificate
 //	tlsConn, err := tls.Server(conn, config)
 package tls
 
@@ -22,11 +21,8 @@ import (
 type Mode int
 
 const (
-	// ModeAnonymousDH uses anonymous Diffie-Hellman (VNC TLSVnc mode).
-	// This provides encryption without server authentication.
-	ModeAnonymousDH Mode = iota
-	// ModeX509 uses X.509 certificates (VNC X509 mode and RDP).
-	ModeX509
+	// ModeX509 uses X.509 certificates for TLS (VNC and RDP).
+	ModeX509 Mode = iota
 )
 
 // Conn represents a TLS connection with hardware acceleration info.
@@ -57,7 +53,7 @@ type KTLSConn interface {
 
 // Config holds configuration for TLS connections.
 type Config struct {
-	// Mode specifies anonymous DH vs X.509 certificate mode.
+	// Mode specifies the TLS certificate mode (currently only ModeX509).
 	Mode Mode
 
 	// CertPEM is the PEM-encoded certificate chain (for ModeX509).

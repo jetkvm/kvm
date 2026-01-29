@@ -143,14 +143,6 @@ func (a *vncTLSAdapter) IsTLSAvailable() bool {
 	}
 }
 
-func (a *vncTLSAdapter) GetCertificate() any {
-	cert, err := getCertificate(nil)
-	if err != nil {
-		return nil
-	}
-	return cert
-}
-
 // initVNCServer initializes and starts the VNC server if enabled.
 // Returns an error if the server fails to start.
 func initVNCServer() error {
@@ -166,14 +158,15 @@ func initVNCServer() error {
 	vnc.TLSAvailabilityChecker = func() bool {
 		return (&vncTLSAdapter{}).IsTLSAvailable()
 	}
-	vnc.GetCertificateFunc = getCertificate
-	vnc.TLSConnUpgrader = func(conn net.Conn, useX509 bool, certPEM, keyPEM string) (vnc.TLSConnection, error) {
-		tlsConfig := cryptotls.VNCConfig()
-		if useX509 {
-			tlsConfig.Mode = cryptotls.ModeX509
-			tlsConfig.CertPEM = certPEM
-			tlsConfig.KeyPEM = keyPEM
-		}
+	vnc.TLSConnUpgrader = func(conn net.Conn) (vnc.TLSConnection, error) {
+		// Always use X509 mode with the server's certificate.
+		// Modern VNC clients (including Jump Desktop) don't support true ADH
+		// (Anonymous DH) cipher suites, so we present the certificate for all
+		// VeNCrypt subtypes. The GetCertificate callback avoids serializing the
+		// hardware-backed RSA key in the vnc package — the internal/crypto/tls
+		// package handles OpenSSLRSASigner extraction internally.
+		tlsConfig := cryptotls.DefaultConfig() // ModeX509
+		tlsConfig.GetCertificate = getCertificate
 		return cryptotls.Server(conn, tlsConfig)
 	}
 	vnc.IsHardwareCryptoEnabledFunc = cryptotls.IsHardwareAvailable

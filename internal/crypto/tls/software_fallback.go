@@ -52,10 +52,6 @@ func hardwareEngine() string {
 func SetCLogLevel(level int) {}
 
 func serverImpl(conn net.Conn, config *Config) (Conn, error) {
-	if config.Mode == ModeAnonymousDH {
-		return nil, fmt.Errorf("anonymous DH mode not supported without OpenSSL (requires CGO on ARM Linux)")
-	}
-
 	goConfig := &tls.Config{
 		MinVersion:       config.MinVersion,
 		MaxVersion:       config.MaxVersion,

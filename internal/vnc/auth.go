@@ -1,14 +1,10 @@
 package vnc
 
 import (
-	"bytes"
 	"crypto/des"
 	"crypto/rand"
 	"crypto/subtle"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -28,12 +24,12 @@ var (
 	// TLSAvailabilityChecker returns true if TLS certificates are ready and valid.
 	TLSAvailabilityChecker func() bool
 
-	// GetCertificateFunc returns the TLS certificate for X509 authentication.
-	GetCertificateFunc func(*tls.ClientHelloInfo) (*tls.Certificate, error)
-
-	// TLSConnUpgrader upgrades a plain connection to TLS using OpenSSL.
-	// Used for both anonymous DH and X509 TLS modes with hardware crypto acceleration.
-	TLSConnUpgrader func(conn net.Conn, useX509 bool, certPEM, keyPEM string) (TLSConnection, error)
+	// TLSConnUpgrader upgrades a plain connection to TLS using the server's certificate.
+	// Used for all VeNCrypt subtypes (both "anonymous" TLS and X509). Modern clients
+	// don't support true Anonymous DH (ADH ciphers), so we always present the server
+	// certificate — the distinction between TLS* and X509* subtypes is only whether
+	// the client verifies it.
+	TLSConnUpgrader func(conn net.Conn) (TLSConnection, error)
 
 	// IsHardwareCryptoEnabledFunc returns true if hardware crypto acceleration is enabled.
 	IsHardwareCryptoEnabledFunc func() bool
@@ -96,16 +92,16 @@ func (c *Connection) authenticate() error {
 		fallbackSecType = byte(secTypeVNCAuth)
 	}
 
-	if tlsEnabled {
-		// Offer VeNCrypt first with fallback for clients that don't support our cipher suites
+	if tlsEnabled && tlsAvailable {
+		// TLS ready: only offer VeNCrypt, no insecure fallback
+		secTypes = []byte{1, byte(secTypeVeNCrypt)}
+		c.server.deps.Logger.Debug().Str("remote", c.conn.RemoteAddr().String()).
+			Msg("VNC TLS available, offering VeNCrypt only")
+	} else if tlsEnabled {
+		// TLS enabled but not yet available (cert/time issue): offer both for initial setup
 		secTypes = []byte{2, byte(secTypeVeNCrypt), fallbackSecType}
-		if tlsAvailable {
-			c.server.deps.Logger.Debug().Str("remote", c.conn.RemoteAddr().String()).
-				Msg("VNC TLS available, offering VeNCrypt with fallback")
-		} else {
-			c.server.deps.Logger.Warn().Str("remote", c.conn.RemoteAddr().String()).
-				Msg("VNC TLS enabled but not available (certificate/time issue) - offering both secure and insecure options")
-		}
+		c.server.deps.Logger.Warn().Str("remote", c.conn.RemoteAddr().String()).
+			Msg("VNC TLS enabled but not available (certificate/time issue) - offering both secure and insecure options")
 	} else {
 		// TLS not enabled - use insecure modes with warning
 		secTypes = []byte{1, fallbackSecType}
@@ -156,10 +152,10 @@ func (c *Connection) authenticateVeNCrypt(hasPassword bool) error {
 		return fmt.Errorf("failed to send version acceptance: %w", err)
 	}
 
-	// Offer VeNCrypt subtypes with X509 FIRST for broader client compatibility
-	// Both X509 and anonymous TLS now use OpenSSL for hardware crypto acceleration
-	// X509 provides server certificate authentication (prevents MITM)
-	// Anonymous TLS (TLSVnc) is fallback for clients that don't support X509
+	// Offer both X509 and anonymous TLS subtypes. X509 is preferred (listed first)
+	// because it provides MITM protection via certificate verification.
+	// Anonymous TLS subtypes are included for clients that don't support X509
+	// (e.g., Jump Desktop only supports TLSVnc/TLSPlain/TLSNone).
 	var subtypes []veNCryptSubtype
 	if hasPassword {
 		subtypes = []veNCryptSubtype{veNCryptX509Vnc, veNCryptX509Plain, veNCryptTLSVnc, veNCryptTLSPlain}
@@ -196,15 +192,12 @@ func (c *Connection) authenticateVeNCrypt(hasPassword bool) error {
 		return fmt.Errorf("failed to send subtype acceptance: %w", err)
 	}
 
-	switch selectedSubtype {
-	case veNCryptTLSNone, veNCryptTLSVnc, veNCryptTLSPlain:
-		if err := c.upgradeTLSAnonymous(); err != nil {
-			return fmt.Errorf("TLS handshake failed: %w", err)
-		}
-	case veNCryptX509None, veNCryptX509Vnc, veNCryptX509Plain:
-		if err := c.upgradeTLSX509(); err != nil {
-			return fmt.Errorf("TLS handshake failed: %w", err)
-		}
+	// All VeNCrypt subtypes use the same certificate-based TLS upgrade.
+	// Modern clients don't support true ADH (Anonymous DH) cipher suites,
+	// so we always present the server certificate. The distinction between
+	// TLS* and X509* subtypes is only whether the client verifies the cert.
+	if err := c.upgradeTLS(); err != nil {
+		return fmt.Errorf("TLS handshake failed: %w", err)
 	}
 
 	// Perform authentication based on selected subtype
@@ -236,202 +229,60 @@ func (c *Connection) authenticateVeNCrypt(hasPassword bool) error {
 	return nil
 }
 
-// upgradeTLSAnonymous upgrades the connection to anonymous TLS.
-func (c *Connection) upgradeTLSAnonymous() error {
+// upgradeTLS upgrades the connection to TLS using the server's certificate.
+// Used for all VeNCrypt subtypes. The server always presents its certificate;
+// modern clients don't support true ADH (Anonymous DH) cipher suites, so
+// we use standard X509 cipher suites for all subtypes. The only difference
+// between TLS* and X509* subtypes is the authentication method (VNC auth,
+// plain auth, or none) — the TLS layer is identical.
+func (c *Connection) upgradeTLS() error {
 	if TLSConnUpgrader == nil {
 		return fmt.Errorf("TLS upgrader not configured")
 	}
 
-	tlsConn, err := TLSConnUpgrader(c.conn, false, "", "")
+	tlsConn, err := TLSConnUpgrader(c.conn)
 	if err != nil {
-		return fmt.Errorf("OpenSSL TLS handshake failed: %w", err)
-	}
-
-	c.conn = &opensslConnWrapper{tlsConn: tlsConn, underlying: c.conn}
-
-	hwCrypto := false
-	hwEngine := ""
-	if IsHardwareCryptoEnabledFunc != nil {
-		hwCrypto = IsHardwareCryptoEnabledFunc()
-	}
-	if GetHardwareCryptoEngineFunc != nil {
-		hwEngine = GetHardwareCryptoEngineFunc()
-	}
-
-	c.server.deps.Logger.Info().
-		Str("version", tlsConn.GetProtocolVersion()).
-		Str("cipherSuite", tlsConn.GetCipherName()).
-		Bool("hwCrypto", hwCrypto).
-		Str("hwEngine", hwEngine).
-		Str("remote", c.conn.RemoteAddr().String()).
-		Msg("TLS handshake complete (anonymous DH)")
-
-	return nil
-}
-
-// upgradeTLSX509 upgrades the connection to X509 TLS.
-// Prefers OpenSSL with hardware crypto (devcrypto engine) when available,
-// falling back to Go's crypto/tls on platforms without OpenSSL support.
-func (c *Connection) upgradeTLSX509() error {
-	if GetCertificateFunc == nil {
-		return fmt.Errorf("certificate function not configured")
-	}
-
-	// Use OpenSSL via TLSConnUpgrader for hardware crypto acceleration.
-	// The RV1106's Crypto V3 engine (devcrypto) accelerates AES-GCM in hardware,
-	// which is faster than Go's NEON software assembly.
-	if TLSConnUpgrader != nil {
-		return c.upgradeTLSX509OpenSSL()
-	}
-
-	// Fallback: Go's crypto/tls (non-ARM platforms or when OpenSSL is unavailable)
-	return c.upgradeTLSX509Go()
-}
-
-// upgradeTLSX509OpenSSL performs X509 TLS handshake via OpenSSL with hardware crypto.
-func (c *Connection) upgradeTLSX509OpenSSL() error {
-	cert, err := GetCertificateFunc(nil)
-	if err != nil {
-		return fmt.Errorf("failed to get certificate: %w", err)
-	}
-
-	certPEM, keyPEM, err := certToPEM(cert)
-	if err != nil {
-		return fmt.Errorf("failed to convert certificate to PEM: %w", err)
-	}
-
-	tlsConn, err := TLSConnUpgrader(c.conn, true, certPEM, keyPEM)
-	if err != nil {
-		return fmt.Errorf("OpenSSL TLS X509 handshake failed: %w", err)
-	}
-
-	c.conn = &opensslConnWrapper{tlsConn: tlsConn, underlying: c.conn}
-
-	hwCrypto := false
-	hwEngine := ""
-	if IsHardwareCryptoEnabledFunc != nil {
-		hwCrypto = IsHardwareCryptoEnabledFunc()
-	}
-	if GetHardwareCryptoEngineFunc != nil {
-		hwEngine = GetHardwareCryptoEngineFunc()
-	}
-
-	c.server.deps.Logger.Info().
-		Str("version", tlsConn.GetProtocolVersion()).
-		Str("cipherSuite", tlsConn.GetCipherName()).
-		Bool("hwCrypto", hwCrypto).
-		Str("hwEngine", hwEngine).
-		Str("remote", c.conn.RemoteAddr().String()).
-		Msg("TLS handshake complete (X509 with OpenSSL)")
-
-	return nil
-}
-
-// upgradeTLSX509Go performs X509 TLS handshake via Go's crypto/tls (software fallback).
-func (c *Connection) upgradeTLSX509Go() error {
-	tlsConfig := &tls.Config{
-		GetCertificate: GetCertificateFunc,
-		MinVersion:     tls.VersionTLS12,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		},
-	}
-
-	tlsConn := tls.Server(c.conn, tlsConfig)
-
-	if err := tlsConn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return fmt.Errorf("failed to set TLS deadline: %w", err)
-	}
-
-	if err := tlsConn.Handshake(); err != nil {
 		return fmt.Errorf("TLS handshake failed: %w", err)
 	}
 
-	if err := tlsConn.SetDeadline(time.Time{}); err != nil {
-		c.server.deps.Logger.Debug().Err(err).Msg("failed to clear TLS deadline")
-	}
-	c.conn = tlsConn
+	c.conn = &tlsConnWrapper{tlsConn: tlsConn}
 
-	state := tlsConn.ConnectionState()
+	hwCrypto := false
+	hwEngine := ""
+	if IsHardwareCryptoEnabledFunc != nil {
+		hwCrypto = IsHardwareCryptoEnabledFunc()
+	}
+	if GetHardwareCryptoEngineFunc != nil {
+		hwEngine = GetHardwareCryptoEngineFunc()
+	}
+
 	c.server.deps.Logger.Info().
-		Str("version", tlsVersionString(state.Version)).
-		Str("cipherSuite", tls.CipherSuiteName(state.CipherSuite)).
+		Str("version", tlsConn.GetProtocolVersion()).
+		Str("cipherSuite", tlsConn.GetCipherName()).
+		Bool("hwCrypto", hwCrypto).
+		Str("hwEngine", hwEngine).
 		Str("remote", c.conn.RemoteAddr().String()).
-		Msg("TLS handshake complete (X509 with Go software crypto)")
+		Msg("VeNCrypt TLS handshake complete")
 
 	return nil
 }
 
-// certToPEM converts a tls.Certificate to PEM-encoded strings for OpenSSL.
-func certToPEM(cert *tls.Certificate) (string, string, error) {
-	if len(cert.Certificate) == 0 {
-		return "", "", fmt.Errorf("certificate has no data")
-	}
-
-	var certBuf bytes.Buffer
-	for _, certDER := range cert.Certificate {
-		if err := pem.Encode(&certBuf, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
-			return "", "", fmt.Errorf("failed to encode certificate: %w", err)
-		}
-	}
-
-	keyDER, err := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to marshal private key: %w", err)
-	}
-
-	var keyBuf bytes.Buffer
-	if err := pem.Encode(&keyBuf, &pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}); err != nil {
-		return "", "", fmt.Errorf("failed to encode private key: %w", err)
-	}
-
-	return certBuf.String(), keyBuf.String(), nil
+// tlsConnWrapper wraps a TLSConnection to implement net.Conn.
+// On ARM Linux, the TLSConnection is backed by OpenSSL with hardware crypto;
+// deadlines use SO_SNDTIMEO/SO_RCVTIMEO kernel socket timeouts because OpenSSL
+// sets the fd to blocking mode (Go's epoll-based deadlines don't apply).
+type tlsConnWrapper struct {
+	tlsConn TLSConnection
 }
 
-// opensslConnWrapper wraps an OpenSSL TLS connection to implement net.Conn.
-// Deadlines are delegated to the TLS connection (which uses SO_SNDTIMEO/SO_RCVTIMEO
-// kernel socket timeouts) rather than the underlying Go conn, because OpenSSL sets
-// the fd to blocking mode — Go's epoll-based deadlines don't work on blocking fds.
-type opensslConnWrapper struct {
-	tlsConn    TLSConnection
-	underlying net.Conn // kept for reference; not used for I/O after TLS upgrade
-}
-
-func (w *opensslConnWrapper) Read(b []byte) (int, error)  { return w.tlsConn.Read(b) }
-func (w *opensslConnWrapper) Write(b []byte) (int, error) { return w.tlsConn.Write(b) }
-func (w *opensslConnWrapper) Close() error                { return w.tlsConn.Close() }
-func (w *opensslConnWrapper) LocalAddr() net.Addr         { return w.tlsConn.LocalAddr() }
-func (w *opensslConnWrapper) RemoteAddr() net.Addr        { return w.tlsConn.RemoteAddr() }
-func (w *opensslConnWrapper) SetDeadline(t time.Time) error {
-	return w.tlsConn.SetDeadline(t)
-}
-func (w *opensslConnWrapper) SetReadDeadline(t time.Time) error {
-	return w.tlsConn.SetReadDeadline(t)
-}
-func (w *opensslConnWrapper) SetWriteDeadline(t time.Time) error {
-	return w.tlsConn.SetWriteDeadline(t)
-}
-
-// tlsVersionString returns a human-readable TLS version string.
-func tlsVersionString(version uint16) string {
-	switch version {
-	case tls.VersionTLS10:
-		return "TLS 1.0"
-	case tls.VersionTLS11:
-		return "TLS 1.1"
-	case tls.VersionTLS12:
-		return "TLS 1.2"
-	case tls.VersionTLS13:
-		return "TLS 1.3"
-	default:
-		return fmt.Sprintf("0x%04x", version)
-	}
-}
+func (w *tlsConnWrapper) Read(b []byte) (int, error)         { return w.tlsConn.Read(b) }
+func (w *tlsConnWrapper) Write(b []byte) (int, error)        { return w.tlsConn.Write(b) }
+func (w *tlsConnWrapper) Close() error                       { return w.tlsConn.Close() }
+func (w *tlsConnWrapper) LocalAddr() net.Addr                { return w.tlsConn.LocalAddr() }
+func (w *tlsConnWrapper) RemoteAddr() net.Addr               { return w.tlsConn.RemoteAddr() }
+func (w *tlsConnWrapper) SetDeadline(t time.Time) error      { return w.tlsConn.SetDeadline(t) }
+func (w *tlsConnWrapper) SetReadDeadline(t time.Time) error  { return w.tlsConn.SetReadDeadline(t) }
+func (w *tlsConnWrapper) SetWriteDeadline(t time.Time) error { return w.tlsConn.SetWriteDeadline(t) }
 
 // authenticateVNCAuth handles VNC challenge-response authentication.
 func (c *Connection) authenticateVNCAuth() error {

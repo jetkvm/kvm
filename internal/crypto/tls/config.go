@@ -14,17 +14,6 @@ func DefaultConfig() *Config {
 	}
 }
 
-// VNCConfig returns a TLS configuration for VNC connections.
-// By default it uses anonymous DH (TLSVnc mode) for compatibility.
-// Set Mode to ModeX509 and provide certificates for X509 mode.
-func VNCConfig() *Config {
-	return &Config{
-		Mode:       ModeAnonymousDH,
-		MinVersion: tls.VersionTLS12,
-		MaxVersion: tls.VersionTLS13,
-	}
-}
-
 // RDPConfig returns a TLS configuration for RDP connections.
 // It limits to TLS 1.2 because CredSSP/NLA requires TLS session binding
 // which changed in TLS 1.3 and is not compatible.
@@ -50,9 +39,8 @@ func cipherSuitesX509() []uint16 {
 	}
 }
 
-// cipherSuitesX509String returns the cipher suite string for OpenSSL.
-// Reserved for future use with hardware TLS acceleration.
-func cipherSuitesX509String() string { //nolint:unused // Reserved for future hardware TLS support
+// cipherSuitesX509String returns the cipher suite string for OpenSSL X.509 mode.
+func cipherSuitesX509String() string { //nolint:unused // Used only in ARM CGO build
 	return "ECDHE-ECDSA-AES128-GCM-SHA256:" +
 		"ECDHE-ECDSA-AES256-GCM-SHA384:" +
 		"ECDHE-ECDSA-CHACHA20-POLY1305:" +
@@ -62,15 +50,6 @@ func cipherSuitesX509String() string { //nolint:unused // Reserved for future ha
 		"DHE-RSA-AES256-GCM-SHA384:" +
 		"DHE-RSA-AES128-GCM-SHA256:" +
 		"DHE-RSA-CHACHA20-POLY1305"
-}
-
-// cipherSuitesAnonymousDHString returns the cipher suite string for OpenSSL anonymous DH mode.
-// Reserved for future use with hardware TLS acceleration.
-func cipherSuitesAnonymousDHString() string { //nolint:unused // Reserved for future hardware TLS support
-	return "ADH-AES256-GCM-SHA384:" +
-		"ADH-AES128-GCM-SHA256:" +
-		"ADH-AES256-SHA256:" +
-		"ADH-AES128-SHA256"
 }
 
 // curvePreferences returns the preferred curves for key exchange.

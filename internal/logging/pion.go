@@ -2,58 +2,53 @@ package logging
 
 import (
 	"github.com/pion/logging"
-	"github.com/rs/zerolog"
 )
 
+// pionLogger dynamically looks up the current scope logger on each call,
+// so log level changes via setLogLevel propagate immediately to pion subsystems.
 type pionLogger struct {
-	logger *zerolog.Logger
+	scope string
 }
 
-// Print all messages except trace.
 func (c pionLogger) Trace(msg string) {
-	c.logger.Trace().Msg(msg)
+	rootLogger.getLogger(c.scope).Trace().Str("scope", "pion").Msg(msg)
 }
 func (c pionLogger) Tracef(format string, args ...any) {
-	c.logger.Trace().Msgf(format, args...)
+	rootLogger.getLogger(c.scope).Trace().Str("scope", "pion").Msgf(format, args...)
 }
 
 func (c pionLogger) Debug(msg string) {
-	c.logger.Debug().Msg(msg)
+	rootLogger.getLogger(c.scope).Debug().Str("scope", "pion").Msg(msg)
 }
 func (c pionLogger) Debugf(format string, args ...any) {
-	c.logger.Debug().Msgf(format, args...)
+	rootLogger.getLogger(c.scope).Debug().Str("scope", "pion").Msgf(format, args...)
 }
 func (c pionLogger) Info(msg string) {
-	c.logger.Info().Msg(msg)
+	rootLogger.getLogger(c.scope).Info().Str("scope", "pion").Msg(msg)
 }
 func (c pionLogger) Infof(format string, args ...any) {
-	c.logger.Info().Msgf(format, args...)
+	rootLogger.getLogger(c.scope).Info().Str("scope", "pion").Msgf(format, args...)
 }
 func (c pionLogger) Warn(msg string) {
-	c.logger.Warn().Msg(msg)
+	rootLogger.getLogger(c.scope).Warn().Str("scope", "pion").Msg(msg)
 }
 func (c pionLogger) Warnf(format string, args ...any) {
-	c.logger.Warn().Msgf(format, args...)
+	rootLogger.getLogger(c.scope).Warn().Str("scope", "pion").Msgf(format, args...)
 }
 func (c pionLogger) Error(msg string) {
-	c.logger.Error().Msg(msg)
+	rootLogger.getLogger(c.scope).Error().Str("scope", "pion").Msg(msg)
 }
 func (c pionLogger) Errorf(format string, args ...any) {
-	c.logger.Error().Msgf(format, args...)
+	rootLogger.getLogger(c.scope).Error().Str("scope", "pion").Msgf(format, args...)
 }
 
-// customLoggerFactory satisfies the interface logging.LoggerFactory
-// This allows us to create different loggers per subsystem. So we can
-// add custom behavior.
+// pionLoggerFactory satisfies the interface logging.LoggerFactory.
+// Each pion subsystem gets a logger that dynamically resolves the
+// current log level from the root logger on every call.
 type pionLoggerFactory struct{}
 
 func (c pionLoggerFactory) NewLogger(subsystem string) logging.LeveledLogger {
-	logger := rootLogger.getLogger(subsystem).With().
-		Str("scope", "pion").
-		Str("component", subsystem).
-		Logger()
-
-	return pionLogger{logger: &logger}
+	return pionLogger{scope: subsystem}
 }
 
 var defaultLoggerFactory = &pionLoggerFactory{}

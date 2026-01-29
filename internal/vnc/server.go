@@ -66,9 +66,6 @@ func (s *Server) Start() error {
 	tlsMode := s.deps.Config.GetTLSMode()
 	tlsWanted := s.tlsEnabled && tlsMode != "" && tlsMode != "disabled"
 	if tlsWanted {
-		if GetCertificateFunc == nil {
-			return fmt.Errorf("TLS enabled but GetCertificateFunc not set - call vnc.SetTLSHooks() first")
-		}
 		if TLSConnUpgrader == nil {
 			return fmt.Errorf("TLS enabled but TLSConnUpgrader not set - call vnc.SetTLSHooks() first")
 		}
