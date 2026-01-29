@@ -695,7 +695,10 @@ type DCPowerState struct {
 }
 
 func rpcGetDCPowerState() (DCPowerState, error) {
-	return dcState, nil
+	if s := dcPowerState.Load(); s != nil {
+		return *s, nil
+	}
+	return DCPowerState{}, nil
 }
 
 func rpcSetDCPowerState(enabled bool) error {
@@ -766,11 +769,10 @@ type ATXState struct {
 }
 
 func rpcGetATXState() (ATXState, error) {
-	state := ATXState{
-		Power: ledPWRState,
-		HDD:   ledHDDState,
+	if s := atxLedState.Load(); s != nil {
+		return *s, nil
 	}
-	return state, nil
+	return ATXState{}, nil
 }
 
 type SerialSettings struct {
@@ -781,14 +783,18 @@ type SerialSettings struct {
 }
 
 func rpcGetSerialSettings() (SerialSettings, error) {
+	serialMu.Lock()
+	mode := serialPortMode
+	serialMu.Unlock()
+
 	settings := SerialSettings{
-		BaudRate: strconv.Itoa(serialPortMode.BaudRate),
-		DataBits: strconv.Itoa(serialPortMode.DataBits),
+		BaudRate: strconv.Itoa(mode.BaudRate),
+		DataBits: strconv.Itoa(mode.DataBits),
 		StopBits: "1",
 		Parity:   "none",
 	}
 
-	switch serialPortMode.StopBits {
+	switch mode.StopBits {
 	case serial.OneStopBit:
 		settings.StopBits = "1"
 	case serial.OnePointFiveStopBits:
@@ -797,7 +803,7 @@ func rpcGetSerialSettings() (SerialSettings, error) {
 		settings.StopBits = "2"
 	}
 
-	switch serialPortMode.Parity {
+	switch mode.Parity {
 	case serial.NoParity:
 		settings.Parity = "none"
 	case serial.OddParity:
@@ -852,15 +858,23 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 	default:
 		return fmt.Errorf("invalid parity: %s", settings.Parity)
 	}
-	serialPortMode = &serial.Mode{
+	newMode := &serial.Mode{
 		BaudRate: baudRate,
 		DataBits: dataBits,
 		StopBits: stopBits,
 		Parity:   parity,
 	}
 
-	_ = port.SetMode(serialPortMode)
+	serialMu.Lock()
+	defer serialMu.Unlock()
 
+	if port == nil {
+		return fmt.Errorf("serial port not open")
+	}
+	if err := port.SetMode(newMode); err != nil {
+		return fmt.Errorf("failed to set serial mode: %w", err)
+	}
+	serialPortMode = newMode
 	return nil
 }
 
@@ -1330,6 +1344,12 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
+	stepTimer := time.NewTimer(0)
+	if !stepTimer.Stop() {
+		<-stepTimer.C
+	}
+	defer stepTimer.Stop()
+
 	for i, step := range macro {
 		delay := time.Duration(step.Delay) * time.Millisecond
 
@@ -1345,10 +1365,14 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 		}
 
 		// Use context-aware sleep that can be cancelled
+		stepTimer.Reset(delay)
 		select {
-		case <-time.After(delay):
+		case <-stepTimer.C:
 			// Sleep completed normally
 		case <-ctx.Done():
+			if !stepTimer.Stop() {
+				<-stepTimer.C
+			}
 			// make sure keyboard state is reset
 			err := rpcKeyboardReport(0, keyboardClearStateKeys)
 			if err != nil {

@@ -3,6 +3,7 @@ package kvm
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 var (
 	lastVideoState       atomic.Pointer[native.VideoState]
+	videoSleepMu         sync.Mutex // protects videoSleepModeCtx and videoSleepModeCancel
 	videoSleepModeCtx    context.Context
 	videoSleepModeCancel context.CancelFunc
 )
@@ -72,6 +74,9 @@ func rpcSetVideoSleepMode(duration int) error {
 }
 
 func stopVideoSleepModeTicker() {
+	videoSleepMu.Lock()
+	defer videoSleepMu.Unlock()
+
 	nativeLogger.Trace().Msg("stopping HDMI sleep mode ticker")
 
 	if videoSleepModeCancel != nil {
@@ -101,10 +106,13 @@ func startVideoSleepModeTicker() {
 	// Stop any existing timer and goroutine
 	stopVideoSleepModeTicker()
 
+	videoSleepMu.Lock()
 	// Create new context for this ticker
 	videoSleepModeCtx, videoSleepModeCancel = context.WithCancel(context.Background())
+	ctx := videoSleepModeCtx
+	videoSleepMu.Unlock()
 
-	go doVideoSleepModeTicker(videoSleepModeCtx, duration)
+	go doVideoSleepModeTicker(ctx, duration)
 }
 
 func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {

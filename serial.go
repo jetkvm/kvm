@@ -2,9 +2,12 @@ package kvm
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/webrtc/v4"
@@ -13,31 +16,45 @@ import (
 
 const serialPortPath = "/dev/ttyS3"
 
-var port serial.Port
+var (
+	serialMu sync.Mutex // protects port, serialPortMode, and all port.Write/SetMode calls
+	port     serial.Port
+)
+
+// atxLedState stores the last known ATX LED state for lock-free reads from RPC handlers.
+var atxLedState atomic.Pointer[ATXState]
+
+// dcPowerState stores the last known DC power state for lock-free reads from RPC handlers.
+var dcPowerState atomic.Pointer[DCPowerState]
 
 func mountATXControl() error {
-	_ = port.SetMode(defaultMode)
-	go runATXControl()
-
+	serialMu.Lock()
+	if port == nil {
+		serialMu.Unlock()
+		return fmt.Errorf("serial port not open")
+	}
+	if err := port.SetMode(defaultMode); err != nil {
+		serialMu.Unlock()
+		return fmt.Errorf("failed to set serial mode: %w", err)
+	}
+	p := port // capture reference for goroutine
+	serialMu.Unlock()
+	go runATXControl(p)
 	return nil
 }
 
 func unmountATXControl() error {
-	_ = reopenSerialPort()
-	return nil
+	return reopenSerialPort()
 }
 
-var (
-	ledHDDState bool
-	ledPWRState bool
-	btnRSTState bool
-	btnPWRState bool
-)
-
-func runATXControl() {
+func runATXControl(p serial.Port) {
 	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
 
-	reader := bufio.NewReader(port)
+	reader := bufio.NewReader(p)
+
+	// Local state for change detection (only accessed by this goroutine).
+	var ledHDD, ledPWR, btnRST, btnPWR bool
+
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -57,6 +74,12 @@ func runATXControl() {
 		newBtnRSTState := line[2] == '1'
 		newBtnPWRState := line[3] == '1'
 
+		// Store atomically for RPC readers
+		atxLedState.Store(&ATXState{
+			Power: newLedPWRState,
+			HDD:   newLedHDDState,
+		})
+
 		if s := currentSession.Load(); s != nil {
 			writeJSONRPCEvent("atxState", ATXState{
 				Power: newLedPWRState,
@@ -64,10 +87,10 @@ func runATXControl() {
 			}, s)
 		}
 
-		if newLedHDDState != ledHDDState ||
-			newLedPWRState != ledPWRState ||
-			newBtnRSTState != btnRSTState ||
-			newBtnPWRState != btnPWRState {
+		if newLedHDDState != ledHDD ||
+			newLedPWRState != ledPWR ||
+			newBtnRSTState != btnRST ||
+			newBtnPWRState != btnPWR {
 			scopedLogger.Debug().
 				Bool("hdd", newLedHDDState).
 				Bool("pwr", newLedPWRState).
@@ -75,16 +98,23 @@ func runATXControl() {
 				Bool("pwr", newBtnPWRState).
 				Msg("Status changed")
 
-			// Update states
-			ledHDDState = newLedHDDState
-			ledPWRState = newLedPWRState
-			btnRSTState = newBtnRSTState
-			btnPWRState = newBtnPWRState
+			// Update local state
+			ledHDD = newLedHDDState
+			ledPWR = newLedPWRState
+			btnRST = newBtnRSTState
+			btnPWR = newBtnPWRState
 		}
 	}
 }
 
 func pressATXPowerButton(duration time.Duration) error {
+	serialMu.Lock()
+	defer serialMu.Unlock()
+
+	if port == nil {
+		return fmt.Errorf("serial port not open")
+	}
+
 	_, err := port.Write([]byte("\n"))
 	if err != nil {
 		return err
@@ -106,6 +136,13 @@ func pressATXPowerButton(duration time.Duration) error {
 }
 
 func pressATXResetButton(duration time.Duration) error {
+	serialMu.Lock()
+	defer serialMu.Unlock()
+
+	if port == nil {
+		return fmt.Errorf("serial port not open")
+	}
+
 	_, err := port.Write([]byte("\n"))
 	if err != nil {
 		return err
@@ -127,22 +164,29 @@ func pressATXResetButton(duration time.Duration) error {
 }
 
 func mountDCControl() error {
-	_ = port.SetMode(defaultMode)
+	serialMu.Lock()
+	if port == nil {
+		serialMu.Unlock()
+		return fmt.Errorf("serial port not open")
+	}
+	if err := port.SetMode(defaultMode); err != nil {
+		serialMu.Unlock()
+		return fmt.Errorf("failed to set serial mode: %w", err)
+	}
+	p := port // capture reference for goroutine
+	serialMu.Unlock()
 	registerDCMetrics()
-	go runDCControl()
+	go runDCControl(p)
 	return nil
 }
 
 func unmountDCControl() error {
-	_ = reopenSerialPort()
-	return nil
+	return reopenSerialPort()
 }
 
-var dcState DCPowerState
-
-func runDCControl() {
+func runDCControl(p serial.Port) {
 	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
-	reader := bufio.NewReader(port)
+	reader := bufio.NewReader(p)
 	hasRestoreFeature := false
 	for {
 		line, err := reader.ReadString('\n')
@@ -170,53 +214,64 @@ func runDCControl() {
 			scopedLogger.Warn().Err(err).Msg("Invalid power state")
 			continue
 		}
-		dcState.IsOn = powerState == 1
+
+		state := DCPowerState{
+			IsOn: powerState == 1,
+		}
+
 		if hasRestoreFeature {
 			restoreState, err := strconv.Atoi(parts[4])
 			if err != nil {
 				scopedLogger.Warn().Err(err).Msg("Invalid restore state")
 				continue
 			}
-			dcState.RestoreState = restoreState
+			state.RestoreState = restoreState
 		} else {
 			// -1 means not supported
-			dcState.RestoreState = -1
+			state.RestoreState = -1
 		}
+
 		milliVolts, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
 			scopedLogger.Warn().Err(err).Msg("Invalid voltage")
 			continue
 		}
-		volts := milliVolts / 1000 // Convert mV to V
+		state.Voltage = milliVolts / 1000 // Convert mV to V
 
 		milliAmps, err := strconv.ParseFloat(parts[2], 64)
 		if err != nil {
 			scopedLogger.Warn().Err(err).Msg("Invalid current")
 			continue
 		}
-		amps := milliAmps / 1000 // Convert mA to A
+		state.Current = milliAmps / 1000 // Convert mA to A
 
 		milliWatts, err := strconv.ParseFloat(parts[3], 64)
 		if err != nil {
 			scopedLogger.Warn().Err(err).Msg("Invalid power")
 			continue
 		}
-		watts := milliWatts / 1000 // Convert mW to W
+		state.Power = milliWatts / 1000 // Convert mW to W
 
-		dcState.Voltage = volts
-		dcState.Current = amps
-		dcState.Power = watts
+		// Store atomically for RPC readers
+		dcPowerState.Store(&state)
 
 		// Update Prometheus metrics
-		updateDCMetrics(dcState)
+		updateDCMetrics(state)
 
 		if s := currentSession.Load(); s != nil {
-			writeJSONRPCEvent("dcState", dcState, s)
+			writeJSONRPCEvent("dcState", state, s)
 		}
 	}
 }
 
 func setDCPowerState(on bool) error {
+	serialMu.Lock()
+	defer serialMu.Unlock()
+
+	if port == nil {
+		return fmt.Errorf("serial port not open")
+	}
+
 	_, err := port.Write([]byte("\n"))
 	if err != nil {
 		return err
@@ -233,6 +288,13 @@ func setDCPowerState(on bool) error {
 }
 
 func setDCRestoreState(state int) error {
+	serialMu.Lock()
+	defer serialMu.Unlock()
+
+	if port == nil {
+		return fmt.Errorf("serial port not open")
+	}
+
 	_, err := port.Write([]byte("\n"))
 	if err != nil {
 		return err
@@ -259,27 +321,38 @@ var defaultMode = &serial.Mode{
 }
 
 func initSerialPort() {
-	_ = reopenSerialPort()
+	if err := reopenSerialPort(); err != nil {
+		serialLogger.Error().Err(err).Msg("failed to open serial port during init")
+	}
 	switch config.ActiveExtension {
 	case "atx-power":
-		_ = mountATXControl()
+		if err := mountATXControl(); err != nil {
+			serialLogger.Error().Err(err).Msg("failed to mount ATX control")
+		}
 	case "dc-power":
-		_ = mountDCControl()
+		if err := mountDCControl(); err != nil {
+			serialLogger.Error().Err(err).Msg("failed to mount DC control")
+		}
 	}
 }
 
 func reopenSerialPort() error {
+	serialMu.Lock()
+	defer serialMu.Unlock()
+
 	if port != nil {
 		port.Close()
 	}
 	var err error
 	port, err = serial.Open(serialPortPath, defaultMode)
 	if err != nil {
+		port = nil
 		serialLogger.Error().
 			Err(err).
 			Str("path", serialPortPath).
 			Interface("mode", defaultMode).
 			Msg("Error opening serial port")
+		return fmt.Errorf("failed to open serial port: %w", err)
 	}
 	return nil
 }
@@ -289,14 +362,19 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 		Uint16("data_channel_id", *d.ID()).Logger()
 
 	d.OnOpen(func() {
+		// Capture port reference under lock for the read goroutine.
+		serialMu.Lock()
+		p := port
+		serialMu.Unlock()
+
 		go func() {
-			if port == nil {
+			if p == nil {
 				return
 			}
 
 			buf := make([]byte, 1024)
 			for {
-				n, err := port.Read(buf)
+				n, err := p.Read(buf)
 				if err != nil {
 					if err != io.EOF {
 						scopedLogger.Warn().Err(err).Msg("Failed to read from serial port")
@@ -313,10 +391,14 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 	})
 
 	d.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if port == nil {
+		serialMu.Lock()
+		p := port
+		serialMu.Unlock()
+
+		if p == nil {
 			return
 		}
-		_, err := port.Write(msg.Data)
+		_, err := p.Write(msg.Data)
 		if err != nil {
 			scopedLogger.Warn().Err(err).Msg("Failed to write to serial")
 		}
