@@ -28,6 +28,24 @@ func GetVNCServer() *vnc.Server {
 			HID:     &vncHIDAdapter{},
 			TLS:     &vncTLSAdapter{},
 			Logger:  vncLogger, // vncLogger is already *zerolog.Logger
+			OnVideoNeeded: func() {
+				count := incrActiveSessions()
+				vncLogger.Debug().Int("activeSessions", count).Msg("VNC: video needed, incremented active sessions")
+				if count == 1 {
+					_ = nativeInstance.VideoStart()
+					stopVideoSleepModeTicker()
+				}
+				onActiveSessionsChanged()
+			},
+			OnVideoReleased: func() {
+				count := decrActiveSessions()
+				vncLogger.Debug().Int("activeSessions", count).Msg("VNC: video released, decremented active sessions")
+				if count == 0 {
+					_ = nativeInstance.VideoStop()
+					startVideoSleepModeTicker()
+				}
+				onActiveSessionsChanged()
+			},
 		}
 		vncServer = vnc.NewServer(deps)
 	})

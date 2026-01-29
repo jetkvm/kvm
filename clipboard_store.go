@@ -215,18 +215,25 @@ func (s *ClipboardStore) HandleDownload(c *gin.Context) {
 }
 
 func (s *ClipboardStore) cleanupLoop() {
-	for {
-		// Read current interval (may be updated by Configure)
-		s.mu.Lock()
-		interval := s.cleanupInterval
-		s.mu.Unlock()
+	s.mu.Lock()
+	interval := s.cleanupInterval
+	s.mu.Unlock()
 
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	for {
 		select {
 		case <-s.stopCh:
 			return
-		case <-time.After(interval):
+		case <-timer.C:
 			s.cleanupExpired()
 		}
+
+		s.mu.Lock()
+		interval = s.cleanupInterval
+		s.mu.Unlock()
+		timer.Reset(interval)
 	}
 }
 

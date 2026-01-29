@@ -44,7 +44,7 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 	logger.Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
 	config.JigglerConfig = &jigglerConfig
-	err := removeExistingCrobJobs(scheduler)
+	err := removeExistingCronJobs(scheduler)
 	if err != nil {
 		return fmt.Errorf("error removing cron jobs from scheduler %v", err)
 	}
@@ -59,7 +59,7 @@ func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 	return nil
 }
 
-func removeExistingCrobJobs(s gocron.Scheduler) error {
+func removeExistingCronJobs(s gocron.Scheduler) error {
 	if s == nil {
 		return nil
 	}

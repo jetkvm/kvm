@@ -57,6 +57,7 @@ package tls
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/socket.h>
 
 // Buffer sizes for error handling
 #define SSL_ERROR_BUF_SIZE 512
@@ -79,11 +80,34 @@ package tls
 #define HAS_KTLS_FUNCTIONS 0
 #endif
 
+// set_blocking switches a socket fd from non-blocking (Go default) to blocking mode.
+// This is required for OpenSSL: SSL_read/SSL_write call read()/write() on the raw fd
+// via BIO. In non-blocking mode these would return EAGAIN/SSL_ERROR_WANT_READ which
+// our code doesn't retry. Blocking mode lets OpenSSL complete I/O normally.
+// Deadlines are enforced via SO_SNDTIMEO/SO_RCVTIMEO set in SetWriteDeadline/SetReadDeadline.
 static int set_blocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) return -1;
     flags &= ~O_NONBLOCK;
     return fcntl(fd, F_SETFL, flags);
+}
+
+// set_send_timeout sets SO_SNDTIMEO on a blocking socket.
+// sec=0,usec=0 clears the timeout (infinite wait).
+static int set_send_timeout(int fd, long sec, long usec) {
+    struct timeval tv;
+    tv.tv_sec = sec;
+    tv.tv_usec = usec;
+    return setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+// set_recv_timeout sets SO_RCVTIMEO on a blocking socket.
+// sec=0,usec=0 clears the timeout (infinite wait).
+static int set_recv_timeout(int fd, long sec, long usec) {
+    struct timeval tv;
+    tv.tv_sec = sec;
+    tv.tv_usec = usec;
+    return setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 }
 
 static int hw_crypto_initialized = 0;
@@ -644,16 +668,49 @@ func (c *opensslConn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
+// SetDeadline sets both read and write deadlines using kernel socket timeouts.
+// Go's net.Conn.SetDeadline relies on non-blocking I/O + epoll, which doesn't work
+// here because the fd is in blocking mode for OpenSSL (see set_blocking).
 func (c *opensslConn) SetDeadline(t time.Time) error {
-	return c.conn.SetDeadline(t)
+	if err := c.SetReadDeadline(t); err != nil {
+		return err
+	}
+	return c.SetWriteDeadline(t)
 }
 
+// SetReadDeadline sets SO_RCVTIMEO on the underlying socket.
+// This provides a kernel-level read timeout for blocking SSL_read calls.
+// A zero time clears the timeout (infinite wait).
 func (c *opensslConn) SetReadDeadline(t time.Time) error {
-	return c.conn.SetReadDeadline(t)
+	sec, usec := deadlineToTimeval(t)
+	if C.set_recv_timeout(C.int(c.fd), C.long(sec), C.long(usec)) != 0 {
+		return fmt.Errorf("setsockopt SO_RCVTIMEO failed: errno=%d", C.get_errno())
+	}
+	return nil
 }
 
+// SetWriteDeadline sets SO_SNDTIMEO on the underlying socket.
+// This provides a kernel-level write timeout for blocking SSL_write calls.
+// A zero time clears the timeout (infinite wait).
 func (c *opensslConn) SetWriteDeadline(t time.Time) error {
-	return c.conn.SetWriteDeadline(t)
+	sec, usec := deadlineToTimeval(t)
+	if C.set_send_timeout(C.int(c.fd), C.long(sec), C.long(usec)) != 0 {
+		return fmt.Errorf("setsockopt SO_SNDTIMEO failed: errno=%d", C.get_errno())
+	}
+	return nil
+}
+
+// deadlineToTimeval converts a Go deadline (absolute time) to seconds and microseconds
+// for SO_SNDTIMEO/SO_RCVTIMEO socket options which expect a duration.
+func deadlineToTimeval(t time.Time) (sec, usec C.long) {
+	if t.IsZero() {
+		return 0, 0 // Clear timeout (infinite wait)
+	}
+	d := time.Until(t)
+	if d <= 0 {
+		return 0, 1000 // Deadline already passed: 1ms minimal timeout
+	}
+	return C.long(d / time.Second), C.long((d % time.Second) / time.Microsecond)
 }
 
 func (c *opensslConn) GetCipherName() string {
@@ -818,7 +875,12 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		return nil, fmt.Errorf("failed to create SSL connection: %s", C.GoString(errStr))
 	}
 
-	// Set socket to blocking mode for SSL_accept
+	// Set socket to blocking mode permanently for OpenSSL I/O.
+	// Go sets fds non-blocking for epoll, but OpenSSL calls read()/write() on the raw fd.
+	// In non-blocking mode, SSL_read/SSL_write would get EAGAIN and return
+	// SSL_ERROR_WANT_READ/WRITE which we don't retry. Blocking mode lets OpenSSL
+	// complete I/O normally. Timeouts are enforced via SO_SNDTIMEO/SO_RCVTIMEO
+	// (see SetWriteDeadline/SetReadDeadline) instead of Go's epoll-based deadlines.
 	if C.set_blocking(C.int(fd)) != 0 {
 		C.SSL_free(ssl)
 		C.SSL_CTX_free(ctx)

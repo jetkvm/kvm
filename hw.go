@@ -12,18 +12,15 @@ import (
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
+var serialRegexp = regexp.MustCompile(`Serial\s*:\s*(\S+)`)
+
 func extractSerialNumber() (string, error) {
 	content, err := os.ReadFile("/proc/cpuinfo")
 	if err != nil {
 		return "", err
 	}
 
-	r, err := regexp.Compile(`Serial\s*:\s*(\S+)`)
-	if err != nil {
-		return "", fmt.Errorf("failed to compile regex: %w", err)
-	}
-
-	matches := r.FindStringSubmatch(string(content))
+	matches := serialRegexp.FindStringSubmatch(string(content))
 	if len(matches) < 2 {
 		return "", fmt.Errorf("no serial found")
 	}

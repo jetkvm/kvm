@@ -376,7 +376,7 @@ func rpcListStorageFiles() (*StorageFiles, error) {
 		return nil, fmt.Errorf("failed to read directory: %v", err)
 	}
 
-	storageFiles := make([]StorageFile, 0)
+	storageFiles := make([]StorageFile, 0, len(files))
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -481,6 +481,23 @@ type pendingUpload struct {
 var pendingUploads = make(map[string]pendingUpload)
 var pendingUploadsMutex sync.Mutex
 
+func finalizeUpload(upload pendingUpload, uploadId string, totalBytesWritten int64) {
+	upload.File.Close()
+	if totalBytesWritten == upload.Size {
+		newName := strings.TrimSuffix(upload.File.Name(), ".incomplete")
+		if err := os.Rename(upload.File.Name(), newName); err != nil {
+			logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
+		} else {
+			logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
+		}
+	} else {
+		logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
+	}
+	pendingUploadsMutex.Lock()
+	delete(pendingUploads, uploadId)
+	pendingUploadsMutex.Unlock()
+}
+
 type UploadProgress struct {
 	Size                 int64
 	AlreadyUploadedBytes int64
@@ -497,23 +514,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		return
 	}
 	totalBytesWritten := pendingUpload.AlreadyUploadedBytes
-	defer func() {
-		pendingUpload.File.Close()
-		if totalBytesWritten == pendingUpload.Size {
-			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
-			err := os.Rename(pendingUpload.File.Name(), newName)
-			if err != nil {
-				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
-			} else {
-				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
-			}
-		} else {
-			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
-		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
-	}()
+	defer func() { finalizeUpload(pendingUpload, uploadId, totalBytesWritten) }()
 	uploadComplete := make(chan struct{})
 	var closeOnce sync.Once
 	lastProgressTime := time.Now()
@@ -565,23 +566,7 @@ func handleUploadHttp(c *gin.Context) {
 	}
 
 	totalBytesWritten := pendingUpload.AlreadyUploadedBytes
-	defer func() {
-		pendingUpload.File.Close()
-		if totalBytesWritten == pendingUpload.Size {
-			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
-			err := os.Rename(pendingUpload.File.Name(), newName)
-			if err != nil {
-				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
-			} else {
-				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
-			}
-		} else {
-			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
-		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
-	}()
+	defer func() { finalizeUpload(pendingUpload, uploadId, totalBytesWritten) }()
 
 	reader := c.Request.Body
 	buffer := make([]byte, 32*1024)

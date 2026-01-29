@@ -118,9 +118,22 @@ func (s *Server) requestJPEGEncoder() error {
 	s.deps.Logger.Debug().Int32("jpegClients", s.jpegClientCount).Msg("client requesting JPEG encoder")
 
 	if !s.jpegEncoderOn {
+		// Notify the kvm package that VNC needs the video stream.
+		// This must happen BEFORE JpegStart so the native video capture
+		// pipeline is running when the JPEG encoder starts producing frames.
+		if s.deps.OnVideoNeeded != nil {
+			s.deps.OnVideoNeeded()
+		}
+
 		if err := s.deps.Encoder.JpegStart(s.deps.Config.GetVNCQuality()); err != nil {
 			s.jpegClientCount-- // Rollback count on failure
 			s.jpegEncoderFailures++
+
+			// Rollback the video stream reference since JPEG encoder failed
+			if s.deps.OnVideoReleased != nil {
+				s.deps.OnVideoReleased()
+			}
+
 			if s.jpegEncoderFailures >= jpegEncoderMaxFailures {
 				s.jpegEncoderCooldown = time.Now().Add(jpegEncoderCooldownPeriod)
 				s.deps.Logger.Error().Err(err).Int("failures", s.jpegEncoderFailures).
@@ -155,6 +168,13 @@ func (s *Server) releaseJPEGEncoder() {
 				s.deps.Logger.Info().Msg("JPEG encoder stopped (no clients need it)")
 			}
 			s.jpegEncoderOn = false
+
+			// Notify the kvm package that VNC no longer needs the video stream.
+			// This happens AFTER JpegStop so the encoder is fully stopped before
+			// the video capture pipeline might be shut down.
+			if s.deps.OnVideoReleased != nil {
+				s.deps.OnVideoReleased()
+			}
 		}
 	}
 }

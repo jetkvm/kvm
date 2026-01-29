@@ -125,18 +125,20 @@ func triggerUSBStateUpdate() {
 
 func checkUSBState() {
 	usbStateLock.Lock()
-	defer usbStateLock.Unlock()
 
 	newState := gadget.GetUsbState()
 
 	usbLogger.Trace().Str("old", usbState).Str("new", newState).Msg("Checking USB state")
 
 	if newState == usbState {
+		usbStateLock.Unlock()
 		return
 	}
 
 	oldState := usbState
 	usbState = newState
+	usbStateLock.Unlock()
+
 	usbLogger.Info().Str("from", oldState).Str("to", newState).Msg("USB state changed")
 
 	if oldState == "configured" && newState != "configured" {

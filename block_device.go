@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 
@@ -91,8 +92,7 @@ func (d *NBDDevice) Start() error {
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			d.l.Error().Err(err).Msg("failed to remove existing socket file")
-			os.Exit(1)
+			return fmt.Errorf("failed to remove existing socket file: %w", err)
 		}
 	}
 

@@ -1,11 +1,14 @@
 package vnc
 
 import (
+	"bytes"
 	"crypto/des"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -29,8 +32,8 @@ var (
 	GetCertificateFunc func(*tls.ClientHelloInfo) (*tls.Certificate, error)
 
 	// TLSConnUpgrader upgrades a plain connection to TLS using OpenSSL.
-	// Used for anonymous TLS (VeNCrypt TLSVnc/TLSNone subtypes).
-	TLSConnUpgrader func(conn net.Conn, useX509 bool, certFile, keyFile string) (TLSConnection, error)
+	// Used for both anonymous DH and X509 TLS modes with hardware crypto acceleration.
+	TLSConnUpgrader func(conn net.Conn, useX509 bool, certPEM, keyPEM string) (TLSConnection, error)
 
 	// IsHardwareCryptoEnabledFunc returns true if hardware crypto acceleration is enabled.
 	IsHardwareCryptoEnabledFunc func() bool
@@ -267,19 +270,70 @@ func (c *Connection) upgradeTLSAnonymous() error {
 }
 
 // upgradeTLSX509 upgrades the connection to X509 TLS.
+// Prefers OpenSSL with hardware crypto (devcrypto engine) when available,
+// falling back to Go's crypto/tls on platforms without OpenSSL support.
 func (c *Connection) upgradeTLSX509() error {
 	if GetCertificateFunc == nil {
 		return fmt.Errorf("certificate function not configured")
 	}
 
-	// Use Go's crypto/tls which has NEON assembly for ARM - faster than non-optimized OpenSSL
+	// Use OpenSSL via TLSConnUpgrader for hardware crypto acceleration.
+	// The RV1106's Crypto V3 engine (devcrypto) accelerates AES-GCM in hardware,
+	// which is faster than Go's NEON software assembly.
+	if TLSConnUpgrader != nil {
+		return c.upgradeTLSX509OpenSSL()
+	}
+
+	// Fallback: Go's crypto/tls (non-ARM platforms or when OpenSSL is unavailable)
+	return c.upgradeTLSX509Go()
+}
+
+// upgradeTLSX509OpenSSL performs X509 TLS handshake via OpenSSL with hardware crypto.
+func (c *Connection) upgradeTLSX509OpenSSL() error {
+	cert, err := GetCertificateFunc(nil)
+	if err != nil {
+		return fmt.Errorf("failed to get certificate: %w", err)
+	}
+
+	certPEM, keyPEM, err := certToPEM(cert)
+	if err != nil {
+		return fmt.Errorf("failed to convert certificate to PEM: %w", err)
+	}
+
+	tlsConn, err := TLSConnUpgrader(c.conn, true, certPEM, keyPEM)
+	if err != nil {
+		return fmt.Errorf("OpenSSL TLS X509 handshake failed: %w", err)
+	}
+
+	c.conn = &opensslConnWrapper{tlsConn: tlsConn, underlying: c.conn}
+
+	hwCrypto := false
+	hwEngine := ""
+	if IsHardwareCryptoEnabledFunc != nil {
+		hwCrypto = IsHardwareCryptoEnabledFunc()
+	}
+	if GetHardwareCryptoEngineFunc != nil {
+		hwEngine = GetHardwareCryptoEngineFunc()
+	}
+
+	c.server.deps.Logger.Info().
+		Str("version", tlsConn.GetProtocolVersion()).
+		Str("cipherSuite", tlsConn.GetCipherName()).
+		Bool("hwCrypto", hwCrypto).
+		Str("hwEngine", hwEngine).
+		Str("remote", c.conn.RemoteAddr().String()).
+		Msg("TLS handshake complete (X509 with OpenSSL)")
+
+	return nil
+}
+
+// upgradeTLSX509Go performs X509 TLS handshake via Go's crypto/tls (software fallback).
+func (c *Connection) upgradeTLSX509Go() error {
 	tlsConfig := &tls.Config{
 		GetCertificate: GetCertificateFunc,
 		MinVersion:     tls.VersionTLS12,
-		// Prefer ECDSA cipher suites (self-signed certs use ECDSA P256)
-		// Go's crypto/aes and crypto/gcm have NEON assembly on ARM
 		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, // Fastest - 128-bit with NEON
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -308,15 +362,44 @@ func (c *Connection) upgradeTLSX509() error {
 		Str("version", tlsVersionString(state.Version)).
 		Str("cipherSuite", tls.CipherSuiteName(state.CipherSuite)).
 		Str("remote", c.conn.RemoteAddr().String()).
-		Msg("TLS handshake complete (X509 with Go NEON crypto)")
+		Msg("TLS handshake complete (X509 with Go software crypto)")
 
 	return nil
 }
 
+// certToPEM converts a tls.Certificate to PEM-encoded strings for OpenSSL.
+func certToPEM(cert *tls.Certificate) (string, string, error) {
+	if len(cert.Certificate) == 0 {
+		return "", "", fmt.Errorf("certificate has no data")
+	}
+
+	var certBuf bytes.Buffer
+	for _, certDER := range cert.Certificate {
+		if err := pem.Encode(&certBuf, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
+			return "", "", fmt.Errorf("failed to encode certificate: %w", err)
+		}
+	}
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal private key: %w", err)
+	}
+
+	var keyBuf bytes.Buffer
+	if err := pem.Encode(&keyBuf, &pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}); err != nil {
+		return "", "", fmt.Errorf("failed to encode private key: %w", err)
+	}
+
+	return certBuf.String(), keyBuf.String(), nil
+}
+
 // opensslConnWrapper wraps an OpenSSL TLS connection to implement net.Conn.
+// Deadlines are delegated to the TLS connection (which uses SO_SNDTIMEO/SO_RCVTIMEO
+// kernel socket timeouts) rather than the underlying Go conn, because OpenSSL sets
+// the fd to blocking mode — Go's epoll-based deadlines don't work on blocking fds.
 type opensslConnWrapper struct {
 	tlsConn    TLSConnection
-	underlying net.Conn
+	underlying net.Conn // kept for reference; not used for I/O after TLS upgrade
 }
 
 func (w *opensslConnWrapper) Read(b []byte) (int, error)  { return w.tlsConn.Read(b) }
@@ -325,13 +408,13 @@ func (w *opensslConnWrapper) Close() error                { return w.tlsConn.Clo
 func (w *opensslConnWrapper) LocalAddr() net.Addr         { return w.tlsConn.LocalAddr() }
 func (w *opensslConnWrapper) RemoteAddr() net.Addr        { return w.tlsConn.RemoteAddr() }
 func (w *opensslConnWrapper) SetDeadline(t time.Time) error {
-	return w.underlying.SetDeadline(t)
+	return w.tlsConn.SetDeadline(t)
 }
 func (w *opensslConnWrapper) SetReadDeadline(t time.Time) error {
-	return w.underlying.SetReadDeadline(t)
+	return w.tlsConn.SetReadDeadline(t)
 }
 func (w *opensslConnWrapper) SetWriteDeadline(t time.Time) error {
-	return w.underlying.SetWriteDeadline(t)
+	return w.tlsConn.SetWriteDeadline(t)
 }
 
 // tlsVersionString returns a human-readable TLS version string.

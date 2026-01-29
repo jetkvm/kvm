@@ -75,4 +75,12 @@ type Dependencies struct {
 	HID     HIDController
 	TLS     TLSProvider
 	Logger  *Logger
+
+	// OnVideoNeeded is called when the first VNC client requires video frames.
+	// The kvm package uses this to start the native video stream if not already running.
+	OnVideoNeeded func()
+
+	// OnVideoReleased is called when the last VNC client releases video frames.
+	// The kvm package uses this to stop the native video stream if no other consumers need it.
+	OnVideoReleased func()
 }
