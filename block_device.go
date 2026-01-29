@@ -21,11 +21,15 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, errors.New("image not mounted")
 	}
 	source := currentVirtualMediaState.Source
+	reader := httpRangeReader // capture under lock
 	virtualMediaStateMutex.RUnlock()
 
 	switch source {
 	case HTTP:
-		return httpRangeReader.ReadAt(p, off)
+		if reader == nil {
+			return 0, errors.New("http reader not initialized")
+		}
+		return reader.ReadAt(p, off)
 	default:
 		return 0, errors.New("unknown image source")
 	}
