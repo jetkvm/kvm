@@ -88,9 +88,8 @@ func checkFailsafeReason() {
 		if strings.Contains(failsafeCrashLog, "runtime.cgocall") {
 			failsafeModeReason = "video"
 			return
-		} else {
-			failsafeModeReason = "unknown"
 		}
+		failsafeModeReason = "unknown"
 	})
 }
 

@@ -111,14 +111,14 @@ func supervise() error {
 	cmd.Args = os.Args
 
 	logFile, err := os.CreateTemp("", "jetkvm-stdout.log")
+	if err != nil {
+		return fmt.Errorf("failed to create log file: %w", err)
+	}
 	defer func() {
 		// we don't care about the errors here
 		_ = logFile.Close()
 		_ = os.Remove(logFile.Name())
 	}()
-	if err != nil {
-		return fmt.Errorf("failed to create log file: %w", err)
-	}
 
 	// Use io.MultiWriter to write to both the original streams and our buffers
 	cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
@@ -168,7 +168,7 @@ func supervise() error {
 }
 
 func isSymlinkTo(oldName, newName string) bool {
-	file, err := os.Stat(newName)
+	file, err := os.Lstat(newName)
 	if err != nil {
 		return false
 	}
@@ -272,8 +272,8 @@ func createErrorDump(logFile *os.File) {
 }
 
 func doSupervise() {
-	err := supervise()
-	if err == nil {
-		return
+	if err := supervise(); err != nil {
+		fmt.Fprintf(os.Stderr, "supervisor error: %v\n", err)
+		os.Exit(1)
 	}
 }

@@ -78,10 +78,6 @@ func mountImage(imagePath string) error {
 	if err != nil {
 		return fmt.Errorf("set mass storage image error: %w", err)
 	}
-	err = setMassStorageImage(imagePath)
-	if err != nil {
-		return fmt.Errorf("set Mass Storage Image Error: %w", err)
-	}
 	return nil
 }
 
@@ -277,6 +273,7 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 	logger.Info().Str("url", url).Int64("size", n).Msg("using remote url")
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
+		virtualMediaStateMutex.Unlock()
 		return fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
 
@@ -518,12 +515,13 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		pendingUploadsMutex.Unlock()
 	}()
 	uploadComplete := make(chan struct{})
+	var closeOnce sync.Once
 	lastProgressTime := time.Now()
 	d.OnMessage(func(msg webrtc.DataChannelMessage) {
 		bytesWritten, err := pendingUpload.File.Write(msg.Data)
 		if err != nil {
 			logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
-			close(uploadComplete)
+			closeOnce.Do(func() { close(uploadComplete) })
 			return
 		}
 		totalBytesWritten += int64(bytesWritten)
@@ -531,7 +529,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		sendProgress := time.Since(lastProgressTime) >= 200*time.Millisecond
 		if totalBytesWritten >= pendingUpload.Size {
 			sendProgress = true
-			close(uploadComplete)
+			closeOnce.Do(func() { close(uploadComplete) })
 		}
 
 		if sendProgress {

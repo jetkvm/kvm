@@ -2,7 +2,7 @@ package kvm
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 	_ "time/tzdata"
 
@@ -60,6 +60,9 @@ func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 }
 
 func removeExistingCrobJobs(s gocron.Scheduler) error {
+	if s == nil {
+		return nil
+	}
 	for _, j := range s.Jobs() {
 		err := s.RemoveJob(j.ID())
 		if err != nil {
@@ -146,10 +149,16 @@ func runJiggler() {
 }
 
 func calculateJobDelta(s gocron.Scheduler) (time.Duration, error) {
-	j := s.Jobs()[0]
-	runs, err := j.NextRuns(2)
+	jobs := s.Jobs()
+	if len(jobs) == 0 {
+		return 0, fmt.Errorf("no jobs in scheduler")
+	}
+	runs, err := jobs[0].NextRuns(2)
 	if err != nil {
-		return 0.0, err
+		return 0, err
+	}
+	if len(runs) < 2 {
+		return 0, fmt.Errorf("could not determine next 2 runs")
 	}
 	return runs[1].Sub(runs[0]), nil
 }

@@ -55,7 +55,7 @@ func (s *Session) WriteVideoFrame(frame []byte, duration time.Duration) error {
 }
 
 var (
-	actionSessions      int = 0
+	activeSessions      int = 0
 	activeSessionsMutex     = &sync.Mutex{}
 
 	// logHardwareCryptoOnce ensures we log hardware crypto status only once
@@ -66,23 +66,25 @@ func incrActiveSessions() int {
 	activeSessionsMutex.Lock()
 	defer activeSessionsMutex.Unlock()
 
-	actionSessions++
-	return actionSessions
+	activeSessions++
+	return activeSessions
 }
 
 func decrActiveSessions() int {
 	activeSessionsMutex.Lock()
 	defer activeSessionsMutex.Unlock()
 
-	actionSessions--
-	return actionSessions
+	if activeSessions > 0 {
+		activeSessions--
+	}
+	return activeSessions
 }
 
 func getActiveSessions() int {
 	activeSessionsMutex.Lock()
 	defer activeSessionsMutex.Unlock()
 
-	return actionSessions
+	return activeSessions
 }
 
 // GetDiagnosticsInfo returns WebRTC diagnostic info for the diagnostics package.
