@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -82,7 +83,8 @@ var cachableFileExtensions = []string{
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
 
 	// Yield to scheduler at the start of each request to ensure RDP/VNC
 	// goroutines get CPU time during heavy web traffic (e.g., page load)
@@ -225,7 +227,7 @@ func setupRouter() *gin.Engine {
 }
 
 // TODO: support multiple sessions?
-var currentSession *Session
+var currentSession atomic.Pointer[Session]
 
 func handleWebRTCSession(c *gin.Context) {
 	var req WebRTCSessionRequest
@@ -246,9 +248,9 @@ func handleWebRTCSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
+	if s := currentSession.Load(); s != nil {
+		writeJSONRPCEvent("otherSessionConnected", nil, s)
+		peerConn := s.peerConnection
 		go func() {
 			time.Sleep(1 * time.Second)
 			_ = peerConn.Close()
@@ -258,7 +260,7 @@ func handleWebRTCSession(c *gin.Context) {
 	// Cancel any ongoing keyboard macro when session changes
 	cancelKeyboardMacro()
 
-	currentSession = session
+	currentSession.Store(session)
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
@@ -474,13 +476,14 @@ func handleWebRTCSignalWsMessages(
 
 			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("unmarshalled incoming ICE candidate")
 
-			if currentSession == nil {
+			s := currentSession.Load()
+			if s == nil {
 				l.Warn().Msg("no current session, skipping incoming ICE candidate")
 				continue
 			}
 
 			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to current session")
-			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
+			if err = s.peerConnection.AddICECandidate(candidate); err != nil {
 				l.Warn().Str("error", err.Error()).Msg("failed to add incoming ICE candidate to our peer connection")
 			}
 		}
@@ -878,12 +881,13 @@ func handleDiagnosticsDownload(c *gin.Context) {
 		diag := diagnostics.New(diagnostics.Options{
 			Writer: &diagBuf,
 			GetSessionInfo: func() diagnostics.SessionInfo {
+				s := currentSession.Load()
 				info := diagnostics.SessionInfo{
 					ActiveSessions:    getActiveSessions(),
-					HasCurrentSession: currentSession != nil,
+					HasCurrentSession: s != nil,
 				}
-				if currentSession != nil {
-					sessionInfo := currentSession.GetDiagnosticsInfo()
+				if s != nil {
+					sessionInfo := s.GetDiagnosticsInfo()
 					info.ICEConnectionState = sessionInfo.ICEConnectionState
 					info.SignalingState = sessionInfo.SignalingState
 					info.ConnectionState = sessionInfo.ConnectionState

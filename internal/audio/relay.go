@@ -22,7 +22,7 @@ type PCMEnabledCheck func() bool
 type OutputRelay struct {
 	source     *AudioSource
 	audioTrack atomic.Pointer[webrtc.TrackLocalStaticSample]
-	logger     zerolog.Logger
+	logger     *zerolog.Logger
 	running    atomic.Bool
 	sample     media.Sample
 	stopped    chan struct{}
@@ -36,7 +36,7 @@ type OutputRelay struct {
 }
 
 func NewOutputRelay(source *AudioSource, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
-	logger := *logging.GetSubsystemLogger("audio-output")
+	logger := logging.GetSubsystemLogger("audio-output")
 
 	r := &OutputRelay{
 		source:  source,
@@ -200,12 +200,12 @@ func (r *OutputRelay) relayLoop() {
 }
 
 type InputRelay struct {
-	logger  zerolog.Logger
+	logger  *zerolog.Logger
 	running atomic.Bool
 }
 
 func NewInputRelay() *InputRelay {
-	logger := *logging.GetSubsystemLogger("audio-input")
+	logger := logging.GetSubsystemLogger("audio-input")
 
 	return &InputRelay{
 		logger: logger,

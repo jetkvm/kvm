@@ -31,7 +31,7 @@ var (
 	inputRelay         atomic.Pointer[audio.InputRelay]
 	audioInitialized   bool
 	activeConnections  atomic.Int32
-	audioLogger        zerolog.Logger
+	audioLogger        *zerolog.Logger
 	currentAudioTrack  *webrtc.TrackLocalStaticSample
 	currentInputTrack  atomic.Pointer[string]
 	audioOutputEnabled atomic.Bool
@@ -72,7 +72,7 @@ func GetAudioInputOwner() AudioInputOwner {
 }
 
 func initAudio() {
-	audioLogger = *logging.GetSubsystemLogger("audio")
+	audioLogger = logging.GetSubsystemLogger("audio")
 
 	ensureConfigLoaded()
 	audioOutputEnabled.Store(config.AudioOutputEnabled)
@@ -287,7 +287,6 @@ func onWebRTCConnect() {
 	// Fix corrupted counter from previous sessions
 	if count <= 0 {
 		activeConnections.Store(1)
-		count = 1
 	}
 
 	// Always ensure audio is started - use relay existence as source of truth
@@ -337,9 +336,7 @@ func OnRDPAudioConnect() {
 
 	// Fix corrupted counter from previous sessions
 	if count <= 0 {
-		// Counter was negative, reset to 1
 		activeConnections.Store(1)
-		count = 1
 	}
 
 	// Always ensure audio is started - use relay existence as source of truth

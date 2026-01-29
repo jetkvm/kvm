@@ -26,7 +26,7 @@ type ClipboardStore struct {
 	expiry          time.Duration
 	cleanupInterval time.Duration
 	stopCh          chan struct{}
-	logger          zerolog.Logger
+	logger          *zerolog.Logger
 }
 
 type clipboardFile struct {
@@ -51,7 +51,7 @@ func GetClipboardStore() *ClipboardStore {
 			expiry:          5 * time.Minute,  // Default 5 minutes
 			cleanupInterval: 60 * time.Second, // Default 60 seconds
 			stopCh:          make(chan struct{}),
-			logger:          *logging.GetSubsystemLogger("clipboard"),
+			logger:          logging.GetSubsystemLogger("clipboard"),
 		}
 		go clipboardStore.cleanupLoop()
 	})
