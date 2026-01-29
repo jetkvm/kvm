@@ -83,6 +83,9 @@ var cachableFileExtensions = []string{
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
+	// Use gin.New() instead of gin.Default() to avoid GIN's built-in stdout
+	// logger which bypasses zerolog level filtering. The zerolog bridge below
+	// handles HTTP request logging with proper dynamic level support.
 	r := gin.New()
 	r.Use(gin.Recovery())
 

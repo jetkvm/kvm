@@ -228,31 +228,28 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 				scopedLogger.Debug().Interface("recover", r).Msg("HID queue send recovered (connection closing)")
 			}
 		}()
-		l := scopedLogger.With().
-			Str("channel", channel).
-			Int("length", len(msg.Data)).
-			Logger()
-		// only log data if the log level is debug or lower
-		if scopedLogger.GetLevel() > zerolog.DebugLevel {
-			l = l.With().Str("data", string(msg.Data)).Logger()
-		}
-
 		if msg.IsString {
-			l.Warn().Msg("received string data in HID RPC message handler")
+			scopedLogger.Warn().Str("channel", channel).Msg("received string data in HID RPC message handler")
 			return
 		}
 
 		if len(msg.Data) < 1 {
-			l.Warn().Msg("received empty data in HID RPC message handler")
+			scopedLogger.Warn().Str("channel", channel).Msg("received empty data in HID RPC message handler")
 			return
 		}
 
-		l.Trace().Msg("received data in HID RPC message handler")
+		if scopedLogger.GetLevel() <= zerolog.TraceLevel {
+			scopedLogger.Trace().
+				Str("channel", channel).
+				Int("length", len(msg.Data)).
+				Str("data", string(msg.Data)).
+				Msg("received data in HID RPC message handler")
+		}
 
 		// Enqueue to ensure ordered processing
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
 		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
-			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
+			scopedLogger.Warn().Str("channel", channel).Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
 			queueIndex = 3
 		}
 
@@ -263,7 +260,7 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 				channel:            channel,
 			}
 		} else {
-			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
+			scopedLogger.Warn().Str("channel", channel).Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
 			return
 		}
 	}
@@ -541,10 +538,9 @@ func newSession(config SessionConfig) (*Session, error) {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			// Only clear currentSession if this is actually the current session
 			// This prevents race condition where old session closes after new one connects
-			if session == currentSession {
+			if currentSession.CompareAndSwap(session, nil) {
 				// Cancel any ongoing keyboard report multi when session closes
 				cancelKeyboardMacro()
-				currentSession = nil
 			}
 			// Stop RPC processor
 			if session.rpcQueue != nil {
@@ -580,12 +576,12 @@ func newSession(config SessionConfig) (*Session, error) {
 }
 
 func onActiveSessionsChanged() {
-	notifyFailsafeMode(currentSession)
+	notifyFailsafeMode(currentSession.Load())
 	requestDisplayUpdate(true, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
-	notifyFailsafeMode(currentSession)
+	notifyFailsafeMode(currentSession.Load())
 	_ = nativeInstance.VideoStart()
 	onWebRTCConnect()
 	stopVideoSleepModeTicker()

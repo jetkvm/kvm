@@ -120,7 +120,9 @@ func startAudio() error {
 	defer audioMutex.Unlock()
 
 	if !audioInitialized {
-		audioLogger.Warn().Msg("Audio not initialized, skipping start")
+		if audioLogger != nil {
+			audioLogger.Warn().Msg("Audio not initialized, skipping start")
+		}
 		return nil
 	}
 
@@ -139,7 +141,9 @@ func startAudioForce() error {
 	defer audioMutex.Unlock()
 
 	if !audioInitialized {
-		audioLogger.Warn().Msg("Audio not initialized, skipping start")
+		if audioLogger != nil {
+			audioLogger.Warn().Msg("Audio not initialized, skipping start")
+		}
 		return nil
 	}
 
@@ -615,7 +619,9 @@ func processInputPacket(opusData []byte) error {
 		}
 		audioLogger.Info().Msg("audio input: WebRTC claimed ownership")
 		// Drop stale audio when claiming ownership
-		_ = audio.DropPlaybackBuffer()
+		if err := audio.DropPlaybackBuffer(); err != nil {
+			audioLogger.Debug().Err(err).Msg("audio input: failed to drop playback buffer")
+		}
 	} else if owner != AudioInputOwnerWebRTC {
 		// RDP owns audio input, skip our packets
 		return nil
@@ -672,7 +678,9 @@ func WriteInputPCM(pcmData []byte) error {
 		}
 		audioLogger.Info().Msg("audio input: RDP claimed ownership")
 		// Drop stale audio when claiming ownership
-		_ = audio.DropPlaybackBuffer()
+		if err := audio.DropPlaybackBuffer(); err != nil {
+			audioLogger.Debug().Err(err).Msg("audio input: failed to drop playback buffer")
+		}
 	} else if owner != AudioInputOwnerRDP {
 		// WebRTC owns audio input, skip our packets
 		return nil

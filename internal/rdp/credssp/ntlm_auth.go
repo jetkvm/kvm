@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"unicode/utf16"
 
+	"github.com/rs/zerolog"
 	"golang.org/x/crypto/md4" //nolint:staticcheck // MD4 required for NTLM authentication compatibility
 )
 
@@ -28,7 +29,7 @@ type NTLMAuth struct {
 
 	// Derived values
 	sessionKey []byte
-	debugLog   func(string, ...interface{})
+	logger     zerolog.Logger
 
 	// For debugging different public key formats
 	serverCertDER []byte
@@ -39,13 +40,13 @@ func NewNTLMAuth(password string, serverChallenge []byte) *NTLMAuth {
 	return &NTLMAuth{
 		password:        password,
 		serverChallenge: serverChallenge,
-		debugLog:        func(string, ...interface{}) {},
+		logger:          zerolog.Nop(),
 	}
 }
 
-// SetDebugLog sets the debug logging function.
-func (a *NTLMAuth) SetDebugLog(fn func(string, ...interface{})) {
-	a.debugLog = fn
+// SetLogger sets the logger for debug output.
+func (a *NTLMAuth) SetLogger(l zerolog.Logger) {
+	a.logger = l
 }
 
 // SetClientNonce sets the client nonce for CredSSP v3+ pubKeyAuth.
@@ -173,7 +174,7 @@ func (a *NTLMAuth) ParseAuthenticateMessage(authMsg []byte) (username, domain st
 	flags := uint32(authMsg[60]) | uint32(authMsg[61])<<8 | uint32(authMsg[62])<<16 | uint32(authMsg[63])<<24
 	a.keyExchange = flags&NTLMSSP_NEGOTIATE_KEY_EXCH != 0
 
-	a.debugLog("NTLM: parsed AUTHENTICATE - user=%s domain=%s lmLen=%d ntLen=%d encKeyLen=%d keyExch=%v flags=0x%08x",
+	a.logger.Debug().Msgf("NTLM: parsed AUTHENTICATE - user=%s domain=%s lmLen=%d ntLen=%d encKeyLen=%d keyExch=%v flags=0x%08x",
 		username, domain, lmLen, ntLen, encKeyLen, a.keyExchange, flags)
 
 	return username, domain, nil
@@ -183,7 +184,7 @@ func (a *NTLMAuth) ParseAuthenticateMessage(authMsg []byte) (username, domain st
 // Returns true if authentication succeeds.
 func (a *NTLMAuth) ValidateResponse(username, domain string) bool {
 	if len(a.ntResponse) < 16 {
-		a.debugLog("NTLM: NT response too short: %d bytes", len(a.ntResponse))
+		a.logger.Debug().Msgf("NTLM: NT response too short: %d bytes", len(a.ntResponse))
 		return false
 	}
 
@@ -193,16 +194,16 @@ func (a *NTLMAuth) ValidateResponse(username, domain string) bool {
 	clientNTProofStr := a.ntResponse[:16]
 	clientBlob := a.ntResponse[16:]
 
-	a.debugLog("NTLM: validating - ntProofStr=% 02X clientBlobLen=%d", clientNTProofStr, len(clientBlob))
+	a.logger.Debug().Msgf("NTLM: validating - ntProofStr=% 02X clientBlobLen=%d", clientNTProofStr, len(clientBlob))
 
 	// Compute expected NTProofStr
 	// 1. NT hash = MD4(password)
 	ntHash := computeNTHash(a.password)
-	a.debugLog("NTLM: NT hash=% 02X", ntHash)
+	a.logger.Debug().Msgf("NTLM: NT hash=% 02X", ntHash)
 
 	// 2. NTLMv2 hash = HMAC-MD5(NT hash, uppercase(username) + domain)
 	ntlmv2Hash := computeNTLMv2Hash(ntHash, username, domain)
-	a.debugLog("NTLM: NTLMv2 hash=% 02X", ntlmv2Hash)
+	a.logger.Debug().Msgf("NTLM: NTLMv2 hash=% 02X", ntlmv2Hash)
 
 	// 3. Expected NTProofStr = HMAC-MD5(NTLMv2 hash, serverChallenge + clientBlob)
 	h := hmac.New(md5.New, ntlmv2Hash)
@@ -210,15 +211,15 @@ func (a *NTLMAuth) ValidateResponse(username, domain string) bool {
 	h.Write(clientBlob)
 	expectedNTProofStr := h.Sum(nil)
 
-	a.debugLog("NTLM: expected NTProofStr=% 02X", expectedNTProofStr)
+	a.logger.Debug().Msgf("NTLM: expected NTProofStr=% 02X", expectedNTProofStr)
 
 	// Compare
 	if !hmac.Equal(clientNTProofStr, expectedNTProofStr) {
-		a.debugLog("NTLM: NTProofStr mismatch - authentication failed")
+		a.logger.Debug().Msg("NTLM: NTProofStr mismatch - authentication failed")
 		return false
 	}
 
-	a.debugLog("NTLM: NTProofStr validated - authentication successful")
+	a.logger.Debug().Msg("NTLM: NTProofStr validated - authentication successful")
 
 	// Derive session key
 	// SessionBaseKey = HMAC-MD5(NTLMv2 hash, NTProofStr)
@@ -226,23 +227,23 @@ func (a *NTLMAuth) ValidateResponse(username, domain string) bool {
 	h.Write(expectedNTProofStr)
 	sessionBaseKey := h.Sum(nil)
 
-	a.debugLog("NTLM: session base key=% 02X keyExchange=%v", sessionBaseKey, a.keyExchange)
+	a.logger.Debug().Msgf("NTLM: session base key=% 02X keyExchange=%v", sessionBaseKey, a.keyExchange)
 
 	if a.keyExchange && len(a.encryptedSessionKey) == 16 {
 		// Decrypt the encrypted random session key using RC4
 		// SessionKey = RC4_DECRYPT(SessionBaseKey, EncryptedRandomSessionKey)
 		cipher, err := rc4.NewCipher(sessionBaseKey)
 		if err != nil {
-			a.debugLog("NTLM: RC4 cipher creation failed: %v", err)
+			a.logger.Debug().Msgf("NTLM: RC4 cipher creation failed: %v", err)
 			return false
 		}
 		a.sessionKey = make([]byte, 16)
 		cipher.XORKeyStream(a.sessionKey, a.encryptedSessionKey)
-		a.debugLog("NTLM: decrypted session key=% 02X", a.sessionKey)
+		a.logger.Debug().Msgf("NTLM: decrypted session key=% 02X", a.sessionKey)
 	} else {
 		// No key exchange, session key = session base key
 		a.sessionKey = sessionBaseKey
-		a.debugLog("NTLM: using session base key as session key")
+		a.logger.Debug().Msg("NTLM: using session base key as session key")
 	}
 
 	return true
@@ -258,7 +259,7 @@ func (a *NTLMAuth) GetSessionKey() []byte {
 // Returns the decrypted hash if successful, nil otherwise.
 func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []byte, version int) []byte {
 	if len(a.sessionKey) == 0 || len(clientPubKeyAuth) < 48 {
-		a.debugLog("VerifyClient: invalid inputs - sessionKeyLen=%d pubKeyAuthLen=%d", len(a.sessionKey), len(clientPubKeyAuth))
+		a.logger.Debug().Msgf("VerifyClient: invalid inputs - sessionKeyLen=%d pubKeyAuthLen=%d", len(a.sessionKey), len(clientPubKeyAuth))
 		return nil
 	}
 
@@ -273,11 +274,11 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 	sealKeyHash := md5.Sum(sealKeyInput)
 	sealKey := sealKeyHash[:]
 
-	a.debugLog("VerifyClient: client signKey=% 02X sealKey=% 02X", signKey, sealKey)
+	a.logger.Debug().Msgf("VerifyClient: client signKey=% 02X sealKey=% 02X", signKey, sealKey)
 
 	// Parse NTLM signature: Version(4) || EncryptedChecksum(8) || SeqNum(4) || EncryptedMessage
 	if clientPubKeyAuth[0] != 0x01 || clientPubKeyAuth[1] != 0x00 || clientPubKeyAuth[2] != 0x00 || clientPubKeyAuth[3] != 0x00 {
-		a.debugLog("VerifyClient: invalid version in signature")
+		a.logger.Debug().Msg("VerifyClient: invalid version in signature")
 		return nil
 	}
 
@@ -285,7 +286,7 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 	seqNumBytes := clientPubKeyAuth[12:16]
 	encryptedMessage := clientPubKeyAuth[16:]
 
-	a.debugLog("VerifyClient: encChecksum=% 02X seqNum=% 02X encMsg=% 02X", encryptedChecksum, seqNumBytes, encryptedMessage)
+	a.logger.Debug().Msgf("VerifyClient: encChecksum=% 02X seqNum=% 02X encMsg=% 02X", encryptedChecksum, seqNumBytes, encryptedMessage)
 
 	// Initialize RC4 with sealing key
 	rc4Cipher, err := rc4.NewCipher(sealKey)
@@ -301,8 +302,8 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 	decryptedChecksum := make([]byte, 8)
 	rc4Cipher.XORKeyStream(decryptedChecksum, encryptedChecksum)
 
-	a.debugLog("VerifyClient: decrypted hash=% 02X", decryptedMessage)
-	a.debugLog("VerifyClient: decrypted checksum=% 02X", decryptedChecksum)
+	a.logger.Debug().Msgf("VerifyClient: decrypted hash=% 02X", decryptedMessage)
+	a.logger.Debug().Msgf("VerifyClient: decrypted checksum=% 02X", decryptedChecksum)
 
 	// Verify checksum: HMAC-MD5(SignKey, SeqNum || PlaintextMessage)
 	h := hmac.New(md5.New, signKey)
@@ -310,12 +311,12 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 	h.Write(decryptedMessage)
 	expectedChecksum := h.Sum(nil)[:8]
 
-	a.debugLog("VerifyClient: expected checksum=% 02X", expectedChecksum)
+	a.logger.Debug().Msgf("VerifyClient: expected checksum=% 02X", expectedChecksum)
 
 	if !hmac.Equal(decryptedChecksum, expectedChecksum) {
-		a.debugLog("VerifyClient: checksum mismatch!")
+		a.logger.Debug().Msg("VerifyClient: checksum mismatch!")
 	} else {
-		a.debugLog("VerifyClient: checksum OK")
+		a.logger.Debug().Msg("VerifyClient: checksum OK")
 	}
 
 	// Now compute what we expect the client to have sent
@@ -335,7 +336,7 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 			h.Write(a.clientNonce)
 			h.Write(pubKeyRSA)
 			hashCorrectFormat = h.Sum(nil)
-			a.debugLog("VerifyClient: CORRECT FORMAT (Magic+Nonce+SubjectPublicKey) len=%d, hash=% 02X", len(pubKeyRSA), hashCorrectFormat)
+			a.logger.Debug().Msgf("VerifyClient: CORRECT FORMAT (Magic+Nonce+SubjectPublicKey) len=%d, hash=% 02X", len(pubKeyRSA), hashCorrectFormat)
 		}
 
 		// Try with full SPKI in case client uses that
@@ -344,7 +345,7 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 		hFullSPKI.Write(a.clientNonce)
 		hFullSPKI.Write(serverPublicKey)
 		hashWithFullSPKI := hFullSPKI.Sum(nil)
-		a.debugLog("VerifyClient: with FULL SPKI (len=%d), hash=% 02X", len(serverPublicKey), hashWithFullSPKI)
+		a.logger.Debug().Msgf("VerifyClient: with FULL SPKI (len=%d), hash=% 02X", len(serverPublicKey), hashWithFullSPKI)
 
 		// Also try the old incorrect magic strings in case some clients use them
 		var hashOldMagic []byte
@@ -354,26 +355,26 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 			hOld.Write(a.clientNonce)
 			hOld.Write(pubKeyRSA)
 			hashOldMagic = hOld.Sum(nil)
-			a.debugLog("VerifyClient: OLD magic (CredSSP Client), hash=% 02X", hashOldMagic)
+			a.logger.Debug().Msgf("VerifyClient: OLD magic (CredSSP Client), hash=% 02X", hashOldMagic)
 		}
 
 		// Check which one matches
 		matched := false
 		if pubKeyRSA != nil && bytes.Equal(decryptedMessage, hashCorrectFormat) {
-			a.debugLog("VerifyClient: CLIENT HASH MATCHES with CORRECT FORMAT!")
+			a.logger.Debug().Msg("VerifyClient: CLIENT HASH MATCHES with CORRECT FORMAT!")
 			matched = true
 		} else if bytes.Equal(decryptedMessage, hashWithFullSPKI) {
-			a.debugLog("VerifyClient: CLIENT HASH MATCHES with FULL SPKI!")
+			a.logger.Debug().Msg("VerifyClient: CLIENT HASH MATCHES with FULL SPKI!")
 			matched = true
 		} else if pubKeyRSA != nil && bytes.Equal(decryptedMessage, hashOldMagic) {
-			a.debugLog("VerifyClient: CLIENT HASH MATCHES with OLD magic string!")
+			a.logger.Debug().Msg("VerifyClient: CLIENT HASH MATCHES with OLD magic string!")
 			matched = true
 		}
 
 		if !matched {
-			a.debugLog("VerifyClient: CLIENT HASH MISMATCH!")
-			a.debugLog("VerifyClient: client sent=% 02X", decryptedMessage)
-			a.debugLog("VerifyClient: expected  =% 02X", hashCorrectFormat)
+			a.logger.Debug().Msg("VerifyClient: CLIENT HASH MISMATCH!")
+			a.logger.Debug().Msgf("VerifyClient: client sent=% 02X", decryptedMessage)
+			a.logger.Debug().Msgf("VerifyClient: expected  =% 02X", hashCorrectFormat)
 		}
 	}
 
@@ -386,15 +387,15 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 // The pubKeyAuth binds authentication to the TLS channel's server public key.
 func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte {
 	if len(a.sessionKey) == 0 {
-		a.debugLog("PubKeyAuth: no session key available")
+		a.logger.Debug().Msg("PubKeyAuth: no session key available")
 		return nil
 	}
 
-	a.debugLog("PubKeyAuth: version=%d nonceLen=%d pubKeyLen=%d", version, len(a.clientNonce), len(serverPublicKey))
-	a.debugLog("PubKeyAuth: sessionKey=% 02X", a.sessionKey)
-	a.debugLog("PubKeyAuth: clientNonce=% 02X", a.clientNonce)
+	a.logger.Debug().Msgf("PubKeyAuth: version=%d nonceLen=%d pubKeyLen=%d", version, len(a.clientNonce), len(serverPublicKey))
+	a.logger.Debug().Msgf("PubKeyAuth: sessionKey=% 02X", a.sessionKey)
+	a.logger.Debug().Msgf("PubKeyAuth: clientNonce=% 02X", a.clientNonce)
 	if len(serverPublicKey) > 32 {
-		a.debugLog("PubKeyAuth: pubKey first 32 bytes=% 02X", serverPublicKey[:32])
+		a.logger.Debug().Msgf("PubKeyAuth: pubKey first 32 bytes=% 02X", serverPublicKey[:32])
 	}
 
 	if version >= 5 && len(a.clientNonce) == 32 {
@@ -405,13 +406,13 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 
 		// Extract SubjectPublicKey (BIT STRING content from SubjectPublicKeyInfo)
 		pubKeyForHash := extractPublicKeyFromSPKI(serverPublicKey)
-		a.debugLog("PubKeyAuth v5+: extractPublicKeyFromSPKI returned len=%d (input SPKI len=%d)",
+		a.logger.Debug().Msgf("PubKeyAuth v5+: extractPublicKeyFromSPKI returned len=%d (input SPKI len=%d)",
 			len(pubKeyForHash), len(serverPublicKey))
 		if pubKeyForHash == nil {
-			a.debugLog("PubKeyAuth v5+: RSA key extraction failed, falling back to full SPKI")
+			a.logger.Debug().Msg("PubKeyAuth v5+: RSA key extraction failed, falling back to full SPKI")
 			pubKeyForHash = serverPublicKey // Fallback to full SPKI if extraction fails
 		}
-		a.debugLog("PubKeyAuth v5+: using key for hash, len=%d, first 32 bytes=% 02X", len(pubKeyForHash), pubKeyForHash[:min(32, len(pubKeyForHash))])
+		a.logger.Debug().Msgf("PubKeyAuth v5+: using key for hash, len=%d, first 32 bytes=% 02X", len(pubKeyForHash), pubKeyForHash[:min(32, len(pubKeyForHash))])
 
 		// Plain SHA-256 hash: MagicString || Nonce || SubjectPublicKey
 		h := sha256.New()
@@ -419,11 +420,11 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 		h.Write(a.clientNonce)
 		h.Write(pubKeyForHash)
 		hashResult := h.Sum(nil)
-		a.debugLog("PubKeyAuth: v5+ SHA-256 hash=% 02X", hashResult)
+		a.logger.Debug().Msgf("PubKeyAuth: v5+ SHA-256 hash=% 02X", hashResult)
 
 		// Wrap in NTLM SEAL format (encrypt + sign)
 		wrapped := a.ntlmSign(hashResult, 0) // SeqNum 0 for server response
-		a.debugLog("PubKeyAuth: v5+ NTLM wrapped len=%d", len(wrapped))
+		a.logger.Debug().Msgf("PubKeyAuth: v5+ NTLM wrapped len=%d", len(wrapped))
 		return wrapped
 	}
 
@@ -440,13 +441,13 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 	if pubKeyForIncrement == nil {
 		pubKeyForIncrement = serverPublicKey // Fallback to full SPKI if extraction fails
 	}
-	a.debugLog("PubKeyAuth v3-4: using RSA key for increment, len=%d", len(pubKeyForIncrement))
+	a.logger.Debug().Msgf("PubKeyAuth v3-4: using RSA key for increment, len=%d", len(pubKeyForIncrement))
 	incrementedKey := incrementPublicKey(pubKeyForIncrement)
-	a.debugLog("PubKeyAuth v3-4: incremented key first 32 bytes=% 02X", incrementedKey[:min(32, len(incrementedKey))])
+	a.logger.Debug().Msgf("PubKeyAuth v3-4: incremented key first 32 bytes=% 02X", incrementedKey[:min(32, len(incrementedKey))])
 
 	// Wrap in NTLM SEAL format (encrypt + sign) - this is the correct format for v3-4
 	wrapped := a.ntlmSign(incrementedKey, 0)
-	a.debugLog("PubKeyAuth v3-4: NTLM sealed result len=%d", len(wrapped))
+	a.logger.Debug().Msgf("PubKeyAuth v3-4: NTLM sealed result len=%d", len(wrapped))
 	return wrapped
 }
 
@@ -468,7 +469,7 @@ func (a *NTLMAuth) ntlmSign(message []byte, seqNum uint32) []byte {
 	sealKeyHash := md5.Sum(sealKeyInput)
 	sealKey := sealKeyHash[:]
 
-	a.debugLog("PubKeyAuth: signKey=% 02X sealKey=% 02X", signKey, sealKey)
+	a.logger.Debug().Msgf("PubKeyAuth: signKey=% 02X sealKey=% 02X", signKey, sealKey)
 
 	// SeqNum in little-endian
 	seqNumBytes := make([]byte, 4)
@@ -480,14 +481,14 @@ func (a *NTLMAuth) ntlmSign(message []byte, seqNum uint32) []byte {
 	// Step 1: Initialize RC4 with sealing key
 	rc4Cipher, err := rc4.NewCipher(sealKey)
 	if err != nil {
-		a.debugLog("PubKeyAuth: RC4 cipher creation failed: %v", err)
+		a.logger.Debug().Msgf("PubKeyAuth: RC4 cipher creation failed: %v", err)
 		return message
 	}
 
 	// Step 2: Encrypt the message with RC4 (advances RC4 state)
 	encryptedMessage := make([]byte, len(message))
 	rc4Cipher.XORKeyStream(encryptedMessage, message)
-	a.debugLog("PubKeyAuth: encryptedMessage=% 02X", encryptedMessage)
+	a.logger.Debug().Msgf("PubKeyAuth: encryptedMessage=% 02X", encryptedMessage)
 
 	// Step 3: Compute HMAC-MD5(SignKey, SeqNum || PLAINTEXT Message)
 	// Per MS-NLMP 3.4.4.1.2 MAC function: Checksum = HMAC_MD5(SigningKey, SeqNum || Message)
@@ -496,7 +497,7 @@ func (a *NTLMAuth) ntlmSign(message []byte, seqNum uint32) []byte {
 	h.Write(seqNumBytes)
 	h.Write(message) // PLAINTEXT message, not encrypted!
 	hmacFull := h.Sum(nil)
-	a.debugLog("PubKeyAuth: hmacFull=% 02X", hmacFull)
+	a.logger.Debug().Msgf("PubKeyAuth: hmacFull=% 02X", hmacFull)
 
 	// Step 4: Take first 8 bytes of HMAC and encrypt with RC4 (using state after message encryption)
 	checksum := hmacFull[:8]
@@ -517,7 +518,7 @@ func (a *NTLMAuth) ntlmSign(message []byte, seqNum uint32) []byte {
 	// Encrypted message
 	copy(result[16:], encryptedMessage)
 
-	a.debugLog("PubKeyAuth: NTLM sealed result len=%d sig=% 02X", len(result), result[:16])
+	a.logger.Debug().Msgf("PubKeyAuth: NTLM sealed result len=%d sig=% 02X", len(result), result[:16])
 
 	return result
 }
@@ -563,14 +564,12 @@ func extractPublicKeyFromSPKI(spki []byte) []byte {
 		return nil
 	}
 
-	algoIdStart := offset
 	offset++ // skip SEQUENCE tag
 	algoIdLen, algoIdLenBytes := parseASN1Length(spki[offset:])
 	if algoIdLen == 0 {
 		return nil
 	}
 	offset += algoIdLenBytes + algoIdLen // skip past AlgorithmIdentifier entirely
-	_ = algoIdStart                      // unused
 
 	// Now we should be at the BIT STRING containing the RSA public key
 	if offset >= len(spki) || spki[offset] != 0x03 {

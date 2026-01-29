@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 // messageLoop reads and processes client messages.
@@ -175,11 +177,14 @@ func (c *Connection) handlePointerEvent() error {
 	x := binary.BigEndian.Uint16(c.pointerBuf[1:3])
 	y := binary.BigEndian.Uint16(c.pointerBuf[3:5])
 
-	// Rate-limited logging (safe: single-goroutine message loop per connection)
+	// Rate-limited logging (safe: single-goroutine message loop per connection).
+	// Gate on debug level first to avoid time.Since syscall on every pointer event (~125Hz).
 	c.pointerEventCount++
-	if c.pointerEventCount <= 3 || c.pointerEventCount%100 == 0 || time.Since(c.lastPointerLogTime) > 5*time.Second {
-		c.server.deps.Logger.Debug().Uint16("x", x).Uint16("y", y).Uint8("buttons", buttonMask).Int32("count", c.pointerEventCount).Msg("VNC pointer event")
-		c.lastPointerLogTime = time.Now()
+	if c.server.deps.Logger.GetLevel() <= zerolog.DebugLevel {
+		if c.pointerEventCount <= 3 || c.pointerEventCount%100 == 0 || time.Since(c.lastPointerLogTime) > 5*time.Second {
+			c.server.deps.Logger.Debug().Uint16("x", x).Uint16("y", y).Uint8("buttons", buttonMask).Int32("count", c.pointerEventCount).Msg("VNC pointer event")
+			c.lastPointerLogTime = time.Now()
+		}
 	}
 
 	c.handleVNCPointer(x, y, buttonMask)

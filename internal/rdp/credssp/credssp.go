@@ -16,6 +16,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -64,7 +66,7 @@ type Handler struct {
 	serverCertDER   []byte    // Full certificate DER (for debugging different formats)
 
 	// For logging
-	debugLog func(string, ...interface{})
+	logger zerolog.Logger
 }
 
 // NewHandler creates a new CredSSP handler.
@@ -72,14 +74,14 @@ type Handler struct {
 // IMPORTANT: Caller MUST call SetServerPublicKey() before Authenticate().
 func NewHandler(tlsConn TLSConn) *Handler {
 	return &Handler{
-		tlsConn:  tlsConn,
-		debugLog: func(string, ...interface{}) {}, // No-op by default
+		tlsConn: tlsConn,
+		logger:  zerolog.Nop(), // No-op by default
 	}
 }
 
-// SetDebugLog sets a debug logging function.
-func (h *Handler) SetDebugLog(fn func(string, ...interface{})) {
-	h.debugLog = fn
+// SetLogger sets the logger for debug output.
+func (h *Handler) SetLogger(l zerolog.Logger) {
+	h.logger = l
 }
 
 // SetPassword sets the password for NTLM authentication validation.
@@ -125,7 +127,7 @@ func (h *Handler) Authenticate() (username string, err error) {
 	}
 
 	// Step 1: Receive TSRequest with NTLM NEGOTIATE
-	h.debugLog("CredSSP: waiting for NTLM NEGOTIATE")
+	h.logger.Debug().Msg("CredSSP: waiting for NTLM NEGOTIATE")
 	tsReq1, err := h.readTSRequest()
 	if err != nil {
 		return "", fmt.Errorf("read negotiate: %w", err)
@@ -133,20 +135,20 @@ func (h *Handler) Authenticate() (username string, err error) {
 
 	// Log client's TSRequest version and save it
 	h.clientVersion = tsReq1.Version
-	h.debugLog("CredSSP: client TSRequest version=%d", h.clientVersion)
+	h.logger.Debug().Msgf("CredSSP: client TSRequest version=%d", h.clientVersion)
 
 	// For CredSSP v3+, client may send a nonce
 	if len(tsReq1.ClientNonce) > 0 {
 		h.clientNonce = tsReq1.ClientNonce
-		h.debugLog("CredSSP: client sent nonce (len=%d): % 02X", len(h.clientNonce), h.clientNonce)
+		h.logger.Debug().Msgf("CredSSP: client sent nonce (len=%d): % 02X", len(h.clientNonce), h.clientNonce)
 	} else {
-		h.debugLog("CredSSP: no client nonce in request")
+		h.logger.Debug().Msg("CredSSP: no client nonce in request")
 	}
 
 	// Debug: dump raw negoToken before unwrapping
 	if len(tsReq1.NegoTokens) > 0 {
 		rawToken := tsReq1.NegoTokens[0].Token
-		h.debugLog("CredSSP: raw negoToken len=%d, first 64 bytes: % 02X", len(rawToken), rawToken[:min(64, len(rawToken))])
+		h.logger.Debug().Msgf("CredSSP: raw negoToken len=%d, first 64 bytes: % 02X", len(rawToken), rawToken[:min(64, len(rawToken))])
 	}
 
 	negoToken := h.extractNegoToken(tsReq1)
@@ -156,10 +158,10 @@ func (h *Handler) Authenticate() (username string, err error) {
 
 	// Parse client's negotiate flags for debugging
 	clientFlags := h.parseNTLMNegotiate(negoToken)
-	h.debugLog("CredSSP: received NTLM NEGOTIATE, clientFlags=0x%08x, negoLen=%d", clientFlags, len(negoToken))
+	h.logger.Debug().Msgf("CredSSP: received NTLM NEGOTIATE, clientFlags=0x%08x, negoLen=%d", clientFlags, len(negoToken))
 	// Dump the NTLM NEGOTIATE for debugging
 	if len(negoToken) <= 128 {
-		h.debugLog("CredSSP: NEGOTIATE hex: % 02X", negoToken)
+		h.logger.Debug().Msgf("CredSSP: NEGOTIATE hex: % 02X", negoToken)
 	}
 
 	// Step 2: Send TSRequest with NTLM CHALLENGE
@@ -169,9 +171,9 @@ func (h *Handler) Authenticate() (username string, err error) {
 	}
 
 	challengeMsg := h.buildNTLMChallengeWithFlags(clientFlags)
-	h.debugLog("CredSSP: built NTLM CHALLENGE, len=%d", len(challengeMsg))
+	h.logger.Debug().Msgf("CredSSP: built NTLM CHALLENGE, len=%d", len(challengeMsg))
 	// Debug: dump FULL CHALLENGE message
-	h.debugLog("CredSSP: CHALLENGE hex FULL: % 02X", challengeMsg)
+	h.logger.Debug().Msgf("CredSSP: CHALLENGE hex FULL: % 02X", challengeMsg)
 
 	// Use client's version (or minimum version 3 for security)
 	responseVersion := h.clientVersion
@@ -182,35 +184,35 @@ func (h *Handler) Authenticate() (username string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("build TSRequest: %w", err)
 	}
-	h.debugLog("CredSSP: built TSRequest with version=%d, len=%d", responseVersion, len(tsResp))
+	h.logger.Debug().Msgf("CredSSP: built TSRequest with version=%d, len=%d", responseVersion, len(tsResp))
 	// Debug: dump first 48 bytes of TSRequest
 	tsDebug := 48
 	if len(tsResp) < tsDebug {
 		tsDebug = len(tsResp)
 	}
-	h.debugLog("CredSSP: TSRequest hex (first %d bytes): % 02X", tsDebug, tsResp[:tsDebug])
+	h.logger.Debug().Msgf("CredSSP: TSRequest hex (first %d bytes): % 02X", tsDebug, tsResp[:tsDebug])
 
 	if err := h.writeTSRequest(tsResp); err != nil {
 		return "", fmt.Errorf("write challenge: %w", err)
 	}
-	h.debugLog("CredSSP: sent NTLM CHALLENGE")
+	h.logger.Debug().Msg("CredSSP: sent NTLM CHALLENGE")
 
 	// Step 3: Receive TSRequest with NTLM AUTHENTICATE
-	h.debugLog("CredSSP: waiting for NTLM AUTHENTICATE")
+	h.logger.Debug().Msg("CredSSP: waiting for NTLM AUTHENTICATE")
 	tsReq2, err := h.readTSRequest()
 	if err != nil {
 		return "", fmt.Errorf("read authenticate: %w", err)
 	}
 
 	// Log what the client sent in step 3
-	h.debugLog("CredSSP: AUTHENTICATE TSRequest version=%d, hasNegoTokens=%v, hasPubKeyAuth=%v, hasClientNonce=%v",
+	h.logger.Debug().Msgf("CredSSP: AUTHENTICATE TSRequest version=%d, hasNegoTokens=%v, hasPubKeyAuth=%v, hasClientNonce=%v",
 		tsReq2.Version, len(tsReq2.NegoTokens) > 0, len(tsReq2.PubKeyAuth) > 0, len(tsReq2.ClientNonce) > 0)
 	if len(tsReq2.PubKeyAuth) > 0 {
-		h.debugLog("CredSSP: client pubKeyAuth len=%d, first 32 bytes: % 02X", len(tsReq2.PubKeyAuth), tsReq2.PubKeyAuth[:min(32, len(tsReq2.PubKeyAuth))])
+		h.logger.Debug().Msgf("CredSSP: client pubKeyAuth len=%d, first 32 bytes: % 02X", len(tsReq2.PubKeyAuth), tsReq2.PubKeyAuth[:min(32, len(tsReq2.PubKeyAuth))])
 	}
 	if len(tsReq2.ClientNonce) > 0 {
 		h.clientNonce = tsReq2.ClientNonce
-		h.debugLog("CredSSP: client nonce in AUTHENTICATE: % 02X", tsReq2.ClientNonce)
+		h.logger.Debug().Msgf("CredSSP: client nonce in AUTHENTICATE: % 02X", tsReq2.ClientNonce)
 	}
 
 	authToken := h.extractNegoToken(tsReq2)
@@ -221,7 +223,7 @@ func (h *Handler) Authenticate() (username string, err error) {
 	// Create NTLM authenticator if password validation is enabled
 	if h.password != "" {
 		h.ntlmAuth = NewNTLMAuth(h.password, h.serverChallenge)
-		h.ntlmAuth.SetDebugLog(h.debugLog)
+		h.ntlmAuth.SetLogger(h.logger)
 		h.ntlmAuth.SetClientNonce(h.clientNonce)
 	}
 
@@ -233,20 +235,20 @@ func (h *Handler) Authenticate() (username string, err error) {
 		if parseErr != nil {
 			return "", fmt.Errorf("parse NTLM AUTHENTICATE: %w", parseErr)
 		}
-		h.debugLog("CredSSP: received NTLM AUTHENTICATE from user=%s domain=%s", username, domain)
+		h.logger.Debug().Msgf("CredSSP: received NTLM AUTHENTICATE from user=%s domain=%s", username, domain)
 
 		// Validate NTLMv2 response
 		if !h.ntlmAuth.ValidateResponse(username, domain) {
-			h.debugLog("CredSSP: NTLM authentication FAILED for user=%s", username)
+			h.logger.Debug().Msgf("CredSSP: NTLM authentication FAILED for user=%s", username)
 			h.sendErrorResponse(STATUS_LOGON_FAILURE)
 			return username, fmt.Errorf("%w: NTLM password validation failed for user=%s", ErrAuthFailed, username)
 		}
-		h.debugLog("CredSSP: NTLM authentication SUCCEEDED for user=%s", username)
+		h.logger.Debug().Msgf("CredSSP: NTLM authentication SUCCEEDED for user=%s", username)
 
 		// Validate username if expected username is configured
 		// Handle UPN format (user@domain) by extracting just the username part
 		if h.expectedUser != "" && !usernameMatches(username, h.expectedUser) {
-			h.debugLog("CredSSP: username mismatch - expected=%s got=%s", h.expectedUser, username)
+			h.logger.Debug().Msgf("CredSSP: username mismatch - expected=%s got=%s", h.expectedUser, username)
 			h.sendErrorResponse(STATUS_LOGON_FAILURE)
 			return username, fmt.Errorf("%w: username mismatch expected=%s got=%s", ErrAuthFailed, h.expectedUser, username)
 		}
@@ -255,14 +257,14 @@ func (h *Handler) Authenticate() (username string, err error) {
 		// Handle UPN format (user@domain) where the NTLM domain field may be empty
 		// but the domain is embedded in the username
 		if h.expectedDomain != "" && !domainMatches(domain, username, h.expectedDomain) {
-			h.debugLog("CredSSP: domain mismatch - expected=%s got=%s (username=%s)", h.expectedDomain, domain, username)
+			h.logger.Debug().Msgf("CredSSP: domain mismatch - expected=%s got=%s (username=%s)", h.expectedDomain, domain, username)
 			h.sendErrorResponse(STATUS_LOGON_FAILURE)
 			return username, fmt.Errorf("%w: domain mismatch expected=%s got=%s", ErrAuthFailed, h.expectedDomain, domain)
 		}
 
 		// Verify client's pubKeyAuth to debug hash mismatches
 		if len(tsReq2.PubKeyAuth) > 0 && len(h.serverPublicKey) > 0 {
-			h.debugLog("CredSSP: verifying client pubKeyAuth...")
+			h.logger.Debug().Msg("CredSSP: verifying client pubKeyAuth...")
 			// Pass certificate DER for additional format testing
 			if len(h.serverCertDER) > 0 {
 				h.ntlmAuth.SetServerCertificateDER(h.serverCertDER)
@@ -272,17 +274,17 @@ func (h *Handler) Authenticate() (username string, err error) {
 	} else {
 		// Permissive mode - just extract username
 		username = h.extractUsername(authToken)
-		h.debugLog("CredSSP: permissive mode - received NTLM AUTHENTICATE from user: %s", username)
+		h.logger.Debug().Msgf("CredSSP: permissive mode - received NTLM AUTHENTICATE from user: %s", username)
 	}
 
 	// Step 4: Send final TSRequest with pubKeyAuth
 	pubKeyAuth := h.buildPubKeyAuth()
-	h.debugLog("CredSSP: building final TSRequest with pubKeyAuth len=%d", len(pubKeyAuth))
+	h.logger.Debug().Msgf("CredSSP: building final TSRequest with pubKeyAuth len=%d", len(pubKeyAuth))
 	finalResp, err := h.buildTSRequestFinal(pubKeyAuth)
 	if err != nil {
 		return "", fmt.Errorf("build final TSRequest: %w", err)
 	}
-	h.debugLog("CredSSP: final TSRequest len=%d, first 32 bytes: % 02X", len(finalResp), finalResp[:min(32, len(finalResp))])
+	h.logger.Debug().Msgf("CredSSP: final TSRequest len=%d, first 32 bytes: % 02X", len(finalResp), finalResp[:min(32, len(finalResp))])
 	if err := h.writeTSRequest(finalResp); err != nil {
 		return "", fmt.Errorf("write final: %w", err)
 	}
@@ -290,25 +292,25 @@ func (h *Handler) Authenticate() (username string, err error) {
 	// Step 5: Receive final TSRequest with authInfo (encrypted credentials)
 	// After the client validates our pubKeyAuth, it sends the final TSRequest
 	// containing encrypted credentials in the authInfo field.
-	h.debugLog("CredSSP: waiting for client credentials (authInfo)...")
+	h.logger.Debug().Msg("CredSSP: waiting for client credentials (authInfo)...")
 	tsReq3, err := h.readTSRequest()
 	if err != nil {
 		return "", fmt.Errorf("read credentials: %w", err)
 	}
 
-	h.debugLog("CredSSP: received final TSRequest - version=%d, hasNegoTokens=%v, hasAuthInfo=%v, authInfoLen=%d",
+	h.logger.Debug().Msgf("CredSSP: received final TSRequest - version=%d, hasNegoTokens=%v, hasAuthInfo=%v, authInfoLen=%d",
 		tsReq3.Version, len(tsReq3.NegoTokens) > 0, len(tsReq3.AuthInfo) > 0, len(tsReq3.AuthInfo))
 
 	// The authInfo contains TSCredentials (encrypted with NTLM session key)
 	// We don't need to decrypt it for permissive authentication,
 	// but we should at least acknowledge we received it.
 	if len(tsReq3.AuthInfo) > 0 {
-		h.debugLog("CredSSP: received encrypted credentials, authInfo len=%d", len(tsReq3.AuthInfo))
+		h.logger.Debug().Msgf("CredSSP: received encrypted credentials, authInfo len=%d", len(tsReq3.AuthInfo))
 	} else {
-		h.debugLog("CredSSP: WARNING - no authInfo in final TSRequest")
+		h.logger.Warn().Msg("CredSSP: no authInfo in final TSRequest")
 	}
 
-	h.debugLog("CredSSP: authentication complete")
+	h.logger.Debug().Msg("CredSSP: authentication complete")
 
 	return username, nil
 }
@@ -339,17 +341,17 @@ func (h *Handler) readTSRequest() (*tsRequest, error) {
 		return nil, err
 	}
 
-	h.debugLog("CredSSP: waiting to read TSRequest header...")
+	h.logger.Debug().Msg("CredSSP: waiting to read TSRequest header...")
 
 	// Read length-prefixed data (CredSSP uses raw ASN.1, no framing)
 	// First, peek at the ASN.1 header to get length
 	header := make([]byte, 6)
 	n, err := io.ReadFull(h.tlsConn, header[:2])
 	if err != nil {
-		h.debugLog("CredSSP: read header failed after %d bytes: %v", n, err)
+		h.logger.Debug().Msgf("CredSSP: read header failed after %d bytes: %v", n, err)
 		return nil, err
 	}
-	h.debugLog("CredSSP: read header bytes: %02x %02x", header[0], header[1])
+	h.logger.Debug().Msgf("CredSSP: read header bytes: %02x %02x", header[0], header[1])
 
 	// Parse ASN.1 length
 	var length int
@@ -415,14 +417,14 @@ func (h *Handler) sendErrorResponse(errorCode int64) {
 
 	data, err := asn1.Marshal(errReq)
 	if err != nil {
-		h.debugLog("CredSSP: failed to marshal error response: %v", err)
+		h.logger.Warn().Msgf("CredSSP: failed to marshal error response: %v", err)
 		return
 	}
 
 	if err := h.writeTSRequest(data); err != nil {
-		h.debugLog("CredSSP: failed to send error response: %v", err)
+		h.logger.Warn().Msgf("CredSSP: failed to send error response: %v", err)
 	} else {
-		h.debugLog("CredSSP: sent error response with NTSTATUS 0x%08X", errorCode)
+		h.logger.Debug().Msgf("CredSSP: sent error response with NTSTATUS 0x%08X", errorCode)
 	}
 }
 
@@ -439,12 +441,12 @@ func (h *Handler) extractNegoToken(req *tsRequest) []byte {
 		if bytes.HasPrefix(token, ntlmSignature) {
 			// Client sends raw NTLM without SPNEGO
 			h.clientUsesSPNEGO = false
-			h.debugLog("CredSSP: client sends RAW NTLM (no SPNEGO)")
+			h.logger.Debug().Msg("CredSSP: client sends RAW NTLM (no SPNEGO)")
 			return token
 		} else if token[0] == 0xA0 || token[0] == 0x60 {
 			// Client sends SPNEGO-wrapped NTLM
 			h.clientUsesSPNEGO = true
-			h.debugLog("CredSSP: client sends SPNEGO-wrapped NTLM")
+			h.logger.Debug().Msg("CredSSP: client sends SPNEGO-wrapped NTLM")
 			return h.unwrapSPNEGO(token)
 		}
 	}
@@ -617,14 +619,14 @@ func (h *Handler) buildTSRequest(version int, ntlmToken []byte) ([]byte, error) 
 
 	if h.clientUsesSPNEGO {
 		// Client uses SPNEGO, wrap our NTLM response in SPNEGO NegTokenResp
-		h.debugLog("CredSSP: wrapping NTLM token (len=%d) in SPNEGO", len(ntlmToken))
+		h.logger.Debug().Msgf("CredSSP: wrapping NTLM token (len=%d) in SPNEGO", len(ntlmToken))
 		responseToken = h.wrapInSPNEGOResp(ntlmToken)
-		h.debugLog("CredSSP: SPNEGO token len=%d, first 48 bytes: % 02X", len(responseToken), responseToken[:min(48, len(responseToken))])
+		h.logger.Debug().Msgf("CredSSP: SPNEGO token len=%d, first 48 bytes: % 02X", len(responseToken), responseToken[:min(48, len(responseToken))])
 	} else {
 		// Client sends raw NTLM, respond with raw NTLM (no SPNEGO wrapping)
-		h.debugLog("CredSSP: sending RAW NTLM token (len=%d), NO SPNEGO wrapping", len(ntlmToken))
+		h.logger.Debug().Msgf("CredSSP: sending RAW NTLM token (len=%d), NO SPNEGO wrapping", len(ntlmToken))
 		responseToken = ntlmToken
-		h.debugLog("CredSSP: raw NTLM token first 48 bytes: % 02X", ntlmToken[:min(48, len(ntlmToken))])
+		h.logger.Debug().Msgf("CredSSP: raw NTLM token first 48 bytes: % 02X", ntlmToken[:min(48, len(ntlmToken))])
 	}
 
 	// Build TSRequest
@@ -637,7 +639,7 @@ func (h *Handler) buildTSRequest(version int, ntlmToken []byte) ([]byte, error) 
 
 	data, err := asn1.Marshal(req)
 	if err != nil {
-		h.debugLog("CredSSP: failed to marshal TSRequest: %v", err)
+		h.logger.Debug().Msgf("CredSSP: failed to marshal TSRequest: %v", err)
 		return nil, fmt.Errorf("marshal TSRequest: %w", err)
 	}
 	return data, nil
@@ -675,8 +677,8 @@ func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) []byte {
 	// Marshal the NegTokenResp SEQUENCE
 	seqBytes, err := asn1.Marshal(resp)
 	if err != nil {
-		h.debugLog("CredSSP: failed to marshal NegTokenResp: %v", err)
-		return nil
+		h.logger.Warn().Msgf("CredSSP: failed to marshal NegTokenResp, falling back to raw NTLM: %v", err)
+		return ntlmToken
 	}
 
 	// Wrap in NegTokenResp context tag [1] for NegotiationToken CHOICE
@@ -699,10 +701,9 @@ func (h *Handler) buildPubKeyAuth() []byte {
 	serverPubKey := h.serverPublicKey
 
 	if len(serverPubKey) == 0 {
-		h.debugLog("CredSSP: WARNING - no server public key set, pubKeyAuth will fail")
-		h.debugLog("CredSSP: caller must use SetServerPublicKey() before Authenticate()")
+		h.logger.Warn().Msg("CredSSP: no server public key set, pubKeyAuth will fail - call SetServerPublicKey() before Authenticate()")
 	} else {
-		h.debugLog("CredSSP: using server public key len=%d", len(serverPubKey))
+		h.logger.Debug().Msgf("CredSSP: using server public key len=%d", len(serverPubKey))
 	}
 
 	// If we have a valid NTLM authenticator with session key, compute proper pubKeyAuth
@@ -710,18 +711,18 @@ func (h *Handler) buildPubKeyAuth() []byte {
 		sessionKey := h.ntlmAuth.GetSessionKey()
 		if len(sessionKey) > 0 {
 			if len(serverPubKey) == 0 {
-				h.debugLog("CredSSP: computing pubKeyAuth with empty public key (will likely fail)")
+				h.logger.Debug().Msg("CredSSP: computing pubKeyAuth with empty public key (will likely fail)")
 				serverPubKey = []byte{}
 			}
 			pubKeyAuth := h.ntlmAuth.ComputePubKeyAuth(serverPubKey, h.clientVersion)
-			h.debugLog("CredSSP: computed pubKeyAuth len=%d", len(pubKeyAuth))
+			h.logger.Debug().Msgf("CredSSP: computed pubKeyAuth len=%d", len(pubKeyAuth))
 			return pubKeyAuth
 		}
 	}
 
 	// Permissive mode fallback - return minimal value
 	// Note: This will likely cause authentication to fail with proper clients
-	h.debugLog("CredSSP: permissive mode - returning minimal pubKeyAuth")
+	h.logger.Debug().Msg("CredSSP: permissive mode - returning minimal pubKeyAuth")
 	return []byte{0x01}
 }
 
@@ -738,7 +739,7 @@ func (h *Handler) buildTSRequestFinal(pubKeyAuth []byte) ([]byte, error) {
 
 	data, err := asn1.Marshal(req)
 	if err != nil {
-		h.debugLog("CredSSP: failed to marshal final TSRequest: %v", err)
+		h.logger.Debug().Msgf("CredSSP: failed to marshal final TSRequest: %v", err)
 		return nil, fmt.Errorf("marshal final TSRequest: %w", err)
 	}
 	return data, nil

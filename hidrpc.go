@@ -66,26 +66,23 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 func onHidMessage(msg hidQueueMessage, session *Session) {
 	data := msg.Data
 
-	scopedLogger := hidRPCLogger.With().
-		Str("channel", msg.channel).
-		Bytes("data", data).
-		Logger()
-	scopedLogger.Debug().Msg("HID RPC message received")
-
 	if len(data) < 1 {
-		scopedLogger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
+		hidRPCLogger.Warn().Str("channel", msg.channel).Int("length", len(data)).Msg("received empty data in HID RPC message handler")
 		return
+	}
+
+	if hidRPCLogger.GetLevel() <= zerolog.DebugLevel {
+		hidRPCLogger.Debug().Str("channel", msg.channel).Bytes("data", data).Msg("HID RPC message received")
 	}
 
 	var message hidrpc.Message
-
 	if err := hidrpc.Unmarshal(data, &message); err != nil {
-		scopedLogger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
+		hidRPCLogger.Warn().Err(err).Str("channel", msg.channel).Msg("failed to unmarshal HID RPC message")
 		return
 	}
 
-	if scopedLogger.GetLevel() <= zerolog.DebugLevel {
-		scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	if hidRPCLogger.GetLevel() <= zerolog.DebugLevel {
+		hidRPCLogger.Debug().Str("channel", msg.channel).Str("descr", message.String()).Msg("HID RPC dispatching")
 	}
 
 	t := time.Now()
@@ -97,9 +94,11 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 	}()
 	select {
 	case <-time.After(1 * time.Second):
-		scopedLogger.Warn().Msg("HID RPC message timed out (handler still running in background)")
+		hidRPCLogger.Warn().Str("channel", msg.channel).Msg("HID RPC message timed out (handler still running in background)")
 	case <-r:
-		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
+		if hidRPCLogger.GetLevel() <= zerolog.DebugLevel {
+			hidRPCLogger.Debug().Str("channel", msg.channel).Dur("duration", time.Since(t)).Msg("HID RPC message handled")
+		}
 	}
 }
 

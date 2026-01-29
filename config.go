@@ -369,47 +369,50 @@ func LoadConfig() {
 	}
 
 	// merge the user config with the default config
+	// For pointer fields, copy the value struct before taking its address
+	// to avoid aliasing the package-level defaults.
 	if loadedConfig.UsbConfig == nil {
-		loadedConfig.UsbConfig = getDefaultConfig().UsbConfig
+		c := defaultUsbConfig
+		loadedConfig.UsbConfig = &c
 	}
 
 	if loadedConfig.UsbDevices == nil {
-		loadedConfig.UsbDevices = getDefaultConfig().UsbDevices
+		c := defaultUsbDevices
+		loadedConfig.UsbDevices = &c
 	}
 
 	if loadedConfig.NetworkConfig == nil {
-		loadedConfig.NetworkConfig = getDefaultConfig().NetworkConfig
+		c := *defaultConfig.NetworkConfig
+		loadedConfig.NetworkConfig = &c
 	}
 
 	if loadedConfig.JigglerConfig == nil {
-		loadedConfig.JigglerConfig = getDefaultConfig().JigglerConfig
+		c := defaultJigglerConfig
+		loadedConfig.JigglerConfig = &c
 	}
 
 	// Apply audio defaults for new configs
 	if loadedConfig.AudioBitrate == 0 {
-		defaults := getDefaultConfig()
-		loadedConfig.AudioBitrate = defaults.AudioBitrate
-		loadedConfig.AudioComplexity = defaults.AudioComplexity
-		loadedConfig.AudioDTXEnabled = defaults.AudioDTXEnabled
-		loadedConfig.AudioFECEnabled = defaults.AudioFECEnabled
-		loadedConfig.AudioBufferPeriods = defaults.AudioBufferPeriods
-		loadedConfig.AudioPacketLossPerc = defaults.AudioPacketLossPerc
+		loadedConfig.AudioBitrate = defaultConfig.AudioBitrate
+		loadedConfig.AudioComplexity = defaultConfig.AudioComplexity
+		loadedConfig.AudioDTXEnabled = defaultConfig.AudioDTXEnabled
+		loadedConfig.AudioFECEnabled = defaultConfig.AudioFECEnabled
+		loadedConfig.AudioBufferPeriods = defaultConfig.AudioBufferPeriods
+		loadedConfig.AudioPacketLossPerc = defaultConfig.AudioPacketLossPerc
 	}
 
 	// Apply camera defaults for new configs
 	if loadedConfig.CameraResolution == "" {
-		defaults := getDefaultConfig()
-		loadedConfig.CameraResolution = defaults.CameraResolution
-		loadedConfig.CameraFrameRate = defaults.CameraFrameRate
-		loadedConfig.CameraH264Bitrate = defaults.CameraH264Bitrate
-		loadedConfig.CameraMjpegQuality = defaults.CameraMjpegQuality
+		loadedConfig.CameraResolution = defaultConfig.CameraResolution
+		loadedConfig.CameraFrameRate = defaultConfig.CameraFrameRate
+		loadedConfig.CameraH264Bitrate = defaultConfig.CameraH264Bitrate
+		loadedConfig.CameraMjpegQuality = defaultConfig.CameraMjpegQuality
 	}
 
 	// Apply VNC defaults for new configs
 	if loadedConfig.VNCPort == 0 {
-		defaults := getDefaultConfig()
-		loadedConfig.VNCPort = defaults.VNCPort
-		loadedConfig.VNCQuality = defaults.VNCQuality
+		loadedConfig.VNCPort = defaultConfig.VNCPort
+		loadedConfig.VNCQuality = defaultConfig.VNCQuality
 	}
 	// Apply VNC defaults for configs created before these settings existed
 	// VNCPasteDelayMs: 0 is a valid value (fastest), so we use -1 or check differently
@@ -422,13 +425,12 @@ func LoadConfig() {
 
 	// Apply RDP defaults for new configs
 	if loadedConfig.RDPPort == 0 {
-		defaults := getDefaultConfig()
-		loadedConfig.RDPPort = defaults.RDPPort
-		loadedConfig.RDPMaxConnections = defaults.RDPMaxConnections
-		loadedConfig.RDPUseTLS = defaults.RDPUseTLS
-		loadedConfig.RDPVideoEnabled = defaults.RDPVideoEnabled
-		loadedConfig.RDPAudioEnabled = defaults.RDPAudioEnabled
-		loadedConfig.RDPMicEnabled = defaults.RDPMicEnabled
+		loadedConfig.RDPPort = defaultConfig.RDPPort
+		loadedConfig.RDPMaxConnections = defaultConfig.RDPMaxConnections
+		loadedConfig.RDPUseTLS = defaultConfig.RDPUseTLS
+		loadedConfig.RDPVideoEnabled = defaultConfig.RDPVideoEnabled
+		loadedConfig.RDPAudioEnabled = defaultConfig.RDPAudioEnabled
+		loadedConfig.RDPMicEnabled = defaultConfig.RDPMicEnabled
 		// RDPCameraEnabled defaults to false, so no migration needed
 	}
 	if loadedConfig.RDPMaxConnections == 0 {

@@ -133,11 +133,9 @@ func (c *Connection) handleX224Connection() error {
 		if selectedProto == protocol.ProtocolCredSSP {
 			c.server.deps.Logger.Debug().Msg("RDP: starting CredSSP/NLA authentication")
 
-			// CredSSP now accepts any net.Conn - no longer needs *tls.Conn
+			// CredSSP accepts any TLSConn (credssp.TLSConn interface), not tied to *tls.Conn
 			handler := credssp.NewHandler(tlsConn)
-			handler.SetDebugLog(func(format string, args ...any) {
-				c.server.deps.Logger.Debug().Msgf(format, args...)
-			})
+			handler.SetLogger(c.server.deps.Logger)
 
 			// Set password for NTLM validation if configured
 			password := c.server.deps.Config.GetLocalAuthPassword()
