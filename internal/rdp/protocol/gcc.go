@@ -47,9 +47,12 @@ const (
 	TransportSoftSyncTCPUDP = 0x00000200 // Switching dynamic virtual channels from TCP to UDP
 )
 
-// RDP version constants (MS-RDPBCGR section 2.2.1.4.2).
+// RDP version constants used in Server Core Data (MS-RDPBCGR section 2.2.1.4.2).
+// These are protocol capability indicators sent by the server, not client version identifiers.
+// The server sends the highest version it supports; clients at that version or above will
+// enable the corresponding feature set. RDPVersion50 covers all 5.0+ capable clients.
 const (
-	RDPVersion50  = 0x00080004 // RDP 5.0, 5.1, 5.2
+	RDPVersion50  = 0x00080004 // RDP 5.0+ (baseline for 5.x clients)
 	RDPVersion100 = 0x00080005 // RDP 10.0
 	RDPVersion101 = 0x00080006 // RDP 10.1
 	RDPVersion102 = 0x00080007 // RDP 10.2

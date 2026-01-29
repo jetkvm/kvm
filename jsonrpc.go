@@ -448,12 +448,16 @@ func rpcSetTLSState(state TLSState) error {
 }
 
 type RPCHandler struct {
-	Func   any
-	Params []string
+	Func         any
+	Params       []string
+	reflectValue reflect.Value // cached reflect.ValueOf(Func)
+	reflectType  reflect.Type  // cached reflectValue.Type()
 }
 
 // call the handler but recover from a panic to ensure our RPC goroutine doesn't collapse on malformed calls
 func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (result any, err error) {
+	rpcHandlersInitOnce.Do(initRPCHandlers)
+
 	// Use defer to recover from a panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -472,8 +476,8 @@ func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string
 }
 
 func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (any, error) {
-	handlerValue := reflect.ValueOf(handler.Func)
-	handlerType := handlerValue.Type()
+	handlerValue := handler.reflectValue
+	handlerType := handler.reflectType
 
 	if handlerType.Kind() != reflect.Func {
 		return nil, errors.New("handler is not a function")
@@ -1297,8 +1301,8 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 		IsPaste: true,
 	}
 
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	if sess := currentSession.Load(); sess != nil {
+		sess.reportHidRPCKeyboardMacroState(s)
 	}
 
 	err := rpcDoExecuteKeyboardMacro(ctx, macro)
@@ -1306,8 +1310,8 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	setKeyboardMacroCancel(nil)
 
 	s.State = false
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	if sess := currentSession.Load(); sess != nil {
+		sess.reportHidRPCKeyboardMacroState(s)
 	}
 
 	return err
@@ -1539,4 +1543,20 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRDPBase64CmdWindows":     {Func: rpcSetRDPBase64CmdWindows, Params: []string{"cmd"}},
 	"setRDPBase64CmdLinux":       {Func: rpcSetRDPBase64CmdLinux, Params: []string{"cmd"}},
 	"setRDPBase64CmdMacOS":       {Func: rpcSetRDPBase64CmdMacOS, Params: []string{"cmd"}},
+}
+
+var rpcHandlersInitOnce sync.Once
+
+func initRPCHandlers() {
+	for name, handler := range rpcHandlers {
+		if handler.Func == nil {
+			panic(fmt.Sprintf("rpcHandlers[%q]: Func is nil", name))
+		}
+		handler.reflectValue = reflect.ValueOf(handler.Func)
+		if handler.reflectValue.Kind() != reflect.Func {
+			panic(fmt.Sprintf("rpcHandlers[%q]: Func is %T, not a function", name, handler.Func))
+		}
+		handler.reflectType = handler.reflectValue.Type()
+		rpcHandlers[name] = handler
+	}
 }

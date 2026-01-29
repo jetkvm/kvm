@@ -45,11 +45,6 @@ var bgrxBufferPool = sync.Pool{
 // 64x64 at 32bpp = 16384 bytes per tile.
 const rgbTileSize = 64
 
-// maxTilesPerRGBUpdate is the maximum tiles per bitmap update to stay under 64KB reassembly limit.
-// 64x64 tile = 16384 bytes + 18 byte header = 16402 bytes per tile
-// 3 tiles = ~49KB, safely under 64KB
-const maxTilesPerRGBUpdate = 3
-
 // rgbTileBufferPool provides reusable buffers for RGB tile data.
 var rgbTileBufferPool = sync.Pool{
 	New: func() any {

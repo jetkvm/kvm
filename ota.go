@@ -37,20 +37,21 @@ func initOta() {
 			triggerOTAStateUpdate(state)
 		},
 		OnProgressUpdate: func(progress float32) {
-			writeJSONRPCEvent("otaProgress", progress, currentSession)
+			writeJSONRPCEvent("otaProgress", progress, currentSession.Load())
 		},
 	})
 }
 
 func triggerOTAStateUpdate(state *ota.RPCState) {
 	go func() {
-		if currentSession == nil || (otaState == nil && state == nil) {
+		s := currentSession.Load()
+		if s == nil || (otaState == nil && state == nil) {
 			return
 		}
 		if state == nil {
 			state = otaState.ToRPCState()
 		}
-		writeJSONRPCEvent("otaState", state, currentSession)
+		writeJSONRPCEvent("otaState", state, s)
 	}()
 }
 

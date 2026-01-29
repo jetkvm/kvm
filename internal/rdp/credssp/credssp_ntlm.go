@@ -36,7 +36,7 @@ const (
 
 // buildTargetInfo creates the AV_PAIR list for NTLM CHALLENGE
 func (h *Handler) buildTargetInfo() []byte {
-	h.debugLog("CredSSP: building TargetInfo AV_PAIRs")
+	h.logger.Debug().Msg("CredSSP: building TargetInfo AV_PAIRs")
 
 	// Use configured domain or default to "JETKVM"
 	nbDomain := h.expectedDomain
@@ -127,7 +127,7 @@ func (h *Handler) buildTargetInfo() []byte {
 	info[offset+2] = 0
 	info[offset+3] = 0
 
-	h.debugLog("CredSSP: TargetInfo built, len=%d, hex: % 02X", len(info), info)
+	h.logger.Debug().Msgf("CredSSP: TargetInfo built, len=%d, hex: % 02X", len(info), info)
 	return info
 }
 
@@ -192,11 +192,11 @@ func (h *Handler) buildNTLMChallengeWithFlags(clientFlags uint32) []byte {
 	// If we're including version, set the flag
 	flags |= NTLMSSP_NEGOTIATE_VERSION
 
-	h.debugLog("CredSSP: NTLM flags client=0x%08x server=0x%08x", clientFlags, flags)
+	h.logger.Debug().Msgf("CredSSP: NTLM flags client=0x%08x server=0x%08x", clientFlags, flags)
 
 	// Debug: show which flags we're adding
 	addedFlags := flags &^ clientFlags
-	h.debugLog("CredSSP: flags added by server: 0x%08x", addedFlags)
+	h.logger.Debug().Msgf("CredSSP: flags added by server: 0x%08x", addedFlags)
 
 	msg[20] = byte(flags)
 	msg[21] = byte(flags >> 8)

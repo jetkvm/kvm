@@ -249,11 +249,11 @@ func rpcMeshVPNInstall(provider string) (bool, error) {
 
 	// Install with progress reporting via RPC events
 	installErr := manager.Install(ctx, provider, func(progress float64) {
-		if currentSession != nil {
+		if s := currentSession.Load(); s != nil {
 			writeJSONRPCEvent("meshVPNInstallProgress", map[string]interface{}{
 				"provider": provider,
 				"progress": progress,
-			}, currentSession)
+			}, s)
 		}
 	})
 
@@ -472,11 +472,11 @@ func rpcMeshVPNUpdate(provider string) (bool, error) {
 
 	// Report update progress via RPC events (targetVersion empty = latest)
 	updateErr := manager.Update(ctx, provider, "", func(progress float64) {
-		if currentSession != nil {
+		if s := currentSession.Load(); s != nil {
 			writeJSONRPCEvent("meshVPNUpdateProgress", map[string]interface{}{
 				"provider": provider,
 				"progress": progress,
-			}, currentSession)
+			}, s)
 		}
 	})
 

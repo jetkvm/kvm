@@ -45,8 +45,8 @@ func initMeshVPN() {
 		Config:   vpnConfig,
 		Registry: meshVPNRegistry,
 		OnStatusChange: func(status meshvpn.ProviderStatus) {
-			if currentSession != nil {
-				writeJSONRPCEvent("meshVPNState", status, currentSession)
+			if s := currentSession.Load(); s != nil {
+				writeJSONRPCEvent("meshVPNState", status, s)
 			}
 		},
 		OnConfigChange: func(cfg *meshvpn.Config) {

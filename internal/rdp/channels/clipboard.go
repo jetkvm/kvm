@@ -163,6 +163,14 @@ func (c *ClipboardChannel) log(format string, args ...any) {
 	}
 }
 
+// writeClipPDUHeader writes the 8-byte CLIPRDR PDU header (msgType + msgFlags + dataLen)
+// into buf[0:8].
+func writeClipPDUHeader(buf []byte, msgType uint16, msgFlags uint16, dataLen uint32) {
+	binary.LittleEndian.PutUint16(buf[0:2], msgType)
+	binary.LittleEndian.PutUint16(buf[2:4], msgFlags)
+	binary.LittleEndian.PutUint32(buf[4:8], dataLen)
+}
+
 // Start sends initial Capabilities and Monitor Ready PDUs.
 func (c *ClipboardChannel) Start() error {
 	// Send Clipboard Capabilities first
@@ -183,9 +191,7 @@ func (c *ClipboardChannel) sendCapabilities() error {
 	buf := make([]byte, 24)
 
 	// Header
-	binary.LittleEndian.PutUint16(buf[0:2], CBClipCaps)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)  // msgFlags
-	binary.LittleEndian.PutUint32(buf[4:8], 16) // dataLen (4 + 12)
+	writeClipPDUHeader(buf, CBClipCaps, 0, 16) // dataLen = 4 + 12
 
 	// Capabilities header
 	binary.LittleEndian.PutUint16(buf[8:10], 1) // cCapabilitiesSets
@@ -210,9 +216,7 @@ func (c *ClipboardChannel) sendCapabilities() error {
 func (c *ClipboardChannel) sendMonitorReady() error {
 	// CLIPRDR_MONITOR_READY (MS-RDPECLIP 2.2.2.2)
 	buf := make([]byte, 8)
-	binary.LittleEndian.PutUint16(buf[0:2], CBMonitorReady)
-	binary.LittleEndian.PutUint16(buf[2:4], 0) // msgFlags
-	binary.LittleEndian.PutUint32(buf[4:8], 0) // dataLen
+	writeClipPDUHeader(buf, CBMonitorReady, 0, 0)
 
 	c.ready.Store(true)
 	c.log("CLIPRDR: sending monitor ready")
@@ -331,9 +335,7 @@ func (c *ClipboardChannel) handleFormatList(data []byte, msgFlags uint16) error 
 
 	// Send Format List Response (acknowledge)
 	resp := make([]byte, 8)
-	binary.LittleEndian.PutUint16(resp[0:2], CBFormatListResp)
-	binary.LittleEndian.PutUint16(resp[2:4], CBResponseOK)
-	binary.LittleEndian.PutUint32(resp[4:8], 0)
+	writeClipPDUHeader(resp, CBFormatListResp, CBResponseOK, 0)
 
 	c.log("CLIPRDR: sending format list response")
 	if err := c.sendFunc(resp); err != nil {
@@ -414,9 +416,7 @@ func (c *ClipboardChannel) parseFormatListShort(data []byte) (hasText bool) {
 func (c *ClipboardChannel) requestFormatData(formatID uint32) error {
 	// CLIPRDR_FORMAT_DATA_REQUEST (MS-RDPECLIP 2.2.5.1)
 	buf := make([]byte, 12)
-	binary.LittleEndian.PutUint16(buf[0:2], CBFormatDataReq)
-	binary.LittleEndian.PutUint16(buf[2:4], 0) // msgFlags
-	binary.LittleEndian.PutUint32(buf[4:8], 4) // dataLen
+	writeClipPDUHeader(buf, CBFormatDataReq, 0, 4)
 	binary.LittleEndian.PutUint32(buf[8:12], formatID)
 	return c.sendFunc(buf)
 }
@@ -577,10 +577,7 @@ func (c *ClipboardChannel) parseFileDescriptor(data []byte) FileDescriptor {
 func (c *ClipboardChannel) requestFileSize(fileIndex int) error {
 	// CB_FILECONTENTS_REQUEST (MS-RDPECLIP 2.2.5.3)
 	buf := make([]byte, 36) // 8 header + 28 data
-
-	binary.LittleEndian.PutUint16(buf[0:2], CBFileContentsReq)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)  // msgFlags
-	binary.LittleEndian.PutUint32(buf[4:8], 28) // dataLen
+	writeClipPDUHeader(buf, CBFileContentsReq, 0, 28)
 
 	binary.LittleEndian.PutUint32(buf[8:12], c.currentStreamID)  // streamId
 	binary.LittleEndian.PutUint32(buf[12:16], uint32(fileIndex)) // lindex
@@ -597,10 +594,7 @@ func (c *ClipboardChannel) requestFileSize(fileIndex int) error {
 // requestFileRange sends a CB_FILECONTENTS_REQUEST for file data.
 func (c *ClipboardChannel) requestFileRange(fileIndex int, offset, size uint64) error {
 	buf := make([]byte, 36)
-
-	binary.LittleEndian.PutUint16(buf[0:2], CBFileContentsReq)
-	binary.LittleEndian.PutUint16(buf[2:4], 0)
-	binary.LittleEndian.PutUint32(buf[4:8], 28)
+	writeClipPDUHeader(buf, CBFileContentsReq, 0, 28)
 
 	binary.LittleEndian.PutUint32(buf[8:12], c.currentStreamID)
 	binary.LittleEndian.PutUint32(buf[12:16], uint32(fileIndex))

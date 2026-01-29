@@ -79,8 +79,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		},
 		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
 			// Send to WebRTC session (allocation-free path)
-			if currentSession != nil {
-				if err := currentSession.WriteVideoFrame(frame, duration); err != nil {
+			if s := currentSession.Load(); s != nil {
+				if err := s.WriteVideoFrame(frame, duration); err != nil {
 					nativeLogger.Warn().Err(err).Msg("error writing sample")
 				}
 			}
@@ -106,12 +106,13 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			BroadcastRDPRGBFrame(frame.Data, frame.Width, frame.Height, format, frame.Release)
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
+			s := currentSession.Load()
 			info := diagnostics.SessionInfo{
 				ActiveSessions:    getActiveSessions(),
-				HasCurrentSession: currentSession != nil,
+				HasCurrentSession: s != nil,
 			}
-			if currentSession != nil {
-				sessionInfo := currentSession.GetDiagnosticsInfo()
+			if s != nil {
+				sessionInfo := s.GetDiagnosticsInfo()
 				info.ICEConnectionState = sessionInfo.ICEConnectionState
 				info.SignalingState = sessionInfo.SignalingState
 				info.ConnectionState = sessionInfo.ConnectionState

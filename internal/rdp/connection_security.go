@@ -297,28 +297,36 @@ func (c *Connection) sendFinalizationPDUs() error {
 	return nil
 }
 
-func (c *Connection) buildSynchronizePDU() []byte {
-	buf := make([]byte, 22)
-	// Share control header
-	buf[0] = 22 // totalLength
-	buf[1] = 0
+// writeShareDataHeader writes the 18-byte Share Control + Share Data header
+// common to all finalization PDUs (Synchronize, Control, Font Map).
+// totalLen is the full PDU length, uncompressedLen is the payload size,
+// and pduType2 identifies the specific data PDU type.
+func (c *Connection) writeShareDataHeader(buf []byte, totalLen, uncompressedLen uint16, pduType2 byte) {
+	// Share control header (6 bytes)
+	buf[0] = byte(totalLen)
+	buf[1] = byte(totalLen >> 8)
 	buf[2] = 0x17 // PDUTYPE_DATAPDU
 	buf[3] = 0x00
 	buf[4] = byte(c.userID)
 	buf[5] = byte(c.userID >> 8)
-	// Share data header
+	// Share data header (12 bytes)
 	buf[6] = 0x66 // ShareID
 	buf[7] = 0x72
 	buf[8] = 0x65
 	buf[9] = 0x64
 	buf[10] = 0 // Pad
 	buf[11] = 1 // StreamID
-	buf[12] = 4 // UncompressedLength (4 bytes: messageType + targetUser)
-	buf[13] = 0
-	buf[14] = protocol.DataPDUTypeSynchronize // PDUType2
-	buf[15] = 0                               // Compression type
-	buf[16] = 0                               // Compressed length
+	buf[12] = byte(uncompressedLen)
+	buf[13] = byte(uncompressedLen >> 8)
+	buf[14] = pduType2 // PDUType2
+	buf[15] = 0        // Compression type
+	buf[16] = 0        // Compressed length
 	buf[17] = 0
+}
+
+func (c *Connection) buildSynchronizePDU() []byte {
+	buf := make([]byte, 22)
+	c.writeShareDataHeader(buf, 22, 4, protocol.DataPDUTypeSynchronize)
 	// Synchronize data
 	buf[18] = 1 // messageType (CYCLESYNCREADY = 1)
 	buf[19] = 0
@@ -329,26 +337,7 @@ func (c *Connection) buildSynchronizePDU() []byte {
 
 func (c *Connection) buildControlPDU(action uint16) []byte {
 	buf := make([]byte, 26)
-	// Share control header
-	buf[0] = 26 // totalLength
-	buf[1] = 0
-	buf[2] = 0x17 // PDUTYPE_DATAPDU
-	buf[3] = 0x00
-	buf[4] = byte(c.userID)
-	buf[5] = byte(c.userID >> 8)
-	// Share data header
-	buf[6] = 0x66 // ShareID
-	buf[7] = 0x72
-	buf[8] = 0x65
-	buf[9] = 0x64
-	buf[10] = 0 // Pad
-	buf[11] = 1 // StreamID
-	buf[12] = 8 // UncompressedLength (8 bytes: action + grantId + controlId)
-	buf[13] = 0
-	buf[14] = protocol.DataPDUTypeControl // PDUType2
-	buf[15] = 0                           // Compression type
-	buf[16] = 0                           // Compressed length
-	buf[17] = 0
+	c.writeShareDataHeader(buf, 26, 8, protocol.DataPDUTypeControl)
 	// Control data
 	buf[18] = byte(action) // action
 	buf[19] = byte(action >> 8)
@@ -363,26 +352,7 @@ func (c *Connection) buildControlPDU(action uint16) []byte {
 
 func (c *Connection) buildFontMapPDU() []byte {
 	buf := make([]byte, 26)
-	// Share control header
-	buf[0] = 26 // totalLength
-	buf[1] = 0
-	buf[2] = 0x17 // PDUTYPE_DATAPDU
-	buf[3] = 0x00
-	buf[4] = byte(c.userID)
-	buf[5] = byte(c.userID >> 8)
-	// Share data header
-	buf[6] = 0x66 // ShareID
-	buf[7] = 0x72
-	buf[8] = 0x65
-	buf[9] = 0x64
-	buf[10] = 0 // Pad
-	buf[11] = 1 // StreamID
-	buf[12] = 8 // UncompressedLength (8 bytes: font map data)
-	buf[13] = 0
-	buf[14] = protocol.DataPDUTypeFontMap // PDUType2
-	buf[15] = 0                           // Compression type
-	buf[16] = 0                           // Compressed length
-	buf[17] = 0
+	c.writeShareDataHeader(buf, 26, 8, protocol.DataPDUTypeFontMap)
 	// Font map data
 	buf[18] = 0 // numberEntries
 	buf[19] = 0

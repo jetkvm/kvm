@@ -141,15 +141,6 @@ func (l *Logger) updateLogLevelLocked() {
 	l.defaultLogLevel = finalDefaultLogLevel
 }
 
-// getScopeLoggerLevel returns the log level for a scope with proper synchronization.
-// Acquires scopeLevelMutex internally. Callers that already hold the lock
-// must use getScopeLoggerLevelLocked instead.
-func (l *Logger) getScopeLoggerLevel(scope string) zerolog.Level {
-	l.scopeLevelMutex.Lock()
-	defer l.scopeLevelMutex.Unlock()
-	return l.getScopeLoggerLevelLocked(scope)
-}
-
 // newScopeLogger creates a scoped logger.
 // Must be called with scopeLevelMutex held.
 func (l *Logger) newScopeLogger(scope string) zerolog.Logger {

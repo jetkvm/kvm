@@ -323,6 +323,10 @@ func (c *Connection) textToMacroSteps(text []byte, layoutCode string, pressDelay
 	// Convert bytes to string for proper UTF-8 rune iteration
 	textStr := string(text)
 
+	// Shared release key buffer: all-zeros, never mutated after creation.
+	// rpcKeyboardReport only reads the keys, so sharing is safe.
+	releaseKeys := make([]uint8, HidKeyBufferSize)
+
 	for _, char := range textStr {
 		combo, ok := layout[char]
 		if !ok {
@@ -345,7 +349,7 @@ func (c *Connection) textToMacroSteps(text []byte, layoutCode string, pressDelay
 			modifier |= hidModAltRight
 		}
 
-		// Key press step
+		// Key press step (per-iteration: each has a different keys[0])
 		keys := make([]uint8, HidKeyBufferSize)
 		keys[0] = hidKey
 		steps = append(steps, KeyboardMacroStep{
@@ -354,8 +358,7 @@ func (c *Connection) textToMacroSteps(text []byte, layoutCode string, pressDelay
 			Delay:    uint16(pressDelayMs),
 		})
 
-		// Key release step (all zeros)
-		releaseKeys := make([]uint8, HidKeyBufferSize)
+		// Key release step (shared all-zeros buffer)
 		steps = append(steps, KeyboardMacroStep{
 			Modifier: 0,
 			Keys:     releaseKeys,

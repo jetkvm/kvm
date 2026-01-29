@@ -275,9 +275,9 @@ func setDisplayBrightness(brightness int, reason string) error {
 	return nil
 }
 
-// tick_displayDim() is called when when dim ticker expires, it simply reduces the brightness
+// tickDisplayDim is called when the dim ticker expires, it simply reduces the brightness
 // of the display by half of the max brightness.
-func tick_displayDim() {
+func tickDisplayDim() {
 	err := setDisplayBrightness(config.DisplayMaxBrightness/2, "tick_display_dim")
 	if err != nil {
 		displayLogger.Warn().Err(err).Msg("failed to dim display")
@@ -288,9 +288,9 @@ func tick_displayDim() {
 	backlightState = 1
 }
 
-// tick_displayOff() is called when the off ticker expires, it turns off the display
+// tickDisplayOff is called when the off ticker expires, it turns off the display
 // by setting the brightness to zero.
-func tick_displayOff() {
+func tickDisplayOff() {
 	err := setDisplayBrightness(0, "tick_display_off")
 	if err != nil {
 		displayLogger.Warn().Err(err).Msg("failed to turn off display")
@@ -364,7 +364,7 @@ func startBacklightTickers() {
 				}
 			}()
 			for range dimTicker.C {
-				tick_displayDim()
+				tickDisplayDim()
 			}
 		}()
 	}
@@ -380,7 +380,7 @@ func startBacklightTickers() {
 				}
 			}()
 			for range offTicker.C {
-				tick_displayOff()
+				tickDisplayOff()
 			}
 		}()
 	}

@@ -20,14 +20,14 @@ const (
 
 func triggerVideoStateUpdate() {
 	go func() {
-		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
+		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession.Load())
 	}()
 
 	nativeLogger.Info().Interface("state", lastVideoState).Msg("video state updated")
 }
 
 func rpcGetVideoState() (native.VideoState, error) {
-	notifyFailsafeMode(currentSession)
+	notifyFailsafeMode(currentSession.Load())
 	return lastVideoState, nil
 }
 
