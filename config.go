@@ -480,20 +480,32 @@ func saveConfig(path string) error {
 		config.KeyboardLayout = "en-US"
 	}
 
-	file, err := os.Create(path)
+	// Write to a temp file first, then atomically rename to prevent
+	// config truncation if encoding fails mid-write.
+	tmpPath := path + ".tmp"
+	file, err := os.Create(tmpPath)
 	if err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
+		return fmt.Errorf("failed to create temp config file: %w", err)
 	}
-	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(config); err != nil {
+		file.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("failed to encode config: %w", err)
 	}
 
 	if err := file.Sync(); err != nil {
-		return fmt.Errorf("failed to wite config: %w", err)
+		file.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to sync config: %w", err)
+	}
+	file.Close()
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to rename config file: %w", err)
 	}
 
 	logger.Info().Str("path", path).Msg("config saved")

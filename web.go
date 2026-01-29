@@ -390,10 +390,14 @@ func handleWebRTCSignalWsMessages(
 
 	if isCloudConnection {
 		// create a channel to receive the disconnect event, once received, we cancelRun
+		cloudDisconnectLock.Lock()
 		cloudDisconnectChan = make(chan error)
+		cloudDisconnectLock.Unlock()
 		defer func() {
+			cloudDisconnectLock.Lock()
 			close(cloudDisconnectChan)
 			cloudDisconnectChan = nil
+			cloudDisconnectLock.Unlock()
 		}()
 		go func() {
 			for err := range cloudDisconnectChan {
