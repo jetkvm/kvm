@@ -12,7 +12,7 @@ import (
 // This allows the server to be decoupled from the main kvm package.
 type Dependencies struct {
 	// Logger provides structured logging.
-	Logger zerolog.Logger
+	Logger *zerolog.Logger
 
 	// Config provides access to RDP configuration.
 	Config ConfigProvider

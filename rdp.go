@@ -33,7 +33,7 @@ func GetRDPServer() *rdp.Server {
 		tlsEnabled := config.TLSMode == "self-signed" || config.TLSMode == "custom"
 
 		deps := rdp.Dependencies{
-			Logger:         *rdpLogger,
+			Logger:         rdpLogger,
 			Config:         &rdpConfigAdapter{},
 			HID:            &rdpHIDAdapter{},
 			Video:          &rdpVideoAdapter{},

@@ -285,20 +285,22 @@ func stopAudio() {
 	stopInputAudio()
 }
 
-func onWebRTCConnect() {
+// incrementConnectionsAndEnsureAudio increments the active connection counter,
+// fixes any corruption, and ensures the audio relay is running.
+func incrementConnectionsAndEnsureAudio() {
 	count := activeConnections.Add(1)
-
-	// Fix corrupted counter from previous sessions
 	if count <= 0 {
 		activeConnections.Store(1)
 	}
-
-	// Always ensure audio is started - use relay existence as source of truth
 	if outputRelay.Load() == nil {
 		if err := startAudioForce(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start audio")
+			audioLogger.Error().Err(err).Msg("failed to start audio")
 		}
 	}
+}
+
+func onWebRTCConnect() {
+	incrementConnectionsAndEnsureAudio()
 }
 
 func onWebRTCDisconnect() {
@@ -335,20 +337,8 @@ func onWebRTCDisconnect() {
 // This allows audio capture to start for RDP even without WebRTC.
 func OnRDPAudioConnect() {
 	rdpAudioInputActive.Store(true)
-	count := activeConnections.Add(1)
-	audioLogger.Debug().Int32("connections", count).Msg("RDP audio connected")
-
-	// Fix corrupted counter from previous sessions
-	if count <= 0 {
-		activeConnections.Store(1)
-	}
-
-	// Always ensure audio is started - use relay existence as source of truth
-	if outputRelay.Load() == nil {
-		if err := startAudioForce(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start audio for RDP")
-		}
-	}
+	incrementConnectionsAndEnsureAudio()
+	audioLogger.Debug().Int32("connections", activeConnections.Load()).Msg("RDP audio connected")
 }
 
 // OnRDPAudioDisconnect is called when an RDP client disconnects audio.
@@ -603,27 +593,33 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 	}
 }
 
-func processInputPacket(opusData []byte) error {
-	// Check if WebRTC audio input is still active - prevents stale buffered data
-	// from claiming ownership after disconnect
-	if !webrtcAudioInputActive.Load() {
-		return nil
+// tryClaimAudioInput checks the activity flag, then tries to claim audio input
+// ownership for the given owner. Returns true if the caller should proceed with
+// writing audio data, false if the packet should be dropped.
+func tryClaimAudioInput(owner AudioInputOwner, isActive func() bool) bool {
+	if !isActive() {
+		return false
 	}
-
-	// First-come-first-served: try to claim ownership
-	owner := GetAudioInputOwner()
-	if owner == AudioInputOwnerNone {
-		if !ClaimAudioInput(AudioInputOwnerWebRTC) {
-			// Someone else claimed it between check and claim
-			return nil
+	current := GetAudioInputOwner()
+	if current == AudioInputOwnerNone {
+		if !ClaimAudioInput(owner) {
+			return false
 		}
-		audioLogger.Info().Msg("audio input: WebRTC claimed ownership")
-		// Drop stale audio when claiming ownership
+		ownerName := "WebRTC"
+		if owner == AudioInputOwnerRDP {
+			ownerName = "RDP"
+		}
+		audioLogger.Info().Msgf("audio input: %s claimed ownership", ownerName)
 		if err := audio.DropPlaybackBuffer(); err != nil {
-			audioLogger.Debug().Err(err).Msg("audio input: failed to drop playback buffer")
+			audioLogger.Warn().Err(err).Msg("audio input: failed to drop playback buffer")
 		}
-	} else if owner != AudioInputOwnerWebRTC {
-		// RDP owns audio input, skip our packets
+		return true
+	}
+	return current == owner
+}
+
+func processInputPacket(opusData []byte) error {
+	if !tryClaimAudioInput(AudioInputOwnerWebRTC, webrtcAudioInputActive.Load) {
 		return nil
 	}
 
@@ -663,26 +659,7 @@ var (
 // This is the hot path for RDP audio input - optimized for minimal overhead.
 // Format: 16-bit signed PCM, mono, 48kHz.
 func WriteInputPCM(pcmData []byte) error {
-	// Check if RDP audio input is still active - prevents stale buffered data
-	// from claiming ownership after disconnect
-	if !rdpAudioInputActive.Load() {
-		return nil
-	}
-
-	// First-come-first-served: check ownership
-	owner := GetAudioInputOwner()
-	if owner == AudioInputOwnerNone {
-		if !ClaimAudioInput(AudioInputOwnerRDP) {
-			// Someone else claimed it between check and claim
-			return nil
-		}
-		audioLogger.Info().Msg("audio input: RDP claimed ownership")
-		// Drop stale audio when claiming ownership
-		if err := audio.DropPlaybackBuffer(); err != nil {
-			audioLogger.Debug().Err(err).Msg("audio input: failed to drop playback buffer")
-		}
-	} else if owner != AudioInputOwnerRDP {
-		// WebRTC owns audio input, skip our packets
+	if !tryClaimAudioInput(AudioInputOwnerRDP, rdpAudioInputActive.Load) {
 		return nil
 	}
 

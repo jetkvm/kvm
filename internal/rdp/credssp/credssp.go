@@ -25,6 +25,8 @@ var (
 	ErrInvalidNTLMMsg    = errors.New("credssp: invalid NTLM message")
 	ErrAuthFailed        = errors.New("credssp: authentication failed")
 	ErrUnexpectedMessage = errors.New("credssp: unexpected message")
+
+	nopLogger = zerolog.Nop()
 )
 
 // NTLM message type constants
@@ -66,7 +68,7 @@ type Handler struct {
 	serverCertDER   []byte    // Full certificate DER (for debugging different formats)
 
 	// For logging
-	logger zerolog.Logger
+	logger *zerolog.Logger
 }
 
 // NewHandler creates a new CredSSP handler.
@@ -75,12 +77,12 @@ type Handler struct {
 func NewHandler(tlsConn TLSConn) *Handler {
 	return &Handler{
 		tlsConn: tlsConn,
-		logger:  zerolog.Nop(), // No-op by default
+		logger:  &nopLogger,
 	}
 }
 
 // SetLogger sets the logger for debug output.
-func (h *Handler) SetLogger(l zerolog.Logger) {
+func (h *Handler) SetLogger(l *zerolog.Logger) {
 	h.logger = l
 }
 
@@ -239,7 +241,7 @@ func (h *Handler) Authenticate() (username string, err error) {
 
 		// Validate NTLMv2 response
 		if !h.ntlmAuth.ValidateResponse(username, domain) {
-			h.logger.Debug().Msgf("CredSSP: NTLM authentication FAILED for user=%s", username)
+			h.logger.Warn().Msgf("CredSSP: NTLM authentication FAILED for user=%s", username)
 			h.sendErrorResponse(STATUS_LOGON_FAILURE)
 			return username, fmt.Errorf("%w: NTLM password validation failed for user=%s", ErrAuthFailed, username)
 		}
@@ -248,7 +250,7 @@ func (h *Handler) Authenticate() (username string, err error) {
 		// Validate username if expected username is configured
 		// Handle UPN format (user@domain) by extracting just the username part
 		if h.expectedUser != "" && !usernameMatches(username, h.expectedUser) {
-			h.logger.Debug().Msgf("CredSSP: username mismatch - expected=%s got=%s", h.expectedUser, username)
+			h.logger.Warn().Msgf("CredSSP: username mismatch - expected=%s got=%s", h.expectedUser, username)
 			h.sendErrorResponse(STATUS_LOGON_FAILURE)
 			return username, fmt.Errorf("%w: username mismatch expected=%s got=%s", ErrAuthFailed, h.expectedUser, username)
 		}
@@ -257,7 +259,7 @@ func (h *Handler) Authenticate() (username string, err error) {
 		// Handle UPN format (user@domain) where the NTLM domain field may be empty
 		// but the domain is embedded in the username
 		if h.expectedDomain != "" && !domainMatches(domain, username, h.expectedDomain) {
-			h.logger.Debug().Msgf("CredSSP: domain mismatch - expected=%s got=%s (username=%s)", h.expectedDomain, domain, username)
+			h.logger.Warn().Msgf("CredSSP: domain mismatch - expected=%s got=%s (username=%s)", h.expectedDomain, domain, username)
 			h.sendErrorResponse(STATUS_LOGON_FAILURE)
 			return username, fmt.Errorf("%w: domain mismatch expected=%s got=%s", ErrAuthFailed, h.expectedDomain, domain)
 		}
@@ -620,7 +622,11 @@ func (h *Handler) buildTSRequest(version int, ntlmToken []byte) ([]byte, error) 
 	if h.clientUsesSPNEGO {
 		// Client uses SPNEGO, wrap our NTLM response in SPNEGO NegTokenResp
 		h.logger.Debug().Msgf("CredSSP: wrapping NTLM token (len=%d) in SPNEGO", len(ntlmToken))
-		responseToken = h.wrapInSPNEGOResp(ntlmToken)
+		var spnegoErr error
+		responseToken, spnegoErr = h.wrapInSPNEGOResp(ntlmToken)
+		if spnegoErr != nil {
+			return nil, fmt.Errorf("wrap SPNEGO: %w", spnegoErr)
+		}
 		h.logger.Debug().Msgf("CredSSP: SPNEGO token len=%d, first 48 bytes: % 02X", len(responseToken), responseToken[:min(48, len(responseToken))])
 	} else {
 		// Client sends raw NTLM, respond with raw NTLM (no SPNEGO wrapping)
@@ -666,7 +672,7 @@ type negTokenResp struct {
 	ResponseToken []byte                `asn1:"explicit,tag:2,optional"`
 }
 
-func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) []byte {
+func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) ([]byte, error) {
 	// Build NegTokenResp structure
 	resp := negTokenResp{
 		NegState:      1, // accept-incomplete
@@ -677,8 +683,7 @@ func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) []byte {
 	// Marshal the NegTokenResp SEQUENCE
 	seqBytes, err := asn1.Marshal(resp)
 	if err != nil {
-		h.logger.Warn().Msgf("CredSSP: failed to marshal NegTokenResp, falling back to raw NTLM: %v", err)
-		return ntlmToken
+		return nil, fmt.Errorf("marshal NegTokenResp: %w", err)
 	}
 
 	// Wrap in NegTokenResp context tag [1] for NegotiationToken CHOICE
@@ -687,7 +692,7 @@ func (h *Handler) wrapInSPNEGOResp(ntlmToken []byte) []byte {
 	writeASN1Length(&result, len(seqBytes))
 	result.Write(seqBytes)
 
-	return result.Bytes()
+	return result.Bytes(), nil
 }
 
 func (h *Handler) buildPubKeyAuth() []byte {

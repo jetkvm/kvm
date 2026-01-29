@@ -29,7 +29,7 @@ type NTLMAuth struct {
 
 	// Derived values
 	sessionKey []byte
-	logger     zerolog.Logger
+	logger     *zerolog.Logger
 
 	// For debugging different public key formats
 	serverCertDER []byte
@@ -40,12 +40,12 @@ func NewNTLMAuth(password string, serverChallenge []byte) *NTLMAuth {
 	return &NTLMAuth{
 		password:        password,
 		serverChallenge: serverChallenge,
-		logger:          zerolog.Nop(),
+		logger:          &nopLogger,
 	}
 }
 
 // SetLogger sets the logger for debug output.
-func (a *NTLMAuth) SetLogger(l zerolog.Logger) {
+func (a *NTLMAuth) SetLogger(l *zerolog.Logger) {
 	a.logger = l
 }
 
@@ -199,11 +199,11 @@ func (a *NTLMAuth) ValidateResponse(username, domain string) bool {
 	// Compute expected NTProofStr
 	// 1. NT hash = MD4(password)
 	ntHash := computeNTHash(a.password)
-	a.logger.Debug().Msgf("NTLM: NT hash=% 02X", ntHash)
+	a.logger.Trace().Msgf("NTLM: NT hash=% 02X", ntHash)
 
 	// 2. NTLMv2 hash = HMAC-MD5(NT hash, uppercase(username) + domain)
 	ntlmv2Hash := computeNTLMv2Hash(ntHash, username, domain)
-	a.logger.Debug().Msgf("NTLM: NTLMv2 hash=% 02X", ntlmv2Hash)
+	a.logger.Trace().Msgf("NTLM: NTLMv2 hash=% 02X", ntlmv2Hash)
 
 	// 3. Expected NTProofStr = HMAC-MD5(NTLMv2 hash, serverChallenge + clientBlob)
 	h := hmac.New(md5.New, ntlmv2Hash)
@@ -227,7 +227,7 @@ func (a *NTLMAuth) ValidateResponse(username, domain string) bool {
 	h.Write(expectedNTProofStr)
 	sessionBaseKey := h.Sum(nil)
 
-	a.logger.Debug().Msgf("NTLM: session base key=% 02X keyExchange=%v", sessionBaseKey, a.keyExchange)
+	a.logger.Trace().Msgf("NTLM: session base key=% 02X keyExchange=%v", sessionBaseKey, a.keyExchange)
 
 	if a.keyExchange && len(a.encryptedSessionKey) == 16 {
 		// Decrypt the encrypted random session key using RC4
@@ -239,7 +239,7 @@ func (a *NTLMAuth) ValidateResponse(username, domain string) bool {
 		}
 		a.sessionKey = make([]byte, 16)
 		cipher.XORKeyStream(a.sessionKey, a.encryptedSessionKey)
-		a.logger.Debug().Msgf("NTLM: decrypted session key=% 02X", a.sessionKey)
+		a.logger.Trace().Msgf("NTLM: decrypted session key=% 02X", a.sessionKey)
 	} else {
 		// No key exchange, session key = session base key
 		a.sessionKey = sessionBaseKey
@@ -274,7 +274,7 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 	sealKeyHash := md5.Sum(sealKeyInput)
 	sealKey := sealKeyHash[:]
 
-	a.logger.Debug().Msgf("VerifyClient: client signKey=% 02X sealKey=% 02X", signKey, sealKey)
+	a.logger.Trace().Msgf("VerifyClient: client signKey=% 02X sealKey=% 02X", signKey, sealKey)
 
 	// Parse NTLM signature: Version(4) || EncryptedChecksum(8) || SeqNum(4) || EncryptedMessage
 	if clientPubKeyAuth[0] != 0x01 || clientPubKeyAuth[1] != 0x00 || clientPubKeyAuth[2] != 0x00 || clientPubKeyAuth[3] != 0x00 {
@@ -291,6 +291,7 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 	// Initialize RC4 with sealing key
 	rc4Cipher, err := rc4.NewCipher(sealKey)
 	if err != nil {
+		a.logger.Warn().Msgf("VerifyClient: RC4 cipher creation failed: %v", err)
 		return nil
 	}
 
@@ -387,13 +388,13 @@ func (a *NTLMAuth) VerifyClientPubKeyAuth(clientPubKeyAuth, serverPublicKey []by
 // The pubKeyAuth binds authentication to the TLS channel's server public key.
 func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte {
 	if len(a.sessionKey) == 0 {
-		a.logger.Debug().Msg("PubKeyAuth: no session key available")
+		a.logger.Warn().Msg("PubKeyAuth: no session key available")
 		return nil
 	}
 
 	a.logger.Debug().Msgf("PubKeyAuth: version=%d nonceLen=%d pubKeyLen=%d", version, len(a.clientNonce), len(serverPublicKey))
-	a.logger.Debug().Msgf("PubKeyAuth: sessionKey=% 02X", a.sessionKey)
-	a.logger.Debug().Msgf("PubKeyAuth: clientNonce=% 02X", a.clientNonce)
+	a.logger.Trace().Msgf("PubKeyAuth: sessionKey=% 02X", a.sessionKey)
+	a.logger.Trace().Msgf("PubKeyAuth: clientNonce=% 02X", a.clientNonce)
 	if len(serverPublicKey) > 32 {
 		a.logger.Debug().Msgf("PubKeyAuth: pubKey first 32 bytes=% 02X", serverPublicKey[:32])
 	}
@@ -451,7 +452,7 @@ func (a *NTLMAuth) ComputePubKeyAuth(serverPublicKey []byte, version int) []byte
 	return wrapped
 }
 
-// ntlmSeal wraps a message with NTLM SEAL (encryption + signature).
+// ntlmSign wraps a message with NTLM SEAL (encryption + signature).
 // Per MS-NLMP 3.4.4.2.1, for Extended Session Security with SEAL:
 // 1. Encrypt message with RC4 (advances RC4 state)
 // 2. Compute HMAC-MD5 over SeqNum || PLAINTEXT Message (NOT encrypted!)
@@ -469,7 +470,7 @@ func (a *NTLMAuth) ntlmSign(message []byte, seqNum uint32) []byte {
 	sealKeyHash := md5.Sum(sealKeyInput)
 	sealKey := sealKeyHash[:]
 
-	a.logger.Debug().Msgf("PubKeyAuth: signKey=% 02X sealKey=% 02X", signKey, sealKey)
+	a.logger.Trace().Msgf("PubKeyAuth: signKey=% 02X sealKey=% 02X", signKey, sealKey)
 
 	// SeqNum in little-endian
 	seqNumBytes := make([]byte, 4)
@@ -481,8 +482,8 @@ func (a *NTLMAuth) ntlmSign(message []byte, seqNum uint32) []byte {
 	// Step 1: Initialize RC4 with sealing key
 	rc4Cipher, err := rc4.NewCipher(sealKey)
 	if err != nil {
-		a.logger.Debug().Msgf("PubKeyAuth: RC4 cipher creation failed: %v", err)
-		return message
+		a.logger.Warn().Msgf("PubKeyAuth: RC4 cipher creation failed: %v", err)
+		return nil
 	}
 
 	// Step 2: Encrypt the message with RC4 (advances RC4 state)

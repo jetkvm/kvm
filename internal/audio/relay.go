@@ -27,9 +27,10 @@ type OutputRelay struct {
 	sample     media.Sample
 	stopped    chan struct{}
 
-	// Callback for raw PCM data (for RDP audio)
-	pcmCallback       PCMCallback
-	pcmEnabledCheck   PCMEnabledCheck // Check before calling GetLastPCM
+	// Callback for raw PCM data (for RDP audio).
+	// Must be set before Start(); read without synchronization by relayLoop.
+	pcmCallback     PCMCallback
+	pcmEnabledCheck PCMEnabledCheck // Check before calling GetLastPCM
 
 	framesRelayed atomic.Uint32
 	framesDropped atomic.Uint32
@@ -61,12 +62,14 @@ func (r *OutputRelay) SetAudioTrack(track *webrtc.TrackLocalStaticSample) {
 
 // SetPCMCallback sets a callback to receive raw PCM audio data.
 // This is called for each audio frame with 16-bit stereo 48kHz PCM.
+// Must be called before Start(); not safe for concurrent use with relayLoop.
 func (r *OutputRelay) SetPCMCallback(cb PCMCallback) {
 	r.pcmCallback = cb
 }
 
 // SetPCMEnabledCheck sets a function to check if PCM callback should be called.
 // This avoids the GetLastPCM CGO overhead when no RDP audio subscribers exist.
+// Must be called before Start(); not safe for concurrent use with relayLoop.
 func (r *OutputRelay) SetPCMEnabledCheck(check PCMEnabledCheck) {
 	r.pcmEnabledCheck = check
 }
