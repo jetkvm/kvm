@@ -3,32 +3,42 @@ package kvm
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/native"
 )
 
 var (
-	lastVideoState       native.VideoState
+	lastVideoState       atomic.Pointer[native.VideoState]
 	videoSleepModeCtx    context.Context
 	videoSleepModeCancel context.CancelFunc
 )
+
+// getLastVideoState returns the last known video state, never nil.
+func getLastVideoState() *native.VideoState {
+	if s := lastVideoState.Load(); s != nil {
+		return s
+	}
+	return &native.VideoState{}
+}
 
 const (
 	defaultVideoSleepModeDuration = 1 * time.Minute
 )
 
 func triggerVideoStateUpdate() {
+	state := getLastVideoState()
 	go func() {
-		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession.Load())
+		writeJSONRPCEvent("videoInputState", state, currentSession.Load())
 	}()
 
-	nativeLogger.Info().Interface("state", lastVideoState).Msg("video state updated")
+	nativeLogger.Info().Interface("state", state).Msg("video state updated")
 }
 
 func rpcGetVideoState() (native.VideoState, error) {
 	notifyFailsafeMode(currentSession.Load())
-	return lastVideoState, nil
+	return *getLastVideoState(), nil
 }
 
 type rpcVideoSleepModeResponse struct {
@@ -108,6 +118,7 @@ func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {
 		case <-timer.C:
 			if getActiveSessions() > 0 {
 				nativeLogger.Warn().Msg("not going to enter HDMI sleep mode because there are active sessions")
+				timer.Reset(duration)
 				continue
 			}
 

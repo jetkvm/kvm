@@ -82,8 +82,8 @@ type tileRect struct {
 // Input: YUYV packed (2 pixels in 4 bytes: Y0 U0 Y1 V0)
 // Output: BGRX (4 bytes per pixel: B G R X)
 // This is optimized for speed with integer arithmetic (no floats).
-func convertYUV422ToBGRX(yuv []byte, width, height int) []byte {
-	// Get pooled buffer
+func convertYUV422ToBGRX(yuv []byte, width, height int) ([]byte, *[]byte) {
+	// Get pooled buffer (return the pool pointer for zero-alloc release)
 	bufPtr := bgrxBufferPool.Get().(*[]byte)
 	bgrx := *bufPtr
 
@@ -186,13 +186,13 @@ func convertYUV422ToBGRX(yuv []byte, width, height int) []byte {
 		}
 	}
 
-	return bgrx[:bgrxSize]
+	return bgrx[:bgrxSize], bufPtr
 }
 
 // releaseBGRXBuffer returns a BGRX buffer to the pool.
-// Must be called after the buffer is no longer needed.
-func releaseBGRXBuffer(buf []byte) {
-	bgrxBufferPool.Put(&buf)
+// Must be called with the pool pointer returned by convertYUV422ToBGRX.
+func releaseBGRXBuffer(bufPtr *[]byte) {
+	bgrxBufferPool.Put(bufPtr)
 }
 
 // SendBitmapUpdate sends a bitmap update PDU to the client.

@@ -8,18 +8,19 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/common/version"
 )
 
-var (
-	backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
-)
+// backlightState: 0 = NORMAL, 1 = DIMMED, 2 = OFF
+var backlightState atomic.Int32
 
 var (
-	dimTicker *time.Ticker
-	offTicker *time.Ticker
+	dimTicker       *time.Ticker
+	offTicker       *time.Ticker
+	backlightCancel context.CancelFunc // signals backlight goroutines to exit
 )
 
 const (
@@ -40,7 +41,7 @@ func switchToMainScreen() {
 }
 
 func updateDisplayUsbState() {
-	if usbState == "configured" {
+	if getUsbState() == "configured" {
 		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
 		_, _ = nativeInstance.UIObjAddState("usb_status_label", "LV_STATE_CHECKED")
 	} else {
@@ -68,14 +69,14 @@ func updateDisplay() {
 
 	updateDisplayUsbState()
 
-	if lastVideoState.Ready {
+	if getLastVideoState().Ready {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Connected")
 		_, _ = nativeInstance.UIObjAddState("hdmi_status_label", "LV_STATE_CHECKED")
 	} else {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Disconnected")
 		_, _ = nativeInstance.UIObjClearState("hdmi_status_label", "LV_STATE_CHECKED")
 	}
-	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
+	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", getActiveSessions()))
 
 	if networkManager != nil && networkManager.IsUp() {
 		nativeInstance.UISetVar("main_screen", "home_screen")
@@ -85,13 +86,14 @@ func updateDisplay() {
 		nativeInstance.SwitchToScreenIf("no_network_screen", []string{"home_screen", "boot_screen"})
 	}
 
-	if cloudConnectionState == CloudConnectionStateNotConfigured {
+	connState := getCloudConnectionState()
+	if connState == CloudConnectionStateNotConfigured {
 		_, _ = nativeInstance.UIObjHide("cloud_status_icon")
 	} else {
 		_, _ = nativeInstance.UIObjShow("cloud_status_icon")
 	}
 
-	switch cloudConnectionState {
+	switch connState {
 	case CloudConnectionStateDisconnected:
 		_, _ = nativeInstance.UIObjSetImageSrc("cloud_status_icon", "cloud_disconnected")
 		stopCloudBlink()
@@ -116,25 +118,31 @@ var (
 )
 
 func doCloudBlink(ctx context.Context) {
+	blinkTimer := time.NewTimer(cloudBlinkDuration)
+	blinkTimer.Stop()
+	defer blinkTimer.Stop()
+
 	for range cloudBlinkTicker.C {
-		if cloudConnectionState != CloudConnectionStateConnecting {
+		if getCloudConnectionState() != CloudConnectionStateConnecting {
 			continue
 		}
 
 		_, _ = nativeInstance.UIObjFadeOut("ui_Home_Header_Cloud_Status_Icon", uint32(cloudBlinkDuration.Milliseconds()))
 
+		blinkTimer.Reset(cloudBlinkDuration)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(cloudBlinkDuration):
+		case <-blinkTimer.C:
 		}
 
 		_, _ = nativeInstance.UIObjFadeIn("ui_Home_Header_Cloud_Status_Icon", uint32(cloudBlinkDuration.Milliseconds()))
 
+		blinkTimer.Reset(cloudBlinkDuration)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(cloudBlinkDuration):
+		case <-blinkTimer.C:
 		}
 	}
 }
@@ -175,7 +183,7 @@ func stopCloudBlink() {
 }
 
 var (
-	displayInited     = false
+	displayInited     atomic.Bool
 	displayUpdateLock = sync.Mutex{}
 	waitDisplayUpdate = sync.Mutex{}
 )
@@ -184,7 +192,7 @@ func requestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 	displayUpdateLock.Lock()
 	defer displayUpdateLock.Unlock()
 
-	if !displayInited {
+	if !displayInited.Load() {
 		displayLogger.Info().Msg("display not inited, skipping updates")
 		return
 	}
@@ -285,7 +293,7 @@ func tickDisplayDim() {
 
 	dimTicker.Stop()
 
-	backlightState = 1
+	backlightState.Store(1)
 }
 
 // tickDisplayOff is called when the off ticker expires, it turns off the display
@@ -298,14 +306,14 @@ func tickDisplayOff() {
 
 	offTicker.Stop()
 
-	backlightState = 2
+	backlightState.Store(2)
 }
 
 // wakeDisplay sets the display brightness back to config.DisplayMaxBrightness and stores the time the display
 // last woke, ready for displayTimeoutTick to put the display back in the dim/off states.
 // Set force to true to skip the backlight state check, this should be done if altering the tickers.
 func wakeDisplay(force bool, reason string) {
-	if backlightState == 0 && !force {
+	if backlightState.Load() == 0 && !force {
 		return
 	}
 
@@ -330,7 +338,7 @@ func wakeDisplay(force bool, reason string) {
 	if config.DisplayOffAfterSec != 0 && offTicker != nil {
 		offTicker.Reset(time.Duration(config.DisplayOffAfterSec) * time.Second)
 	}
-	backlightState = 0
+	backlightState.Store(0)
 }
 
 // startBacklightTickers starts the two tickers for dimming and switching off the display
@@ -344,14 +352,21 @@ func startBacklightTickers() {
 		return
 	}
 
-	// Stop existing tickers to prevent multiple active instances on repeated calls
+	// Cancel previous goroutines and stop tickers before creating new ones.
+	// Stopping a ticker does NOT close its channel, so we use a context to
+	// signal the goroutines to exit.
+	if backlightCancel != nil {
+		backlightCancel()
+	}
 	if dimTicker != nil {
 		dimTicker.Stop()
 	}
-
 	if offTicker != nil {
 		offTicker.Stop()
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	backlightCancel = cancel
 
 	if config.DisplayDimAfterSec != 0 {
 		displayLogger.Info().Msg("dim_ticker has started")
@@ -363,8 +378,13 @@ func startBacklightTickers() {
 					displayLogger.Error().Interface("panic", r).Msg("panic in dim ticker")
 				}
 			}()
-			for range dimTicker.C {
-				tickDisplayDim()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-dimTicker.C:
+					tickDisplayDim()
+				}
 			}
 		}()
 	}
@@ -379,8 +399,13 @@ func startBacklightTickers() {
 					displayLogger.Error().Interface("panic", r).Msg("panic in off ticker")
 				}
 			}()
-			for range offTicker.C {
-				tickDisplayOff()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-offTicker.C:
+					tickDisplayOff()
+				}
 			}
 		}()
 	}
@@ -397,7 +422,7 @@ func initDisplay() {
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
 		updateDisplayUsbState()
-		displayInited = true
+		displayInited.Store(true)
 		displayLogger.Info().Msg("display inited")
 		startBacklightTickers()
 		requestDisplayUpdate(true, "init_display")

@@ -96,16 +96,14 @@ func (c *Connection) startBitmapStreaming() {
 				}
 
 				var bgrxData []byte
-				var needsPoolRelease bool
+				var bgrxPoolPtr *[]byte // non-nil only for software-converted buffers
 
 				if frame.Format == RGBFrameFormatBGRX {
 					// RGA hardware already converted to BGRX - use directly
 					bgrxData = frame.Data
-					needsPoolRelease = false
 				} else {
 					// Software fallback: convert YUV422 YUYV to BGRX
-					bgrxData = convertYUV422ToBGRX(frame.Data, int(frame.Width), int(frame.Height))
-					needsPoolRelease = true
+					bgrxData, bgrxPoolPtr = convertYUV422ToBGRX(frame.Data, int(frame.Width), int(frame.Height))
 				}
 
 				if err := c.SendRGBBitmapUpdate(bgrxData, int(frame.Width), int(frame.Height)); err != nil {
@@ -120,8 +118,8 @@ func (c *Connection) startBitmapStreaming() {
 					}
 				}
 				// Return buffer to pool only if we allocated it (software conversion)
-				if needsPoolRelease {
-					releaseBGRXBuffer(bgrxData)
+				if bgrxPoolPtr != nil {
+					releaseBGRXBuffer(bgrxPoolPtr)
 				}
 				// Release the native frame buffer back to the pool
 				frame.Release()

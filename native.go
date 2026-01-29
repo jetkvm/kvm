@@ -39,7 +39,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			configureDisplayOnNativeRestart()
 		},
 		OnVideoStateChange: func(state native.VideoState) {
-			lastVideoState = state
+			lastVideoState.Store(&state)
 			triggerVideoStateUpdate()
 			requestDisplayUpdate(true, "video_state_changed")
 

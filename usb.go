@@ -101,18 +101,25 @@ var (
 	usbStateLock sync.Mutex
 )
 
+func getUsbState() string {
+	usbStateLock.Lock()
+	defer usbStateLock.Unlock()
+	return usbState
+}
+
 func rpcGetUSBState() (state string) {
 	return gadget.GetUsbState()
 }
 
 func triggerUSBStateUpdate() {
+	state := getUsbState()
 	go func() {
 		s := currentSession.Load()
 		if s == nil {
 			usbLogger.Info().Msg("No active RPC session, skipping USB state update")
 			return
 		}
-		writeJSONRPCEvent("usbState", usbState, s)
+		writeJSONRPCEvent("usbState", state, s)
 	}()
 }
 

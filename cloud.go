@@ -156,6 +156,12 @@ var (
 	cloudDisconnectLock = &sync.Mutex{}
 )
 
+func getCloudConnectionState() CloudConnectionState {
+	cloudConnectionStateLock.Lock()
+	defer cloudConnectionStateLock.Unlock()
+	return cloudConnectionState
+}
+
 func setCloudConnectionState(state CloudConnectionState) {
 	cloudConnectionStateLock.Lock()
 	defer cloudConnectionStateLock.Unlock()
@@ -476,7 +482,6 @@ func handleSessionRequest(
 	}
 
 	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
-	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
 
 	// Cancel any ongoing keyboard macro when session changes
 	cancelKeyboardMacro()

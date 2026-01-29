@@ -281,7 +281,8 @@ func (a *rdpHIDAdapter) CancelKeyboardMacro() {
 type rdpVideoAdapter struct{}
 
 func (a *rdpVideoAdapter) GetResolution() (width, height uint16) {
-	w, h := lastVideoState.Width, lastVideoState.Height
+	vs := getLastVideoState()
+	w, h := vs.Width, vs.Height
 	if w > 0 && h > 0 {
 		return uint16(w), uint16(h)
 	}
