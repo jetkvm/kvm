@@ -58,6 +58,10 @@ export default function SettingsAccessIndexRoute() {
   const [tlsCert, setTlsCert] = useState<string>("");
   const [tlsKey, setTlsKey] = useState<string>("");
 
+  // Hardware RSA state
+  const [hardwareRSAMode, setHardwareRSAMode] = useState<string>("openssl");
+  const [pendingHardwareRSA, setPendingHardwareRSA] = useState<string | null>(null);
+
   const getCloudState = useCallback(() => {
     send("getCloudState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
@@ -193,6 +197,26 @@ export default function SettingsAccessIndexRoute() {
     updateTlsState(tlsMode, tlsCert, tlsKey);
   };
 
+  // Hardware RSA handler
+  const handleHardwareRSAChange = useCallback(
+    (mode: string) => {
+      setPendingHardwareRSA(mode);
+      send("setHardwareRSAMode", { mode }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(
+            m.access_hardware_rsa_error({ error: resp.error.data || m.unknown_error() }),
+          );
+          setPendingHardwareRSA(null);
+          return;
+        }
+        notifications.success(m.access_hardware_rsa_updated());
+        setHardwareRSAMode(mode);
+        setPendingHardwareRSA(null);
+      });
+    },
+    [send],
+  );
+
   // Fetch device ID and cloud state on component mount
   useEffect(() => {
     getCloudState();
@@ -201,6 +225,13 @@ export default function SettingsAccessIndexRoute() {
     send("getDeviceID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       setDeviceId(resp.result as string);
+    });
+
+    // Load hardware RSA state
+    send("getHardwareRSAState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const state = resp.result as { mode: string };
+      setHardwareRSAMode(state.mode);
     });
   }, [send, getCloudState, getTLSState]);
 
@@ -264,6 +295,24 @@ export default function SettingsAccessIndexRoute() {
                     />
                   </div>
                 </NestedSettingsGroup>
+              )}
+
+              {tlsMode !== "disabled" && (
+                <SettingsItem
+                  title={m.access_hardware_rsa_title()}
+                  description={m.access_hardware_rsa_description()}
+                >
+                  <SelectMenuBasic
+                    size="SM"
+                    options={[
+                      { value: "openssl", label: m.access_hardware_rsa_mode_openssl() },
+                      { value: "disabled", label: m.access_hardware_rsa_mode_disabled() },
+                    ]}
+                    value={pendingHardwareRSA ?? hardwareRSAMode}
+                    onChange={e => handleHardwareRSAChange(e.target.value)}
+                    disabled={pendingHardwareRSA !== null}
+                  />
+                </SettingsItem>
               )}
 
               <SettingsItem

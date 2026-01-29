@@ -147,7 +147,11 @@ import (
 	"runtime"
 	"sync"
 	"unsafe"
+
+	"github.com/jetkvm/kvm/internal/logging"
 )
+
+var rsaSignerLogger = logging.GetSubsystemLogger("crypto.tls")
 
 // OpenSSL NID values for hash algorithms.
 // These are stable across OpenSSL versions.
@@ -347,27 +351,41 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// WrapRSAKey wraps an RSA private key with a hardware-accelerated signer.
-// It tries in order: Rockchip PKA hardware, then OpenSSL.
-// Returns the wrapped signer and nil error on success.
-// Returns the original key and an error if wrapping fails.
-// The caller can use the original key as fallback if desired.
+// hardwareRSAMode controls which RSA signing backend to use.
+// Options: "openssl" (OpenSSL optimized assembly), "disabled" (Go crypto)
+var hardwareRSAMode = "openssl"
+
+// SetHardwareRSAMode sets the RSA acceleration mode.
+func SetHardwareRSAMode(mode string) {
+	hardwareRSAMode = mode
+	rsaSignerLogger.Debug().Str("mode", mode).Msg("hardware RSA mode configured")
+}
+
+// GetHardwareRSAMode returns the current RSA acceleration mode.
+func GetHardwareRSAMode() string {
+	return hardwareRSAMode
+}
+
+// GetSignerName returns a human-readable name for the signer backend.
+func GetSignerName(key any) string {
+	if _, ok := key.(*OpenSSLRSASigner); ok {
+		return "OpenSSL"
+	}
+	return "Go crypto"
+}
+
+// WrapRSAKey wraps an RSA private key with an OpenSSL-accelerated signer.
+// When mode is "disabled", returns the original key unchanged.
 func WrapRSAKey(key crypto.PrivateKey) (crypto.PrivateKey, error) {
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
-		return key, nil // Not RSA, return as-is (not an error)
+		return key, nil
 	}
 
-	// Try Rockchip PKA hardware first (fastest, dedicated RSA accelerator)
-	if PKAAvailable() {
-		pkaSigner, err := NewPKARSASigner(rsaKey)
-		if err == nil {
-			return pkaSigner, nil
-		}
-		// PKA failed, fall through to OpenSSL
+	if hardwareRSAMode == "disabled" {
+		return key, nil
 	}
 
-	// Fall back to OpenSSL (optimized assembly, but software)
 	keyDER := x509.MarshalPKCS1PrivateKey(rsaKey)
 	keyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
@@ -376,8 +394,11 @@ func WrapRSAKey(key crypto.PrivateKey) (crypto.PrivateKey, error) {
 
 	signer, err := NewOpenSSLRSASigner(keyPEM)
 	if err != nil {
-		return key, fmt.Errorf("RSA hardware acceleration unavailable: %w", err)
+		return key, fmt.Errorf("OpenSSL RSA acceleration unavailable: %w", err)
 	}
 
+	rsaSignerLogger.Debug().
+		Int("keyBits", rsaKey.N.BitLen()).
+		Msg("using OpenSSL RSA acceleration")
 	return signer, nil
 }

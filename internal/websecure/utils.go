@@ -13,6 +13,12 @@ import (
 	"os"
 )
 
+// rsaKeyProvider is implemented by hardware-accelerated RSA signers
+// that wrap an underlying RSA private key.
+type rsaKeyProvider interface {
+	RSAPrivateKey() *rsa.PrivateKey
+}
+
 var serialNumberLimit = new(big.Int).Lsh(big.NewInt(1), 4096)
 
 func withSecretFile(filename string, f func(*os.File) error) error {
@@ -27,7 +33,14 @@ func withSecretFile(filename string, f func(*os.File) error) error {
 
 func keyToFile(cert *tls.Certificate, filename string) error {
 	var keyBlock pem.Block
-	switch k := cert.PrivateKey.(type) {
+
+	// Extract the underlying RSA key from hardware-accelerated signers
+	privateKey := cert.PrivateKey
+	if provider, ok := privateKey.(rsaKeyProvider); ok {
+		privateKey = provider.RSAPrivateKey()
+	}
+
+	switch k := privateKey.(type) {
 	case *rsa.PrivateKey:
 		keyBlock = pem.Block{
 			Type:  "RSA PRIVATE KEY",

@@ -138,7 +138,7 @@ static ENGINE* try_load_engine(const char* engine_id) {
     if (!ENGINE_set_default_digests(e)) {
         if (openssl_log_level <= 1) fprintf(stderr, "INFO: OpenSSL crypto/tls: Engine '%s' set_default_digests failed\n", engine_id);
     }
-    // Try to enable RSA acceleration if available (may fail if PKA not exposed)
+    // Try to enable RSA acceleration if available
     ENGINE_set_default_RSA(e);
     // Try to enable EC acceleration if available
     ENGINE_set_default_EC(e);
@@ -499,7 +499,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"runtime"
 	"sync"
 	"time"
@@ -514,51 +513,8 @@ var initOnce sync.Once
 
 func initImpl() {
 	initOnce.Do(func() {
-		// Try to load PKA kernel module for hardware RSA acceleration
-		// This is optional - if the module doesn't exist or fails to load,
-		// we fall back to OpenSSL software RSA.
-		tryLoadPKAModule()
-
 		C.openssl_init()
 	})
-}
-
-// tryLoadPKAModule attempts to load the rk_pka_uapi kernel module.
-// This enables hardware RSA acceleration via /dev/rk_pka.
-// Fails silently if the module doesn't exist or is already loaded.
-func tryLoadPKAModule() {
-	// Check if device already exists (module already loaded or built-in)
-	if _, err := os.Stat("/dev/rk_pka"); err == nil {
-		tlsLogger.Debug().Msg("PKA device already available")
-		return
-	}
-
-	// Try standard module locations
-	modulePaths := []string{
-		"/oem/usr/ko/rk_pka_uapi.ko",
-		"/lib/modules/rk_pka_uapi.ko",
-	}
-
-	for _, path := range modulePaths {
-		if _, err := os.Stat(path); err == nil {
-			// Module file exists, try to load it
-			tlsLogger.Debug().Str("path", path).Msg("attempting to load PKA module")
-			cmd := exec.Command("insmod", path)
-			if err := cmd.Run(); err == nil {
-				tlsLogger.Info().Str("path", path).Msg("PKA module loaded successfully")
-				return
-			}
-			tlsLogger.Debug().Str("path", path).Err(err).Msg("failed to load PKA module")
-			// insmod failed - might be already loaded or incompatible, continue
-		}
-	}
-
-	// Also try modprobe (if module is in standard location)
-	cmd := exec.Command("modprobe", "rk_pka_uapi")
-	if err := cmd.Run(); err == nil {
-		tlsLogger.Info().Msg("PKA module loaded via modprobe")
-	}
-	// Ignore errors - module may not exist
 }
 
 // SetCLogLevel sets the log level for OpenSSL C code.

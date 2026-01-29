@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync"
 
+	hwcrypto "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/websecure"
 )
 
@@ -38,6 +39,12 @@ func initCertStore() {
 		websecureLogger.Warn().Msg("TLS store already initialized, it should not be initialized again")
 		return
 	}
+
+	// Configure hardware RSA acceleration mode from config
+	if config.HardwareRSA != "" {
+		hwcrypto.SetHardwareRSAMode(config.HardwareRSA)
+	}
+
 	certStore = websecure.NewCertStore(tlsStorePath, websecureLogger)
 	certStore.LoadCertificates()
 
@@ -219,4 +226,40 @@ func RunWebSecureServer() {
 		}
 		go runWebSecureServer()
 	}
+}
+
+// HardwareRSAState represents the RSA acceleration state for the UI.
+type HardwareRSAState struct {
+	Mode           string   `json:"mode"`           // Current mode: "openssl", "disabled"
+	AvailableModes []string `json:"availableModes"` // Available mode options
+}
+
+// rpcGetHardwareRSAState returns the current RSA acceleration state.
+func rpcGetHardwareRSAState() (HardwareRSAState, error) {
+	mode := config.HardwareRSA
+	if mode == "" {
+		mode = "openssl"
+	}
+
+	return HardwareRSAState{
+		Mode:           mode,
+		AvailableModes: []string{"openssl", "disabled"},
+	}, nil
+}
+
+// rpcSetHardwareRSAMode sets the RSA acceleration mode.
+func rpcSetHardwareRSAMode(mode string) error {
+	if mode != "openssl" && mode != "disabled" {
+		return fmt.Errorf("invalid mode: %s (must be openssl or disabled)", mode)
+	}
+
+	config.HardwareRSA = mode
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	hwcrypto.SetHardwareRSAMode(mode)
+
+	websecureLogger.Info().Str("mode", mode).Msg("RSA acceleration mode changed")
+	return nil
 }

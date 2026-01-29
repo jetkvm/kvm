@@ -163,6 +163,7 @@ export default function SettingsAdvancedRoute() {
   const [nativeModeState, setNativeModeState] = useState<NativeModeState | null>(null);
   const [pendingNativeMode, setPendingNativeMode] = useState<string | null>(null);
 
+
   // Parse current overrides when state changes
   const currentOverrides = useMemo(() => {
     return buildOverrides(logGlobalLevel || null, logSubsystemOverrides);
@@ -210,6 +211,7 @@ export default function SettingsAdvancedRoute() {
       if ("error" in resp) return;
       setNativeModeState(resp.result as NativeModeState);
     });
+
   }, [send, setDeveloperMode]);
 
   const getUsbEmulationState = useCallback(() => {
@@ -491,6 +493,7 @@ export default function SettingsAdvancedRoute() {
     },
     [send],
   );
+
 
   return (
     <div className="space-y-4">

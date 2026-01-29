@@ -1491,6 +1491,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"getLogLevelState": {Func: rpcGetLogLevelState},
 	"setLogLevel":      {Func: rpcSetLogLevel, Params: []string{"params"}},
 
+	// Hardware RSA acceleration handlers
+	"getHardwareRSAState": {Func: rpcGetHardwareRSAState},
+	"setHardwareRSAMode":  {Func: rpcSetHardwareRSAMode, Params: []string{"mode"}},
+
 	// Native mode handlers
 	"getNativeMode": {Func: rpcGetNativeMode},
 	"setNativeMode": {Func: rpcSetNativeMode, Params: []string{"mode"}},
