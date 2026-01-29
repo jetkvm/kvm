@@ -99,14 +99,18 @@ func (s *Server) Start() error {
 
 // requestJPEGEncoder increments the JPEG client count and starts the encoder if needed.
 // Returns an error if the encoder fails to start or is in cooldown due to repeated failures.
+//
+// Callbacks (OnVideoNeeded/OnVideoReleased) are invoked outside the mutex because they
+// call blocking native C functions (VideoStart/VideoStop) that can hold native locks.
+// Holding s.mu during those calls would deadlock the accept loop and video state handler.
 func (s *Server) requestJPEGEncoder() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	// Circuit breaker: check if we're in cooldown after repeated failures
 	if s.jpegEncoderFailures >= jpegEncoderMaxFailures {
 		if time.Now().Before(s.jpegEncoderCooldown) {
 			remaining := time.Until(s.jpegEncoderCooldown).Round(time.Second)
+			s.mu.Unlock()
 			return fmt.Errorf("JPEG encoder in cooldown after %d failures (retry in %v)", s.jpegEncoderFailures, remaining)
 		}
 		// Cooldown expired, reset failures and try again
@@ -117,45 +121,66 @@ func (s *Server) requestJPEGEncoder() error {
 	s.jpegClientCount++
 	s.deps.Logger.Debug().Int32("jpegClients", s.jpegClientCount).Msg("client requesting JPEG encoder")
 
-	if !s.jpegEncoderOn {
-		// Notify the kvm package that VNC needs the video stream.
-		// This must happen BEFORE JpegStart so the native video capture
-		// pipeline is running when the JPEG encoder starts producing frames.
-		if s.deps.OnVideoNeeded != nil {
-			s.deps.OnVideoNeeded()
-		}
-
-		if err := s.deps.Encoder.JpegStart(s.deps.Config.GetVNCQuality()); err != nil {
-			s.jpegClientCount-- // Rollback count on failure
-			s.jpegEncoderFailures++
-
-			// Rollback the video stream reference since JPEG encoder failed
-			if s.deps.OnVideoReleased != nil {
-				s.deps.OnVideoReleased()
-			}
-
-			if s.jpegEncoderFailures >= jpegEncoderMaxFailures {
-				s.jpegEncoderCooldown = time.Now().Add(jpegEncoderCooldownPeriod)
-				s.deps.Logger.Error().Err(err).Int("failures", s.jpegEncoderFailures).
-					Dur("cooldown", jpegEncoderCooldownPeriod).
-					Msg("JPEG encoder failed repeatedly, entering cooldown")
-			} else {
-				s.deps.Logger.Error().Err(err).Int("failures", s.jpegEncoderFailures).Msg("failed to start JPEG encoder")
-			}
-			return fmt.Errorf("failed to start JPEG encoder: %w", err)
-		}
-		s.jpegEncoderOn = true
-		s.jpegEncoderFailures = 0 // Reset on success
-		s.deps.Logger.Info().Int("quality", s.deps.Config.GetVNCQuality()).Msg("JPEG encoder started on-demand")
+	if s.jpegEncoderOn {
+		s.mu.Unlock()
+		return nil
 	}
+
+	// Set eagerly to prevent concurrent start attempts while lock is released.
+	// Reset to false on failure.
+	s.jpegEncoderOn = true
+	quality := s.deps.Config.GetVNCQuality()
+	s.mu.Unlock()
+
+	// Notify the kvm package that VNC needs the video stream.
+	// This must happen BEFORE JpegStart so the native video capture
+	// pipeline is running when the JPEG encoder starts producing frames.
+	// Called outside s.mu to avoid deadlock — VideoStart() is a blocking C call.
+	if s.deps.OnVideoNeeded != nil {
+		s.deps.OnVideoNeeded()
+	}
+
+	if err := s.deps.Encoder.JpegStart(quality); err != nil {
+		s.mu.Lock()
+		s.jpegClientCount-- // Rollback count on failure
+		s.jpegEncoderOn = false
+		s.jpegEncoderFailures++
+
+		if s.jpegEncoderFailures >= jpegEncoderMaxFailures {
+			s.jpegEncoderCooldown = time.Now().Add(jpegEncoderCooldownPeriod)
+			s.deps.Logger.Error().Err(err).Int("failures", s.jpegEncoderFailures).
+				Dur("cooldown", jpegEncoderCooldownPeriod).
+				Msg("JPEG encoder failed repeatedly, entering cooldown")
+		} else {
+			s.deps.Logger.Error().Err(err).Int("failures", s.jpegEncoderFailures).Msg("failed to start JPEG encoder")
+		}
+		s.mu.Unlock()
+
+		// Rollback the video stream reference since JPEG encoder failed.
+		// Called outside s.mu — VideoStop() is a blocking C call.
+		if s.deps.OnVideoReleased != nil {
+			s.deps.OnVideoReleased()
+		}
+
+		return fmt.Errorf("failed to start JPEG encoder: %w", err)
+	}
+
+	s.mu.Lock()
+	s.jpegEncoderFailures = 0 // Reset on success
+	s.deps.Logger.Info().Int("quality", quality).Msg("JPEG encoder started on-demand")
+	s.mu.Unlock()
+
 	return nil
 }
 
 // releaseJPEGEncoder decrements the JPEG client count and stops the encoder if no clients need it.
+//
+// The OnVideoReleased callback is invoked outside the mutex because it calls
+// blocking native C functions. See requestJPEGEncoder comment for details.
 func (s *Server) releaseJPEGEncoder() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	callOnVideoReleased := false
 
+	s.mu.Lock()
 	s.jpegClientCount--
 	s.deps.Logger.Debug().Int32("jpegClients", s.jpegClientCount).Msg("client releasing JPEG encoder")
 
@@ -168,14 +193,18 @@ func (s *Server) releaseJPEGEncoder() {
 				s.deps.Logger.Info().Msg("JPEG encoder stopped (no clients need it)")
 			}
 			s.jpegEncoderOn = false
-
-			// Notify the kvm package that VNC no longer needs the video stream.
-			// This happens AFTER JpegStop so the encoder is fully stopped before
-			// the video capture pipeline might be shut down.
-			if s.deps.OnVideoReleased != nil {
-				s.deps.OnVideoReleased()
-			}
+			callOnVideoReleased = true
 		}
+	}
+	s.mu.Unlock()
+
+	// Notify the kvm package that VNC no longer needs the video stream.
+	// This happens AFTER JpegStop so the encoder is fully stopped before
+	// the video capture pipeline might be shut down.
+	// Called outside s.mu — VideoStop() is a blocking C call that would deadlock
+	// the accept loop if called under the server mutex.
+	if callOnVideoReleased && s.deps.OnVideoReleased != nil {
+		s.deps.OnVideoReleased()
 	}
 }
 

@@ -7,9 +7,6 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"github.com/rs/xid"
-	"github.com/rs/zerolog"
 )
 
 var keyboardConfig = gadgetConfigItem{
@@ -434,22 +431,18 @@ var KeyCodeToMaskMap = map[byte]byte{
 func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) {
 	defer u.resetUserInputTime()
 
-	l := u.log.With().Uint8("key", key).Bool("press", press).Logger()
-	if l.GetLevel() <= zerolog.DebugLevel {
-		requestID := xid.New()
-		l = l.With().Str("requestID", requestID.String()).Logger()
-	}
-
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
 	// for handling key presses and releases. It ensures that the USB gadget
 	// behaves similarly to a real USB HID keyboard. This logic is paralleled
 	// in the client/browser-side code in useKeyboard.ts so make sure to keep
 	// them in sync.
 	var state = u.GetKeysDownState()
-	l.Trace().Interface("state", state).Msg("got keys down state")
 
+	// Use stack-local buffer to avoid heap allocation for key copy.
+	var keysBuf [hidKeyBufferSize]byte
+	copy(keysBuf[:], state.Keys)
 	modifier := state.Modifier
-	keys := append([]byte(nil), state.Keys...)
+	keys := keysBuf[:]
 
 	if mask, exists := KeyCodeToMaskMap[key]; exists {
 		// If the key is a modifier key, we update the keyboardModifier state
@@ -487,14 +480,14 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 		// If we reach here it means we didn't find an empty slot or the key in the buffer
 		if overrun {
 			if press {
-				l.Error().Msg("keyboard buffer overflow, key not added")
+				u.log.Error().Uint8("key", key).Msg("keyboard buffer overflow, key not added")
 				// Fill all key slots with ErrorRollOver (0x01) to indicate overflow
 				for i := range keys {
 					keys[i] = hidErrorRollOver
 				}
 			} else {
 				// If we are releasing a key, and we didn't find it in a slot, who cares?
-				l.Warn().Msg("key not found in buffer, nothing to release")
+				u.log.Warn().Uint8("key", key).Msg("key not found in buffer, nothing to release")
 			}
 		}
 	}

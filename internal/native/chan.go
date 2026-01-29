@@ -95,13 +95,13 @@ func (p *boundedFramePool) DroppedFrames() uint64 {
 }
 
 var (
-	videoFrameChan chan []byte           = make(chan []byte)
-	jpegFrameChan  chan []byte           = make(chan []byte, 2)   // Buffered for non-blocking JPEG delivery
-	rgbFrameChan   chan RGBFrame         = make(chan RGBFrame, 2) // Buffered for non-blocking RGB delivery
-	videoStateChan chan VideoState       = make(chan VideoState)
-	logChan        chan nativeLogMessage = make(chan nativeLogMessage)
-	indevEventChan chan int              = make(chan int)
-	rpcEventChan   chan string           = make(chan string)
+	videoFrameChan chan []byte           = make(chan []byte)       // Unbuffered: back-pressure for raw video frames
+	jpegFrameChan  chan []byte           = make(chan []byte, 2)    // Buffered for non-blocking JPEG delivery
+	rgbFrameChan   chan RGBFrame         = make(chan RGBFrame, 2)  // Buffered for non-blocking RGB delivery
+	videoStateChan chan VideoState       = make(chan VideoState, 4) // Buffered: prevent C callback stall on resolution changes
+	logChan        chan nativeLogMessage = make(chan nativeLogMessage, 16) // Buffered: prevent C log callbacks from blocking native pipeline
+	indevEventChan chan int              = make(chan int, 8)       // Buffered: prevent input event callbacks from stalling
+	rpcEventChan   chan string           = make(chan string, 8)    // Buffered: prevent RPC event callbacks from stalling
 )
 
 func (n *Native) handleVideoFrameChan() {
