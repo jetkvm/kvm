@@ -112,13 +112,27 @@ func (n *Native) handleVideoFrameChan() {
 		sinceLastFrame := now.Sub(lastFrame)
 		lastFrame = now
 
-		n.onVideoFrameReceived(frame, sinceLastFrame)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					n.l.Error().Interface("panic", r).Msg("panic in video frame handler")
+				}
+			}()
+			n.onVideoFrameReceived(frame, sinceLastFrame)
+		}()
 	}
 }
 
 func (n *Native) handleJpegFrameChan() {
 	for frame := range jpegFrameChan {
-		n.onJpegFrameReceived(frame)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					n.l.Error().Interface("panic", r).Msg("panic in jpeg frame handler")
+				}
+			}()
+			n.onJpegFrameReceived(frame)
+		}()
 	}
 }
 
@@ -126,7 +140,14 @@ func (n *Native) handleVideoStateChan() {
 	for {
 		state := <-videoStateChan
 
-		n.onVideoStateChange(state)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					n.l.Error().Interface("panic", r).Msg("panic in video state handler")
+				}
+			}()
+			n.onVideoStateChange(state)
+		}()
 	}
 }
 
@@ -165,21 +186,42 @@ func (n *Native) handleLogChan() {
 func (n *Native) handleIndevEventChan() {
 	for {
 		event := <-indevEventChan
-		name := uiEventCodeToName(event)
-		n.onIndevEvent(name)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					n.l.Error().Interface("panic", r).Msg("panic in input event handler")
+				}
+			}()
+			name := uiEventCodeToName(event)
+			n.onIndevEvent(name)
+		}()
 	}
 }
 
 func (n *Native) handleRpcEventChan() {
 	for {
 		event := <-rpcEventChan
-		n.onRpcEvent(event)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					n.l.Error().Interface("panic", r).Msg("panic in rpc event handler")
+				}
+			}()
+			n.onRpcEvent(event)
+		}()
 	}
 }
 
 func (n *Native) handleRGBFrameChan() {
 	for {
 		frame := <-rgbFrameChan
-		n.onRGBFrameReceived(frame)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					n.l.Error().Interface("panic", r).Msg("panic in RGB frame handler")
+				}
+			}()
+			n.onRGBFrameReceived(frame)
+		}()
 	}
 }

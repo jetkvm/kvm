@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
+	"sync/atomic"
 
 	hwcrypto "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/websecure"
@@ -150,10 +150,9 @@ func setTLSState(s TLSState) error {
 }
 
 var (
-	startTLS       = make(chan struct{})
-	stopTLS        = make(chan struct{})
-	tlsServiceLock = sync.Mutex{}
-	tlsStarted     = false
+	startTLS   = make(chan struct{})
+	stopTLS    = make(chan struct{})
+	tlsStarted atomic.Bool
 )
 
 // RunWebSecureServer runs a web server with TLS.
@@ -161,13 +160,8 @@ var (
 // Note: Hardware-accelerated TLS (OpenSSL) is used for RDP/VNC video streaming,
 // but the web server uses Go's TLS for proper WebSocket support.
 func runWebSecureServer() {
-	tlsServiceLock.Lock()
-	defer tlsServiceLock.Unlock()
-
-	tlsStarted = true
-	defer func() {
-		tlsStarted = false
-	}()
+	tlsStarted.Store(true)
+	defer tlsStarted.Store(false)
 
 	r := setupRouter()
 
@@ -203,7 +197,7 @@ func runWebSecureServer() {
 }
 
 func stopWebSecureServer() {
-	if !tlsStarted {
+	if !tlsStarted.Load() {
 		websecureLogger.Info().Msg("Websecure server is not running, not stopping it")
 		return
 	}
@@ -211,7 +205,7 @@ func stopWebSecureServer() {
 }
 
 func startWebSecureServer() {
-	if tlsStarted {
+	if tlsStarted.Load() {
 		websecureLogger.Info().Msg("Websecure server is already running, not starting it again")
 		return
 	}

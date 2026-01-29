@@ -178,7 +178,10 @@ func (h *Handler) Authenticate() (username string, err error) {
 	if responseVersion < 3 {
 		responseVersion = 3 // Minimum version 3 for CVE-2018-0886 support
 	}
-	tsResp := h.buildTSRequest(responseVersion, challengeMsg)
+	tsResp, err := h.buildTSRequest(responseVersion, challengeMsg)
+	if err != nil {
+		return "", fmt.Errorf("build TSRequest: %w", err)
+	}
 	h.debugLog("CredSSP: built TSRequest with version=%d, len=%d", responseVersion, len(tsResp))
 	// Debug: dump first 48 bytes of TSRequest
 	tsDebug := 48
@@ -275,7 +278,10 @@ func (h *Handler) Authenticate() (username string, err error) {
 	// Step 4: Send final TSRequest with pubKeyAuth
 	pubKeyAuth := h.buildPubKeyAuth()
 	h.debugLog("CredSSP: building final TSRequest with pubKeyAuth len=%d", len(pubKeyAuth))
-	finalResp := h.buildTSRequestFinal(pubKeyAuth)
+	finalResp, err := h.buildTSRequestFinal(pubKeyAuth)
+	if err != nil {
+		return "", fmt.Errorf("build final TSRequest: %w", err)
+	}
 	h.debugLog("CredSSP: final TSRequest len=%d, first 32 bytes: % 02X", len(finalResp), finalResp[:min(32, len(finalResp))])
 	if err := h.writeTSRequest(finalResp); err != nil {
 		return "", fmt.Errorf("write final: %w", err)
@@ -606,7 +612,7 @@ func domainMatches(providedDomain, username, expectedDomain string) bool {
 	return false
 }
 
-func (h *Handler) buildTSRequest(version int, ntlmToken []byte) []byte {
+func (h *Handler) buildTSRequest(version int, ntlmToken []byte) ([]byte, error) {
 	var responseToken []byte
 
 	if h.clientUsesSPNEGO {
@@ -632,9 +638,9 @@ func (h *Handler) buildTSRequest(version int, ntlmToken []byte) []byte {
 	data, err := asn1.Marshal(req)
 	if err != nil {
 		h.debugLog("CredSSP: failed to marshal TSRequest: %v", err)
-		return nil
+		return nil, fmt.Errorf("marshal TSRequest: %w", err)
 	}
-	return data
+	return data, nil
 }
 
 // writeASN1Length writes BER length encoding (handles lengths > 127)
@@ -719,7 +725,7 @@ func (h *Handler) buildPubKeyAuth() []byte {
 	return []byte{0x01}
 }
 
-func (h *Handler) buildTSRequestFinal(pubKeyAuth []byte) []byte {
+func (h *Handler) buildTSRequestFinal(pubKeyAuth []byte) ([]byte, error) {
 	// Use the same version we negotiated with the client
 	version := h.clientVersion
 	if version < 3 {
@@ -733,7 +739,7 @@ func (h *Handler) buildTSRequestFinal(pubKeyAuth []byte) []byte {
 	data, err := asn1.Marshal(req)
 	if err != nil {
 		h.debugLog("CredSSP: failed to marshal final TSRequest: %v", err)
-		return nil
+		return nil, fmt.Errorf("marshal final TSRequest: %w", err)
 	}
-	return data
+	return data, nil
 }

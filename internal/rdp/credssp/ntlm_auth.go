@@ -686,7 +686,7 @@ func parseASN1Length(data []byte) (int, int) {
 	return length, 1 + numLenBytes
 }
 
-// incrementPublicKey adds 1 to the public key value (big-endian).
+// incrementPublicKey adds 1 to the public key value (little-endian).
 // MS-CSSP specifies this for server's pubKeyAuth response.
 func incrementPublicKey(pubKey []byte) []byte {
 	result := make([]byte, len(pubKey))

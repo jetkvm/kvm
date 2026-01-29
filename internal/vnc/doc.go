@@ -34,7 +34,7 @@
 //		Logger:  myLogger,
 //	}
 //	server := vnc.NewServer(deps)
-//	if err := server.Start(5900); err != nil {
+//	if err := server.Start(); err != nil {
 //		log.Fatal(err)
 //	}
 //

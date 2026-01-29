@@ -509,7 +509,7 @@ func handleLogin(c *gin.Context) {
 	config.LocalAuthToken = uuid.New().String()
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
@@ -522,7 +522,7 @@ func handleLogout(c *gin.Context) {
 	}
 
 	// Clear the auth cookie
-	c.SetCookie("authToken", "", -1, "/", "", false, true)
+	c.SetCookie("authToken", "", -1, "/", "", c.Request.TLS != nil, true)
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 
@@ -671,7 +671,7 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
@@ -715,7 +715,7 @@ func handleUpdatePassword(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
@@ -751,7 +751,7 @@ func handleDeletePassword(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("authToken", "", -1, "/", "", false, true)
+	c.SetCookie("authToken", "", -1, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password disabled successfully"})
 }
@@ -824,7 +824,7 @@ func handleSetup(c *gin.Context) {
 		config.LocalAuthToken = uuid.New().String()
 
 		// Set the cookie
-		c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+		c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 	} else {
 		// For noPassword mode, ensure the password field is empty
 		config.HashedPassword = ""

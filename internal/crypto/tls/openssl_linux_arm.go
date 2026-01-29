@@ -496,6 +496,7 @@ import "C"
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -503,11 +504,7 @@ import (
 	"sync"
 	"time"
 	"unsafe"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
-
-var tlsLogger = logging.GetSubsystemLogger("crypto.tls")
 
 var initOnce sync.Once
 
@@ -622,16 +619,21 @@ func (c *opensslConn) Close() error {
 	c.closed = true
 	c.mu.Unlock()
 
+	// Close underlying connection first to unblock any in-progress
+	// SSL_read/SSL_write blocking on the fd. After this, blocking
+	// operations will return with an error, allowing us to acquire
+	// the read/write locks without deadlocking.
+	c.conn.Close()
+
 	c.readMu.Lock()
 	c.writeMu.Lock()
 	defer c.readMu.Unlock()
 	defer c.writeMu.Unlock()
 
-	C.SSL_shutdown(c.ssl)
 	C.SSL_free(c.ssl)
 	C.SSL_CTX_free(c.ctx)
 
-	return c.conn.Close()
+	return nil
 }
 
 func (c *opensslConn) LocalAddr() net.Addr {
@@ -945,14 +947,11 @@ func certToPEM(cert *tls.Certificate) (certPEM, keyPEM string, err error) {
 	return certPEM, keyPEM, nil
 }
 
-// base64Encode encodes data to base64 with line wrapping.
+// base64Encode encodes data to base64 with PEM line wrapping (64 chars per line).
 func base64Encode(data []byte) string {
-	const lineLength = 64
-	encoded := make([]byte, len(data)*2) // oversized buffer
-	n := encodeBase64(encoded, data)
-	encoded = encoded[:n]
+	encoded := base64.StdEncoding.EncodeToString(data)
 
-	// Add line breaks every 64 characters
+	const lineLength = 64
 	var result []byte
 	for i := 0; i < len(encoded); i += lineLength {
 		end := i + lineLength
@@ -965,40 +964,6 @@ func base64Encode(data []byte) string {
 		}
 	}
 	return string(result)
-}
-
-const base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-func encodeBase64(dst, src []byte) int {
-	n := 0
-	for i := 0; i < len(src); i += 3 {
-		var val uint32
-		remaining := len(src) - i
-
-		if remaining >= 3 {
-			val = uint32(src[i])<<16 | uint32(src[i+1])<<8 | uint32(src[i+2])
-			dst[n] = base64Chars[(val>>18)&0x3F]
-			dst[n+1] = base64Chars[(val>>12)&0x3F]
-			dst[n+2] = base64Chars[(val>>6)&0x3F]
-			dst[n+3] = base64Chars[val&0x3F]
-			n += 4
-		} else if remaining == 2 {
-			val = uint32(src[i])<<16 | uint32(src[i+1])<<8
-			dst[n] = base64Chars[(val>>18)&0x3F]
-			dst[n+1] = base64Chars[(val>>12)&0x3F]
-			dst[n+2] = base64Chars[(val>>6)&0x3F]
-			dst[n+3] = '='
-			n += 4
-		} else if remaining == 1 {
-			val = uint32(src[i]) << 16
-			dst[n] = base64Chars[(val>>18)&0x3F]
-			dst[n+1] = base64Chars[(val>>12)&0x3F]
-			dst[n+2] = '='
-			dst[n+3] = '='
-			n += 4
-		}
-	}
-	return n
 }
 
 // encodePrivateKey encodes a private key to PKCS#8 DER format.

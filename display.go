@@ -189,6 +189,11 @@ func requestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 		return
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				displayLogger.Error().Interface("panic", r).Msg("panic in display update")
+			}
+		}()
 		if shouldWakeDisplay {
 			wakeDisplay(false, reason)
 		}
@@ -353,6 +358,11 @@ func startBacklightTickers() {
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					displayLogger.Error().Interface("panic", r).Msg("panic in dim ticker")
+				}
+			}()
 			for range dimTicker.C {
 				tick_displayDim()
 			}
@@ -364,6 +374,11 @@ func startBacklightTickers() {
 		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					displayLogger.Error().Interface("panic", r).Msg("panic in off ticker")
+				}
+			}()
 			for range offTicker.C {
 				tick_displayOff()
 			}
@@ -373,6 +388,11 @@ func startBacklightTickers() {
 
 func initDisplay() {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				displayLogger.Error().Interface("panic", r).Msg("panic in display init")
+			}
+		}()
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()

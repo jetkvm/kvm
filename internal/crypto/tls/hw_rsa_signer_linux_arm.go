@@ -146,6 +146,7 @@ import (
 	"io"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/jetkvm/kvm/internal/logging"
@@ -351,19 +352,23 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// hardwareRSAMode controls which RSA signing backend to use.
+// hardwareRSAModeVal stores the current RSA acceleration mode atomically.
 // Options: "openssl" (OpenSSL optimized assembly), "disabled" (Go crypto)
-var hardwareRSAMode = "openssl"
+var hardwareRSAModeVal atomic.Value // stores string
+
+func init() {
+	hardwareRSAModeVal.Store("openssl")
+}
 
 // SetHardwareRSAMode sets the RSA acceleration mode.
 func SetHardwareRSAMode(mode string) {
-	hardwareRSAMode = mode
+	hardwareRSAModeVal.Store(mode)
 	rsaSignerLogger.Debug().Str("mode", mode).Msg("hardware RSA mode configured")
 }
 
 // GetHardwareRSAMode returns the current RSA acceleration mode.
 func GetHardwareRSAMode() string {
-	return hardwareRSAMode
+	return hardwareRSAModeVal.Load().(string)
 }
 
 // GetSignerName returns a human-readable name for the signer backend.
@@ -382,7 +387,7 @@ func WrapRSAKey(key crypto.PrivateKey) (crypto.PrivateKey, error) {
 		return key, nil
 	}
 
-	if hardwareRSAMode == "disabled" {
+	if GetHardwareRSAMode() == "disabled" {
 		return key, nil
 	}
 

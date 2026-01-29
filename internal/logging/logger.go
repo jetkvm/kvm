@@ -100,10 +100,9 @@ func NewLogger(zerologLogger zerolog.Logger) *Logger {
 	}
 }
 
-func (l *Logger) updateLogLevel() {
-	l.scopeLevelMutex.Lock()
-	defer l.scopeLevelMutex.Unlock()
-
+// updateLogLevelLocked reads env vars and populates scopeLevels.
+// Must be called with scopeLevelMutex held.
+func (l *Logger) updateLogLevelLocked() {
 	l.scopeLevels = make(map[string]zerolog.Level)
 
 	finalDefaultLogLevel := l.defaultLogLevel
@@ -142,74 +141,38 @@ func (l *Logger) updateLogLevel() {
 	l.defaultLogLevel = finalDefaultLogLevel
 }
 
+// getScopeLoggerLevel returns the log level for a scope with proper synchronization.
+// Acquires scopeLevelMutex internally. Callers that already hold the lock
+// must use getScopeLoggerLevelLocked instead.
 func (l *Logger) getScopeLoggerLevel(scope string) zerolog.Level {
-	if l.scopeLevels == nil {
-		l.updateLogLevel()
-	}
-
-	// Priority (from lowest to highest):
-	// 1. Hardcoded global default
-	// 2. Hardcoded subsystem default
-	// 3. Env var global
-	// 4. Env var subsystem override
-	// 5. Config global level
-	// 6. Config subsystem override (highest)
-
-	// Start with hardcoded global default
-	scopeLevel := l.defaultLogLevel
-	if l.defaultLogLevelFromConfig != -2 {
-		scopeLevel = l.defaultLogLevelFromConfig
-	}
-
-	// Check if this subsystem has a hardcoded default level
-	if subsystemLevel, ok := subsystemDefaultLevels[scope]; ok {
-		// Use the more verbose level (lower value = more verbose)
-		if subsystemLevel < scopeLevel {
-			scopeLevel = subsystemLevel
-		}
-	}
-
-	// Apply env var global level
-	if l.defaultLogLevelFromEnv != -2 {
-		scopeLevel = l.defaultLogLevelFromEnv
-	}
-
-	// Apply env var subsystem override
-	if level, ok := l.scopeLevels[scope]; ok {
-		scopeLevel = level
-	}
-
-	// Apply config global level (takes priority over env vars)
-	if l.configGlobalLevel != -2 {
-		scopeLevel = l.configGlobalLevel
-	}
-
-	// Apply config subsystem override (highest priority)
-	if level, ok := l.configSubsystemLevels[scope]; ok {
-		scopeLevel = level
-	}
-
-	return scopeLevel
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+	return l.getScopeLoggerLevelLocked(scope)
 }
 
+// newScopeLogger creates a scoped logger.
+// Must be called with scopeLevelMutex held.
 func (l *Logger) newScopeLogger(scope string) zerolog.Logger {
-	scopeLevel := l.getScopeLoggerLevel(scope)
-	logger := l.l.Level(scopeLevel).With().Str("component", scope).Logger()
-
-	return logger
+	scopeLevel := l.getScopeLoggerLevelLocked(scope)
+	return l.l.Level(scopeLevel).With().Str("component", scope).Logger()
 }
 
 func (l *Logger) getLogger(scope string) *zerolog.Logger {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
 	logger, ok := l.scopeLoggers[scope]
 	if !ok || logger == nil {
 		scopeLogger := l.newScopeLogger(scope)
 		l.scopeLoggers[scope] = &scopeLogger
 	}
-
 	return l.scopeLoggers[scope]
 }
 
 func (l *Logger) UpdateLogLevel(configDefaultLogLevel string) {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
 	needUpdate := false
 
 	if configDefaultLogLevel != "" {
@@ -224,16 +187,10 @@ func (l *Logger) UpdateLogLevel(configDefaultLogLevel string) {
 		}
 	}
 
-	l.updateLogLevel()
+	l.updateLogLevelLocked()
 
 	if needUpdate {
-		for scope, logger := range l.scopeLoggers {
-			currentLevel := logger.GetLevel()
-			targetLevel := l.getScopeLoggerLevel(scope)
-			if currentLevel != targetLevel {
-				*logger = l.newScopeLogger(scope)
-			}
-		}
+		l.refreshAllLoggersLocked()
 	}
 }
 
@@ -290,7 +247,7 @@ func (l *Logger) SetSubsystemLevels(overrides string) {
 }
 
 // refreshAllLoggersLocked updates all existing scope loggers to use the new levels.
-// Must be called with scopeLevelMutex held. Does not call updateLogLevel() to avoid deadlock.
+// Must be called with scopeLevelMutex held.
 func (l *Logger) refreshAllLoggersLocked() {
 	for scope, logger := range l.scopeLoggers {
 		currentLevel := logger.GetLevel()

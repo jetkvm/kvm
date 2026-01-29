@@ -83,11 +83,11 @@ func (n *Native) getSleepMode() (bool, error) {
 	}
 
 	data, err := os.ReadFile(sleepModeFile)
-	if err == nil {
-		return string(data) == "1", nil
+	if err != nil {
+		return false, err
 	}
 
-	return false, nil
+	return string(data) == "1", nil
 }
 
 // VideoSetSleepMode sets the sleep mode for the video stream.

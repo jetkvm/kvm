@@ -83,7 +83,7 @@ func (c *Connection) authenticate() error {
 	// When TLS is enabled and available, ONLY offer VeNCrypt (no insecure fallback)
 	// When TLS is not available, fall back to VNCAuth with warning (needed for initial setup)
 	tlsMode := c.server.deps.Config.GetTLSMode()
-	tlsEnabled := c.server.tlsEnabled && tlsMode != "" && tlsMode != "disabled"
+	tlsEnabled := c.server.IsTLSEnabled() && tlsMode != "" && tlsMode != "disabled"
 	tlsAvailable := tlsEnabled && c.isTLSAvailable()
 
 	// Build security types list based on TLS and password configuration
