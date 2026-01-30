@@ -25,10 +25,16 @@ const loader: LoaderFunction = async () => {
   return null;
 };
 
+const MIN_PASSWORD_LENGTH = 8;
+
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
-  const password = formData.get("password");
+  const password = formData.get("password") as string;
   const confirmPassword = formData.get("confirmPassword");
+
+  if (!password || password.length < MIN_PASSWORD_LENGTH) {
+    return { error: m.local_auth_error_password_too_short() };
+  }
 
   if (password !== confirmPassword) {
     return { error: m.local_auth_error_passwords_not_match() };

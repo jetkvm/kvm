@@ -40,6 +40,12 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
 
     if (response.ok) {
       return redirect("/");
+    } else if (response.status === 429) {
+      // Rate limited - extract retry time from response
+      const data = await response.json();
+      const retryAfter = data.retry_after || 60;
+      const minutes = Math.ceil(retryAfter / 60);
+      return { error: m.local_auth_error_rate_limited({ minutes: minutes.toString() }) };
     } else {
       return { error: m.invalid_password() };
     }

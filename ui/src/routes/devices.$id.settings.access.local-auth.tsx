@@ -25,6 +25,8 @@ export default function SecurityAccessLocalAuthRoute() {
   return <Dialog onClose={() => navigateTo("..")} />;
 }
 
+const MIN_PASSWORD_LENGTH = 8;
+
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const { modalView, setModalView } = useLocalAuthModalStore();
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +35,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const handleCreatePassword = async (password: string, confirmPassword: string) => {
     if (password === "") {
       setError(m.local_auth_error_enter_password());
+      return;
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(m.local_auth_error_password_too_short());
       return;
     }
 
@@ -62,11 +69,6 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
     newPassword: string,
     confirmNewPassword: string,
   ) => {
-    if (newPassword !== confirmNewPassword) {
-      setError(m.local_auth_error_passwords_not_match());
-      return;
-    }
-
     if (oldPassword === "") {
       setError(m.local_auth_error_enter_old_password());
       return;
@@ -74,6 +76,17 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
     if (newPassword === "") {
       setError(m.local_auth_error_enter_new_password());
+      return;
+    }
+
+    // Only validate length for new password, not old password (may be shorter from before this requirement)
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(m.local_auth_error_password_too_short());
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setError(m.local_auth_error_passwords_not_match());
       return;
     }
 
@@ -87,6 +100,12 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         setModalView("updateSuccess");
         // The rest of the app needs to revalidate the device authMode
         revalidator.revalidate();
+      } else if (res.status === 429) {
+        // Rate limited
+        const data = await res.json();
+        const retryAfter = data.retry_after || 60;
+        const minutes = Math.ceil(retryAfter / 60);
+        setError(m.local_auth_error_rate_limited({ minutes: minutes.toString() }));
       } else {
         const data = await res.json();
         setError(data.error || m.local_auth_error_changing_password());
@@ -109,6 +128,12 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         setModalView("deleteSuccess");
         // The rest of the app needs to revalidate the device authMode
         revalidator.revalidate();
+      } else if (res.status === 429) {
+        // Rate limited
+        const data = await res.json();
+        const retryAfter = data.retry_after || 60;
+        const minutes = Math.ceil(retryAfter / 60);
+        setError(m.local_auth_error_rate_limited({ minutes: minutes.toString() }));
       } else {
         const data = await res.json();
         setError(data.error || m.local_auth_error_disabling_password());
