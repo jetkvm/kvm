@@ -1,8 +1,16 @@
 package audio
 
+import "errors"
+
 const (
 	ipcMsgTypeOpus = 0
 )
+
+// ErrSampleRateChanged is returned when the HDMI audio sample rate changed
+// and the audio pipeline needs to reconnect at the new rate.
+// This is expected behavior (not an error) when the source PC switches
+// audio output formats between applications.
+var ErrSampleRateChanged = errors.New("HDMI audio sample rate changed")
 
 type AudioConfig struct {
 	Bitrate        uint16

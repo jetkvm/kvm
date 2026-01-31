@@ -920,6 +920,12 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	static unsigned int pending_new_rate = 0;
 	static uint8_t rate_change_confirm_count = 0;
 	#define RATE_CHANGE_CONFIRM_THRESHOLD 3
+	// Cooldown after rate-change reconnection to prevent oscillation.
+	// Some HDMI sources (e.g., macOS) rapidly switch audio sample rates between
+	// applications (48kHz, 88.2kHz, 44.1kHz, etc.), causing a reconnection loop.
+	// After triggering a reconnection, skip rate checks for this many cycles.
+	static uint8_t rate_check_cooldown_cycles = 0;
+	#define RATE_CHECK_COOLDOWN_AFTER_RECONNECT 60  // ~60 seconds (1 cycle = ~1s at 50-frame intervals)
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	int32_t pcm_rc, nb_bytes;
 	uint8_t recovery_attempts = 0;
@@ -976,32 +982,40 @@ retry_read:
 
 	if (capture_is_hdmi && __builtin_expect(++sample_rate_check_counter >= 50, 0)) {
 		sample_rate_check_counter = 0;
-		unsigned int current_rate = get_hdmi_audio_sample_rate();
-		if (current_rate != 0 && current_rate != hardware_sample_rate) {
-			// Hysteresis: require multiple consecutive detections of the same new rate
-			// to filter transient glitches from the TC358743 HDMI chip
-			if (current_rate == pending_new_rate) {
-				rate_change_confirm_count++;
-				if (rate_change_confirm_count >= RATE_CHANGE_CONFIRM_THRESHOLD) {
-					LOG_ERROR("capture: HDMI sample rate changed from %u to %u Hz (confirmed %d times)",
-					          hardware_sample_rate, current_rate, rate_change_confirm_count);
-					LOG_ERROR("Triggering reconnection for automatic reconfiguration");
-					// Reset hysteresis state for next detection cycle
-					pending_new_rate = 0;
-					rate_change_confirm_count = 0;
-					pthread_mutex_unlock(&capture_mutex);
-					return -1;
+
+		// After a rate-change reconnection, skip rate checks during cooldown
+		// to let the audio pipeline stabilize and prevent oscillation loops
+		if (rate_check_cooldown_cycles > 0) {
+			rate_check_cooldown_cycles--;
+		} else {
+			unsigned int current_rate = get_hdmi_audio_sample_rate();
+			if (current_rate != 0 && current_rate != hardware_sample_rate) {
+				// Hysteresis: require multiple consecutive detections of the same new rate
+				// to filter transient glitches from the TC358743 HDMI chip
+				if (current_rate == pending_new_rate) {
+					rate_change_confirm_count++;
+					if (rate_change_confirm_count >= RATE_CHANGE_CONFIRM_THRESHOLD) {
+						LOG_INFO("capture: HDMI sample rate changed from %u to %u Hz, reconfiguring",
+						         hardware_sample_rate, current_rate);
+						// Reset hysteresis and set cooldown to prevent oscillation
+						pending_new_rate = 0;
+						rate_change_confirm_count = 0;
+						sample_rate_check_counter = 0;
+						rate_check_cooldown_cycles = RATE_CHECK_COOLDOWN_AFTER_RECONNECT;
+						pthread_mutex_unlock(&capture_mutex);
+						return -2;  // -2 = sample rate changed (distinct from -1 = error)
+					}
+				} else {
+					// Different rate detected, start new confirmation cycle
+					pending_new_rate = current_rate;
+					rate_change_confirm_count = 1;
 				}
 			} else {
-				// Different rate detected, start new confirmation cycle
-				pending_new_rate = current_rate;
-				rate_change_confirm_count = 1;
-			}
-		} else {
-			// Rate is stable or detection failed, reset hysteresis state
-			if (rate_change_confirm_count > 0) {
-				pending_new_rate = 0;
-				rate_change_confirm_count = 0;
+				// Rate is stable or detection failed, reset hysteresis state
+				if (rate_change_confirm_count > 0) {
+					pending_new_rate = 0;
+					rate_change_confirm_count = 0;
+				}
 			}
 		}
 	}

@@ -1159,6 +1159,9 @@ func rpcSetKeyboardLayout(layout string) error {
 }
 
 func getKeyboardMacros() (any, error) {
+	if config == nil {
+		return []KeyboardMacro{}, nil
+	}
 	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
 	copy(macros, config.KeyboardMacros)
 

@@ -117,6 +117,22 @@ func (c *Connection) handleVNCKey(keysym uint32, down bool) {
 		return
 	}
 
+	// Some VNC clients (e.g., Jump Desktop on iOS) send shifted keysyms
+	// (like 0x003A for ':') without separate Shift key-down/key-up events.
+	// When the keysym requires Shift but the client hasn't pressed Shift,
+	// synthesize the Shift modifier around the key event.
+	if keysymNeedsShift(keysym) && !c.shiftDown {
+		if down {
+			c.synthShift[hidKey] = true
+			_ = c.server.deps.HID.KeypressReport(hidLeftShift, true)
+		} else if c.synthShift[hidKey] {
+			_ = c.server.deps.HID.KeypressReport(hidKey, false)
+			_ = c.server.deps.HID.KeypressReport(hidLeftShift, false)
+			delete(c.synthShift, hidKey)
+			return
+		}
+	}
+
 	if err := c.server.deps.HID.KeypressReport(hidKey, down); err != nil {
 		c.server.deps.Logger.Warn().Err(err).Uint32("keysym", keysym).Msg("failed to send key event")
 	}

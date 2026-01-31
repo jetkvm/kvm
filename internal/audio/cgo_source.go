@@ -201,6 +201,9 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 	// so this cannot deadlock. The C layer's capture_mutex protects ALSA/codec
 	// state, while c.mu protects the connection lifecycle.
 	opusSize := C.jetkvm_audio_read_encode(unsafe.Pointer(&c.opusBuf[0]))
+	if opusSize == -2 {
+		return 0, nil, ErrSampleRateChanged
+	}
 	if opusSize < 0 {
 		return 0, nil, fmt.Errorf("jetkvm_audio_read_encode failed: %d", opusSize)
 	}

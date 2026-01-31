@@ -692,57 +692,65 @@ func WriteInputPCM(pcmData []byte) error {
 
 // recoverAudioInput attempts to reconnect the audio input device.
 // Called asynchronously when consecutive failures exceed threshold.
+// Retries with exponential backoff until the device comes back, the session
+// ends, or audio input ownership changes. This handles USB cable unplug/replug
+// where the ALSA device disappears temporarily and reappears later.
 func recoverAudioInput() {
 	defer audioInputRecovering.Store(false)
 
-	// Abort recovery if no active connections (audio is being shut down)
-	if activeConnections.Load() <= 0 {
-		audioLogger.Debug().Msg("audio input: skipping recovery - no active connections")
-		// Reset counter to prevent repeated abort cycles
-		audioInputFailures.Store(0)
-		return
-	}
+	audioLogger.Warn().Int32("failures", audioInputFailures.Load()).Msg("audio input: starting recovery")
 
-	// Abort recovery if we don't own audio input
-	if GetAudioInputOwner() != AudioInputOwnerRDP {
-		audioLogger.Debug().Msg("audio input: skipping recovery - not RDP owner")
-		// Reset counter to prevent repeated abort cycles
-		audioInputFailures.Store(0)
-		return
-	}
+	retryDelay := 500 * time.Millisecond
 
-	audioLogger.Warn().Int32("failures", audioInputFailures.Load()).Msg("audio input: triggering recovery")
-
-	// Use audioMutex to serialize with stopInputAudio
-	audioMutex.Lock()
-	defer audioMutex.Unlock()
-
-	// Re-check after acquiring lock
-	if activeConnections.Load() <= 0 {
-		audioLogger.Debug().Msg("audio input: aborting recovery - connections dropped")
-		// Reset counter to prevent repeated abort cycles
-		audioInputFailures.Store(0)
-		return
-	}
-
-	// Disconnect and reconnect the input source
-	source := inputSource.Load()
-	if source != nil && *source != nil {
-		(*source).Disconnect()
-		if err := (*source).Connect(); err != nil {
-			audioLogger.Error().Err(err).Msg("audio input: recovery failed")
+	for {
+		// Abort if no active connections (audio is being shut down)
+		if activeConnections.Load() <= 0 {
+			audioLogger.Debug().Msg("audio input: aborting recovery - no active connections")
+			audioInputFailures.Store(0)
 			return
 		}
-		audioInputFailures.Store(0)
-		audioLogger.Info().Msg("audio input: recovery successful")
-	} else {
-		// No input source exists - create one
-		err := startInputAudioUnderMutex(getAlsaDevice("usb"))
-		if err != nil {
-			audioLogger.Error().Err(err).Msg("audio input: failed to initialize input source during recovery")
+
+		// Abort if we no longer own audio input
+		if GetAudioInputOwner() != AudioInputOwnerRDP {
+			audioLogger.Debug().Msg("audio input: aborting recovery - not RDP owner")
+			audioInputFailures.Store(0)
 			return
 		}
-		audioLogger.Info().Msg("audio input: initialized new input source during recovery")
-		audioInputFailures.Store(0)
+
+		// Try to reconnect under the audio mutex
+		audioMutex.Lock()
+
+		// Re-check after acquiring lock
+		if activeConnections.Load() <= 0 {
+			audioMutex.Unlock()
+			audioLogger.Debug().Msg("audio input: aborting recovery - connections dropped")
+			audioInputFailures.Store(0)
+			return
+		}
+
+		var recovered bool
+		source := inputSource.Load()
+		if source != nil && *source != nil {
+			(*source).Disconnect()
+			if err := (*source).Connect(); err == nil {
+				recovered = true
+			}
+		} else {
+			if err := startInputAudioUnderMutex(getAlsaDevice("usb")); err == nil {
+				recovered = true
+			}
+		}
+
+		audioMutex.Unlock()
+
+		if recovered {
+			audioInputFailures.Store(0)
+			audioLogger.Info().Msg("audio input: recovery successful")
+			return
+		}
+
+		// Device not ready yet — wait and retry with exponential backoff
+		time.Sleep(retryDelay)
+		retryDelay = min(retryDelay*2, 30*time.Second)
 	}
 }

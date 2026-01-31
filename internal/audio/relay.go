@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -115,7 +116,6 @@ func (r *OutputRelay) relayLoop() {
 		close(r.stopped)
 	}()
 
-	const maxRetries = 10
 	const maxConsecutiveWriteFailures = 50 // Allow some WebRTC write failures before reconnecting
 	retryDelay := 1 * time.Second
 	consecutiveFailures := 0
@@ -124,14 +124,19 @@ func (r *OutputRelay) relayLoop() {
 	for r.running.Load() {
 		if !(*r.source).IsConnected() {
 			if err := (*r.source).Connect(); err != nil {
-				if consecutiveFailures++; consecutiveFailures >= maxRetries {
-					r.logger.Error().Int("failures", consecutiveFailures).Msg("Max retries exceeded, stopping relay")
-					return
+				consecutiveFailures++
+				// Log first few failures at WARN, then at DEBUG to avoid flooding
+				if consecutiveFailures <= 3 {
+					r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("Connection failed, retrying")
+				} else if consecutiveFailures%10 == 0 {
+					r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("Connection still failing")
 				}
-				r.logger.Debug().Err(err).Int("failures", consecutiveFailures).Msg("Connection failed, retrying")
 				time.Sleep(retryDelay)
 				retryDelay = min(retryDelay*2, 30*time.Second)
 				continue
+			}
+			if consecutiveFailures > 0 {
+				r.logger.Info().Int("previous_failures", consecutiveFailures).Msg("Audio reconnected after failures")
 			}
 			consecutiveFailures = 0
 			retryDelay = 1 * time.Second
@@ -142,11 +147,22 @@ func (r *OutputRelay) relayLoop() {
 			if !r.running.Load() {
 				break
 			}
-			if consecutiveFailures++; consecutiveFailures >= maxRetries {
-				r.logger.Error().Int("failures", consecutiveFailures).Msg("Max read retries exceeded, stopping relay")
-				return
+
+			// Sample rate changes are expected when the source PC switches audio
+			// formats (e.g., 48kHz video → 44.1kHz music). Reconnect immediately
+			// without backoff — the C layer's cooldown prevents oscillation.
+			if errors.Is(err, ErrSampleRateChanged) {
+				(*r.source).Disconnect()
+				continue
 			}
-			r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("Read error, reconnecting")
+
+			consecutiveFailures++
+			// Log first few failures at WARN, then only every 10th to avoid flooding
+			if consecutiveFailures <= 3 {
+				r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("Read error, reconnecting")
+			} else if consecutiveFailures%10 == 0 {
+				r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("Read errors continuing")
+			}
 			(*r.source).Disconnect()
 			time.Sleep(retryDelay)
 			retryDelay = min(retryDelay*2, 30*time.Second)

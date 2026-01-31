@@ -447,7 +447,7 @@ func (s *Server) acceptLoop() {
 				// Differentiate between normal disconnects and unexpected errors
 				// EOF and timeout are expected when client disconnects
 				errStr := err.Error()
-				if errStr == "EOF" || strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection reset") ||
+				if strings.Contains(errStr, "EOF") || strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection reset") ||
 					strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "use of closed") {
 					s.deps.Logger.Debug().Err(err).Str("remote", remoteAddr).Msg("VNC connection ended")
 				} else {

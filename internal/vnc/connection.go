@@ -53,10 +53,11 @@ type Connection struct {
 
 	// === Cold path: Clipboard for paste-on-demand ===
 	clipboardText []byte
-	clipboardMu   sync.Mutex // protects clipboardText
-	ctrlDown      bool       // Left or Right Control is pressed
-	metaDown      bool       // Left or Right Meta/Super is pressed
-	shiftDown     bool       // Left or Right Shift is pressed
+	clipboardMu   sync.Mutex     // protects clipboardText
+	ctrlDown      bool           // Left or Right Control is pressed
+	metaDown      bool           // Left or Right Meta/Super is pressed
+	shiftDown     bool           // Left or Right Shift is pressed
+	synthShift    map[uint8]bool // HID keys that had Shift synthesized (for clients that omit modifier events)
 
 	// === Very cold: Logging (message loop only, no lock needed) ===
 	lastPointerLogTime time.Time
@@ -148,6 +149,7 @@ func NewConnection(conn net.Conn, server *Server) *Connection {
 		pixelFormat: DefaultPixelFormat(),
 		stopChan:    make(chan struct{}),
 		startTime:   time.Now(),
+		synthShift:  make(map[uint8]bool),
 	}
 	vc.setResolution(w, h)
 	return vc

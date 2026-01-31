@@ -834,3 +834,42 @@ func keysymToHID(keysym uint32) uint8 {
 
 	return 0 // Unknown keysym
 }
+
+// keysymNeedsShift returns true if the keysym represents a character that
+// requires the Shift modifier on a US QWERTY keyboard.
+// Some VNC clients (e.g., Jump Desktop on iOS) send shifted keysyms
+// (like 0x003A for ':') without separate Shift key-down/key-up events.
+// The caller uses this to synthesize Shift when not already pressed.
+func keysymNeedsShift(keysym uint32) bool {
+	// Uppercase letters A-Z
+	if keysym >= 0x0041 && keysym <= 0x005A {
+		return true
+	}
+
+	// Shifted punctuation/symbols on US QWERTY
+	switch keysym {
+	case 0x0021, // !
+		0x0040, // @
+		0x0023, // #
+		0x0024, // $
+		0x0025, // %
+		0x005E, // ^
+		0x0026, // &
+		0x002A, // *
+		0x0028, // (
+		0x0029, // )
+		0x005F, // _
+		0x002B, // +
+		0x007B, // {
+		0x007D, // }
+		0x007C, // |
+		0x003A, // :
+		0x0022, // "
+		0x007E, // ~
+		0x003C, // <
+		0x003E, // >
+		0x003F: // ?
+		return true
+	}
+	return false
+}

@@ -522,6 +522,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"runtime"
@@ -592,13 +593,26 @@ func (c *opensslConn) Read(b []byte) (int, error) {
 	runtime.Gosched()
 
 	if n <= 0 {
-		err := C.SSL_get_error(c.ssl, n)
-		if err == C.SSL_ERROR_ZERO_RETURN {
-			return 0, os.ErrClosed
+		sslErr := C.SSL_get_error(c.ssl, n)
+		switch sslErr {
+		case C.SSL_ERROR_ZERO_RETURN:
+			// Peer sent TLS close_notify — clean shutdown
+			return 0, io.EOF
+		case C.SSL_ERROR_SYSCALL:
+			// Peer disconnected without TLS shutdown alert (e.g., TCP RST, process killed).
+			// When the OpenSSL error queue is empty, get_ssl_error_string() returns "unknown error".
+			errStr := C.get_ssl_error_string()
+			errMsg := C.GoString(errStr)
+			C.free(unsafe.Pointer(errStr))
+			if errMsg == "unknown error" {
+				return 0, io.EOF
+			}
+			return 0, fmt.Errorf("SSL read error: %s", errMsg)
+		default:
+			errStr := C.get_ssl_error_string()
+			defer C.free(unsafe.Pointer(errStr))
+			return 0, fmt.Errorf("SSL read error: %s", C.GoString(errStr))
 		}
-		errStr := C.get_ssl_error_string()
-		defer C.free(unsafe.Pointer(errStr))
-		return 0, fmt.Errorf("SSL read error: %s", C.GoString(errStr))
 	}
 
 	return int(n), nil
@@ -626,9 +640,23 @@ func (c *opensslConn) Write(b []byte) (int, error) {
 	runtime.Gosched()
 
 	if n <= 0 {
-		errStr := C.get_ssl_error_string()
-		defer C.free(unsafe.Pointer(errStr))
-		return 0, fmt.Errorf("SSL write error: %s", C.GoString(errStr))
+		sslErr := C.SSL_get_error(c.ssl, n)
+		switch sslErr {
+		case C.SSL_ERROR_ZERO_RETURN:
+			return 0, io.EOF
+		case C.SSL_ERROR_SYSCALL:
+			errStr := C.get_ssl_error_string()
+			errMsg := C.GoString(errStr)
+			C.free(unsafe.Pointer(errStr))
+			if errMsg == "unknown error" {
+				return 0, io.EOF
+			}
+			return 0, fmt.Errorf("SSL write error: %s", errMsg)
+		default:
+			errStr := C.get_ssl_error_string()
+			defer C.free(unsafe.Pointer(errStr))
+			return 0, fmt.Errorf("SSL write error: %s", C.GoString(errStr))
+		}
 	}
 
 	return int(n), nil
