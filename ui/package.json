@@ -69,7 +69,7 @@
     "@eslint/js": "^9.39.2",
     "@inlang/cli": "^3.0.12",
     "@inlang/paraglide-js": "^2.6.0",
-    "@inlang/plugin-m-function-matcher": "^2.1.0",
+    "@inlang/plugin-m-function-matcher": "^2.2.0",
     "@inlang/plugin-message-format": "^4.0.0",
     "@inlang/sdk": "^2.4.9",
     "@playwright/test": "^1.49.0",
