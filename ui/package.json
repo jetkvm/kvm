@@ -60,7 +60,7 @@
     "tailwind-merge": "^3.4.0",
     "tslog": "^4.10.2",
     "usehooks-ts": "^3.1.1",
-    "validator": "^13.15.23",
+    "validator": "^13.15.26",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
