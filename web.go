@@ -697,17 +697,6 @@ func handleUpdatePassword(c *gin.Context) {
 		return
 	}
 
-	// Check rate limit before validating old password
-	ip := c.ClientIP()
-	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
-		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "Too many failed attempts. Please try again later.",
-			"retry_after": retryAfter,
-		})
-		return
-	}
-
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.OldPassword == "" || req.NewPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -721,13 +710,9 @@ func handleUpdatePassword(c *gin.Context) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.OldPassword)); err != nil {
-		passwordRateLimiter.RecordFailure(ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect old password"})
 		return
 	}
-
-	// Clear rate limit on successful password verification
-	passwordRateLimiter.RecordSuccess(ip)
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
@@ -759,17 +744,6 @@ func handleDeletePassword(c *gin.Context) {
 		return
 	}
 
-	// Check rate limit before validating password
-	ip := c.ClientIP()
-	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
-		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "Too many failed attempts. Please try again later.",
-			"retry_after": retryAfter,
-		})
-		return
-	}
-
 	var req LoginRequest // Reusing LoginRequest struct for password
 	if err := c.ShouldBindJSON(&req); err != nil || req.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -777,13 +751,9 @@ func handleDeletePassword(c *gin.Context) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password)); err != nil {
-		passwordRateLimiter.RecordFailure(ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect password"})
 		return
 	}
-
-	// Clear rate limit on successful password verification
-	passwordRateLimiter.RecordSuccess(ip)
 
 	// Disable password
 	config.HashedPassword = ""

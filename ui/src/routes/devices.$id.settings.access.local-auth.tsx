@@ -100,12 +100,6 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         setModalView("updateSuccess");
         // The rest of the app needs to revalidate the device authMode
         revalidator.revalidate();
-      } else if (res.status === 429) {
-        // Rate limited
-        const data = await res.json();
-        const retryAfter = data.retry_after || 60;
-        const minutes = Math.ceil(retryAfter / 60);
-        setError(m.local_auth_error_rate_limited({ minutes: minutes.toString() }));
       } else {
         const data = await res.json();
         setError(data.error || m.local_auth_error_changing_password());
@@ -128,12 +122,6 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         setModalView("deleteSuccess");
         // The rest of the app needs to revalidate the device authMode
         revalidator.revalidate();
-      } else if (res.status === 429) {
-        // Rate limited
-        const data = await res.json();
-        const retryAfter = data.retry_after || 60;
-        const minutes = Math.ceil(retryAfter / 60);
-        setError(m.local_auth_error_rate_limited({ minutes: minutes.toString() }));
       } else {
         const data = await res.json();
         setError(data.error || m.local_auth_error_disabling_password());

@@ -850,8 +850,6 @@ export async function clearPasswordViaSSH(): Promise<void> {
   const host = getDeviceHost();
   const sshBase = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host}`;
 
-  console.log(`[E2E Cleanup] Clearing password from config at ${host}...`);
-
   try {
     // Run separate sed commands to avoid complex quoting issues
     // Note: JSON has space after colon, e.g. "key": "value"
