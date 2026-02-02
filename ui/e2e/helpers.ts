@@ -1,6 +1,5 @@
-import { exec } from "child_process";
 import { expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Page, Browser } from "@playwright/test";
 
 /**
  * USB HID Key Codes
@@ -581,9 +580,6 @@ export async function reconnectAfterReboot(
   }
 }
 
-// Time to wait after reset config before reloading (ms)
-const RESET_CONFIG_DELAY = 7000;
-
 // Time to wait for welcome screen animations (ms)
 const ANIMATION_DELAY = 3000;
 
@@ -674,8 +670,13 @@ export async function ensureWelcomeState(page: Page): Promise<void> {
   await page.waitForTimeout(ANIMATION_DELAY);
 }
 
+// ============================================================================
+// Welcome Flow Primitives (composable building blocks)
+// ============================================================================
+
 /**
  * Navigate to the welcome mode selection page and wait for it to load.
+ * Prerequisite: page should be on /welcome.
  *
  * @param page - Playwright page object
  */
@@ -690,57 +691,127 @@ export async function goToWelcomeMode(page: Page): Promise<void> {
 }
 
 /**
- * Complete the welcome flow with no password mode.
+ * Select an auth mode on the welcome/mode page and click Continue.
+ * Prerequisite: page should be on /welcome/mode.
  *
  * @param page - Playwright page object
+ * @param mode - "password" or "noPassword"
  */
-export async function completeWelcomeNoPassword(page: Page): Promise<void> {
-  const noPasswordRadio = page.locator('input[type="radio"][value="noPassword"]');
-  await expect(noPasswordRadio).toBeVisible({ timeout: 5000 });
-  await noPasswordRadio.click();
+export async function selectWelcomeAuthMode(
+  page: Page,
+  mode: "password" | "noPassword",
+): Promise<void> {
+  const radio = page.locator(`input[type="radio"][value="${mode}"]`);
+  await expect(radio).toBeVisible({ timeout: 5000 });
+  await radio.click();
 
   const continueButton = page.getByRole("button", { name: /Continue/i });
   await expect(continueButton).toBeEnabled({ timeout: 5000 });
   await continueButton.click();
+}
 
+/**
+ * Submit password on the welcome/password page.
+ * Prerequisite: page should be on /welcome/password.
+ *
+ * @param page - Playwright page object
+ * @param password - Password to enter
+ * @param confirmPassword - Confirm password (defaults to same as password)
+ * @param expectSuccess - If true, wait for redirect to /. If false, stay on page (for validation tests)
+ */
+export async function submitWelcomePassword(
+  page: Page,
+  password: string,
+  confirmPassword?: string,
+  expectSuccess = true,
+): Promise<void> {
+  await page.waitForURL("**/welcome/password", { timeout: 10000 });
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(1000); // Wait for animations
+
+  const passwordInput = page.locator('input[name="password"]');
+  const confirmPasswordInput = page.locator('input[name="confirmPassword"]');
+
+  await passwordInput.fill(password);
+  await confirmPasswordInput.fill(confirmPassword ?? password);
+
+  const submitButton = page.getByRole("button", { name: /Set Password/i });
+  await expect(submitButton).toBeEnabled({ timeout: 5000 });
+  await submitButton.click();
+
+  if (expectSuccess) {
+    await page.waitForURL("/", { timeout: 15000 });
+  } else {
+    // Wait for error to appear (form stays on same page)
+    await page.waitForTimeout(500);
+  }
+}
+
+/**
+ * Complete the welcome flow with no password mode.
+ * Prerequisite: page should be on /welcome/mode.
+ *
+ * @param page - Playwright page object
+ */
+export async function completeWelcomeNoPassword(page: Page): Promise<void> {
+  await selectWelcomeAuthMode(page, "noPassword");
   await page.waitForURL("/", { timeout: 15000 });
 }
 
 /**
  * Complete the welcome flow with password mode.
+ * Prerequisite: page should be on /welcome/mode.
  *
  * @param page - Playwright page object
  * @param password - The password to set
  */
 export async function completeWelcomeWithPassword(page: Page, password: string): Promise<void> {
-  // Select password mode
-  const passwordRadio = page.locator('input[type="radio"][value="password"]');
-  await expect(passwordRadio).toBeVisible({ timeout: 5000 });
-  await passwordRadio.click();
+  await selectWelcomeAuthMode(page, "password");
+  await submitWelcomePassword(page, password);
+}
 
-  const continueButton = page.getByRole("button", { name: /Continue/i });
-  await expect(continueButton).toBeEnabled({ timeout: 5000 });
-  await continueButton.click();
+// ============================================================================
+// Login/Logout Helpers
+// ============================================================================
 
-  // Wait for password page
-  await page.waitForURL("**/welcome/password", { timeout: 10000 });
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(1000); // Wait for animations
-
-  // Fill password fields
+/**
+ * Login with the given password on the login page.
+ * Prerequisite: page should be on /login-local.
+ *
+ * @param page - Playwright page object
+ * @param password - Password to use
+ * @param expectSuccess - If true, wait for redirect away from login. If false, stay on page.
+ * @returns Object with success status and any error message
+ */
+export async function loginLocal(
+  page: Page,
+  password: string,
+  expectSuccess = true,
+): Promise<{ success: boolean; error?: string }> {
   const passwordInput = page.locator('input[name="password"]');
-  const confirmPasswordInput = page.locator('input[name="confirmPassword"]');
-
+  await expect(passwordInput).toBeVisible({ timeout: 5000 });
   await passwordInput.fill(password);
-  await confirmPasswordInput.fill(password);
 
-  // Submit the form
-  const submitButton = page.getByRole("button", { name: /Set Password/i });
-  await expect(submitButton).toBeEnabled({ timeout: 5000 });
+  const submitButton = page.getByRole("button", { name: /Log in/i });
   await submitButton.click();
 
-  // Should redirect to main page
-  await page.waitForURL("/", { timeout: 15000 });
+  // Wait for response
+  await page.waitForTimeout(1000);
+
+  const currentUrl = page.url();
+  if (!currentUrl.includes("/login")) {
+    return { success: true };
+  }
+
+  // Still on login page - get error message
+  const errorText = await page.locator(".text-red-500, .text-red-600").first().textContent();
+
+  if (expectSuccess) {
+    // Test expected success but login failed
+    throw new Error(`Login failed: ${errorText || "Unknown error"}`);
+  }
+
+  return { success: false, error: errorText || undefined };
 }
 
 /**
@@ -749,7 +820,6 @@ export async function completeWelcomeWithPassword(page: Page, password: string):
  * @param page - Playwright page object
  */
 export async function logout(page: Page): Promise<void> {
-  // Call the logout endpoint directly
   await page.evaluate(async () => {
     await fetch("/auth/logout", { method: "POST" });
   });
@@ -770,38 +840,265 @@ export async function dismissSessionTakeoverDialog(page: Page): Promise<void> {
   }
 }
 
-export async function resetConfigViaSSH(): Promise<void> {
+// ============================================================================
+// Settings Access Page Helpers
+// ============================================================================
+
+/**
+ * Navigate to /settings/access and wait for the local auth section to load.
+ *
+ * @param page - Playwright page object
+ */
+export async function openAccessSettings(page: Page): Promise<void> {
+  await page.goto("/settings/access");
+  await page.waitForLoadState("networkidle");
+  await dismissSessionTakeoverDialog(page);
+
+  // Wait for the local auth section to appear (indicates loaderData is loaded)
+  const localSectionHeader = page.locator("text=Authentication Mode");
+  await expect(localSectionHeader).toBeVisible({ timeout: 15000 });
+}
+
+/**
+ * Enable password protection from settings when in noPassword mode.
+ * Prerequisite: page should be on /settings/access with noPassword mode active.
+ *
+ * @param page - Playwright page object
+ * @param password - Password to set
+ * @param confirmPassword - Confirm password (defaults to same as password)
+ * @param expectSuccess - If true, wait for success modal. If false, expect error.
+ */
+export async function enablePasswordFromSettings(
+  page: Page,
+  password: string,
+  confirmPassword?: string,
+  expectSuccess = true,
+): Promise<void> {
+  const enablePasswordButton = page.getByRole("button").filter({ hasText: /Enable Password/i });
+  await expect(enablePasswordButton).toBeVisible({ timeout: 10000 });
+  await enablePasswordButton.click();
+
+  // Wait for modal to appear
+  const passwordInput = page.locator('input[type="password"]').first();
+  await expect(passwordInput).toBeVisible({ timeout: 5000 });
+
+  const confirmPasswordInput = page.locator('input[type="password"]').nth(1);
+  await passwordInput.fill(password);
+  await confirmPasswordInput.fill(confirmPassword ?? password);
+
+  const secureButton = page.getByRole("button", { name: /Secure|Set Password/i });
+  await secureButton.click();
+
+  if (expectSuccess) {
+    const successMessage = page.locator("text=Password Set Successfully");
+    await expect(successMessage).toBeVisible({ timeout: 5000 });
+
+    const closeButton = page.getByRole("button", { name: /Close/i });
+    await closeButton.click();
+  }
+}
+
+/**
+ * Change password from settings when in password mode.
+ * Prerequisite: page should be on /settings/access with password mode active.
+ *
+ * @param page - Playwright page object
+ * @param oldPassword - Current password
+ * @param newPassword - New password to set
+ * @param confirmNewPassword - Confirm new password (defaults to same as newPassword)
+ * @param expectSuccess - If true, wait for success modal. If false, expect error.
+ */
+export async function changePasswordFromSettings(
+  page: Page,
+  oldPassword: string,
+  newPassword: string,
+  confirmNewPassword?: string,
+  expectSuccess = true,
+): Promise<void> {
+  const changePasswordButton = page.getByRole("button").filter({ hasText: /Change Password/i });
+  await expect(changePasswordButton).toBeVisible({ timeout: 10000 });
+  await changePasswordButton.click();
+
+  // Wait for modal to appear
+  const oldPasswordInput = page.locator('input[type="password"]').first();
+  await expect(oldPasswordInput).toBeVisible({ timeout: 5000 });
+
+  const newPasswordInput = page.locator('input[type="password"]').nth(1);
+  const confirmNewPasswordInput = page.locator('input[type="password"]').nth(2);
+
+  await oldPasswordInput.fill(oldPassword);
+  await newPasswordInput.fill(newPassword);
+  await confirmNewPasswordInput.fill(confirmNewPassword ?? newPassword);
+
+  const updateButton = page.getByRole("button", { name: /Update Password/i });
+  await updateButton.click();
+
+  if (expectSuccess) {
+    const successMessage = page.locator("text=Password Updated Successfully");
+    await expect(successMessage).toBeVisible({ timeout: 5000 });
+
+    const closeButton = page.getByRole("button", { name: /Close/i });
+    await closeButton.click();
+  }
+}
+
+/**
+ * Disable password protection from settings when in password mode.
+ * Prerequisite: page should be on /settings/access with password mode active.
+ *
+ * @param page - Playwright page object
+ * @param currentPassword - Current password to confirm deletion
+ * @param expectSuccess - If true, wait for success modal. If false, expect error.
+ */
+export async function disablePasswordFromSettings(
+  page: Page,
+  currentPassword: string,
+  expectSuccess = true,
+): Promise<void> {
+  const disableButton = page.getByRole("button").filter({ hasText: /Disable Protection/i });
+  await expect(disableButton).toBeVisible({ timeout: 10000 });
+  await disableButton.click();
+
+  // Wait for modal to appear
+  const passwordInput = page.locator('input[type="password"]').first();
+  await expect(passwordInput).toBeVisible({ timeout: 5000 });
+  await passwordInput.fill(currentPassword);
+
+  const confirmDisableButton = page.getByRole("button", { name: /Disable.*Protection/i });
+  await confirmDisableButton.click();
+
+  if (expectSuccess) {
+    const successMessage = page.locator("text=Password Protection Disabled");
+    await expect(successMessage).toBeVisible({ timeout: 5000 });
+
+    const closeButton = page.getByRole("button", { name: /Close/i });
+    await closeButton.click();
+  }
+}
+
+// ============================================================================
+// SSH Helpers (DRY implementation)
+// ============================================================================
+
+/**
+ * Execute a command on the device via SSH.
+ * This is the single internal helper for all SSH operations.
+ *
+ * @param cmd - Command to execute on the device
+ * @param ignoreErrors - If true, don't throw on command failure (default: false)
+ * @returns The stdout from the command
+ */
+async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
   const { exec } = await import("child_process");
   const { promisify } = await import("util");
   const execAsync = promisify(exec);
 
   const host = getDeviceHost();
-  const sshBase = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host}`;
+  const sshCmd = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} '${cmd}'`;
 
-  await execAsync(`${sshBase} 'rm /userdata/kvm_config.json'`);
-  await execAsync(`${sshBase} 'sync'`);
+  try {
+    const { stdout } = await execAsync(sshCmd);
+    return stdout;
+  } catch (error) {
+    if (ignoreErrors) {
+      return "";
+    }
+    throw error;
+  }
 }
 
+export async function resetConfigViaSSH(): Promise<void> {
+  await sshExec("rm /userdata/kvm_config.json");
+  await sshExec("sync");
+}
+
+// ============================================================================
+// Local Auth Mode Management
+// ============================================================================
+
+/** Desired local auth mode configuration */
+export type LocalAuthModeConfig = { mode: "noPassword" } | { mode: "password"; password: string };
+
 /**
- * Ensure device is in a clean state for other tests:
- * - If in onboarding mode, complete setup with no password
- * - If configured with password, clear the password
- * - If configured without password, do nothing
+ * Ensure the device is configured with the desired local auth mode.
+ * This is the preferred way to set up device state at the start of tests.
  *
- * Uses a browser context to check state and complete onboarding if needed.
+ * Handles all states:
+ * - If on /welcome: completes onboarding with desired mode
+ * - If on /login-local: either logs in (password mode) or clears password via SSH (noPassword mode)
+ * - If already configured: uses SSH to adjust if needed
  *
- * @param browser - Playwright browser object (from test.afterAll fixture)
+ * @param page - Playwright page object
+ * @param desired - The desired auth mode configuration
  */
-export async function ensureCleanStateForOtherTests(
-  browser: import("@playwright/test").Browser,
-): Promise<void> {
-  const baseURL = process.env.JETKVM_URL;
-  if (!baseURL) {
+export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConfig): Promise<void> {
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  const currentUrl = page.url();
+
+  if (currentUrl.includes("/welcome")) {
+    // Device is in onboarding mode - complete setup
+    await goToWelcomeMode(page);
+    if (desired.mode === "noPassword") {
+      await completeWelcomeNoPassword(page);
+    } else {
+      await completeWelcomeWithPassword(page, desired.password);
+    }
     return;
   }
 
-  // First, reboot to clear any rate limiting or stale state
-  await rebootDeviceViaSSH(true);
+  if (currentUrl.includes("/login")) {
+    // Device has password protection
+    if (desired.mode === "password") {
+      // Try to login with the provided password
+      const result = await loginLocal(page, desired.password, false);
+      if (result.success) {
+        return;
+      }
+      // Login failed - password mismatch. Reset and set up fresh.
+      await resetConfigViaSSH();
+      await rebootDeviceViaSSH();
+      await page.goto("/");
+      await page.waitForLoadState("networkidle");
+      await goToWelcomeMode(page);
+      await completeWelcomeWithPassword(page, desired.password);
+    } else {
+      // Need to remove password - use SSH escape hatch
+      await clearPasswordViaSSH();
+      await page.goto("/");
+      await page.waitForLoadState("networkidle");
+    }
+    return;
+  }
+
+  // Device is configured - check if we need to change mode
+  // At this point we're on "/" and the device has no password (or we're logged in)
+  if (desired.mode === "password") {
+    // Need to set password - we could do this via settings UI, but for simplicity
+    // reset to welcome and complete with password
+    await resetConfigViaSSH();
+    await rebootDeviceViaSSH();
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await goToWelcomeMode(page);
+    await completeWelcomeWithPassword(page, desired.password);
+  }
+  // If desired is noPassword and we're already configured without password, nothing to do
+}
+
+/**
+ * Restore device to noPassword configured state.
+ * Use in afterAll to clean up after tests that modify auth state.
+ *
+ * @param browser - Playwright browser object
+ */
+export async function restoreToNoPasswordConfigured(browser: Browser): Promise<void> {
+  const baseURL = process.env.JETKVM_URL;
+  if (!baseURL) {
+    console.warn("[E2E Cleanup] JETKVM_URL not set, skipping cleanup");
+    return;
+  }
 
   const context = await browser.newContext({ baseURL });
   const page = await context.newPage();
@@ -814,23 +1111,28 @@ export async function ensureCleanStateForOtherTests(
 
     if (currentUrl.includes("/welcome")) {
       // Device is in onboarding mode - complete setup with no password
-
       await goToWelcomeMode(page);
       await completeWelcomeNoPassword(page);
-
     } else if (currentUrl.includes("/login")) {
-      // Device has password - clear it via SSH
+      // Device has password - clear it via SSH (faster than trying to login)
       await context.close();
-
       await clearPasswordViaSSH();
       return;
-    } else {
-      // Device is configured without password - nothing to do
     }
+    // else: already configured without password, nothing to do
   } catch (error) {
+    console.error("[E2E Cleanup] Error restoring to noPassword state:", error);
+    throw error;
   } finally {
     await context.close();
   }
+}
+
+/**
+ * @deprecated Use restoreToNoPasswordConfigured instead
+ */
+export async function ensureCleanStateForOtherTests(browser: Browser): Promise<void> {
+  await restoreToNoPasswordConfigured(browser);
 }
 
 /**
@@ -843,33 +1145,27 @@ export async function ensureCleanStateForOtherTests(
  * - local_auth_mode: "password" or "noPassword"
  */
 export async function clearPasswordViaSSH(): Promise<void> {
-  const { exec } = await import("child_process");
-  const { promisify } = await import("util");
-  const execAsync = promisify(exec);
-
-  const host = getDeviceHost();
-  const sshBase = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host}`;
-
   try {
     // Run separate sed commands to avoid complex quoting issues
     // Note: JSON has space after colon, e.g. "key": "value"
     // Clear hashed_password
-    await execAsync(
-      `${sshBase} 'sed -i "s/\\"hashed_password\\": \\"[^\\"]*\\"/\\"hashed_password\\": \\"\\"/g" /userdata/kvm_config.json'`,
+    await sshExec(
+      'sed -i "s/\\"hashed_password\\": \\"[^\\"]*\\"/\\"hashed_password\\": \\"\\"/g" /userdata/kvm_config.json',
     );
     // Clear local_auth_token
-    await execAsync(
-      `${sshBase} 'sed -i "s/\\"local_auth_token\\": \\"[^\\"]*\\"/\\"local_auth_token\\": \\"\\"/g" /userdata/kvm_config.json'`,
+    await sshExec(
+      'sed -i "s/\\"local_auth_token\\": \\"[^\\"]*\\"/\\"local_auth_token\\": \\"\\"/g" /userdata/kvm_config.json',
     );
     // Set localAuthMode to noPassword (note: camelCase in JSON)
-    await execAsync(
-      `${sshBase} 'sed -i "s/\\"localAuthMode\\": \\"[^\\"]*\\"/\\"localAuthMode\\": \\"noPassword\\"/g" /userdata/kvm_config.json'`,
+    await sshExec(
+      'sed -i "s/\\"localAuthMode\\": \\"[^\\"]*\\"/\\"localAuthMode\\": \\"noPassword\\"/g" /userdata/kvm_config.json',
     );
 
     // Reboot to apply the config change (the app loads config on startup)
     await rebootDeviceViaSSH(true);
   } catch (error) {
     console.error("[E2E Cleanup] Error clearing password:", error);
+    throw error; // Don't swallow errors silently
   }
 }
 
@@ -974,18 +1270,10 @@ async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> 
  * @param waitForReady - Whether to wait for the device to come back online (default: true)
  */
 export async function rebootDeviceViaSSH(waitForReady = true): Promise<void> {
-  const { exec } = await import("child_process");
-  const { promisify } = await import("util");
-  const execAsync = promisify(exec);
-
   const host = getDeviceHost();
-  const sshCmd = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} reboot`;
 
-  try {
-    await execAsync(sshCmd);
-  } catch {
-    // SSH connection may be terminated by the reboot, which is expected
-  }
+  // SSH connection may be terminated by the reboot, which is expected
+  await sshExec("reboot", true);
 
   if (waitForReady) {
     await new Promise(resolve => setTimeout(resolve, 5000));

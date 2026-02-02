@@ -9,8 +9,7 @@ import {
   getVideoStreamDimensions,
   captureVideoRegionFingerprint,
   fingerprintDistance,
-  goToWelcomeMode,
-  completeWelcomeNoPassword,
+  ensureLocalAuthMode,
 } from "./helpers";
 
 // Region size for cursor detection (pixels around the expected cursor position)
@@ -36,28 +35,25 @@ const USB_PRESET_KEYBOARD_ONLY = "keyboard_only";
 test.describe("USB Device Round-Trip Tests", () => {
   test.setTimeout(120000); // 2 minutes
 
-  // Handle onboarding if device is in welcome mode (e.g., after previous test file cleanup)
+  // Ensure device is in noPassword configured state before tests
+  // This handles cases where previous tests left the device in welcome mode
   test.beforeAll(async ({ browser }) => {
-    const page = await browser.newPage();
+    const baseURL = process.env.JETKVM_URL;
+    const context = await browser.newContext({ baseURL });
+    const page = await context.newPage();
     try {
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
-
-      // Check if device is in welcome mode
-      if (page.url().includes("/welcome")) {
-        console.log("[USB Tests] Device in welcome mode, completing onboarding...");
-        await goToWelcomeMode(page);
-        await completeWelcomeNoPassword(page);
-        console.log("[USB Tests] Onboarding completed");
-      }
+      await ensureLocalAuthMode(page, { mode: "noPassword" });
     } finally {
       await page.close();
+      await context.close();
     }
   });
 
   // Always restore USB to default mode after tests complete (for subsequent test runs)
   test.afterAll(async ({ browser }) => {
-    const page = await browser.newPage();
+    const baseURL = process.env.JETKVM_URL;
+    const context = await browser.newContext({ baseURL });
+    const page = await context.newPage();
     try {
       await page.goto("/settings/hardware");
       await page.waitForLoadState("networkidle");
@@ -65,11 +61,10 @@ test.describe("USB Device Round-Trip Tests", () => {
       if (await usbDropdown.isVisible({ timeout: 5000 })) {
         await usbDropdown.selectOption(USB_PRESET_DEFAULT);
         await page.waitForTimeout(3000); // Wait for USB reconfiguration
-      } else {
-        console.warn("[USB cleanup] USB dropdown not visible, skipping restoration");
       }
     } finally {
       await page.close();
+      await context.close();
     }
   });
 

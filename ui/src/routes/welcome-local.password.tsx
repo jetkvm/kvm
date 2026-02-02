@@ -141,8 +141,6 @@ export default function WelcomeLocalPasswordRoute() {
                     </div>
                   </div>
 
-                  {actionData?.error && <p className="text-sm text-red-600">{}</p>}
-
                   <div className="animate-fadeIn opacity-0" style={{ animationDelay: "600ms" }}>
                     <Button
                       size="LG"
