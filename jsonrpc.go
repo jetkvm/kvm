@@ -887,6 +887,7 @@ func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	stopInputAudio()
 	stopUVC()
 
+	MarkSelfTriggeredUSBReset()
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to update gadget config: %w", err)
 	}
@@ -1541,34 +1542,34 @@ var rpcHandlers = map[string]RPCHandler{
 	"setVNCClipboardEnabled": {Func: rpcSetVNCClipboardEnabled, Params: []string{"enabled"}},
 
 	// RDP handlers
-	"getRDPState":            {Func: rpcGetRDPState},
-	"setRDPEnabled":          {Func: rpcSetRDPEnabled, Params: []string{"enabled"}},
-	"setRDPPort":             {Func: rpcSetRDPPort, Params: []string{"port"}},
-	"setRDPTLS":              {Func: rpcSetRDPTLS, Params: []string{"enabled"}},
-	"setRDPMaxConnections":   {Func: rpcSetRDPMaxConnections, Params: []string{"max"}},
-	"setRDPVideoEnabled":     {Func: rpcSetRDPVideoEnabled, Params: []string{"enabled"}},
-	"setRDPAudioEnabled":     {Func: rpcSetRDPAudioEnabled, Params: []string{"enabled"}},
-	"setRDPMicEnabled":       {Func: rpcSetRDPMicEnabled, Params: []string{"enabled"}},
+	"getRDPState":                  {Func: rpcGetRDPState},
+	"setRDPEnabled":                {Func: rpcSetRDPEnabled, Params: []string{"enabled"}},
+	"setRDPPort":                   {Func: rpcSetRDPPort, Params: []string{"port"}},
+	"setRDPTLS":                    {Func: rpcSetRDPTLS, Params: []string{"enabled"}},
+	"setRDPMaxConnections":         {Func: rpcSetRDPMaxConnections, Params: []string{"max"}},
+	"setRDPVideoEnabled":           {Func: rpcSetRDPVideoEnabled, Params: []string{"enabled"}},
+	"setRDPAudioEnabled":           {Func: rpcSetRDPAudioEnabled, Params: []string{"enabled"}},
+	"setRDPMicEnabled":             {Func: rpcSetRDPMicEnabled, Params: []string{"enabled"}},
 	"setRDPCameraEnabled":          {Func: rpcSetRDPCameraEnabled, Params: []string{"enabled"}},
 	"setRDPCameraTranscodeEnabled": {Func: rpcSetRDPCameraTranscodeEnabled, Params: []string{"enabled"}},
 	"setRDPClipboardEnabled":       {Func: rpcSetRDPClipboardEnabled, Params: []string{"enabled"}},
-	"setRDPPasteDelayMs":     {Func: rpcSetRDPPasteDelayMs, Params: []string{"delayMs"}},
-	"setRDPTargetOS":         {Func: rpcSetRDPTargetOS, Params: []string{"targetOS"}},
-	"setRDPClipboardMode":    {Func: rpcSetRDPClipboardMode, Params: []string{"mode"}},
-	"setRDPUsername":         {Func: rpcSetRDPUsername, Params: []string{"username"}},
-	"setRDPDomain":           {Func: rpcSetRDPDomain, Params: []string{"domain"}},
+	"setRDPPasteDelayMs":           {Func: rpcSetRDPPasteDelayMs, Params: []string{"delayMs"}},
+	"setRDPTargetOS":               {Func: rpcSetRDPTargetOS, Params: []string{"targetOS"}},
+	"setRDPClipboardMode":          {Func: rpcSetRDPClipboardMode, Params: []string{"mode"}},
+	"setRDPUsername":               {Func: rpcSetRDPUsername, Params: []string{"username"}},
+	"setRDPDomain":                 {Func: rpcSetRDPDomain, Params: []string{"domain"}},
 	// RDP file transfer settings
-	"setRDPFileTransferEnabled":  {Func: rpcSetRDPFileTransferEnabled, Params: []string{"enabled"}},
-	"setRDPFileTransferMethod":   {Func: rpcSetRDPFileTransferMethod, Params: []string{"method"}},
+	"setRDPFileTransferEnabled":    {Func: rpcSetRDPFileTransferEnabled, Params: []string{"enabled"}},
+	"setRDPFileTransferMethod":     {Func: rpcSetRDPFileTransferMethod, Params: []string{"method"}},
 	"setRDPFileTransferMaxMB":      {Func: rpcSetRDPFileTransferMaxMB, Params: []string{"maxMB"}},
 	"setRDPFileTransferTTLSec":     {Func: rpcSetRDPFileTransferTTLSec, Params: []string{"ttlSec"}},
 	"setRDPFileTransferCleanupSec": {Func: rpcSetRDPFileTransferCleanupSec, Params: []string{"cleanupSec"}},
 	"setRDPNetworkCmdWindows":      {Func: rpcSetRDPNetworkCmdWindows, Params: []string{"cmd"}},
-	"setRDPNetworkCmdLinux":      {Func: rpcSetRDPNetworkCmdLinux, Params: []string{"cmd"}},
-	"setRDPNetworkCmdMacOS":      {Func: rpcSetRDPNetworkCmdMacOS, Params: []string{"cmd"}},
-	"setRDPBase64CmdWindows":     {Func: rpcSetRDPBase64CmdWindows, Params: []string{"cmd"}},
-	"setRDPBase64CmdLinux":       {Func: rpcSetRDPBase64CmdLinux, Params: []string{"cmd"}},
-	"setRDPBase64CmdMacOS":       {Func: rpcSetRDPBase64CmdMacOS, Params: []string{"cmd"}},
+	"setRDPNetworkCmdLinux":        {Func: rpcSetRDPNetworkCmdLinux, Params: []string{"cmd"}},
+	"setRDPNetworkCmdMacOS":        {Func: rpcSetRDPNetworkCmdMacOS, Params: []string{"cmd"}},
+	"setRDPBase64CmdWindows":       {Func: rpcSetRDPBase64CmdWindows, Params: []string{"cmd"}},
+	"setRDPBase64CmdLinux":         {Func: rpcSetRDPBase64CmdLinux, Params: []string{"cmd"}},
+	"setRDPBase64CmdMacOS":         {Func: rpcSetRDPBase64CmdMacOS, Params: []string{"cmd"}},
 }
 
 var rpcHandlersInitOnce sync.Once

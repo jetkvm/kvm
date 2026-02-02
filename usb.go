@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -99,7 +100,23 @@ func rpcGetKeysDownState() (state usbgadget.KeysDownState) {
 var (
 	usbState     = "unknown"
 	usbStateLock sync.Mutex
+
+	// usbInitialTransitionDone distinguishes first-boot USB initialization
+	// ("unknown" → "configured") from actual cable replugs. First Swap(true)
+	// returns false (first boot), subsequent calls return true (real replug).
+	usbInitialTransitionDone atomic.Bool
+
+	// usbSelfTriggeredReset is set before programmatic UpdateGadgetConfig()
+	// calls (setUsbDevices RPC, mass storage, audio recovery). This prevents
+	// the resulting USB transition from being treated as a genuine cable replug.
+	usbSelfTriggeredReset atomic.Bool
 )
+
+// MarkSelfTriggeredUSBReset marks the next USB configured transition as
+// self-triggered (not a genuine cable replug). Call before UpdateGadgetConfig().
+func MarkSelfTriggeredUSBReset() {
+	usbSelfTriggeredReset.Store(true)
+}
 
 func getUsbState() string {
 	usbStateLock.Lock()
@@ -132,6 +149,18 @@ func checkUSBState() {
 
 	if newState == usbState {
 		usbStateLock.Unlock()
+
+		// Even when the UDC state hasn't changed, check for HID write failures.
+		// When a USB cable is unplugged from the remote PC, the UDC may continue
+		// reporting "configured" while all HID writes timeout. Detect this and
+		// recover by closing stale file handles and reopening fresh ones.
+		if newState == "configured" && gadget.NeedsHidRecovery() {
+			usbLogger.Warn().
+				Int32("errors", gadget.GetConsecutiveWriteErrors()).
+				Msg("HID write errors while USB configured, recovering file handles")
+			gadget.RecoverHidFiles()
+			gadget.PreOpenHidFiles()
+		}
 		return
 	}
 
@@ -157,6 +186,16 @@ func checkUSBState() {
 		// Reinitialize UVC after USB reconfiguration
 		// The UVC video device may have been recreated with a different path
 		go reinitUVC()
+
+		// Determine if this is a genuine USB cable replug vs first boot or
+		// programmatic reset (setUsbDevices, mass storage mount, etc).
+		isFirstBoot := !usbInitialTransitionDone.Swap(true)
+		selfTriggered := usbSelfTriggeredReset.Swap(false)
+		isGenuineReplug := !isFirstBoot && !selfTriggered
+
+		// Recover audio input (UAC1 ALSA device) after USB reconfiguration.
+		// The ALSA device handle becomes stale after USB replug and must be reopened.
+		go recoverAudioInputOnUSBReplug(isGenuineReplug)
 	}
 
 	requestDisplayUpdate(true, "usb_state_changed")

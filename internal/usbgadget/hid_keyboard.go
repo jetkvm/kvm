@@ -116,19 +116,23 @@ func getKeyboardState(b byte) KeyboardState {
 
 func (u *UsbGadget) updateKeyboardState(state byte) {
 	u.keyboardStateLock.Lock()
-	defer u.keyboardStateLock.Unlock()
 
 	if state&^ValidKeyboardLedMasks != 0 {
 		u.log.Warn().Uint8("state", state).Msg("ignoring invalid bits")
+		u.keyboardStateLock.Unlock()
 		return
 	}
 
 	if u.keyboardState == state {
+		u.keyboardStateLock.Unlock()
 		return
 	}
 	u.log.Trace().Uint8("old", u.keyboardState).Uint8("new", state).Msg("keyboardState updated")
 	u.keyboardState = state
+	u.keyboardStateLock.Unlock()
 
+	// Call callback outside keyboardStateLock to prevent blocking the lock
+	// during HID channel I/O in the callback (reportHidRPCKeyboardLedState).
 	if u.onKeyboardStateChange != nil {
 		(*u.onKeyboardStateChange)(getKeyboardState(state))
 	}
@@ -181,17 +185,23 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 
 func (u *UsbGadget) cancelAutoRelease(key byte) {
 	u.kbdAutoReleaseLock.Lock()
-	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease cancelled")
 
+	shouldResetKeepAlive := false
 	if timer := u.kbdAutoReleaseTimers[key]; timer != nil {
 		timer.Stop()
 		u.kbdAutoReleaseTimers[key] = nil
 		delete(u.kbdAutoReleaseTimers, key)
+		shouldResetKeepAlive = true
+	}
 
-		// Reset keep-alive timing when key is released
-		if u.onKeepAliveReset != nil {
-			(*u.onKeepAliveReset)()
-		}
+	unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease cancelled")
+
+	// IMPORTANT: Call callback OUTSIDE kbdAutoReleaseLock to prevent ABBA deadlock.
+	// Lock ordering: keepAliveJitterLock → kbdAutoReleaseLock
+	// (handleHidRPCKeypressKeepAlive holds keepAliveJitterLock then calls DelayAutoReleaseWithDuration)
+	// Calling onKeepAliveReset inside the lock would reverse the order.
+	if shouldResetKeepAlive && u.onKeepAliveReset != nil {
+		(*u.onKeepAliveReset)()
 	}
 }
 

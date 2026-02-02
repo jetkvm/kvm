@@ -66,6 +66,7 @@ func setMassStorageMode(cdrom bool) error {
 		return nil
 	}
 
+	MarkSelfTriggeredUSBReset()
 	return gadget.UpdateGadgetConfig()
 }
 

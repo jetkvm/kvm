@@ -105,6 +105,11 @@ type UsbGadget struct {
 	onKeysDownChange      *func(state KeysDownState)
 	onKeepAliveReset      *func()
 
+	// consecutiveWriteErrors tracks sequential HID write failures.
+	// Used to detect a disconnected remote PC when UDC state stays "configured".
+	consecutiveWriteErrors atomic.Int32
+	lastRecoveryTime       atomic.Int64 // UnixNano; cooldown between recovery attempts
+
 	log *zerolog.Logger
 
 	logSuppressionCounter map[string]int
@@ -152,8 +157,8 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		keyboardState:        0,
 		keysDownState:        KeysDownState{Modifier: 0, Keys: []byte{0, 0, 0, 0, 0, 0}}, // must be initialized to hidKeyBufferSize (6) zero bytes
 		kbdAutoReleaseTimers: make(map[byte]*time.Timer),
-		enabledDevices: *enabledDevices,
-		log:            logger,
+		enabledDevices:       *enabledDevices,
+		log:                  logger,
 
 		strictMode: config.strictMode,
 
@@ -333,6 +338,42 @@ func (u *UsbGadget) PreOpenHidFiles() {
 
 		u.verifyAndReopenHidFiles()
 	}
+}
+
+const (
+	// hidRecoveryErrorThreshold is the number of consecutive HID write errors
+	// before triggering file handle recovery.
+	hidRecoveryErrorThreshold int32 = 5
+
+	// hidRecoveryCooldown is the minimum interval between recovery attempts
+	// to prevent rapid close/reopen cycles when the cable is disconnected.
+	hidRecoveryCooldown = 5 * time.Second
+)
+
+// GetConsecutiveWriteErrors returns the current consecutive HID write error count.
+func (u *UsbGadget) GetConsecutiveWriteErrors() int32 {
+	return u.consecutiveWriteErrors.Load()
+}
+
+// NeedsHidRecovery reports whether HID file handles should be recovered.
+// Returns true when consecutive write errors exceed the threshold and
+// sufficient time has elapsed since the last recovery attempt.
+func (u *UsbGadget) NeedsHidRecovery() bool {
+	if u.consecutiveWriteErrors.Load() < hidRecoveryErrorThreshold {
+		return false
+	}
+	lastRecovery := time.Unix(0, u.lastRecoveryTime.Load())
+	return time.Since(lastRecovery) >= hidRecoveryCooldown
+}
+
+// RecoverHidFiles closes stale HID file handles and reopens them.
+// This handles the case where the USB cable is unplugged from the remote PC
+// but the UDC state remains "configured", leaving all HID writes broken.
+func (u *UsbGadget) RecoverHidFiles() {
+	u.lastRecoveryTime.Store(time.Now().UnixNano())
+	u.consecutiveWriteErrors.Store(0)
+	u.log.Warn().Msg("consecutive HID write errors detected, recovering file handles")
+	u.CloseHidFiles()
 }
 
 // verifyAndReopenHidFiles checks if HID file handles are still valid and reopens them if stale.

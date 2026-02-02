@@ -27,11 +27,13 @@ func (c *Connection) startBitmapStreaming() {
 			if err := c.server.deps.Video.StartJPEGEncoder(50); err != nil {
 				c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to start JPEG encoder")
 			} else {
+				c.startedJPEGEncoder = true
 				c.server.deps.Logger.Info().Msg("RDP: using JPEG fallback for bitmap mode")
 				c.startJPEGBitmapStreaming()
 				return
 			}
 		} else {
+			c.startedRGBEncoder = true
 			c.server.deps.Logger.Info().Msg("RDP: RGB encoder started for bitmap mode")
 		}
 	}

@@ -366,7 +366,7 @@ static inline void precise_sleep_us(uint32_t microseconds) {
 	nanosleep(&ts, NULL);
 }
 
-static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream) {
+static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream, int nonblock) {
 	uint8_t attempt = 0;
 	int err;
 	uint32_t backoff_us = sleep_microseconds;
@@ -374,13 +374,15 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 	while (attempt < max_attempts_global) {
 		err = snd_pcm_open(handle, device, stream, SND_PCM_NONBLOCK);
 		if (err >= 0) {
-			// Validate that we can switch to blocking mode
-			err = snd_pcm_nonblock(*handle, 0);
-			if (err < 0) {
-				LOG_ERROR("Failed to set blocking mode on %s: %s", device, snd_strerror(err));
-				snd_pcm_close(*handle);
-				*handle = NULL;
-				return err;
+			if (!nonblock) {
+				// Switch to blocking mode for capture path
+				err = snd_pcm_nonblock(*handle, 0);
+				if (err < 0) {
+					LOG_ERROR("Failed to set blocking mode on %s: %s", device, snd_strerror(err));
+					snd_pcm_close(*handle);
+					*handle = NULL;
+					return err;
+				}
 			}
 			return 0;
 		}
@@ -535,11 +537,21 @@ static int handle_alsa_error(snd_pcm_t *handle, snd_pcm_t **valid_handle,
 		}
 		return 1;  // Retry
 	} else if (pcm_rc == -EAGAIN) {
-		// Resource temporarily unavailable
+		// Resource temporarily unavailable (normal for non-blocking playback).
+		// When the USB host isn't consuming audio data, the ALSA buffer stays full
+		// and every write returns -EAGAIN. This is NOT a device failure — the device
+		// is healthy, just the host side isn't draining. Treat exhaustion as "skip
+		// this frame" (return 0) rather than fatal (return -1) to avoid triggering
+		// unnecessary device recovery cycles.
+		(*recovery_attempts)++;
 		if (handle != *valid_handle) {
 			return -1;
 		}
-		snd_pcm_wait(handle, sleep_ms);
+		if (*recovery_attempts > max_attempts) {
+			return 0;  // Skip frame — buffer full, not a device error
+		}
+		// Wait up to 20ms for device to become ready (covers 2 AUDIN packet periods)
+		snd_pcm_wait(handle, 20);
 		return 1;  // Retry
 	} else if (pcm_rc == -ESTRPIPE) {
 		// Suspended, need to resume
@@ -762,7 +774,7 @@ int jetkvm_audio_capture_init() {
 		atomic_store(&capture_stop_requested, 0);
 	}
 
-	err = safe_alsa_open(&pcm_capture_handle, alsa_capture_device, SND_PCM_STREAM_CAPTURE);
+	err = safe_alsa_open(&pcm_capture_handle, alsa_capture_device, SND_PCM_STREAM_CAPTURE, 0);
 	if (err < 0) {
 		LOG_ERROR("Failed to open ALSA capture device %s: %s", alsa_capture_device, snd_strerror(err));
 		atomic_store(&capture_stop_requested, 0);
@@ -1136,7 +1148,16 @@ int jetkvm_audio_playback_init() {
 		__sync_synchronize();
 
 		if (pcm_playback_handle) {
+			snd_pcm_nonblock(pcm_playback_handle, 1);
 			snd_pcm_drop(pcm_playback_handle);
+		}
+
+		// Wait briefly for any in-flight I/O to return after the drop
+		int pb_wait = 0;
+		while (atomic_load(&playback_in_io) > 0 && pb_wait < 50) {
+			struct timespec w = { .tv_sec = 0, .tv_nsec = 1000000 };
+			nanosleep(&w, NULL);
+			pb_wait++;
 		}
 
 		pthread_mutex_lock(&playback_mutex);
@@ -1155,7 +1176,7 @@ int jetkvm_audio_playback_init() {
 		atomic_store(&playback_stop_requested, 0);
 	}
 
-	err = safe_alsa_open(&pcm_playback_handle, alsa_playback_device, SND_PCM_STREAM_PLAYBACK);
+	err = safe_alsa_open(&pcm_playback_handle, alsa_playback_device, SND_PCM_STREAM_PLAYBACK, 1);
 	if (err < 0) {
 		LOG_ERROR("Failed to open ALSA playback device %s: %s", alsa_playback_device, snd_strerror(err));
 		atomic_store(&playback_stop_requested, 0);
@@ -1204,7 +1225,8 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
 	int32_t pcm_frames, pcm_rc;
 	uint8_t recovery_attempts = 0;
-	const uint8_t max_recovery_attempts = 3;
+	// Higher limit for non-blocking mode: EAGAIN retries with 20ms waits (200ms max)
+	const uint8_t max_recovery_attempts = 10;
 
 	// Validate inputs before acquiring mutex to reduce lock contention
 	if (__builtin_expect(!opus_buf || opus_size <= 0 || opus_size > max_packet_size, 0)) {
@@ -1305,7 +1327,8 @@ retry_write:
 __attribute__((hot)) int jetkvm_audio_write_pcm(void * __restrict__ pcm_buf, int num_bytes) {
 	int32_t pcm_rc;
 	uint8_t recovery_attempts = 0;
-	const uint8_t max_recovery_attempts = 3;
+	// Higher limit for non-blocking mode: EAGAIN retries with 20ms waits (200ms max)
+	const uint8_t max_recovery_attempts = 10;
 
 	// Validate inputs before acquiring mutex
 	if (__builtin_expect(!pcm_buf || num_bytes <= 0, 0)) {
@@ -1398,8 +1421,17 @@ static void close_audio_stream(atomic_int *stop_requested, volatile int *initial
 		return;
 	}
 
+	// Abort any in-flight ALSA I/O BEFORE waiting for the counter.
+	// snd_pcm_drop() stops the PCM stream, causing blocked/pending writes to fail.
+	// snd_pcm_nonblock() ensures non-blocking mode so no new waits can start.
+	// Without this, a stuck snd_pcm_writei in the kernel (e.g., dead USB device)
+	// would block forever, and the I/O counter would never reach 0.
+	if (*pcm_handle) {
+		snd_pcm_nonblock(*pcm_handle, 1);
+		snd_pcm_drop(*pcm_handle);
+	}
+
 	// Wait for any active ALSA I/O operations to complete
-	// The stop_requested flag will cause them to return after their current operation
 	int wait_count = 0;
 	while (atomic_load(in_io_counter) > 0 && wait_count < 100) {
 		struct timespec io_wait = { .tv_sec = 0, .tv_nsec = 1000000 }; // 1ms

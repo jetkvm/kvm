@@ -45,8 +45,8 @@ func GetLastPCM() []byte {
 func ReleasePCMBuffer(buf []byte) {}
 
 // WritePCM is a stub on non-ARM platforms.
-func WritePCM(pcmData []byte) error {
-	return nil
+func WritePCM(pcmData []byte) (int, error) {
+	return 0, nil
 }
 
 // DropPlaybackBuffer is a stub on non-ARM platforms.

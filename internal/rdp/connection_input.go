@@ -112,8 +112,16 @@ func (c *Connection) handleMouseEvent(data []byte) {
 		return
 	}
 
-	absX := int(xPos) * 32767 / int(w)
-	absY := int(yPos) * 32767 / int(h)
+	hasMove := (pointerFlags & 0x0800) != 0 // PTRFLAGS_MOVE
+
+	// Update last known position when the client indicates movement.
+	// Wheel-only events may carry stale or zero coordinates — using those
+	// would jump the cursor to the top-left (0,0), which on GNOME triggers
+	// the hot corner / top-bar workspace switch on scroll.
+	if hasMove {
+		c.lastMouseX = int(xPos) * 32767 / int(w)
+		c.lastMouseY = int(yPos) * 32767 / int(h)
+	}
 
 	// Track button state based on RDP events
 	// RDP sends button flags with PTRFLAGS_DOWN on press, without on release
@@ -146,8 +154,15 @@ func (c *Connection) handleMouseEvent(data []byte) {
 		}
 	}
 
-	if err := c.server.deps.HID.AbsMouseReport(absX, absY, c.mouseButtons); err != nil {
-		c.server.deps.Logger.Debug().Err(err).Msg("RDP: mouse report failed")
+	// Only send HID position report (Report ID 1) when there's a move or
+	// button state change.  Wheel-only events should NOT send a position
+	// report — the cursor is already at the right place from the last move.
+	// Sending a redundant position report with stale/zero coords would move
+	// the cursor, and on Ubuntu GNOME scrolling on the top bar switches workspaces.
+	if hasMove || hasButtonEvent {
+		if err := c.server.deps.HID.AbsMouseReport(c.lastMouseX, c.lastMouseY, c.mouseButtons); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: mouse report failed")
+		}
 	}
 
 	// Handle vertical wheel (PTRFLAGS_WHEEL = 0x0200)

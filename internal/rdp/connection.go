@@ -36,8 +36,8 @@ var audinBufferPool = sync.Pool{
 // audinPooledBuffer wraps a pooled buffer for audio input data.
 // After processing, call Release() to return the buffer to the pool.
 type audinPooledBuffer struct {
-	Data []byte   // Slice of the actual data
-	buf  *[]byte  // Pointer to underlying buffer for pool return
+	Data []byte  // Slice of the actual data
+	buf  *[]byte // Pointer to underlying buffer for pool return
 }
 
 // Release returns the buffer to the pool. Safe to call multiple times.
@@ -135,9 +135,17 @@ type Connection struct {
 	// Graphics mode - true if RDPGFX is available, false for bitmap updates
 	gfxSupported atomic.Bool
 
-	// Mouse button state tracking for RDP events
-	// RDP sends button flags only on click events, not during moves
+	// Track which bitmap encoder this connection started (for cleanup on disconnect)
+	startedRGBEncoder  bool
+	startedJPEGEncoder bool
+
+	// Mouse state tracking for RDP events.
+	// RDP sends button flags only on click events, not during moves.
+	// lastMouseX/Y track the last known cursor position so button-only
+	// events can re-send the correct position (HID Report ID 1 includes position).
 	mouseButtons byte
+	lastMouseX   int
+	lastMouseY   int
 
 	// Diagnostic counters for video frame tracking (debugging freeze issues)
 	frameStats struct {
@@ -700,15 +708,30 @@ func (c *Connection) Close() {
 		c.server.deps.Audio.Disconnect()
 	}
 
+	// Close AUDIN channel first to stop data callbacks from firing
+	if c.audinChannel != nil {
+		c.audinChannel.Close()
+	}
+
 	// Stop AUDIN data processing goroutine
 	if c.audinStopCh != nil {
 		close(c.audinStopCh)
 		c.audinStopCh = nil
 	}
 
-	// Close AUDIN channel
-	if c.audinChannel != nil {
-		c.audinChannel.Close()
+	// Drain remaining AUDIN buffers to return them to the pool
+	if c.audinDataChan != nil {
+		for {
+			select {
+			case pooled := <-c.audinDataChan:
+				if pooled != nil {
+					pooled.Release()
+				}
+			default:
+				goto audinDrained
+			}
+		}
+	audinDrained:
 	}
 
 	// Unsubscribe from camera format changes, disable passthrough, and close camera channel
@@ -747,6 +770,24 @@ func (c *Connection) Close() {
 
 	// Signal the message loop to exit - this triggers goroutine cleanup
 	close(c.stopChan)
+
+	// Stop bitmap encoders that this connection started.
+	// These are separate from the shared H.264 encoder managed by the native layer.
+	// Without this, hardware JPEG/RGB encoders keep running after disconnect.
+	if c.server.deps.Video != nil {
+		if c.startedRGBEncoder {
+			if err := c.server.deps.Video.StopRGBEncoder(); err != nil {
+				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to stop RGB encoder")
+			}
+			c.startedRGBEncoder = false
+		}
+		if c.startedJPEGEncoder {
+			if err := c.server.deps.Video.StopJPEGEncoder(); err != nil {
+				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to stop JPEG encoder")
+			}
+			c.startedJPEGEncoder = false
+		}
+	}
 
 	// Cleanup video subscriptions (safety net - goroutines should cleanup in defer)
 	// These may already be nil if goroutines exited cleanly via stopChan

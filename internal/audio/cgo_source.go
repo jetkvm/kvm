@@ -295,18 +295,18 @@ func ReleasePCMBuffer(buf []byte) {
 // WritePCM writes raw PCM audio data to the playback device.
 // This is used for RDP audio input (client microphone → USB gadget).
 // Format: 16-bit signed PCM, mono, 48kHz.
-// Returns the number of frames written, or an error.
-func WritePCM(pcmData []byte) error {
+// Returns the number of frames written (0 = skipped/buffer full), or an error.
+func WritePCM(pcmData []byte) (int, error) {
 	if len(pcmData) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	rc := C.jetkvm_audio_write_pcm(unsafe.Pointer(&pcmData[0]), C.int(len(pcmData)))
 	if rc < 0 {
-		return fmt.Errorf("jetkvm_audio_write_pcm failed: %d", rc)
+		return int(rc), fmt.Errorf("jetkvm_audio_write_pcm failed: %d", rc)
 	}
 
-	return nil
+	return int(rc), nil
 }
 
 // DropPlaybackBuffer drops any pending audio frames in the playback buffer.

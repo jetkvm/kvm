@@ -71,6 +71,9 @@ type AudinDataCallback func(data []byte)
 // AudinReadyCallback is called when the audin channel is ready to receive audio.
 type AudinReadyCallback func(a *AudinChannel)
 
+// AudinCloseCallback is called when the AUDIN channel is closed by the client.
+type AudinCloseCallback func()
+
 // AudinLogFunc is a simple logging function for AUDIN events.
 type AudinLogFunc func(msg string, args ...interface{})
 
@@ -82,6 +85,7 @@ type AudinChannel struct {
 	// Callbacks
 	onReady AudinReadyCallback
 	onData  AudinDataCallback
+	onClose AudinCloseCallback
 
 	// Optional logger for debugging
 	logger AudinLogFunc
@@ -196,6 +200,14 @@ func (a *AudinChannel) OnData(data []byte) error {
 func (a *AudinChannel) OnClose() {
 	a.ready.Store(false)
 	a.isOpen.Store(false)
+	if a.onClose != nil {
+		a.onClose()
+	}
+}
+
+// SetCloseCallback sets a callback invoked when the AUDIN channel is closed.
+func (a *AudinChannel) SetCloseCallback(cb AudinCloseCallback) {
+	a.onClose = cb
 }
 
 // sendVersion sends the server version to the client.

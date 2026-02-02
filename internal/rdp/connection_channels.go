@@ -146,6 +146,11 @@ func (c *Connection) initDVCChannelsSync() {
 			c.server.deps.Logger.Debug().Msgf(msg, args...)
 		})
 
+		// Log AUDIN channel close at WARN level for diagnostic visibility
+		c.audinChannel.SetCloseCallback(func() {
+			c.server.deps.Logger.Warn().Msg("RDP: AUDIN channel closed by client (mic data will stop)")
+		})
+
 		// Set ready callback for AUDIN
 		c.audinChannel.SetReadyCallback(func(a *channels.AudinChannel) {
 			fmt, ok := a.GetSelectedFormat()
@@ -399,8 +404,14 @@ func (c *Connection) sendDVCDataHotPath(data []byte) error {
 	// DVC data payload
 	copy(packet[pos:], data)
 
-	// Single write to connection
+	// Single write to connection with timeout to prevent blocking on slow clients.
+	// Without this, a slow client blocks the frame broadcast loop on single-core devices,
+	// causing mouse/video lag that worsens with each reconnect (TCP slow start + stalls).
+	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
 	_, err := c.conn.Write(packet)
+	_ = c.conn.SetWriteDeadline(time.Time{}) // Clear deadline for subsequent writes
 	return err
 }
 

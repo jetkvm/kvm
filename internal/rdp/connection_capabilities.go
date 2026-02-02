@@ -210,10 +210,13 @@ func buildInputCapability() []byte {
 	// Length
 	buf[2] = 88
 	buf[3] = 0
-	// Input flags - no FASTPATH for RDP 5.0 compatibility
-	// 0x25 = SCANCODES (0x01) | MOUSEX (0x04) | UNICODE (0x20)
+	// Input flags (TS_INPUT_CAPABILITYSET inputFlags, little-endian):
+	// 0x0001 = INPUT_FLAG_SCANCODES
+	// 0x0004 = INPUT_FLAG_MOUSEX
+	// 0x0020 = INPUT_FLAG_FASTPATH_INPUT2
+	// 0x0100 = TS_INPUT_FLAG_MOUSE_HWHEEL (required for client to send horizontal wheel events)
 	buf[4] = 0x25
-	buf[5] = 0
+	buf[5] = 0x01
 	// Pad
 	// Keyboard layout (US)
 	buf[8] = 0x09
