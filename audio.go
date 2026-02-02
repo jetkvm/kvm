@@ -632,7 +632,7 @@ func tryClaimAudioInput(owner AudioInputOwner, isActive func() bool) bool {
 		if !ClaimAudioInput(owner) {
 			return false
 		}
-		audioLogger.Info().Msgf("audio input: %s claimed ownership", owner)
+		audioLogger.Info().Str("owner", owner.String()).Msg("audio input: claimed ownership")
 		if err := audio.DropPlaybackBuffer(); err != nil {
 			audioLogger.Warn().Err(err).Msg("audio input: failed to drop playback buffer")
 		}

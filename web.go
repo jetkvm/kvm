@@ -17,7 +17,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"crypto/sha256"
+	"crypto/subtle"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -481,7 +484,7 @@ func handleWebRTCSignalWsMessages(
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("unmarshalled incoming ICE candidate")
+			l.Info().Str("candidate", candidate.Candidate).Msg("unmarshalled incoming ICE candidate")
 
 			s := currentSession.Load()
 			if s == nil {
@@ -489,7 +492,7 @@ func handleWebRTCSignalWsMessages(
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to current session")
+			l.Info().Str("candidate", candidate.Candidate).Msg("adding incoming ICE candidate to current session")
 			if err = s.peerConnection.AddICECandidate(candidate); err != nil {
 				l.Warn().Str("error", err.Error()).Msg("failed to add incoming ICE candidate to our peer connection")
 			}
@@ -559,6 +562,41 @@ func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 	c.Abort()
 }
 
+// bcryptCache avoids running the expensive bcrypt hash on every request by
+// caching a fast SHA-256 digest of the last successfully verified password.
+// The cache auto-invalidates when config.HashedPassword changes (password update).
+var bcryptCache struct {
+	sync.Mutex
+	bcryptHash    string    // config.HashedPassword at time of verification
+	passwordDigest [sha256.Size]byte // SHA-256 of the plaintext password
+}
+
+// verifyBasicAuthPassword checks the password against the bcrypt hash, using a
+// fast-path SHA-256 cache to skip the expensive bcrypt call on repeated requests.
+func verifyBasicAuthPassword(password, hashedPassword string) bool {
+	digest := sha256.Sum256([]byte(password))
+
+	bcryptCache.Lock()
+	if bcryptCache.bcryptHash == hashedPassword &&
+		subtle.ConstantTimeCompare(digest[:], bcryptCache.passwordDigest[:]) == 1 {
+		bcryptCache.Unlock()
+		return true
+	}
+	bcryptCache.Unlock()
+
+	// Slow path: full bcrypt verification.
+	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err != nil {
+		return false
+	}
+
+	// Populate cache for subsequent requests.
+	bcryptCache.Lock()
+	bcryptCache.bcryptHash = hashedPassword
+	bcryptCache.passwordDigest = digest
+	bcryptCache.Unlock()
+	return true
+}
+
 func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if requireDeveloperMode {
@@ -579,7 +617,6 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
-		// calculate basic auth credentials
 		_, password, ok := c.Request.BasicAuth()
 		if !ok {
 			c.Header("WWW-Authenticate", "Basic realm=\"JetKVM\"")
@@ -587,8 +624,7 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password))
-		if err != nil {
+		if !verifyBasicAuthPassword(password, config.HashedPassword) {
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}
