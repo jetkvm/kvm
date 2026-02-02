@@ -148,7 +148,7 @@ func (c *Connection) initDVCChannelsSync() {
 
 		// Log AUDIN channel close at WARN level for diagnostic visibility
 		c.audinChannel.SetCloseCallback(func() {
-			c.server.deps.Logger.Warn().Msg("RDP: AUDIN channel closed by client (mic data will stop)")
+			c.server.deps.Logger.Warn().Msg("RDP: AUDIN channel closed (mic data will stop)")
 		})
 
 		// Set ready callback for AUDIN
@@ -404,15 +404,10 @@ func (c *Connection) sendDVCDataHotPath(data []byte) error {
 	// DVC data payload
 	copy(packet[pos:], data)
 
-	// Single write to connection with timeout to prevent blocking on slow clients.
-	// Without this, a slow client blocks the frame broadcast loop on single-core devices,
-	// causing mouse/video lag that worsens with each reconnect (TCP slow start + stalls).
-	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	return c.writeWithDeadline(func() error {
+		_, err := c.conn.Write(packet)
 		return err
-	}
-	_, err := c.conn.Write(packet)
-	_ = c.conn.SetWriteDeadline(time.Time{}) // Clear deadline for subsequent writes
-	return err
+	})
 }
 
 // sendDVCDataFallback handles oversized packets that don't fit in the pool.
@@ -502,15 +497,10 @@ func (c *Connection) sendStaticChannelDataHotPath(channelID uint16, data []byte)
 	// Data payload
 	copy(packet[pos:], data)
 
-	// Single write to connection with timeout to prevent blocking the message loop.
-	// If the send buffer is full (backpressure), we fail fast rather than freeze.
-	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	return c.writeWithDeadline(func() error {
+		_, err := c.conn.Write(packet)
 		return err
-	}
-	_, err := c.conn.Write(packet)
-	// Clear deadline for subsequent writes
-	_ = c.conn.SetWriteDeadline(time.Time{})
-	return err
+	})
 }
 
 // sendStaticChannelDataFallback handles oversized packets that don't fit in the pool.
@@ -526,13 +516,9 @@ func (c *Connection) sendStaticChannelDataFallback(channelID uint16, data []byte
 	binary.LittleEndian.PutUint32(vcPDU[4:8], channelFlagFirst|channelFlagLast)
 	copy(vcPDU[8:], data)
 
-	// Set write deadline to prevent blocking the message loop on backpressure
-	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return err
-	}
-	err := protocol.WriteSendDataIndicationPooled(c.conn, c.userID, channelID, vcPDU)
-	_ = c.conn.SetWriteDeadline(time.Time{})
-	return err
+	return c.writeWithDeadline(func() error {
+		return protocol.WriteSendDataIndicationPooled(c.conn, c.userID, channelID, vcPDU)
+	})
 }
 
 // SendFrame sends an H.264 video frame to the client.

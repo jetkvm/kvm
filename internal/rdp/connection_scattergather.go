@@ -3,7 +3,6 @@ package rdp
 import (
 	"encoding/binary"
 	"sync"
-	"time"
 
 	"github.com/jetkvm/kvm/internal/rdp/protocol"
 )
@@ -109,15 +108,12 @@ func (c *Connection) sendDVCDataScatterGather(sg ScatterGatherWriter, data []byt
 	binary.LittleEndian.PutUint32(header[pos:pos+4], uint32(vcPayloadLen))
 	binary.LittleEndian.PutUint32(header[pos+4:pos+8], channelFlagFirst|channelFlagLast)
 
-	// Set write deadline to prevent blocking on slow clients (matches hot-path behavior)
-	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return err
-	}
 	// Write using scatter-gather: [header, data]
 	// The kernel will encrypt both buffers as a single TLS record without copying
-	_, err := sg.WriteScatterGather(header, data)
-	_ = c.conn.SetWriteDeadline(time.Time{}) // Clear deadline for subsequent writes
-	return err
+	return c.writeWithDeadline(func() error {
+		_, err := sg.WriteScatterGather(header, data)
+		return err
+	})
 }
 
 // ScatterGatherThreshold is the minimum payload size to use scatter-gather.

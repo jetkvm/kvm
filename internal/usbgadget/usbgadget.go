@@ -366,7 +366,8 @@ func (u *UsbGadget) NeedsHidRecovery() bool {
 	return time.Since(lastRecovery) >= hidRecoveryCooldown
 }
 
-// RecoverHidFiles closes stale HID file handles and reopens them.
+// RecoverHidFiles closes stale HID file handles, resetting error counters.
+// The caller must call PreOpenHidFiles() afterward to reopen them.
 // This handles the case where the USB cable is unplugged from the remote PC
 // but the UDC state remains "configured", leaving all HID writes broken.
 func (u *UsbGadget) RecoverHidFiles() {
@@ -374,6 +375,18 @@ func (u *UsbGadget) RecoverHidFiles() {
 	u.consecutiveWriteErrors.Store(0)
 	u.log.Warn().Msg("consecutive HID write errors detected, recovering file handles")
 	u.CloseHidFiles()
+}
+
+// TryRecoverHidFiles atomically checks if recovery is needed and performs it.
+// Returns true if recovery was performed (files closed and reopened), false if not needed or on cooldown.
+// This eliminates the TOCTOU gap from separate NeedsHidRecovery + RecoverHidFiles calls.
+func (u *UsbGadget) TryRecoverHidFiles() bool {
+	if !u.NeedsHidRecovery() {
+		return false
+	}
+	u.RecoverHidFiles()
+	u.PreOpenHidFiles()
+	return true
 }
 
 // verifyAndReopenHidFiles checks if HID file handles are still valid and reopens them if stale.

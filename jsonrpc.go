@@ -887,8 +887,7 @@ func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	stopInputAudio()
 	stopUVC()
 
-	MarkSelfTriggeredUSBReset()
-	if err := gadget.UpdateGadgetConfig(); err != nil {
+	if err := resetUSBGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to update gadget config: %w", err)
 	}
 

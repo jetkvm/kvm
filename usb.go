@@ -118,6 +118,14 @@ func MarkSelfTriggeredUSBReset() {
 	usbSelfTriggeredReset.Store(true)
 }
 
+// resetUSBGadgetConfig marks the reset as self-triggered and reconfigures the USB gadget.
+// This encapsulates the required mark-before-action protocol to prevent callers from
+// forgetting MarkSelfTriggeredUSBReset(), which would misclassify the transition as a genuine replug.
+func resetUSBGadgetConfig() error {
+	MarkSelfTriggeredUSBReset()
+	return gadget.UpdateGadgetConfig()
+}
+
 func getUsbState() string {
 	usbStateLock.Lock()
 	defer usbStateLock.Unlock()
@@ -154,12 +162,10 @@ func checkUSBState() {
 		// When a USB cable is unplugged from the remote PC, the UDC may continue
 		// reporting "configured" while all HID writes timeout. Detect this and
 		// recover by closing stale file handles and reopening fresh ones.
-		if newState == "configured" && gadget.NeedsHidRecovery() {
+		if newState == "configured" && gadget.TryRecoverHidFiles() {
 			usbLogger.Warn().
 				Int32("errors", gadget.GetConsecutiveWriteErrors()).
-				Msg("HID write errors while USB configured, recovering file handles")
-			gadget.RecoverHidFiles()
-			gadget.PreOpenHidFiles()
+				Msg("HID write errors while USB configured, recovered file handles")
 		}
 		return
 	}

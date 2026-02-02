@@ -14,6 +14,31 @@ import (
 	"github.com/jetkvm/kvm/internal/rdp/protocol"
 )
 
+// bitmapEncoderType tracks which bitmap encoder a connection started.
+type bitmapEncoderType int
+
+const (
+	bitmapEncoderNone bitmapEncoderType = iota
+	bitmapEncoderRGB
+	bitmapEncoderJPEG
+)
+
+// rdpWriteDeadline is the timeout for individual connection writes.
+// Prevents slow clients from blocking the message loop on single-core devices.
+const rdpWriteDeadline = 5 * time.Second
+
+// writeWithDeadline sets a write deadline, executes the write function, then clears the deadline.
+// Prevents slow clients from blocking the message loop, which causes mouse/video lag
+// that worsens with each reconnect (TCP slow start + stalls) on single-core devices.
+func (c *Connection) writeWithDeadline(writeFn func() error) error {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(rdpWriteDeadline)); err != nil {
+		return err
+	}
+	err := writeFn()
+	_ = c.conn.SetWriteDeadline(time.Time{})
+	return err
+}
+
 // vcPDUPool provides pooled buffers for virtual channel PDUs per MS-RDPBCGR 2.2.6.1.
 // Audio packets can reach 4096 bytes + headers, so 8KB avoids fallback allocations.
 var vcPDUPool = sync.Pool{
@@ -135,11 +160,12 @@ type Connection struct {
 	// Graphics mode - true if RDPGFX is available, false for bitmap updates
 	gfxSupported atomic.Bool
 
-	// Track which bitmap encoder this connection started (for cleanup on disconnect)
-	startedRGBEncoder  bool
-	startedJPEGEncoder bool
+	// Track which bitmap encoder this connection started (for cleanup on disconnect).
+	// Mutually exclusive: only one encoder type can be active at a time.
+	activeEncoder bitmapEncoderType
 
 	// Mouse state tracking for RDP events.
+	// Accessed only from the connection's message loop goroutine (single-writer).
 	// RDP sends button flags only on click events, not during moves.
 	// lastMouseX/Y track the last known cursor position so button-only
 	// events can re-send the correct position (HID Report ID 1 includes position).
@@ -721,17 +747,11 @@ func (c *Connection) Close() {
 
 	// Drain remaining AUDIN buffers to return them to the pool
 	if c.audinDataChan != nil {
-		for {
-			select {
-			case pooled := <-c.audinDataChan:
-				if pooled != nil {
-					pooled.Release()
-				}
-			default:
-				goto audinDrained
+		for len(c.audinDataChan) > 0 {
+			if pooled := <-c.audinDataChan; pooled != nil {
+				pooled.Release()
 			}
 		}
-	audinDrained:
 	}
 
 	// Unsubscribe from camera format changes, disable passthrough, and close camera channel
@@ -775,18 +795,17 @@ func (c *Connection) Close() {
 	// These are separate from the shared H.264 encoder managed by the native layer.
 	// Without this, hardware JPEG/RGB encoders keep running after disconnect.
 	if c.server.deps.Video != nil {
-		if c.startedRGBEncoder {
+		switch c.activeEncoder {
+		case bitmapEncoderRGB:
 			if err := c.server.deps.Video.StopRGBEncoder(); err != nil {
 				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to stop RGB encoder")
 			}
-			c.startedRGBEncoder = false
-		}
-		if c.startedJPEGEncoder {
+		case bitmapEncoderJPEG:
 			if err := c.server.deps.Video.StopJPEGEncoder(); err != nil {
 				c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to stop JPEG encoder")
 			}
-			c.startedJPEGEncoder = false
 		}
+		c.activeEncoder = bitmapEncoderNone
 	}
 
 	// Cleanup video subscriptions (safety net - goroutines should cleanup in defer)

@@ -71,7 +71,7 @@ type AudinDataCallback func(data []byte)
 // AudinReadyCallback is called when the audin channel is ready to receive audio.
 type AudinReadyCallback func(a *AudinChannel)
 
-// AudinCloseCallback is called when the AUDIN channel is closed by the client.
+// AudinCloseCallback is called when the AUDIN channel is closed (by client request or server teardown).
 type AudinCloseCallback func()
 
 // AudinLogFunc is a simple logging function for AUDIN events.

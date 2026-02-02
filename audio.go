@@ -25,6 +25,18 @@ const (
 	AudioInputOwnerRDP    AudioInputOwner = 2
 )
 
+// String returns a human-readable name for the audio input owner.
+func (o AudioInputOwner) String() string {
+	switch o {
+	case AudioInputOwnerRDP:
+		return "RDP"
+	case AudioInputOwnerWebRTC:
+		return "WebRTC"
+	default:
+		return "none"
+	}
+}
+
 var audioNopLogger = zerolog.Nop()
 
 var (
@@ -620,11 +632,7 @@ func tryClaimAudioInput(owner AudioInputOwner, isActive func() bool) bool {
 		if !ClaimAudioInput(owner) {
 			return false
 		}
-		ownerName := "WebRTC"
-		if owner == AudioInputOwnerRDP {
-			ownerName = "RDP"
-		}
-		audioLogger.Info().Msgf("audio input: %s claimed ownership", ownerName)
+		audioLogger.Info().Msgf("audio input: %s claimed ownership", owner)
 		if err := audio.DropPlaybackBuffer(); err != nil {
 			audioLogger.Warn().Err(err).Msg("audio input: failed to drop playback buffer")
 		}
@@ -649,10 +657,7 @@ func processInputPacket(opusData []byte) error {
 	// Lazy connect on first use
 	if !(*source).IsConnected() {
 		if err := (*source).Connect(); err != nil {
-			failures := audioInputFailures.Add(1)
-			if failures >= audioInputFailThreshold && audioInputRecovering.CompareAndSwap(false, true) {
-				go recoverAudioInput()
-			}
+			trackAudioInputFailureAndRecover()
 			return err
 		}
 	}
@@ -660,14 +665,10 @@ func processInputPacket(opusData []byte) error {
 	// Write opus data, disconnect on error and track failures for recovery
 	if err := (*source).WriteMessage(0, opusData); err != nil {
 		(*source).Disconnect()
-		failures := audioInputFailures.Add(1)
-		if failures >= audioInputFailThreshold && audioInputRecovering.CompareAndSwap(false, true) {
-			go recoverAudioInput()
-		}
+		trackAudioInputFailureAndRecover()
 		return err
 	}
 
-	// Reset failure counter on success
 	if audioInputFailures.Load() != 0 {
 		audioInputFailures.Store(0)
 	}
@@ -675,27 +676,61 @@ func processInputPacket(opusData []byte) error {
 	return nil
 }
 
+// Audio input recovery thresholds.
+const (
+	audioInputFailThreshold  int32 = 5   // Trigger ALSA recovery after 5 consecutive write errors
+	audioRecoveryMaxAttempts int32 = 10  // Give up after 10 failed ALSA recovery attempts
+	audioRebootSkipThreshold int64 = 50  // Skips after replug to trigger reboot (~5s at ~10 packets/sec)
+	audioRebootMarkerPath          = "/userdata/jetkvm/.audio_reboot_ts"
+	audioRebootCooldownSecs  int64 = 600 // 10 minutes between audio-triggered reboots
+)
+
 // Audio input failure tracking for automatic recovery.
 // Uses atomic operations to avoid mutex overhead on the hot path.
 var (
-	audioInputFailures       atomic.Int32
-	audioInputRecovering     atomic.Bool
-	audioInputFailThreshold  int32 = 5  // Trigger ALSA recovery after 5 consecutive write errors
-	audioRecoveryMaxAttempts int32 = 10 // Give up after 10 failed ALSA recovery attempts
-	lastUSBAudioReset        atomic.Int64
-	usbResetCooldownSecs     int64        = 30 // Minimum seconds between USB gadget resets
-	audioInputWriteOK        atomic.Int64      // Frames actually delivered to ALSA
-	audioInputWriteSkip      atomic.Int64      // Frames skipped (buffer full / EAGAIN)
+	audioInputFailures   atomic.Int32
+	audioInputRecovering atomic.Bool
+	audioInputWriteOK    atomic.Int64 // Frames actually delivered to ALSA
+	audioInputWriteSkip  atomic.Int64 // Frames skipped (buffer full / EAGAIN)
 
 	// Reboot-after-replug: when a genuine USB cable replug occurs and the
 	// endpoint stays dead (host doesn't activate alt setting 1), reboot
 	// the device as a last resort. Only fires once per replug event,
 	// with persistent cooldown to prevent loops.
-	audioRebootAfterReplug   atomic.Bool
-	audioRebootSkipThreshold int64  = 50 // Skips after replug to trigger reboot (~5s of dead endpoint)
-	audioRebootMarkerPath    string = "/userdata/jetkvm/.audio_reboot_ts"
-	audioRebootCooldownSecs  int64  = 600 // 10 minutes between audio-triggered reboots
+	audioRebootAfterReplug atomic.Bool
 )
+
+// resetAudioInputCounters resets all audio input tracking counters to zero.
+// Must be called whenever recovery succeeds or monitoring is restarted.
+func resetAudioInputCounters() {
+	audioInputFailures.Store(0)
+	audioInputWriteOK.Store(0)
+	audioInputWriteSkip.Store(0)
+}
+
+// trackAudioInputFailureAndRecover increments the failure counter and triggers
+// async recovery if the threshold is exceeded and no recovery is already running.
+func trackAudioInputFailureAndRecover() {
+	failures := audioInputFailures.Add(1)
+	if failures >= audioInputFailThreshold && audioInputRecovering.CompareAndSwap(false, true) {
+		go recoverAudioInput()
+	}
+}
+
+// tryLockMutexWithTimeout attempts to acquire a mutex within the given timeout.
+// Returns true if the lock was acquired, false if the timeout expired.
+// Uses TryLock polling to prevent permanent blocking when a C call
+// (e.g. snd_pcm_open) holds the mutex.
+func tryLockMutexWithTimeout(mu *sync.Mutex, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if mu.TryLock() {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
+}
 
 // WriteInputPCM writes raw PCM audio data to the input audio device (USB audio gadget).
 // This is the hot path for RDP audio input - optimized for minimal overhead.
@@ -754,11 +789,7 @@ func WriteInputPCM(pcmData []byte) error {
 	}
 
 	// Slow path: failure handling
-	failures := audioInputFailures.Add(1)
-	if failures >= audioInputFailThreshold && audioInputRecovering.CompareAndSwap(false, true) {
-		// Trigger async recovery - don't block the audio path
-		go recoverAudioInput()
-	}
+	trackAudioInputFailureAndRecover()
 
 	return err
 }
@@ -769,9 +800,16 @@ func WriteInputPCM(pcmData []byte) error {
 // transitions to "configured".
 //
 // isGenuineReplug is true only for actual cable replugs (not first boot, not
-// programmatic resets). When true and audio doesn't recover, a one-time device
-// reboot is triggered as a last resort.
+// programmatic resets). When true, enables post-recovery endpoint monitoring:
+// if the host never activates the isochronous endpoint (detected by skip count
+// in WriteInputPCM), a one-time device reboot is triggered as a last resort.
 func recoverAudioInputOnUSBReplug(isGenuineReplug bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			audioLogger.Error().Interface("panic", r).Msg("audio input: USB replug recovery panicked")
+		}
+	}()
+
 	// Wait for USB audio gadget to be recreated and ALSA device to stabilize.
 	// The audio device takes longer than HID devices to be ready after USB enumeration.
 	time.Sleep(2 * time.Second)
@@ -785,18 +823,7 @@ func recoverAudioInputOnUSBReplug(isGenuineReplug bool) {
 
 	retryDelay := 500 * time.Millisecond
 	for attempt := 1; attempt <= 10; attempt++ {
-		// Use TryLock with timeout to prevent holding the mutex indefinitely
-		// if a C call (snd_pcm_open) blocks inside startInputAudioUnderMutex.
-		locked := false
-		mutexDeadline := time.Now().Add(5 * time.Second)
-		for time.Now().Before(mutexDeadline) {
-			if audioMutex.TryLock() {
-				locked = true
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		if !locked {
+		if !tryLockMutexWithTimeout(&audioMutex, 5*time.Second) {
 			audioLogger.Warn().Int("attempt", attempt).Msg("audio input: USB replug recovery could not acquire mutex, retrying")
 			time.Sleep(retryDelay)
 			retryDelay = min(retryDelay*2, 5*time.Second)
@@ -815,9 +842,7 @@ func recoverAudioInputOnUSBReplug(isGenuineReplug bool) {
 
 		if err == nil {
 			audioLogger.Info().Int("attempt", attempt).Msg("audio input: successfully restarted after USB replug")
-			audioInputFailures.Store(0)
-			audioInputWriteOK.Store(0)
-			audioInputWriteSkip.Store(0)
+			resetAudioInputCounters()
 
 			// Enable reboot monitoring only for genuine cable replugs.
 			// If the endpoint stays dead (50+ skips), reboot as last resort.
@@ -851,7 +876,7 @@ func recoverAudioInput() {
 
 	audioLogger.Warn().
 		Int32("failures", audioInputFailures.Load()).
-		Str("owner", audioInputOwnerName()).
+		Str("owner", GetAudioInputOwner().String()).
 		Msg("audio input: starting recovery")
 
 	retryDelay := 500 * time.Millisecond
@@ -874,31 +899,16 @@ func recoverAudioInput() {
 
 		attempts++
 
-		// After enough failed attempts, give up. USB gadget reset is available
-		// via performFullUSBGadgetReset() but disabled for automatic use because
-		// the host must activate the isochronous endpoint (alt setting 1) — a
-		// gadget reset alone doesn't fix that.
+		// After enough failed attempts, give up. A USB gadget reset alone
+		// doesn't fix a dead isochronous endpoint — the host must activate
+		// the active alt setting on the AudioStreaming interface.
 		if attempts >= audioRecoveryMaxAttempts {
 			audioLogger.Warn().Int32("attempts", attempts).Msg("audio input: recovery exhausted, giving up")
 			audioInputFailures.Store(0)
 			return
 		}
 
-		// Try to acquire the audio mutex with a timeout.
-		// Use TryLock to prevent permanent blocking when another goroutine
-		// (e.g. recoverAudioInputOnUSBReplug) holds the mutex during a
-		// blocking C call (snd_pcm_open/snd_pcm_close).
-		locked := false
-		mutexDeadline := time.Now().Add(5 * time.Second)
-		for time.Now().Before(mutexDeadline) {
-			if audioMutex.TryLock() {
-				locked = true
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-
-		if !locked {
+		if !tryLockMutexWithTimeout(&audioMutex, 5*time.Second) {
 			audioLogger.Warn().Int32("attempt", attempts).
 				Msg("audio input: recovery could not acquire mutex (held by another goroutine), retrying")
 			time.Sleep(retryDelay)
@@ -935,9 +945,7 @@ func recoverAudioInput() {
 		audioMutex.Unlock()
 
 		if recovered {
-			audioInputFailures.Store(0)
-			audioInputWriteOK.Store(0)
-			audioInputWriteSkip.Store(0)
+			resetAudioInputCounters()
 			audioLogger.Info().Int32("attempts", attempts).Msg("audio input: recovery successful")
 			return
 		}
@@ -949,60 +957,6 @@ func recoverAudioInput() {
 		time.Sleep(retryDelay)
 		retryDelay = min(retryDelay*2, 2*time.Second)
 	}
-}
-
-// performFullUSBGadgetReset follows the same pattern as updateUsbRelatedConfig
-// (the setUsbDevices RPC path): stop audio + UVC → reconfigure USB gadget → restart.
-// This prevents the USB bus from being yanked while devices are still active, which
-// would break HID, UVC, and audio simultaneously.
-// Rate-limited to prevent reset storms.
-func performFullUSBGadgetReset() {
-	now := time.Now().Unix()
-	last := lastUSBAudioReset.Load()
-	if now-last < usbResetCooldownSecs {
-		audioLogger.Debug().
-			Int64("cooldown_remaining_s", usbResetCooldownSecs-(now-last)).
-			Msg("audio input: USB gadget reset skipped, cooldown active")
-		return
-	}
-	if !lastUSBAudioReset.CompareAndSwap(last, now) {
-		return // Another goroutine triggered reset first
-	}
-
-	audioLogger.Warn().Msg("audio input: performing full USB gadget reset (stop → reconfig → restart)")
-
-	// Stop devices that use the USB gadget BEFORE unbind/rebind.
-	// This matches the setUsbDevices RPC path (updateUsbRelatedConfig).
-	stopInputAudio()
-	stopUVC()
-
-	// Reconfigure USB gadget (unbind → remove symlinks → recreate → rebind UDC)
-	MarkSelfTriggeredUSBReset()
-	if err := gadget.UpdateGadgetConfig(); err != nil {
-		audioLogger.Error().Err(err).Msg("audio input: USB gadget reconfiguration failed")
-	}
-
-	// Restart UVC and audio
-	reinitUVC()
-
-	if err := startAudio(); err != nil {
-		audioLogger.Warn().Err(err).Msg("audio input: audio restart after gadget reset failed")
-	} else {
-		audioLogger.Warn().Msg("audio input: USB gadget reset and restart complete")
-	}
-
-	// Reset counters for fresh detection
-	audioInputFailures.Store(0)
-	audioInputWriteOK.Store(0)
-	audioInputWriteSkip.Store(0)
-}
-
-// recoverAudioInputViaGadgetReset is the escalation path when the USB
-// isochronous endpoint is dead (host not consuming from USB audio device).
-// Performs a proper full-cycle reset matching the setUsbDevices UI flow.
-func recoverAudioInputViaGadgetReset() {
-	defer audioInputRecovering.Store(false)
-	performFullUSBGadgetReset()
 }
 
 // canRebootForAudioRecovery checks the persistent cooldown marker to prevent reboot loops.
@@ -1022,19 +976,12 @@ func canRebootForAudioRecovery() bool {
 // rebootForAudioRecovery writes a persistent cooldown marker and reboots the device.
 func rebootForAudioRecovery() {
 	// Write marker BEFORE rebooting so the cooldown is active on next boot
-	_ = os.WriteFile(audioRebootMarkerPath, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
+	if err := os.WriteFile(audioRebootMarkerPath, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+		audioLogger.Error().Err(err).Msg("audio input: failed to write reboot cooldown marker")
+	}
 	audioLogger.Warn().Msg("audio input: rebooting device for audio recovery")
-	_ = hwReboot(true, nil, 2*time.Second)
-}
-
-// audioInputOwnerName returns a human-readable name for the current audio input owner.
-func audioInputOwnerName() string {
-	switch GetAudioInputOwner() {
-	case AudioInputOwnerRDP:
-		return "RDP"
-	case AudioInputOwnerWebRTC:
-		return "WebRTC"
-	default:
-		return "none"
+	if err := hwReboot(true, nil, 2*time.Second); err != nil {
+		audioLogger.Error().Err(err).Msg("audio input: hwReboot failed")
 	}
 }
+
