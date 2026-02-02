@@ -33,6 +33,12 @@ func Main() {
 	// on the single-core RV1106 by allowing more OS threads for blocking operations.
 	runtime.GOMAXPROCS(4)
 
+	// Enable contention profiling for mutex and blocking events.
+	// MutexProfileFraction(5) samples 1 in 5 mutex contentions.
+	// BlockProfileRate(1_000_000) reports blocking events >= 1ms.
+	runtime.SetMutexProfileFraction(5)
+	runtime.SetBlockProfileRate(1_000_000)
+
 	setProcTitle("starting")
 
 	logger.Log().Msg("JetKVM Starting Up")
