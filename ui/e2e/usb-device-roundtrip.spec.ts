@@ -9,6 +9,8 @@ import {
   getVideoStreamDimensions,
   captureVideoRegionFingerprint,
   fingerprintDistance,
+  goToWelcomeMode,
+  completeWelcomeNoPassword,
 } from "./helpers";
 
 // Region size for cursor detection (pixels around the expected cursor position)
@@ -33,6 +35,25 @@ const USB_PRESET_KEYBOARD_ONLY = "keyboard_only";
 
 test.describe("USB Device Round-Trip Tests", () => {
   test.setTimeout(120000); // 2 minutes
+
+  // Handle onboarding if device is in welcome mode (e.g., after previous test file cleanup)
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto("/");
+      await page.waitForLoadState("networkidle");
+
+      // Check if device is in welcome mode
+      if (page.url().includes("/welcome")) {
+        console.log("[USB Tests] Device in welcome mode, completing onboarding...");
+        await goToWelcomeMode(page);
+        await completeWelcomeNoPassword(page);
+        console.log("[USB Tests] Onboarding completed");
+      }
+    } finally {
+      await page.close();
+    }
+  });
 
   // Always restore USB to default mode after tests complete (for subsequent test runs)
   test.afterAll(async ({ browser }) => {

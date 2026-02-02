@@ -1,3 +1,4 @@
+import { exec } from "child_process";
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
@@ -423,6 +424,9 @@ export async function verifyKeyboardWorks(page: Page): Promise<void> {
   const newState = await getLedState(page);
   expect(newState!.caps_lock, "CAPS_LOCK should have toggled").toBe(!initialCapsLock);
 
+  // Small delay to ensure key state is stable before second toggle
+  await page.waitForTimeout(200);
+
   // Restore original state
   await tapKey(page, HID_KEY.CAPS_LOCK);
   await waitForLedState(page, "caps_lock", initialCapsLock);
@@ -574,6 +578,425 @@ export async function reconnectAfterReboot(
       }
       await page.waitForTimeout(retryInterval);
     }
+  }
+}
+
+// Time to wait after reset config before reloading (ms)
+const RESET_CONFIG_DELAY = 7000;
+
+// Time to wait for welcome screen animations (ms)
+const ANIMATION_DELAY = 3000;
+
+// Known test passwords - used when device is in unknown state and needs login
+const KNOWN_TEST_PASSWORDS = ["TestPassword123", "NewPassword456"];
+
+/**
+ * Try to login with known test passwords if on login page.
+ * Returns true if login was successful or not needed.
+ *
+ * @param page - Playwright page object
+ */
+async function tryLoginIfNeeded(page: Page): Promise<boolean> {
+  const currentUrl = page.url();
+  if (!currentUrl.includes("/login")) {
+    return true; // Not on login page, no login needed
+  }
+
+  // Try each known test password
+  for (const password of KNOWN_TEST_PASSWORDS) {
+    const passwordInput = page.locator('input[name="password"]');
+    if (!(await passwordInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+      return true; // No password input visible, probably not a login page
+    }
+
+    await passwordInput.fill(password);
+    const submitButton = page.getByRole("button", { name: /Log in/i });
+    await submitButton.click();
+    await page.waitForTimeout(1000);
+
+    // Check if we're no longer on login page
+    const newUrl = page.url();
+    if (!newUrl.includes("/login")) {
+      return true;
+    }
+
+    // Clear for next attempt
+    await passwordInput.clear();
+  }
+
+  return false; // Could not login with any known password
+}
+
+/**
+ * Ensure the device is in the welcome state by resetting config if needed.
+ * If already on welcome screen, navigates to base /welcome.
+ * Handles password-protected devices by attempting login with known test passwords.
+ *
+ * @param page - Playwright page object
+ */
+export async function ensureWelcomeState(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  // Check if we're on login page and try to login
+  await tryLoginIfNeeded(page);
+
+  const currentUrl = page.url();
+  const isOnWelcome = currentUrl.includes("/welcome");
+
+  if (!isOnWelcome) {
+    // Device is set up, need to reset it first
+    await page.goto("/settings/advanced");
+    await page.waitForLoadState("networkidle");
+
+    // Check if redirected to login and try to login
+    if (page.url().includes("/login")) {
+      const loggedIn = await tryLoginIfNeeded(page);
+      if (loggedIn) {
+        await page.goto("/settings/advanced");
+        await page.waitForLoadState("networkidle");
+      }
+    }
+
+    await resetConfigViaSSH();
+    await rebootDeviceViaSSH();
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+  } else {
+    // Navigate to the base welcome page if we're on a sub-route
+    if (!currentUrl.endsWith("/welcome")) {
+      await page.goto("/welcome");
+      await page.waitForLoadState("networkidle");
+    }
+  }
+
+  // Wait for animations to complete
+  await page.waitForTimeout(ANIMATION_DELAY);
+}
+
+/**
+ * Navigate to the welcome mode selection page and wait for it to load.
+ *
+ * @param page - Playwright page object
+ */
+export async function goToWelcomeMode(page: Page): Promise<void> {
+  const setupButton = page.getByRole("link", { name: /Set up your JetKVM/i });
+  await expect(setupButton).toBeVisible({ timeout: 10000 });
+  await setupButton.click();
+
+  await page.waitForURL("**/welcome/mode", { timeout: 10000 });
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(1000); // Wait for animations
+}
+
+/**
+ * Complete the welcome flow with no password mode.
+ *
+ * @param page - Playwright page object
+ */
+export async function completeWelcomeNoPassword(page: Page): Promise<void> {
+  const noPasswordRadio = page.locator('input[type="radio"][value="noPassword"]');
+  await expect(noPasswordRadio).toBeVisible({ timeout: 5000 });
+  await noPasswordRadio.click();
+
+  const continueButton = page.getByRole("button", { name: /Continue/i });
+  await expect(continueButton).toBeEnabled({ timeout: 5000 });
+  await continueButton.click();
+
+  await page.waitForURL("/", { timeout: 15000 });
+}
+
+/**
+ * Complete the welcome flow with password mode.
+ *
+ * @param page - Playwright page object
+ * @param password - The password to set
+ */
+export async function completeWelcomeWithPassword(page: Page, password: string): Promise<void> {
+  // Select password mode
+  const passwordRadio = page.locator('input[type="radio"][value="password"]');
+  await expect(passwordRadio).toBeVisible({ timeout: 5000 });
+  await passwordRadio.click();
+
+  const continueButton = page.getByRole("button", { name: /Continue/i });
+  await expect(continueButton).toBeEnabled({ timeout: 5000 });
+  await continueButton.click();
+
+  // Wait for password page
+  await page.waitForURL("**/welcome/password", { timeout: 10000 });
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(1000); // Wait for animations
+
+  // Fill password fields
+  const passwordInput = page.locator('input[name="password"]');
+  const confirmPasswordInput = page.locator('input[name="confirmPassword"]');
+
+  await passwordInput.fill(password);
+  await confirmPasswordInput.fill(password);
+
+  // Submit the form
+  const submitButton = page.getByRole("button", { name: /Set Password/i });
+  await expect(submitButton).toBeEnabled({ timeout: 5000 });
+  await submitButton.click();
+
+  // Should redirect to main page
+  await page.waitForURL("/", { timeout: 15000 });
+}
+
+/**
+ * Logout from the device (clears auth cookie).
+ *
+ * @param page - Playwright page object
+ */
+export async function logout(page: Page): Promise<void> {
+  // Call the logout endpoint directly
+  await page.evaluate(async () => {
+    await fetch("/auth/logout", { method: "POST" });
+  });
+  await page.waitForTimeout(500);
+}
+
+/**
+ * Dismiss the "Another Active Session Detected" dialog if it appears.
+ * This dialog shows when another WebRTC session is active.
+ *
+ * @param page - Playwright page object
+ */
+export async function dismissSessionTakeoverDialog(page: Page): Promise<void> {
+  const useHereButton = page.getByRole("button", { name: /Use Here/i });
+  if (await useHereButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await useHereButton.click();
+    await page.waitForTimeout(1000);
+  }
+}
+
+export async function resetConfigViaSSH(): Promise<void> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  const host = getDeviceHost();
+  const sshBase = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host}`;
+
+  await execAsync(`${sshBase} 'rm /userdata/kvm_config.json'`);
+  await execAsync(`${sshBase} 'sync'`);
+}
+
+/**
+ * Ensure device is in a clean state for other tests:
+ * - If in onboarding mode, complete setup with no password
+ * - If configured with password, clear the password
+ * - If configured without password, do nothing
+ *
+ * Uses a browser context to check state and complete onboarding if needed.
+ *
+ * @param browser - Playwright browser object (from test.afterAll fixture)
+ */
+export async function ensureCleanStateForOtherTests(
+  browser: import("@playwright/test").Browser,
+): Promise<void> {
+  const baseURL = process.env.JETKVM_URL;
+  if (!baseURL) {
+    return;
+  }
+
+  // First, reboot to clear any rate limiting or stale state
+  await rebootDeviceViaSSH(true);
+
+  const context = await browser.newContext({ baseURL });
+  const page = await context.newPage();
+
+  try {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+
+    const currentUrl = page.url();
+
+    if (currentUrl.includes("/welcome")) {
+      // Device is in onboarding mode - complete setup with no password
+
+      await goToWelcomeMode(page);
+      await completeWelcomeNoPassword(page);
+
+    } else if (currentUrl.includes("/login")) {
+      // Device has password - clear it via SSH
+      await context.close();
+
+      await clearPasswordViaSSH();
+      return;
+    } else {
+      // Device is configured without password - nothing to do
+    }
+  } catch (error) {
+  } finally {
+    await context.close();
+  }
+}
+
+/**
+ * Clear password from device config via SSH without resetting the entire config.
+ * This keeps the device in a configured state (not onboarding) but removes password protection.
+ *
+ * The config file is at /userdata/kvm_config.json with fields:
+ * - hashed_password: the bcrypt hash
+ * - local_auth_token: the session token
+ * - local_auth_mode: "password" or "noPassword"
+ */
+export async function clearPasswordViaSSH(): Promise<void> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  const host = getDeviceHost();
+  const sshBase = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host}`;
+
+  console.log(`[E2E Cleanup] Clearing password from config at ${host}...`);
+
+  try {
+    // Run separate sed commands to avoid complex quoting issues
+    // Note: JSON has space after colon, e.g. "key": "value"
+    // Clear hashed_password
+    await execAsync(
+      `${sshBase} 'sed -i "s/\\"hashed_password\\": \\"[^\\"]*\\"/\\"hashed_password\\": \\"\\"/g" /userdata/kvm_config.json'`,
+    );
+    // Clear local_auth_token
+    await execAsync(
+      `${sshBase} 'sed -i "s/\\"local_auth_token\\": \\"[^\\"]*\\"/\\"local_auth_token\\": \\"\\"/g" /userdata/kvm_config.json'`,
+    );
+    // Set localAuthMode to noPassword (note: camelCase in JSON)
+    await execAsync(
+      `${sshBase} 'sed -i "s/\\"localAuthMode\\": \\"[^\\"]*\\"/\\"localAuthMode\\": \\"noPassword\\"/g" /userdata/kvm_config.json'`,
+    );
+
+    // Reboot to apply the config change (the app loads config on startup)
+    await rebootDeviceViaSSH(true);
+  } catch (error) {
+    console.error("[E2E Cleanup] Error clearing password:", error);
+  }
+}
+
+/**
+ * Attempt login with given password and return whether it succeeded.
+ *
+ * @param page - Playwright page object
+ * @param password - Password to attempt
+ * @returns Object with success status and any error message shown
+ */
+export async function attemptLogin(
+  page: Page,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  // Fill password and submit
+  const passwordInput = page.locator('input[name="password"]');
+  await passwordInput.fill(password);
+
+  const submitButton = page.getByRole("button", { name: /Log in/i });
+  await submitButton.click();
+
+  // Wait a bit for response
+  await page.waitForTimeout(1000);
+
+  // Check if we redirected (success) or stayed on login page (failure)
+  const currentUrl = page.url();
+  if (!currentUrl.includes("/login")) {
+    return { success: true };
+  }
+
+  // Look for error message
+  const errorText = await page.locator(".text-red-500, .text-red-600").first().textContent();
+  return { success: false, error: errorText || undefined };
+}
+
+/**
+ * Submit wrong password attempts until rate limited or max attempts reached.
+ * Returns true if rate limit message was shown.
+ *
+ * @param page - Playwright page object
+ * @param maxAttempts - Maximum number of attempts before giving up (default: 10)
+ * @returns Whether rate limit message was detected
+ */
+export async function triggerRateLimit(page: Page, maxAttempts = 10): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const result = await attemptLogin(page, "wrongpassword123");
+
+    if (result.error && /too many|rate.?limit|try again/i.test(result.error)) {
+      return true;
+    }
+
+    // Small delay between attempts
+    await page.waitForTimeout(300);
+  }
+
+  return false;
+}
+
+/**
+ * Get the device IP from the JETKVM_URL environment variable.
+ *
+ * @returns The device IP/hostname
+ */
+export function getDeviceHost(): string {
+  const url = process.env.JETKVM_URL;
+  if (!url) {
+    throw new Error("JETKVM_URL environment variable is not set");
+  }
+  return new URL(url).hostname;
+}
+
+/**
+ * Wait for the device to be reachable via HTTP.
+ *
+ * @param host - The device hostname/IP
+ * @param timeout - Maximum time to wait in milliseconds (default: 60000)
+ */
+async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> {
+  const startTime = Date.now();
+  const url = `http://${host}`;
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (response.ok || response.status === 401 || response.status === 302) {
+        // Device is responding (even if it redirects to login)
+        return;
+      }
+    } catch {
+      // Device not ready yet, continue waiting
+    }
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
+  throw new Error(`Device at ${host} did not become ready within ${timeout}ms`);
+}
+
+/**
+ * Reboot the device via SSH to clear in-memory state like rate limiting.
+ * This is useful after rate limiting tests to reset the device state.
+ *
+ * @param waitForReady - Whether to wait for the device to come back online (default: true)
+ */
+export async function rebootDeviceViaSSH(waitForReady = true): Promise<void> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  const host = getDeviceHost();
+  const sshCmd = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} reboot`;
+
+  try {
+    await execAsync(sshCmd);
+  } catch {
+    // SSH connection may be terminated by the reboot, which is expected
+  }
+
+  if (waitForReady) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // Wait for device to come back up
+    await waitForDeviceReady(host, 60000);
+
+    // Give it a moment to fully initialize
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
 }
 
