@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/procfs"
@@ -128,39 +130,67 @@ type FileChange struct {
 }
 
 func (f *RequestedFileChange) String() string {
-	var s string
+	var b strings.Builder
 	switch f.ExpectedState {
 	case FileStateDirectory:
-		s = fmt.Sprintf("dir: %s", f.Path)
+		b.WriteString("dir: ")
+		b.WriteString(f.Path)
 	case FileStateFile:
-		s = fmt.Sprintf("file: %s", f.Path)
+		b.WriteString("file: ")
+		b.WriteString(f.Path)
 	case FileStateSymlink:
-		s = fmt.Sprintf("symlink: %s -> %s", f.Path, f.ExpectedContent)
+		b.WriteString("symlink: ")
+		b.WriteString(f.Path)
+		b.WriteString(" -> ")
+		b.Write(f.ExpectedContent)
 	case FileStateSymlinkInOrderConfigFS:
-		s = fmt.Sprintf("symlink_in_order_configfs: %s -> %s", f.Path, f.ExpectedContent)
+		b.WriteString("symlink_in_order_configfs: ")
+		b.WriteString(f.Path)
+		b.WriteString(" -> ")
+		b.Write(f.ExpectedContent)
 	case FileStateSymlinkNotInOrderConfigFS:
-		s = fmt.Sprintf("symlink_not_in_order_configfs: %s -> %s", f.Path, f.ExpectedContent)
+		b.WriteString("symlink_not_in_order_configfs: ")
+		b.WriteString(f.Path)
+		b.WriteString(" -> ")
+		b.Write(f.ExpectedContent)
 	case FileStateAbsent:
-		s = fmt.Sprintf("absent: %s", f.Path)
+		b.WriteString("absent: ")
+		b.WriteString(f.Path)
 	case FileStateFileContentMatch:
-		s = fmt.Sprintf("file: %s with content [%s]", f.Path, f.ExpectedContent)
+		b.WriteString("file: ")
+		b.WriteString(f.Path)
+		b.WriteString(" with content [")
+		b.Write(f.ExpectedContent)
+		b.WriteByte(']')
 	case FileStateFileWrite:
-		s = fmt.Sprintf("write: %s with content [%s]", f.Path, f.ExpectedContent)
+		b.WriteString("write: ")
+		b.WriteString(f.Path)
+		b.WriteString(" with content [")
+		b.Write(f.ExpectedContent)
+		b.WriteByte(']')
 	case FileStateMountedConfigFS:
-		s = fmt.Sprintf("configfs: %s", f.Path)
+		b.WriteString("configfs: ")
+		b.WriteString(f.Path)
 	case FileStateTouch:
-		s = fmt.Sprintf("touch: %s", f.Path)
+		b.WriteString("touch: ")
+		b.WriteString(f.Path)
 	case FileStateUnknown:
-		s = fmt.Sprintf("unknown change for %s", f.Path)
+		b.WriteString("unknown change for ")
+		b.WriteString(f.Path)
 	default:
-		s = fmt.Sprintf("unknown expected state %d for %s", f.ExpectedState, f.Path)
+		b.WriteString("unknown expected state ")
+		b.WriteString(strconv.FormatUint(uint64(f.ExpectedState), 10))
+		b.WriteString(" for ")
+		b.WriteString(f.Path)
 	}
 
 	if len(f.Description) > 0 {
-		s += fmt.Sprintf(" (%s)", f.Description)
+		b.WriteString(" (")
+		b.WriteString(f.Description)
+		b.WriteByte(')')
 	}
 
-	return s
+	return b.String()
 }
 
 func (f *RequestedFileChange) IsSame(other *RequestedFileChange) bool {

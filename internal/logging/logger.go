@@ -55,13 +55,13 @@ var (
 		PartsOrder:    []string{"time", "level", "scope", "component", "message"},
 		FieldsExclude: []string{"scope", "component"},
 		FormatPartValueByName: func(value any, name string) string {
-			val := fmt.Sprintf("%s", value)
-			if name == "component" {
-				if value == nil {
-					return "-"
-				}
+			if name == "component" && value == nil {
+				return "-"
 			}
-			return val
+			if s, ok := value.(string); ok {
+				return s
+			}
+			return fmt.Sprintf("%s", value)
 		},
 	}
 	fileLogOutput    io.Writer = &logOutput{mu: &sync.Mutex{}}

@@ -33,12 +33,6 @@ func Main() {
 	// on the single-core RV1106 by allowing more OS threads for blocking operations.
 	runtime.GOMAXPROCS(4)
 
-	// Enable contention profiling for mutex and blocking events.
-	// MutexProfileFraction(5) samples 1 in 5 mutex contentions.
-	// BlockProfileRate(1_000_000) reports blocking events >= 1ms.
-	runtime.SetMutexProfileFraction(5)
-	runtime.SetBlockProfileRate(1_000_000)
-
 	setProcTitle("starting")
 
 	logger.Log().Msg("JetKVM Starting Up")
@@ -50,6 +44,13 @@ func Main() {
 	}
 
 	LoadConfig()
+
+	// Enable contention profiling only if developer mode is active.
+	if _, err := os.Stat("/userdata/jetkvm/devmode.enable"); err == nil {
+		runtime.SetMutexProfileFraction(5)
+		runtime.SetBlockProfileRate(1_000_000)
+		logger.Info().Msg("developer mode active: contention profiling enabled")
+	}
 
 	var cancel context.CancelFunc
 	appCtx, cancel = context.WithCancel(context.Background())

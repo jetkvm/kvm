@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -380,6 +381,17 @@ func rpcSetDevModeState(enabled bool) error {
 		} else {
 			return fmt.Errorf("error checking dev mode file: %w", err)
 		}
+	}
+
+	// Toggle contention profiling with dev mode.
+	if enabled {
+		runtime.SetMutexProfileFraction(5)
+		runtime.SetBlockProfileRate(1_000_000)
+		logger.Info().Msg("contention profiling enabled")
+	} else {
+		runtime.SetMutexProfileFraction(0)
+		runtime.SetBlockProfileRate(0)
+		logger.Info().Msg("contention profiling disabled")
 	}
 
 	cmd := exec.Command("dropbear.sh")
