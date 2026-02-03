@@ -671,6 +671,10 @@ func (c *Connection) handleCameraFormatChanges(formatChan <-chan CameraFormatInf
 				if err := c.cameraChannel.Deactivate(); err != nil {
 					c.server.deps.Logger.Debug().Err(err).Msg("RDP: camera deactivate error")
 				}
+				// Disable camera passthrough so the device is released
+				if c.server.deps.Camera != nil {
+					c.server.deps.Camera.SetEnabled(false)
+				}
 				continue
 			}
 
@@ -695,8 +699,9 @@ func (c *Connection) handleCameraFormatChanges(formatChan <-chan CameraFormatInf
 				Int("fps", fmt.FrameRate).
 				Msg("RDP: USB host started streaming, activating RDP camera")
 
-			// Enable camera passthrough when USB host starts streaming
-			if c.server.deps.Camera != nil {
+			// Enable camera passthrough when USB host starts streaming.
+			// Check closed flag to prevent racing with Close() which disables the camera.
+			if c.server.deps.Camera != nil && !c.closed.Load() {
 				c.server.deps.Camera.SetEnabled(true)
 			}
 
