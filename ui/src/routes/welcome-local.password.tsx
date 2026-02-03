@@ -13,6 +13,7 @@ import { Button } from "@components/Button";
 import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
+import { MIN_PASSWORD_LENGTH } from "@routes/devices.$id.settings.access.local-auth";
 
 import { DeviceStatus } from "./welcome-local";
 
@@ -24,8 +25,6 @@ const loader: LoaderFunction = async () => {
   if (res.isSetup) return redirect("/login-local");
   return null;
 };
-
-const MIN_PASSWORD_LENGTH = 8;
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();

@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import type { Page, Browser } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 /**
  * USB HID Key Codes
@@ -624,13 +624,14 @@ async function tryLoginIfNeeded(page: Page): Promise<boolean> {
 }
 
 /**
- * Ensure the device is in the welcome state by resetting config if needed.
- * If already on welcome screen, navigates to base /welcome.
- * Handles password-protected devices by attempting login with known test passwords.
+ * Reset the device to onboarding/welcome state.
+ * Uses SSH to delete config and reboot if device is already configured.
+ * Use this for tests that need to test the welcome/onboarding UI flow itself.
+ * For tests that just need device in a specific auth mode, use ensureLocalAuthMode() instead.
  *
  * @param page - Playwright page object
  */
-export async function ensureWelcomeState(page: Page): Promise<void> {
+export async function resetDeviceToWelcome(page: Page): Promise<void> {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
 
@@ -671,7 +672,8 @@ export async function ensureWelcomeState(page: Page): Promise<void> {
 }
 
 // ============================================================================
-// Welcome Flow Primitives (composable building blocks)
+// Welcome Flow Primitives (internal building blocks for ensureLocalAuthMode)
+// Prefer using ensureLocalAuthMode() or resetDeviceToWelcome() in tests.
 // ============================================================================
 
 /**
@@ -745,29 +747,6 @@ export async function submitWelcomePassword(
     // Wait for error to appear (form stays on same page)
     await page.waitForTimeout(500);
   }
-}
-
-/**
- * Complete the welcome flow with no password mode.
- * Prerequisite: page should be on /welcome/mode.
- *
- * @param page - Playwright page object
- */
-export async function completeWelcomeNoPassword(page: Page): Promise<void> {
-  await selectWelcomeAuthMode(page, "noPassword");
-  await page.waitForURL("/", { timeout: 15000 });
-}
-
-/**
- * Complete the welcome flow with password mode.
- * Prerequisite: page should be on /welcome/mode.
- *
- * @param page - Playwright page object
- * @param password - The password to set
- */
-export async function completeWelcomeWithPassword(page: Page, password: string): Promise<void> {
-  await selectWelcomeAuthMode(page, "password");
-  await submitWelcomePassword(page, password);
 }
 
 // ============================================================================
@@ -1041,9 +1020,11 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
     // Device is in onboarding mode - complete setup
     await goToWelcomeMode(page);
     if (desired.mode === "noPassword") {
-      await completeWelcomeNoPassword(page);
+      await selectWelcomeAuthMode(page, "noPassword");
+      await page.waitForURL("/", { timeout: 15000 });
     } else {
-      await completeWelcomeWithPassword(page, desired.password);
+      await selectWelcomeAuthMode(page, "password");
+      await submitWelcomePassword(page, desired.password);
     }
     return;
   }
@@ -1062,7 +1043,8 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
       await page.goto("/");
       await page.waitForLoadState("networkidle");
       await goToWelcomeMode(page);
-      await completeWelcomeWithPassword(page, desired.password);
+      await selectWelcomeAuthMode(page, "password");
+      await submitWelcomePassword(page, desired.password);
     } else {
       // Need to remove password - use SSH escape hatch
       await clearPasswordViaSSH();
@@ -1082,57 +1064,10 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
     await page.goto("/");
     await page.waitForLoadState("networkidle");
     await goToWelcomeMode(page);
-    await completeWelcomeWithPassword(page, desired.password);
+    await selectWelcomeAuthMode(page, "password");
+    await submitWelcomePassword(page, desired.password);
   }
   // If desired is noPassword and we're already configured without password, nothing to do
-}
-
-/**
- * Restore device to noPassword configured state.
- * Use in afterAll to clean up after tests that modify auth state.
- *
- * @param browser - Playwright browser object
- */
-export async function restoreToNoPasswordConfigured(browser: Browser): Promise<void> {
-  const baseURL = process.env.JETKVM_URL;
-  if (!baseURL) {
-    console.warn("[E2E Cleanup] JETKVM_URL not set, skipping cleanup");
-    return;
-  }
-
-  const context = await browser.newContext({ baseURL });
-  const page = await context.newPage();
-
-  try {
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
-
-    const currentUrl = page.url();
-
-    if (currentUrl.includes("/welcome")) {
-      // Device is in onboarding mode - complete setup with no password
-      await goToWelcomeMode(page);
-      await completeWelcomeNoPassword(page);
-    } else if (currentUrl.includes("/login")) {
-      // Device has password - clear it via SSH (faster than trying to login)
-      await context.close();
-      await clearPasswordViaSSH();
-      return;
-    }
-    // else: already configured without password, nothing to do
-  } catch (error) {
-    console.error("[E2E Cleanup] Error restoring to noPassword state:", error);
-    throw error;
-  } finally {
-    await context.close();
-  }
-}
-
-/**
- * @deprecated Use restoreToNoPasswordConfigured instead
- */
-export async function ensureCleanStateForOtherTests(browser: Browser): Promise<void> {
-  await restoreToNoPasswordConfigured(browser);
 }
 
 /**
@@ -1170,38 +1105,6 @@ export async function clearPasswordViaSSH(): Promise<void> {
 }
 
 /**
- * Attempt login with given password and return whether it succeeded.
- *
- * @param page - Playwright page object
- * @param password - Password to attempt
- * @returns Object with success status and any error message shown
- */
-export async function attemptLogin(
-  page: Page,
-  password: string,
-): Promise<{ success: boolean; error?: string }> {
-  // Fill password and submit
-  const passwordInput = page.locator('input[name="password"]');
-  await passwordInput.fill(password);
-
-  const submitButton = page.getByRole("button", { name: /Log in/i });
-  await submitButton.click();
-
-  // Wait a bit for response
-  await page.waitForTimeout(1000);
-
-  // Check if we redirected (success) or stayed on login page (failure)
-  const currentUrl = page.url();
-  if (!currentUrl.includes("/login")) {
-    return { success: true };
-  }
-
-  // Look for error message
-  const errorText = await page.locator(".text-red-500, .text-red-600").first().textContent();
-  return { success: false, error: errorText || undefined };
-}
-
-/**
  * Submit wrong password attempts until rate limited or max attempts reached.
  * Returns true if rate limit message was shown.
  *
@@ -1211,7 +1114,7 @@ export async function attemptLogin(
  */
 export async function triggerRateLimit(page: Page, maxAttempts = 10): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
-    const result = await attemptLogin(page, "wrongpassword123");
+    const result = await loginLocal(page, "wrongpassword123", false);
 
     if (result.error && /too many|rate.?limit|try again/i.test(result.error)) {
       return true;

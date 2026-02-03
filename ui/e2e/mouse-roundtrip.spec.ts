@@ -10,6 +10,7 @@ import {
   fingerprintDistance,
   hidToPixelCoords,
   runMouseBidirectionalCheck,
+  ensureLocalAuthMode,
 } from "./helpers";
 
 // Minimum video dimensions to consider valid (sanity check)
@@ -23,6 +24,20 @@ const HID_MAX = 32767;
 const HID_CENTER = Math.floor(HID_MAX / 2); // 16383
 
 test.describe("Mouse Round-Trip Tests", () => {
+  // Ensure device is in noPassword mode before tests
+  // This handles cases where previous tests left the device with password protection
+  test.beforeAll(async ({ browser }) => {
+    const baseURL = process.env.JETKVM_URL;
+    const context = await browser.newContext({ baseURL });
+    const page = await context.newPage();
+    try {
+      await ensureLocalAuthMode(page, { mode: "noPassword" });
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  });
+
   test.beforeEach(async ({ page }) => {
     // Navigate to the device page (on-device mode uses "/" as the device route)
     await page.goto("/");

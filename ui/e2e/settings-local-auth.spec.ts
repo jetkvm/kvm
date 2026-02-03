@@ -6,17 +6,11 @@ import {
   enablePasswordFromSettings,
   changePasswordFromSettings,
   disablePasswordFromSettings,
-  clearPasswordViaSSH,
 } from "./helpers";
 
 // Test passwords that meet the 8-character minimum requirement
 const TEST_PASSWORD = "TestPassword123";
 const NEW_PASSWORD = "NewPassword456";
-
-// Clean up after all tests - clear any password to ensure clean state for other tests
-test.afterAll(async () => {
-  await clearPasswordViaSSH();
-});
 
 test.describe("Settings Local Auth Tests", () => {
   test.setTimeout(180000); // 3 minutes

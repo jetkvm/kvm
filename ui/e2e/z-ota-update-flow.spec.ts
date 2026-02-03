@@ -7,6 +7,7 @@ import {
   sendTerminalCommand,
   verifyHidAndVideo,
   reconnectAfterReboot,
+  ensureLocalAuthMode,
 } from "./helpers";
 
 /**
@@ -28,6 +29,20 @@ import {
  */
 test.describe("OTA Update Flow", () => {
   test.setTimeout(420000); // 7 minutes
+
+  // Ensure device is in noPassword mode before tests
+  // This handles cases where previous tests left the device with password protection
+  test.beforeAll(async ({ browser }) => {
+    const baseURL = process.env.JETKVM_URL;
+    const context = await browser.newContext({ baseURL });
+    const page = await context.newPage();
+    try {
+      await ensureLocalAuthMode(page, { mode: "noPassword" });
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  });
 
   test("complete OTA upgrade from stable to new build", async ({ page }) => {
     // Get environment variables

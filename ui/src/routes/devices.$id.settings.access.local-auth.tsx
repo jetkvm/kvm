@@ -8,6 +8,8 @@ import { InputFieldWithLabel } from "@/components/InputField";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
 
+export const MIN_PASSWORD_LENGTH = 8;
+
 export default function SecurityAccessLocalAuthRoute() {
   const { setModalView } = useLocalAuthModalStore();
   const { navigateTo } = useDeviceUiNavigation();
@@ -24,8 +26,6 @@ export default function SecurityAccessLocalAuthRoute() {
 
   return <Dialog onClose={() => navigateTo("..")} />;
 }
-
-const MIN_PASSWORD_LENGTH = 8;
 
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const { modalView, setModalView } = useLocalAuthModalStore();
