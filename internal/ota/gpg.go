@@ -125,6 +125,11 @@ func (g *GPGVerifier) fetchFromKeyservers(ctx context.Context, fingerprint strin
 	var errors []error
 
 	for _, serverTemplate := range keyservers {
+		// Check if context was cancelled before trying next server
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("key fetch cancelled: %w", err)
+		}
+
 		url := fmt.Sprintf(serverTemplate, fingerprint)
 		g.logger.Debug().Str("url", url).Msg("trying keyserver")
 
@@ -139,7 +144,11 @@ func (g *GPGVerifier) fetchFromKeyservers(ctx context.Context, fingerprint strin
 		return key, nil
 	}
 
-	// All keyservers failed
+	// All keyservers failed - check if it was due to cancellation
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("key fetch cancelled after trying all servers: %w", err)
+	}
+
 	return nil, fmt.Errorf("all keyservers failed: %v", errors)
 }
 
@@ -263,5 +272,4 @@ func (g *GPGVerifier) ClearCache() {
 	g.cachedKey = nil
 	g.cachedKeyTime = time.Time{}
 	g.keyring = nil
-
 }

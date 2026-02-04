@@ -56,7 +56,8 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 test:
 	go test ./...
 
-# E2E tests - builds, sets up mock server, runs all tests including OTA
+# E2E tests - builds, sets up mock server, runs tests (excludes OTA by default)
+# Use SKIP_OTA_E2E=0 to include OTA tests, or run Playwright directly
 test_e2e: build_dev
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		read -p "Device IP: " device_ip; \
@@ -64,7 +65,7 @@ test_e2e: build_dev
 		device_ip="$(DEVICE_IP)"; \
 	fi; \
 	cd ui && npm ci && npx playwright install chromium && cd ..; \
-	./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)"
+	SKIP_OTA_E2E=1 ./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)"
 
 lint:
 	go vet ./...
@@ -180,17 +181,17 @@ dev_release: git_check_dev
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend build_dev VERSION_DEV=$(VERSION_DEV)
+	@echo "Signing binary with GPG..."
+	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
+	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
+		echo "Error: Signature file not created"; exit 1; \
+	fi
 	@read -p "Test on device before release? [y/N] " test_confirm; \
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \
 		echo "Installing Playwright dependencies..."; \
 		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
-		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION_DEV) || exit 1; \
-	fi
-	@echo "Signing binary with GPG..."
-	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
-	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
-		echo "Error: Signature file not created"; exit 1; \
+		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION_DEV) --signature bin/jetkvm_app.sig || exit 1; \
 	fi
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
@@ -252,17 +253,17 @@ release: git_check_dev
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend build_release VERSION=$(VERSION)
+	@echo "Signing binary with GPG..."
+	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
+	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
+		echo "Error: Signature file not created"; exit 1; \
+	fi
 	@read -p "Test on device before release? [y/N] " test_confirm; \
 	if [ "$$test_confirm" = "y" ]; then \
 		read -p "Device IP: " device_ip; \
 		echo "Installing Playwright dependencies..."; \
 		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
-		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION) || exit 1; \
-	fi
-	@echo "Signing binary with GPG..."
-	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
-	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
-		echo "Error: Signature file not created"; exit 1; \
+		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION) --signature bin/jetkvm_app.sig || exit 1; \
 	fi
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256

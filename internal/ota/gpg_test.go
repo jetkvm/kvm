@@ -10,7 +10,10 @@ import (
 
 func newTestGPGVerifier() *GPGVerifier {
 	logger := zerolog.New(os.Stdout).Level(zerolog.WarnLevel)
-	return NewGPGVerifier(&logger, nil)
+	mockClient := func() HttpClient {
+		return &mockHTTPClient{Fixtures: map[string]mockData{}}
+	}
+	return NewGPGVerifier(&logger, mockClient)
 }
 
 func TestIsSignatureRequired_Upgrade(t *testing.T) {

@@ -130,6 +130,28 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 	return nil
 }
 
+// downloadComponentSignature checks if a signature is required and downloads it if available.
+// Returns the signature bytes (nil if not required/available) or an error if required but missing.
+func (s *State) downloadComponentSignature(
+	ctx context.Context,
+	update *componentUpdateStatus,
+	componentName string,
+	l *zerolog.Logger,
+) ([]byte, error) {
+	// Check if signature is required but missing
+	if s.gpgVerifier.IsSignatureRequired(update.localVersion, update.version) && update.sigUrl == "" {
+		return nil, fmt.Errorf("version %s requires GPG signature but API returned no signature URL", update.version)
+	}
+
+	// Download signature if URL is provided
+	if update.sigUrl != "" {
+		l.Debug().Str("sigUrl", update.sigUrl).Msgf("downloading %s signature", componentName)
+		return s.downloadSignature(ctx, update.sigUrl)
+	}
+
+	return nil, nil
+}
+
 // downloadSignature downloads a detached GPG signature file from the given URL.
 // Returns the signature bytes or an error.
 func (s *State) downloadSignature(ctx context.Context, sigURL string) ([]byte, error) {

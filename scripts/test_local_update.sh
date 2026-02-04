@@ -2,8 +2,9 @@
 
 # test_local_update.sh - Run E2E tests with a mock API server
 #
-# Usage: ./test_local_update.sh <device_ip> <binary_path> <version>
+# Usage: ./test_local_update.sh <device_ip> <binary_path> <version> [--signature <sig_path>]
 # Example: ./test_local_update.sh 192.168.1.77 bin/jetkvm_app 0.5.2-dev202512221200
+# Example with signature: ./test_local_update.sh 192.168.1.77 bin/jetkvm_app 0.5.2-dev --signature bin/jetkvm_app.sig
 
 set -e
 
@@ -32,9 +33,29 @@ cleanup() {
 # Register cleanup to always run
 trap cleanup EXIT
 
+# Parse arguments
+SIGNATURE_PATH=""
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --signature)
+            SIGNATURE_PATH="$2"
+            shift 2
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Restore positional parameters
+set -- "${POSITIONAL_ARGS[@]}"
+
 # Check parameters
 if [ $# -ne 3 ]; then
-    echo -e "${RED}Usage: $0 <device_ip> <binary_path> <version>${NC}"
+    echo -e "${RED}Usage: $0 <device_ip> <binary_path> <version> [--signature <sig_path>]${NC}"
     exit 1
 fi
 
@@ -46,6 +67,17 @@ VERSION="$3"
 if [ ! -f "$BINARY_PATH" ]; then
     echo -e "${RED}Error: Binary not found at $BINARY_PATH${NC}"
     exit 1
+fi
+
+# Verify signature file exists if provided
+HAS_SIGNATURE="false"
+if [ -n "$SIGNATURE_PATH" ]; then
+    if [ ! -f "$SIGNATURE_PATH" ]; then
+        echo -e "${RED}Error: Signature file not found at $SIGNATURE_PATH${NC}"
+        exit 1
+    fi
+    HAS_SIGNATURE="true"
+    echo -e "${GREEN}Signature file provided: $SIGNATURE_PATH${NC}"
 fi
 
 # Get stable version from GitHub
@@ -111,6 +143,11 @@ mkdir -p "$TEMP_DIR/app/$VERSION"
 cp "$BINARY_PATH" "$TEMP_DIR/app/$VERSION/jetkvm_app"
 chmod +x "$TEMP_DIR/app/$VERSION/jetkvm_app"
 
+# Copy signature file if provided
+if [ "$HAS_SIGNATURE" = "true" ]; then
+    cp "$SIGNATURE_PATH" "$TEMP_DIR/app/$VERSION/jetkvm_app.sig"
+fi
+
 CURRENT_TIMESTAMP=$(($(date +%s) * 1000))
 
 cat > "$TEMP_DIR/server.py" <<PYEOF
@@ -128,6 +165,7 @@ LOCAL_VERSION = "$VERSION"
 LOCAL_HASH = "$BINARY_SHA256"
 DEV_IP = "$DEV_MACHINE_IP"
 TIMESTAMP = $CURRENT_TIMESTAMP
+HAS_SIGNATURE = True if "$HAS_SIGNATURE" == "true" else False
 
 class SmartHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -169,6 +207,9 @@ class SmartHandler(http.server.SimpleHTTPRequestHandler):
             "systemCachedAt": TIMESTAMP,
             "systemMaxSatisfying": "*"
         }
+        # Include signature URL if signature file is available
+        if HAS_SIGNATURE:
+            response["appSigUrl"] = f"http://{DEV_IP}:{PORT}/app/{LOCAL_VERSION}/jetkvm_app.sig"
         data = json.dumps(response).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -222,6 +263,11 @@ print_row "Device  " "http://$DEVICE_IP"
 print_row "Version " "$VERSION"
 print_row "Stable  " "$STABLE_VERSION"
 print_row "Deployed" "Yes"
+if [ "$HAS_SIGNATURE" = "true" ]; then
+    print_row "Signature" "Yes"
+else
+    print_row "Signature" "No"
+fi
 echo -e "${CYAN}╰${HLINE}╯${NC}"
 echo ""
 
@@ -241,7 +287,14 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Run E2E tests
-if NODE_NO_WARNINGS=1 npx playwright test; then
+# If SKIP_OTA_E2E is set, exclude the OTA update flow test
+PLAYWRIGHT_ARGS=()
+if [ "$SKIP_OTA_E2E" = "1" ]; then
+    echo -e "${YELLOW}Skipping OTA E2E test (SKIP_OTA_E2E=1)${NC}"
+    PLAYWRIGHT_ARGS+=(--grep-invert "OTA Update Flow")
+fi
+
+if NODE_NO_WARNINGS=1 npx playwright test "${PLAYWRIGHT_ARGS[@]}"; then
     echo ""
     echo -e "${GREEN}✓ All tests passed${NC}"
     TEST_RESULT=0
