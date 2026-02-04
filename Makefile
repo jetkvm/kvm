@@ -17,6 +17,11 @@ ENABLE_SYNC_TRACE ?= 0
 
 CMAKE_BUILD_TYPE ?= Release
 
+# GPG signing configuration
+# SIGNING_KEY_FPR: The fingerprint of the signing subkey (on YubiKey)
+# Required for signing releases
+SIGNING_KEY_FPR ?=
+
 GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
 ifeq ($(ENABLE_SYNC_TRACE), 1)
 	GO_BUILD_ARGS := $(GO_BUILD_ARGS),synctrace
@@ -158,6 +163,11 @@ git_check_dev:
 	@gh auth status >/dev/null 2>&1 || { echo "Error: gh CLI not authenticated. Run 'gh auth login'"; exit 1; }
 
 dev_release: git_check_dev
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required for releases"; \
+		echo "Usage: make dev_release SIGNING_KEY_FPR=<fingerprint>"; \
+		exit 1; \
+	fi
 	@echo "═══════════════════════════════════════════════════════"
 	@echo "  DEV Release"
 	@echo "═══════════════════════════════════════════════════════"
@@ -166,6 +176,7 @@ dev_release: git_check_dev
 	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
 	@echo "  Commit:  $$(git rev-parse --short HEAD)"
 	@echo "  Time:    $$(date -u +%FT%T%z)"
+	@echo "  Signing: $(SIGNING_KEY_FPR)"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend build_dev VERSION_DEV=$(VERSION_DEV)
@@ -176,14 +187,20 @@ dev_release: git_check_dev
 		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
 		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION_DEV) || exit 1; \
 	fi
+	@echo "Signing binary with GPG..."
+	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
+	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
+		echo "Error: Signature file not created"; exit 1; \
+	fi
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
+	rclone copyto bin/jetkvm_app.sig r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sig
 	./scripts/deploy_cloud_app.sh -v $(VERSION_DEV) --skip-confirmation
 	@git tag release/$(VERSION_DEV)
 	@git push origin release/$(VERSION_DEV)
-	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
+	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 bin/jetkvm_app.sig --prerelease --generate-notes
 	@echo "✓ Released: release/$(VERSION_DEV)"
 
 # NOTE: VERSION is passed explicitly for consistency with build_dev (see comment above).
@@ -207,6 +224,11 @@ _build_release_inner: build_native
 		-o bin/jetkvm_app cmd/main.go
 
 release: git_check_dev
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required for releases"; \
+		echo "Usage: make release SIGNING_KEY_FPR=<fingerprint>"; \
+		exit 1; \
+	fi
 	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q "jetkvm_app"; then \
 		echo "Error: Version $(VERSION) already exists in R2"; exit 1; \
 	fi
@@ -226,6 +248,7 @@ release: git_check_dev
 	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
 	@echo "  Commit:  $$(git rev-parse --short HEAD)"
 	@echo "  Time:    $$(date -u +%FT%T%z)"
+	@echo "  Signing: $(SIGNING_KEY_FPR)"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend build_release VERSION=$(VERSION)
@@ -236,15 +259,21 @@ release: git_check_dev
 		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
 		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION) || exit 1; \
 	fi
+	@echo "Signing binary with GPG..."
+	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
+	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
+		echo "Error: Signature file not created"; exit 1; \
+	fi
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
+	rclone copyto bin/jetkvm_app.sig r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sig
 	./scripts/deploy_cloud_app.sh -v $(VERSION) --set-as-default --skip-confirmation
 	@git tag release/$(VERSION)
 	@git push origin release/$(VERSION)
 	prev_prod=$$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName'); \
-	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 \
+	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 bin/jetkvm_app.sig \
 		--title "$(VERSION)" \
 		--generate-notes \
 		--notes-start-tag "$$prev_prod" \

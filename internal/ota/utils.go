@@ -129,7 +129,45 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	return nil
 }
-func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
+
+// downloadSignature downloads a detached GPG signature file from the given URL.
+// Returns the signature bytes or an error.
+func (s *State) downloadSignature(ctx context.Context, sigURL string) ([]byte, error) {
+	if sigURL == "" {
+		return nil, nil // No signature URL provided
+	}
+
+	l := s.l.With().Str("sigURL", sigURL).Logger()
+	l.Debug().Msg("downloading signature file")
+
+	req, err := http.NewRequestWithContext(ctx, "GET", sigURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating signature request: %w", err)
+	}
+
+	client := s.client()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error downloading signature: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("signature download failed with status %d", resp.StatusCode)
+	}
+
+	signature, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading signature: %w", err)
+	}
+
+	l.Debug().Int("signatureBytes", len(signature)).Msg("signature downloaded")
+	return signature, nil
+}
+
+// verifyFile verifies the SHA256 hash of the downloaded file and optionally verifies
+// the GPG signature if signature bytes are provided.
+func (s *State) verifyFile(ctx context.Context, path string, expectedHash string, signature []byte, verifyProgress *float32) error {
 	l := s.l.With().Str("path", path).Logger()
 
 	unverifiedPath := path + ".unverified"
@@ -179,6 +217,15 @@ func (s *State) verifyFile(path string, expectedHash string, verifyProgress *flo
 
 	if hex.EncodeToString(hashSum) != expectedHash {
 		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)
+	}
+
+	// Verify GPG signature if provided
+	if len(signature) > 0 {
+		l.Info().Msg("verifying GPG signature")
+		if err := s.gpgVerifier.VerifySignatureFromFile(ctx, signature, unverifiedPath); err != nil {
+			return fmt.Errorf("GPG signature verification failed: %w", err)
+		}
+		l.Info().Msg("GPG signature verified successfully")
 	}
 
 	if err := os.Rename(unverifiedPath, path); err != nil {

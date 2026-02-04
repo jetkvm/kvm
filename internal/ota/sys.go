@@ -3,6 +3,7 @@ package ota
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 	"time"
 )
@@ -16,6 +17,15 @@ const (
 func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateStatus) error {
 	l := s.l.With().Str("path", systemUpdatePath).Logger()
 
+	// Check early: if signature is required for this version but sigUrl is missing, reject the update
+	if s.gpgVerifier.IsSignatureRequired(systemUpdate.localVersion, systemUpdate.version) && systemUpdate.sigUrl == "" {
+		return s.componentUpdateError(
+			"Update rejected: signature required but not provided",
+			fmt.Errorf("version %s requires GPG signature but API returned no signature URL", systemUpdate.version),
+			&l,
+		)
+	}
+
 	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system"); err != nil {
 		return s.componentUpdateError("Error downloading system update", err, &l)
 	}
@@ -25,12 +35,25 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	systemUpdate.downloadProgress = 1
 	s.triggerComponentUpdateState("system", systemUpdate)
 
+	// Download GPG signature if available
+	var signature []byte
+	if systemUpdate.sigUrl != "" {
+		l.Debug().Str("sigUrl", systemUpdate.sigUrl).Msg("downloading system signature")
+		var err error
+		signature, err = s.downloadSignature(ctx, systemUpdate.sigUrl)
+		if err != nil {
+			return s.componentUpdateError("Error downloading system signature", err, &l)
+		}
+	}
+
 	if err := s.verifyFile(
+		ctx,
 		systemUpdatePath,
 		systemUpdate.hash,
+		signature,
 		&systemUpdate.verificationProgress,
 	); err != nil {
-		return s.componentUpdateError("Error verifying system update hash", err, &l)
+		return s.componentUpdateError("Error verifying system update", err, &l)
 	}
 	verifyFinished := time.Now()
 	systemUpdate.verifiedAt = verifyFinished
