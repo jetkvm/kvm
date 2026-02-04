@@ -19,7 +19,7 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 	if s.gpgVerifier.IsSignatureRequired(appUpdate.localVersion, appUpdate.version) && appUpdate.sigUrl == "" {
 		return s.componentUpdateError(
 			"Update rejected: signature required but not provided",
-			fmt.Errorf("version %s requires GPG signature but API returned no signature URL (possible API compromise)", appUpdate.version),
+			fmt.Errorf("version %s requires GPG signature but API returned no signature URL", appUpdate.version),
 			&l,
 		)
 	}
