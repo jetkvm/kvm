@@ -21,7 +21,15 @@ import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
-export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
+export default function WebRTCVideo({
+  hasConnectionIssues,
+  hideActionBar,
+  isDetachedWindow,
+}: {
+  hasConnectionIssues: boolean;
+  hideActionBar?: boolean;
+  isDetachedWindow?: boolean;
+}) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
@@ -598,14 +606,22 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
-      <div className="flex min-h-[39.5px] flex-col">
-        <div className="flex flex-col">
-          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
-            <Actionbar requestFullscreen={requestFullscreen} />
-            <MacroBar />
-          </fieldset>
+      {!hideActionBar && (
+        <div className="flex min-h-[39.5px] flex-col">
+          <div className="flex flex-col">
+            <fieldset
+              disabled={peerConnection?.connectionState !== "connected"}
+              className="contents"
+            >
+              <Actionbar
+                requestFullscreen={requestFullscreen}
+                isDetachedWindow={isDetachedWindow}
+              />
+              <MacroBar />
+            </fieldset>
+          </div>
         </div>
-      </div>
+      )}
 
       <div ref={containerRef} className="h-full overflow-hidden">
         <div className="relative h-full">
@@ -682,9 +698,11 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
           </div>
         </div>
       </div>
-      <div>
-        <InfoBar />
-      </div>
+      {!hideActionBar && (
+        <div>
+          <InfoBar />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useRef } from "react";
+import { useParams } from "react-router";
 import { MdOutlineContentPasteGo } from "react-icons/md";
-import { LuCable, LuHardDrive, LuMaximize, LuScanText, LuSettings, LuSignal } from "react-icons/lu";
+import { LuCable, LuExternalLink, LuHardDrive, LuMaximize, LuScanText, LuSettings, LuSignal } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
@@ -14,6 +15,7 @@ import {
   useVideoStore,
 } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useDetachedWindow } from "@hooks/useDetachedWindow";
 import { Button } from "@components/Button";
 import Container from "@components/Container";
 import PasteModal from "@components/popovers/PasteModal";
@@ -24,9 +26,13 @@ import { m } from "@localizations/messages.js";
 
 export default function Actionbar({
   requestFullscreen,
+  isDetachedWindow,
 }: {
   requestFullscreen: () => Promise<void>;
+  isDetachedWindow?: boolean;
 }) {
+  const params = useParams() as { id?: string };
+  const deviceId = params.id || "local";
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
   const {
@@ -40,6 +46,7 @@ export default function Actionbar({
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
+  const { openDetachedWindow } = useDetachedWindow();
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
@@ -270,29 +277,40 @@ export default function Actionbar({
               }}
             />
           </div>
-          <div>
-            <Button
-              size="XS"
-              theme="light"
-              text={m.action_bar_settings()}
-              LeadingIcon={LuSettings}
-              onClick={() => {
-                setDisableVideoFocusTrap(true);
-                navigateTo("/settings");
-              }}
-            />
-          </div>
+          {!isDetachedWindow && (
+            <div>
+              <Button
+                size="XS"
+                theme="light"
+                text={m.action_bar_settings()}
+                LeadingIcon={LuSettings}
+                onClick={() => {
+                  setDisableVideoFocusTrap(true);
+                  navigateTo("/settings");
+                }}
+              />
+            </div>
+          )}
 
-          <div className="hidden items-center gap-x-2 lg:flex">
-            <div className="h-4 w-px bg-slate-300 dark:bg-slate-600" />
-            <Button
-              size="XS"
-              theme="light"
-              text={m.action_bar_fullscreen()}
-              LeadingIcon={LuMaximize}
-              onClick={() => requestFullscreen()}
-            />
-          </div>
+          {!isDetachedWindow && (
+            <div className="hidden items-center gap-x-2 lg:flex">
+              <div className="h-4 w-px bg-slate-300 dark:bg-slate-600" />
+              <Button
+                size="XS"
+                theme="light"
+                text={m.detach()}
+                LeadingIcon={LuExternalLink}
+                onClick={() => openDetachedWindow(deviceId)}
+              />
+              <Button
+                size="XS"
+                theme="light"
+                text={m.action_bar_fullscreen()}
+                LeadingIcon={LuMaximize}
+                onClick={() => requestFullscreen()}
+              />
+            </div>
+          )}
         </div>
       </div>
     </Container>
