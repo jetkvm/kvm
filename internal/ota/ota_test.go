@@ -259,3 +259,11 @@ func TestCheckUpdateComponentsSystemBothDowngrade(t *testing.T) {
 func TestCheckUpdateComponentsNoComponents(t *testing.T) {
 	testUsingJson(t, "no_components.json")
 }
+
+func TestCheckUpdateAppUpgradeWithSignature(t *testing.T) {
+	testUsingJson(t, "app_upgrade_with_signature.json")
+}
+
+func TestCheckUpdateAppDowngradeNoSignature(t *testing.T) {
+	testUsingJson(t, "app_downgrade_no_signature.json")
+}

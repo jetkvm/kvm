@@ -1,0 +1,34 @@
+{
+    "name": "Downgrade App Without Signature URL",
+    "remoteMetadata": [
+        {
+            "params": {
+                "prerelease": "false",
+                "appVersion": "0.4.3"
+            },
+            "code": 200,
+            "data": {
+                "appVersion": "0.4.3",
+                "appUrl": "https://update.jetkvm.com/app/0.4.3/jetkvm_app",
+                "appHash": "abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+                "systemVersion": "0.2.2",
+                "systemUrl": "https://update.jetkvm.com/system/0.2.2/system.tar",
+                "systemHash": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+            }
+        }
+    ],
+    "localMetadata": {
+        "systemVersion": "0.2.5",
+        "appVersion": "0.4.5"
+    },
+    "updateParams": {
+        "includePreRelease": false,
+        "components": {
+            "app": "0.4.3"
+        }
+    },
+    "expected": {
+        "system": false,
+        "app": true
+    }
+}
