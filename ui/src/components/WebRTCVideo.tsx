@@ -625,21 +625,25 @@ export default function WebRTCVideo({
 
       <div ref={containerRef} className="h-full overflow-hidden">
         <div className="relative h-full">
-          <div
-            className={cx(
-              "absolute inset-0 -z-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
-              "bg-[radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px),radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px)] dark:bg-[radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px),radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px)]",
-              "bg-position-[0_0,10px_10px]",
-              "bg-size-[20px_20px]",
-            )}
-          />
+          {!isDetachedWindow && (
+            <div
+              className={cx(
+                "absolute inset-0 -z-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
+                "bg-[radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px),radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px)] dark:bg-[radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px),radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px)]",
+                "bg-position-[0_0,10px_10px]",
+                "bg-size-[20px_20px]",
+              )}
+            />
+          )}
           <div className="flex h-full flex-col">
             <div className="relative grow overflow-hidden">
               <div className="flex h-full flex-col">
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
+                  <div className={cx("relative flex items-center justify-center overflow-hidden", {
+                    "mx-4 my-2": !isDetachedWindow,
+                  })}>
                     <div
                       ref={fullscreenContainerRef}
                       className="relative flex h-full w-full items-center justify-center"
@@ -656,8 +660,9 @@ export default function WebRTCVideo({
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          "max-h-full max-w-full bg-black/50 object-contain transition-all duration-1000 sm:min-h-[384px] sm:min-w-[512px]",
+                          "max-h-full max-w-full object-contain transition-all duration-1000",
                           {
+                            "bg-black/50 sm:min-h-[384px] sm:min-w-[512px]": !isDetachedWindow,
                             "cursor-none": settings.isCursorHidden,
                             "pointer-events-none": isOcrMode,
                             "opacity-0!":
@@ -667,7 +672,7 @@ export default function WebRTCVideo({
                               peerConnectionState !== "connected",
                             "opacity-60!": showPointerLockBar,
                             "animate-slideUpFade border border-slate-800/30 shadow-xs dark:border-slate-300/20":
-                              isPlaying,
+                              isPlaying && !isDetachedWindow,
                           },
                         )}
                       />
