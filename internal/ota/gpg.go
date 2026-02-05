@@ -189,18 +189,20 @@ func (g *GPGVerifier) fetchFromSingleKeyserver(ctx context.Context, url string) 
 
 // updateMemoryCache updates the in-memory key cache
 func (g *GPGVerifier) updateMemoryCache(key []byte) {
+	// Parse the keyring first to validate before caching
+	keyring, err := openpgp.ReadArmoredKeyRing(bytes.NewReader(key))
+	if err != nil {
+		g.logger.Warn().Err(err).Msg("failed to parse keyring, not caching")
+		return
+	}
+
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	g.cachedKey = make([]byte, len(key))
 	copy(g.cachedKey, key)
 	g.cachedKeyTime = time.Now()
-
-	// Parse the keyring for verification
-	keyring, err := openpgp.ReadArmoredKeyRing(bytes.NewReader(key))
-	if err == nil {
-		g.keyring = keyring
-	}
+	g.keyring = keyring
 }
 
 // VerifySignature verifies a detached GPG signature against the provided data.
