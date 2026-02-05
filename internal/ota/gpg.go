@@ -17,7 +17,7 @@ import (
 
 // rootKeyFingerprint is the GPG fingerprint of the JetKVM release root key.
 // This key is used to verify signatures on OTA updates.
-const rootKeyFingerprint = "061C13D3B3585443FEBB67554C753D10CD085463"
+const rootKeyFingerprint = "AF5A36A993D828FEFE7C18C2D1B9856C26A79E95"
 
 // keyservers is the ordered list of keyservers to try when fetching public keys.
 // We try each in order and return on first success.
