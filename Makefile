@@ -56,8 +56,8 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 test:
 	go test ./...
 
-# E2E tests - builds, sets up mock server, runs tests (excludes OTA by default)
-# Use SKIP_OTA_E2E=0 to include OTA tests, or run Playwright directly
+# E2E tests - builds, sets up mock server, runs tests
+# Set SIGNING_KEY_FPR to include OTA tests with signature verification
 test_e2e: build_dev
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		read -p "Device IP: " device_ip; \
@@ -65,7 +65,17 @@ test_e2e: build_dev
 		device_ip="$(DEVICE_IP)"; \
 	fi; \
 	cd ui && npm ci && npx playwright install chromium && cd ..; \
-	SKIP_OTA_E2E=1 ./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)"
+	skip_ota=1; sig_args=""; \
+	if [ -n "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Signing key provided, attempting to sign binary..."; \
+		if gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app 2>/dev/null; then \
+			echo "Binary signed successfully, OTA tests will be included"; \
+			skip_ota=0; sig_args="--signature bin/jetkvm_app.sig"; \
+		else \
+			echo "Warning: GPG signing failed, skipping OTA tests"; \
+		fi; \
+	fi; \
+	SKIP_OTA_E2E=$$skip_ota ./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)" $$sig_args
 
 lint:
 	go vet ./...
