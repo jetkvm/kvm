@@ -23,7 +23,7 @@ const rootKeyFingerprint = "061C13D3B3585443FEBB67554C753D10CD085463"
 // We try each in order and return on first success.
 var keyservers = []string{
 	"https://keys.openpgp.org/vks/v1/by-fingerprint/%s",
-	// "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x%s",
+	"https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x%s",
 	// "https://pgp.mit.edu/pks/lookup?op=get&search=0x%s",
 }
 
