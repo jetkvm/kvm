@@ -77,6 +77,48 @@ test_e2e: build_dev
 	fi; \
 	SKIP_OTA_E2E=$$skip_ota ./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)" $$sig_args
 
+# Signed OTA E2E test - verifies GPG signature verification actually runs
+# This builds two binaries from the current branch:
+# 1. Baseline (0.0.1-test-baseline) - deployed first, has GPG verification code
+# 2. Target (VERSION_DEV) - signed, served via mock API
+# The baseline binary verifies the target's signature during upgrade
+test_e2e_signed:
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required for signed OTA test"; \
+		echo "Usage: make test_e2e_signed SIGNING_KEY_FPR=<fingerprint> DEVICE_IP=<ip>"; \
+		exit 1; \
+	fi
+	@if [ -z "$(DEVICE_IP)" ]; then \
+		read -p "Device IP: " device_ip; \
+	else \
+		device_ip="$(DEVICE_IP)"; \
+	fi; \
+	echo "Building baseline binary (0.0.1-test-baseline)..."; \
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline; \
+	mv bin/jetkvm_app bin/jetkvm_app_baseline; \
+	echo "Building target binary ($(VERSION_DEV))..."; \
+	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV); \
+	echo "Signing target binary..."; \
+	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }; \
+	if [ ! -f "bin/jetkvm_app.sig" ]; then echo "Error: Signature file not created"; exit 1; fi; \
+	cd ui && npm ci && npx playwright install chromium && cd ..; \
+	./scripts/test_signed_ota.sh "$$device_ip" \
+		"bin/jetkvm_app_baseline" \
+		"bin/jetkvm_app" \
+		"$(VERSION_DEV)" \
+		--signature "bin/jetkvm_app.sig"
+
+# Full E2E test suite - runs both regular and signed OTA tests
+# Requires SIGNING_KEY_FPR for the signed test
+test_e2e_full:
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required for full E2E suite"; \
+		echo "Usage: make test_e2e_full SIGNING_KEY_FPR=<fingerprint> DEVICE_IP=<ip>"; \
+		exit 1; \
+	fi
+	$(MAKE) test_e2e DEVICE_IP=$(DEVICE_IP)
+	$(MAKE) test_e2e_signed SIGNING_KEY_FPR=$(SIGNING_KEY_FPR) DEVICE_IP=$(DEVICE_IP)
+
 lint:
 	go vet ./...
 
