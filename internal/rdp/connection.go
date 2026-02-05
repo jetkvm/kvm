@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -132,6 +131,7 @@ type Connection struct {
 
 	// Modifier key tracking for paste detection
 	ctrlPressed     atomic.Bool
+	targetCopied    atomic.Bool // true after Ctrl+C/X on target; cleared on client FORMAT_LIST
 	pasteInProgress atomic.Bool // Suppress V key events during paste
 
 	// Pending file transfer - files received from clipboard, waiting for paste
@@ -450,11 +450,6 @@ const (
 	// channelFlagShowProtocol (0x00000010) reserved for future use
 )
 
-// MaxClipboardReassemblySize is the maximum size for clipboard PDU reassembly.
-// This prevents memory exhaustion from malicious clients sending huge totalLength values.
-// 100MB should be sufficient for even very large file transfers.
-const MaxClipboardReassemblySize = 100 * 1024 * 1024
-
 // handleVirtualChannelPDU handles PDUs on virtual channels.
 func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	// Virtual Channel PDU has an 8-byte header per MS-RDPBCGR 2.2.6.1:
@@ -504,91 +499,6 @@ func (c *Connection) handleVirtualChannelPDU(channelID uint16, data []byte) {
 	}
 }
 
-// handleClipboardWithReassembly handles clipboard PDUs with fragmentation support.
-// Per MS-RDPBCGR 2.2.6.1, large virtual channel PDUs are split across multiple packets.
-// Only the first fragment contains the CLIPRDR PDU header; subsequent fragments are raw data.
-func (c *Connection) handleClipboardWithReassembly(payload []byte, totalLength uint32, flags uint32) {
-	isFirst := (flags & channelFlagFirst) != 0
-	isLast := (flags & channelFlagLast) != 0
-
-	c.server.deps.Logger.Debug().
-		Uint32("totalLength", totalLength).
-		Uint32("flags", flags).
-		Bool("first", isFirst).
-		Bool("last", isLast).
-		Int("payloadLen", len(payload)).
-		Msg("RDP: clipboard VC PDU fragment")
-
-	// Fast path: single-fragment PDU (both FIRST and LAST set, or small PDU)
-	if isFirst && isLast {
-		c.handleClipboard(payload)
-		return
-	}
-
-	// Handle fragmented PDU reassembly
-	var completePDU []byte
-
-	c.clipboardReassembly.mu.Lock()
-	if isFirst {
-		// Validate size to prevent memory exhaustion from malicious clients
-		if totalLength > MaxClipboardReassemblySize {
-			// Clear any existing buffer state before rejecting
-			c.clipboardReassembly.buffer = nil
-			c.clipboardReassembly.totalLength = 0
-			c.clipboardReassembly.mu.Unlock()
-			c.server.deps.Logger.Warn().
-				Uint32("totalLength", totalLength).
-				Uint32("maxAllowed", MaxClipboardReassemblySize).
-				Msg("RDP: clipboard reassembly size exceeds maximum, dropping")
-			return
-		}
-
-		// Start new reassembly buffer
-		// Pre-allocate to expected total size to avoid reallocations
-		c.clipboardReassembly.buffer = make([]byte, 0, totalLength)
-		c.clipboardReassembly.totalLength = totalLength
-		c.clipboardReassembly.buffer = append(c.clipboardReassembly.buffer, payload...)
-
-		c.server.deps.Logger.Debug().
-			Uint32("totalLength", totalLength).
-			Int("firstChunkLen", len(payload)).
-			Msg("RDP: clipboard reassembly started")
-		c.clipboardReassembly.mu.Unlock()
-		return
-	}
-
-	// Middle or last fragment - append to buffer
-	if c.clipboardReassembly.buffer == nil {
-		c.clipboardReassembly.mu.Unlock()
-		c.server.deps.Logger.Warn().
-			Bool("isLast", isLast).
-			Int("payloadLen", len(payload)).
-			Msg("RDP: clipboard fragment received without FIRST flag, discarding")
-		return
-	}
-
-	c.clipboardReassembly.buffer = append(c.clipboardReassembly.buffer, payload...)
-
-	c.server.deps.Logger.Debug().
-		Int("bufferLen", len(c.clipboardReassembly.buffer)).
-		Uint32("expectedLen", c.clipboardReassembly.totalLength).
-		Bool("isLast", isLast).
-		Msg("RDP: clipboard fragment appended")
-
-	if isLast {
-		// Reassembly complete - take ownership of the buffer
-		completePDU = c.clipboardReassembly.buffer
-		c.clipboardReassembly.buffer = nil
-		c.clipboardReassembly.totalLength = 0
-	}
-	c.clipboardReassembly.mu.Unlock()
-
-	// Process complete PDU outside lock to avoid holding it during HandlePDU
-	if completePDU != nil {
-		c.handleClipboard(completePDU)
-	}
-}
-
 // handleDrdynvc handles dynamic virtual channel setup.
 func (c *Connection) handleDrdynvc(data []byte) {
 	if c.dvcManager == nil {
@@ -608,42 +518,6 @@ func (c *Connection) handleRdpsnd(data []byte) {
 	if err := c.soundChannel.HandlePDU(data); err != nil {
 		c.server.deps.Logger.Debug().Err(err).Msg("RDP: rdpsnd error")
 	}
-}
-
-// handleClipboard handles clipboard channel asynchronously to prevent blocking video/input.
-func (c *Connection) handleClipboard(data []byte) {
-	if c.clipboardChannel == nil {
-		return
-	}
-
-	// Check if this is a format list PDU (CB_FORMAT_LIST = 0x0002)
-	// If so, clear clipboard text SYNCHRONOUSLY to prevent race conditions
-	// with key event handling that checks clipboardText
-	if len(data) >= 2 {
-		msgType := binary.LittleEndian.Uint16(data[0:2])
-		if msgType == 0x0002 { // CB_FORMAT_LIST
-			c.clipboardChannel.ClearClipboardText()
-		}
-	}
-
-	// Make a copy since the buffer may be reused
-	dataCopy := make([]byte, len(data))
-	copy(dataCopy, data)
-
-	// Process asynchronously to avoid blocking the main message loop
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				c.server.deps.Logger.Error().
-					Interface("panic", r).
-					Msg("RDP: clipboard handler panicked")
-			}
-		}()
-
-		if err := c.clipboardChannel.HandlePDU(dataCopy); err != nil {
-			c.server.deps.Logger.Debug().Err(err).Msg("RDP: cliprdr error")
-		}
-	}()
 }
 
 // handleCameraFormatChanges handles USB host format changes for dynamic camera format negotiation.
@@ -784,16 +658,17 @@ func (c *Connection) Close() {
 	}
 
 	// Cleanup pending files (not yet pasted)
-	c.pendingFilesMu.Lock()
-	for _, f := range c.pendingFiles {
-		if f.TempPath != "" {
-			os.Remove(f.TempPath)
-		}
-	}
-	c.pendingFiles = nil
-	c.pendingFilesMu.Unlock()
+	c.clearPendingFiles()
 
-	// Signal the message loop to exit - this triggers goroutine cleanup
+	// Release clipboard reassembly buffer (can be up to MaxClipboardReassemblySize)
+	c.clipboardReassembly.mu.Lock()
+	c.clipboardReassembly.buffer = nil
+	c.clipboardReassembly.totalLength = 0
+	c.clipboardReassembly.mu.Unlock()
+
+	// Signal the message loop and streaming goroutines to exit.
+	// Must happen before video cleanup so goroutines stop reading
+	// from subscription channels before we unsubscribe them.
 	close(c.stopChan)
 
 	// Stop bitmap encoders that this connection started.

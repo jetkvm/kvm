@@ -30,7 +30,6 @@ require (
 	github.com/prometheus/common v0.67.2
 	github.com/prometheus/procfs v0.19.2
 	github.com/psanford/httpreadat v0.1.0
-	github.com/rs/xid v1.6.0
 	github.com/rs/zerolog v1.34.0
 	github.com/sourcegraph/tf-dag v0.2.2-0.20250131204052-3e8ff1477b4f
 	github.com/stretchr/testify v1.11.1

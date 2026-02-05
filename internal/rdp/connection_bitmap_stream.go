@@ -60,11 +60,7 @@ func (c *Connection) startBitmapStreaming() {
 					Str("remote", c.RemoteAddr()).
 					Msg("RDP: RGB bitmap streaming goroutine panicked")
 			}
-			// Cleanup subscription on exit
-			if c.rgbChan != nil && c.server.deps.Video != nil {
-				c.server.deps.Video.UnsubscribeRGB(c.rgbChan)
-				c.rgbChan = nil
-			}
+			// Subscription cleanup is handled by Connection.Close()
 		}()
 
 		// Send frames as they arrive - no artificial rate limiting
@@ -147,11 +143,7 @@ func (c *Connection) startJPEGBitmapStreaming() {
 					Str("remote", c.RemoteAddr()).
 					Msg("RDP: JPEG bitmap streaming goroutine panicked")
 			}
-			// Cleanup subscription on exit
-			if c.jpegChan != nil && c.server.deps.Video != nil {
-				c.server.deps.Video.UnsubscribeJPEG(c.jpegChan)
-				c.jpegChan = nil
-			}
+			// Subscription cleanup is handled by Connection.Close()
 		}()
 
 		frameCount := 0
@@ -213,8 +205,8 @@ func (c *Connection) SendRGBBitmapUpdate(bgrxData []byte, width, height int) err
 	// Reusable tile struct to avoid allocations
 	var tile tileRect
 
-	for ty := 0; ty < tilesY; ty++ {
-		for tx := 0; tx < tilesX; tx++ {
+	for ty := range tilesY {
+		for tx := range tilesX {
 			left := tx * rgbTileSize
 			top := ty * rgbTileSize
 			right := left + rgbTileSize - 1
@@ -233,7 +225,7 @@ func (c *Connection) SendRGBBitmapUpdate(bgrxData []byte, width, height int) err
 			tileSize := tileW * tileH * 4
 
 			// Copy tile data with vertical flip (RDP expects bottom-up scanlines)
-			for y := 0; y < tileH; y++ {
+			for y := range tileH {
 				srcY := top + y
 				dstY := tileH - 1 - y
 				srcOffset := (srcY*width + left) * 4

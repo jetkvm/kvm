@@ -9,7 +9,7 @@ import "encoding/binary"
 // HOT PATH: This function is called for every DVC fragment.
 // Uses pre-allocated fragBuf to avoid heap allocations.
 func (ch *DVCChannel) SendData(data []byte) error {
-	if !ch.Open {
+	if !ch.open.Load() {
 		return ErrDVCChannelClosed
 	}
 
@@ -28,10 +28,7 @@ func (ch *DVCChannel) SendData(data []byte) error {
 	first := true
 
 	for pos < totalLen {
-		chunkSize := totalLen - pos
-		if chunkSize > DVCMaxDataSize {
-			chunkSize = DVCMaxDataSize
-		}
+		chunkSize := min(totalLen-pos, DVCMaxDataSize)
 
 		var err error
 		if first {
@@ -108,11 +105,11 @@ func (ch *DVCChannel) sendDataPDUZeroAlloc(data []byte, isFirst bool, totalLen u
 
 // Close closes the channel.
 func (ch *DVCChannel) Close() error {
-	if !ch.Open {
+	if !ch.open.Load() {
 		return nil
 	}
 
-	ch.Open = false
+	ch.open.Store(false)
 
 	// Send close request
 	cbID, idLen := channelIDEncoding(ch.ID)

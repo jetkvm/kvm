@@ -292,9 +292,7 @@ func parseClientNetworkData(data []byte) *ClientNetworkData {
 
 	channelCount := binary.LittleEndian.Uint32(data[0:4])
 
-	if channelCount > MaxChannels {
-		channelCount = MaxChannels
-	}
+	channelCount = min(channelCount, MaxChannels)
 
 	network := &ClientNetworkData{
 		ChannelCount: channelCount,

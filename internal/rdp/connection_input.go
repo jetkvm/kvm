@@ -17,10 +17,41 @@ const (
 	scancodeV    = 0x2F
 )
 
+// Slow-path input event types (MS-RDPBCGR 2.2.8.1.1.3.1.1).
+const (
+	inputEventMouse    = 0x0001 // INPUT_EVENT_MOUSE
+	inputEventScancode = 0x0004 // INPUT_EVENT_SCANCODE
+	inputEventUnicode  = 0x0005 // INPUT_EVENT_UNICODE
+	inputEventMouseX   = 0x0008 // INPUT_EVENT_MOUSEX
+)
+
+// Mouse pointer flags (MS-RDPBCGR 2.2.8.1.1.3.1.1.3).
+const (
+	ptrflagsWheelNegative = 0x0100 // PTRFLAGS_WHEEL_NEGATIVE
+	ptrflagsWheel         = 0x0200 // PTRFLAGS_WHEEL
+	ptrflagsHWheel        = 0x0400 // PTRFLAGS_HWHEEL
+	ptrflagsMove          = 0x0800 // PTRFLAGS_MOVE
+	ptrflagsButton1       = 0x1000 // PTRFLAGS_BUTTON1 (left)
+	ptrflagsButton2       = 0x2000 // PTRFLAGS_BUTTON2 (right)
+	ptrflagsButton3       = 0x4000 // PTRFLAGS_BUTTON3 (middle)
+	ptrflagsDown          = 0x8000 // PTRFLAGS_DOWN
+	ptrflagsButtonMask    = ptrflagsButton1 | ptrflagsButton2 | ptrflagsButton3
+	ptrflagsWheelDeltaMask = 0x00FF // Lower 8 bits = wheel rotation units
+)
+
+// Keyboard flags (MS-RDPBCGR 2.2.8.1.1.3.1.1.6).
+const (
+	kbdflagsExtended = 0x0100 // KBDFLAGS_EXTENDED
+	kbdflagsRelease  = 0x8000 // KBDFLAGS_RELEASE
+)
+
+// RDP wheel delta unit: one "notch" of the wheel.
+const wheelDelta = 120
+
 // scaleWheelDelta converts RDP wheel delta to HID wheel units.
 // RDP uses WHEEL_DELTA (120) per notch; HID uses small values (±1 to ±3).
 func scaleWheelDelta(delta int) int8 {
-	scaled := int8(delta / 120)
+	scaled := int8(delta / wheelDelta)
 	if scaled == 0 && delta != 0 {
 		// Preserve direction for small movements
 		if delta > 0 {
@@ -54,25 +85,25 @@ func (c *Connection) handleInputPDU(data []byte) {
 		pos += 6
 
 		switch eventType {
-		case 0x0001: // INPUT_EVENT_MOUSE
+		case inputEventMouse:
 			if pos+6 > len(data) {
 				break
 			}
 			c.handleMouseEvent(data[pos : pos+6])
 			pos += 6
-		case 0x0004: // INPUT_EVENT_SCANCODE
+		case inputEventScancode:
 			if pos+6 > len(data) {
 				break
 			}
 			c.handleScancodeEvent(data[pos : pos+6])
 			pos += 6
-		case 0x0005: // INPUT_EVENT_UNICODE
+		case inputEventUnicode:
 			if pos+6 > len(data) {
 				break
 			}
 			c.handleUnicodeEvent(data[pos : pos+6])
 			pos += 6
-		case 0x0008: // INPUT_EVENT_MOUSEX (extended mouse)
+		case inputEventMouseX:
 			if pos+6 > len(data) {
 				break
 			}
@@ -112,7 +143,7 @@ func (c *Connection) handleMouseEvent(data []byte) {
 		return
 	}
 
-	hasMove := (pointerFlags & 0x0800) != 0 // PTRFLAGS_MOVE
+	hasMove := (pointerFlags & ptrflagsMove) != 0
 
 	// Update last known position when the client indicates movement.
 	// Wheel-only events may carry stale or zero coordinates — using those
@@ -126,29 +157,29 @@ func (c *Connection) handleMouseEvent(data []byte) {
 	// Track button state based on RDP events
 	// RDP sends button flags with PTRFLAGS_DOWN on press, without on release
 	// Button flags are only set during actual button events, not during moves
-	hasButtonEvent := (pointerFlags & 0x7000) != 0 // Any of BUTTON1/2/3
+	hasButtonEvent := (pointerFlags & ptrflagsButtonMask) != 0
 	if hasButtonEvent {
-		isDown := (pointerFlags & 0x8000) != 0 // PTRFLAGS_DOWN
+		isDown := (pointerFlags & ptrflagsDown) != 0
 		if isDown {
 			// Button press - set bits
-			if pointerFlags&0x1000 != 0 { // PTRFLAGS_BUTTON1
+			if pointerFlags&ptrflagsButton1 != 0 {
 				c.mouseButtons |= 0x01 // Left
 			}
-			if pointerFlags&0x2000 != 0 { // PTRFLAGS_BUTTON2
+			if pointerFlags&ptrflagsButton2 != 0 {
 				c.mouseButtons |= 0x02 // Right
 			}
-			if pointerFlags&0x4000 != 0 { // PTRFLAGS_BUTTON3
+			if pointerFlags&ptrflagsButton3 != 0 {
 				c.mouseButtons |= 0x04 // Middle
 			}
 		} else {
 			// Button release - clear bits
-			if pointerFlags&0x1000 != 0 { // PTRFLAGS_BUTTON1
+			if pointerFlags&ptrflagsButton1 != 0 {
 				c.mouseButtons &^= 0x01 // Left
 			}
-			if pointerFlags&0x2000 != 0 { // PTRFLAGS_BUTTON2
+			if pointerFlags&ptrflagsButton2 != 0 {
 				c.mouseButtons &^= 0x02 // Right
 			}
-			if pointerFlags&0x4000 != 0 { // PTRFLAGS_BUTTON3
+			if pointerFlags&ptrflagsButton3 != 0 {
 				c.mouseButtons &^= 0x04 // Middle
 			}
 		}
@@ -165,10 +196,10 @@ func (c *Connection) handleMouseEvent(data []byte) {
 		}
 	}
 
-	// Handle vertical wheel (PTRFLAGS_WHEEL = 0x0200)
-	if pointerFlags&0x0200 != 0 {
-		delta := int(pointerFlags & 0x00FF)
-		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
+	// Handle vertical wheel
+	if pointerFlags&ptrflagsWheel != 0 {
+		delta := int(pointerFlags & ptrflagsWheelDeltaMask)
+		if pointerFlags&ptrflagsWheelNegative != 0 {
 			delta = -delta
 		}
 		if err := c.server.deps.HID.WheelReport(scaleWheelDelta(delta), 0); err != nil {
@@ -176,10 +207,10 @@ func (c *Connection) handleMouseEvent(data []byte) {
 		}
 	}
 
-	// Handle horizontal wheel (PTRFLAGS_HWHEEL = 0x0400)
-	if pointerFlags&0x0400 != 0 {
-		delta := int(pointerFlags & 0x00FF)
-		if pointerFlags&0x0100 != 0 { // PTRFLAGS_WHEEL_NEGATIVE
+	// Handle horizontal wheel
+	if pointerFlags&ptrflagsHWheel != 0 {
+		delta := int(pointerFlags & ptrflagsWheelDeltaMask)
+		if pointerFlags&ptrflagsWheelNegative != 0 {
 			delta = -delta
 		}
 		if err := c.server.deps.HID.WheelReport(0, scaleWheelDelta(delta)); err != nil {
@@ -188,9 +219,9 @@ func (c *Connection) handleMouseEvent(data []byte) {
 	}
 }
 
-// handleMouseXEvent handles extended mouse input.
+// handleMouseXEvent handles extended mouse input (INPUT_EVENT_MOUSEX).
+// Extended buttons (4/5) are not yet mapped; delegates to handleMouseEvent for standard buttons.
 func (c *Connection) handleMouseXEvent(data []byte) {
-	// Similar to handleMouseEvent but with extended button support
 	c.handleMouseEvent(data)
 }
 
@@ -208,15 +239,29 @@ func (c *Connection) handleClipboardKeys(scancode uint16, pressed bool) bool {
 
 	// Handle clipboard-related key combinations (only on key down)
 	if pressed && c.ctrlPressed.Load() && clipboardEnabled {
+		// macOS uses Cmd+C/V for copy/paste, not Ctrl+C/V.
+		// Forward Ctrl keys natively so they reach the target unmodified.
+		if c.getTargetOS() == TargetOSMacOS {
+			return false
+		}
+
 		switch scancode {
 		case scancodeC, scancodeX: // Copy or Cut
 			c.clipboardChannel.ClearClipboardText()
+			c.clearPendingFiles()
+			c.targetCopied.Store(true)
 			c.server.deps.Logger.Debug().
 				Uint16("scancode", scancode).
 				Msg("RDP: copy/cut detected, cleared clipboard")
 			// Don't suppress - still forward the key for native copy/cut
 
 		case scancodeV: // Paste
+			// If user last copied on the target machine, forward V natively
+			// so the target OS handles paste from its own clipboard.
+			if c.targetCopied.Load() {
+				return false
+			}
+
 			// Check for pending files first (file paste takes priority)
 			if c.HasPendingFiles() {
 				c.server.deps.Logger.Debug().Msg("RDP: pasting clipboard files")
@@ -267,7 +312,7 @@ func (c *Connection) handleScancodeEvent(data []byte) {
 	scancode := binary.LittleEndian.Uint16(data[2:4])
 
 	// Key up or down
-	pressed := keyboardFlags&0x8000 == 0 // KBDFLAGS_RELEASE
+	pressed := keyboardFlags&kbdflagsRelease == 0
 
 	// Handle clipboard keys - may suppress the event
 	if c.handleClipboardKeys(scancode, pressed) {
@@ -295,7 +340,7 @@ func (c *Connection) handleUnicodeEvent(data []byte) {
 	unicodeCode := binary.LittleEndian.Uint16(data[2:4])
 
 	// Only handle key down for Unicode
-	if keyboardFlags&0x8000 != 0 { // KBDFLAGS_RELEASE
+	if keyboardFlags&kbdflagsRelease != 0 {
 		return
 	}
 
@@ -465,10 +510,10 @@ func (c *Connection) handleFastPathScancode(scancode byte, flags byte) {
 	// Build keyboard flags for HID conversion
 	var kbdFlags uint16
 	if released {
-		kbdFlags |= 0x8000 // KBDFLAGS_RELEASE
+		kbdFlags |= kbdflagsRelease
 	}
 	if extended {
-		kbdFlags |= 0x0100 // KBDFLAGS_EXTENDED
+		kbdFlags |= kbdflagsExtended
 	}
 
 	hidCode := scancodeToHID(uint16(scancode), kbdFlags)

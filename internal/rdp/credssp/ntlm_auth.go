@@ -687,7 +687,7 @@ func parseASN1Length(data []byte) (int, int) {
 	}
 
 	length := 0
-	for i := 0; i < numLenBytes; i++ {
+	for i := range numLenBytes {
 		length = (length << 8) | int(data[1+i])
 	}
 

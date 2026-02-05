@@ -75,7 +75,7 @@ type AudinReadyCallback func(a *AudinChannel)
 type AudinCloseCallback func()
 
 // AudinLogFunc is a simple logging function for AUDIN events.
-type AudinLogFunc func(msg string, args ...interface{})
+type AudinLogFunc func(msg string, args ...any)
 
 // AudinChannel implements the AUDIN dynamic virtual channel.
 type AudinChannel struct {

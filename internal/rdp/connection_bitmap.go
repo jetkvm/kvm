@@ -35,7 +35,7 @@ var tileBufferPool = sync.Pool{
 // bgrxBufferPool reduces allocations for YUV→BGRX conversion.
 // Max size: 1920x1080x4 = ~8MB (handles 1080p)
 var bgrxBufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		buf := make([]byte, 1920*1080*4)
 		return &buf
 	},
@@ -99,7 +99,7 @@ func convertYUV422ToBGRX(yuv []byte, width, height int) ([]byte, *[]byte) {
 	yuvStride := width * 2
 	bgrxStride := width * 4
 
-	for row := 0; row < height; row++ {
+	for row := range height {
 		yuvOffset := row * yuvStride
 		bgrxOffset := row * bgrxStride
 
@@ -247,8 +247,8 @@ func (c *Connection) sendTiledBitmapUpdateFast(img image.Image, width, height in
 
 	// Process and send each tile immediately
 	var tile tileRect
-	for ty := 0; ty < tilesY; ty++ {
-		for tx := 0; tx < tilesX; tx++ {
+	for ty := range tilesY {
+		for tx := range tilesX {
 			// Calculate tile bounds
 			left := tx * bitmapTileSize
 			top := ty * bitmapTileSize
@@ -303,12 +303,12 @@ func (c *Connection) sendTiledBitmapUpdateFast(img image.Image, width, height in
 // convertYCbCrTileToBGRX converts a tile from YCbCr to BGRX format (bottom-up scanlines).
 // This is the fast path for JPEG images which are typically YCbCr.
 func convertYCbCrTileToBGRX(img *image.YCbCr, left, top, tileW, tileH int, dst []byte) {
-	for y := 0; y < tileH; y++ {
+	for y := range tileH {
 		srcY := top + y
 		dstY := tileH - 1 - y // RDP expects bottom-up
 		dstRowOffset := dstY * tileW * 4
 
-		for x := 0; x < tileW; x++ {
+		for x := range tileW {
 			srcX := left + x
 			r, g, b := color.YCbCrToRGB(
 				img.Y[img.YOffset(srcX, srcY)],
@@ -331,13 +331,13 @@ func convertRGBATileToBGRX(img *image.RGBA, left, top, tileW, tileH int, dst []b
 	minX := img.Rect.Min.X
 	minY := img.Rect.Min.Y
 
-	for y := 0; y < tileH; y++ {
+	for y := range tileH {
 		srcY := top + y - minY
 		dstY := tileH - 1 - y
 		srcRowOffset := srcY * stride
 		dstRowOffset := dstY * tileW * 4
 
-		for x := 0; x < tileW; x++ {
+		for x := range tileW {
 			srcX := left + x - minX
 			srcOffset := srcRowOffset + srcX*4
 			dstOffset := dstRowOffset + x*4
@@ -357,13 +357,13 @@ func convertNRGBATileToBGRX(img *image.NRGBA, left, top, tileW, tileH int, dst [
 	minX := img.Rect.Min.X
 	minY := img.Rect.Min.Y
 
-	for y := 0; y < tileH; y++ {
+	for y := range tileH {
 		srcY := top + y - minY
 		dstY := tileH - 1 - y
 		srcRowOffset := srcY * stride
 		dstRowOffset := dstY * tileW * 4
 
-		for x := 0; x < tileW; x++ {
+		for x := range tileW {
 			srcX := left + x - minX
 			srcOffset := srcRowOffset + srcX*4
 			dstOffset := dstRowOffset + x*4
@@ -379,12 +379,12 @@ func convertNRGBATileToBGRX(img *image.NRGBA, left, top, tileW, tileH int, dst [
 // convertGenericTileToBGRX is the fallback for any image type.
 // It uses the image.Image interface which is slower but always works.
 func convertGenericTileToBGRX(img image.Image, left, top, tileW, tileH int, dst []byte) {
-	for y := 0; y < tileH; y++ {
+	for y := range tileH {
 		srcY := top + y
 		dstY := tileH - 1 - y
 		dstRowOffset := dstY * tileW * 4
 
-		for x := 0; x < tileW; x++ {
+		for x := range tileW {
 			r, g, b, _ := img.At(left+x, srcY).RGBA()
 			offset := dstRowOffset + x*4
 			dst[offset+0] = byte(b >> 8)
@@ -455,10 +455,7 @@ func (c *Connection) sendFastPathBitmapUpdate(tiles []tileRect) error {
 	isFirst := true
 
 	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > maxFragmentSize {
-			chunkSize = maxFragmentSize
-		}
+		chunkSize := min(remaining, maxFragmentSize)
 
 		var fragFlag byte
 		if isFirst {

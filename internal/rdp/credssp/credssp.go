@@ -177,21 +177,15 @@ func (h *Handler) Authenticate() (username string, err error) {
 	// Debug: dump FULL CHALLENGE message
 	h.logger.Debug().Msgf("CredSSP: CHALLENGE hex FULL: % 02X", challengeMsg)
 
-	// Use client's version (or minimum version 3 for security)
-	responseVersion := h.clientVersion
-	if responseVersion < 3 {
-		responseVersion = 3 // Minimum version 3 for CVE-2018-0886 support
-	}
+	// Use client's version (or minimum version 3 for CVE-2018-0886 support)
+	responseVersion := max(h.clientVersion, 3)
 	tsResp, err := h.buildTSRequest(responseVersion, challengeMsg)
 	if err != nil {
 		return "", fmt.Errorf("build TSRequest: %w", err)
 	}
 	h.logger.Debug().Msgf("CredSSP: built TSRequest with version=%d, len=%d", responseVersion, len(tsResp))
 	// Debug: dump first 48 bytes of TSRequest
-	tsDebug := 48
-	if len(tsResp) < tsDebug {
-		tsDebug = len(tsResp)
-	}
+	tsDebug := min(48, len(tsResp))
 	h.logger.Debug().Msgf("CredSSP: TSRequest hex (first %d bytes): % 02X", tsDebug, tsResp[:tsDebug])
 
 	if err := h.writeTSRequest(tsResp); err != nil {
@@ -410,10 +404,7 @@ func (h *Handler) writeTSRequest(data []byte) error {
 func (h *Handler) sendErrorResponse(errorCode int64) {
 	// Build TSRequest with error code
 	// Use client's version or minimum version 3
-	version := h.clientVersion
-	if version < 3 {
-		version = 3
-	}
+	version := max(h.clientVersion, 3)
 
 	errReq := tsRequest{
 		Version:   version,
@@ -529,7 +520,7 @@ func equalFoldASCII(a, b string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := 0; i < len(a); i++ {
+	for i := range len(a) {
 		ca, cb := a[i], b[i]
 		if ca >= 'A' && ca <= 'Z' {
 			ca += 'a' - 'A'
@@ -555,7 +546,7 @@ func usernameMatches(provided, expected string) bool {
 
 	// Check if provided is in UPN format (user@domain)
 	// Extract just the user part and compare
-	for i := 0; i < len(provided); i++ {
+	for i := range len(provided) {
 		if provided[i] == '@' {
 			userPart := provided[:i]
 			if equalFoldASCII(userPart, expected) {
@@ -567,7 +558,7 @@ func usernameMatches(provided, expected string) bool {
 
 	// Check if provided is in DOMAIN\user format
 	// Extract just the user part and compare
-	for i := 0; i < len(provided); i++ {
+	for i := range len(provided) {
 		if provided[i] == '\\' {
 			userPart := provided[i+1:]
 			if equalFoldASCII(userPart, expected) {
@@ -739,10 +730,7 @@ func (h *Handler) buildPubKeyAuth() ([]byte, error) {
 
 func (h *Handler) buildTSRequestFinal(pubKeyAuth []byte) ([]byte, error) {
 	// Use the same version we negotiated with the client
-	version := h.clientVersion
-	if version < 3 {
-		version = 3
-	}
+	version := max(h.clientVersion, 3)
 	req := tsRequest{
 		Version:    version,
 		PubKeyAuth: pubKeyAuth,

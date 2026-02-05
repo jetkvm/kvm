@@ -52,8 +52,6 @@ func (c *Connection) sendDVCDataScatterGather(sg ScatterGatherWriter, data []byt
 		x224HeaderLen    = 3
 		mcsHeaderBaseLen = 6
 		vcHeaderLen      = 8
-		channelFlagFirst = 0x01
-		channelFlagLast  = 0x02
 	)
 
 	vcPayloadLen := len(data)

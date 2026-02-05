@@ -661,8 +661,11 @@ func (c *ClipboardChannel) handleFileContentsResponse(data []byte, msgFlags uint
 	// Write to temp file
 	if err := c.appendToFile(file, payload); err != nil {
 		c.log("CLIPRDR: failed to write file data: %v", err)
-		// Clean up state on write failure to allow retry
+		// Clean up state and partial temp file on write failure
 		c.closeFileHandle(file)
+		if file.TempPath != "" {
+			os.Remove(file.TempPath)
+		}
 		c.fileTransferInProgress = false
 		return err
 	}
@@ -804,11 +807,3 @@ func sanitizeFileName(name string) string {
 	return string(result)
 }
 
-// TargetOS represents the target operating system for command generation.
-type TargetOS string
-
-const (
-	TargetOSWindows TargetOS = "windows"
-	TargetOSLinux   TargetOS = "linux"
-	TargetOSMacOS   TargetOS = "macos"
-)

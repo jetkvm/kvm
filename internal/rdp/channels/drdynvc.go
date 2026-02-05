@@ -82,7 +82,7 @@ func channelIDEncoding(channelID uint32) (cbID byte, idLen int) {
 }
 
 // DVCLogger is a simple logging function for DVC events.
-type DVCLogger func(msg string, channel string, channelID uint32, args ...interface{})
+type DVCLogger func(msg string, channel string, channelID uint32, args ...any)
 
 // Maximum number of DVC channels for lock-free lookup array.
 // Typical RDP sessions use 4-6 channels (GFX, RDPSND, AUDIN, RDPCAM, CLIPRDR, etc.)
@@ -130,7 +130,7 @@ const DVCReassemblyTimeoutSec = 5
 type DVCChannel struct {
 	ID      uint32
 	Name    string
-	Open    bool
+	open    atomic.Bool // true when channel is successfully opened; atomic for concurrent access
 	Handler DVCHandler
 	manager *DVCManager
 
@@ -290,7 +290,7 @@ func (m *DVCManager) handleCreateResponse(data []byte, cbID byte) error {
 	m.channelsMu.Lock()
 	ch, ok := m.channels[channelID]
 	if ok {
-		ch.Open = status == 0
+		ch.open.Store(status == 0)
 		// Log channel creation result
 		if m.logger != nil {
 			if status == 0 {
@@ -374,12 +374,12 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 		m.channelsMu.RUnlock()
 	}
 
-	if ch == nil || !ch.Open || ch.Handler == nil {
+	if ch == nil || !ch.open.Load() || ch.Handler == nil {
 		// Log silent drops (helps diagnose connection issues)
 		if m.logger != nil {
 			if ch == nil {
 				m.logger("DVC: dropped data for unknown channel %d", "", channelID)
-			} else if !ch.Open {
+			} else if !ch.open.Load() {
 				m.logger("DVC: dropped data for closed channel", ch.Name, channelID)
 			} else {
 				m.logger("DVC: dropped data for channel with no handler", ch.Name, channelID)
@@ -438,10 +438,7 @@ func (m *DVCManager) handleData(data []byte, cbID byte, isFirst bool) error {
 	if ch.reassemblyTotal > 0 {
 		// Append payload to reassembly buffer
 		remaining := ch.reassemblyTotal - ch.reassemblyOffset
-		copyLen := uint32(len(payload))
-		if copyLen > remaining {
-			copyLen = remaining
-		}
+		copyLen := min(uint32(len(payload)), remaining)
 		copy(ch.reassemblyBuf[ch.reassemblyOffset:], payload[:copyLen])
 		ch.reassemblyOffset += copyLen
 
@@ -476,7 +473,7 @@ func (m *DVCManager) handleClose(data []byte, cbID byte) error {
 	m.channelsMu.Lock()
 	ch, ok := m.channels[channelID]
 	if ok {
-		ch.Open = false
+		ch.open.Store(false)
 		if ch.Handler != nil {
 			ch.Handler.OnClose()
 		}
@@ -544,10 +541,10 @@ func (m *DVCManager) CreateChannel(name string, handler DVCHandler) (*DVCChannel
 	ch := &DVCChannel{
 		ID:      channelID,
 		Name:    name,
-		Open:    false,
 		Handler: handler,
 		manager: m,
 	}
+	// open defaults to false (zero value for atomic.Bool)
 
 	m.channelsMu.Lock()
 	m.channels[channelID] = ch
@@ -601,8 +598,8 @@ func (m *DVCManager) Close() {
 	defer m.channelsMu.Unlock()
 
 	for _, ch := range m.channels {
-		if ch.Open {
-			ch.Open = false
+		if ch.open.Load() {
+			ch.open.Store(false)
 			if ch.Handler != nil {
 				ch.Handler.OnClose()
 			}

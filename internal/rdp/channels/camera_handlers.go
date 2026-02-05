@@ -19,10 +19,7 @@ func (c *CameraChannel) handleSelectVersionRequest(version uint8, payload []byte
 		version, payload, clientVersion, oldVer)
 
 	// Use the client's version (or minimum of ours and theirs)
-	c.negotiatedVer = clientVersion
-	if clientVersion > CamProtocolVersion2 {
-		c.negotiatedVer = CamProtocolVersion2
-	}
+	c.negotiatedVer = min(clientVersion, CamProtocolVersion2)
 
 	c.log("Camera: negotiated version set to %d (was %d)", c.negotiatedVer, oldVer)
 
@@ -275,7 +272,7 @@ func (c *CameraChannel) handleMediaTypeListResponse(payload []byte) error {
 	c.cameraMu.Lock()
 	c.availableFormats = make([]CameraFormat, 0, numMediaTypes)
 
-	for i := 0; i < numMediaTypes; i++ {
+	for i := range numMediaTypes {
 		offset := i * mediaTypeDescriptionSize
 		f := parseMediaTypeDescription(payload[offset:])
 		if f == nil {

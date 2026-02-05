@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,143 @@ import (
 
 	"github.com/jetkvm/kvm/internal/rdp/channels"
 )
+
+// TargetOS represents the target operating system for command generation.
+type TargetOS string
+
+const (
+	TargetOSWindows TargetOS = "windows"
+	TargetOSLinux   TargetOS = "linux"
+	TargetOSMacOS   TargetOS = "macos"
+)
+
+// MaxClipboardReassemblySize is the maximum size for clipboard PDU reassembly.
+// This prevents memory exhaustion from malicious clients sending huge totalLength values.
+// 100MB should be sufficient for even very large file transfers.
+const MaxClipboardReassemblySize = 100 * 1024 * 1024
+
+// handleClipboardWithReassembly handles clipboard PDUs with fragmentation support.
+// Per MS-RDPBCGR 2.2.6.1, large virtual channel PDUs are split across multiple packets.
+// Only the first fragment contains the CLIPRDR PDU header; subsequent fragments are raw data.
+func (c *Connection) handleClipboardWithReassembly(payload []byte, totalLength uint32, flags uint32) {
+	isFirst := (flags & channelFlagFirst) != 0
+	isLast := (flags & channelFlagLast) != 0
+
+	c.server.deps.Logger.Debug().
+		Uint32("totalLength", totalLength).
+		Uint32("flags", flags).
+		Bool("first", isFirst).
+		Bool("last", isLast).
+		Int("payloadLen", len(payload)).
+		Msg("RDP: clipboard VC PDU fragment")
+
+	// Fast path: single-fragment PDU (both FIRST and LAST set, or small PDU)
+	if isFirst && isLast {
+		c.handleClipboard(payload)
+		return
+	}
+
+	// Handle fragmented PDU reassembly
+	var completePDU []byte
+
+	c.clipboardReassembly.mu.Lock()
+	if isFirst {
+		// Validate size to prevent memory exhaustion from malicious clients
+		if totalLength > MaxClipboardReassemblySize {
+			// Clear any existing buffer state before rejecting
+			c.clipboardReassembly.buffer = nil
+			c.clipboardReassembly.totalLength = 0
+			c.clipboardReassembly.mu.Unlock()
+			c.server.deps.Logger.Warn().
+				Uint32("totalLength", totalLength).
+				Uint32("maxAllowed", MaxClipboardReassemblySize).
+				Msg("RDP: clipboard reassembly size exceeds maximum, dropping")
+			return
+		}
+
+		// Start new reassembly buffer
+		// Pre-allocate to expected total size to avoid reallocations
+		c.clipboardReassembly.buffer = make([]byte, 0, totalLength)
+		c.clipboardReassembly.totalLength = totalLength
+		c.clipboardReassembly.buffer = append(c.clipboardReassembly.buffer, payload...)
+
+		c.server.deps.Logger.Debug().
+			Uint32("totalLength", totalLength).
+			Int("firstChunkLen", len(payload)).
+			Msg("RDP: clipboard reassembly started")
+		c.clipboardReassembly.mu.Unlock()
+		return
+	}
+
+	// Middle or last fragment - append to buffer
+	if c.clipboardReassembly.buffer == nil {
+		c.clipboardReassembly.mu.Unlock()
+		c.server.deps.Logger.Warn().
+			Bool("isLast", isLast).
+			Int("payloadLen", len(payload)).
+			Msg("RDP: clipboard fragment received without FIRST flag, discarding")
+		return
+	}
+
+	c.clipboardReassembly.buffer = append(c.clipboardReassembly.buffer, payload...)
+
+	c.server.deps.Logger.Debug().
+		Int("bufferLen", len(c.clipboardReassembly.buffer)).
+		Uint32("expectedLen", c.clipboardReassembly.totalLength).
+		Bool("isLast", isLast).
+		Msg("RDP: clipboard fragment appended")
+
+	if isLast {
+		// Reassembly complete - take ownership of the buffer
+		completePDU = c.clipboardReassembly.buffer
+		c.clipboardReassembly.buffer = nil
+		c.clipboardReassembly.totalLength = 0
+	}
+	c.clipboardReassembly.mu.Unlock()
+
+	// Process complete PDU outside lock to avoid holding it during HandlePDU
+	if completePDU != nil {
+		c.handleClipboard(completePDU)
+	}
+}
+
+// handleClipboard handles clipboard channel asynchronously to prevent blocking video/input.
+func (c *Connection) handleClipboard(data []byte) {
+	if c.clipboardChannel == nil {
+		return
+	}
+
+	// Check if this is a format list PDU (CB_FORMAT_LIST).
+	// If so, clear clipboard state SYNCHRONOUSLY to prevent race conditions
+	// with key event handling that checks clipboardText and pendingFiles.
+	if len(data) >= 2 {
+		msgType := binary.LittleEndian.Uint16(data[0:2])
+		if msgType == channels.CBFormatList {
+			c.clipboardChannel.ClearClipboardText()
+			c.clearPendingFiles()
+			c.targetCopied.Store(false) // Client has new content, supersedes target copy
+		}
+	}
+
+	// Make a copy since the buffer may be reused
+	dataCopy := make([]byte, len(data))
+	copy(dataCopy, data)
+
+	// Process asynchronously to avoid blocking the main message loop
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				c.server.deps.Logger.Error().
+					Interface("panic", r).
+					Msg("RDP: clipboard handler panicked")
+			}
+		}()
+
+		if err := c.clipboardChannel.HandlePDU(dataCopy); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: cliprdr error")
+		}
+	}()
+}
 
 func (c *Connection) initClipboardChannel() {
 	c.clipboardChannel = channels.NewClipboardChannel(func(data []byte) error {
@@ -47,14 +185,11 @@ func (c *Connection) onFileTransferComplete(files []*channels.ClipboardFile) {
 
 	c.server.deps.Logger.Debug().Int("count", len(files)).Msg("CLIPRDR: file transfer complete")
 
-	// Store files for later paste - don't type anything yet
+	// Clean up any previous pending files before storing new ones
+	c.clearPendingFiles()
+
+	// Store new files for later paste - don't type anything yet
 	c.pendingFilesMu.Lock()
-	// Clean up any previous pending files
-	for _, f := range c.pendingFiles {
-		if f.TempPath != "" {
-			os.Remove(f.TempPath)
-		}
-	}
 	c.pendingFiles = files
 	c.pendingFilesMu.Unlock()
 }
@@ -97,6 +232,22 @@ func (c *Connection) HasPendingFiles() bool {
 	c.pendingFilesMu.Lock()
 	defer c.pendingFilesMu.Unlock()
 	return len(c.pendingFiles) > 0
+}
+
+// clearPendingFiles removes any pending clipboard files and cleans up their temp files.
+func (c *Connection) clearPendingFiles() {
+	c.pendingFilesMu.Lock()
+	files := c.pendingFiles
+	c.pendingFiles = nil
+	c.pendingFilesMu.Unlock()
+
+	for _, f := range files {
+		if f.TempPath != "" {
+			if err := os.Remove(f.TempPath); err != nil && !os.IsNotExist(err) {
+				c.server.deps.Logger.Debug().Err(err).Str("path", f.TempPath).Msg("CLIPRDR: failed to remove temp file")
+			}
+		}
+	}
 }
 
 // transferFilesViaNetwork serves files via the main HTTPS server (port 443) and types download commands.
@@ -154,7 +305,7 @@ func (c *Connection) transferFilesViaNetwork(files []*channels.ClipboardFile) {
 }
 
 // generateDownloadCommand creates a download command for the target OS.
-func generateDownloadCommand(targetOS channels.TargetOS, scheme, serverIP string, port int, token, fileName, customTemplate string) string {
+func generateDownloadCommand(targetOS TargetOS, scheme, serverIP string, port int, token, fileName, customTemplate string) string {
 	// Build URL - omit port for standard ports
 	var url string
 	if (scheme == "https" && port == 443) || (scheme == "http" && port == 80) {
@@ -179,13 +330,13 @@ func generateDownloadCommand(targetOS channels.TargetOS, scheme, serverIP string
 	}
 
 	switch targetOS {
-	case channels.TargetOSWindows:
+	case TargetOSWindows:
 		if scheme == "https" {
 			return fmt.Sprintf("[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;iwr %s -OutFile %s -SkipCertificateCheck", url, escapedName)
 		}
 		return fmt.Sprintf("iwr %s -OutFile %s", url, escapedName)
 
-	case channels.TargetOSLinux, channels.TargetOSMacOS:
+	case TargetOSLinux, TargetOSMacOS:
 		return fmt.Sprintf("curl %s-o %s %s", insecureFlag, escapedName, url)
 
 	default:
@@ -194,10 +345,10 @@ func generateDownloadCommand(targetOS channels.TargetOS, scheme, serverIP string
 }
 
 // escapeFileName escapes a filename for use in shell commands.
-func escapeFileName(name string, targetOS channels.TargetOS) string {
+func escapeFileName(name string, targetOS TargetOS) string {
 	name = filepath.Base(name)
 
-	if targetOS == channels.TargetOSWindows {
+	if targetOS == TargetOSWindows {
 		if strings.ContainsAny(name, " '\"") {
 			return "'" + strings.ReplaceAll(name, "'", "''") + "'"
 		}
@@ -314,7 +465,9 @@ func (c *Connection) transferFilesViaUSB(files []*channels.ClipboardFile) {
 		if err := c.server.deps.USBStorage.MountFile(safeName); err != nil {
 			c.server.deps.Logger.Error().Err(err).Str("name", safeName).Msg("CLIPRDR: failed to mount file as USB storage")
 			// Clean up the copied file
-			os.Remove(destPath)
+			if rmErr := os.Remove(destPath); rmErr != nil {
+				c.server.deps.Logger.Debug().Err(rmErr).Str("path", destPath).Msg("CLIPRDR: failed to remove USB file copy")
+			}
 			continue
 		}
 
@@ -338,17 +491,17 @@ func (c *Connection) transferFilesViaUSB(files []*channels.ClipboardFile) {
 }
 
 // generateOpenUSBCommand generates a command to open the USB drive on the target OS.
-func (c *Connection) generateOpenUSBCommand(targetOS channels.TargetOS) string {
+func (c *Connection) generateOpenUSBCommand(targetOS TargetOS) string {
 	switch targetOS {
-	case channels.TargetOSWindows:
+	case TargetOSWindows:
 		// Open File Explorer - the USB drive is typically the last drive letter
 		// This opens "This PC" where the user can see the USB drive
 		return "explorer.exe shell:MyComputerFolder"
-	case channels.TargetOSLinux:
+	case TargetOSLinux:
 		// On Linux, USB drives are typically auto-mounted to /media or /run/media
 		// xdg-open will open the file manager
 		return "xdg-open /media 2>/dev/null || xdg-open /run/media 2>/dev/null || true"
-	case channels.TargetOSMacOS:
+	case TargetOSMacOS:
 		// On macOS, USB drives are mounted to /Volumes
 		return "open /Volumes"
 	default:
@@ -379,7 +532,7 @@ func copyFile(src, dst string) error {
 }
 
 // generateDecodeScript generates an OS-specific script to decode base64+gzip content.
-func (c *Connection) generateDecodeScript(targetOS channels.TargetOS, encoded, outputName string) string {
+func (c *Connection) generateDecodeScript(targetOS TargetOS, encoded, outputName string) string {
 	// Check for custom template
 	customTemplate := c.getBase64CmdTemplate(targetOS)
 	if customTemplate != "" {
@@ -390,15 +543,15 @@ func (c *Connection) generateDecodeScript(targetOS channels.TargetOS, encoded, o
 
 	// Default templates
 	switch targetOS {
-	case channels.TargetOSWindows:
+	case TargetOSWindows:
 		// PowerShell one-liner: decode base64, decompress gzip, write to file
 		return "powershell -c \"$m=[IO.MemoryStream]::new();$g=[IO.Compression.GZipStream]::new([IO.MemoryStream][Convert]::FromBase64String('" + encoded + "'),'Decompress');$g.CopyTo($m);[IO.File]::WriteAllBytes('" + outputName + "',$m.ToArray())\""
 
-	case channels.TargetOSLinux:
+	case TargetOSLinux:
 		// bash: echo base64 | base64 -d | gunzip > file
 		return "echo '" + encoded + "' | base64 -d | gunzip > " + outputName
 
-	case channels.TargetOSMacOS:
+	case TargetOSMacOS:
 		// macOS uses -D flag for decode (vs -d on Linux)
 		return "echo '" + encoded + "' | base64 -D | gunzip > " + outputName
 
@@ -409,13 +562,13 @@ func (c *Connection) generateDecodeScript(targetOS channels.TargetOS, encoded, o
 }
 
 // getNetworkCmdTemplate returns the custom network download command template for the OS.
-func (c *Connection) getNetworkCmdTemplate(targetOS channels.TargetOS) string {
+func (c *Connection) getNetworkCmdTemplate(targetOS TargetOS) string {
 	switch targetOS {
-	case channels.TargetOSWindows:
+	case TargetOSWindows:
 		return c.server.deps.Config.GetRDPNetworkCmdWindows()
-	case channels.TargetOSLinux:
+	case TargetOSLinux:
 		return c.server.deps.Config.GetRDPNetworkCmdLinux()
-	case channels.TargetOSMacOS:
+	case TargetOSMacOS:
 		return c.server.deps.Config.GetRDPNetworkCmdMacOS()
 	default:
 		return ""
@@ -423,13 +576,13 @@ func (c *Connection) getNetworkCmdTemplate(targetOS channels.TargetOS) string {
 }
 
 // getBase64CmdTemplate returns the custom base64 decode command template for the OS.
-func (c *Connection) getBase64CmdTemplate(targetOS channels.TargetOS) string {
+func (c *Connection) getBase64CmdTemplate(targetOS TargetOS) string {
 	switch targetOS {
-	case channels.TargetOSWindows:
+	case TargetOSWindows:
 		return c.server.deps.Config.GetRDPBase64CmdWindows()
-	case channels.TargetOSLinux:
+	case TargetOSLinux:
 		return c.server.deps.Config.GetRDPBase64CmdLinux()
-	case channels.TargetOSMacOS:
+	case TargetOSMacOS:
 		return c.server.deps.Config.GetRDPBase64CmdMacOS()
 	default:
 		return ""
@@ -489,17 +642,17 @@ func (c *Connection) getLocalIP() string {
 }
 
 // getTargetOS returns the configured target OS for command generation.
-func (c *Connection) getTargetOS() channels.TargetOS {
+func (c *Connection) getTargetOS() TargetOS {
 	os := c.server.deps.Config.GetRDPTargetOS()
 	switch strings.ToLower(os) {
 	case "windows":
-		return channels.TargetOSWindows
+		return TargetOSWindows
 	case "linux":
-		return channels.TargetOSLinux
+		return TargetOSLinux
 	case "macos":
-		return channels.TargetOSMacOS
+		return TargetOSMacOS
 	default:
-		return channels.TargetOSWindows // Default to Windows
+		return TargetOSWindows // Default to Windows
 	}
 }
 

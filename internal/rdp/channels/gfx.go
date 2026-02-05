@@ -126,7 +126,7 @@ var (
 // Used when frames exceed the pre-allocated frameBuf (>65KB, needing multi-segment ZGFX).
 // Sized to accommodate typical 1080p keyframes with ZGFX overhead.
 var gfxLargeBufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		buf := make([]byte, GFXFrameBufSize)
 		return &buf
 	},
@@ -136,7 +136,7 @@ var gfxLargeBufferPool = sync.Pool{
 type GFXReadyCallback func(g *GFXChannel)
 
 // GFXLogFunc is a logging callback for GFX channel events.
-type GFXLogFunc func(msg string, args ...interface{})
+type GFXLogFunc func(msg string, args ...any)
 
 // GFXChannel implements the RDPGFX channel with optimized H.264 passthrough.
 type GFXChannel struct {
@@ -221,7 +221,7 @@ func (g *GFXChannel) SetLogger(logger GFXLogFunc) {
 }
 
 // log writes a log message if logger is set.
-func (g *GFXChannel) log(msg string, args ...interface{}) {
+func (g *GFXChannel) log(msg string, args ...any) {
 	if g.logger != nil {
 		g.logger(msg, args...)
 	}
@@ -586,14 +586,9 @@ func (g *GFXChannel) updateFrameAckState(ackFrameID uint32, queueDepth int32) {
 
 	// Calculate pending frames: frames sent - frames acknowledged
 	lastSent := g.frameID.Load()
-	pending := int32(lastSent) - int32(ackFrameID)
-	if pending < 0 {
-		pending = 0
-	}
+	pending := max(int32(lastSent)-int32(ackFrameID), 0)
 	// Use client's queue depth if it's higher
-	if queueDepth > pending {
-		pending = queueDepth
-	}
+	pending = max(queueDepth, pending)
 	g.framesPending.Store(pending)
 }
 

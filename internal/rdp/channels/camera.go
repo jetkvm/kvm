@@ -113,7 +113,7 @@ type CameraFormat struct {
 }
 
 // CameraLogFunc is a logging callback for camera channel events.
-type CameraLogFunc func(msg string, args ...interface{})
+type CameraLogFunc func(msg string, args ...any)
 
 // CameraChannel implements the MS-RDPECAM dynamic virtual channel.
 type CameraChannel struct {
@@ -195,7 +195,7 @@ func (c *CameraChannel) SetStopCallback(cb CameraStopCallback) {
 }
 
 // log writes a log message if logger is set.
-func (c *CameraChannel) log(msg string, args ...interface{}) {
+func (c *CameraChannel) log(msg string, args ...any) {
 	if c.logger != nil {
 		c.logger(msg, args...)
 	}

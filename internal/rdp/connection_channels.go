@@ -50,7 +50,7 @@ func (c *Connection) initDynamicChannels() error {
 	})
 
 	// Enable DVC logger for debugging capability exchange
-	c.dvcManager.SetLogger(func(msg string, channel string, channelID uint32, args ...interface{}) {
+	c.dvcManager.SetLogger(func(msg string, channel string, channelID uint32, args ...any) {
 		c.server.deps.Logger.Debug().
 			Str("channel", channel).
 			Uint32("channelID", channelID).
@@ -97,7 +97,7 @@ func (c *Connection) initDVCChannelsSync() {
 		c.gfxChannel = channels.NewGFXChannel(c.dvcManager)
 
 		// Set logger for debugging capability negotiation
-		c.gfxChannel.SetLogger(func(msg string, args ...interface{}) {
+		c.gfxChannel.SetLogger(func(msg string, args ...any) {
 			c.server.deps.Logger.Debug().Msgf(msg, args...)
 		})
 
@@ -142,7 +142,7 @@ func (c *Connection) initDVCChannelsSync() {
 		c.audinChannel = channels.NewAudinChannel(c.dvcManager)
 
 		// Set logger for debugging
-		c.audinChannel.SetLogger(func(msg string, args ...interface{}) {
+		c.audinChannel.SetLogger(func(msg string, args ...any) {
 			c.server.deps.Logger.Debug().Msgf(msg, args...)
 		})
 
@@ -221,7 +221,7 @@ func (c *Connection) initDVCChannelsSync() {
 	} else {
 		c.cameraChannel = channels.NewCameraChannel(c.dvcManager)
 		// Set logger for debugging format negotiation
-		c.cameraChannel.SetLogger(func(msg string, args ...interface{}) {
+		c.cameraChannel.SetLogger(func(msg string, args ...any) {
 			c.server.deps.Logger.Debug().Msgf(msg, args...)
 		})
 
@@ -338,8 +338,6 @@ func (c *Connection) sendDVCDataHotPath(data []byte) error {
 		x224HeaderLen    = 3
 		mcsHeaderBaseLen = 6
 		vcHeaderLen      = 8
-		channelFlagFirst = 0x01
-		channelFlagLast  = 0x02
 	)
 
 	vcPayloadLen := len(data)
@@ -431,8 +429,6 @@ func (c *Connection) sendStaticChannelDataHotPath(channelID uint16, data []byte)
 		x224HeaderLen    = 3
 		mcsHeaderBaseLen = 6
 		vcHeaderLen      = 8
-		channelFlagFirst = 0x01
-		channelFlagLast  = 0x02
 	)
 
 	vcPayloadLen := len(data)
@@ -506,9 +502,7 @@ func (c *Connection) sendStaticChannelDataHotPath(channelID uint16, data []byte)
 // sendStaticChannelDataFallback handles oversized packets that don't fit in the pool.
 func (c *Connection) sendStaticChannelDataFallback(channelID uint16, data []byte) error {
 	const (
-		channelFlagFirst = 0x01
-		channelFlagLast  = 0x02
-		vcHeaderSize     = 8
+		vcHeaderSize = 8
 	)
 
 	vcPDU := make([]byte, vcHeaderSize+len(data))
@@ -731,13 +725,10 @@ func isH264Keyframe(data []byte) bool {
 	}
 
 	// Limit scan to first 1KB - SPS/IDR NALs are always at frame start
-	scanLimit := len(data) - 4
-	if scanLimit > 1024 {
-		scanLimit = 1024
-	}
+	scanLimit := min(len(data)-4, 1024)
 
 	// Look for start codes and check NAL type
-	for i := 0; i < scanLimit; i++ {
+	for i := range scanLimit {
 		// Check for 3-byte or 4-byte start code
 		if data[i] == 0 && data[i+1] == 0 {
 			var nalType byte
