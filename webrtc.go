@@ -293,7 +293,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				webrtc.ICEAddressRewriteRule{
 					CIDR:            "0.0.0.0/0",
 					External:        []string{config.LocalIP},
-					Mode:            webrtc.ICEAddressRewriteReplace,
+					Mode:            webrtc.ICEAddressRewriteAppend,
 					AsCandidateType: webrtc.ICECandidateTypeSrflx,
 				},
 			)
