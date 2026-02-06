@@ -96,7 +96,7 @@ fi
 if command -v ip >/dev/null 2>&1; then
     DEV_MACHINE_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}')
 elif command -v ifconfig >/dev/null 2>&1; then
-    DEV_MACHINE_IP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+    DEV_MACHINE_IP=$(ifconfig | grep "inet " | grep -v "127\." | awk '{print $2}' | head -1)
 fi
 
 if [ -z "$DEV_MACHINE_IP" ]; then
