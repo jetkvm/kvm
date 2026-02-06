@@ -3,10 +3,12 @@ package ota
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +44,7 @@ type GPGVerifier struct {
 	keyring       openpgp.EntityList
 	logger        *zerolog.Logger
 	httpClient    func() HttpClient
+	rootKeyFP     string
 }
 
 // NewGPGVerifier creates a new GPG verifier instance
@@ -49,12 +52,13 @@ func NewGPGVerifier(logger *zerolog.Logger, httpClient func() HttpClient) *GPGVe
 	return &GPGVerifier{
 		logger:     logger,
 		httpClient: httpClient,
+		rootKeyFP:  rootKeyFingerprint,
 	}
 }
 
 // GetRootKeyFingerprint returns the configured root key fingerprint
 func (g *GPGVerifier) GetRootKeyFingerprint() string {
-	return rootKeyFingerprint
+	return g.rootKeyFP
 }
 
 // IsSignatureRequired returns true if the target version is greater than the local version.
@@ -92,7 +96,7 @@ func (g *GPGVerifier) IsSignatureRequired(localVersion string, targetVersion str
 // It tries each keyserver in order and returns on first success.
 // The key is cached for 24 hours.
 func (g *GPGVerifier) FetchPublicKey(ctx context.Context) ([]byte, error) {
-	if rootKeyFingerprint == "" {
+	if g.rootKeyFP == "" {
 		return nil, fmt.Errorf("root key fingerprint not configured")
 	}
 
@@ -108,7 +112,7 @@ func (g *GPGVerifier) FetchPublicKey(ctx context.Context) ([]byte, error) {
 	g.mu.RUnlock()
 
 	// Fetch from keyservers
-	key, err := g.fetchFromKeyservers(ctx, rootKeyFingerprint)
+	key, err := g.fetchFromKeyservers(ctx, g.rootKeyFP)
 	if err != nil {
 		return nil, err
 	}
@@ -177,10 +181,10 @@ func (g *GPGVerifier) fetchFromSingleKeyserver(ctx context.Context, url string) 
 		return nil, fmt.Errorf("error reading response: %w", err)
 	}
 
-	// Validate that this is a valid OpenPGP key
-	_, err = openpgp.ReadArmoredKeyRing(bytes.NewReader(key))
+	// Validate format and verify the fetched key matches our pinned fingerprint.
+	_, err = g.parseAndValidateKeyring(key)
 	if err != nil {
-		return nil, fmt.Errorf("invalid OpenPGP key: %w", err)
+		return nil, err
 	}
 
 	return key, nil
@@ -188,10 +192,10 @@ func (g *GPGVerifier) fetchFromSingleKeyserver(ctx context.Context, url string) 
 
 // updateMemoryCache updates the in-memory key cache
 func (g *GPGVerifier) updateMemoryCache(key []byte) {
-	// Parse the keyring first to validate before caching
-	keyring, err := openpgp.ReadArmoredKeyRing(bytes.NewReader(key))
+	// Parse the keyring first to validate before caching.
+	keyring, err := g.parseAndValidateKeyring(key)
 	if err != nil {
-		g.logger.Warn().Err(err).Msg("failed to parse keyring, not caching")
+		g.logger.Warn().Err(err).Msg("failed to validate keyring, not caching")
 		return
 	}
 
@@ -202,6 +206,38 @@ func (g *GPGVerifier) updateMemoryCache(key []byte) {
 	copy(g.cachedKey, key)
 	g.cachedKeyTime = time.Now()
 	g.keyring = keyring
+}
+
+func normalizeFingerprint(fp string) string {
+	fp = strings.ToUpper(strings.TrimSpace(fp))
+	fp = strings.TrimPrefix(fp, "0X")
+	fp = strings.ReplaceAll(fp, " ", "")
+	return fp
+}
+
+func (g *GPGVerifier) parseAndValidateKeyring(key []byte) (openpgp.EntityList, error) {
+	keyring, err := openpgp.ReadArmoredKeyRing(bytes.NewReader(key))
+	if err != nil {
+		return nil, fmt.Errorf("invalid OpenPGP key: %w", err)
+	}
+
+	if len(keyring) == 0 {
+		return nil, fmt.Errorf("invalid OpenPGP key: keyring is empty")
+	}
+
+	expected := normalizeFingerprint(g.rootKeyFP)
+	for _, entity := range keyring {
+		if entity == nil || entity.PrimaryKey == nil {
+			continue
+		}
+
+		fp := normalizeFingerprint(hex.EncodeToString(entity.PrimaryKey.Fingerprint[:]))
+		if fp == expected {
+			return keyring, nil
+		}
+	}
+
+	return nil, fmt.Errorf("fetched key fingerprint does not match expected fingerprint %s", expected)
 }
 
 // VerifySignature verifies a detached GPG signature against the provided data.

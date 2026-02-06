@@ -3,10 +3,12 @@ package ota
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -41,6 +43,17 @@ func generateTestArmoredKey(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+func extractFingerprintFromArmoredKey(t *testing.T, armoredKey []byte) string {
+	t.Helper()
+
+	keyring, err := openpgp.ReadArmoredKeyRing(bytes.NewReader(armoredKey))
+	require.NoError(t, err, "failed to parse armored key")
+	require.NotEmpty(t, keyring, "parsed keyring should not be empty")
+	require.NotNil(t, keyring[0].PrimaryKey, "primary key should be present")
+
+	return strings.ToUpper(hex.EncodeToString(keyring[0].PrimaryKey.Fingerprint[:]))
+}
+
 // keyServingHTTPClient is a mock HTTP client that serves an armored key and counts requests.
 type keyServingHTTPClient struct {
 	key       []byte
@@ -67,9 +80,9 @@ func (c *failingHTTPClient) Do(req *http.Request) (*http.Response, error) {
 
 // statusCodeHTTPClient returns a configurable status code per call index.
 type statusCodeHTTPClient struct {
-	key          []byte
-	statusCodes  []int // status code for each sequential call
-	callCount    *atomic.Int32
+	key         []byte
+	statusCodes []int // status code for each sequential call
+	callCount   *atomic.Int32
 }
 
 func (c *statusCodeHTTPClient) Do(req *http.Request) (*http.Response, error) {
@@ -177,6 +190,7 @@ func TestFetchPublicKey_CachesKey(t *testing.T) {
 	callCount := &atomic.Int32{}
 	mock := &keyServingHTTPClient{key: armoredKey, callCount: callCount}
 	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
+	v.rootKeyFP = extractFingerprintFromArmoredKey(t, armoredKey)
 
 	ctx := context.Background()
 
@@ -201,6 +215,7 @@ func TestFetchPublicKey_CacheExpiry(t *testing.T) {
 	callCount := &atomic.Int32{}
 	mock := &keyServingHTTPClient{key: armoredKey, callCount: callCount}
 	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
+	v.rootKeyFP = extractFingerprintFromArmoredKey(t, armoredKey)
 
 	ctx := context.Background()
 
@@ -225,6 +240,7 @@ func TestClearCache(t *testing.T) {
 	callCount := &atomic.Int32{}
 	mock := &keyServingHTTPClient{key: armoredKey, callCount: callCount}
 	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
+	v.rootKeyFP = extractFingerprintFromArmoredKey(t, armoredKey)
 
 	ctx := context.Background()
 
@@ -280,6 +296,7 @@ func TestFetchPublicKey_KeyserverFallback(t *testing.T) {
 
 	logger := zerolog.New(os.Stdout).Level(zerolog.DebugLevel)
 	v := NewGPGVerifier(&logger, func() HttpClient { return mock })
+	v.rootKeyFP = extractFingerprintFromArmoredKey(t, armoredKey)
 
 	// Override keyservers to have two entries so the fallback is exercised
 	origKeyservers := keyservers
@@ -325,6 +342,7 @@ func TestFetchPublicKey_CachedKeyIsValid(t *testing.T) {
 	callCount := &atomic.Int32{}
 	mock := &keyServingHTTPClient{key: pubBuf.Bytes(), callCount: callCount}
 	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
+	v.rootKeyFP = extractFingerprintFromArmoredKey(t, pubBuf.Bytes())
 
 	// Fetch key (populates cache + keyring)
 	ctx := context.Background()
@@ -344,4 +362,21 @@ func TestFetchPublicKey_CachedKeyIsValid(t *testing.T) {
 
 	// Verify it was served from cache (no extra HTTP call)
 	assert.Equal(t, int32(1), callCount.Load(), "VerifySignature should use cached key")
+}
+
+func TestFetchPublicKey_RejectsFingerprintMismatch(t *testing.T) {
+	expectedKey := generateTestArmoredKey(t)
+	servedKey := generateTestArmoredKey(t)
+
+	callCount := &atomic.Int32{}
+	mock := &keyServingHTTPClient{key: servedKey, callCount: callCount}
+	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
+	v.rootKeyFP = extractFingerprintFromArmoredKey(t, expectedKey)
+
+	ctx := context.Background()
+	key, err := v.FetchPublicKey(ctx)
+	require.Error(t, err, "fetch should fail when fetched key fingerprint doesn't match pinned fingerprint")
+	assert.Nil(t, key)
+	assert.Contains(t, err.Error(), "does not match expected fingerprint")
+	assert.Equal(t, int32(1), callCount.Load(), "should have tried keyserver once")
 }
