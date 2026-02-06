@@ -194,7 +194,7 @@ func rpcGetVirtualMediaState() (*VirtualMediaState, error) {
 	return currentVirtualMediaState, nil
 }
 
-func rpcUnmountImage() error {
+func unmountImageLocked() {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
 	err := setMassStorageImage("\n")
@@ -208,6 +208,13 @@ func rpcUnmountImage() error {
 		nbdDevice = nil
 	}
 	currentVirtualMediaState = nil
+}
+
+func rpcUnmountImage() error {
+	unmountImageLocked()
+	if mqttManager != nil {
+		mqttManager.publishVirtualMediaState()
+	}
 	return nil
 }
 
@@ -267,16 +274,15 @@ func setInitialVirtualMediaState() error {
 	return nil
 }
 
-func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
+func prepareHTTPMount(url string, mode VirtualMediaMode) error {
 	virtualMediaStateMutex.Lock()
+	defer virtualMediaStateMutex.Unlock()
 	if currentVirtualMediaState != nil {
-		virtualMediaStateMutex.Unlock()
 		return fmt.Errorf("another virtual media is already mounted")
 	}
 	httpRangeReader = httpreadat.New(url)
 	n, err := httpRangeReader.Size()
 	if err != nil {
-		virtualMediaStateMutex.Unlock()
 		return fmt.Errorf("failed to use http url: %w", err)
 	}
 	logger.Info().Str("url", url).Int64("size", n).Msg("using remote url")
@@ -291,11 +297,17 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 		URL:    url,
 		Size:   n,
 	}
-	virtualMediaStateMutex.Unlock()
+	return nil
+}
+
+func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
+	if err := prepareHTTPMount(url, mode); err != nil {
+		return err
+	}
 
 	logger.Debug().Msg("Starting nbd device")
 	nbdDevice = NewNBDDevice()
-	err = nbdDevice.Start()
+	err := nbdDevice.Start()
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to start nbd device")
 		return err
@@ -308,15 +320,13 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 		return err
 	}
 	logger.Info().Msg("usb mass storage mounted")
+	if mqttManager != nil {
+		mqttManager.publishVirtualMediaState()
+	}
 	return nil
 }
 
-func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
-	filename, err := sanitizeFilename(filename)
-	if err != nil {
-		return err
-	}
-
+func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
 	if currentVirtualMediaState != nil {
@@ -342,6 +352,22 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 		Mode:     mode,
 		Filename: filename,
 		Size:     fileInfo.Size(),
+	}
+	return nil
+}
+
+func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
+	filename, err := sanitizeFilename(filename)
+	if err != nil {
+		return err
+	}
+
+	if err := prepareStorageMount(filename, mode); err != nil {
+		return err
+	}
+
+	if mqttManager != nil {
+		mqttManager.publishVirtualMediaState()
 	}
 	return nil
 }

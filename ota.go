@@ -35,9 +35,21 @@ func initOta() {
 		SetAutoUpdate:   rpcSetAutoUpdateState,
 		OnStateUpdate: func(state *ota.RPCState) {
 			triggerOTAStateUpdate(state)
+			// Also update MQTT update state for HA progress feedback
+			if mqttManager != nil {
+				// Clear updateRequested flag when OTA transitions to not-updating
+				if state != nil && !state.Updating && mqttManager.updateRequested.Load() {
+					mqttManager.updateRequested.Store(false)
+				}
+				mqttManager.publishUpdateState()
+			}
 		},
 		OnProgressUpdate: func(progress float32) {
 			writeJSONRPCEvent("otaProgress", progress, currentSession)
+			// Also update MQTT update state for HA progress feedback
+			if mqttManager != nil {
+				mqttManager.publishUpdateState()
+			}
 		},
 	})
 }

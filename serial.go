@@ -7,8 +7,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
 )
@@ -32,8 +34,8 @@ func unmountATXControl() error {
 }
 
 var (
-	ledHDDState bool
-	ledPWRState bool
+	ledHDDState atomic.Bool
+	ledPWRState atomic.Bool
 	btnRSTState bool
 	btnPWRState bool
 )
@@ -61,15 +63,21 @@ func runATXControl() {
 		newBtnRSTState := line[2] == '1'
 		newBtnPWRState := line[3] == '1'
 
-		if currentSession != nil {
-			writeJSONRPCEvent("atxState", ATXState{
-				Power: newLedPWRState,
-				HDD:   newLedHDDState,
-			}, currentSession)
+		atxState := ATXState{
+			Power: newLedPWRState,
+			HDD:   newLedHDDState,
 		}
 
-		if newLedHDDState != ledHDDState ||
-			newLedPWRState != ledPWRState ||
+		if currentSession != nil {
+			writeJSONRPCEvent("atxState", atxState, currentSession)
+		}
+
+		if mqttManager != nil {
+			mqttManager.publishATXState(atxState)
+		}
+
+		if newLedHDDState != ledHDDState.Load() ||
+			newLedPWRState != ledPWRState.Load() ||
 			newBtnRSTState != btnRSTState ||
 			newBtnPWRState != btnPWRState {
 			scopedLogger.Debug().
@@ -80,8 +88,8 @@ func runATXControl() {
 				Msg("Status changed")
 
 			// Update states
-			ledHDDState = newLedHDDState
-			ledPWRState = newLedPWRState
+			ledHDDState.Store(newLedHDDState)
+			ledPWRState.Store(newLedPWRState)
 			btnRSTState = newBtnRSTState
 			btnPWRState = newBtnPWRState
 		}
@@ -142,7 +150,16 @@ func unmountDCControl() error {
 	return nil
 }
 
-var dcState DCPowerState
+var (
+	dcState   DCPowerState
+	dcStateMu sync.RWMutex
+)
+
+func getDCState() DCPowerState {
+	dcStateMu.RLock()
+	defer dcStateMu.RUnlock()
+	return dcState
+}
 
 func runDCControl() {
 	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
@@ -174,18 +191,20 @@ func runDCControl() {
 			scopedLogger.Warn().Err(err).Msg("Invalid power state")
 			continue
 		}
-		dcState.IsOn = powerState == 1
+
+		var restoreState int
 		if hasRestoreFeature {
-			restoreState, err := strconv.Atoi(parts[4])
+			rs, err := strconv.Atoi(parts[4])
 			if err != nil {
 				scopedLogger.Warn().Err(err).Msg("Invalid restore state")
 				continue
 			}
-			dcState.RestoreState = restoreState
+			restoreState = rs
 		} else {
 			// -1 means not supported
-			dcState.RestoreState = -1
+			restoreState = -1
 		}
+
 		milliVolts, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
 			scopedLogger.Warn().Err(err).Msg("Invalid voltage")
@@ -207,15 +226,24 @@ func runDCControl() {
 		}
 		watts := milliWatts / 1000 // Convert mW to W
 
+		dcStateMu.Lock()
+		dcState.IsOn = powerState == 1
+		dcState.RestoreState = restoreState
 		dcState.Voltage = volts
 		dcState.Current = amps
 		dcState.Power = watts
+		snapshot := dcState
+		dcStateMu.Unlock()
 
 		// Update Prometheus metrics
-		updateDCMetrics(dcState)
+		updateDCMetrics(snapshot)
 
 		if currentSession != nil {
-			writeJSONRPCEvent("dcState", dcState, currentSession)
+			writeJSONRPCEvent("dcState", snapshot, currentSession)
+		}
+
+		if mqttManager != nil {
+			mqttManager.publishDCState(snapshot)
 		}
 	}
 }

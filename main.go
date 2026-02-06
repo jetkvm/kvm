@@ -115,6 +115,14 @@ func Main() {
 	}
 	initJiggler()
 
+	// Initialize MQTT
+	initMQTT()
+	defer func() {
+		if mqttManager != nil {
+			mqttManager.Close()
+		}
+	}()
+
 	// start video sleep mode timer
 	startVideoSleepModeTicker()
 

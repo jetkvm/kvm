@@ -26,6 +26,9 @@ func rpcSetJigglerState(enabled bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
+	if mqttManager != nil {
+		mqttManager.publishJigglerState()
+	}
 	return nil
 }
 

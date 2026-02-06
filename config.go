@@ -115,6 +115,7 @@ type Config struct {
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
+	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -198,6 +199,14 @@ func getDefaultConfig() Config {
 		}(),
 		DefaultLogLevel:    "WARN",
 		VideoQualityFactor: 1.0,
+		MqttConfig: &MQTTConfig{
+			Enabled:           false,
+			Port:              1883,
+			BaseTopic:         "jetkvm",
+			EnableHADiscovery: false,
+			EnableActions:     true,
+			DebounceMs:        500,
+		},
 	}
 }
 
@@ -266,6 +275,10 @@ func LoadConfig() {
 
 	if loadedConfig.JigglerConfig == nil {
 		loadedConfig.JigglerConfig = getDefaultConfig().JigglerConfig
+	}
+
+	if loadedConfig.MqttConfig == nil {
+		loadedConfig.MqttConfig = getDefaultConfig().MqttConfig
 	}
 
 	// fixup old keyboard layout value

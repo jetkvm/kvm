@@ -155,6 +155,12 @@ var (
 	cloudDisconnectLock = &sync.Mutex{}
 )
 
+func getCloudConnectionState() CloudConnectionState {
+	cloudConnectionStateLock.Lock()
+	defer cloudConnectionStateLock.Unlock()
+	return cloudConnectionState
+}
+
 func setCloudConnectionState(state CloudConnectionState) {
 	cloudConnectionStateLock.Lock()
 	defer cloudConnectionStateLock.Unlock()

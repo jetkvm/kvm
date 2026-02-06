@@ -407,11 +407,15 @@ func newSession(config SessionConfig) (*Session, error) {
 				if incrActiveSessions() == 1 {
 					onFirstSessionConnected()
 				}
+				if mqttManager != nil {
+					mqttManager.publishSessionsState()
+				}
 			}
 		}
 		//state changes on closing browser tab disconnected->failed, we need to manually close it
-		if connectionState == webrtc.ICEConnectionStateFailed {
-			scopedLogger.Debug().Msg("ICE Connection State is failed, closing peerConnection")
+		if connectionState == webrtc.ICEConnectionStateDisconnected ||
+			connectionState == webrtc.ICEConnectionStateFailed {
+			scopedLogger.Debug().Str("state", connectionState.String()).Msg("ICE connection lost, closing peerConnection")
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
@@ -447,6 +451,9 @@ func newSession(config SessionConfig) (*Session, error) {
 				if decrActiveSessions() == 0 {
 					scopedLogger.Info().Msg("last session disconnected, stopping video stream")
 					onLastSessionDisconnected()
+				}
+				if mqttManager != nil {
+					mqttManager.publishSessionsState()
 				}
 			}
 		}

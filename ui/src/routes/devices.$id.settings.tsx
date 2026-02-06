@@ -13,6 +13,7 @@ import {
   LuPalette,
   LuCommand,
   LuNetwork,
+  LuRadio,
 } from "react-icons/lu";
 
 import { cx } from "@/cva.config";
@@ -221,6 +222,14 @@ export default function SettingsRoute() {
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:hover:bg-slate-700 dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuNetwork className="h-4 w-4 shrink-0" />
                       <h1>{m.settings_network()}</h1>
+                    </div>
+                  </NavLink>
+                </div>
+                <div className="shrink-0">
+                  <NavLink to="mqtt" className={({ isActive }) => (isActive ? "active" : "")}>
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:hover:bg-slate-700 dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
+                      <LuRadio className="h-4 w-4 shrink-0" />
+                      <h1>{m.settings_mqtt()}</h1>
                     </div>
                   </NavLink>
                 </div>
