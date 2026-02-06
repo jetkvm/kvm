@@ -34,6 +34,11 @@ cleanup() {
     if [ -n "$HTTP_SERVER_PID" ]; then
         kill "$HTTP_SERVER_PID" 2>/dev/null || true
     fi
+    # Restore device config to point back to real API
+    if [ -n "$DEVICE_IP" ]; then
+        echo -e "${CYAN}Restoring device config to production API...${NC}"
+        sshdev "sed -i 's|\"update_api_url\": \"[^\"]*\"|\"update_api_url\": \"https://api.jetkvm.com\"|' /userdata/kvm_config.json" 2>/dev/null || true
+    fi
     if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
         rm -rf "$TEMP_DIR"
     fi
@@ -117,7 +122,7 @@ echo -e "${CYAN}Detected baseline version: $BASELINE_VERSION${NC}"
 if command -v ip >/dev/null 2>&1; then
     DEV_MACHINE_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}')
 elif command -v ifconfig >/dev/null 2>&1; then
-    DEV_MACHINE_IP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+    DEV_MACHINE_IP=$(ifconfig | grep "inet " | grep -v "127\." | awk '{print $2}' | head -1)
 fi
 
 if [ -z "$DEV_MACHINE_IP" ]; then
@@ -133,32 +138,32 @@ sshdev() {
 # Calculate target SHA256
 TARGET_SHA256=$(shasum -a 256 "$TARGET_PATH" | awk '{print $1}')
 
-# Deploy BASELINE binary to device (not target!)
-echo -e "${CYAN}Deploying baseline binary to device...${NC}"
-sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < "$BASELINE_PATH"
-sshdev "reboot"
+# Helper to wait for device to come back online after reboot
+wait_for_device() {
+    local label="${1:-reboot}"
+    echo -e "${YELLOW}Waiting for device to reboot ($label)...${NC}"
+    sleep 30
 
-echo -e "${YELLOW}Waiting for device to reboot...${NC}"
-sleep 30
+    for i in {1..30}; do
+        if ping -c 1 -W 2 "$DEVICE_IP" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 2
+    done
 
-# Wait for device to come back online
-for i in {1..30}; do
-    if ping -c 1 -W 2 "$DEVICE_IP" >/dev/null 2>&1; then
-        break
-    fi
-    sleep 2
-done
+    for i in {1..30}; do
+        if curl -s --max-time 5 "http://$DEVICE_IP" >/dev/null 2>&1; then
+            echo -e "${GREEN}Device is ready${NC}"
+            return 0
+        fi
+        sleep 2
+    done
+    echo -e "${RED}Device did not come back online${NC}"
+    return 1
+}
 
-# Wait for web interface to be ready
-for i in {1..30}; do
-    if curl -s --max-time 5 "http://$DEVICE_IP" >/dev/null 2>&1; then
-        echo -e "${GREEN}Device is ready${NC}"
-        break
-    fi
-    sleep 2
-done
-
-# Create mock API server directory
+# Create mock API server directory (must be ready before config change,
+# since the device may check for updates immediately after reboot)
 TEMP_DIR=$(mktemp -d)
 mkdir -p "$TEMP_DIR/app/$TARGET_VERSION"
 cp "$TARGET_PATH" "$TEMP_DIR/app/$TARGET_VERSION/jetkvm_app"
@@ -246,6 +251,19 @@ if ! echo "$MOCK_RESPONSE" | grep -q "appSigUrl"; then
     exit 1
 fi
 
+# Deploy BASELINE binary to device (not target!)
+echo -e "${CYAN}Deploying baseline binary to device...${NC}"
+sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < "$BASELINE_PATH"
+sshdev "reboot"
+wait_for_device "baseline deploy"
+
+# Configure device to use mock API server via SSH (before Playwright,
+# so the SSH log tail captures the boot where GPG verification happens)
+echo -e "${CYAN}Configuring device to use mock API ($DEV_MACHINE_IP:8443)...${NC}"
+sshdev "sed -i 's|\"update_api_url\": \"[^\"]*\"|\"update_api_url\": \"http://$DEV_MACHINE_IP:8443\"|' /userdata/kvm_config.json"
+sshdev "reboot"
+wait_for_device "config change"
+
 # Print banner
 BOX_WIDTH=50
 HLINE=$(printf '─%.0s' $(seq 1 $BOX_WIDTH))
@@ -297,4 +315,5 @@ else
 fi
 
 cd - >/dev/null
+
 exit $TEST_RESULT

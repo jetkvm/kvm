@@ -13,6 +13,7 @@ BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 DOCKER_BUILD_TAG ?= ghcr.io/jetkvm/buildkit:latest
 SKIP_NATIVE_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
+SKIP_BUILD ?= 0
 ENABLE_SYNC_TRACE ?= 0
 
 CMAKE_BUILD_TYPE ?= Release
@@ -93,11 +94,27 @@ test_e2e_signed:
 	else \
 		device_ip="$(DEVICE_IP)"; \
 	fi; \
-	echo "Building baseline binary (0.0.1-test-baseline)..."; \
-	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline; \
-	mv bin/jetkvm_app bin/jetkvm_app_baseline; \
-	echo "Building target binary ($(VERSION_DEV))..."; \
-	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV); \
+	if [ "$(SKIP_BUILD)" = "1" ] && [ -f bin/jetkvm_app_baseline ]; then \
+		echo "Skipping baseline build (SKIP_BUILD=1, bin/jetkvm_app_baseline exists)"; \
+	else \
+		echo "Building baseline binary (0.0.1-test-baseline)..."; \
+		$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline; \
+		mv bin/jetkvm_app bin/jetkvm_app_baseline; \
+	fi; \
+	if [ "$(SKIP_BUILD)" = "1" ] && [ -f bin/jetkvm_app ]; then \
+		echo "Skipping target build (SKIP_BUILD=1, bin/jetkvm_app exists)"; \
+		if [ ! -f bin/.target_version ]; then \
+			echo "Error: bin/.target_version not found. Cannot determine version of existing binary."; \
+			echo "Re-run without SKIP_BUILD=1 to rebuild."; \
+			exit 1; \
+		fi; \
+		target_version=$$(cat bin/.target_version); \
+	else \
+		echo "Building target binary ($(VERSION_DEV))..."; \
+		$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV); \
+		echo "$(VERSION_DEV)" > bin/.target_version; \
+		target_version="$(VERSION_DEV)"; \
+	fi; \
 	echo "Signing target binary..."; \
 	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }; \
 	if [ ! -f "bin/jetkvm_app.sig" ]; then echo "Error: Signature file not created"; exit 1; fi; \
@@ -105,7 +122,7 @@ test_e2e_signed:
 	./scripts/test_signed_ota.sh "$$device_ip" \
 		"bin/jetkvm_app_baseline" \
 		"bin/jetkvm_app" \
-		"$(VERSION_DEV)" \
+		"$$target_version" \
 		--signature "bin/jetkvm_app.sig"
 
 # Full E2E test suite - runs both regular and signed OTA tests
