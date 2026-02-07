@@ -2,7 +2,6 @@ package rdpgw
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"sync/atomic"
@@ -152,9 +151,6 @@ var _ net.Addr = tsguAddr("")
 // Verify the return type of newTSGUConn is usable as net.Conn.
 var _ = func() net.Conn { return newTSGUConn(nil) }
 
-func init() {
-	// Verify maxData constant is correct.
-	if maxData != 16374 {
-		panic(fmt.Sprintf("rdpgw: maxData must be 16374, got %d", maxData))
-	}
-}
+// Compile-time assertion: maxData must equal 16374 (maxFragmentSize - packetHeaderSize - dataHeaderSize).
+var _ [maxData - 16374]struct{}
+var _ [16374 - maxData]struct{}

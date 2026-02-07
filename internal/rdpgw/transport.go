@@ -234,17 +234,17 @@ func HijackRaw(w http.ResponseWriter) (net.Conn, *bufio.ReadWriter, error) {
 // Per MS-TSGU spec: the OUT response includes 10 random seed bytes to trigger
 // proxy passthrough. The IN response has Content-Length: 0 (empty body).
 func SendLegacyAccept(rw *bufio.ReadWriter, isOut bool) error {
-	rw.WriteString("HTTP/1.1 200 OK\r\n")
-	rw.WriteString("Date: " + time.Now().Format(time.RFC1123) + "\r\n")
+	_, _ = rw.WriteString("HTTP/1.1 200 OK\r\n")
+	_, _ = rw.WriteString("Date: " + time.Now().Format(time.RFC1123) + "\r\n")
 	if !isOut {
-		rw.WriteString("Content-Length: 0\r\n")
+		_, _ = rw.WriteString("Content-Length: 0\r\n")
 	}
-	rw.WriteString("\r\n")
+	_, _ = rw.WriteString("\r\n")
 
 	if isOut {
 		seed := make([]byte, 10)
-		rand.Read(seed)
-		rw.Write(seed)
+		_, _ = rand.Read(seed)
+		_, _ = rw.Write(seed)
 	}
 	return rw.Flush()
 }
@@ -260,8 +260,8 @@ func NewChunkedReader(rw *bufio.ReadWriter) io.Reader {
 // Called after SendLegacyAccept on the IN channel before starting the
 // MS-TSGU protocol.
 func DrainLegacy(conn net.Conn) {
-	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 	p := make([]byte, 32767)
-	conn.Read(p)
-	conn.SetReadDeadline(time.Time{}) // clear deadline
+	_, _ = conn.Read(p)
+	_ = conn.SetReadDeadline(time.Time{}) // clear deadline
 }

@@ -192,7 +192,6 @@ func (g *Gateway) HandleConnection(ctx context.Context, t Transport, remoteAddr 
 					Uint32("channelID", channelID).
 					Msg("channel opened — direct pipe to RDP server")
 
-				state = stateOpened
 				conn := newTSGUConn(t)
 				g.HandleRDP(conn)
 				return nil
@@ -221,7 +220,6 @@ func (g *Gateway) HandleConnection(ctx context.Context, t Transport, remoteAddr 
 				Uint16("udpPort", g.UDPPort).
 				Msg("channel opened — starting data forwarding")
 
-			state = stateOpened
 			return g.forwardData(ctx, t, rdpConn, &log)
 
 		case pktTypeData:

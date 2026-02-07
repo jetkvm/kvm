@@ -16,57 +16,53 @@ import (
 // Bitmap update handling for RDP connections.
 // This file contains all bitmap-related code for clients that don't support RDPGFX.
 
-// Tile size for Fast-Path bitmap updates with fragmentation support.
-// With fragmentation enabled (via Multifragment Update Capability), we can use
-// larger tiles that get split across multiple PDUs automatically.
-// Using 256x256 tiles for better visual experience and reduced overhead.
-// Each tile: 256x256 at 32bpp = 262144 bytes (fragmented into ~16KB chunks)
-const bitmapTileSize = 256
+// Bitmap tile and buffer sizing constants.
+const (
+	bitmapTileSize    = 256   // Large tile for Fast-Path bitmap updates with fragmentation
+	rgbTileSize       = 64    // Smaller tile to fit within Fast-Path reassembly limits
+	bytesPerPixel     = 4     // 32bpp BGRX
+	bitmapHeaderSlack = 32    // Header overhead for Fast-Path bitmap PDU framing
+	fastPathBufSize   = 16384 // Max fragment (16000) + headers (10), rounded up
+	maxBGRXWidth      = 1920  // Maximum supported resolution width for YUV→BGRX conversion
+	maxBGRXHeight     = 1080  // Maximum supported resolution height
+)
 
 // tileBufferPool reduces allocations for bitmap tile data.
-// Max tile size: 256x256x4 = 262144 bytes (256KB per tile)
 var tileBufferPool = sync.Pool{
 	New: func() any {
-		buf := make([]byte, bitmapTileSize*bitmapTileSize*4)
+		buf := make([]byte, bitmapTileSize*bitmapTileSize*bytesPerPixel)
 		return &buf
 	},
 }
 
 // bgrxBufferPool reduces allocations for YUV→BGRX conversion.
-// Max size: 1920x1080x4 = ~8MB (handles 1080p)
 var bgrxBufferPool = sync.Pool{
 	New: func() any {
-		buf := make([]byte, 1920*1080*4)
+		buf := make([]byte, maxBGRXWidth*maxBGRXHeight*bytesPerPixel)
 		return &buf
 	},
 }
 
-// rgbTileSize is smaller than bitmapTileSize to fit within Fast-Path reassembly limits.
-// 64x64 at 32bpp = 16384 bytes per tile.
-const rgbTileSize = 64
-
 // rgbTileBufferPool provides reusable buffers for RGB tile data.
 var rgbTileBufferPool = sync.Pool{
 	New: func() any {
-		buf := make([]byte, rgbTileSize*rgbTileSize*4)
+		buf := make([]byte, rgbTileSize*rgbTileSize*bytesPerPixel)
 		return &buf
 	},
 }
 
 // fastPathBitmapPool provides reusable buffers for Fast-Path bitmap PDUs.
-// Max size: 64x64 tile at 32bpp (16384) + header (22) = 16406 bytes
 var fastPathBitmapPool = sync.Pool{
 	New: func() any {
-		buf := make([]byte, rgbTileSize*rgbTileSize*4+32)
+		buf := make([]byte, rgbTileSize*rgbTileSize*bytesPerPixel+bitmapHeaderSlack)
 		return &buf
 	},
 }
 
 // fastPathPDUPool provides reusable buffers for Fast-Path PDU framing.
-// Max size: 16000 (max fragment) + 10 (headers) = 16010 bytes
 var fastPathPDUPool = sync.Pool{
 	New: func() any {
-		buf := make([]byte, 16384)
+		buf := make([]byte, fastPathBufSize)
 		return &buf
 	},
 }

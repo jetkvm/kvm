@@ -24,13 +24,3 @@ func decodeUTF16LE(b []byte) string {
 	return string(utf16.Decode(u16))
 }
 
-// encodeUTF16LE encodes a Go string as UTF-16 little-endian bytes.
-// A null terminator is NOT appended; callers should add one if needed.
-func encodeUTF16LE(s string) []byte {
-	u16 := utf16.Encode([]rune(s))
-	b := make([]byte, len(u16)*2)
-	for i, v := range u16 {
-		binary.LittleEndian.PutUint16(b[i*2:], v)
-	}
-	return b
-}

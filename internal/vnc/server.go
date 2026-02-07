@@ -41,6 +41,21 @@ type Server struct {
 	deps Dependencies
 }
 
+// tryAcquireConn atomically checks and increments the connection count.
+// Returns true if the connection was acquired, false if max connections reached.
+func (s *Server) tryAcquireConn(maxConns int) bool {
+	limit := int32(maxConns)
+	for {
+		old := s.connCount.Load()
+		if old >= limit {
+			return false
+		}
+		if s.connCount.CompareAndSwap(old, old+1) {
+			return true
+		}
+	}
+}
+
 // NewServer creates a new VNC server with the given dependencies.
 func NewServer(deps Dependencies) *Server {
 	return &Server{
@@ -403,7 +418,7 @@ func (s *Server) acceptLoop() {
 		if maxConns <= 0 || maxConns > MaxConnections {
 			maxConns = MaxConnections
 		}
-		if s.connCount.Load() >= int32(maxConns) {
+		if !s.tryAcquireConn(maxConns) {
 			s.deps.Logger.Warn().Str("remote", remoteAddr).Int("max", maxConns).Msg("VNC connection rejected: max connections reached")
 			if closeErr := conn.Close(); closeErr != nil && s.deps.Logger.Debug().Enabled() {
 				s.deps.Logger.Debug().Err(closeErr).Str("remote", remoteAddr).Msg("failed to close max-connections connection")
@@ -423,7 +438,6 @@ func (s *Server) acceptLoop() {
 
 		vncConn := NewConnection(conn, s)
 		s.connections.Store(vncConn, true)
-		s.connCount.Add(1)
 
 		go func(vc *Connection, remoteAddr string) {
 			defer func() {

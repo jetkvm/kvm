@@ -45,25 +45,6 @@ func readPacket(r io.Reader) (pktType uint16, payload []byte, err error) {
 	return pktType, payload, nil
 }
 
-// writePacket writes one MS-TSGU packet to w.
-func writePacket(w io.Writer, pktType uint16, payload []byte) error {
-	totalSize := uint32(packetHeaderSize + len(payload))
-	var hdr [packetHeaderSize]byte
-	binary.LittleEndian.PutUint16(hdr[0:2], pktType)
-	// hdr[2:4] reserved = 0
-	binary.LittleEndian.PutUint32(hdr[4:8], totalSize)
-
-	if _, err := w.Write(hdr[:]); err != nil {
-		return fmt.Errorf("write header: %w", err)
-	}
-	if len(payload) > 0 {
-		if _, err := w.Write(payload); err != nil {
-			return fmt.Errorf("write payload: %w", err)
-		}
-	}
-	return nil
-}
-
 // parseHandshakeRequest parses a HANDSHAKE_REQUEST payload.
 // Returns the client's extended authentication capabilities flags.
 // MS-TSGU 2.2.9.2.1.1

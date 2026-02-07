@@ -84,6 +84,22 @@ type Server struct {
 	deps Dependencies
 }
 
+// tryAcquireConn atomically checks and increments the connection count.
+// Returns true if the connection was acquired, false if max connections reached.
+// Uses CAS to prevent exceeding maxConns under concurrent connects.
+func (s *Server) tryAcquireConn(maxConns int) bool {
+	limit := int32(maxConns)
+	for {
+		old := s.connCount.Load()
+		if old >= limit {
+			return false
+		}
+		if s.connCount.CompareAndSwap(old, old+1) {
+			return true
+		}
+	}
+}
+
 // NewServer creates a new RDP server with the given dependencies.
 func NewServer(deps Dependencies) *Server {
 	return &Server{
@@ -327,7 +343,7 @@ func (s *Server) acceptLoop() {
 		if maxConns <= 0 || maxConns > MaxConnections {
 			maxConns = MaxConnections
 		}
-		if s.connCount.Load() >= int32(maxConns) {
+		if !s.tryAcquireConn(maxConns) {
 			s.deps.Logger.Warn().Str("remote", remoteAddr).Int("max", maxConns).
 				Msg("RDP connection rejected: max connections reached")
 			conn.Close()
@@ -364,7 +380,6 @@ func (s *Server) acceptLoop() {
 		rdpConn := NewConnection(conn, s)
 		rdpConn.capture = capture
 		s.connections.Store(rdpConn, true)
-		s.connCount.Add(1)
 
 		// Track session for sleep mode prevention
 		if s.deps.OnSessionStart != nil {
@@ -426,7 +441,7 @@ func (s *Server) HandleGatewayConnection(conn net.Conn) {
 	if maxConns <= 0 || maxConns > MaxConnections {
 		maxConns = MaxConnections
 	}
-	if s.connCount.Load() >= int32(maxConns) {
+	if !s.tryAcquireConn(maxConns) {
 		s.deps.Logger.Warn().Str("remote", conn.RemoteAddr().String()).Int("max", maxConns).
 			Msg("RDP gateway connection rejected: max connections reached")
 		conn.Close()
@@ -447,7 +462,6 @@ func (s *Server) HandleGatewayConnection(conn net.Conn) {
 	rdpConn.softwareTLS = true // tsguConn has no kernel socket fd for OpenSSL's SSL_set_fd()
 
 	s.connections.Store(rdpConn, true)
-	s.connCount.Add(1)
 
 	if s.deps.OnSessionStart != nil {
 		s.deps.OnSessionStart()
