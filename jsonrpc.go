@@ -180,7 +180,7 @@ func rpcReboot(force bool) error {
 }
 
 func rpcGetStreamQualityFactor() (float64, error) {
-	return config.VideoQualityFactor, nil
+	return loadCfg().VideoQualityFactor, nil
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
@@ -190,27 +190,29 @@ func rpcSetStreamQualityFactor(factor float64) error {
 		return err
 	}
 
-	config.VideoQualityFactor = factor
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VideoQualityFactor = factor
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
 }
 
 func rpcGetAutoUpdateState() (bool, error) {
-	return config.AutoUpdateEnabled, nil
+	return loadCfg().AutoUpdateEnabled, nil
 }
 
 func rpcSetAutoUpdateState(enabled bool) (bool, error) {
-	config.AutoUpdateEnabled = enabled
-	if err := SaveConfig(); err != nil {
-		return config.AutoUpdateEnabled, fmt.Errorf("failed to save config: %w", err)
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.AutoUpdateEnabled = enabled
+	}); err != nil {
+		return enabled, fmt.Errorf("failed to save config: %w", err)
 	}
 	return enabled, nil
 }
 
 func rpcGetEDID() (string, error) {
-	return config.EdidString, nil
+	return loadCfg().EdidString, nil
 }
 
 func rpcGetDefaultEDID() (string, error) {
@@ -229,8 +231,9 @@ func rpcSetEDID(edid string) error {
 		return err
 	}
 
-	config.EdidString = edid
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.EdidString = edid
+	}); err != nil {
 		logger.Error().Err(err).Msg("Failed to save config after EDID change")
 		return err
 	}
@@ -254,31 +257,33 @@ func rpcGetVideoLogStatus() (string, error) {
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
-	currentRotation := config.DisplayRotation
-	if currentRotation == params.Rotation {
+	cfg := loadCfg()
+	if cfg.DisplayRotation == params.Rotation {
 		return nil
 	}
 
-	err := config.SetDisplayRotation(params.Rotation)
-	if err != nil {
+	// Validate the rotation value before persisting.
+	var tmpCfg Config
+	if err := tmpCfg.SetDisplayRotation(params.Rotation); err != nil {
 		return err
 	}
 
-	_, err = nativeInstance.DisplaySetRotation(config.GetDisplayRotation())
-	if err != nil {
+	if _, err := nativeInstance.DisplaySetRotation(tmpCfg.GetDisplayRotation()); err != nil {
 		return err
 	}
 
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(c *Config) {
+		c.DisplayRotation = params.Rotation
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	return err
+	return nil
 }
 
 func rpcGetDisplayRotation() (*DisplayRotationSettings, error) {
 	return &DisplayRotationSettings{
-		Rotation: config.DisplayRotation,
+		Rotation: loadCfg().DisplayRotation,
 	}, nil
 }
 
@@ -298,15 +303,16 @@ func rpcSetBacklightSettings(params BacklightSettings) error {
 		return fmt.Errorf("offAfter must be a positive integer")
 	}
 
-	config.DisplayMaxBrightness = blConfig.MaxBrightness
-	config.DisplayDimAfterSec = blConfig.DimAfter
-	config.DisplayOffAfterSec = blConfig.OffAfter
-
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.DisplayMaxBrightness = blConfig.MaxBrightness
+		cfg.DisplayDimAfterSec = blConfig.DimAfter
+		cfg.DisplayOffAfterSec = blConfig.OffAfter
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	logger.Info().Int("max_brightness", config.DisplayMaxBrightness).Int("dim_after", config.DisplayDimAfterSec).Int("off_after", config.DisplayOffAfterSec).Msg("rpc: display: settings applied")
+	cfg := loadCfg()
+	logger.Info().Int("max_brightness", cfg.DisplayMaxBrightness).Int("dim_after", cfg.DisplayDimAfterSec).Int("off_after", cfg.DisplayOffAfterSec).Msg("rpc: display: settings applied")
 
 	// If the device started up with auto-dim and/or auto-off set to zero, the display init
 	// method will not have started the tickers. So in case that has changed, attempt to start the tickers now.
@@ -321,10 +327,11 @@ func rpcSetBacklightSettings(params BacklightSettings) error {
 }
 
 func rpcGetBacklightSettings() (*BacklightSettings, error) {
+	cfg := loadCfg()
 	return &BacklightSettings{
-		MaxBrightness: config.DisplayMaxBrightness,
-		DimAfter:      int(config.DisplayDimAfterSec),
-		OffAfter:      int(config.DisplayOffAfterSec),
+		MaxBrightness: cfg.DisplayMaxBrightness,
+		DimAfter:      int(cfg.DisplayDimAfterSec),
+		OffAfter:      int(cfg.DisplayOffAfterSec),
 	}, nil
 }
 
@@ -587,8 +594,11 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	return nil, fmt.Errorf("too many return values from handler: %d", len(results))
 }
 
+// errorInterfaceType is pre-computed to avoid per-call reflection in asError.
+var errorInterfaceType = reflect.TypeOf((*error)(nil)).Elem()
+
 func asError(value reflect.Value) (bool, error) {
-	if value.Type().Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+	if value.Type().Implements(errorInterfaceType) {
 		if value.IsNil() {
 			return true, nil
 		}
@@ -609,8 +619,6 @@ func rpcSetMassStorageMode(mode string) (string, error) {
 		logger.Info().Str("mode", mode).Msg("Invalid mode provided")
 		return "", fmt.Errorf("invalid mode: %s", mode)
 	}
-
-	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
 
 	err := setMassStorageMode(cdrom)
 	if err != nil {
@@ -656,25 +664,29 @@ func rpcSetUsbEmulationState(enabled bool) error {
 }
 
 func rpcGetUsbConfig() (usbgadget.Config, error) {
-	LoadConfig()
-	return *config.UsbConfig, nil
+	return *loadCfg().UsbConfig, nil
 }
 
 func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
-	LoadConfig()
-	wasUsbAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	cfg := loadCfg()
+	wasUsbAudioEnabled := cfg.UsbDevices != nil && cfg.UsbDevices.Audio
 
-	config.UsbConfig = &usbConfig
-	gadget.SetGadgetConfig(config.UsbConfig)
+	if err := updateAndSaveConfig(func(c *Config) {
+		c.UsbConfig = &usbConfig
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 
+	gadget.SetGadgetConfig(&usbConfig)
 	return updateUsbRelatedConfig(wasUsbAudioEnabled)
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
-	if config.WakeOnLanDevices == nil {
+	devices := loadCfg().WakeOnLanDevices
+	if devices == nil {
 		return []WakeOnLanDevice{}, nil
 	}
-	return config.WakeOnLanDevices, nil
+	return devices, nil
 }
 
 type SetWakeOnLanDevicesParams struct {
@@ -682,14 +694,15 @@ type SetWakeOnLanDevicesParams struct {
 }
 
 func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
-	config.WakeOnLanDevices = params.Devices
-	return SaveConfig()
+	return updateAndSaveConfig(func(cfg *Config) {
+		cfg.WakeOnLanDevices = params.Devices
+	})
 }
 
 func rpcResetConfig() error {
-	defaultConfig := getDefaultConfig()
-	config = &defaultConfig
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		*cfg = getDefaultConfig()
+	}); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
 
@@ -731,21 +744,23 @@ func rpcSetDCRestoreState(state int) error {
 }
 
 func rpcGetActiveExtension() (string, error) {
-	return config.ActiveExtension, nil
+	return loadCfg().ActiveExtension, nil
 }
 
 func rpcSetActiveExtension(extensionId string) error {
-	if config.ActiveExtension == extensionId {
+	cfg := loadCfg()
+	if cfg.ActiveExtension == extensionId {
 		return nil
 	}
-	switch config.ActiveExtension {
+	switch cfg.ActiveExtension {
 	case "atx-power":
 		_ = unmountATXControl()
 	case "dc-power":
 		_ = unmountDCControl()
 	}
-	config.ActiveExtension = extensionId
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(c *Config) {
+		c.ActiveExtension = extensionId
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	switch extensionId {
@@ -890,21 +905,15 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 }
 
 func rpcGetUsbDevices() (usbgadget.Devices, error) {
-	return *config.UsbDevices, nil
+	return *loadCfg().UsbDevices, nil
 }
 
 func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
-	ensureConfigLoaded()
-
 	stopInputAudio()
 	stopUVC()
 
 	if err := resetUSBGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to update gadget config: %w", err)
-	}
-
-	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
 	}
 
 	reinitUVC()
@@ -918,7 +927,8 @@ func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
-	wasUsbAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	cfg := loadCfg()
+	wasUsbAudioEnabled := cfg.UsbDevices != nil && cfg.UsbDevices.Audio
 	currentDevices := gadget.GetGadgetDevices()
 
 	// Skip reconfiguration if devices haven't changed to avoid HID disruption
@@ -927,50 +937,62 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 		return nil
 	}
 
-	config.UsbDevices = &usbDevices
-	gadget.SetGadgetDevices(config.UsbDevices)
+	if err := updateAndSaveConfig(func(c *Config) {
+		c.UsbDevices = &usbDevices
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 
+	gadget.SetGadgetDevices(&usbDevices)
 	return updateUsbRelatedConfig(wasUsbAudioEnabled)
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
-	wasUsbAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	cfg := loadCfg()
+	wasUsbAudioEnabled := cfg.UsbDevices != nil && cfg.UsbDevices.Audio
 	currentDevices := gadget.GetGadgetDevices()
 
+	// Build the desired device state by copying current and applying the change.
+	newDevices := *cfg.UsbDevices
 	switch device {
 	case "absoluteMouse":
-		config.UsbDevices.AbsoluteMouse = enabled
+		newDevices.AbsoluteMouse = enabled
 	case "relativeMouse":
-		config.UsbDevices.RelativeMouse = enabled
+		newDevices.RelativeMouse = enabled
 	case "keyboard":
-		config.UsbDevices.Keyboard = enabled
+		newDevices.Keyboard = enabled
 	case "massStorage":
-		config.UsbDevices.MassStorage = enabled
+		newDevices.MassStorage = enabled
 	case "audio":
-		config.UsbDevices.Audio = enabled
+		newDevices.Audio = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
 
 	// Skip reconfiguration if devices haven't changed to avoid HID disruption
-	if currentDevices.Equals(*config.UsbDevices) {
+	if currentDevices.Equals(newDevices) {
 		logger.Debug().Msg("USB device state unchanged, skipping gadget reconfiguration")
 		return nil
 	}
 
-	gadget.SetGadgetDevices(config.UsbDevices)
+	if err := updateAndSaveConfig(func(c *Config) {
+		c.UsbDevices = &newDevices
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	gadget.SetGadgetDevices(&newDevices)
 	return updateUsbRelatedConfig(wasUsbAudioEnabled)
 }
 
 func rpcGetAudioOutputEnabled() (bool, error) {
-	ensureConfigLoaded()
-	return config.AudioOutputEnabled, nil
+	return loadCfg().AudioOutputEnabled, nil
 }
 
 func rpcSetAudioOutputEnabled(enabled bool) error {
-	ensureConfigLoaded()
-	config.AudioOutputEnabled = enabled
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.AudioOutputEnabled = enabled
+	}); err != nil {
 		return err
 	}
 	return SetAudioOutputEnabled(enabled)
@@ -994,7 +1016,6 @@ type AudioConfigResponse struct {
 }
 
 func rpcGetAudioConfig() (AudioConfigResponse, error) {
-	ensureConfigLoaded()
 	cfg := getAudioConfig()
 	return AudioConfigResponse{
 		Bitrate:        int(cfg.Bitrate),
@@ -1007,8 +1028,6 @@ func rpcGetAudioConfig() (AudioConfigResponse, error) {
 }
 
 func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled bool, bufferPeriods int, packetLossPerc int) error {
-	ensureConfigLoaded()
-
 	if bitrate < 64 || bitrate > 256 {
 		return fmt.Errorf("bitrate must be between 64 and 256 kbps")
 	}
@@ -1022,14 +1041,14 @@ func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled 
 		return fmt.Errorf("packet loss percentage must be between 0 and 100")
 	}
 
-	config.AudioBitrate = bitrate
-	config.AudioComplexity = complexity
-	config.AudioDTXEnabled = dtxEnabled
-	config.AudioFECEnabled = fecEnabled
-	config.AudioBufferPeriods = bufferPeriods
-	config.AudioPacketLossPerc = packetLossPerc
-
-	return SaveConfig()
+	return updateAndSaveConfig(func(cfg *Config) {
+		cfg.AudioBitrate = bitrate
+		cfg.AudioComplexity = complexity
+		cfg.AudioDTXEnabled = dtxEnabled
+		cfg.AudioFECEnabled = fecEnabled
+		cfg.AudioBufferPeriods = bufferPeriods
+		cfg.AudioPacketLossPerc = packetLossPerc
+	})
 }
 
 func rpcRestartAudioOutput() error {
@@ -1037,14 +1056,13 @@ func rpcRestartAudioOutput() error {
 }
 
 func rpcGetAudioInputAutoEnable() (bool, error) {
-	ensureConfigLoaded()
-	return config.AudioInputAutoEnable, nil
+	return loadCfg().AudioInputAutoEnable, nil
 }
 
 func rpcSetAudioInputAutoEnable(enabled bool) error {
-	ensureConfigLoaded()
-	config.AudioInputAutoEnable = enabled
-	return SaveConfig()
+	return updateAndSaveConfig(func(cfg *Config) {
+		cfg.AudioInputAutoEnable = enabled
+	})
 }
 
 func rpcGetCameraEnabled() (bool, error) {
@@ -1065,18 +1083,16 @@ type CameraSettingsResponse struct {
 }
 
 func rpcGetCameraSettings() (CameraSettingsResponse, error) {
-	ensureConfigLoaded()
+	cfg := loadCfg()
 	return CameraSettingsResponse{
-		Resolution:   config.CameraResolution,
-		FrameRate:    config.CameraFrameRate,
-		H264Bitrate:  config.CameraH264Bitrate,
-		MjpegQuality: config.CameraMjpegQuality,
+		Resolution:   cfg.CameraResolution,
+		FrameRate:    cfg.CameraFrameRate,
+		H264Bitrate:  cfg.CameraH264Bitrate,
+		MjpegQuality: cfg.CameraMjpegQuality,
 	}, nil
 }
 
 func rpcSetCameraSettings(resolution string, frameRate int, h264Bitrate int, mjpegQuality int) error {
-	ensureConfigLoaded()
-
 	// Validate resolution
 	if resolution != "1080p" && resolution != "720p" && resolution != "480p" {
 		return fmt.Errorf("invalid resolution: %s (must be 1080p, 720p, or 480p)", resolution)
@@ -1098,14 +1114,12 @@ func rpcSetCameraSettings(resolution string, frameRate int, h264Bitrate int, mjp
 		return fmt.Errorf("MJPEG quality must be between 0 and 100")
 	}
 
-	// Update config
-	config.CameraResolution = resolution
-	config.CameraFrameRate = frameRate
-	config.CameraH264Bitrate = h264Bitrate
-	config.CameraMjpegQuality = mjpegQuality
-
-	// Save config
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.CameraResolution = resolution
+		cfg.CameraFrameRate = frameRate
+		cfg.CameraH264Bitrate = h264Bitrate
+		cfg.CameraMjpegQuality = mjpegQuality
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -1139,9 +1153,14 @@ func notifyCameraEncoderSettingsChanged(h264Bitrate int, mjpegQuality int) {
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
-	currentCloudURL := config.CloudURL
-	config.CloudURL = apiUrl
-	config.CloudAppURL = appUrl
+	currentCloudURL := loadCfg().CloudURL
+
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.CloudURL = apiUrl
+		cfg.CloudAppURL = appUrl
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 
 	if currentCloudURL != apiUrl {
 		disconnectCloud(fmt.Errorf("cloud url changed from %s to %s", currentCloudURL, apiUrl))
@@ -1151,31 +1170,29 @@ func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 		publicIPState.SetCloudflareEndpoint(apiUrl)
 	}
 
-	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-
 	return nil
 }
 
 func rpcGetKeyboardLayout() (string, error) {
-	return config.KeyboardLayout, nil
+	return loadCfg().KeyboardLayout, nil
 }
 
 func rpcSetKeyboardLayout(layout string) error {
-	config.KeyboardLayout = layout
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.KeyboardLayout = layout
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
 }
 
 func getKeyboardMacros() (any, error) {
-	if config == nil {
+	cfg := loadCfg()
+	if cfg == nil {
 		return []KeyboardMacro{}, nil
 	}
-	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
-	copy(macros, config.KeyboardMacros)
+	macros := make([]KeyboardMacro, len(cfg.KeyboardMacros))
+	copy(macros, cfg.KeyboardMacros)
 
 	return macros, nil
 }
@@ -1257,9 +1274,9 @@ func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 		newMacros = append(newMacros, macro)
 	}
 
-	config.KeyboardMacros = newMacros
-
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.KeyboardMacros = newMacros
+	}); err != nil {
 		return nil, err
 	}
 
@@ -1267,18 +1284,19 @@ func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 }
 
 func rpcGetLocalLoopbackOnly() (bool, error) {
-	return config.LocalLoopbackOnly, nil
+	return loadCfg().LocalLoopbackOnly, nil
 }
 
 func rpcSetLocalLoopbackOnly(enabled bool) error {
 	// Check if the setting is actually changing
-	if config.LocalLoopbackOnly == enabled {
+	if loadCfg().LocalLoopbackOnly == enabled {
 		return nil
 	}
 
 	// Update the setting
-	config.LocalLoopbackOnly = enabled
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.LocalLoopbackOnly = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -1563,6 +1581,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRDPMicEnabled":             {Func: rpcSetRDPMicEnabled, Params: []string{"enabled"}},
 	"setRDPCameraEnabled":          {Func: rpcSetRDPCameraEnabled, Params: []string{"enabled"}},
 	"setRDPCameraTranscodeEnabled": {Func: rpcSetRDPCameraTranscodeEnabled, Params: []string{"enabled"}},
+	"setRDPUDPEnabled":             {Func: rpcSetRDPUDPEnabled, Params: []string{"enabled"}},
 	"setRDPClipboardEnabled":       {Func: rpcSetRDPClipboardEnabled, Params: []string{"enabled"}},
 	"setRDPPasteDelayMs":           {Func: rpcSetRDPPasteDelayMs, Params: []string{"delayMs"}},
 	"setRDPTargetOS":               {Func: rpcSetRDPTargetOS, Params: []string{"targetOS"}},
@@ -1581,6 +1600,14 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRDPBase64CmdWindows":       {Func: rpcSetRDPBase64CmdWindows, Params: []string{"cmd"}},
 	"setRDPBase64CmdLinux":         {Func: rpcSetRDPBase64CmdLinux, Params: []string{"cmd"}},
 	"setRDPBase64CmdMacOS":         {Func: rpcSetRDPBase64CmdMacOS, Params: []string{"cmd"}},
+	// RD Gateway
+	"setRDPGatewayEnabled":         {Func: rpcSetRDPGatewayEnabled, Params: []string{"enabled"}},
+	"setRDPGatewayUDPPort":         {Func: rpcSetRDPGatewayUDPPort, Params: []string{"port"}},
+	// RDP packet capture
+	"setRDPCaptureEnabled":  {Func: rpcSetRDPCaptureEnabled, Params: []string{"enabled"}},
+	"getRDPCaptureState":    {Func: rpcGetRDPCaptureState},
+	"deleteRDPCapture":      {Func: rpcDeleteRDPCapture, Params: []string{"sessionId"}},
+	"deleteAllRDPCaptures":  {Func: rpcDeleteAllRDPCaptures},
 }
 
 var rpcHandlersInitOnce sync.Once

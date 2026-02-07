@@ -17,12 +17,12 @@ type Connection struct {
 	resolution     atomic.Uint32 // packed: high=width, low=height
 	frameRequested atomic.Bool
 	closed         atomic.Bool
-	hasTight       atomic.Bool
 	conn           net.Conn
 	stopChan       chan struct{}
 
 	// === Hot path: Frame header buffer ===
 	frameHeaderBuf [rfbFrameHeaderBufSize]byte
+	writeBufs      net.Buffers // pre-allocated for frame sending (2 elements: header + JPEG)
 
 	// === Hot path: Input message buffers ===
 	msgBuf     [rfbMsgBufSize]byte
@@ -38,6 +38,10 @@ type Connection struct {
 	intervalSent    atomic.Int32
 	intervalDropped atomic.Int32
 	startTime       time.Time
+
+	// === Continuous updates (hot path for frame gating) ===
+	continuousUpdates         atomic.Bool // true when client has enabled continuous updates
+	supportsContinuousUpdates bool        // true if client advertised encoding -313
 
 	// === Cold path: Setup/handshake fields ===
 	server           *Server
@@ -150,6 +154,7 @@ func NewConnection(conn net.Conn, server *Server) *Connection {
 		stopChan:    make(chan struct{}),
 		startTime:   time.Now(),
 		synthShift:  make(map[uint8]bool),
+		writeBufs:   make(net.Buffers, 0, 2),
 	}
 	vc.setResolution(w, h)
 	return vc
@@ -215,6 +220,20 @@ func (c *Connection) releaseHeldModifiers() {
 		_ = hid.KeypressReport(hidLeftShift, false)
 		_ = hid.KeypressReport(hidRightShift, false)
 	}
+}
+
+// withDeadline sets a bidirectional deadline for the duration of fn, then clears it.
+// Used for handshake and authentication phases where both reads and writes should timeout.
+func (c *Connection) withDeadline(timeout time.Duration, fn func() error) error {
+	if err := c.conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return fmt.Errorf("failed to set deadline: %w", err)
+	}
+	defer func() {
+		if err := c.conn.SetDeadline(time.Time{}); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("failed to clear deadline")
+		}
+	}()
+	return fn()
 }
 
 // onResolutionChange updates the connection's resolution.

@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -55,36 +56,30 @@ func (s *Session) WriteVideoFrame(frame []byte, duration time.Duration) error {
 }
 
 var (
-	activeSessions      int = 0
-	activeSessionsMutex     = &sync.Mutex{}
+	activeSessions atomic.Int32
 
 	// logHardwareCryptoOnce ensures we log hardware crypto status only once
 	logHardwareCryptoOnce sync.Once
 )
 
 func incrActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	activeSessions++
-	return activeSessions
+	return int(activeSessions.Add(1))
 }
 
 func decrActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	if activeSessions > 0 {
-		activeSessions--
+	for {
+		old := activeSessions.Load()
+		if old <= 0 {
+			return 0
+		}
+		if activeSessions.CompareAndSwap(old, old-1) {
+			return int(old - 1)
+		}
 	}
-	return activeSessions
 }
 
 func getActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	return activeSessions
+	return int(activeSessions.Load())
 }
 
 // GetDiagnosticsInfo returns WebRTC diagnostic info for the diagnostics package.
@@ -198,10 +193,10 @@ func (s *Session) handleQueues(index int) {
 
 const keysDownStateQueueSize = 64
 
-func (s *Session) initKeysDownStateQueue() {
+func (s *Session) initKeysDownStateQueue(logger *zerolog.Logger) {
 	// serialise outbound key state reports so unreliable links can't stall input handling
 	s.keysDownStateQueue = make(chan usbgadget.KeysDownState, keysDownStateQueueSize)
-	go s.handleKeysDownStateQueue()
+	logging.SafeGo(logger, "WEBRTC_KEYS_STATE", s.handleKeysDownStateQueue)
 }
 
 func (s *Session) handleKeysDownStateQueue() {
@@ -345,7 +340,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
-	session.initKeysDownStateQueue()
+	session.initKeysDownStateQueue(scopedLogger)
 
 	// Cleanup goroutines and resources if newSession fails after this point.
 	// The queue consumer goroutines (spawned below) block on range over channels,
@@ -371,14 +366,15 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 
-	go func() {
+	logging.SafeGo(scopedLogger, "WEBRTC_RPC_QUEUE", func() {
 		for msg := range session.rpcQueue {
 			onRPCMessage(msg, session)
 		}
-	}()
+	})
 
 	for i := 0; i < len(session.hidQueue); i++ {
-		go session.handleQueues(i)
+		idx := i
+		logging.SafeGo(scopedLogger, "WEBRTC_HID_QUEUE", func() { session.handleQueues(idx) })
 	}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
@@ -570,8 +566,10 @@ func newSession(config SessionConfig) (*Session, error) {
 				session.hidQueue[i] = nil
 			}
 
-			close(session.keysDownStateQueue)
-			session.keysDownStateQueue = nil
+			if session.keysDownStateQueue != nil {
+				close(session.keysDownStateQueue)
+				session.keysDownStateQueue = nil
+			}
 
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {

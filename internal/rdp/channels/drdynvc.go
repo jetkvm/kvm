@@ -134,6 +134,10 @@ type DVCChannel struct {
 	Handler DVCHandler
 	manager *DVCManager
 
+	// Cached channel ID encoding (computed once at creation, never changes)
+	cachedCbID  byte
+	cachedIDLen int
+
 	// Pre-allocated fragment buffer for zero-allocation hot path
 	// Used by SendDataZeroAlloc to avoid per-fragment allocations
 	fragBuf [DVCFragmentBufSize]byte
@@ -546,6 +550,9 @@ func (m *DVCManager) CreateChannel(name string, handler DVCHandler) (*DVCChannel
 	}
 	// open defaults to false (zero value for atomic.Bool)
 
+	// Cache channel ID encoding (constant for lifetime of channel)
+	ch.cachedCbID, ch.cachedIDLen = channelIDEncoding(channelID)
+
 	m.channelsMu.Lock()
 	m.channels[channelID] = ch
 	m.channelsMu.Unlock()
@@ -585,6 +592,21 @@ func (m *DVCManager) sendCreateRequest(channelID uint32, name string) error {
 	buf[len(buf)-1] = 0 // Null terminator
 
 	return m.sendFunc(buf)
+}
+
+// GetOpenChannelIDs returns the IDs of all open dynamic virtual channels.
+// Used by Soft-Sync to migrate channels from TCP to UDP.
+func (m *DVCManager) GetOpenChannelIDs() []uint32 {
+	m.channelsMu.RLock()
+	defer m.channelsMu.RUnlock()
+
+	var ids []uint32
+	for id, ch := range m.channels {
+		if ch.open.Load() {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // Close closes the DVC manager and all its channels.

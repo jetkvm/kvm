@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -24,7 +25,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	}
 
 	// Check config for native mode: "direct" for CGO mode, "subprocess" (default) for crash isolation
-	nativeMode := config.NativeMode
+	cfg := loadCfg()
+	nativeMode := cfg.NativeMode
 	if nativeMode == "" {
 		nativeMode = "subprocess" // default to subprocess for crash isolation
 	}
@@ -32,9 +34,9 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	opts := native.NativeOptions{
 		SystemVersion:        systemVersion,
 		AppVersion:           appVersion,
-		DisplayRotation:      config.GetDisplayRotation(),
-		DefaultQualityFactor: config.VideoQualityFactor,
-		MaxRestartAttempts:   config.NativeMaxRestart,
+		DisplayRotation:      cfg.GetDisplayRotation(),
+		DefaultQualityFactor: cfg.VideoQualityFactor,
+		MaxRestartAttempts:   cfg.NativeMaxRestart,
 		OnNativeRestart: func() {
 			configureDisplayOnNativeRestart()
 		},
@@ -139,7 +141,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		nativeLogger.Fatal().Err(err).Msg("failed to start native instance")
 	}
 	go func() {
-		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
+		if err := nativeInstance.VideoSetEDID(loadCfg().EdidString); err != nil {
 			nativeLogger.Warn().Err(err).Msg("error setting EDID")
 		}
 	}()
@@ -150,4 +152,50 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 
 	// Initialize UVC streaming if enabled
 	initUVC()
+}
+
+// NativeModeOption describes a selectable native execution mode.
+type NativeModeOption struct {
+	Value       string `json:"value"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+// NativeModeState is the response for getNativeMode.
+type NativeModeState struct {
+	Mode           string             `json:"mode"`
+	AvailableModes []NativeModeOption `json:"availableModes"`
+	RequiresReboot bool               `json:"requiresReboot"`
+}
+
+var nativeModeOptions = []NativeModeOption{
+	{Value: "subprocess", Label: "Subprocess", Description: "Crash-isolated mode — native code runs in a separate process (default)"},
+	{Value: "direct", Label: "Direct", Description: "In-process CGO mode — more efficient but native crashes bring down the app"},
+}
+
+func rpcGetNativeMode() (NativeModeState, error) {
+	mode := loadCfg().NativeMode
+	if mode == "" {
+		mode = "subprocess"
+	}
+	return NativeModeState{
+		Mode:           mode,
+		AvailableModes: nativeModeOptions,
+		RequiresReboot: true,
+	}, nil
+}
+
+func rpcSetNativeMode(mode string) error {
+	if mode != "subprocess" && mode != "direct" {
+		return fmt.Errorf("invalid native mode: %s (must be subprocess or direct)", mode)
+	}
+
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.NativeMode = mode
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	nativeLogger.Info().Str("mode", mode).Msg("native execution mode updated (reboot required)")
+	return nil
 }

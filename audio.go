@@ -91,45 +91,46 @@ func GetAudioInputOwner() AudioInputOwner {
 func initAudio() {
 	audioLogger = logging.GetSubsystemLogger("audio")
 
-	ensureConfigLoaded()
-	audioOutputEnabled.Store(config.AudioOutputEnabled)
-	audioInputEnabled.Store(config.AudioInputAutoEnable)
+	cfg := loadCfg()
+	audioOutputEnabled.Store(cfg.AudioOutputEnabled)
+	audioInputEnabled.Store(cfg.AudioInputAutoEnable)
 
 	audioLogger.Debug().Msg("Audio subsystem initialized")
 	audioInitialized = true
 }
 
 func getAudioConfig() audio.AudioConfig {
-	cfg := audio.DefaultAudioConfig()
+	acfg := audio.DefaultAudioConfig()
+	c := loadCfg()
 
-	if config.AudioBitrate >= 64 && config.AudioBitrate <= 256 {
-		cfg.Bitrate = uint16(config.AudioBitrate)
-	} else if config.AudioBitrate != 0 {
-		audioLogger.Warn().Int("bitrate", config.AudioBitrate).Msg("Invalid audio bitrate, using default")
+	if c.AudioBitrate >= 64 && c.AudioBitrate <= 256 {
+		acfg.Bitrate = uint16(c.AudioBitrate)
+	} else if c.AudioBitrate != 0 {
+		audioLogger.Warn().Int("bitrate", c.AudioBitrate).Msg("Invalid audio bitrate, using default")
 	}
 
-	if config.AudioComplexity >= 0 && config.AudioComplexity <= 10 {
-		cfg.Complexity = uint8(config.AudioComplexity)
-	} else if config.AudioComplexity != 0 {
-		audioLogger.Warn().Int("complexity", config.AudioComplexity).Msg("Invalid audio complexity, using default")
+	if c.AudioComplexity >= 0 && c.AudioComplexity <= 10 {
+		acfg.Complexity = uint8(c.AudioComplexity)
+	} else if c.AudioComplexity != 0 {
+		audioLogger.Warn().Int("complexity", c.AudioComplexity).Msg("Invalid audio complexity, using default")
 	}
 
-	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 48 {
-		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
-	} else if config.AudioBufferPeriods != 0 {
-		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Msg("Invalid buffer periods, using default")
+	if c.AudioBufferPeriods >= 2 && c.AudioBufferPeriods <= 48 {
+		acfg.BufferPeriods = uint8(c.AudioBufferPeriods)
+	} else if c.AudioBufferPeriods != 0 {
+		audioLogger.Warn().Int("buffer_periods", c.AudioBufferPeriods).Msg("Invalid buffer periods, using default")
 	}
 
-	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
-		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
-	} else if config.AudioPacketLossPerc != 0 {
-		audioLogger.Warn().Int("packet_loss_perc", config.AudioPacketLossPerc).Msg("Invalid packet loss percentage, using default")
+	if c.AudioPacketLossPerc >= 0 && c.AudioPacketLossPerc <= 100 {
+		acfg.PacketLossPerc = uint8(c.AudioPacketLossPerc)
+	} else if c.AudioPacketLossPerc != 0 {
+		audioLogger.Warn().Int("packet_loss_perc", c.AudioPacketLossPerc).Msg("Invalid packet loss percentage, using default")
 	}
 
-	cfg.DTXEnabled = config.AudioDTXEnabled
-	cfg.FECEnabled = config.AudioFECEnabled
+	acfg.DTXEnabled = c.AudioDTXEnabled
+	acfg.FECEnabled = c.AudioFECEnabled
 
-	return cfg
+	return acfg
 }
 
 func startAudio() error {
@@ -164,8 +165,6 @@ func startAudioForce() error {
 }
 
 func startAudioUnderMutex() error {
-	ensureConfigLoaded()
-
 	var outputErr, inputErr error
 
 	// Start output audio if enabled (always uses HDMI)
@@ -175,7 +174,8 @@ func startAudioUnderMutex() error {
 	}
 
 	// Start input audio if enabled and USB audio device is configured
-	if audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
+	cfg := loadCfg()
+	if audioInputEnabled.Load() && cfg.UsbDevices != nil && cfg.UsbDevices.Audio {
 		inputErr = startInputAudioUnderMutex(getAlsaDevice("usb"))
 	}
 
@@ -646,25 +646,39 @@ func processInputPacket(opusData []byte) error {
 		return nil
 	}
 
-	inputSourceMutex.Lock()
-	defer inputSourceMutex.Unlock()
-
 	source := inputSource.Load()
 	if source == nil || *source == nil {
 		return nil
 	}
 
-	// Lazy connect on first use
+	// Slow path: lazy connect on first use (needs mutex for lifecycle safety)
 	if !(*source).IsConnected() {
-		if err := (*source).Connect(); err != nil {
-			trackAudioInputFailureAndRecover()
-			return err
+		inputSourceMutex.Lock()
+		// Re-check under lock (source may have changed)
+		source = inputSource.Load()
+		if source == nil || *source == nil {
+			inputSourceMutex.Unlock()
+			return nil
 		}
+		if !(*source).IsConnected() {
+			if err := (*source).Connect(); err != nil {
+				inputSourceMutex.Unlock()
+				trackAudioInputFailureAndRecover()
+				return err
+			}
+		}
+		inputSourceMutex.Unlock()
 	}
 
-	// Write opus data, disconnect on error and track failures for recovery
+	// Hot path: write without holding mutex (atomic pointer ensures source stability)
 	if err := (*source).WriteMessage(0, opusData); err != nil {
-		(*source).Disconnect()
+		// Error path: disconnect under mutex for lifecycle safety
+		inputSourceMutex.Lock()
+		source = inputSource.Load()
+		if source != nil && *source != nil {
+			(*source).Disconnect()
+		}
+		inputSourceMutex.Unlock()
 		trackAudioInputFailureAndRecover()
 		return err
 	}

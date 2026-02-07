@@ -33,10 +33,7 @@ const (
 
 // Audio format tags.
 const (
-	WaveFormatPCM   = 0x0001
-	WaveFormatALaw  = 0x0006
-	WaveFormatMuLaw = 0x0007
-	WaveFormatAAC   = 0xA106 // AAC-LC
+	waveFormatPCM = 0x0001
 )
 
 // RDPSND PDU flags.
@@ -65,14 +62,6 @@ const (
 )
 
 // Preferred format constants are defined in audio_format.go (shared with AUDIN).
-// Aliased here for backward compatibility.
-const (
-	PreferredChannels      = AudioPreferredChannels
-	PreferredSampleRate    = AudioPreferredSampleRate
-	PreferredBitsPerSample = AudioPreferredBitsPerSample
-	PreferredBlockAlign    = AudioPreferredBlockAlign
-	PreferredBytesPerSec   = AudioPreferredBytesPerSec
-)
 
 // Common errors.
 var (
@@ -216,7 +205,7 @@ func (s *SoundChannel) sendServerFormats() error {
 	pos += SNDCFormatsHeaderSize
 
 	// Audio format: 16-bit PCM, stereo, 48kHz (uses shared helper)
-	EncodePreferredWAVEFORMATEX(buf, pos)
+	encodePreferredWAVEFORMATEX(buf, pos)
 
 	return s.sendFunc(buf)
 }
@@ -236,18 +225,18 @@ func (s *SoundChannel) handleClientFormats(data []byte) error {
 	s.formats = make([]AudioFormat, 0, numFormats)
 
 	// Parse client formats (uses shared WAVEFORMATEX parser)
-	for i := uint16(0); i < numFormats && pos+WAVEFORMATEXSize <= len(data); i++ {
-		fmt, cbSize, ok := ParseWAVEFORMATEX(data, pos)
+	for i := uint16(0); i < numFormats && pos+waveformatexSize <= len(data); i++ {
+		fmt, cbSize, ok := parseWAVEFORMATEX(data, pos)
 		if !ok {
 			break
 		}
 		s.formats = append(s.formats, fmt)
-		pos += WAVEFORMATEXSize + int(cbSize)
+		pos += waveformatexSize + int(cbSize)
 	}
 
 	// Find best match (uses shared format selection logic)
 	var selectedIndex int
-	selectedIndex, s.selectedFmt = FindPreferredFormat(s.formats)
+	selectedIndex, s.selectedFmt = findPreferredFormat(s.formats)
 
 	if selectedIndex < 0 {
 		return ErrSoundNoFormat
@@ -377,6 +366,16 @@ func (s *SoundChannel) SendAudioChunked(data []byte) error {
 // IsReady returns true if the channel is ready to send audio.
 func (s *SoundChannel) IsReady() bool {
 	return s.ready.Load()
+}
+
+// RetryServerFormats resends the Server Audio Formats PDU.
+// Used when the initial send was dropped by the client (e.g., because the
+// client's rdpsnd plugin hadn't opened the channel yet).
+func (s *SoundChannel) RetryServerFormats() error {
+	if s.ready.Load() {
+		return nil // Already negotiated
+	}
+	return s.sendServerFormats()
 }
 
 // GetSelectedFormat returns the negotiated audio format.

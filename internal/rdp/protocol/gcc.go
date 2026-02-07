@@ -16,13 +16,14 @@ var (
 
 // GCC data block types (MS-RDPBCGR section 2.2.1.3).
 const (
-	GCCBlockClientCore      = 0xC001
-	GCCBlockClientSecurity  = 0xC002
-	GCCBlockClientNetwork   = 0xC003
-	GCCBlockClientCluster   = 0xC004
-	GCCBlockClientMonitor   = 0xC005
-	GCCBlockClientMsgChan   = 0xC006
-	GCCBlockClientMonitorEx = 0xC008
+	GCCBlockClientCore           = 0xC001
+	GCCBlockClientSecurity       = 0xC002
+	GCCBlockClientNetwork        = 0xC003
+	GCCBlockClientCluster        = 0xC004
+	GCCBlockClientMonitor        = 0xC005
+	GCCBlockClientMsgChan        = 0xC006
+	GCCBlockClientMonitorEx      = 0xC008
+	GCCBlockClientMultitransport = 0xC00A
 
 	GCCBlockServerCore           = 0x0C01
 	GCCBlockServerNetwork        = 0x0C03
@@ -118,11 +119,18 @@ type ChannelDef struct {
 }
 
 // ConferenceCreateRequest contains parsed client GCC data.
+// ClientMultitransportData contains the client's multitransport capability flags.
+// Per MS-RDPBCGR 2.2.1.3.8, sent as CS_MULTITRANSPORT (0xC00A).
+type ClientMultitransportData struct {
+	Flags uint32 // Bitmask of TransportType* flags the client supports
+}
+
 type ConferenceCreateRequest struct {
-	CoreData       *ClientCoreData
-	SecurityData   *ClientSecurityData
-	NetworkData    *ClientNetworkData
-	MsgChannelData *ClientMsgChannelData
+	CoreData           *ClientCoreData
+	SecurityData       *ClientSecurityData
+	NetworkData        *ClientNetworkData
+	MsgChannelData     *ClientMsgChannelData
+	MultitransportData *ClientMultitransportData
 }
 
 // ParseConferenceCreateRequest parses a GCC Conference Create Request.
@@ -203,6 +211,12 @@ func parseClientDataBlocks(data []byte) (*ConferenceCreateRequest, error) {
 			ccr.NetworkData = parseClientNetworkData(blockData)
 		case GCCBlockClientMsgChan:
 			ccr.MsgChannelData = parseClientMsgChannelData(blockData)
+		case GCCBlockClientMultitransport:
+			if len(blockData) >= 4 {
+				ccr.MultitransportData = &ClientMultitransportData{
+					Flags: binary.LittleEndian.Uint32(blockData[0:4]),
+				}
+			}
 		default:
 			// Log unknown block types for debugging
 			_ = blockType // Captured for debugging if needed

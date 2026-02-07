@@ -2,7 +2,6 @@ package vnc
 
 import (
 	"fmt"
-	"net"
 	"time"
 )
 
@@ -18,11 +17,16 @@ func (c *Connection) SendJPEGFrameDirect(frame []byte) bool {
 		return false
 	}
 
-	if !c.frameRequested.CompareAndSwap(true, false) {
-		// Frame dropped - client hasn't requested a new frame yet
-		c.framesDropped.Add(1)
-		c.intervalDropped.Add(1)
-		return false
+	// Bypass frameRequested gate when continuous updates are enabled.
+	// In continuous mode, the server pushes frames without waiting for
+	// FramebufferUpdateRequest, eliminating the request-ACK round trip
+	// that caps FPS at 1/(2×RTT).
+	if !c.continuousUpdates.Load() {
+		if !c.frameRequested.CompareAndSwap(true, false) {
+			c.framesDropped.Add(1)
+			c.intervalDropped.Add(1)
+			return false
+		}
 	}
 
 	if err := c.sendFrameUpdate(frame); err != nil {
@@ -127,9 +131,9 @@ func (c *Connection) sendFrameUpdate(jpegData []byte) error {
 
 	// Use writev (net.Buffers) for zero-copy send of header + JPEG data
 	// This avoids copying ~100KB JPEG data into a buffer
-	// Note: net.Buffers.WriteTo consumes the slice, so we create it locally
-	// The small slice header allocation (24 bytes) is acceptable vs complexity of reuse
-	bufs := net.Buffers{header[:headerLen], jpegData}
+	// Re-slice pre-allocated writeBufs to avoid per-frame slice allocation
+	c.writeBufs = c.writeBufs[:0]
+	c.writeBufs = append(c.writeBufs, header[:headerLen], jpegData)
 
 	// Set write deadline - no need to clear it afterwards since:
 	// 1. The next frame send will update the deadline anyway (at 60fps = 16ms)
@@ -138,7 +142,7 @@ func (c *Connection) sendFrameUpdate(jpegData []byte) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 		return fmt.Errorf("failed to set write deadline: %w", err)
 	}
-	_, err := bufs.WriteTo(c.conn)
+	_, err := c.writeBufs.WriteTo(c.conn)
 
 	if err != nil {
 		return fmt.Errorf("failed to send frame update: %w", err)

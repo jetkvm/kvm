@@ -82,8 +82,8 @@ func (f *FileDescriptor) FileSize() uint64 {
 // ClipboardFile represents a file being transferred.
 type ClipboardFile struct {
 	Descriptor FileDescriptor
-	TempPath   string   // Path to temp file on disk
-	Received   uint64   // Bytes received so far
+	TempPath   string // Path to temp file on disk
+	Received   uint64 // Bytes received so far
 	Complete   bool
 	file       *os.File // Open file handle during transfer (nil when complete)
 }
@@ -806,4 +806,3 @@ func sanitizeFileName(name string) string {
 	}
 	return string(result)
 }
-

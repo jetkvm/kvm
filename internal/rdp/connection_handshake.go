@@ -2,6 +2,7 @@ package rdp
 
 import (
 	"bufio"
+	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"net"
@@ -35,8 +36,14 @@ func (c *Connection) handleX224Connection() error {
 		return fmt.Errorf("parse connection request: %w", err)
 	}
 
-	c.server.deps.Logger.Debug().
-		Str("cookie", cr.Cookie).
+	logEvt := c.server.deps.Logger.Debug().
+		Str("cookie", cr.Cookie)
+	if cr.NegReq != nil {
+		logEvt = logEvt.
+			Str("requestedProto", fmt.Sprintf("0x%08x", cr.NegReq.RequestedProto)).
+			Str("negReqFlags", fmt.Sprintf("0x%02x", cr.NegReq.Flags))
+	}
+	logEvt.
 		Bool("clientRequestsTLS", cr.RequestsTLS()).
 		Bool("clientRequestsCredSSP", cr.RequestsCredSSP()).
 		Bool("serverTLSEnabled", c.server.tlsEnabled).
@@ -109,19 +116,37 @@ func (c *Connection) handleX224Connection() error {
 
 	// If TLS or CredSSP was negotiated, upgrade to TLS first
 	if selectedProto == protocol.ProtocolTLS || selectedProto == protocol.ProtocolCredSSP {
-		c.server.deps.Logger.Debug().Msg("RDP: upgrading connection to TLS")
+		c.server.deps.Logger.Debug().Bool("softwareTLS", c.softwareTLS).
+			Msg("RDP: upgrading connection to TLS")
 
 		// Set deadline before TLS handshake
 		if err := c.conn.SetDeadline(time.Now().Add(protocol.HandshakeTimeout)); err != nil {
 			return fmt.Errorf("set TLS deadline: %w", err)
 		}
 
-		// Use hardware-accelerated TLS for both plain TLS and CredSSP modes.
-		// CredSSP now only needs net.Conn - the server public key is provided separately
-		// via SetServerPublicKey(), so we can use hardware crypto for all TLS traffic.
-		tlsConn, err := c.server.deps.TLS.UpgradeServerConn(c.conn)
-		if err != nil {
-			return fmt.Errorf("TLS handshake failed: %w", err)
+		// Extract the raw conn from under captureConn (if capturing).
+		// TLS must upgrade the raw transport, not the capture wrapper.
+		actualConn := c.conn
+		if c.capture != nil {
+			actualConn = c.capture.Inner()
+		}
+
+		var tlsConn TLSConn
+		if c.softwareTLS {
+			// Gateway connections use Go's software crypto/tls because the
+			// in-process tsguConn has no kernel socket fd for OpenSSL's SSL_set_fd().
+			tc, err := c.softwareTLSUpgrade(actualConn)
+			if err != nil {
+				return fmt.Errorf("TLS handshake failed: %w", err)
+			}
+			tlsConn = tc
+		} else {
+			// Direct TCP connections use hardware-accelerated OpenSSL via SSL_set_fd().
+			tc, err := c.server.deps.TLS.UpgradeServerConn(actualConn)
+			if err != nil {
+				return fmt.Errorf("TLS handshake failed: %w", err)
+			}
+			tlsConn = tc
 		}
 
 		c.server.deps.Logger.Debug().
@@ -208,9 +233,16 @@ func (c *Connection) handleX224Connection() error {
 				Msg("RDP: CredSSP/NLA authentication complete")
 		}
 
-		// Replace connection and reader with TLS versions
-		c.conn = tlsConn
-		c.reader = bufio.NewReader(tlsConn)
+		// Replace connection and reader with TLS versions.
+		// If capturing, swap the inner conn so reads/writes through captureConn
+		// are now decrypted TLS data.
+		if c.capture != nil {
+			c.conn = c.capture.SwapInner(tlsConn)
+		} else {
+			c.conn = tlsConn
+		}
+		c.reader = bufio.NewReader(c.conn)
+		c.writer = bufio.NewWriterSize(c.conn, writeBufferSize)
 	}
 
 	// Clear both read and write deadlines that were set during TLS handshake.
@@ -218,6 +250,11 @@ func (c *Connection) handleX224Connection() error {
 	// If we only clear read deadline, writes will start failing after HandshakeTimeout (30s).
 	if err := c.conn.SetDeadline(time.Time{}); err != nil {
 		return err
+	}
+
+	// Initialize buffered writer if not already set (non-TLS path)
+	if c.writer == nil {
+		c.writer = bufio.NewWriterSize(c.conn, writeBufferSize)
 	}
 
 	c.phase = PhaseBasicSettings
@@ -272,6 +309,31 @@ func (c *Connection) handleMCSConnect() error {
 			Uint16("width", c.clientInfo.Width).
 			Uint16("height", c.clientInfo.Height).
 			Msg("RDP: client connected")
+
+		// Update capture metadata with client name
+		if c.capture != nil {
+			c.capture.SetClientName(c.clientInfo.Name)
+		}
+
+		c.server.deps.Logger.Debug().
+			Uint32("clientBuild", ccr.CoreData.ClientBuild).
+			Uint16("colorDepth", ccr.CoreData.HighColorDepth).
+			Str("supportedColorDepths", fmt.Sprintf("0x%04x", ccr.CoreData.SupportedColorDepths)).
+			Str("earlyCapFlags", fmt.Sprintf("0x%04x", ccr.CoreData.EarlyCapabilityFlags)).
+			Uint8("connectionType", ccr.CoreData.ConnectionType).
+			Str("keyboardLayout", fmt.Sprintf("0x%08x", ccr.CoreData.KeyboardLayout)).
+			Uint32("keyboardType", ccr.CoreData.KeyboardType).
+			Uint32("scaleFactor", ccr.CoreData.DesktopScaleFactor).
+			Uint32("deviceScale", ccr.CoreData.DeviceScaleFactor).
+			Str("physicalSize", fmt.Sprintf("%dx%dmm", ccr.CoreData.DesktopPhysicalWidth, ccr.CoreData.DesktopPhysicalHeight)).
+			Msg("RDP: CS_CORE details")
+	}
+
+	if ccr != nil && ccr.SecurityData != nil {
+		c.server.deps.Logger.Debug().
+			Str("encryptionMethods", fmt.Sprintf("0x%08x", ccr.SecurityData.EncryptionMethods)).
+			Str("extEncryptMethods", fmt.Sprintf("0x%08x", ccr.SecurityData.ExtEncryptMethods)).
+			Msg("RDP: CS_SECURITY")
 	}
 
 	// Extract channel definitions
@@ -289,14 +351,14 @@ func (c *Connection) handleMCSConnect() error {
 			}
 		}
 
-		// Log filtered channel info
-		channelNames := make([]string, len(c.channels))
+		// Log filtered channel info with options bitmask
+		channelDescs := make([]string, len(c.channels))
 		for i, ch := range c.channels {
-			channelNames[i] = ch.Name
+			channelDescs[i] = fmt.Sprintf("%s(0x%08x)", ch.Name, ch.Options)
 		}
 		c.server.deps.Logger.Debug().
 			Int("channelCount", len(c.channels)).
-			Strs("channels", channelNames).
+			Strs("channels", channelDescs).
 			Msg("RDP: client virtual channels")
 	}
 
@@ -355,10 +417,43 @@ func (c *Connection) handleMCSConnect() error {
 		EncryptionLevel:  0,
 	}
 
-	// Don't send SC_MULTITRANSPORT - some clients (Jump Desktop) don't recognize
-	// this optional block type (0x0C08 = 3080 decimal) and fail with
-	// "Unknown server header type: 3080". We don't support UDP transport anyway.
-	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity, nil)
+	// Parse client's multitransport capability (CS_MULTITRANSPORT)
+	if ccr != nil && ccr.MultitransportData != nil {
+		c.clientMultitransportFlags = ccr.MultitransportData.Flags
+		c.server.deps.Logger.Debug().
+			Str("flags", fmt.Sprintf("0x%08x", c.clientMultitransportFlags)).
+			Bool("UDPFECR", c.clientMultitransportFlags&protocol.TransportTypeUDPFECR != 0).
+			Bool("UDPFECL", c.clientMultitransportFlags&protocol.TransportTypeUDPFECL != 0).
+			Bool("UDP_PREFERRED", c.clientMultitransportFlags&protocol.TransportUDPPreferred != 0).
+			Bool("SOFT_SYNC", c.clientMultitransportFlags&protocol.TransportSoftSyncTCPUDP != 0).
+			Msg("RDP: client multitransport flags")
+	}
+
+	// Send SC_MULTITRANSPORT when UDP transport is fully enabled AND the client
+	// requested it. Advertising UDP capability when the client didn't request it
+	// or without following through with the Initiate Multitransport Request causes
+	// clients (e.g., Windows App) to defer static VC plugin initialization (rdpsnd,
+	// cliprdr), breaking audio and clipboard.
+	var multitransportData *protocol.ServerMultitransportData
+	if c.server.udpEnabled && c.server.multitransportEnabled && c.clientMultitransportFlags != 0 {
+		multitransportData = &protocol.ServerMultitransportData{
+			Flags: protocol.TransportTypeUDPFECR | protocol.TransportUDPPreferred | protocol.TransportSoftSyncTCPUDP,
+		}
+		c.server.deps.Logger.Debug().
+			Str("serverFlags", fmt.Sprintf("0x%08x", multitransportData.Flags)).
+			Msg("RDP: SC_MULTITRANSPORT included=true reason=\"client requested UDP\"")
+	} else {
+		reason := "client flags=0 (no UDP support)"
+		if c.clientMultitransportFlags != 0 && !c.server.udpEnabled {
+			reason = "server UDP disabled"
+		} else if c.clientMultitransportFlags != 0 && !c.server.multitransportEnabled {
+			reason = "server multitransport disabled"
+		}
+		c.server.deps.Logger.Debug().
+			Str("reason", reason).
+			Msg("RDP: SC_MULTITRANSPORT included=false")
+	}
+	gccResponse := protocol.BuildConferenceCreateResponse(serverCore, serverNetwork, serverSecurity, multitransportData)
 	domainParams := protocol.DefaultDomainParameters()
 
 	// Build the full MCS Connect-Response
@@ -484,4 +579,53 @@ func (c *Connection) handleMCSChannelSetup() error {
 
 	c.phase = PhaseSecurityExchange
 	return nil
+}
+
+// softwareTLSUpgrade performs a TLS handshake using Go's standard crypto/tls.
+// Used for gateway connections where the underlying net.Conn is an in-process
+// pipe (tsguConn) without a kernel socket fd, so OpenSSL's SSL_set_fd() cannot work.
+// The conn parameter is the raw transport to upgrade (may differ from c.conn when
+// packet capture is active, as c.conn is the captureConn wrapper).
+func (c *Connection) softwareTLSUpgrade(conn net.Conn) (TLSConn, error) {
+	goConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		MaxVersion: tls.VersionTLS12, // CredSSP requires TLS 1.2
+	}
+
+	if c.server.deps.TLS != nil {
+		goConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return c.server.deps.TLS.GetServerCertificate(hello.ServerName), nil
+		}
+	}
+
+	tlsConn := tls.Server(conn, goConfig)
+	if err := tlsConn.Handshake(); err != nil {
+		return nil, fmt.Errorf("software TLS handshake failed: %w", err)
+	}
+
+	return &softwareTLSConn{Conn: tlsConn}, nil
+}
+
+// softwareTLSConn wraps Go's tls.Conn to implement TLSConn.
+type softwareTLSConn struct {
+	*tls.Conn
+}
+
+func (c *softwareTLSConn) GetCipherName() string {
+	return tls.CipherSuiteName(c.ConnectionState().CipherSuite)
+}
+
+func (c *softwareTLSConn) GetProtocolVersion() string {
+	switch c.ConnectionState().Version {
+	case tls.VersionTLS12:
+		return "TLSv1.2"
+	case tls.VersionTLS13:
+		return "TLSv1.3"
+	default:
+		return fmt.Sprintf("TLS 0x%04x", c.ConnectionState().Version)
+	}
+}
+
+func (c *softwareTLSConn) IsHardwareAccelerated() bool {
+	return false
 }

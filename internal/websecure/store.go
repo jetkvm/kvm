@@ -23,7 +23,7 @@ type CertStore struct {
 
 func NewCertStore(storePath string, log *zerolog.Logger) *CertStore {
 	if log == nil {
-		log = &defaultLogger
+		log = defaultLogger
 	}
 
 	return &CertStore{

@@ -56,30 +56,31 @@ func GetVNCServer() *vnc.Server {
 type vncConfigAdapter struct{}
 
 func (a *vncConfigAdapter) GetTLSMode() string {
-	return config.TLSMode
+	return loadCfg().TLSMode
 }
 
 func (a *vncConfigAdapter) GetVNCQuality() int {
-	return config.VNCQuality
+	return loadCfg().VNCQuality
 }
 
 func (a *vncConfigAdapter) GetVNCMaxConnections() int {
-	return config.VNCMaxConnections
+	return loadCfg().VNCMaxConnections
 }
 
 func (a *vncConfigAdapter) GetVNCPasteDelayMs() int {
-	return config.VNCPasteDelayMs
+	return loadCfg().VNCPasteDelayMs
 }
 
 func (a *vncConfigAdapter) GetVNCClipboardEnabled() bool {
-	return config.VNCClipboardEnabled
+	return loadCfg().VNCClipboardEnabled
 }
 
 func (a *vncConfigAdapter) GetLocalAuthPassword() string {
-	if config.LocalAuthPassword != "" {
-		return config.LocalAuthPassword
+	cfg := loadCfg()
+	if cfg.LocalAuthPassword != "" {
+		return cfg.LocalAuthPassword
 	}
-	return config.VNCPassword
+	return cfg.VNCPassword
 }
 
 // vncEncoderAdapter adapts native encoder to vnc.NativeEncoder interface.
@@ -133,7 +134,7 @@ func (a *vncHIDAdapter) CancelKeyboardMacro() {
 type vncTLSAdapter struct{}
 
 func (a *vncTLSAdapter) IsTLSAvailable() bool {
-	switch config.TLSMode {
+	switch loadCfg().TLSMode {
 	case "self-signed":
 		return !isTimeSyncNeeded() && timeSync != nil && timeSync.IsSyncSuccess()
 	case "custom":
@@ -146,7 +147,9 @@ func (a *vncTLSAdapter) IsTLSAvailable() bool {
 // initVNCServer initializes and starts the VNC server if enabled.
 // Returns an error if the server fails to start.
 func initVNCServer() error {
-	if !config.VNCEnabled {
+	cfg := loadCfg()
+
+	if !cfg.VNCEnabled {
 		vncLogger.Info().Msg("VNC server disabled in configuration")
 		return nil
 	}
@@ -173,16 +176,16 @@ func initVNCServer() error {
 	vnc.GetHardwareCryptoEngineFunc = cryptotls.HardwareEngine
 
 	server := GetVNCServer()
-	server.SetPort(config.VNCPort)
-	server.SetTLSEnabled(config.VNCUseTLS)
+	server.SetPort(cfg.VNCPort)
+	server.SetTLSEnabled(cfg.VNCUseTLS)
 
 	vncLogger.Info().
-		Int("port", config.VNCPort).
-		Int("quality", config.VNCQuality).
-		Bool("tls", config.VNCUseTLS).
+		Int("port", cfg.VNCPort).
+		Int("quality", cfg.VNCQuality).
+		Bool("tls", cfg.VNCUseTLS).
 		Bool("hwCrypto", cryptotls.IsHardwareAvailable()).
 		Str("hwEngine", cryptotls.HardwareEngine()).
-		Int("maxConnections", config.VNCMaxConnections).
+		Int("maxConnections", cfg.VNCMaxConnections).
 		Msg("initializing VNC server")
 
 	if err := server.Start(); err != nil {

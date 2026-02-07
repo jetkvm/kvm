@@ -1,10 +1,7 @@
 package rdp
 
 import (
-	"encoding/binary"
 	"sync"
-
-	"github.com/jetkvm/kvm/internal/rdp/protocol"
 )
 
 // scatterHeaderPool reuses header buffers for scatter-gather I/O.
@@ -47,64 +44,15 @@ func (c *Connection) sendDVCDataScatterGather(sg ScatterGatherWriter, data []byt
 	// Packet layout for scatter-gather:
 	// Buffer 1: [TPKT header 4][X.224 header 3][MCS header 6-8][VC header 8]
 	// Buffer 2: [DVC data payload]
-	const (
-		tpktHeaderLen    = 4
-		x224HeaderLen    = 3
-		mcsHeaderBaseLen = 6
-		vcHeaderLen      = 8
-	)
-
 	vcPayloadLen := len(data)
-	mcsLenFieldSize := 1
-	if vcPayloadLen+vcHeaderLen >= 128 {
-		mcsLenFieldSize = 2
-	}
-	mcsHeaderLen := mcsHeaderBaseLen + mcsLenFieldSize
-
-	totalPacketLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen + vcPayloadLen
-	headerLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen
+	headerLen := mcsChannelHeaderLen(vcPayloadLen)
 
 	// Use pooled buffer for zero-allocation hot path
 	bufPtr := scatterHeaderPool.Get().(*[]byte)
 	header := (*bufPtr)[:headerLen]
 	defer scatterHeaderPool.Put(bufPtr)
 
-	pos := 0
-
-	// TPKT header (4 bytes, big-endian length)
-	header[pos] = protocol.TPKTVersion
-	header[pos+1] = 0
-	binary.BigEndian.PutUint16(header[pos+2:pos+4], uint16(totalPacketLen))
-	pos += tpktHeaderLen
-
-	// X.224 Data TPDU header (3 bytes)
-	header[pos] = 2                      // LI
-	header[pos+1] = protocol.X224Data    // Code
-	header[pos+2] = protocol.X224DataEOT // EOT
-	pos += x224HeaderLen
-
-	// MCS Send Data Indication header
-	header[pos] = byte(protocol.MCSSendDataIndication << 2)
-	relativeUserID := c.userID - protocol.MCSUserIDBase
-	binary.BigEndian.PutUint16(header[pos+1:pos+3], relativeUserID)
-	binary.BigEndian.PutUint16(header[pos+3:pos+5], c.drdynvcID)
-	header[pos+5] = 0x70 // High priority, begin+end segment
-	pos += 6
-
-	// MCS length field (PER encoded)
-	mcsDataLen := vcHeaderLen + vcPayloadLen
-	if mcsDataLen < 128 {
-		header[pos] = byte(mcsDataLen)
-		pos++
-	} else {
-		header[pos] = byte(0x80 | (mcsDataLen >> 8))
-		header[pos+1] = byte(mcsDataLen)
-		pos += 2
-	}
-
-	// VC PDU header (8 bytes, little-endian)
-	binary.LittleEndian.PutUint32(header[pos:pos+4], uint32(vcPayloadLen))
-	binary.LittleEndian.PutUint32(header[pos+4:pos+8], channelFlagFirst|channelFlagLast)
+	c.buildMCSChannelHeader(header, c.drdynvcID, vcPayloadLen)
 
 	// Write using scatter-gather: [header, data]
 	// The kernel will encrypt both buffers as a single TLS record without copying

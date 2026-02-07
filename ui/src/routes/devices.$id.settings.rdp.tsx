@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -7,6 +7,20 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { m } from "@localizations/messages.js";
 
 import notifications from "../notifications";
+
+interface CaptureSessionInfo {
+  id: string;
+  clientName: string;
+  remoteAddr: string;
+  startTime: string;
+  size: number;
+  active: boolean;
+}
+
+interface CaptureStateResult {
+  enabled: boolean;
+  sessions: CaptureSessionInfo[];
+}
 
 interface RDPStateResult {
   enabled: boolean;
@@ -20,6 +34,7 @@ interface RDPStateResult {
   micEnabled: boolean;
   cameraEnabled: boolean;
   cameraTranscodeEnabled: boolean;
+  udpEnabled: boolean;
   clipboardEnabled: boolean;
   pasteDelayMs: number;
   targetOS: string;
@@ -32,6 +47,9 @@ interface RDPStateResult {
   fileTransferMaxMB: number;
   fileTransferTTLSec: number;
   fileTransferCleanupSec: number;
+  // RD Gateway settings
+  gatewayEnabled: boolean;
+  gatewayUDPPort: number;
 }
 
 const RDP_DEFAULTS = {
@@ -40,6 +58,7 @@ const RDP_DEFAULTS = {
   fileTransferMaxMB: 100,
   fileTransferTTLSec: 300,
   fileTransferCleanupSec: 60,
+  gatewayUDPPort: 3391,
 } as const;
 
 export default function SettingsRDPRoute() {
@@ -56,6 +75,7 @@ export default function SettingsRDPRoute() {
   const [micEnabled, setMicEnabled] = useState<boolean>(true);
   const [cameraEnabled, setCameraEnabled] = useState<boolean>(false);
   const [cameraTranscodeEnabled, setCameraTranscodeEnabled] = useState<boolean>(false);
+  const [udpEnabled, setUdpEnabled] = useState<boolean>(true);
   const [username, setUsername] = useState<string>("");
   const [domain, setDomain] = useState<string>("");
   const [clipboardEnabled, setClipboardEnabled] = useState<boolean>(true);
@@ -73,9 +93,16 @@ export default function SettingsRDPRoute() {
   const [fileTransferCleanupSec, setFileTransferCleanupSec] = useState<number>(
     RDP_DEFAULTS.fileTransferCleanupSec,
   );
+  const [gatewayEnabled, setGatewayEnabled] = useState<boolean>(true);
+  const [gatewayUDPPort, setGatewayUDPPort] = useState<number>(RDP_DEFAULTS.gatewayUDPPort);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [isEditingDomain, setIsEditingDomain] = useState(false);
+
+  // Packet capture state
+  const [captureEnabled, setCaptureEnabled] = useState<boolean>(false);
+  const [captureSessions, setCaptureSessions] = useState<CaptureSessionInfo[]>([]);
+  const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadRDPState = useCallback(() => {
     send("getRDPState", {}, (resp: JsonRpcResponse) => {
@@ -98,6 +125,7 @@ export default function SettingsRDPRoute() {
       setMicEnabled(state.micEnabled ?? true);
       setCameraEnabled(state.cameraEnabled ?? false);
       setCameraTranscodeEnabled(state.cameraTranscodeEnabled ?? false);
+      setUdpEnabled(state.udpEnabled ?? true);
       setClipboardEnabled(state.clipboardEnabled ?? true);
       setPasteDelayMs(state.pasteDelayMs ?? 0);
       setTargetOS(state.targetOS || "windows");
@@ -107,6 +135,8 @@ export default function SettingsRDPRoute() {
       setFileTransferMaxMB(state.fileTransferMaxMB || RDP_DEFAULTS.fileTransferMaxMB);
       setFileTransferTTLSec(state.fileTransferTTLSec || RDP_DEFAULTS.fileTransferTTLSec);
       setFileTransferCleanupSec(state.fileTransferCleanupSec || RDP_DEFAULTS.fileTransferCleanupSec);
+      setGatewayEnabled(state.gatewayEnabled ?? true);
+      setGatewayUDPPort(state.gatewayUDPPort || RDP_DEFAULTS.gatewayUDPPort);
       // Only update username/domain if user is not actively editing
       if (!isEditingUsername) {
         setUsername(state.username ?? "");
@@ -247,6 +277,22 @@ export default function SettingsRDPRoute() {
       }
       setCameraTranscodeEnabled(newEnabled);
       notifications.success(m.rdp_settings_camera_transcode_changed());
+    });
+  };
+
+  const handleUdpToggle = () => {
+    const newUdpEnabled = !udpEnabled;
+    send("setRDPUDPEnabled", { enabled: newUdpEnabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setUdpEnabled(newUdpEnabled);
+      notifications.success(
+        newUdpEnabled ? m.rdp_settings_udp_enabled() : m.rdp_settings_udp_disabled(),
+      );
     });
   };
 
@@ -393,6 +439,107 @@ export default function SettingsRDPRoute() {
       setFileTransferCleanupSec(newCleanup);
       notifications.success(m.rdp_settings_file_transfer_cleanup_changed());
     });
+  };
+
+  const handleGatewayToggle = () => {
+    const newEnabled = !gatewayEnabled;
+    send("setRDPGatewayEnabled", { enabled: newEnabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setGatewayEnabled(newEnabled);
+      notifications.success(
+        newEnabled ? m.rdp_settings_gateway_enabled() : m.rdp_settings_gateway_disabled(),
+      );
+    });
+  };
+
+  const handleGatewayUDPPortChange = (newPort: number) => {
+    send("setRDPGatewayUDPPort", { port: newPort }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setGatewayUDPPort(newPort);
+      notifications.success(m.rdp_settings_gateway_udp_port_changed());
+    });
+  };
+
+  const loadCaptureState = useCallback(() => {
+    send("getRDPCaptureState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const state = resp.result as CaptureStateResult;
+      setCaptureEnabled(state.enabled);
+      setCaptureSessions(state.sessions || []);
+    });
+  }, [send]);
+
+  // Poll capture state when enabled or sessions are active
+  useEffect(() => {
+    if (!enabled) return;
+    loadCaptureState();
+    captureTimerRef.current = setInterval(loadCaptureState, 3000);
+    return () => {
+      if (captureTimerRef.current) clearInterval(captureTimerRef.current);
+    };
+  }, [enabled, loadCaptureState]);
+
+  const handleCaptureToggle = () => {
+    const newEnabled = !captureEnabled;
+    send("setRDPCaptureEnabled", { enabled: newEnabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      setCaptureEnabled(newEnabled);
+      notifications.success(
+        newEnabled ? m.rdp_settings_capture_enabled() : m.rdp_settings_capture_disabled(),
+      );
+    });
+  };
+
+  const handleCaptureDelete = (sessionId: string) => {
+    send("deleteRDPCapture", { sessionId }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      notifications.success(m.rdp_settings_capture_deleted());
+      loadCaptureState();
+    });
+  };
+
+  const handleCaptureDeleteAll = () => {
+    send("deleteAllRDPCaptures", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.rdp_settings_failed_save({ error: String(resp.error.data || m.unknown_error()) }),
+        );
+        return;
+      }
+      notifications.success(m.rdp_settings_capture_all_deleted());
+      loadCaptureState();
+    });
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatTime = (isoString: string): string => {
+    const d = new Date(isoString);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   };
 
   if (isLoading) {
@@ -642,6 +789,21 @@ export default function SettingsRDPRoute() {
                     </label>
                   </SettingsItem>
                 )}
+
+                <SettingsItem
+                  title={m.rdp_settings_udp_title()}
+                  description={m.rdp_settings_udp_description()}
+                >
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={udpEnabled}
+                      onChange={handleUdpToggle}
+                      className="peer sr-only"
+                    />
+                    <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+                  </label>
+                </SettingsItem>
               </div>
             </div>
 
@@ -851,6 +1013,160 @@ export default function SettingsRDPRoute() {
                         </span>
                       </div>
                     </SettingsItem>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
+              <h3 className="mb-3 text-sm font-medium text-slate-900 dark:text-white">
+                {m.rdp_settings_gateway_title()}
+              </h3>
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                {m.rdp_settings_gateway_description()}
+              </p>
+
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.rdp_settings_gateway_enable_title()}
+                  description={m.rdp_settings_gateway_enable_description()}
+                >
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={gatewayEnabled}
+                      onChange={handleGatewayToggle}
+                      className="peer sr-only"
+                    />
+                    <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+                  </label>
+                </SettingsItem>
+
+                {gatewayEnabled && (
+                  <SettingsItem
+                    title={m.rdp_settings_gateway_udp_port_title()}
+                    description={m.rdp_settings_gateway_udp_port_description()}
+                  >
+                    <SelectMenuBasic
+                      size="SM"
+                      value={String(gatewayUDPPort)}
+                      options={[
+                        {
+                          value: "3391",
+                          label: `3391${gatewayUDPPort === RDP_DEFAULTS.gatewayUDPPort ? m.rdp_settings_default_suffix() : ""}`,
+                        },
+                        { value: "3392", label: "3392" },
+                        { value: "3393", label: "3393" },
+                        { value: "3394", label: "3394" },
+                        { value: "3395", label: "3395" },
+                      ]}
+                      onChange={e => handleGatewayUDPPortChange(parseInt(e.target.value))}
+                    />
+                  </SettingsItem>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
+              <h3 className="mb-3 text-sm font-medium text-slate-900 dark:text-white">
+                {m.rdp_settings_capture_title()}
+              </h3>
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                {m.rdp_settings_capture_description()}
+              </p>
+
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.rdp_settings_capture_enable_title()}
+                  description={m.rdp_settings_capture_enable_description()}
+                >
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={captureEnabled}
+                      onChange={handleCaptureToggle}
+                      className="peer sr-only"
+                    />
+                    <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-blue-800"></div>
+                  </label>
+                </SettingsItem>
+
+                {captureSessions.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {m.rdp_settings_capture_no_sessions()}
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-600">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                          <tr>
+                            <th className="px-3 py-2">{m.rdp_settings_capture_time()}</th>
+                            <th className="px-3 py-2">{m.rdp_settings_capture_client()}</th>
+                            <th className="px-3 py-2">{m.rdp_settings_capture_size()}</th>
+                            <th className="px-3 py-2">{m.rdp_settings_capture_status()}</th>
+                            <th className="px-3 py-2">{m.rdp_settings_capture_actions()}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {captureSessions.map(session => (
+                            <tr
+                              key={session.id}
+                              className="border-t border-slate-200 dark:border-slate-600"
+                            >
+                              <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-white">
+                                {formatTime(session.startTime)}
+                              </td>
+                              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                                {session.clientName || session.remoteAddr}
+                              </td>
+                              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                                {formatBytes(session.size)}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    session.active
+                                      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                      : "bg-slate-100 text-slate-700 dark:bg-slate-600 dark:text-slate-300"
+                                  }`}
+                                >
+                                  {session.active
+                                    ? m.rdp_settings_capture_active()
+                                    : m.rdp_settings_capture_complete()}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <a
+                                    href={`/rdp/captures/${session.id}`}
+                                    download
+                                    className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                  >
+                                    {m.rdp_settings_capture_download()}
+                                  </a>
+                                  <button
+                                    onClick={() => handleCaptureDelete(session.id)}
+                                    className="text-xs text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                                  >
+                                    {m.rdp_settings_capture_delete()}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleCaptureDeleteAll}
+                        className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        {m.rdp_settings_capture_clear_all()}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>

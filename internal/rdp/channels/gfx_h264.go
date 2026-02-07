@@ -12,6 +12,49 @@ import (
 // ErrGFXNoCodec is returned when no H.264 codec is available.
 var ErrGFXNoCodec = errors.New("gfx: no H.264 codec available")
 
+// checkBackpressure checks if the frame pending queue is full and handles self-healing.
+// Returns nil if a frame can be sent, ErrGFXBackpressure if the caller should drop the frame.
+//
+// Self-healing: if pending stays at max for >10s with no acks, resets the counter.
+// This recovers from edge cases where the client dropped some acks but is still alive.
+//
+// Thread-safety note: the atomic loads/stores here have a benign TOCTOU race.
+// Two concurrent callers may both observe pending >= max and both enter the self-heal
+// path. Both will reset to 0, which is safe — the counter just restarts from 0 twice.
+// The alternative (adding a mutex) would add contention on the hot path for no benefit.
+func (g *GFXChannel) checkBackpressure() error {
+	pending := g.framesPending.Load()
+	if pending >= GFXMaxFramesPending {
+		now := time.Now().UnixMilli()
+		since := g.backpressureSince.Load()
+		if since == 0 {
+			g.backpressureSince.Store(now)
+		} else if now-since > 10000 {
+			// Check that no acks arrived during the stuck period
+			lastAck := g.lastAckTime.Load() * 1000 // Convert seconds to millis
+			if lastAck < since {
+				// No acks since backpressure started — reset to recover.
+				// Also reset frameID and lastAckFrameID to keep them consistent;
+				// otherwise updateFrameAckState would immediately recalculate
+				// a high pending count from the diverged IDs.
+				g.frameID.Store(0)
+				g.lastAckFrameID.Store(0)
+				g.framesPending.Store(0)
+				g.backpressureSince.Store(0)
+				g.log("RDPGFX: self-healed stuck pending counter (no acks for %dms)", now-since)
+				return nil
+			}
+			// Acks are arriving but pending is still high — client is slow, not stuck
+			g.backpressureSince.Store(now) // Reset timer
+			return ErrGFXBackpressure
+		}
+		return ErrGFXBackpressure
+	}
+	// Not in backpressure — clear the timer
+	g.backpressureSince.Store(0)
+	return nil
+}
+
 // SendH264Frame sends an H.264 frame with zero-allocation optimization.
 // The h264Data should contain raw H.264 NAL units.
 // Returns ErrGFXBackpressure if too many frames are pending.
@@ -31,9 +74,8 @@ func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
 	}
 
 	// Flow control - check pending frames (lock-free atomic check)
-	pending := g.framesPending.Load()
-	if pending >= GFXMaxFramesPending {
-		return ErrGFXBackpressure
+	if err := g.checkBackpressure(); err != nil {
+		return err
 	}
 
 	// Protect shared buffers (frameBuf, metaBuf) from concurrent access
@@ -141,6 +183,7 @@ func (g *GFXChannel) SendH264Frame(h264Data []byte, isKeyframe bool) error {
 
 // sendH264FrameMultiSegment is used when the GFX PDU exceeds ZGFX single-segment limit (65KB).
 // This happens for large H.264 keyframes. Uses ZGFX multi-segment format.
+// Builds ZGFX framing directly to eliminate the extra copy through sendGFXData.
 // Uses pooled buffers to reduce GC pressure for keyframes.
 // Note: framesPending was already incremented by caller.
 func (g *GFXChannel) sendH264FrameMultiSegment(h264Data []byte, isKeyframe bool, frameID, timestamp uint32) error {
@@ -151,13 +194,39 @@ func (g *GFXChannel) sendH264FrameMultiSegment(h264Data []byte, isKeyframe bool,
 	endSize := GFXHeaderSize + GFXEndFrameSize
 	gfxPDUSize := startSize + wireSize + endSize
 
-	// Use pooled buffer for large GFX PDU (keyframes)
-	poolBuf := gfxLargeBufferPool.Get().(*[]byte)
-	if cap(*poolBuf) < gfxPDUSize {
-		// Pool buffer too small, allocate a larger one
-		*poolBuf = make([]byte, gfxPDUSize)
+	// Calculate ZGFX multi-segment size directly
+	numSegments := (gfxPDUSize + ZGFXMaxSegmentData - 1) / ZGFXMaxSegmentData
+	zgfxHeaderSize := 7 // descriptor(1) + segmentCount(2) + uncompressedSize(4)
+	zgfxTotalSize := zgfxHeaderSize
+	for i := range numSegments {
+		segDataSize := ZGFXMaxSegmentData
+		remaining := gfxPDUSize - i*ZGFXMaxSegmentData
+		if remaining < segDataSize {
+			segDataSize = remaining
+		}
+		zgfxTotalSize += 4 + 1 + segDataSize // segmentSize(4) + flags(1) + data
 	}
-	gfxBuf := (*poolBuf)[:gfxPDUSize]
+
+	// Use single pooled buffer for the entire ZGFX-wrapped output
+	poolBuf := gfxLargeBufferPool.Get().(*[]byte)
+	if cap(*poolBuf) < zgfxTotalSize {
+		*poolBuf = make([]byte, zgfxTotalSize)
+	}
+	out := (*poolBuf)[:zgfxTotalSize]
+
+	// Build GFX PDU in frameBuf (we hold frameMu). For extremely large frames
+	// that exceed frameBuf, fall back to a separate pool allocation.
+	var gfxBuf []byte
+	var gfxPoolBuf *[]byte
+	if gfxPDUSize <= len(g.frameBuf) {
+		gfxBuf = g.frameBuf[:gfxPDUSize]
+	} else {
+		gfxPoolBuf = gfxLargeBufferPool.Get().(*[]byte)
+		if cap(*gfxPoolBuf) < gfxPDUSize {
+			*gfxPoolBuf = make([]byte, gfxPDUSize)
+		}
+		gfxBuf = (*gfxPoolBuf)[:gfxPDUSize]
+	}
 	pos := 0
 
 	// START_FRAME
@@ -190,11 +259,39 @@ func (g *GFXChannel) sendH264FrameMultiSegment(h264Data []byte, isKeyframe bool,
 	binary.LittleEndian.PutUint32(gfxBuf[pos+4:], uint32(endSize))
 	binary.LittleEndian.PutUint32(gfxBuf[pos+8:], frameID)
 
-	// Wrap with ZGFX multi-segment and send (sendGFXData also uses pooled buffers)
-	err := g.sendGFXData(gfxBuf)
+	// Build ZGFX multi-segment header directly in output buffer
+	outPos := 0
+	out[outPos] = ZGFXSegmentedMulti
+	outPos++
+	binary.LittleEndian.PutUint16(out[outPos:outPos+2], uint16(numSegments))
+	outPos += 2
+	binary.LittleEndian.PutUint32(out[outPos:outPos+4], uint32(gfxPDUSize))
+	outPos += 4
 
-	// Return buffer to pool after sendGFXData copies data
+	// Build segments from GFX PDU data
+	srcPos := 0
+	for range numSegments {
+		segDataSize := ZGFXMaxSegmentData
+		remaining := gfxPDUSize - srcPos
+		if remaining < segDataSize {
+			segDataSize = remaining
+		}
+		segTotalSize := 1 + segDataSize // flags(1) + data
+		binary.LittleEndian.PutUint32(out[outPos:outPos+4], uint32(segTotalSize))
+		outPos += 4
+		out[outPos] = ZGFXPacketComprRDP8 // uncompressed
+		outPos++
+		copy(out[outPos:outPos+segDataSize], gfxBuf[srcPos:srcPos+segDataSize])
+		outPos += segDataSize
+		srcPos += segDataSize
+	}
+
+	// Send directly to DVC channel (no intermediate sendGFXData copy)
+	err := g.channel.SendData(out)
 	gfxLargeBufferPool.Put(poolBuf)
+	if gfxPoolBuf != nil {
+		gfxLargeBufferPool.Put(gfxPoolBuf)
+	}
 
 	if err != nil {
 		g.framesPending.Add(-1)
@@ -250,8 +347,9 @@ func (g *GFXChannel) SendH264FrameAVC444(luma, chroma []byte, isKeyframe bool) e
 		return g.SendH264Frame(luma, isKeyframe)
 	}
 
-	if g.framesPending.Load() >= GFXMaxFramesPending {
-		return ErrGFXBackpressure
+	// Flow control - check pending frames with self-healing (lock-free atomic check)
+	if err := g.checkBackpressure(); err != nil {
+		return err
 	}
 
 	// Protect shared buffers (metaBuf) from concurrent access
@@ -420,8 +518,7 @@ func (g *GFXChannel) IsConnectionStale() bool {
 		return false
 	}
 
-	now := int32(time.Now().Unix())
-	elapsed := now - lastAck
+	elapsed := time.Now().Unix() - lastAck
 
 	// If no ack for more than 30 seconds AND we have significant pending frames, connection is stale
 	// High timeout needed for high-latency connections (e.g., Tailscale over internet)

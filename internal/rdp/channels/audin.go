@@ -36,16 +36,8 @@ const (
 	AudinOpenReplySize  = 4  // result(4)
 )
 
-// Preferred format constants are defined in audio_format.go (shared with RDPSND).
-// Aliased here for backward compatibility.
-const (
-	AudinPreferredChannels      = AudioPreferredChannels
-	AudinPreferredSampleRate    = AudioPreferredSampleRate
-	AudinPreferredBitsPerSample = AudioPreferredBitsPerSample
-	AudinPreferredBlockAlign    = AudioPreferredBlockAlign
-	AudinPreferredBytesPerSec   = AudioPreferredBytesPerSec
-	AudinDefaultFramesPerPacket = AudioPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
-)
+// Default frames per packet: 480 frames for 10ms at 48kHz.
+const audinDefaultFramesPerPacket = audioPreferredSampleRate / 100
 
 // Common errors.
 var (
@@ -108,7 +100,7 @@ func NewAudinChannel(manager *DVCManager) *AudinChannel {
 	return &AudinChannel{
 		manager:         manager,
 		selectedIndex:   -1,
-		framesPerPacket: AudinDefaultFramesPerPacket,
+		framesPerPacket: audinDefaultFramesPerPacket,
 	}
 }
 
@@ -240,8 +232,8 @@ func (a *AudinChannel) sendFormats() error {
 	}
 
 	// We support one format: 16-bit PCM, stereo, 48kHz (uses shared helper)
-	formatData := make([]byte, WAVEFORMATEXSize)
-	EncodePreferredWAVEFORMATEX(formatData, 0)
+	formatData := make([]byte, waveformatexSize)
+	encodePreferredWAVEFORMATEX(formatData, 0)
 
 	buf := make([]byte, AudinHeaderSize+AudinFormatsHdrSize+len(formatData))
 	buf[0] = AudinMsgFormats
@@ -299,17 +291,17 @@ func (a *AudinChannel) handleFormats(data []byte) error {
 	a.formats = make([]AudioFormat, 0, numFormats)
 
 	// Parse client formats (uses shared WAVEFORMATEX parser)
-	for i := uint32(0); i < numFormats && pos+WAVEFORMATEXSize <= len(data); i++ {
-		fmt, cbSize, ok := ParseWAVEFORMATEX(data, pos)
+	for i := uint32(0); i < numFormats && pos+waveformatexSize <= len(data); i++ {
+		fmt, cbSize, ok := parseWAVEFORMATEX(data, pos)
 		if !ok {
 			break
 		}
 		a.formats = append(a.formats, fmt)
-		pos += WAVEFORMATEXSize + int(cbSize)
+		pos += waveformatexSize + int(cbSize)
 	}
 
 	// Find best match (uses shared format selection logic)
-	selectedIndex, selectedFmt := FindPreferredFormat(a.formats)
+	selectedIndex, selectedFmt := findPreferredFormat(a.formats)
 	if selectedIndex < 0 {
 		a.formatMu.Unlock()
 		if a.logger != nil {
@@ -342,14 +334,14 @@ func (a *AudinChannel) handleFormats(data []byte) error {
 // sendOpen sends the open request to start audio capture.
 func (a *AudinChannel) sendOpen(formatIndex uint32) error {
 	if a.logger != nil {
-		a.logger("AUDIN: sending OPEN (formatIndex=%d, framesPerPacket=%d)", formatIndex, AudinPreferredSampleRate/100)
+		a.logger("AUDIN: sending OPEN (formatIndex=%d, framesPerPacket=%d)", formatIndex, audioPreferredSampleRate/100)
 	}
 	buf := make([]byte, AudinHeaderSize+AudinOpenSize)
 	buf[0] = AudinMsgOpen
 
 	// Frames per packet (10ms of audio at sample rate)
 	// This is the number of FRAMES (samples per channel), not bytes
-	framesPerPacket := AudinPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
+	framesPerPacket := audioPreferredSampleRate / 100 // 480 frames for 10ms at 48kHz
 
 	pos := AudinHeaderSize
 	binary.LittleEndian.PutUint32(buf[pos:pos+4], uint32(framesPerPacket))
@@ -358,7 +350,7 @@ func (a *AudinChannel) sendOpen(formatIndex uint32) error {
 	pos += 4
 
 	// WAVEFORMATEX structure (captureFormat) - uses shared helper
-	EncodePreferredWAVEFORMATEX(buf, pos)
+	encodePreferredWAVEFORMATEX(buf, pos)
 
 	return a.channel.SendData(buf)
 }

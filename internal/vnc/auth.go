@@ -59,15 +59,13 @@ func (c *Connection) isTLSAvailable() bool {
 
 // authenticate performs VNC authentication handshake.
 func (c *Connection) authenticate() error {
-	if err := c.conn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return fmt.Errorf("failed to set auth deadline: %w", err)
-	}
-	defer func() {
-		if err := c.conn.SetDeadline(time.Time{}); err != nil {
-			c.server.deps.Logger.Debug().Err(err).Msg("failed to clear auth deadline")
-		}
-	}()
+	return c.withDeadline(handshakeTimeout, func() error {
+		return c.authenticateInner()
+	})
+}
 
+// authenticateInner performs the actual authentication logic within a deadline scope.
+func (c *Connection) authenticateInner() error {
 	if tcpConn, ok := c.conn.(*net.TCPConn); ok {
 		if err := tcpConn.SetNoDelay(true); err != nil {
 			c.server.deps.Logger.Warn().Err(err).Msg("failed to set TCP_NODELAY - VNC input may feel laggy")

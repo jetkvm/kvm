@@ -12,10 +12,11 @@ var gadget *usbgadget.UsbGadget
 
 // call it only after the config is loaded.
 func initUsbGadget() {
+	cfg := loadCfg()
 	gadget = usbgadget.NewUsbGadget(
 		"jetkvm",
-		config.UsbDevices,
-		config.UsbConfig,
+		cfg.UsbDevices,
+		cfg.UsbConfig,
 		usbLogger,
 	)
 

@@ -5,7 +5,7 @@ func initUVC() {
 	if mgr == nil {
 		return
 	}
-	if err := mgr.InitUVC(config.UsbDevices.UVC); err != nil {
+	if err := mgr.InitUVC(loadCfg().UsbDevices.UVC); err != nil {
 		uvcLog.Warn().Err(err).Msg("UVC initialization failed")
 	}
 }
@@ -15,7 +15,7 @@ func reinitUVC() {
 	if mgr == nil {
 		return
 	}
-	mgr.ReinitUVC(config.UsbDevices.UVC)
+	mgr.ReinitUVC(loadCfg().UsbDevices.UVC)
 }
 
 // stopUVC must be called before USB gadget reconfiguration to prevent kernel hangs.

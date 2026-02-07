@@ -15,6 +15,7 @@ var (
 	videoSleepMu         sync.Mutex // protects videoSleepModeCtx and videoSleepModeCancel
 	videoSleepModeCtx    context.Context
 	videoSleepModeCancel context.CancelFunc
+	emptyVideoState      native.VideoState
 )
 
 // getLastVideoState returns the last known video state, never nil.
@@ -22,7 +23,7 @@ func getLastVideoState() *native.VideoState {
 	if s := lastVideoState.Load(); s != nil {
 		return s
 	}
-	return &native.VideoState{}
+	return &emptyVideoState
 }
 
 const (
@@ -54,7 +55,7 @@ func rpcGetVideoSleepMode() rpcVideoSleepModeResponse {
 	return rpcVideoSleepModeResponse{
 		Supported: nativeInstance.VideoSleepModeSupported(),
 		Enabled:   sleepMode,
-		Duration:  config.VideoSleepAfterSec,
+		Duration:  loadCfg().VideoSleepAfterSec,
 	}
 }
 
@@ -63,8 +64,9 @@ func rpcSetVideoSleepMode(duration int) error {
 		duration = -1 // disable
 	}
 
-	config.VideoSleepAfterSec = duration
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VideoSleepAfterSec = duration
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -94,10 +96,11 @@ func startVideoSleepModeTicker() {
 
 	var duration time.Duration
 
-	if config.VideoSleepAfterSec == 0 {
+	sleepSec := loadCfg().VideoSleepAfterSec
+	if sleepSec == 0 {
 		duration = defaultVideoSleepModeDuration
-	} else if config.VideoSleepAfterSec > 0 {
-		duration = time.Duration(config.VideoSleepAfterSec) * time.Second
+	} else if sleepSec > 0 {
+		duration = time.Duration(sleepSec) * time.Second
 	} else {
 		stopVideoSleepModeTicker()
 		return

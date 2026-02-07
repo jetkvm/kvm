@@ -11,6 +11,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// derivedLoggerEntry tracks a logger created via .With().Logger() that needs
+// its level updated when the parent scope's level changes.
+type derivedLoggerEntry struct {
+	scope  string
+	logger *zerolog.Logger
+}
+
 type Logger struct {
 	l               *zerolog.Logger
 	scopeLoggers    map[string]*zerolog.Logger
@@ -24,6 +31,9 @@ type Logger struct {
 	// Config-based overrides (highest priority)
 	configSubsystemLevels map[string]zerolog.Level
 	configGlobalLevel     zerolog.Level
+
+	// Derived loggers that need level updates (registered via RegisterDerivedLogger)
+	derivedLoggers []derivedLoggerEntry
 }
 
 const (
@@ -237,7 +247,7 @@ func (l *Logger) SetSubsystemLevels(overrides string) {
 	l.scopeLevelMutex.Unlock()
 }
 
-// refreshAllLoggersLocked updates all existing scope loggers to use the new levels.
+// refreshAllLoggersLocked updates all existing scope loggers and derived loggers.
 // Must be called with scopeLevelMutex held.
 func (l *Logger) refreshAllLoggersLocked() {
 	for scope, logger := range l.scopeLoggers {
@@ -245,6 +255,35 @@ func (l *Logger) refreshAllLoggersLocked() {
 		targetLevel := l.getScopeLoggerLevelLocked(scope)
 		if currentLevel != targetLevel {
 			*logger = l.newScopeLogger(scope)
+		}
+	}
+
+	// Update derived loggers (.With().Logger() copies with frozen levels)
+	for _, d := range l.derivedLoggers {
+		targetLevel := l.getScopeLoggerLevelLocked(d.scope)
+		if d.logger.GetLevel() != targetLevel {
+			*d.logger = d.logger.Level(targetLevel)
+		}
+	}
+}
+
+// registerDerivedLogger tracks a .With().Logger() copy so its level is updated
+// when the parent scope's level changes. The logger pointer must remain stable.
+func (l *Logger) registerDerivedLogger(scope string, logger *zerolog.Logger) {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+	l.derivedLoggers = append(l.derivedLoggers, derivedLoggerEntry{scope: scope, logger: logger})
+}
+
+// unregisterDerivedLogger removes a previously registered derived logger.
+func (l *Logger) unregisterDerivedLogger(logger *zerolog.Logger) {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
+	for i, d := range l.derivedLoggers {
+		if d.logger == logger {
+			l.derivedLoggers = append(l.derivedLoggers[:i], l.derivedLoggers[i+1:]...)
+			return
 		}
 	}
 }

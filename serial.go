@@ -324,7 +324,7 @@ func initSerialPort() {
 	if err := reopenSerialPort(); err != nil {
 		serialLogger.Error().Err(err).Msg("failed to open serial port during init")
 	}
-	switch config.ActiveExtension {
+	switch loadCfg().ActiveExtension {
 	case "atx-power":
 		if err := mountATXControl(); err != nil {
 			serialLogger.Error().Err(err).Msg("failed to mount ATX control")

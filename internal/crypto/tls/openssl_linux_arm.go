@@ -114,15 +114,22 @@ static int hw_crypto_initialized = 0;
 static ENGINE *devcrypto_engine = NULL;
 
 // Log level for OpenSSL info messages: 1=INFO, 2=WARN (default), 3=ERROR
-// Using volatile for single-core RV1106 (no cache coherency issues)
-volatile int openssl_log_level = 2;  // Default to WARN (non-static for Go access)
+// Using volatile for single-core RV1106 (no cache coherency issues).
+// Static to avoid duplicate symbols when CGO generates _cgo_export.c.
+static volatile int openssl_log_level = 2;
 
-// Set the OpenSSL log level from Go
-// Clamps to valid range: TRACE=-1 to DISABLE=6 (zerolog convention)
-void openssl_set_log_level(int level) {
+// Set the OpenSSL log level from Go.
+// Clamps to valid range: TRACE=-1 to DISABLE=6 (zerolog convention).
+// Static because it's only called from this file's Go code via C.openssl_set_log_level().
+static void openssl_set_log_level(int level) {
     if (level < -1) level = -1;
     if (level > 6) level = 6;
     openssl_log_level = level;
+}
+
+// Getter for Go code — Go can't access static variables directly.
+static int openssl_get_log_level() {
+    return openssl_log_level;
 }
 
 // List available engines for debugging
@@ -515,10 +522,25 @@ static int is_ktls_recv_enabled(SSL *ssl) {
 static int get_ssl_fd(SSL *ssl) {
     return SSL_get_fd(ssl);
 }
+
+// TLS key log callback for Wireshark decryption (NSS key log format).
+// SSL_CTX_set_keylog_callback was added in OpenSSL 1.1.1.
+// Note: CGO generates the extern prototype from //export goSSLKeyLogCallback
+// with signature `void goSSLKeyLogCallback(char* line)` (no const).
+// We must match that signature here to avoid "conflicting types" errors.
+extern void goSSLKeyLogCallback(char *line);
+static void ssl_keylog_callback(const SSL *ssl, const char *line) {
+    (void)ssl;
+    goSSLKeyLogCallback((char*)line);
+}
+static void enable_keylog(SSL_CTX *ctx) {
+    SSL_CTX_set_keylog_callback(ctx, ssl_keylog_callback);
+}
 */
 import "C"
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -531,7 +553,27 @@ import (
 	"unsafe"
 )
 
-var initOnce sync.Once
+var (
+	initOnce sync.Once
+
+	// keyLogWriter is the global writer for TLS key log output (NSS format).
+	// Protected by keyLogMu. Set via Config.KeyLogWriter before connections.
+	keyLogWriter io.Writer
+	keyLogMu     sync.Mutex
+)
+
+//export goSSLKeyLogCallback
+func goSSLKeyLogCallback(line *C.char) {
+	keyLogMu.Lock()
+	w := keyLogWriter
+	keyLogMu.Unlock()
+	if w == nil {
+		return
+	}
+	goLine := C.GoString(line)
+	// NSS key log format: one line per secret, terminated by newline
+	_, _ = fmt.Fprintln(w, goLine)
+}
 
 func initImpl() {
 	initOnce.Do(func() {
@@ -683,7 +725,9 @@ func (c *opensslConn) Close() error {
 	defer c.writeMu.Unlock()
 
 	C.SSL_free(c.ssl)
-	C.SSL_CTX_free(c.ctx)
+	if c.ctx != nil {
+		C.SSL_CTX_free(c.ctx)
+	}
 
 	return nil
 }
@@ -811,28 +855,14 @@ func (c *opensslConn) GetFD() int {
 func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 	initImpl()
 
-	tcpConn, ok := conn.(*net.TCPConn)
-	if !ok {
-		return nil, fmt.Errorf("connection must be TCP")
-	}
-
-	rawConn, err := tcpConn.SyscallConn()
+	fd, err := getTCPFd(conn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get raw connection: %w", err)
-	}
-
-	var fd int
-	err = rawConn.Control(func(fdPtr uintptr) {
-		fd = int(fdPtr)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get fd: %w", err)
+		return nil, err
 	}
 
 	// Determine certificate and key
 	var certPEM, keyPEM string
 	if config.GetCertificate != nil {
-		// Use dynamic certificate callback
 		cert, err := config.GetCertificate(nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get certificate: %w", err)
@@ -849,13 +879,11 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		keyPEM = config.KeyPEM
 	}
 
-	// Validate certificate is available
 	cipherList := cipherSuitesX509String()
 	if certPEM == "" || keyPEM == "" {
 		return nil, fmt.Errorf("X.509 mode requires certificate and key")
 	}
 
-	// Determine TLS version
 	minVersion := config.MinVersion
 	if minVersion == 0 {
 		minVersion = tls.VersionTLS12
@@ -880,90 +908,26 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		return nil, fmt.Errorf("failed to create SSL context: %s", C.GoString(errStr))
 	}
 
-	ssl := C.SSL_new(ctx)
-	if ssl == nil {
-		C.SSL_CTX_free(ctx)
-		errStr := C.get_ssl_error_string()
-		defer C.free(unsafe.Pointer(errStr))
-		return nil, fmt.Errorf("failed to create SSL connection: %s", C.GoString(errStr))
+	if config.KeyLogWriter != nil {
+		keyLogMu.Lock()
+		keyLogWriter = config.KeyLogWriter
+		keyLogMu.Unlock()
+		C.enable_keylog(ctx)
 	}
 
-	// Set socket to blocking mode permanently for OpenSSL I/O.
-	// Go sets fds non-blocking for epoll, but OpenSSL calls read()/write() on the raw fd.
-	// In non-blocking mode, SSL_read/SSL_write would get EAGAIN and return
-	// SSL_ERROR_WANT_READ/WRITE which we don't retry. Blocking mode lets OpenSSL
-	// complete I/O normally. Timeouts are enforced via SO_SNDTIMEO/SO_RCVTIMEO
-	// (see SetWriteDeadline/SetReadDeadline) instead of Go's epoll-based deadlines.
-	if C.set_blocking(C.int(fd)) != 0 {
+	ssl, err := newSSLFromCtx(ctx, fd)
+	if err != nil {
+		C.SSL_CTX_free(ctx)
+		return nil, err
+	}
+
+	if err := sslAccept(ssl); err != nil {
 		C.SSL_free(ssl)
 		C.SSL_CTX_free(ctx)
-		return nil, fmt.Errorf("failed to set fd to blocking mode")
+		return nil, err
 	}
 
-	if C.SSL_set_fd(ssl, C.int(fd)) != 1 {
-		C.SSL_free(ssl)
-		C.SSL_CTX_free(ctx)
-		errStr := C.get_ssl_error_string()
-		defer C.free(unsafe.Pointer(errStr))
-		return nil, fmt.Errorf("failed to set SSL fd: %s", C.GoString(errStr))
-	}
-
-	ret := C.SSL_accept(ssl)
-	if ret != 1 {
-		sslErr := C.SSL_get_error(ssl, ret)
-		errStr := C.get_ssl_error_string()
-		errMsg := C.GoString(errStr)
-		C.free(unsafe.Pointer(errStr))
-
-		// Get errno early before it gets clobbered
-		savedErrno := C.get_errno()
-
-		// Build detailed error message
-		var details string
-		switch sslErr {
-		case C.SSL_ERROR_NONE:
-			details = "SSL_ERROR_NONE"
-		case C.SSL_ERROR_SSL:
-			details = "SSL_ERROR_SSL"
-		case C.SSL_ERROR_WANT_READ:
-			details = "SSL_ERROR_WANT_READ (socket not ready)"
-		case C.SSL_ERROR_WANT_WRITE:
-			details = "SSL_ERROR_WANT_WRITE (socket not ready)"
-		case C.SSL_ERROR_SYSCALL:
-			if savedErrno == 0 {
-				details = "SSL_ERROR_SYSCALL (EOF/connection closed)"
-			} else {
-				details = fmt.Sprintf("SSL_ERROR_SYSCALL errno=%d", savedErrno)
-			}
-		case C.SSL_ERROR_ZERO_RETURN:
-			details = "SSL_ERROR_ZERO_RETURN (clean shutdown)"
-		default:
-			details = fmt.Sprintf("SSL_ERROR_%d", sslErr)
-		}
-
-		C.SSL_free(ssl)
-		C.SSL_CTX_free(ctx)
-
-		if errMsg == "" || errMsg == "unknown error" {
-			return nil, fmt.Errorf("TLS handshake failed: %s", details)
-		}
-		return nil, fmt.Errorf("TLS handshake failed: %s (%s)", errMsg, details)
-	}
-
-	// Log kTLS status after handshake for diagnostics (one-time per connection, not hot path)
-	// Only log at INFO level (log level <= 1)
-	if C.openssl_log_level <= 1 {
-		ktlsSend := C.is_ktls_send_enabled(ssl) != 0
-		ktlsRecv := C.is_ktls_recv_enabled(ssl) != 0
-		cipher := C.SSL_get_current_cipher(ssl)
-		var cipherName string
-		if cipher != nil {
-			cipherName = C.GoString(C.SSL_CIPHER_get_name(cipher))
-		}
-		tlsVersion := C.GoString(C.SSL_get_version(ssl))
-		fmt.Fprintf(os.Stderr, "INFO: OpenSSL TLS handshake complete: version=%s cipher=%s kTLS_send=%v kTLS_recv=%v ktls_available=%d\n",
-			tlsVersion, cipherName, ktlsSend, ktlsRecv, 1-C.KTLS_NOT_AVAILABLE)
-	}
+	logHandshake(ssl)
 
 	return &opensslConn{
 		ssl:  ssl,
@@ -1044,4 +1008,257 @@ func base64Encode(data []byte) string {
 // encodePrivateKey encodes a private key to PKCS#8 DER format.
 func encodePrivateKey(key any) ([]byte, error) {
 	return doMarshalPKCS8PrivateKey(key)
+}
+
+// --- Helper functions shared by serverImpl and opensslSharedCtx ---
+
+// getTCPFd extracts the file descriptor from a TCP connection.
+func getTCPFd(conn net.Conn) (int, error) {
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return 0, fmt.Errorf("connection must be TCP")
+	}
+
+	rawConn, err := tcpConn.SyscallConn()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get raw connection: %w", err)
+	}
+
+	var fd int
+	err = rawConn.Control(func(fdPtr uintptr) {
+		fd = int(fdPtr)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to get fd: %w", err)
+	}
+	return fd, nil
+}
+
+// newSSLFromCtx creates an SSL object from an existing SSL_CTX, sets the fd
+// to blocking mode, and binds it. Caller must SSL_free on error.
+func newSSLFromCtx(ctx *C.SSL_CTX, fd int) (*C.SSL, error) {
+	ssl := C.SSL_new(ctx)
+	if ssl == nil {
+		errStr := C.get_ssl_error_string()
+		defer C.free(unsafe.Pointer(errStr))
+		return nil, fmt.Errorf("failed to create SSL connection: %s", C.GoString(errStr))
+	}
+
+	if C.set_blocking(C.int(fd)) != 0 {
+		C.SSL_free(ssl)
+		return nil, fmt.Errorf("failed to set fd to blocking mode")
+	}
+
+	if C.SSL_set_fd(ssl, C.int(fd)) != 1 {
+		C.SSL_free(ssl)
+		errStr := C.get_ssl_error_string()
+		defer C.free(unsafe.Pointer(errStr))
+		return nil, fmt.Errorf("failed to set SSL fd: %s", C.GoString(errStr))
+	}
+
+	return ssl, nil
+}
+
+// sslAccept performs the TLS handshake and returns a descriptive error on failure.
+// The caller is responsible for freeing the SSL on error.
+func sslAccept(ssl *C.SSL) error {
+	ret := C.SSL_accept(ssl)
+	if ret == 1 {
+		return nil
+	}
+
+	sslErr := C.SSL_get_error(ssl, ret)
+	errStr := C.get_ssl_error_string()
+	errMsg := C.GoString(errStr)
+	C.free(unsafe.Pointer(errStr))
+
+	savedErrno := C.get_errno()
+
+	var details string
+	switch sslErr {
+	case C.SSL_ERROR_NONE:
+		details = "SSL_ERROR_NONE"
+	case C.SSL_ERROR_SSL:
+		details = "SSL_ERROR_SSL"
+	case C.SSL_ERROR_WANT_READ:
+		details = "SSL_ERROR_WANT_READ (socket not ready)"
+	case C.SSL_ERROR_WANT_WRITE:
+		details = "SSL_ERROR_WANT_WRITE (socket not ready)"
+	case C.SSL_ERROR_SYSCALL:
+		if savedErrno == 0 {
+			details = "SSL_ERROR_SYSCALL (EOF/connection closed)"
+		} else {
+			details = fmt.Sprintf("SSL_ERROR_SYSCALL errno=%d", savedErrno)
+		}
+	case C.SSL_ERROR_ZERO_RETURN:
+		details = "SSL_ERROR_ZERO_RETURN (clean shutdown)"
+	default:
+		details = fmt.Sprintf("SSL_ERROR_%d", sslErr)
+	}
+
+	if errMsg == "" || errMsg == "unknown error" {
+		return fmt.Errorf("TLS handshake failed: %s", details)
+	}
+	return fmt.Errorf("TLS handshake failed: %s (%s)", errMsg, details)
+}
+
+// logHandshake logs the TLS handshake result at INFO level.
+func logHandshake(ssl *C.SSL) {
+	if C.openssl_get_log_level() <= 1 {
+		ktlsSend := C.is_ktls_send_enabled(ssl) != 0
+		ktlsRecv := C.is_ktls_recv_enabled(ssl) != 0
+		cipher := C.SSL_get_current_cipher(ssl)
+		var cipherName string
+		if cipher != nil {
+			cipherName = C.GoString(C.SSL_CIPHER_get_name(cipher))
+		}
+		tlsVersion := C.GoString(C.SSL_get_version(ssl))
+		fmt.Fprintf(os.Stderr, "INFO: OpenSSL TLS handshake complete: version=%s cipher=%s kTLS_send=%v kTLS_recv=%v ktls_available=%d\n",
+			tlsVersion, cipherName, ktlsSend, ktlsRecv, 1-C.KTLS_NOT_AVAILABLE)
+	}
+}
+
+// --- Shared SSL_CTX for Listener (multi-connection reuse) ---
+
+// opensslSharedCtx caches an SSL_CTX for reuse across connections. The CTX is
+// lazily created on the first connection and automatically recreated when the
+// certificate changes (detected by comparing the leaf cert DER bytes).
+// SSL_CTX's internal session cache provides TLS session resumption.
+type opensslSharedCtx struct {
+	mu      sync.RWMutex
+	ctx     *C.SSL_CTX
+	certDER []byte // cached leaf cert DER for change detection
+	config  *Config
+}
+
+func newSharedCtxImpl(config *Config) sharedCtx {
+	return &opensslSharedCtx{config: config}
+}
+
+// getOrCreateCtx returns a cached SSL_CTX, creating or replacing it as needed.
+func (s *opensslSharedCtx) getOrCreateCtx() (*C.SSL_CTX, error) {
+	if s.config.GetCertificate == nil {
+		return nil, fmt.Errorf("GetCertificate not set")
+	}
+
+	cert, err := s.config.GetCertificate(nil)
+	if err != nil {
+		return nil, err
+	}
+	if cert == nil || len(cert.Certificate) == 0 {
+		return nil, fmt.Errorf("no certificate available")
+	}
+
+	leafDER := cert.Certificate[0]
+
+	// Fast path: cert unchanged, reuse CTX.
+	s.mu.RLock()
+	if s.ctx != nil && bytes.Equal(s.certDER, leafDER) {
+		ctx := s.ctx
+		s.mu.RUnlock()
+		return ctx, nil
+	}
+	s.mu.RUnlock()
+
+	// Slow path: cert changed (or first use), (re)create CTX.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Double-check after acquiring write lock.
+	if s.ctx != nil && bytes.Equal(s.certDER, leafDER) {
+		return s.ctx, nil
+	}
+
+	certPEM, keyPEM, err := certToPEM(cert)
+	if err != nil {
+		return nil, err
+	}
+
+	cipherList := cipherSuitesX509String()
+
+	minVersion := s.config.MinVersion
+	if minVersion == 0 {
+		minVersion = tls.VersionTLS12
+	}
+	maxVersion := s.config.MaxVersion
+	if maxVersion == 0 {
+		maxVersion = tls.VersionTLS13
+	}
+
+	certC := C.CString(certPEM)
+	keyC := C.CString(keyPEM)
+	cipherC := C.CString(cipherList)
+	defer C.free(unsafe.Pointer(certC))
+	defer C.free(unsafe.Pointer(keyC))
+	defer C.free(unsafe.Pointer(cipherC))
+
+	newCtx := C.create_ssl_ctx(1, certC, keyC, cipherC,
+		C.int(opensslVersion(minVersion)), C.int(opensslVersion(maxVersion)))
+	if newCtx == nil {
+		errStr := C.get_ssl_error_string()
+		defer C.free(unsafe.Pointer(errStr))
+		return nil, fmt.Errorf("failed to create SSL context: %s", C.GoString(errStr))
+	}
+
+	if s.config.KeyLogWriter != nil {
+		keyLogMu.Lock()
+		keyLogWriter = s.config.KeyLogWriter
+		keyLogMu.Unlock()
+		C.enable_keylog(newCtx)
+	}
+
+	// SSL_CTX uses reference counting: existing SSL objects hold their own
+	// reference to the old CTX, so it stays alive until they are freed.
+	oldCtx := s.ctx
+	s.ctx = newCtx
+	s.certDER = append([]byte(nil), leafDER...)
+
+	if oldCtx != nil {
+		C.SSL_CTX_free(oldCtx)
+	}
+
+	return newCtx, nil
+}
+
+func (s *opensslSharedCtx) serverConn(conn net.Conn) (Conn, error) {
+	initImpl()
+
+	ctx, err := s.getOrCreateCtx()
+	if err != nil {
+		return nil, err
+	}
+
+	fd, err := getTCPFd(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	ssl, err := newSSLFromCtx(ctx, fd)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := sslAccept(ssl); err != nil {
+		C.SSL_free(ssl)
+		return nil, err
+	}
+
+	logHandshake(ssl)
+
+	return &opensslConn{
+		ssl:  ssl,
+		ctx:  nil, // shared context manages CTX lifecycle
+		conn: conn,
+		fd:   fd,
+	}, nil
+}
+
+func (s *opensslSharedCtx) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ctx != nil {
+		C.SSL_CTX_free(s.ctx)
+		s.ctx = nil
+		s.certDER = nil
+	}
 }

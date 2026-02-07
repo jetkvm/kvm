@@ -37,8 +37,6 @@ type Server struct {
 	rateLimitMu  sync.Mutex           // protects lastConnTime only; acquire after mu
 	lastConnTime map[string]time.Time // rate limiting per IP
 
-	startError error // track if server failed to start for status reporting
-
 	// Dependencies injected from kvm package
 	deps Dependencies
 }
@@ -74,7 +72,6 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
 	listener, err := net.Listen("tcp4", addr)
 	if err != nil {
-		s.startError = err
 		return fmt.Errorf("failed to create listener: %w", err)
 	}
 
@@ -86,7 +83,6 @@ func (s *Server) Start() error {
 
 	s.listener = listener
 	s.running = true
-	s.startError = nil
 	s.stopChan = make(chan struct{})
 
 	go s.acceptLoop()
@@ -417,6 +413,14 @@ func (s *Server) acceptLoop() {
 
 		s.deps.Logger.Info().Str("remote", remoteAddr).Msg("new VNC connection")
 
+		// TCP tuning for low latency over tunnels (e.g., Tailscale)
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			_ = tcpConn.SetWriteBuffer(256 * 1024)
+			_ = tcpConn.SetReadBuffer(64 * 1024)
+			_ = tcpConn.SetKeepAlive(true)
+			_ = tcpConn.SetKeepAlivePeriod(30 * time.Second)
+		}
+
 		vncConn := NewConnection(conn, s)
 		s.connections.Store(vncConn, true)
 		s.connCount.Add(1)
@@ -433,6 +437,10 @@ func (s *Server) acceptLoop() {
 						Str("errorId", "VNC_HANDLER_PANIC").
 						Msg("VNC connection handler panicked - this is a bug, please report")
 				}
+
+				// Close the connection to release stopChan and all associated goroutines.
+				// Without this, the messageLoop stopChan goroutine leaks on every disconnect.
+				vc.Close()
 
 				s.connections.Delete(vc)
 				s.connCount.Add(-1)

@@ -1,6 +1,9 @@
 package channels
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"time"
+)
 
 // RDPGFX surface management operations.
 // This file contains functions for creating, deleting, and managing GFX surfaces.
@@ -134,6 +137,17 @@ func (g *GFXChannel) UpdateResolution(width, height uint16) error {
 
 	// Clear initialized flag to prevent frames from being sent during surface recreation
 	g.initialized.Store(false)
+
+	// Reset frame tracking state. Old frame IDs are meaningless after surface recreation —
+	// the client won't ack them, so keeping stale pending counts would prevent new frames
+	// from being sent (backpressure) or cause the connection to appear stale.
+	// Store current time in lastAckTime so IsConnectionStale() doesn't immediately trigger
+	// (a zero value would disable stale detection entirely since we check lastAck == 0).
+	g.frameID.Store(0)
+	g.framesPending.Store(0)
+	g.lastAckFrameID.Store(0)
+	g.lastAckTime.Store(time.Now().Unix())
+	g.backpressureSince.Store(0)
 
 	// Delete old surface
 	if err := g.sendDeleteSurface(g.surfaceID); err != nil {

@@ -84,7 +84,7 @@ func (c *Connection) handleLicensing() error {
 }
 
 // licensePDUValidClient is a pre-built License Error PDU with STATUS_VALID_CLIENT.
-// This is a static PDU that never changes, so we build it once at package init.
+// This is a static PDU that never changes, so we build it once at package initialization.
 // Layout (20 bytes total):
 //   - Basic Security Header (4 bytes): SEC_LICENSE_PKT flag
 //   - License PDU Preamble (4 bytes): ERROR_ALERT, PREAMBLE_VERSION_2_0
@@ -293,6 +293,17 @@ func (c *Connection) sendFinalizationPDUs() error {
 	}
 
 	c.server.deps.Logger.Debug().Msg("RDP: sent finalization PDUs")
+
+	// Initiate Multitransport Request (optional, non-fatal).
+	// Per MS-RDPBCGR 2.2.15.1, this MUST be sent during the Connection Finalization
+	// phase (after Font Map, before the session becomes active). Sending it later
+	// causes the client to misparse the Basic Security Header as a Share Control PDU.
+	if c.server.multitransportEnabled && c.server.udpEnabled && c.clientMultitransportFlags != 0 {
+		if err := c.initiateMultitransport(); err != nil {
+			c.server.deps.Logger.Warn().Err(err).
+				Msg("RDP: failed to initiate multitransport, continuing TCP-only")
+		}
+	}
 
 	return nil
 }

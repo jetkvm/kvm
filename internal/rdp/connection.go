@@ -11,6 +11,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/rdp/channels"
 	"github.com/jetkvm/kvm/internal/rdp/protocol"
+	"github.com/jetkvm/kvm/internal/rdp/udp"
 )
 
 // bitmapEncoderType tracks which bitmap encoder a connection started.
@@ -26,16 +27,47 @@ const (
 // Prevents slow clients from blocking the message loop on single-core devices.
 const rdpWriteDeadline = 5 * time.Second
 
-// writeWithDeadline sets a write deadline, executes the write function, then clears the deadline.
+// writeWithDeadline sets a write deadline and executes the write function.
 // Prevents slow clients from blocking the message loop, which causes mouse/video lag
 // that worsens with each reconnect (TCP slow start + stalls) on single-core devices.
+// The deadline is not cleared after the write — each subsequent call sets a fresh
+// deadline, and stale deadlines cannot fire spuriously between writes.
 func (c *Connection) writeWithDeadline(writeFn func() error) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(rdpWriteDeadline)); err != nil {
 		return err
 	}
-	err := writeFn()
-	_ = c.conn.SetWriteDeadline(time.Time{})
+	return writeFn()
+}
+
+// BufferedWrite appends data to the write buffer without flushing.
+// DVC fragments accumulate in the buffer and are flushed as a single
+// TLS record per frame by FlushWrites(), reducing 63 syscalls to 1-2.
+func (c *Connection) BufferedWrite(data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	if c.writer == nil {
+		// Fallback: writer not yet initialized (pre-TLS handshake)
+		_, err := c.conn.Write(data)
+		return err
+	}
+	_, err := c.writer.Write(data)
 	return err
+}
+
+// FlushWrites flushes the buffered writer, sending all accumulated DVC
+// fragments as a minimal number of TLS records.
+func (c *Connection) FlushWrites() error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	if c.writer == nil {
+		return nil
+	}
+	if err := c.conn.SetWriteDeadline(time.Now().Add(rdpWriteDeadline)); err != nil {
+		return err
+	}
+	return c.writer.Flush()
 }
 
 // vcPDUPool provides pooled buffers for virtual channel PDUs per MS-RDPBCGR 2.2.6.1.
@@ -83,11 +115,18 @@ var inputPayloadPool = sync.Pool{
 	},
 }
 
+// Write buffering constants for coalescing DVC fragments.
+const (
+	writeBufferSize = 256 * 1024 // 256KB — fits a typical 100KB keyframe + headroom
+)
+
 // Connection represents a single RDP client connection.
 type Connection struct {
 	conn     net.Conn
 	server   *Server
 	reader   *bufio.Reader
+	writer   *bufio.Writer // buffered writer for coalescing DVC fragments
+	writeMu  sync.Mutex    // serializes buffered writes and flushes
 	stopChan chan struct{}
 	closed   atomic.Bool
 
@@ -180,7 +219,8 @@ type Connection struct {
 		dropNotReady                  atomic.Uint64 // Dropped: channel not ready
 		dropNoKeyframe                atomic.Uint64 // Dropped: waiting for keyframe
 		dropBackpressure              atomic.Uint64 // Dropped: backpressure
-		lastLogTime                   atomic.Int64  // UnixMilli of last stats log
+		lastLogTime                   atomic.Int64  // UnixMilli of last 30s diagnostic stats log
+		lastKeyframeDropLogTime       atomic.Int64  // UnixMilli of last 1s keyframe drop log (separate to avoid interference)
 		lastLogDrops                  atomic.Uint64 // Total drops at last log (for delta calculation)
 		backpressureKeyframeRequested atomic.Bool   // True if keyframe requested during current backpressure episode
 	}
@@ -192,6 +232,21 @@ type Connection struct {
 		totalLength uint32 // Expected total length from first fragment
 		mu          sync.Mutex
 	}
+
+	// Gateway mode: connection arrived via RD Gateway direct pipe.
+	// Uses Go's software crypto/tls instead of hardware-accelerated OpenSSL,
+	// because the in-process tsguConn has no kernel socket fd for SSL_set_fd().
+	softwareTLS bool
+
+	// Multitransport / UDP (MS-RDPEUDP2)
+	clientMultitransportFlags uint32      // Client's CS_MULTITRANSPORT flags (0 if not requested)
+	udpTunnel                 *udp.Tunnel // nil until UDP is established
+	udpReady                  atomic.Bool // true after Soft-Sync completes
+	securityCookie            [16]byte    // Random cookie for this connection
+	multitransportReqID       uint32      // Correlation ID
+
+	// Packet capture (nil if not capturing)
+	capture PacketCapture
 }
 
 // ConnectionPhase represents the current protocol phase.
@@ -297,6 +352,12 @@ func (c *Connection) Handle() error {
 		return fmt.Errorf("licensing failed: %w", err)
 	}
 
+	// NOTE: Multitransport bootstrapping (Initiate Multitransport Request)
+	// is intentionally deferred to the active session phase. Sending it here
+	// (between licensing and capabilities) causes Windows App on macOS to
+	// fail — it doesn't check for SEC_TRANSPORT_REQ in the security header
+	// and parses the PDU as a malformed Demand Active, disconnecting.
+
 	// Phase 6: Capabilities Exchange
 	if err := c.handleCapabilities(); err != nil {
 		return fmt.Errorf("capabilities failed: %w", err)
@@ -316,6 +377,13 @@ func (c *Connection) messageLoop() error {
 	if err := c.initDynamicChannels(); err != nil {
 		c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to initialize DVC")
 		// Continue without DVC - basic RDP still works
+	}
+
+	// Flush the DVC capability request so it reaches the client before
+	// we enter the blocking read loop. Without this, the DVC CAPS PDU
+	// sits in the buffered writer and the client never receives it.
+	if err := c.FlushWrites(); err != nil {
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: flush error after DVC init")
 	}
 
 	// Clear read deadline for maximum responsiveness - blocking reads are fastest
@@ -387,6 +455,9 @@ func (c *Connection) handleDataPDU(sdr *protocol.SendDataRequest) {
 	if sdr.ChannelID == c.ioChannel {
 		// I/O channel - RDP core messages
 		c.handleIOChannelPDU(sdr.UserData)
+	} else if c.msgChannelID != 0 && sdr.ChannelID == c.msgChannelID {
+		// MCS Message Channel — Multitransport Response PDUs
+		c.handleMessageChannelPDU(sdr.UserData)
 	} else {
 		// Virtual channel
 		c.handleVirtualChannelPDU(sdr.ChannelID, sdr.UserData)
@@ -395,12 +466,27 @@ func (c *Connection) handleDataPDU(sdr *protocol.SendDataRequest) {
 
 // handleIOChannelPDU handles PDUs on the I/O channel.
 func (c *Connection) handleIOChannelPDU(data []byte) {
-	if len(data) < 2 {
+	// Share Control Header: totalLength(2) + pduType(2) + PDUSource(2) = 6 bytes min.
+	if len(data) < 6 {
 		return
 	}
 
-	// Parse Share Control Header
-	pduType := binary.LittleEndian.Uint16(data[0:2]) & 0x000F
+	// Check for Multitransport Response (Basic Security Header with SEC_TRANSPORT_RSP).
+	// Only check when we actually sent a Multitransport Request, because the security
+	// header flags field overlaps with the Share Control totalLength field — a bitmask
+	// check would falsely match legitimate PDUs whose totalLength has bit 2 set.
+	if c.server.multitransportEnabled && len(data) >= 8 {
+		flags := binary.LittleEndian.Uint16(data[0:2])
+		flagsHi := binary.LittleEndian.Uint16(data[2:4])
+		if flags == protocol.SecTransportRsp && flagsHi == 0 {
+			c.handleMultitransportResponse(data[4:])
+			return
+		}
+	}
+
+	// Parse Share Control Header — pduType is at offset 2, not 0 (offset 0 is totalLength).
+	// Low 4 bits of pduType contain the PDU type (MS-RDPBCGR 2.2.8.1.1.1.1).
+	pduType := binary.LittleEndian.Uint16(data[2:4]) & 0x000F
 
 	switch pduType {
 	case protocol.PDUTypeData:
@@ -666,6 +752,15 @@ func (c *Connection) Close() {
 	c.clipboardReassembly.totalLength = 0
 	c.clipboardReassembly.mu.Unlock()
 
+	// Close UDP transport
+	if c.udpTunnel != nil {
+		if err := c.udpTunnel.Close(); err != nil {
+			c.server.deps.Logger.Debug().Err(err).Msg("RDP: error closing UDP tunnel")
+		}
+		c.udpTunnel = nil
+	}
+	c.server.UnregisterUDPCookie(c.securityCookie)
+
 	// Signal the message loop and streaming goroutines to exit.
 	// Must happen before video cleanup so goroutines stop reading
 	// from subscription channels before we unsubscribe them.
@@ -705,6 +800,11 @@ func (c *Connection) Close() {
 		}
 	}
 
+	// Close packet capture session
+	if c.capture != nil {
+		c.capture.Close()
+	}
+
 	// Close the underlying TCP connection
 	if err := c.conn.Close(); err != nil {
 		c.server.deps.Logger.Debug().Err(err).Str("remote", c.RemoteAddr()).
@@ -722,8 +822,12 @@ func (c *Connection) onResolutionChange(width, height uint16) {
 	// Update GFX surface if channel is ready
 	if c.gfxChannel != nil && c.gfxChannel.IsReady() {
 		if err := c.gfxChannel.UpdateResolution(width, height); err != nil {
-			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to update GFX resolution")
+			c.server.deps.Logger.Warn().Err(err).Msg("RDP: failed to update GFX resolution")
+			return
 		}
+		// Reset keyframe state — the decoder needs a fresh keyframe after surface recreation.
+		// Only reset on success; if UpdateResolution failed, the old surface is still valid.
+		c.hasReceivedKeyframe.Store(false)
 	}
 }
 

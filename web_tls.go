@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync/atomic"
 
@@ -41,8 +42,8 @@ func initCertStore() {
 	}
 
 	// Configure hardware RSA acceleration mode from config
-	if config.HardwareRSA != "" {
-		hwcrypto.SetHardwareRSAMode(config.HardwareRSA)
+	if mode := loadCfg().HardwareRSA; mode != "" {
+		hwcrypto.SetHardwareRSAMode(mode)
 	}
 
 	certStore = websecure.NewCertStore(tlsStorePath, websecureLogger)
@@ -59,7 +60,7 @@ func initCertStore() {
 }
 
 func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	switch config.TLSMode {
+	switch loadCfg().TLSMode {
 	case "self-signed":
 		if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
 			return nil, fmt.Errorf("time is not synced")
@@ -75,7 +76,7 @@ func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 
 func getTLSState() TLSState {
 	s := TLSState{}
-	switch config.TLSMode {
+	switch loadCfg().TLSMode {
 	case "disabled":
 		s.Mode = "disabled"
 	case "custom":
@@ -103,15 +104,17 @@ func getTLSState() TLSState {
 
 func setTLSState(s TLSState) error {
 	var isChanged = false
+	var newTLSMode string
+	currentTLSMode := loadCfg().TLSMode
 
 	switch s.Mode {
 	case "disabled":
-		if config.TLSMode != "" {
+		if currentTLSMode != "" {
 			isChanged = true
 		}
-		config.TLSMode = ""
+		newTLSMode = ""
 	case "custom":
-		if config.TLSMode == "" {
+		if currentTLSMode == "" {
 			isChanged = true
 		}
 		// parse pem to cert and key
@@ -123,14 +126,20 @@ func setTLSState(s TLSState) error {
 		if err != nil {
 			return fmt.Errorf("failed to save certificate: %w", err)
 		}
-		config.TLSMode = "custom"
+		newTLSMode = "custom"
 	case "self-signed":
-		if config.TLSMode == "" {
+		if currentTLSMode == "" {
 			isChanged = true
 		}
-		config.TLSMode = "self-signed"
+		newTLSMode = "self-signed"
 	default:
 		return fmt.Errorf("invalid TLS mode: %s", s.Mode)
+	}
+
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.TLSMode = newTLSMode
+	}); err != nil {
+		return fmt.Errorf("failed to save TLS config: %w", err)
 	}
 
 	if !isChanged {
@@ -138,7 +147,7 @@ func setTLSState(s TLSState) error {
 		return nil
 	}
 
-	if config.TLSMode == "" {
+	if newTLSMode == "" {
 		websecureLogger.Info().Msg("Stopping websecure server, as TLS mode is disabled")
 		stopWebSecureServer()
 	} else {
@@ -155,10 +164,9 @@ var (
 	tlsStarted atomic.Bool
 )
 
-// RunWebSecureServer runs a web server with TLS.
-// Uses Go's built-in crypto/tls for WebSocket compatibility.
-// Note: Hardware-accelerated TLS (OpenSSL) is used for RDP/VNC video streaming,
-// but the web server uses Go's TLS for proper WebSocket support.
+// RunWebSecureServer runs a web server with hardware-accelerated TLS.
+// Uses the same OpenSSL-based TLS as the RDP/VNC servers for hardware AES-GCM
+// acceleration on the RV1106. On non-ARM platforms, falls back to software crypto.
 func runWebSecureServer() {
 	tlsStarted.Store(true)
 	defer tlsStarted.Store(false)
@@ -168,16 +176,20 @@ func runWebSecureServer() {
 	// Determine the binding address based on the config
 	bindAddress := getBindAddress(443)
 
-	server := &http.Server{
-		Addr:    bindAddress,
-		Handler: r,
-		TLSConfig: &tls.Config{
-			MaxVersion:       tls.VersionTLS13,
-			CurvePreferences: []tls.CurveID{},
-			GetCertificate:   getCertificate,
-		},
+	ln, err := net.Listen("tcp", bindAddress)
+	if err != nil {
+		websecureLogger.Error().Err(err).Str("bindAddress", bindAddress).Msg("failed to listen")
+		return
 	}
-	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting websecure server")
+
+	tlsListener := hwcrypto.NewListener(ln, &hwcrypto.Config{
+		GetCertificate: getCertificate,
+	})
+
+	server := &http.Server{
+		Handler: r,
+	}
+	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", loadCfg().LocalLoopbackOnly).Msg("Starting websecure server")
 
 	go func() {
 		for range stopTLS {
@@ -189,8 +201,7 @@ func runWebSecureServer() {
 		}
 	}()
 
-	// Use Go's built-in TLS which properly supports WebSocket upgrades
-	err := server.ListenAndServeTLS("", "")
+	err = server.Serve(tlsListener)
 	if !errors.Is(err, http.ErrServerClosed) {
 		websecureLogger.Error().Err(err).Msg("websecure server error")
 	}
@@ -230,7 +241,7 @@ type HardwareRSAState struct {
 
 // rpcGetHardwareRSAState returns the current RSA acceleration state.
 func rpcGetHardwareRSAState() (HardwareRSAState, error) {
-	mode := config.HardwareRSA
+	mode := loadCfg().HardwareRSA
 	if mode == "" {
 		mode = "openssl"
 	}
@@ -247,8 +258,9 @@ func rpcSetHardwareRSAMode(mode string) error {
 		return fmt.Errorf("invalid mode: %s (must be openssl or disabled)", mode)
 	}
 
-	config.HardwareRSA = mode
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.HardwareRSA = mode
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

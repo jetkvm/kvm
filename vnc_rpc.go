@@ -69,26 +69,25 @@ func restartVNCServerIfRunning() error {
 }
 
 func rpcGetVNCState() (VNCState, error) {
+	cfg := loadCfg()
 	server := GetVNCServer()
 	return VNCState{
-		Enabled:          config.VNCEnabled,
+		Enabled:          cfg.VNCEnabled,
 		Running:          server.IsRunning(),
-		Port:             config.VNCPort,
-		Quality:          config.VNCQuality,
+		Port:             cfg.VNCPort,
+		Quality:          cfg.VNCQuality,
 		ConnectionCount:  server.GetConnectionCount(),
-		TLSEnabled:       config.VNCUseTLS,
-		PasteDelayMs:     config.VNCPasteDelayMs,
-		MaxConnections:   config.VNCMaxConnections,
-		ClipboardEnabled: config.VNCClipboardEnabled,
+		TLSEnabled:       cfg.VNCUseTLS,
+		PasteDelayMs:     cfg.VNCPasteDelayMs,
+		MaxConnections:   cfg.VNCMaxConnections,
+		ClipboardEnabled: cfg.VNCClipboardEnabled,
 	}, nil
 }
 
 func rpcSetVNCEnabled(enabled bool) error {
-	oldValue := config.VNCEnabled
-	config.VNCEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.VNCEnabled = oldValue // Rollback on failure
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VNCEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -115,15 +114,13 @@ func rpcSetVNCPort(port int) error {
 		return fmt.Errorf("invalid port number: %d (must be %d-%d)", port, minPort, maxPort)
 	}
 
-	oldPort := config.VNCPort
-	config.VNCPort = port
-	GetVNCServer().SetPort(port)
-
-	if err := SaveConfig(); err != nil {
-		config.VNCPort = oldPort // Rollback on failure
-		GetVNCServer().SetPort(oldPort)
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VNCPort = port
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
+
+	GetVNCServer().SetPort(port)
 
 	return restartVNCServerIfRunning()
 }
@@ -133,11 +130,9 @@ func rpcSetVNCQuality(quality int) error {
 		return fmt.Errorf("invalid quality value: %d (must be %d-%d)", quality, minJPEGQuality, maxJPEGQuality)
 	}
 
-	oldQuality := config.VNCQuality
-	config.VNCQuality = quality
-
-	if err := SaveConfig(); err != nil {
-		config.VNCQuality = oldQuality // Rollback on failure
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VNCQuality = quality
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -152,11 +147,9 @@ func rpcSetVNCPassword(password string) error {
 		password = password[:vncPasswordMaxLength]
 	}
 
-	oldPassword := config.LocalAuthPassword
-	config.LocalAuthPassword = password
-
-	if err := SaveConfig(); err != nil {
-		config.LocalAuthPassword = oldPassword // Rollback on failure
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.LocalAuthPassword = password
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -164,15 +157,13 @@ func rpcSetVNCPassword(password string) error {
 }
 
 func rpcSetVNCTLS(enabled bool) error {
-	oldValue := config.VNCUseTLS
-	config.VNCUseTLS = enabled
-	GetVNCServer().SetTLSEnabled(enabled)
-
-	if err := SaveConfig(); err != nil {
-		config.VNCUseTLS = oldValue // Rollback on failure
-		GetVNCServer().SetTLSEnabled(oldValue)
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VNCUseTLS = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
+
+	GetVNCServer().SetTLSEnabled(enabled)
 
 	return restartVNCServerIfRunning()
 }
@@ -184,11 +175,9 @@ func rpcSetVNCPasteDelayMs(delayMs int) error {
 		return fmt.Errorf("invalid paste delay: %d (must be %d-%d ms)", delayMs, minPasteDelayMs, maxPasteDelayMs)
 	}
 
-	oldDelay := config.VNCPasteDelayMs
-	config.VNCPasteDelayMs = delayMs
-
-	if err := SaveConfig(); err != nil {
-		config.VNCPasteDelayMs = oldDelay
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VNCPasteDelayMs = delayMs
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -202,11 +191,9 @@ func rpcSetVNCMaxConnections(max int) error {
 		return fmt.Errorf("invalid max connections: %d (must be %d-%d)", max, minVNCConnections, vnc.MaxConnections)
 	}
 
-	oldMax := config.VNCMaxConnections
-	config.VNCMaxConnections = max
-
-	if err := SaveConfig(); err != nil {
-		config.VNCMaxConnections = oldMax
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VNCMaxConnections = max
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -216,11 +203,9 @@ func rpcSetVNCMaxConnections(max int) error {
 // rpcSetVNCClipboardEnabled enables or disables clipboard-as-keystrokes.
 // When disabled, clipboard text from VNC clients is ignored.
 func rpcSetVNCClipboardEnabled(enabled bool) error {
-	oldValue := config.VNCClipboardEnabled
-	config.VNCClipboardEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.VNCClipboardEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.VNCClipboardEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

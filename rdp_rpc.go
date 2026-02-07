@@ -47,6 +47,7 @@ type RDPState struct {
 	MicEnabled       bool   `json:"micEnabled"`
 	CameraEnabled           bool `json:"cameraEnabled"`
 	CameraTranscodeEnabled  bool `json:"cameraTranscodeEnabled"`
+	UDPEnabled       bool   `json:"udpEnabled"`
 	ClipboardEnabled bool   `json:"clipboardEnabled"`
 	PasteDelayMs     int    `json:"pasteDelayMs"`
 	TargetOS         string `json:"targetOS"`
@@ -65,6 +66,9 @@ type RDPState struct {
 	Base64CmdWindows     string `json:"base64CmdWindows"`
 	Base64CmdLinux       string `json:"base64CmdLinux"`
 	Base64CmdMacOS       string `json:"base64CmdMacOS"`
+	// RD Gateway settings
+	GatewayEnabled bool `json:"gatewayEnabled"`
+	GatewayUDPPort int  `json:"gatewayUDPPort"`
 }
 
 func restartRDPServerIfRunning() error {
@@ -92,45 +96,53 @@ func rpcGetRDPState() (RDPState, error) {
 		running = server.IsRunning()
 		connCount = server.GetConnectionCount()
 	}
+	cfg := loadCfg()
 	return RDPState{
-		Enabled:          config.RDPEnabled,
+		Enabled:          cfg.RDPEnabled,
 		Running:          running,
-		Port:             config.RDPPort,
+		Port:             cfg.RDPPort,
 		ConnectionCount:  connCount,
-		TLSEnabled:       config.RDPUseTLS,
-		MaxConnections:   config.RDPMaxConnections,
-		VideoEnabled:     config.RDPVideoEnabled,
-		AudioEnabled:     config.RDPAudioEnabled,
-		MicEnabled:       config.RDPMicEnabled,
-		CameraEnabled:          config.RDPCameraEnabled,
-		CameraTranscodeEnabled: config.RDPCameraTranscodeEnabled,
-		ClipboardEnabled: config.RDPClipboardEnabled,
-		PasteDelayMs:     config.RDPPasteDelayMs,
-		TargetOS:         config.RDPTargetOS,
-		ClipboardMode:    config.RDPClipboardMode,
-		Username:         config.RDPUsername,
-		Domain:           config.RDPDomain,
+		TLSEnabled:       cfg.RDPUseTLS,
+		MaxConnections:   cfg.RDPMaxConnections,
+		VideoEnabled:     cfg.RDPVideoEnabled,
+		AudioEnabled:     cfg.RDPAudioEnabled,
+		MicEnabled:       cfg.RDPMicEnabled,
+		CameraEnabled:          cfg.RDPCameraEnabled,
+		CameraTranscodeEnabled: cfg.RDPCameraTranscodeEnabled,
+		UDPEnabled:       cfg.RDPUDPEnabled == nil || *cfg.RDPUDPEnabled,
+		ClipboardEnabled: cfg.RDPClipboardEnabled,
+		PasteDelayMs:     cfg.RDPPasteDelayMs,
+		TargetOS:         cfg.RDPTargetOS,
+		ClipboardMode:    cfg.RDPClipboardMode,
+		Username:         cfg.RDPUsername,
+		Domain:           cfg.RDPDomain,
 		// File transfer settings
-		FileTransferEnabled:    config.RDPFileTransferEnabled,
-		FileTransferMethod:     config.RDPFileTransferMethod,
-		FileTransferMaxMB:      config.RDPFileTransferMaxMB,
-		FileTransferTTLSec:     config.RDPFileTransferTTLSec,
-		FileTransferCleanupSec: config.RDPFileTransferCleanupSec,
-		NetworkCmdWindows:      config.RDPNetworkCmdWindows,
-		NetworkCmdLinux:     config.RDPNetworkCmdLinux,
-		NetworkCmdMacOS:     config.RDPNetworkCmdMacOS,
-		Base64CmdWindows:    config.RDPBase64CmdWindows,
-		Base64CmdLinux:      config.RDPBase64CmdLinux,
-		Base64CmdMacOS:      config.RDPBase64CmdMacOS,
+		FileTransferEnabled:    cfg.RDPFileTransferEnabled,
+		FileTransferMethod:     cfg.RDPFileTransferMethod,
+		FileTransferMaxMB:      cfg.RDPFileTransferMaxMB,
+		FileTransferTTLSec:     cfg.RDPFileTransferTTLSec,
+		FileTransferCleanupSec: cfg.RDPFileTransferCleanupSec,
+		NetworkCmdWindows:      cfg.RDPNetworkCmdWindows,
+		NetworkCmdLinux:     cfg.RDPNetworkCmdLinux,
+		NetworkCmdMacOS:     cfg.RDPNetworkCmdMacOS,
+		Base64CmdWindows:    cfg.RDPBase64CmdWindows,
+		Base64CmdLinux:      cfg.RDPBase64CmdLinux,
+		Base64CmdMacOS:      cfg.RDPBase64CmdMacOS,
+		// RD Gateway settings
+		GatewayEnabled: cfg.RDPGatewayEnabled == nil || *cfg.RDPGatewayEnabled,
+		GatewayUDPPort: func() int {
+			if cfg.RDPGatewayUDPPort > 0 {
+				return cfg.RDPGatewayUDPPort
+			}
+			return 3391
+		}(),
 	}, nil
 }
 
 func rpcSetRDPEnabled(enabled bool) error {
-	oldValue := config.RDPEnabled
-	config.RDPEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPEnabled = oldValue // Rollback on failure
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -161,31 +173,24 @@ func rpcSetRDPPort(port int) error {
 		return fmt.Errorf("invalid port number: %d (must be %d-%d)", port, minPort, maxPort)
 	}
 
-	oldPort := config.RDPPort
-	config.RDPPort = port
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPPort = port
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 
 	server := GetRDPServer()
 	if server != nil {
 		server.SetPort(port)
 	}
 
-	if err := SaveConfig(); err != nil {
-		config.RDPPort = oldPort // Rollback on failure
-		if server != nil {
-			server.SetPort(oldPort)
-		}
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-
 	return restartRDPServerIfRunning()
 }
 
 func rpcSetRDPTLS(enabled bool) error {
-	oldValue := config.RDPUseTLS
-	config.RDPUseTLS = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPUseTLS = oldValue // Rollback on failure
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPUseTLS = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -199,11 +204,9 @@ func rpcSetRDPMaxConnections(max int) error {
 		return fmt.Errorf("invalid max connections: %d (must be %d-%d)", max, minRDPConnections, rdp.MaxConnections)
 	}
 
-	oldMax := config.RDPMaxConnections
-	config.RDPMaxConnections = max
-
-	if err := SaveConfig(); err != nil {
-		config.RDPMaxConnections = oldMax
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPMaxConnections = max
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -212,11 +215,9 @@ func rpcSetRDPMaxConnections(max int) error {
 
 // rpcSetRDPVideoEnabled enables or disables H.264 video via RDPGFX.
 func rpcSetRDPVideoEnabled(enabled bool) error {
-	oldValue := config.RDPVideoEnabled
-	config.RDPVideoEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPVideoEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPVideoEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -225,11 +226,9 @@ func rpcSetRDPVideoEnabled(enabled bool) error {
 
 // rpcSetRDPAudioEnabled enables or disables audio output to the client.
 func rpcSetRDPAudioEnabled(enabled bool) error {
-	oldValue := config.RDPAudioEnabled
-	config.RDPAudioEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPAudioEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPAudioEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -238,11 +237,9 @@ func rpcSetRDPAudioEnabled(enabled bool) error {
 
 // rpcSetRDPMicEnabled enables or disables microphone input from the client.
 func rpcSetRDPMicEnabled(enabled bool) error {
-	oldValue := config.RDPMicEnabled
-	config.RDPMicEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPMicEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPMicEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -251,11 +248,9 @@ func rpcSetRDPMicEnabled(enabled bool) error {
 
 // rpcSetRDPCameraEnabled enables or disables webcam redirection from the client.
 func rpcSetRDPCameraEnabled(enabled bool) error {
-	oldValue := config.RDPCameraEnabled
-	config.RDPCameraEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPCameraEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPCameraEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -266,11 +261,9 @@ func rpcSetRDPCameraEnabled(enabled bool) error {
 // WARNING: This is a BETA feature with HIGH CPU usage (~80-100% on Cortex-A7).
 // Only enable if your RDP client only sends H.264 and you need MJPEG output.
 func rpcSetRDPCameraTranscodeEnabled(enabled bool) error {
-	oldValue := config.RDPCameraTranscodeEnabled
-	config.RDPCameraTranscodeEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPCameraTranscodeEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPCameraTranscodeEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -285,14 +278,23 @@ func rpcSetRDPCameraTranscodeEnabled(enabled bool) error {
 	return nil
 }
 
+// rpcSetRDPUDPEnabled enables or disables UDP transport for RDP.
+func rpcSetRDPUDPEnabled(enabled bool) error {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPUDPEnabled = &enabled
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
 // rpcSetRDPClipboardEnabled enables or disables clipboard-as-keystrokes.
 // When disabled, clipboard text from RDP clients is ignored.
 func rpcSetRDPClipboardEnabled(enabled bool) error {
-	oldValue := config.RDPClipboardEnabled
-	config.RDPClipboardEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPClipboardEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPClipboardEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -306,11 +308,9 @@ func rpcSetRDPPasteDelayMs(delayMs int) error {
 		return fmt.Errorf("invalid paste delay: %d (must be %d-%d ms)", delayMs, minRDPPasteDelayMs, maxRDPPasteDelayMs)
 	}
 
-	oldDelay := config.RDPPasteDelayMs
-	config.RDPPasteDelayMs = delayMs
-
-	if err := SaveConfig(); err != nil {
-		config.RDPPasteDelayMs = oldDelay
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPPasteDelayMs = delayMs
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -327,11 +327,9 @@ func rpcSetRDPTargetOS(targetOS string) error {
 		return fmt.Errorf("invalid target OS: %s (must be windows, macos, or linux)", targetOS)
 	}
 
-	oldValue := config.RDPTargetOS
-	config.RDPTargetOS = targetOS
-
-	if err := SaveConfig(); err != nil {
-		config.RDPTargetOS = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPTargetOS = targetOS
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -348,11 +346,9 @@ func rpcSetRDPClipboardMode(mode string) error {
 		return fmt.Errorf("invalid clipboard mode: %s (must be text, base64-markers, or base64-script)", mode)
 	}
 
-	oldValue := config.RDPClipboardMode
-	config.RDPClipboardMode = mode
-
-	if err := SaveConfig(); err != nil {
-		config.RDPClipboardMode = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPClipboardMode = mode
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -367,11 +363,9 @@ func rpcSetRDPUsername(username string) error {
 		return fmt.Errorf("username too long: max 256 characters")
 	}
 
-	oldValue := config.RDPUsername
-	config.RDPUsername = username
-
-	if err := SaveConfig(); err != nil {
-		config.RDPUsername = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPUsername = username
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -386,11 +380,9 @@ func rpcSetRDPDomain(domain string) error {
 		return fmt.Errorf("domain too long: max 256 characters")
 	}
 
-	oldValue := config.RDPDomain
-	config.RDPDomain = domain
-
-	if err := SaveConfig(); err != nil {
-		config.RDPDomain = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPDomain = domain
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -401,11 +393,9 @@ func rpcSetRDPDomain(domain string) error {
 
 // rpcSetRDPFileTransferEnabled enables or disables file transfer via clipboard.
 func rpcSetRDPFileTransferEnabled(enabled bool) error {
-	oldValue := config.RDPFileTransferEnabled
-	config.RDPFileTransferEnabled = enabled
-
-	if err := SaveConfig(); err != nil {
-		config.RDPFileTransferEnabled = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPFileTransferEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -422,11 +412,9 @@ func rpcSetRDPFileTransferMethod(method string) error {
 		return fmt.Errorf("invalid file transfer method: %s (must be auto, network, base64, or usb)", method)
 	}
 
-	oldValue := config.RDPFileTransferMethod
-	config.RDPFileTransferMethod = method
-
-	if err := SaveConfig(); err != nil {
-		config.RDPFileTransferMethod = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPFileTransferMethod = method
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -439,11 +427,9 @@ func rpcSetRDPFileTransferMaxMB(maxMB int) error {
 		return fmt.Errorf("invalid max file size: %d MB (must be 1-1000)", maxMB)
 	}
 
-	oldValue := config.RDPFileTransferMaxMB
-	config.RDPFileTransferMaxMB = maxMB
-
-	if err := SaveConfig(); err != nil {
-		config.RDPFileTransferMaxMB = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPFileTransferMaxMB = maxMB
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -456,11 +442,9 @@ func rpcSetRDPFileTransferTTLSec(ttlSec int) error {
 		return fmt.Errorf("invalid TTL: %d seconds (must be 30-3600)", ttlSec)
 	}
 
-	oldValue := config.RDPFileTransferTTLSec
-	config.RDPFileTransferTTLSec = ttlSec
-
-	if err := SaveConfig(); err != nil {
-		config.RDPFileTransferTTLSec = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPFileTransferTTLSec = ttlSec
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -476,11 +460,9 @@ func rpcSetRDPFileTransferCleanupSec(cleanupSec int) error {
 		return fmt.Errorf("invalid cleanup interval: %d seconds (must be 10-600)", cleanupSec)
 	}
 
-	oldValue := config.RDPFileTransferCleanupSec
-	config.RDPFileTransferCleanupSec = cleanupSec
-
-	if err := SaveConfig(); err != nil {
-		config.RDPFileTransferCleanupSec = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPFileTransferCleanupSec = cleanupSec
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -496,11 +478,9 @@ func rpcSetRDPNetworkCmdWindows(cmd string) error {
 		return fmt.Errorf("command too long: max 1024 characters")
 	}
 
-	oldValue := config.RDPNetworkCmdWindows
-	config.RDPNetworkCmdWindows = cmd
-
-	if err := SaveConfig(); err != nil {
-		config.RDPNetworkCmdWindows = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPNetworkCmdWindows = cmd
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -513,11 +493,9 @@ func rpcSetRDPNetworkCmdLinux(cmd string) error {
 		return fmt.Errorf("command too long: max 1024 characters")
 	}
 
-	oldValue := config.RDPNetworkCmdLinux
-	config.RDPNetworkCmdLinux = cmd
-
-	if err := SaveConfig(); err != nil {
-		config.RDPNetworkCmdLinux = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPNetworkCmdLinux = cmd
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -530,11 +508,9 @@ func rpcSetRDPNetworkCmdMacOS(cmd string) error {
 		return fmt.Errorf("command too long: max 1024 characters")
 	}
 
-	oldValue := config.RDPNetworkCmdMacOS
-	config.RDPNetworkCmdMacOS = cmd
-
-	if err := SaveConfig(); err != nil {
-		config.RDPNetworkCmdMacOS = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPNetworkCmdMacOS = cmd
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -547,11 +523,9 @@ func rpcSetRDPBase64CmdWindows(cmd string) error {
 		return fmt.Errorf("command too long: max 1024 characters")
 	}
 
-	oldValue := config.RDPBase64CmdWindows
-	config.RDPBase64CmdWindows = cmd
-
-	if err := SaveConfig(); err != nil {
-		config.RDPBase64CmdWindows = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPBase64CmdWindows = cmd
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -564,11 +538,9 @@ func rpcSetRDPBase64CmdLinux(cmd string) error {
 		return fmt.Errorf("command too long: max 1024 characters")
 	}
 
-	oldValue := config.RDPBase64CmdLinux
-	config.RDPBase64CmdLinux = cmd
-
-	if err := SaveConfig(); err != nil {
-		config.RDPBase64CmdLinux = oldValue
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPBase64CmdLinux = cmd
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -581,11 +553,37 @@ func rpcSetRDPBase64CmdMacOS(cmd string) error {
 		return fmt.Errorf("command too long: max 1024 characters")
 	}
 
-	oldValue := config.RDPBase64CmdMacOS
-	config.RDPBase64CmdMacOS = cmd
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPBase64CmdMacOS = cmd
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 
-	if err := SaveConfig(); err != nil {
-		config.RDPBase64CmdMacOS = oldValue
+	return nil
+}
+
+// RD Gateway RPC Handlers
+
+// rpcSetRDPGatewayEnabled enables or disables the RD Gateway on HTTPS.
+func rpcSetRDPGatewayEnabled(enabled bool) error {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPGatewayEnabled = &enabled
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// rpcSetRDPGatewayUDPPort sets the UDP port for ShortPath discovery.
+func rpcSetRDPGatewayUDPPort(port int) error {
+	if port < minPort || port > maxPort {
+		return fmt.Errorf("invalid port number: %d (must be %d-%d)", port, minPort, maxPort)
+	}
+
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.RDPGatewayUDPPort = port
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 

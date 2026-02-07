@@ -60,7 +60,7 @@ func updateDisplay() {
 	_, _ = nativeInstance.UIObjHide("menu_btn_network")
 	_, _ = nativeInstance.UIObjHide("menu_btn_access")
 
-	switch config.NetworkConfig.DHCPClient.String {
+	switch loadCfg().NetworkConfig.DHCPClient.String {
 	case "jetdhcpc":
 		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to udhcpc")
 	case "udhcpc":
@@ -286,7 +286,7 @@ func setDisplayBrightness(brightness int, reason string) error {
 // tickDisplayDim is called when the dim ticker expires, it simply reduces the brightness
 // of the display by half of the max brightness.
 func tickDisplayDim() {
-	err := setDisplayBrightness(config.DisplayMaxBrightness/2, "tick_display_dim")
+	err := setDisplayBrightness(loadCfg().DisplayMaxBrightness/2, "tick_display_dim")
 	if err != nil {
 		displayLogger.Warn().Err(err).Msg("failed to dim display")
 	}
@@ -318,7 +318,8 @@ func wakeDisplay(force bool, reason string) {
 	}
 
 	// Don't try to wake up if the display is turned off.
-	if config.DisplayMaxBrightness == 0 {
+	cfg := loadCfg()
+	if cfg.DisplayMaxBrightness == 0 {
 		return
 	}
 
@@ -326,17 +327,17 @@ func wakeDisplay(force bool, reason string) {
 		reason = "wake_display"
 	}
 
-	err := setDisplayBrightness(config.DisplayMaxBrightness, reason)
+	err := setDisplayBrightness(cfg.DisplayMaxBrightness, reason)
 	if err != nil {
 		displayLogger.Warn().Err(err).Msg("failed to wake display")
 	}
 
-	if config.DisplayDimAfterSec != 0 && dimTicker != nil {
-		dimTicker.Reset(time.Duration(config.DisplayDimAfterSec) * time.Second)
+	if cfg.DisplayDimAfterSec != 0 && dimTicker != nil {
+		dimTicker.Reset(time.Duration(cfg.DisplayDimAfterSec) * time.Second)
 	}
 
-	if config.DisplayOffAfterSec != 0 && offTicker != nil {
-		offTicker.Reset(time.Duration(config.DisplayOffAfterSec) * time.Second)
+	if cfg.DisplayOffAfterSec != 0 && offTicker != nil {
+		offTicker.Reset(time.Duration(cfg.DisplayOffAfterSec) * time.Second)
 	}
 	backlightState.Store(0)
 }
@@ -347,7 +348,8 @@ func wakeDisplay(force bool, reason string) {
 func startBacklightTickers() {
 	// Don't start the tickers if the display is switched off.
 	// Set the display to off if that's the case.
-	if config.DisplayMaxBrightness == 0 {
+	cfg := loadCfg()
+	if cfg.DisplayMaxBrightness == 0 {
 		_ = setDisplayBrightness(0, "display_disabled")
 		return
 	}
@@ -368,9 +370,9 @@ func startBacklightTickers() {
 	ctx, cancel := context.WithCancel(context.Background())
 	backlightCancel = cancel
 
-	if config.DisplayDimAfterSec != 0 {
+	if cfg.DisplayDimAfterSec != 0 {
 		displayLogger.Info().Msg("dim_ticker has started")
-		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
+		dimTicker = time.NewTicker(time.Duration(cfg.DisplayDimAfterSec) * time.Second)
 
 		go func() {
 			defer func() {
@@ -389,9 +391,9 @@ func startBacklightTickers() {
 		}()
 	}
 
-	if config.DisplayOffAfterSec != 0 {
+	if cfg.DisplayOffAfterSec != 0 {
 		displayLogger.Info().Msg("off_ticker has started")
-		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
+		offTicker = time.NewTicker(time.Duration(cfg.DisplayOffAfterSec) * time.Second)
 
 		go func() {
 			defer func() {

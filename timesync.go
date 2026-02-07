@@ -42,7 +42,7 @@ func isTimeSyncNeeded() bool {
 func initTimeSync() {
 	timeSync = timesync.NewTimeSync(&timesync.TimeSyncOptions{
 		Logger:        timesyncLogger,
-		NetworkConfig: config.NetworkConfig,
+		NetworkConfig: loadCfg().NetworkConfig,
 		PreCheckIPv4: func() (bool, error) {
 			if !networkManager.IPv4Ready() {
 				return false, nil

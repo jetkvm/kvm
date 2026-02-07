@@ -1,9 +1,7 @@
 package websecure
 
 import (
-	"os"
-
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
-var defaultLogger = zerolog.New(os.Stdout).With().Str("component", "websecure").Logger()
+var defaultLogger = logging.GetSubsystemLogger("websecure")

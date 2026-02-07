@@ -17,12 +17,13 @@ var builtAppVersion = "0.1.0+dev"
 var otaState *ota.State
 
 func initOta() {
+	cfg := loadCfg()
 	otaState = ota.NewState(ota.Options{
 		Logger:             otaLogger,
-		ReleaseAPIEndpoint: config.GetUpdateAPIURL(),
+		ReleaseAPIEndpoint: cfg.GetUpdateAPIURL(),
 		GetHTTPClient: func() ota.HttpClient {
 			transport := http.DefaultTransport.(*http.Transport).Clone()
-			transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
+			transport.Proxy = loadCfg().NetworkConfig.GetTransportProxyFunc()
 
 			client := &http.Client{
 				Transport: transport,
@@ -98,7 +99,7 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 
 	// otaState doesn't have the current auto-update state, so we need to get it from the config
 	if updateStatus.WillDisableAutoUpdate {
-		updateStatus.WillDisableAutoUpdate = config.AutoUpdateEnabled
+		updateStatus.WillDisableAutoUpdate = loadCfg().AutoUpdateEnabled
 	}
 
 	otaLogger.Info().Interface("updateStatus", updateStatus).Msg("Update status")
@@ -107,19 +108,20 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 }
 
 func rpcGetDevChannelState() (bool, error) {
-	return config.IncludePreRelease, nil
+	return loadCfg().IncludePreRelease, nil
 }
 
 func rpcSetDevChannelState(enabled bool) error {
-	config.IncludePreRelease = enabled
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.IncludePreRelease = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
 }
 
 func rpcGetUpdateStatus() (*ota.UpdateStatus, error) {
-	return getUpdateStatus(config.IncludePreRelease)
+	return getUpdateStatus(loadCfg().IncludePreRelease)
 }
 
 func rpcGetUpdateStatusChannel(channel string) (*ota.UpdateStatus, error) {
@@ -151,7 +153,7 @@ type updateParams struct {
 func rpcTryUpdate() error {
 	return rpcTryUpdateComponents(updateParams{
 		Components: make(map[string]string),
-	}, config.IncludePreRelease, false)
+	}, loadCfg().IncludePreRelease, false)
 }
 
 // rpcCheckUpdateComponents checks the update status for the given components

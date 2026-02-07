@@ -19,23 +19,24 @@ const (
 
 // Slow-path input event types (MS-RDPBCGR 2.2.8.1.1.3.1.1).
 const (
-	inputEventMouse    = 0x0001 // INPUT_EVENT_MOUSE
+	inputEventSync     = 0x0000 // INPUT_EVENT_SYNC
 	inputEventScancode = 0x0004 // INPUT_EVENT_SCANCODE
 	inputEventUnicode  = 0x0005 // INPUT_EVENT_UNICODE
-	inputEventMouseX   = 0x0008 // INPUT_EVENT_MOUSEX
+	inputEventMouse    = 0x8001 // INPUT_EVENT_MOUSE
+	inputEventMouseX   = 0x8002 // INPUT_EVENT_MOUSEX
 )
 
 // Mouse pointer flags (MS-RDPBCGR 2.2.8.1.1.3.1.1.3).
 const (
-	ptrflagsWheelNegative = 0x0100 // PTRFLAGS_WHEEL_NEGATIVE
-	ptrflagsWheel         = 0x0200 // PTRFLAGS_WHEEL
-	ptrflagsHWheel        = 0x0400 // PTRFLAGS_HWHEEL
-	ptrflagsMove          = 0x0800 // PTRFLAGS_MOVE
-	ptrflagsButton1       = 0x1000 // PTRFLAGS_BUTTON1 (left)
-	ptrflagsButton2       = 0x2000 // PTRFLAGS_BUTTON2 (right)
-	ptrflagsButton3       = 0x4000 // PTRFLAGS_BUTTON3 (middle)
-	ptrflagsDown          = 0x8000 // PTRFLAGS_DOWN
-	ptrflagsButtonMask    = ptrflagsButton1 | ptrflagsButton2 | ptrflagsButton3
+	ptrflagsWheelNegative  = 0x0100 // PTRFLAGS_WHEEL_NEGATIVE
+	ptrflagsWheel          = 0x0200 // PTRFLAGS_WHEEL
+	ptrflagsHWheel         = 0x0400 // PTRFLAGS_HWHEEL
+	ptrflagsMove           = 0x0800 // PTRFLAGS_MOVE
+	ptrflagsButton1        = 0x1000 // PTRFLAGS_BUTTON1 (left)
+	ptrflagsButton2        = 0x2000 // PTRFLAGS_BUTTON2 (right)
+	ptrflagsButton3        = 0x4000 // PTRFLAGS_BUTTON3 (middle)
+	ptrflagsDown           = 0x8000 // PTRFLAGS_DOWN
+	ptrflagsButtonMask     = ptrflagsButton1 | ptrflagsButton2 | ptrflagsButton3
 	ptrflagsWheelDeltaMask = 0x00FF // Lower 8 bits = wheel rotation units
 )
 
@@ -85,6 +86,12 @@ func (c *Connection) handleInputPDU(data []byte) {
 		pos += 6
 
 		switch eventType {
+		case inputEventSync:
+			if pos+6 > len(data) {
+				break
+			}
+			// Synchronize event (Caps Lock, Num Lock, etc.) — skip
+			pos += 6
 		case inputEventMouse:
 			if pos+6 > len(data) {
 				break

@@ -67,6 +67,12 @@ import "C"
 
 var (
 	cgoLock sync.Mutex
+
+	// rgbCopyMu protects the frame buffer copy in jetkvm_go_rgb_handler from
+	// concurrent rgbStop() freeing the C buffer. The handler holds RLock during
+	// the copy, and rgbStop holds Lock before calling C.jetkvm_rgb_stop().
+	// Without this, rgbStop can unmap the source buffer mid-copy → SIGSEGV.
+	rgbCopyMu sync.RWMutex
 )
 
 //export jetkvm_go_video_state_handler
@@ -111,11 +117,16 @@ func jetkvm_go_jpeg_handler(frame *C.cuint8_t, len C.ssize_t) {
 
 //export jetkvm_go_rgb_handler
 func jetkvm_go_rgb_handler(frame *C.cuint8_t, len C.ssize_t, width C.uint32_t, height C.uint32_t) {
+	// Hold RLock during the copy to prevent rgbStop() from freeing the C buffer
+	// while we're reading from it. rgbStop() takes the write lock first.
+	rgbCopyMu.RLock()
+
 	// Try to acquire a buffer from the pool BEFORE copying data.
 	// This prevents OOM from allocating 8MB per frame at 60fps.
 	buf := rgbFrameBufferPool.acquire()
 	if buf == nil {
 		// All buffers in use - drop frame to prevent memory exhaustion
+		rgbCopyMu.RUnlock()
 		return
 	}
 
@@ -124,6 +135,7 @@ func jetkvm_go_rgb_handler(frame *C.cuint8_t, len C.ssize_t, width C.uint32_t, h
 	if cap(buf) < frameLen {
 		// Shouldn't happen with properly sized pool, but handle gracefully
 		rgbFrameBufferPool.release(buf)
+		rgbCopyMu.RUnlock()
 		return
 	}
 
@@ -131,6 +143,9 @@ func jetkvm_go_rgb_handler(frame *C.cuint8_t, len C.ssize_t, width C.uint32_t, h
 	// This is the only allocation-free way to copy from CGO
 	cSlice := unsafe.Slice((*byte)(unsafe.Pointer(frame)), frameLen)
 	copy(buf[:frameLen], cSlice)
+
+	// Release the lock now that the copy is complete — the C buffer is no longer accessed
+	rgbCopyMu.RUnlock()
 
 	// Determine format based on frame size:
 	// - BGRX = 4 bytes/pixel, so len = width * height * 4
@@ -564,6 +579,12 @@ func rgbStart() error {
 }
 
 func rgbStop() {
+	// Take write lock to wait for any in-flight RGB handler copy to finish.
+	// Without this, C.jetkvm_rgb_stop() can unmap the frame buffer while
+	// the handler is still copying from it → SIGSEGV.
+	rgbCopyMu.Lock()
+	defer rgbCopyMu.Unlock()
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 

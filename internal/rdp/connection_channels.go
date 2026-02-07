@@ -36,7 +36,9 @@ func (c *Connection) initDynamicChannels() error {
 		// Client doesn't support dynamic channels
 		// Initialize RDPSND and clipboard now
 		if c.rdpsndID != 0 {
-			c.initSoundChannel()
+			if c.server.deps.Config.GetRDPAudioEnabled() {
+				c.initSoundChannel()
+			}
 		}
 		if c.cliprdrdID != 0 {
 			c.initClipboardChannel()
@@ -71,11 +73,10 @@ func (c *Connection) initDynamicChannels() error {
 	return nil
 }
 
-// initDVCChannelsSync creates DVC channels synchronously.
+// initDVCChannelsSync creates DVC channels and initializes static channels synchronously.
 // Called from the capability response handler in the message loop context.
 func (c *Connection) initDVCChannelsSync() {
 	// Initialize RDPSND for audio output (static channel, not DVC)
-	// Only initialize if audio is enabled in config
 	if c.rdpsndID != 0 {
 		if !c.server.deps.Config.GetRDPAudioEnabled() {
 			c.server.deps.Logger.Debug().Msg("RDP: audio output disabled in config, skipping RDPSND channel")
@@ -85,7 +86,6 @@ func (c *Connection) initDVCChannelsSync() {
 	}
 
 	// Initialize clipboard channel AFTER DVC capability exchange completes
-	// to avoid any interference
 	if c.cliprdrdID != 0 {
 		c.initClipboardChannel()
 	}
@@ -178,7 +178,7 @@ func (c *Connection) initDVCChannelsSync() {
 		// which would delay GFX frame ACKs and cause video stuttering
 		c.audinDataChan = make(chan *audinPooledBuffer, 30) // Buffer for ~300ms at 10ms packets
 		c.audinStopCh = make(chan struct{})
-		go c.audinDataLoop()
+		safeGo(c.server.deps.Logger, "RDP_AUDIN_DATA", c.audinDataLoop)
 
 		// Set data callback to forward audio to buffer (non-blocking)
 		c.audinChannel.SetDataCallback(func(data []byte) {
@@ -253,7 +253,7 @@ func (c *Connection) initDVCChannelsSync() {
 		// Subscribe to USB host format changes for dynamic format negotiation
 		if c.server.deps.Camera != nil {
 			if formatChan := c.server.deps.Camera.SubscribeFormatChanges(); formatChan != nil {
-				go c.handleCameraFormatChanges(formatChan)
+				safeGo(c.server.deps.Logger, "RDP_CAMERA_FORMAT", func() { c.handleCameraFormatChanges(formatChan) })
 			}
 		}
 
@@ -264,8 +264,16 @@ func (c *Connection) initDVCChannelsSync() {
 
 	c.server.deps.Logger.Debug().Msg("RDP: dynamic virtual channels initialized")
 
+	// Flush DVC Create Request PDUs so they reach the client.
+	// CreateChannel() writes via sendChannelDataBuffered() which accumulates
+	// in the buffered writer. Without this flush, the Create Requests are stuck
+	// and the GFX channel never opens (falls back to bitmap after 3s timeout).
+	if err := c.FlushWrites(); err != nil {
+		c.server.deps.Logger.Debug().Err(err).Msg("RDP: flush error after DVC channel creation")
+	}
+
 	// Start a goroutine to check if RDPGFX becomes ready, otherwise fall back to bitmap mode
-	go c.checkGFXReadinessAndFallback()
+	safeGo(c.server.deps.Logger, "RDP_GFX_READINESS", c.checkGFXReadinessAndFallback)
 }
 
 // checkGFXReadinessAndFallback waits for RDPGFX to become ready.
@@ -305,9 +313,15 @@ func (c *Connection) checkGFXReadinessAndFallback() {
 //
 // HOT PATH: Zero allocations using pooled buffers for typical packet sizes.
 // For large payloads with kTLS enabled, uses scatter-gather for zero-copy.
+// Routes over UDP when the multitransport tunnel is established.
 func (c *Connection) sendDVCData(data []byte) error {
 	if c.drdynvcID == 0 {
 		return nil
+	}
+
+	// Route over UDP when available (after Soft-Sync)
+	if c.udpReady.Load() && c.udpTunnel != nil {
+		return c.sendUDPDVCData(data)
 	}
 
 	// For large payloads, check if scatter-gather is available (kTLS enabled)
@@ -322,95 +336,39 @@ func (c *Connection) sendDVCData(data []byte) error {
 	return c.sendDVCDataHotPath(data)
 }
 
-// sendDVCDataHotPath sends DVC data using zero-allocation hot path.
-// Uses pooled buffers to avoid heap allocations on every packet.
-// Falls back to sendDVCDataFallback for packets too large for the pool.
+// sendDVCDataHotPath sends DVC data using zero-allocation hot path with write buffering.
+// Uses pooled buffers and the buffered writer so that DVC fragments (e.g., 63 fragments
+// for a 100KB keyframe) accumulate in the buffer and are flushed as 1-2 TLS records
+// by FlushWrites() after SendH264Frame completes.
 func (c *Connection) sendDVCDataHotPath(data []byte) error {
 	if c.drdynvcID == 0 {
 		return nil
 	}
+	return c.sendChannelDataBuffered(c.drdynvcID, data)
+}
 
-	// Packet layout:
-	// [TPKT header 4][X.224 header 3][MCS header 6-8][VC header 8][DVC data]
-	// MCS header is 6 bytes for data < 128, 8 bytes otherwise
-	const (
-		tpktHeaderLen    = 4
-		x224HeaderLen    = 3
-		mcsHeaderBaseLen = 6
-		vcHeaderLen      = 8
-	)
-
+// sendChannelDataBuffered writes an MCS channel packet to the buffered writer
+// without flushing. Used by the DVC hot path so that multiple fragments
+// accumulate in the buffer and are flushed as a batch.
+func (c *Connection) sendChannelDataBuffered(channelID uint16, data []byte) error {
 	vcPayloadLen := len(data)
-	mcsLenFieldSize := 1
-	if vcPayloadLen+vcHeaderLen >= 128 {
-		mcsLenFieldSize = 2
-	}
-	mcsHeaderLen := mcsHeaderBaseLen + mcsLenFieldSize
+	totalPacketLen := mcsChannelHeaderLen(vcPayloadLen) + vcPayloadLen
 
-	totalPacketLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen + vcPayloadLen
-
-	// Get buffer from pool
 	bufPtr := vcPDUPool.Get().(*[]byte)
 	buf := *bufPtr
 
 	if totalPacketLen > len(buf) {
-		// Rare path: packet too large for pool
 		vcPDUPool.Put(bufPtr)
-		return c.sendDVCDataFallback(data)
+		// Fallback: oversized packet — write directly (rare)
+		return c.sendStaticChannelDataFallback(channelID, data)
 	}
 	defer vcPDUPool.Put(bufPtr)
 
 	packet := buf[:totalPacketLen]
-	pos := 0
-
-	// TPKT header (4 bytes, big-endian length)
-	packet[pos] = protocol.TPKTVersion
-	packet[pos+1] = 0
-	binary.BigEndian.PutUint16(packet[pos+2:pos+4], uint16(totalPacketLen))
-	pos += tpktHeaderLen
-
-	// X.224 Data TPDU header (3 bytes)
-	packet[pos] = 2                      // LI
-	packet[pos+1] = protocol.X224Data    // Code
-	packet[pos+2] = protocol.X224DataEOT // EOT
-	pos += x224HeaderLen
-
-	// MCS Send Data Indication header
-	packet[pos] = byte(protocol.MCSSendDataIndication << 2)
-	relativeUserID := c.userID - protocol.MCSUserIDBase
-	binary.BigEndian.PutUint16(packet[pos+1:pos+3], relativeUserID)
-	binary.BigEndian.PutUint16(packet[pos+3:pos+5], c.drdynvcID)
-	packet[pos+5] = 0x70 // High priority, begin+end segment
-	pos += 6
-
-	// MCS length field (PER encoded)
-	mcsDataLen := vcHeaderLen + vcPayloadLen
-	if mcsDataLen < 128 {
-		packet[pos] = byte(mcsDataLen)
-		pos++
-	} else {
-		packet[pos] = byte(0x80 | (mcsDataLen >> 8))
-		packet[pos+1] = byte(mcsDataLen)
-		pos += 2
-	}
-
-	// VC PDU header (8 bytes, little-endian)
-	binary.LittleEndian.PutUint32(packet[pos:pos+4], uint32(vcPayloadLen))
-	binary.LittleEndian.PutUint32(packet[pos+4:pos+8], channelFlagFirst|channelFlagLast)
-	pos += vcHeaderLen
-
-	// DVC data payload
+	pos := c.buildMCSChannelHeader(packet, channelID, vcPayloadLen)
 	copy(packet[pos:], data)
 
-	return c.writeWithDeadline(func() error {
-		_, err := c.conn.Write(packet)
-		return err
-	})
-}
-
-// sendDVCDataFallback handles oversized packets that don't fit in the pool.
-func (c *Connection) sendDVCDataFallback(data []byte) error {
-	return c.sendStaticChannelDataFallback(c.drdynvcID, data)
+	return c.BufferedWrite(packet)
 }
 
 // sendStaticChannelDataHotPath sends data on a static channel using zero-allocation hot path.
@@ -420,25 +378,84 @@ func (c *Connection) sendStaticChannelDataHotPath(channelID uint16, data []byte)
 	if channelID == 0 {
 		return nil
 	}
+	return c.sendChannelDataPooled(channelID, data)
+}
 
-	// Packet layout:
-	// [TPKT header 4][X.224 header 3][MCS header 6-8][VC header 8][data]
-	// MCS header is 6 bytes for data < 128, 8 bytes otherwise
-	const (
-		tpktHeaderLen    = 4
-		x224HeaderLen    = 3
-		mcsHeaderBaseLen = 6
-		vcHeaderLen      = 8
-	)
+// MCS channel packet header constants.
+const (
+	mcsTPKTHeaderLen    = 4
+	mcsX224HeaderLen    = 3
+	mcsMCSHeaderBaseLen = 6
+	mcsVCHeaderLen      = 8
+)
 
-	vcPayloadLen := len(data)
+// mcsChannelHeaderLen returns the total header length for an MCS channel packet
+// with the given VC payload size. The MCS length field is variable (1 or 2 bytes).
+func mcsChannelHeaderLen(vcPayloadLen int) int {
 	mcsLenFieldSize := 1
-	if vcPayloadLen+vcHeaderLen >= 128 {
+	if vcPayloadLen+mcsVCHeaderLen >= 128 {
 		mcsLenFieldSize = 2
 	}
-	mcsHeaderLen := mcsHeaderBaseLen + mcsLenFieldSize
+	return mcsTPKTHeaderLen + mcsX224HeaderLen + mcsMCSHeaderBaseLen + mcsLenFieldSize + mcsVCHeaderLen
+}
 
-	totalPacketLen := tpktHeaderLen + x224HeaderLen + mcsHeaderLen + vcHeaderLen + vcPayloadLen
+// buildMCSChannelHeader writes the TPKT + X.224 + MCS + VC header into buf.
+// Returns the number of header bytes written.
+//
+// Packet layout: [TPKT 4][X.224 3][MCS SDI 6-8][VC header 8]
+// HOT PATH: No allocations — writes directly into caller-provided buffer.
+func (c *Connection) buildMCSChannelHeader(buf []byte, channelID uint16, vcPayloadLen int) int {
+	headerLen := mcsChannelHeaderLen(vcPayloadLen)
+	totalPacketLen := headerLen + vcPayloadLen
+	pos := 0
+
+	// TPKT header (4 bytes, big-endian length)
+	buf[pos] = protocol.TPKTVersion
+	buf[pos+1] = 0
+	binary.BigEndian.PutUint16(buf[pos+2:pos+4], uint16(totalPacketLen))
+	pos += mcsTPKTHeaderLen
+
+	// X.224 Data TPDU header (3 bytes)
+	buf[pos] = 2                      // LI
+	buf[pos+1] = protocol.X224Data    // Code
+	buf[pos+2] = protocol.X224DataEOT // EOT
+	pos += mcsX224HeaderLen
+
+	// MCS Send Data Indication header
+	buf[pos] = byte(protocol.MCSSendDataIndication << 2)
+	relativeUserID := c.userID - protocol.MCSUserIDBase
+	binary.BigEndian.PutUint16(buf[pos+1:pos+3], relativeUserID)
+	binary.BigEndian.PutUint16(buf[pos+3:pos+5], channelID)
+	buf[pos+5] = 0x70 // High priority, begin+end segment
+	pos += 6
+
+	// MCS length field (PER encoded)
+	mcsDataLen := mcsVCHeaderLen + vcPayloadLen
+	if mcsDataLen < 128 {
+		buf[pos] = byte(mcsDataLen)
+		pos++
+	} else {
+		buf[pos] = byte(0x80 | (mcsDataLen >> 8))
+		buf[pos+1] = byte(mcsDataLen)
+		pos += 2
+	}
+
+	// VC PDU header (8 bytes, little-endian)
+	binary.LittleEndian.PutUint32(buf[pos:pos+4], uint32(vcPayloadLen))
+	binary.LittleEndian.PutUint32(buf[pos+4:pos+8], channelFlagFirst|channelFlagLast)
+	pos += mcsVCHeaderLen
+
+	return pos
+}
+
+// sendChannelDataPooled is the shared implementation for sending data on any static channel
+// using the zero-allocation pooled buffer hot path. Used by both DVC and static channels.
+//
+// Packet layout: [TPKT header 4][X.224 header 3][MCS header 6-8][VC header 8][payload]
+// HOT PATH: Zero heap allocations for typical packet sizes.
+func (c *Connection) sendChannelDataPooled(channelID uint16, data []byte) error {
+	vcPayloadLen := len(data)
+	totalPacketLen := mcsChannelHeaderLen(vcPayloadLen) + vcPayloadLen
 
 	// Get buffer from pool
 	bufPtr := vcPDUPool.Get().(*[]byte)
@@ -452,45 +469,9 @@ func (c *Connection) sendStaticChannelDataHotPath(channelID uint16, data []byte)
 	defer vcPDUPool.Put(bufPtr)
 
 	packet := buf[:totalPacketLen]
-	pos := 0
+	pos := c.buildMCSChannelHeader(packet, channelID, vcPayloadLen)
 
-	// TPKT header (4 bytes, big-endian length)
-	packet[pos] = protocol.TPKTVersion
-	packet[pos+1] = 0
-	binary.BigEndian.PutUint16(packet[pos+2:pos+4], uint16(totalPacketLen))
-	pos += tpktHeaderLen
-
-	// X.224 Data TPDU header (3 bytes)
-	packet[pos] = 2                      // LI
-	packet[pos+1] = protocol.X224Data    // Code
-	packet[pos+2] = protocol.X224DataEOT // EOT
-	pos += x224HeaderLen
-
-	// MCS Send Data Indication header
-	packet[pos] = byte(protocol.MCSSendDataIndication << 2)
-	relativeUserID := c.userID - protocol.MCSUserIDBase
-	binary.BigEndian.PutUint16(packet[pos+1:pos+3], relativeUserID)
-	binary.BigEndian.PutUint16(packet[pos+3:pos+5], channelID)
-	packet[pos+5] = 0x70 // High priority, begin+end segment
-	pos += 6
-
-	// MCS length field (PER encoded)
-	mcsDataLen := vcHeaderLen + vcPayloadLen
-	if mcsDataLen < 128 {
-		packet[pos] = byte(mcsDataLen)
-		pos++
-	} else {
-		packet[pos] = byte(0x80 | (mcsDataLen >> 8))
-		packet[pos+1] = byte(mcsDataLen)
-		pos += 2
-	}
-
-	// VC PDU header (8 bytes, little-endian)
-	binary.LittleEndian.PutUint32(packet[pos:pos+4], uint32(vcPayloadLen))
-	binary.LittleEndian.PutUint32(packet[pos+4:pos+8], channelFlagFirst|channelFlagLast)
-	pos += vcHeaderLen
-
-	// Data payload
+	// Payload
 	copy(packet[pos:], data)
 
 	return c.writeWithDeadline(func() error {
@@ -628,9 +609,21 @@ func (c *Connection) SendFrame(frame []byte) {
 		c.hasReceivedKeyframe.Store(true)
 	}
 
-	// Send via RDPGFX with zero-copy
-	if err := c.gfxChannel.SendH264Frame(frame, isKeyframe); err != nil {
-		switch err {
+	// Send via RDPGFX — fragments accumulate in the buffered writer,
+	// then FlushWrites() sends them as 1-2 TLS records instead of ~63.
+	sendErr := c.gfxChannel.SendH264Frame(frame, isKeyframe)
+	if sendErr == nil {
+		// UDP: RDPEMT handles framing, each WriteData call is a complete PDU.
+		// TCP: Flush all buffered DVC fragments as a batch.
+		if !c.udpReady.Load() {
+			if flushErr := c.FlushWrites(); flushErr != nil {
+				c.server.deps.Logger.Debug().Err(flushErr).Msg("RDP: flush error after frame send")
+				c.consecutiveWriteErrors.Add(1)
+			}
+		}
+	}
+	if sendErr != nil {
+		switch sendErr {
 		case channels.ErrGFXBackpressure:
 			// Queue completely full - drop this frame
 			// With adaptive backpressure, this should rarely happen (P-frames dropped earlier)
@@ -639,14 +632,37 @@ func (c *Connection) SendFrame(frame []byte) {
 			c.frameStats.dropBackpressure.Add(1)
 			if isKeyframe {
 				c.hasReceivedKeyframe.Store(false)
-				c.server.deps.Logger.Warn().
-					Int("pending", c.gfxChannel.GetPendingFrames()).
-					Msg("RDP: keyframe dropped due to full queue, decoder will need reset")
+
+				// Rate-limit keyframe drop logs to once per second to prevent log spam.
+				// Without this, a stuck connection can generate ~56 log lines/second indefinitely.
+				// Uses separate counter from 30s diagnostic log to avoid interference.
+				now := time.Now().UnixMilli()
+				lastLog := c.frameStats.lastKeyframeDropLogTime.Load()
+				if now-lastLog > 1000 {
+					c.server.deps.Logger.Warn().
+						Int("pending", c.gfxChannel.GetPendingFrames()).
+						Msg("RDP: keyframe dropped due to full queue, decoder will need reset")
+					c.frameStats.lastKeyframeDropLogTime.Store(now)
+				}
+
 				// Request immediate keyframe from encoder to minimize recovery time
 				if c.server.deps.Video != nil {
 					c.server.deps.Video.RequestKeyframe()
 				}
 			}
+
+			// Check stale connection even during backpressure.
+			// When pending is stuck at max, no sends succeed, so the stale check
+			// in the success path never runs — creating a death spiral where the
+			// connection is never closed and keyframe drops continue indefinitely.
+			// Guard with closed check to prevent spawning redundant Close goroutines.
+			if !c.closed.Load() && c.gfxChannel.IsConnectionStale() {
+				c.server.deps.Logger.Warn().
+					Int("pendingFrames", c.gfxChannel.GetPendingFrames()).
+					Msg("RDP: closing stale connection (backpressure with no acks)")
+				go c.Close()
+			}
+
 		case channels.ErrGFXNoCodec:
 			// Client doesn't support AVC420/AVC444 - log once and stop sending frames
 			// This is not a transient error, so don't count against write errors
@@ -654,11 +670,11 @@ func (c *Connection) SendFrame(frame []byte) {
 				c.server.deps.Logger.Warn().Msg("RDP: client does not support H.264 (AVC420/AVC444), video disabled")
 			}
 		default:
-			c.server.deps.Logger.Debug().Err(err).Msg("RDP: failed to send frame")
+			c.server.deps.Logger.Debug().Err(sendErr).Msg("RDP: failed to send frame")
 
 			// Track consecutive write errors
 			errCount := c.consecutiveWriteErrors.Add(1)
-			if errCount >= 5 {
+			if errCount >= 5 && !c.closed.Load() {
 				// Too many consecutive write errors - connection is unhealthy
 				c.server.deps.Logger.Warn().
 					Int32("errorCount", errCount).
@@ -673,8 +689,9 @@ func (c *Connection) SendFrame(frame []byte) {
 		// Reset error counter on successful send
 		c.consecutiveWriteErrors.Store(0)
 
-		// Check if connection appears stale (no acks received for a while)
-		if c.gfxChannel.IsConnectionStale() {
+		// Check if connection appears stale (no acks received for a while).
+		// Guard with closed check to prevent spawning redundant Close goroutines.
+		if !c.closed.Load() && c.gfxChannel.IsConnectionStale() {
 			c.server.deps.Logger.Warn().
 				Int("pendingFrames", c.gfxChannel.GetPendingFrames()).
 				Msg("RDP: closing stale connection (no frame acks received)")
@@ -684,31 +701,34 @@ func (c *Connection) SendFrame(frame []byte) {
 
 	// Diagnostic logging: only log if there are NEW drops since last interval.
 	// Uses 30-second intervals to avoid log spam. Only warns on active backpressure.
-	now := time.Now().UnixMilli()
-	lastLog := c.frameStats.lastLogTime.Load()
-	if now-lastLog > 30000 && c.frameStats.lastLogTime.CompareAndSwap(lastLog, now) {
-		dropNotReady := c.frameStats.dropNotReady.Load()
-		dropNoKeyframe := c.frameStats.dropNoKeyframe.Load()
-		dropBackpressure := c.frameStats.dropBackpressure.Load()
-		totalDropped := dropNotReady + dropNoKeyframe + dropBackpressure
-		lastDrops := c.frameStats.lastLogDrops.Swap(totalDropped)
-		newDrops := totalDropped - lastDrops
+	// Modulo guard: only check time every ~60 frames to avoid time.Now() syscall per frame.
+	if c.frameStats.sent.Load()%60 == 0 {
+		now := time.Now().UnixMilli()
+		lastLog := c.frameStats.lastLogTime.Load()
+		if now-lastLog > 30000 && c.frameStats.lastLogTime.CompareAndSwap(lastLog, now) {
+			dropNotReady := c.frameStats.dropNotReady.Load()
+			dropNoKeyframe := c.frameStats.dropNoKeyframe.Load()
+			dropBackpressure := c.frameStats.dropBackpressure.Load()
+			totalDropped := dropNotReady + dropNoKeyframe + dropBackpressure
+			lastDrops := c.frameStats.lastLogDrops.Swap(totalDropped)
+			newDrops := totalDropped - lastDrops
 
-		// Only log if there were new drops in this interval
-		if newDrops > 0 {
-			// Use Warn for backpressure (indicates network issues), Debug for startup drops
-			if dropBackpressure > 0 {
-				c.server.deps.Logger.Warn().
-					Uint64("newDrops", newDrops).
-					Uint64("backpressure", dropBackpressure).
-					Int("pending", c.gfxChannel.GetPendingFrames()).
-					Msg("RDP: frames dropped due to backpressure")
-			} else {
-				c.server.deps.Logger.Debug().
-					Uint64("newDrops", newDrops).
-					Uint64("notReady", dropNotReady).
-					Uint64("noKeyframe", dropNoKeyframe).
-					Msg("RDP: frames dropped during initialization")
+			// Only log if there were new drops in this interval
+			if newDrops > 0 {
+				// Use Warn for backpressure (indicates network issues), Debug for startup drops
+				if dropBackpressure > 0 {
+					c.server.deps.Logger.Warn().
+						Uint64("newDrops", newDrops).
+						Uint64("backpressure", dropBackpressure).
+						Int("pending", c.gfxChannel.GetPendingFrames()).
+						Msg("RDP: frames dropped due to backpressure")
+				} else {
+					c.server.deps.Logger.Debug().
+						Uint64("newDrops", newDrops).
+						Uint64("notReady", dropNotReady).
+						Uint64("noKeyframe", dropNoKeyframe).
+						Msg("RDP: frames dropped during initialization")
+				}
 			}
 		}
 	}
@@ -718,31 +738,44 @@ func (c *Connection) SendFrame(frame []byte) {
 
 // isH264Keyframe checks if the frame contains an IDR (keyframe).
 // This is a fast check that looks for NAL unit type 5 (IDR) or 7 (SPS).
-// HOT PATH: Limits scan to first 1KB since SPS/IDR NALs are always at frame start.
+// HOT PATH: Checks position 0 first (hardware encoders always place NALs there),
+// making P-frame detection O(1). Falls through to scan for unusual layouts.
 func isH264Keyframe(data []byte) bool {
 	if len(data) < 5 {
 		return false
 	}
 
-	// Limit scan to first 1KB - SPS/IDR NALs are always at frame start
-	scanLimit := min(len(data)-4, 1024)
+	// Fast path: check start code at position 0 (where hardware encoders always place it)
+	if data[0] == 0 && data[1] == 0 {
+		var nalType byte
+		if data[2] == 1 {
+			nalType = data[3] & 0x1F
+		} else if data[2] == 0 && data[3] == 1 {
+			nalType = data[4] & 0x1F
+		}
+		if nalType == 5 || nalType == 7 {
+			return true
+		}
+		// Non-keyframe NAL at position 0 — for P-frames this is the common exit
+		// Only scan further if the NAL type is something that could precede a keyframe
+		// (e.g., NAL type 9 = access unit delimiter, NAL type 6 = SEI)
+		if nalType != 0 && nalType != 6 && nalType != 9 {
+			return false
+		}
+	}
 
-	// Look for start codes and check NAL type
-	for i := range scanLimit {
-		// Check for 3-byte or 4-byte start code
+	// Slow path: scan up to first 1KB for unusual NAL layouts
+	scanLimit := min(len(data)-4, 1024)
+	for i := 1; i < scanLimit; i++ {
 		if data[i] == 0 && data[i+1] == 0 {
 			var nalType byte
 			if data[i+2] == 1 {
-				// 3-byte start code
 				nalType = data[i+3] & 0x1F
 			} else if data[i+2] == 0 && data[i+3] == 1 && i+4 < len(data) {
-				// 4-byte start code
 				nalType = data[i+4] & 0x1F
 			} else {
 				continue
 			}
-
-			// NAL type 5 = IDR, NAL type 7 = SPS (precedes keyframe)
 			if nalType == 5 || nalType == 7 {
 				return true
 			}

@@ -9,23 +9,32 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// msgEnableContinuousUpdates is the RFB client message type for
+// enabling/disabling continuous framebuffer updates (RFB extension).
+const msgEnableContinuousUpdates byte = 150
+
 // messageLoop reads and processes client messages.
+// Uses blocking reads (no per-iteration SetReadDeadline) to eliminate one
+// setsockopt syscall per message. The stopChan goroutine closes the conn
+// to unblock the read on shutdown.
 func (c *Connection) messageLoop() error {
+	// Clear any handshake deadline — use blocking reads for maximum responsiveness
+	if err := c.conn.SetReadDeadline(time.Time{}); err != nil {
+		return fmt.Errorf("failed to clear read deadline: %w", err)
+	}
+
+	// Watch stopChan and close conn to unblock the read on shutdown
+	go func() {
+		<-c.stopChan
+		_ = c.conn.Close()
+	}()
+
 	for {
-		select {
-		case <-c.stopChan:
-			return nil
-		default:
-		}
-
-		if err := c.conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
-			return fmt.Errorf("failed to set read deadline: %w", err)
-		}
-
 		if _, err := io.ReadFull(c.conn, c.msgBuf[:]); err != nil {
 			if err == io.EOF {
 				return nil
 			}
+			// "use of closed" is expected when stopChan closes the conn
 			return fmt.Errorf("failed to read message type: %w", err)
 		}
 
@@ -54,9 +63,12 @@ func (c *Connection) messageLoop() error {
 			if err := c.handleClientCutText(); err != nil {
 				return err
 			}
+		case rfbClientMsgType(msgEnableContinuousUpdates):
+			if err := c.handleEnableContinuousUpdates(); err != nil {
+				return err
+			}
 		default:
-			c.server.deps.Logger.Warn().Uint8("msgType", c.msgBuf[0]).Msg("unknown VNC message type")
-			return fmt.Errorf("unknown message type: %d", c.msgBuf[0])
+			c.server.deps.Logger.Warn().Uint8("msgType", c.msgBuf[0]).Msg("unknown VNC message type, ignoring")
 		}
 	}
 }
@@ -107,17 +119,22 @@ func (c *Connection) handleSetEncodings() error {
 	}
 
 	foundTight := false
+	foundContinuousUpdates := false
 	for i := uint16(0); i < numEncodings; i++ {
 		if _, err := io.ReadFull(c.conn, c.encBuf[:]); err != nil {
 			return fmt.Errorf("failed to read encoding: %w", err)
 		}
 		enc := rfbEncodingType(binary.BigEndian.Uint32(c.encBuf[:]))
-		if enc == encodingTight {
+		switch enc {
+		case encodingTight:
 			foundTight = true
+		case encodingContinuousUpdates:
+			foundContinuousUpdates = true
 		}
 	}
 
-	c.hasTight.Store(foundTight)
+	c.supportsContinuousUpdates = foundContinuousUpdates
+
 	previouslyNeededJPEG := c.needsJPEGEncoder.Swap(foundTight)
 
 	if foundTight && !previouslyNeededJPEG {
@@ -232,6 +249,25 @@ func (c *Connection) handleClientCutText() error {
 			c.server.deps.Logger.Debug().Int("bytes", int(length)).Msg("VNC clipboard: stored text (will type on paste)")
 		}
 	}
+
+	return nil
+}
+
+// handleEnableContinuousUpdates processes the EnableContinuousUpdates message.
+// Format: enable(1) + x(2) + y(2) + w(2) + h(2) = 9 bytes
+func (c *Connection) handleEnableContinuousUpdates() error {
+	var buf [9]byte
+	if _, err := io.ReadFull(c.conn, buf[:]); err != nil {
+		return fmt.Errorf("failed to read continuous updates: %w", err)
+	}
+
+	enable := buf[0] == 1
+	c.continuousUpdates.Store(enable)
+
+	c.server.deps.Logger.Debug().
+		Bool("enable", enable).
+		Str("remote", c.conn.RemoteAddr().String()).
+		Msg("VNC: continuous updates toggled")
 
 	return nil
 }

@@ -78,7 +78,8 @@ const (
 type rfbEncodingType int32
 
 const (
-	encodingTight rfbEncodingType = 7 // Tight encoding with JPEG compression
+	encodingTight             rfbEncodingType = 7    // Tight encoding with JPEG compression
+	encodingContinuousUpdates rfbEncodingType = -313 // Continuous framebuffer updates (pseudo-encoding)
 )
 
 // =============================================================================
@@ -102,7 +103,6 @@ const (
 
 	// Timeouts for various operations
 	handshakeTimeout = 30 * time.Second
-	readTimeout      = 60 * time.Second
 	writeTimeout     = 5 * time.Second
 
 	// VNC auth challenge/response size (DES block size * 2)

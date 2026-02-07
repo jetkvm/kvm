@@ -56,6 +56,25 @@ type Dependencies struct {
 	// OnSessionEnd is called when an RDP client disconnects.
 	// Used to track active sessions for sleep mode prevention.
 	OnSessionEnd func()
+
+	// NewCapture returns a PacketCapture for the given remote address, or nil
+	// if capture is disabled. Called once per accepted connection.
+	NewCapture func(remoteAddr string) PacketCapture
+}
+
+// PacketCapture intercepts connection I/O for decrypted packet capture.
+type PacketCapture interface {
+	// WrapConn wraps the raw connection to intercept Read/Write.
+	WrapConn(conn net.Conn) net.Conn
+	// SwapInner replaces the inner connection (after TLS upgrade).
+	// Returns the capture wrapper with the new inner conn.
+	SwapInner(newConn net.Conn) net.Conn
+	// Inner returns the underlying connection (unwrapped).
+	Inner() net.Conn
+	// SetClientName updates the session metadata after GCC parse.
+	SetClientName(name string)
+	// Close finalizes the capture session (writes FIN, closes file).
+	Close()
 }
 
 // TLSProvider provides TLS connection upgrading with optional hardware acceleration.
@@ -219,11 +238,11 @@ const (
 //
 // Memory management: Call Release() after processing to return the buffer to the pool.
 type RGBFrame struct {
-	Data       []byte
-	Width      uint32
-	Height     uint32
-	Format     RGBFrameFormat
-	OnRelease  func() // Called to return buffer to pool (exported for cross-package use)
+	Data      []byte
+	Width     uint32
+	Height    uint32
+	Format    RGBFrameFormat
+	OnRelease func() // Called to return buffer to pool (exported for cross-package use)
 }
 
 // Release returns the frame's buffer to the pool.

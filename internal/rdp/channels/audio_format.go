@@ -5,20 +5,20 @@ import "encoding/binary"
 // Shared audio format constants for RDPSND (output) and AUDIN (input).
 // Both channels use identical preferred format: 16-bit PCM, stereo, 48kHz.
 const (
-	AudioPreferredChannels      = 2
-	AudioPreferredSampleRate    = 48000
-	AudioPreferredBitsPerSample = 16
-	AudioPreferredBlockAlign    = AudioPreferredChannels * (AudioPreferredBitsPerSample / 8) // 4 bytes
-	AudioPreferredBytesPerSec   = AudioPreferredSampleRate * AudioPreferredBlockAlign        // 192000 bytes/sec
+	audioPreferredChannels      = 2
+	audioPreferredSampleRate    = 48000
+	audioPreferredBitsPerSample = 16
+	audioPreferredBlockAlign    = audioPreferredChannels * (audioPreferredBitsPerSample / 8) // 4 bytes
+	audioPreferredBytesPerSec   = audioPreferredSampleRate * audioPreferredBlockAlign        // 192000 bytes/sec
 )
 
-// WAVEFORMATEX structure size (without extra data).
-const WAVEFORMATEXSize = 18
+// waveformatexSize is the WAVEFORMATEX structure size (without extra data).
+const waveformatexSize = 18
 
-// EncodeWAVEFORMATEX writes a WAVEFORMATEX structure to buf at the given offset.
-// Returns the number of bytes written (always WAVEFORMATEXSize).
-// buf must have at least offset + WAVEFORMATEXSize bytes available.
-func EncodeWAVEFORMATEX(buf []byte, offset int, fmt AudioFormat) int {
+// encodeWAVEFORMATEX writes a WAVEFORMATEX structure to buf at the given offset.
+// Returns the number of bytes written (always waveformatexSize).
+// buf must have at least offset + waveformatexSize bytes available.
+func encodeWAVEFORMATEX(buf []byte, offset int, fmt AudioFormat) int {
 	binary.LittleEndian.PutUint16(buf[offset:], fmt.FormatTag)
 	binary.LittleEndian.PutUint16(buf[offset+2:], fmt.Channels)
 	binary.LittleEndian.PutUint32(buf[offset+4:], fmt.SamplesPerSec)
@@ -26,27 +26,27 @@ func EncodeWAVEFORMATEX(buf []byte, offset int, fmt AudioFormat) int {
 	binary.LittleEndian.PutUint16(buf[offset+12:], fmt.BlockAlign)
 	binary.LittleEndian.PutUint16(buf[offset+14:], fmt.BitsPerSample)
 	binary.LittleEndian.PutUint16(buf[offset+16:], 0) // cbSize (no extra data)
-	return WAVEFORMATEXSize
+	return waveformatexSize
 }
 
-// EncodePreferredWAVEFORMATEX writes the preferred audio format (PCM stereo 48kHz) to buf.
-// Returns the number of bytes written (always WAVEFORMATEXSize).
-func EncodePreferredWAVEFORMATEX(buf []byte, offset int) int {
-	return EncodeWAVEFORMATEX(buf, offset, AudioFormat{
-		FormatTag:      WaveFormatPCM,
-		Channels:       AudioPreferredChannels,
-		SamplesPerSec:  AudioPreferredSampleRate,
-		AvgBytesPerSec: AudioPreferredBytesPerSec,
-		BlockAlign:     AudioPreferredBlockAlign,
-		BitsPerSample:  AudioPreferredBitsPerSample,
+// encodePreferredWAVEFORMATEX writes the preferred audio format (PCM stereo 48kHz) to buf.
+// Returns the number of bytes written (always waveformatexSize).
+func encodePreferredWAVEFORMATEX(buf []byte, offset int) int {
+	return encodeWAVEFORMATEX(buf, offset, AudioFormat{
+		FormatTag:      waveFormatPCM,
+		Channels:       audioPreferredChannels,
+		SamplesPerSec:  audioPreferredSampleRate,
+		AvgBytesPerSec: audioPreferredBytesPerSec,
+		BlockAlign:     audioPreferredBlockAlign,
+		BitsPerSample:  audioPreferredBitsPerSample,
 	})
 }
 
-// ParseWAVEFORMATEX parses a WAVEFORMATEX structure from data at the given offset.
+// parseWAVEFORMATEX parses a WAVEFORMATEX structure from data at the given offset.
 // Returns the parsed format, the cbSize field value, and true if successful.
 // Returns zero values and false if data is too short.
-func ParseWAVEFORMATEX(data []byte, offset int) (AudioFormat, uint16, bool) {
-	if offset+WAVEFORMATEXSize > len(data) {
+func parseWAVEFORMATEX(data []byte, offset int) (AudioFormat, uint16, bool) {
+	if offset+waveformatexSize > len(data) {
 		return AudioFormat{}, 0, false
 	}
 
@@ -63,26 +63,26 @@ func ParseWAVEFORMATEX(data []byte, offset int) (AudioFormat, uint16, bool) {
 	return fmt, cbSize, true
 }
 
-// IsPreferredFormat returns true if the format matches our preferred format.
-func IsPreferredFormat(fmt AudioFormat) bool {
-	return fmt.FormatTag == WaveFormatPCM &&
-		fmt.Channels == AudioPreferredChannels &&
-		fmt.SamplesPerSec == AudioPreferredSampleRate &&
-		fmt.BitsPerSample == AudioPreferredBitsPerSample
+// isPreferredFormat returns true if the format matches our preferred format.
+func isPreferredFormat(fmt AudioFormat) bool {
+	return fmt.FormatTag == waveFormatPCM &&
+		fmt.Channels == audioPreferredChannels &&
+		fmt.SamplesPerSec == audioPreferredSampleRate &&
+		fmt.BitsPerSample == audioPreferredBitsPerSample
 }
 
-// FindPreferredFormat searches formats for the preferred format.
+// findPreferredFormat searches formats for the preferred format.
 // Returns the index and format if found, or -1 and zero value if not found.
-func FindPreferredFormat(formats []AudioFormat) (int, AudioFormat) {
+func findPreferredFormat(formats []AudioFormat) (int, AudioFormat) {
 	// First pass: exact match
 	for i, fmt := range formats {
-		if IsPreferredFormat(fmt) {
+		if isPreferredFormat(fmt) {
 			return i, fmt
 		}
 	}
 	// Fallback: any PCM format
 	for i, fmt := range formats {
-		if fmt.FormatTag == WaveFormatPCM {
+		if fmt.FormatTag == waveFormatPCM {
 			return i, fmt
 		}
 	}

@@ -51,7 +51,7 @@ func getMdnsOptions() *mdns.MDNSOptions {
 	}
 
 	var ipv4, ipv6 bool
-	switch config.NetworkConfig.MDNSMode.String {
+	switch loadCfg().NetworkConfig.MDNSMode.String {
 	case "auto":
 		ipv4 = true
 		ipv6 = true
@@ -140,7 +140,7 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 }
 
 func validateNetworkConfig() {
-	err := confparser.SetDefaultsAndValidate(config.NetworkConfig)
+	err := confparser.SetDefaultsAndValidate(loadCfg().NetworkConfig)
 	if err == nil {
 		return
 	}
@@ -152,19 +152,18 @@ func validateNetworkConfig() {
 
 	// do not use a pointer to the default config
 	// it has been already changed during LoadConfig
-	config.NetworkConfig = &(types.NetworkConfig{})
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.NetworkConfig = &(types.NetworkConfig{})
+	}); err != nil {
 		networkLogger.Error().Err(err).Msg("failed to save config")
 	}
 }
 
 func initNetwork() error {
-	ensureConfigLoaded()
-
 	// validate the config, if it's invalid, revert to the default config and save the backup
 	validateNetworkConfig()
 
-	nc := config.NetworkConfig
+	nc := loadCfg().NetworkConfig
 
 	nm := nmlite.NewNetworkManager(context.Background(), networkLogger)
 	networkLogger.Info().Interface("networkConfig", nc).Str("hostname", nc.Hostname.String).Str("domain", nc.Domain.String).Msg("initializing network manager")
@@ -185,15 +184,16 @@ func initPublicIPState() {
 	// due to privacy reasons
 
 	// but it will be initialized anyway to avoid nil pointer dereferences
+	cfg := loadCfg()
 	ps := myip.NewPublicIPState(&myip.PublicIPStateConfig{
 		Logger:             networkLogger,
-		CloudflareEndpoint: config.CloudURL,
+		CloudflareEndpoint: cfg.CloudURL,
 		APIEndpoint:        "",
 		IPv4:               false,
 		IPv6:               false,
 		HttpClientGetter: func(family int) *http.Client {
 			transport := http.DefaultTransport.(*http.Transport).Clone()
-			transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
+			transport.Proxy = loadCfg().NetworkConfig.GetTransportProxyFunc()
 			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 				netType := network
 				switch family {
@@ -298,7 +298,7 @@ func rpcGetNetworkState() *types.RpcInterfaceState {
 }
 
 func rpcGetNetworkSettings() *RpcNetworkSettings {
-	return toRpcNetworkSettings(config.NetworkConfig)
+	return toRpcNetworkSettings(loadCfg().NetworkConfig)
 }
 
 func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, error) {
@@ -312,7 +312,7 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	l.Debug().Msg("setting new config")
 
 	// Check if reboot is needed
-	rebootRequired, postRebootAction := shouldRebootForNetworkChange(config.NetworkConfig, netConfig)
+	rebootRequired, postRebootAction := shouldRebootForNetworkChange(loadCfg().NetworkConfig, netConfig)
 
 	// If reboot required, send willReboot event before applying network config
 	if rebootRequired {
@@ -332,10 +332,11 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	if err != nil {
 		return nil, err
 	}
-	config.NetworkConfig = newConfig
 
 	l.Debug().Msg("saving new config")
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.NetworkConfig = newConfig
+	}); err != nil {
 		return nil, err
 	}
 
@@ -354,14 +355,20 @@ func rpcRenewDHCPLease() error {
 }
 
 func rpcToggleDHCPClient() error {
-	switch config.NetworkConfig.DHCPClient.String {
+	currentClient := loadCfg().NetworkConfig.DHCPClient.String
+	var newClient string
+	switch currentClient {
 	case "jetdhcpc":
-		config.NetworkConfig.DHCPClient.String = "udhcpc"
+		newClient = "udhcpc"
 	case "udhcpc":
-		config.NetworkConfig.DHCPClient.String = "jetdhcpc"
+		newClient = "jetdhcpc"
+	default:
+		newClient = currentClient
 	}
 
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.NetworkConfig.DHCPClient.String = newClient
+	}); err != nil {
 		return err
 	}
 

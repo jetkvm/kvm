@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: devpod-WORKSPACE_ID
+spec:
+  containers:
+    # Main devcontainer
+    - name: devpod
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        runAsNonRoot: false
+        capabilities:
+          add:
+            - SYS_PTRACE
+      env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+      volumeMounts:
+        - name: workspace
+          mountPath: /workspaces
+    # Docker-in-Docker sidecar
+    - name: dind
+      image: docker:27-dind
+      securityContext:
+        privileged: true
+      env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+      volumeMounts:
+        - name: dind-storage
+          mountPath: /var/lib/docker
+        - name: workspace
+          mountPath: /workspaces
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "8Gi"
+          cpu: "4"
+  volumes:
+    - name: workspace
+      emptyDir: {}
+    - name: dind-storage
+      emptyDir: {}

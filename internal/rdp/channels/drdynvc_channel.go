@@ -13,8 +13,8 @@ func (ch *DVCChannel) SendData(data []byte) error {
 		return ErrDVCChannelClosed
 	}
 
-	// Determine channel ID encoding (constant for the lifetime of the channel)
-	cbID, idLen := channelIDEncoding(ch.ID)
+	// Use cached channel ID encoding (computed once at channel creation)
+	cbID, idLen := ch.cachedCbID, ch.cachedIDLen
 
 	totalLen := len(data)
 
@@ -112,7 +112,7 @@ func (ch *DVCChannel) Close() error {
 	ch.open.Store(false)
 
 	// Send close request
-	cbID, idLen := channelIDEncoding(ch.ID)
+	cbID, idLen := ch.cachedCbID, ch.cachedIDLen
 
 	buf := make([]byte, 1+idLen)
 	buf[0] = DVCCloseRequest | cbID

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
@@ -174,8 +175,11 @@ type Config struct {
 	RDPBase64CmdWindows     string `json:"rdp_base64_cmd_windows"`     // Decode command for Windows. Placeholders: {data}, {filename}
 	RDPBase64CmdLinux       string `json:"rdp_base64_cmd_linux"`       // Decode command for Linux. Placeholders: {data}, {filename}
 	RDPBase64CmdMacOS       string `json:"rdp_base64_cmd_macos"`       // Decode command for macOS. Placeholders: {data}, {filename}
+	RDPUDPEnabled           *bool  `json:"rdp_udp_enabled"`            // Enable UDP transport for better WAN performance, default: true
 	RDPUsername             string `json:"rdp_username"`               // Username for RDP authentication (any username allowed if empty)
 	RDPDomain               string `json:"rdp_domain"`                 // Domain for RDP authentication (any domain allowed if empty)
+	RDPGatewayEnabled       *bool  `json:"rdp_gateway_enabled"`        // Enable RD Gateway on HTTPS, default: true when RDP+TLS enabled
+	RDPGatewayUDPPort       int    `json:"rdp_gateway_udp_port"`       // UDP port for ShortPath discovery, default: 3391
 
 	// Native mode: "subprocess" (default, crash-isolated) or "direct" (more efficient, no subprocess)
 	// Direct mode is more resource-efficient but native crashes will bring down the whole app.
@@ -297,7 +301,8 @@ func getDefaultConfig() Config {
 		RDPVideoEnabled:     true,
 		RDPAudioEnabled:     true,
 		RDPMicEnabled:       true,
-		RDPCameraEnabled:    false, // Camera redirection off by default
+		RDPUDPEnabled:       func() *bool { v := true; return &v }(), // UDP transport on by default for better WAN performance
+		RDPCameraEnabled:    false,                                    // Camera redirection off by default
 		RDPClipboardEnabled:    true,
 		RDPPasteDelayMs:        0,         // No delay - fastest typing speed
 		RDPTargetOS:            "windows", // Most common target
@@ -320,7 +325,8 @@ func getDefaultConfig() Config {
 
 var (
 	config     *Config
-	configLock = &sync.Mutex{}
+	configPtr  atomic.Pointer[Config]
+	configLock sync.Mutex
 )
 
 var (
@@ -338,6 +344,13 @@ var (
 	)
 )
 
+// loadCfg returns the current config snapshot via atomic load.
+// This is safe to call from any goroutine without holding a lock.
+func loadCfg() *Config {
+	return configPtr.Load()
+}
+
+
 func LoadConfig() {
 	configLock.Lock()
 	defer configLock.Unlock()
@@ -350,6 +363,7 @@ func LoadConfig() {
 	// load the default config
 	defaultConfig := getDefaultConfig()
 	config = &defaultConfig
+	configPtr.Store(config)
 
 	file, err := os.Open(configPath)
 	if err != nil {
@@ -414,9 +428,7 @@ func LoadConfig() {
 		loadedConfig.VNCPort = defaultConfig.VNCPort
 		loadedConfig.VNCQuality = defaultConfig.VNCQuality
 	}
-	// Apply VNC defaults for configs created before these settings existed
-	// VNCPasteDelayMs: 0 is a valid value (fastest), so we use -1 or check differently
-	// Since 0 is valid (no delay), we don't need migration - new default is 2ms
+	// VNCPasteDelayMs: 0 is a valid value (fastest), no migration needed
 	if loadedConfig.VNCMaxConnections == 0 {
 		loadedConfig.VNCMaxConnections = 3
 	}
@@ -436,6 +448,10 @@ func LoadConfig() {
 	if loadedConfig.RDPMaxConnections == 0 {
 		loadedConfig.RDPMaxConnections = 3
 	}
+	if loadedConfig.RDPUDPEnabled == nil {
+		v := true
+		loadedConfig.RDPUDPEnabled = &v
+	}
 
 	// fixup old keyboard layout value
 	if loadedConfig.KeyboardLayout == "en_US" {
@@ -448,6 +464,7 @@ func LoadConfig() {
 	}
 
 	config = &loadedConfig
+	configPtr.Store(config)
 
 	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
 	logging.GetRootLogger().SetSubsystemLevels(config.LogLevelOverrides)
@@ -461,27 +478,11 @@ func LoadConfig() {
 	logger.Info().Str("path", configPath).Msg("config loaded")
 }
 
-func SaveConfig() error {
-	return saveConfig(configPath)
-}
-
-func SaveBackupConfig() error {
-	return saveConfig(configPath + ".bak")
-}
-
-func saveConfig(path string) error {
-	configLock.Lock()
-	defer configLock.Unlock()
-
+// saveConfigToFile marshals cfg to JSON and atomically writes it to path.
+// This must only be called while configLock is held.
+func saveConfigToFile(cfg *Config, path string) error {
 	logger.Trace().Str("path", path).Msg("Saving config")
 
-	// fixup old keyboard layout value
-	if config.KeyboardLayout == "en_US" {
-		config.KeyboardLayout = "en-US"
-	}
-
-	// Write to a temp file first, then atomically rename to prevent
-	// config truncation if encoding fails mid-write.
 	tmpPath := path + ".tmp"
 	file, err := os.Create(tmpPath)
 	if err != nil {
@@ -490,7 +491,7 @@ func saveConfig(path string) error {
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(config); err != nil {
+	if err := encoder.Encode(cfg); err != nil {
 		file.Close()
 		os.Remove(tmpPath)
 		return fmt.Errorf("failed to encode config: %w", err)
@@ -512,9 +513,34 @@ func saveConfig(path string) error {
 	return nil
 }
 
-func ensureConfigLoaded() {
-	if config == nil {
-		LoadConfig()
+// updateAndSaveConfig applies fn to a shallow copy of the current config,
+// saves the result to disk, and atomically publishes the new config.
+// If the disk write fails, the old config remains untouched.
+func updateAndSaveConfig(fn func(cfg *Config)) error {
+	configLock.Lock()
+	defer configLock.Unlock()
+
+	newCfg := *configPtr.Load()
+	fn(&newCfg)
+
+	if err := saveConfigToFile(&newCfg, configPath); err != nil {
+		return err
 	}
+
+	config = &newCfg
+	configPtr.Store(&newCfg)
+	return nil
+}
+
+func SaveConfig() error {
+	configLock.Lock()
+	defer configLock.Unlock()
+	return saveConfigToFile(configPtr.Load(), configPath)
+}
+
+func SaveBackupConfig() error {
+	configLock.Lock()
+	defer configLock.Unlock()
+	return saveConfigToFile(configPtr.Load(), configPath+".bak")
 }
 

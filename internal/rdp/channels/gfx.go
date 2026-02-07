@@ -40,45 +40,39 @@ const (
 	GFXCmdMapSurfaceToScaled = 0x0017
 )
 
-// RDPGFX codec IDs.
+// RDPGFX codec IDs (MS-RDPEGFX 2.2.4.3).
 const (
-	GFXCodecUncompressed = 0x0000
-	GFXCodecRemoteFX     = 0x0003
-	GFXCodecClearCodec   = 0x0008
-	GFXCodecPlanar       = 0x000A
-	GFXCodecAVC420       = 0x000B
-	GFXCodecAlpha        = 0x000C
-	GFXCodecAVC444       = 0x000E
-	GFXCodecAVC444v2     = 0x000F
+	GFXCodecAVC420 = 0x000B // H.264 YUV420 (baseline profile)
+	GFXCodecAVC444 = 0x000E // H.264 YUV444 (high profile)
 )
 
-// RDPGFX pixel formats.
+// RDPGFX pixel formats (MS-RDPEGFX 2.2.1.1).
 const (
-	GFXPixelFormatXRGB = 0x20
-	GFXPixelFormatARGB = 0x21
+	GFXPixelFormatXRGB = 0x20 // 32-bit XRGB (no alpha)
 )
 
-// RDPGFX capability versions.
+// RDPGFX capability versions (MS-RDPEGFX 2.2.3.3).
+// Version 8.1+ supports AVC420 (H.264 baseline).
+// Version 10+ supports AVC444 (H.264 high profile) unless AVC_DISABLED flag is set.
 const (
-	GFXCapsVersion8   = 0x00080004
-	GFXCapsVersion81  = 0x00080105
-	GFXCapsVersion10  = 0x000A0002
-	GFXCapsVersion101 = 0x000A0100
-	GFXCapsVersion102 = 0x000A0200
-	GFXCapsVersion103 = 0x000A0301
-	GFXCapsVersion104 = 0x000A0400
-	GFXCapsVersion105 = 0x000A0502
-	GFXCapsVersion106 = 0x000A0601
-	GFXCapsVersion107 = 0x000A0701
+	GFXCapsVersion8   = 0x00080004 // RDP 8.0 — RemoteFX only
+	GFXCapsVersion81  = 0x00080105 // RDP 8.1 — adds AVC420 support
+	GFXCapsVersion10  = 0x000A0002 // RDP 10.0 — adds AVC444 support
+	GFXCapsVersion101 = 0x000A0100 // RDP 10.1
+	GFXCapsVersion102 = 0x000A0200 // RDP 10.2
+	GFXCapsVersion103 = 0x000A0301 // RDP 10.3
+	GFXCapsVersion104 = 0x000A0400 // RDP 10.4
+	GFXCapsVersion105 = 0x000A0502 // RDP 10.5
+	GFXCapsVersion106 = 0x000A0601 // RDP 10.6
+	GFXCapsVersion107 = 0x000A0701 // RDP 10.7
 )
 
-// RDPGFX capability flags.
+// RDPGFX capability flags (MS-RDPEGFX 2.2.3.3).
 const (
-	GFXCapsFlagThinClient    = 0x00000001
-	GFXCapsFlagSmallCache    = 0x00000002
-	GFXCapsFlagAVC420Enabled = 0x00000010
-	GFXCapsFlagAVCDisabled   = 0x00000020
-	GFXCapsFlagAVCThinClient = 0x00000040
+	GFXCapsFlagThinClient    = 0x00000001 // Client has limited resources
+	GFXCapsFlagSmallCache    = 0x00000002 // Client has small bitmap cache
+	GFXCapsFlagAVC420Enabled = 0x00000010 // AVC420 explicitly enabled (v8.1)
+	GFXCapsFlagAVCDisabled   = 0x00000020 // AVC codecs disabled (v10+)
 )
 
 // GFX PDU header size.
@@ -165,8 +159,13 @@ type GFXChannel struct {
 	framesPending  atomic.Int32
 	lastAckFrameID atomic.Uint32
 	totalDecoded   atomic.Uint32
-	lastAckTime    atomic.Int32 // Unix timestamp (lower 32 bits) of last ack
+	lastAckTime    atomic.Int64 // Unix timestamp of last ack
 	startTime      atomic.Int64 // UnixMilli timestamp when channel became ready
+
+	// Self-healing: tracks when backpressure started (UnixMilli, 0 = not in backpressure).
+	// If pending stays at max for >10s with no acks, reset the counter to recover
+	// from edge cases where the client dropped some acks but is still alive.
+	backpressureSince atomic.Int64
 
 	// Pre-allocated buffers for surface management to avoid GC pressure
 	createBuf        [GFXHeaderSize + GFXCreateSurfaceSize]byte
@@ -562,7 +561,13 @@ func (g *GFXChannel) sendCapsConfirm() error {
 	binary.LittleEndian.PutUint32(buf[12:16], 4) // capsDataLen
 	binary.LittleEndian.PutUint32(buf[16:20], g.capsFlags)
 
-	if err := g.sendGFXData(buf); err != nil {
+	// Wrap with ZGFX single-segment header inline (avoids pool allocation for 20 bytes)
+	var wrapped [2 + 20]byte
+	wrapped[0] = ZGFXSegmentedSingle
+	wrapped[1] = ZGFXPacketComprRDP8
+	copy(wrapped[2:], buf)
+
+	if err := g.channel.SendData(wrapped[:]); err != nil {
 		return err
 	}
 
@@ -582,7 +587,10 @@ func (g *GFXChannel) sendCapsConfirm() error {
 // queueDepth is the client's reported queue depth (0 if not available).
 func (g *GFXChannel) updateFrameAckState(ackFrameID uint32, queueDepth int32) {
 	g.lastAckFrameID.Store(ackFrameID)
-	g.lastAckTime.Store(int32(time.Now().Unix()))
+	g.lastAckTime.Store(time.Now().Unix())
+
+	// Clear self-healing timer since we're receiving acks
+	g.backpressureSince.Store(0)
 
 	// Calculate pending frames: frames sent - frames acknowledged
 	lastSent := g.frameID.Load()

@@ -19,8 +19,8 @@ func initMeshVPN() {
 	meshVPNRegistry = meshvpn.NewRegistry()
 
 	var vpnConfig *meshvpn.Config
-	if config != nil && config.MeshVPNConfig != nil {
-		vpnConfig = config.MeshVPNConfig
+	if cfg := loadCfg(); cfg != nil && cfg.MeshVPNConfig != nil {
+		vpnConfig = cfg.MeshVPNConfig
 	}
 
 	tunMode := meshvpn.TUNModeUserspace
@@ -49,12 +49,15 @@ func initMeshVPN() {
 				writeJSONRPCEvent("meshVPNState", status, s)
 			}
 		},
-		OnConfigChange: func(cfg *meshvpn.Config) {
-			config.MeshVPNConfig = cfg
+		OnConfigChange: func(vpnCfg *meshvpn.Config) {
+			_ = updateAndSaveConfig(func(cfg *Config) {
+				cfg.MeshVPNConfig = vpnCfg
+			})
 		},
-		SaveConfig: func(cfg *meshvpn.Config) error {
-			config.MeshVPNConfig = cfg
-			return SaveConfig()
+		SaveConfig: func(vpnCfg *meshvpn.Config) error {
+			return updateAndSaveConfig(func(cfg *Config) {
+				cfg.MeshVPNConfig = vpnCfg
+			})
 		},
 	})
 

@@ -148,8 +148,8 @@ func Main() {
 		time.Sleep(15 * time.Minute)
 
 		for {
-			logger.Info().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("auto-update check")
-			if !config.AutoUpdateEnabled {
+			logger.Info().Bool("auto_update_enabled", loadCfg().AutoUpdateEnabled).Msg("auto-update check")
+			if !loadCfg().AutoUpdateEnabled {
 				logger.Debug().Msg("auto-update disabled")
 				time.Sleep(5 * time.Minute) // we'll check if auto-updates are enabled in five minutes
 				continue
@@ -167,7 +167,7 @@ func Main() {
 				continue
 			}
 
-			includePreRelease := config.IncludePreRelease
+			includePreRelease := loadCfg().IncludePreRelease
 			err = otaState.TryUpdate(context.Background(), ota.UpdateParams{
 				DeviceID:          GetDeviceID(),
 				IncludePreRelease: includePreRelease,
@@ -185,7 +185,7 @@ func Main() {
 
 	go RunWebSecureServer()
 	// Web secure server is started only if TLS mode is enabled
-	if config.TLSMode != "" {
+	if loadCfg().TLSMode != "" {
 		startWebSecureServer()
 	}
 
@@ -196,16 +196,24 @@ func Main() {
 	initSerialPort()
 
 	// Initialize VNC server if enabled
-	if config.VNCEnabled {
+	cfg := loadCfg()
+	if cfg.VNCEnabled {
 		if err := initVNCServer(); err != nil {
 			logger.Error().Err(err).Msg("failed to initialize VNC server")
 		}
 	}
 
 	// Initialize RDP server if enabled
-	if config.RDPEnabled {
+	if cfg.RDPEnabled {
 		if err := initRDPServer(); err != nil {
 			logger.Error().Err(err).Msg("failed to initialize RDP server")
+		}
+
+		// Start RD Gateway UDP listener for ShortPath discovery
+		tlsMode := cfg.TLSMode
+		gwEnabled := cfg.RDPGatewayEnabled == nil || *cfg.RDPGatewayEnabled
+		if gwEnabled && (tlsMode == "self-signed" || tlsMode == "custom") {
+			go startRDPGatewayUDP()
 		}
 	}
 

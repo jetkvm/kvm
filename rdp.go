@@ -2,7 +2,9 @@ package kvm
 
 import (
 	"crypto/tls"
+	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,7 +32,8 @@ var (
 func GetRDPServer() *rdp.Server {
 	rdpServerOnce.Do(func() {
 		// Determine if TLS is available for clipboard file server
-		tlsEnabled := config.TLSMode == "self-signed" || config.TLSMode == "custom"
+		tlsMode := loadCfg().TLSMode
+		tlsEnabled := tlsMode == "self-signed" || tlsMode == "custom"
 
 		deps := rdp.Dependencies{
 			Logger:         rdpLogger,
@@ -39,7 +42,7 @@ func GetRDPServer() *rdp.Server {
 			Video:          &rdpVideoAdapter{},
 			Audio:          &rdpAudioAdapter{},
 			Camera:         &rdpCameraAdapter{},
-			TLS:            &rdpTLSAdapter{},
+			TLS:            newRDPTLSAdapter(),
 			TLSEnabled:     tlsEnabled,
 			GetCertificate: getCertificate,
 			USBStorage:     &rdpUSBStorageAdapter{},
@@ -53,6 +56,9 @@ func GetRDPServer() *rdp.Server {
 				count := decrActiveSessions()
 				rdpLogger.Debug().Int("activeSessions", count).Msg("RDP: session ended, decremented active sessions")
 			},
+			NewCapture: func(remoteAddr string) rdp.PacketCapture {
+				return GetRDPCaptureManager().NewCapture(remoteAddr)
+			},
 		}
 		rdpServer = rdp.NewServer(deps)
 	})
@@ -62,136 +68,143 @@ func GetRDPServer() *rdp.Server {
 type rdpConfigAdapter struct{}
 
 func (a *rdpConfigAdapter) GetRDPEnabled() bool {
-	return config.RDPEnabled
+	return loadCfg().RDPEnabled
 }
 
 func (a *rdpConfigAdapter) GetRDPPort() int {
-	return config.RDPPort
+	return loadCfg().RDPPort
 }
 
 func (a *rdpConfigAdapter) GetRDPMaxConnections() int {
-	return config.RDPMaxConnections
+	return loadCfg().RDPMaxConnections
 }
 
 func (a *rdpConfigAdapter) GetRDPClipboardEnabled() bool {
-	return config.RDPClipboardEnabled
+	return loadCfg().RDPClipboardEnabled
 }
 
 func (a *rdpConfigAdapter) GetRDPVideoEnabled() bool {
-	return config.RDPVideoEnabled
+	return loadCfg().RDPVideoEnabled
 }
 
 func (a *rdpConfigAdapter) GetRDPAudioEnabled() bool {
-	return config.RDPAudioEnabled
+	return loadCfg().RDPAudioEnabled
 }
 
 func (a *rdpConfigAdapter) GetRDPMicEnabled() bool {
-	return config.RDPMicEnabled
+	return loadCfg().RDPMicEnabled
 }
 
 func (a *rdpConfigAdapter) GetRDPCameraEnabled() bool {
-	return config.RDPCameraEnabled
+	return loadCfg().RDPCameraEnabled
 }
 
 func (a *rdpConfigAdapter) GetRDPCameraTranscodeEnabled() bool {
-	return config.RDPCameraTranscodeEnabled
+	return loadCfg().RDPCameraTranscodeEnabled
 }
 
 func (a *rdpConfigAdapter) GetCameraFrameRate() int {
-	if config.CameraFrameRate <= 0 {
+	cfg := loadCfg()
+	if cfg.CameraFrameRate <= 0 {
 		return cameraDefaultFPS
 	}
-	return config.CameraFrameRate
+	return cfg.CameraFrameRate
 }
 
 func (a *rdpConfigAdapter) GetCameraMjpegQuality() int {
-	if config.CameraMjpegQuality <= 0 {
+	cfg := loadCfg()
+	if cfg.CameraMjpegQuality <= 0 {
 		return cameraDefaultMjpegQual
 	}
-	return config.CameraMjpegQuality
+	return cfg.CameraMjpegQuality
 }
 
 func (a *rdpConfigAdapter) GetTLSMode() string {
-	return config.TLSMode
+	return loadCfg().TLSMode
 }
 
 func (a *rdpConfigAdapter) GetHashedPassword() string {
-	return config.HashedPassword
+	return loadCfg().HashedPassword
 }
 
 func (a *rdpConfigAdapter) GetLocalAuthPassword() string {
-	return config.LocalAuthPassword
+	return loadCfg().LocalAuthPassword
 }
 
 func (a *rdpConfigAdapter) GetRDPUsername() string {
-	return config.RDPUsername
+	return loadCfg().RDPUsername
 }
 
 func (a *rdpConfigAdapter) GetRDPDomain() string {
-	return config.RDPDomain
+	return loadCfg().RDPDomain
 }
 
 func (a *rdpConfigAdapter) GetRDPTargetOS() string {
-	if config.RDPTargetOS == "" {
+	cfg := loadCfg()
+	if cfg.RDPTargetOS == "" {
 		return "windows"
 	}
-	return config.RDPTargetOS
+	return cfg.RDPTargetOS
 }
 
 func (a *rdpConfigAdapter) GetRDPFileTransferEnabled() bool {
-	return config.RDPFileTransferEnabled
+	return loadCfg().RDPFileTransferEnabled
 }
 
 func (a *rdpConfigAdapter) GetRDPFileTransferMethod() string {
-	if config.RDPFileTransferMethod == "" {
+	cfg := loadCfg()
+	if cfg.RDPFileTransferMethod == "" {
 		return "auto"
 	}
-	return config.RDPFileTransferMethod
+	return cfg.RDPFileTransferMethod
 }
 
 func (a *rdpConfigAdapter) GetRDPFileTransferMaxMB() int {
-	if config.RDPFileTransferMaxMB == 0 {
+	cfg := loadCfg()
+	if cfg.RDPFileTransferMaxMB == 0 {
 		return 100
 	}
-	return config.RDPFileTransferMaxMB
+	return cfg.RDPFileTransferMaxMB
 }
 
 func (a *rdpConfigAdapter) GetRDPFileTransferTTLSec() int {
-	if config.RDPFileTransferTTLSec == 0 {
+	cfg := loadCfg()
+	if cfg.RDPFileTransferTTLSec == 0 {
 		return 300 // 5 minutes default
 	}
-	return config.RDPFileTransferTTLSec
+	return cfg.RDPFileTransferTTLSec
 }
 
 func (a *rdpConfigAdapter) GetRDPFileTransferCleanupSec() int {
-	if config.RDPFileTransferCleanupSec == 0 {
+	cfg := loadCfg()
+	if cfg.RDPFileTransferCleanupSec == 0 {
 		return 60 // 1 minute default
 	}
-	return config.RDPFileTransferCleanupSec
+	return cfg.RDPFileTransferCleanupSec
 }
 
 func (a *rdpConfigAdapter) GetRDPNetworkCmdWindows() string {
-	return config.RDPNetworkCmdWindows
+	return loadCfg().RDPNetworkCmdWindows
 }
 
 func (a *rdpConfigAdapter) GetRDPNetworkCmdLinux() string {
-	return config.RDPNetworkCmdLinux
+	return loadCfg().RDPNetworkCmdLinux
 }
 
 func (a *rdpConfigAdapter) GetRDPNetworkCmdMacOS() string {
-	return config.RDPNetworkCmdMacOS
+	return loadCfg().RDPNetworkCmdMacOS
 }
 
 func (a *rdpConfigAdapter) GetRDPBase64CmdWindows() string {
-	return config.RDPBase64CmdWindows
+	return loadCfg().RDPBase64CmdWindows
 }
 
 func (a *rdpConfigAdapter) GetRDPBase64CmdLinux() string {
-	return config.RDPBase64CmdLinux
+	return loadCfg().RDPBase64CmdLinux
 }
 
 func (a *rdpConfigAdapter) GetRDPBase64CmdMacOS() string {
-	return config.RDPBase64CmdMacOS
+	return loadCfg().RDPBase64CmdMacOS
 }
 
 type rdpHIDAdapter struct{}
@@ -221,11 +234,12 @@ func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
 		return nil
 	}
 
-	mode := keyboard.ClipboardMode(config.RDPClipboardMode)
+	cfg := loadCfg()
+	mode := keyboard.ClipboardMode(cfg.RDPClipboardMode)
 	if mode == "" {
 		mode = keyboard.ClipboardModeText
 	}
-	targetOS := keyboard.TargetOS(config.RDPTargetOS)
+	targetOS := keyboard.TargetOS(cfg.RDPTargetOS)
 	if targetOS == "" {
 		targetOS = keyboard.TargetOSWindows
 	}
@@ -249,7 +263,7 @@ func (a *rdpHIDAdapter) KeyboardMacro(text string) error {
 			Msg("clipboard content encoded")
 	}
 
-	totalDelay := config.RDPPasteDelayMs
+	totalDelay := cfg.RDPPasteDelayMs
 	if totalDelay < 0 {
 		totalDelay = 0
 	}
@@ -455,9 +469,9 @@ func (a *rdpAudioAdapter) EnableAudioInput() error {
 }
 
 func (a *rdpAudioAdapter) GetBufferPeriods() int {
-	ensureConfigLoaded()
-	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 48 {
-		return config.AudioBufferPeriods
+	cfg := loadCfg()
+	if cfg.AudioBufferPeriods >= 2 && cfg.AudioBufferPeriods <= 48 {
+		return cfg.AudioBufferPeriods
 	}
 	return 12 // Default
 }
@@ -688,7 +702,8 @@ var (
 // Returns true if transcoder was initialized or is already running.
 func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, hostFPS uint32) bool {
 	// Check if transcode is enabled in config
-	if !config.RDPCameraTranscodeEnabled {
+	cfg := loadCfg()
+	if !cfg.RDPCameraTranscodeEnabled {
 		return false
 	}
 
@@ -739,7 +754,7 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 	}
 
 	// FPS: use min(host_requested, config_cap) to respect both
-	configFPS := uint32(config.CameraFrameRate)
+	configFPS := uint32(cfg.CameraFrameRate)
 	if configFPS == 0 {
 		configFPS = cameraDefaultFPS
 	}
@@ -748,7 +763,7 @@ func initCameraTranscoder(inputWidth, inputHeight, outputWidth, outputHeight, ho
 		fps = configFPS
 	}
 
-	quality := uint32(config.CameraMjpegQuality)
+	quality := uint32(cfg.CameraMjpegQuality)
 	if quality == 0 {
 		quality = cameraDefaultMjpegQual
 	}
@@ -1116,7 +1131,7 @@ func (a *rdpCameraAdapter) SendFrame(data []byte, width, height uint32, pixelFor
 	// Rate limiting for normal/low priority frames
 	// Critical/high priority frames skip rate limiting
 	if priority <= framePriorityNormal {
-		targetFPS := uint32(config.CameraFrameRate)
+		targetFPS := uint32(loadCfg().CameraFrameRate)
 		if targetFPS == 0 {
 			targetFPS = cameraDefaultFPS
 		}
@@ -1303,8 +1318,26 @@ func (a *rdpCameraAdapter) UnsubscribeFormatChanges() {
 }
 
 type rdpTLSAdapter struct {
-	lastCert   *tls.Certificate
-	lastCertMu sync.Mutex
+	lastCert     *tls.Certificate
+	lastCertMu   sync.Mutex
+	keyLogWriter io.Writer
+}
+
+func newRDPTLSAdapter() *rdpTLSAdapter {
+	a := &rdpTLSAdapter{}
+	// Enable TLS key logging for Wireshark decryption if SSLKEYLOGFILE is set.
+	// Usage: SSLKEYLOGFILE=/tmp/sslkeys.log on the device, then point Wireshark
+	// to the file: Edit → Preferences → Protocols → TLS → (Pre)-Master-Secret log filename
+	if path := os.Getenv("SSLKEYLOGFILE"); path != "" {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+		if err != nil {
+			rdpLogger.Warn().Err(err).Str("path", path).Msg("RDP: failed to open SSLKEYLOGFILE")
+		} else {
+			rdpLogger.Info().Str("path", path).Msg("RDP: TLS key logging enabled for Wireshark decryption")
+			a.keyLogWriter = f
+		}
+	}
+	return a
 }
 
 func (a *rdpTLSAdapter) UpgradeServerConn(conn net.Conn) (rdp.TLSConn, error) {
@@ -1318,6 +1351,7 @@ func (a *rdpTLSAdapter) UpgradeServerConn(conn net.Conn) (rdp.TLSConn, error) {
 		}
 		return cert, err
 	}
+	tlsConfig.KeyLogWriter = a.keyLogWriter
 	return cryptotls.Server(conn, tlsConfig)
 }
 
@@ -1349,7 +1383,8 @@ func (a *rdpTLSAdapter) GetServerCertificate(serverName string) *tls.Certificate
 }
 
 func initRDPServer() error {
-	if !config.RDPEnabled {
+	cfg := loadCfg()
+	if !cfg.RDPEnabled {
 		rdpLogger.Info().Msg("RDP server disabled")
 		return nil
 	}
@@ -1357,29 +1392,31 @@ func initRDPServer() error {
 	cryptotls.Init()
 
 	// Configure clipboard store with TTL and cleanup settings
-	ttlSec := config.RDPFileTransferTTLSec
+	ttlSec := cfg.RDPFileTransferTTLSec
 	if ttlSec == 0 {
 		ttlSec = 300 // 5 minutes default
 	}
-	cleanupSec := config.RDPFileTransferCleanupSec
+	cleanupSec := cfg.RDPFileTransferCleanupSec
 	if cleanupSec == 0 {
 		cleanupSec = 60 // 1 minute default
 	}
 	GetClipboardStore().Configure(ttlSec, cleanupSec)
 
 	server := GetRDPServer()
-	server.SetPort(config.RDPPort)
+	server.SetPort(cfg.RDPPort)
+	server.SetUDPEnabled(cfg.RDPUDPEnabled != nil && *cfg.RDPUDPEnabled)
 
 	rdpLogger.Info().
-		Int("port", config.RDPPort).
-		Bool("tls", config.RDPUseTLS).
+		Int("port", cfg.RDPPort).
+		Bool("tls", cfg.RDPUseTLS).
 		Bool("hwCrypto", cryptotls.IsHardwareAvailable()).
 		Str("hwEngine", cryptotls.HardwareEngine()).
-		Bool("video", config.RDPVideoEnabled).
-		Bool("audio", config.RDPAudioEnabled).
-		Bool("mic", config.RDPMicEnabled).
-		Bool("camera", config.RDPCameraEnabled).
-		Int("maxConnections", config.RDPMaxConnections).
+		Bool("video", cfg.RDPVideoEnabled).
+		Bool("audio", cfg.RDPAudioEnabled).
+		Bool("mic", cfg.RDPMicEnabled).
+		Bool("camera", cfg.RDPCameraEnabled).
+		Bool("udp", cfg.RDPUDPEnabled != nil && *cfg.RDPUDPEnabled).
+		Int("maxConnections", cfg.RDPMaxConnections).
 		Msg("initializing RDP server")
 
 	if err := server.Start(); err != nil {

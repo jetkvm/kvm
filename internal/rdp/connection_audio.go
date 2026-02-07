@@ -53,7 +53,7 @@ func (c *Connection) startAudioStream() {
 	}
 
 	c.audioStopCh = make(chan struct{})
-	go c.audioStreamLoop()
+	safeGo(c.server.deps.Logger, "RDP_AUDIO_STREAM", c.audioStreamLoop)
 }
 
 func (c *Connection) audioStreamLoop() {

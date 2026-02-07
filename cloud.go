@@ -166,8 +166,9 @@ func setCloudConnectionState(state CloudConnectionState) {
 	cloudConnectionStateLock.Lock()
 	defer cloudConnectionStateLock.Unlock()
 
+	cfg := loadCfg()
 	if cloudConnectionState == CloudConnectionStateDisconnected &&
-		(config.CloudToken == "" || config.CloudURL == "") {
+		(cfg.CloudToken == "" || cfg.CloudURL == "") {
 		state = CloudConnectionStateNotConfigured
 	}
 
@@ -224,7 +225,8 @@ func handleCloudRegister(c *gin.Context) {
 
 	client := &http.Client{Timeout: CloudAPIRequestTimeout}
 
-	apiReq, err := http.NewRequest(http.MethodPost, config.CloudURL+"/devices/token", bytes.NewBuffer(jsonPayload))
+	cloudURL := loadCfg().CloudURL
+	apiReq, err := http.NewRequest(http.MethodPost, cloudURL+"/devices/token", bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to create register request: " + err.Error()})
 		return
@@ -256,8 +258,6 @@ func handleCloudRegister(c *gin.Context) {
 		return
 	}
 
-	config.CloudToken = tokenResp.SecretToken
-
 	provider, err := oidc.NewProvider(c, "https://accounts.google.com")
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to initialize OIDC provider: " + err.Error()})
@@ -275,10 +275,13 @@ func handleCloudRegister(c *gin.Context) {
 		return
 	}
 
-	config.GoogleIdentity = idToken.Audience[0] + ":" + idToken.Subject
+	googleIdentity := idToken.Audience[0] + ":" + idToken.Subject
 
 	// Save the updated configuration
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.CloudToken = tokenResp.SecretToken
+		cfg.GoogleIdentity = googleIdentity
+	}); err != nil {
 		c.JSON(500, gin.H{"error": "Failed to save configuration"})
 		return
 	}
@@ -305,12 +308,13 @@ func disconnectCloud(reason error) {
 }
 
 func runWebsocketClient() error {
-	if config.CloudToken == "" {
+	cfg := loadCfg()
+	if cfg.CloudToken == "" {
 		time.Sleep(5 * time.Second)
 		return fmt.Errorf("cloud token is not set")
 	}
 
-	wsURL, err := url.Parse(config.CloudURL)
+	wsURL, err := url.Parse(cfg.CloudURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse config.CloudURL: %w", err)
 	}
@@ -326,7 +330,7 @@ func runWebsocketClient() error {
 	header := http.Header{}
 	header.Set("X-Device-ID", GetDeviceID())
 	header.Set("X-App-Version", builtAppVersion)
-	header.Set("Authorization", "Bearer "+config.CloudToken)
+	header.Set("Authorization", "Bearer "+cfg.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
 	l := websocketLogger.With().
@@ -418,7 +422,7 @@ func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessi
 	}
 
 	googleIdentity := idToken.Audience[0] + ":" + idToken.Subject
-	if config.GoogleIdentity != googleIdentity {
+	if loadCfg().GoogleIdentity != googleIdentity {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": "google identity mismatch"})
 		return fmt.Errorf("google identity mismatch")
 	}
@@ -460,7 +464,7 @@ func handleSessionRequest(
 		LocalIP:    req.IP,
 		ICEServers: req.ICEServers,
 		Logger:     scopedLogger,
-		MDNSMode:   config.NetworkConfig.MDNSMode.String,
+		MDNSMode:   loadCfg().NetworkConfig.MDNSMode.String,
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
@@ -494,7 +498,7 @@ func handleSessionRequest(
 func RunWebsocketClient() {
 	for {
 		// If the cloud token is not set, we don't need to run the websocket client.
-		if config.CloudToken == "" {
+		if loadCfg().CloudToken == "" {
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -530,24 +534,26 @@ type CloudState struct {
 }
 
 func rpcGetCloudState() CloudState {
+	cfg := loadCfg()
 	return CloudState{
-		Connected: config.CloudToken != "" && config.CloudURL != "",
-		URL:       config.CloudURL,
-		AppURL:    config.CloudAppURL,
+		Connected: cfg.CloudToken != "" && cfg.CloudURL != "",
+		URL:       cfg.CloudURL,
+		AppURL:    cfg.CloudAppURL,
 	}
 }
 
 func rpcDeregisterDevice() error {
-	if config.CloudToken == "" || config.CloudURL == "" {
+	cfg := loadCfg()
+	if cfg.CloudToken == "" || cfg.CloudURL == "" {
 		return fmt.Errorf("cloud token or URL is not set")
 	}
 
-	req, err := http.NewRequest(http.MethodDelete, config.CloudURL+"/devices/"+GetDeviceID(), nil)
+	req, err := http.NewRequest(http.MethodDelete, cfg.CloudURL+"/devices/"+GetDeviceID(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create deregister request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+config.CloudToken)
+	req.Header.Set("Authorization", "Bearer "+cfg.CloudToken)
 	client := &http.Client{Timeout: CloudAPIRequestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -560,10 +566,10 @@ func rpcDeregisterDevice() error {
 	// 404 Not Found means the device is not in the database, which could be due to various reasons
 	// (e.g., wrong cloud token, already deregistered). Regardless of the reason, we can safely remove it.
 	if resp.StatusCode == http.StatusNotFound || (resp.StatusCode >= 200 && resp.StatusCode < 300) {
-		config.CloudToken = ""
-		config.GoogleIdentity = ""
-
-		if err := SaveConfig(); err != nil {
+		if err := updateAndSaveConfig(func(cfg *Config) {
+			cfg.CloudToken = ""
+			cfg.GoogleIdentity = ""
+		}); err != nil {
 			return fmt.Errorf("failed to save configuration after deregistering: %w", err)
 		}
 

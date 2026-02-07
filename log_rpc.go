@@ -89,8 +89,9 @@ func rpcSetLogLevel(params SetLogLevelParams) error {
 	syncCLogLevels(overrides)
 
 	// Save to config for persistence
-	config.LogLevelOverrides = overrides
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.LogLevelOverrides = overrides
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -155,15 +156,46 @@ var (
 	}
 )
 
-// parseGlobalLogLevel extracts the global log level from an overrides string
-// using the provided level map and default value.
-func parseGlobalLogLevel(overrides string, defaultLevel int, levelMap map[string]int) int {
+// cLogMapping maps Go subsystem names to a C-level setter function.
+type cLogMapping struct {
+	subsystems []string       // Go subsystem names that route to this C setter
+	setter     func(int)      // C level setter function
+	levelMap   map[string]int // Level name → C level value
+	warnLevel  int            // Default WARN level in this map's convention
+}
+
+// cLogMappings defines all C subsystem → setter mappings.
+// Per-subsystem overrides like "audio:TRACE" route to the matching setter.
+var cLogMappings = []cLogMapping{
+	{[]string{"audio", "audio-capture", "audio-playback"}, audio.SetCLogLevel, audioLevelMap, 3},
+	{[]string{"native"}, native.SetCLogLevel, nativeLevelMap, 2},
+	{[]string{"crypto", "crypto.tls"}, tls.SetCLogLevel, nativeLevelMap, 2},
+	{[]string{"vnc", "vnctls"}, vnctls.SetCLogLevel, nativeLevelMap, 2},
+}
+
+// resolveLogLevel resolves the C log level for a set of subsystem names from an
+// overrides string. Checks subsystem-specific overrides first (highest priority),
+// then global override, then falls back to defaultLevel.
+func resolveLogLevel(overrides string, subsystems []string, defaultLevel int, levelMap map[string]int) int {
 	level := defaultLevel
 	for _, part := range strings.Split(overrides, ",") {
 		part = strings.TrimSpace(part)
-		if part != "" && !strings.Contains(part, ":") {
+		if part == "" {
+			continue
+		}
+		if idx := strings.IndexByte(part, ':'); idx >= 0 {
+			sub := strings.ToLower(strings.TrimSpace(part[:idx]))
+			lvl := strings.ToUpper(strings.TrimSpace(part[idx+1:]))
+			for _, s := range subsystems {
+				if sub == s {
+					if l, ok := levelMap[lvl]; ok {
+						return l // subsystem-specific override wins
+					}
+				}
+			}
+		} else {
 			if l, ok := levelMap[strings.ToUpper(part)]; ok {
-				level = l
+				level = l // global override
 			}
 		}
 	}
@@ -176,24 +208,14 @@ func syncCLogLevels(overrides string) {
 }
 
 // syncCLogLevelsWithDefault updates all C subsystem log levels with a custom default.
-// Called by config loading which may have a different default level.
 func syncCLogLevelsWithDefault(overrides string, defaultLevel string) {
-	// Get base levels from default, then override from string
-	audioBase := 3 // WARN default for audio
-	nativeBase := 2 // WARN default for native
-	if defaultLevel != "" {
-		if l, ok := audioLevelMap[strings.ToUpper(defaultLevel)]; ok {
-			audioBase = l
+	for _, m := range cLogMappings {
+		base := m.warnLevel
+		if defaultLevel != "" {
+			if l, ok := m.levelMap[strings.ToUpper(defaultLevel)]; ok {
+				base = l
+			}
 		}
-		if l, ok := nativeLevelMap[strings.ToUpper(defaultLevel)]; ok {
-			nativeBase = l
-		}
+		m.setter(resolveLogLevel(overrides, m.subsystems, base, m.levelMap))
 	}
-
-	cLevel := parseGlobalLogLevel(overrides, audioBase, audioLevelMap)
-	nativeLevel := parseGlobalLogLevel(overrides, nativeBase, nativeLevelMap)
-	audio.SetCLogLevel(cLevel)
-	native.SetCLogLevel(nativeLevel)
-	tls.SetCLogLevel(nativeLevel)
-	vnctls.SetCLogLevel(nativeLevel)
 }

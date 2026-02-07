@@ -5,34 +5,26 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"time"
 )
 
 // handshake performs the RFB protocol version handshake.
 func (c *Connection) handshake() error {
-	if err := c.conn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return fmt.Errorf("failed to set handshake deadline: %w", err)
-	}
-	defer func() {
-		if err := c.conn.SetDeadline(time.Time{}); err != nil {
-			c.server.deps.Logger.Debug().Err(err).Msg("failed to clear handshake deadline")
+	return c.withDeadline(handshakeTimeout, func() error {
+		if _, err := c.conn.Write([]byte(rfbProtocolVersion)); err != nil {
+			return fmt.Errorf("failed to write protocol version: %w", err)
 		}
-	}()
 
-	if _, err := c.conn.Write([]byte(rfbProtocolVersion)); err != nil {
-		return fmt.Errorf("failed to write protocol version: %w", err)
-	}
+		var versionBuf [12]byte
+		if _, err := io.ReadFull(c.conn, versionBuf[:]); err != nil {
+			return fmt.Errorf("failed to read client protocol version: %w", err)
+		}
 
-	var versionBuf [12]byte
-	if _, err := io.ReadFull(c.conn, versionBuf[:]); err != nil {
-		return fmt.Errorf("failed to read client protocol version: %w", err)
-	}
+		if !bytes.HasPrefix(versionBuf[:], []byte("RFB 003.00")) {
+			c.server.deps.Logger.Debug().Str("version", string(versionBuf[:])).Msg("client using non-standard RFB version")
+		}
 
-	if !bytes.HasPrefix(versionBuf[:], []byte("RFB 003.00")) {
-		c.server.deps.Logger.Debug().Str("version", string(versionBuf[:])).Msg("client using non-standard RFB version")
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // clientInit reads the client's shared flag.

@@ -57,6 +57,7 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 		MaxVersion:       config.MaxVersion,
 		CipherSuites:     cipherSuitesX509(),
 		CurvePreferences: curvePreferences(),
+		KeyLogWriter:     config.KeyLogWriter,
 	}
 
 	if config.GetCertificate != nil {
@@ -78,3 +79,32 @@ func serverImpl(conn net.Conn, config *Config) (Conn, error) {
 
 	return &softwareConn{Conn: tlsConn}, nil
 }
+
+// goSharedCtx wraps a shared *tls.Config for the Listener. Go's tls.Config
+// already handles session tickets, certificate caching via GetCertificate,
+// and concurrent use — so this is a thin wrapper.
+type goSharedCtx struct {
+	goConfig *tls.Config
+}
+
+func newSharedCtxImpl(config *Config) sharedCtx {
+	goConfig := &tls.Config{
+		MinVersion:       config.MinVersion,
+		MaxVersion:       config.MaxVersion,
+		CipherSuites:     cipherSuitesX509(),
+		CurvePreferences: curvePreferences(),
+		KeyLogWriter:     config.KeyLogWriter,
+		GetCertificate:   config.GetCertificate,
+	}
+	return &goSharedCtx{goConfig: goConfig}
+}
+
+func (s *goSharedCtx) serverConn(conn net.Conn) (Conn, error) {
+	tlsConn := tls.Server(conn, s.goConfig)
+	if err := tlsConn.Handshake(); err != nil {
+		return nil, fmt.Errorf("TLS handshake failed: %w", err)
+	}
+	return &softwareConn{Conn: tlsConn}, nil
+}
+
+func (s *goSharedCtx) close() {}
