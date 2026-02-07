@@ -293,6 +293,116 @@ const CAPTURE_REGION_SIZE = 80;
 // Minimum video dimensions to consider valid (sanity check)
 const MIN_VIDEO_DIMENSION = 100;
 
+// Mouse verification tuning
+const MOUSE_DISTANCE_THRESHOLD = 10;
+const MOUSE_VERIFY_RETRIES = 3;
+const MOUSE_SETTLE_MS = 150;
+
+export interface MouseBidirCheckOptions {
+  retries?: number;
+  threshold?: number;
+  settleMs?: number;
+  testHidX?: number;
+  testHidY?: number;
+}
+
+export interface MouseBidirCheckResult {
+  arrive: number;
+  restore: number;
+}
+
+export async function runMouseBidirectionalCheck(
+  page: Page,
+  options: MouseBidirCheckOptions = {},
+): Promise<MouseBidirCheckResult> {
+  const {
+    retries = MOUSE_VERIFY_RETRIES,
+    threshold = MOUSE_DISTANCE_THRESHOLD,
+    settleMs = MOUSE_SETTLE_MS,
+  } = options;
+
+  // Wait for video to be ready and get dimensions (with retry)
+  let dimensions = await getVideoStreamDimensions(page);
+  if (!dimensions) {
+    await page.waitForTimeout(2000);
+    dimensions = await getVideoStreamDimensions(page);
+  }
+  expect(dimensions, "Video stream dimensions should be available").not.toBeNull();
+  const { width: videoWidth, height: videoHeight } = dimensions!;
+  expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+    MIN_VIDEO_DIMENSION,
+  );
+  expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
+    MIN_VIDEO_DIMENSION,
+  );
+
+  const testHidX = options.testHidX ?? Math.floor(HID_MAX * 0.7);
+  const testHidY = options.testHidY ?? Math.floor(HID_MAX * 0.7);
+  const testPixel = hidToPixelCoords(testHidX, testHidY, videoWidth, videoHeight);
+
+  const regionX = Math.max(0, testPixel.x - CAPTURE_REGION_SIZE / 2);
+  const regionY = Math.max(0, testPixel.y - CAPTURE_REGION_SIZE / 2);
+  const regionWidth = Math.min(CAPTURE_REGION_SIZE, videoWidth - regionX);
+  const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
+
+  let lastDistArrive = -1;
+  let lastDistRestore = -1;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    await sendAbsMouseMove(page, 0, 0);
+    await page.waitForTimeout(settleMs);
+    const fpA = await captureVideoRegionFingerprint(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
+    expect(fpA, `Failed to capture fingerprint A on attempt ${attempt}`).not.toBeNull();
+
+    await sendAbsMouseMove(page, testHidX, testHidY);
+    await page.waitForTimeout(settleMs);
+    const fpB = await captureVideoRegionFingerprint(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
+    expect(fpB, `Failed to capture fingerprint B on attempt ${attempt}`).not.toBeNull();
+
+    await sendAbsMouseMove(page, 0, 0);
+    await page.waitForTimeout(settleMs);
+    const fpA2 = await captureVideoRegionFingerprint(
+      page,
+      regionX,
+      regionY,
+      regionWidth,
+      regionHeight,
+    );
+    expect(fpA2, `Failed to capture fingerprint A2 on attempt ${attempt}`).not.toBeNull();
+
+    const distArrive = fingerprintDistance(fpA!, fpB!);
+    const distRestore = fingerprintDistance(fpA!, fpA2!);
+    lastDistArrive = distArrive;
+    lastDistRestore = distRestore;
+
+    if (distArrive > threshold && distRestore < distArrive) {
+      return { arrive: distArrive, restore: distRestore };
+    }
+  }
+
+  expect(
+    lastDistArrive,
+    `Cursor movement should cause significant visual change (arrive=${lastDistArrive}, expected >${threshold}) — mouse HID path may be broken`,
+  ).toBeGreaterThan(threshold);
+  expect(
+    lastDistRestore,
+    `Region should restore after cursor leaves (restore=${lastDistRestore} should be < arrive=${lastDistArrive})`,
+  ).toBeLessThan(lastDistArrive);
+  return { arrive: lastDistArrive, restore: lastDistRestore };
+}
+
 /**
  * Verify keyboard works using LED round-trip.
  * Taps CAPS_LOCK and verifies the LED state toggles.
@@ -325,62 +435,11 @@ export async function verifyKeyboardWorks(page: Page): Promise<void> {
  * @param page - Playwright page object
  */
 export async function verifyMouseWorks(page: Page): Promise<void> {
-  // Wait for video to be ready and get dimensions (with retry)
-  let dimensions = await getVideoStreamDimensions(page);
-  if (!dimensions) {
-    // Video may still be initializing, wait and retry
-    await page.waitForTimeout(2000);
-    dimensions = await getVideoStreamDimensions(page);
-  }
-  expect(dimensions, "Video stream dimensions should be available").not.toBeNull();
-  const { width: videoWidth, height: videoHeight } = dimensions!;
-  expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
-    MIN_VIDEO_DIMENSION,
-  );
-  expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
-    MIN_VIDEO_DIMENSION,
-  );
-
-  // Calculate center position
-  const hidCenter = Math.floor(HID_MAX / 2);
-  const centerPixel = hidToPixelCoords(hidCenter, hidCenter, videoWidth, videoHeight);
-
-  // Calculate capture region bounds (centered around the target position)
-  const regionX = Math.max(0, centerPixel.x - CAPTURE_REGION_SIZE / 2);
-  const regionY = Math.max(0, centerPixel.y - CAPTURE_REGION_SIZE / 2);
-  const regionWidth = Math.min(CAPTURE_REGION_SIZE, videoWidth - regionX);
-  const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
-
-  // Move mouse to center and capture
-  await sendAbsMouseMove(page, hidCenter, hidCenter);
-  await page.waitForTimeout(100);
-  const fpBefore = await captureVideoRegionFingerprint(
-    page,
-    regionX,
-    regionY,
-    regionWidth,
-    regionHeight,
-  );
-  expect(fpBefore, "Failed to capture fingerprint with cursor at center").not.toBeNull();
-
-  // Move mouse to corner and capture
-  await sendAbsMouseMove(page, 0, 0);
-  await page.waitForTimeout(100);
-  const fpAfter = await captureVideoRegionFingerprint(
-    page,
-    regionX,
-    regionY,
-    regionWidth,
-    regionHeight,
-  );
-  expect(fpAfter, "Failed to capture fingerprint after cursor moved away").not.toBeNull();
-
-  // Verify the regions differ (cursor moved)
-  const distance = fingerprintDistance(fpBefore!, fpAfter!);
-  expect(
-    distance,
-    `Cursor movement should cause significant visual change (distance=${distance}, expected >10) — mouse HID path may be broken`,
-  ).toBeGreaterThan(10);
+  await runMouseBidirectionalCheck(page, {
+    retries: MOUSE_VERIFY_RETRIES,
+    threshold: MOUSE_DISTANCE_THRESHOLD,
+    settleMs: MOUSE_SETTLE_MS,
+  });
 }
 
 /**
