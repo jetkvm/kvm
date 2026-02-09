@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/rs/zerolog"
 )
@@ -59,37 +58,6 @@ func NewGPGVerifier(logger *zerolog.Logger, httpClient func() HttpClient) *GPGVe
 // GetRootKeyFingerprint returns the configured root key fingerprint
 func (g *GPGVerifier) GetRootKeyFingerprint() string {
 	return g.rootKeyFP
-}
-
-// IsSignatureRequired returns true if the target version is greater than the local version.
-// This enforces signatures for upgrades, while allowing unsigned downgrades (this is always very intentional by the user).
-func (g *GPGVerifier) IsSignatureRequired(localVersion string, targetVersion string) bool {
-	local, err := semver.NewVersion(localVersion)
-	if err != nil {
-		g.logger.Warn().
-			Err(err).
-			Str("localVersion", localVersion).
-			Msg("failed to parse local version, requiring signature")
-		return true
-	}
-
-	target, err := semver.NewVersion(targetVersion)
-	if err != nil {
-		g.logger.Warn().
-			Err(err).
-			Str("targetVersion", targetVersion).
-			Msg("failed to parse target version, requiring signature")
-		return true
-	}
-
-	required := target.GreaterThan(local)
-	g.logger.Debug().
-		Str("localVersion", localVersion).
-		Str("targetVersion", targetVersion).
-		Bool("signatureRequired", required).
-		Msg("checked if signature is required")
-
-	return required
 }
 
 // FetchPublicKey fetches the public key from keyservers with fallback support.

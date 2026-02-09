@@ -13,11 +13,11 @@ const (
 
 // DO NOT call it directly, it's not thread safe
 // Mutex is currently held by the caller, e.g. doUpdate
-func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateStatus) error {
+func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateStatus, bypassSignatureCheck bool) error {
 	l := s.l.With().Str("path", systemUpdatePath).Logger()
 
 	// Validate signature requirement and download if available
-	signature, err := s.downloadComponentSignature(ctx, systemUpdate, "system", &l)
+	signature, err := s.downloadComponentSignature(ctx, systemUpdate, "system", &l, bypassSignatureCheck)
 	if err != nil {
 		return s.componentUpdateError("Error with system signature", err, &l)
 	}

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 )
 
@@ -137,28 +138,29 @@ func (s *State) downloadComponentSignature(
 	update *componentUpdateStatus,
 	componentName string,
 	l *zerolog.Logger,
+	bypassSignatureCheck bool,
 ) ([]byte, error) {
-	// Check if signature is required but missing
-	if s.gpgVerifier.IsSignatureRequired(update.localVersion, update.version) && update.sigUrl == "" {
+	if bypassSignatureCheck {
+		l.Warn().
+			Str("component", componentName).
+			Str("localVersion", update.localVersion).
+			Str("targetVersion", update.version).
+			Msg("bypassing GPG signature check for OTA update")
+		return nil, nil
+	}
+
+	// Signature is required by default.
+	if update.sigUrl == "" {
 		return nil, fmt.Errorf("version %s requires GPG signature but API returned no signature URL", update.version)
 	}
 
-	// Download signature if URL is provided
-	if update.sigUrl != "" {
-		l.Debug().Str("sigUrl", update.sigUrl).Msgf("downloading %s signature", componentName)
-		return s.downloadSignature(ctx, update.sigUrl)
-	}
-
-	return nil, nil
+	l.Debug().Str("sigUrl", update.sigUrl).Msgf("downloading %s signature", componentName)
+	return s.downloadSignature(ctx, update.sigUrl)
 }
 
 // downloadSignature downloads a detached GPG signature file from the given URL.
 // Returns the signature bytes or an error.
 func (s *State) downloadSignature(ctx context.Context, sigURL string) ([]byte, error) {
-	if sigURL == "" {
-		return nil, nil // No signature URL provided
-	}
-
 	l := s.l.With().Str("sigURL", sigURL).Logger()
 	l.Debug().Msg("downloading signature file")
 
@@ -259,4 +261,14 @@ func (s *State) verifyFile(ctx context.Context, path string, expectedHash string
 	}
 
 	return nil
+}
+
+func shouldBypassSignatureCheck(version string, customVersionUpdate bool) bool {
+	remoteVersion, err := semver.NewVersion(version)
+	if err != nil {
+		return false
+	}
+
+	isPrereleaseVersion := remoteVersion.Prerelease() != ""
+	return customVersionUpdate || isPrereleaseVersion
 }
