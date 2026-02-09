@@ -101,6 +101,7 @@ test_production_release:
 		echo "Error: Signature file not created"; exit 1; \
 	fi
 	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
+	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
 	./scripts/test_local_update.sh "$(DEVICE_IP)" "bin/jetkvm_app" "$(VERSION)"
 	./scripts/test_unsigned_specific_ota.sh "$(DEVICE_IP)" \
 		"bin/jetkvm_app_baseline" \
@@ -228,7 +229,13 @@ dev_release: git_check_dev
 	$(MAKE) check frontend build_dev VERSION_DEV=$(VERSION_DEV)
 	@echo "Running mandatory dev release validation..."
 	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
+	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
 	./scripts/test_local_update.sh "$(DEVICE_IP)" "bin/jetkvm_app" "$(VERSION_DEV)"
+
+	@echo "───────────────────────────────────────────────────────"
+	@echo "  All tests completed. Everything is tested and ready for release."
+	@echo "  Version:   $(VERSION_DEV)"
+	@read -p "Are you sure you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
