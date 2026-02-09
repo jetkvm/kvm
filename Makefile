@@ -13,7 +13,6 @@ BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 DOCKER_BUILD_TAG ?= ghcr.io/jetkvm/buildkit:latest
 SKIP_NATIVE_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
-SKIP_BUILD ?= 0
 ENABLE_SYNC_TRACE ?= 0
 
 CMAKE_BUILD_TYPE ?= Release
@@ -57,84 +56,56 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 test:
 	go test ./...
 
-# E2E tests - builds, sets up mock server, runs tests
-# Set SIGNING_KEY_FPR to include OTA tests with signature verification
+# Fail fast if the requested signing key is not available in local GPG keyring.
+check_signing_key:
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required"; \
+		exit 1; \
+	fi
+	@gpg --list-secret-keys --with-colons $(SIGNING_KEY_FPR) >/dev/null 2>&1 || { \
+		echo "Error: Signing key $(SIGNING_KEY_FPR) not found in local GPG keyring"; \
+		exit 1; \
+	}
+
+# E2E tests - normal development lane (all normal tests, no OTA/signing tests)
 test_e2e: build_dev
 	@if [ -z "$(DEVICE_IP)" ]; then \
-		read -p "Device IP: " device_ip; \
-	else \
-		device_ip="$(DEVICE_IP)"; \
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make test_e2e DEVICE_IP=<ip>"; \
+		exit 1; \
 	fi; \
 	cd ui && npm ci && npx playwright install chromium && cd ..; \
-	skip_ota=1; sig_args=""; \
-	if [ -n "$(SIGNING_KEY_FPR)" ]; then \
-		echo "Signing key provided, attempting to sign binary..."; \
-		if gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app 2>/dev/null; then \
-			echo "Binary signed successfully, OTA tests will be included"; \
-			skip_ota=0; sig_args="--signature bin/jetkvm_app.sig"; \
-		else \
-			echo "Warning: GPG signing failed, skipping OTA tests"; \
-		fi; \
-	fi; \
-	SKIP_OTA_E2E=$$skip_ota ./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)" $$sig_args
+	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
 
-# Signed OTA E2E test - verifies GPG signature verification actually runs
-# This builds two binaries from the current branch:
-# 1. Baseline (0.0.1-test-baseline) - deployed first, has GPG verification code
-# 2. Target (VERSION_DEV) - signed, served via mock API
-# The baseline binary verifies the target's signature during upgrade
-test_e2e_signed:
+# Production release validation lane
+test_production_release:
 	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
-		echo "Error: SIGNING_KEY_FPR is required for signed OTA test"; \
-		echo "Usage: make test_e2e_signed SIGNING_KEY_FPR=<fingerprint> DEVICE_IP=<ip>"; \
+		echo "Error: SIGNING_KEY_FPR is required"; \
+		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
 		exit 1; \
 	fi
 	@if [ -z "$(DEVICE_IP)" ]; then \
-		read -p "Device IP: " device_ip; \
-	else \
-		device_ip="$(DEVICE_IP)"; \
-	fi; \
-	if [ "$(SKIP_BUILD)" = "1" ] && [ -f bin/jetkvm_app_baseline ]; then \
-		echo "Skipping baseline build (SKIP_BUILD=1, bin/jetkvm_app_baseline exists)"; \
-	else \
-		echo "Building baseline binary (0.0.1-test-baseline)..."; \
-		$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline; \
-		mv bin/jetkvm_app bin/jetkvm_app_baseline; \
-	fi; \
-	if [ "$(SKIP_BUILD)" = "1" ] && [ -f bin/jetkvm_app ]; then \
-		echo "Skipping target build (SKIP_BUILD=1, bin/jetkvm_app exists)"; \
-		if [ ! -f bin/.target_version ]; then \
-			echo "Error: bin/.target_version not found. Cannot determine version of existing binary."; \
-			echo "Re-run without SKIP_BUILD=1 to rebuild."; \
-			exit 1; \
-		fi; \
-		target_version=$$(cat bin/.target_version); \
-	else \
-		echo "Building target binary ($(VERSION_DEV))..."; \
-		$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV); \
-		echo "$(VERSION_DEV)" > bin/.target_version; \
-		target_version="$(VERSION_DEV)"; \
-	fi; \
-	echo "Signing target binary..."; \
-	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }; \
-	if [ ! -f "bin/jetkvm_app.sig" ]; then echo "Error: Signature file not created"; exit 1; fi; \
-	cd ui && npm ci && npx playwright install chromium && cd ..; \
-	./scripts/test_signed_ota.sh "$$device_ip" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$$target_version" \
-		--signature "bin/jetkvm_app.sig"
-
-# Full E2E test suite - runs both regular and signed OTA tests
-# Requires SIGNING_KEY_FPR for the signed test
-test_e2e_full:
-	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
-		echo "Error: SIGNING_KEY_FPR is required for full E2E suite"; \
-		echo "Usage: make test_e2e_full SIGNING_KEY_FPR=<fingerprint> DEVICE_IP=<ip>"; \
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
 		exit 1; \
 	fi
-	$(MAKE) test_e2e DEVICE_IP=$(DEVICE_IP)
-	$(MAKE) test_e2e_signed SIGNING_KEY_FPR=$(SIGNING_KEY_FPR) DEVICE_IP=$(DEVICE_IP)
+	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
+	$(MAKE) check frontend
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline
+	mv bin/jetkvm_app bin/jetkvm_app_baseline
+	$(MAKE) build_release VERSION=$(VERSION)
+	@echo "Signing release binary..."
+	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
+	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
+		echo "Error: Signature file not created"; exit 1; \
+	fi
+	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
+	./scripts/test_local_update.sh "$(DEVICE_IP)" "bin/jetkvm_app" "$(VERSION)"
+	./scripts/test_signed_ota.sh "$(DEVICE_IP)" \
+		"bin/jetkvm_app_baseline" \
+		"bin/jetkvm_app" \
+		"$(VERSION)" \
+		--signature "bin/jetkvm_app.sig"
 
 lint:
 	go vet ./...
@@ -233,9 +204,9 @@ git_check_dev:
 	@gh auth status >/dev/null 2>&1 || { echo "Error: gh CLI not authenticated. Run 'gh auth login'"; exit 1; }
 
 dev_release: git_check_dev
-	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
-		echo "Error: SIGNING_KEY_FPR is required for releases"; \
-		echo "Usage: make dev_release SIGNING_KEY_FPR=<fingerprint>"; \
+	@if [ -z "$(DEVICE_IP)" ]; then \
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make dev_release DEVICE_IP=<ip>"; \
 		exit 1; \
 	fi
 	@echo "═══════════════════════════════════════════════════════"
@@ -246,31 +217,21 @@ dev_release: git_check_dev
 	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
 	@echo "  Commit:  $$(git rev-parse --short HEAD)"
 	@echo "  Time:    $$(date -u +%FT%T%z)"
-	@echo "  Signing: $(SIGNING_KEY_FPR)"
+	@echo "  Signing: disabled for dev releases"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend build_dev VERSION_DEV=$(VERSION_DEV)
-	@echo "Signing binary with GPG..."
-	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
-	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
-		echo "Error: Signature file not created"; exit 1; \
-	fi
-	@read -p "Test on device before release? [y/N] " test_confirm; \
-	if [ "$$test_confirm" = "y" ]; then \
-		read -p "Device IP: " device_ip; \
-		echo "Installing Playwright dependencies..."; \
-		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
-		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION_DEV) --signature bin/jetkvm_app.sig || exit 1; \
-	fi
+	@echo "Running mandatory dev release validation..."
+	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
+	./scripts/test_local_update.sh "$(DEVICE_IP)" "bin/jetkvm_app" "$(VERSION_DEV)"
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
-	rclone copyto bin/jetkvm_app.sig r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sig
 	./scripts/deploy_cloud_app.sh -v $(VERSION_DEV) --skip-confirmation
 	@git tag release/$(VERSION_DEV)
 	@git push origin release/$(VERSION_DEV)
-	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 bin/jetkvm_app.sig --prerelease --generate-notes
+	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
 	@echo "✓ Released: release/$(VERSION_DEV)"
 
 # NOTE: VERSION is passed explicitly for consistency with build_dev (see comment above).
@@ -296,9 +257,15 @@ _build_release_inner: build_native
 release: git_check_dev
 	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
 		echo "Error: SIGNING_KEY_FPR is required for releases"; \
-		echo "Usage: make release SIGNING_KEY_FPR=<fingerprint>"; \
+		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
 		exit 1; \
 	fi
+	@if [ -z "$(DEVICE_IP)" ]; then \
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		exit 1; \
+	fi
+	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
 	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q "jetkvm_app"; then \
 		echo "Error: Version $(VERSION) already exists in R2"; exit 1; \
 	fi
@@ -321,19 +288,8 @@ release: git_check_dev
 	@echo "  Signing: $(SIGNING_KEY_FPR)"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	$(MAKE) check frontend build_release VERSION=$(VERSION)
-	@echo "Signing binary with GPG..."
-	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
-	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
-		echo "Error: Signature file not created"; exit 1; \
-	fi
-	@read -p "Test on device before release? [y/N] " test_confirm; \
-	if [ "$$test_confirm" = "y" ]; then \
-		read -p "Device IP: " device_ip; \
-		echo "Installing Playwright dependencies..."; \
-		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
-		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION) --signature bin/jetkvm_app.sig || exit 1; \
-	fi
+	@echo "Running mandatory production validation..."
+	$(MAKE) test_production_release DEVICE_IP=$(DEVICE_IP) SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app

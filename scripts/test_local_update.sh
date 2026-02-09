@@ -92,6 +92,11 @@ if [ -z "$STABLE_VERSION" ]; then
     exit 1
 fi
 
+# Synthetic stable target used to assert signature enforcement in normal (non-dev) OTA path.
+# It only needs to be a valid semver greater than STABLE_VERSION.
+IFS='.' read -r stable_major stable_minor stable_patch <<<"$STABLE_VERSION"
+STABLE_UNSIGNED_VERSION="${stable_major}.${stable_minor}.$((stable_patch + 1))"
+
 # Detect developer machine IP
 if command -v ip >/dev/null 2>&1; then
     DEV_MACHINE_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}')
@@ -166,6 +171,7 @@ LOCAL_HASH = "$BINARY_SHA256"
 DEV_IP = "$DEV_MACHINE_IP"
 TIMESTAMP = $CURRENT_TIMESTAMP
 HAS_SIGNATURE = True if "$HAS_SIGNATURE" == "true" else False
+STABLE_UNSIGNED_VERSION = "$STABLE_UNSIGNED_VERSION"
 
 class SmartHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -174,27 +180,17 @@ class SmartHandler(http.server.SimpleHTTPRequestHandler):
 
         if parsed.path == "/releases":
             if "appVersion" in query or "systemVersion" in query:
-                self.proxy_to_real_api()
+                self.send_custom_version_response(query)
             else:
-                self.send_mock_response()
+                prerelease = query.get("prerelease", ["false"])[0].lower() == "true"
+                if prerelease:
+                    self.send_dev_unsigned_response()
+                else:
+                    self.send_stable_unsigned_response()
         else:
             super().do_GET()
 
-    def proxy_to_real_api(self):
-        try:
-            url = REAL_API + "?" + urllib.parse.urlparse(self.path).query
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=30) as response:
-                data = response.read()
-                self.send_response(response.status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", len(data))
-                self.end_headers()
-                self.wfile.write(data)
-        except Exception as e:
-            self.send_error(502, f"Proxy error: {e}")
-
-    def send_mock_response(self):
+    def send_dev_unsigned_response(self):
         response = {
             "appVersion": LOCAL_VERSION,
             "appUrl": f"http://{DEV_IP}:{PORT}/app/{LOCAL_VERSION}/jetkvm_app",
@@ -207,9 +203,40 @@ class SmartHandler(http.server.SimpleHTTPRequestHandler):
             "systemCachedAt": TIMESTAMP,
             "systemMaxSatisfying": "*"
         }
-        # Include signature URL if signature file is available
-        if HAS_SIGNATURE:
-            response["appSigUrl"] = f"http://{DEV_IP}:{PORT}/app/{LOCAL_VERSION}/jetkvm_app.sig"
+        self.send_json_response(response)
+
+    def send_stable_unsigned_response(self):
+        response = {
+            "appVersion": STABLE_UNSIGNED_VERSION,
+            "appUrl": f"http://{DEV_IP}:{PORT}/app/{LOCAL_VERSION}/jetkvm_app",
+            "appHash": LOCAL_HASH,
+            "appCachedAt": TIMESTAMP,
+            "appMaxSatisfying": "*",
+            "systemVersion": "0.2.7",
+            "systemUrl": "https://update.jetkvm.com/system/0.2.7/system.tar",
+            "systemHash": "da62bc0246d84e575c719a076a8f403e16e492192e178ecd68bc04ada853f557",
+            "systemCachedAt": TIMESTAMP,
+            "systemMaxSatisfying": "*"
+        }
+        self.send_json_response(response)
+
+    def send_custom_version_response(self, query):
+        requested_app_version = query.get("appVersion", [LOCAL_VERSION])[0]
+        response = {
+            "appVersion": requested_app_version,
+            "appUrl": f"http://{DEV_IP}:{PORT}/app/{LOCAL_VERSION}/jetkvm_app",
+            "appHash": LOCAL_HASH,
+            "appCachedAt": TIMESTAMP,
+            "appMaxSatisfying": "*",
+            "systemVersion": "0.2.7",
+            "systemUrl": "https://update.jetkvm.com/system/0.2.7/system.tar",
+            "systemHash": "da62bc0246d84e575c719a076a8f403e16e492192e178ecd68bc04ada853f557",
+            "systemCachedAt": TIMESTAMP,
+            "systemMaxSatisfying": "*"
+        }
+        self.send_json_response(response)
+
+    def send_json_response(self, response):
         data = json.dumps(response).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -276,6 +303,7 @@ export JETKVM_URL="http://$DEVICE_IP"
 export MOCK_SERVER_URL="http://$DEV_MACHINE_IP:8443"
 export TEST_UPDATE_VERSION="$VERSION"
 export TEST_STABLE_VERSION="$STABLE_VERSION"
+export TEST_STABLE_UNSIGNED_VERSION="$STABLE_UNSIGNED_VERSION"
 
 # Change to ui directory and run the test
 cd ui
@@ -287,10 +315,13 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Run E2E tests
-# If SKIP_OTA_E2E is set, exclude the OTA update flow test
+# The regular suite always excludes the dedicated signed OTA test.
 PLAYWRIGHT_ARGS=()
+PLAYWRIGHT_ARGS+=(--grep-invert "Signed OTA Upgrade")
+
+# Optional local escape hatch: if explicitly set, skip regular OTA update flow too.
 if [ "$SKIP_OTA_E2E" = "1" ]; then
-    echo -e "${YELLOW}Skipping OTA E2E test (SKIP_OTA_E2E=1)${NC}"
+    echo -e "${YELLOW}Skipping regular OTA E2E test (SKIP_OTA_E2E=1)${NC}"
     PLAYWRIGHT_ARGS+=(--grep-invert "OTA Update Flow")
 fi
 

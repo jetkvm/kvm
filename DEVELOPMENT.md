@@ -268,7 +268,7 @@ gh auth login
 Before starting a pull-request (PR) on GitHub, make sure that the system still passes all end-to-end tests. Use the following command after ensuring the setup above has been completed. The test will do a complete native, UI build, and device service. It will then ask for the IP of your test device. **Warning**, this will deploy your changes to the specified JetKVM device, so recovery may be required if something severe breaks. It may also **reset the configuration** of the test device, so be prepared to re-adopt and configure when done. You will need to ensure the KVM is connected to an HDMI and USB port of an actual machine that is on and active so that keyboard status, mouse movement, and display capture are testable.
 
 ```bash
-make test_e2e
+make test_e2e DEVICE_IP=<IP>
 ```
 
 ---
