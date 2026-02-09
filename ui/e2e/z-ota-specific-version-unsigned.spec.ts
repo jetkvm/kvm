@@ -10,6 +10,7 @@ import {
 
 import {
   createMockUpdateServer,
+  deployBinaryToDevice,
   configureDeviceUpdateUrl,
   restoreDeviceUpdateUrl,
   setIncludePreRelease,
@@ -24,12 +25,13 @@ import {
  * the update uses tryUpdateComponents with customVersionUpdate=true, which
  * skips signature verification.
  *
- * The test starts its own mock server and configures the device to use it.
- * No baseline binary is needed -- the custom version URL forces the update
- * UI to show "Update Now" regardless of current device version.
+ * The test starts its own mock server, deploys a known low baseline binary,
+ * and configures the device to use the mock API. This guarantees the test
+ * validates a real OTA transition (not a no-op "already on target" path).
  *
  * Required environment variables:
  *   - JETKVM_URL: Device URL (e.g., http://192.168.1.77)
+ *   - BASELINE_BINARY_PATH: Absolute path to baseline binary (deployed to device)
  *   - RELEASE_BINARY_PATH: Absolute path to release binary (served by mock)
  *   - TEST_UPDATE_VERSION: Version string of the release binary
  */
@@ -39,9 +41,11 @@ test.describe("OTA Specific Version Unsigned", () => {
   let mockServer: MockUpdateServer;
 
   test.beforeAll(async ({ browser }) => {
+    const baselinePath = process.env.BASELINE_BINARY_PATH;
     const releasePath = process.env.RELEASE_BINARY_PATH;
     const version = process.env.TEST_UPDATE_VERSION;
 
+    if (!baselinePath) throw new Error("BASELINE_BINARY_PATH is required");
     if (!releasePath) throw new Error("RELEASE_BINARY_PATH is required");
     if (!version) throw new Error("TEST_UPDATE_VERSION is required");
 
@@ -54,6 +58,10 @@ test.describe("OTA Specific Version Unsigned", () => {
       await page.close();
       await context.close();
     }
+
+    // Deploy a known baseline so the test validates a real update path.
+    await deployBinaryToDevice(baselinePath);
+    await rebootDeviceViaSSH();
 
     // Start mock server (no signature -- the whole point is that custom version
     // updates work WITHOUT a signature)
@@ -84,9 +92,21 @@ test.describe("OTA Specific Version Unsigned", () => {
       );
       await page.waitForLoadState("networkidle");
 
+      const initialVersion = await getCurrentVersion(page);
+      expect(initialVersion, "Initial version should be detectable from /metrics").not.toBeNull();
+      expect(
+        initialVersion,
+        "Baseline and target versions must differ to validate OTA behavior",
+      ).not.toBe(targetVersion);
+
       const updateButton = page.locator('[data-testid="update-now-button"]');
       await expect(updateButton).toBeVisible({ timeout: 20000 });
       await updateButton.click();
+
+      await expect(
+        page.getByText(/downloading|verifying|installing|awaiting reboot/i),
+        "Expected OTA progress state after triggering custom update",
+      ).toBeVisible({ timeout: 30000 });
 
       await reconnectAfterReboot(page, 35000);
 

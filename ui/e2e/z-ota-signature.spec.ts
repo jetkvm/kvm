@@ -5,6 +5,7 @@ import {
   reconnectAfterReboot,
   rebootDeviceViaSSH,
   ensureLocalAuthMode,
+  verifyHidAndVideo,
 } from "./helpers";
 
 import {
@@ -100,6 +101,13 @@ test.describe("OTA Signature Verification", () => {
     await page.goto("/settings/general/update");
     await page.waitForLoadState("networkidle");
 
+    const initialVersion = await getCurrentVersion(page);
+    expect(initialVersion, "Initial version should be detectable from /metrics").not.toBeNull();
+    expect(
+      initialVersion,
+      "Baseline and target versions must differ to validate OTA behavior",
+    ).not.toBe(process.env.TEST_UPDATE_VERSION);
+
     // The previous test's GPG error may be cached by the device backend.
     // If the error view is showing, click Retry to trigger a fresh update check.
     const retryButton = page.getByRole("button", { name: "Retry" });
@@ -118,6 +126,8 @@ test.describe("OTA Signature Verification", () => {
     const finalVersion = await getCurrentVersion(page);
     expect(finalVersion, "Device should be running the release version").not.toBeNull();
     expect(finalVersion).toBe(process.env.TEST_UPDATE_VERSION);
+
+    await verifyHidAndVideo(page);
   });
 
   test.afterAll(async () => {

@@ -85,8 +85,7 @@ print_row "Deployed" "Yes"
 echo -e "${CYAN}╰${HLINE}╯${NC}"
 echo ""
 
-# Set environment variables for the tests
-# RELEASE_BINARY_PATH is used by OTA tests that start their own mock server
+# Set environment variables for compatibility with OTA wrapper scripts.
 export JETKVM_URL="http://$DEVICE_IP"
 export RELEASE_BINARY_PATH="$(realpath "$BINARY_PATH")"
 export TEST_UPDATE_VERSION="$VERSION"
@@ -100,10 +99,9 @@ if [ ! -d "node_modules" ]; then
     npm ci
 fi
 
-# Run E2E tests, excluding the signature verification suite
-# (those tests run separately via test_signed_ota.sh with the baseline binary)
+# Run E2E tests, excluding OTA suites that require dedicated baseline+target lanes.
 PLAYWRIGHT_ARGS=()
-PLAYWRIGHT_ARGS+=(--grep-invert "OTA Signature Verification")
+PLAYWRIGHT_ARGS+=(--grep-invert "OTA Signature Verification|OTA Specific Version Unsigned")
 
 if NODE_NO_WARNINGS=1 npx playwright test "${PLAYWRIGHT_ARGS[@]}"; then
     echo ""
