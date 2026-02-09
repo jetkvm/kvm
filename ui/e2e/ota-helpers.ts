@@ -14,6 +14,7 @@ import * as http from "http";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import * as os from "os";
+import { execSync } from "child_process";
 import { getDeviceHost, sshExec, rebootDeviceViaSSH } from "./helpers";
 
 // ============================================================================
@@ -244,9 +245,23 @@ export async function computeFileHash(filePath: string): Promise<string> {
 
 /**
  * Detect the local network IP address that the device can reach.
- * Returns the first non-internal IPv4 address found.
+ * Prefer route-based detection (same approach as previous shell scripts),
+ * then fall back to the first non-internal IPv4 address.
  */
 export function getLocalNetworkIP(): string {
+  try {
+    const routeOutput = execSync("ip route get 1", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const routeMatch = routeOutput.match(/\bsrc\s+(\d+\.\d+\.\d+\.\d+)\b/);
+    if (routeMatch?.[1]) {
+      return routeMatch[1];
+    }
+  } catch {
+    // Fall through to interface scan if route-based detection is unavailable.
+  }
+
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]!) {
