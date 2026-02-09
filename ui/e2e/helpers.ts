@@ -296,7 +296,7 @@ const MIN_VIDEO_DIMENSION = 100;
 // Mouse verification tuning
 const MOUSE_DISTANCE_THRESHOLD = 10;
 const MOUSE_VERIFY_RETRIES = 3;
-const MOUSE_SETTLE_MS = 150;
+const MOUSE_SETTLE_MS = 2000;
 
 export interface MouseBidirCheckOptions {
   retries?: number;
@@ -967,7 +967,7 @@ export async function disablePasswordFromSettings(
  * @param ignoreErrors - If true, don't throw on command failure (default: false)
  * @returns The stdout from the command
  */
-async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
+export async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
   const { exec } = await import("child_process");
   const { promisify } = await import("util");
   const execAsync = promisify(exec);

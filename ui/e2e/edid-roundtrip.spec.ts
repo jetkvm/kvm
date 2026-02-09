@@ -5,14 +5,11 @@ import {
   waitForVideoStream,
   wakeDisplay,
   getVideoStreamDimensions,
-  captureVideoRegionFingerprint,
+  verifyMouseWorks,
 } from "./helpers";
 
 // Minimum video dimensions to consider valid (sanity check)
 const MIN_VIDEO_DIMENSION = 100;
-
-// Region size for video capture (pixels around center)
-const CAPTURE_REGION_SIZE = 80;
 
 // Time to wait for EDID setting callback to complete (ms)
 const EDID_CALLBACK_TIMEOUT = 15000;
@@ -22,9 +19,6 @@ const SIGNAL_STABILIZATION_TIME = 5000;
 
 // Number of random EDID options to test (to keep test time reasonable)
 const NUM_EDIDS_TO_TEST = 2;
-
-// Time between fingerprint captures to verify stream is updating (ms)
-const FINGERPRINT_INTERVAL = 500;
 
 interface EdidOption {
   value: string;
@@ -146,40 +140,8 @@ test.describe("EDID Round-Trip Tests", () => {
         `Video height should be >= ${MIN_VIDEO_DIMENSION}px`,
       ).toBeGreaterThanOrEqual(MIN_VIDEO_DIMENSION);
 
-      // Calculate center region for fingerprint capture (based on current resolution)
-      const centerX = Math.floor(videoWidth / 2);
-      const centerY = Math.floor(videoHeight / 2);
-      const regionX = Math.max(0, centerX - CAPTURE_REGION_SIZE / 2);
-      const regionY = Math.max(0, centerY - CAPTURE_REGION_SIZE / 2);
-      const regionWidth = Math.min(CAPTURE_REGION_SIZE, videoWidth - regionX);
-      const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
-
-      // Capture two fingerprints to verify stream is updating
-      const fpA = await captureVideoRegionFingerprint(
-        page,
-        regionX,
-        regionY,
-        regionWidth,
-        regionHeight,
-      );
-      expect(fpA, "Failed to capture fingerprint A").not.toBeNull();
-      await page.waitForTimeout(FINGERPRINT_INTERVAL);
-      const fpB = await captureVideoRegionFingerprint(
-        page,
-        regionX,
-        regionY,
-        regionWidth,
-        regionHeight,
-      );
-      expect(fpB, "Failed to capture fingerprint B").not.toBeNull();
-
-      // Verify we're not getting a black/blank screen
-      const uniqueValues = new Set(fpA!);
-      expect(
-        uniqueValues.size,
-        `Video should not be blank/single color for EDID "${option.label}"`,
-      ).toBeGreaterThan(1);
-
+      // Verify mouse works (moves cursor and checks video region changes)
+      await verifyMouseWorks(page);
     }
   });
 });

@@ -95,6 +95,7 @@ test_production_release:
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
 	$(MAKE) build_release VERSION=$(VERSION)
 	@echo "Signing release binary..."
+	@echo -n "Ready to sign with key $(SIGNING_KEY_FPR)? [y/N] " && read ans && [ "$$ans" = "y" ] || { echo "Signing cancelled."; exit 1; }
 	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
 	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
 		echo "Error: Signature file not created"; exit 1; \
