@@ -107,6 +107,10 @@ test_production_release:
 		"bin/jetkvm_app_baseline" \
 		"bin/jetkvm_app" \
 		"$(VERSION)"
+	./scripts/test_prerelease_unsigned_ota.sh "$(DEVICE_IP)" \
+		"bin/jetkvm_app_baseline" \
+		"bin/jetkvm_app" \
+		"$(VERSION)"
 	./scripts/test_signed_ota.sh "$(DEVICE_IP)" \
 		"bin/jetkvm_app_baseline" \
 		"bin/jetkvm_app" \

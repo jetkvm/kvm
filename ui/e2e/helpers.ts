@@ -197,14 +197,32 @@ export async function sendAbsMouseMove(
  * Get the video stream dimensions.
  *
  * @param page - Playwright page object
+ * @param options - Retry options for transient startup timing
  * @returns The video dimensions or null if not available
  */
-export async function getVideoStreamDimensions(page: Page): Promise<VideoStreamDimensions | null> {
-  return page.evaluate(() => {
-    const hooks = window.__kvmTestHooks;
-    if (!hooks) return null;
-    return hooks.getVideoStreamDimensions();
-  });
+export async function getVideoStreamDimensions(
+  page: Page,
+  options: { retries?: number; retryDelayMs?: number } = {},
+): Promise<VideoStreamDimensions | null> {
+  const { retries = 3, retryDelayMs = 500 } = options;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const dimensions = await page.evaluate(() => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) return null;
+      return hooks.getVideoStreamDimensions();
+    });
+
+    if (dimensions && dimensions.width > 0 && dimensions.height > 0) {
+      return dimensions;
+    }
+
+    if (attempt < retries) {
+      await page.waitForTimeout(retryDelayMs);
+    }
+  }
+
+  return null;
 }
 
 /**

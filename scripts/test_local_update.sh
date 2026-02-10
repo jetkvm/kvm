@@ -101,7 +101,7 @@ fi
 
 # Run E2E tests, excluding OTA suites that require dedicated baseline+target lanes.
 PLAYWRIGHT_ARGS=()
-PLAYWRIGHT_ARGS+=(--grep-invert "OTA Signature Verification|OTA Specific Version Unsigned")
+PLAYWRIGHT_ARGS+=(--grep-invert "OTA Signature Verification|OTA Specific Version Unsigned|OTA Prerelease Unsigned")
 
 if NODE_NO_WARNINGS=1 npx playwright test "${PLAYWRIGHT_ARGS[@]}"; then
     echo ""
