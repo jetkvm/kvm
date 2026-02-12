@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { LuLink, LuRadioReceiver, LuCheck, LuUpload } from "react-icons/lu";
+import {
+  LuLink,
+  LuRadioReceiver,
+  LuCheck,
+  LuUpload,
+  LuDownload,
+} from "react-icons/lu";
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
 
@@ -171,6 +177,9 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
                     setIncompleteFileName(incompleteFile || null);
                     setModalView("upload");
                   }}
+                  onDownloadClick={() => {
+                    setModalView("download");
+                  }}
                 />
               )}
 
@@ -182,6 +191,15 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
                     // Implement cancel upload logic here
                   }}
                   incompleteFileName={incompleteFileName || undefined}
+                />
+              )}
+
+              {modalView === "download" && (
+                <DownloadFileView
+                  onBack={() => setModalView("device")}
+                  onDownloadComplete={() => {
+                    setModalView("device");
+                  }}
                 />
               )}
 
@@ -488,11 +506,13 @@ function DeviceFileView({
   mountInProgress,
   onBack,
   onNewImageClick,
+  onDownloadClick,
 }: {
   onMountStorageFile: (name: string, mode: RemoteVirtualMediaState["mode"]) => void;
   mountInProgress: boolean;
   onBack: () => void;
   onNewImageClick: (incompleteFileName?: string) => void;
+  onDownloadClick: () => void;
 }) {
   const [onStorageFiles, setOnStorageFiles] = useState<StorageFile[]>([]);
 
@@ -766,7 +786,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 && (
         <div
-          className="w-full animate-fadeIn opacity-0"
+          className="w-full animate-fadeIn space-y-2 opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.25s",
@@ -778,6 +798,13 @@ function DeviceFileView({
             fullWidth
             text={m.mount_button_upload_new_image()}
             onClick={() => onNewImageClick()}
+          />
+          <Button
+            size="MD"
+            theme="light"
+            fullWidth
+            text={m.mount_button_download_from_url()}
+            onClick={() => onDownloadClick()}
           />
         </div>
       )}
@@ -1203,6 +1230,272 @@ function UploadFileView({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function DownloadFileView({
+  onBack,
+  onDownloadComplete,
+}: {
+  onBack: () => void;
+  onDownloadComplete: () => void;
+}) {
+  const [downloadViewState, setDownloadViewState] = useState<"idle" | "downloading" | "success" | "error">("idle");
+  const [url, setUrl] = useState<string>("");
+  const [filename, setFilename] = useState<string>("");
+  const [progress, setProgress] = useState(0);
+  const [downloadSpeed, setDownloadSpeed] = useState<number | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [totalBytes, setTotalBytes] = useState<number>(0);
+
+  const { send } = useJsonRpc();
+
+  // Track download speed
+  const lastBytesRef = useRef(0);
+  const lastTimeRef = useRef(0);
+  const speedHistoryRef = useRef<number[]>([]);
+
+  // Compute URL validity
+  const isUrlValid = useMemo(() => {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, [url]);
+
+  // Extract filename from URL
+  const suggestedFilename = useMemo(() => {
+    if (!url) return '';
+    try {
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/');
+      const lastPart = pathParts[pathParts.length - 1];
+      if (lastPart && (lastPart.endsWith('.iso') || lastPart.endsWith('.img'))) {
+        return lastPart;
+      }
+    } catch {
+      // Invalid URL, ignore
+    }
+    return '';
+  }, [url]);
+
+  // Update filename when URL changes and user hasn't manually edited it
+  const [userEditedFilename, setUserEditedFilename] = useState(false);
+  const effectiveFilename = userEditedFilename ? filename : (suggestedFilename || filename);
+
+  // Listen for download state events via polling
+  useEffect(() => {
+    if (downloadViewState !== "downloading") return;
+
+    const pollInterval = setInterval(() => {
+      send("getDownloadState", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) return;
+
+        const state = resp.result as {
+          downloading: boolean;
+          filename: string;
+          totalBytes: number;
+          doneBytes: number;
+          progress: number;
+          error?: string;
+        };
+
+        if (state.error) {
+          setDownloadError(state.error);
+          setDownloadViewState("error");
+          return;
+        }
+
+        setTotalBytes(state.totalBytes);
+        setProgress(state.progress * 100);
+
+        // Calculate speed
+        const now = Date.now();
+        const timeDiff = (now - lastTimeRef.current) / 1000;
+        const bytesDiff = state.doneBytes - lastBytesRef.current;
+
+        if (timeDiff > 0 && bytesDiff > 0) {
+          const instantSpeed = bytesDiff / timeDiff;
+          speedHistoryRef.current.push(instantSpeed);
+          if (speedHistoryRef.current.length > 5) {
+            speedHistoryRef.current.shift();
+          }
+          const avgSpeed = speedHistoryRef.current.reduce((a, b) => a + b, 0) / speedHistoryRef.current.length;
+          setDownloadSpeed(avgSpeed);
+        }
+
+        lastBytesRef.current = state.doneBytes;
+        lastTimeRef.current = now;
+
+        if (!state.downloading && state.progress >= 1) {
+          setDownloadViewState("success");
+        }
+      });
+    }, 500);
+
+    return () => clearInterval(pollInterval);
+  }, [downloadViewState, send]);
+
+  function handleStartDownload() {
+    if (!url || !effectiveFilename) return;
+
+    setDownloadViewState("downloading");
+    setDownloadError(null);
+    setProgress(0);
+    setDownloadSpeed(null);
+    lastBytesRef.current = 0;
+    lastTimeRef.current = Date.now();
+    speedHistoryRef.current = [];
+
+    send("downloadFromUrl", { url, filename: effectiveFilename }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        setDownloadError(resp.error.message);
+        setDownloadViewState("error");
+      }
+    });
+  }
+
+  function handleCancelDownload() {
+    send("cancelDownload", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to cancel download:", resp.error);
+      }
+      setDownloadViewState("idle");
+    });
+  }
+
+  return (
+    <div className="w-full space-y-4">
+      <ViewHeader
+        title={m.mount_download_title()}
+        description={m.mount_download_description()}
+      />
+
+      {downloadViewState === "idle" && (
+        <>
+          <div className="animate-fadeIn space-y-4 opacity-0" style={{ animationDuration: "0.7s" }}>
+            <InputFieldWithLabel
+              placeholder="https://example.com/image.iso"
+              type="url"
+              label={m.mount_download_url_label()}
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+            />
+            <InputFieldWithLabel
+              placeholder="image.iso"
+              type="text"
+              label={m.mount_download_filename_label()}
+              value={effectiveFilename}
+              onChange={e => {
+                setFilename(e.target.value);
+                setUserEditedFilename(true);
+              }}
+            />
+          </div>
+          <div className="flex w-full justify-end space-x-2">
+            <Button size="MD" theme="blank" text={m.back()} onClick={onBack} />
+            <Button
+              size="MD"
+              theme="primary"
+              text={m.mount_button_start_download()}
+              onClick={handleStartDownload}
+              disabled={!isUrlValid || !effectiveFilename}
+            />
+          </div>
+        </>
+      )}
+
+      {downloadViewState === "downloading" && (
+        <div className="animate-fadeIn space-y-4 opacity-0" style={{ animationDuration: "0.7s" }}>
+          <Card>
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <LuDownload className="h-5 w-5 text-blue-500 animate-pulse" />
+                <h3 className="text-lg font-semibold dark:text-white">
+                  {m.mount_downloading_with_name({ name: formatters.truncateMiddle(effectiveFilename, 30) })}
+                </h3>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {formatters.bytes(totalBytes)}
+              </p>
+              <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-300 dark:bg-slate-700">
+                <div
+                  className="h-3.5 rounded-full bg-blue-700 transition-all duration-500 ease-linear dark:bg-blue-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+                <span>{m.mount_downloading()}</span>
+                <span>
+                  {downloadSpeed !== null
+                    ? `${formatters.bytes(downloadSpeed)}/s`
+                    : m.mount_calculating()}
+                </span>
+              </div>
+            </div>
+          </Card>
+          <div className="flex w-full justify-end">
+            <Button
+              size="MD"
+              theme="light"
+              text={m.mount_button_cancel_download()}
+              onClick={handleCancelDownload}
+            />
+          </div>
+        </div>
+      )}
+
+      {downloadViewState === "success" && (
+        <div className="animate-fadeIn space-y-4 opacity-0" style={{ animationDuration: "0.7s" }}>
+          <Card>
+            <div className="p-4 text-center space-y-2">
+              <LuCheck className="h-8 w-8 text-green-500 mx-auto" />
+              <h3 className="text-lg font-semibold dark:text-white">
+                {m.mount_download_successful()}
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {m.mount_download_has_been_downloaded({ name: effectiveFilename })}
+              </p>
+            </div>
+          </Card>
+          <div className="flex w-full justify-end">
+            <Button
+              size="MD"
+              theme="primary"
+              text={m.mount_button_back_to_overview()}
+              onClick={onDownloadComplete}
+            />
+          </div>
+        </div>
+      )}
+
+      {downloadViewState === "error" && (
+        <div className="animate-fadeIn space-y-4 opacity-0" style={{ animationDuration: "0.7s" }}>
+          <Card className="border border-red-200 bg-red-50 dark:bg-red-900/20">
+            <div className="p-4 text-center space-y-2">
+              <ExclamationTriangleIcon className="h-8 w-8 text-red-500 mx-auto" />
+              <h3 className="text-lg font-semibold text-red-800 dark:text-red-400">
+                {m.mount_error_title()}
+              </h3>
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {downloadError}
+              </p>
+            </div>
+          </Card>
+          <div className="flex w-full justify-end space-x-2">
+            <Button size="MD" theme="light" text={m.back()} onClick={onBack} />
+            <Button
+              size="MD"
+              theme="primary"
+              text={m.mount_button_back_to_overview()}
+              onClick={() => setDownloadViewState("idle")}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

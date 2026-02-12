@@ -436,7 +436,7 @@ export interface MountMediaState {
   remoteVirtualMediaState: RemoteVirtualMediaState | null;
   setRemoteVirtualMediaState: (state: MountMediaState["remoteVirtualMediaState"]) => void;
 
-  modalView: "mode" | "url" | "device" | "upload" | "error" | null;
+  modalView: "mode" | "url" | "device" | "upload" | "download" | "error" | null;
   setModalView: (view: MountMediaState["modalView"]) => void;
 
   isMountMediaDialogOpen: boolean;

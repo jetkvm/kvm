@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,7 +88,7 @@ func mountImage(imagePath string) error {
 
 var nbdDevice *NBDDevice
 
-const imagesFolder = "/userdata/jetkvm/images"
+var imagesFolder = "/userdata/jetkvm/images"
 
 func initImagesFolder() error {
 	err := os.MkdirAll(imagesFolder, 0755)
@@ -611,4 +612,236 @@ func handleUploadHttp(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Upload completed"})
+}
+
+// Download state management
+type DownloadState struct {
+	Downloading bool    `json:"downloading"`
+	Filename    string  `json:"filename,omitempty"`
+	URL         string  `json:"url,omitempty"`
+	TotalBytes  int64   `json:"totalBytes"`
+	DoneBytes   int64   `json:"doneBytes"`
+	Progress    float32 `json:"progress"`
+	Error       string  `json:"error,omitempty"`
+}
+
+var currentDownload *DownloadState
+var downloadMutex sync.Mutex
+var downloadCancel context.CancelFunc
+
+func rpcGetDownloadState() (*DownloadState, error) {
+	downloadMutex.Lock()
+	defer downloadMutex.Unlock()
+	if currentDownload == nil {
+		return &DownloadState{Downloading: false}, nil
+	}
+	return currentDownload, nil
+}
+
+func rpcCancelDownload() error {
+	downloadMutex.Lock()
+	defer downloadMutex.Unlock()
+	if downloadCancel != nil {
+		downloadCancel()
+		downloadCancel = nil
+	}
+	return nil
+}
+
+func rpcDownloadFromUrl(url string, filename string) error {
+	// Sanitize filename
+	sanitizedFilename, err := sanitizeFilename(filename)
+	if err != nil {
+		return err
+	}
+
+	// Validate URL
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return errors.New("invalid URL: must start with http:// or https://")
+	}
+
+	// Check if already downloading
+	downloadMutex.Lock()
+	if currentDownload != nil && currentDownload.Downloading {
+		downloadMutex.Unlock()
+		return errors.New("another download is already in progress")
+	}
+
+	// Check if file already exists
+	filePath := filepath.Join(imagesFolder, sanitizedFilename)
+	if _, err := os.Stat(filePath); err == nil {
+		downloadMutex.Unlock()
+		return fmt.Errorf("file already exists: %s", sanitizedFilename)
+	}
+
+	// Initialize download state
+	ctx, cancel := context.WithCancel(context.Background())
+	downloadCancel = cancel
+	currentDownload = &DownloadState{
+		Downloading: true,
+		Filename:    sanitizedFilename,
+		URL:         url,
+		Progress:    0,
+	}
+	downloadMutex.Unlock()
+
+	// Start download in goroutine
+	go performDownload(ctx, url, sanitizedFilename)
+
+	return nil
+}
+
+func performDownload(ctx context.Context, url string, filename string) {
+	downloadPath := filepath.Join(imagesFolder, filename+".incomplete")
+	finalPath := filepath.Join(imagesFolder, filename)
+
+	defer func() {
+		downloadMutex.Lock()
+		if currentDownload != nil {
+			currentDownload.Downloading = false
+		}
+		downloadCancel = nil
+		downloadMutex.Unlock()
+		broadcastDownloadState()
+	}()
+
+	// Create HTTP request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		setDownloadError(fmt.Sprintf("failed to create request: %v", err))
+		return
+	}
+
+	// Perform request
+	client := &http.Client{Timeout: 0} // No timeout for large downloads
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() == context.Canceled {
+			setDownloadError("download cancelled")
+			// Clean up incomplete file
+			os.Remove(downloadPath)
+		} else {
+			setDownloadError(fmt.Sprintf("failed to download: %v", err))
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		setDownloadError(fmt.Sprintf("server returned status %d", resp.StatusCode))
+		return
+	}
+
+	totalSize := resp.ContentLength
+	if totalSize <= 0 {
+		setDownloadError("server did not provide content length")
+		return
+	}
+
+	// Update state with total size
+	downloadMutex.Lock()
+	if currentDownload != nil {
+		currentDownload.TotalBytes = totalSize
+	}
+	downloadMutex.Unlock()
+	broadcastDownloadState()
+
+	// Create file
+	file, err := os.Create(downloadPath)
+	if err != nil {
+		setDownloadError(fmt.Sprintf("failed to create file: %v", err))
+		return
+	}
+	defer file.Close()
+
+	// Download with progress tracking
+	var written int64
+	buf := make([]byte, 32*1024)
+	lastProgress := float32(0)
+
+	for {
+		select {
+		case <-ctx.Done():
+			setDownloadError("download cancelled")
+			file.Close()
+			os.Remove(downloadPath)
+			return
+		default:
+		}
+
+		nr, er := resp.Body.Read(buf)
+		if nr > 0 {
+			nw, ew := file.Write(buf[0:nr])
+			if nw < nr {
+				setDownloadError(fmt.Sprintf("short write: %d < %d", nw, nr))
+				return
+			}
+			written += int64(nw)
+			if ew != nil {
+				setDownloadError(fmt.Sprintf("write error: %v", ew))
+				return
+			}
+
+			progress := float32(written) / float32(totalSize)
+			if progress-lastProgress >= 0.01 {
+				downloadMutex.Lock()
+				if currentDownload != nil {
+					currentDownload.DoneBytes = written
+					currentDownload.Progress = progress
+				}
+				downloadMutex.Unlock()
+				broadcastDownloadState()
+				lastProgress = progress
+			}
+		}
+		if er != nil {
+			if er == io.EOF {
+				break
+			}
+			setDownloadError(fmt.Sprintf("read error: %v", er))
+			return
+		}
+	}
+
+	// Sync filesystem
+	if err := file.Sync(); err != nil {
+		setDownloadError(fmt.Sprintf("failed to sync file: %v", err))
+		return
+	}
+	file.Close()
+
+	// Rename to final filename
+	if err := os.Rename(downloadPath, finalPath); err != nil {
+		setDownloadError(fmt.Sprintf("failed to rename file: %v", err))
+		return
+	}
+
+	// Update final state
+	downloadMutex.Lock()
+	if currentDownload != nil {
+		currentDownload.DoneBytes = totalSize
+		currentDownload.Progress = 1.0
+	}
+	downloadMutex.Unlock()
+
+	logger.Info().Str("filename", filename).Int64("size", totalSize).Msg("download completed")
+}
+
+func setDownloadError(errMsg string) {
+	downloadMutex.Lock()
+	if currentDownload != nil {
+		currentDownload.Error = errMsg
+	}
+	downloadMutex.Unlock()
+	logger.Warn().Str("error", errMsg).Msg("download error")
+}
+
+func broadcastDownloadState() {
+	downloadMutex.Lock()
+	state := currentDownload
+	downloadMutex.Unlock()
+
+	if currentSession != nil && state != nil {
+		writeJSONRPCEvent("downloadState", state, currentSession)
+	}
 }
