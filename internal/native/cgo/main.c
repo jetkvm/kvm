@@ -1,0 +1,367 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/select.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <pthread.h>
+#include "ctrl.h"
+#include "main.h"
+
+#define SOCKET_PATH "/tmp/video.sock"
+#define BUFFER_SIZE 4096
+
+// Global state
+static int client_fd = -1;
+static pthread_mutex_t client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// JPEG stream socket
+static int jpeg_client_fd = -1;
+static pthread_mutex_t jpeg_client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// RGB/YUV stream socket (raw frames for RDP bitmap mode)
+static int rgb_client_fd = -1;
+static pthread_mutex_t rgb_client_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void jetkvm_c_log_handler(int level, const char *filename, const char *funcname, int line, const char *message) {
+    // printf("[%s] %s:%d %s: %s\n", filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
+    fprintf(stderr, "[%d] %s:%s:%d: %s\n", level, filename ? filename : "unknown", funcname ? funcname : "unknown", line, message ? message : "");
+}
+
+// Video handler that pipes frames to the Unix socket
+// This will be called by the video subsystem via video_send_frame -> jetkvm_set_video_handler's handler
+void jetkvm_video_handler(const uint8_t *frame, ssize_t len) {
+    (void)frame;
+    (void)len;
+    // H.264 frames are handled via gRPC, not this handler
+}
+
+// JPEG handler that sends frames to the JPEG stream socket
+// Called by video_send_jpeg_frame when JPEG encoder produces a frame
+void jetkvm_jpeg_handler(const uint8_t *frame, ssize_t len) {
+    pthread_mutex_lock(&jpeg_client_fd_mutex);
+    if (jpeg_client_fd >= 0 && frame != NULL && len > 0) {
+        // Write 4-byte frame length prefix (little-endian)
+        uint32_t frame_size = (uint32_t)len;
+        uint8_t size_buf[4];
+        size_buf[0] = (frame_size >> 0) & 0xFF;
+        size_buf[1] = (frame_size >> 8) & 0xFF;
+        size_buf[2] = (frame_size >> 16) & 0xFF;
+        size_buf[3] = (frame_size >> 24) & 0xFF;
+
+        ssize_t n = write(jpeg_client_fd, size_buf, 4);
+        if (n != 4) {
+            if (errno == EPIPE || errno == ECONNRESET || n == 0) {
+                close(jpeg_client_fd);
+                jpeg_client_fd = -1;
+            }
+            pthread_mutex_unlock(&jpeg_client_fd_mutex);
+            return;
+        }
+
+        // Write frame data
+        ssize_t bytes_written = 0;
+        while (bytes_written < len) {
+            n = write(jpeg_client_fd, frame + bytes_written, len - bytes_written);
+            if (n <= 0) {
+                if (errno == EPIPE || errno == ECONNRESET) {
+                    close(jpeg_client_fd);
+                    jpeg_client_fd = -1;
+                }
+                break;
+            }
+            bytes_written += n;
+        }
+    }
+    pthread_mutex_unlock(&jpeg_client_fd_mutex);
+}
+
+// RGB handler that sends raw YUV422 frames to the RGB stream socket
+// Called by video_send_rgb_frame when RGB encoder produces a frame
+void jetkvm_rgb_handler(const uint8_t *frame, ssize_t len, uint32_t width, uint32_t height) {
+    pthread_mutex_lock(&rgb_client_fd_mutex);
+    if (rgb_client_fd >= 0 && frame != NULL && len > 0) {
+        // Write 12-byte header: frame_size (4) + width (4) + height (4)
+        uint8_t header[12];
+        uint32_t frame_size = (uint32_t)len;
+        header[0] = (frame_size >> 0) & 0xFF;
+        header[1] = (frame_size >> 8) & 0xFF;
+        header[2] = (frame_size >> 16) & 0xFF;
+        header[3] = (frame_size >> 24) & 0xFF;
+        header[4] = (width >> 0) & 0xFF;
+        header[5] = (width >> 8) & 0xFF;
+        header[6] = (width >> 16) & 0xFF;
+        header[7] = (width >> 24) & 0xFF;
+        header[8] = (height >> 0) & 0xFF;
+        header[9] = (height >> 8) & 0xFF;
+        header[10] = (height >> 16) & 0xFF;
+        header[11] = (height >> 24) & 0xFF;
+
+        ssize_t n = write(rgb_client_fd, header, 12);
+        if (n != 12) {
+            if (errno == EPIPE || errno == ECONNRESET || n == 0) {
+                close(rgb_client_fd);
+                rgb_client_fd = -1;
+            }
+            pthread_mutex_unlock(&rgb_client_fd_mutex);
+            return;
+        }
+
+        // Write frame data
+        ssize_t bytes_written = 0;
+        while (bytes_written < len) {
+            n = write(rgb_client_fd, frame + bytes_written, len - bytes_written);
+            if (n <= 0) {
+                if (errno == EPIPE || errno == ECONNRESET) {
+                    close(rgb_client_fd);
+                    rgb_client_fd = -1;
+                }
+                break;
+            }
+            bytes_written += n;
+        }
+    }
+    pthread_mutex_unlock(&rgb_client_fd_mutex);
+}
+
+void jetkvm_video_state_handler(jetkvm_video_state_t *state) {
+    fprintf(stderr, "Video state: {\n"
+        "\"ready\": %d,\n"
+        "\"error\": \"%s\",\n"
+        "\"width\": %d,\n"
+        "\"height\": %d,\n"
+        "\"frame_per_second\": %f\n"
+    "}\n", state->ready, state->error, state->width, state->height, state->frame_per_second);
+}
+
+void jetkvm_indev_handler(int code) {
+    fprintf(stderr, "Video indev: %d\n", code);
+}
+
+void jetkvm_rpc_handler(const char *method, const char *params) {
+    fprintf(stderr, "Video rpc: %s %s\n", method, params);
+}
+
+// Note: jetkvm_set_video_handler, jetkvm_set_indev_handler, jetkvm_set_rpc_handler,
+// jetkvm_call_rpc_handler, and jetkvm_set_video_state_handler are implemented in
+// the library (ctrl.c) and will be used from there when linking.
+
+int main(int argc, char *argv[]) {
+    const char *socket_path = SOCKET_PATH;
+    
+    // Allow custom socket path via command line argument
+    if (argc > 1) {
+        socket_path = argv[1];
+    }
+    
+    // Remove existing socket file if it exists
+    unlink(socket_path);
+
+    // Set handlers
+    jetkvm_set_log_handler(&jetkvm_c_log_handler);
+    jetkvm_set_video_handler(&jetkvm_video_handler);
+    jetkvm_set_jpeg_handler(&jetkvm_jpeg_handler);
+    jetkvm_set_rgb_handler(&jetkvm_rgb_handler);
+    jetkvm_set_video_state_handler(&jetkvm_video_state_handler);
+    jetkvm_set_indev_handler(&jetkvm_indev_handler);
+    jetkvm_set_rpc_handler(&jetkvm_rpc_handler);
+
+    // Connect to JPEG stream socket if provided
+    const char *jpeg_socket_path = getenv("JETKVM_NATIVE_JPEG_STREAM_UNIX_SOCKET");
+    if (jpeg_socket_path != NULL && jpeg_socket_path[0] != '\0') {
+        int jpeg_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (jpeg_fd >= 0) {
+            struct sockaddr_un jpeg_addr;
+            memset(&jpeg_addr, 0, sizeof(jpeg_addr));
+            jpeg_addr.sun_family = AF_UNIX;
+
+            // Handle abstract socket (starts with @)
+            if (jpeg_socket_path[0] == '@') {
+                jpeg_addr.sun_path[0] = '\0';
+                strncpy(jpeg_addr.sun_path + 1, jpeg_socket_path + 1, sizeof(jpeg_addr.sun_path) - 2);
+            } else {
+                strncpy(jpeg_addr.sun_path, jpeg_socket_path, sizeof(jpeg_addr.sun_path) - 1);
+            }
+
+            if (connect(jpeg_fd, (struct sockaddr *)&jpeg_addr, sizeof(jpeg_addr)) == 0) {
+                pthread_mutex_lock(&jpeg_client_fd_mutex);
+                jpeg_client_fd = jpeg_fd;
+                pthread_mutex_unlock(&jpeg_client_fd_mutex);
+                fprintf(stderr, "Connected to JPEG stream socket: %s\n", jpeg_socket_path);
+            } else {
+                perror("connect JPEG socket");
+                close(jpeg_fd);
+            }
+        }
+    }
+
+    // Connect to RGB/YUV stream socket if provided
+    const char *rgb_socket_path = getenv("JETKVM_NATIVE_RGB_STREAM_UNIX_SOCKET");
+    if (rgb_socket_path != NULL && rgb_socket_path[0] != '\0') {
+        int rgb_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (rgb_fd >= 0) {
+            struct sockaddr_un rgb_addr;
+            memset(&rgb_addr, 0, sizeof(rgb_addr));
+            rgb_addr.sun_family = AF_UNIX;
+
+            // Handle abstract socket (starts with @)
+            if (rgb_socket_path[0] == '@') {
+                rgb_addr.sun_path[0] = '\0';
+                strncpy(rgb_addr.sun_path + 1, rgb_socket_path + 1, sizeof(rgb_addr.sun_path) - 2);
+            } else {
+                strncpy(rgb_addr.sun_path, rgb_socket_path, sizeof(rgb_addr.sun_path) - 1);
+            }
+
+            if (connect(rgb_fd, (struct sockaddr *)&rgb_addr, sizeof(rgb_addr)) == 0) {
+                pthread_mutex_lock(&rgb_client_fd_mutex);
+                rgb_client_fd = rgb_fd;
+                pthread_mutex_unlock(&rgb_client_fd_mutex);
+                fprintf(stderr, "Connected to RGB stream socket: %s\n", rgb_socket_path);
+            } else {
+                perror("connect RGB socket");
+                close(rgb_fd);
+            }
+        }
+    }
+
+    // Initialize video first (before accepting connections)
+    fprintf(stderr, "Initializing video...\n");
+    if (jetkvm_video_init(1.0) != 0) {
+        fprintf(stderr, "Failed to initialize video\n");
+        return 1;
+    }
+    
+    // Start video streaming - frames will be sent via video_send_frame
+    // which calls the video handler we set up
+    jetkvm_video_start();
+    fprintf(stderr, "Video streaming started.\n");
+
+    // Create Unix domain socket
+    int server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        perror("socket");
+        jetkvm_video_stop();
+        jetkvm_video_shutdown();
+        return 1;
+    }
+    
+    // Make socket non-blocking
+    int flags = fcntl(server_fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        perror("fcntl");
+        close(server_fd);
+        jetkvm_video_stop();
+        jetkvm_video_shutdown();
+        return 1;
+    }
+    
+    // Bind socket to path
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+    
+    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("bind");
+        close(server_fd);
+        jetkvm_video_stop();
+        jetkvm_video_shutdown();
+        return 1;
+    }
+    
+    // Listen for connections
+    if (listen(server_fd, 1) < 0) {
+        perror("listen");
+        close(server_fd);
+        jetkvm_video_stop();
+        jetkvm_video_shutdown();
+        return 1;
+    }
+    
+    fprintf(stderr, "Listening on Unix socket: %s (non-blocking)\n", socket_path);
+    fprintf(stderr, "Video frames will be sent to connected clients...\n");
+    
+    // Main loop: check for new connections and handle client disconnections
+    fd_set read_fds;
+    struct timeval timeout;
+    
+    while (1) {
+        FD_ZERO(&read_fds);
+        FD_SET(server_fd, &read_fds);
+        
+        pthread_mutex_lock(&client_fd_mutex);
+        int current_client_fd = client_fd;
+        if (current_client_fd >= 0) {
+            FD_SET(current_client_fd, &read_fds);
+        }
+        int max_fd = (current_client_fd > server_fd) ? current_client_fd : server_fd;
+        pthread_mutex_unlock(&client_fd_mutex);
+        
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+        
+        int result = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
+        if (result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            perror("select");
+            break;
+        }
+        
+        // Check for new connection
+        if (FD_ISSET(server_fd, &read_fds)) {
+            int accepted_fd = accept(server_fd, NULL, NULL);
+            if (accepted_fd >= 0) {
+                fprintf(stderr, "Client connected\n");
+                pthread_mutex_lock(&client_fd_mutex);
+                if (client_fd >= 0) {
+                    // Close previous client if any
+                    close(client_fd);
+                }
+                client_fd = accepted_fd;
+                pthread_mutex_unlock(&client_fd_mutex);
+            } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                perror("accept");
+            }
+        }
+        
+        // Check if client disconnected
+        pthread_mutex_lock(&client_fd_mutex);
+        current_client_fd = client_fd;
+        pthread_mutex_unlock(&client_fd_mutex);
+        
+        if (current_client_fd >= 0 && FD_ISSET(current_client_fd, &read_fds)) {
+            // Client sent data or closed connection
+            char buffer[1];
+            if (read(current_client_fd, buffer, 1) <= 0) {
+                fprintf(stderr, "Client disconnected\n");
+                pthread_mutex_lock(&client_fd_mutex);
+                close(client_fd);
+                client_fd = -1;
+                pthread_mutex_unlock(&client_fd_mutex);
+            }
+        }
+    }
+    
+    // Stop video streaming
+    jetkvm_video_stop();
+    jetkvm_video_shutdown();
+    
+    // Cleanup
+    pthread_mutex_lock(&client_fd_mutex);
+    if (client_fd >= 0) {
+        close(client_fd);
+        client_fd = -1;
+    }
+    pthread_mutex_unlock(&client_fd_mutex);
+    
+    close(server_fd);
+    unlink(socket_path);
+    
+    return 0;
+}
+

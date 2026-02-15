@@ -1,7 +1,6 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Outlet,
-  redirect,
   useLoaderData,
   useLocation,
   useNavigate,
@@ -15,44 +14,56 @@ import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { cx } from "@/cva.config";
+import { CLOUD_API, OPUS_STEREO_PARAMS } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
-import { cx } from "@/cva.config";
 import {
   KeyboardLedState,
   KeysDownState,
   NetworkState,
   OtaState,
+  PostRebootAction,
   USBStates,
   useHidStore,
   useNetworkStateStore,
   User,
   useRTCStore,
+  useSettingsStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
   VideoState,
-} from "@/hooks/stores";
+  useFailsafeModeStore,
+} from "@hooks/stores";
+import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useVersion } from "@hooks/useVersion";
 import WebRTCVideo from "@components/WebRTCVideo";
 import DashboardNavbar from "@components/Header";
-const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
-const Terminal = lazy(() => import('@components/Terminal'));
-const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
-import Modal from "@/components/Modal";
-import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
+const ConnectionStatsSidebar = lazy(() => import("@components/sidebar/connectionStats"));
+const Terminal = lazy(() => import("@components/Terminal"));
+const UpdateInProgressStatusCard = lazy(() => import("@components/UpdateInProgressStatusCard"));
+import Modal from "@components/Modal";
+import { FailSafeModeOverlay } from "@components/FailSafeModeOverlay";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
   PeerConnectionDisconnectedOverlay,
-} from "@/components/VideoOverlay";
-import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
-import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
-import { DeviceStatus } from "@routes/welcome-local";
-import { useVersion } from "@/hooks/useVersion";
+  RebootingOverlay,
+} from "@components/VideoOverlay";
+import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
+import { m } from "@localizations/messages.js";
+import { isSecureContext } from "@/utils";
+import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
+import useKeyboard from "@hooks/useKeyboard";
+import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
+import { useCameraPassthrough } from "@hooks/useCameraPassthrough";
+
+export type AuthMode = "password" | "noPassword" | null;
 
 interface LocalLoaderResp {
-  authMode: "password" | "noPassword" | null;
+  authMode: AuthMode;
 }
 
 interface CloudLoaderResp {
@@ -63,35 +74,20 @@ interface CloudLoaderResp {
   } | null;
 }
 
-export type AuthMode = "password" | "noPassword" | null;
 export interface LocalDevice {
   authMode: AuthMode;
   deviceId: string;
 }
 
 const deviceLoader = async () => {
-  const res = await api
-    .GET(`${DEVICE_API}/device/status`)
-    .then(res => res.json() as Promise<DeviceStatus>);
-
-  if (!res.isSetup) return redirect("/welcome");
-
-  const deviceRes = await api.GET(`${DEVICE_API}/device`);
-  if (deviceRes.status === 401) return redirect("/login-local");
-  if (deviceRes.ok) {
-    const device = (await deviceRes.json()) as LocalDevice;
-    return { authMode: device.authMode };
-  }
-
-  throw new Error("Error fetching device");
+  const device = await checkAuth();
+  return { authMode: device.authMode } as LocalLoaderResp;
 };
 
 const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => {
   const user = await checkAuth();
-
   const iceResp = await api.POST(`${CLOUD_API}/webrtc/ice_config`);
   const iceConfig = await iceResp.json();
-
   const deviceResp = await api.GET(`${CLOUD_API}/devices/${params.id}`);
 
   if (!deviceResp.ok) {
@@ -106,15 +102,15 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
     device: { id: string; name: string; user: { googleId: string } };
   };
 
-  return { user, iceConfig, deviceName: device.name || device.id };
+  return { user, iceConfig, deviceName: device.name || device.id } as CloudLoaderResp;
 };
 
 const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
-  return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
+  return isOnDevice ? deviceLoader() : cloudLoader(params);
 };
 
 export default function KvmIdRoute() {
-  const loaderResp = useLoaderData() as LocalLoaderResp | CloudLoaderResp;
+  const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
   const deviceName = "deviceName" in loaderResp ? loaderResp.deviceName : null;
@@ -122,20 +118,35 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
-  const { sidebarView, setSidebarView, disableVideoFocusTrap } = useUiStore();
-  const [ queryParams, setQueryParams ] = useSearchParams();
+  const { sidebarView, setSidebarView, disableVideoFocusTrap, rebootState, setRebootState } =
+    useUiStore();
+  const {
+    microphoneEnabled,
+    setMicrophoneEnabled,
+    audioInputAutoEnable,
+    setAudioInputAutoEnable,
+    cameraEnabled,
+    setCameraEnabled,
+  } = useSettingsStore();
+  const [queryParams, setQueryParams] = useSearchParams();
 
-  const { 
-    peerConnection, setPeerConnection,
-    peerConnectionState, setPeerConnectionState,
+  const {
+    peerConnection,
+    setPeerConnection,
+    peerConnectionState,
+    setPeerConnectionState,
     setMediaStream,
     setRpcDataChannel,
-    isTurnServerInUse, setTurnServerInUse,
+    isTurnServerInUse,
+    setTurnServerInUse,
     rpcDataChannel,
     setTransceiver,
+    setAudioTransceiver,
+    audioTransceiver,
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
+    setRpcHidProtocolVersion,
   } = useRTCStore();
 
   const location = useLocation();
@@ -145,7 +156,7 @@ export default function KvmIdRoute() {
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
-  const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
+  const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
       console.log("Closing peer connection");
@@ -182,17 +193,41 @@ export default function KvmIdRoute() {
       pc: RTCPeerConnection,
       remoteDescription: RTCSessionDescriptionInit,
     ) {
-      setLoadingMessage("Setting remote description");
+      setLoadingMessage(m.setting_remote_description());
+
+      // Enable stereo in remote answer SDP
+      if (remoteDescription.sdp) {
+        const opusMatch = remoteDescription.sdp.match(/a=rtpmap:(\d+)\s+opus\/48000\/2/i);
+        if (!opusMatch) {
+          console.warn("[SDP] Opus 48kHz stereo not found in answer - stereo may not work");
+        } else {
+          const pt = opusMatch[1];
+          const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, "i");
+          const fmtpMatch = remoteDescription.sdp.match(fmtpRegex);
+
+          if (fmtpMatch && !fmtpMatch[1].includes("stereo=")) {
+            remoteDescription.sdp = remoteDescription.sdp.replace(
+              fmtpRegex,
+              `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`,
+            );
+          } else if (!fmtpMatch) {
+            remoteDescription.sdp = remoteDescription.sdp.replace(
+              opusMatch[0],
+              `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`,
+            );
+          }
+        }
+      }
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
-        console.log("[setRemoteSessionDescription] Remote description set successfully");
-        setLoadingMessage("Establishing secure connection...");
-      } catch (error) {
-        console.error(
-          "[setRemoteSessionDescription] Failed to set remote description:",
-          error,
+        console.log(
+          "[setRemoteSessionDescription] Remote description set successfully to: " +
+            remoteDescription.sdp,
         );
+        setLoadingMessage(m.establishing_secure_connection());
+      } catch (error) {
+        console.error("[setRemoteSessionDescription] Failed to set remote description:", error);
         cleanupAndStopReconnecting();
         return;
       }
@@ -206,7 +241,7 @@ export default function KvmIdRoute() {
         if (pc.sctp?.state === "connected") {
           console.log("[setRemoteSessionDescription] Remote description set");
           clearInterval(checkInterval);
-          setLoadingMessage("Connection established");
+          setLoadingMessage(m.connection_established());
         } else if (attempts >= 10) {
           console.warn(
             "[setRemoteSessionDescription] Failed to establish connection after 10 attempts",
@@ -231,8 +266,13 @@ export default function KvmIdRoute() {
   const ignoreOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
   const makingOffer = useRef(false);
-
+  const reconnectAttemptsRef = useRef(2000);
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+  const reconnectInterval = (attempt: number) => {
+    // Exponential backoff with a max of 10 seconds between attempts
+    return Math.min(500 * 2 ** attempt, 10000);
+  };
 
   const { sendMessage, getWebSocket } = useWebSocket(
     isOnDevice
@@ -241,33 +281,44 @@ export default function KvmIdRoute() {
     {
       heartbeat: true,
       retryOnError: true,
-      reconnectAttempts: 15,
-      reconnectInterval: 1000,
-      onReconnectStop: () => {
-        console.debug("Reconnect stopped");
+      reconnectAttempts: reconnectAttemptsRef.current,
+      reconnectInterval: reconnectInterval,
+      onReconnectStop: (numAttempts: number) => {
+        console.debug("Reconnect stopped after ", numAttempts, "attempts");
         cleanupAndStopReconnecting();
       },
 
-      shouldReconnect(event) {
+      shouldReconnect(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] shouldReconnect", event);
-        // TODO: Why true?
-        return true;
+        return !isLegacySignalingEnabled.current;
       },
 
-      onClose(event) {
+      onClose(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] onClose", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
 
-      onError(event) {
+      onError(event: WebSocketEventMap["error"]) {
         console.error("[Websocket] onError", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
+
       onOpen() {
         console.debug("[Websocket] onOpen");
+        // We want to clear the reboot state when the websocket connection is opened
+        // Currently the flow is:
+        // 1. User clicks reboot
+        // 2. Device sends event 'willReboot'
+        // 3. We set the reboot state
+        // 4. Reboot modal is shown
+        // 5. WS tries to reconnect
+        // 6. WS reconnects
+        // 7. This function is called and now we clear the reboot state
+        setRebootState({ isRebooting: false, postRebootAction: null });
       },
 
-      onMessage: message => {
+      onMessage(event: WebSocketEventMap["message"]) {
+        const message = event;
         if (message.data === "pong") return;
 
         /*
@@ -284,6 +335,7 @@ export default function KvmIdRoute() {
         */
 
         const parsedMessage = JSON.parse(message.data);
+
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
           console.debug("[Websocket] Received device-metadata message");
@@ -300,18 +352,19 @@ export default function KvmIdRoute() {
             console.log("[Websocket] Device is using new signaling");
             isLegacySignalingEnabled.current = false;
           }
+
           setupPeerConnection();
         }
 
         if (!peerConnection) return;
+
         if (parsedMessage.type === "answer") {
           console.debug("[Websocket] Received answer");
           const readyForOffer =
             // If we're making an offer, we don't want to accept an answer
             !makingOffer &&
             // If the peer connection is stable or we're setting the remote answer pending, we're ready for an offer
-            (peerConnection?.signalingState === "stable" ||
-              isSettingRemoteAnswerPending.current);
+            (peerConnection?.signalingState === "stable" || isSettingRemoteAnswerPending.current);
 
           // If we're not ready for an offer, we don't want to accept an offer
           ignoreOffer.current = parsedMessage.type === "offer" && !readyForOffer;
@@ -341,9 +394,6 @@ export default function KvmIdRoute() {
         }
       },
     },
-
-    // Don't even retry once we declare failure
-    !connectionFailed && isLegacySignalingEnabled.current === false,
   );
 
   const sendWebRTCSignal = useCallback(
@@ -360,12 +410,12 @@ export default function KvmIdRoute() {
       const sd = btoa(JSON.stringify(pc.localDescription));
 
       // Legacy mode == UI in cloud with updated code connecting to older device version.
-      // In device mode, old devices wont server this JS, and on newer devices legacy mode wont be enabled
+      // In device mode, old devices wont serve this JS, and on newer devices legacy mode wont be enabled
       const sessionUrl = `${CLOUD_API}/webrtc/session`;
 
       console.log("Trying to get remote session description");
       setLoadingMessage(
-        `Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
+        m.getting_remote_session_description({ attempt: signalingAttempts.current + 1 }),
       );
       const res = await api.POST(sessionUrl, {
         sd,
@@ -382,7 +432,7 @@ export default function KvmIdRoute() {
       }
 
       console.debug("Successfully got Remote Session Description. Setting.");
-      setLoadingMessage("Setting remote session description...");
+      setLoadingMessage(m.setting_remote_session_description());
 
       const decodedSd = atob(json.sd);
       const parsedSd = JSON.parse(decodedSd);
@@ -394,22 +444,20 @@ export default function KvmIdRoute() {
   const setupPeerConnection = useCallback(async () => {
     console.debug("[setupPeerConnection] Setting up peer connection");
     setConnectionFailed(false);
-    setLoadingMessage("Connecting to device...");
+    setLoadingMessage(m.connecting_to_device());
 
     let pc: RTCPeerConnection;
     try {
       console.debug("[setupPeerConnection] Creating peer connection");
-      setLoadingMessage("Creating peer connection...");
+      setLoadingMessage(m.creating_peer_connection());
       pc = new RTCPeerConnection({
         // We only use STUN or TURN servers if we're in the cloud
-        ...(isInCloud && iceConfig?.iceServers
-          ? { iceServers: [iceConfig?.iceServers] }
-          : {}),
+        ...(isInCloud && iceConfig?.iceServers ? { iceServers: [iceConfig?.iceServers] } : {}),
       });
 
       setPeerConnectionState(pc.connectionState);
       console.debug("[setupPeerConnection] Peer connection created", pc);
-      setLoadingMessage("Setting up connection to device...");
+      setLoadingMessage(m.setting_up_connection_to_device());
     } catch (e) {
       console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
       setTimeout(() => {
@@ -430,6 +478,35 @@ export default function KvmIdRoute() {
         makingOffer.current = true;
 
         const offer = await pc.createOffer();
+
+        // Enable stereo for Opus audio codec
+        if (offer.sdp) {
+          const opusMatch = offer.sdp.match(/a=rtpmap:(\d+)\s+opus\/48000\/2/i);
+          if (!opusMatch) {
+            console.warn("[SDP] Opus 48kHz stereo not found in offer - stereo may not work");
+          } else {
+            const pt = opusMatch[1];
+            const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, "i");
+            const fmtpMatch = offer.sdp.match(fmtpRegex);
+
+            if (fmtpMatch) {
+              // Modify existing fmtp line
+              if (!fmtpMatch[1].includes("stereo=")) {
+                offer.sdp = offer.sdp.replace(
+                  fmtpRegex,
+                  `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`,
+                );
+              }
+            } else {
+              // Add new fmtp line after rtpmap
+              offer.sdp = offer.sdp.replace(
+                opusMatch[0],
+                `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`,
+              );
+            }
+          }
+        }
+
         await pc.setLocalDescription(offer);
         const sd = btoa(JSON.stringify(pc.localDescription));
         const isNewSignalingEnabled = isLegacySignalingEnabled.current === false;
@@ -439,10 +516,7 @@ export default function KvmIdRoute() {
           console.log("Legacy signaling. Waiting for ICE Gathering to complete...");
         }
       } catch (e) {
-        console.error(
-          `[setupPeerConnection] Error creating offer: ${e}`,
-          new Date().toISOString(),
-        );
+        console.error(`[setupPeerConnection] Error creating offer: ${e}`, new Date().toISOString());
         cleanupAndStopReconnecting();
       } finally {
         makingOffer.current = false;
@@ -459,7 +533,7 @@ export default function KvmIdRoute() {
       const pc = event.currentTarget as RTCPeerConnection;
       if (pc.iceGatheringState === "complete") {
         console.debug("ICE Gathering completed");
-        setLoadingMessage("ICE Gathering completed");
+        setLoadingMessage(m.ice_gathering_completed());
 
         if (isLegacySignalingEnabled.current) {
           // We can now start the https/ws connection to get the remote session description from the KVM device
@@ -467,32 +541,53 @@ export default function KvmIdRoute() {
         }
       } else if (pc.iceGatheringState === "gathering") {
         console.debug("ICE Gathering Started");
-        setLoadingMessage("Gathering ICE candidates...");
+        setLoadingMessage(m.gathering_ice_candidates());
       }
     };
 
     pc.ontrack = function (event) {
-      setMediaStream(event.streams[0]);
+      if (event.track.kind === "video") {
+        setMediaStream(event.streams[0]);
+      }
     };
 
-    setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
+    // Use sendrecv for video to allow browser to send camera video back to JetKVM
+    // JetKVM sends HDMI video to browser, browser can optionally send camera video back
+    const videoTransceiver = pc.addTransceiver("video", { direction: "sendrecv" });
+    setTransceiver(videoTransceiver);
+
+    const audioTrans = pc.addTransceiver("audio", { direction: "sendrecv" });
+    setAudioTransceiver(audioTrans);
 
     const rpcDataChannel = pc.createDataChannel("rpc");
+    rpcDataChannel.onclose = () => {
+      console.log("rpcDataChannel has closed");
+      setRpcDataChannel(null);
+    };
+    rpcDataChannel.onerror = (ev: Event) =>
+      console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev}`);
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
     };
 
     const rpcHidChannel = pc.createDataChannel("hidrpc");
     rpcHidChannel.binaryType = "arraybuffer";
+    rpcHidChannel.onclose = () => console.log("rpcHidChannel has closed");
+    rpcHidChannel.onerror = (ev: Event) =>
+      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${ev}`);
     rpcHidChannel.onopen = () => {
       setRpcHidChannel(rpcHidChannel);
     };
+    doRpcHidHandshake(rpcHidChannel, setRpcHidProtocolVersion);
 
     const rpcHidUnreliableChannel = pc.createDataChannel("hidrpc-unreliable-ordered", {
       ordered: true,
       maxRetransmits: 0,
     });
     rpcHidUnreliableChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableChannel.onclose = () => console.log("rpcHidUnreliableChannel has closed");
+    rpcHidUnreliableChannel.onerror = (ev: Event) =>
+      console.error(`Error on rpcHidUnreliableChannel '${rpcHidUnreliableChannel.label}': ${ev}`);
     rpcHidUnreliableChannel.onopen = () => {
       setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
     };
@@ -502,6 +597,12 @@ export default function KvmIdRoute() {
       maxRetransmits: 0,
     });
     rpcHidUnreliableNonOrderedChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableNonOrderedChannel.onclose = () =>
+      console.log("rpcHidUnreliableNonOrderedChannel has closed");
+    rpcHidUnreliableNonOrderedChannel.onerror = (ev: Event) =>
+      console.error(
+        `Error on rpcHidUnreliableNonOrderedChannel '${rpcHidUnreliableNonOrderedChannel.label}': ${ev}`,
+      );
     rpcHidUnreliableNonOrderedChannel.onopen = () => {
       setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
     };
@@ -519,7 +620,9 @@ export default function KvmIdRoute() {
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
+    setRpcHidProtocolVersion,
     setTransceiver,
+    setAudioTransceiver,
   ]);
 
   useEffect(() => {
@@ -528,6 +631,86 @@ export default function KvmIdRoute() {
       cleanupAndStopReconnecting();
     }
   }, [peerConnectionState, cleanupAndStopReconnecting]);
+
+  const microphoneRequestInProgress = useRef(false);
+  useEffect(() => {
+    if (!audioTransceiver || !peerConnection) return;
+
+    if (microphoneEnabled) {
+      if (microphoneRequestInProgress.current) return;
+
+      const currentTrack = audioTransceiver.sender.track;
+      if (currentTrack) {
+        currentTrack.stop();
+      }
+
+      const requestMicrophone = () => {
+        microphoneRequestInProgress.current = true;
+        navigator.mediaDevices
+          ?.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1,
+            },
+          })
+          .then(stream => {
+            microphoneRequestInProgress.current = false;
+            const audioTrack = stream.getAudioTracks()[0];
+            if (audioTrack && audioTransceiver.sender) {
+              const handleTrackEnded = () => {
+                console.warn("Microphone track ended unexpectedly, attempting to restart...");
+                if (audioTransceiver.sender.track === audioTrack) {
+                  audioTransceiver.sender.replaceTrack(null);
+                  setTimeout(requestMicrophone, 500);
+                }
+              };
+
+              audioTrack.addEventListener("ended", handleTrackEnded, { once: true });
+              audioTransceiver.sender.replaceTrack(audioTrack);
+            }
+          })
+          .catch(err => {
+            microphoneRequestInProgress.current = false;
+            console.error("Failed to get microphone:", err);
+            setMicrophoneEnabled(false);
+          });
+      };
+
+      requestMicrophone();
+    } else {
+      microphoneRequestInProgress.current = false;
+      if (audioTransceiver.sender.track) {
+        audioTransceiver.sender.track.stop();
+        audioTransceiver.sender.replaceTrack(null);
+      }
+    }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (audioTransceiver?.sender.track) {
+        audioTransceiver.sender.track.stop();
+      }
+    };
+  }, [microphoneEnabled, audioTransceiver, peerConnection, setMicrophoneEnabled]);
+
+  // Camera passthrough via zero-overhead WebSocket transport
+  // Browser captures camera, encodes to H.264/MJPEG based on UVC host request,
+  // and sends raw frames directly over WebSocket (no RTP/DTLS overhead)
+  //
+  // Flow: Browser camera → WebCodecs encoder → WebSocket → JetKVM → UVC
+  // Format negotiation: JetKVM tells browser what codec UVC host wants
+  // Camera passthrough state (available for future stats display)
+  const _cameraPassthrough = useCameraPassthrough({
+    baseUrl: window.location.origin,
+    enabled: cameraEnabled,
+    onError: error => {
+      console.error("[CameraPassthrough] Error:", error);
+      setCameraEnabled(false);
+    },
+  });
+  void _cameraPassthrough; // Suppress unused variable warning
 
   // Cleanup effect
   const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();
@@ -545,8 +728,15 @@ export default function KvmIdRoute() {
       clearCandidatePairStats();
       setSidebarView(null);
       setPeerConnection(null);
+      setRpcDataChannel(null);
     };
-  }, [clearCandidatePairStats, clearInboundRtpStats, setPeerConnection, setSidebarView]);
+  }, [
+    clearCandidatePairStats,
+    clearInboundRtpStats,
+    setPeerConnection,
+    setSidebarView,
+    setRpcDataChannel,
+  ]);
 
   // TURN server usage detection
   useEffect(() => {
@@ -591,19 +781,28 @@ export default function KvmIdRoute() {
     }
 
     // Fire and forget
-    api.POST(`${CLOUD_API}/webrtc/turn_activity`, {
-      bytesReceived: bytesReceivedDelta,
-      bytesSent: bytesSentDelta,
-    });
+    api
+      .POST(`${CLOUD_API}/webrtc/turn_activity`, {
+        bytesReceived: bytesReceivedDelta,
+        bytesSent: bytesSentDelta,
+      })
+      .catch(() => {
+        // we don't care about errors here, but we don't want unhandled promise rejections
+      });
   }, 10000);
 
-  const { setNetworkState} = useNetworkStateStore();
+  const { setNetworkState } = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
-  const { 
-    keyboardLedState,  setKeyboardLedState,
-    keysDownState, setKeysDownState, setUsbState,
-  } = useHidStore();
+  const { keyboardLedState, setKeyboardLedState, keysDownState, setKeysDownState, setUsbState } =
+    useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
+  const { setFailsafeMode } = useFailsafeModeStore();
+
+  // Keyboard handler for E2E tests
+  const { handleKeyPress } = useKeyboard();
+
+  // Mouse handler for E2E tests
+  const { reportAbsMouseEvent, rpcHidReady } = useHidRpc();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -660,15 +859,67 @@ export default function KvmIdRoute() {
           return;
         }
 
+        // This is to prevent the otaState from handling page refreshes after an update
+        // We've recently implemented a new general rebooting flow, so we don't need to handle this specific ota-rebooting case
+        // However, with old devices, we wont get the `willReboot` message, so we need to keep this for backwards compatibility
+        // only for the cloud version with an old device
+        if (rebootState?.isRebooting) return;
+
         const currentUrl = new URL(window.location.href);
         currentUrl.search = "";
         currentUrl.searchParams.set("updateSuccess", "true");
         window.location.href = currentUrl.toString();
       }
     }
+
+    if (resp.method === "willReboot") {
+      const action = resp.params as PostRebootAction | undefined;
+      setRebootState({
+        isRebooting: true,
+        postRebootAction: {
+          healthCheck: action?.healthCheck || "/device/status",
+          redirectTo: action?.redirectTo || "/",
+        },
+      });
+      navigateTo("/");
+    }
+
+    if (resp.method === "failsafeMode") {
+      const { active, reason } = resp.params as { active: boolean; reason: string };
+      console.debug("Setting failsafe mode", { active, reason });
+      setFailsafeMode(active, reason);
+    }
   }
 
   const { send } = useJsonRpc(onJsonRpcRequest);
+
+  // Mouse movement handler for E2E tests (needs send from useJsonRpc)
+  const handleAbsMouseMove = useCallback(
+    (x: number, y: number, buttons: number) => {
+      if (rpcHidReady) {
+        reportAbsMouseEvent(x, y, buttons);
+      } else {
+        send("absMouseReport", { x, y, buttons });
+      }
+    },
+    [reportAbsMouseEvent, rpcHidReady, send],
+  );
+
+  // Register E2E test hooks
+  useEffect(() => {
+    registerTestHandlers({
+      handleKeyPress,
+      handleAbsMouseMove,
+      getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
+      getKeysDownState: () => useHidStore.getState().keysDownState,
+      getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
+      getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
+      getMediaStream: () => useRTCStore.getState().mediaStream,
+      getHdmiState: () => useVideoStore.getState().hdmiState,
+      getVideoElement: () => useVideoStore.getState().videoElement,
+    });
+    return cleanupTestHooks;
+  }, [handleKeyPress, handleAbsMouseMove]);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
@@ -680,6 +931,71 @@ export default function KvmIdRoute() {
       setHdmiState(hdmiState);
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
+
+  const [audioInputAutoEnableLoaded, setAudioInputAutoEnableLoaded] = useState(false);
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    send("getAudioInputAutoEnable", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setAudioInputAutoEnable(resp.result as boolean);
+      setAudioInputAutoEnableLoaded(true);
+    });
+  }, [rpcDataChannel?.readyState, send, setAudioInputAutoEnable]);
+
+  // Sync camera enabled state from device on connection (important for remote connections)
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    send("getCameraEnabled", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setCameraEnabled(resp.result as boolean);
+    });
+  }, [rpcDataChannel?.readyState, send, setCameraEnabled]);
+
+  // Sync audio input enabled state from device on connection
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    send("getAudioInputEnabled", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setMicrophoneEnabled(resp.result as boolean);
+    });
+  }, [rpcDataChannel?.readyState, send, setMicrophoneEnabled]);
+
+  const autoEnableAppliedRef = useRef(false);
+  const audioInputAutoEnableValueRef = useRef(audioInputAutoEnable);
+
+  useEffect(() => {
+    audioInputAutoEnableValueRef.current = audioInputAutoEnable;
+  }, [audioInputAutoEnable]);
+
+  useEffect(() => {
+    if (!audioTransceiver || !peerConnection || microphoneEnabled) return;
+    if (!audioInputAutoEnableLoaded || autoEnableAppliedRef.current) return;
+
+    if (audioInputAutoEnableValueRef.current && isSecureContext()) {
+      autoEnableAppliedRef.current = true;
+      send("setAudioInputEnabled", { enabled: true }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          console.error("Failed to auto-enable audio input:", resp.error);
+        } else {
+          setMicrophoneEnabled(true);
+        }
+      });
+    }
+  }, [
+    audioTransceiver,
+    peerConnection,
+    audioInputAutoEnableLoaded,
+    microphoneEnabled,
+    setMicrophoneEnabled,
+    send,
+  ]);
+
+  useEffect(() => {
+    if (!peerConnection) {
+      autoEnableAppliedRef.current = false;
+      setAudioInputAutoEnableLoaded(false);
+    }
+  }, [peerConnection]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
@@ -727,7 +1043,14 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
-  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled]);
+  }, [
+    keysDownState,
+    needKeyDownState,
+    rpcDataChannel?.readyState,
+    send,
+    setKeysDownState,
+    setHidRpcDisabled,
+  ]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
@@ -756,7 +1079,7 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
-  const { appVersion, getLocalVersion}  = useVersion();
+  const { appVersion, getLocalVersion } = useVersion();
 
   useEffect(() => {
     if (appVersion) return;
@@ -764,28 +1087,42 @@ export default function KvmIdRoute() {
     getLocalVersion();
   }, [appVersion, getLocalVersion]);
 
+  const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
+
   const ConnectionStatusElement = useMemo(() => {
+    const isOtherSession = location.pathname.includes("other-session");
+    if (isOtherSession) return null;
+
+    // Rebooting takes priority over connection status
+    if (rebootState?.isRebooting) {
+      return (
+        <RebootingOverlay
+          show={true}
+          postRebootAction={rebootState.postRebootAction}
+          deviceId={params.id}
+        />
+      );
+    }
+
+    if (isFailsafeMode && failsafeReason) {
+      return <FailSafeModeOverlay reason={failsafeReason} />;
+    }
+
     const hasConnectionFailed =
       connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
 
     const isPeerConnectionLoading =
-      ["connecting", "new"].includes(peerConnectionState ?? "") ||
-      peerConnection === null;
+      ["connecting", "new"].includes(peerConnectionState ?? "") || peerConnection === null;
 
     const isDisconnected = peerConnectionState === "disconnected";
 
-    const isOtherSession = location.pathname.includes("other-session");
-
-    if (isOtherSession) return null;
     if (peerConnectionState === "connected") return null;
     if (isDisconnected) {
       return <PeerConnectionDisconnectedOverlay show={true} />;
     }
 
     if (hasConnectionFailed)
-      return (
-        <ConnectionFailedOverlay show={true} setupPeerConnection={setupPeerConnection} />
-      );
+      return <ConnectionFailedOverlay show={true} setupPeerConnection={setupPeerConnection} />;
 
     if (isPeerConnectionLoading) {
       return <LoadingConnectionOverlay show={true} text={loadingMessage} />;
@@ -793,12 +1130,17 @@ export default function KvmIdRoute() {
 
     return null;
   }, [
-    connectionFailed,
-    loadingMessage,
     location.pathname,
-    peerConnection,
+    rebootState?.isRebooting,
+    rebootState?.postRebootAction,
+    params.id,
+    isFailsafeMode,
+    failsafeReason,
+    connectionFailed,
     peerConnectionState,
+    peerConnection,
     setupPeerConnection,
+    loadingMessage,
   ]);
 
   return (
@@ -837,17 +1179,23 @@ export default function KvmIdRoute() {
             isLoggedIn={authMode === "password" || !!user}
             userEmail={user?.email}
             picture={user?.picture}
-            kvmName={deviceName ?? "JetKVM Device"}
+            kvmName={deviceName ?? m.jetkvm_device()}
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            <WebRTCVideo />
+            {isFailsafeMode && failsafeReason === "video" ? null : (
+              <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />
+            )}
             <div
               style={{ animationDuration: "500ms" }}
-              className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
+              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4"
             >
-              <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                {!!ConnectionStatusElement && ConnectionStatusElement}
+              <div className="relative h-full max-h-[720px] w-full max-w-7xl rounded-md">
+                {isFailsafeMode && failsafeReason ? (
+                  <FailSafeModeOverlay reason={failsafeReason} />
+                ) : (
+                  !!ConnectionStatusElement && ConnectionStatusElement
+                )}
               </div>
             </div>
             <SidebarContainer sidebarView={sidebarView} />
@@ -857,6 +1205,7 @@ export default function KvmIdRoute() {
 
       <div
         className="z-50"
+        role="form"
         onClick={e => e.stopPropagation()}
         onMouseUp={e => e.stopPropagation()}
         onMouseDown={e => e.stopPropagation()}
@@ -872,12 +1221,10 @@ export default function KvmIdRoute() {
         </Modal>
       </div>
 
-      {kvmTerminal && (
-        <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
-      )}
+      {kvmTerminal && <Terminal type="kvm" dataChannel={kvmTerminal} title={m.kvm_terminal()} />}
 
       {serialConsole && (
-        <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
+        <Terminal type="serial" dataChannel={serialConsole} title={m.serial_console()} />
       )}
     </FeatureFlagProvider>
   );

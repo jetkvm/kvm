@@ -1,10 +1,12 @@
 package usbgadget
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -52,22 +54,59 @@ func (u *UsbGadget) newUsbGadgetTransaction(lock bool) error {
 }
 
 func (u *UsbGadget) WithTransaction(fn func() error) error {
-	u.txLock.Lock()
-	defer u.txLock.Unlock()
+	return u.WithTransactionTimeout(fn, 60*time.Second)
+}
 
-	err := u.newUsbGadgetTransaction(false)
-	if err != nil {
-		u.log.Error().Err(err).Msg("failed to create transaction")
-		return err
-	}
-	if err := fn(); err != nil {
-		u.log.Error().Err(err).Msg("transaction failed")
-		return err
-	}
-	result := u.tx.Commit()
-	u.tx = nil
+// WithTransactionTimeout executes a USB gadget transaction with a specified timeout
+// to prevent indefinite blocking during USB reconfiguration operations
+func (u *UsbGadget) WithTransactionTimeout(fn func() error, timeout time.Duration) error {
+	// Create a context with timeout for the entire transaction
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-	return result
+	// Channel to signal when the transaction is complete
+	done := make(chan error, 1)
+
+	// Execute the transaction in a goroutine.
+	// On timeout, the goroutine still holds txLock until it finishes.
+	// The caller must not retry until the previous goroutine completes.
+	go func() {
+		u.txLock.Lock()
+		defer u.txLock.Unlock()
+
+		// Check if context already expired while waiting for lock
+		if ctx.Err() != nil {
+			done <- ctx.Err()
+			return
+		}
+
+		err := u.newUsbGadgetTransaction(false)
+		if err != nil {
+			u.log.Error().Err(err).Msg("failed to create transaction")
+			done <- err
+			return
+		}
+
+		if err := fn(); err != nil {
+			u.log.Error().Err(err).Msg("transaction failed")
+			u.tx = nil
+			done <- err
+			return
+		}
+
+		result := u.tx.Commit()
+		u.tx = nil
+		done <- result
+	}()
+
+	// Wait for either completion or timeout
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		u.log.Warn().Dur("timeout", timeout).Msg("USB gadget transaction timed out; txLock held until goroutine completes")
+		return fmt.Errorf("USB gadget transaction timed out after %v: %w", timeout, ctx.Err())
+	}
 }
 
 func (tx *UsbGadgetTransaction) addFileChange(component string, change RequestedFileChange) string {
@@ -99,7 +138,10 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 }
 
 func (tx *UsbGadgetTransaction) Commit() error {
-	tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	// Only add symlink reordering if there are symlinks to reorder
+	if tx.reorderSymlinkChanges != nil {
+		tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	}
 
 	err := tx.c.Apply()
 	if err != nil {
@@ -140,7 +182,9 @@ func (tx *UsbGadgetTransaction) CreateConfigPath() {
 	)
 }
 
-func (tx *UsbGadgetTransaction) WriteGadgetConfig() {
+// WriteGadgetConfigFunctions creates function directories and symlinks but does NOT bind to UDC.
+// Call WriteUDC() separately after any additional setup (like UVC streaming config).
+func (tx *UsbGadgetTransaction) WriteGadgetConfigFunctions() {
 	// create kvm gadget path
 	tx.mkdirAll(
 		"gadget",
@@ -163,8 +207,6 @@ func (tx *UsbGadgetTransaction) WriteGadgetConfig() {
 		}
 		deps = tx.writeGadgetItemConfig(item, deps)
 	}
-
-	tx.WriteUDC()
 }
 
 func (tx *UsbGadgetTransaction) getDisableKeys() []string {
@@ -315,21 +357,39 @@ func (tx *UsbGadgetTransaction) addReorderSymlinkChange(path string, target stri
 	})
 }
 
+// CreateUVCConfigSymlink creates the symlink to bind UVC function to the config.
+// This must be called AFTER SetupUVCFunction() configures the streaming settings.
+func (tx *UsbGadgetTransaction) CreateUVCConfigSymlink() {
+	configPath := path.Join(tx.configC1Path, "uvc.usb0")
+	funcPath := path.Join(tx.kvmGadgetPath, "functions", "uvc.usb0")
+	tx.addReorderSymlinkChange(configPath, funcPath, nil)
+}
+
 func (tx *UsbGadgetTransaction) WriteUDC() {
 	// bound the gadget to a UDC (USB Device Controller)
-	path := path.Join(tx.kvmGadgetPath, "UDC")
+	udcPath := path.Join(tx.kvmGadgetPath, "UDC")
+
+	// Only depend on reorder-symlinks if it exists in this transaction
+	var deps []string
+	if tx.reorderSymlinkChanges != nil {
+		deps = []string{"reorder-symlinks"}
+	}
+
 	tx.addFileChange("udc", RequestedFileChange{
 		Key:             "udc",
-		Path:            path,
+		Path:            udcPath,
 		ExpectedState:   FileStateFileContentMatch,
 		ExpectedContent: []byte(tx.udc),
-		DependsOn:       []string{"reorder-symlinks"},
+		DependsOn:       deps,
 		Description:     "write UDC",
 	})
 }
 
 func (tx *UsbGadgetTransaction) RebindUsb(ignoreUnbindError bool) {
 	// remove the gadget from the UDC
+	// Add 200ms delay after unbind to allow UVC video device cleanup before rebind.
+	// Without this delay, the UVC gadget driver fails with "kobject already initialized"
+	// because the video4linux device hasn't been fully unregistered yet.
 	tx.addFileChange("udc", RequestedFileChange{
 		Path:            path.Join(tx.dwc3Path, "unbind"),
 		ExpectedState:   FileStateFileWrite,
@@ -337,6 +397,7 @@ func (tx *UsbGadgetTransaction) RebindUsb(ignoreUnbindError bool) {
 		Description:     "unbind UDC",
 		DependsOn:       []string{"udc"},
 		IgnoreErrors:    ignoreUnbindError,
+		DelayAfter:      200 * time.Millisecond,
 	})
 	// bind the gadget to the UDC
 	tx.addFileChange("udc", RequestedFileChange{

@@ -1,10 +1,11 @@
 import React from "react";
 
 import { cx } from "@/cva.config";
-import KeyboardAndMouseConnectedIcon from "@/assets/keyboard-and-mouse-connected.png";
+import KeyboardAndMouseConnectedIcon from "@assets/keyboard-and-mouse-connected.png";
+import { USBStates } from "@hooks/stores";
+import { m } from "@localizations/messages.js";
 import LoadingSpinner from "@components/LoadingSpinner";
 import StatusCard from "@components/StatusCards";
-import { USBStates } from "@/hooks/stores";
 
 type StatusProps = Record<
   USBStates,
@@ -16,11 +17,12 @@ type StatusProps = Record<
 >;
 
 const USBStateMap: Record<USBStates, string> = {
-  configured: "Connected",
-  attached: "Connecting",
-  addressed: "Connecting",
-  "not attached": "Disconnected",
-  suspended: "Low power mode",
+  configured: m.usb_state_connected(),
+  attached: m.usb_state_connecting(),
+  addressed: m.usb_state_connecting(),
+  "not attached": m.usb_state_disconnected(),
+  suspended: m.usb_state_low_power_mode(),
+  default: m.usb_state_connecting(), // USB reset/initialization state
 };
 const StatusCardProps: StatusProps = {
   configured: {
@@ -54,6 +56,11 @@ const StatusCardProps: StatusProps = {
     iconClassName: "h-5 w-5 opacity-50 grayscale filter",
     statusIndicatorClassName: "bg-green-500 border-green-600",
   },
+  default: {
+    icon: ({ className }) => <LoadingSpinner className={cx(className)} />,
+    iconClassName: "h-5 w-5 text-blue-500",
+    statusIndicatorClassName: "bg-slate-300 border-slate-400",
+  },
 };
 
 export default function USBStateStatus({
@@ -63,7 +70,6 @@ export default function USBStateStatus({
   state: USBStates;
   peerConnectionState?: RTCPeerConnectionState | null;
 }) {
-
   const props = StatusCardProps[state];
   if (!props) {
     console.warn("Unsupported USB state: ", state);
@@ -72,16 +78,12 @@ export default function USBStateStatus({
 
   // If the peer connection is not connected, show the USB cable as disconnected
   if (peerConnectionState !== "connected") {
-    const {
-      icon: Icon,
-      iconClassName,
-      statusIndicatorClassName,
-    } = StatusCardProps["not attached"];
+    const { icon: Icon, iconClassName, statusIndicatorClassName } = StatusCardProps["not attached"];
 
     return (
       <StatusCard
-        title="USB"
-        status="Disconnected"
+        title={m.usb()}
+        status={m.usb_state_disconnected()}
         icon={Icon}
         iconClassName={iconClassName}
         statusIndicatorClassName={statusIndicatorClassName}
@@ -89,7 +91,5 @@ export default function USBStateStatus({
     );
   }
 
-  return (
-    <StatusCard title="USB" status={USBStateMap[state]} {...StatusCardProps[state]} />
-  );
+  return <StatusCard title={m.usb()} status={USBStateMap[state]} {...StatusCardProps[state]} />;
 }

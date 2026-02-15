@@ -7,6 +7,7 @@
   "singleQuote": false,
   "plugins": ["prettier-plugin-tailwindcss"],
   "tailwindFunctions": ["clsx", "cx"],
-  "printWidth": 90,
+  "printWidth": 100,
+  "max_line_length": 100,
   "tailwindStylesheet": "./src/index.css"
 }

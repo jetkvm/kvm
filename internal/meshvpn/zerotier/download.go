@@ -1,0 +1,259 @@
+//go:build linux
+
+package zerotier
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/jetkvm/kvm/internal/meshvpn"
+)
+
+// Downloader handles downloading and installing ZeroTier binaries.
+type Downloader struct {
+	version    string
+	httpClient meshvpn.HTTPClient
+}
+
+func (d *Downloader) getPackageURL() string {
+	return fmt.Sprintf("%s/%s/dist/debian/bullseye/zerotier-one_%s_armhf.deb", BaseDownloadURL, d.version, d.version)
+}
+
+func (d *Downloader) getChecksumURL() string {
+	return fmt.Sprintf("%s/%s/dist/debian/bullseye/zerotier-one_%s_armhf.deb.sha256", BaseDownloadURL, d.version, d.version)
+}
+
+func (d *Downloader) hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// Install downloads and installs ZeroTier.
+// Progress: 0-10% checksum fetch, 10-70% download, 70-80% verify, 80-95% extract, 95-100% setup.
+func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
+	logger.Info().Str("version", d.version).Msg("starting ZeroTier installation")
+
+	stageNames := []string{"checksum", "download", "verify", "extract", "setup"}
+
+	reportProgress := func(stage int, stageProgress float64) {
+		if progress == nil {
+			return
+		}
+		var overall float64
+		switch stage {
+		case 0: // Checksum fetch
+			overall = stageProgress * 0.1
+		case 1: // Download
+			overall = 0.1 + stageProgress*0.6
+		case 2: // Verify
+			overall = 0.7 + stageProgress*0.1
+		case 3: // Extract
+			overall = 0.8 + stageProgress*0.15
+		case 4: // Setup
+			overall = 0.95 + stageProgress*0.05
+		}
+		progress(overall)
+		logger.Trace().
+			Str("stage", stageNames[stage]).
+			Float64("stageProgress", stageProgress).
+			Float64("overall", overall).
+			Msg("installation progress")
+	}
+
+	httpClient := d.httpClient
+	if httpClient == nil {
+		httpClient = meshvpn.NewDefaultHTTPClient()
+	}
+
+	// Attempt to download checksum (may not be available)
+	logger.Info().Str("url", d.getChecksumURL()).Msg("fetching checksum")
+	reportProgress(0, 0)
+
+	var expectedHash string
+	checksumData, err := httpClient.Get(d.getChecksumURL())
+	if err != nil {
+		logger.Warn().Err(err).Msg("checksum file not available, will rely on HTTPS transport security")
+	} else {
+		expectedHash = strings.TrimSpace(string(checksumData))
+		parts := strings.Fields(expectedHash)
+		if len(parts) > 0 {
+			expectedHash = parts[0]
+		}
+		logger.Info().Str("hash", expectedHash).Msg("got expected hash")
+	}
+	reportProgress(0, 1.0)
+
+	logger.Info().Str("url", d.getPackageURL()).Msg("downloading package")
+	reportProgress(1, 0)
+
+	tmpFile, err := os.CreateTemp("", "zerotier-*.deb")
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to create temp file")
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	logger.Debug().Str("tmpPath", tmpPath).Msg("created temp file for download")
+
+	err = httpClient.Download(d.getPackageURL(), tmpPath, func(p float64) {
+		reportProgress(1, p)
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("package download failed")
+		return fmt.Errorf("failed to download package: %w", err)
+	}
+	reportProgress(1, 1.0)
+	logger.Info().Str("tmpPath", tmpPath).Msg("package download completed")
+
+	// Verify checksum if available
+	if expectedHash != "" {
+		logger.Debug().Msg("verifying checksum")
+		reportProgress(2, 0)
+
+		actualHash, err := d.hashFile(tmpPath)
+		if err != nil {
+			return fmt.Errorf("failed to hash file: %w", err)
+		}
+
+		if actualHash != expectedHash {
+			return fmt.Errorf("%w: expected %s, got %s", meshvpn.ErrVerificationFailed, expectedHash, actualHash)
+		}
+		logger.Debug().Msg("checksum verified")
+		reportProgress(2, 1.0)
+	} else {
+		reportProgress(2, 1.0)
+	}
+
+	logger.Debug().Msg("extracting package")
+	reportProgress(3, 0)
+
+	if err := d.extractDeb(tmpPath); err != nil {
+		return fmt.Errorf("failed to extract package: %w", err)
+	}
+	reportProgress(3, 1.0)
+
+	logger.Debug().Msg("setting up")
+	reportProgress(4, 0)
+
+	if err := d.setup(); err != nil {
+		return fmt.Errorf("failed to setup: %w", err)
+	}
+	reportProgress(4, 1.0)
+
+	logger.Info().Str("version", d.version).Msg("ZeroTier installation complete")
+
+	return nil
+}
+
+// extractDeb extracts the zerotier-one binary from a Debian package.
+// The .deb format is an ar archive containing data.tar.xz with the actual files.
+func (d *Downloader) extractDeb(debPath string) error {
+	if err := os.MkdirAll(InstallBasePath, 0755); err != nil {
+		return err
+	}
+
+	// Create a temporary directory for extraction
+	tmpDir, err := os.MkdirTemp("", "zerotier-extract-")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Extract the .deb using ar (or a shell pipeline if ar is not available)
+	// .deb files are ar archives containing: debian-binary, control.tar.*, data.tar.*
+	// We need to extract data.tar.xz and then extract usr/sbin/zerotier-one from it
+
+	// Use a shell pipeline to extract: ar extracts data.tar.xz, tar extracts the binary
+	// Since the device may not have 'ar', we use a workaround that reads the ar format directly
+	// Note: BusyBox xz doesn't support stdin/pipes, so we extract data.tar.xz to a file first,
+	// then decompress it with xz -d, then extract with tar.
+	// Note: All paths are internally generated (MkdirTemp, CreateTemp, constants) so shell
+	// injection risk is minimal, but we quote paths for defense in depth.
+	extractScript := fmt.Sprintf(`
+		cd '%s'
+		# Read the .deb (ar archive) and extract data.tar.xz
+		# ar format: "!<arch>\n" header, then entries with 60-byte headers
+
+		offset=8  # Skip "!<arch>\n" magic
+		while true; do
+			header=$(dd if='%s' bs=1 skip=$offset count=60 2>/dev/null)
+			[ -z "$header" ] && break
+
+			filename=$(echo "$header" | cut -c1-16 | tr -d ' ')
+			size=$(echo "$header" | cut -c49-58 | tr -d ' ')
+			offset=$((offset + 60))
+
+			if echo "$filename" | grep -q "^data.tar"; then
+				# Extract data.tar.xz to a temp file (BusyBox xz doesn't support pipes)
+				dd if='%s' bs=1 skip=$offset count=$size of=data.tar.xz 2>/dev/null
+				# Decompress with xz -d (creates data.tar)
+				xz -d data.tar.xz
+				# Extract the binary from the tar
+				tar -xf data.tar ./usr/sbin/zerotier-one
+				rm -f data.tar
+				break
+			fi
+
+			offset=$((offset + size + (size %% 2)))
+		done
+
+		if [ -f usr/sbin/zerotier-one ]; then
+			mv usr/sbin/zerotier-one '%s'
+			chmod 755 '%s'
+			exit 0
+		else
+			exit 1
+		fi
+	`, tmpDir, debPath, debPath, ZeroTierOnePath, ZeroTierOnePath)
+
+	cmd := exec.Command("sh", "-c", extractScript)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to extract deb: %w (output: %s)", err, string(output))
+	}
+
+	// Verify the binary was extracted
+	if _, err := os.Stat(ZeroTierOnePath); os.IsNotExist(err) {
+		return fmt.Errorf("zerotier-one binary not found after extraction")
+	}
+
+	logger.Debug().Str("path", ZeroTierOnePath).Msg("extracted zerotier-one binary from deb")
+
+	return nil
+}
+
+func (d *Downloader) setup() error {
+	// Create symlink for zerotier-cli (zerotier-one responds to both)
+	if err := os.Remove(ZeroTierCliPath); err != nil && !os.IsNotExist(err) {
+		logger.Warn().Err(err).Msg("failed to remove existing zerotier-cli symlink")
+	}
+
+	if err := os.Symlink(ZeroTierOnePath, ZeroTierCliPath); err != nil {
+		logger.Warn().Err(err).Msg("failed to create zerotier-cli symlink, will use zerotier-one directly")
+	}
+
+	// Create networks.d directory for network configs
+	if err := os.MkdirAll(NetworksDirectory, 0700); err != nil {
+		return err
+	}
+
+	return nil
+}

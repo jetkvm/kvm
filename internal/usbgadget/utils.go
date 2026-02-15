@@ -113,13 +113,16 @@ func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) 
 
 func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err error) {
 	if err := file.SetWriteDeadline(time.Now().Add(hidWriteTimeout)); err != nil {
+		u.consecutiveWriteErrors.Add(1)
 		return -1, err
 	}
 
 	n, err = file.Write(data)
 	if err == nil {
+		u.consecutiveWriteErrors.Store(0)
 		return
 	}
+	u.consecutiveWriteErrors.Add(1)
 
 	u.log.Trace().
 		Str("file", file.Name()).
@@ -136,7 +139,8 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 			"write timed out: %s",
 			file.Name(),
 		)
-		err = nil
+		// Return the timeout error to caller - don't silently convert to nil
+		// Callers need to know the write failed so they can recover
 	}
 
 	return

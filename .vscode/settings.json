@@ -1,3 +1,44 @@
 {
-  "tailwindCSS.classFunctions": ["cva", "cx"]
+  "tailwindCSS.classFunctions": [
+    "cva",
+    "cx"
+  ],
+  "gopls": {
+    "build.buildFlags": [
+      "-tags",
+      "synctrace"
+    ]
+  },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "prettier.requireConfig": true,
+  "prettier.configPath": ".prettierrc",
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "git.ignoreLimitWarning": true,
+  "cmake.sourceDirectory": "${workspaceFolder}/internal/native/cgo",
+  "cmake.ignoreCMakeListsMissing": true,
+  "C_Cpp.inlayHints.autoDeclarationTypes.enabled": true,
+  "C_Cpp.inlayHints.parameterNames.enabled": true,
+  "C_Cpp.inlayHints.referenceOperator.enabled": true,
+  "TARGET_IP": "192.168.0.199",
+  "DEBUG_PORT": "2345",
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "/internal/ota/testdata/ota/*.json"
+      ],
+      "url": "./internal/ota/testdata/ota.schema.json"
+    }
+  ],
+  "makefile.configureOnOpen": false,
+  "[go]": {
+    "editor.defaultFormatter": "golang.go"
+  }
 }

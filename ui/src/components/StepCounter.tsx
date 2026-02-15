@@ -1,7 +1,8 @@
 import { CheckIcon } from "@heroicons/react/16/solid";
 
+import Card from "@components/Card";
+import { m } from "@localizations/messages.js";
 import { cva, cx } from "@/cva.config";
-import Card from "@/components/Card";
 
 interface Props {
   nSteps: number;
@@ -23,7 +24,7 @@ const variants = cva({
 export default function StepCounter({ nSteps, currStepIdx, size = "MD" }: Props) {
   const textStyle = variants({ size });
   return (
-    <Card className="inline-flex! w-auto select-none items-center justify-center gap-x-2 rounded-lg p-1">
+    <Card className="inline-flex! w-auto items-center justify-center gap-x-2 rounded-lg p-1 select-none">
       {[...Array(nSteps).keys()].map(i => {
         if (i < currStepIdx) {
           return (
@@ -49,7 +50,7 @@ export default function StepCounter({ nSteps, currStepIdx, size = "MD" }: Props)
               )}
               key={`${i}-${currStepIdx}`}
             >
-              Step {i + 1}
+              {m.step_counter_step({ step: i + 1 })}
             </div>
           );
         }

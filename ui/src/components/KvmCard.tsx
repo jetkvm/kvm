@@ -1,10 +1,13 @@
+import { Link } from "react-router";
 import { MdConnectWithoutContact } from "react-icons/md";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { Link } from "react-router";
 import { LuEllipsisVertical } from "react-icons/lu";
+import { useMemo } from "react";
 
 import Card from "@components/Card";
 import { Button, LinkButton } from "@components/Button";
+import { m } from "@localizations/messages.js";
+import { buildCloudUrl } from "@/utils";
 
 function getRelativeTimeString(date: Date | number, lang = navigator.language): string {
   // Allow dates or times to be passed
@@ -44,34 +47,36 @@ export default function KvmCard({
   id,
   online,
   lastSeen,
+  appVersion,
 }: {
   title: string;
   id: string;
   online: boolean;
   lastSeen: Date | null;
+  appVersion?: string;
 }) {
+  const kvmUrl = useMemo(() => buildCloudUrl(id, appVersion), [id, appVersion]);
+
   return (
     <Card>
-      <div className="px-5 py-5 space-y-3">
-        <div className="flex justify-between items-center">
+      <div className="space-y-3 px-5 py-5">
+        <div className="flex items-center justify-between">
           <div className="space-y-1.5">
-            <div className="text-lg font-bold leading-none text-black dark:text-white">
-              {title}
-            </div>
+            <div className="text-lg leading-none font-bold text-black dark:text-white">{title}</div>
 
             {online ? (
               <div className="flex items-center gap-x-1.5">
                 <div className="h-2.5 w-2.5 rounded-full border border-green-600 bg-green-500" />
-                <div className="text-sm text-black dark:text-white">Online</div>
+                <div className="text-sm text-black dark:text-white">{m.online()}</div>
               </div>
             ) : (
               <div className="flex items-center gap-x-1.5">
-                <div className="h-2.5 w-2.5 rounded-full border border-slate-400/60 dark:border-slate-500 bg-slate-200 dark:bg-slate-600" />
+                <div className="h-2.5 w-2.5 rounded-full border border-slate-400/60 bg-slate-200 dark:border-slate-500 dark:bg-slate-600" />
                 <div className="text-sm text-black dark:text-white">
                   {lastSeen ? (
-                    <>Last online {getRelativeTimeString(lastSeen)}</>
+                    <>{m.last_online({ time: getRelativeTimeString(lastSeen) })}</>
                   ) : (
-                    <>Never seen online</>
+                    <>{m.never_seen_online()}</>
                   )}
                 </div>
               </div>
@@ -85,16 +90,18 @@ export default function KvmCard({
               <LinkButton
                 size="MD"
                 theme="light"
-                text="Connect to KVM"
+                text={m.connect_to_kvm()}
                 LeadingIcon={MdConnectWithoutContact}
                 textAlign="center"
-                to={`/devices/${id}`}
+                reloadDocument
+                target="_self"
+                to={kvmUrl}
               />
             ) : (
               <Button
                 size="MD"
                 theme="light"
-                text="Troubleshoot Connection"
+                text={m.troubleshoot_connection()}
                 textAlign="center"
               />
             )}
@@ -108,19 +115,19 @@ export default function KvmCard({
             ></MenuButton>
             <MenuItems
               transition
-              className="data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-leave:duration-75 data-enter:ease-out data-leave:ease-in"
+              className="data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
             >
-              <Card className="absolute right-0 z-10 w-56 px-1 mt-2 transition origin-top-right ring-1 ring-black/50 focus:outline-hidden">
+              <Card className="absolute right-0 z-10 mt-2 w-56 origin-top-right px-1 ring-1 ring-black/50 transition focus:outline-hidden">
                 <div className="divide-y divide-slate-800/20 dark:divide-slate-300/20">
                   <MenuItem>
                     <div>
                       <div className="block w-full">
-                        <div className="flex items-center px-2 my-1 text-sm transition-colors rounded-md gap-x-2 hover:bg-slate-100 dark:hover:bg-slate-700">
+                        <div className="my-1 flex items-center gap-x-2 rounded-md px-2 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                           <Link
                             className="block w-full py-1.5 text-black dark:text-white"
                             to={`./${id}/rename`}
                           >
-                            Rename
+                            {m.rename_device()}
                           </Link>
                         </div>
                       </div>
@@ -129,12 +136,12 @@ export default function KvmCard({
                   <MenuItem>
                     <div>
                       <div className="block w-full">
-                        <div className="flex items-center px-2 my-1 text-sm transition-colors rounded-md gap-x-2 hover:bg-slate-100 dark:hover:bg-slate-700">
+                        <div className="my-1 flex items-center gap-x-2 rounded-md px-2 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                           <Link
                             className="block w-full py-1.5 text-black dark:text-white"
                             to={`./${id}/deregister`}
                           >
-                            Deregister from cloud
+                            {m.deregister_from_cloud()}
                           </Link>
                         </div>
                       </div>

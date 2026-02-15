@@ -66,41 +66,26 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 func onHidMessage(msg hidQueueMessage, session *Session) {
 	data := msg.Data
 
-	scopedLogger := hidRPCLogger.With().
-		Str("channel", msg.channel).
-		Bytes("data", data).
-		Logger()
-	scopedLogger.Debug().Msg("HID RPC message received")
-
 	if len(data) < 1 {
-		scopedLogger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
+		hidRPCLogger.Warn().Str("channel", msg.channel).Int("length", len(data)).Msg("received empty data in HID RPC message handler")
 		return
+	}
+
+	if hidRPCLogger.GetLevel() <= zerolog.DebugLevel {
+		hidRPCLogger.Debug().Str("channel", msg.channel).Bytes("data", data).Msg("HID RPC message received")
 	}
 
 	var message hidrpc.Message
-
 	if err := hidrpc.Unmarshal(data, &message); err != nil {
-		scopedLogger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
+		hidRPCLogger.Warn().Err(err).Str("channel", msg.channel).Msg("failed to unmarshal HID RPC message")
 		return
 	}
 
-	if scopedLogger.GetLevel() <= zerolog.DebugLevel {
-		scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	if hidRPCLogger.GetLevel() <= zerolog.DebugLevel {
+		hidRPCLogger.Debug().Str("channel", msg.channel).Str("descr", message.String()).Msg("HID RPC dispatching")
 	}
 
-	t := time.Now()
-
-	r := make(chan interface{})
-	go func() {
-		handleHidRPCMessage(message, session)
-		r <- nil
-	}()
-	select {
-	case <-time.After(1 * time.Second):
-		scopedLogger.Warn().Msg("HID RPC message timed out")
-	case <-r:
-		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
-	}
+	handleHidRPCMessage(message, session)
 }
 
 // Tunables
@@ -189,12 +174,13 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 
 func reportHidRPC(params any, session *Session) {
 	if session == nil {
-		logger.Warn().Msg("session is nil, skipping reportHidRPC")
+		logger.Debug().Msg("session is nil, skipping reportHidRPC")
 		return
 	}
 
 	if !session.hidRPCAvailable || session.HidChannel == nil {
-		logger.Warn().
+		// Expected during WebRTC handshake before HID channel is ready
+		logger.Debug().
 			Bool("hidRPCAvailable", session.hidRPCAvailable).
 			Bool("HidChannel", session.HidChannel != nil).
 			Msg("HID RPC is not available, skipping reportHidRPC")

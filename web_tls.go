@@ -6,9 +6,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
-	"sync"
+	"sync/atomic"
 
+	hwcrypto "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/websecure"
 )
 
@@ -38,6 +40,12 @@ func initCertStore() {
 		websecureLogger.Warn().Msg("TLS store already initialized, it should not be initialized again")
 		return
 	}
+
+	// Configure hardware RSA acceleration mode from config
+	if mode := loadCfg().HardwareRSA; mode != "" {
+		hwcrypto.SetHardwareRSAMode(mode)
+	}
+
 	certStore = websecure.NewCertStore(tlsStorePath, websecureLogger)
 	certStore.LoadCertificates()
 
@@ -52,7 +60,7 @@ func initCertStore() {
 }
 
 func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	switch config.TLSMode {
+	switch loadCfg().TLSMode {
 	case "self-signed":
 		if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
 			return nil, fmt.Errorf("time is not synced")
@@ -68,7 +76,7 @@ func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 
 func getTLSState() TLSState {
 	s := TLSState{}
-	switch config.TLSMode {
+	switch loadCfg().TLSMode {
 	case "disabled":
 		s.Mode = "disabled"
 	case "custom":
@@ -96,15 +104,17 @@ func getTLSState() TLSState {
 
 func setTLSState(s TLSState) error {
 	var isChanged = false
+	var newTLSMode string
+	currentTLSMode := loadCfg().TLSMode
 
 	switch s.Mode {
 	case "disabled":
-		if config.TLSMode != "" {
+		if currentTLSMode != "" {
 			isChanged = true
 		}
-		config.TLSMode = ""
+		newTLSMode = ""
 	case "custom":
-		if config.TLSMode == "" {
+		if currentTLSMode == "" {
 			isChanged = true
 		}
 		// parse pem to cert and key
@@ -116,14 +126,20 @@ func setTLSState(s TLSState) error {
 		if err != nil {
 			return fmt.Errorf("failed to save certificate: %w", err)
 		}
-		config.TLSMode = "custom"
+		newTLSMode = "custom"
 	case "self-signed":
-		if config.TLSMode == "" {
+		if currentTLSMode == "" {
 			isChanged = true
 		}
-		config.TLSMode = "self-signed"
+		newTLSMode = "self-signed"
 	default:
 		return fmt.Errorf("invalid TLS mode: %s", s.Mode)
+	}
+
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.TLSMode = newTLSMode
+	}); err != nil {
+		return fmt.Errorf("failed to save TLS config: %w", err)
 	}
 
 	if !isChanged {
@@ -131,7 +147,7 @@ func setTLSState(s TLSState) error {
 		return nil
 	}
 
-	if config.TLSMode == "" {
+	if newTLSMode == "" {
 		websecureLogger.Info().Msg("Stopping websecure server, as TLS mode is disabled")
 		stopWebSecureServer()
 	} else {
@@ -143,34 +159,37 @@ func setTLSState(s TLSState) error {
 }
 
 var (
-	startTLS       = make(chan struct{})
-	stopTLS        = make(chan struct{})
-	tlsServiceLock = sync.Mutex{}
-	tlsStarted     = false
+	startTLS   = make(chan struct{})
+	stopTLS    = make(chan struct{})
+	tlsStarted atomic.Bool
 )
 
-// RunWebSecureServer runs a web server with TLS.
+// RunWebSecureServer runs a web server with hardware-accelerated TLS.
+// Uses the same OpenSSL-based TLS as the RDP/VNC servers for hardware AES-GCM
+// acceleration on the RV1106. On non-ARM platforms, falls back to software crypto.
 func runWebSecureServer() {
-	tlsServiceLock.Lock()
-	defer tlsServiceLock.Unlock()
-
-	tlsStarted = true
-	defer func() {
-		tlsStarted = false
-	}()
+	tlsStarted.Store(true)
+	defer tlsStarted.Store(false)
 
 	r := setupRouter()
 
-	server := &http.Server{
-		Addr:    webSecureListen,
-		Handler: r,
-		TLSConfig: &tls.Config{
-			MaxVersion:       tls.VersionTLS13,
-			CurvePreferences: []tls.CurveID{},
-			GetCertificate:   getCertificate,
-		},
+	// Determine the binding address based on the config
+	bindAddress := getBindAddress(443)
+
+	ln, err := net.Listen("tcp", bindAddress)
+	if err != nil {
+		websecureLogger.Error().Err(err).Str("bindAddress", bindAddress).Msg("failed to listen")
+		return
 	}
-	websecureLogger.Info().Str("listen", webSecureListen).Msg("Starting websecure server")
+
+	tlsListener := hwcrypto.NewListener(ln, &hwcrypto.Config{
+		GetCertificate: getCertificate,
+	})
+
+	server := &http.Server{
+		Handler: r,
+	}
+	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", loadCfg().LocalLoopbackOnly).Msg("Starting websecure server")
 
 	go func() {
 		for range stopTLS {
@@ -182,14 +201,14 @@ func runWebSecureServer() {
 		}
 	}()
 
-	err := server.ListenAndServeTLS("", "")
+	err = server.Serve(tlsListener)
 	if !errors.Is(err, http.ErrServerClosed) {
-		panic(err)
+		websecureLogger.Error().Err(err).Msg("websecure server error")
 	}
 }
 
 func stopWebSecureServer() {
-	if !tlsStarted {
+	if !tlsStarted.Load() {
 		websecureLogger.Info().Msg("Websecure server is not running, not stopping it")
 		return
 	}
@@ -197,7 +216,7 @@ func stopWebSecureServer() {
 }
 
 func startWebSecureServer() {
-	if tlsStarted {
+	if tlsStarted.Load() {
 		websecureLogger.Info().Msg("Websecure server is already running, not starting it again")
 		return
 	}
@@ -212,4 +231,41 @@ func RunWebSecureServer() {
 		}
 		go runWebSecureServer()
 	}
+}
+
+// HardwareRSAState represents the RSA acceleration state for the UI.
+type HardwareRSAState struct {
+	Mode           string   `json:"mode"`           // Current mode: "openssl", "disabled"
+	AvailableModes []string `json:"availableModes"` // Available mode options
+}
+
+// rpcGetHardwareRSAState returns the current RSA acceleration state.
+func rpcGetHardwareRSAState() (HardwareRSAState, error) {
+	mode := loadCfg().HardwareRSA
+	if mode == "" {
+		mode = "openssl"
+	}
+
+	return HardwareRSAState{
+		Mode:           mode,
+		AvailableModes: []string{"openssl", "disabled"},
+	}, nil
+}
+
+// rpcSetHardwareRSAMode sets the RSA acceleration mode.
+func rpcSetHardwareRSAMode(mode string) error {
+	if mode != "openssl" && mode != "disabled" {
+		return fmt.Errorf("invalid mode: %s (must be openssl or disabled)", mode)
+	}
+
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.HardwareRSA = mode
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	hwcrypto.SetHardwareRSAMode(mode)
+
+	websecureLogger.Info().Str("mode", mode).Msg("RSA acceleration mode changed")
+	return nil
 }

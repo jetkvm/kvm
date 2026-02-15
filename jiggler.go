@@ -2,7 +2,7 @@ package kvm
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 	_ "time/tzdata"
 
@@ -21,16 +21,16 @@ var jobDelta time.Duration = 0
 var scheduler gocron.Scheduler = nil
 
 func rpcSetJigglerState(enabled bool) error {
-	config.JigglerEnabled = enabled
-	err := SaveConfig()
-	if err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.JigglerEnabled = enabled
+	}); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
 }
 
 func rpcGetJigglerState() bool {
-	return config.JigglerEnabled
+	return loadCfg().JigglerEnabled
 }
 
 func rpcGetTimezones() []string {
@@ -38,13 +38,17 @@ func rpcGetTimezones() []string {
 }
 
 func rpcGetJigglerConfig() (JigglerConfig, error) {
-	return *config.JigglerConfig, nil
+	return *loadCfg().JigglerConfig, nil
 }
 
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 	logger.Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
-	config.JigglerConfig = &jigglerConfig
-	err := removeExistingCrobJobs(scheduler)
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.JigglerConfig = &jigglerConfig
+	}); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	err := removeExistingCronJobs(scheduler)
 	if err != nil {
 		return fmt.Errorf("error removing cron jobs from scheduler %v", err)
 	}
@@ -52,14 +56,13 @@ func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 	if err != nil {
 		return fmt.Errorf("error scheduling jiggler crontab: %v", err)
 	}
-	err = SaveConfig()
-	if err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
 	return nil
 }
 
-func removeExistingCrobJobs(s gocron.Scheduler) error {
+func removeExistingCronJobs(s gocron.Scheduler) error {
+	if s == nil {
+		return nil
+	}
 	for _, j := range s.Jobs() {
 		err := s.RemoveJob(j.ID())
 		if err != nil {
@@ -70,7 +73,6 @@ func removeExistingCrobJobs(s gocron.Scheduler) error {
 }
 
 func initJiggler() {
-	ensureConfigLoaded()
 	err := runJigglerCronTab()
 	if err != nil {
 		logger.Error().Msgf("Error scheduling jiggler crontab: %v", err)
@@ -79,16 +81,17 @@ func initJiggler() {
 }
 
 func runJigglerCronTab() error {
-	cronTab := config.JigglerConfig.ScheduleCronTab
+	jc := loadCfg().JigglerConfig
+	cronTab := jc.ScheduleCronTab
 
 	// Apply timezone if specified and valid
-	if config.JigglerConfig.Timezone != "" && config.JigglerConfig.Timezone != "UTC" {
+	if jc.Timezone != "" && jc.Timezone != "UTC" {
 		// Validate timezone before applying
-		if _, err := time.LoadLocation(config.JigglerConfig.Timezone); err != nil {
-			logger.Warn().Msgf("Invalid timezone '%s', falling back to UTC: %v", config.JigglerConfig.Timezone, err)
+		if _, err := time.LoadLocation(jc.Timezone); err != nil {
+			logger.Warn().Msgf("Invalid timezone '%s', falling back to UTC: %v", jc.Timezone, err)
 			// Don't add TZ prefix, let it run in UTC
 		} else {
-			cronTab = fmt.Sprintf("TZ=%s %s", config.JigglerConfig.Timezone, cronTab)
+			cronTab = fmt.Sprintf("TZ=%s %s", jc.Timezone, cronTab)
 		}
 	}
 
@@ -122,12 +125,13 @@ func runJigglerCronTab() error {
 }
 
 func runJiggler() {
-	if config.JigglerEnabled {
-		if config.JigglerConfig.JitterPercentage != 0 {
+	cfg := loadCfg()
+	if cfg.JigglerEnabled {
+		if cfg.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
 			time.Sleep(jitter)
 		}
-		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
+		inactivitySeconds := cfg.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
 		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
@@ -146,15 +150,21 @@ func runJiggler() {
 }
 
 func calculateJobDelta(s gocron.Scheduler) (time.Duration, error) {
-	j := s.Jobs()[0]
-	runs, err := j.NextRuns(2)
+	jobs := s.Jobs()
+	if len(jobs) == 0 {
+		return 0, fmt.Errorf("no jobs in scheduler")
+	}
+	runs, err := jobs[0].NextRuns(2)
 	if err != nil {
-		return 0.0, err
+		return 0, err
+	}
+	if len(runs) < 2 {
+		return 0, fmt.Errorf("could not determine next 2 runs")
 	}
 	return runs[1].Sub(runs[0]), nil
 }
 
 func calculateJitterDuration(delta time.Duration) time.Duration {
-	jitter := rand.Float64() * float64(config.JigglerConfig.JitterPercentage) / 100 * delta.Seconds()
+	jitter := rand.Float64() * float64(loadCfg().JigglerConfig.JitterPercentage) / 100 * delta.Seconds()
 	return time.Duration(jitter * float64(time.Second))
 }

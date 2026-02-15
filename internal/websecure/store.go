@@ -8,12 +8,13 @@ import (
 	"strings"
 	"sync"
 
+	hwcrypto "github.com/jetkvm/kvm/internal/crypto/tls"
 	"github.com/rs/zerolog"
 )
 
 type CertStore struct {
 	certificates map[string]*tls.Certificate
-	certLock     *sync.Mutex
+	certLock     *sync.RWMutex
 
 	storePath string
 
@@ -22,12 +23,12 @@ type CertStore struct {
 
 func NewCertStore(storePath string, log *zerolog.Logger) *CertStore {
 	if log == nil {
-		log = &defaultLogger
+		log = defaultLogger
 	}
 
 	return &CertStore{
 		certificates: make(map[string]*tls.Certificate),
-		certLock:     &sync.Mutex{},
+		certLock:     &sync.RWMutex{},
 
 		storePath: storePath,
 		log:       log,
@@ -94,6 +95,15 @@ func (s *CertStore) loadCertificate(hostname string) {
 		return
 	}
 
+	// Wrap RSA keys with hardware-accelerated signer for better TLS performance on ARM
+	if wrapped, err := hwcrypto.WrapRSAKey(cert.PrivateKey); err != nil {
+		s.log.Warn().Err(err).Str("hostname", hostname).Msg("RSA key wrapping failed, using Go crypto")
+		// Keep original key as fallback
+	} else if wrapped != cert.PrivateKey {
+		cert.PrivateKey = wrapped
+		s.log.Info().Str("hostname", hostname).Str("backend", hwcrypto.GetSignerName(wrapped)).Msg("using hardware-accelerated RSA signer")
+	}
+
 	s.certificates[hostname] = &cert
 
 	if hostname == selfSignerCAMagicName {
@@ -106,9 +116,8 @@ func (s *CertStore) loadCertificate(hostname string) {
 // GetCertificate returns the certificate for the given hostname
 // returns nil if the certificate is not found
 func (s *CertStore) GetCertificate(hostname string) *tls.Certificate {
-	s.certLock.Lock()
-	defer s.certLock.Unlock()
-
+	s.certLock.RLock()
+	defer s.certLock.RUnlock()
 	return s.certificates[hostname]
 }
 
@@ -139,6 +148,14 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 		}
 	}
 
+	// Wrap RSA keys with hardware-accelerated signer for better TLS performance on ARM
+	if wrapped, err := hwcrypto.WrapRSAKey(tlsCert.PrivateKey); err != nil {
+		s.log.Warn().Err(err).Str("hostname", hostname).Msg("RSA key wrapping failed, using Go crypto")
+	} else if wrapped != tlsCert.PrivateKey {
+		tlsCert.PrivateKey = wrapped
+		s.log.Info().Str("hostname", hostname).Str("backend", hwcrypto.GetSignerName(wrapped)).Msg("using hardware-accelerated RSA signer")
+	}
+
 	s.certLock.Lock()
 	s.certificates[hostname] = &tlsCert
 	s.certLock.Unlock()
@@ -150,7 +167,9 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 
 func (s *CertStore) saveCertificate(hostname string) {
 	// check if certificate already exists
+	s.certLock.RLock()
 	tlsCert := s.certificates[hostname]
+	s.certLock.RUnlock()
 	if tlsCert == nil {
 		s.log.Error().Str("hostname", hostname).Msg("Certificate for hostname does not exist, skipping saving certificate")
 		return

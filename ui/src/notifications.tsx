@@ -1,9 +1,8 @@
-import toast, { Toast, Toaster, useToasterStore } from "react-hot-toast";
 import React, { useEffect } from "react";
+import toast, { Toast, Toaster, useToasterStore } from "react-hot-toast";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
 
-import Card from "@/components/Card";
-
+import Card from "@components/Card";
 
 interface NotificationOptions {
   duration?: number;
@@ -34,9 +33,9 @@ const ToastContent = ({
 const notifications = {
   success: (message: string, options?: NotificationOptions) => {
     return toast.custom(
-      t => (
+      (t: Toast) => (
         <ToastContent
-          icon={<CheckCircleIcon className="w-5 h-5 text-green-500 dark:text-green-400" />}
+          icon={<CheckCircleIcon className="h-5 w-5 text-green-500 dark:text-green-400" />}
           message={message}
           t={t}
         />
@@ -47,9 +46,9 @@ const notifications = {
 
   error: (message: string, options?: NotificationOptions) => {
     return toast.custom(
-      t => (
+      (t: Toast) => (
         <ToastContent
-          icon={<XCircleIcon className="w-5 h-5 text-red-500 dark:text-red-400" />}
+          icon={<XCircleIcon className="h-5 w-5 text-red-500 dark:text-red-400" />}
           message={message}
           t={t}
         />
@@ -64,9 +63,9 @@ function useMaxToasts(max: number) {
 
   useEffect(() => {
     toasts
-      .filter(t => t.visible) // Only consider visible toasts
-      .filter((_, i) => i >= max) // Is toast index over limit?
-      .forEach(t => toast.dismiss(t.id)); // Dismiss – Use toast.remove(t.id) for no exit animation
+      .filter((t: Toast) => t.visible) // Only consider visible toasts
+      .filter((_: Toast, i: number) => i >= max) // Is toast index over limit?
+      .forEach((t: Toast) => toast.dismiss(t.id)); // Dismiss – Use toast.remove(t.id) for no exit animation
   }, [toasts, max]);
 }
 

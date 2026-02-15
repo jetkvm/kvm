@@ -1,13 +1,14 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useClose } from "@headlessui/react";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 
 import { cx } from "@/cva.config";
-import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import useKeyboard, { type MacroStep } from "@/hooks/useKeyboard";
-import useKeyboardLayout from "@/hooks/useKeyboardLayout";
+import { m } from "@localizations/messages.js";
+import { useHidStore, useSettingsStore, useUiStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import useKeyboard, { type MacroStep } from "@hooks/useKeyboard";
+import useKeyboardLayout from "@hooks/useKeyboardLayout";
 import notifications from "@/notifications";
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
@@ -17,6 +18,7 @@ import { TextAreaWithLabel } from "@components/TextArea";
 
 // uint32 max value / 4
 const pasteMaxLength = 1073741824;
+const defaultDelay = 20;
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -27,20 +29,20 @@ export default function PasteModal() {
   const { executeMacro, cancelExecuteMacro } = useKeyboard();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
-  const [delayValue, setDelayValue] = useState(100);
+  const [delayValue, setDelayValue] = useState(defaultDelay);
   const delay = useMemo(() => {
-    if (delayValue < 50 || delayValue > 65534) {
-      return 100;
+    if (delayValue < 0 || delayValue > 65534) {
+      return defaultDelay;
     }
     return delayValue;
   }, [delayValue]);
   const close = useClose();
 
   const debugMode = useSettingsStore(state => state.debugMode);
-  const delayClassName = useMemo(() => debugMode ? "" : "hidden", [debugMode]);
+  const delayClassName = useMemo(() => (debugMode ? "" : "hidden"), [debugMode]);
 
   const { setKeyboardLayout } = useSettingsStore();
-  const { selectedKeyboard }  = useKeyboardLayout();
+  const { selectedKeyboard } = useKeyboardLayout();
 
   useEffect(() => {
     send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
@@ -64,7 +66,8 @@ export default function PasteModal() {
       const macroSteps: MacroStep[] = [];
 
       for (const char of text) {
-        const keyprops = selectedKeyboard.chars[char];
+        const normalizedChar = char.normalize("NFC");
+        const keyprops = selectedKeyboard.chars[normalizedChar];
         if (!keyprops) continue;
 
         const { key, shift, altRight, deadKey, accentKey } = keyprops;
@@ -91,7 +94,7 @@ export default function PasteModal() {
         macroSteps.push({
           keys: [String(key)],
           modifiers: modifiers.length > 0 ? modifiers : null,
-          delay
+          delay,
         });
 
         // if what was requested was a dead key, we need to send an unmodified space to emit
@@ -104,7 +107,7 @@ export default function PasteModal() {
       }
     } catch (error) {
       console.error("Failed to paste text:", error);
-      notifications.error("Failed to paste text");
+      notifications.error(m.paste_modal_failed_paste({ error: String(error) }));
     }
   }, [selectedKeyboard, executeMacro, delay]);
 
@@ -120,10 +123,7 @@ export default function PasteModal() {
         <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="h-full space-y-4">
             <div className="space-y-4">
-              <SettingsPageHeader
-                title="Paste text"
-                description="Paste text from your client to the remote host"
-              />
+              <SettingsPageHeader title={m.paste_text()} description={m.paste_text_description()} />
 
               <div
                 className="animate-fadeIn space-y-2 opacity-0"
@@ -136,12 +136,13 @@ export default function PasteModal() {
                   <div
                     className="w-full"
                     onKeyUp={e => e.stopPropagation()}
-                    onKeyDown={e => e.stopPropagation()}                    onKeyDownCapture={e => e.stopPropagation()}
+                    onKeyDown={e => e.stopPropagation()}
+                    onKeyDownCapture={e => e.stopPropagation()}
                     onKeyUpCapture={e => e.stopPropagation()}
                   >
                     <TextAreaWithLabel
                       ref={TextAreaRef}
-                      label="Paste from host"
+                      label={m.paste_modal_paste_from_host()}
                       rows={4}
                       onKeyUp={e => e.stopPropagation()}
                       maxLength={pasteMaxLength}
@@ -161,7 +162,7 @@ export default function PasteModal() {
                           ...new Set(
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
-                              .map(x => x.segment)
+                              .map(x => x.segment.normalize("NFC"))
                               .filter(char => !selectedKeyboard.chars[char]),
                           ),
                         ];
@@ -174,8 +175,7 @@ export default function PasteModal() {
                       <div className="mt-2 flex items-center gap-x-2">
                         <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
-                          The following characters won&apos;t be pasted:{" "}
-                          {invalidChars.join(", ")}
+                          {m.paste_modal_invalid_chars_intro()} {invalidChars.join(", ")}
                         </span>
                       </div>
                     )}
@@ -184,8 +184,8 @@ export default function PasteModal() {
                 <div className={cx("text-xs text-slate-600 dark:text-slate-400", delayClassName)}>
                   <InputFieldWithLabel
                     type="number"
-                    label="Delay between keys"
-                    placeholder="Delay between keys"
+                    label={m.paste_modal_delay_between_keys()}
+                    placeholder={m.paste_modal_delay_between_keys()}
                     min={50}
                     max={65534}
                     value={delayValue}
@@ -193,19 +193,22 @@ export default function PasteModal() {
                       setDelayValue(parseInt(e.target.value, 10));
                     }}
                   />
-                  {delayValue < 50 || delayValue > 65534 && (
-                    <div className="mt-2 flex items-center gap-x-2">
-                      <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
-                      <span className="text-xs text-red-500 dark:text-red-400">
-                        Delay must be between 50 and 65534
-                      </span>
-                    </div>
-                  )}
+                  {delayValue < 50 ||
+                    (delayValue > 65534 && (
+                      <div className="mt-2 flex items-center gap-x-2">
+                        <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
+                        <span className="text-xs text-red-500 dark:text-red-400">
+                          {m.paste_modal_delay_out_of_range({ min: 50, max: 65534 })}
+                        </span>
+                      </div>
+                    ))}
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Sending text using keyboard layout: {selectedKeyboard.isoCode}-
-                    {selectedKeyboard.name}
+                    {m.paste_modal_sending_using_layout({
+                      iso: selectedKeyboard.isoCode,
+                      name: selectedKeyboard.name,
+                    })}
                   </p>
                 </div>
               </div>
@@ -222,7 +225,7 @@ export default function PasteModal() {
           <Button
             size="SM"
             theme="blank"
-            text="Cancel"
+            text={m.cancel()}
             onClick={() => {
               onCancelPasteMode();
               close();
@@ -231,7 +234,7 @@ export default function PasteModal() {
           <Button
             size="SM"
             theme="primary"
-            text="Confirm Paste"
+            text={m.paste_modal_confirm_paste()}
             disabled={isPasteInProgress}
             onClick={onConfirmPaste}
             LeadingIcon={LuCornerDownLeft}

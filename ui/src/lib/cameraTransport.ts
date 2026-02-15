@@ -1,0 +1,308 @@
+/**
+ * WebSocket transport for sending camera frames to JetKVM.
+ *
+ * Protocol:
+ * - Server sends JSON messages: format requests, acks, errors
+ * - Client sends binary frames: [codec:u8][frame_data...]
+ */
+
+import type { VideoCodec } from "./cameraEncoder";
+
+/**
+ * Wire protocol codec bytes for binary frame headers.
+ * Must match the values in internal/camera/manager.go (CodecByteH264, CodecByteMJPEG).
+ * These are prefixed to each frame for efficient codec identification without parsing.
+ */
+export const CODEC_BYTES = {
+  h264: 0x01,
+  mjpeg: 0x02,
+} as const;
+
+/** Valid codec values that can be received from the server */
+const VALID_CODECS = new Set<string>(["h264", "mjpeg"]);
+
+/** Type guard to validate codec values from server JSON messages */
+function isValidCodec(value: unknown): value is VideoCodec {
+  return typeof value === "string" && VALID_CODECS.has(value);
+}
+
+export type TransportState = "disconnected" | "connecting" | "connected" | "error";
+
+/**
+ * Frame transmission statistics for monitoring.
+ * All fields are monotonically increasing counters reset on reconnect.
+ */
+export interface CameraTransportStats {
+  readonly framesSent: number;
+  readonly bytesSent: number;
+  /** Frames dropped due to backpressure or connection issues */
+  readonly framesDropped: number;
+}
+
+/**
+ * Format negotiation request from the UVC host via JetKVM backend.
+ * The browser encoder should configure itself to match these parameters.
+ */
+export interface FormatRequest {
+  readonly codec: VideoCodec;
+  readonly width: number;
+  readonly height: number;
+  /** UVC-negotiated frame rate from host (e.g., 30 or 60 fps) */
+  readonly frameRate: number;
+  /** User's configured frame rate cap; browser uses min(frameRate, frameRateCap) */
+  readonly frameRateCap?: number;
+  /** H.264 bitrate in bps from user config */
+  readonly h264Bitrate?: number;
+  /** MJPEG quality 0.0-1.0 from user config */
+  readonly mjpegQuality?: number;
+}
+
+export interface CameraTransportEvents {
+  onStateChange: (state: TransportState) => void;
+  onError: (error: Error) => void;
+  onStats: (stats: CameraTransportStats) => void;
+  /** Called when JetKVM requests a specific video format */
+  onFormatRequest: (format: FormatRequest) => void;
+  /** Called when UVC streaming stops (host disconnected) */
+  onStreamingStopped: () => void;
+}
+
+export interface CameraTransport {
+  /** Current connection state */
+  readonly state: TransportState;
+
+  /** Transport statistics */
+  readonly stats: CameraTransportStats;
+
+  /** Connect to the server */
+  connect(): Promise<void>;
+
+  /**
+   * Send a video frame. Frame must include 1-byte codec prefix from encoder.
+   * @param frame - Pre-framed data with codec byte prefix
+   * @param timestamp - Frame timestamp (for metrics/debugging, not transmitted)
+   * @param codec - Codec type (for metrics/debugging, embedded in frame prefix)
+   */
+  sendFrame(frame: ArrayBuffer, timestamp: number, codec: VideoCodec): void;
+
+  /** Close the connection */
+  close(): void;
+
+  /** Set event handlers */
+  setEventHandlers(events: Partial<CameraTransportEvents>): void;
+}
+
+/**
+ * Backpressure threshold for frame dropping.
+ * 4MB provides buffer for ~20-41 typical 1080p MJPEG frames (100-200KB each at 70% quality),
+ * or ~2-4 high-quality frames (1-2MB each at 95% quality).
+ * This prevents unbounded memory growth while smoothing temporary network jitter.
+ */
+const BACKPRESSURE_THRESHOLD_BYTES = 4 * 1024 * 1024;
+
+export class WebSocketCameraTransport implements CameraTransport {
+  private ws: WebSocket | null = null;
+  private _state: TransportState = "disconnected";
+  private _stats: CameraTransportStats = {
+    framesSent: 0,
+    bytesSent: 0,
+    framesDropped: 0,
+  };
+  private events: Partial<CameraTransportEvents> = {};
+  private url: string;
+  private reconnectAttempts = 0;
+  /** Max reconnect attempts before giving up (3 = ~6 seconds total with backoff) */
+  private maxReconnectAttempts = 3;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+  }
+
+  get state(): TransportState {
+    return this._state;
+  }
+
+  get stats(): CameraTransportStats {
+    return { ...this._stats };
+  }
+
+  setEventHandlers(events: Partial<CameraTransportEvents>): void {
+    this.events = { ...this.events, ...events };
+  }
+
+  private setState(state: TransportState): void {
+    if (this._state !== state) {
+      this._state = state;
+      this.events.onStateChange?.(state);
+    }
+  }
+
+  async connect(): Promise<void> {
+    // Cancel any pending reconnect to prevent double connections
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    if (this._state === "connected" || this._state === "connecting") {
+      return;
+    }
+
+    this.setState("connecting");
+
+    return new Promise((resolve, reject) => {
+      try {
+        this.ws = new WebSocket(this.url);
+        this.ws.binaryType = "arraybuffer";
+
+        this.ws.onopen = () => {
+          this.reconnectAttempts = 0;
+          this.setState("connected");
+          resolve();
+        };
+
+        this.ws.onclose = event => {
+          this.setState("disconnected");
+
+          // Attempt reconnect if not a clean close
+          if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            this.reconnectTimer = setTimeout(() => {
+              this.connect().catch(err => {
+                console.warn("[CameraTransport] Reconnect failed:", err);
+                // Notify error handler so application layer can react
+                this.events.onError?.(
+                  err instanceof Error
+                    ? err
+                    : new Error(`Reconnect attempt ${this.reconnectAttempts} failed`),
+                );
+              });
+            }, 1000 * this.reconnectAttempts);
+          } else if (event.code !== 1000 && this.reconnectAttempts >= this.maxReconnectAttempts) {
+            this.setState("error");
+            this.events.onError?.(
+              new Error(`Connection lost after ${this.maxReconnectAttempts} reconnect attempts`),
+            );
+          }
+        };
+
+        this.ws.onerror = event => {
+          const error = new Error("WebSocket error");
+          console.error("[CameraTransport] WebSocket error:", event);
+          this.events.onError?.(error);
+
+          if (this._state === "connecting") {
+            // Cancel pending reconnect to prevent stale timer firing
+            if (this.reconnectTimer) {
+              clearTimeout(this.reconnectTimer);
+              this.reconnectTimer = null;
+            }
+            this.setState("error");
+            reject(error);
+          }
+        };
+
+        this.ws.onmessage = event => {
+          // Handle server messages (JSON control messages)
+          if (typeof event.data === "string") {
+            try {
+              const msg = JSON.parse(event.data);
+
+              switch (msg.type) {
+                case "format":
+                  if (msg.codec === "stop") {
+                    this.events.onStreamingStopped?.();
+                  } else if (isValidCodec(msg.codec) && msg.width > 0 && msg.height > 0) {
+                    this.events.onFormatRequest?.({
+                      codec: msg.codec,
+                      width: msg.width,
+                      height: msg.height,
+                      frameRate: msg.frameRate || 30,
+                      frameRateCap: msg.frameRateCap,
+                      h264Bitrate: msg.h264Bitrate,
+                      mjpegQuality: msg.mjpegQuality,
+                    });
+                  } else if (msg.codec && msg.codec !== "stop") {
+                    console.warn("[CameraTransport] Invalid format request:", msg);
+                  }
+                  break;
+
+                case "error":
+                  console.error("[CameraTransport] Server error:", msg.message);
+                  this.events.onError?.(new Error(msg.message || "Server error"));
+                  break;
+
+                default:
+                  console.debug("[CameraTransport] Unknown message type:", msg.type);
+                  break;
+              }
+            } catch (e) {
+              // Non-JSON text messages are expected (e.g., keep-alive pings)
+              console.debug("[CameraTransport] Non-JSON message received:", event.data, e);
+            }
+          }
+        };
+      } catch (error) {
+        this.setState("error");
+        reject(error);
+      }
+    });
+  }
+
+  // Frames arrive pre-framed with codec byte from encoder - zero-copy send
+  sendFrame(frame: ArrayBuffer, _timestamp: number, _codec: VideoCodec): void {
+    if (this._state !== "connected" || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this._stats.framesDropped++;
+      // Rate-limited logging for connection state drops
+      if (this._stats.framesDropped === 1 || this._stats.framesDropped % 100 === 0) {
+        console.warn(
+          `[CameraTransport] Frame dropped (state: ${this._state}, total: ${this._stats.framesDropped})`,
+        );
+      }
+      return;
+    }
+
+    // Backpressure: drop frames if buffer exceeds threshold
+    if (this.ws.bufferedAmount > BACKPRESSURE_THRESHOLD_BYTES) {
+      this._stats.framesDropped++;
+      if (this._stats.framesDropped % 30 === 1) {
+        console.warn(`[CameraTransport] Backpressure, dropped ${this._stats.framesDropped} frames`);
+      }
+      return;
+    }
+
+    // Zero-copy: frame already has codec byte prefix from encoder
+    this.ws.send(frame);
+
+    this._stats.framesSent++;
+    this._stats.bytesSent += frame.byteLength;
+
+    if (this._stats.framesSent % 30 === 0) {
+      this.events.onStats?.(this._stats);
+    }
+  }
+
+  close(): void {
+    // Cancel any pending reconnect
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    if (this.ws) {
+      this.ws.close(1000, "Client closing");
+      this.ws = null;
+    }
+    this.setState("disconnected");
+  }
+}
+
+export function createCameraTransport(baseUrl: string): CameraTransport {
+  const wsUrl =
+    baseUrl
+      .replace(/^http:/, "ws:")
+      .replace(/^https:/, "wss:")
+      .replace(/\/$/, "") + "/api/camera/ws";
+  return new WebSocketCameraTransport(wsUrl);
+}

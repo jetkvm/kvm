@@ -1,18 +1,21 @@
 import { lazy } from "react";
 import ReactDOM from "react-dom/client";
-import "./index.css";
 import {
   createBrowserRouter,
   isRouteErrorResponse,
   redirect,
+  type RouteObject,
   RouterProvider,
   useRouteError,
 } from "react-router";
+import "./index.css";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { initTestHooks } from "@/test/testHooks";
+import { CLOUD_API, CLOUD_ENABLE_VERSIONED_UI, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import Root from "@/root";
+import { m } from "@localizations/messages.js";
 import Card from "@components/Card";
 import EmptyCard from "@components/EmptyCard";
 import NotFoundPage from "@components/NotFoundPage";
@@ -28,30 +31,43 @@ import DeviceIdRename from "@routes/devices.$id.rename";
 import DevicesRoute from "@routes/devices";
 import SettingsIndexRoute from "@routes/devices.$id.settings._index";
 import SettingsAccessIndexRoute from "@routes/devices.$id.settings.access._index";
-import Notifications  from "@/notifications";
+import Notifications from "@/notifications";
 const SignupRoute = lazy(() => import("@routes/signup"));
 const LoginRoute = lazy(() => import("@routes/login"));
 const DevicesAlreadyAdopted = lazy(() => import("@routes/devices.already-adopted"));
 const OtherSessionRoute = lazy(() => import("@routes/devices.$id.other-session"));
-const MountRoute = lazy(() => import("./routes/devices.$id.mount"));
+const MountRoute = lazy(() => import("@routes/devices.$id.mount"));
 const SettingsRoute = lazy(() => import("@routes/devices.$id.settings"));
 const SettingsMouseRoute = lazy(() => import("@routes/devices.$id.settings.mouse"));
 const SettingsKeyboardRoute = lazy(() => import("@routes/devices.$id.settings.keyboard"));
 const SettingsAdvancedRoute = lazy(() => import("@routes/devices.$id.settings.advanced"));
 const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.hardware"));
 const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
+const SettingsAudioRoute = lazy(() => import("@routes/devices.$id.settings.audio"));
+const SettingsCameraRoute = lazy(() => import("@routes/devices.$id.settings.camera"));
+const SettingsVNCRoute = lazy(() => import("@routes/devices.$id.settings.vnc"));
+const SettingsRDPRoute = lazy(() => import("@routes/devices.$id.settings.rdp"));
 const SettingsAppearanceRoute = lazy(() => import("@routes/devices.$id.settings.appearance"));
 const SettingsGeneralIndexRoute = lazy(() => import("@routes/devices.$id.settings.general._index"));
-const SettingsGeneralRebootRoute = lazy(() => import("@routes/devices.$id.settings.general.reboot"));
-const SettingsGeneralUpdateRoute = lazy(() => import("@routes/devices.$id.settings.general.update"));
+const SettingsGeneralRebootRoute = lazy(
+  () => import("@routes/devices.$id.settings.general.reboot"),
+);
+const SettingsGeneralUpdateRoute = lazy(
+  () => import("@routes/devices.$id.settings.general.update"),
+);
 const SettingsNetworkRoute = lazy(() => import("@routes/devices.$id.settings.network"));
-const SecurityAccessLocalAuthRoute = lazy(() => import("@routes/devices.$id.settings.access.local-auth"));
+const SecurityAccessLocalAuthRoute = lazy(
+  () => import("@routes/devices.$id.settings.access.local-auth"),
+);
 const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
 const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
 const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
+
+// Initialize E2E test hooks (safe to call in all environments)
+initTestHooks();
 
 export async function checkCloudAuth() {
   const res = await fetch(`${CLOUD_API}/me`, {
@@ -72,10 +88,10 @@ export async function checkDeviceAuth() {
     .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
-  if (!res.isSetup) return redirect("/welcome");
+  if (!res.isSetup) throw redirect("/welcome");
 
   const deviceRes = await api.GET(`${DEVICE_API}/device`);
-  if (deviceRes.status === 401) return redirect("/login-local");
+  if (deviceRes.status === 401) throw redirect("/login-local");
   if (deviceRes.ok) {
     const device = (await deviceRes.json()) as LocalDevice;
     return { authMode: device.authMode };
@@ -85,10 +101,130 @@ export async function checkDeviceAuth() {
 }
 
 export async function checkAuth() {
-  return import.meta.env.MODE === "device" ? checkDeviceAuth() : checkCloudAuth();
+  return isOnDevice ? checkDeviceAuth() : checkCloudAuth();
 }
 
-let router;
+let router: ReturnType<typeof createBrowserRouter>;
+
+const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject => ({
+  element: <DeviceRoute />,
+  loader: DeviceRoute.loader,
+  ...r,
+  children: [
+    {
+      path: "other-session",
+      element: <OtherSessionRoute />,
+    },
+    {
+      path: "mount",
+      element: <MountRoute />,
+    },
+    {
+      path: "settings",
+      element: <SettingsRoute />,
+      children: [
+        {
+          index: true,
+          loader: SettingsIndexRoute.loader,
+        },
+        {
+          path: "general",
+          children: [
+            {
+              index: true,
+              element: <SettingsGeneralIndexRoute />,
+            },
+            // was previously only present on device routes
+            {
+              path: "reboot",
+              element: <SettingsGeneralRebootRoute />,
+            },
+            {
+              path: "update",
+              element: <SettingsGeneralUpdateRoute />,
+            },
+          ],
+        },
+        {
+          path: "mouse",
+          element: <SettingsMouseRoute />,
+        },
+        {
+          path: "keyboard",
+          element: <SettingsKeyboardRoute />,
+        },
+        {
+          path: "advanced",
+          element: <SettingsAdvancedRoute />,
+        },
+        {
+          path: "hardware",
+          element: <SettingsHardwareRoute />,
+        },
+        {
+          path: "network",
+          element: <SettingsNetworkRoute />,
+        },
+        {
+          path: "access",
+          children: [
+            {
+              index: true,
+              element: <SettingsAccessIndexRoute />,
+              loader: SettingsAccessIndexRoute.loader,
+            },
+            {
+              path: "local-auth",
+              element: <SecurityAccessLocalAuthRoute />,
+            },
+          ],
+        },
+        {
+          path: "video",
+          element: <SettingsVideoRoute />,
+        },
+        {
+          path: "audio",
+          element: <SettingsAudioRoute />,
+        },
+        {
+          path: "camera",
+          element: <SettingsCameraRoute />,
+        },
+        {
+          path: "vnc",
+          element: <SettingsVNCRoute />,
+        },
+        {
+          path: "rdp",
+          element: <SettingsRDPRoute />,
+        },
+        {
+          path: "appearance",
+          element: <SettingsAppearanceRoute />,
+        },
+        {
+          path: "macros",
+          children: [
+            {
+              index: true,
+              element: <SettingsMacrosRoute />,
+            },
+            {
+              path: "add",
+              element: <SettingsMacrosAddRoute />,
+            },
+            {
+              path: ":macroId/edit",
+              element: <SettingsMacrosEditRoute />,
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
 if (isOnDevice) {
   router = createBrowserRouter([
     {
@@ -112,109 +248,11 @@ if (isOnDevice) {
       action: LoginLocalRoute.action,
       loader: LoginLocalRoute.loader,
     },
-    {
+    getDeviceRoute({
       path: "/",
       errorElement: <ErrorBoundary />,
-      element: <DeviceRoute />,
-      HydrateFallback: () => <div className="p-4">Loading...</div>,
-      loader: DeviceRoute.loader,
-      children: [
-        {
-          path: "other-session",
-          element: <OtherSessionRoute />,
-        },
-        {
-          path: "mount",
-          element: <MountRoute />,
-        },
-        {
-          path: "settings",
-          element: <SettingsRoute />,
-          children: [
-            {
-              index: true,
-              loader: SettingsIndexRoute.loader,
-            },
-            {
-              path: "general",
-              children: [
-                {
-                  index: true,
-                  element: <SettingsGeneralIndexRoute />,
-                },
-                {
-                  path: "reboot",
-                  element: <SettingsGeneralRebootRoute />,
-                },
-                {
-                  path: "update",
-                  element: <SettingsGeneralUpdateRoute />,
-                },
-              ],
-            },
-            {
-              path: "mouse",
-              element: <SettingsMouseRoute />,
-            },
-            {
-              path: "keyboard",
-              element: <SettingsKeyboardRoute />,
-            },
-            {
-              path: "advanced",
-              element: <SettingsAdvancedRoute />,
-            },
-            {
-              path: "hardware",
-              element: <SettingsHardwareRoute />,
-            },
-            {
-              path: "network",
-              element: <SettingsNetworkRoute />,
-            },
-            {
-              path: "access",
-              children: [
-                {
-                  index: true,
-                  element: <SettingsAccessIndexRoute />,
-                  loader: SettingsAccessIndexRoute.loader,
-                },
-                {
-                  path: "local-auth",
-                  element: <SecurityAccessLocalAuthRoute />,
-                },
-              ],
-            },
-            {
-              path: "video",
-              element: <SettingsVideoRoute />,
-            },
-            {
-              path: "appearance",
-              element: <SettingsAppearanceRoute />,
-            },
-            {
-              path: "macros",
-              children: [
-                {
-                  index: true,
-                  element: <SettingsMacrosRoute />,
-                },
-                {
-                  path: "add",
-                  element: <SettingsMacrosAddRoute />,
-                },
-                {
-                  path: ":macroId/edit",
-                  element: <SettingsMacrosEditRoute />,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
+      HydrateFallback: () => <div className="p-4">{m.loading()}</div>,
+    }),
     {
       path: "/adopt",
       element: <AdoptRoute />,
@@ -223,7 +261,7 @@ if (isOnDevice) {
     },
   ]);
 } else {
-  router = createBrowserRouter([
+  const routeObjects: RouteObject[] = [
     {
       errorElement: <ErrorBoundary />,
       children: [
@@ -240,7 +278,6 @@ if (isOnDevice) {
                 return redirect(`/devices`);
               },
             },
-
             {
               path: "devices/:id/setup",
               element: <SetupRoute />,
@@ -251,103 +288,9 @@ if (isOnDevice) {
               path: "devices/already-adopted",
               element: <DevicesAlreadyAdopted />,
             },
-            {
+            getDeviceRoute({
               path: "devices/:id",
-              element: <DeviceRoute />,
-              loader: DeviceRoute.loader,
-              children: [
-                {
-                  path: "other-session",
-                  element: <OtherSessionRoute />,
-                },
-                {
-                  path: "mount",
-                  element: <MountRoute />,
-                },
-                {
-                  path: "settings",
-                  element: <SettingsRoute />,
-                  children: [
-                    {
-                      index: true,
-                      loader: SettingsIndexRoute.loader,
-                    },
-                    {
-                      path: "general",
-                      children: [
-                        {
-                          index: true,
-                          element: <SettingsGeneralIndexRoute />,
-                        },
-                        {
-                          path: "update",
-                          element: <SettingsGeneralUpdateRoute />,
-                        },
-                      ],
-                    },
-                    {
-                      path: "mouse",
-                      element: <SettingsMouseRoute />,
-                    },
-                    {
-                      path: "keyboard",
-                      element: <SettingsKeyboardRoute />,
-                    },
-                    {
-                      path: "advanced",
-                      element: <SettingsAdvancedRoute />,
-                    },
-                    {
-                      path: "hardware",
-                      element: <SettingsHardwareRoute />,
-                    },
-                    {
-                      path: "network",
-                      element: <SettingsNetworkRoute />,
-                    },
-                    {
-                      path: "access",
-                      children: [
-                        {
-                          index: true,
-                          element: <SettingsAccessIndexRoute />,
-                          loader: SettingsAccessIndexRoute.loader,
-                        },
-                        {
-                          path: "local-auth",
-                          element: <SecurityAccessLocalAuthRoute />,
-                        },
-                      ],
-                    },
-                    {
-                      path: "video",
-                      element: <SettingsVideoRoute />,
-                    },
-                    {
-                      path: "appearance",
-                      element: <SettingsAppearanceRoute />,
-                    },
-                    {
-                      path: "macros",
-                      children: [
-                        {
-                          index: true,
-                          element: <SettingsMacrosRoute />,
-                        },
-                        {
-                          path: "add",
-                          element: <SettingsMacrosAddRoute />,
-                        },
-                        {
-                          path: ":macroId/edit",
-                          element: <SettingsMacrosEditRoute />,
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
+            }),
             {
               path: "devices/:id/deregister",
               element: <DevicesIdDeregister />,
@@ -363,13 +306,26 @@ if (isOnDevice) {
             {
               path: "devices",
               element: <DevicesRoute />,
-              loader: DevicesRoute.loader
+              loader: DevicesRoute.loader,
             },
           ],
         },
       ],
     },
-  ]);
+  ];
+
+  // if versioned UI is not enabled, we need to add a route that redirects to the non-versioned route
+  if (!CLOUD_ENABLE_VERSIONED_UI) {
+    routeObjects.unshift({
+      path: "v/:version/*",
+      element: <Root />,
+      loader: async ({ params }) => {
+        throw redirect(`/${params["*"]}`);
+      },
+    });
+  }
+
+  router = createBrowserRouter(routeObjects, { basename: import.meta.env.BASE_URL });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -390,13 +346,37 @@ document.addEventListener("DOMContentLoaded", () => {
 // eslint-disable-next-line react-refresh/only-export-components
 function ErrorBoundary() {
   const error = useRouteError();
-
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-expect-error
-  const errorMessage = error?.data?.error?.message || error?.message;
   if (isRouteErrorResponse(error)) {
     if (error.status === 404) return <NotFoundPage />;
   }
+
+  const getErrorMessage = (err: unknown): string | null => {
+    // If it's a route error response, try to read a string at err.data.error.message or err.data.error safely
+    if (isRouteErrorResponse(err)) {
+      const data = (err as { data?: unknown }).data;
+      if (data && typeof data === "object") {
+        const maybeError = (data as Record<string, unknown>)["error"];
+        if (maybeError) {
+          if (typeof maybeError === "object") {
+            const msg = (maybeError as Record<string, unknown>)["message"];
+            if (typeof msg === "string") return msg;
+          } else if (typeof maybeError === "string") {
+            return maybeError;
+          }
+        }
+      }
+    }
+
+    // Fallback: check plain object message property
+    if (err && typeof err === "object") {
+      const maybeMsg = (err as Record<string, unknown>)["message"];
+      if (typeof maybeMsg === "string") return maybeMsg;
+    }
+
+    return null;
+  };
+
+  const errorMessage = getErrorMessage(error);
 
   return (
     <div className="h-full w-full">
@@ -404,8 +384,8 @@ function ErrorBoundary() {
         <div className="w-full max-w-2xl">
           <EmptyCard
             IconElm={ExclamationTriangleIcon}
-            headline="Oh no!"
-            description="Something went wrong. Please try again later or contact support"
+            headline={m.oh_no()}
+            description={m.something_went_wrong()}
             BtnElm={
               errorMessage && (
                 <Card>

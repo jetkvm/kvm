@@ -42,9 +42,21 @@ func isTimeSyncNeeded() bool {
 func initTimeSync() {
 	timeSync = timesync.NewTimeSync(&timesync.TimeSyncOptions{
 		Logger:        timesyncLogger,
-		NetworkConfig: config.NetworkConfig,
+		NetworkConfig: loadCfg().NetworkConfig,
+		PreCheckIPv4: func() (bool, error) {
+			if !networkManager.IPv4Ready() {
+				return false, nil
+			}
+			return true, nil
+		},
+		PreCheckIPv6: func() (bool, error) {
+			if !networkManager.IPv6Ready() {
+				return false, nil
+			}
+			return true, nil
+		},
 		PreCheckFunc: func() (bool, error) {
-			if !networkState.IsOnline() {
+			if !networkManager.IsOnline() {
 				return false, nil
 			}
 			return true, nil

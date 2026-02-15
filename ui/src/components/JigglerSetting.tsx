@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { LuExternalLink } from "react-icons/lu";
 
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { Button, LinkButton } from "@components/Button";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-
-import { InputFieldWithLabel } from "./InputField";
-import { SelectMenuBasic } from "./SelectMenuBasic";
+import { InputFieldWithLabel } from "@components/InputField";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { m } from "@localizations/messages.js";
 
 export interface JigglerConfig {
   inactivity_limit_seconds: number;
@@ -51,7 +51,7 @@ export function JigglerSetting({
 
   const exampleConfigs = [
     {
-      name: "Business Hours 9-17",
+      name: m.jiggler_example_business_hours_late(),
       config: {
         inactivity_limit_seconds: 60,
         jitter_percentage: 25,
@@ -60,7 +60,7 @@ export function JigglerSetting({
       },
     },
     {
-      name: "Business Hours 8-17",
+      name: m.jiggler_example_business_hours_early(),
       config: {
         inactivity_limit_seconds: 60,
         jitter_percentage: 25,
@@ -69,12 +69,11 @@ export function JigglerSetting({
       },
     },
   ];
-
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          Examples
+          {m.jiggler_examples_label()}
         </h4>
         <div className="flex flex-wrap gap-2">
           {exampleConfigs.map((example, index) => (
@@ -90,7 +89,7 @@ export function JigglerSetting({
             to="https://crontab.guru/examples.html"
             size="XS"
             theme="light"
-            text="More examples"
+            text={m.jiggler_more_examples()}
             LeadingIcon={LuExternalLink}
           />
         </div>
@@ -100,8 +99,8 @@ export function JigglerSetting({
         <InputFieldWithLabel
           required
           size="SM"
-          label="Cron Schedule"
-          description="Cron expression for scheduling"
+          label={m.jiggler_cron_schedule_label()}
+          description={m.jiggler_cron_schedule_description()}
           placeholder="*/20 * * * * *"
           value={jigglerConfigState.schedule_cron_tab}
           onChange={e =>
@@ -114,8 +113,8 @@ export function JigglerSetting({
 
         <InputFieldWithLabel
           size="SM"
-          label="Inactivity Limit Seconds"
-          description="Inactivity time before jiggle"
+          label={m.jiggler_inactivity_limit_label()}
+          description={m.jiggler_inactivity_limit_description()}
           value={jigglerConfigState.inactivity_limit_seconds}
           type="number"
           min="1"
@@ -131,8 +130,8 @@ export function JigglerSetting({
         <InputFieldWithLabel
           required
           size="SM"
-          label="Random delay"
-          description="To avoid recognizable patterns"
+          label={m.jiggler_random_delay_label()}
+          description={m.jiggler_random_delay_description()}
           placeholder="25"
           TrailingElm={<span className="px-2 text-xs text-slate-500">%</span>}
           value={jigglerConfigState.jitter_percentage}
@@ -149,8 +148,8 @@ export function JigglerSetting({
 
         <SelectMenuBasic
           size="SM"
-          label="Timezone"
-          description="Timezone for cron schedule"
+          label={m.jiggler_timezone_label()}
+          description={m.jiggler_timezone_description()}
           value={jigglerConfigState.timezone || "UTC"}
           disabled={timezones.length === 0}
           onChange={e =>
@@ -167,7 +166,7 @@ export function JigglerSetting({
         <Button
           size="SM"
           theme="primary"
-          text="Save Jiggler Config"
+          text={m.jiggler_save_jiggler_config()}
           onClick={() => onSave(jigglerConfigState)}
         />
       </div>

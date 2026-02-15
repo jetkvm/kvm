@@ -24,10 +24,10 @@ type testIPv4StaticConfig struct {
 }
 
 type testIPv6StaticConfig struct {
-	Address null.String `json:"address" validate_type:"ipv6" required:"true"`
-	Prefix  null.String `json:"prefix" validate_type:"ipv6" required:"true"`
-	Gateway null.String `json:"gateway" validate_type:"ipv6" required:"true"`
-	DNS     []string    `json:"dns" validate_type:"ipv6" required:"true"`
+	Address      null.String `json:"address" validate_type:"ipv6" required:"true"`
+	PrefixLength null.Int    `json:"prefix_length" validate_type:"ipv6_prefix_length" required:"true"`
+	Gateway      null.String `json:"gateway" validate_type:"ipv6" required:"true"`
+	DNS          []string    `json:"dns" validate_type:"ipv6" required:"true"`
 }
 type testNetworkConfig struct {
 	Hostname null.String `json:"hostname,omitempty"`

@@ -1,18 +1,27 @@
 package kvm
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/pprof"
+	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"crypto/sha256"
+	"crypto/subtle"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -20,7 +29,9 @@ import (
 	gin_logger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -75,12 +86,31 @@ var cachableFileExtensions = []string{
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
-	r := gin.Default()
+	// Use gin.New() instead of gin.Default() to avoid GIN's built-in stdout
+	// logger which bypasses zerolog level filtering. The zerolog bridge below
+	// handles HTTP request logging with proper dynamic level support.
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	// Yield to scheduler at the start of each request to ensure RDP/VNC
+	// goroutines get CPU time during heavy web traffic (e.g., page load)
+	r.Use(func(c *gin.Context) {
+		runtime.Gosched()
+		c.Next()
+	})
+
 	r.Use(gin_logger.SetLogger(
 		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
 			return *ginLogger
 		}),
 	))
+
+	// RD Gateway middleware — must be before static file handler and SPA catch-all.
+	// Uses middleware (not routes) because MS-TSGU uses custom HTTP methods
+	// (RDG_OUT_DATA, RDG_IN_DATA) that gin's router doesn't handle.
+	if loadCfg().RDPEnabled {
+		registerRDGatewayRoutes(r)
+	}
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -116,6 +146,10 @@ func setupRouter() *gin.Engine {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable") // Cache for 1 year
 		c.String(http.StatusOK, "User-agent: *\nDisallow: /")
 	})
+
+	// Clipboard file download endpoint (for RDP file transfer via network method)
+	// This uses port 443 instead of a separate server, so target machines can access it
+	r.GET("/c/:token", GetClipboardStore().HandleDownload)
 
 	r.Any("/static/*w", func(c *gin.Context) {
 		staticFileServer.ServeHTTP(c.Writer, c.Request)
@@ -184,6 +218,16 @@ func setupRouter() *gin.Engine {
 		protected.PUT("/auth/password-local", handleUpdatePassword)
 		protected.DELETE("/auth/local-password", handleDeletePassword)
 		protected.POST("/storage/upload", handleUploadHttp)
+
+		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
+
+		// Camera WebSocket endpoint for zero-overhead frame transport
+		protected.GET("/api/camera/ws", handleCameraWs)
+
+		protected.GET("/diagnostics", handleDiagnosticsDownload)
+
+		// RDP packet capture download
+		protected.GET("/rdp/captures/:sessionId", handleRDPCaptureDownload)
 	}
 
 	// Catch-all route for SPA
@@ -199,7 +243,7 @@ func setupRouter() *gin.Engine {
 }
 
 // TODO: support multiple sessions?
-var currentSession *Session
+var currentSession atomic.Pointer[Session]
 
 func handleWebRTCSession(c *gin.Context) {
 	var req WebRTCSessionRequest
@@ -209,7 +253,7 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession(SessionConfig{})
+	session, err := newSession(SessionConfig{MDNSMode: loadCfg().NetworkConfig.MDNSMode.String})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
@@ -217,12 +261,15 @@ func handleWebRTCSession(c *gin.Context) {
 
 	sd, err := session.ExchangeOffer(req.Sd)
 	if err != nil {
+		// Close peer connection to trigger ICEConnectionStateClosed cleanup,
+		// which closes all goroutine channels spawned by newSession.
+		_ = session.peerConnection.Close()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
+	if s := currentSession.Load(); s != nil {
+		writeJSONRPCEvent("otherSessionConnected", nil, s)
+		peerConn := s.peerConnection
 		go func() {
 			time.Sleep(1 * time.Second)
 			_ = peerConn.Close()
@@ -232,7 +279,7 @@ func handleWebRTCSession(c *gin.Context) {
 	// Cancel any ongoing keyboard macro when session changes
 	cancelKeyboardMacro()
 
-	currentSession = session
+	currentSession.Store(session)
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
@@ -341,7 +388,6 @@ func handleWebRTCSignalWsMessages(
 
 			l.Trace().Msg("sending ping frame")
 			err := wsCon.Ping(runCtx)
-
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("websocket ping error")
 				cancelRun()
@@ -360,10 +406,14 @@ func handleWebRTCSignalWsMessages(
 
 	if isCloudConnection {
 		// create a channel to receive the disconnect event, once received, we cancelRun
+		cloudDisconnectLock.Lock()
 		cloudDisconnectChan = make(chan error)
+		cloudDisconnectLock.Unlock()
 		defer func() {
+			cloudDisconnectLock.Lock()
 			close(cloudDisconnectChan)
 			cloudDisconnectChan = nil
+			cloudDisconnectLock.Unlock()
 		}()
 		go func() {
 			for err := range cloudDisconnectChan {
@@ -447,15 +497,16 @@ func handleWebRTCSignalWsMessages(
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("unmarshalled incoming ICE candidate")
+			l.Info().Str("candidate", candidate.Candidate).Msg("unmarshalled incoming ICE candidate")
 
-			if currentSession == nil {
+			s := currentSession.Load()
+			if s == nil {
 				l.Warn().Msg("no current session, skipping incoming ICE candidate")
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to current session")
-			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
+			l.Info().Str("candidate", candidate.Candidate).Msg("adding incoming ICE candidate to current session")
+			if err = s.peerConnection.AddICECandidate(candidate); err != nil {
 				l.Warn().Str("error", err.Error()).Msg("failed to add incoming ICE candidate to our peer connection")
 			}
 		}
@@ -463,7 +514,8 @@ func handleWebRTCSignalWsMessages(
 }
 
 func handleLogin(c *gin.Context) {
-	if config.LocalAuthMode == "noPassword" {
+	cfg := loadCfg()
+	if cfg.LocalAuthMode == "noPassword" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Login is disabled in noPassword mode"})
 		return
 	}
@@ -475,41 +527,46 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
+	err := bcrypt.CompareHashAndPassword([]byte(cfg.HashedPassword), []byte(req.Password))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
 
-	config.LocalAuthToken = uuid.New().String()
+	token := uuid.New().String()
+	_ = updateAndSaveConfig(func(cfg *Config) {
+		cfg.LocalAuthToken = token
+	})
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", token, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
 func handleLogout(c *gin.Context) {
-	config.LocalAuthToken = ""
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.LocalAuthToken = ""
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Clear the auth cookie
-	c.SetCookie("authToken", "", -1, "/", "", false, true)
+	c.SetCookie("authToken", "", -1, "/", "", c.Request.TLS != nil, true)
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 
 func protectedMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if config.LocalAuthMode == "noPassword" {
+		cfg := loadCfg()
+		if cfg.LocalAuthMode == "noPassword" {
 			c.Next()
 			return
 		}
 
 		authToken, err := c.Cookie("authToken")
-		if err != nil || authToken != config.LocalAuthToken || authToken == "" {
+		if err != nil || authToken != cfg.LocalAuthToken || authToken == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
@@ -522,6 +579,41 @@ func protectedMiddleware() gin.HandlerFunc {
 func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 	c.JSON(status, gin.H{"error": message})
 	c.Abort()
+}
+
+// bcryptCache avoids running the expensive bcrypt hash on every request by
+// caching a fast SHA-256 digest of the last successfully verified password.
+// The cache auto-invalidates when config.HashedPassword changes (password update).
+var bcryptCache struct {
+	sync.Mutex
+	bcryptHash    string    // config.HashedPassword at time of verification
+	passwordDigest [sha256.Size]byte // SHA-256 of the plaintext password
+}
+
+// verifyBasicAuthPassword checks the password against the bcrypt hash, using a
+// fast-path SHA-256 cache to skip the expensive bcrypt call on repeated requests.
+func verifyBasicAuthPassword(password, hashedPassword string) bool {
+	digest := sha256.Sum256([]byte(password))
+
+	bcryptCache.Lock()
+	if bcryptCache.bcryptHash == hashedPassword &&
+		subtle.ConstantTimeCompare(digest[:], bcryptCache.passwordDigest[:]) == 1 {
+		bcryptCache.Unlock()
+		return true
+	}
+	bcryptCache.Unlock()
+
+	// Slow path: full bcrypt verification.
+	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err != nil {
+		return false
+	}
+
+	// Populate cache for subsequent requests.
+	bcryptCache.Lock()
+	bcryptCache.bcryptHash = hashedPassword
+	bcryptCache.passwordDigest = digest
+	bcryptCache.Unlock()
+	return true
 }
 
 func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
@@ -539,12 +631,12 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			}
 		}
 
-		if config.LocalAuthMode == "noPassword" {
+		cfg := loadCfg()
+		if cfg.LocalAuthMode == "noPassword" {
 			sendErrorJsonThenAbort(c, http.StatusForbidden, "The resource is not available in noPassword mode")
 			return
 		}
 
-		// calculate basic auth credentials
 		_, password, ok := c.Request.BasicAuth()
 		if !ok {
 			c.Header("WWW-Authenticate", "Basic realm=\"JetKVM\"")
@@ -552,8 +644,7 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password))
-		if err != nil {
+		if !verifyBasicAuthPassword(password, cfg.HashedPassword) {
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}
@@ -562,16 +653,14 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	}
 }
 
-func RunWebServer() {
-	r := setupRouter()
-
+func getBindAddress(listenPort int) string {
 	// Determine the binding address based on the config
+	cfg := loadCfg()
 	var bindAddress string
-	listenPort := 80 // default port
-	useIPv4 := config.NetworkConfig.IPv4Mode.String != "disabled"
-	useIPv6 := config.NetworkConfig.IPv6Mode.String != "disabled"
+	useIPv4 := cfg.NetworkConfig.IPv4Mode.String != "disabled"
+	useIPv6 := cfg.NetworkConfig.IPv6Mode.String != "disabled"
 
-	if config.LocalLoopbackOnly {
+	if cfg.LocalLoopbackOnly {
 		if useIPv4 && useIPv6 {
 			bindAddress = fmt.Sprintf("localhost:%d", listenPort)
 		} else if useIPv4 {
@@ -588,25 +677,42 @@ func RunWebServer() {
 			bindAddress = fmt.Sprintf("[::]:%d", listenPort)
 		}
 	}
+	return bindAddress
+}
 
-	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
+func RunWebServer() {
+	// Skip HTTP listener when TLS is active — HTTPS on :443 handles everything
+	if cfg := loadCfg(); cfg.TLSMode == "self-signed" || cfg.TLSMode == "custom" {
+		logger.Info().Str("tlsMode", cfg.TLSMode).Msg("TLS enabled, HTTP listener disabled (HTTPS-only on :443)")
+		return
+	}
+
+	r := setupRouter()
+
+	// Determine the binding address based on the config
+	bindAddress := getBindAddress(80) // default port
+
+	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", loadCfg().LocalLoopbackOnly).Msg("Starting web server")
 	if err := r.Run(bindAddress); err != nil {
 		panic(err)
 	}
 }
 
 func handleDevice(c *gin.Context) {
+	cfg := loadCfg()
+	authMode := cfg.LocalAuthMode
 	response := LocalDevice{
-		AuthMode:     &config.LocalAuthMode,
+		AuthMode:     &authMode,
 		DeviceID:     GetDeviceID(),
-		LoopbackOnly: config.LocalLoopbackOnly,
+		LoopbackOnly: cfg.LocalLoopbackOnly,
 	}
 
 	c.JSON(http.StatusOK, response)
 }
 
 func handleCreatePassword(c *gin.Context) {
-	if config.HashedPassword != "" {
+	cfg := loadCfg()
+	if cfg.HashedPassword != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password already set"})
 		return
 	}
@@ -614,7 +720,7 @@ func handleCreatePassword(c *gin.Context) {
 	// We only allow users with noPassword mode to set a new password
 	// Users with password mode are not allowed to set a new password without providing the old password
 	// We have a PUT endpoint for changing the password, use that instead
-	if config.LocalAuthMode != "noPassword" {
+	if cfg.LocalAuthMode != "noPassword" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
 		return
 	}
@@ -631,29 +737,33 @@ func handleCreatePassword(c *gin.Context) {
 		return
 	}
 
-	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
-	config.LocalAuthMode = "password"
-	if err := SaveConfig(); err != nil {
+	token := uuid.New().String()
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.HashedPassword = string(hashedPassword)
+		cfg.LocalAuthPassword = req.Password // Store plaintext for VNC auth
+		cfg.LocalAuthToken = token
+		cfg.LocalAuthMode = "password"
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", token, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
 
 func handleUpdatePassword(c *gin.Context) {
-	if config.HashedPassword == "" {
+	cfg := loadCfg()
+	if cfg.HashedPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is not set"})
 		return
 	}
 
 	// We only allow users with password mode to change their password
 	// Users with noPassword mode are not allowed to change their password
-	if config.LocalAuthMode != "password" {
+	if cfg.LocalAuthMode != "password" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
 		return
 	}
@@ -664,7 +774,7 @@ func handleUpdatePassword(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.OldPassword)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(cfg.HashedPassword), []byte(req.OldPassword)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect old password"})
 		return
 	}
@@ -675,26 +785,30 @@ func handleUpdatePassword(c *gin.Context) {
 		return
 	}
 
-	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
-	if err := SaveConfig(); err != nil {
+	token := uuid.New().String()
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.HashedPassword = string(hashedPassword)
+		cfg.LocalAuthPassword = req.NewPassword // Store plaintext for VNC auth
+		cfg.LocalAuthToken = token
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", token, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
 func handleDeletePassword(c *gin.Context) {
-	if config.HashedPassword == "" {
+	cfg := loadCfg()
+	if cfg.HashedPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is not set"})
 		return
 	}
 
-	if config.LocalAuthMode != "password" {
+	if cfg.LocalAuthMode != "password" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
 		return
 	}
@@ -705,38 +819,52 @@ func handleDeletePassword(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(cfg.HashedPassword), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect password"})
 		return
 	}
 
 	// Disable password
-	config.HashedPassword = ""
-	config.LocalAuthToken = ""
-	config.LocalAuthMode = "noPassword"
-	if err := SaveConfig(); err != nil {
+	if err := updateAndSaveConfig(func(cfg *Config) {
+		cfg.HashedPassword = ""
+		cfg.LocalAuthToken = ""
+		cfg.LocalAuthMode = "noPassword"
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
-	c.SetCookie("authToken", "", -1, "/", "", false, true)
+	c.SetCookie("authToken", "", -1, "/", "", c.Request.TLS != nil, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password disabled successfully"})
 }
 
 func handleDeviceStatus(c *gin.Context) {
+	// Add CORS headers to allow cross-origin requests
+	// This is safe because device/status is a public endpoint
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight requests
+	if c.Request.Method == "OPTIONS" {
+		c.AbortWithStatus(http.StatusNoContent)
+		return
+	}
+
 	response := DeviceStatus{
-		IsSetup: config.LocalAuthMode != "",
+		IsSetup: loadCfg().LocalAuthMode != "",
 	}
 
 	c.JSON(http.StatusOK, response)
 }
 
 func handleCloudState(c *gin.Context) {
+	cfg := loadCfg()
 	response := CloudState{
-		Connected: config.CloudToken != "",
-		URL:       config.CloudURL,
-		AppURL:    config.CloudAppURL,
+		Connected: cfg.CloudToken != "",
+		URL:       cfg.CloudURL,
+		AppURL:    cfg.CloudAppURL,
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -744,7 +872,8 @@ func handleCloudState(c *gin.Context) {
 
 func handleSetup(c *gin.Context) {
 	// Check if the device is already set up
-	if config.LocalAuthMode != "" || config.HashedPassword != "" {
+	cfg := loadCfg()
+	if cfg.LocalAuthMode != "" || cfg.HashedPassword != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Device is already set up"})
 		return
 	}
@@ -761,8 +890,7 @@ func handleSetup(c *gin.Context) {
 		return
 	}
 
-	config.LocalAuthMode = req.LocalAuthMode
-
+	var token string
 	if req.LocalAuthMode == "password" {
 		if req.Password == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for password mode"})
@@ -776,22 +904,142 @@ func handleSetup(c *gin.Context) {
 			return
 		}
 
-		config.HashedPassword = string(hashedPassword)
-		config.LocalAuthToken = uuid.New().String()
+		token = uuid.New().String()
+		if err := updateAndSaveConfig(func(cfg *Config) {
+			cfg.LocalAuthMode = req.LocalAuthMode
+			cfg.HashedPassword = string(hashedPassword)
+			cfg.LocalAuthToken = token
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
+			return
+		}
 
 		// Set the cookie
-		c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+		c.SetCookie("authToken", token, 7*24*60*60, "/", "", c.Request.TLS != nil, true)
 	} else {
 		// For noPassword mode, ensure the password field is empty
-		config.HashedPassword = ""
-		config.LocalAuthToken = ""
-	}
-
-	err := SaveConfig()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
-		return
+		if err := updateAndSaveConfig(func(cfg *Config) {
+			cfg.LocalAuthMode = req.LocalAuthMode
+			cfg.HashedPassword = ""
+			cfg.LocalAuthToken = ""
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
+}
+
+func handleSendWOLMagicPacket(c *gin.Context) {
+	inputMacAddr := c.Param("mac-addr")
+	macAddr, err := net.ParseMAC(inputMacAddr)
+	if err != nil {
+		logger.Warn().Err(err).Str("inputMacAddr", inputMacAddr).Msg("Invalid MAC address provided")
+		c.String(http.StatusBadRequest, "Invalid mac address provided")
+		return
+	}
+
+	macAddrString := macAddr.String()
+	err = rpcSendWOLMagicPacket(macAddrString)
+	if err != nil {
+		logger.Warn().Err(err).Str("macAddrString", macAddrString).Msg("Failed to send WOL magic packet")
+		c.String(http.StatusInternalServerError, "Failed to send WOL to %s: %v", macAddrString, err)
+		return
+	}
+
+	c.String(http.StatusOK, "WOL sent to %s ", macAddr)
+}
+
+func handleDiagnosticsDownload(c *gin.Context) {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+
+		zw := zip.NewWriter(pw)
+
+		// 1. Application log (full, no truncation)
+		if err := addFileToZip(zw, "app.log", supervisor.AppLogPath); err != nil {
+			logger.Warn().Err(err).Msg("failed to add app log to diagnostics zip")
+		}
+
+		// 2. System diagnostics
+		var diagBuf bytes.Buffer
+		diag := diagnostics.New(diagnostics.Options{
+			Writer: &diagBuf,
+			GetSessionInfo: func() diagnostics.SessionInfo {
+				s := currentSession.Load()
+				info := diagnostics.SessionInfo{
+					ActiveSessions:    getActiveSessions(),
+					HasCurrentSession: s != nil,
+				}
+				if s != nil {
+					sessionInfo := s.GetDiagnosticsInfo()
+					info.ICEConnectionState = sessionInfo.ICEConnectionState
+					info.SignalingState = sessionInfo.SignalingState
+					info.ConnectionState = sessionInfo.ConnectionState
+					info.DataChannels = sessionInfo.DataChannels
+				}
+				return info
+			},
+		})
+		diag.LogAll("download")
+		if err := addBytesToZip(zw, "system-diagnostics.txt", diagBuf.Bytes()); err != nil {
+			logger.Warn().Err(err).Msg("failed to add system diagnostics to zip")
+		}
+
+		// 3. All crash dumps (full content)
+		if entries, err := filepath.Glob(filepath.Join(supervisor.ErrorDumpDir, "jetkvm-*.log")); err == nil {
+			for _, path := range entries {
+				if err := addFileToZip(zw, "crashes/"+filepath.Base(path), path); err != nil {
+					logger.Warn().Err(err).Str("path", path).Msg("failed to add crash dump to zip")
+				}
+			}
+		}
+
+		// 4. Configuration
+		if configData, err := json.MarshalIndent(loadCfg(), "", "  "); err == nil {
+			if err := addBytesToZip(zw, "config.json", configData); err != nil {
+				logger.Warn().Err(err).Msg("failed to add config to zip")
+			}
+		}
+
+		// Close ZIP writer to write central directory (required for valid ZIP)
+		if err := zw.Close(); err != nil {
+			logger.Error().Err(err).Msg("failed to finalize diagnostics zip")
+		}
+	}()
+
+	filename := fmt.Sprintf("jetkvm-diagnostics-%s.zip", time.Now().Format("20060102-150405"))
+	extraHeaders := map[string]string{
+		"Content-Disposition": fmt.Sprintf("attachment; filename=%s", filename),
+	}
+
+	c.DataFromReader(http.StatusOK, -1, "application/zip", pr, extraHeaders)
+}
+
+func addFileToZip(zw *zip.Writer, name, srcPath string) error {
+	f, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(w, f)
+	return err
+}
+
+func addBytesToZip(zw *zip.Writer, name string, data []byte) error {
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
 }

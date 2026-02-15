@@ -1,18 +1,18 @@
+import { useState, useRef, useEffect } from "react";
 import { Form, redirect, useActionData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
-import { useState, useRef, useEffect } from "react";
 import { LuEye, LuEyeOff } from "react-icons/lu";
 
+import LogoBlueIcon from "@assets/logo-blue.png";
+import LogoWhiteIcon from "@assets/logo-white.svg";
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
 import Fieldset from "@components/Fieldset";
 import { InputFieldWithLabel } from "@components/InputField";
 import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.png";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { DEVICE_API } from "@/ui.config";
-
-import api from "../api";
+import api from "@/api";
+import { m } from "@localizations/messages.js";
 
 import { DeviceStatus } from "./welcome-local";
 
@@ -31,7 +31,7 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const confirmPassword = formData.get("confirmPassword");
 
   if (password !== confirmPassword) {
-    return { error: "Passwords do not match" };
+    return { error: m.local_auth_error_passwords_not_match() };
   }
 
   try {
@@ -43,11 +43,11 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     if (response.ok) {
       return redirect("/");
     } else {
-      return { error: "Failed to set password" };
+      return { error: m.auth_mode_local_password_failed_set({ error: response.statusText }) };
     }
   } catch (error) {
     console.error("Error setting password:", error);
-    return { error: "An error occurred while setting the password" };
+    return { error: m.auth_mode_local_password_failed_set({ error: String(error) }) };
   }
 };
 
@@ -72,13 +72,9 @@ export default function WelcomeLocalPasswordRoute() {
         <Container>
           <div className="isolate flex h-full w-full items-center justify-center">
             <div className="max-w-2xl space-y-8">
-              <div className="animate-fadeIn flex items-center justify-center opacity-0">
-                <img
-                  src={LogoWhiteIcon}
-                  alt=""
-                  className="-ml-4 hidden h-[32px] dark:block"
-                />
-                <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
+              <div className="flex animate-fadeIn items-center justify-center opacity-0">
+                <img src={LogoWhiteIcon} alt="" className="-ml-4 hidden h-8 dark:block" />
+                <img src={LogoBlueIcon} alt="" className="-ml-4 h-8 dark:hidden" />
               </div>
 
               <div
@@ -86,25 +82,22 @@ export default function WelcomeLocalPasswordRoute() {
                 style={{ animationDelay: "200ms" }}
               >
                 <h1 className="text-4xl font-semibold text-black dark:text-white">
-                  Set a Password
+                  {m.auth_mode_local_password_set()}
                 </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
-                  Create a strong password to secure your JetKVM device locally.
+                  {m.auth_mode_local_password_set_description()}
                 </p>
               </div>
 
               <Fieldset className="space-y-12">
                 <Form method="POST" className="mx-auto max-w-sm space-y-4">
                   <div className="space-y-4">
-                    <div
-                      className="animate-fadeIn opacity-0"
-                      style={{ animationDelay: "400ms" }}
-                    >
+                    <div className="animate-fadeIn opacity-0" style={{ animationDelay: "400ms" }}>
                       <InputFieldWithLabel
-                        label="Password"
+                        label={m.auth_mode_local_password()}
                         type={showPassword ? "text" : "password"}
                         name="password"
-                        placeholder="Enter a password"
+                        placeholder={m.auth_mode_local_password_set_label()}
                         autoComplete="new-password"
                         ref={passwordInputRef}
                         TrailingElm={
@@ -112,6 +105,8 @@ export default function WelcomeLocalPasswordRoute() {
                             <div
                               onClick={() => setShowPassword(false)}
                               className="pointer-events-auto"
+                              role="switch"
+                              aria-checked={showPassword}
                             >
                               <LuEye className="h-4 w-4 cursor-pointer text-slate-500 dark:text-slate-400" />
                             </div>
@@ -119,6 +114,8 @@ export default function WelcomeLocalPasswordRoute() {
                             <div
                               onClick={() => setShowPassword(true)}
                               className="pointer-events-auto"
+                              role="switch"
+                              aria-checked={!showPassword}
                             >
                               <LuEyeOff className="h-4 w-4 cursor-pointer text-slate-500 dark:text-slate-400" />
                             </div>
@@ -126,16 +123,13 @@ export default function WelcomeLocalPasswordRoute() {
                         }
                       />
                     </div>
-                    <div
-                      className="animate-fadeIn opacity-0"
-                      style={{ animationDelay: "400ms" }}
-                    >
+                    <div className="animate-fadeIn opacity-0" style={{ animationDelay: "400ms" }}>
                       <InputFieldWithLabel
-                        label="Confirm Password"
+                        label={m.auth_mode_local_password_confirm_label()}
                         autoComplete="new-password"
                         type={showPassword ? "text" : "password"}
                         name="confirmPassword"
-                        placeholder="Confirm your password"
+                        placeholder={m.auth_mode_local_password_confirm_description()}
                         error={actionData?.error}
                       />
                     </div>
@@ -143,16 +137,13 @@ export default function WelcomeLocalPasswordRoute() {
 
                   {actionData?.error && <p className="text-sm text-red-600">{}</p>}
 
-                  <div
-                    className="animate-fadeIn opacity-0"
-                    style={{ animationDelay: "600ms" }}
-                  >
+                  <div className="animate-fadeIn opacity-0" style={{ animationDelay: "600ms" }}>
                     <Button
                       size="LG"
                       theme="primary"
                       fullWidth
                       type="submit"
-                      text="Set Password"
+                      text={m.auth_mode_local_password_set_button()}
                       textAlign="center"
                     />
                   </div>
@@ -160,12 +151,11 @@ export default function WelcomeLocalPasswordRoute() {
               </Fieldset>
 
               <p
-                className="animate-fadeIn max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
+                className="max-w-md animate-fadeIn text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "800ms" }}
               >
-                This password will be used to secure your device data and protect against
-                unauthorized access.{" "}
-                <span className="font-bold">All data remains on your local device.</span>
+                {m.auth_mode_local_password_note()}&nbsp;
+                <span className="font-bold">{m.auth_mode_local_password_note_local()}</span>
               </p>
             </div>
           </div>

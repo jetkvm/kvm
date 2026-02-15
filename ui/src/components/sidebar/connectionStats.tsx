@@ -1,11 +1,17 @@
 import { useInterval } from "usehooks-ts";
+import { LuCopy } from "react-icons/lu";
+import { useState } from "react";
 
-import SidebarHeader from "@/components/SidebarHeader";
-import { useRTCStore, useUiStore } from "@/hooks/stores";
+import { m } from "@localizations/messages.js";
+import { useRTCStore, useUiStore } from "@hooks/stores";
+import { createChartArray, Metric } from "@components/Metric";
+import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
+import SidebarHeader from "@components/SidebarHeader";
 import { someIterable } from "@/utils";
-
-import { createChartArray, Metric } from "../Metric";
-import { SettingsSectionHeader } from "../SettingsSectionHeader";
+import { GridCard } from "@components/Card";
+import { Button } from "@components/Button";
+import { useCopyToClipboard } from "@components/useCopyToClipBoard";
+import notifications from "@/notifications";
 
 export default function ConnectionStatsSidebar() {
   const { sidebarView, setSidebarView } = useUiStore();
@@ -20,6 +26,8 @@ export default function ConnectionStatsSidebar() {
     appendRemoteCandidateStats,
     appendDiskDataChannelStats,
   } = useRTCStore();
+
+  const [remoteIPAddress, setRemoteIPAddress] = useState<string | null>(null);
 
   useInterval(function collectWebRTCStats() {
     (async () => {
@@ -49,6 +57,7 @@ export default function ConnectionStatsSidebar() {
         } else if (report.type === "remote-candidate") {
           if (successfulRemoteCandidateId === report.id) {
             appendRemoteCandidateStats(report);
+            setRemoteIPAddress(report.address);
           }
         } else if (report.type === "data-channel" && report.label === "disk") {
           appendDiskDataChannelStats(report);
@@ -93,9 +102,11 @@ export default function ConnectionStatsSidebar() {
     return { date: d.date, metric: valueMs };
   });
 
+  const { copy } = useCopyToClipboard();
+
   return (
     <div className="grid h-full grid-rows-(--grid-headerBody) shadow-xs">
-      <SidebarHeader title="Connection Stats" setSidebarView={setSidebarView} />
+      <SidebarHeader title={m.connection_stats_sidebar()} setSidebarView={setSidebarView} />
       <div className="h-full space-y-4 overflow-y-scroll bg-white px-4 py-2 pb-8 dark:bg-slate-900">
         <div className="space-y-4">
           {sidebarView === "connection-stats" && (
@@ -103,12 +114,44 @@ export default function ConnectionStatsSidebar() {
               {/* Connection Group */}
               <div className="space-y-3">
                 <SettingsSectionHeader
-                  title="Connection"
-                  description="The connection between the client and the JetKVM."
+                  title={m.connection_stats_connection()}
+                  description={m.connection_stats_connection_description()}
                 />
+                {remoteIPAddress && (
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-600 dark:text-slate-400">
+                      {m.connection_stats_remote_ip_address()}
+                    </div>
+                    <div className="flex items-center">
+                      <GridCard cardClassName="rounded-r-none">
+                        <div className="flex h-[34px] items-center px-3 font-mono text-xs text-black select-all dark:text-white">
+                          {remoteIPAddress}
+                        </div>
+                      </GridCard>
+                      <Button
+                        className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20"
+                        size="SM"
+                        type="button"
+                        theme="light"
+                        LeadingIcon={LuCopy}
+                        onClick={async () => {
+                          if (await copy(remoteIPAddress)) {
+                            notifications.success(
+                              m.connection_stats_remote_ip_address_copy_success({
+                                ip: remoteIPAddress,
+                              }),
+                            );
+                          } else {
+                            notifications.error(m.connection_stats_remote_ip_address_copy_error());
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <Metric
-                  title="Round-Trip Time"
-                  description="Round-trip time for the active ICE candidate pair between peers."
+                  title={m.connection_stats_round_trip_time()}
+                  description={m.connection_stats_round_trip_time_description()}
                   stream={iceCandidatePairStats}
                   metric="currentRoundTripTime"
                   map={x => ({
@@ -116,23 +159,23 @@ export default function ConnectionStatsSidebar() {
                     metric: x.metric != null ? Math.round(x.metric * 1000) : null,
                   })}
                   domain={[0, 600]}
-                  unit=" ms"
+                  unit={m.connection_stats_unit_milliseconds()}
                 />
               </div>
 
               {/* Video Group */}
               <div className="space-y-3">
                 <SettingsSectionHeader
-                  title="Video"
-                  description="The video stream from the JetKVM to the client."
+                  title={m.connection_stats_video()}
+                  description={m.connection_stats_video_description()}
                 />
 
                 {/* RTP Jitter */}
                 <Metric
-                  title="Network Stability"
-                  badge="Jitter"
+                  title={m.connection_stats_network_stability()}
+                  badge={m.connection_stats_badge_jitter()}
                   badgeTheme="light"
-                  description="How steady the flow of inbound video packets is across the network."
+                  description={m.connection_stats_network_stability_description()}
                   stream={inboundVideoRtpStats}
                   metric="jitter"
                   map={x => ({
@@ -140,49 +183,46 @@ export default function ConnectionStatsSidebar() {
                     metric: x.metric != null ? Math.round(x.metric * 1000) : null,
                   })}
                   domain={[0, 10]}
-                  unit=" ms"
+                  unit={m.connection_stats_unit_milliseconds()}
                 />
 
                 {/* Playback Delay */}
                 <Metric
-                  title="Playback Delay"
-                  description="Delay added by the jitter buffer to smooth playback when frames arrive unevenly."
-                  badge="Jitter Buffer Avg. Delay"
+                  title={m.connection_stats_playback_delay()}
+                  description={m.connection_stats_playback_delay_description()}
+                  badge={m.connection_stats_badge_jitter_buffer_avg_delay()}
                   badgeTheme="light"
                   data={jitterBufferAvgDelayData}
                   gate={inboundVideoRtpStats}
                   supported={
-                    someIterable(
-                      inboundVideoRtpStats,
-                      ([, x]) => x.jitterBufferDelay != null,
-                    ) &&
+                    someIterable(inboundVideoRtpStats, ([, x]) => x.jitterBufferDelay != null) &&
                     someIterable(
                       inboundVideoRtpStats,
                       ([, x]) => x.jitterBufferEmittedCount != null,
                     )
                   }
                   domain={[0, 30]}
-                  unit=" ms"
+                  unit={m.connection_stats_unit_milliseconds()}
                 />
 
                 {/* Packets Lost */}
                 <Metric
-                  title="Packets Lost"
-                  description="Count of lost inbound video RTP packets."
+                  title={m.connection_stats_packets_lost()}
+                  description={m.connection_stats_packets_lost_description()}
                   stream={inboundVideoRtpStats}
                   metric="packetsLost"
                   domain={[0, 100]}
-                  unit=" packets"
+                  unit={m.connection_stats_unit_packets()}
                 />
 
                 {/* Frames Per Second */}
                 <Metric
-                  title="Frames per second"
-                  description="Number of inbound video frames displayed per second."
+                  title={m.connection_stats_frames_per_second()}
+                  description={m.connection_stats_frames_per_second_description()}
                   stream={inboundVideoRtpStats}
                   metric="framesPerSecond"
                   domain={[0, 80]}
-                  unit=" fps"
+                  unit={m.connection_stats_unit_frames_per_second()}
                 />
               </div>
             </div>

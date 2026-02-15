@@ -1,20 +1,15 @@
-import { useNavigate, useParams } from "react-router";
 import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router";
 import { LuTrash2 } from "react-icons/lu";
 
-import { KeySequence, useMacrosStore } from "@/hooks/stores";
-import { SettingsPageHeader } from "@/components/SettingsPageheader";
-import { MacroForm } from "@/components/MacroForm";
+import { KeySequence, useMacrosStore } from "@hooks/stores";
+import { Button } from "@components/Button";
+import { ConfirmDialog } from "@components/ConfirmDialog";
+import { MacroForm } from "@components/MacroForm";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import notifications from "@/notifications";
-import { Button } from "@/components/Button";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-
-const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
-  return macros.map((macro, index) => ({
-    ...macro,
-    sortOrder: index + 1,
-  }));
-};
+import { normalizeSortOrders } from "@/utils";
+import { m } from "@localizations/messages.js";
 
 export default function SettingsMacrosEditRoute() {
   const { macros, saveMacros } = useMacrosStore();
@@ -34,8 +29,8 @@ export default function SettingsMacrosEditRoute() {
           ...step,
           keys: Array.isArray(step.keys) ? step.keys : [],
           modifiers: Array.isArray(step.modifiers) ? step.modifiers : [],
-          delay: typeof step.delay === 'number' ? step.delay : 0
-        }))
+          delay: typeof step.delay === "number" ? step.delay : 0,
+        })),
       });
     } else {
       navigate("../");
@@ -47,22 +42,26 @@ export default function SettingsMacrosEditRoute() {
 
     setIsUpdating(true);
     try {
-      const newMacros = macros.map(m => 
-        m.id === macro.id ? {
-          ...macro,
-          name: updatedMacro.name!.trim(),
-          steps: updatedMacro.steps || [],
-        } : m
+      const newMacros = macros.map(m =>
+        m.id === macro.id
+          ? {
+              ...macro,
+              name: updatedMacro.name!.trim(),
+              steps: updatedMacro.steps || [],
+            }
+          : m,
       );
 
       await saveMacros(normalizeSortOrders(newMacros));
-      notifications.success(`Macro "${updatedMacro.name}" updated successfully`);
+      notifications.success(m.macros_updated_success({ name: updatedMacro.name || "" }));
       navigate("../");
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(`Failed to update macro: ${error.message}`);
+        notifications.error(
+          m.macros_failed_update_error({ error: error.message || m.unknown_error() }),
+        );
       } else {
-        notifications.error("Failed to update macro");
+        notifications.error(m.macros_failed_update());
       }
     } finally {
       setIsUpdating(false);
@@ -76,13 +75,13 @@ export default function SettingsMacrosEditRoute() {
     try {
       const updatedMacros = normalizeSortOrders(macros.filter(m => m.id !== macro.id));
       await saveMacros(updatedMacros);
-      notifications.success(`Macro "${macro.name}" deleted successfully`);
+      notifications.success(m.macros_deleted_success({ name: macro.name }));
       navigate("../macros");
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(`Failed to delete macro: ${error.message}`);
+        notifications.error(m.macros_failed_delete_error({ error: error.message }));
       } else {
-        notifications.error("Failed to delete macro");
+        notifications.error(m.macros_failed_delete());
       }
     } finally {
       setIsDeleting(false);
@@ -95,13 +94,12 @@ export default function SettingsMacrosEditRoute() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <SettingsPageHeader
-          title="Edit Macro"
-          description="Modify your keyboard macro"
+          title={m.macros_edit_title()}
+          description={m.macros_edit_description()}
         />
         <Button
           size="SM"
           theme="light"
-          text="Delete Macro"
           className="text-red-500 dark:text-red-400"
           LeadingIcon={LuTrash2}
           onClick={() => setShowDeleteConfirm(true)}
@@ -113,16 +111,15 @@ export default function SettingsMacrosEditRoute() {
         onSubmit={handleUpdateMacro}
         onCancel={() => navigate("../")}
         isSubmitting={isUpdating}
-        submitText="Save Changes"
       />
 
       <ConfirmDialog
         open={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Macro"
-        description="Are you sure you want to delete this macro? This action cannot be undone."
+        title={m.macros_delete_macro()}
+        description={m.macros_delete_confirm()}
         variant="danger"
-        confirmText={isDeleting ? "Deleting" : "Delete"}
+        confirmText={isDeleting ? m.macros_deleting() : m.delete()}
         onConfirm={() => {
           handleDeleteMacro();
           setShowDeleteConfirm(false);
@@ -131,4 +128,4 @@ export default function SettingsMacrosEditRoute() {
       />
     </div>
   );
-} 
+}

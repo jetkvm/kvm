@@ -7,9 +7,6 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"github.com/rs/xid"
-	"github.com/rs/zerolog"
 )
 
 var keyboardConfig = gadgetConfigItem{
@@ -18,15 +15,21 @@ var keyboardConfig = gadgetConfigItem{
 	path:       []string{"functions", "hid.usb0"},
 	configPath: []string{"hid.usb0"},
 	attrs: gadgetAttributes{
-		"protocol":        "1",
-		"subclass":        "1",
-		"report_length":   "8",
-		"no_out_endpoint": "0",
+		"protocol":      "1",
+		"subclass":      "1",
+		"report_length": "8",
+		// NOTE: no_out_endpoint=1 saves 1 USB endpoint at the cost of no LED feedback from host.
+		// This is required to fit all functions (HID, Mass Storage, Audio, UVC) within the
+		// RV1106 DWC3 controller's 8 endpoint limit. Without this, UVC cannot allocate its
+		// streaming endpoint. LED state (Caps Lock, Num Lock, etc.) won't be tracked.
+		"no_out_endpoint": "1",
 	},
 	reportDesc: keyboardReportDesc,
 }
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
+// Note: Original kernel doc used 0x65 (101 keys) for both LOGICAL_MAXIMUM and USAGE_MAXIMUM,
+// but we use 0xff to support international keys like RO (0x87), Yen (0x89), Henkan (0x8a), Muhenkan (0x8b), etc.
 var keyboardReportDesc = []byte{
 	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)	          */
 	0x09, 0x06, /* USAGE (Keyboard)                       */
@@ -55,10 +58,10 @@ var keyboardReportDesc = []byte{
 	0x95, 0x06, /*   REPORT_COUNT (6)                     */
 	0x75, 0x08, /*   REPORT_SIZE (8)                      */
 	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
-	0x25, 0x65, /*   LOGICAL_MAXIMUM (101)                */
+	0x25, 0xff, /*   LOGICAL_MAXIMUM (255)                */
 	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
 	0x19, 0x00, /*   USAGE_MINIMUM (Reserved)             */
-	0x29, 0x65, /*   USAGE_MAXIMUM (Keyboard Application) */
+	0x29, 0xff, /*   USAGE_MAXIMUM (Keyboard Application) */
 	0x81, 0x00, /*   INPUT (Data,Ary,Abs)                 */
 	0xc0, /* END_COLLECTION                         */
 }
@@ -113,19 +116,23 @@ func getKeyboardState(b byte) KeyboardState {
 
 func (u *UsbGadget) updateKeyboardState(state byte) {
 	u.keyboardStateLock.Lock()
-	defer u.keyboardStateLock.Unlock()
 
 	if state&^ValidKeyboardLedMasks != 0 {
 		u.log.Warn().Uint8("state", state).Msg("ignoring invalid bits")
+		u.keyboardStateLock.Unlock()
 		return
 	}
 
 	if u.keyboardState == state {
+		u.keyboardStateLock.Unlock()
 		return
 	}
 	u.log.Trace().Uint8("old", u.keyboardState).Uint8("new", state).Msg("keyboardState updated")
 	u.keyboardState = state
+	u.keyboardStateLock.Unlock()
 
+	// Call callback outside keyboardStateLock to prevent blocking the lock
+	// during HID channel I/O in the callback (reportHidRPCKeyboardLedState).
 	if u.onKeyboardStateChange != nil {
 		(*u.onKeyboardStateChange)(getKeyboardState(state))
 	}
@@ -178,17 +185,23 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 
 func (u *UsbGadget) cancelAutoRelease(key byte) {
 	u.kbdAutoReleaseLock.Lock()
-	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease cancelled")
 
+	shouldResetKeepAlive := false
 	if timer := u.kbdAutoReleaseTimers[key]; timer != nil {
 		timer.Stop()
 		u.kbdAutoReleaseTimers[key] = nil
 		delete(u.kbdAutoReleaseTimers, key)
+		shouldResetKeepAlive = true
+	}
 
-		// Reset keep-alive timing when key is released
-		if u.onKeepAliveReset != nil {
-			(*u.onKeepAliveReset)()
-		}
+	unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease cancelled")
+
+	// IMPORTANT: Call callback OUTSIDE kbdAutoReleaseLock to prevent ABBA deadlock.
+	// Lock ordering: keepAliveJitterLock → kbdAutoReleaseLock
+	// (handleHidRPCKeypressKeepAlive holds keepAliveJitterLock then calls DelayAutoReleaseWithDuration)
+	// Calling onKeepAliveReset inside the lock would reverse the order.
+	if shouldResetKeepAlive && u.onKeepAliveReset != nil {
+		(*u.onKeepAliveReset)()
 	}
 }
 
@@ -269,6 +282,13 @@ func (u *UsbGadget) listenKeyboardEvents() {
 				n, err := u.keyboardHidFile.Read(buf)
 				if err != nil {
 					u.logWithSuppression("keyboardHidFileRead", 100, &l, err, "failed to read")
+					// Close stale file handle and set to nil to trigger recovery
+					// This handles "transport endpoint shutdown" and "file already closed" errors
+					if u.keyboardHidFile != nil {
+						u.keyboardHidFile.Close()
+						u.keyboardHidFile = nil
+					}
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 				u.resetLogSuppressionCounter("keyboardHidFileRead")
@@ -285,6 +305,9 @@ func (u *UsbGadget) listenKeyboardEvents() {
 }
 
 func (u *UsbGadget) openKeyboardHidFile() error {
+	u.keyboardLock.Lock()
+	defer u.keyboardLock.Unlock()
+
 	if u.keyboardHidFile != nil {
 		return nil
 	}
@@ -418,22 +441,18 @@ var KeyCodeToMaskMap = map[byte]byte{
 func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) {
 	defer u.resetUserInputTime()
 
-	l := u.log.With().Uint8("key", key).Bool("press", press).Logger()
-	if l.GetLevel() <= zerolog.DebugLevel {
-		requestID := xid.New()
-		l = l.With().Str("requestID", requestID.String()).Logger()
-	}
-
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
 	// for handling key presses and releases. It ensures that the USB gadget
 	// behaves similarly to a real USB HID keyboard. This logic is paralleled
 	// in the client/browser-side code in useKeyboard.ts so make sure to keep
 	// them in sync.
 	var state = u.GetKeysDownState()
-	l.Trace().Interface("state", state).Msg("got keys down state")
 
+	// Use stack-local buffer to avoid heap allocation for key copy.
+	var keysBuf [hidKeyBufferSize]byte
+	copy(keysBuf[:], state.Keys)
 	modifier := state.Modifier
-	keys := append([]byte(nil), state.Keys...)
+	keys := keysBuf[:]
 
 	if mask, exists := KeyCodeToMaskMap[key]; exists {
 		// If the key is a modifier key, we update the keyboardModifier state
@@ -471,14 +490,14 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 		// If we reach here it means we didn't find an empty slot or the key in the buffer
 		if overrun {
 			if press {
-				l.Error().Msg("keyboard buffer overflow, key not added")
+				u.log.Error().Uint8("key", key).Msg("keyboard buffer overflow, key not added")
 				// Fill all key slots with ErrorRollOver (0x01) to indicate overflow
 				for i := range keys {
 					keys[i] = hidErrorRollOver
 				}
 			} else {
 				// If we are releasing a key, and we didn't find it in a slot, who cares?
-				l.Warn().Msg("key not found in buffer, nothing to release")
+				u.log.Warn().Uint8("key", key).Msg("key not found in buffer, nothing to release")
 			}
 		}
 	}

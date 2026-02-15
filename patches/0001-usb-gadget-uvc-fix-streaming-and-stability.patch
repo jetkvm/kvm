@@ -1,0 +1,195 @@
+Subject: [PATCH] usb: gadget: uvc: fix streaming timeout and stability
+
+- DTS: Enable tx-fifo-resize for UAC1+UVC coexistence
+- DWC3: Reduce FIFO multiplier to leave space for HID endpoints
+- f_uvc: Complete SET_INTERFACE immediately (DELAYED_STATUS timeout fix)
+- uvc_queue/uvc_video: Fix NULL deref race on disconnect
+- uvc_v4l2: Allow STREAMON in STREAMING state
+
+Signed-off-by: JetKVM <noreply@jetkvm.com>
+---
+diff --git a/sysdrv/source/kernel/arch/arm/boot/dts/rv1106-jetkvm-v2.dtsi b/sysdrv/source/kernel/arch/arm/boot/dts/rv1106-jetkvm-v2.dtsi
+index 273f4d329..7f26ee2d5 100644
+--- a/sysdrv/source/kernel/arch/arm/boot/dts/rv1106-jetkvm-v2.dtsi
++++ b/sysdrv/source/kernel/arch/arm/boot/dts/rv1106-jetkvm-v2.dtsi
+@@ -206,6 +206,11 @@ &tsadc {
+ 	status = "okay";
+ };
+ 
++/* Required for UAC1 + UVC gadget coexistence */
++&usbdrd_dwc3 {
++	tx-fifo-resize;
++};
++
+ &crypto {
+     status = "okay";
+ };
+diff --git a/sysdrv/source/kernel/drivers/usb/dwc3/gadget.c b/sysdrv/source/kernel/drivers/usb/dwc3/gadget.c
+index f97430894..6835a4099 100644
+--- a/sysdrv/source/kernel/drivers/usb/dwc3/gadget.c
++++ b/sysdrv/source/kernel/drivers/usb/dwc3/gadget.c
+@@ -805,9 +805,10 @@ static int __dwc3_gadget_resize_tx_fifos(struct dwc3_ep *dep)
+ 		else
+ 			mult = dep->endpoint.mult;
+ 
+-		mult = mult > 0 ? mult * 2 : 3;
+-		if (mult > 6)
+-			mult = 6;
++		/* Smaller multiplier to leave FIFO space for HID endpoints */
++		mult = mult > 0 ? mult : 2;
++		if (mult > 2)
++			mult = 2;
+ 	} else if (usb_endpoint_xfer_bulk(dep->endpoint.desc)) {
+ 		/*
+ 		 * Set enough tx fifos for Bulk endpoints to get
+diff --git a/sysdrv/source/kernel/drivers/usb/gadget/function/f_uvc.c b/sysdrv/source/kernel/drivers/usb/gadget/function/f_uvc.c
+index 4b6773111..ecfd08b0b 100644
+--- a/sysdrv/source/kernel/drivers/usb/gadget/function/f_uvc.c
++++ b/sysdrv/source/kernel/drivers/usb/gadget/function/f_uvc.c
+@@ -445,7 +445,9 @@ uvc_function_set_alt(struct usb_function *f, unsigned interface, unsigned alt)
+ 			memset(&v4l2_event, 0, sizeof(v4l2_event));
+ 			v4l2_event.type = UVC_EVENT_STREAMON;
+ 			v4l2_event_queue(&uvc->vdev, &v4l2_event);
+-			return USB_GADGET_DELAYED_STATUS;
++			/* Complete immediately - DELAYED_STATUS causes 16s timeout */
++			uvc->state = UVC_STATE_STREAMING;
++			return 0;
+ 
+ 		default:
+ 			return -EINVAL;
+diff --git a/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_queue.c b/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_queue.c
+index d6383ac4d..d5aca5433 100644
+--- a/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_queue.c
++++ b/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_queue.c
+@@ -44,12 +44,13 @@ static int uvc_queue_setup(struct vb2_queue *vq,
+ {
+ 	struct uvc_video_queue *queue = vb2_get_drv_priv(vq);
+ 	struct uvc_video *video = container_of(queue, struct uvc_video, queue);
++	unsigned int req_size;
++	unsigned int nreq;
+ #if defined(CONFIG_ARCH_ROCKCHIP) && defined(CONFIG_NO_GKI)
+ 	struct uvc_device *uvc = container_of(video, struct uvc_device, video);
+-	struct f_uvc_opts *opts = fi_to_f_uvc_opts(uvc->func.fi);
++	struct f_uvc_opts *opts = uvc->func.fi ?
++		fi_to_f_uvc_opts(uvc->func.fi) : NULL;
+ #endif
+-	unsigned int req_size;
+-	unsigned int nreq;
+ 
+ 	if (*nbuffers > UVC_MAX_VIDEO_BUFFERS)
+ 		*nbuffers = UVC_MAX_VIDEO_BUFFERS;
+@@ -131,9 +132,13 @@ static void *uvc_buffer_mem_prepare(struct vb2_buffer *vb,
+ {
+ 	struct uvc_video *video = container_of(queue, struct uvc_video, queue);
+ 	struct uvc_device *uvc = container_of(video, struct uvc_device, video);
+-	struct f_uvc_opts *opts = fi_to_f_uvc_opts(uvc->func.fi);
++	struct f_uvc_opts *opts;
+ 	void *mem;
+ 
++	if (!uvc->func.fi)
++		return (vb2_plane_vaddr(vb, 0) + vb2_plane_data_offset(vb, 0));
++
++	opts = fi_to_f_uvc_opts(uvc->func.fi);
+ 	if (!opts->uvc_zero_copy || video->fcc == V4L2_PIX_FMT_YUYV)
+ 		return (vb2_plane_vaddr(vb, 0) + vb2_plane_data_offset(vb, 0));
+ 
+diff --git a/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_v4l2.c b/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_v4l2.c
+index 591411b07..a008ca70f 100644
+--- a/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_v4l2.c
++++ b/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_v4l2.c
+@@ -200,29 +200,16 @@ uvc_v4l2_streamon(struct file *file, void *fh, enum v4l2_buf_type type)
+ 	if (type != video->queue.queue.type)
+ 		return -EINVAL;
+ 
+-	if (uvc->state != UVC_STATE_CONNECTED)
++	/* Allow STREAMON unless disconnected */
++	if (uvc->state == UVC_STATE_DISCONNECTED)
+ 		return -ENODEV;
+ 
+-	/* Enable UVC video. */
+ 	ret = uvcg_video_enable(video, 1);
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	/*
+-	 * Alt settings in an interface are supported only
+-	 * for ISOC endpoints as there are different alt-
+-	 * settings for zero-bandwidth and full-bandwidth
+-	 * cases, but the same is not true for BULK endpoints,
+-	 * as they have a single alt-setting.
+-	 *
+-	 * For ISOC endpoints, Complete the alternate setting
+-	 * selection setup phase now that userspace is ready
+-	 * to provide video frames.
+-	 */
+-	if (!usb_endpoint_xfer_bulk(video->ep->desc))
+-		uvc_function_setup_continue(uvc);
+-
+-	uvc->state = UVC_STATE_STREAMING;
++	if (uvc->state != UVC_STATE_STREAMING)
++		uvc->state = UVC_STATE_STREAMING;
+ 
+ 	return 0;
+ }
+diff --git a/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_video.c b/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_video.c
+index b69ae5e73..e2ee6de57 100644
+--- a/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_video.c
++++ b/sysdrv/source/kernel/drivers/usb/gadget/function/uvc_video.c
+@@ -25,8 +25,12 @@
+ static bool uvc_using_zero_copy(struct uvc_video *video)
+ {
+ 	struct uvc_device *uvc = container_of(video, struct uvc_device, video);
+-	struct f_uvc_opts *opts = fi_to_f_uvc_opts(uvc->func.fi);
++	struct f_uvc_opts *opts;
++
++	if (!uvc->func.fi)
++		return false;
+ 
++	opts = fi_to_f_uvc_opts(uvc->func.fi);
+ 	if (opts && opts->uvc_zero_copy && video->fcc != V4L2_PIX_FMT_YUYV)
+ 		return true;
+ 	else
+@@ -399,15 +403,14 @@ static void uvcg_video_pump(struct work_struct *work)
+ 	return;
+ }
+ 
+-/*
+- * Enable or disable the video stream.
+- */
++/* Enable or disable the video stream. */
+ int uvcg_video_enable(struct uvc_video *video, int enable)
+ {
+ 	unsigned int i;
+ 	int ret;
+ 	struct uvc_device *uvc;
+ 	struct f_uvc_opts *opts;
++	int pm_qos_latency;
+ 
+ 	if (video->ep == NULL) {
+ 		uvcg_info(&video->uvc->func,
+@@ -416,7 +419,15 @@ int uvcg_video_enable(struct uvc_video *video, int enable)
+ 	}
+ 
+ 	uvc = container_of(video, struct uvc_device, video);
+-	opts = fi_to_f_uvc_opts(uvc->func.fi);
++
++	/* fi may be NULL during disconnect */
++	if (uvc->func.fi) {
++		opts = fi_to_f_uvc_opts(uvc->func.fi);
++		pm_qos_latency = opts->pm_qos_latency;
++	} else {
++		opts = NULL;
++		pm_qos_latency = PM_QOS_DEFAULT_VALUE;
++	}
+ 
+ 	if (!enable) {
+ 		cancel_work_sync(&video->pump);
+@@ -433,7 +444,7 @@ int uvcg_video_enable(struct uvc_video *video, int enable)
+ 		return 0;
+ 	}
+ 
+-	cpu_latency_qos_add_request(&uvc->pm_qos, opts->pm_qos_latency);
++	cpu_latency_qos_add_request(&uvc->pm_qos, pm_qos_latency);
+ 	if ((ret = uvcg_queue_enable(&video->queue, 1)) < 0)
+ 		return ret;
+ 

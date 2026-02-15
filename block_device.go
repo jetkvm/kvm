@@ -1,11 +1,10 @@
 package kvm
 
 import (
-	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
-	"time"
 
 	"github.com/pojntfx/go-nbd/pkg/server"
 	"github.com/rs/zerolog"
@@ -19,17 +18,19 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
 	logger.Debug().Int64("read size", int64(len(p))).Int64("off", off).Msg("read size and off")
 	if currentVirtualMediaState == nil {
+		virtualMediaStateMutex.RUnlock()
 		return 0, errors.New("image not mounted")
 	}
 	source := currentVirtualMediaState.Source
+	reader := httpRangeReader // capture under lock
 	virtualMediaStateMutex.RUnlock()
-
-	_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	switch source {
 	case HTTP:
-		return httpRangeReader.ReadAt(p, off)
+		if reader == nil {
+			return 0, errors.New("http reader not initialized")
+		}
+		return reader.ReadAt(p, off)
 	default:
 		return 0, errors.New("unknown image source")
 	}
@@ -91,8 +92,7 @@ func (d *NBDDevice) Start() error {
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			d.l.Error().Err(err).Msg("failed to remove existing socket file")
-			os.Exit(1)
+			return fmt.Errorf("failed to remove existing socket file: %w", err)
 		}
 	}
 

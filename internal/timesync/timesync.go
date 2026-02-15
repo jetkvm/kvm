@@ -5,9 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/network"
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/rs/zerolog"
 )
 
@@ -20,30 +21,34 @@ const (
 	timeSyncTimeout       = 2 * time.Second
 )
 
-var (
-	timeSyncRetryInterval = 0 * time.Second
-)
+type PreCheckFunc func() (bool, error)
 
 type TimeSync struct {
 	syncLock *sync.Mutex
 	l        *zerolog.Logger
 
-	networkConfig    *network.NetworkConfig
+	networkConfig    *types.NetworkConfig
 	dhcpNtpAddresses []string
 
 	rtcDevicePath string
 	rtcDevice     *os.File //nolint:unused
 	rtcLock       *sync.Mutex
 
-	syncSuccess bool
+	syncSuccess   atomic.Bool
+	retryInterval time.Duration
+	timer         *time.Timer
 
-	preCheckFunc func() (bool, error)
+	preCheckFunc PreCheckFunc
+	preCheckIPv4 PreCheckFunc
+	preCheckIPv6 PreCheckFunc
 }
 
 type TimeSyncOptions struct {
-	PreCheckFunc  func() (bool, error)
+	PreCheckFunc  PreCheckFunc
+	PreCheckIPv4  PreCheckFunc
+	PreCheckIPv6  PreCheckFunc
 	Logger        *zerolog.Logger
-	NetworkConfig *network.NetworkConfig
+	NetworkConfig *types.NetworkConfig
 }
 
 type SyncMode struct {
@@ -69,7 +74,10 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 		rtcDevicePath:    rtcDevice,
 		rtcLock:          &sync.Mutex{},
 		preCheckFunc:     opts.PreCheckFunc,
+		preCheckIPv4:     opts.PreCheckIPv4,
+		preCheckIPv6:     opts.PreCheckIPv6,
 		networkConfig:    opts.NetworkConfig,
+		timer:            time.NewTimer(timeSyncWaitNetUpInt),
 	}
 
 	if t.rtcDevicePath != "" {
@@ -81,6 +89,8 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 }
 
 func (t *TimeSync) SetDhcpNtpAddresses(addresses []string) {
+	t.syncLock.Lock()
+	defer t.syncLock.Unlock()
 	t.dhcpNtpAddresses = addresses
 }
 
@@ -112,49 +122,68 @@ func (t *TimeSync) getSyncMode() SyncMode {
 		}
 	}
 
-	t.l.Debug().Strs("Ordering", syncMode.Ordering).Bool("Ntp", syncMode.Ntp).Bool("Http", syncMode.Http).Bool("NtpUseFallback", syncMode.NtpUseFallback).Bool("HttpUseFallback", syncMode.HttpUseFallback).Msg("sync mode")
+	t.l.Debug().
+		Strs("Ordering", syncMode.Ordering).
+		Bool("Ntp", syncMode.Ntp).
+		Bool("Http", syncMode.Http).
+		Bool("NtpUseFallback", syncMode.NtpUseFallback).
+		Bool("HttpUseFallback", syncMode.HttpUseFallback).
+		Msg("sync mode")
 
 	return syncMode
 }
-func (t *TimeSync) doTimeSync() {
+func (t *TimeSync) timeSyncLoop() {
 	metricTimeSyncStatus.Set(0)
-	for {
+
+	// use a timer here instead of sleep
+
+	for range t.timer.C {
 		if ok, err := t.preCheckFunc(); !ok {
 			if err != nil {
 				t.l.Error().Err(err).Msg("pre-check failed")
 			}
-			time.Sleep(timeSyncWaitNetChkInt)
+			t.timer.Reset(timeSyncWaitNetChkInt)
 			continue
 		}
 
 		t.l.Info().Msg("syncing system time")
 		start := time.Now()
-		err := t.Sync()
+		err := t.sync()
 		if err != nil {
 			t.l.Error().Str("error", err.Error()).Msg("failed to sync system time")
 
 			// retry after a delay
-			timeSyncRetryInterval += timeSyncRetryStep
-			time.Sleep(timeSyncRetryInterval)
+			t.retryInterval += timeSyncRetryStep
+			t.timer.Reset(t.retryInterval)
 			// reset the retry interval if it exceeds the max interval
-			if timeSyncRetryInterval > timeSyncRetryMaxInt {
-				timeSyncRetryInterval = 0
+			if t.retryInterval > timeSyncRetryMaxInt {
+				t.retryInterval = 0
 			}
-
 			continue
 		}
-		t.syncSuccess = true
+
+		isInitialSync := !t.syncSuccess.Load()
+		t.syncSuccess.Store(true)
+
 		t.l.Info().Str("now", time.Now().Format(time.RFC3339)).
 			Str("time_taken", time.Since(start).String()).
+			Bool("is_initial_sync", isInitialSync).
 			Msg("time sync successful")
 
 		metricTimeSyncStatus.Set(1)
 
-		time.Sleep(timeSyncInterval) // after the first sync is done
+		t.timer.Reset(timeSyncInterval) // after the first sync is done
 	}
 }
 
-func (t *TimeSync) Sync() error {
+func (t *TimeSync) sync() error {
+	t.syncLock.Lock()
+	defer t.syncLock.Unlock()
+	return t.syncLocked()
+}
+
+// syncLocked performs the actual sync. Caller must hold syncLock.
+func (t *TimeSync) syncLocked() error {
 	var (
 		now    *time.Time
 		offset *time.Duration
@@ -188,10 +217,10 @@ Orders:
 		case "ntp":
 			if syncMode.Ntp && syncMode.NtpUseFallback {
 				log.Info().Msg("using NTP fallback IPs")
-				now, offset = t.queryNetworkTime(defaultNTPServerIPs)
+				now, offset = t.queryNetworkTime(DefaultNTPServerIPs)
 				if now == nil {
 					log.Info().Msg("using NTP fallback hostnames")
-					now, offset = t.queryNetworkTime(defaultNTPServerHostnames)
+					now, offset = t.queryNetworkTime(DefaultNTPServerHostnames)
 				}
 				if now != nil {
 					break Orders
@@ -239,12 +268,24 @@ Orders:
 	return nil
 }
 
-func (t *TimeSync) IsSyncSuccess() bool {
-	return t.syncSuccess
+// Sync triggers a manual time sync
+func (t *TimeSync) Sync() error {
+	if !t.syncLock.TryLock() {
+		t.l.Warn().Msg("sync already in progress, skipping")
+		return nil
+	}
+	defer t.syncLock.Unlock()
+	return t.syncLocked()
 }
 
+// IsSyncSuccess returns true if the system time is synchronized
+func (t *TimeSync) IsSyncSuccess() bool {
+	return t.syncSuccess.Load()
+}
+
+// Start starts the time sync
 func (t *TimeSync) Start() {
-	go t.doTimeSync()
+	go t.timeSyncLoop()
 }
 
 func (t *TimeSync) setSystemTime(now time.Time) error {

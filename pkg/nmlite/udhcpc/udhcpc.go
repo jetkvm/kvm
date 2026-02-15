@@ -1,0 +1,256 @@
+package udhcpc
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+
+	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/rs/zerolog"
+)
+
+const (
+	DHCPLeaseFile = "/run/udhcpc.%s.info"
+	DHCPPidFile   = "/run/udhcpc.%s.pid"
+)
+
+type DHCPClient struct {
+	types.DHCPClient
+	InterfaceName string
+	leaseFile     string
+	pidFile       string
+	lease         *Lease
+	logger        *zerolog.Logger
+	process       *os.Process
+	runOnce       sync.Once
+	stopCh        chan struct{}
+	onLeaseChange func(lease *types.DHCPLease)
+}
+
+type DHCPClientOptions struct {
+	InterfaceName string
+	PidFile       string
+	Logger        *zerolog.Logger
+	OnLeaseChange func(lease *types.DHCPLease)
+}
+
+var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
+
+func NewDHCPClient(options *DHCPClientOptions) *DHCPClient {
+	if options.Logger == nil {
+		options.Logger = &defaultLogger
+	}
+
+	l := options.Logger.With().Str("interface", options.InterfaceName).Logger()
+	return &DHCPClient{
+		InterfaceName: options.InterfaceName,
+		logger:        &l,
+		leaseFile:     fmt.Sprintf(DHCPLeaseFile, options.InterfaceName),
+		pidFile:       options.PidFile,
+		stopCh:        make(chan struct{}),
+		onLeaseChange: options.OnLeaseChange,
+	}
+}
+
+func (c *DHCPClient) getWatchPaths() []string {
+	watchPaths := make(map[string]any)
+	watchPaths[filepath.Dir(c.leaseFile)] = nil
+
+	if c.pidFile != "" {
+		watchPaths[filepath.Dir(c.pidFile)] = nil
+	}
+
+	paths := make([]string, 0)
+	for path := range watchPaths {
+		paths = append(paths, path)
+	}
+	return paths
+}
+
+// Run starts the DHCP client and watches the lease file for changes.
+// this is a blocking call.
+func (c *DHCPClient) run() error {
+	err := c.loadLeaseFile()
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer watcher.Close()
+
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) {
+					continue
+				}
+
+				if event.Name == c.leaseFile {
+					c.logger.Debug().
+						Str("event", event.Op.String()).
+						Str("path", event.Name).
+						Msg("udhcpc lease file updated, reloading lease")
+					_ = c.loadLeaseFile()
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				c.logger.Error().Err(err).Msg("error watching lease file")
+			case <-c.stopCh:
+				return
+			}
+		}
+	}()
+
+	for _, path := range c.getWatchPaths() {
+		err = watcher.Add(path)
+		if err != nil {
+			c.logger.Error().
+				Err(err).
+				Str("path", path).
+				Msg("failed to watch directory")
+			return err
+		}
+	}
+
+	// Block until stopped
+	<-c.stopCh
+
+	return nil
+}
+
+func (c *DHCPClient) loadLeaseFile() error {
+	file, err := os.ReadFile(c.leaseFile)
+	if err != nil {
+		return err
+	}
+
+	data := string(file)
+	if data == "" {
+		c.logger.Debug().Msg("udhcpc lease file is empty")
+		return nil
+	}
+
+	lease := &Lease{}
+	err = UnmarshalDHCPCLease(lease, string(file))
+	if err != nil {
+		return err
+	}
+
+	isFirstLoad := c.lease == nil
+
+	// Skip processing if lease hasn't changed to avoid unnecessary wake-ups.
+	if reflect.DeepEqual(c.lease, lease) {
+		return nil
+	}
+
+	c.lease = lease
+
+	if lease.IPAddress == nil {
+		c.logger.Info().
+			Interface("lease", lease).
+			Str("data", string(file)).
+			Msg("udhcpc lease cleared")
+		return nil
+	}
+
+	msg := "udhcpc lease updated"
+	if isFirstLoad {
+		msg = "udhcpc lease loaded"
+	}
+
+	leaseExpiry, err := lease.SetLeaseExpiry()
+	if err != nil {
+		// Non-fatal: lease still works, we just can't calculate expiry time
+		c.logger.Debug().Err(err).Msg("could not calculate dhcp lease expiry")
+	} else {
+		expiresIn := time.Until(leaseExpiry)
+		c.logger.Info().
+			Interface("expiry", leaseExpiry).
+			Str("expiresIn", expiresIn.String()).
+			Msg("current dhcp lease expiry time calculated")
+	}
+
+	c.onLeaseChange(lease.ToDHCPLease())
+
+	c.logger.Info().
+		Str("ip", lease.IPAddress.String()).
+		Str("leaseTime", lease.LeaseTime.String()).
+		Interface("data", lease).
+		Msg(msg)
+
+	return nil
+}
+
+func (c *DHCPClient) GetLease() *Lease {
+	return c.lease
+}
+
+func (c *DHCPClient) Domain() string {
+	if c.lease == nil {
+		return ""
+	}
+	return c.lease.Domain
+}
+
+func (c *DHCPClient) Lease4() *types.DHCPLease {
+	if c.lease == nil {
+		return nil
+	}
+	return c.lease.ToDHCPLease()
+}
+
+func (c *DHCPClient) Lease6() *types.DHCPLease {
+	// TODO: implement
+	return nil
+}
+
+func (c *DHCPClient) SetIPv4(enabled bool) {
+	// TODO: implement
+}
+
+func (c *DHCPClient) SetIPv6(enabled bool) {
+	// TODO: implement
+}
+
+func (c *DHCPClient) SetOnLeaseChange(callback func(lease *types.DHCPLease)) {
+	c.onLeaseChange = callback
+}
+
+func (c *DHCPClient) Start() error {
+	c.runOnce.Do(func() {
+		go func() {
+			err := c.run()
+			if err != nil {
+				c.logger.Error().Err(err).Msg("failed to run udhcpc")
+			}
+		}()
+	})
+	return nil
+}
+
+func (c *DHCPClient) Stop() error {
+	// Signal the run goroutine and watcher to exit
+	select {
+	case <-c.stopCh:
+		// Already closed
+	default:
+		close(c.stopCh)
+	}
+	return c.KillProcess()
+}

@@ -3,7 +3,6 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- These are the fonts used in the app -->
     <link
       rel="preload"
       href="./public/fonts/CircularXXWeb-Medium.woff2"
@@ -32,6 +31,13 @@
       type="font/woff2"
       crossorigin
     />
+    <link
+      rel="preload"
+      href="./public/fonts/CircularXXWeb-Bold.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <title>JetKVM</title>
     <link rel="stylesheet" href="./public/fonts/fonts.css" />
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
@@ -39,31 +45,39 @@
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="JetKVM" />
-    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="manifest" href="/public/site.webmanifest" />
     <meta name="theme-color" content="#051946" />
-    <meta name="description" content="A web-based KVM console for managing remote servers." />
+    <meta
+      name="description"
+      content="A web-based KVM console for managing remote servers."
+    />
     <script>
       function applyThemeFromPreference() {
         // dark theme setup
-        var darkDesired = localStorage.theme === "dark" ||
+        var darkDesired =
+          localStorage.theme === "dark" ||
           (!("theme" in localStorage) &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches)
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
 
-        document.documentElement.classList.toggle("dark", darkDesired)
+        document.documentElement.classList.toggle("dark", darkDesired);
       }
 
       // initial theme application
       applyThemeFromPreference();
 
       // Listen for system theme changes
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyThemeFromPreference);
-      window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyThemeFromPreference);
+      window
+        .matchMedia("(prefers-color-scheme: dark)")
+        .addEventListener("change", applyThemeFromPreference);
+      window
+        .matchMedia("(prefers-color-scheme: light)")
+        .addEventListener("change", applyThemeFromPreference);
     </script>
   </head>
   <body
-    class="h-full w-full bg-[#f3f9ff] font-sans text-sm antialiased dark:bg-slate-900 md:text-base"
+    class="h-full w-full bg-[#f3f9ff] font-sans text-sm antialiased md:text-base dark:bg-slate-900"
   >
-    <div id="root" class="w-full h-full"></div>
+    <div id="root" class="h-full w-full"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

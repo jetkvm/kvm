@@ -1,13 +1,14 @@
-import { LuTerminal } from "react-icons/lu";
 import { useEffect, useState } from "react";
+import { LuTerminal } from "react-icons/lu";
 
+import { m } from "@localizations/messages.js";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useUiStore } from "@hooks/stores";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
-import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import notifications from "@/notifications";
-import { useUiStore } from "@/hooks/stores";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import notifications from "@/notifications";
 
 interface SerialSettings {
   baudRate: string;
@@ -29,7 +30,7 @@ export function SerialConsole() {
     send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to get serial settings: ${resp.error.data || "Unknown error"}`,
+          m.serial_console_get_settings_error({ error: resp.error.data || m.unknown_error() }),
         );
         return;
       }
@@ -42,7 +43,10 @@ export function SerialConsole() {
     send("setSerialSettings", { settings: newSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to update serial settings: ${resp.error.data || "Unknown error"}`,
+          m.serial_console_set_settings_error({
+            settings: setting,
+            error: resp.error.data || m.unknown_error(),
+          }),
         );
         return;
       }
@@ -54,8 +58,8 @@ export function SerialConsole() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Serial Console"
-        description="Configure your serial console settings"
+        title={m.extension_serial_console()}
+        description={m.serial_console_configure_description()}
       />
 
       <Card className="animate-fadeIn opacity-0">
@@ -66,10 +70,10 @@ export function SerialConsole() {
               size="SM"
               theme="primary"
               LeadingIcon={LuTerminal}
-              text="Open Console"
+              text={m.serial_console_open_console()}
               onClick={() => {
-                setTerminalType("serial");
                 console.log("Opening serial console with settings: ", settings);
+                setTerminalType("serial");
               }}
             />
           </div>
@@ -77,7 +81,7 @@ export function SerialConsole() {
           {/* Settings */}
           <div className="grid grid-cols-2 gap-4">
             <SelectMenuBasic
-              label="Baud Rate"
+              label={m.serial_console_baud_rate()}
               options={[
                 { label: "1200", value: "1200" },
                 { label: "2400", value: "2400" },
@@ -93,7 +97,7 @@ export function SerialConsole() {
             />
 
             <SelectMenuBasic
-              label="Data Bits"
+              label={m.serial_console_data_bits()}
               options={[
                 { label: "8", value: "8" },
                 { label: "7", value: "7" },
@@ -103,7 +107,7 @@ export function SerialConsole() {
             />
 
             <SelectMenuBasic
-              label="Stop Bits"
+              label={m.serial_console_stop_bits()}
               options={[
                 { label: "1", value: "1" },
                 { label: "1.5", value: "1.5" },
@@ -114,11 +118,13 @@ export function SerialConsole() {
             />
 
             <SelectMenuBasic
-              label="Parity"
+              label={m.serial_console_parity()}
               options={[
-                { label: "None", value: "none" },
-                { label: "Even", value: "even" },
-                { label: "Odd", value: "odd" },
+                { label: m.serial_console_parity_none(), value: "none" },
+                { label: m.serial_console_parity_even(), value: "even" },
+                { label: m.serial_console_parity_odd(), value: "odd" },
+                { label: m.serial_console_parity_mark(), value: "mark" },
+                { label: m.serial_console_parity_space(), value: "space" },
               ]}
               value={settings.parity}
               onChange={e => handleSettingChange("parity", e.target.value)}

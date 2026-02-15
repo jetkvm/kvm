@@ -11,6 +11,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// derivedLoggerEntry tracks a logger created via .With().Logger() that needs
+// its level updated when the parent scope's level changes.
+type derivedLoggerEntry struct {
+	scope  string
+	logger *zerolog.Logger
+}
+
 type Logger struct {
 	l               *zerolog.Logger
 	scopeLoggers    map[string]*zerolog.Logger
@@ -20,6 +27,13 @@ type Logger struct {
 	defaultLogLevelFromEnv    zerolog.Level
 	defaultLogLevelFromConfig zerolog.Level
 	defaultLogLevel           zerolog.Level
+
+	// Config-based overrides (highest priority)
+	configSubsystemLevels map[string]zerolog.Level
+	configGlobalLevel     zerolog.Level
+
+	// Derived loggers that need level updates (registered via RegisterDerivedLogger)
+	derivedLoggers []derivedLoggerEntry
 }
 
 const (
@@ -51,13 +65,13 @@ var (
 		PartsOrder:    []string{"time", "level", "scope", "component", "message"},
 		FieldsExclude: []string{"scope", "component"},
 		FormatPartValueByName: func(value any, name string) string {
-			val := fmt.Sprintf("%s", value)
-			if name == "component" {
-				if value == nil {
-					return "-"
-				}
+			if name == "component" && value == nil {
+				return "-"
 			}
-			return val
+			if s, ok := value.(string); ok {
+				return s
+			}
+			return fmt.Sprintf("%s", value)
 		},
 	}
 	fileLogOutput    io.Writer = &logOutput{mu: &sync.Mutex{}}
@@ -74,6 +88,12 @@ var (
 		"DEBUG":   zerolog.DebugLevel,
 		"TRACE":   zerolog.TraceLevel,
 	}
+
+	// subsystemDefaultLevels defines default log levels for specific subsystems
+	// that should always log at a certain level regardless of the global default.
+	subsystemDefaultLevels = map[string]zerolog.Level{
+		"diagnostics": zerolog.InfoLevel,
+	}
 )
 
 func NewLogger(zerologLogger zerolog.Logger) *Logger {
@@ -85,13 +105,14 @@ func NewLogger(zerologLogger zerolog.Logger) *Logger {
 		defaultLogLevelFromEnv:    -2,
 		defaultLogLevelFromConfig: -2,
 		defaultLogLevel:           defaultLogLevel,
+		configSubsystemLevels:     make(map[string]zerolog.Level),
+		configGlobalLevel:         -2, // -2 means unset
 	}
 }
 
-func (l *Logger) updateLogLevel() {
-	l.scopeLevelMutex.Lock()
-	defer l.scopeLevelMutex.Unlock()
-
+// updateLogLevelLocked reads env vars and populates scopeLevels.
+// Must be called with scopeLevelMutex held.
+func (l *Logger) updateLogLevelLocked() {
 	l.scopeLevels = make(map[string]zerolog.Level)
 
 	finalDefaultLogLevel := l.defaultLogLevel
@@ -130,45 +151,29 @@ func (l *Logger) updateLogLevel() {
 	l.defaultLogLevel = finalDefaultLogLevel
 }
 
-func (l *Logger) getScopeLoggerLevel(scope string) zerolog.Level {
-	if l.scopeLevels == nil {
-		l.updateLogLevel()
-	}
-
-	var scopeLevel zerolog.Level
-	if l.defaultLogLevelFromConfig != -2 {
-		scopeLevel = l.defaultLogLevelFromConfig
-	}
-	if l.defaultLogLevelFromEnv != -2 {
-		scopeLevel = l.defaultLogLevelFromEnv
-	}
-
-	// if the scope is not in the map, use the default level from the root logger
-	if level, ok := l.scopeLevels[scope]; ok {
-		scopeLevel = level
-	}
-
-	return scopeLevel
-}
-
+// newScopeLogger creates a scoped logger.
+// Must be called with scopeLevelMutex held.
 func (l *Logger) newScopeLogger(scope string) zerolog.Logger {
-	scopeLevel := l.getScopeLoggerLevel(scope)
-	logger := l.l.Level(scopeLevel).With().Str("component", scope).Logger()
-
-	return logger
+	scopeLevel := l.getScopeLoggerLevelLocked(scope)
+	return l.l.Level(scopeLevel).With().Str("component", scope).Logger()
 }
 
 func (l *Logger) getLogger(scope string) *zerolog.Logger {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
 	logger, ok := l.scopeLoggers[scope]
 	if !ok || logger == nil {
 		scopeLogger := l.newScopeLogger(scope)
 		l.scopeLoggers[scope] = &scopeLogger
 	}
-
 	return l.scopeLoggers[scope]
 }
 
 func (l *Logger) UpdateLogLevel(configDefaultLogLevel string) {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
 	needUpdate := false
 
 	if configDefaultLogLevel != "" {
@@ -183,15 +188,231 @@ func (l *Logger) UpdateLogLevel(configDefaultLogLevel string) {
 		}
 	}
 
-	l.updateLogLevel()
+	l.updateLogLevelLocked()
 
 	if needUpdate {
-		for scope, logger := range l.scopeLoggers {
-			currentLevel := logger.GetLevel()
-			targetLevel := l.getScopeLoggerLevel(scope)
-			if currentLevel != targetLevel {
-				*logger = l.newScopeLogger(scope)
+		l.refreshAllLoggersLocked()
+	}
+}
+
+// SetSubsystemLevels parses and applies log level overrides from config.
+// Format: "LEVEL" for global, or "subsystem:LEVEL,subsystem:LEVEL,..." for per-subsystem.
+// Examples: "DEBUG", "rdp:TRACE,vnc:DEBUG", "INFO,rdp:TRACE"
+func (l *Logger) SetSubsystemLevels(overrides string) {
+	l.scopeLevelMutex.Lock()
+
+	// Ensure scopeLevels is initialized to avoid deadlock in refreshAllLoggers
+	if l.scopeLevels == nil {
+		l.scopeLevels = make(map[string]zerolog.Level)
+	}
+
+	// Reset config-based overrides
+	l.configSubsystemLevels = make(map[string]zerolog.Level)
+	l.configGlobalLevel = -2
+
+	if overrides == "" {
+		l.refreshAllLoggersLocked()
+		l.scopeLevelMutex.Unlock()
+		return
+	}
+
+	// Parse the overrides string
+	parts := strings.Split(overrides, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Check if it's a subsystem:level pair
+		if strings.Contains(part, ":") {
+			kv := strings.SplitN(part, ":", 2)
+			if len(kv) == 2 {
+				subsystem := strings.TrimSpace(strings.ToLower(kv[0]))
+				levelStr := strings.TrimSpace(strings.ToUpper(kv[1]))
+				if level, ok := zerologLevels[levelStr]; ok {
+					l.configSubsystemLevels[subsystem] = level
+				}
+			}
+		} else {
+			// It's a global level
+			levelStr := strings.ToUpper(part)
+			if level, ok := zerologLevels[levelStr]; ok {
+				l.configGlobalLevel = level
 			}
 		}
+	}
+
+	l.refreshAllLoggersLocked()
+	l.scopeLevelMutex.Unlock()
+}
+
+// refreshAllLoggersLocked updates all existing scope loggers and derived loggers.
+// Must be called with scopeLevelMutex held.
+func (l *Logger) refreshAllLoggersLocked() {
+	for scope, logger := range l.scopeLoggers {
+		currentLevel := logger.GetLevel()
+		targetLevel := l.getScopeLoggerLevelLocked(scope)
+		if currentLevel != targetLevel {
+			*logger = l.newScopeLogger(scope)
+		}
+	}
+
+	// Update derived loggers (.With().Logger() copies with frozen levels)
+	for _, d := range l.derivedLoggers {
+		targetLevel := l.getScopeLoggerLevelLocked(d.scope)
+		if d.logger.GetLevel() != targetLevel {
+			*d.logger = d.logger.Level(targetLevel)
+		}
+	}
+}
+
+// registerDerivedLogger tracks a .With().Logger() copy so its level is updated
+// when the parent scope's level changes. The logger pointer must remain stable.
+func (l *Logger) registerDerivedLogger(scope string, logger *zerolog.Logger) {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+	l.derivedLoggers = append(l.derivedLoggers, derivedLoggerEntry{scope: scope, logger: logger})
+}
+
+// unregisterDerivedLogger removes a previously registered derived logger.
+func (l *Logger) unregisterDerivedLogger(logger *zerolog.Logger) {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
+	for i, d := range l.derivedLoggers {
+		if d.logger == logger {
+			l.derivedLoggers = append(l.derivedLoggers[:i], l.derivedLoggers[i+1:]...)
+			return
+		}
+	}
+}
+
+// getScopeLoggerLevelLocked returns the log level for a scope.
+// Must be called with scopeLevelMutex held.
+func (l *Logger) getScopeLoggerLevelLocked(scope string) zerolog.Level {
+	// Priority (from lowest to highest):
+	// 1. Hardcoded global default
+	// 2. Hardcoded subsystem default
+	// 3. Env var global
+	// 4. Env var subsystem override
+	// 5. Config global level
+	// 6. Config subsystem override (highest)
+
+	// Start with hardcoded global default
+	scopeLevel := l.defaultLogLevel
+	if l.defaultLogLevelFromConfig != -2 {
+		scopeLevel = l.defaultLogLevelFromConfig
+	}
+
+	// Check if this subsystem has a hardcoded default level
+	if subsystemLevel, ok := subsystemDefaultLevels[scope]; ok {
+		// Use the more verbose level (lower value = more verbose)
+		if subsystemLevel < scopeLevel {
+			scopeLevel = subsystemLevel
+		}
+	}
+
+	// Apply env var global level
+	if l.defaultLogLevelFromEnv != -2 {
+		scopeLevel = l.defaultLogLevelFromEnv
+	}
+
+	// Apply env var subsystem override
+	if l.scopeLevels != nil {
+		if level, ok := l.scopeLevels[scope]; ok {
+			scopeLevel = level
+		}
+	}
+
+	// Apply config global level (takes priority over env vars)
+	if l.configGlobalLevel != -2 {
+		scopeLevel = l.configGlobalLevel
+	}
+
+	// Apply config subsystem override (highest priority)
+	if level, ok := l.configSubsystemLevels[scope]; ok {
+		scopeLevel = level
+	}
+
+	return scopeLevel
+}
+
+// GetSubsystemLevels returns current effective log levels for all registered subsystems.
+func (l *Logger) GetSubsystemLevels() map[string]string {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
+	// Ensure scopeLevels is initialized to avoid nil check issues
+	if l.scopeLevels == nil {
+		l.scopeLevels = make(map[string]zerolog.Level)
+	}
+
+	result := make(map[string]string)
+	for scope := range l.scopeLoggers {
+		level := l.getScopeLoggerLevelLocked(scope)
+		result[scope] = levelToString(level)
+	}
+	return result
+}
+
+// GetAvailableSubsystems returns a list of all registered subsystem names.
+func (l *Logger) GetAvailableSubsystems() []string {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
+	subsystems := make([]string, 0, len(l.scopeLoggers))
+	for scope := range l.scopeLoggers {
+		subsystems = append(subsystems, scope)
+	}
+	return subsystems
+}
+
+// GetAvailableLevels returns the list of available log level names.
+func (l *Logger) GetAvailableLevels() []string {
+	return []string{"DISABLE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"}
+}
+
+// GetConfigOverrides returns the current log level overrides string for UI display.
+func (l *Logger) GetConfigOverrides() string {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
+	var parts []string
+
+	// Add global level if set
+	if l.configGlobalLevel != -2 {
+		parts = append(parts, levelToString(l.configGlobalLevel))
+	}
+
+	// Add subsystem overrides
+	for subsystem, level := range l.configSubsystemLevels {
+		parts = append(parts, subsystem+":"+levelToString(level))
+	}
+
+	return strings.Join(parts, ",")
+}
+
+// levelToString converts a zerolog.Level to its string representation
+func levelToString(level zerolog.Level) string {
+	switch level {
+	case zerolog.Disabled:
+		return "DISABLE"
+	case zerolog.PanicLevel:
+		return "PANIC"
+	case zerolog.FatalLevel:
+		return "FATAL"
+	case zerolog.ErrorLevel:
+		return "ERROR"
+	case zerolog.WarnLevel:
+		return "WARN"
+	case zerolog.InfoLevel:
+		return "INFO"
+	case zerolog.DebugLevel:
+		return "DEBUG"
+	case zerolog.TraceLevel:
+		return "TRACE"
+	default:
+		return "ERROR"
 	}
 }

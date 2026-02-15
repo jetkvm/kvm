@@ -55,9 +55,13 @@ func (s *SelfSigner) getCA() *tls.Certificate {
 }
 
 func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
+	// Fast path: check with read lock for existing certificate
+	s.store.certLock.RLock()
 	if tlsCert := s.store.certificates[hostname]; tlsCert != nil {
+		s.store.certLock.RUnlock()
 		return tlsCert
 	}
+	s.store.certLock.RUnlock()
 
 	// check if hostname is the CA magic name
 	var ca *tls.Certificate
@@ -71,10 +75,8 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	s.log.Info().Str("hostname", hostname).Msg("Creating self-signed certificate")
 
-	// lock the store while creating the certificate (do not move upwards)
-	s.store.certLock.Lock()
-	defer s.store.certLock.Unlock()
-
+	// Generate certificate OUTSIDE the lock to avoid blocking other goroutines
+	// during CPU-intensive crypto operations
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		s.log.Error().Err(err).Msg("Failed to generate private key")
@@ -159,7 +161,18 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 		tlsCert.Certificate = append(tlsCert.Certificate, ca.Certificate...)
 	}
 
+	// Only hold write lock for the brief moment of storing the certificate
+	// Double-check that another goroutine didn't create it while we were generating
+	s.store.certLock.Lock()
+	if existing := s.store.certificates[hostname]; existing != nil {
+		// Another goroutine created it while we were generating - use theirs
+		s.store.certLock.Unlock()
+		return existing
+	}
 	s.store.certificates[hostname] = tlsCert
+	s.store.certLock.Unlock()
+
+	// Save to disk outside the lock (non-blocking for other certificate requests)
 	s.store.saveCertificate(hostname)
 
 	return tlsCert
@@ -169,18 +182,31 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 // returns nil if the certificate is not found
 func (s *SelfSigner) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	var hostname string
-	if info.ServerName != "" && info.ServerName != selfSignerCAMagicName {
-		hostname = info.ServerName
-	} else {
-		hostname = strings.Split(info.Conn.LocalAddr().String(), ":")[0]
-	}
 
-	s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
+	// Handle nil info (e.g., from OpenSSL wrapper which doesn't have ClientHelloInfo)
+	if info == nil {
+		hostname = s.DefaultDomain
+		s.log.Info().Str("hostname", hostname).Msg("TLS handshake (nil ClientHelloInfo, using default)")
+	} else if info.ServerName != "" && info.ServerName != selfSignerCAMagicName {
+		hostname = info.ServerName
+		s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
+	} else if info.Conn != nil {
+		hostname = strings.Split(info.Conn.LocalAddr().String(), ":")[0]
+		s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
+	} else {
+		// info is non-nil but Conn is nil (e.g., fake ClientHelloInfo for certificate lookup)
+		hostname = s.DefaultDomain
+		s.log.Info().Str("hostname", hostname).Msg("TLS handshake (nil Conn, using default)")
+	}
 
 	// convert hostname to punycode
 	h, err := idna.Lookup.ToASCII(hostname)
 	if err != nil {
-		s.log.Warn().Str("hostname", hostname).Err(err).Str("remote_addr", info.Conn.RemoteAddr().String()).Msg("Hostname is not valid")
+		remoteAddr := ""
+		if info != nil && info.Conn != nil {
+			remoteAddr = info.Conn.RemoteAddr().String()
+		}
+		s.log.Warn().Str("hostname", hostname).Err(err).Str("remote_addr", remoteAddr).Msg("Hostname is not valid")
 		hostname = s.DefaultDomain
 	} else {
 		hostname = h

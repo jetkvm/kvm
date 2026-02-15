@@ -1,0 +1,89 @@
+// Package diagnostics provides comprehensive system diagnostics logging
+// for crash analysis, debugging, and troubleshooting.
+package diagnostics
+
+import (
+	"context"
+	"io"
+	"time"
+
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
+)
+
+var diagLogger = logging.GetSubsystemLogger("diagnostics")
+
+// DataChannelInfo contains information about a WebRTC data channel.
+type DataChannelInfo struct {
+	Label string
+	State string
+}
+
+// SessionInfo contains session-related diagnostic information.
+type SessionInfo struct {
+	ActiveSessions     int
+	HasCurrentSession  bool
+	ICEConnectionState string
+	SignalingState     string
+	ConnectionState    string
+	DataChannels       []DataChannelInfo
+}
+
+// Options configures the Diagnostics instance.
+type Options struct {
+	// GetSessionInfo returns session diagnostics. Optional.
+	GetSessionInfo func() SessionInfo
+	// Writer is an optional output destination. If set, logs go here instead of default.
+	Writer io.Writer
+}
+
+// Diagnostics provides comprehensive system diagnostics logging.
+// Not safe for concurrent use — LogAll must not be called concurrently.
+type Diagnostics struct {
+	logger  *zerolog.Logger
+	options Options
+	ctx     context.Context // set during LogAll for overall timeout; not safe for concurrent access
+}
+
+const defaultLogAllTimeout = 10 * time.Second
+
+// New creates a new Diagnostics instance using the default diagnostics logger.
+// If opts.Writer is set, logs are written there instead of the default logger.
+func New(opts Options) *Diagnostics {
+	if opts.Writer != nil {
+		logger := zerolog.New(opts.Writer)
+		return &Diagnostics{logger: &logger, options: opts}
+	}
+	return NewWithLogger(diagLogger, opts)
+}
+
+// NewWithLogger creates a new Diagnostics instance with a custom logger.
+func NewWithLogger(logger *zerolog.Logger, opts Options) *Diagnostics {
+	return &Diagnostics{
+		logger:  logger,
+		options: opts,
+	}
+}
+
+// LogAll runs all diagnostic checks and logs the results.
+// The phase parameter distinguishes context (e.g., "crash" vs "handshake" vs "download").
+// LogAll has an overall timeout of 10 seconds; individual commands have a 2-second timeout.
+func (d *Diagnostics) LogAll(phase string) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultLogAllTimeout)
+	defer cancel()
+	d.ctx = ctx
+	defer func() { d.ctx = nil }()
+
+	d.logger.Error().Str("phase", phase).Msg("=== DIAGNOSTICS ===")
+
+	d.LogSystemInfo()
+	d.LogInputDevices()
+	d.LogI2CInfo()
+	d.LogDeviceFiles()
+	d.LogUSBGadget()
+	d.LogNetworking()
+	d.LogSessionInfo()
+	d.LogGoRuntime()
+	d.LogKernelInfo()
+	d.LogDmesgTail()
+}

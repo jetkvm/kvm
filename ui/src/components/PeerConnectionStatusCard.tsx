@@ -1,14 +1,15 @@
 import StatusCard from "@components/StatusCards";
+import { m } from "@localizations/messages.js";
 
 const PeerConnectionStatusMap = {
-  connected: "Connected",
-  connecting: "Connecting",
-  disconnected: "Disconnected",
-  error: "Connection error",
-  closing: "Closing",
-  failed: "Connection failed",
-  closed: "Closed",
-  new: "Connecting",
+  connected: m.peer_connection_connected(),
+  connecting: m.peer_connection_connecting(),
+  disconnected: m.peer_connection_disconnected(),
+  error: m.peer_connection_error(),
+  closing: m.peer_connection_closing(),
+  failed: m.peer_connection_failed(),
+  closed: m.peer_connection_closed(),
+  new: m.peer_connection_new(),
 } as Record<RTCPeerConnectionState | "error" | "closing", string>;
 
 export type PeerConnections = keyof typeof PeerConnectionStatusMap;

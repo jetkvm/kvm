@@ -1,0 +1,628 @@
+package channels
+
+import (
+	"encoding/binary"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// RDPGFX implements the RDP Graphics Pipeline Extension.
+// Optimized for zero-copy H.264 passthrough with minimal allocations.
+
+// RDPGFX channel name.
+const GFXChannelName = "Microsoft::Windows::RDS::Graphics"
+
+// RDPGFX command IDs.
+const (
+	GFXCmdWireToSurface1     = 0x0001
+	GFXCmdWireToSurface2     = 0x0002
+	GFXCmdDeleteEncodingCtx  = 0x0003
+	GFXCmdSolidFill          = 0x0004
+	GFXCmdSurfaceToSurface   = 0x0005
+	GFXCmdSurfaceToCache     = 0x0006
+	GFXCmdCacheToSurface     = 0x0007
+	GFXCmdEvictCacheEntry    = 0x0008
+	GFXCmdCreateSurface      = 0x0009
+	GFXCmdDeleteSurface      = 0x000A
+	GFXCmdStartFrame         = 0x000B
+	GFXCmdEndFrame           = 0x000C
+	GFXCmdFrameAck           = 0x000D
+	GFXCmdResetGraphics      = 0x000E
+	GFXCmdMapSurfaceToOutput = 0x000F
+	GFXCmdCacheImportOffer   = 0x0010
+	GFXCmdCacheImportReply   = 0x0011
+	GFXCmdCapsAdvertise      = 0x0012
+	GFXCmdCapsConfirm        = 0x0013
+	GFXCmdMapSurfaceToWindow = 0x0015
+	GFXCmdQoEFrameAck        = 0x0016
+	GFXCmdMapSurfaceToScaled = 0x0017
+)
+
+// RDPGFX codec IDs (MS-RDPEGFX 2.2.4.3).
+const (
+	GFXCodecAVC420 = 0x000B // H.264 YUV420 (baseline profile)
+	GFXCodecAVC444 = 0x000E // H.264 YUV444 (high profile)
+)
+
+// RDPGFX pixel formats (MS-RDPEGFX 2.2.1.1).
+const (
+	GFXPixelFormatXRGB = 0x20 // 32-bit XRGB (no alpha)
+)
+
+// RDPGFX capability versions (MS-RDPEGFX 2.2.3.3).
+// Version 8.1+ supports AVC420 (H.264 baseline).
+// Version 10+ supports AVC444 (H.264 high profile) unless AVC_DISABLED flag is set.
+const (
+	GFXCapsVersion8   = 0x00080004 // RDP 8.0 — RemoteFX only
+	GFXCapsVersion81  = 0x00080105 // RDP 8.1 — adds AVC420 support
+	GFXCapsVersion10  = 0x000A0002 // RDP 10.0 — adds AVC444 support
+	GFXCapsVersion101 = 0x000A0100 // RDP 10.1
+	GFXCapsVersion102 = 0x000A0200 // RDP 10.2
+	GFXCapsVersion103 = 0x000A0301 // RDP 10.3
+	GFXCapsVersion104 = 0x000A0400 // RDP 10.4
+	GFXCapsVersion105 = 0x000A0502 // RDP 10.5
+	GFXCapsVersion106 = 0x000A0601 // RDP 10.6
+	GFXCapsVersion107 = 0x000A0701 // RDP 10.7
+)
+
+// RDPGFX capability flags (MS-RDPEGFX 2.2.3.3).
+const (
+	GFXCapsFlagThinClient    = 0x00000001 // Client has limited resources
+	GFXCapsFlagSmallCache    = 0x00000002 // Client has small bitmap cache
+	GFXCapsFlagAVC420Enabled = 0x00000010 // AVC420 explicitly enabled (v8.1)
+	GFXCapsFlagAVCDisabled   = 0x00000020 // AVC codecs disabled (v10+)
+)
+
+// GFX PDU header size.
+const (
+	GFXHeaderSize         = 8  // cmdId(2) + flags(2) + pduLength(4)
+	GFXStartFrameSize     = 8  // timestamp(4) + frameId(4)
+	GFXEndFrameSize       = 4  // frameId(4)
+	GFXWireToSurface1Size = 17 // surfaceId(2) + codecId(2) + pixelFormat(1) + rect(8) + bitmapDataLen(4)
+	GFXCreateSurfaceSize  = 7  // surfaceId(2) + width(2) + height(2) + pixelFormat(1)
+	GFXDeleteSurfaceSize  = 2  // surfaceId(2)
+	GFXMapSurfaceSize     = 12 // surfaceId(2) + reserved(2) + outputOriginX(4) + outputOriginY(4)
+	GFXFrameAckSize       = 12 // queueDepth(4) + frameId(4) + totalDecoded(4)
+)
+
+// Maximum values.
+const (
+	GFXMaxFramesPending = 256 // Maximum frames in flight (~4s at 60fps for WAN/VPN tolerance)
+	GFXDefaultSurfaceID = 1   // Default surface for main display
+)
+
+// Adaptive backpressure thresholds for high-latency connections.
+// When queue fills, drop P-frames and immediately request keyframe to minimize
+// decoder corruption (green frames). Thresholds set high to avoid unnecessary drops.
+const (
+	GFXBackpressureRateLimit      = 204 // 80%: rate-limit P-frames (drop every other)
+	GFXBackpressureDropPFrames    = 230 // 90%: drop all P-frames, request keyframe immediately
+	GFXBackpressureMinForKeyframe = 252 // 98%: emergency - even keyframes may be dropped
+)
+
+// ZGFX compression constants.
+const (
+	ZGFXSegmentedSingle  = 0xE0 // Single segment descriptor
+	ZGFXSegmentedMulti   = 0xE1 // Multiple segment descriptor
+	ZGFXPacketComprRDP8  = 0x04 // RDP 8.0 compression type (uncompressed passthrough)
+	ZGFXSegmentedMaxSize = 65535
+)
+
+// Common errors.
+var (
+	ErrGFXNotReady     = errors.New("gfx: channel not ready")
+	ErrGFXBackpressure = errors.New("gfx: too many frames pending")
+)
+
+// gfxLargeBufferPool reduces GC pressure for large keyframe allocations.
+// Used when frames exceed the pre-allocated frameBuf (>65KB, needing multi-segment ZGFX).
+// Sized to accommodate typical 1080p keyframes with ZGFX overhead.
+var gfxLargeBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, GFXFrameBufSize)
+		return &buf
+	},
+}
+
+// GFXReadyCallback is called when the GFX channel is ready to send frames.
+type GFXReadyCallback func(g *GFXChannel)
+
+// GFXLogFunc is a logging callback for GFX channel events.
+type GFXLogFunc func(msg string, args ...any)
+
+// GFXChannel implements the RDPGFX channel with optimized H.264 passthrough.
+type GFXChannel struct {
+	channel *DVCChannel
+	manager *DVCManager
+
+	// Callback when channel becomes ready
+	onReady GFXReadyCallback
+
+	// Logger callback
+	logger GFXLogFunc
+
+	// Negotiated capabilities
+	capsVersion uint32
+	capsFlags   uint32
+	avc420      bool
+	avc444      bool
+
+	// Surface state
+	surfaceID uint16
+	width     uint16
+	height    uint16
+
+	// Frame tracking for flow control
+	frameID        atomic.Uint32
+	framesPending  atomic.Int32
+	lastAckFrameID atomic.Uint32
+	totalDecoded   atomic.Uint32
+	lastAckTime    atomic.Int64 // Unix timestamp of last ack
+	startTime      atomic.Int64 // UnixMilli timestamp when channel became ready
+
+	// Self-healing: tracks when backpressure started (UnixMilli, 0 = not in backpressure).
+	// If pending stays at max for >10s with no acks, reset the counter to recover
+	// from edge cases where the client dropped some acks but is still alive.
+	backpressureSince atomic.Int64
+
+	// Pre-allocated buffers for surface management to avoid GC pressure
+	createBuf        [GFXHeaderSize + GFXCreateSurfaceSize]byte
+	deleteBuf        [GFXHeaderSize + GFXDeleteSurfaceSize]byte
+	mapBuf           [GFXHeaderSize + GFXMapSurfaceSize]byte // 8+12=20 bytes
+	resetGraphicsBuf [340]byte                               // RDPGFX_RESET_GRAPHICS_PDU_SIZE
+	capsConfirmBuf   [20]byte                                // Header(8) + version(4) + capsDataLen(4) + flags(4)
+
+	// H.264 metadata buffer (reused for each frame)
+	// RFX_AVC420_METABLOCK: numRects(4) + rect(8) + quantQuality(2) = 14 bytes for single region
+	metaBuf [14]byte
+
+	// ===== ZERO-ALLOCATION HOT PATH BUFFERS =====
+	// Pre-allocated frame buffer for H.264 streaming (sized for 1080p keyframes)
+	// Layout: [2-byte ZGFX header][GFX PDU: START_FRAME + WIRETOSURFACE_1 + H264 data + END_FRAME]
+	// Max size: 2 + 16 + (25 + 14 + 300KB) + 12 ≈ 320KB for large keyframes
+	frameBuf []byte
+
+	// ===== LOCK ORDERING =====
+	// These locks are independent and protect different operations:
+	// - sendMu: Surface lifecycle (creation, deletion, resolution changes)
+	// - frameMu: Frame data operations (frameBuf, metaBuf access)
+	// These are never held simultaneously - surface ops and frame ops are separate.
+
+	// Mutex for surface operations (creation, deletion, resolution changes)
+	sendMu sync.Mutex
+
+	// Mutex for frame operations (protects frameBuf and metaBuf from concurrent access)
+	frameMu sync.Mutex
+
+	ready       atomic.Bool
+	initialized atomic.Bool // Set after Initialize() completes (surface created)
+}
+
+// Frame buffer size for zero-allocation hot path.
+// Sized for: ZGFX(2) + START_FRAME(16) + WIRETOSURFACE_1(25+14+data) + END_FRAME(12)
+// For 1080p at high bitrate: ~300KB keyframes, so allocate 512KB to be safe.
+const GFXFrameBufSize = 512 * 1024
+
+// NewGFXChannel creates a new RDPGFX channel.
+func NewGFXChannel(manager *DVCManager) *GFXChannel {
+	return &GFXChannel{
+		manager:   manager,
+		surfaceID: GFXDefaultSurfaceID,
+		frameBuf:  make([]byte, GFXFrameBufSize), // Pre-allocate for zero-alloc hot path
+	}
+}
+
+// SetLogger sets the logging callback for debugging.
+func (g *GFXChannel) SetLogger(logger GFXLogFunc) {
+	g.logger = logger
+}
+
+// log writes a log message if logger is set.
+func (g *GFXChannel) log(msg string, args ...any) {
+	if g.logger != nil {
+		g.logger(msg, args...)
+	}
+}
+
+// ZGFX segment size limits.
+// FreeRDP's OutputBuffer is 65536 bytes, so uncompressed segment data must fit.
+// For single segment: [0xE0][flags][data] -> data can be up to 65535 bytes
+// For multi-segment: each segment can have up to 65535 bytes of data
+const (
+	ZGFXMaxSegmentData = 65535 // Max data bytes per segment (OutputBuffer size - 1 for flags)
+)
+
+// sendGFXData sends GFX PDU data wrapped with ZGFX header.
+// FreeRDP expects ZGFX-wrapped data (runs zgfx_decompress on received data).
+// ZGFX format for uncompressed single segment: [0xE0 descriptor][0x04 flags][raw data]
+// Uses pooled buffers for ALL frames to eliminate allocations in the hot path.
+func (g *GFXChannel) sendGFXData(data []byte) error {
+	var wrapped []byte
+	var poolBuf *[]byte // Track if we're using a pooled buffer
+
+	if len(data) <= ZGFXMaxSegmentData {
+		// Small data: use single-segment format with pooled buffer
+		// [0xE0 descriptor][0x04 flags][raw data]
+		wrappedSize := 2 + len(data)
+		poolBuf = gfxLargeBufferPool.Get().(*[]byte)
+		if cap(*poolBuf) < wrappedSize {
+			*poolBuf = make([]byte, wrappedSize)
+		}
+		wrapped = (*poolBuf)[:wrappedSize]
+		wrapped[0] = 0xE0 // ZGFX_SEGMENTED_SINGLE
+		wrapped[1] = 0x04 // ZGFX_PACKET_COMPR_TYPE_RDP8 (uncompressed)
+		copy(wrapped[2:], data)
+	} else {
+		// Large data: use multi-segment format with pooled buffer
+		// [0xE1 descriptor][segmentCount:2][uncompressedSize:4][segments...]
+		// Each segment: [segmentSize:4][flags:1][data]
+		numSegments := (len(data) + ZGFXMaxSegmentData - 1) / ZGFXMaxSegmentData
+
+		// Calculate total size: header(7) + segments
+		totalSize := 7 // descriptor(1) + segmentCount(2) + uncompressedSize(4)
+		for i := range numSegments {
+			segDataSize := ZGFXMaxSegmentData
+			remaining := len(data) - i*ZGFXMaxSegmentData
+			if remaining < segDataSize {
+				segDataSize = remaining
+			}
+			totalSize += 4 + 1 + segDataSize // segmentSize(4) + flags(1) + data
+		}
+
+		// Use pooled buffer for large ZGFX multi-segment wrapping
+		poolBuf = gfxLargeBufferPool.Get().(*[]byte)
+		if cap(*poolBuf) < totalSize {
+			// Pool buffer too small, allocate a larger one
+			*poolBuf = make([]byte, totalSize)
+		}
+		wrapped = (*poolBuf)[:totalSize]
+		pos := 0
+
+		// Header
+		wrapped[pos] = 0xE1 // ZGFX_SEGMENTED_MULTIPART
+		pos++
+		binary.LittleEndian.PutUint16(wrapped[pos:pos+2], uint16(numSegments))
+		pos += 2
+		binary.LittleEndian.PutUint32(wrapped[pos:pos+4], uint32(len(data)))
+		pos += 4
+
+		// Segments
+		srcPos := 0
+		for range numSegments {
+			segDataSize := ZGFXMaxSegmentData
+			remaining := len(data) - srcPos
+			if remaining < segDataSize {
+				segDataSize = remaining
+			}
+			segTotalSize := 1 + segDataSize // flags(1) + data
+
+			binary.LittleEndian.PutUint32(wrapped[pos:pos+4], uint32(segTotalSize))
+			pos += 4
+			wrapped[pos] = 0x04 // ZGFX_PACKET_COMPR_TYPE_RDP8 (uncompressed)
+			pos++
+			copy(wrapped[pos:pos+segDataSize], data[srcPos:srcPos+segDataSize])
+			pos += segDataSize
+			srcPos += segDataSize
+		}
+	}
+
+	err := g.channel.SendData(wrapped)
+
+	// Return buffer to pool if we used one (after SendData copies data)
+	if poolBuf != nil {
+		gfxLargeBufferPool.Put(poolBuf)
+	}
+
+	return err
+}
+
+// unwrapZGFX unwraps ZGFX-compressed data. Only handles uncompressed passthrough.
+func (g *GFXChannel) unwrapZGFX(data []byte) ([]byte, error) {
+	if len(data) < 1 {
+		return data, nil // Return as-is if too short
+	}
+
+	descriptor := data[0]
+
+	// Check if it's a ZGFX wrapped packet
+	// Format: [0xE0 descriptor][0x00 flags][raw data]
+	// FreeRDP's zgfx_decompress_segment expects the flags byte after descriptor
+	if descriptor == ZGFXSegmentedSingle {
+		// Single segment: [descriptor][flags][data]
+		if len(data) < 2 {
+			return nil, errors.New("zgfx: single segment too short")
+		}
+		flags := data[1]
+
+		// Check PACKET_COMPRESSED flag (0x20) - if set, actual decompression is required
+		// Note: 0x04 is compression TYPE (RDP8), but 0x20 indicates data IS compressed
+		if flags&0x20 != 0 {
+			return nil, errors.New("zgfx: compressed data not supported")
+		}
+
+		// Return the raw data after descriptor and flags
+		return data[2:], nil
+	} else if descriptor == ZGFXSegmentedMulti {
+		// Multipart segment: [descriptor] [segmentCount:2] [uncompressedSize:4] [segments...]
+		if len(data) < 7 {
+			return nil, errors.New("zgfx: multipart header too short")
+		}
+
+		segmentCount := binary.LittleEndian.Uint16(data[1:3])
+		uncompressedSize := binary.LittleEndian.Uint32(data[3:7])
+
+		result := make([]byte, 0, uncompressedSize)
+		pos := 7
+
+		for i := uint16(0); i < segmentCount && pos < len(data); i++ {
+			if pos+4 > len(data) {
+				return nil, errors.New("zgfx: multipart segment size missing")
+			}
+
+			segmentSize := binary.LittleEndian.Uint32(data[pos : pos+4])
+			pos += 4
+
+			if pos+int(segmentSize) > len(data) {
+				return nil, errors.New("zgfx: multipart segment data truncated")
+			}
+
+			if segmentSize < 1 {
+				continue
+			}
+
+			flags := data[pos]
+			if flags&0x20 != 0 {
+				return nil, errors.New("zgfx: compressed segment not supported")
+			}
+
+			// Append segment data (skip flags byte)
+			result = append(result, data[pos+1:pos+int(segmentSize)]...)
+			pos += int(segmentSize)
+		}
+
+		return result, nil
+	}
+
+	// Not ZGFX wrapped - could be raw GFX PDU (shouldn't happen but handle gracefully)
+	return data, nil
+}
+
+// SetReadyCallback sets the callback to be called when the channel is ready.
+// This should be called before Open().
+func (g *GFXChannel) SetReadyCallback(cb GFXReadyCallback) {
+	g.onReady = cb
+}
+
+// Open opens the RDPGFX channel.
+func (g *GFXChannel) Open() error {
+	ch, err := g.manager.CreateChannel(GFXChannelName, g)
+	if err != nil {
+		return err
+	}
+	g.channel = ch
+	return nil
+}
+
+// OnData handles incoming RDPGFX data.
+func (g *GFXChannel) OnData(data []byte) error {
+	if len(data) < 2 {
+		g.log("RDPGFX: dropped short data (%d bytes)", len(data))
+		return nil
+	}
+
+	// First, unwrap ZGFX if present
+	unwrapped, err := g.unwrapZGFX(data)
+	if err != nil {
+		return err
+	}
+	data = unwrapped
+
+	if len(data) < GFXHeaderSize {
+		g.log("RDPGFX: dropped short unwrapped data (%d bytes, need %d)", len(data), GFXHeaderSize)
+		return nil
+	}
+
+	cmdID := binary.LittleEndian.Uint16(data[0:2])
+	_ = binary.LittleEndian.Uint16(data[2:4]) // flags - unused
+	_ = binary.LittleEndian.Uint32(data[4:8]) // pduLen - unused
+
+	switch cmdID {
+	case GFXCmdCapsAdvertise:
+		return g.handleCapsAdvertise(data[GFXHeaderSize:])
+	case GFXCmdFrameAck:
+		return g.handleFrameAck(data[GFXHeaderSize:])
+	case GFXCmdQoEFrameAck:
+		return g.handleQoEFrameAck(data[GFXHeaderSize:])
+	case GFXCmdCacheImportOffer:
+		// Client advertising cache, we don't use caching
+		return nil
+	default:
+		// Unhandled command
+	}
+
+	return nil
+}
+
+// OnClose handles channel close.
+func (g *GFXChannel) OnClose() {
+	g.ready.Store(false)
+}
+
+// gfxVersionNames maps GFX capability versions to human-readable names.
+var gfxVersionNames = map[uint32]string{
+	GFXCapsVersion8:   "8.0",
+	GFXCapsVersion81:  "8.1",
+	GFXCapsVersion10:  "10.0",
+	GFXCapsVersion101: "10.1",
+	GFXCapsVersion102: "10.2",
+	GFXCapsVersion103: "10.3",
+	GFXCapsVersion104: "10.4",
+	GFXCapsVersion105: "10.5",
+	GFXCapsVersion106: "10.6",
+	GFXCapsVersion107: "10.7",
+}
+
+// gfxVersionString returns the human-readable name for a GFX capability version.
+func gfxVersionString(version uint32) string {
+	if name, ok := gfxVersionNames[version]; ok {
+		return name
+	}
+	return "unknown"
+}
+
+// handleCapsAdvertise processes client capability advertisement.
+func (g *GFXChannel) handleCapsAdvertise(data []byte) error {
+	if len(data) < 2 {
+		g.log("RDPGFX: CapsAdvertise too short (%d bytes)", len(data))
+		return nil
+	}
+
+	capsCount := binary.LittleEndian.Uint16(data[0:2])
+	pos := 2
+
+	// Find the best capability set (prefer AVC444 > AVC420)
+	bestVersion := uint32(0)
+	bestFlags := uint32(0)
+
+	// Log all capabilities for debugging
+	g.log("RDPGFX: CapsAdvertise received, capsCount=%d", capsCount)
+
+	for i := uint16(0); i < capsCount && pos+8 <= len(data); i++ {
+		version := binary.LittleEndian.Uint32(data[pos : pos+4])
+		capsLen := binary.LittleEndian.Uint32(data[pos+4 : pos+8])
+		pos += 8
+
+		flags := uint32(0)
+		if capsLen >= 4 && pos+4 <= len(data) {
+			flags = binary.LittleEndian.Uint32(data[pos : pos+4])
+		}
+		pos += int(capsLen)
+
+		g.log("RDPGFX: Cap[%d] version=0x%08X (%s) flags=0x%08X capsLen=%d", i, version, gfxVersionString(version), flags, capsLen)
+		g.log("RDPGFX: Cap[%d] ThinClient=%v SmallCache=%v AVC420Enabled=%v AVCDisabled=%v",
+			i, flags&GFXCapsFlagThinClient != 0, flags&GFXCapsFlagSmallCache != 0,
+			flags&GFXCapsFlagAVC420Enabled != 0, flags&GFXCapsFlagAVCDisabled != 0)
+
+		// Check for H.264 support
+		if version >= GFXCapsVersion10 && flags&GFXCapsFlagAVCDisabled == 0 {
+			// AVC444 capable
+			g.log("RDPGFX: Cap[%d] -> AVC444 capable (v10+ without AVC_DISABLED)", i)
+			if version > bestVersion {
+				bestVersion = version
+				bestFlags = flags
+			}
+		} else if version >= GFXCapsVersion81 && flags&GFXCapsFlagAVC420Enabled != 0 {
+			// AVC420 capable
+			g.log("RDPGFX: Cap[%d] -> AVC420 capable (v8.1+ with AVC420_ENABLED)", i)
+			if version > bestVersion {
+				bestVersion = version
+				bestFlags = flags
+			}
+		} else if version > bestVersion {
+			g.log("RDPGFX: Cap[%d] -> No AVC support (version too old or AVC disabled)", i)
+			bestVersion = version
+			bestFlags = flags
+		}
+	}
+
+	g.capsVersion = bestVersion
+	g.capsFlags = bestFlags
+
+	// Determine codec support
+	if bestVersion >= GFXCapsVersion10 && bestFlags&GFXCapsFlagAVCDisabled == 0 {
+		g.avc444 = true
+		g.avc420 = true
+	} else if bestVersion >= GFXCapsVersion81 && bestFlags&GFXCapsFlagAVC420Enabled != 0 {
+		g.avc420 = true
+	}
+
+	g.log("RDPGFX: Selected version=0x%08X flags=0x%08X AVC420=%v AVC444=%v", bestVersion, bestFlags, g.avc420, g.avc444)
+
+	// Send capability confirm
+	return g.sendCapsConfirm()
+}
+
+// sendCapsConfirm sends capability confirmation.
+// Uses pre-allocated buffer to avoid allocation per call.
+func (g *GFXChannel) sendCapsConfirm() error {
+	// Build caps confirm PDU using pre-allocated buffer
+	// Header(8) + version(4) + capsDataLen(4) + flags(4) = 20 bytes
+	buf := g.capsConfirmBuf[:]
+
+	// Header
+	binary.LittleEndian.PutUint16(buf[0:2], GFXCmdCapsConfirm)
+	binary.LittleEndian.PutUint16(buf[2:4], 0)  // flags
+	binary.LittleEndian.PutUint32(buf[4:8], 20) // pduLength
+
+	// Capability set
+	binary.LittleEndian.PutUint32(buf[8:12], g.capsVersion)
+	binary.LittleEndian.PutUint32(buf[12:16], 4) // capsDataLen
+	binary.LittleEndian.PutUint32(buf[16:20], g.capsFlags)
+
+	// Wrap with ZGFX single-segment header inline (avoids pool allocation for 20 bytes)
+	var wrapped [2 + 20]byte
+	wrapped[0] = ZGFXSegmentedSingle
+	wrapped[1] = ZGFXPacketComprRDP8
+	copy(wrapped[2:], buf)
+
+	if err := g.channel.SendData(wrapped[:]); err != nil {
+		return err
+	}
+
+	// Record start time for frame timestamps (wall-clock time in milliseconds)
+	g.startTime.Store(time.Now().UnixMilli())
+	g.ready.Store(true)
+
+	// Notify that channel is ready
+	if g.onReady != nil {
+		g.onReady(g)
+	}
+
+	return nil
+}
+
+// updateFrameAckState updates frame tracking state when an ack is received.
+// queueDepth is the client's reported queue depth (0 if not available).
+func (g *GFXChannel) updateFrameAckState(ackFrameID uint32, queueDepth int32) {
+	g.lastAckFrameID.Store(ackFrameID)
+	g.lastAckTime.Store(time.Now().Unix())
+
+	// Clear self-healing timer since we're receiving acks
+	g.backpressureSince.Store(0)
+
+	// Calculate pending frames: frames sent - frames acknowledged
+	lastSent := g.frameID.Load()
+	pending := max(int32(lastSent)-int32(ackFrameID), 0)
+	// Use client's queue depth if it's higher
+	pending = max(queueDepth, pending)
+	g.framesPending.Store(pending)
+}
+
+// handleFrameAck processes frame acknowledgment.
+func (g *GFXChannel) handleFrameAck(data []byte) error {
+	if len(data) < GFXFrameAckSize {
+		g.log("RDPGFX: FrameAck too short (%d bytes, need %d)", len(data), GFXFrameAckSize)
+		return nil
+	}
+
+	queueDepth := binary.LittleEndian.Uint32(data[0:4])
+	ackFrameID := binary.LittleEndian.Uint32(data[4:8])
+	totalDecoded := binary.LittleEndian.Uint32(data[8:12])
+
+	g.totalDecoded.Store(totalDecoded)
+	g.updateFrameAckState(ackFrameID, int32(queueDepth))
+
+	return nil
+}
+
+// handleQoEFrameAck processes QoE frame acknowledgment.
+// QoE acks include extended timing data but must also update flow control.
+func (g *GFXChannel) handleQoEFrameAck(data []byte) error {
+	if len(data) >= 4 {
+		ackFrameID := binary.LittleEndian.Uint32(data[0:4])
+		g.updateFrameAckState(ackFrameID, 0)
+	}
+	return nil
+}

@@ -1,0 +1,295 @@
+import { useEffect } from "react";
+
+import { SettingsItem } from "@components/SettingsItem";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { useSettingsStore } from "@/hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import Checkbox from "@components/Checkbox";
+import { m } from "@localizations/messages.js";
+
+import notifications from "../notifications";
+
+interface AudioConfigResult {
+  bitrate: number;
+  complexity: number;
+  dtx_enabled: boolean;
+  fec_enabled: boolean;
+  buffer_periods: number;
+  packet_loss_perc: number;
+}
+
+const AUDIO_DEFAULTS = {
+  bitrate: 192,
+  complexity: 8,
+  packetLossPerc: 20,
+} as const;
+
+export default function SettingsAudioRoute() {
+  const { send } = useJsonRpc();
+
+  const handleRpcError = (resp: JsonRpcResponse, defaultMsg?: string) => {
+    if ("error" in resp) {
+      notifications.error(String(resp.error.data || defaultMsg || m.unknown_error()));
+      return true;
+    }
+    return false;
+  };
+
+  const {
+    setAudioOutputEnabled,
+    setAudioInputAutoEnable,
+    audioOutputEnabled,
+    audioInputAutoEnable,
+    audioBitrate,
+    setAudioBitrate,
+    audioComplexity,
+    setAudioComplexity,
+    audioDTXEnabled,
+    setAudioDTXEnabled,
+    audioFECEnabled,
+    setAudioFECEnabled,
+    audioBufferPeriods,
+    setAudioBufferPeriods,
+    audioPacketLossPerc,
+    setAudioPacketLossPerc,
+  } = useSettingsStore();
+
+  useEffect(() => {
+    send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setAudioOutputEnabled(resp.result as boolean);
+    });
+
+    send("getAudioInputAutoEnable", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setAudioInputAutoEnable(resp.result as boolean);
+    });
+
+    send("getAudioConfig", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const config = resp.result as AudioConfigResult;
+      setAudioBitrate(config.bitrate);
+      setAudioComplexity(config.complexity);
+      setAudioDTXEnabled(config.dtx_enabled);
+      setAudioFECEnabled(config.fec_enabled);
+      setAudioBufferPeriods(config.buffer_periods);
+      setAudioPacketLossPerc(config.packet_loss_perc);
+    });
+  }, [
+    send,
+    setAudioOutputEnabled,
+    setAudioInputAutoEnable,
+    setAudioBitrate,
+    setAudioComplexity,
+    setAudioDTXEnabled,
+    setAudioFECEnabled,
+    setAudioBufferPeriods,
+    setAudioPacketLossPerc,
+  ]);
+
+  const handleAudioOutputEnabledChange = (enabled: boolean) => {
+    send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        const errorMsg = enabled
+          ? m.audio_output_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+          : m.audio_output_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
+        notifications.error(errorMsg);
+        return;
+      }
+
+      setAudioOutputEnabled(enabled);
+      const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
+      notifications.success(successMsg);
+    });
+  };
+
+  const handleAudioInputAutoEnableChange = (enabled: boolean) => {
+    send("setAudioInputAutoEnable", { enabled }, (resp: JsonRpcResponse) => {
+      if (handleRpcError(resp)) return;
+
+      setAudioInputAutoEnable(enabled);
+      const successMsg = enabled
+        ? m.audio_input_auto_enable_enabled()
+        : m.audio_input_auto_enable_disabled();
+      notifications.success(successMsg);
+    });
+  };
+
+  const getCurrentConfig = () => ({
+    bitrate: audioBitrate,
+    complexity: audioComplexity,
+    dtxEnabled: audioDTXEnabled,
+    fecEnabled: audioFECEnabled,
+    bufferPeriods: audioBufferPeriods,
+    packetLossPerc: audioPacketLossPerc,
+  });
+
+  const handleAudioConfigChange = (updates: Partial<ReturnType<typeof getCurrentConfig>>) => {
+    const config = { ...getCurrentConfig(), ...updates };
+
+    send("setAudioConfig", config, (resp: JsonRpcResponse) => {
+      if (handleRpcError(resp)) return;
+
+      setAudioBitrate(config.bitrate);
+      setAudioComplexity(config.complexity);
+      setAudioDTXEnabled(config.dtxEnabled);
+      setAudioFECEnabled(config.fecEnabled);
+      setAudioBufferPeriods(config.bufferPeriods);
+      setAudioPacketLossPerc(config.packetLossPerc);
+      notifications.success(m.audio_settings_config_updated());
+    });
+  };
+
+  const handleRestartAudio = () => {
+    send("restartAudioOutput", {}, (resp: JsonRpcResponse) => {
+      if (handleRpcError(resp)) return;
+      notifications.success(m.audio_settings_applied());
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <SettingsPageHeader
+        title={m.audio_settings_title()}
+        description={m.audio_settings_description()}
+      />
+      <div className="space-y-4">
+        <SettingsItem
+          title={m.audio_settings_output_title()}
+          description={m.audio_settings_output_description()}
+        >
+          <Checkbox
+            checked={audioOutputEnabled || false}
+            onChange={e => handleAudioOutputEnabledChange(e.target.checked)}
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_auto_enable_microphone_title()}
+          description={m.audio_settings_auto_enable_microphone_description()}
+        >
+          <Checkbox
+            checked={audioInputAutoEnable || false}
+            onChange={e => handleAudioInputAutoEnableChange(e.target.checked)}
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_bitrate_title()}
+          description={m.audio_settings_bitrate_description()}
+        >
+          <SelectMenuBasic
+            size="SM"
+            value={String(audioBitrate)}
+            options={[
+              { value: "64", label: "64 kbps" },
+              { value: "96", label: "96 kbps" },
+              { value: "128", label: "128 kbps" },
+              { value: "160", label: "160 kbps" },
+              {
+                value: "192",
+                label: `192 kbps${192 === AUDIO_DEFAULTS.bitrate ? m.audio_settings_default_suffix() : ""}`,
+              },
+              { value: "256", label: "256 kbps" },
+            ]}
+            onChange={e => handleAudioConfigChange({ bitrate: parseInt(e.target.value) })}
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_complexity_title()}
+          description={m.audio_settings_complexity_description()}
+        >
+          <SelectMenuBasic
+            size="SM"
+            value={String(audioComplexity)}
+            options={[
+              { value: "0", label: "0 (fastest)" },
+              { value: "2", label: "2" },
+              { value: "5", label: "5" },
+              {
+                value: "8",
+                label: `8${8 === AUDIO_DEFAULTS.complexity ? m.audio_settings_default_suffix() : ""}`,
+              },
+              { value: "10", label: "10 (best quality)" },
+            ]}
+            onChange={e => handleAudioConfigChange({ complexity: parseInt(e.target.value) })}
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_dtx_title()}
+          description={m.audio_settings_dtx_description()}
+        >
+          <Checkbox
+            checked={audioDTXEnabled}
+            onChange={e => handleAudioConfigChange({ dtxEnabled: e.target.checked })}
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_fec_title()}
+          description={m.audio_settings_fec_description()}
+        >
+          <Checkbox
+            checked={audioFECEnabled}
+            onChange={e => handleAudioConfigChange({ fecEnabled: e.target.checked })}
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_buffer_title()}
+          description={m.audio_settings_buffer_description()}
+        >
+          <SelectMenuBasic
+            size="SM"
+            value={String(audioBufferPeriods)}
+            options={[
+              { value: "4", label: "4 (80ms)" },
+              { value: "8", label: "8 (160ms)" },
+              { value: "12", label: "12 (240ms)" },
+              { value: "16", label: "16 (320ms)" },
+              { value: "24", label: "24 (480ms)" },
+              { value: "32", label: "32 (640ms)" },
+              { value: "48", label: "48 (960ms)" },
+            ]}
+            onChange={e => handleAudioConfigChange({ bufferPeriods: parseInt(e.target.value) })}
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_packet_loss_title()}
+          description={m.audio_settings_packet_loss_description()}
+        >
+          <SelectMenuBasic
+            size="SM"
+            value={String(audioPacketLossPerc)}
+            options={[
+              { value: "0", label: `0%${m.audio_settings_no_compensation_suffix()}` },
+              { value: "5", label: "5%" },
+              { value: "10", label: "10%" },
+              { value: "15", label: "15%" },
+              {
+                value: "20",
+                label: `20%${20 === AUDIO_DEFAULTS.packetLossPerc ? m.audio_settings_default_suffix() : ""}`,
+              },
+              { value: "25", label: "25%" },
+              { value: "30", label: "30%" },
+            ]}
+            onChange={e => handleAudioConfigChange({ packetLossPerc: parseInt(e.target.value) })}
+          />
+        </SettingsItem>
+
+        <div className="pt-4">
+          <button
+            onClick={handleRestartAudio}
+            className="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
+          >
+            {m.audio_settings_apply_button()}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

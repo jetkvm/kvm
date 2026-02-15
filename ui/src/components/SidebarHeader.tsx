@@ -1,6 +1,7 @@
+import { AvailableSidebarViews } from "@hooks/stores";
 import { Button } from "@components/Button";
 import { cx } from "@/cva.config";
-import { AvailableSidebarViews } from "@/hooks/stores";
+import { m } from "@localizations/messages.js";
 
 export default function SidebarHeader({
   title,
@@ -10,14 +11,14 @@ export default function SidebarHeader({
   setSidebarView: (view: AvailableSidebarViews | null) => void;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-b-slate-800/20 bg-white px-4 py-1.5 font-semibold text-black dark:bg-slate-900 dark:border-b-slate-300/20">
+    <div className="flex items-center justify-between border-b border-b-slate-800/20 bg-white px-4 py-1.5 font-semibold text-black dark:border-b-slate-300/20 dark:bg-slate-900">
       <div className="min-w-0" style={{ flex: 1 }}>
-        <h2 className="text-sm text-black truncate dark:text-white">{title}</h2>
+        <h2 className="truncate text-sm text-black dark:text-white">{title}</h2>
       </div>
       <Button
         size="XS"
         theme="blank"
-        text="Hide"
+        text={m.hide()}
         LeadingIcon={({ className }) => (
           <svg
             className={cx(className, "rotate-180")}

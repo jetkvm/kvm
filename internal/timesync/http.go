@@ -3,7 +3,8 @@ package timesync
 import (
 	"context"
 	"errors"
-	"math/rand"
+	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -79,7 +80,7 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				metricHttpSuccessCount.WithLabelValues(url).Inc()
 
 				requestId := response.Header.Get("X-Request-Id")
-				if requestId != "" {
+				if requestId == "" {
 					requestId = response.Header.Get("X-Msedge-Ref")
 				}
 				if requestId == "" {
@@ -142,6 +143,12 @@ func queryHttpTime(
 	if err != nil {
 		return nil, nil, err
 	}
+	// Drain and close body to release the connection back to the pool.
+	// We only need headers (Date), not the body content.
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
 	dateStr := resp.Header.Get("Date")
 	parsedTime, err := time.Parse(time.RFC1123, dateStr)
 	if err != nil {

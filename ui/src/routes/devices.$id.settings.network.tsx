@@ -1,54 +1,62 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FieldValues, FormProvider, useForm, useWatch } from "react-hook-form";
+import { LuCopy, LuEthernetPort } from "react-icons/lu";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { LuEthernetPort } from "react-icons/lu";
+import validator from "validator";
 
-import {
-  IPv4Mode,
-  IPv6Mode,
-  LLDPMode,
-  mDNSMode,
-  NetworkSettings,
-  NetworkState,
-  TimeSyncMode,
-  useNetworkStateStore,
-} from "@/hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import PublicIPCard from "@components/PublicIPCard";
+import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
+import { useJsonRpc } from "@hooks/useJsonRpc";
+import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
+import { ConfirmDialog } from "@components/ConfirmDialog";
+import DhcpLeaseCard from "@components/DhcpLeaseCard";
+import EmptyCard from "@components/EmptyCard";
 import { GridCard } from "@components/Card";
 import InputField, { InputFieldWithLabel } from "@components/InputField";
+import Ipv6NetworkCard from "@components/Ipv6NetworkCard";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
+import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
-import Fieldset from "@/components/Fieldset";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import StaticIpv4Card from "@components/StaticIpv4Card";
+import StaticIpv6Card from "@components/StaticIpv6Card";
+import { useCopyToClipboard } from "@components/useCopyToClipBoard";
+import { netMaskFromCidr4 } from "@/utils/ip";
+import { getNetworkSettings, getNetworkState } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
-
-import Ipv6NetworkCard from "../components/Ipv6NetworkCard";
-import EmptyCard from "../components/EmptyCard";
-import AutoHeight from "../components/AutoHeight";
-import DhcpLeaseCard from "../components/DhcpLeaseCard";
-
-import { SettingsItem } from "./devices.$id.settings";
+import { m } from "@localizations/messages";
 
 dayjs.extend(relativeTime);
 
-const defaultNetworkSettings: NetworkSettings = {
-  hostname: "",
-  http_proxy: "",
-  domain: "",
-  ipv4_mode: "unknown",
-  ipv6_mode: "unknown",
-  lldp_mode: "unknown",
-  lldp_tx_tlvs: [],
-  mdns_mode: "unknown",
-  time_sync_mode: "unknown",
+const isLLDPAvailable = false; // LLDP is not supported yet
+
+const resolveOnRtcReady = () => {
+  return new Promise(resolve => {
+    // Check if RTC is already connected
+    const currentState = useRTCStore.getState();
+    if (currentState.rpcDataChannel?.readyState === "open") {
+      // Already connected, fetch data immediately
+      return resolve(void 0);
+    }
+
+    // Not connected yet, subscribe to state changes
+    const unsubscribe = useRTCStore.subscribe(state => {
+      if (state.rpcDataChannel?.readyState === "open") {
+        unsubscribe(); // Clean up subscription
+        return resolve(void 0);
+      }
+    });
+  });
 };
 
-export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
+export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
   const [remaining, setRemaining] = useState<string | null>(null);
 
+  // rrecalculate remaining time every 30 seconds
   useEffect(() => {
-    setRemaining(dayjs(lifetime).fromNow());
+    // schedule immediate initial update
+    setInterval(() => setRemaining(dayjs(lifetime).fromNow()), 0);
 
     const interval = setInterval(() => {
       setRemaining(dayjs(lifetime).fromNow());
@@ -57,434 +65,662 @@ export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
   }, [lifetime]);
 
   if (lifetime == "") {
-    return <strong>N/A</strong>;
+    return <strong>{m.not_applicable()}</strong>;
   }
 
   return (
     <>
       <span className="text-sm font-medium">{remaining && <> {remaining}</>}</span>
       <span className="text-xs text-slate-700 dark:text-slate-300">
-        {" "}
-        ({dayjs(lifetime).format("YYYY-MM-DD HH:mm")})
+        &nbsp;({dayjs(lifetime).format("YYYY-MM-DD HH:mm")})
       </span>
     </>
   );
 }
 
+const NonCustomDomainOptions = ["dhcp", "local"];
+
 export default function SettingsNetworkRoute() {
   const { send } = useJsonRpc();
-  const [networkState, setNetworkState] = useNetworkStateStore(state => [
-    state,
-    state.setNetworkState,
-  ]);
 
-  const [networkSettings, setNetworkSettings] =
-    useState<NetworkSettings>(defaultNetworkSettings);
+  const networkState = useNetworkStateStore(state => state);
+  const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
+
+  // Some input needs direct state management. Mostly options that open more details
+  const [customDomain, setCustomDomain] = useState<string>("");
+
+  // Confirm dialog
+  const [showRenewLeaseConfirm, setShowRenewLeaseConfirm] = useState(false);
 
   // We use this to determine whether the settings have changed
-  const firstNetworkSettings = useRef<NetworkSettings | undefined>(undefined);
+  const initialSettingsRef = useRef<NetworkSettings | null>(null);
 
-  const [networkSettingsLoaded, setNetworkSettingsLoaded] = useState(false);
+  const [showCriticalSettingsConfirm, setShowCriticalSettingsConfirm] = useState(false);
+  const [stagedSettings, setStagedSettings] = useState<NetworkSettings | null>(null);
+  const [criticalChanges, setCriticalChanges] = useState<
+    { label: string; from: string; to: string }[]
+  >([]);
 
-  const [customDomain, setCustomDomain] = useState<string>("");
-  const [selectedDomainOption, setSelectedDomainOption] = useState<string>("dhcp");
+  const fetchNetworkData = useCallback(async () => {
+    try {
+      console.log("Fetching network data...");
 
-  useEffect(() => {
-    if (networkSettings.domain && networkSettingsLoaded) {
-      // Check if the domain is one of the predefined options
-      const predefinedOptions = ["dhcp", "local"];
-      if (predefinedOptions.includes(networkSettings.domain)) {
-        setSelectedDomainOption(networkSettings.domain);
-      } else {
-        setSelectedDomainOption("custom");
-        setCustomDomain(networkSettings.domain);
+      const [settings, state] = (await Promise.all([getNetworkSettings(), getNetworkState()])) as [
+        NetworkSettings,
+        NetworkState,
+      ];
+
+      setNetworkState(state);
+
+      const settingsWithDefaults = {
+        ...settings,
+
+        domain: settings.domain || "local", // TODO: null means local domain TRUE?????
+        mdns_mode: settings.mdns_mode || "disabled",
+        time_sync_mode: settings.time_sync_mode || "ntp_only",
+        ipv4_static: {
+          address: settings.ipv4_static?.address || state.dhcp_lease?.ip || "",
+          netmask: settings.ipv4_static?.netmask || state.dhcp_lease?.netmask || "",
+          gateway: settings.ipv4_static?.gateway || state.dhcp_lease?.routers?.[0] || "",
+          dns: settings.ipv4_static?.dns || state.dhcp_lease?.dns_servers || [],
+        },
+        ipv6_static: {
+          prefix: settings.ipv6_static?.prefix || state.ipv6_addresses?.[0]?.prefix || "",
+          gateway: settings.ipv6_static?.gateway || "",
+          dns: settings.ipv6_static?.dns || [],
+        },
+      };
+
+      if (!NonCustomDomainOptions.includes(settingsWithDefaults.domain)) {
+        setCustomDomain(settingsWithDefaults.domain);
+        settingsWithDefaults.domain = "custom";
       }
+
+      initialSettingsRef.current = settingsWithDefaults;
+      return { settings: settingsWithDefaults, state };
+    } catch (err) {
+      notifications.error(
+        m.network_settings_load_error({
+          error: err instanceof Error ? err.message : m.unknown_error(),
+        }),
+      );
+      throw err;
     }
-  }, [networkSettings.domain, networkSettingsLoaded]);
+  }, [setNetworkState, setCustomDomain]);
 
-  const getNetworkSettings = useCallback(() => {
-    setNetworkSettingsLoaded(false);
-    send("getNetworkSettings", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      const networkSettings = resp.result as NetworkSettings;
-      console.debug("Network settings: ", networkSettings);
-      setNetworkSettings(networkSettings);
+  const formMethods = useForm<NetworkSettings>({
+    mode: "onBlur",
 
-      if (!firstNetworkSettings.current) {
-        firstNetworkSettings.current = networkSettings;
+    defaultValues: async () => {
+      // Ensure data channel is ready, before fetching network data from the device
+      await resolveOnRtcReady();
+      const { settings } = await fetchNetworkData();
+      return settings;
+    },
+  });
+
+  const prepareSettings = useCallback(
+    (data: FieldValues) => {
+      return {
+        ...data,
+
+        // If custom domain option is selected, use the custom domain as value
+        domain: data.domain === "custom" ? customDomain : data.domain,
+      } as NetworkSettings;
+    },
+    [customDomain],
+  );
+
+  const { register, handleSubmit, control, formState, reset } = formMethods;
+
+  const onSubmit = useCallback(
+    async (settings: NetworkSettings) => {
+      if (settings.ipv4_static?.address?.includes("/")) {
+        const parts = settings.ipv4_static.address.split("/");
+        const cidrNotation = Number.parseInt(parts[1]);
+        if (Number.isNaN(cidrNotation) || cidrNotation < 0 || cidrNotation > 32) {
+          return notifications.error(m.network_ipv4_invalid_cidr());
+        }
+        settings.ipv4_static.netmask = netMaskFromCidr4(cidrNotation);
+        settings.ipv4_static.address = parts[0];
       }
-      setNetworkSettingsLoaded(true);
-    });
-  }, [send]);
 
-  const getNetworkState = useCallback(() => {
-    send("getNetworkState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      const networkState = resp.result as NetworkState;
-      console.debug("Network state:", networkState);
-      setNetworkState(networkState);
-    });
-  }, [send, setNetworkState]);
-
-  const setNetworkSettingsRemote = useCallback(
-    (settings: NetworkSettings) => {
-      setNetworkSettingsLoaded(false);
-      send("setNetworkSettings", { settings }, (resp: JsonRpcResponse) => {
+      send("setNetworkSettings", { settings }, async resp => {
         if ("error" in resp) {
           notifications.error(
-            "Failed to save network settings: " +
-              (resp.error.data ? resp.error.data : resp.error.message),
+            m.network_save_settings_failed({ error: resp.error.message || m.unknown_error() }),
           );
-          setNetworkSettingsLoaded(true);
-          return;
+        } else {
+          // If the settings are saved successfully, fetch the latest network data and reset the form
+          // We do this so we get all the form state values, for stuff like is the form dirty, etc...
+
+          try {
+            const networkData = await fetchNetworkData();
+            if (!networkData) return;
+
+            reset(networkData.settings);
+            notifications.success(m.network_save_settings_success());
+          } catch (error) {
+            console.error("Failed to fetch network data:", error);
+          }
+          notifications.success(m.network_dhcp_lease_renew_success());
         }
-        const networkSettings = resp.result as NetworkSettings;
-        // We need to update the firstNetworkSettings ref to the new settings so we can use it to determine if the settings have changed
-        firstNetworkSettings.current = networkSettings;
-        setNetworkSettings(networkSettings);
-        getNetworkState();
-        setNetworkSettingsLoaded(true);
-        notifications.success("Network settings saved");
       });
     },
-    [getNetworkState, send],
+    [fetchNetworkData, reset, send],
   );
 
-  const handleRenewLease = useCallback(() => {
-    send("renewDHCPLease", {}, (resp: JsonRpcResponse) => {
+  const onSubmitGate = useCallback(
+    async (data: FieldValues) => {
+      const settings = prepareSettings(data);
+      const dirty = formState.dirtyFields;
+
+      // Build list of critical changes for display
+      const changes: { label: string; from: string; to: string }[] = [];
+
+      if (dirty.dhcp_client) {
+        changes.push({
+          label: m.network_dhcp_client_title(),
+          from: initialSettingsRef.current?.dhcp_client as string,
+          to: data.dhcp_client as string,
+        });
+      }
+
+      if (dirty.ipv4_mode) {
+        changes.push({
+          label: m.network_ipv4_mode_title(),
+          from: initialSettingsRef.current?.ipv4_mode as string,
+          to: data.ipv4_mode as string,
+        });
+      }
+
+      if (dirty.ipv4_static?.address) {
+        changes.push({
+          label: m.network_ipv4_address(),
+          from: initialSettingsRef.current?.ipv4_static?.address as string,
+          to: data.ipv4_static?.address as string,
+        });
+      }
+
+      if (dirty.ipv4_static?.netmask) {
+        changes.push({
+          label: m.network_ipv4_netmask(),
+          from: initialSettingsRef.current?.ipv4_static?.netmask as string,
+          to: data.ipv4_static?.netmask as string,
+        });
+      }
+
+      if (dirty.ipv4_static?.gateway) {
+        changes.push({
+          label: m.network_ipv4_gateway(),
+          from: initialSettingsRef.current?.ipv4_static?.gateway as string,
+          to: data.ipv4_static?.gateway as string,
+        });
+      }
+
+      if (dirty.ipv4_static?.dns) {
+        changes.push({
+          label: m.network_ipv4_dns(),
+          from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
+          to: data.ipv4_static?.dns.join(", ").toString() ?? "",
+        });
+      }
+
+      if (dirty.ipv6_mode) {
+        changes.push({
+          label: m.network_ipv6_mode_title(),
+          from: initialSettingsRef.current?.ipv6_mode as string,
+          to: data.ipv6_mode as string,
+        });
+      }
+
+      if (dirty.ipv6_static?.prefix) {
+        changes.push({
+          label: m.network_ipv6_prefix(),
+          from: initialSettingsRef.current?.ipv6_static?.prefix as string,
+          to: data.ipv6_static?.prefix as string,
+        });
+      }
+
+      if (dirty.ipv6_static?.gateway) {
+        changes.push({
+          label: m.network_ipv6_gateway(),
+          from: initialSettingsRef.current?.ipv6_static?.gateway as string,
+          to: data.ipv6_static?.gateway as string,
+        });
+      }
+
+      if (dirty.ipv6_static?.dns) {
+        changes.push({
+          label: m.network_ipv6_dns(),
+          from: initialSettingsRef.current?.ipv6_static?.dns.join(", ").toString() ?? "",
+          to: data.ipv6_static?.dns.join(", ").toString() ?? "",
+        });
+      }
+
+      if (dirty.hostname) {
+        changes.push({
+          label: m.network_hostname_title(),
+          from: initialSettingsRef.current?.hostname?.toString() ?? "",
+          to: data.hostname?.toString() ?? "",
+        });
+      }
+
+      // If no critical fields are changed, save immediately
+      if (changes.length === 0) return onSubmit(settings);
+
+      // Show confirmation dialog for critical changes
+      setStagedSettings(settings);
+      setCriticalChanges(changes);
+      setShowCriticalSettingsConfirm(true);
+    },
+    [prepareSettings, formState.dirtyFields, onSubmit],
+  );
+
+  const ipv4mode = useWatch({ control, name: "ipv4_mode" });
+  const ipv6mode = useWatch({ control, name: "ipv6_mode" });
+  const domain = useWatch({ control, name: "domain" });
+
+  const onDhcpLeaseRenew = () => {
+    send("renewDHCPLease", {}, resp => {
       if ("error" in resp) {
-        notifications.error("Failed to renew lease: " + resp.error.message);
+        notifications.error(
+          m.network_dhcp_lease_renew_failed({ error: resp.error.message || m.unknown_error() }),
+        );
       } else {
-        notifications.success("DHCP lease renewed");
+        notifications.success(m.network_dhcp_lease_renew_success());
       }
     });
-  }, [send]);
-
-  useEffect(() => {
-    getNetworkState();
-    getNetworkSettings();
-  }, [getNetworkState, getNetworkSettings]);
-
-  const handleIpv4ModeChange = (value: IPv4Mode | string) => {
-    setNetworkSettingsRemote({ ...networkSettings, ipv4_mode: value as IPv4Mode });
   };
 
-  const handleIpv6ModeChange = (value: IPv6Mode | string) => {
-    setNetworkSettingsRemote({ ...networkSettings, ipv6_mode: value as IPv6Mode });
-  };
-
-  const handleLldpModeChange = (value: LLDPMode | string) => {
-    setNetworkSettings({ ...networkSettings, lldp_mode: value as LLDPMode });
-  };
-
-  const handleMdnsModeChange = (value: mDNSMode | string) => {
-    setNetworkSettings({ ...networkSettings, mdns_mode: value as mDNSMode });
-  };
-
-  const handleTimeSyncModeChange = (value: TimeSyncMode | string) => {
-    setNetworkSettings({ ...networkSettings, time_sync_mode: value as TimeSyncMode });
-  };
-
-  const handleHostnameChange = (value: string) => {
-    setNetworkSettings({ ...networkSettings, hostname: value });
-  };
-
-  const handleProxyChange = (value: string) => {
-    setNetworkSettings({ ...networkSettings, http_proxy: value });
-  };
-
-  const handleDomainChange = (value: string) => {
-    setNetworkSettings({ ...networkSettings, domain: value });
-  };
-
-  const handleDomainOptionChange = (value: string) => {
-    setSelectedDomainOption(value);
-    if (value !== "custom") {
-      handleDomainChange(value);
-    }
-  };
-
-  const handleCustomDomainChange = (value: string) => {
-    setCustomDomain(value);
-    handleDomainChange(value);
-  };
-
-  const filterUnknown = useCallback(
-    (options: { value: string; label: string }[]) => {
-      if (!networkSettingsLoaded) return options;
-      return options.filter(option => option.value !== "unknown");
-    },
-    [networkSettingsLoaded],
-  );
-
-  const [showRenewLeaseConfirm, setShowRenewLeaseConfirm] = useState(false);
+  const { copy } = useCopyToClipboard();
 
   return (
     <>
-      <Fieldset disabled={!networkSettingsLoaded} className="space-y-4">
-        <SettingsPageHeader
-          title="Network"
-          description="Configure your network settings"
-        />
-        <div className="space-y-4">
-          <SettingsItem
-            title="MAC Address"
-            description="Hardware identifier for the network interface"
-          >
-            <InputField
-              type="text"
-              size="SM"
-              value={networkState?.mac_address}
-              error={""}
-              readOnly={true}
-              className="dark:!text-opacity-60"
-            />
-          </SettingsItem>
-        </div>
-        <div className="space-y-4">
-          <SettingsItem
-            title="Hostname"
-            description="Device identifier on the network. Blank for system default"
-          >
-            <div className="relative">
+      <FormProvider {...formMethods}>
+        {/* eslint-disable-next-line react-hooks/refs -- callback reads ref on submit, not during render. React fix pending: https://github.com/facebook/react/pull/35062 */}
+        <form onSubmit={handleSubmit(onSubmitGate)} className="space-y-4">
+          <SettingsPageHeader
+            title={m.network_title()}
+            description={m.network_description()}
+            action={
               <div>
-                <InputField
+                <Button
                   size="SM"
-                  type="text"
-                  placeholder="jetkvm"
-                  defaultValue={networkSettings.hostname}
-                  onChange={e => {
-                    handleHostnameChange(e.target.value);
+                  theme="primary"
+                  disabled={!(formState.isDirty || formState.isSubmitting)}
+                  loading={formState.isSubmitting}
+                  type="submit"
+                  text={formState.isSubmitting ? m.saving() : m.network_save_settings()}
+                />
+              </div>
+            }
+          />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <SettingsItem
+                title={m.network_mac_address_title()}
+                description={m.network_mac_address_description()}
+              />
+              <div className="flex items-center">
+                <GridCard cardClassName="rounded-r-none">
+                  <div className="flex h-[34px] items-center px-3 font-mono text-xs text-black select-all dark:text-white">
+                    {networkState?.mac_address}{" "}
+                  </div>
+                </GridCard>
+                <Button
+                  className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20"
+                  size="SM"
+                  type="button"
+                  theme="light"
+                  LeadingIcon={LuCopy}
+                  onClick={async () => {
+                    const mac = networkState?.mac_address || "";
+                    if (await copy(mac)) {
+                      notifications.success(m.network_mac_address_copy_success({ mac: mac }));
+                    } else {
+                      notifications.error(m.network_mac_address_copy_error());
+                    }
                   }}
                 />
               </div>
             </div>
-          </SettingsItem>
-        </div>
-        <div className="space-y-4">
-          <SettingsItem
-            title="HTTP Proxy"
-            description="Proxy server for outgoing HTTP(S) requests from the device. Blank for none."
-          >
-            <div className="relative">
-              <div>
-                <InputField
-                  size="SM"
-                  type="text"
-                  placeholder="http://proxy.example.com:8080/"
-                  defaultValue={networkSettings.http_proxy}
-                  onChange={e => {
-                    handleProxyChange(e.target.value);
-                  }}
-                />
-              </div>
-            </div>
-          </SettingsItem>
-        </div>
 
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <SettingsItem
-              title="Domain"
-              description="Network domain suffix for the device"
-            >
-              <div className="space-y-2">
+            <div className="space-y-4">
+              <SettingsItem
+                title={m.network_hostname_title()}
+                description={m.network_hostname_description()}
+              >
+                <InputField
+                  size="SM"
+                  placeholder={networkState?.hostname || "jetkvm"}
+                  {...register("hostname")}
+                  error={formState.errors.hostname?.message}
+                />
+              </SettingsItem>
+
+              <SettingsItem
+                title={m.network_http_proxy_title()}
+                description={m.network_http_proxy_description()}
+              >
+                <InputField
+                  size="SM"
+                  placeholder="http://proxy.example.com:8080"
+                  {...register("http_proxy", {
+                    validate: (value: string | null) => {
+                      if (value === "" || value === null) return true;
+                      if (!validator.isURL(value || "", { protocols: ["http", "https"] })) {
+                        return m.network_http_proxy_invalid();
+                      }
+                      return true;
+                    },
+                  })}
+                  error={formState.errors.http_proxy?.message}
+                />
+              </SettingsItem>
+
+              <div className="space-y-1">
+                <SettingsItem
+                  title={m.network_domain_title()}
+                  description={m.network_domain_description()}
+                >
+                  <div className="space-y-2">
+                    <SelectMenuBasic
+                      size="SM"
+                      options={[
+                        { value: "dhcp", label: m.network_domain_dhcp_provided() },
+                        { value: "local", label: m.network_domain_local() },
+                        { value: "custom", label: m.network_domain_custom() },
+                      ]}
+                      {...register("domain")}
+                      error={formState.errors.domain?.message}
+                    />
+                  </div>
+                </SettingsItem>
+
+                {domain === "custom" && (
+                  <div className="mt-2 w-1/3 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
+                    <InputFieldWithLabel
+                      size="SM"
+                      type="text"
+                      label={m.network_custom_domain()}
+                      placeholder="home.example.com"
+                      value={customDomain}
+                      onChange={e => {
+                        setCustomDomain(e.target.value);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <SettingsItem
+                title={m.network_mdns_title()}
+                description={m.network_mdns_description()}
+              >
                 <SelectMenuBasic
                   size="SM"
-                  value={selectedDomainOption}
-                  onChange={e => handleDomainOptionChange(e.target.value)}
                   options={[
-                    { value: "dhcp", label: "DHCP provided" },
-                    { value: "local", label: ".local" },
-                    { value: "custom", label: "Custom" },
+                    { value: "disabled", label: m.network_mdns_disabled() },
+                    { value: "auto", label: m.network_mdns_auto() },
+                    { value: "ipv4_only", label: m.network_mdns_ipv4_only() },
+                    { value: "ipv6_only", label: m.network_mdns_ipv6_only() },
                   ]}
+                  {...register("mdns_mode")}
                 />
-              </div>
-            </SettingsItem>
-            {selectedDomainOption === "custom" && (
-              <div className="mt-2 w-1/3 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
-                <InputFieldWithLabel
+              </SettingsItem>
+
+              <SettingsItem
+                title={m.network_time_sync_title()}
+                description={m.network_time_sync_description()}
+              >
+                <SelectMenuBasic
                   size="SM"
-                  type="text"
-                  label="Custom Domain"
-                  placeholder="home"
-                  value={customDomain}
-                  onChange={e => {
-                    setCustomDomain(e.target.value);
-                    handleCustomDomainChange(e.target.value);
-                  }}
+                  options={[
+                    // { value: "auto", label: "Auto" },
+                    { value: "ntp_only", label: m.network_time_sync_ntp_only() },
+                    { value: "ntp_and_http", label: m.network_time_sync_ntp_and_http() },
+                    { value: "http_only", label: m.network_time_sync_http_only() },
+                    // { value: "custom", label: "Custom" },
+                  ]}
+                  {...register("time_sync_mode")}
+                />
+              </SettingsItem>
+
+              <SettingsItem
+                title={m.network_dhcp_client_title()}
+                description={m.network_dhcp_client_description()}
+              >
+                <SelectMenuBasic
+                  size="SM"
+                  options={[
+                    { value: "jetdhcpc", label: m.network_dhcp_client_jetkvm() },
+                    { value: "udhcpc", label: "udhcpc" }, // do not localize
+                  ]}
+                  {...register("dhcp_client")}
+                />
+              </SettingsItem>
+
+              <SettingsItem
+                title={m.network_ipv4_mode_title()}
+                description={m.network_ipv4_mode_description()}
+              >
+                <SelectMenuBasic
+                  size="SM"
+                  options={[
+                    { value: "dhcp", label: m.network_ipv4_mode_dhcp() },
+                    { value: "static", label: m.network_ipv4_mode_static() },
+                  ]}
+                  {...register("ipv4_mode")}
+                />
+              </SettingsItem>
+
+              <PublicIPCard />
+
+              <div>
+                <AutoHeight>
+                  {formState.isLoading ? (
+                    <GridCard>
+                      <div className="p-4">
+                        <div className="space-y-4">
+                          <div className="h-6 w-1/3 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                          <div className="animate-pulse space-y-2">
+                            <div className="h-4 w-1/4 rounded bg-slate-200 dark:bg-slate-700" />
+                            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                            <div className="h-4 w-1/4 rounded bg-slate-200 dark:bg-slate-700" />
+                          </div>
+                        </div>
+                      </div>
+                    </GridCard>
+                  ) : ipv4mode === "static" ? (
+                    <StaticIpv4Card />
+                  ) : ipv4mode === "dhcp" && !!formState.dirtyFields.ipv4_mode ? (
+                    <EmptyCard
+                      IconElm={LuEthernetPort}
+                      headline={m.network_pending_dhcp_mode_change_headline()}
+                      description={m.network_pending_dhcp_mode_change_description()}
+                    />
+                  ) : ipv4mode === "dhcp" ? (
+                    <DhcpLeaseCard
+                      networkState={networkState}
+                      setShowRenewLeaseConfirm={setShowRenewLeaseConfirm}
+                    />
+                  ) : (
+                    <EmptyCard
+                      IconElm={LuEthernetPort}
+                      headline={m.network_no_information_headline()}
+                      description={m.network_no_information_description()}
+                    />
+                  )}
+                </AutoHeight>
+              </div>
+
+              <SettingsItem
+                title={m.network_ipv6_mode_title()}
+                description={m.network_ipv6_mode_description()}
+              >
+                <SelectMenuBasic
+                  size="SM"
+                  options={[
+                    //{ value: "disabled", label: m.network_ipv6_mode_disabled() },
+                    { value: "slaac", label: m.network_ipv6_mode_slaac() },
+                    //{ value: "dhcpv6", label: m.network_ipv6_mode_dhcpv6() },
+                    //{ value: "slaac_and_dhcpv6", label: m.network_ipv6_mode_slaac_dhcpv6() },
+                    { value: "static", label: m.network_ipv6_mode_static() },
+                    { value: "link_local", label: m.network_ipv6_mode_link_local() },
+                  ]}
+                  {...register("ipv6_mode")}
+                />
+              </SettingsItem>
+
+              <div className="space-y-4">
+                <AutoHeight>
+                  {!networkState ? (
+                    <GridCard>
+                      <div className="p-4">
+                        <div className="space-y-4">
+                          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                            {m.network_ipv6_information()}
+                          </h3>
+                          <div className="animate-pulse space-y-3">
+                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                          </div>
+                        </div>
+                      </div>
+                    </GridCard>
+                  ) : ipv6mode === "static" ? (
+                    <StaticIpv6Card />
+                  ) : (
+                    <Ipv6NetworkCard networkState={networkState || undefined} />
+                  )}
+                </AutoHeight>
+              </div>
+
+              {isLLDPAvailable && (
+                <div className="hidden space-y-4">
+                  <SettingsItem
+                    title={m.network_ll_dp_title()}
+                    description={m.network_ll_dp_description()}
+                  >
+                    <SelectMenuBasic
+                      size="SM"
+                      options={[
+                        { value: "disabled", label: m.network_ll_dp_disabled() },
+                        { value: "basic", label: m.network_ll_dp_basic() },
+                        { value: "all", label: m.network_ll_dp_all() },
+                      ]}
+                      {...register("lldp_mode")}
+                    />
+                  </SettingsItem>
+                </div>
+              )}
+
+              <div className="animate-fadeInStill animation-duration-300">
+                <Button
+                  size="SM"
+                  theme="primary"
+                  disabled={!(formState.isDirty || formState.isSubmitting)}
+                  loading={formState.isSubmitting}
+                  type="submit"
+                  text={formState.isSubmitting ? m.saving() : m.network_save_settings()}
                 />
               </div>
-            )}
+            </div>
           </div>
+        </form>
+      </FormProvider>
+
+      {/* Critical change confirm */}
+      <ConfirmDialog
+        open={showCriticalSettingsConfirm}
+        title={m.network_save_settings_apply_title()}
+        variant="warning"
+        confirmText={m.network_save_settings_confirm()}
+        onConfirm={() => {
+          setShowCriticalSettingsConfirm(false);
+          if (stagedSettings) onSubmit(stagedSettings);
+
+          // Wait for the close animation to finish before resetting the staged settings
+          setTimeout(() => {
+            setStagedSettings(null);
+            setCriticalChanges([]);
+          }, 500);
+        }}
+        onClose={() => {
+          setShowCriticalSettingsConfirm(false);
+        }}
+        isConfirming={formState.isSubmitting}
+        description={
           <div className="space-y-4">
-            <SettingsItem
-              title="mDNS"
-              description="Control mDNS (multicast DNS) operational mode"
-            >
-              <SelectMenuBasic
-                size="SM"
-                value={networkSettings.mdns_mode}
-                onChange={e => handleMdnsModeChange(e.target.value)}
-                options={filterUnknown([
-                  { value: "disabled", label: "Disabled" },
-                  { value: "auto", label: "Auto" },
-                  { value: "ipv4_only", label: "IPv4 only" },
-                  { value: "ipv6_only", label: "IPv6 only" },
-                ])}
-              />
-            </SettingsItem>
-          </div>
+            <div>
+              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                {m.network_save_settings_confirm_description()}
+              </p>
+            </div>
 
-          <div className="space-y-4">
-            <SettingsItem
-              title="Time synchronization"
-              description="Configure time synchronization settings"
-            >
-              <SelectMenuBasic
-                size="SM"
-                value={networkSettings.time_sync_mode}
-                onChange={e => {
-                  handleTimeSyncModeChange(e.target.value);
-                }}
-                options={filterUnknown([
-                  { value: "unknown", label: "..." },
-                  // { value: "auto", label: "Auto" },
-                  { value: "ntp_only", label: "NTP only" },
-                  { value: "ntp_and_http", label: "NTP and HTTP" },
-                  { value: "http_only", label: "HTTP only" },
-                  // { value: "custom", label: "Custom" },
-                ])}
-              />
-            </SettingsItem>
-          </div>
-
-          <Button
-            size="SM"
-            theme="primary"
-            disabled={firstNetworkSettings.current === networkSettings}
-            text="Save Settings"
-            onClick={() => setNetworkSettingsRemote(networkSettings)}
-          />
-        </div>
-
-        <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
-
-        <div className="space-y-4">
-          <SettingsItem title="IPv4 Mode" description="Configure the IPv4 mode">
-            <SelectMenuBasic
-              size="SM"
-              value={networkSettings.ipv4_mode}
-              onChange={e => handleIpv4ModeChange(e.target.value)}
-              options={filterUnknown([
-                { value: "dhcp", label: "DHCP" },
-                // { value: "static", label: "Static" },
-              ])}
-            />
-          </SettingsItem>
-          <AutoHeight>
-            {!networkSettingsLoaded && !networkState?.dhcp_lease ? (
-              <GridCard>
-                <div className="p-4">
-                  <div className="space-y-4">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      DHCP Lease Information
-                    </h3>
-                    <div className="animate-pulse space-y-3">
-                      <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-                      <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-                      <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between text-[13px] font-medium text-slate-900 dark:text-white">
+                {m.network_save_settings_confirm_heading()}
+              </div>
+              <div className="space-y-2.5">
+                {criticalChanges.map((c, idx) => (
+                  <div
+                    key={idx + c.label}
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-slate-800/10 bg-slate-100/50 px-3 py-2 dark:border-slate-300/20 dark:bg-slate-800/50"
+                  >
+                    <span className="text-xs text-slate-600 dark:text-slate-400">{c.label}</span>
+                    <div className="flex items-center gap-2.5">
+                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 font-mono text-xs text-black dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
+                        {c.from || "—"}
+                      </code>
+                      <svg
+                        className="size-3.5 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M13 7l5 5m0 0l-5 5m5-5H6"
+                        />
+                      </svg>
+                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 font-mono text-xs text-black dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
+                        {c.to || "—"}
+                      </code>
                     </div>
                   </div>
-                </div>
-              </GridCard>
-            ) : networkState?.dhcp_lease && networkState.dhcp_lease.ip ? (
-              <DhcpLeaseCard
-                networkState={networkState}
-                setShowRenewLeaseConfirm={setShowRenewLeaseConfirm}
-              />
-            ) : (
-              <EmptyCard
-                IconElm={LuEthernetPort}
-                headline="DHCP Information"
-                description="No DHCP lease information available"
-              />
-            )}
-          </AutoHeight>
-        </div>
-        <div className="space-y-4">
-          <SettingsItem title="IPv6 Mode" description="Configure the IPv6 mode">
-            <SelectMenuBasic
-              size="SM"
-              value={networkSettings.ipv6_mode}
-              onChange={e => handleIpv6ModeChange(e.target.value)}
-              options={filterUnknown([
-                { value: "disabled", label: "Disabled" },
-                { value: "slaac", label: "SLAAC" },
-                // { value: "dhcpv6", label: "DHCPv6" },
-                // { value: "slaac_and_dhcpv6", label: "SLAAC and DHCPv6" },
-                // { value: "static", label: "Static" },
-                // { value: "link_local", label: "Link-local only" },
-              ])}
-            />
-          </SettingsItem>
-          <AutoHeight>
-            {!networkSettingsLoaded &&
-            !(networkState?.ipv6_addresses && networkState.ipv6_addresses.length > 0) ? (
-              <GridCard>
-                <div className="p-4">
-                  <div className="space-y-4">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      IPv6 Information
-                    </h3>
-                    <div className="animate-pulse space-y-3">
-                      <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-                      <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-                      <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-                    </div>
-                  </div>
-                </div>
-              </GridCard>
-            ) : networkState?.ipv6_addresses && networkState.ipv6_addresses.length > 0 ? (
-              <Ipv6NetworkCard networkState={networkState} />
-            ) : (
-              <EmptyCard
-                IconElm={LuEthernetPort}
-                headline="IPv6 Information"
-                description="No IPv6 addresses configured"
-              />
-            )}
-          </AutoHeight>
-        </div>
-        <div className="hidden space-y-4">
-          <SettingsItem
-            title="LLDP"
-            description="Control which TLVs will be sent over Link Layer Discovery Protocol"
-          >
-            <SelectMenuBasic
-              size="SM"
-              value={networkSettings.lldp_mode}
-              onChange={e => handleLldpModeChange(e.target.value)}
-              options={filterUnknown([
-                { value: "disabled", label: "Disabled" },
-                { value: "basic", label: "Basic" },
-                { value: "all", label: "All" },
-              ])}
-            />
-          </SettingsItem>
-        </div>
-      </Fieldset>
+                ))}
+              </div>
+            </div>
+          </div>
+        }
+      />
+
       <ConfirmDialog
         open={showRenewLeaseConfirm}
-        onClose={() => setShowRenewLeaseConfirm(false)}
-        title="Renew DHCP Lease"
-        description="This will request a new IP address from your DHCP server. Your device may temporarily lose network connectivity during this process."
-        variant="danger"
-        confirmText="Renew Lease"
+        title={m.dhcp_lease_renew()}
+        variant="warning"
+        confirmText={m.network_dhcp_lease_renew_confirm()}
+        description={
+          <p>
+            {m.network_dhcp_lease_renew_confirm_description()}
+            <br />
+            <br />
+            {m.network_dhcp_lease_renew_confirm_new_a()}{" "}
+            <strong>{m.network_dhcp_lease_renew_confirm_new_b()}</strong>.
+          </p>
+        }
         onConfirm={() => {
-          handleRenewLease();
           setShowRenewLeaseConfirm(false);
+          onDhcpLeaseRenew();
         }}
+        onClose={() => setShowRenewLeaseConfirm(false)}
       />
     </>
   );

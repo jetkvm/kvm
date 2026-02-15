@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useClose } from "@headlessui/react";
 
+import { m } from "@localizations/messages.js";
 import { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import { useRTCStore, useUiStore } from "@/hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useRTCStore, useUiStore } from "@hooks/stores";
 import notifications from "@/notifications";
 
 import EmptyStateCard from "./EmptyStateCard";
@@ -35,12 +36,12 @@ export default function WakeOnLanModal() {
         if ("error" in resp) {
           const isInvalid = resp.error.data?.includes("invalid MAC address");
           if (isInvalid) {
-            setErrorMessage("Invalid MAC address");
+            setErrorMessage(m.wake_on_lan_invalid_mac());
           } else {
-            setErrorMessage("Failed to send Magic Packet");
+            setErrorMessage(m.wake_on_lan_failed_send_magic());
           }
         } else {
-          notifications.success("Magic Packet sent successfully");
+          notifications.success(m.wake_on_lan_magic_sent_success());
           setDisableVideoFocusTrap(false);
           close();
         }
@@ -68,13 +69,17 @@ export default function WakeOnLanModal() {
     (index: number) => {
       const updatedDevices = storedDevices.filter((_, i) => i !== index);
 
-      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          console.error("Failed to update Wake-on-LAN devices:", resp.error);
-        } else {
-          syncStoredDevices();
-        }
-      });
+      send(
+        "setWakeOnLanDevices",
+        { params: { devices: updatedDevices } },
+        (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            console.error("Failed to update Wake-on-LAN devices:", resp.error);
+          } else {
+            syncStoredDevices();
+          }
+        },
+      );
     },
     [send, storedDevices, syncStoredDevices],
   );
@@ -84,15 +89,19 @@ export default function WakeOnLanModal() {
       if (!name || !macAddress) return;
       const updatedDevices = [...storedDevices, { name, macAddress }];
       console.log("updatedDevices", updatedDevices);
-      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          console.error("Failed to add Wake-on-LAN device:", resp.error);
-          setAddDeviceErrorMessage("Failed to add device");
-        } else {
-          setShowAddForm(false);
-          syncStoredDevices();
-        }
-      });
+      send(
+        "setWakeOnLanDevices",
+        { params: { devices: updatedDevices } },
+        (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            console.error("Failed to add Wake-on-LAN device:", resp.error);
+            setAddDeviceErrorMessage(m.wake_on_lan_failed_add_device());
+          } else {
+            setShowAddForm(false);
+            syncStoredDevices();
+          }
+        },
+      );
     },
     [send, storedDevices, syncStoredDevices],
   );
@@ -102,10 +111,7 @@ export default function WakeOnLanModal() {
       <div className="space-y-4 p-4 py-3">
         <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="space-y-4">
-            <SettingsPageHeader
-              title="Wake On LAN"
-              description="Send a Magic Packet to wake up a remote device."
-            />
+            <SettingsPageHeader title={m.wake_on_lan()} description={m.wake_on_lan_description()} />
 
             {showAddForm ? (
               <AddDeviceForm

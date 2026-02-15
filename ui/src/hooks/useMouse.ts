@@ -40,13 +40,7 @@ export default function useMouse() {
       }
       setMouseMove({ x, y, buttons });
     },
-    [
-      send,
-      reportRelMouseEvent,
-      setMouseMove,
-      mouseMode,
-      rpcHidReady,
-    ],
+    [send, reportRelMouseEvent, setMouseMove, mouseMode, rpcHidReady],
   );
 
   const getRelMouseMoveHandler = useCallback(
@@ -72,56 +66,52 @@ export default function useMouse() {
       // We set that for the debug info bar
       setMousePosition(x, y);
     },
-    [
-      send,
-      reportAbsMouseEvent,
-      setMousePosition,
-      mouseMode,
-      rpcHidReady,
-    ],
+    [send, reportAbsMouseEvent, setMousePosition, mouseMode, rpcHidReady],
   );
 
   const getAbsMouseMoveHandler = useCallback(
-    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) => (e: MouseEvent) => {
-      if (!videoClientWidth || !videoClientHeight) return;
-      if (mouseMode !== "absolute") return;
+    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
+      (e: MouseEvent) => {
+        if (!videoClientWidth || !videoClientHeight) return;
+        if (mouseMode !== "absolute") return;
 
-      // Get the aspect ratios of the video element and the video stream
-      const videoElementAspectRatio = videoClientWidth / videoClientHeight;
-      const videoStreamAspectRatio = videoWidth / videoHeight;
+        // Get the aspect ratios of the video element and the video stream
+        const videoElementAspectRatio = videoClientWidth / videoClientHeight;
+        const videoStreamAspectRatio = videoWidth / videoHeight;
 
-      // Calculate the effective video display area
-      let effectiveWidth = videoClientWidth;
-      let effectiveHeight = videoClientHeight;
-      let offsetX = 0;
-      let offsetY = 0;
+        // Calculate the effective video display area
+        let effectiveWidth = videoClientWidth;
+        let effectiveHeight = videoClientHeight;
+        let offsetX = 0;
+        let offsetY = 0;
 
-      if (videoElementAspectRatio > videoStreamAspectRatio) {
-        // Pillarboxing: black bars on the left and right
-        effectiveWidth = videoClientHeight * videoStreamAspectRatio;
-        offsetX = (videoClientWidth - effectiveWidth) / 2;
-      } else if (videoElementAspectRatio < videoStreamAspectRatio) {
-        // Letterboxing: black bars on the top and bottom
-        effectiveHeight = videoClientWidth / videoStreamAspectRatio;
-        offsetY = (videoClientHeight - effectiveHeight) / 2;
-      }
+        if (videoElementAspectRatio > videoStreamAspectRatio) {
+          // Pillarboxing: black bars on the left and right
+          effectiveWidth = videoClientHeight * videoStreamAspectRatio;
+          offsetX = (videoClientWidth - effectiveWidth) / 2;
+        } else if (videoElementAspectRatio < videoStreamAspectRatio) {
+          // Letterboxing: black bars on the top and bottom
+          effectiveHeight = videoClientWidth / videoStreamAspectRatio;
+          offsetY = (videoClientHeight - effectiveHeight) / 2;
+        }
 
-      // Clamp mouse position within the effective video boundaries
-      const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
-      const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
+        // Clamp mouse position within the effective video boundaries
+        const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
+        const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
 
-      // Map clamped mouse position to the video stream's coordinate system
-      const relativeX = (clampedX - offsetX) / effectiveWidth;
-      const relativeY = (clampedY - offsetY) / effectiveHeight;
+        // Map clamped mouse position to the video stream's coordinate system
+        const relativeX = (clampedX - offsetX) / effectiveWidth;
+        const relativeY = (clampedY - offsetY) / effectiveHeight;
 
-      // Convert to HID absolute coordinate system (0-32767 range)
-      const x = Math.round(relativeX * 32767);
-      const y = Math.round(relativeY * 32767);
+        // Convert to HID absolute coordinate system (0-32767 range)
+        const x = Math.round(relativeX * 32767);
+        const y = Math.round(relativeY * 32767);
 
-      // Send mouse movement
-      const { buttons } = e;
-      sendAbsMouseMovement(x, y, buttons);
-    }, [mouseMode, sendAbsMouseMovement],
+        // Send mouse movement
+        const { buttons } = e;
+        sendAbsMouseMovement(x, y, buttons);
+      },
+    [mouseMode, sendAbsMouseMovement],
   );
 
   const getMouseWheelHandler = useCallback(
@@ -130,25 +120,22 @@ export default function useMouse() {
         return;
       }
 
-      // Determine if the wheel event is an accel scroll value
-      const isAccel = Math.abs(e.deltaY) >= 100;
+      // Calculate vertical scroll
+      const isAccelY = Math.abs(e.deltaY) >= 100;
+      const scrollValueY = isAccelY ? e.deltaY / 100 : Math.sign(e.deltaY);
+      const clampedScrollY = Math.max(-127, Math.min(127, scrollValueY));
+      const wheelY = -clampedScrollY; // Invert to match expected behavior
 
-      // Calculate the accel scroll value
-      const accelScrollValue = e.deltaY / 100;
+      // Calculate horizontal scroll
+      const isAccelX = Math.abs(e.deltaX) >= 100;
+      const scrollValueX = isAccelX ? e.deltaX / 100 : Math.sign(e.deltaX);
+      const clampedScrollX = Math.max(-127, Math.min(127, scrollValueX));
+      const wheelX = clampedScrollX;
 
-      // Calculate the no accel scroll value
-      const noAccelScrollValue = Math.sign(e.deltaY);
-
-      // Get scroll value
-      const scrollValue = isAccel ? accelScrollValue : noAccelScrollValue;
-
-      // Apply clamping (i.e. min and max mouse wheel hardware value)
-      const clampedScrollValue = Math.max(-127, Math.min(127, scrollValue));
-
-      // Invert the clamped scroll value to match expected behavior
-      const invertedScrollValue = -clampedScrollValue;
-
-      send("wheelReport", { wheelY: invertedScrollValue });
+      // Only send if there's actual scroll movement
+      if (wheelY !== 0 || wheelX !== 0) {
+        send("wheelReport", { wheelY, wheelX });
+      }
 
       // Apply blocking delay based of throttling settings
       if (scrollThrottling && !blockWheelEvent) {

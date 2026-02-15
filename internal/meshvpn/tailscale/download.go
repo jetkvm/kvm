@@ -1,0 +1,302 @@
+//go:build linux
+
+package tailscale
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/jetkvm/kvm/internal/meshvpn"
+)
+
+// isPathSafe checks if the target path is safely within the base directory.
+// Returns an error if the path escapes the base directory (path traversal attack).
+func isPathSafe(basePath, targetPath string) error {
+	cleanBase := filepath.Clean(basePath) + string(filepath.Separator)
+	cleanTarget := filepath.Clean(targetPath)
+
+	// Target must be within base directory (or be the base directory itself)
+	if !strings.HasPrefix(cleanTarget, cleanBase) && cleanTarget != filepath.Clean(basePath) {
+		return fmt.Errorf("path escapes base directory: %s", targetPath)
+	}
+	return nil
+}
+
+// Downloader handles downloading and installing Tailscale binaries.
+type Downloader struct {
+	version    string
+	httpClient meshvpn.HTTPClient
+}
+
+func (d *Downloader) getPackageURL() string {
+	return fmt.Sprintf("%s/tailscale_%s_arm.tgz", BaseDownloadURL, d.version)
+}
+
+func (d *Downloader) getChecksumURL() string {
+	return fmt.Sprintf("%s/tailscale_%s_arm.tgz.sha256", BaseDownloadURL, d.version)
+}
+
+// Install downloads, verifies, and installs Tailscale.
+// Progress: 0-10% checksum, 10-70% download, 70-80% verify, 80-95% extract, 95-100% configure.
+func (d *Downloader) Install(ctx context.Context, progress meshvpn.ProgressFunc) error {
+	logger.Info().Str("version", d.version).Msg("starting Tailscale installation")
+
+	stageNames := []string{"checksum", "download", "verify", "extract", "configure"}
+
+	reportProgress := func(stage int, stageProgress float64) {
+		if progress == nil {
+			return
+		}
+		var overall float64
+		switch stage {
+		case 0:
+			overall = stageProgress * 0.1
+		case 1:
+			overall = 0.1 + stageProgress*0.6
+		case 2:
+			overall = 0.7 + stageProgress*0.1
+		case 3:
+			overall = 0.8 + stageProgress*0.15
+		case 4:
+			overall = 0.95 + stageProgress*0.05
+		}
+		progress(overall)
+		logger.Trace().
+			Str("stage", stageNames[stage]).
+			Float64("stageProgress", stageProgress).
+			Float64("overall", overall).
+			Msg("installation progress")
+	}
+
+	logger.Info().Str("url", d.getChecksumURL()).Msg("downloading checksum")
+	reportProgress(0, 0)
+
+	expectedHash, err := d.downloadChecksum()
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to download checksum")
+		return fmt.Errorf("failed to download checksum: %w", err)
+	}
+	reportProgress(0, 1.0)
+
+	logger.Info().Str("hash", expectedHash).Msg("got expected hash")
+
+	logger.Info().Str("url", d.getPackageURL()).Msg("downloading package")
+	reportProgress(1, 0)
+
+	tmpFile, err := os.CreateTemp("", "tailscale-*.tgz")
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to create temp file")
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	logger.Debug().Str("tmpPath", tmpPath).Msg("created temp file for download")
+
+	httpClient := d.httpClient
+	if httpClient == nil {
+		httpClient = meshvpn.NewDefaultHTTPClient()
+	}
+
+	err = httpClient.Download(d.getPackageURL(), tmpPath, func(p float64) {
+		reportProgress(1, p)
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("package download failed")
+		return fmt.Errorf("failed to download package: %w", err)
+	}
+	reportProgress(1, 1.0)
+	logger.Info().Str("tmpPath", tmpPath).Msg("package download completed")
+
+	logger.Debug().Msg("verifying checksum")
+	reportProgress(2, 0)
+
+	actualHash, err := d.hashFile(tmpPath)
+	if err != nil {
+		return fmt.Errorf("failed to hash file: %w", err)
+	}
+
+	if actualHash != expectedHash {
+		return fmt.Errorf("%w: expected %s, got %s", meshvpn.ErrVerificationFailed, expectedHash, actualHash)
+	}
+	reportProgress(2, 1.0)
+
+	logger.Debug().Msg("checksum verified")
+
+	logger.Debug().Msg("extracting package")
+	reportProgress(3, 0)
+
+	if err := d.extract(tmpPath); err != nil {
+		return fmt.Errorf("failed to extract package: %w", err)
+	}
+	reportProgress(3, 1.0)
+
+	logger.Debug().Msg("configuring")
+	reportProgress(4, 0)
+
+	if err := d.configure(ctx); err != nil {
+		return fmt.Errorf("failed to configure: %w", err)
+	}
+	reportProgress(4, 1.0)
+
+	logger.Info().Str("version", d.version).Msg("Tailscale installation complete")
+
+	return nil
+}
+
+func (d *Downloader) downloadChecksum() (string, error) {
+	httpClient := d.httpClient
+	if httpClient == nil {
+		httpClient = meshvpn.NewDefaultHTTPClient()
+	}
+
+	data, err := httpClient.Get(d.getChecksumURL())
+	if err != nil {
+		return "", err
+	}
+
+	hash := strings.TrimSpace(string(data))
+	parts := strings.Fields(hash)
+	if len(parts) > 0 {
+		hash = parts[0]
+	}
+
+	return hash, nil
+}
+
+func (d *Downloader) hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func (d *Downloader) extract(tarballPath string) error {
+	if err := os.MkdirAll(InstallBasePath, 0755); err != nil {
+		return err
+	}
+
+	stateDir := filepath.Dir(StatePath)
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		return err
+	}
+
+	f, err := os.Open(tarballPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+	prefix := fmt.Sprintf("tailscale_%s_arm/", d.version)
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		name := strings.TrimPrefix(header.Name, prefix)
+
+		if name == "" {
+			continue
+		}
+
+		// Security: reject symlinks and hard links to prevent symlink attacks
+		switch header.Typeflag {
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("archive contains forbidden link type: %s", name)
+		}
+
+		target := filepath.Join(InstallBasePath, name)
+
+		// Security: prevent path traversal attacks by ensuring target stays within InstallBasePath
+		if err := isPathSafe(InstallBasePath, target); err != nil {
+			return fmt.Errorf("archive contains path traversal attempt: %s", name)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+
+			outFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
+				return err
+			}
+			outFile.Close()
+		}
+	}
+
+	return nil
+}
+
+func (d *Downloader) configure(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, TailscalePath, "configure", "jetkvm")
+	cmd.Dir = InstallBasePath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// The "tailscale configure jetkvm" command is a JetKVM-specific extension
+		// that may not exist in standard Tailscale releases. Check if this is the
+		// expected "command not found" case vs an unexpected error.
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// Exit code 1 with "unknown command" typically means the command doesn't exist
+			if strings.Contains(string(output), "unknown command") {
+				logger.Debug().Msg("tailscale configure jetkvm not available in this version (expected)")
+			} else {
+				// Unexpected error - log but don't fail installation
+				logger.Warn().Err(err).Str("output", string(output)).Int("exitCode", exitErr.ExitCode()).
+					Msg("tailscale configure jetkvm failed with unexpected error")
+			}
+		} else {
+			// Non-exit error (e.g., context cancelled, binary not found)
+			return fmt.Errorf("failed to run tailscale configure: %w", err)
+		}
+	}
+
+	// Ensure all extracted files are flushed to disk before proceeding.
+	// This is important on systems with aggressive write caching.
+	if err := exec.CommandContext(ctx, "sync").Run(); err != nil {
+		logger.Warn().Err(err).Msg("filesystem sync failed after configuration")
+	}
+
+	return nil
+}

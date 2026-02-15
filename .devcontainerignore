@@ -1,0 +1,40 @@
+# Git
+.git
+
+# Node modules
+node_modules
+ui/node_modules
+
+# Go vendor
+vendor
+
+# Build outputs
+dist
+build
+bin/
+ui/dist
+internal/native/cgo/build/
+
+# Logs and temp files
+*.log
+.DS_Store
+__pycache__
+*.pyc
+tmp/
+utilities/tmp/
+
+# DevPod internal
+.devpod
+
+# Cache directories
+.cache
+
+# IDE and editor files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db

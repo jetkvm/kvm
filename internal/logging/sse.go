@@ -85,10 +85,6 @@ func (stream *sseEvent) serveHTTP() gin.HandlerFunc {
 
 		go func() {
 			<-c.Writer.CloseNotify()
-
-			for range clientChan {
-			}
-
 			stream.ClosedClients <- clientChan
 		}()
 

@@ -2,19 +2,55 @@ package kvm
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
+	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
+	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
+	"github.com/jetkvm/kvm/internal/ota"
 )
 
 var appCtx context.Context
+var procPrefix string = "jetkvm: [app]"
+
+func setProcTitle(status string) {
+	if status != "" {
+		status = " " + status
+	}
+	title := fmt.Sprintf("%s%s", procPrefix, status)
+	gspt.SetProcTitle(title)
+}
 
 func Main() {
+	// Set GOMAXPROCS higher than CPU count to improve concurrency when goroutines
+	// are blocked in I/O (TLS, sockets, CGO). This helps RDP/VNC/Web run in parallel
+	// on the single-core RV1106 by allowing more OS threads for blocking operations.
+	runtime.GOMAXPROCS(4)
+
+	setProcTitle("starting")
+
+	logger.Log().Msg("JetKVM Starting Up")
+
+	checkFailsafeReason()
+	if failsafeModeActive {
+		procPrefix = "jetkvm: [app+failsafe]"
+		logger.Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")
+	}
+
 	LoadConfig()
+
+	// Enable contention profiling only if developer mode is active.
+	if _, err := os.Stat("/userdata/jetkvm/devmode.enable"); err == nil {
+		runtime.SetMutexProfileFraction(5)
+		runtime.SetBlockProfileRate(1_000_000)
+		logger.Info().Msg("developer mode active: contention profiling enabled")
+	}
 
 	var cancel context.CancelFunc
 	appCtx, cancel = context.WithCancel(context.Background())
@@ -31,7 +67,17 @@ func Main() {
 		Msg("starting JetKVM")
 
 	go runWatchdog()
-	go confirmCurrentSystem()
+
+	// initialize usb gadget
+	setProcTitle("initUsbGadget")
+	initUsbGadget()
+
+	setProcTitle("initNative")
+	initNative(systemVersionLocal, appVersionLocal)
+	initDisplay()
+
+	initAudio()
+	defer stopAudio()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 
@@ -43,40 +89,35 @@ func Main() {
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
 
+	initOta()
+
+	http.DefaultClient.Timeout = 1 * time.Minute
+
 	// Initialize network
+	setProcTitle("initNetwork")
 	if err := initNetwork(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize network")
+		// TODO: reset config to default
 		os.Exit(1)
 	}
 
 	// Initialize time sync
+	setProcTitle("initTimeSync")
 	initTimeSync()
 	timeSync.Start()
 
+	// Initialize mesh VPN
+	setProcTitle("initMeshVPN")
+	initMeshVPN()
+
 	// Initialize mDNS
+	setProcTitle("initMdns")
 	if err := initMdns(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize mDNS")
-		os.Exit(1)
 	}
 
-	// Initialize native ctrl socket server
-	StartNativeCtrlSocketServer()
-
-	// Initialize native video socket server
-	StartNativeVideoSocketServer()
-
+	setProcTitle("initPrometheus")
 	initPrometheus()
-
-	go func() {
-		err = ExtractAndRunNativeBin()
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to extract and run native bin")
-			//TODO: prepare an error message screen buffer to show on kvm screen
-		}
-	}()
-
-	// initialize usb gadget
-	initUsbGadget()
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
@@ -84,17 +125,40 @@ func Main() {
 	if err := initImagesFolder(); err != nil {
 		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
+
 	initJiggler()
 
-	// initialize display
-	initDisplay()
+	// Initialize TLS subsystem early to check hardware crypto availability.
+	// This ensures OpenSSL is fully initialized before any TLS connections
+	// (HTTPS web server, VNC, RDP) which prevents first-connection delays.
+	setProcTitle("initTLS")
+	cryptotls.Init()
+	logger.Info().
+		Bool("hardwareAccelerated", cryptotls.IsHardwareAvailable()).
+		Str("engine", cryptotls.HardwareEngine()).
+		Msg("TLS subsystem initialized")
+
+	// start video sleep mode timer
+	startVideoSleepModeTicker()
 
 	go func() {
+		// wait for 15 minutes before starting auto-update checks
+		// this is to avoid interfering with initial setup processes
+		// and to ensure the system is stable before checking for updates
 		time.Sleep(15 * time.Minute)
+
 		for {
-			logger.Debug().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("UPDATING")
-			if !config.AutoUpdateEnabled {
-				return
+			logger.Info().Bool("auto_update_enabled", loadCfg().AutoUpdateEnabled).Msg("auto-update check")
+			if !loadCfg().AutoUpdateEnabled {
+				logger.Debug().Msg("auto-update disabled")
+				time.Sleep(5 * time.Minute) // we'll check if auto-updates are enabled in five minutes
+				continue
+			}
+
+			if currentSession.Load() != nil {
+				logger.Debug().Msg("skipping update since a session is active")
+				time.Sleep(1 * time.Minute)
+				continue
 			}
 
 			if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
@@ -103,14 +167,11 @@ func Main() {
 				continue
 			}
 
-			if currentSession != nil {
-				logger.Debug().Msg("skipping update since a session is active")
-				time.Sleep(1 * time.Minute)
-				continue
-			}
-
-			includePreRelease := config.IncludePreRelease
-			err = TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
+			includePreRelease := loadCfg().IncludePreRelease
+			err = otaState.TryUpdate(context.Background(), ota.UpdateParams{
+				DeviceID:          GetDeviceID(),
+				IncludePreRelease: includePreRelease,
+			})
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to auto update")
 			}
@@ -118,23 +179,52 @@ func Main() {
 			time.Sleep(1 * time.Hour)
 		}
 	}()
+
 	//go RunFuseServer()
 	go RunWebServer()
 
 	go RunWebSecureServer()
 	// Web secure server is started only if TLS mode is enabled
-	if config.TLSMode != "" {
+	if loadCfg().TLSMode != "" {
 		startWebSecureServer()
 	}
 
 	// As websocket client already checks if the cloud token is set, we can start it here.
 	go RunWebsocketClient()
+	initPublicIPState()
 
 	initSerialPort()
+
+	// Initialize VNC server if enabled
+	cfg := loadCfg()
+	if cfg.VNCEnabled {
+		if err := initVNCServer(); err != nil {
+			logger.Error().Err(err).Msg("failed to initialize VNC server")
+		}
+	}
+
+	// Initialize RDP server if enabled
+	if cfg.RDPEnabled {
+		if err := initRDPServer(); err != nil {
+			logger.Error().Err(err).Msg("failed to initialize RDP server")
+		}
+
+		// Start RD Gateway UDP listener for ShortPath discovery
+		tlsMode := cfg.TLSMode
+		gwEnabled := cfg.RDPGatewayEnabled == nil || *cfg.RDPGatewayEnabled
+		if gwEnabled && (tlsMode == "self-signed" || tlsMode == "custom") {
+			go startRDPGatewayUDP()
+		}
+	}
+
+	setProcTitle("ready")
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
-	logger.Info().Msg("JetKVM Shutting Down")
+
+	logger.Log().Msg("JetKVM Shutting Down")
+
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {

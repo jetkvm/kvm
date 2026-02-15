@@ -1,8 +1,9 @@
 import { useState, useRef } from "react";
 import { LuPlus, LuArrowLeft } from "react-icons/lu";
 
-import { InputFieldWithLabel } from "@/components/InputField";
-import { Button } from "@/components/Button";
+import { m } from "@localizations/messages.js";
+import { InputFieldWithLabel } from "@components/InputField";
+import { Button } from "@components/Button";
 
 interface AddDeviceFormProps {
   onAddDevice: (name: string, macAddress: string) => void;
@@ -26,7 +27,7 @@ export default function AddDeviceForm({
   return (
     <div className="space-y-4">
       <div
-        className="animate-fadeIn opacity-0 space-y-4"
+        className="animate-fadeIn space-y-4 opacity-0"
         style={{
           animationDuration: "0.5s",
           animationFillMode: "forwards",
@@ -34,8 +35,8 @@ export default function AddDeviceForm({
       >
         <InputFieldWithLabel
           ref={nameInputRef}
-          placeholder="Plex Media Server"
-          label="Device Name"
+          placeholder={m.wake_on_lan_add_device_example_device_name()}
+          label={m.wake_on_lan_add_device_device_name()}
           required
           onChange={e => {
             setIsDeviceNameValid(e.target.validity.valid);
@@ -46,7 +47,7 @@ export default function AddDeviceForm({
         <InputFieldWithLabel
           ref={macInputRef}
           placeholder="00:b0:d0:63:c2:26"
-          label="MAC Address"
+          label={m.wake_on_lan_add_device_mac_address()}
           onKeyUp={e => e.stopPropagation()}
           required
           pattern="^([0-9a-fA-F][0-9a-fA-F]:){5}([0-9a-fA-F][0-9a-fA-F])$"
@@ -73,7 +74,7 @@ export default function AddDeviceForm({
         />
       </div>
       <div
-        className="flex animate-fadeIn opacity-0 items-center justify-end space-x-2"
+        className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
@@ -82,14 +83,14 @@ export default function AddDeviceForm({
         <Button
           size="SM"
           theme="light"
-          text="Back"
+          text={m.back()}
           LeadingIcon={LuArrowLeft}
           onClick={() => setShowAddForm(false)}
         />
         <Button
           size="SM"
           theme="primary"
-          text="Save Device"
+          text={m.wake_on_lan_add_device_save_device()}
           disabled={!isDeviceNameValid || !isMacAddressValid}
           onClick={() => {
             const deviceName = nameInputRef.current?.value || "";

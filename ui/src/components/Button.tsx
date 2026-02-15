@@ -1,10 +1,10 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { JSX } from "react";
-import { Link, useNavigation } from "react-router";
-import type { FetcherWithComponents, LinkProps } from "react-router";
+import { Link, type FetcherWithComponents, type LinkProps, useNavigation } from "react-router";
 
-import ExtLink from "@/components/ExtLink";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import { cva, cx } from "@/cva.config";
+import ExtLink from "@components/ExtLink";
+import LoadingSpinner from "@components/LoadingSpinner";
 
 const sizes = {
   XS: "h-[28px] px-2 text-xs",
@@ -17,7 +17,7 @@ const sizes = {
 const themes = {
   primary: cx(
     // Base styles
-    "bg-blue-700 dark:border-blue-600 border border-blue-900/60 text-white shadow-sm",
+    "border border-blue-900/60 bg-blue-700 text-white shadow-sm dark:border-blue-600",
     // Hover states
     "group-hover:bg-blue-800",
     // Active states
@@ -25,9 +25,9 @@ const themes = {
   ),
   danger: cx(
     // Base styles
-    "bg-red-600 text-white border-red-700 shadow-xs shadow-red-200/80 dark:border-red-600 dark:shadow-red-900/20",
+    "border-red-700 bg-red-600 text-white shadow-xs shadow-red-200/80 dark:border-red-600 dark:shadow-red-900/20",
     // Hover states
-    "group-hover:bg-red-700 group-hover:border-red-800 dark:group-hover:bg-red-700 dark:group-hover:border-red-600",
+    "group-hover:border-red-800 group-hover:bg-red-700 dark:group-hover:border-red-600 dark:group-hover:bg-red-700",
     // Active states
     "group-active:bg-red-800 dark:group-active:bg-red-800",
     // Focus states
@@ -35,7 +35,7 @@ const themes = {
   ),
   light: cx(
     // Base styles
-    "bg-white text-black border-slate-800/30 shadow-xs dark:bg-slate-800 dark:border-slate-300/20 dark:text-white",
+    "border-slate-800/30 bg-white text-black shadow-xs dark:border-slate-300/20 dark:bg-slate-800 dark:text-white",
     // Hover states
     "group-hover:bg-blue-50/80 dark:group-hover:bg-slate-700",
     // Active states
@@ -45,7 +45,7 @@ const themes = {
   ),
   lightDanger: cx(
     // Base styles
-    "bg-white text-black border-red-400/60 shadow-xs",
+    "border-red-400/60 bg-white text-black shadow-xs",
     // Hover states
     "group-hover:bg-red-50/80",
     // Active states
@@ -55,9 +55,9 @@ const themes = {
   ),
   blank: cx(
     // Base styles
-    "bg-white/0 text-black border-transparent dark:text-white",
+    "border-transparent bg-white/0 text-black dark:text-white",
     // Hover states
-    "group-hover:bg-white group-hover:border-slate-800/30 group-hover:shadow-sm dark:group-hover:bg-slate-700 dark:group-hover:border-slate-600",
+    "group-hover:border-slate-800/30 group-hover:bg-white group-hover:shadow-sm dark:group-hover:border-slate-600 dark:group-hover:bg-slate-700",
     // Active states
     "group-active:bg-slate-100/80",
   ),
@@ -66,16 +66,16 @@ const themes = {
 const btnVariants = cva({
   base: cx(
     // Base styles
-    "border rounded-sm select-none",
+    "rounded-sm border select-none",
     // Size classes
-    "justify-center items-center shrink-0",
+    "shrink-0 items-center justify-center",
     // Transition classes
     "outline-hidden transition-all duration-200",
     // Text classes
-    "font-display text-center font-medium leading-tight",
+    "text-center font-display leading-tight font-medium",
     // States
-    "group-focus:outline-hidden group-focus:ring-2 group-focus:ring-offset-2 group-focus:ring-blue-700",
-    "group-disabled:opacity-50 group-disabled:pointer-events-none",
+    "group-focus:ring-2 group-focus:ring-blue-700 group-focus:ring-offset-2 group-focus:outline-hidden",
+    "group-disabled:pointer-events-none group-disabled:opacity-50",
   ),
 
   variants: {
@@ -116,8 +116,7 @@ interface ButtonContentPropsType {
 }
 
 function ButtonContent(props: ButtonContentPropsType) {
-  const { text, LeadingIcon, TrailingIcon, fullWidth, className, textAlign, loading } =
-    props;
+  const { text, LeadingIcon, TrailingIcon, fullWidth, className, textAlign, loading } = props;
 
   // Based on the size prop, we'll use the corresponding variant classnames
   const iconClassName = iconVariants(props);
@@ -137,9 +136,7 @@ function ButtonContent(props: ButtonContentPropsType) {
             <LoadingSpinner className={cx(iconClassName, "animate-spin")} />
           </div>
         ) : (
-          LeadingIcon && (
-            <LeadingIcon className={cx(iconClassName, "shrink-0 justify-start")} />
-          )
+          LeadingIcon && <LeadingIcon className={cx(iconClassName, "shrink-0 justify-start")} />
         )}
 
         {text && typeof text === "string" ? (
@@ -148,9 +145,7 @@ function ButtonContent(props: ButtonContentPropsType) {
           text
         )}
 
-        {TrailingIcon && (
-          <TrailingIcon className={cx(iconClassName, "shrink-0 justify-end")} />
-        )}
+        {TrailingIcon && <TrailingIcon className={cx(iconClassName, "shrink-0 justify-end")} />}
       </div>
     </div>
   );
@@ -176,7 +171,7 @@ type ButtonPropsType = Pick<
 export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, onClick, formNoValidate, loading, fetcher, ...props }, ref) => {
     const classes = cx(
-      "group outline-hidden cursor-pointer",
+      "group cursor-pointer outline-hidden",
       props.fullWidth ? "w-full" : "",
       loading ? "pointer-events-none" : "",
     );
@@ -212,7 +207,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 Button.displayName = "Button";
 
-type LinkPropsType = Pick<LinkProps, "to"> &
+type LinkPropsType = Pick<LinkProps, "to" | "target" | "reloadDocument" | "download"> &
   React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
@@ -225,13 +220,13 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
 
   if (to.toString().startsWith("http")) {
     return (
-      <ExtLink href={to.toString()} className={classes}>
+      <ExtLink href={to.toString()} className={classes} target={props.target}>
         <ButtonContent {...props} />
       </ExtLink>
     );
   } else {
     return (
-      <Link to={to} className={classes}>
+      <Link to={to} reloadDocument={props.reloadDocument} className={classes}>
         <ButtonContent {...props} />
       </Link>
     );
@@ -242,7 +237,7 @@ type LabelPropsType = Pick<HTMLLabelElement, "htmlFor"> &
   React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
 export const LabelButton = ({ htmlFor, ...props }: LabelPropsType) => {
   const classes = cx(
-    "group outline-hidden block cursor-pointer",
+    "group block cursor-pointer outline-hidden",
     props.disabled ? "pointer-events-none opacity-70!" : "",
     props.fullWidth ? "w-full" : "",
     props.loading ? "pointer-events-none" : "",

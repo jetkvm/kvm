@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OTA Test Data Schema",
+  "description": "Schema for OTA update test data",
+  "type": "object",
+  "required": ["name", "remoteMetadata", "localMetadata", "updateParams"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the test case"
+    },
+    "withoutCerts": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to run the test without Root CA certificates"
+    },
+    "remoteMetadata": {
+      "type": "array",
+      "description": "Remote metadata responses",
+      "items": {
+        "type": "object",
+        "required": ["params", "code", "data"],
+        "properties": {
+          "params": {
+            "type": "object",
+            "description": "Query parameters used for the request",
+            "required": ["prerelease"],
+            "properties": {
+              "prerelease": {
+                "type": "string",
+                "description": "Whether to include pre-release versions"
+              },
+              "appVersion": {
+                "type": "string",
+                "description": "Application version string",
+                "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              },
+              "systemVersion": {
+                "type": "string",
+                "description": "System version string",
+                "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "code": {
+            "type": "integer",
+            "description": "HTTP status code"
+          },
+          "data": {
+            "type": "object",
+            "required": ["appVersion", "appUrl", "appHash", "systemVersion", "systemUrl", "systemHash"],
+            "properties": {
+              "appVersion": {
+                "type": "string",
+                "description": "Application version string",
+                "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              },
+              "appUrl": {
+                "type": "string",
+                "description": "URL to download the application",
+                "format": "uri"
+              },
+              "appHash": {
+                "type": "string",
+                "description": "SHA-256 hash of the application",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "systemVersion": {
+                "type": "string",
+                "description": "System version string",
+                "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              },
+              "systemUrl": {
+                "type": "string",
+                "description": "URL to download the system",
+                "format": "uri"
+              },
+              "systemHash": {
+                "type": "string",
+                "description": "SHA-256 hash of the system",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "localMetadata": {
+      "type": "object",
+      "description": "Local metadata containing current installed versions",
+      "required": ["systemVersion", "appVersion"],
+      "properties": {
+        "systemVersion": {
+          "type": "string",
+          "description": "Currently installed system version",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "appVersion": {
+          "type": "string",
+          "description": "Currently installed application version",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "updateParams": {
+      "type": "object",
+      "description": "Parameters for the update operation",
+      "required": ["includePreRelease"],
+      "properties": {
+        "includePreRelease": {
+          "type": "boolean",
+          "description": "Whether to include pre-release versions"
+        },
+        "components": {
+          "type": "object",
+          "description": "Component update configuration",
+          "properties": {
+            "system": {
+              "type": "string",
+              "description": "System component update configuration (empty string to update)"
+            },
+            "app": {
+              "type": "string",
+              "description": "App component update configuration (version string to update to)"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "description": "Expected update results",
+      "required": [],
+      "properties": {
+        "system": {
+          "type": "boolean",
+          "description": "Whether system update is expected"
+        },
+        "app": {
+          "type": "boolean",
+          "description": "Whether app update is expected"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the test case is expected to fail"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+

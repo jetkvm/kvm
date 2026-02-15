@@ -4,19 +4,18 @@ import { ArrowLeftEndOnRectangleIcon, ChevronDownIcon } from "@heroicons/react/1
 import { Button, Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { LuMonitorSmartphone } from "react-icons/lu";
 
-import Container from "@/components/Container";
-import Card from "@/components/Card";
-import { useHidStore, useRTCStore, useUserStore } from "@/hooks/stores";
-import LogoBlueIcon from "@/assets/logo-blue.svg";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
-import USBStateStatus from "@components/USBStateStatus";
+import LogoBlueIcon from "@assets/logo-blue.svg";
+import LogoWhiteIcon from "@assets/logo-white.svg";
+import { useHidStore, useRTCStore, useUserStore } from "@hooks/stores";
+import Card from "@components/Card";
+import Container from "@components/Container";
+import { LinkButton } from "@components/Button";
 import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
+import USBStateStatus from "@components/USBStateStatus";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
-
-import api from "../api";
-import { isOnDevice } from "../main";
-
-import { LinkButton } from "./Button";
+import api from "@/api";
+import { isOnDevice } from "@/main";
+import { m } from "@localizations/messages.js";
 
 interface NavbarProps {
   isLoggedIn: boolean;
@@ -60,8 +59,8 @@ export default function DashboardNavbar({
         <div className="flex h-14 items-center justify-between">
           <div className="flex shrink-0 items-center gap-x-8">
             <div className="inline-block shrink-0">
-              <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-              <img src={LogoWhiteIcon} alt="" className="hidden h-[24px] dark:block" />
+              <img src={LogoBlueIcon} alt="" className="h-6 dark:hidden" />
+              <img src={LogoWhiteIcon} alt="" className="hidden h-6 dark:block" />
             </div>
 
             <div className="flex gap-x-2">
@@ -85,22 +84,16 @@ export default function DashboardNavbar({
                 {showConnectionStatus && (
                   <>
                     <div className="w-[159px]">
-                      <PeerConnectionStatusCard
-                        state={peerConnectionState}
-                        title={kvmName}
-                      />
+                      <PeerConnectionStatusCard state={peerConnectionState} title={kvmName} />
                     </div>
                     <div className="hidden w-[159px] md:block">
-                      <USBStateStatus
-                        state={usbState}
-                        peerConnectionState={peerConnectionState}
-                      />
+                      <USBStateStatus state={usbState} peerConnectionState={peerConnectionState} />
                     </div>
                   </>
                 )}
                 {isLoggedIn ? (
                   <>
-                    <hr className="h-[20px] w-px self-center border-none bg-slate-800/20 dark:bg-slate-300/20" />
+                    <hr className="h-5 w-px self-center border-none bg-slate-800/20 dark:bg-slate-300/20" />
                     <div className="relative inline-block text-left">
                       <Menu>
                         <MenuButton as="div" className="h-full">
@@ -112,7 +105,7 @@ export default function DashboardNavbar({
                                 className="size-6 rounded-full border-2 border-transparent transition-colors group-hover:border-blue-700"
                               />
                             ) : userEmail ? (
-                              <span className="font-display max-w-[200px] truncate text-sm/6 font-semibold">
+                              <span className="max-w-[200px] truncate font-display text-sm/6 font-semibold">
                                 {userEmail}
                               </span>
                             ) : null}
@@ -130,23 +123,18 @@ export default function DashboardNavbar({
                                 <div className="space-y-1 p-1 dark:text-white">
                                   <div className="border-b border-b-slate-800/20 dark:border-slate-300/20">
                                     <div className="p-2">
-                                      <div className="font-display text-xs">
-                                        Logged in as
-                                      </div>
-                                      <div className="font-display max-w-[200px] truncate text-sm font-semibold">
+                                      <div className="font-display text-xs">{m.logged_in_as()}</div>
+                                      <div className="max-w-[200px] truncate font-display text-sm font-semibold">
                                         {userEmail}
                                       </div>
                                     </div>
                                   </div>
                                 </div>
                               )}
-                              <div
-                                className="space-y-1 p-1 dark:text-white"
-                                onClick={onLogout}
-                              >
+                              <div className="space-y-1 p-1 dark:text-white" onClick={onLogout}>
                                 <button className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                                   <ArrowLeftEndOnRectangleIcon className="size-4" />
-                                  <div className="font-display">Log out</div>
+                                  <div className="font-display">{m.log_out()}</div>
                                 </button>
                               </div>
                             </Card>
