@@ -281,7 +281,6 @@ func (s *captureSession) record(isClient bool, data []byte) {
 // Must be called with s.mu held.
 func (s *captureSession) writePacket(ts time.Time, srcAddr, dstAddr *[4]byte,
 	srcPort, dstPort uint16, seq, ack uint32, flags uint8, payload []byte) {
-
 	ipTotalLen := uint16(ipHdrLen + tcpHdrLen + len(payload))
 
 	h := &s.hdrBuf

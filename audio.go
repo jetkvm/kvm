@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/jetkvm/kvm/internal/hal/audio"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
@@ -692,9 +692,9 @@ func processInputPacket(opusData []byte) error {
 
 // Audio input recovery thresholds.
 const (
-	audioInputFailThreshold  int32 = 5   // Trigger ALSA recovery after 5 consecutive write errors
-	audioRecoveryMaxAttempts int32 = 10  // Give up after 10 failed ALSA recovery attempts
-	audioRebootSkipThreshold int64 = 50  // Skips after replug to trigger reboot (~5s at ~10 packets/sec)
+	audioInputFailThreshold  int32 = 5  // Trigger ALSA recovery after 5 consecutive write errors
+	audioRecoveryMaxAttempts int32 = 10 // Give up after 10 failed ALSA recovery attempts
+	audioRebootSkipThreshold int64 = 50 // Skips after replug to trigger reboot (~5s at ~10 packets/sec)
 	audioRebootMarkerPath          = "/userdata/jetkvm/.audio_reboot_ts"
 	audioRebootCooldownSecs  int64 = 600 // 10 minutes between audio-triggered reboots
 )
@@ -998,4 +998,3 @@ func rebootForAudioRecovery() {
 		audioLogger.Error().Err(err).Msg("audio input: hwReboot failed")
 	}
 }
-

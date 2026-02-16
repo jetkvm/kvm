@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/hal/usbgadget"
 	"github.com/jetkvm/kvm/internal/hidrpc"
-	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/rs/zerolog"
 )
 

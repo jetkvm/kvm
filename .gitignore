@@ -23,6 +23,7 @@ deploy.log
 
 # Development files
 .devcontainer.json
+.devcontainer/docker/.devpod-internal/
 utilities/
 core
 CLAUDE.md

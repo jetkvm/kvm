@@ -209,10 +209,10 @@ func sendFormatMessage(ctx context.Context, ws *websocket.Conn, format *camera.F
 		"codec":        format.Codec.String(),
 		"width":        format.Width,
 		"height":       format.Height,
-		"frameRate":    format.FrameRate,                          // UVC-negotiated rate from host
-		"frameRateCap": cfg.CameraFrameRate,                       // User's configured cap (browser uses min of both)
-		"h264Bitrate":  cfg.CameraH264Bitrate * 1_000_000,         // Convert Mbps to bps for browser
-		"mjpegQuality": float64(cfg.CameraMjpegQuality) / 100.0,   // Convert 0-100% to 0.0-1.0
+		"frameRate":    format.FrameRate,                        // UVC-negotiated rate from host
+		"frameRateCap": cfg.CameraFrameRate,                     // User's configured cap (browser uses min of both)
+		"h264Bitrate":  cfg.CameraH264Bitrate * 1_000_000,       // Convert Mbps to bps for browser
+		"mjpegQuality": float64(cfg.CameraMjpegQuality) / 100.0, // Convert 0-100% to 0.0-1.0
 	}
 
 	data, err := json.Marshal(msg)

@@ -10,15 +10,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	halSerial "github.com/jetkvm/kvm/internal/hal/serial"
 	"github.com/pion/webrtc/v4"
-	"go.bug.st/serial"
 )
-
-const serialPortPath = "/dev/ttyS3"
 
 var (
 	serialMu sync.Mutex // protects port, serialPortMode, and all port.Write/SetMode calls
-	port     serial.Port
+	port     halSerial.Port
 )
 
 // atxLedState stores the last known ATX LED state for lock-free reads from RPC handlers.
@@ -47,7 +45,7 @@ func unmountATXControl() error {
 	return reopenSerialPort()
 }
 
-func runATXControl(p serial.Port) {
+func runATXControl(p halSerial.Port) {
 	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
 
 	reader := bufio.NewReader(p)
@@ -184,7 +182,7 @@ func unmountDCControl() error {
 	return reopenSerialPort()
 }
 
-func runDCControl(p serial.Port) {
+func runDCControl(p halSerial.Port) {
 	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
 	reader := bufio.NewReader(p)
 	hasRestoreFeature := false
@@ -313,12 +311,7 @@ func setDCRestoreState(state int) error {
 	return nil
 }
 
-var defaultMode = &serial.Mode{
-	BaudRate: 115200,
-	DataBits: 8,
-	Parity:   serial.NoParity,
-	StopBits: serial.OneStopBit,
-}
+var defaultMode = halSerial.DefaultMode
 
 func initSerialPort() {
 	if err := reopenSerialPort(); err != nil {
@@ -341,15 +334,15 @@ func reopenSerialPort() error {
 	defer serialMu.Unlock()
 
 	if port != nil {
-		port.Close()
+		_ = port.Close()
 	}
 	var err error
-	port, err = serial.Open(serialPortPath, defaultMode)
+	port, err = halSerial.Open(halSerial.DefaultPortPath, defaultMode)
 	if err != nil {
 		port = nil
 		serialLogger.Error().
 			Err(err).
-			Str("path", serialPortPath).
+			Str("path", halSerial.DefaultPortPath).
 			Interface("mode", defaultMode).
 			Msg("Error opening serial port")
 		return fmt.Errorf("failed to open serial port: %w", err)

@@ -1,7 +1,7 @@
-BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
+BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
-REVISION  := $(shell git rev-parse HEAD)
+REVISION  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION := 0.5.3
 VERSION_DEV := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M)
 
@@ -14,13 +14,65 @@ DOCKER_BUILD_TAG ?= ghcr.io/jetkvm/buildkit:latest
 SKIP_NATIVE_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
 ENABLE_SYNC_TRACE ?= 0
+TARGET_PLATFORM ?= jetkvm
+
+# Keep JetKVM developer workflows identical by default (CGO + native libs on).
+# Other platforms default to pure-Go builds until their native HAL backends are added.
+ifeq ($(TARGET_PLATFORM),jetkvm)
+	ENABLE_JETKVM_NATIVE_CGO ?= 1
+	ENABLE_JETKVM_AUDIO_CGO ?= 1
+	CGO_ENABLED ?= 1
+else
+	ENABLE_JETKVM_NATIVE_CGO ?= 0
+	ENABLE_JETKVM_AUDIO_CGO ?= 0
+	CGO_ENABLED ?= 0
+endif
+
+SUPPORTED_PLATFORMS := jetkvm comet-pro nanokvm-pro
+PLATFORM_jetkvm_ARCH := arm
+PLATFORM_jetkvm_GOARM := 7
+PLATFORM_comet-pro_ARCH := arm64
+PLATFORM_nanokvm-pro_ARCH := arm64
+
+TARGET_ARCH := $(PLATFORM_$(TARGET_PLATFORM)_ARCH)
+TARGET_GOARM := $(PLATFORM_$(TARGET_PLATFORM)_GOARM)
+
+ifeq ($(strip $(TARGET_ARCH)),)
+$(error Unsupported TARGET_PLATFORM '$(TARGET_PLATFORM)'; supported values: $(SUPPORTED_PLATFORMS))
+endif
 
 CMAKE_BUILD_TYPE ?= Release
 
-GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
-ifeq ($(ENABLE_SYNC_TRACE), 1)
-	GO_BUILD_ARGS := $(GO_BUILD_ARGS),synctrace
+ifneq ($(ENABLE_JETKVM_NATIVE_CGO),0)
+ifneq ($(TARGET_PLATFORM),jetkvm)
+$(error ENABLE_JETKVM_NATIVE_CGO requires TARGET_PLATFORM=jetkvm)
 endif
+ifeq ($(CGO_ENABLED),0)
+$(error ENABLE_JETKVM_NATIVE_CGO requires CGO_ENABLED=1)
+endif
+endif
+
+ifneq ($(ENABLE_JETKVM_AUDIO_CGO),0)
+ifneq ($(TARGET_PLATFORM),jetkvm)
+$(error ENABLE_JETKVM_AUDIO_CGO requires TARGET_PLATFORM=jetkvm)
+endif
+ifeq ($(CGO_ENABLED),0)
+$(error ENABLE_JETKVM_AUDIO_CGO requires CGO_ENABLED=1)
+endif
+endif
+
+GO_BUILD_TAGS := netgo,timetzdata,nomsgpack
+ifeq ($(ENABLE_SYNC_TRACE),1)
+	GO_BUILD_TAGS := $(GO_BUILD_TAGS),synctrace
+endif
+ifeq ($(ENABLE_JETKVM_NATIVE_CGO),1)
+	GO_BUILD_TAGS := $(GO_BUILD_TAGS),jetkvm_native_cgo
+endif
+ifeq ($(ENABLE_JETKVM_AUDIO_CGO),1)
+	GO_BUILD_TAGS := $(GO_BUILD_TAGS),jetkvm_audio_cgo
+endif
+
+GO_BUILD_ARGS := -tags $(GO_BUILD_TAGS)
 
 GO_RELEASE_BUILD_ARGS := -trimpath $(GO_BUILD_ARGS)
 GO_LDFLAGS := \
@@ -30,10 +82,19 @@ GO_LDFLAGS := \
   -X $(PROMETHEUS_TAG).Revision=$(REVISION) \
   -X $(KVM_PKG_NAME).builtTimestamp=$(BUILDTS)
 
-GO_ARGS := GOOS=linux GOARCH=arm GOARM=7 ARCHFLAGS="-arch arm"
+GO_ARGS := GOOS=linux GOARCH=$(TARGET_ARCH) ARCHFLAGS="-arch $(TARGET_ARCH)" CGO_ENABLED=$(CGO_ENABLED)
+ifeq ($(TARGET_ARCH),arm)
+	GO_ARGS := $(GO_ARGS) GOARM=$(TARGET_GOARM)
+endif
+
 # Custom OpenSSL with devcrypto hardware acceleration support
 SSL_LIBS_DIR ?= /opt/jetkvm-ssl-libs/install
-# if BUILDKIT_PATH exists, use buildkit to build
+
+ifeq ($(CGO_ENABLED),1)
+ifeq ($(TARGET_ARCH),arm64)
+	GO_ARGS := $(GO_ARGS) CC="aarch64-linux-gnu-gcc" LD="aarch64-linux-gnu-ld"
+endif
+ifeq ($(ENABLE_JETKVM_NATIVE_CGO),1)
 ifneq ($(wildcard $(BUILDKIT_PATH)),)
 	# Check if custom OpenSSL with devcrypto exists, use it for hardware crypto acceleration
 	ifneq ($(wildcard $(SSL_LIBS_DIR)/lib64/libssl.a),)
@@ -51,14 +112,19 @@ ifneq ($(wildcard $(BUILDKIT_PATH)),)
 		CGO_CFLAGS="-I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include $(SSL_CFLAGS)" \
 		CGO_LDFLAGS="$(SSL_LDFLAGS) -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -Wl,-Bstatic -lssl -lcrypto -lz -Wl,-Bdynamic -lpthread -lm" \
 		CC="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc" \
-		LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld" \
-		CGO_ENABLED=1
-	# GO_RELEASE_BUILD_ARGS := $(GO_RELEASE_BUILD_ARGS) -x -work
+		LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld"
+endif
+endif
 endif
 
 GO_CMD := $(GO_ARGS) go
 
 BIN_DIR := $(shell pwd)/bin
+BIN_SUFFIX :=
+ifneq ($(TARGET_PLATFORM),jetkvm)
+BIN_SUFFIX := -$(TARGET_PLATFORM)
+endif
+BIN_OUTPUT := $(BIN_DIR)/jetkvm_app$(BIN_SUFFIX)
 
 TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort -u)
 
@@ -67,7 +133,9 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 # Requires x86_64 architecture (cross-compiler is x86_64)
 AUDIO_LIBS_DIR := /opt/jetkvm-audio-libs
 build_audio_deps:
-	@if [ -f "$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/.built" ] && \
+	@if [ "$(ENABLE_JETKVM_AUDIO_CGO)" != "1" ]; then \
+		echo "Skipping audio dependency build (ENABLE_JETKVM_AUDIO_CGO=0)"; \
+	elif [ -f "$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/.built" ] && \
 	    [ -f "$(AUDIO_LIBS_DIR)/opus-1.5.2/.built" ] && \
 	    [ -f "$(AUDIO_LIBS_DIR)/speexdsp-1.2.1/.built" ]; then \
 		echo "Audio dependencies already built, skipping..."; \
@@ -91,7 +159,7 @@ test_e2e: build_dev
 		device_ip="$(DEVICE_IP)"; \
 	fi; \
 	cd ui && npm ci && npx playwright install chromium && cd ..; \
-	./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)"
+	./scripts/test_local_update.sh "$$device_ip" "$(BIN_OUTPUT)" "$(VERSION_DEV)"
 
 lint:
 	go vet ./...
@@ -108,7 +176,9 @@ lint-fix: build_audio_deps
 	@echo "All linting completed!"
 
 build_native:
-	@if [ "$(SKIP_NATIVE_IF_EXISTS)" = "1" ] && [ -f "internal/native/cgo/lib/libjknative.a" ]; then \
+	@if [ "$(ENABLE_JETKVM_NATIVE_CGO)" != "1" ]; then \
+		echo "Skipping native build (ENABLE_JETKVM_NATIVE_CGO=0)"; \
+	elif [ "$(SKIP_NATIVE_IF_EXISTS)" = "1" ] && [ -f "internal/hal/native/cgo/lib/libjknative.a" ]; then \
 		echo "libjknative.a already exists, skipping native build..."; \
 	else \
 		echo "Building native..."; \
@@ -119,21 +189,42 @@ build_native:
 	fi
 
 build_dev:
-	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
+	@if [ "$(CGO_ENABLED)" = "1" ] && [ "$(TARGET_ARCH)" = "arm" ] && [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_dev in Docker..."; \
-		rm -rf internal/native/cgo/build; \
+		rm -rf internal/hal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
-			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
+			$(DOCKER_BUILD_TAG) make _build_dev_inner \
+				TARGET_PLATFORM=$(TARGET_PLATFORM) \
+				CGO_ENABLED=$(CGO_ENABLED) \
+				ENABLE_JETKVM_NATIVE_CGO=$(ENABLE_JETKVM_NATIVE_CGO) \
+				ENABLE_JETKVM_AUDIO_CGO=$(ENABLE_JETKVM_AUDIO_CGO) \
+				VERSION_DEV=$(VERSION_DEV); \
 	else \
-		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
+		$(MAKE) _build_dev_inner \
+			TARGET_PLATFORM=$(TARGET_PLATFORM) \
+			CGO_ENABLED=$(CGO_ENABLED) \
+			ENABLE_JETKVM_NATIVE_CGO=$(ENABLE_JETKVM_NATIVE_CGO) \
+			ENABLE_JETKVM_AUDIO_CGO=$(ENABLE_JETKVM_AUDIO_CGO) \
+			VERSION_DEV=$(VERSION_DEV); \
 	fi
 
 _build_dev_inner: build_native
-	@echo "Building... $(VERSION_DEV)"
+	@echo "Building $(TARGET_PLATFORM) ($(TARGET_ARCH))... $(VERSION_DEV)"
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 		$(GO_RELEASE_BUILD_ARGS) \
-		-o $(BIN_DIR)/jetkvm_app -v cmd/main.go
+		-o $(BIN_OUTPUT) -v ./cmd
+
+build_dev_jetkvm:
+	$(MAKE) build_dev TARGET_PLATFORM=jetkvm CGO_ENABLED=0
+
+build_dev_comet:
+	$(MAKE) build_dev TARGET_PLATFORM=comet-pro CGO_ENABLED=0
+
+build_dev_nanokvm:
+	$(MAKE) build_dev TARGET_PLATFORM=nanokvm-pro CGO_ENABLED=0
+
+build_dev_all: build_dev_jetkvm build_dev_comet build_dev_nanokvm
 
 build_test2json:
 	$(GO_CMD) build -o $(BIN_DIR)/test2json cmd/test2json
@@ -141,7 +232,7 @@ build_test2json:
 build_gotestsum:
 	@echo "Building gotestsum..."
 	$(GO_CMD) install gotest.tools/gotestsum@latest
-	cp $(shell $(GO_CMD) env GOPATH)/bin/linux_arm/gotestsum $(BIN_DIR)/gotestsum
+	cp $(shell $(GO_CMD) env GOPATH)/bin/linux_$(TARGET_ARCH)/gotestsum $(BIN_DIR)/gotestsum
 
 build_dev_test: build_test2json build_gotestsum
 # collect all directories that contain tests
@@ -231,21 +322,31 @@ dev_release: git_check_dev
 # While VERSION is static, passing it explicitly ensures the pattern is consistent
 # and prevents issues if VERSION ever becomes dynamic.
 build_release:
-	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
+	@if [ "$(CGO_ENABLED)" = "1" ] && [ "$(TARGET_ARCH)" = "arm" ] && [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_release in Docker..."; \
-		rm -rf internal/native/cgo/build; \
+		rm -rf internal/hal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
-			$(DOCKER_BUILD_TAG) make _build_release_inner VERSION=$(VERSION); \
+			$(DOCKER_BUILD_TAG) make _build_release_inner \
+				TARGET_PLATFORM=$(TARGET_PLATFORM) \
+				CGO_ENABLED=$(CGO_ENABLED) \
+				ENABLE_JETKVM_NATIVE_CGO=$(ENABLE_JETKVM_NATIVE_CGO) \
+				ENABLE_JETKVM_AUDIO_CGO=$(ENABLE_JETKVM_AUDIO_CGO) \
+				VERSION=$(VERSION); \
 	else \
-		$(MAKE) _build_release_inner VERSION=$(VERSION); \
+		$(MAKE) _build_release_inner \
+			TARGET_PLATFORM=$(TARGET_PLATFORM) \
+			CGO_ENABLED=$(CGO_ENABLED) \
+			ENABLE_JETKVM_NATIVE_CGO=$(ENABLE_JETKVM_NATIVE_CGO) \
+			ENABLE_JETKVM_AUDIO_CGO=$(ENABLE_JETKVM_AUDIO_CGO) \
+			VERSION=$(VERSION); \
 	fi
 
 _build_release_inner: build_native
-	@echo "Building release..."
+	@echo "Building release $(TARGET_PLATFORM) ($(TARGET_ARCH))..."
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
 		$(GO_RELEASE_BUILD_ARGS) \
-		-o bin/jetkvm_app cmd/main.go
+		-o $(BIN_OUTPUT) ./cmd
 
 release: git_check_dev
 	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q "jetkvm_app"; then \
@@ -309,4 +410,3 @@ bump-version:
 		git commit -m "Bump version to $$next_ver" && \
 		git push && \
 		echo "✓ Bumped to $$next_ver"
-

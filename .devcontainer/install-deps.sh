@@ -43,6 +43,13 @@ if ! command -v unzstd &> /dev/null; then
 fi
 
 # Install Go protobuf plugins for proto generation
+GOPATH_DIR="$(go env GOPATH)"
+sudo mkdir -p "${GOPATH_DIR}"
+sudo mkdir -p "${GOPATH_DIR}/pkg/mod" "${GOPATH_DIR}/pkg/sumdb/sum.golang.org"
+sudo mkdir -p "${GOPATH_DIR}/bin"
+sudo chown -R "$(id -u):$(id -g)" "${GOPATH_DIR}" || true
+sudo chown -R "$(id -u):$(id -g)" "${GOPATH_DIR}/pkg/mod" "${GOPATH_DIR}/pkg/sumdb"
+sudo chown -R "$(id -u):$(id -g)" "${GOPATH_DIR}/bin"
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 

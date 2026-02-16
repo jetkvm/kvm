@@ -12,10 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/erikdubbelboer/gspt"
 	"github.com/jetkvm/kvm"
-	"github.com/jetkvm/kvm/internal/diagnostics"
-	"github.com/jetkvm/kvm/internal/native"
+	"github.com/jetkvm/kvm/internal/hal/diagnostics"
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
 
@@ -27,21 +25,10 @@ func init() {
 	debug.SetGCPercent(200)
 }
 
-var (
-	subcomponent string
-)
-
 func program() {
-	subcomponentOverride := os.Getenv(supervisor.EnvSubcomponent)
-	if subcomponentOverride != "" {
-		subcomponent = subcomponentOverride
-	}
-	switch subcomponent {
-	case "native":
-		native.RunNativeProcess(os.Args[0])
-	default:
-		kvm.Main()
-	}
+	// All hardware interaction (including native code) runs in-process via HAL.
+	// Legacy "native subcomponent" mode has been removed to avoid IPC overhead and duplication.
+	kvm.Main()
 }
 
 func setProcTitle(status string) {
@@ -49,13 +36,12 @@ func setProcTitle(status string) {
 		status = " " + status
 	}
 	title := fmt.Sprintf("jetkvm: [supervisor]%s", status)
-	gspt.SetProcTitle(title)
+	setProcessTitle(title)
 }
 
 func main() {
 	versionPtr := flag.Bool("version", false, "print version and exit")
 	versionJSONPtr := flag.Bool("version-json", false, "print version as json and exit")
-	flag.StringVar(&subcomponent, "subcomponent", "", "subcomponent to run")
 	flag.Parse()
 
 	if *versionPtr || *versionJSONPtr {

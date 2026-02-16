@@ -279,5 +279,5 @@ func TestManager_SetEnabled(t *testing.T) {
 type mockGadget struct{}
 
 func (m *mockGadget) GetUVCVideoDevice() (string, error) {
-	return "/dev/video0", nil
+	return "/tmp/mock-video0", nil
 }

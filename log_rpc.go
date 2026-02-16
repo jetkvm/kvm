@@ -5,11 +5,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jetkvm/kvm/internal/audio"
-	"github.com/jetkvm/kvm/internal/crypto/tls"
+	"github.com/jetkvm/kvm/internal/hal/audio"
+	"github.com/jetkvm/kvm/internal/hal/crypto/tls"
+	"github.com/jetkvm/kvm/internal/hal/native"
+	"github.com/jetkvm/kvm/internal/hal/vnctls"
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/native"
-	"github.com/jetkvm/kvm/internal/vnctls"
 )
 
 // LogLevelState represents the current logging configuration state for the UI.

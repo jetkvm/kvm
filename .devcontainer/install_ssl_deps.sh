@@ -27,7 +27,7 @@ SYSROOT="$BUILDKIT_PATH/$BUILDKIT_FLAVOR/sysroot"
 # The header is included in our source tree (from Luckfox Pico kernel, same RV1106 SoC)
 CRYPTO_HEADER_DIR="$SYSROOT/usr/include/crypto"
 CRYPTO_HEADER="$CRYPTO_HEADER_DIR/cryptodev.h"
-CRYPTO_HEADER_SRC="$(dirname "$0")/../internal/crypto/tls/include/crypto/cryptodev.h"
+CRYPTO_HEADER_SRC="$(dirname "$0")/../internal/hal/crypto/tls/include/crypto/cryptodev.h"
 
 if [ ! -f "$CRYPTO_HEADER" ]; then
   echo "Installing cryptodev.h header for hardware crypto support..."

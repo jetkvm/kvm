@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/camera"
-	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
+	cryptotls "github.com/jetkvm/kvm/internal/hal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/keyboard"
 	"github.com/jetkvm/kvm/internal/rdp"
 )
@@ -500,22 +500,22 @@ const (
 
 // Camera default values and logging intervals
 const (
-	cameraDefaultFPS        = 24    // Default frame rate when not specified
-	cameraDefaultMjpegQual  = 35    // Default MJPEG quality (0-100)
-	cameraLogWarningEvery   = 500   // Log transcode errors every N frames
-	cameraLogDropEvery      = 200   // Log queue drops every N frames
-	cameraFrameQueueSize    = 4     // Small queue - transcoding is slow, no point buffering
+	cameraDefaultFPS        = 24         // Default frame rate when not specified
+	cameraDefaultMjpegQual  = 35         // Default MJPEG quality (0-100)
+	cameraLogWarningEvery   = 500        // Log transcode errors every N frames
+	cameraLogDropEvery      = 200        // Log queue drops every N frames
+	cameraFrameQueueSize    = 4          // Small queue - transcoding is slow, no point buffering
 	cameraBufferInitialSize = 256 * 1024 // 256KB - most H.264 frames are smaller
 )
 
 // H.264 NAL unit types we care about
 const (
-	nalTypeSlice    = 1  // Non-IDR slice (P-frame)
-	nalTypeIDR      = 5  // IDR slice (I-frame/keyframe)
-	nalTypeSEI      = 6  // Supplemental enhancement info (can drop)
-	nalTypeSPS      = 7  // Sequence parameter set (critical - decoder needs this)
-	nalTypePPS      = 8  // Picture parameter set (needed with SPS)
-	nalTypeAUD      = 9  // Access unit delimiter (can drop)
+	nalTypeSlice      = 1  // Non-IDR slice (P-frame)
+	nalTypeIDR        = 5  // IDR slice (I-frame/keyframe)
+	nalTypeSEI        = 6  // Supplemental enhancement info (can drop)
+	nalTypeSPS        = 7  // Sequence parameter set (critical - decoder needs this)
+	nalTypePPS        = 8  // Picture parameter set (needed with SPS)
+	nalTypeAUD        = 9  // Access unit delimiter (can drop)
 	nalTypeFillerData = 12 // Filler data (can drop)
 )
 

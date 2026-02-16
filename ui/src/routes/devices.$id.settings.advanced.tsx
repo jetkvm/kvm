@@ -32,19 +32,6 @@ interface LogLevelState {
   overrides: string;
 }
 
-// NativeModeState from the backend
-interface NativeModeOption {
-  value: string;
-  label: string;
-  description: string;
-}
-
-interface NativeModeState {
-  mode: string;
-  availableModes: NativeModeOption[];
-  requiresReboot: boolean;
-}
-
 // Parsed subsystem override tag
 interface SubsystemOverride {
   subsystem: string;
@@ -159,11 +146,6 @@ export default function SettingsAdvancedRoute() {
   const [newSubsystem, setNewSubsystem] = useState<string>("");
   const [newSubsystemLevel, setNewSubsystemLevel] = useState<string>("DEBUG");
 
-  // Native mode state
-  const [nativeModeState, setNativeModeState] = useState<NativeModeState | null>(null);
-  const [pendingNativeMode, setPendingNativeMode] = useState<string | null>(null);
-
-
   // Parse current overrides when state changes
   const currentOverrides = useMemo(() => {
     return buildOverrides(logGlobalLevel || null, logSubsystemOverrides);
@@ -205,13 +187,6 @@ export default function SettingsAdvancedRoute() {
       setLogGlobalLevel(parsed.global || "");
       setLogSubsystemOverrides(parsed.subsystems);
     });
-
-    // Load native mode state
-    send("getNativeMode", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setNativeModeState(resp.result as NativeModeState);
-    });
-
   }, [send, setDeveloperMode]);
 
   const getUsbEmulationState = useCallback(() => {
@@ -470,31 +445,6 @@ export default function SettingsAdvancedRoute() {
     [logSubsystemOverrides, logGlobalLevel, applyLogLevelChanges],
   );
 
-  // Native mode handler
-  const handleNativeModeChange = useCallback(
-    (mode: string) => {
-      setPendingNativeMode(mode);
-      send("setNativeMode", { mode }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(
-            m.advanced_native_mode_error({ error: resp.error.data || m.unknown_error() }),
-          );
-          setPendingNativeMode(null);
-          return;
-        }
-        notifications.success(m.advanced_native_mode_updated());
-        // Refresh state
-        send("getNativeMode", {}, (refreshResp: JsonRpcResponse) => {
-          if ("error" in refreshResp) return;
-          setNativeModeState(refreshResp.result as NativeModeState);
-          setPendingNativeMode(null);
-        });
-      });
-    },
-    [send],
-  );
-
-
   return (
     <div className="space-y-4">
       <SettingsPageHeader title={m.advanced_title()} description={m.advanced_description()} />
@@ -676,32 +626,6 @@ export default function SettingsAdvancedRoute() {
             onChange={e => handleLoopbackOnlyModeChange(e.target.checked)}
           />
         </SettingsItem>
-
-        {/* Native Mode Configuration - always visible */}
-        <SettingsItem
-          title={m.advanced_native_mode_title()}
-          description={m.advanced_native_mode_description()}
-          badge="Experimental"
-          badgeVariant="warning"
-        >
-          {nativeModeState && (
-            <SelectMenuBasic
-              size="SM"
-              options={nativeModeState.availableModes.map(option => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              value={pendingNativeMode ?? nativeModeState.mode}
-              onChange={e => handleNativeModeChange(e.target.value)}
-              disabled={pendingNativeMode !== null}
-            />
-          )}
-        </SettingsItem>
-        {nativeModeState && nativeModeState.requiresReboot && (
-          <p className="text-xs font-medium text-amber-600 dark:text-amber-400 -mt-2 ml-1">
-            {m.advanced_native_mode_reboot_required()}
-          </p>
-        )}
 
         <SettingsItem
           title={m.advanced_troubleshooting_mode_title()}

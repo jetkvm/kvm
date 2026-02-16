@@ -18,11 +18,11 @@ import (
 
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
-	"go.bug.st/serial"
 
+	"github.com/jetkvm/kvm/internal/hal/native"
+	halSerial "github.com/jetkvm/kvm/internal/hal/serial"
+	"github.com/jetkvm/kvm/internal/hal/usbgadget"
 	"github.com/jetkvm/kvm/internal/hidrpc"
-	"github.com/jetkvm/kvm/internal/native"
-	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
 
@@ -821,24 +821,24 @@ func rpcGetSerialSettings() (SerialSettings, error) {
 	}
 
 	switch mode.StopBits {
-	case serial.OneStopBit:
+	case halSerial.OneStopBit:
 		settings.StopBits = "1"
-	case serial.OnePointFiveStopBits:
+	case halSerial.OnePointFiveStopBits:
 		settings.StopBits = "1.5"
-	case serial.TwoStopBits:
+	case halSerial.TwoStopBits:
 		settings.StopBits = "2"
 	}
 
 	switch mode.Parity {
-	case serial.NoParity:
+	case halSerial.NoParity:
 		settings.Parity = "none"
-	case serial.OddParity:
+	case halSerial.OddParity:
 		settings.Parity = "odd"
-	case serial.EvenParity:
+	case halSerial.EvenParity:
 		settings.Parity = "even"
-	case serial.MarkParity:
+	case halSerial.MarkParity:
 		settings.Parity = "mark"
-	case serial.SpaceParity:
+	case halSerial.SpaceParity:
 		settings.Parity = "space"
 	}
 
@@ -857,34 +857,34 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 		return fmt.Errorf("invalid data bits: %v", err)
 	}
 
-	var stopBits serial.StopBits
+	var stopBits halSerial.StopBits
 	switch settings.StopBits {
 	case "1":
-		stopBits = serial.OneStopBit
+		stopBits = halSerial.OneStopBit
 	case "1.5":
-		stopBits = serial.OnePointFiveStopBits
+		stopBits = halSerial.OnePointFiveStopBits
 	case "2":
-		stopBits = serial.TwoStopBits
+		stopBits = halSerial.TwoStopBits
 	default:
 		return fmt.Errorf("invalid stop bits: %s", settings.StopBits)
 	}
 
-	var parity serial.Parity
+	var parity halSerial.Parity
 	switch settings.Parity {
 	case "none":
-		parity = serial.NoParity
+		parity = halSerial.NoParity
 	case "odd":
-		parity = serial.OddParity
+		parity = halSerial.OddParity
 	case "even":
-		parity = serial.EvenParity
+		parity = halSerial.EvenParity
 	case "mark":
-		parity = serial.MarkParity
+		parity = halSerial.MarkParity
 	case "space":
-		parity = serial.SpaceParity
+		parity = halSerial.SpaceParity
 	default:
 		return fmt.Errorf("invalid parity: %s", settings.Parity)
 	}
-	newMode := &serial.Mode{
+	newMode := halSerial.Mode{
 		BaudRate: baudRate,
 		DataBits: dataBits,
 		StopBits: stopBits,
@@ -1555,10 +1555,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getHardwareRSAState": {Func: rpcGetHardwareRSAState},
 	"setHardwareRSAMode":  {Func: rpcSetHardwareRSAMode, Params: []string{"mode"}},
 
-	// Native mode handlers
-	"getNativeMode": {Func: rpcGetNativeMode},
-	"setNativeMode": {Func: rpcSetNativeMode, Params: []string{"mode"}},
-
 	// VNC handlers
 	"getVNCState":            {Func: rpcGetVNCState},
 	"setVNCEnabled":          {Func: rpcSetVNCEnabled, Params: []string{"enabled"}},
@@ -1601,13 +1597,13 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRDPBase64CmdLinux":         {Func: rpcSetRDPBase64CmdLinux, Params: []string{"cmd"}},
 	"setRDPBase64CmdMacOS":         {Func: rpcSetRDPBase64CmdMacOS, Params: []string{"cmd"}},
 	// RD Gateway
-	"setRDPGatewayEnabled":         {Func: rpcSetRDPGatewayEnabled, Params: []string{"enabled"}},
-	"setRDPGatewayUDPPort":         {Func: rpcSetRDPGatewayUDPPort, Params: []string{"port"}},
+	"setRDPGatewayEnabled": {Func: rpcSetRDPGatewayEnabled, Params: []string{"enabled"}},
+	"setRDPGatewayUDPPort": {Func: rpcSetRDPGatewayUDPPort, Params: []string{"port"}},
 	// RDP packet capture
-	"setRDPCaptureEnabled":  {Func: rpcSetRDPCaptureEnabled, Params: []string{"enabled"}},
-	"getRDPCaptureState":    {Func: rpcGetRDPCaptureState},
-	"deleteRDPCapture":      {Func: rpcDeleteRDPCapture, Params: []string{"sessionId"}},
-	"deleteAllRDPCaptures":  {Func: rpcDeleteAllRDPCaptures},
+	"setRDPCaptureEnabled": {Func: rpcSetRDPCaptureEnabled, Params: []string{"enabled"}},
+	"getRDPCaptureState":   {Func: rpcGetRDPCaptureState},
+	"deleteRDPCapture":     {Func: rpcDeleteRDPCapture, Params: []string{"sessionId"}},
+	"deleteAllRDPCaptures": {Func: rpcDeleteAllRDPCaptures},
 }
 
 var rpcHandlersInitOnce sync.Once

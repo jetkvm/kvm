@@ -44,8 +44,8 @@ func (g *Gateway) HandleConnection(ctx context.Context, t Transport, remoteAddr 
 	state := stateInitialized
 
 	var (
-		tunnelID     uint32
-		channelID    uint32
+		tunnelID      uint32
+		channelID     uint32
 		paaNegotiated bool // whether PAA cookie auth was negotiated in handshake
 	)
 

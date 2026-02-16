@@ -741,16 +741,12 @@ export function MeshVPNSection() {
   // Fetch version info for a provider
   const fetchVersionInfo = useCallback(
     (providerName: string) => {
-      send(
-        "meshVPNGetVersionInfo",
-        { provider: providerName },
-        (resp: JsonRpcResponse) => {
-          if ("error" in resp) {
-            return;
-          }
-          setProviderVersionInfo(providerName, resp.result as MeshVPNVersionInfo);
-        },
-      );
+      send("meshVPNGetVersionInfo", { provider: providerName }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          return;
+        }
+        setProviderVersionInfo(providerName, resp.result as MeshVPNVersionInfo);
+      });
     },
     [send, setProviderVersionInfo],
   );
@@ -817,30 +813,26 @@ export function MeshVPNSection() {
         authKey: opts.authKey,
       },
     };
-    send(
-      "meshVPNConnect",
-      rpcParams,
-      (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(m.meshvpn_connect_error({ error: String(resp.error.message) }));
-          return;
-        }
-        const result = resp.result as { success: boolean; authUrl?: string };
-        if (result.authUrl) {
-          setProviderStatus(providerName, {
-            ...(providerStatuses[providerName] || {
-              state: "needs_auth",
-              installed: true,
-              running: false,
-            }),
-            authUrl: result.authUrl,
+    send("meshVPNConnect", rpcParams, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(m.meshvpn_connect_error({ error: String(resp.error.message) }));
+        return;
+      }
+      const result = resp.result as { success: boolean; authUrl?: string };
+      if (result.authUrl) {
+        setProviderStatus(providerName, {
+          ...(providerStatuses[providerName] || {
             state: "needs_auth",
-          });
-          setAuthDialogProvider(providerName);
-        }
-        fetchProviderStatus(providerName);
-      },
-    );
+            installed: true,
+            running: false,
+          }),
+          authUrl: result.authUrl,
+          state: "needs_auth",
+        });
+        setAuthDialogProvider(providerName);
+      }
+      fetchProviderStatus(providerName);
+    });
   };
 
   const handleDisconnect = (providerName: string) => {
@@ -985,9 +977,7 @@ export function MeshVPNSection() {
       {!isLoading && loadError && providers.length === 0 && (
         <div className="rounded-lg border border-dashed border-red-300 p-8 text-center dark:border-red-600">
           <XCircleIcon className="mx-auto h-12 w-12 text-red-400" />
-          <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-            {loadError}
-          </p>
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{loadError}</p>
           <Button
             size="SM"
             theme="light"

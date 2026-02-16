@@ -8,24 +8,14 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"time"
 
+	halSystem "github.com/jetkvm/kvm/internal/hal/system"
 	"github.com/rs/zerolog"
 )
 
 func syncFilesystem() error {
-	// Flush filesystem buffers to ensure all data is written to disk
-	if err := exec.Command("sync").Run(); err != nil {
-		return fmt.Errorf("error flushing filesystem buffers: %w", err)
-	}
-
-	// Clear the filesystem caches to force a read from disk
-	if err := os.WriteFile("/proc/sys/vm/drop_caches", []byte("1"), 0644); err != nil {
-		return fmt.Errorf("error clearing filesystem caches: %w", err)
-	}
-
-	return nil
+	return halSystem.SyncFilesystem()
 }
 
 func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {

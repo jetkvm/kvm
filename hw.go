@@ -3,30 +3,13 @@ package kvm
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	halSystem "github.com/jetkvm/kvm/internal/hal/system"
 	"github.com/jetkvm/kvm/internal/ota"
 )
-
-var serialRegexp = regexp.MustCompile(`Serial\s*:\s*(\S+)`)
-
-func extractSerialNumber() (string, error) {
-	content, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		return "", err
-	}
-
-	matches := serialRegexp.FindStringSubmatch(string(content))
-	if len(matches) < 2 {
-		return "", fmt.Errorf("no serial found")
-	}
-
-	return matches[1], nil
-}
 
 func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Duration) error {
 	logger.Info().Dur("delayMs", delay).Msg("reboot requested")
@@ -39,13 +22,7 @@ func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Dur
 		time.Sleep(delay - 1*time.Second) // wait requested extra settle time
 	}
 
-	args := []string{}
-	if force {
-		args = append(args, "-f")
-	}
-
-	cmd := exec.Command("reboot", args...)
-	err := cmd.Start()
+	err := halSystem.Reboot(force)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to reboot")
 		switchToMainScreen()
@@ -66,7 +43,7 @@ var deviceIDOnce sync.Once
 
 func GetDeviceID() string {
 	deviceIDOnce.Do(func() {
-		serial, err := extractSerialNumber()
+		serial, err := halSystem.ReadCPUSerialFromProc()
 		if err != nil {
 			logger.Warn().Msg("unknown serial number, the program likely not running on RV1106")
 			deviceID = "unknown_device_id"
@@ -87,28 +64,12 @@ func GetDefaultHostname() string {
 }
 
 func runWatchdog() {
-	file, err := os.OpenFile("/dev/watchdog", os.O_WRONLY, 0)
-	if err != nil {
-		watchdogLogger.Warn().Err(err).Msg("unable to open /dev/watchdog, skipping watchdog reset")
-		return
-	}
-	defer file.Close()
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			_, err = file.Write([]byte{0})
-			if err != nil {
-				watchdogLogger.Warn().Err(err).Msg("error writing to /dev/watchdog, system may reboot")
-			}
-		case <-appCtx.Done():
-			//disarm watchdog with magic value
-			_, err := file.Write([]byte("V"))
-			if err != nil {
-				watchdogLogger.Warn().Err(err).Msg("failed to disarm watchdog, system may reboot")
-			}
-			return
-		}
-	}
+	halSystem.RunWatchdog(appCtx, halSystem.WatchdogOptions{
+		OnOpenError: func(err error) {
+			watchdogLogger.Warn().Err(err).Msg("unable to open /dev/watchdog, skipping watchdog reset")
+		},
+		OnWriteError: func(err error) {
+			watchdogLogger.Warn().Err(err).Msg("error writing to /dev/watchdog, system may reboot")
+		},
+	})
 }

@@ -10,9 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
-	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
+	cryptotls "github.com/jetkvm/kvm/internal/hal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
@@ -24,7 +23,7 @@ func setProcTitle(status string) {
 		status = " " + status
 	}
 	title := fmt.Sprintf("%s%s", procPrefix, status)
-	gspt.SetProcTitle(title)
+	setProcessTitle(title)
 }
 
 func Main() {

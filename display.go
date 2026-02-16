@@ -2,15 +2,14 @@ package kvm
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	halDisplay "github.com/jetkvm/kvm/internal/hal/display"
+	halSystem "github.com/jetkvm/kvm/internal/hal/system"
 	"github.com/prometheus/common/version"
 )
 
@@ -21,10 +20,6 @@ var (
 	dimTicker       *time.Ticker
 	offTicker       *time.Ticker
 	backlightCancel context.CancelFunc // signals backlight goroutines to exit
-)
-
-const (
-	backlightControlClass string = "/sys/class/backlight/backlight/brightness"
 )
 
 func switchToMainScreen() {
@@ -224,22 +219,13 @@ func updateStaticContents() {
 		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
 	}
 
-	// get cpu info
-	if cpuInfo, err := os.ReadFile("/proc/cpuinfo"); err == nil {
-		// get the line starting with "Serial"
-		for line := range strings.SplitSeq(string(cpuInfo), "\n") {
-			if strings.HasPrefix(line, "Serial") {
-				serial := strings.SplitN(line, ":", 2)[1]
-				nativeInstance.UpdateLabelAndChangeVisibility("cpu_serial", strings.TrimSpace(serial))
-				break
-			}
-		}
+	// get cpu serial (JetKVM only)
+	if serial, err := halSystem.ReadCPUSerialFromProc(); err == nil {
+		nativeInstance.UpdateLabelAndChangeVisibility("cpu_serial", strings.TrimSpace(serial))
 	}
 
 	// get kernel version
-	if kernelVersion, err := os.ReadFile("/proc/version"); err == nil {
-		kernelVersion := strings.TrimPrefix(string(kernelVersion), "Linux version ")
-		kernelVersion = strings.SplitN(kernelVersion, " ", 2)[0]
+	if kernelVersion, err := halSystem.ReadKernelVersionFromProc(); err == nil {
 		nativeInstance.UpdateLabelAndChangeVisibility("kernel_version", kernelVersion)
 	}
 
@@ -261,21 +247,7 @@ func configureDisplayOnNativeRestart() {
 // setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
 // the backlight brightness of the JetKVM hardware's display.
 func setDisplayBrightness(brightness int, reason string) error {
-	// NOTE: The actual maximum value for this is 255, but out-of-the-box, the value is set to 64.
-	// The maximum set here is set to 100 to reduce the risk of drawing too much power (and besides, 255 is very bright!).
-	if brightness > 100 || brightness < 0 {
-		return errors.New("brightness value out of bounds, must be between 0 and 100")
-	}
-
-	// Check the display backlight class is available
-	if _, err := os.Stat(backlightControlClass); errors.Is(err, os.ErrNotExist) {
-		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware")
-	}
-
-	// Set the value
-	bs := []byte(strconv.Itoa(brightness))
-	err := os.WriteFile(backlightControlClass, bs, 0644)
-	if err != nil {
+	if err := halDisplay.SetBacklightBrightness(brightness); err != nil {
 		return err
 	}
 

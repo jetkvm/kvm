@@ -10,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	halSystem "github.com/jetkvm/kvm/internal/hal/system"
 )
 
 // ProcessManager manages the zerotier-one daemon process.
@@ -45,24 +47,11 @@ func (p *ProcessManager) IsRunning() bool {
 // ensureTUN loads the TUN kernel module if not already loaded.
 // ZeroTier requires TUN for creating virtual network interfaces.
 func (p *ProcessManager) ensureTUN() error {
-	// Check if TUN device already exists
-	if _, err := os.Stat("/dev/net/tun"); err == nil {
-		return nil
+	logger.Debug().Msg("ensuring TUN device is available")
+	if err := halSystem.EnsureTunDevice(); err != nil {
+		return fmt.Errorf("TUN module required for ZeroTier: %w", err)
 	}
-
-	// Try to load the TUN module
-	logger.Debug().Msg("loading TUN kernel module")
-	cmd := exec.Command("modprobe", "tun")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("modprobe tun failed: %w (output: %s)", err, string(output))
-	}
-
-	// Verify TUN device exists after loading
-	if _, err := os.Stat("/dev/net/tun"); err != nil {
-		return fmt.Errorf("TUN device not available after loading module: %w", err)
-	}
-
-	logger.Debug().Msg("TUN kernel module loaded successfully")
+	logger.Debug().Msg("TUN device available")
 	return nil
 }
 

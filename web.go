@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -17,8 +19,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"crypto/sha256"
-	"crypto/subtle"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,7 +29,7 @@ import (
 	gin_logger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jetkvm/kvm/internal/diagnostics"
+	"github.com/jetkvm/kvm/internal/hal/diagnostics"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/pion/webrtc/v4"
@@ -586,7 +586,7 @@ func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 // The cache auto-invalidates when config.HashedPassword changes (password update).
 var bcryptCache struct {
 	sync.Mutex
-	bcryptHash    string    // config.HashedPassword at time of verification
+	bcryptHash     string            // config.HashedPassword at time of verification
 	passwordDigest [sha256.Size]byte // SHA-256 of the plaintext password
 }
 

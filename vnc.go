@@ -9,7 +9,7 @@ import (
 	"net"
 	"sync"
 
-	cryptotls "github.com/jetkvm/kvm/internal/crypto/tls"
+	cryptotls "github.com/jetkvm/kvm/internal/hal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/vnc"
 )

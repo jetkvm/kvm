@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"sync/atomic"
 
-	hwcrypto "github.com/jetkvm/kvm/internal/crypto/tls"
+	hwcrypto "github.com/jetkvm/kvm/internal/hal/crypto/tls"
 	"github.com/jetkvm/kvm/internal/websecure"
 )
 

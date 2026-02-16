@@ -23,4 +23,3 @@ func decodeUTF16LE(b []byte) string {
 	}
 	return string(utf16.Decode(u16))
 }
-

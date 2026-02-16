@@ -1,0 +1,3 @@
+[submodule "internal/hal"]
+	path = internal/hal
+	url = git@github.com:KrakenKVM/hal.git

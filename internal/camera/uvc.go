@@ -5,7 +5,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/jetkvm/kvm/internal/hal/usbgadget"
 )
 
 // uvcBufferCount is the number of V4L2 buffers to allocate.

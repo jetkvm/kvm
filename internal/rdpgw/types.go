@@ -28,14 +28,14 @@ const (
 
 // HTTP_CAPABILITY flags (MS-TSGU 2.2.9.2.1.2 / 2.2.9.2.1.3)
 const (
-	httpCapabilityTypeQUIC         uint32 = 0x01
-	httpCapabilityUDPTransport     uint32 = 0x20
-	httpCapabilityTypeServiceMsg   uint32 = 0x04
-	httpCapabilityTypeExtAuth      uint32 = 0x02
-	httpCapabilityTypeIdleTimeout  uint32 = 0x10
-	httpCapabilityTypeReauth       uint32 = 0x40
-	httpCapabilityTypeMsgRequest   uint32 = 0x100
-	httpCapabilityTypeMsgResponse  uint32 = 0x200
+	httpCapabilityTypeQUIC        uint32 = 0x01
+	httpCapabilityUDPTransport    uint32 = 0x20
+	httpCapabilityTypeServiceMsg  uint32 = 0x04
+	httpCapabilityTypeExtAuth     uint32 = 0x02
+	httpCapabilityTypeIdleTimeout uint32 = 0x10
+	httpCapabilityTypeReauth      uint32 = 0x40
+	httpCapabilityTypeMsgRequest  uint32 = 0x100
+	httpCapabilityTypeMsgResponse uint32 = 0x200
 )
 
 // HTTP_TUNNEL_RESPONSE field IDs (MS-TSGU 2.2.9.2.1.4)
@@ -54,15 +54,15 @@ const (
 
 // Tunnel auth redirect flags (MS-TSGU 2.2.9.2.1.5)
 const (
-	httpTunnelAuthRedirectFlagsEnable    uint32 = 0x01
-	httpTunnelAuthRedirectFlagsDisable   uint32 = 0x00
+	httpTunnelAuthRedirectFlagsEnable  uint32 = 0x01
+	httpTunnelAuthRedirectFlagsDisable uint32 = 0x00
 )
 
 // Error codes (MS-TSGU 2.2.9.2.1.7 — subset we use)
 const (
-	errorCodeSuccess       uint32 = 0x00000000
-	errorCodeDenied        uint32 = 0x00000001
-	errorCodeQuarantine    uint32 = 0x00000003
+	errorCodeSuccess    uint32 = 0x00000000
+	errorCodeDenied     uint32 = 0x00000001
+	errorCodeQuarantine uint32 = 0x00000003
 )
 
 // Gateway connection state machine

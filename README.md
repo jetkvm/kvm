@@ -33,13 +33,21 @@ If you've found an issue and want to report it, please check our [Issues](https:
 
 # Development
 
-JetKVM is written in Go & TypeScript. with some bits and pieces written in C. An intermediate level of Go & TypeScript knowledge is recommended for comfortable programming.
+JetKVM is written in Go & TypeScript. All hardware-facing native code (CGO/C/C++ and platform-specific `/dev` + `/sys` access) lives in the `internal/hal` git submodule (`KrakenKVM/hal`).
 
 The project contains two main parts, the backend software that runs on the KVM device and the frontend software that is served by the KVM device, and also the cloud.
 
 For comprehensive development information, including setup, testing, debugging, and contribution guidelines, see **[DEVELOPMENT.md](DEVELOPMENT.md)**.
 
 For quick device development, use the `./dev_deploy.sh` script. It will build the frontend and backend and deploy them to the local KVM device. Run `./dev_deploy.sh --help` for more information.
+
+## HAL Submodule
+
+If you did not clone with submodules, initialize the HAL submodule before building:
+
+```bash
+git submodule update --init --recursive
+```
 
 ## Backend
 

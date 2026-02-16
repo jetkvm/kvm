@@ -63,8 +63,8 @@ func buildHandshakeResponse(extAuth uint16) []byte {
 	// MS-TSGU 2.2.9.2.1.2: errorCode(4) + verMajor(1) + verMinor(1) + serverVersion(2) + extAuth(2) = 10
 	buf := make([]byte, 10)
 	binary.LittleEndian.PutUint32(buf[0:4], errorCodeSuccess)
-	buf[4] = 0 // verMajor
-	buf[5] = 0 // verMinor
+	buf[4] = 0                                 // verMajor
+	buf[5] = 0                                 // verMinor
 	binary.LittleEndian.PutUint16(buf[6:8], 0) // serverVersion
 	binary.LittleEndian.PutUint16(buf[8:10], extAuth)
 	return buf

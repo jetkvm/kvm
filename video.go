@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/native"
+	"github.com/jetkvm/kvm/internal/hal/native"
 )
 
 var (

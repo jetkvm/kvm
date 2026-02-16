@@ -36,24 +36,24 @@ const (
 
 // RDPState represents the current RDP server state for the UI.
 type RDPState struct {
-	Enabled          bool   `json:"enabled"`
-	Running          bool   `json:"running"`
-	Port             int    `json:"port"`
-	ConnectionCount  int    `json:"connectionCount"`
-	TLSEnabled       bool   `json:"tlsEnabled"`
-	MaxConnections   int    `json:"maxConnections"`
-	VideoEnabled     bool   `json:"videoEnabled"`
-	AudioEnabled     bool   `json:"audioEnabled"`
-	MicEnabled       bool   `json:"micEnabled"`
-	CameraEnabled           bool `json:"cameraEnabled"`
-	CameraTranscodeEnabled  bool `json:"cameraTranscodeEnabled"`
-	UDPEnabled       bool   `json:"udpEnabled"`
-	ClipboardEnabled bool   `json:"clipboardEnabled"`
-	PasteDelayMs     int    `json:"pasteDelayMs"`
-	TargetOS         string `json:"targetOS"`
-	ClipboardMode    string `json:"clipboardMode"`
-	Username         string `json:"username"`
-	Domain           string `json:"domain"`
+	Enabled                bool   `json:"enabled"`
+	Running                bool   `json:"running"`
+	Port                   int    `json:"port"`
+	ConnectionCount        int    `json:"connectionCount"`
+	TLSEnabled             bool   `json:"tlsEnabled"`
+	MaxConnections         int    `json:"maxConnections"`
+	VideoEnabled           bool   `json:"videoEnabled"`
+	AudioEnabled           bool   `json:"audioEnabled"`
+	MicEnabled             bool   `json:"micEnabled"`
+	CameraEnabled          bool   `json:"cameraEnabled"`
+	CameraTranscodeEnabled bool   `json:"cameraTranscodeEnabled"`
+	UDPEnabled             bool   `json:"udpEnabled"`
+	ClipboardEnabled       bool   `json:"clipboardEnabled"`
+	PasteDelayMs           int    `json:"pasteDelayMs"`
+	TargetOS               string `json:"targetOS"`
+	ClipboardMode          string `json:"clipboardMode"`
+	Username               string `json:"username"`
+	Domain                 string `json:"domain"`
 	// File transfer settings
 	FileTransferEnabled    bool   `json:"fileTransferEnabled"`
 	FileTransferMethod     string `json:"fileTransferMethod"`
@@ -61,11 +61,11 @@ type RDPState struct {
 	FileTransferTTLSec     int    `json:"fileTransferTTLSec"`
 	FileTransferCleanupSec int    `json:"fileTransferCleanupSec"`
 	NetworkCmdWindows      string `json:"networkCmdWindows"`
-	NetworkCmdLinux      string `json:"networkCmdLinux"`
-	NetworkCmdMacOS      string `json:"networkCmdMacOS"`
-	Base64CmdWindows     string `json:"base64CmdWindows"`
-	Base64CmdLinux       string `json:"base64CmdLinux"`
-	Base64CmdMacOS       string `json:"base64CmdMacOS"`
+	NetworkCmdLinux        string `json:"networkCmdLinux"`
+	NetworkCmdMacOS        string `json:"networkCmdMacOS"`
+	Base64CmdWindows       string `json:"base64CmdWindows"`
+	Base64CmdLinux         string `json:"base64CmdLinux"`
+	Base64CmdMacOS         string `json:"base64CmdMacOS"`
 	// RD Gateway settings
 	GatewayEnabled bool `json:"gatewayEnabled"`
 	GatewayUDPPort int  `json:"gatewayUDPPort"`
@@ -98,24 +98,24 @@ func rpcGetRDPState() (RDPState, error) {
 	}
 	cfg := loadCfg()
 	return RDPState{
-		Enabled:          cfg.RDPEnabled,
-		Running:          running,
-		Port:             cfg.RDPPort,
-		ConnectionCount:  connCount,
-		TLSEnabled:       cfg.RDPUseTLS,
-		MaxConnections:   cfg.RDPMaxConnections,
-		VideoEnabled:     cfg.RDPVideoEnabled,
-		AudioEnabled:     cfg.RDPAudioEnabled,
-		MicEnabled:       cfg.RDPMicEnabled,
+		Enabled:                cfg.RDPEnabled,
+		Running:                running,
+		Port:                   cfg.RDPPort,
+		ConnectionCount:        connCount,
+		TLSEnabled:             cfg.RDPUseTLS,
+		MaxConnections:         cfg.RDPMaxConnections,
+		VideoEnabled:           cfg.RDPVideoEnabled,
+		AudioEnabled:           cfg.RDPAudioEnabled,
+		MicEnabled:             cfg.RDPMicEnabled,
 		CameraEnabled:          cfg.RDPCameraEnabled,
 		CameraTranscodeEnabled: cfg.RDPCameraTranscodeEnabled,
-		UDPEnabled:       cfg.RDPUDPEnabled == nil || *cfg.RDPUDPEnabled,
-		ClipboardEnabled: cfg.RDPClipboardEnabled,
-		PasteDelayMs:     cfg.RDPPasteDelayMs,
-		TargetOS:         cfg.RDPTargetOS,
-		ClipboardMode:    cfg.RDPClipboardMode,
-		Username:         cfg.RDPUsername,
-		Domain:           cfg.RDPDomain,
+		UDPEnabled:             cfg.RDPUDPEnabled == nil || *cfg.RDPUDPEnabled,
+		ClipboardEnabled:       cfg.RDPClipboardEnabled,
+		PasteDelayMs:           cfg.RDPPasteDelayMs,
+		TargetOS:               cfg.RDPTargetOS,
+		ClipboardMode:          cfg.RDPClipboardMode,
+		Username:               cfg.RDPUsername,
+		Domain:                 cfg.RDPDomain,
 		// File transfer settings
 		FileTransferEnabled:    cfg.RDPFileTransferEnabled,
 		FileTransferMethod:     cfg.RDPFileTransferMethod,
@@ -123,11 +123,11 @@ func rpcGetRDPState() (RDPState, error) {
 		FileTransferTTLSec:     cfg.RDPFileTransferTTLSec,
 		FileTransferCleanupSec: cfg.RDPFileTransferCleanupSec,
 		NetworkCmdWindows:      cfg.RDPNetworkCmdWindows,
-		NetworkCmdLinux:     cfg.RDPNetworkCmdLinux,
-		NetworkCmdMacOS:     cfg.RDPNetworkCmdMacOS,
-		Base64CmdWindows:    cfg.RDPBase64CmdWindows,
-		Base64CmdLinux:      cfg.RDPBase64CmdLinux,
-		Base64CmdMacOS:      cfg.RDPBase64CmdMacOS,
+		NetworkCmdLinux:        cfg.RDPNetworkCmdLinux,
+		NetworkCmdMacOS:        cfg.RDPNetworkCmdMacOS,
+		Base64CmdWindows:       cfg.RDPBase64CmdWindows,
+		Base64CmdLinux:         cfg.RDPBase64CmdLinux,
+		Base64CmdMacOS:         cfg.RDPBase64CmdMacOS,
 		// RD Gateway settings
 		GatewayEnabled: cfg.RDPGatewayEnabled == nil || *cfg.RDPGatewayEnabled,
 		GatewayUDPPort: func() int {

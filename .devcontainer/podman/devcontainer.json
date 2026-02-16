@@ -1,48 +1,76 @@
 {
-  "name": "JetKVM podman devcontainer",
+  "name": "KVM multi-platform podman devcontainer (linux/amd64)",
   "image": "mcr.microsoft.com/devcontainers/go:1.25-trixie",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
-      // Should match what is defined in ui/package.json
       "version": "22.21.1"
     }
   },
   "runArgs": [
+    "--platform=linux/amd64",
     "--userns=keep-id",
     "--security-opt=label=disable",
     "--security-opt=label=nested"
   ],
   "containerUser": "vscode",
   "containerEnv": {
-    "HOME": "/home/vscode"
+    "HOME": "/home/vscode",
+    "GOPRIVATE": "github.com/KrakenKVM/*",
+    "GONOSUMDB": "github.com/KrakenKVM/*",
+    "GOPATH": "/home/vscode/go",
+    "GOMODCACHE": "/home/vscode/go/pkg/mod",
+    "GOCACHE": "/home/vscode/.cache/go-build",
+    "GOTOOLCHAIN": "local",
+    "KVM_SUPPORTED_PLATFORMS": "rv1106,rv1126b,ax630c",
+    "RV1106_TOOLCHAIN_ROOT": "/opt/jetkvm-native-buildkit",
+    "RV1126B_SDK_ROOT": "/opt/kvm-sdks/rv1126b",
+    "AX630C_SDK_ROOT": "/opt/kvm-sdks/ax630c",
+    "JETKVM_KERNEL_SRC": "/workspaces/vendor-sources/jetkvm-sdk",
+    "COMET_KERNEL_SRC": "/workspaces/vendor-sources/comet-kernel",
+    "NANOKVM_SDK_SRC": "/workspaces/vendor-sources/nanokvm-sdk",
+    "JETKVM_APP_SRC": "/workspaces/vendor-sources/jetkvm-app",
+    "COMET_APP_SRC": "/workspaces/vendor-sources/comet-app",
+    "NANOKVM_APP_SRC": "/workspaces/vendor-sources/nanokvm-app",
+    "ROCKCHIP_MPP_SRC": "/workspaces/vendor-sources/mpp-mirror",
+    "ROCKCHIP_RGA_UPSTREAM_SRC": "/workspaces/vendor-sources/librga-upstream",
+    "ROCKCHIP_RGA_MIRROR_SRC": "/workspaces/vendor-sources/librga-mirror",
+    "ROCKCHIP_RKNN_TOOLKIT2_SRC": "/workspaces/vendor-sources/rknn-toolkit2",
+    "ROCKCHIP_RKNN_MODEL_ZOO_SRC": "/workspaces/vendor-sources/rknn-model-zoo",
+    "ROCKCHIP_RKNN_TOOLKIT_LEGACY_SRC": "/workspaces/vendor-sources/rknn-toolkit-legacy",
+    "ROCKCHIP_RKNPU_CURRENT_SRC": "/workspaces/vendor-sources/rknpu-current",
+    "ROCKCHIP_RKNPU_LEGACY_SRC": "/workspaces/vendor-sources/rknpu-legacy",
+    "OPENH264_SRC": "/workspaces/vendor-sources/openh264",
+    "LIBRGA_SRC": "/workspaces/vendor-sources/librga-mirror"
   },
   "mounts": [
-    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+    "source=kvm-hal-vendor-cache,target=/workspaces/vendor-sources,type=volume",
+    "source=/Volumes/rv1106-system,target=/workspaces/vendor-sources/jetkvm-sdk,type=bind,consistency=cached",
+    "source=/Volumes/gl-inet-pro-kernel-6.1,target=/workspaces/vendor-sources/comet-kernel,type=bind,consistency=cached",
+    "source=/Volumes/maix_ax620e_sdk,target=/workspaces/vendor-sources/nanokvm-sdk,type=bind,consistency=cached",
+    "source=kvm-hal-go-mod,target=/home/vscode/go/pkg/mod,type=volume",
+    "source=kvm-hal-go-build,target=/home/vscode/.cache/go-build,type=volume",
+    "source=kvm-hal-npm,target=/home/vscode/.npm,type=volume",
+    "source=kvm-hal-pnpm,target=/home/vscode/.local/share/pnpm/store,type=volume"
   ],
-  "onCreateCommand": ".devcontainer/install-deps.sh",
+  "onCreateCommand": "git config --global --add safe.directory \"*\" || true; ./.devcontainer/install-deps.sh && sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu qemu-user-static file ripgrep && bash ./.devcontainer/install_audio_deps.sh && bash ./.devcontainer/install_ssl_deps.sh && sudo rm -rf /var/lib/apt/lists/*",
+  "postCreateCommand": "bash ./.devcontainer/post-create.sh",
   "customizations": {
     "vscode": {
       "extensions": [
-        // coding styles
         "chrislajoie.vscode-modelines",
         "editorconfig.editorconfig",
-        // GitHub
         "GitHub.vscode-pull-request-github",
         "github.vscode-github-actions",
-        // Golang
         "golang.go",
-        // C / C++
         "ms-vscode.cpptools",
         "ms-vscode.cpptools-extension-pack",
-        // CMake / Makefile
         "ms-vscode.makefile-tools",
         "ms-vscode.cmake-tools",
-        // Frontend
         "esbenp.prettier-vscode",
         "dbaeumer.vscode-eslint",
         "bradlc.vscode-tailwindcss",
         "codeandstuff.package-json-upgrade",
-        // Localization
         "inlang.vs-code-extension"
       ]
     }

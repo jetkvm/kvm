@@ -1,5 +1,5 @@
 {
-  "name": "KVM multi-platform docker devcontainer (linux/amd64)",
+  "name": "KVM multi-platform linux/amd64 devcontainer",
   "image": "mcr.microsoft.com/devcontainers/go:1.25-trixie",
   "runArgs": [
     "--platform=linux/amd64"
@@ -54,6 +54,15 @@
   "postCreateCommand": "bash ./.devcontainer/post-create.sh",
   "customizations": {
     "vscode": {
+      "settings": {
+        "go.toolsEnvVars": {
+          "GOTOOLCHAIN": "local"
+        },
+        "go.testEnvVars": {
+          "GOTOOLCHAIN": "local"
+        },
+        "cmake.configureOnOpen": false
+      },
       "extensions": [
         "chrislajoie.vscode-modelines",
         "editorconfig.editorconfig",

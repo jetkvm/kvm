@@ -10,11 +10,11 @@ import (
 	"sync/atomic"
 
 	"github.com/jetkvm/kvm/internal/confparser"
+	"github.com/jetkvm/kvm/internal/hal/native"
+	"github.com/jetkvm/kvm/internal/hal/usbgadget"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/meshvpn"
-	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -109,7 +109,7 @@ type Config struct {
 	DisplayMaxBrightness int                  `json:"display_max_brightness"`
 	DisplayDimAfterSec   int                  `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int                  `json:"display_off_after_sec"`
-	TLSMode              string               `json:"tls_mode"` // options: "self-signed", "user-defined", ""
+	TLSMode              string               `json:"tls_mode"`     // options: "self-signed", "user-defined", ""
 	HardwareRSA          string               `json:"hardware_rsa"` // options: "openssl", "disabled"
 	UsbConfig            *usbgadget.Config    `json:"usb_config"`
 	UsbDevices           *usbgadget.Devices   `json:"usb_devices"`
@@ -151,39 +151,35 @@ type Config struct {
 	VNCClipboardEnabled bool   `json:"vnc_clipboard_enabled"` // Enable clipboard-as-keystrokes, default: true
 
 	// RDP settings
-	RDPEnabled          bool   `json:"rdp_enabled"`
-	RDPPort             int    `json:"rdp_port"`              // default: 3389
-	RDPMaxConnections   int    `json:"rdp_max_connections"`   // Max concurrent RDP connections (1-10), default: 3
-	RDPUseTLS           bool   `json:"rdp_use_tls"`           // Use TLS for RDP - when enabled and available, provides NLA security
-	RDPVideoEnabled     bool   `json:"rdp_video_enabled"`     // Enable H.264 video via RDPGFX, default: true
-	RDPAudioEnabled     bool   `json:"rdp_audio_enabled"`     // Enable audio output to client, default: true
-	RDPMicEnabled       bool   `json:"rdp_mic_enabled"`       // Enable microphone input from client, default: true
-	RDPCameraEnabled           bool `json:"rdp_camera_enabled"`            // Enable webcam redirection from client, default: false
-	RDPCameraTranscodeEnabled  bool `json:"rdp_camera_transcode_enabled"`  // Enable H.264→MJPEG software transcode for camera (BETA, high CPU), default: false
-	RDPClipboardEnabled     bool   `json:"rdp_clipboard_enabled"`      // Enable clipboard-as-keystrokes, default: true
-	RDPPasteDelayMs         int    `json:"rdp_paste_delay_ms"`         // Delay per keystroke in ms (0-50), default: 0
-	RDPTargetOS             string `json:"rdp_target_os"`              // Target OS for clipboard: "windows", "macos", "linux", default: "windows"
-	RDPClipboardMode        string `json:"rdp_clipboard_mode"`         // Clipboard mode: "text", "base64-markers", "base64-script", default: "text"
-	RDPFileTransferEnabled  bool   `json:"rdp_file_transfer_enabled"`  // Enable file clipboard transfer, default: false
-	RDPFileTransferMethod   string `json:"rdp_file_transfer_method"`   // Transfer method: "auto", "network", "usb", "base64", default: "auto"
+	RDPEnabled                bool   `json:"rdp_enabled"`
+	RDPPort                   int    `json:"rdp_port"`                      // default: 3389
+	RDPMaxConnections         int    `json:"rdp_max_connections"`           // Max concurrent RDP connections (1-10), default: 3
+	RDPUseTLS                 bool   `json:"rdp_use_tls"`                   // Use TLS for RDP - when enabled and available, provides NLA security
+	RDPVideoEnabled           bool   `json:"rdp_video_enabled"`             // Enable H.264 video via RDPGFX, default: true
+	RDPAudioEnabled           bool   `json:"rdp_audio_enabled"`             // Enable audio output to client, default: true
+	RDPMicEnabled             bool   `json:"rdp_mic_enabled"`               // Enable microphone input from client, default: true
+	RDPCameraEnabled          bool   `json:"rdp_camera_enabled"`            // Enable webcam redirection from client, default: false
+	RDPCameraTranscodeEnabled bool   `json:"rdp_camera_transcode_enabled"`  // Enable H.264→MJPEG software transcode for camera (BETA, high CPU), default: false
+	RDPClipboardEnabled       bool   `json:"rdp_clipboard_enabled"`         // Enable clipboard-as-keystrokes, default: true
+	RDPPasteDelayMs           int    `json:"rdp_paste_delay_ms"`            // Delay per keystroke in ms (0-50), default: 0
+	RDPTargetOS               string `json:"rdp_target_os"`                 // Target OS for clipboard: "windows", "macos", "linux", default: "windows"
+	RDPClipboardMode          string `json:"rdp_clipboard_mode"`            // Clipboard mode: "text", "base64-markers", "base64-script", default: "text"
+	RDPFileTransferEnabled    bool   `json:"rdp_file_transfer_enabled"`     // Enable file clipboard transfer, default: false
+	RDPFileTransferMethod     string `json:"rdp_file_transfer_method"`      // Transfer method: "auto", "network", "usb", "base64", default: "auto"
 	RDPFileTransferMaxMB      int    `json:"rdp_file_transfer_max_mb"`      // Max file size in MB, default: 100
 	RDPFileTransferTTLSec     int    `json:"rdp_file_transfer_ttl_sec"`     // File TTL in seconds before expiry, default: 300 (5 min)
 	RDPFileTransferCleanupSec int    `json:"rdp_file_transfer_cleanup_sec"` // Cleanup interval in seconds, default: 60
 	RDPNetworkCmdWindows      string `json:"rdp_network_cmd_windows"`       // Download command for Windows. Placeholders: {url}, {filename}
-	RDPNetworkCmdLinux      string `json:"rdp_network_cmd_linux"`      // Download command for Linux. Placeholders: {url}, {filename}
-	RDPNetworkCmdMacOS      string `json:"rdp_network_cmd_macos"`      // Download command for macOS. Placeholders: {url}, {filename}
-	RDPBase64CmdWindows     string `json:"rdp_base64_cmd_windows"`     // Decode command for Windows. Placeholders: {data}, {filename}
-	RDPBase64CmdLinux       string `json:"rdp_base64_cmd_linux"`       // Decode command for Linux. Placeholders: {data}, {filename}
-	RDPBase64CmdMacOS       string `json:"rdp_base64_cmd_macos"`       // Decode command for macOS. Placeholders: {data}, {filename}
-	RDPUDPEnabled           *bool  `json:"rdp_udp_enabled"`            // Enable UDP transport for better WAN performance, default: true
-	RDPUsername             string `json:"rdp_username"`               // Username for RDP authentication (any username allowed if empty)
-	RDPDomain               string `json:"rdp_domain"`                 // Domain for RDP authentication (any domain allowed if empty)
-	RDPGatewayEnabled       *bool  `json:"rdp_gateway_enabled"`        // Enable RD Gateway on HTTPS, default: true when RDP+TLS enabled
-	RDPGatewayUDPPort       int    `json:"rdp_gateway_udp_port"`       // UDP port for ShortPath discovery, default: 3391
-
-	// Native mode: "subprocess" (default, crash-isolated) or "direct" (more efficient, no subprocess)
-	// Direct mode is more resource-efficient but native crashes will bring down the whole app.
-	NativeMode string `json:"native_mode"`
+	RDPNetworkCmdLinux        string `json:"rdp_network_cmd_linux"`         // Download command for Linux. Placeholders: {url}, {filename}
+	RDPNetworkCmdMacOS        string `json:"rdp_network_cmd_macos"`         // Download command for macOS. Placeholders: {url}, {filename}
+	RDPBase64CmdWindows       string `json:"rdp_base64_cmd_windows"`        // Decode command for Windows. Placeholders: {data}, {filename}
+	RDPBase64CmdLinux         string `json:"rdp_base64_cmd_linux"`          // Decode command for Linux. Placeholders: {data}, {filename}
+	RDPBase64CmdMacOS         string `json:"rdp_base64_cmd_macos"`          // Decode command for macOS. Placeholders: {data}, {filename}
+	RDPUDPEnabled             *bool  `json:"rdp_udp_enabled"`               // Enable UDP transport for better WAN performance, default: true
+	RDPUsername               string `json:"rdp_username"`                  // Username for RDP authentication (any username allowed if empty)
+	RDPDomain                 string `json:"rdp_domain"`                    // Domain for RDP authentication (any domain allowed if empty)
+	RDPGatewayEnabled         *bool  `json:"rdp_gateway_enabled"`           // Enable RD Gateway on HTTPS, default: true when RDP+TLS enabled
+	RDPGatewayUDPPort         int    `json:"rdp_gateway_udp_port"`          // UDP port for ShortPath discovery, default: 3391
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -281,8 +277,8 @@ func getDefaultConfig() Config {
 
 		// Camera/UVC defaults
 		CameraResolution:   "1080p",
-		CameraFrameRate:    24, // Cinema rate - good balance of quality and CPU
-		CameraH264Bitrate:  3,  // 3 Mbps for 1080p24
+		CameraFrameRate:    24,  // Cinema rate - good balance of quality and CPU
+		CameraH264Bitrate:  3,   // 3 Mbps for 1080p24
 		CameraMjpegQuality: 100, // 100% - maximum quality for camera feed
 
 		// VNC defaults
@@ -294,20 +290,20 @@ func getDefaultConfig() Config {
 		VNCClipboardEnabled: true,
 
 		// RDP defaults
-		RDPEnabled:          false,
-		RDPPort:             3389,
-		RDPMaxConnections:   3,
-		RDPUseTLS:           true, // Enable TLS by default for security
-		RDPVideoEnabled:     true,
-		RDPAudioEnabled:     true,
-		RDPMicEnabled:       true,
-		RDPUDPEnabled:       func() *bool { v := true; return &v }(), // UDP transport on by default for better WAN performance
-		RDPCameraEnabled:    false,                                    // Camera redirection off by default
+		RDPEnabled:             false,
+		RDPPort:                3389,
+		RDPMaxConnections:      3,
+		RDPUseTLS:              true, // Enable TLS by default for security
+		RDPVideoEnabled:        true,
+		RDPAudioEnabled:        true,
+		RDPMicEnabled:          true,
+		RDPUDPEnabled:          func() *bool { v := true; return &v }(), // UDP transport on by default for better WAN performance
+		RDPCameraEnabled:       false,                                   // Camera redirection off by default
 		RDPClipboardEnabled:    true,
 		RDPPasteDelayMs:        0,         // No delay - fastest typing speed
 		RDPTargetOS:            "windows", // Most common target
 		RDPClipboardMode:       "text",    // Plain text only (skip non-typeable chars)
-		RDPFileTransferEnabled: true, // File transfer enabled by default
+		RDPFileTransferEnabled: true,      // File transfer enabled by default
 		RDPFileTransferMethod:  "auto",
 		RDPFileTransferMaxMB:   100,
 		// Command templates - empty means use built-in defaults
@@ -317,9 +313,6 @@ func getDefaultConfig() Config {
 		RDPBase64CmdWindows:  "",
 		RDPBase64CmdLinux:    "",
 		RDPBase64CmdMacOS:    "",
-
-		// Native mode: "subprocess" is crash-isolated (default), "direct" is more efficient
-		NativeMode: "subprocess",
 	}
 }
 
@@ -349,7 +342,6 @@ var (
 func loadCfg() *Config {
 	return configPtr.Load()
 }
-
 
 func LoadConfig() {
 	configLock.Lock()
@@ -543,4 +535,3 @@ func SaveBackupConfig() error {
 	defer configLock.Unlock()
 	return saveConfigToFile(configPtr.Load(), configPath+".bak")
 }
-

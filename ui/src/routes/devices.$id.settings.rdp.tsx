@@ -134,7 +134,9 @@ export default function SettingsRDPRoute() {
       setFileTransferMethod(state.fileTransferMethod || "auto");
       setFileTransferMaxMB(state.fileTransferMaxMB || RDP_DEFAULTS.fileTransferMaxMB);
       setFileTransferTTLSec(state.fileTransferTTLSec || RDP_DEFAULTS.fileTransferTTLSec);
-      setFileTransferCleanupSec(state.fileTransferCleanupSec || RDP_DEFAULTS.fileTransferCleanupSec);
+      setFileTransferCleanupSec(
+        state.fileTransferCleanupSec || RDP_DEFAULTS.fileTransferCleanupSec,
+      );
       setGatewayEnabled(state.gatewayEnabled ?? true);
       setGatewayUDPPort(state.gatewayUDPPort || RDP_DEFAULTS.gatewayUDPPort);
       // Only update username/domain if user is not actively editing
@@ -1099,7 +1101,7 @@ export default function SettingsRDPRoute() {
                   <>
                     <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-600">
                       <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                        <thead className="bg-slate-50 text-xs text-slate-500 uppercase dark:bg-slate-700 dark:text-slate-400">
                           <tr>
                             <th className="px-3 py-2">{m.rdp_settings_capture_time()}</th>
                             <th className="px-3 py-2">{m.rdp_settings_capture_client()}</th>
@@ -1114,7 +1116,7 @@ export default function SettingsRDPRoute() {
                               key={session.id}
                               className="border-t border-slate-200 dark:border-slate-600"
                             >
-                              <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-white">
+                              <td className="px-3 py-2 whitespace-nowrap text-slate-900 dark:text-white">
                                 {formatTime(session.startTime)}
                               </td>
                               <td className="px-3 py-2 text-slate-700 dark:text-slate-300">

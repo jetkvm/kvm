@@ -2,12 +2,8 @@ package kvm
 
 import (
 	"errors"
-	"fmt"
-	"net"
-	"os"
 
-	"github.com/pojntfx/go-nbd/pkg/server"
-	"github.com/rs/zerolog"
+	halNBD "github.com/jetkvm/kvm/internal/hal/nbd"
 )
 
 type remoteImageBackend struct {
@@ -53,85 +49,15 @@ func (r remoteImageBackend) Sync() error {
 	return nil
 }
 
-const nbdSocketPath = "/var/run/nbd.socket"
-const nbdDevicePath = "/dev/nbd0"
-
-type NBDDevice struct {
-	listener   net.Listener
-	serverConn net.Conn
-	clientConn net.Conn
-	dev        *os.File
-
-	l *zerolog.Logger
-}
+type NBDDevice = halNBD.Device
 
 func NewNBDDevice() *NBDDevice {
-	return &NBDDevice{}
-}
-
-func (d *NBDDevice) Start() error {
-	var err error
-
-	if _, err := os.Stat(nbdDevicePath); os.IsNotExist(err) {
-		return errors.New("NBD device does not exist")
-	}
-
-	d.dev, err = os.Open(nbdDevicePath)
-	if err != nil {
-		return err
-	}
-
-	if d.l == nil {
-		scopedLogger := nbdLogger.With().
-			Str("socket_path", nbdSocketPath).
-			Str("device_path", nbdDevicePath).
-			Logger()
-		d.l = &scopedLogger
-	}
-
-	// Remove the socket file if it already exists
-	if _, err := os.Stat(nbdSocketPath); err == nil {
-		if err := os.Remove(nbdSocketPath); err != nil {
-			return fmt.Errorf("failed to remove existing socket file: %w", err)
-		}
-	}
-
-	d.listener, err = net.Listen("unix", nbdSocketPath)
-	if err != nil {
-		return err
-	}
-
-	d.clientConn, err = net.Dial("unix", nbdSocketPath)
-	if err != nil {
-		return err
-	}
-
-	d.serverConn, err = d.listener.Accept()
-	if err != nil {
-		return err
-	}
-	go d.runServerConn()
-	go d.runClientConn()
-	return nil
-}
-
-func (d *NBDDevice) runServerConn() {
-	err := server.Handle(
-		d.serverConn,
-		[]*server.Export{
-			{
-				Name:        "jetkvm",
-				Description: "",
-				Backend:     &remoteImageBackend{},
-			},
-		},
-		&server.Options{
-			ReadOnly:           true,
-			MinimumBlockSize:   uint32(1024),
-			PreferredBlockSize: uint32(4 * 1024),
-			MaximumBlockSize:   uint32(16 * 1024),
-			SupportsMultiConn:  false,
-		})
-
-	d.l.Info().Err(err).Msg("nbd server exited")
+	scopedLogger := nbdLogger.With().
+		Str("socket_path", halNBD.DefaultSocketPath).
+		Str("device_path", halNBD.DefaultDevicePath).
+		Logger()
+	return halNBD.NewDevice(halNBD.Options{
+		Backend: &remoteImageBackend{},
+		Logger:  &scopedLogger,
+	})
 }

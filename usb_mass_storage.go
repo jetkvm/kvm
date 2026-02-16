@@ -19,36 +19,16 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/psanford/httpreadat"
 
+	halNBD "github.com/jetkvm/kvm/internal/hal/nbd"
 	"github.com/jetkvm/kvm/resource"
 )
 
-func writeFile(path string, data string) error {
-	return os.WriteFile(path, []byte(data), 0644)
-}
-
 func getMassStorageImage() (string, error) {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return "", fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-
-	imagePath, err := os.ReadFile(path.Join(massStorageFunctionPath, "file"))
-	if err != nil {
-		return "", fmt.Errorf("failed to get mass storage image path: %w", err)
-	}
-	return strings.TrimSpace(string(imagePath)), nil
+	return gadget.GetMassStorageImage()
 }
 
 func setMassStorageImage(imagePath string) error {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-
-	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
-		return fmt.Errorf("failed to set image path: %w", err)
-	}
-	return nil
+	return gadget.SetMassStorageImage(imagePath)
 }
 
 func setMassStorageMode(cdrom bool) error {
@@ -131,17 +111,7 @@ func rpcMountBuiltInImage(filename string) error {
 }
 
 func getMassStorageCDROMEnabled() (bool, error) {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return false, fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-	data, err := os.ReadFile(path.Join(massStorageFunctionPath, "cdrom"))
-	if err != nil {
-		return false, fmt.Errorf("failed to read cdrom mode: %w", err)
-	}
-	// Trim any whitespace characters. It has a newline at the end
-	trimmedData := strings.TrimSpace(string(data))
-	return trimmedData == "1", nil
+	return gadget.GetMassStorageCDROMEnabled()
 }
 
 type VirtualMediaUrlInfo struct {
@@ -227,7 +197,7 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 	switch diskPath {
 	case "":
 		return nil, nil
-	case "/dev/nbd0":
+	case halNBD.DefaultDevicePath:
 		initialState.Source = HTTP
 		initialState.URL = "/"
 		initialState.Size = 1
@@ -295,7 +265,7 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 	logger.Debug().Msg("nbd device started")
 	//TODO: replace by polling on block device having right size
 	time.Sleep(1 * time.Second)
-	err = setMassStorageImage("/dev/nbd0")
+	err = setMassStorageImage(halNBD.DefaultDevicePath)
 	if err != nil {
 		return err
 	}
