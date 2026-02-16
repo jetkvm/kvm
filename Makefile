@@ -306,6 +306,11 @@ release: git_check_dev
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@echo "Running mandatory production validation..."
 	$(MAKE) test_production_release DEVICE_IP=$(DEVICE_IP) SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
+	@echo "───────────────────────────────────────────────────────"
+	@echo "  All tests completed. Everything is tested and ready for release."
+	@echo "  Version:   $(VERSION)"
+	@read -p "Are you sure you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
+
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
