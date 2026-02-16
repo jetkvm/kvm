@@ -6,16 +6,17 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/diagnostics"
+	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/internal/usbgadget"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
-	"github.com/jetkvm/kvm/internal/diagnostics"
-	"github.com/jetkvm/kvm/internal/hidrpc"
-	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
@@ -293,7 +294,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				webrtc.ICEAddressRewriteRule{
 					CIDR:            "0.0.0.0/0",
 					External:        []string{config.LocalIP},
-					Mode:            webrtc.ICEAddressRewriteReplace,
+					Mode:            webrtc.ICEAddressRewriteAppend,
 					AsCandidateType: webrtc.ICECandidateTypeSrflx,
 				},
 			)

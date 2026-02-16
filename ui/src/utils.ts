@@ -1,7 +1,7 @@
 import semver from "semver";
 
 import { KeySequence } from "@hooks/stores";
-import { getLocale, locales } from "@localizations/runtime.js";
+import { getLocale, locales, type LocalizedString } from "@localizations/runtime.js";
 import { m } from "@localizations/messages.js";
 import { CLOUD_BACKWARDS_COMPATIBLE_VERSION, CLOUD_ENABLE_VERSIONED_UI } from "@/ui.config";
 
@@ -254,38 +254,46 @@ export function normalizeSortOrders(macros: KeySequence[]): KeySequence[] {
   }));
 }
 
+// Retrieves a localized message by its key, with optional inputs and options.
+function getLocalizedMessage(
+  messageKey: string, // name of the message in a localization file (e.g. "some_action_error")
+  inputs?: Record<string, unknown>, // replaces variables in the message (e.g. {error: err.message})
+  options?: Record<string, unknown>, // used to override the locale (e.g. {locale: "de"})
+): LocalizedString | undefined {
+  try {
+    type MessageFn = (
+      inputs?: Record<string, unknown>,
+      options?: Record<string, unknown>,
+    ) => LocalizedString;
+    const fn = (m as unknown as Record<string, MessageFn | undefined>)[messageKey];
+    return fn ? fn(inputs, options) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 type LocaleCode = (typeof locales)[number];
 
 export function map_locale_code_to_name(
   currentLocale: LocaleCode,
   locale: string,
 ): [string, string] {
-  // the first is the name in the current app locale (e.g. Inglese),
-  // the second is the name in the language of the locale itself (e.g. English)
-  switch (locale) {
-    case "":
-      return [m.locale_auto(), ""];
-    case "en":
-      return [m.locale_en({}, { locale: currentLocale }), m.locale_en({}, { locale })];
-    case "da":
-      return [m.locale_da({}, { locale: currentLocale }), m.locale_da({}, { locale })];
-    case "de":
-      return [m.locale_de({}, { locale: currentLocale }), m.locale_de({}, { locale })];
-    case "es":
-      return [m.locale_es({}, { locale: currentLocale }), m.locale_es({}, { locale })];
-    case "fr":
-      return [m.locale_fr({}, { locale: currentLocale }), m.locale_fr({}, { locale })];
-    case "it":
-      return [m.locale_it({}, { locale: currentLocale }), m.locale_it({}, { locale })];
-    case "nb":
-      return [m.locale_nb({}, { locale: currentLocale }), m.locale_nb({}, { locale })];
-    case "sv":
-      return [m.locale_sv({}, { locale: currentLocale }), m.locale_sv({}, { locale })];
-    case "zh":
-      return [m.locale_zh({}, { locale: currentLocale }), m.locale_zh({}, { locale })];
-    default:
-      return [locale, ""];
+  if (locale === "") {
+    return [m.locale_auto(), ""];
   }
+
+  // Use the locale directly with the message function
+  // The key pattern is locale_{locale} where underscores replace hyphens
+  const messageKey = `locale_${locale.replace("-", "_")}` as const;
+  const localizedName = getLocalizedMessage(messageKey, undefined, { locale: currentLocale });
+  const nativeName = getLocalizedMessage(messageKey, undefined, { locale });
+
+  if (localizedName && nativeName) {
+    return [localizedName, nativeName];
+  }
+
+  // Fallback if locale is not found or function not available
+  return [locale, ""];
 }
 
 export function deleteCookie(name: string, domain?: string, path = "/") {

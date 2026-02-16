@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/rs/zerolog"
 )

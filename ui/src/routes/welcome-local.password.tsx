@@ -13,6 +13,7 @@ import { Button } from "@components/Button";
 import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
+import { MIN_PASSWORD_LENGTH } from "@routes/devices.$id.settings.access.local-auth";
 
 import { DeviceStatus } from "./welcome-local";
 
@@ -27,8 +28,12 @@ const loader: LoaderFunction = async () => {
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
-  const password = formData.get("password");
+  const password = formData.get("password") as string;
   const confirmPassword = formData.get("confirmPassword");
+
+  if (!password || password.length < MIN_PASSWORD_LENGTH) {
+    return { error: m.local_auth_error_password_too_short() };
+  }
 
   if (password !== confirmPassword) {
     return { error: m.local_auth_error_passwords_not_match() };
@@ -134,8 +139,6 @@ export default function WelcomeLocalPasswordRoute() {
                       />
                     </div>
                   </div>
-
-                  {actionData?.error && <p className="text-sm text-red-600">{}</p>}
 
                   <div className="animate-fadeIn opacity-0" style={{ animationDelay: "600ms" }}>
                     <Button

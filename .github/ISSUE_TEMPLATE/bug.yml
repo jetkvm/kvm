@@ -67,6 +67,14 @@ body:
       description: If the bug is related to a remote device, please provide its OS information as detailed as possible e.g. Debian 12.
     validations:
       required: false
+  - type: markdown
+    attributes:
+      value: |
+        ### Attach Diagnostics
+        Before submitting, please attach the diagnostics ZIP from:
+        `Settings > Advanced > Troubleshooting Mode > Download Diagnostics`
+
+        You can drag and drop the downloaded ZIP into this form.
   - type: textarea
     attributes:
       label: Bug description

@@ -7,8 +7,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/prometheus/common/version"
 )

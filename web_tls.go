@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 
+	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/internal/websecure"
 )
 

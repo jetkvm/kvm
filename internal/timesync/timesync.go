@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sync"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/internal/sync"
+
 	"github.com/rs/zerolog"
 )
 

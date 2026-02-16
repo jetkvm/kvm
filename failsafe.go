@@ -4,9 +4,9 @@ import (
 	"io"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/jetkvm/kvm/internal/supervisor"
+	"github.com/jetkvm/kvm/internal/sync"
 )
 
 const (

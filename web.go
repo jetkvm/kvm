@@ -78,6 +78,11 @@ var cachableFileExtensions = []string{
 	".jpg", ".jpeg", ".png", ".svg", ".gif", ".webp", ".ico", ".woff2",
 }
 
+// MinPasswordLength is the minimum required length for new passwords.
+// This is only enforced when setting or changing passwords, not when
+// validating existing passwords (to maintain backward compatibility).
+const MinPasswordLength = 8
+
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
@@ -477,6 +482,17 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
+	// Check rate limit before processing
+	ip := c.ClientIP()
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":       "Too many failed attempts. Please try again later.",
+			"retry_after": retryAfter,
+		})
+		return
+	}
+
 	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -486,9 +502,13 @@ func handleLogin(c *gin.Context) {
 
 	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
 	if err != nil {
+		passwordRateLimiter.RecordFailure(ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
+
+	// Clear rate limit on successful login
+	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
 
@@ -639,6 +659,11 @@ func handleCreatePassword(c *gin.Context) {
 		return
 	}
 
+	if len(req.Password) < MinPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
+		return
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
@@ -675,6 +700,12 @@ func handleUpdatePassword(c *gin.Context) {
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.OldPassword == "" || req.NewPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	// Validate new password length (not old password - may be shorter from before this requirement)
+	if len(req.NewPassword) < MinPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
 		return
 	}
 
@@ -792,6 +823,11 @@ func handleSetup(c *gin.Context) {
 	if req.LocalAuthMode == "password" {
 		if req.Password == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for password mode"})
+			return
+		}
+
+		if len(req.Password) < MinPasswordLength {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
 			return
 		}
 

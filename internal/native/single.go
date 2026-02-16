@@ -1,6 +1,6 @@
 package native
 
-import "sync"
+import "github.com/jetkvm/kvm/internal/sync"
 
 var (
 	instance     *Native

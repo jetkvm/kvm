@@ -10,16 +10,16 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/resource"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 	"github.com/psanford/httpreadat"
-
-	"github.com/jetkvm/kvm/resource"
 )
 
 func writeFile(path string, data string) error {

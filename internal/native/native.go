@@ -2,8 +2,9 @@ package native
 
 import (
 	"os"
-	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/diagnostics"

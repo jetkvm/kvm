@@ -5,8 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/rs/xid"
 	"github.com/rs/zerolog"
