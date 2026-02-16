@@ -184,7 +184,11 @@ if [ "$BUILD_NATIVE_BINARY" = true ]; then
     fi
     msg_info "▶ Stopping any existing instances of jetkvm_native_debug on remote host"
     sshdev "killall -9 jetkvm_app jetkvm_app_debug jetkvm_native_debug gdbserver || true >> /dev/null 2>&1"
-    sshdev "cat > ${REMOTE_PATH}/jetkvm_native_debug" < internal/hal/native/cgo/build/jknative-bin
+    NATIVE_CGO_PATH="$(realpath internal/hal/native/cgo)"
+    WORKSPACE_TAG="$(basename "$(pwd)")"
+    NATIVE_BUILD_DIR_DEFAULT="${NATIVE_CGO_PATH}/build-${WORKSPACE_TAG}"
+    NATIVE_BUILD_DIR="${JK_CGO_BUILD_DIR:-${NATIVE_BUILD_DIR_DEFAULT}}"
+    sshdev "cat > ${REMOTE_PATH}/jetkvm_native_debug" < "${NATIVE_BUILD_DIR}/jknative-bin"
     sshdev -t ash << EOF
 set -e
 

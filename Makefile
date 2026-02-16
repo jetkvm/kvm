@@ -191,7 +191,7 @@ build_native:
 build_dev:
 	@if [ "$(CGO_ENABLED)" = "1" ] && [ "$(TARGET_ARCH)" = "arm" ] && [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_dev in Docker..."; \
-		rm -rf internal/hal/native/cgo/build; \
+		rm -rf internal/hal/native/cgo/build*; \
 		docker run --rm -v "$$(pwd):/build" \
 			$(DOCKER_BUILD_TAG) make _build_dev_inner \
 				TARGET_PLATFORM=$(TARGET_PLATFORM) \
@@ -324,7 +324,7 @@ dev_release: git_check_dev
 build_release:
 	@if [ "$(CGO_ENABLED)" = "1" ] && [ "$(TARGET_ARCH)" = "arm" ] && [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_release in Docker..."; \
-		rm -rf internal/hal/native/cgo/build; \
+		rm -rf internal/hal/native/cgo/build*; \
 		docker run --rm -v "$$(pwd):/build" \
 			$(DOCKER_BUILD_TAG) make _build_release_inner \
 				TARGET_PLATFORM=$(TARGET_PLATFORM) \

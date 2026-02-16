@@ -25,7 +25,8 @@ Last updated: 2026-02-16
 - [x] Refactor app repo to remove all direct platform device access (`/dev`, `/sys`) outside `internal/hal` (watchdog, backlight, serial UART, NBD, diagnostics).
 - [ ] Verify:
   - [x] `make lint-fix` via devpod (`kvm`) works unchanged.
-  - [ ] Deploy command via devpod (`kvm-local`) works unchanged and device is fully functional.
+  - [x] Deploy command via devpod (`kvm-local`) works unchanged (build + OTA install + reboot).
+    - Smoke checks on device (`192.168.100.165`): HTTPS UI served on `:443`, VNC handshake OK (`RFB 003.008`), RDP/VNC ports listening (`3389`/`5900`), and no legacy `kvm-hal`/`jetkvm_native` processes running.
   - [x] Grep check: no `import "C"` / `#cgo` outside `internal/hal`.
 
 ## Current Branch / Repos
@@ -33,7 +34,7 @@ Last updated: 2026-02-16
 - App repo: `/Users/dtk07/Desktop/Scrap/jetkvm-contrib/kvm`
   - Branch: `feat/hal-submodule`
   - Baseline reference: `main` already contains `feat/rdp-server` merge (`6882610`).
-  - HAL submodule: `internal/hal` @ `02237c8` (remote: `git@github.com:KrakenKVM/hal.git`)
+  - HAL submodule: `internal/hal` @ `7d24b56` (remote: `git@github.com:KrakenKVM/hal.git`)
 - HAL repo: `/Users/dtk07/Desktop/Scrap/jetkvm-contrib/hal` (remote: `git@github.com:KrakenKVM/hal.git`)
 
 ## Notes / Decisions
@@ -48,4 +49,4 @@ Last updated: 2026-02-16
 - 2026-02-16: `make build_dev_comet` succeeded in devpod env `kvm` (linux/amd64 cross-build for comet-pro arm64, pure-Go).
 - 2026-02-16: `make build_dev_nanokvm` succeeded in devpod env `kvm` (linux/amd64 cross-build for nanokvm-pro arm64, pure-Go).
 - 2026-02-16: `make test` succeeded in devpod env `kvm`.
-- 2026-02-16: Deploy attempt failed early: device not reachable at `192.168.100.165` (network/device availability).
+- 2026-02-16: Deploy command succeeded in devpod env `kvm-local` and rebooted device via OTA (`VERSION=0.4.9`, target `192.168.100.165`).
