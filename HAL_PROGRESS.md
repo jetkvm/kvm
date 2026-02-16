@@ -50,3 +50,19 @@ Last updated: 2026-02-16
 - 2026-02-16: `make build_dev_nanokvm` succeeded in devpod env `kvm` (linux/amd64 cross-build for nanokvm-pro arm64, pure-Go).
 - 2026-02-16: `make test` succeeded in devpod env `kvm`.
 - 2026-02-16: Deploy command succeeded in devpod env `kvm-local` and rebooted device via OTA (`VERSION=0.4.9`, target `192.168.100.165`).
+
+## Runtime Triage (2026-02-16)
+
+- UVC/ffplay issue investigated with direct device logs (`ssh root@192.168.100.165` + `dmesg` + `/userdata/jetkvm/last.log`).
+- Kernel confirms UVC stream lifecycle on host request:
+  - `uvc_function_set_alt(7, 1)` -> stream starts.
+  - ~12.7s later `uvc_function_set_alt(7, 0)` -> host stops stream.
+  - DWC3 then logs multiple `request ... was not queued to ep8in`.
+- App confirms UVC startup/commit path executes:
+  - `UVC format set by host ... codec=MJPEG width=640 height=480`
+  - `V4L2 STREAMON successful - UVC streaming active`
+  - `UVC host committed format ... fps=30`.
+- No camera source evidence during the failing session:
+  - No `RPC setCameraEnabled called` or `Camera passthrough state changed` entries.
+  - Camera WebSocket was not active at stream time (earlier session closed at `2026-02-16T07:23:57Z`).
+- Current diagnosis: UVC gadget stream negotiation works, but no upstream frame producer is active for that stream window.
