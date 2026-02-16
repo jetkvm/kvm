@@ -34,12 +34,16 @@ show_help() {
 check_ping() {
     local host=$1
     msg_info "▶ Checking if device is reachable at ${host}..."
-    if ! ping -c 3 -W 5 "${host}" > /dev/null 2>&1; then
-        msg_err "Error: Cannot reach device at ${host}"
-        msg_err "Please verify the IP address and network connectivity"
-        exit 1
+    if ! command -v ping > /dev/null 2>&1; then
+        msg_warn "ping not available in this environment; skipping ICMP reachability check"
+        return 0
     fi
-    msg_info "✓ Device is reachable"
+    if ! ping -c 3 -W 5 "${host}" > /dev/null 2>&1; then
+        # ICMP is often blocked; rely on SSH connectivity check below.
+        msg_warn "Warning: Cannot ping ${host}; continuing with SSH connectivity check"
+        return 0
+    fi
+    msg_info "✓ Device is reachable (ICMP)"
 }
 
 # Function to check if SSH is accessible
