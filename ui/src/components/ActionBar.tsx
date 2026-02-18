@@ -1,12 +1,18 @@
 import { Fragment, useCallback, useRef } from "react";
 import { MdOutlineContentPasteGo } from "react-icons/md";
-import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
+import { LuCable, LuHardDrive, LuMaximize, LuScanText, LuSettings, LuSignal } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { cx } from "@/cva.config";
-import { useHidStore, useMountMediaStore, useSettingsStore, useUiStore } from "@hooks/stores";
+import {
+  useHidStore,
+  useMountMediaStore,
+  useSettingsStore,
+  useUiStore,
+  useVideoStore,
+} from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button } from "@components/Button";
 import Container from "@components/Container";
@@ -23,9 +29,16 @@ export default function Actionbar({
 }) {
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
-  const { setDisableVideoFocusTrap, terminalType, setTerminalType, toggleSidebarView } =
-    useUiStore();
+  const {
+    setDisableVideoFocusTrap,
+    terminalType,
+    setTerminalType,
+    toggleSidebarView,
+    isOcrMode,
+    setOcrMode,
+  } = useUiStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
+  const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
 
   // This is the only way to get a reliable state change for the popover
@@ -63,6 +76,14 @@ export default function Actionbar({
               onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
             />
           )}
+          <Button
+            size="XS"
+            theme={isOcrMode ? "primary" : "light"}
+            text={m.action_bar_copy_text()}
+            LeadingIcon={LuScanText}
+            disabled={videoWidth === 0 || videoHeight === 0}
+            onClick={() => setOcrMode(!isOcrMode)}
+          />
           <Popover>
             <PopoverButton as={Fragment}>
               <Button

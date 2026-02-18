@@ -48,6 +48,9 @@ export default defineConfig(({ mode, command }) => {
         output: {
           manualChunks: (id) => {
             if (id.includes("node_modules")) {
+              // Let Rollup handle tesseract.js naturally via dynamic import
+              // to avoid CommonJS/ESM interop issues across chunks
+              if (id.includes("tesseract")) return;
               return "vendor";
             }
             return null;

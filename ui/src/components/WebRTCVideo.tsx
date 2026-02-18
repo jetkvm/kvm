@@ -5,7 +5,7 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
-import { useRTCStore, useSettingsStore, useVideoStore } from "@hooks/stores";
+import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
@@ -16,6 +16,7 @@ import {
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
 } from "@components/VideoOverlay";
+import OcrOverlay from "@components/OcrOverlay";
 import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -50,10 +51,14 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     clientHeight: videoClientHeight,
     hdmiState,
     setVideoElement,
+    setContainerElement,
   } = useVideoStore();
 
   // Video enhancement settings
   const { videoSaturation, videoBrightness, videoContrast } = useSettingsStore();
+
+  // OCR mode
+  const { isOcrMode } = useUiStore();
 
   // RTC related states
   const { peerConnection } = useRTCStore();
@@ -105,13 +110,17 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     [updateVideoSizeStore],
   );
 
-  // Store video element reference for E2E test hooks
+  // Store video and container element references
   useEffect(
     function storeVideoElementRef() {
       setVideoElement(videoElm.current);
-      return () => setVideoElement(null);
+      setContainerElement(fullscreenContainerRef.current);
+      return () => {
+        setVideoElement(null);
+        setContainerElement(null);
+      };
     },
-    [setVideoElement],
+    [setVideoElement, setContainerElement],
   );
 
   // Pointer lock and keyboard lock related
@@ -274,6 +283,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
+      if (isOcrMode) return; // Let OCR overlay handle keys
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -342,11 +352,12 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isWindowsClient],
+    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
   );
 
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
+      if (isOcrMode) return; // Let OCR overlay handle keys
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -384,7 +395,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress, isWindowsClient],
+    [handleKeyPress, isOcrMode, isWindowsClient],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -622,6 +633,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                           "max-h-full max-w-full bg-black/50 object-contain transition-all duration-1000 sm:min-h-[384px] sm:min-w-[512px]",
                           {
                             "cursor-none": settings.isCursorHidden,
+                            "pointer-events-none": isOcrMode,
                             "opacity-0!":
                               isVideoLoading ||
                               hdmiError ||
@@ -633,6 +645,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                           },
                         )}
                       />
+                      <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}

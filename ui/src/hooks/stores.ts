@@ -75,6 +75,9 @@ export interface UIState {
   setRebootState: (
     state: { isRebooting: boolean; postRebootAction: PostRebootAction } | null,
   ) => void;
+
+  isOcrMode: boolean;
+  setOcrMode: (enabled: boolean) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
@@ -105,6 +108,9 @@ export const useUiStore = create<UIState>(set => ({
 
   rebootState: null,
   setRebootState: state => set({ rebootState: state }),
+
+  isOcrMode: false,
+  setOcrMode: (enabled: boolean) => set({ isOcrMode: enabled }),
 }));
 
 export interface RTCState {
@@ -292,6 +298,8 @@ export interface VideoState {
   setHdmiState: (state: { ready: boolean; error?: HdmiErrorStates }) => void;
   videoElement: HTMLVideoElement | null;
   setVideoElement: (element: HTMLVideoElement | null) => void;
+  containerElement: HTMLElement | null;
+  setContainerElement: (element: HTMLElement | null) => void;
 }
 
 export const useVideoStore = create<VideoState>(set => ({
@@ -323,6 +331,8 @@ export const useVideoStore = create<VideoState>(set => ({
 
   videoElement: null,
   setVideoElement: (element: HTMLVideoElement | null) => set({ videoElement: element }),
+  containerElement: null,
+  setContainerElement: (element: HTMLElement | null) => set({ containerElement: element }),
 }));
 
 export interface BacklightSettings {
