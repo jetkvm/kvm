@@ -17,7 +17,7 @@ export function useDetachedWindow() {
     const left = Math.max(0, (window.screen.width - width) / 2);
     const top = Math.max(0, (window.screen.height - height) / 2);
     const features = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes`;
-    const url = isOnDevice ? "/detached" : `/devices/${deviceId}/detached`;
+    const url = isOnDevice ? "/?detached=true" : `/devices/${deviceId}?detached=true`;
 
     const win = window.open(url, `jetkvm-${deviceId}`, features);
     if (win) {

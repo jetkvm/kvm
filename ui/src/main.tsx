@@ -31,7 +31,6 @@ import DeviceIdRename from "@routes/devices.$id.rename";
 import DevicesRoute from "@routes/devices";
 import SettingsIndexRoute from "@routes/devices.$id.settings._index";
 import SettingsAccessIndexRoute from "@routes/devices.$id.settings.access._index";
-import DetachedRoute from "@routes/devices.$id.detached";
 import Notifications from "@/notifications";
 const SignupRoute = lazy(() => import("@routes/signup"));
 const LoginRoute = lazy(() => import("@routes/login"));
@@ -235,12 +234,6 @@ if (isOnDevice) {
       HydrateFallback: () => <div className="p-4">{m.loading()}</div>,
     }),
     {
-      path: "/detached",
-      element: <DetachedRoute />,
-      loader: DetachedRoute.loader,
-      errorElement: <ErrorBoundary />,
-    },
-    {
       path: "/adopt",
       element: <AdoptRoute />,
       loader: AdoptRoute.loader,
@@ -278,11 +271,6 @@ if (isOnDevice) {
             getDeviceRoute({
               path: "devices/:id",
             }),
-            {
-              path: "devices/:id/detached",
-              element: <DetachedRoute />,
-              loader: DetachedRoute.loader,
-            },
             {
               path: "devices/:id/deregister",
               element: <DevicesIdDeregister />,

@@ -124,6 +124,7 @@ export default function KvmIdRoute() {
     setRebootState,
   } = useUiStore();
   const [queryParams, setQueryParams] = useSearchParams();
+  const isDetachedWindow = queryParams.get("detached") === "true";
 
   const {
     peerConnection,
@@ -949,7 +950,7 @@ export default function KvmIdRoute() {
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
-      {!outlet && otaState.updating && (
+      {!isDetachedWindow && !outlet && otaState.updating && (
         <AnimatePresence>
           <motion.div
             className="pointer-events-none fixed inset-0 top-16 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center"
@@ -963,32 +964,41 @@ export default function KvmIdRoute() {
         </AnimatePresence>
       )}
       <div className="relative h-full">
-        <FocusTrap
-          paused={disableVideoFocusTrap}
-          focusTrapOptions={{
-            allowOutsideClick: true,
-            escapeDeactivates: false,
-            fallbackFocus: "#videoFocusTrap",
-          }}
-        >
-          <div className="absolute top-0">
-            <button className="absolute top-0" tabIndex={-1} id="videoFocusTrap" />
-          </div>
-        </FocusTrap>
+        {!isDetachedWindow && (
+          <FocusTrap
+            paused={disableVideoFocusTrap}
+            focusTrapOptions={{
+              allowOutsideClick: true,
+              escapeDeactivates: false,
+              fallbackFocus: "#videoFocusTrap",
+            }}
+          >
+            <div className="absolute top-0">
+              <button className="absolute top-0" tabIndex={-1} id="videoFocusTrap" />
+            </div>
+          </FocusTrap>
+        )}
 
-        <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
-          <DashboardNavbar
-            primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
-            showConnectionStatus={true}
-            isLoggedIn={authMode === "password" || !!user}
-            userEmail={user?.email}
-            picture={user?.picture}
-            kvmName={deviceName ?? m.jetkvm_device()}
-          />
+        <div className={cx("grid h-full select-none", {
+          "grid-rows-(--grid-headerBody)": !isDetachedWindow,
+        })}>
+          {!isDetachedWindow && (
+            <DashboardNavbar
+              primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
+              showConnectionStatus={true}
+              isLoggedIn={authMode === "password" || !!user}
+              userEmail={user?.email}
+              picture={user?.picture}
+              kvmName={deviceName ?? m.jetkvm_device()}
+            />
+          )}
 
           <div className="relative flex h-full w-full overflow-hidden">
             {isFailsafeMode && failsafeReason === "video" ? null : (
-              <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />
+              <WebRTCVideo
+                hasConnectionIssues={!!ConnectionStatusElement}
+                isDetachedWindow={isDetachedWindow}
+              />
             )}
             <div
               style={{ animationDuration: "500ms" }}
@@ -1002,34 +1012,36 @@ export default function KvmIdRoute() {
                 )}
               </div>
             </div>
-            <SidebarContainer sidebarView={sidebarView} />
+            {!isDetachedWindow && <SidebarContainer sidebarView={sidebarView} />}
           </div>
         </div>
       </div>
 
-      <div
-        className="z-50"
-        role="form"
-        onClick={e => e.stopPropagation()}
-        onMouseUp={e => e.stopPropagation()}
-        onMouseDown={e => e.stopPropagation()}
-        onKeyUp={e => e.stopPropagation()}
-        onKeyDown={e => {
-          e.stopPropagation();
-          if (e.key === "Escape") navigateTo("/");
-        }}
-      >
-        <Modal open={outlet !== null} onClose={onModalClose}>
-          {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
-          <Outlet context={{ setupPeerConnection }} />
-        </Modal>
-      </div>
+      {!isDetachedWindow && (
+        <div
+          className="z-50"
+          role="form"
+          onClick={e => e.stopPropagation()}
+          onMouseUp={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+          onKeyUp={e => e.stopPropagation()}
+          onKeyDown={e => {
+            e.stopPropagation();
+            if (e.key === "Escape") navigateTo("/");
+          }}
+        >
+          <Modal open={outlet !== null} onClose={onModalClose}>
+            {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
+            <Outlet context={{ setupPeerConnection }} />
+          </Modal>
+        </div>
+      )}
 
-      {terminalChannel && (
+      {!isDetachedWindow && terminalChannel && (
         <Terminal type="kvm" dataChannel={terminalChannel} title={m.kvm_terminal()} />
       )}
 
-      {serialConsole && (
+      {!isDetachedWindow && serialConsole && (
         <Terminal type="serial" dataChannel={serialConsole} title={m.serial_console()} />
       )}
     </FeatureFlagProvider>
