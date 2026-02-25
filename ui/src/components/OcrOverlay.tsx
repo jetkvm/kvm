@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { LuX } from "react-icons/lu";
 
 import { useVideoStore, useUiStore } from "@hooks/stores";
 import Card from "@components/Card";
@@ -356,9 +354,6 @@ function OcrOverlayContent() {
     [status, selectionRect, videoElement, setOcrMode],
   );
 
-  const isMac = navigator.platform?.toUpperCase().includes("MAC");
-  const copyShortcut = isMac ? "⌘+C" : "Ctrl+C";
-
   // Compute selection rectangle position in CSS pixels relative to the overlay.
   // The overlay covers the full container (`absolute inset-0`) while the video
   // element is centered inside it via flexbox, so we must account for the gap
@@ -445,40 +440,26 @@ function OcrOverlayContent() {
         onConfirm={() => {}}
       />
 
-      {/* OCR Result panel — portaled to document.body to escape the video
-          container's stacking context and select-none inheritance */}
-      {status === "result" &&
-        createPortal(
-          <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
-            <div className="pointer-events-auto mx-4 flex max-h-[80%] w-full max-w-md flex-col rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800">
-              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-                <span className="text-sm font-medium text-slate-900 dark:text-white">
-                  {m.action_bar_copy_text()}
-                </span>
-                <button
-                  className="rounded-sm p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-                  onClick={() => setOcrMode(false)}
-                >
-                  <LuX className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="px-4 py-3">
-                <TextArea
-                  ref={resultRef}
-                  value={ocrResult}
-                  onChange={e => setOcrResult(e.target.value)}
-                  rows={Math.min(10, ocrResult.split("\n").length + 1)}
-                />
-              </div>
-              <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-700">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {m.ocr_copy_hint({ shortcut: copyShortcut })}
-                </p>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+      {/* OCR Result dialog */}
+      <ConfirmDialog
+        open={status === "result"}
+        onClose={() => setOcrMode(false)}
+        title={m.action_bar_copy_text()}
+        description={
+          <TextArea
+            ref={resultRef}
+            value={ocrResult}
+            onChange={e => setOcrResult(e.target.value)}
+            rows={Math.min(10, ocrResult.split("\n").length + 1)}
+          />
+        }
+        confirmText={m.action_bar_copy_text()}
+        onConfirm={() => {
+          navigator.clipboard.writeText(ocrResult);
+          notifications.success(m.ocr_copied(), { duration: 4000 });
+          setOcrMode(false);
+        }}
+      />
     </>
   );
 }
