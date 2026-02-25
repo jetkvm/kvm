@@ -449,7 +449,7 @@ function OcrOverlayContent() {
           <TextArea
             ref={resultRef}
             value={ocrResult}
-            onChange={e => setOcrResult(e.target.value)}
+            readOnly
             rows={Math.min(10, ocrResult.split("\n").length + 1)}
           />
         }
