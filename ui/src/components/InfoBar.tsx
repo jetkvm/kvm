@@ -5,6 +5,7 @@ import {
   useMouseStore,
   useRTCStore,
   useSettingsStore,
+  useUiStore,
   useVideoStore,
   VideoState,
 } from "@hooks/stores";
@@ -26,7 +27,8 @@ export default function InfoBar() {
     (state: VideoState) => `${Math.round(state.width)}x${Math.round(state.height)}`,
   );
 
-  const { debugMode, mouseMode, showPressedKeys } = useSettingsStore();
+  const { debugMode, mouseMode, showPressedKeys, keyboardCaptureMode } = useSettingsStore();
+  const { isKeyboardLockActive } = useUiStore();
   const { isPasteInProgress } = useHidStore();
   const { keyboardLedState, usbState } = useHidStore();
   const { isTurnServerInUse } = useRTCStore();
@@ -111,6 +113,17 @@ export default function InfoBar() {
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{m.info_paste_mode()}</span>
                 <span className="text-xs">{m.info_paste_enabled()}</span>
+              </div>
+            )}
+
+            {keyboardCaptureMode && (
+              <div className="flex items-center gap-x-1">
+                <span className="text-xs font-semibold">{m.keyboard_capture_title()}:</span>
+                <span className="text-xs">
+                  {isKeyboardLockActive
+                    ? m.keyboard_capture_active()
+                    : m.keyboard_capture_limited()}
+                </span>
               </div>
             )}
 

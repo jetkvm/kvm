@@ -13,6 +13,7 @@ import { m } from "@localizations/messages.js";
 export default function SettingsKeyboardRoute() {
   const { setKeyboardLayout } = useSettingsStore();
   const { showPressedKeys, setShowPressedKeys } = useSettingsStore();
+  const { keyboardCaptureMode, setKeyboardCaptureMode } = useSettingsStore();
   const { selectedKeyboard, keyboardOptions } = useKeyboardLayout();
 
   const { send } = useJsonRpc();
@@ -75,6 +76,18 @@ export default function SettingsKeyboardRoute() {
           <Checkbox
             checked={showPressedKeys}
             onChange={e => setShowPressedKeys(e.target.checked)}
+          />
+        </SettingsItem>
+      </div>
+
+      <div className="space-y-4">
+        <SettingsItem
+          title={m.keyboard_capture_title()}
+          description={m.keyboard_capture_description()}
+        >
+          <Checkbox
+            checked={keyboardCaptureMode}
+            onChange={e => setKeyboardCaptureMode(e.target.checked)}
           />
         </SettingsItem>
       </div>

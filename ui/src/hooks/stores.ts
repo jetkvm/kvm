@@ -71,6 +71,9 @@ export interface UIState {
   terminalType: AvailableTerminalTypes;
   setTerminalType: (type: UIState["terminalType"]) => void;
 
+  isKeyboardLockActive: boolean;
+  setIsKeyboardLockActive: (active: boolean) => void;
+
   rebootState: { isRebooting: boolean; postRebootAction: PostRebootAction } | null;
   setRebootState: (
     state: { isRebooting: boolean; postRebootAction: PostRebootAction } | null,
@@ -102,6 +105,9 @@ export const useUiStore = create<UIState>(set => ({
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) =>
     set({ isAttachedVirtualKeyboardVisible: enabled }),
+
+  isKeyboardLockActive: false,
+  setIsKeyboardLockActive: (active: boolean) => set({ isKeyboardLockActive: active }),
 
   rebootState: null,
   setRebootState: state => set({ rebootState: state }),
@@ -360,6 +366,9 @@ export interface SettingsState {
   showPressedKeys: boolean;
   setShowPressedKeys: (show: boolean) => void;
 
+  keyboardCaptureMode: boolean;
+  setKeyboardCaptureMode: (enabled: boolean) => void;
+
   // Video enhancement settings
   videoSaturation: number;
   setVideoSaturation: (value: number) => void;
@@ -405,6 +414,9 @@ export const useSettingsStore = create(
 
       showPressedKeys: true,
       setShowPressedKeys: (show: boolean) => set({ showPressedKeys: show }),
+
+      keyboardCaptureMode: false,
+      setKeyboardCaptureMode: (enabled: boolean) => set({ keyboardCaptureMode: enabled }),
 
       // Video enhancement settings with default values (1.0 = normal)
       videoSaturation: 1.0,

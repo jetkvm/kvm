@@ -1,12 +1,21 @@
 import { Fragment, useCallback, useRef } from "react";
 import { MdOutlineContentPasteGo } from "react-icons/md";
-import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
+import {
+  LuCable,
+  LuHardDrive,
+  LuLock,
+  LuLockOpen,
+  LuMaximize,
+  LuSettings,
+  LuSignal,
+} from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { cx } from "@/cva.config";
 import { useHidStore, useMountMediaStore, useSettingsStore, useUiStore } from "@hooks/stores";
+import notifications from "@/notifications";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button } from "@components/Button";
 import Container from "@components/Container";
@@ -26,7 +35,7 @@ export default function Actionbar({
   const { setDisableVideoFocusTrap, terminalType, setTerminalType, toggleSidebarView } =
     useUiStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
-  const { developerMode } = useSettingsStore();
+  const { developerMode, keyboardCaptureMode, setKeyboardCaptureMode } = useSettingsStore();
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
@@ -187,6 +196,21 @@ export default function Actionbar({
                 }}
               </PopoverPanel>
             </Popover>
+          </div>
+          <div className="hidden lg:block">
+            <Button
+              size="XS"
+              theme={keyboardCaptureMode ? "primary" : "light"}
+              text={m.keyboard_capture_title()}
+              LeadingIcon={keyboardCaptureMode ? LuLock : LuLockOpen}
+              onClick={() => {
+                const newState = !keyboardCaptureMode;
+                setKeyboardCaptureMode(newState);
+                notifications.success(
+                  newState ? m.keyboard_capture_enabled() : m.keyboard_capture_disabled(),
+                );
+              }}
+            />
           </div>
           <div className="hidden lg:block">
             <Button

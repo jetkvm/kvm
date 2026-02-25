@@ -5,13 +5,14 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
-import { useRTCStore, useSettingsStore, useVideoStore } from "@hooks/stores";
+import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
   HDMIErrorOverlay,
+  KeyboardCaptureBar,
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
@@ -27,10 +28,13 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
-  const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
+  const { setIsKeyboardLockActive } = useUiStore();
 
   const isPointerLockPossible =
     window.location.protocol === "https:" || window.location.hostname === "localhost";
+
+  // macOS detection for Meta key fix
+  const isMacClient = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.userAgent), []);
 
   // Store hooks
   const settings = useSettingsStore();
@@ -147,37 +151,29 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   }, [checkNavigatorPermissions, isPointerLockPossible, settings.mouseMode]);
 
   const requestKeyboardLock = useCallback(async () => {
-    if (videoElm.current === null) return;
+    if (!navigator || !("keyboard" in navigator)) return;
 
-    const isKeyboardLockGranted = await checkNavigatorPermissions("keyboard-lock");
-
-    if (isKeyboardLockGranted && navigator && "keyboard" in navigator) {
-      try {
-        // @ts-expect-error - keyboard lock is not supported in all browsers
-        await navigator.keyboard.lock();
-        setIsKeyboardLockActive(true);
-      } catch {
-        // ignore errors
-      }
+    try {
+      // @ts-expect-error - keyboard lock is not supported in all browsers
+      await navigator.keyboard.lock();
+      console.debug("Keyboard lock acquired");
+      setIsKeyboardLockActive(true);
+    } catch (e) {
+      console.debug("Keyboard lock not available:", e);
     }
-  }, [checkNavigatorPermissions, setIsKeyboardLockActive]);
+  }, [setIsKeyboardLockActive]);
 
   const releaseKeyboardLock = useCallback(async () => {
-    if (
-      fullscreenContainerRef.current === null ||
-      document.fullscreenElement !== fullscreenContainerRef.current
-    )
-      return;
+    if (!navigator || !("keyboard" in navigator)) return;
 
-    if (navigator && "keyboard" in navigator) {
-      try {
-        // @ts-expect-error - keyboard unlock is not supported in all browsers
-        await navigator.keyboard.unlock();
-      } catch {
-        // ignore errors
-      }
-      setIsKeyboardLockActive(false);
+    try {
+      // @ts-expect-error - keyboard unlock is not supported in all browsers
+      navigator.keyboard.unlock();
+      console.debug("Keyboard lock released");
+    } catch {
+      // ignore errors
     }
+    setIsKeyboardLockActive(false);
   }, [setIsKeyboardLockActive]);
 
   useEffect(() => {
@@ -206,30 +202,55 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   const requestFullscreen = useCallback(async () => {
     if (!isFullscreenEnabled || !fullscreenContainerRef.current) return;
 
-    // per https://wicg.github.io/keyboard-lock/#system-key-press-handler
-    // If keyboard lock is activated after fullscreen is already in effect, then the user my
-    // see multiple messages about how to exit fullscreen. For this reason, we recommend that
-    // developers call lock() before they enter fullscreen:
-    await requestKeyboardLock();
     await requestPointerLock();
 
     await fullscreenContainerRef.current.requestFullscreen({
       navigationUI: "show",
     });
-  }, [isFullscreenEnabled, requestKeyboardLock, requestPointerLock]);
+    // keyboard.lock() is called in the fullscreenchange handler below,
+    // after fullscreen is confirmed active (required by the API)
+  }, [isFullscreenEnabled, requestPointerLock]);
 
-  // setup to release the keyboard lock anytime the fullscreen ends
+  // Handle fullscreen enter/exit: acquire or release keyboard lock accordingly
   useEffect(() => {
     if (!videoElm.current) return;
 
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        releaseKeyboardLock();
+      if (document.fullscreenElement) {
+        // Entering fullscreen: always acquire keyboard lock
+        requestKeyboardLock();
+      } else {
+        // Exiting fullscreen: re-acquire lock if capture mode is on, otherwise release
+        if (settings.keyboardCaptureMode) {
+          requestKeyboardLock();
+        } else {
+          releaseKeyboardLock();
+        }
       }
     };
 
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-  }, [releaseKeyboardLock]);
+    const abortController = new AbortController();
+    document.addEventListener("fullscreenchange", handleFullscreenChange, {
+      signal: abortController.signal,
+    });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [releaseKeyboardLock, requestKeyboardLock, settings.keyboardCaptureMode]);
+
+  // Sync keyboard lock state with capture mode setting
+  useEffect(
+    function syncKeyboardCaptureMode() {
+      if (settings.keyboardCaptureMode) {
+        requestKeyboardLock();
+      } else if (!document.fullscreenElement) {
+        // Only release if not in fullscreen (fullscreen manages its own lock)
+        releaseKeyboardLock();
+      }
+    },
+    [settings.keyboardCaptureMode, requestKeyboardLock, releaseKeyboardLock],
+  );
 
   const absMouseMoveHandler = useMemo(
     () =>
@@ -319,30 +340,10 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         }
       }
 
-      // When pressing the meta key + another key, the key will never trigger a keyup
-      // event, so we need to clear the keys after a short delay
-      // https://bugs.chromium.org/p/chromium/issues/detail?id=28089
-      // https://bugzilla.mozilla.org/show_bug.cgi?id=1299553
-      if (e.metaKey && hidKey < 0xe0) {
-        setTimeout(() => {
-          console.debug(`Forcing the meta key release of associated key: ${hidKey}`);
-          handleKeyPress(hidKey, false);
-        }, 10);
-      }
       console.debug(`Key down: ${hidKey}`);
       handleKeyPress(hidKey, true);
-
-      if (!isKeyboardLockActive && hidKey === keys.MetaLeft) {
-        // If the left meta key was just pressed and we're not keyboard locked
-        // we'll never see the keyup event because the browser is going to lose
-        // focus so set a deferred keyup after a short delay
-        setTimeout(() => {
-          console.debug(`Forcing the left meta key release`);
-          handleKeyPress(hidKey, false);
-        }, 100);
-      }
     },
-    [handleKeyPress, isKeyboardLockActive, isWindowsClient],
+    [handleKeyPress, isWindowsClient],
   );
 
   const keyUpHandler = useCallback(
@@ -383,8 +384,15 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
+
+      // PiKVM-style fix: When Meta is released on macOS, release all keys to clean up
+      // stuck companion keys (Chrome doesn't fire their keyup events)
+      // https://bugs.chromium.org/p/chromium/issues/detail?id=28089
+      if (isMacClient && (code === "MetaLeft" || code === "MetaRight")) {
+        resetKeyboardState();
+      }
     },
-    [handleKeyPress, isWindowsClient],
+    [handleKeyPress, isMacClient, isWindowsClient, resetKeyboardState],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -547,6 +555,14 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     return true;
   }, [hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
 
+  const showKeyboardCaptureBar = useMemo(() => {
+    if (!settings.keyboardCaptureMode) return false;
+    if (isVideoLoading) return false;
+    if (!isPlaying) return false;
+    if (videoHeight === 0 || videoWidth === 0) return false;
+    return true;
+  }, [settings.keyboardCaptureMode, isPlaying, isVideoLoading, videoHeight, videoWidth]);
+
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
     if (!isPointerLockPossible) return false;
@@ -602,6 +618,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
+                  <KeyboardCaptureBar show={showKeyboardCaptureBar && !showPointerLockBar} />
                   <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}

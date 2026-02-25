@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { LuPlay } from "react-icons/lu";
+import { LuKeyboard, LuPlay } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
 
 import { m } from "@localizations/messages.js";
@@ -384,6 +384,52 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
                   <BsMouseFill className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                   <span className="text-sm text-black dark:text-white">
                     {m.video_overlay_pointerlock_click_to_enable()}
+                  </span>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+interface KeyboardCaptureBarProps {
+  readonly show: boolean;
+}
+
+export function KeyboardCaptureBar({ show }: KeyboardCaptureBarProps) {
+  // When show goes false, unmount inner component entirely.
+  // When show goes true, inner mounts fresh with visible=true and starts auto-dismiss timer.
+  return show ? <KeyboardCaptureBarInner /> : null;
+}
+
+function KeyboardCaptureBarInner() {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(false), 8000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <AnimatePresence mode="wait">
+      {visible ? (
+        <motion.div
+          className="flex w-full items-center justify-between bg-transparent"
+          initial={{ opacity: 0, zIndex: 0 }}
+          animate={{ opacity: 1, zIndex: 20 }}
+          exit={{ opacity: 0, zIndex: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut", delay: 0.5 }}
+        >
+          <div>
+            <Card className="rounded-b-none shadow-none outline-0!">
+              <div className="flex items-center justify-between border border-slate-800/50 px-4 py-2 outline-0 backdrop-blur-xs dark:border-slate-300/20 dark:bg-slate-800">
+                <div className="flex items-center space-x-2">
+                  <LuKeyboard className="h-4 w-4 text-blue-700 dark:text-blue-500" />
+                  <span className="text-sm text-black dark:text-white">
+                    {m.keyboard_capture_fullscreen_hint()}
                   </span>
                 </div>
               </div>
