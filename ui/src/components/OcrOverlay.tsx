@@ -5,6 +5,7 @@ import { LuX } from "react-icons/lu";
 
 import { useVideoStore, useUiStore } from "@hooks/stores";
 import Card from "@components/Card";
+import { ConfirmDialog } from "@components/ConfirmDialog";
 import TextArea from "@components/TextArea";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -196,10 +197,10 @@ function OcrOverlayContent() {
     };
   }, []);
 
-  // Pause the video focus trap when showing the result panel (portaled to
-  // document.body), so the textarea can receive focus and text selection.
+  // Pause the video focus trap when showing a ConfirmDialog (processing or
+  // result), so the dialog buttons and textarea can receive focus.
   useEffect(() => {
-    if (status === "result") {
+    if (status === "processing" || status === "result") {
       setDisableVideoFocusTrap(true);
       return () => setDisableVideoFocusTrap(false);
     }
@@ -412,15 +413,6 @@ function OcrOverlayContent() {
           </div>
         )}
 
-        {/* Processing indicator */}
-        {status === "processing" && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="rounded-md bg-black/70 px-4 py-2 text-sm font-medium text-white">
-              {m.ocr_recognizing()}
-            </div>
-          </div>
-        )}
-
         {/* Selection rectangle with size indicator */}
         {selectionRect && selectionStyle && status !== "result" && (
           <div
@@ -435,6 +427,23 @@ function OcrOverlayContent() {
           </div>
         )}
       </motion.div>
+
+      {/* Processing dialog with skeleton loading and cancel option */}
+      <ConfirmDialog
+        open={status === "processing"}
+        onClose={() => setOcrMode(false)}
+        title={m.ocr_recognizing()}
+        description={
+          <div className="space-y-2">
+            <div className="h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+            <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+            <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          </div>
+        }
+        confirmText={m.action_bar_copy_text()}
+        isConfirming={true}
+        onConfirm={() => {}}
+      />
 
       {/* OCR Result panel — portaled to document.body to escape the video
           container's stacking context and select-none inheritance */}
