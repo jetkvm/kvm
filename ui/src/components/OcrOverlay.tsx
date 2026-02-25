@@ -435,7 +435,7 @@ function OcrOverlayContent() {
             <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
           </div>
         }
-        confirmText={m.action_bar_copy_text()}
+        confirmText={m.ocr_copy()}
         isConfirming={true}
         onConfirm={() => {}}
       />
@@ -453,7 +453,7 @@ function OcrOverlayContent() {
             rows={Math.min(10, ocrResult.split("\n").length + 1)}
           />
         }
-        confirmText={m.action_bar_copy_text()}
+        confirmText={m.ocr_copy()}
         onConfirm={() => {
           navigator.clipboard.writeText(ocrResult);
           notifications.success(m.ocr_copied(), { duration: 4000 });
