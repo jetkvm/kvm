@@ -3,16 +3,12 @@ import { useCallback, useState } from "react";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { Checkbox } from "@components/Checkbox";
-import { useSettingsStore } from "@hooks/stores";
 import { m } from "@localizations/messages.js";
 
 export default function SettingsAppearanceRoute() {
   const [currentTheme, setCurrentTheme] = useState(() => {
     return localStorage.theme || "system";
   });
-
-  const { showDetachedToolbar, setShowDetachedToolbar } = useSettingsStore();
 
   const handleThemeChange = useCallback((value: string) => {
     const root = document.documentElement;
@@ -54,15 +50,6 @@ export default function SettingsAppearanceRoute() {
             setCurrentTheme(e.target.value);
             handleThemeChange(e.target.value);
           }}
-        />
-      </SettingsItem>
-      <SettingsItem
-        title={m.appearance_detached_toolbar()}
-        description={m.appearance_detached_toolbar_description()}
-      >
-        <Checkbox
-          checked={showDetachedToolbar}
-          onChange={e => setShowDetachedToolbar(e.target.checked)}
         />
       </SettingsItem>
     </div>

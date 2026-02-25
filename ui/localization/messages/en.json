@@ -132,8 +132,6 @@
     "appearance_theme_light": "Light",
     "appearance_theme_system": "System",
     "appearance_title": "Appearance",
-    "appearance_detached_toolbar": "Show Toolbar in Detached Window",
-    "appearance_detached_toolbar_description": "Show or hide the action bar when using a detached window",
     "attach": "Attach",
     "atx_power_control_get_state_error": "Failed to get ATX power state: {error}",
     "atx_power_control_hdd_led": "HDD LED",

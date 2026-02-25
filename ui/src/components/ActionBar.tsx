@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useRef } from "react";
 import { useParams } from "react-router";
 import { MdOutlineContentPasteGo } from "react-icons/md";
-import { LuCable, LuExternalLink, LuHardDrive, LuMaximize, LuScanText, LuSettings, LuSignal } from "react-icons/lu";
+import { LuCable, LuExternalLink, LuHardDrive, LuMaximize, LuScanText, LuSettings, LuSignal, LuX } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
@@ -292,25 +292,35 @@ export default function Actionbar({
             </div>
           )}
 
-          {!isDetachedWindow && (
-            <div className="hidden items-center gap-x-2 lg:flex">
-              <div className="h-4 w-px bg-slate-300 dark:bg-slate-600" />
+          <div className="hidden items-center gap-x-2 lg:flex">
+            <div className="h-4 w-px bg-slate-300 dark:bg-slate-600" />
+            {isDetachedWindow ? (
               <Button
                 size="XS"
                 theme="light"
-                text={m.detach()}
-                LeadingIcon={LuExternalLink}
-                onClick={() => openDetachedWindow(deviceId)}
+                text={m.close()}
+                LeadingIcon={LuX}
+                onClick={() => window.close()}
               />
-              <Button
-                size="XS"
-                theme="light"
-                text={m.action_bar_fullscreen()}
-                LeadingIcon={LuMaximize}
-                onClick={() => requestFullscreen()}
-              />
-            </div>
-          )}
+            ) : (
+              <>
+                <Button
+                  size="XS"
+                  theme="light"
+                  text={m.detach()}
+                  LeadingIcon={LuExternalLink}
+                  onClick={() => openDetachedWindow(deviceId)}
+                />
+                <Button
+                  size="XS"
+                  theme="light"
+                  text={m.action_bar_fullscreen()}
+                  LeadingIcon={LuMaximize}
+                  onClick={() => requestFullscreen()}
+                />
+              </>
+            )}
+          </div>
         </div>
       </div>
     </Container>

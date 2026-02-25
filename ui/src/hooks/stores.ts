@@ -355,10 +355,6 @@ export interface SettingsState {
   developerMode: boolean;
   setDeveloperMode: (enabled: boolean) => void;
 
-  // Detached window settings
-  showDetachedToolbar: boolean;
-  setShowDetachedToolbar: (show: boolean) => void;
-
   displayRotation: string;
   setDisplayRotation: (rotation: string) => void;
 
@@ -400,10 +396,6 @@ export const useSettingsStore = create(
       // Add developer mode with default value
       developerMode: false,
       setDeveloperMode: (enabled: boolean) => set({ developerMode: enabled }),
-
-      // Detached window settings - show toolbar by default
-      showDetachedToolbar: true,
-      setShowDetachedToolbar: (show: boolean) => set({ showDetachedToolbar: show }),
 
       displayRotation: "270",
       setDisplayRotation: (rotation: string) => set({ displayRotation: rotation }),
