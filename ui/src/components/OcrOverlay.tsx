@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { LuX } from "react-icons/lu";
 
 import { useVideoStore, useUiStore } from "@hooks/stores";
+import Card from "@components/Card";
 import TextArea from "@components/TextArea";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -427,9 +428,9 @@ function OcrOverlayContent() {
             style={selectionStyle}
           >
             {selectionRect.width >= 10 && selectionRect.height >= 10 && (
-              <div className="absolute right-0 -bottom-6 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums">
+              <Card className="absolute right-0 -bottom-6 w-auto px-1.5 py-0.5 text-[10px] font-medium tabular-nums">
                 {selectionRect.width} &times; {selectionRect.height}
-              </div>
+              </Card>
             )}
           </div>
         )}
