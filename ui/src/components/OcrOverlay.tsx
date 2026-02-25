@@ -400,7 +400,7 @@ function OcrOverlayContent() {
         onTouchEnd={handlePointerUp}
       >
         {/* Semi-transparent background */}
-        <div className="absolute inset-0 bg-black/20" />
+        <div className="fixed inset-0 bg-black/20" />
 
         {/* Instruction text */}
         {status === "idle" && (
