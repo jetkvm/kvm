@@ -1185,7 +1185,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setATXPowerAction":          {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":          {Func: rpcGetSerialSettings},
 	"setSerialSettings":          {Func: rpcSetSerialSettings, Params: []string{"settings"}},
-  "sendCustomCommand":          {Func: rpcSendCustomCommand, Params: []string{"command"}},
+	"sendCustomCommand":          {Func: rpcSendCustomCommand, Params: []string{"command"}},
 	"getSerialCommandHistory":    {Func: rpcGetSerialCommandHistory},
 	"setSerialCommandHistory":    {Func: rpcSetSerialCommandHistory, Params: []string{"commandHistory"}},
 	"deleteSerialCommandHistory": {Func: rpcDeleteSerialCommandHistory},

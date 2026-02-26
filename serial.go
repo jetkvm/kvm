@@ -324,7 +324,6 @@ type SerialSettings struct {
 }
 
 func getSerialSettings() (SerialSettings, error) {
-
 	switch defaultMode.StopBits {
 	case serial.OneStopBit:
 		serialConfig.StopBits = "1"
@@ -591,7 +590,6 @@ func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 		Uint16("data_channel_id", *dataChannel.ID()).Str("service", "serial terminal channel").Logger()
 
 	dataChannel.OnOpen(func() {
-
 		// Plug the terminal sink into the broker
 		scopedLogger.Info().Msg("Opening serial channel from console broker")
 		if consoleBroker != nil {
@@ -602,7 +600,6 @@ func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 	})
 
 	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-
 		scopedLogger.Trace().Bytes("Data:", msg.Data).Msg("Sending data to serial mux")
 		if serialMux == nil {
 			return
