@@ -392,6 +392,13 @@ function OcrOverlayContent() {
         onMouseDown={handlePointerDown}
         onMouseMove={handlePointerMove}
         onMouseUp={handlePointerUp}
+        onMouseLeave={() => {
+          if (status === "selecting") {
+            setStatus("idle");
+            setSelectionStart(null);
+            setSelectionRect(null);
+          }
+        }}
         onTouchStart={handlePointerDown}
         onTouchMove={handlePointerMove}
         onTouchEnd={handlePointerUp}
@@ -428,38 +435,49 @@ function OcrOverlayContent() {
         open={status === "processing"}
         onClose={() => setOcrMode(false)}
         title={m.ocr_recognizing()}
-        description={
-          <div className="space-y-2">
-            <div className="h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-            <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-            <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-          </div>
-        }
-        confirmText={m.ocr_copy()}
+        description={m.ocr_processing_description()}
+        confirmText={m.ocr_copy_text()}
         isConfirming={true}
         onConfirm={() => {}}
-      />
+      >
+        <div className="mt-2 space-y-2">
+          <div className="h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        </div>
+      </ConfirmDialog>
 
       {/* OCR Result dialog */}
       <ConfirmDialog
         open={status === "result"}
         onClose={() => setOcrMode(false)}
         title={m.action_bar_copy_text()}
-        description={
+        description={m.ocr_result_description()}
+        confirmText={m.ocr_copy_text()}
+        onConfirm={() => {
+          if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(ocrResult).then(() => {
+              notifications.success(m.ocr_copied(), { duration: 4000 });
+              setOcrMode(false);
+            });
+          } else if (resultRef.current) {
+            resultRef.current.focus();
+            resultRef.current.select();
+            document.execCommand("copy");
+            notifications.success(m.ocr_copied(), { duration: 4000 });
+            setOcrMode(false);
+          }
+        }}
+      >
+        <div className="mt-2">
           <TextArea
             ref={resultRef}
             value={ocrResult}
             readOnly
             rows={Math.min(10, ocrResult.split("\n").length + 1)}
           />
-        }
-        confirmText={m.ocr_copy()}
-        onConfirm={() => {
-          navigator.clipboard.writeText(ocrResult);
-          notifications.success(m.ocr_copied(), { duration: 4000 });
-          setOcrMode(false);
-        }}
-      />
+        </div>
+      </ConfirmDialog>
     </>
   );
 }

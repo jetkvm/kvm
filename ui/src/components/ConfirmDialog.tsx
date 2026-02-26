@@ -13,6 +13,7 @@ interface ConfirmDialogProps {
   onClose: () => void;
   title: string;
   description: React.ReactNode;
+  children?: React.ReactNode;
   variant?: Variant;
   confirmText?: string;
   cancelText?: string | null;
@@ -55,6 +56,7 @@ export function ConfirmDialog({
   onClose,
   title,
   description,
+  children,
   variant = "info",
   confirmText = m.confirm(),
   cancelText = m.cancel(),
@@ -84,6 +86,7 @@ export function ConfirmDialog({
                 <div className="min-w-0 flex-1 space-y-2">
                   <h2 className="font-semibold text-slate-950 dark:text-white">{title}</h2>
                   <div className="text-sm text-slate-700 dark:text-slate-300">{description}</div>
+                  {children}
                 </div>
               </div>
 
@@ -91,14 +94,16 @@ export function ConfirmDialog({
                 {cancelText && (
                   <CloseButton as={Button} size="SM" theme="blank" text={cancelText} />
                 )}
-                <Button
-                  size="SM"
-                  type="button"
-                  theme={buttonTheme}
-                  text={isConfirming ? `${confirmText}...` : confirmText}
-                  onClick={onConfirm}
-                  disabled={isConfirming}
-                />
+                <div className={isConfirming ? "[&>button]:cursor-not-allowed" : ""}>
+                  <Button
+                    size="SM"
+                    type="button"
+                    theme={buttonTheme}
+                    text={isConfirming ? `${confirmText}...` : confirmText}
+                    onClick={onConfirm}
+                    disabled={isConfirming}
+                  />
+                </div>
               </div>
             </div>
           </div>
