@@ -6,12 +6,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -195,7 +196,7 @@ func getDefaultConfig() Config {
 			_ = confparser.SetDefaultsAndValidate(c)
 			return c
 		}(),
-		DefaultLogLevel:    "INFO",
+		DefaultLogLevel:    "WARN",
 		VideoQualityFactor: 1.0,
 	}
 }
@@ -270,6 +271,11 @@ func LoadConfig() {
 	// fixup old keyboard layout value
 	if loadedConfig.KeyboardLayout == "en_US" {
 		loadedConfig.KeyboardLayout = "en-US"
+	}
+
+	// Migrate old verbose log level to sensible default
+	if loadedConfig.DefaultLogLevel == "INFO" {
+		loadedConfig.DefaultLogLevel = "WARN"
 	}
 
 	config = &loadedConfig

@@ -18,13 +18,10 @@ export function FailsafeModeBanner({ reason }: FailsafeModeBannerProps) {
 
   return (
     <Card>
-      <div className="diagonal-stripes flex items-center gap-3 p-4 rounded">
-          <LuTriangleAlert className="h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" />
-          <p className="text-sm font-medium text-red-800 dark:text-white">
-            {getReasonMessage()}
-          </p>
+      <div className="diagonal-stripes flex items-center gap-3 rounded p-4">
+        <LuTriangleAlert className="h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" />
+        <p className="text-sm font-medium text-red-800 dark:text-white">{getReasonMessage()}</p>
       </div>
     </Card>
   );
 }
-

@@ -9,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/ota"
+
 	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
-	"github.com/jetkvm/kvm/internal/ota"
+	"github.com/rs/zerolog"
 )
 
 var appCtx context.Context
@@ -29,6 +31,13 @@ func Main() {
 	setProcTitle("starting")
 
 	logger.Log().Msg("JetKVM Starting Up")
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.WithLevel(zerolog.PanicLevel).Interface("error", r).Msg("Received panic")
+			panic(r) // Re-panic to crash as usual
+		}
+	}()
 
 	checkFailsafeReason()
 	if failsafeModeActive {
@@ -170,6 +179,7 @@ func Main() {
 	<-sigs
 
 	logger.Log().Msg("JetKVM Shutting Down")
+
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {

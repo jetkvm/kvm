@@ -1,16 +1,19 @@
 package kvm
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,7 +24,9 @@ import (
 	gin_logger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -72,6 +77,11 @@ type SetupRequest struct {
 var cachableFileExtensions = []string{
 	".jpg", ".jpeg", ".png", ".svg", ".gif", ".webp", ".ico", ".woff2",
 }
+
+// MinPasswordLength is the minimum required length for new passwords.
+// This is only enforced when setting or changing passwords, not when
+// validating existing passwords (to maintain backward compatibility).
+const MinPasswordLength = 8
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -187,6 +197,8 @@ func setupRouter() *gin.Engine {
 		protected.POST("/storage/upload", handleUploadHttp)
 
 		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
+
+		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}
 
 	// Catch-all route for SPA
@@ -212,7 +224,7 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession(SessionConfig{})
+	session, err := newSession(SessionConfig{MDNSMode: config.NetworkConfig.MDNSMode.String})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
@@ -470,6 +482,17 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
+	// Check rate limit before processing
+	ip := c.ClientIP()
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":       "Too many failed attempts. Please try again later.",
+			"retry_after": retryAfter,
+		})
+		return
+	}
+
 	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -479,9 +502,13 @@ func handleLogin(c *gin.Context) {
 
 	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
 	if err != nil {
+		passwordRateLimiter.RecordFailure(ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
+
+	// Clear rate limit on successful login
+	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
 
@@ -564,12 +591,9 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	}
 }
 
-func RunWebServer() {
-	r := setupRouter()
-
+func getBindAddress(listenPort int) string {
 	// Determine the binding address based on the config
 	var bindAddress string
-	listenPort := 80 // default port
 	useIPv4 := config.NetworkConfig.IPv4Mode.String != "disabled"
 	useIPv6 := config.NetworkConfig.IPv6Mode.String != "disabled"
 
@@ -590,6 +614,14 @@ func RunWebServer() {
 			bindAddress = fmt.Sprintf("[::]:%d", listenPort)
 		}
 	}
+	return bindAddress
+}
+
+func RunWebServer() {
+	r := setupRouter()
+
+	// Determine the binding address based on the config
+	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
 	if err := r.Run(bindAddress); err != nil {
@@ -624,6 +656,11 @@ func handleCreatePassword(c *gin.Context) {
 	var req SetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if len(req.Password) < MinPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
 		return
 	}
 
@@ -663,6 +700,12 @@ func handleUpdatePassword(c *gin.Context) {
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.OldPassword == "" || req.NewPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	// Validate new password length (not old password - may be shorter from before this requirement)
+	if len(req.NewPassword) < MinPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
 		return
 	}
 
@@ -783,6 +826,11 @@ func handleSetup(c *gin.Context) {
 			return
 		}
 
+		if len(req.Password) < MinPasswordLength {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
+			return
+		}
+
 		// Hash the password
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		if err != nil {
@@ -828,4 +876,96 @@ func handleSendWOLMagicPacket(c *gin.Context) {
 	}
 
 	c.String(http.StatusOK, "WOL sent to %s ", macAddr)
+}
+
+func handleDiagnosticsDownload(c *gin.Context) {
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+
+		zw := zip.NewWriter(pw)
+
+		// 1. Application log (full, no truncation)
+		if err := addFileToZip(zw, "app.log", supervisor.AppLogPath); err != nil {
+			logger.Warn().Err(err).Msg("failed to add app log to diagnostics zip")
+		}
+
+		// 2. System diagnostics
+		var diagBuf bytes.Buffer
+		diag := diagnostics.New(diagnostics.Options{
+			Writer: &diagBuf,
+			GetSessionInfo: func() diagnostics.SessionInfo {
+				info := diagnostics.SessionInfo{
+					ActiveSessions:    getActiveSessions(),
+					HasCurrentSession: currentSession != nil,
+				}
+				if currentSession != nil {
+					sessionInfo := currentSession.GetDiagnosticsInfo()
+					info.ICEConnectionState = sessionInfo.ICEConnectionState
+					info.SignalingState = sessionInfo.SignalingState
+					info.ConnectionState = sessionInfo.ConnectionState
+					info.DataChannels = sessionInfo.DataChannels
+				}
+				return info
+			},
+		})
+		diag.LogAll("download")
+		if err := addBytesToZip(zw, "system-diagnostics.txt", diagBuf.Bytes()); err != nil {
+			logger.Warn().Err(err).Msg("failed to add system diagnostics to zip")
+		}
+
+		// 3. All crash dumps (full content)
+		if entries, err := filepath.Glob(filepath.Join(supervisor.ErrorDumpDir, "jetkvm-*.log")); err == nil {
+			for _, path := range entries {
+				if err := addFileToZip(zw, "crashes/"+filepath.Base(path), path); err != nil {
+					logger.Warn().Err(err).Str("path", path).Msg("failed to add crash dump to zip")
+				}
+			}
+		}
+
+		// 4. Configuration
+		if configData, err := json.MarshalIndent(config, "", "  "); err == nil {
+			if err := addBytesToZip(zw, "config.json", configData); err != nil {
+				logger.Warn().Err(err).Msg("failed to add config to zip")
+			}
+		}
+
+		// Close ZIP writer to write central directory (required for valid ZIP)
+		if err := zw.Close(); err != nil {
+			logger.Error().Err(err).Msg("failed to finalize diagnostics zip")
+		}
+	}()
+
+	filename := fmt.Sprintf("jetkvm-diagnostics-%s.zip", time.Now().Format("20060102-150405"))
+	extraHeaders := map[string]string{
+		"Content-Disposition": fmt.Sprintf("attachment; filename=%s", filename),
+	}
+
+	c.DataFromReader(http.StatusOK, -1, "application/zip", pr, extraHeaders)
+}
+
+func addFileToZip(zw *zip.Writer, name, srcPath string) error {
+	f, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(w, f)
+	return err
+}
+
+func addBytesToZip(zw *zip.Writer, name string, data []byte) error {
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
 }

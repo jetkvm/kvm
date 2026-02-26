@@ -6,15 +6,18 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/diagnostics"
+	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/internal/usbgadget"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
-	"github.com/jetkvm/kvm/internal/hidrpc"
-	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -67,6 +70,43 @@ func getActiveSessions() int {
 	return actionSessions
 }
 
+// GetDiagnosticsInfo returns WebRTC diagnostic info for the diagnostics package.
+func (s *Session) GetDiagnosticsInfo() diagnostics.SessionInfo {
+	info := diagnostics.SessionInfo{
+		HasCurrentSession: true,
+	}
+
+	if s.peerConnection != nil {
+		pc := s.peerConnection
+		info.ICEConnectionState = pc.ICEConnectionState().String()
+		info.SignalingState = pc.SignalingState().String()
+		info.ConnectionState = pc.ConnectionState().String()
+
+		var channels []diagnostics.DataChannelInfo
+		if s.ControlChannel != nil {
+			channels = append(channels, diagnostics.DataChannelInfo{
+				Label: s.ControlChannel.Label(),
+				State: s.ControlChannel.ReadyState().String(),
+			})
+		}
+		if s.RPCChannel != nil {
+			channels = append(channels, diagnostics.DataChannelInfo{
+				Label: s.RPCChannel.Label(),
+				State: s.RPCChannel.ReadyState().String(),
+			})
+		}
+		if s.HidChannel != nil {
+			channels = append(channels, diagnostics.DataChannelInfo{
+				Label: s.HidChannel.Label(),
+				State: s.HidChannel.ReadyState().String(),
+			})
+		}
+		info.DataChannels = channels
+	}
+
+	return info
+}
+
 func (s *Session) resetKeepAliveTime() {
 	s.keepAliveJitterLock.Lock()
 	defer s.keepAliveJitterLock.Unlock()
@@ -85,6 +125,7 @@ type SessionConfig struct {
 	IsCloud    bool
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
+	MDNSMode   string
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -211,6 +252,22 @@ func newSession(config SessionConfig) (*Session, error) {
 	webrtcSettingEngine := webrtc.SettingEngine{
 		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	}
+
+	mDNSNetworkTypes := make([]webrtc.NetworkType, 0)
+	if config.MDNSMode == "auto" || config.MDNSMode == "ipv4_only" {
+		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP4)
+	}
+	if config.MDNSMode == "auto" || config.MDNSMode == "ipv6_only" {
+		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP6)
+	}
+
+	if len(mDNSNetworkTypes) > 0 {
+		webrtcSettingEngine.SetNetworkTypes(mDNSNetworkTypes)
+		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
+	} else {
+		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	}
+
 	iceServer := webrtc.ICEServer{}
 
 	var scopedLogger *zerolog.Logger
@@ -230,10 +287,21 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
+			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set ICEAddressRewriteRules")
 		} else {
-			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
-			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
+			err := webrtcSettingEngine.SetICEAddressRewriteRules(
+				webrtc.ICEAddressRewriteRule{
+					CIDR:            "0.0.0.0/0",
+					External:        []string{config.LocalIP},
+					Mode:            webrtc.ICEAddressRewriteAppend,
+					AsCandidateType: webrtc.ICECandidateTypeSrflx,
+				},
+			)
+			if err != nil {
+				scopedLogger.Warn().Err(err).Str("localIP", config.LocalIP).Msg("Failed to set ICEAddressRewriteRules")
+			} else {
+				scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Set ICEAddressRewriteRules for local IP")
+			}
 		}
 	}
 
@@ -331,7 +399,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		scopedLogger.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
-		if candidate != nil {
+		if candidate != nil && config.ws != nil {
 			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
 				scopedLogger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")

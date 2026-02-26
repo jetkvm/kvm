@@ -82,7 +82,9 @@ export function SerialConsole() {
   useEffect(() => {
     send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.serial_console_get_settings_error({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.serial_console_get_settings_error({ error: resp.error.data || m.unknown_error() }),
+        );
         return;
       }
 

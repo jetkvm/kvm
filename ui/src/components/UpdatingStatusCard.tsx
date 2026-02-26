@@ -1,4 +1,3 @@
-
 import { CheckCircleIcon } from "@heroicons/react/24/solid"; // adjust import if you use a different icon set
 
 import LoadingSpinner from "@components/LoadingSpinner"; // adjust import path if needed
@@ -14,12 +13,26 @@ export interface UpdatePart {
 export default function UpdatingStatusCard({
   label,
   part,
+  testIdPrefix,
 }: {
   label: string;
   part: UpdatePart;
+  testIdPrefix?: string;
 }) {
+  // Determine the phase based on status text
+  const getPhaseTestId = () => {
+    if (!testIdPrefix) return undefined;
+    const statusLower = part.status.toLowerCase();
+    if (statusLower.includes("download")) return `${testIdPrefix}-download-progress`;
+    if (statusLower.includes("verif")) return `${testIdPrefix}-verification-progress`;
+    if (statusLower.includes("install")) return `${testIdPrefix}-installation-progress`;
+    return `${testIdPrefix}-progress`;
+  };
+
+  const phaseTestId = getPhaseTestId();
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid={phaseTestId}>
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-black dark:text-white">{label}</p>
         {part.progress < 100 ? (
@@ -34,7 +47,7 @@ export default function UpdatingStatusCard({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(part.progress)}
-        aria-label={m.general_update_status_progress({part: label})}
+        aria-label={m.general_update_status_progress({ part: label })}
       >
         <div
           className="h-2.5 rounded-full bg-blue-700 transition-all duration-500 ease-linear dark:bg-blue-500"
@@ -43,7 +56,11 @@ export default function UpdatingStatusCard({
       </div>
       <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
         <span>{part.status}</span>
-        {part.progress < 100 ? <span>{`${Math.round(part.progress)}%`}</span> : null}
+        {part.progress < 100 ? (
+          <span
+            data-testid={phaseTestId ? `${phaseTestId}-text` : undefined}
+          >{`${Math.round(part.progress)}%`}</span>
+        ) : null}
       </div>
     </div>
   );

@@ -6,10 +6,10 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/ota"
+	"github.com/jetkvm/kvm/internal/sync"
 )
 
 func extractSerialNumber() (string, error) {

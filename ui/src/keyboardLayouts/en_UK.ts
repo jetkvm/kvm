@@ -1,6 +1,6 @@
-import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts";
 
-import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
+import { en_US } from "./en_US"; // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
 const name = "English (UK)";
 const isoCode = "en-UK";
@@ -61,7 +61,7 @@ const chars = {
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
   2: { key: "Digit2" },
-  "\"": { key: "Digit2", shift: true },
+  '"': { key: "Digit2", shift: true },
   3: { key: "Digit3" },
   "£": { key: "Digit3", shift: true },
   4: { key: "Digit4" },
@@ -84,7 +84,7 @@ const chars = {
   "=": { key: "Equal" },
   "+": { key: "Equal", shift: true },
   "'": { key: "Quote" },
-  '@': { key: "Quote", shift: true },
+  "@": { key: "Quote", shift: true },
   ",": { key: "Comma" },
   "<": { key: "Comma", shift: true },
   "/": { key: "Slash" },
@@ -107,7 +107,7 @@ const chars = {
   "\n": { key: "Enter" },
   Enter: { key: "Enter" },
   Tab: { key: "Tab" },
-} as Record<string, KeyCombo>
+} as Record<string, KeyCombo>;
 
 export const en_UK: KeyboardLayout = {
   isoCode: isoCode,
@@ -116,5 +116,5 @@ export const en_UK: KeyboardLayout = {
   // TODO need to localize these maps and layouts
   keyDisplayMap: en_US.keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
-  virtualKeyboard: en_US.virtualKeyboard
+  virtualKeyboard: en_US.virtualKeyboard,
 };

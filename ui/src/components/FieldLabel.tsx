@@ -9,19 +9,13 @@ interface Props {
   description?: string | React.ReactNode | null;
   disabled?: boolean;
 }
-export default function FieldLabel({
-  label,
-  id,
-  as = "label",
-  description,
-  disabled,
-}: Props) {
+export default function FieldLabel({ label, id, as = "label", description, disabled }: Props) {
   if (as === "label") {
     return (
       <label
         htmlFor={id}
         className={cx(
-          "flex select-none flex-col text-left font-display text-[13px] font-semibold leading-snug text-black dark:text-white",
+          "flex flex-col text-left font-display text-[13px] leading-snug font-semibold text-black select-none dark:text-white",
           disabled && "opacity-50",
         )}
       >
@@ -35,8 +29,8 @@ export default function FieldLabel({
     );
   } else if (as === "span") {
     return (
-      <div className="flex select-none flex-col">
-        <span className="font-display text-[13px] font-semibold leading-snug text-black dark:text-white">
+      <div className="flex flex-col select-none">
+        <span className="font-display text-[13px] leading-snug font-semibold text-black dark:text-white">
           {label}
         </span>
         {description && (

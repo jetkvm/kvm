@@ -39,7 +39,7 @@ export default function PasteModal() {
   const close = useClose();
 
   const debugMode = useSettingsStore(state => state.debugMode);
-  const delayClassName = useMemo(() => debugMode ? "" : "hidden", [debugMode]);
+  const delayClassName = useMemo(() => (debugMode ? "" : "hidden"), [debugMode]);
 
   const { setKeyboardLayout } = useSettingsStore();
   const { selectedKeyboard } = useKeyboardLayout();
@@ -66,7 +66,7 @@ export default function PasteModal() {
       const macroSteps: MacroStep[] = [];
 
       for (const char of text) {
-        const normalizedChar = char.normalize('NFC');
+        const normalizedChar = char.normalize("NFC");
         const keyprops = selectedKeyboard.chars[normalizedChar];
         if (!keyprops) continue;
 
@@ -94,7 +94,7 @@ export default function PasteModal() {
         macroSteps.push({
           keys: [String(key)],
           modifiers: modifiers.length > 0 ? modifiers : null,
-          delay
+          delay,
         });
 
         // if what was requested was a dead key, we need to send an unmodified space to emit
@@ -123,10 +123,7 @@ export default function PasteModal() {
         <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="h-full space-y-4">
             <div className="space-y-4">
-              <SettingsPageHeader
-                title={m.paste_text()}
-                description={m.paste_text_description()}
-              />
+              <SettingsPageHeader title={m.paste_text()} description={m.paste_text_description()} />
 
               <div
                 className="animate-fadeIn space-y-2 opacity-0"
@@ -165,7 +162,7 @@ export default function PasteModal() {
                           ...new Set(
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
-                              .map(x => x.segment.normalize('NFC'))
+                              .map(x => x.segment.normalize("NFC"))
                               .filter(char => !selectedKeyboard.chars[char]),
                           ),
                         ];
@@ -178,8 +175,7 @@ export default function PasteModal() {
                       <div className="mt-2 flex items-center gap-x-2">
                         <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
-                          {m.paste_modal_invalid_chars_intro()}{" "}
-                          {invalidChars.join(", ")}
+                          {m.paste_modal_invalid_chars_intro()} {invalidChars.join(", ")}
                         </span>
                       </div>
                     )}
@@ -197,18 +193,22 @@ export default function PasteModal() {
                       setDelayValue(parseInt(e.target.value, 10));
                     }}
                   />
-                  {delayValue < 50 || delayValue > 65534 && (
-                    <div className="mt-2 flex items-center gap-x-2">
-                      <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
-                      <span className="text-xs text-red-500 dark:text-red-400">
-                        {m.paste_modal_delay_out_of_range({ min: 50, max: 65534 })}
-                      </span>
-                    </div>
-                  )}
+                  {delayValue < 50 ||
+                    (delayValue > 65534 && (
+                      <div className="mt-2 flex items-center gap-x-2">
+                        <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
+                        <span className="text-xs text-red-500 dark:text-red-400">
+                          {m.paste_modal_delay_out_of_range({ min: 50, max: 65534 })}
+                        </span>
+                      </div>
+                    ))}
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {m.paste_modal_sending_using_layout({ iso: selectedKeyboard.isoCode, name: selectedKeyboard.name })}
+                    {m.paste_modal_sending_using_layout({
+                      iso: selectedKeyboard.isoCode,
+                      name: selectedKeyboard.name,
+                    })}
                   </p>
                 </div>
               </div>

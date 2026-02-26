@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+
 	"github.com/rs/zerolog"
 )
 
@@ -47,103 +48,158 @@ func logTrack(callerSkip int) *zerolog.Logger {
 	return &l
 }
 
-func logLockTrack(i string) *zerolog.Logger {
+func logLockTrack(ptr uintptr) *zerolog.Logger {
 	l := logTrack(4).
 		With().
-		Str("index", i).
+		Str("ptr", fmt.Sprintf("%x", ptr)).
 		Logger()
 	return &l
 }
-
-var (
-	indexMu sync.Mutex
-
-	lockCount   map[string]int       = make(map[string]int)
-	unlockCount map[string]int       = make(map[string]int)
-	lastLock    map[string]time.Time = make(map[string]time.Time)
-)
 
 type trackable interface {
 	sync.Locker
 }
 
-func getIndex(t trackable) string {
-	ptr := reflect.ValueOf(t).Pointer()
-	return fmt.Sprintf("%x", ptr)
+type trackingEntry struct {
+	lockCount   int
+	unlockCount int
+	firstLock   time.Time
+	lastLock    time.Time
+	lastUnlock  time.Time
 }
 
-func increaseLockCount(i string) {
+var (
+	indexMu  sync.Mutex
+	tracking map[uintptr]*trackingEntry = make(map[uintptr]*trackingEntry)
+)
+
+func getPointer(t trackable) uintptr {
+	return reflect.ValueOf(t).Pointer()
+}
+
+func increaseLockCount(ptr uintptr) {
 	indexMu.Lock()
 	defer indexMu.Unlock()
 
-	if _, ok := lockCount[i]; !ok {
-		lockCount[i] = 0
+	entry, ok := tracking[ptr]
+	if !ok {
+		entry = &trackingEntry{}
+		entry.firstLock = time.Now()
+		tracking[ptr] = entry
 	}
-	lockCount[i]++
-
-	if _, ok := lastLock[i]; !ok {
-		lastLock[i] = time.Now()
-	}
+	entry.lockCount++
+	entry.lastLock = time.Now()
 }
 
-func increaseUnlockCount(i string) {
+func increaseUnlockCount(ptr uintptr) {
 	indexMu.Lock()
-	defer indexMu.Unlock()
 
-	if _, ok := unlockCount[i]; !ok {
-		unlockCount[i] = 0
+	entry, ok := tracking[ptr]
+	if !ok {
+		entry = &trackingEntry{}
+		tracking[ptr] = entry
 	}
-	unlockCount[i]++
+	entry.unlockCount++
+	entry.lastUnlock = time.Now()
+	delta := entry.lockCount - entry.unlockCount
+	indexMu.Unlock()
+
+	if !ok {
+		logLockTrack(ptr).Warn().Interface("entry", entry).Msg("Unlock called without any prior Lock")
+	} else if delta < 0 {
+		logLockTrack(ptr).Warn().Interface("entry", entry).Msg("Unlock called more times than Lock")
+	}
 }
 
 func logLock(t trackable) {
-	i := getIndex(t)
-	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locking mutex")
+	ptr := getPointer(t)
+	increaseLockCount(ptr)
+	logLockTrack(ptr).Trace().Msg("locking mutex")
 }
 
 func logUnlock(t trackable) {
-	i := getIndex(t)
-	increaseUnlockCount(i)
-	logLockTrack(i).Trace().Msg("unlocking mutex")
+	ptr := getPointer(t)
+	increaseUnlockCount(ptr)
+	logLockTrack(ptr).Trace().Msg("unlocking mutex")
 }
 
 func logTryLock(t trackable) {
-	i := getIndex(t)
-	logLockTrack(i).Trace().Msg("trying to lock mutex")
+	ptr := getPointer(t)
+	logLockTrack(ptr).Trace().Msg("trying to lock mutex")
 }
 
 func logTryLockResult(t trackable, l bool) {
 	if !l {
 		return
 	}
-	i := getIndex(t)
-	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locked mutex")
+	ptr := getPointer(t)
+	increaseLockCount(ptr)
+	logLockTrack(ptr).Trace().Msg("locked mutex")
 }
 
 func logRLock(t trackable) {
-	i := getIndex(t)
-	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locking mutex for reading")
+	ptr := getPointer(t)
+	increaseLockCount(ptr)
+	logLockTrack(ptr).Trace().Msg("locking mutex for reading")
 }
 
 func logRUnlock(t trackable) {
-	i := getIndex(t)
-	increaseUnlockCount(i)
-	logLockTrack(i).Trace().Msg("unlocking mutex for reading")
+	ptr := getPointer(t)
+	increaseUnlockCount(ptr)
+	logLockTrack(ptr).Trace().Msg("unlocking mutex for reading")
 }
 
 func logTryRLock(t trackable) {
-	i := getIndex(t)
-	logLockTrack(i).Trace().Msg("trying to lock mutex for reading")
+	ptr := getPointer(t)
+	logLockTrack(ptr).Trace().Msg("trying to lock mutex for reading")
 }
 
 func logTryRLockResult(t trackable, l bool) {
 	if !l {
 		return
 	}
-	i := getIndex(t)
-	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locked mutex for reading")
+	ptr := getPointer(t)
+	increaseLockCount(ptr)
+	logLockTrack(ptr).Trace().Msg("locked mutex for reading")
+}
+
+// You can call this function at any time to log any dangled locks currently tracked
+// It is not an error for there to be open locks, but this can help identify any
+// potential issues if called judiciously
+func LogDangledLocks() {
+	defaultLogger.Info().Msgf("Checking %v tracked locks for dangles", len(tracking))
+
+	indexMu.Lock()
+	var issues []struct {
+		ptr   uintptr
+		entry trackingEntry
+	}
+	for ptr, entry := range tracking {
+		if entry.lockCount != entry.unlockCount {
+			issues = append(issues, struct {
+				ptr   uintptr
+				entry trackingEntry
+			}{ptr, *entry})
+		}
+	}
+	indexMu.Unlock()
+
+	defaultLogger.Info().Msgf("%v potential issues", len(issues))
+
+	for _, issue := range issues {
+		ptr := issue.ptr
+		entry := issue.entry
+		delta := entry.lockCount - entry.unlockCount
+
+		failureType := "excess unlocks"
+		if delta > 0 {
+			failureType = "held locks"
+		}
+
+		defaultLogger.Warn().
+			Str("ptr", fmt.Sprintf("%x", ptr)).
+			Interface("entry", entry).
+			Int("delta", delta).
+			Msgf("dangled lock detected: %s", failureType)
+	}
 }

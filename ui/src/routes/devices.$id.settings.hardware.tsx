@@ -17,16 +17,13 @@ import { m } from "@localizations/messages.js";
 export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
   const settings = useSettingsStore();
-  const { displayRotation, setDisplayRotation } = useSettingsStore();
+  const { setDisplayRotation } = useSettingsStore();
   const [powerSavingEnabled, setPowerSavingEnabled] = useState(false);
 
   const handleDisplayRotationChange = (rotation: string) => {
     setDisplayRotation(rotation);
-    handleDisplayRotationSave();
-  };
 
-  const handleDisplayRotationSave = () => {
-    send("setDisplayRotation", { params: { rotation: displayRotation } }, (resp: JsonRpcResponse) => {
+    send("setDisplayRotation", { params: { rotation } }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.hardware_display_orientation_error({ error: resp.error.data || m.unknown_error() }),
@@ -82,11 +79,15 @@ export default function SettingsHardwareRoute() {
     const duration = enabled ? 90 : -1;
     send("setVideoSleepMode", { duration }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.hardware_power_saving_failed_error({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.hardware_power_saving_failed_error({ error: resp.error.data || m.unknown_error() }),
+        );
         setPowerSavingEnabled(!enabled); // Attempt to revert on error
         return;
       }
-      notifications.success(enabled ? m.hardware_power_saving_enabled() : m.hardware_power_saving_disabled());
+      notifications.success(
+        enabled ? m.hardware_power_saving_enabled() : m.hardware_power_saving_disabled(),
+      );
     });
   };
 
@@ -113,12 +114,20 @@ export default function SettingsHardwareRoute() {
     });
   }, [send]);
 
+  useEffect(() => {
+    send("getDisplayRotation", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to get display rotation:", resp.error);
+        return;
+      }
+      const result = resp.result as { rotation: string };
+      setDisplayRotation(result.rotation);
+    });
+  }, [send, setDisplayRotation]);
+
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.hardware_title()}
-        description={m.hardware_page_description()}
-      />
+      <SettingsPageHeader title={m.hardware_title()} description={m.hardware_page_description()} />
       <div className="space-y-4">
         <SettingsItem
           title={m.hardware_display_orientation_title()}
@@ -220,7 +229,7 @@ export default function SettingsHardwareRoute() {
           >
             <Checkbox
               checked={powerSavingEnabled}
-              onChange={(e) => handlePowerSavingChange(e.target.checked)}
+              onChange={e => handlePowerSavingChange(e.target.checked)}
             />
           </SettingsItem>
         </div>

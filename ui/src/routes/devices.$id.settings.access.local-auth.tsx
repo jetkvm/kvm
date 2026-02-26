@@ -8,6 +8,8 @@ import { InputFieldWithLabel } from "@/components/InputField";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
 
+export const MIN_PASSWORD_LENGTH = 8;
+
 export default function SecurityAccessLocalAuthRoute() {
   const { setModalView } = useLocalAuthModalStore();
   const { navigateTo } = useDeviceUiNavigation();
@@ -33,6 +35,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const handleCreatePassword = async (password: string, confirmPassword: string) => {
     if (password === "") {
       setError(m.local_auth_error_enter_password());
+      return;
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(m.local_auth_error_password_too_short());
       return;
     }
 
@@ -62,11 +69,6 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
     newPassword: string,
     confirmNewPassword: string,
   ) => {
-    if (newPassword !== confirmNewPassword) {
-      setError(m.local_auth_error_passwords_not_match());
-      return;
-    }
-
     if (oldPassword === "") {
       setError(m.local_auth_error_enter_old_password());
       return;
@@ -74,6 +76,17 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
     if (newPassword === "") {
       setError(m.local_auth_error_enter_new_password());
+      return;
+    }
+
+    // Only validate length for new password, not old password (may be shorter from before this requirement)
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(m.local_auth_error_password_too_short());
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setError(m.local_auth_error_passwords_not_match());
       return;
     }
 
@@ -195,9 +208,7 @@ function CreatePasswordModal({
         }}
       >
         <div>
-          <h2 className="text-lg font-semibold dark:text-white">
-            {m.local_auth_create_title()}
-          </h2>
+          <h2 className="text-lg font-semibold dark:text-white">{m.local_auth_create_title()}</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             {m.local_auth_create_description()}
           </p>
@@ -225,7 +236,12 @@ function CreatePasswordModal({
             text={m.local_auth_create_secure_button()}
             onClick={() => onSetPassword(password, confirmPassword)}
           />
-          <Button size="SM" theme="light" text={m.local_auth_create_not_now_button()} onClick={onCancel} />
+          <Button
+            size="SM"
+            theme="light"
+            text={m.local_auth_create_not_now_button()}
+            onClick={onCancel}
+          />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
@@ -282,11 +298,7 @@ function UpdatePasswordModal({
   onCancel,
   error,
 }: {
-  onUpdatePassword: (
-    oldPassword: string,
-    newPassword: string,
-    confirmNewPassword: string,
-  ) => void;
+  onUpdatePassword: (oldPassword: string, newPassword: string, confirmNewPassword: string) => void;
   onCancel: () => void;
   error: string | null;
 }) {

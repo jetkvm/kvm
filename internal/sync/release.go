@@ -90,3 +90,7 @@ type Once struct {
 func (o *Once) Do(f func()) {
 	o.mu.Do(f)
 }
+
+// LogDangledLocks is a no-op in non-synctrace builds
+func LogDangledLocks() {
+}

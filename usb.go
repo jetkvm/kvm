@@ -102,9 +102,6 @@ func checkUSBState() {
 	defer usbStateLock.Unlock()
 
 	newState := gadget.GetUsbState()
-
-	usbLogger.Trace().Str("old", usbState).Str("new", newState).Msg("Checking USB state")
-
 	if newState == usbState {
 		return
 	}

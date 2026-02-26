@@ -1,12 +1,12 @@
 package kvm
 
 import (
-	"fmt"
+	"io"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/jetkvm/kvm/internal/supervisor"
+	"github.com/jetkvm/kvm/internal/sync"
 )
 
 const (
@@ -68,14 +68,15 @@ func checkFailsafeReason() {
 		}
 
 		// open the last crash log file and find if it contains the string "panic"
-		content, err := os.ReadFile(lastCrashPath)
+		// read only the last 50KB to avoid memory issues with large log files
+		content, err := readFileTail(lastCrashPath, 50*1024)
 		if err != nil {
 			l.Warn().Err(err).Msg("failed to read last crash log")
 			return
 		}
 
 		// unlink the last crash log file
-		failsafeCrashLog = string(content)
+		failsafeCrashLog = content
 		_ = os.Remove(lastCrashPath)
 
 		// TODO: read the goroutine stack trace and check which goroutine is panicking
@@ -93,6 +94,34 @@ func checkFailsafeReason() {
 	})
 }
 
+// readFileTail reads at most maxBytes from the end of a file.
+// This prevents memory issues when reading potentially large log files.
+func readFileTail(path string, maxBytes int64) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+
+	size := fi.Size()
+	if size > maxBytes {
+		if _, err := f.Seek(size-maxBytes, io.SeekStart); err != nil {
+			return "", err
+		}
+	}
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func notifyFailsafeMode(session *Session) {
 	if !failsafeModeActive || session == nil {
 		return
@@ -104,12 +133,4 @@ func notifyFailsafeMode(session *Session) {
 		Active: true,
 		Reason: failsafeModeReason,
 	}, session)
-}
-
-func rpcGetFailsafeLogs() (string, error) {
-	if !failsafeModeActive {
-		return "", fmt.Errorf("failsafe mode is not active")
-	}
-
-	return failsafeCrashLog, nil
 }

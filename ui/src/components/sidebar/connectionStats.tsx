@@ -124,17 +124,28 @@ export default function ConnectionStatsSidebar() {
                     </div>
                     <div className="flex items-center">
                       <GridCard cardClassName="rounded-r-none">
-                        <div className="h-[34px] flex items-center text-xs select-all text-black font-mono dark:text-white px-3 ">
+                        <div className="flex h-[34px] items-center px-3 font-mono text-xs text-black select-all dark:text-white">
                           {remoteIPAddress}
                         </div>
                       </GridCard>
-                      <Button className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20" size="SM" type="button" theme="light" LeadingIcon={LuCopy} onClick={async () => {
-                        if (await copy(remoteIPAddress)) {
-                          notifications.success((m.connection_stats_remote_ip_address_copy_success({ ip: remoteIPAddress })));
-                        } else {
-                          notifications.error(m.connection_stats_remote_ip_address_copy_error());
-                        }
-                      }} />
+                      <Button
+                        className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20"
+                        size="SM"
+                        type="button"
+                        theme="light"
+                        LeadingIcon={LuCopy}
+                        onClick={async () => {
+                          if (await copy(remoteIPAddress)) {
+                            notifications.success(
+                              m.connection_stats_remote_ip_address_copy_success({
+                                ip: remoteIPAddress,
+                              }),
+                            );
+                          } else {
+                            notifications.error(m.connection_stats_remote_ip_address_copy_error());
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 )}
@@ -184,10 +195,7 @@ export default function ConnectionStatsSidebar() {
                   data={jitterBufferAvgDelayData}
                   gate={inboundVideoRtpStats}
                   supported={
-                    someIterable(
-                      inboundVideoRtpStats,
-                      ([, x]) => x.jitterBufferDelay != null,
-                    ) &&
+                    someIterable(inboundVideoRtpStats, ([, x]) => x.jitterBufferDelay != null) &&
                     someIterable(
                       inboundVideoRtpStats,
                       ([, x]) => x.jitterBufferEmittedCount != null,

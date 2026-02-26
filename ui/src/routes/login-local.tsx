@@ -40,6 +40,12 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
 
     if (response.ok) {
       return redirect("/");
+    } else if (response.status === 429) {
+      // Rate limited - extract retry time from response
+      const data = await response.json();
+      const retryAfter = data.retry_after || 60;
+      const minutes = Math.ceil(retryAfter / 60);
+      return { error: m.local_auth_error_rate_limited({ minutes: minutes.toString() }) };
     } else {
       return { error: m.invalid_password() };
     }
@@ -62,11 +68,7 @@ export default function LoginLocalRoute() {
           <div className="isolate flex h-full w-full items-center justify-center">
             <div className="-mt-32 max-w-2xl space-y-8">
               <div className="flex items-center justify-center">
-                <img
-                  src={LogoWhiteIcon}
-                  alt=""
-                  className="-ml-4 hidden h-[32px] dark:block"
-                />
+                <img src={LogoWhiteIcon} alt="" className="-ml-4 hidden h-[32px] dark:block" />
                 <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
               </div>
 

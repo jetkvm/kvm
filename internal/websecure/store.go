@@ -6,7 +6,8 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/rs/zerolog"
 )

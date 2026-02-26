@@ -2,10 +2,12 @@ package native
 
 import (
 	"os"
-	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/sync"
+
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/rs/zerolog"
 )
 
@@ -38,6 +40,8 @@ type NativeOptions struct {
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnNativeRestart      func()
+	// GetSessionInfo returns session diagnostics for crash logging.
+	GetSessionInfo func() diagnostics.SessionInfo
 }
 
 type VideoStreamingStatus uint8

@@ -40,13 +40,7 @@ export default function useMouse() {
       }
       setMouseMove({ x, y, buttons });
     },
-    [
-      send,
-      reportRelMouseEvent,
-      setMouseMove,
-      mouseMode,
-      rpcHidReady,
-    ],
+    [send, reportRelMouseEvent, setMouseMove, mouseMode, rpcHidReady],
   );
 
   const getRelMouseMoveHandler = useCallback(
@@ -72,56 +66,52 @@ export default function useMouse() {
       // We set that for the debug info bar
       setMousePosition(x, y);
     },
-    [
-      send,
-      reportAbsMouseEvent,
-      setMousePosition,
-      mouseMode,
-      rpcHidReady,
-    ],
+    [send, reportAbsMouseEvent, setMousePosition, mouseMode, rpcHidReady],
   );
 
   const getAbsMouseMoveHandler = useCallback(
-    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) => (e: MouseEvent) => {
-      if (!videoClientWidth || !videoClientHeight) return;
-      if (mouseMode !== "absolute") return;
+    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
+      (e: MouseEvent) => {
+        if (!videoClientWidth || !videoClientHeight) return;
+        if (mouseMode !== "absolute") return;
 
-      // Get the aspect ratios of the video element and the video stream
-      const videoElementAspectRatio = videoClientWidth / videoClientHeight;
-      const videoStreamAspectRatio = videoWidth / videoHeight;
+        // Get the aspect ratios of the video element and the video stream
+        const videoElementAspectRatio = videoClientWidth / videoClientHeight;
+        const videoStreamAspectRatio = videoWidth / videoHeight;
 
-      // Calculate the effective video display area
-      let effectiveWidth = videoClientWidth;
-      let effectiveHeight = videoClientHeight;
-      let offsetX = 0;
-      let offsetY = 0;
+        // Calculate the effective video display area
+        let effectiveWidth = videoClientWidth;
+        let effectiveHeight = videoClientHeight;
+        let offsetX = 0;
+        let offsetY = 0;
 
-      if (videoElementAspectRatio > videoStreamAspectRatio) {
-        // Pillarboxing: black bars on the left and right
-        effectiveWidth = videoClientHeight * videoStreamAspectRatio;
-        offsetX = (videoClientWidth - effectiveWidth) / 2;
-      } else if (videoElementAspectRatio < videoStreamAspectRatio) {
-        // Letterboxing: black bars on the top and bottom
-        effectiveHeight = videoClientWidth / videoStreamAspectRatio;
-        offsetY = (videoClientHeight - effectiveHeight) / 2;
-      }
+        if (videoElementAspectRatio > videoStreamAspectRatio) {
+          // Pillarboxing: black bars on the left and right
+          effectiveWidth = videoClientHeight * videoStreamAspectRatio;
+          offsetX = (videoClientWidth - effectiveWidth) / 2;
+        } else if (videoElementAspectRatio < videoStreamAspectRatio) {
+          // Letterboxing: black bars on the top and bottom
+          effectiveHeight = videoClientWidth / videoStreamAspectRatio;
+          offsetY = (videoClientHeight - effectiveHeight) / 2;
+        }
 
-      // Clamp mouse position within the effective video boundaries
-      const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
-      const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
+        // Clamp mouse position within the effective video boundaries
+        const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
+        const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
 
-      // Map clamped mouse position to the video stream's coordinate system
-      const relativeX = (clampedX - offsetX) / effectiveWidth;
-      const relativeY = (clampedY - offsetY) / effectiveHeight;
+        // Map clamped mouse position to the video stream's coordinate system
+        const relativeX = (clampedX - offsetX) / effectiveWidth;
+        const relativeY = (clampedY - offsetY) / effectiveHeight;
 
-      // Convert to HID absolute coordinate system (0-32767 range)
-      const x = Math.round(relativeX * 32767);
-      const y = Math.round(relativeY * 32767);
+        // Convert to HID absolute coordinate system (0-32767 range)
+        const x = Math.round(relativeX * 32767);
+        const y = Math.round(relativeY * 32767);
 
-      // Send mouse movement
-      const { buttons } = e;
-      sendAbsMouseMovement(x, y, buttons);
-    }, [mouseMode, sendAbsMouseMovement],
+        // Send mouse movement
+        const { buttons } = e;
+        sendAbsMouseMovement(x, y, buttons);
+      },
+    [mouseMode, sendAbsMouseMovement],
   );
 
   const getMouseWheelHandler = useCallback(

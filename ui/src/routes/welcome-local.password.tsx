@@ -13,6 +13,7 @@ import { Button } from "@components/Button";
 import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
+import { MIN_PASSWORD_LENGTH } from "@routes/devices.$id.settings.access.local-auth";
 
 import { DeviceStatus } from "./welcome-local";
 
@@ -27,8 +28,12 @@ const loader: LoaderFunction = async () => {
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
-  const password = formData.get("password");
+  const password = formData.get("password") as string;
   const confirmPassword = formData.get("confirmPassword");
+
+  if (!password || password.length < MIN_PASSWORD_LENGTH) {
+    return { error: m.local_auth_error_password_too_short() };
+  }
 
   if (password !== confirmPassword) {
     return { error: m.local_auth_error_passwords_not_match() };
@@ -72,13 +77,9 @@ export default function WelcomeLocalPasswordRoute() {
         <Container>
           <div className="isolate flex h-full w-full items-center justify-center">
             <div className="max-w-2xl space-y-8">
-              <div className="animate-fadeIn flex items-center justify-center opacity-0">
-                <img
-                  src={LogoWhiteIcon}
-                  alt=""
-                  className="-ml-4 hidden h-[32px] dark:block"
-                />
-                <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
+              <div className="flex animate-fadeIn items-center justify-center opacity-0">
+                <img src={LogoWhiteIcon} alt="" className="-ml-4 hidden h-8 dark:block" />
+                <img src={LogoBlueIcon} alt="" className="-ml-4 h-8 dark:hidden" />
               </div>
 
               <div
@@ -96,10 +97,7 @@ export default function WelcomeLocalPasswordRoute() {
               <Fieldset className="space-y-12">
                 <Form method="POST" className="mx-auto max-w-sm space-y-4">
                   <div className="space-y-4">
-                    <div
-                      className="animate-fadeIn opacity-0"
-                      style={{ animationDelay: "400ms" }}
-                    >
+                    <div className="animate-fadeIn opacity-0" style={{ animationDelay: "400ms" }}>
                       <InputFieldWithLabel
                         label={m.auth_mode_local_password()}
                         type={showPassword ? "text" : "password"}
@@ -130,10 +128,7 @@ export default function WelcomeLocalPasswordRoute() {
                         }
                       />
                     </div>
-                    <div
-                      className="animate-fadeIn opacity-0"
-                      style={{ animationDelay: "400ms" }}
-                    >
+                    <div className="animate-fadeIn opacity-0" style={{ animationDelay: "400ms" }}>
                       <InputFieldWithLabel
                         label={m.auth_mode_local_password_confirm_label()}
                         autoComplete="new-password"
@@ -145,12 +140,7 @@ export default function WelcomeLocalPasswordRoute() {
                     </div>
                   </div>
 
-                  {actionData?.error && <p className="text-sm text-red-600">{ }</p>}
-
-                  <div
-                    className="animate-fadeIn opacity-0"
-                    style={{ animationDelay: "600ms" }}
-                  >
+                  <div className="animate-fadeIn opacity-0" style={{ animationDelay: "600ms" }}>
                     <Button
                       size="LG"
                       theme="primary"
@@ -164,10 +154,11 @@ export default function WelcomeLocalPasswordRoute() {
               </Fieldset>
 
               <p
-                className="animate-fadeIn max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
+                className="max-w-md animate-fadeIn text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "800ms" }}
               >
-                {m.auth_mode_local_password_note()}&nbsp;<span className="font-bold">{m.auth_mode_local_password_note_local()}</span>
+                {m.auth_mode_local_password_note()}&nbsp;
+                <span className="font-bold">{m.auth_mode_local_password_note_local()}</span>
               </p>
             </div>
           </div>
