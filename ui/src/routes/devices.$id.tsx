@@ -1012,30 +1012,28 @@ export default function KvmIdRoute() {
                 )}
               </div>
             </div>
-            {!isDetachedWindow && <SidebarContainer sidebarView={sidebarView} />}
+            <SidebarContainer sidebarView={sidebarView} />
           </div>
         </div>
       </div>
 
-      {!isDetachedWindow && (
-        <div
-          className="z-50"
-          role="form"
-          onClick={e => e.stopPropagation()}
-          onMouseUp={e => e.stopPropagation()}
-          onMouseDown={e => e.stopPropagation()}
-          onKeyUp={e => e.stopPropagation()}
-          onKeyDown={e => {
-            e.stopPropagation();
-            if (e.key === "Escape") navigateTo("/");
-          }}
-        >
-          <Modal open={outlet !== null} onClose={onModalClose}>
-            {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
-            <Outlet context={{ setupPeerConnection }} />
-          </Modal>
-        </div>
-      )}
+      <div
+        className="z-50"
+        role="form"
+        onClick={e => e.stopPropagation()}
+        onMouseUp={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+        onKeyUp={e => e.stopPropagation()}
+        onKeyDown={e => {
+          e.stopPropagation();
+          if (e.key === "Escape") navigateTo("/");
+        }}
+      >
+        <Modal open={outlet !== null} onClose={onModalClose}>
+          {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
+          <Outlet context={{ setupPeerConnection }} />
+        </Modal>
+      </div>
 
       {!isDetachedWindow && terminalChannel && (
         <Terminal type="kvm" dataChannel={terminalChannel} title={m.kvm_terminal()} />
