@@ -139,7 +139,12 @@ function Terminal({
         // Intercept enter key to add terminator
         dataChannel.send(terminator ?? "");
       } else {
-        dataChannel.send(data);
+        dataChannel.send(
+          JSON.stringify({
+            type: "serial",
+            data, // string
+          }),
+        );
       }
     });
 
@@ -155,7 +160,13 @@ function Terminal({
 
     // Send initial terminal size
     if (dataChannel.readyState === "open") {
-      dataChannel.send(JSON.stringify({ rows: instance.rows, cols: instance.cols }));
+      dataChannel.send(
+        JSON.stringify({
+          type: "system",
+          name: "term.size",
+          data: { rows: instance.rows, cols: instance.cols },
+        }),
+      );
     }
 
     return () => {
@@ -207,12 +218,12 @@ function Terminal({
             [
               // Base styles
               "fixed bottom-0 w-full transform transition duration-500 ease-in-out",
-              "-translate-y-[0px]",
+              "translate-y-0",
             ],
             {
               "pointer-events-none translate-y-[500px] opacity-100 transition duration-300":
                 !isTerminalTypeEnabled,
-              "pointer-events-auto -translate-y-[0px] opacity-100 transition duration-300":
+              "pointer-events-auto translate-y-0 opacity-100 transition duration-300":
                 isTerminalTypeEnabled,
             },
           )}
@@ -232,6 +243,7 @@ function Terminal({
                     onClick={() => {
                       handleTerminalPauseChange();
                     }}
+                    data-testid={undefined}
                   />
                 )}
                 <Button
@@ -240,6 +252,7 @@ function Terminal({
                   text={m.hide()}
                   LeadingIcon={ChevronDownIcon}
                   onClick={() => setTerminalType("none")}
+                  data-testid={undefined}
                 />
               </div>
             </div>

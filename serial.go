@@ -262,7 +262,7 @@ func sendCustomCommand(command string) error {
 		return fmt.Errorf("serial mux not initialized")
 	}
 	payload := []byte(command)
-	serialMux.Enqueue(payload, "button", true) // echo if enabled
+	serialMux.Enqueue(payload, "button", true, TXUser) // echo if enabled
 	return nil
 }
 
@@ -321,6 +321,12 @@ type SerialSettings struct {
 	PreserveANSI       bool          `json:"preserveANSI"`       // Whether to preserve ANSI escape codes
 	ShowNLTag          bool          `json:"showNLTag"`          // Whether to show a special tag for new lines
 	Buttons            []QuickButton `json:"buttons"`            // Custom quick buttons
+}
+
+type DCMsg struct {
+	Type string          `json:"type"`           // "serial" | "system"
+	Name string          `json:"name,omitempty"` // e.g. "term.size"
+	Data json.RawMessage `json:"data"`           // string for "serial", object for "system"
 }
 
 func getSerialSettings() (SerialSettings, error) {
@@ -594,19 +600,61 @@ func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 		scopedLogger.Info().Msg("Opening serial channel from console broker")
 		if consoleBroker != nil {
 			consoleBroker.SetSink(dataChannelSink{dataChannel: dataChannel})
-			_ = dataChannel.SendText("RX: [serial attached]\n")
+			consoleBroker.Enqueue(consoleEvent{
+				kind: evRX,
+				data: []byte("[serial attached]\n"),
+			})
 			scopedLogger.Info().Msg("Serial channel is now active")
 		}
 	})
 
 	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		scopedLogger.Trace().Bytes("Data:", msg.Data).Msg("Sending data to serial mux")
-		if serialMux == nil {
+		if serialMux == nil || consoleBroker == nil {
 			return
 		}
 
-		// requestEcho=true — the mux will honor it only if EnableEcho is on
-		serialMux.Enqueue(msg.Data, "webrtc", true)
+		// Try parse as our JSON envelope
+		var m DCMsg
+		if msg.IsString && json.Unmarshal(msg.Data, &m) == nil && m.Type != "" {
+			switch m.Type {
+			case "serial":
+				// data is a JSON string (what the user typed)
+				var s string
+				if err := json.Unmarshal(m.Data, &s); err != nil {
+					scopedLogger.Warn().Err(err).Msg("Failed to decode serial payload string")
+					return
+				}
+
+				// Write to UART (echo controlled by serialConfig.EnableEcho inside mux)
+				serialMux.Enqueue([]byte(s), "webrtc", true, TXUser)
+
+			case "system":
+				// Display in terminal for debugging, but do NOT write to UART
+				// Show raw JSON that arrived
+				consoleBroker.Enqueue(consoleEvent{
+					kind:   evTX,
+					data:   append([]byte(nil), msg.Data...),
+					origin: TXSystem,
+				})
+
+				// Optional: handle known system message
+				if m.Name == "term.size" {
+					scopedLogger.Trace().RawJSON("msg", msg.Data).Msg("Terminal size message received on serial channel")
+				}
+
+			default:
+				// Unknown envelope type: show it as system/debug
+				consoleBroker.Enqueue(consoleEvent{
+					kind:   evTX,
+					data:   append([]byte(nil), msg.Data...),
+					origin: TXSystem,
+				})
+			}
+			return
+		}
+
+		// Backward compatibility: treat non-envelope as raw serial bytes
+		serialMux.Enqueue(msg.Data, "webrtc-raw", true, TXUser)
 	})
 
 	dataChannel.OnError(func(err error) {

@@ -210,9 +210,17 @@ const (
 	evTX                  // local echo after a successful write
 )
 
+type TXOrigin int
+
+const (
+	TXUser TXOrigin = iota
+	TXSystem
+)
+
 type consoleEvent struct {
-	kind consoleEventKind
-	data []byte
+	kind   consoleEventKind
+	data   []byte
+	origin TXOrigin // TXUser/TXSystem (only used for evTX)
 }
 
 type ConsoleBroker struct {
@@ -310,7 +318,7 @@ func (b *ConsoleBroker) loop() {
 				b.handleRX(ev.data)
 			case evTX:
 				scopedLogger.Trace().Msg("Processing TX echo request")
-				b.handleTX(ev.data)
+				b.handleTX(ev.data, ev.origin)
 			}
 
 		case <-b.quietCh():
@@ -401,22 +409,22 @@ func (b *ConsoleBroker) handleRX(data []byte) {
 	}
 }
 
-func (b *ConsoleBroker) handleTX(data []byte) {
+func (b *ConsoleBroker) handleTX(data []byte, origin TXOrigin) {
 	scopedLogger := serialLogger.With().Str("service", "Serial Console Broker TX handler").Logger()
 	if b.sink == nil || len(data) == 0 {
 		return
 	}
 	if b.rxAtLineEnd && b.pendingTX == nil {
 		scopedLogger.Trace().Msg("Emitting TX data to sink immediately")
-		b.emitTX(data)
+		b.emitTX(data, origin)
 		return
 	}
 	scopedLogger.Trace().Msg("Queuing TX data to emit after RX line completion or quiet period")
-	b.pendingTX = &consoleEvent{kind: evTX, data: append([]byte(nil), data...)}
+	b.pendingTX = &consoleEvent{kind: evTX, data: append([]byte(nil), data...), origin: origin}
 	b.startQuietTimer()
 }
 
-func (b *ConsoleBroker) emitTX(data []byte) {
+func (b *ConsoleBroker) emitTX(data []byte, origin TXOrigin) {
 	scopedLogger := serialLogger.With().Str("service", "Serial Console Broker TX emiter").Logger()
 	if len(data) == 0 {
 		return
@@ -427,20 +435,36 @@ func (b *ConsoleBroker) emitTX(data []byte) {
 		return
 	}
 
-	// Check if we’re in the middle of a TX line
+	prefix := fmt.Sprintf("%s: ", b.labelTX)
+	if origin == TXSystem {
+		prefix = fmt.Sprintf("%s[System]: ", b.labelTX)
+	}
+
+	// If RX is currently mid-line (rxAtLineEnd=false), TX should start on a new line
+	// (prevents TX from appearing glued to RX)
+	if !b.rxAtLineEnd && !b.txLineActive {
+		b.emitToTerminal(b.lineSep())
+		b.rxAtLineEnd = true
+	}
+
 	if !b.txLineActive {
-		// Start new TX line with prefix
 		scopedLogger.Trace().Msg("Emitting TX data to sink with prefix")
-		b.emitToTerminal(fmt.Sprintf("%s: %s", b.labelTX, text))
+		b.emitToTerminal(prefix + text)
 		b.txLineActive = true
 	} else {
-		// Continue current line (no prefix)
 		scopedLogger.Trace().Msg("Emitting TX data to sink without prefix")
 		b.emitToTerminal(text)
 	}
 
-	// If the data ends with a newline, mark TX line as complete
-	if strings.HasSuffix(text, "\r") || strings.HasSuffix(text, "\n") {
+	ended := endsWithEOL(text, b.norm.LineEnding)
+
+	// System messages should not leave the cursor hanging mid-line
+	if origin == TXSystem && !ended {
+		b.emitToTerminal(b.lineSep())
+		ended = true
+	}
+
+	if ended {
 		b.txLineActive = false
 	}
 }
@@ -449,7 +473,7 @@ func (b *ConsoleBroker) flushPendingTX() {
 	if b.pendingTX == nil {
 		return
 	}
-	b.emitTX(b.pendingTX.data)
+	b.emitTX(b.pendingTX.data, b.pendingTX.origin)
 	b.pendingTX = nil
 	b.txLineActive = false
 }
@@ -575,6 +599,7 @@ type txFrame struct {
 	payload []byte // should include terminator already
 	source  string // "webrtc" | "button"
 	echo    bool   // request TX echo (subject to global toggle)
+	origin  TXOrigin
 }
 
 type SerialMux struct {
@@ -605,9 +630,14 @@ func (m *SerialMux) Close() { close(m.done) }
 
 func (m *SerialMux) SetEchoEnabled(v bool) { m.echoEnabled.Store(v) }
 
-func (m *SerialMux) Enqueue(payload []byte, source string, requestEcho bool) {
+func (m *SerialMux) Enqueue(payload []byte, source string, requestEcho bool, origin TXOrigin) {
 	serialLogger.Trace().Str("src", source).Bool("echo", requestEcho).Msg("Enqueuing TX data to serial port")
-	m.txQ <- txFrame{payload: append([]byte(nil), payload...), source: source, echo: requestEcho}
+	m.txQ <- txFrame{
+		payload: append([]byte(nil), payload...),
+		source:  source,
+		echo:    requestEcho,
+		origin:  origin,
+	}
 }
 
 func (m *SerialMux) reader() {
@@ -649,7 +679,11 @@ func (m *SerialMux) writer() {
 			// echo (if requested AND globally enabled)
 			if f.echo && m.echoEnabled.Load() && m.broker != nil {
 				scopedLogger.Trace().Msg("Sending TX echo to console broker")
-				m.broker.Enqueue(consoleEvent{kind: evTX, data: append([]byte(nil), f.payload...)})
+				m.broker.Enqueue(consoleEvent{
+					kind:   evTX,
+					data:   append([]byte(nil), f.payload...),
+					origin: f.origin,
+				})
 			}
 		}
 	}
