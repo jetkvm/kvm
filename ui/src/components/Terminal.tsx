@@ -72,7 +72,7 @@ function Terminal({
   const { terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
   const { terminator } = useTerminalStore();
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
-  const [ terminalPaused, setTerminalPaused ] = useState(false)
+  const [terminalPaused, setTerminalPaused] = useState(false);
 
   const isTerminalTypeEnabled = useMemo(() => {
     console.log("Terminal type:", terminalType, "Checking against:", type);
@@ -96,7 +96,9 @@ function Terminal({
   const handleTerminalPauseChange = () => {
     send("setTerminalPaused", { terminalPaused: !terminalPaused }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(`Failed to update terminal pause state: ${resp.error.data || "Unknown error"}`);
+        notifications.error(
+          `Failed to update terminal pause state: ${resp.error.data || "Unknown error"}`,
+        );
         return;
       }
       setTerminalPaused(!terminalPaused);
@@ -112,7 +114,7 @@ function Terminal({
       "message",
       e => {
         if (typeof e.data === "string") {
-          instance.write(e.data);     // text path
+          instance.write(e.data); // text path
           return;
         }
         // binary path (if the server ever sends bytes)
@@ -189,10 +191,13 @@ function Terminal({
     };
   }, [instance]);
 
-  const sendLine = useCallback((line: string) => {
-    // Just send; line ending/echo/normalization handled in serial.go
-    dataChannel.send(line + terminator);
-  }, [dataChannel, terminator]);
+  const sendLine = useCallback(
+    (line: string) => {
+      // Just send; line ending/echo/normalization handled in serial.go
+      dataChannel.send(line + terminator);
+    },
+    [dataChannel, terminator],
+  );
 
   return (
     <div onKeyDown={e => e.stopPropagation()} onKeyUp={e => e.stopPropagation()}>
@@ -240,7 +245,11 @@ function Terminal({
             </div>
 
             <div className="h-[calc(100%-36px)] p-3">
-              <div key="serial" ref={ref} style={{height: terminalType === "serial" ? "90%" : "100%", width: "100%" }} />
+              <div
+                key="serial"
+                ref={ref}
+                style={{ height: terminalType === "serial" ? "90%" : "100%", width: "100%" }}
+              />
               {terminalType == "serial" && (
                 <CommandInput
                   placeholder="Type serial command…  (Enter to send • ↑/↓ history • Ctrl+R search)"
