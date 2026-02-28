@@ -12,18 +12,43 @@ function sudo() {
 set -ex
 
 export DEBIAN_FRONTEND=noninteractive
+ARCH="$(dpkg --print-architecture)"
+APT_PACKAGES=(
+  iputils-ping
+  build-essential
+  device-tree-compiler
+  gperf
+  gdb-multiarch
+  libnl-3-dev
+  libdbus-1-dev
+  libelf-dev
+  libmpc-dev
+  dwarves
+  bc
+  openssl
+  flex
+  bison
+  libssl-dev
+  python3
+  python-is-python3
+  texinfo
+  kmod
+  cmake
+  wget
+  zstd
+  python3-venv
+  python3-kconfiglib
+)
+
+if [ "${ARCH}" = "amd64" ]; then
+  APT_PACKAGES+=(g++-multilib gcc-multilib)
+else
+  echo "Skipping gcc/g++ multilib packages on ${ARCH}."
+fi
+
 sudo apt-get update && \
-sudo apt-get install -y --no-install-recommends \
-  iputils-ping \
-  build-essential \
-  device-tree-compiler \
-  gperf g++-multilib gcc-multilib \
-  gdb-multiarch \
-  libnl-3-dev libdbus-1-dev libelf-dev libmpc-dev dwarves \
-  bc openssl flex bison libssl-dev python3 python-is-python3 texinfo kmod cmake \
-  wget zstd \
-  python3-venv python3-kconfiglib \
-  && sudo rm -rf /var/lib/apt/lists/*
+    sudo apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}" && \
+    sudo rm -rf /var/lib/apt/lists/*
 
 # Install buildkit
 BUILDKIT_VERSION="v0.2.5"
