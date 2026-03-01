@@ -71,7 +71,7 @@
     "@inlang/paraglide-js": "^2.6.0",
     "@inlang/plugin-m-function-matcher": "^2.1.0",
     "@inlang/plugin-message-format": "^4.0.0",
-    "@inlang/sdk": "^2.4.9",
+    "@inlang/sdk": "^2.7.0",
     "@playwright/test": "^1.49.0",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.18",
