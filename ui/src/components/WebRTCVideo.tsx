@@ -6,6 +6,7 @@ import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
+import { useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
@@ -30,6 +31,8 @@ export default function WebRTCVideo({
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
+  const [isWaking, setIsWaking] = useState(false);
+  const { send } = useJsonRpc();
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
@@ -38,6 +41,18 @@ export default function WebRTCVideo({
 
   const isPointerLockPossible =
     window.location.protocol === "https:" || window.location.hostname === "localhost";
+
+  // Wake host handler - sends a spacebar press+release to wake sleeping host
+  const handleWakeHost = useCallback(() => {
+    setIsWaking(true);
+    // Send spacebar (HID usage 0x2C) press
+    send("keyboardReport", { keys: [0x2c, 0, 0, 0, 0, 0], modifier: 0 }, () => {
+      // Send key release
+      send("keyboardReport", { keys: [0, 0, 0, 0, 0, 0], modifier: 0 }, () => {
+        setTimeout(() => setIsWaking(false), 3000);
+      });
+    });
+  }, [send]);
 
   // Store hooks
   const settings = useSettingsStore();
@@ -675,7 +690,12 @@ export default function WebRTCVideo({
                         >
                           <div className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
-                            <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                            <HDMIErrorOverlay
+                              show={hdmiError}
+                              hdmiState={hdmiState}
+                              onWakeHost={handleWakeHost}
+                              isWaking={isWaking}
+                            />
                             <NoAutoplayPermissionsOverlay
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {

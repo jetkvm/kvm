@@ -216,9 +216,11 @@ export function PeerConnectionDisconnectedOverlay({ show }: PeerConnectionDiscon
 interface HDMIErrorOverlayProps {
   readonly show: boolean;
   readonly hdmiState: string;
+  readonly onWakeHost?: () => void;
+  readonly isWaking?: boolean;
 }
 
-export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
+export function HDMIErrorOverlay({ show, hdmiState, onWakeHost, isWaking }: HDMIErrorOverlayProps) {
   const isNoSignal = hdmiState === "no_signal";
   const isOtherError = hdmiState === "no_lock" || hdmiState === "out_of_range";
 
@@ -247,9 +249,10 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                         <li>{m.video_overlay_no_hdmi_ensure_cable()}</li>
                         <li>{m.video_overlay_no_hdmi_ensure_power()}</li>
                         <li>{m.video_overlay_no_hdmi_adapter_compat()}</li>
+                        <li>{m.video_overlay_no_hdmi_try_wake()}</li>
                       </ul>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-x-2">
                       <LinkButton
                         to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"
@@ -257,6 +260,19 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                         TrailingIcon={ArrowRightIcon}
                         size="SM"
                       />
+                      {onWakeHost && (
+                        <Button
+                          onClick={onWakeHost}
+                          text={
+                            isWaking
+                              ? m.video_overlay_no_hdmi_wake_host_sending()
+                              : m.video_overlay_no_hdmi_wake_host()
+                          }
+                          size="SM"
+                          theme="primary"
+                          disabled={isWaking}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>

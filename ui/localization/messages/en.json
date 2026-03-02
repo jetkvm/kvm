@@ -1093,5 +1093,8 @@
     "wake_on_lan_invalid_mac": "Invalid MAC address",
     "wake_on_lan_magic_sent_success": "Magic Packet sent successfully",
     "welcome_to_jetkvm": "Welcome to JetKVM",
-    "welcome_to_jetkvm_description": "Control any computer remotely"
+    "welcome_to_jetkvm_description": "Control any computer remotely",
+    "video_overlay_no_hdmi_try_wake": "If the target computer is sleeping, you can try waking it with a simulated keyboard press",
+    "video_overlay_no_hdmi_wake_host": "Try Wake Host",
+    "video_overlay_no_hdmi_wake_host_sending": "Sending wake signal..."
 }
