@@ -34,7 +34,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 			"bcdDevice": "0x0100", // USB2
 		},
 		configAttrs: gadgetAttributes{
-			"MaxPower": "250", // in unit of 2mA
+			"MaxPower":      "250", // in unit of 2mA
+			"bmAttributes": "0xa0", // bus-powered + remote wakeup
 		},
 	},
 	"base_info": {
