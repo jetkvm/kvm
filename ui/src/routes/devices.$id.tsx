@@ -1035,11 +1035,11 @@ export default function KvmIdRoute() {
         </Modal>
       </div>
 
-      {!isDetachedWindow && terminalChannel && (
+      {terminalChannel && (
         <Terminal type="kvm" dataChannel={terminalChannel} title={m.kvm_terminal()} />
       )}
 
-      {!isDetachedWindow && serialConsole && (
+      {serialConsole && (
         <Terminal type="serial" dataChannel={serialConsole} title={m.serial_console()} />
       )}
     </FeatureFlagProvider>

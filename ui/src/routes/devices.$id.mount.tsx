@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { LuLink, LuRadioReceiver, LuCheck, LuUpload } from "react-icons/lu";
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
@@ -24,6 +23,7 @@ import { DEVICE_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 
 import {
   MountMediaState,
@@ -33,15 +33,13 @@ import {
 } from "../hooks/stores";
 
 export default function MountRoute() {
-  const navigate = useNavigate();
-  return <Dialog onClose={() => navigate("..")} />;
+  const { navigateTo } = useDeviceUiNavigation();
+  return <Dialog onClose={() => navigateTo("/")} />;
 }
 
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const { modalView, setModalView, setRemoteVirtualMediaState, errorMessage, setErrorMessage } =
     useMountMediaStore();
-  const navigate = useNavigate();
-
   const [incompleteFileName, setIncompleteFileName] = useState<string | null>(null);
   const [mountInProgress, setMountInProgress] = useState(false);
   function clearMountMediaState() {
@@ -76,7 +74,7 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
       clearMountMediaState();
       syncRemoteVirtualMediaState()
-        .then(() => navigate(".."))
+        .then(() => onClose())
         .catch(err => {
           triggerError(err instanceof Error ? err.message : String(err));
         })
@@ -96,7 +94,7 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
       clearMountMediaState();
       syncRemoteVirtualMediaState()
         .then(() => {
-          navigate("..");
+          onClose();
         })
         .catch(err => {
           triggerError(err instanceof Error ? err.message : String(err));
