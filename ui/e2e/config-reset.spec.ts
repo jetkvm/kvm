@@ -3,10 +3,10 @@ import { test, expect } from "@playwright/test";
 import { waitForWebRTCReady, verifyHidAndVideo } from "./helpers";
 
 // Time to wait after reset config before reloading (ms)
-const RESET_CONFIG_DELAY = 7000;
+const RESET_CONFIG_DELAY = 2000;
 
 // Time to wait for welcome screen animations (ms)
-const ANIMATION_DELAY = 3000;
+const ANIMATION_DELAY = 500;
 
 test.describe("Config Reset and Welcome Screen Tests", () => {
   // This test modifies device configuration, so use a longer timeout
@@ -75,7 +75,7 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
     // === Step 7: Wait for mode selection page ===
     await page.waitForURL("**/welcome/mode", { timeout: 10000 });
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(1000); // Wait for animations
+    await page.waitForTimeout(500); // Wait for animations
 
     // === Step 8: Select "No Password" option ===
     const noPasswordRadio = page.locator('input[type="radio"][value="noPassword"]');

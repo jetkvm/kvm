@@ -53,6 +53,16 @@ done
 
 export JETKVM_URL="http://$DEVICE_IP"
 
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+LOG_DIR="$SCRIPT_DIR/ui/test-results/device-logs"
+PRE_LOG_DIR=$(mktemp -d)
+
+# Capture device state before tests (to temp dir since Playwright wipes test-results/)
+echo -e "${CYAN}Capturing pre-test device logs...${NC}"
+sshdev 'cat /userdata/jetkvm/last.log' > "$PRE_LOG_DIR/pre-test-last.log" 2>/dev/null || true
+sshdev 'cat /userdata/kvm_config.json' > "$PRE_LOG_DIR/pre-test-config.json" 2>/dev/null || true
+sshdev 'ls -la /userdata/ /userdata/jetkvm/' > "$PRE_LOG_DIR/pre-test-fs.txt" 2>/dev/null || true
+
 cd ui
 
 if [ ! -d "node_modules" ]; then
@@ -74,6 +84,20 @@ else
     echo ""
     echo -e "${RED}✗ Core E2E tests failed${NC}"
     TEST_RESULT=1
+fi
+
+# Capture device state after tests (especially useful on failure)
+mkdir -p "$LOG_DIR"
+cp "$PRE_LOG_DIR"/* "$LOG_DIR/" 2>/dev/null || true
+rm -rf "$PRE_LOG_DIR"
+echo -e "${CYAN}Capturing post-test device logs...${NC}"
+sshdev 'cat /userdata/jetkvm/last.log' > "$LOG_DIR/post-test-last.log" 2>/dev/null || true
+sshdev 'cat /userdata/kvm_config.json' > "$LOG_DIR/post-test-config.json" 2>/dev/null || true
+sshdev 'ls -la /userdata/ /userdata/jetkvm/' > "$LOG_DIR/post-test-fs.txt" 2>/dev/null || true
+sshdev 'dmesg | tail -100' > "$LOG_DIR/post-test-dmesg.txt" 2>/dev/null || true
+
+if [ "$TEST_RESULT" -ne 0 ]; then
+    echo -e "${YELLOW}Device logs saved to $LOG_DIR/${NC}"
 fi
 
 cd - >/dev/null

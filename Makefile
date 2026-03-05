@@ -67,15 +67,23 @@ check_signing_key:
 		exit 1; \
 	}
 
-# E2E tests - normal development lane (all normal tests, no OTA/signing tests)
-test_e2e: build_dev
+# E2E tests - normal development lane (core tests + unsigned OTA, no signing key needed)
+test_e2e: frontend
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
 		echo "Usage: make test_e2e DEVICE_IP=<ip>"; \
 		exit 1; \
-	fi; \
-	cd ui && npm ci && npx playwright install chromium && cd ..; \
+	fi
+	$(eval TEST_VERSION := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M))
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_NATIVE_IF_EXISTS=1 SKIP_UI_BUILD=1
+	mv bin/jetkvm_app bin/jetkvm_app_baseline
+	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_NATIVE_IF_EXISTS=1 SKIP_UI_BUILD=1
+	cd ui && npm ci && npx playwright install chromium && cd ..
 	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
+	./scripts/test_unsigned_specific_ota.sh "$(DEVICE_IP)" \
+		"bin/jetkvm_app_baseline" \
+		"bin/jetkvm_app" \
+		"$(TEST_VERSION)"
 
 # Production release validation lane
 test_production_release:
