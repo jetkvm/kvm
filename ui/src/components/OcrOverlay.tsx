@@ -188,6 +188,19 @@ function OcrOverlayContent() {
   const [selectionRect, setSelectionRect] = useState<Rect | null>(null);
   const [ocrResult, setOcrResult] = useState<string>("");
 
+  // Close the ConfirmDialog first (allowing exit animation), then unmount.
+  const closeOverlay = useCallback(() => {
+    if (status === "processing" || status === "result") {
+      setStatus("idle");
+      setSelectionRect(null);
+      setSelectionStart(null);
+      // Wait for the HeadlessUI Dialog leave transition (200ms) before unmounting
+      setTimeout(() => setOcrMode(false), 200);
+    } else {
+      setOcrMode(false);
+    }
+  }, [status, setOcrMode]);
+
   // Track unmount so async OCR callbacks can bail out
   useEffect(() => {
     return () => {
@@ -204,8 +217,11 @@ function OcrOverlayContent() {
     }
   }, [status, setDisableVideoFocusTrap]);
 
-  // Escape key exits OCR mode
+  // Escape key exits OCR mode (only when no dialog is open — the dialog
+  // handles its own Escape via HeadlessUI, which calls closeOverlay)
   useEffect(() => {
+    if (status === "processing" || status === "result") return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -216,20 +232,21 @@ function OcrOverlayContent() {
 
     document.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [setOcrMode]);
+  }, [setOcrMode, status]);
 
-  // Listen for the native copy event to confirm copy and close the overlay.
+  // Listen for the native copy event (e.g. Cmd+C on selected text) to
+  // confirm copy and close the overlay.
   useEffect(() => {
     if (status !== "result") return;
 
     const handleCopy = () => {
       notifications.success(m.ocr_copied(), { duration: 4000 });
-      setOcrMode(false);
+      closeOverlay();
     };
 
     document.addEventListener("copy", handleCopy);
     return () => document.removeEventListener("copy", handleCopy);
-  }, [status, setOcrMode]);
+  }, [status, closeOverlay]);
 
   // Auto-focus and select text when result appears
   useEffect(() => {
@@ -336,22 +353,16 @@ function OcrOverlayContent() {
           setStatus("result");
         } else {
           notifications.error(m.ocr_no_text_detected());
-          setStatus("idle");
-          setSelectionStart(null);
-          setSelectionRect(null);
-          setOcrMode(false);
+          closeOverlay();
         }
       } catch (err) {
         if (!mountedRef.current) return;
         console.error("OCR failed:", err);
         notifications.error(m.ocr_failed());
-        setStatus("idle");
-        setSelectionStart(null);
-        setSelectionRect(null);
-        setOcrMode(false);
+        closeOverlay();
       }
     },
-    [status, selectionRect, videoElement, setOcrMode],
+    [status, selectionRect, videoElement, closeOverlay],
   );
 
   // Compute selection rectangle position in CSS pixels relative to the overlay.
@@ -422,7 +433,7 @@ function OcrOverlayContent() {
             style={selectionStyle}
           >
             {selectionRect.width >= 10 && selectionRect.height >= 10 && (
-              <Card className="absolute right-0 -bottom-6 w-auto px-1.5 py-0.5 text-[10px] font-medium tabular-nums">
+              <Card className="absolute right-0 -bottom-6 w-auto px-1.5 py-0.5 text-[10px] font-medium tabular-nums dark:text-white">
                 {selectionRect.width} &times; {selectionRect.height}
               </Card>
             )}
@@ -430,53 +441,48 @@ function OcrOverlayContent() {
         )}
       </motion.div>
 
-      {/* Processing dialog with skeleton loading and cancel option */}
+      {/* Single dialog for both processing and result states — avoids a
+          separate Modal that flickers on fast OCR, and allows the HeadlessUI
+          leave transition to play when closing. */}
       <ConfirmDialog
-        open={status === "processing"}
-        onClose={() => setOcrMode(false)}
-        title={m.ocr_recognizing()}
-        description={m.ocr_processing_description()}
+        open={status === "processing" || status === "result"}
+        onClose={closeOverlay}
+        title={status === "result" ? m.action_bar_copy_text() : m.ocr_recognizing()}
+        description={
+          status === "result" ? m.ocr_result_description() : m.ocr_processing_description()
+        }
         confirmText={m.ocr_copy_text()}
-        isConfirming={true}
-        onConfirm={() => {}}
-      >
-        <div className="mt-2 space-y-2">
-          <div className="h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-          <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-          <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-        </div>
-      </ConfirmDialog>
-
-      {/* OCR Result dialog */}
-      <ConfirmDialog
-        open={status === "result"}
-        onClose={() => setOcrMode(false)}
-        title={m.action_bar_copy_text()}
-        description={m.ocr_result_description()}
-        confirmText={m.ocr_copy_text()}
+        isConfirming={status === "processing"}
         onConfirm={() => {
           if (navigator.clipboard?.writeText) {
             navigator.clipboard.writeText(ocrResult).then(() => {
               notifications.success(m.ocr_copied(), { duration: 4000 });
-              setOcrMode(false);
+              closeOverlay();
             });
           } else if (resultRef.current) {
             resultRef.current.focus();
             resultRef.current.select();
             document.execCommand("copy");
-            notifications.success(m.ocr_copied(), { duration: 4000 });
-            setOcrMode(false);
+            // Don't show toast here — the copy event listener handles it
           }
         }}
       >
-        <div className="mt-2">
-          <TextArea
-            ref={resultRef}
-            value={ocrResult}
-            readOnly
-            rows={Math.min(10, ocrResult.split("\n").length + 1)}
-          />
-        </div>
+        {status === "processing" ? (
+          <div className="mt-2 space-y-2">
+            <div className="h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+            <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+            <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          </div>
+        ) : (
+          <div className="mt-2">
+            <TextArea
+              ref={resultRef}
+              value={ocrResult}
+              readOnly
+              rows={Math.min(10, ocrResult.split("\n").length + 1)}
+            />
+          </div>
+        )}
       </ConfirmDialog>
     </>
   );
