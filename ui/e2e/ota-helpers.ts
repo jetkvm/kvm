@@ -108,7 +108,7 @@ export async function createMockUpdateServer(
       systemMaxSatisfying: "*",
     };
 
-    if (signaturePath && fs.existsSync(signaturePath)) {
+    if (signaturePath) {
       response.appSigUrl = `http://${localIP}:${actualPort}/app/${version}/jetkvm_app.sig`;
     }
 

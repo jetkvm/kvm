@@ -202,17 +202,24 @@ func TestClearCache(t *testing.T) {
 	assert.Equal(t, int32(2), callCount.Load(), "should re-fetch after ClearCache")
 }
 
-func TestUpdateMemoryCache_InvalidKey(t *testing.T) {
+func TestUpdateMemoryCache_StoresKeyAndKeyring(t *testing.T) {
+	armoredKey := generateTestArmoredKey(t)
+	fp := extractFingerprintFromArmoredKey(t, armoredKey)
+
 	v := newTestGPGVerifier()
+	v.rootKeyFP = fp
 
-	// Try to cache invalid data
-	v.updateMemoryCache([]byte("this is not a valid PGP key"))
+	// Pre-validate a keyring and cache it
+	keyring, err := v.parseAndValidateKeyring(armoredKey)
+	require.NoError(t, err)
 
-	// Verify nothing was cached
+	v.updateMemoryCache(armoredKey, keyring)
+
+	// Verify it was cached
 	v.mu.RLock()
-	assert.Nil(t, v.cachedKey, "invalid key should not be cached")
-	assert.Nil(t, v.keyring, "keyring should not be set for invalid key")
-	assert.True(t, v.cachedKeyTime.IsZero(), "cache time should remain zero")
+	assert.NotNil(t, v.cachedKey, "key should be cached")
+	assert.NotNil(t, v.keyring, "keyring should be cached")
+	assert.False(t, v.cachedKeyTime.IsZero(), "cache time should be set")
 	v.mu.RUnlock()
 }
 

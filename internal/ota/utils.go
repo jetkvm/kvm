@@ -48,19 +48,13 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	downloadProgress := componentUpdate.downloadProgress
 
-	if _, err := os.Stat(path); err == nil {
-		traceLogger().Msg("removing existing file")
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("error removing existing file: %w", err)
-		}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error removing existing file: %w", err)
 	}
 
 	unverifiedPath := path + ".unverified"
-	if _, err := os.Stat(unverifiedPath); err == nil {
-		traceLogger().Msg("removing existing unverified file")
-		if err := os.Remove(unverifiedPath); err != nil {
-			return fmt.Errorf("error removing existing unverified file: %w", err)
-		}
+	if err := os.Remove(unverifiedPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error removing existing unverified file: %w", err)
 	}
 
 	traceLogger().Msg("creating unverified file")
