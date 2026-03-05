@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
 import "react-simple-keyboard/build/css/index.css";
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
+import { ChevronDownIcon, PauseCircleIcon, PlayCircleIcon } from "@heroicons/react/16/solid";
+import { useEffect, useMemo, useCallback, useState } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -8,10 +8,13 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 
-import { cx } from "@/cva.config";
-import { AvailableTerminalTypes, useUiStore } from "@hooks/stores";
-import { Button } from "@components/Button";
 import { m } from "@localizations/messages.js";
+import { cx } from "@/cva.config";
+import { AvailableTerminalTypes, useUiStore, useTerminalStore } from "@/hooks/stores";
+import { CommandInput } from "@/components/CommandInput";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import notifications from "@/notifications";
+import { Button } from "@components/Button";
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
 
@@ -67,9 +70,12 @@ function Terminal({
   readonly type: AvailableTerminalTypes;
 }) {
   const { terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
+  const { terminator } = useTerminalStore();
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
+  const [terminalPaused, setTerminalPaused] = useState(false);
 
   const isTerminalTypeEnabled = useMemo(() => {
+    console.log("Terminal type:", terminalType, "Checking against:", type);
     return terminalType == type;
   }, [terminalType, type]);
 
@@ -84,6 +90,20 @@ function Terminal({
   }, [setDisableVideoFocusTrap, isTerminalTypeEnabled]);
 
   const readyState = dataChannel.readyState;
+
+  const { send } = useJsonRpc();
+
+  const handleTerminalPauseChange = () => {
+    send("setTerminalPaused", { terminalPaused: !terminalPaused }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to update terminal pause state: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      setTerminalPaused(!terminalPaused);
+    });
+  };
   useEffect(() => {
     if (!instance) return;
     if (readyState !== "open") return;
@@ -93,6 +113,11 @@ function Terminal({
     dataChannel.addEventListener(
       "message",
       e => {
+        if (typeof e.data === "string") {
+          instance.write(e.data); // text path
+          return;
+        }
+        // binary path (if the server ever sends bytes)
         // Handle binary data differently based on browser implementation
         // Firefox sends data as blobs, chrome sends data as arraybuffer
         if (binaryType === "arraybuffer") {
@@ -110,7 +135,17 @@ function Terminal({
     );
 
     const onDataHandler = instance.onData(data => {
-      dataChannel.send(data);
+      if (data === "\r") {
+        // Intercept enter key to add terminator
+        dataChannel.send(terminator ?? "");
+      } else {
+        dataChannel.send(
+          JSON.stringify({
+            type: "serial",
+            data, // string
+          }),
+        );
+      }
     });
 
     // Setup escape key handler
@@ -125,7 +160,13 @@ function Terminal({
 
     // Send initial terminal size
     if (dataChannel.readyState === "open") {
-      dataChannel.send(JSON.stringify({ rows: instance.rows, cols: instance.cols }));
+      dataChannel.send(
+        JSON.stringify({
+          type: "system",
+          name: "term.size",
+          data: { rows: instance.rows, cols: instance.cols },
+        }),
+      );
     }
 
     return () => {
@@ -133,7 +174,7 @@ function Terminal({
       onDataHandler.dispose();
       onKeyHandler.dispose();
     };
-  }, [dataChannel, instance, readyState, setDisableVideoFocusTrap, setTerminalType]);
+  }, [dataChannel, instance, readyState, setDisableVideoFocusTrap, setTerminalType, terminator]);
 
   useEffect(() => {
     if (!instance) return;
@@ -161,6 +202,14 @@ function Terminal({
     };
   }, [instance]);
 
+  const sendLine = useCallback(
+    (line: string) => {
+      // Just send; line ending/echo/normalization handled in serial.go
+      dataChannel.send(line + terminator);
+    },
+    [dataChannel, terminator],
+  );
+
   return (
     <div onKeyDown={e => e.stopPropagation()} onKeyUp={e => e.stopPropagation()}>
       <div>
@@ -169,12 +218,12 @@ function Terminal({
             [
               // Base styles
               "fixed bottom-0 w-full transform transition duration-500 ease-in-out",
-              "-translate-y-[0px]",
+              "translate-y-0",
             ],
             {
               "pointer-events-none translate-y-[500px] opacity-100 transition duration-300":
                 !isTerminalTypeEnabled,
-              "pointer-events-auto -translate-y-[0px] opacity-100 transition duration-300":
+              "pointer-events-auto translate-y-0 opacity-100 transition duration-300":
                 isTerminalTypeEnabled,
             },
           )}
@@ -185,18 +234,42 @@ function Terminal({
                 {title}
               </h2>
               <div className="absolute right-2">
+                {terminalType == "serial" && (
+                  <Button
+                    size="XS"
+                    theme="light"
+                    text={terminalPaused ? "Resume" : "Pause"}
+                    LeadingIcon={terminalPaused ? PlayCircleIcon : PauseCircleIcon}
+                    onClick={() => {
+                      handleTerminalPauseChange();
+                    }}
+                    data-testid={undefined}
+                  />
+                )}
                 <Button
                   size="XS"
                   theme="light"
                   text={m.hide()}
                   LeadingIcon={ChevronDownIcon}
                   onClick={() => setTerminalType("none")}
+                  data-testid={undefined}
                 />
               </div>
             </div>
 
             <div className="h-[calc(100%-36px)] p-3">
-              <div ref={ref} style={{ height: "100%", width: "100%" }} />
+              <div
+                key="serial"
+                ref={ref}
+                style={{ height: terminalType === "serial" ? "90%" : "100%", width: "100%" }}
+              />
+              {terminalType == "serial" && (
+                <CommandInput
+                  placeholder="Type serial command…  (Enter to send • ↑/↓ history • Ctrl+R search)"
+                  onSend={sendLine}
+                  className="mt-2"
+                />
+              )}
             </div>
           </div>
         </div>
