@@ -187,11 +187,12 @@ function OcrOverlayContent() {
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<Rect | null>(null);
   const [ocrResult, setOcrResult] = useState<string>("");
+  const [isClosing, setIsClosing] = useState(false);
 
   // Close the ConfirmDialog first (allowing exit animation), then unmount.
   const closeOverlay = useCallback(() => {
     if (status === "processing" || status === "result") {
-      setStatus("idle");
+      setIsClosing(true);
       setSelectionRect(null);
       setSelectionStart(null);
       // Wait for the HeadlessUI Dialog leave transition (200ms) before unmounting
@@ -445,7 +446,7 @@ function OcrOverlayContent() {
           separate Modal that flickers on fast OCR, and allows the HeadlessUI
           leave transition to play when closing. */}
       <ConfirmDialog
-        open={status === "processing" || status === "result"}
+        open={(status === "processing" || status === "result") && !isClosing}
         onClose={closeOverlay}
         title={status === "result" ? m.action_bar_copy_text() : m.ocr_recognizing()}
         description={
