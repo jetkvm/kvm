@@ -134,6 +134,9 @@ func setupRouter() *gin.Engine {
 
 	// Public routes (no authentication required)
 	r.POST("/auth/login-local", handleLogin)
+	r.GET("/stream", handleStreamPage)
+	// Required by /stream for unauthenticated video playback.
+	r.POST("/webrtc/stream-session", handleWebRTCStreamSession)
 
 	// We use this to determine if the device is setup
 	r.GET("/device/status", handleDeviceStatus)
@@ -186,6 +189,7 @@ func setupRouter() *gin.Engine {
 		 */
 		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		protected.GET("/stream/raw", handleRawVideoStream)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
@@ -511,6 +515,10 @@ func handleLogin(c *gin.Context) {
 	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
+	if err := SaveConfig(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
+		return
+	}
 
 	// Set the cookie
 	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
