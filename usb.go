@@ -19,6 +19,8 @@ func initUsbGadget() {
 		usbLogger,
 	)
 
+	setUSBRecoveryTimer(time.Now())
+
 	go func() {
 		for {
 			checkUSBState()
@@ -81,9 +83,66 @@ func rpcGetKeysDownState() (state usbgadget.KeysDownState) {
 var (
 	usbState     = "unknown"
 	usbStateLock sync.Mutex
+
+	usbEmulationDesired = true
+	lastUSBRecoveryTry  time.Time
 )
 
+const usbRecoveryRetryInterval = 5 * time.Second
+
 func rpcGetUSBState() (state string) {
+	return gadget.GetUsbState()
+}
+
+func setUSBEmulationDesired(enabled bool) {
+	usbStateLock.Lock()
+	defer usbStateLock.Unlock()
+
+	usbEmulationDesired = enabled
+}
+
+func setUSBRecoveryTimer(lastAttempt time.Time) {
+	usbStateLock.Lock()
+	defer usbStateLock.Unlock()
+
+	lastUSBRecoveryTry = lastAttempt
+}
+
+func shouldAttemptUSBRecovery(state string, desired bool, lastAttempt time.Time, now time.Time) bool {
+	if state != "not attached" || !desired {
+		return false
+	}
+
+	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= usbRecoveryRetryInterval
+}
+
+func attemptUSBRecovery(state string) string {
+	now := time.Now()
+
+	usbStateLock.Lock()
+	desired := usbEmulationDesired
+	lastAttempt := lastUSBRecoveryTry
+	shouldRecover := shouldAttemptUSBRecovery(state, desired, lastAttempt, now)
+	if shouldRecover {
+		lastUSBRecoveryTry = now
+	}
+	usbStateLock.Unlock()
+
+	if !shouldRecover {
+		return state
+	}
+
+	usbLogger.Warn().Msg("USB gadget is detached while USB emulation should be enabled; rebinding USB gadget")
+
+	if err := gadget.RebindUsb(true); err != nil {
+		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget by rebinding USB device controller")
+		return state
+	}
+
+	if err := gadget.ReopenKeyboardHidFile(); err != nil {
+		usbLogger.Warn().Err(err).Msg("failed to reopen keyboard HID file after USB gadget rebind")
+	}
+
 	return gadget.GetUsbState()
 }
 
@@ -98,16 +157,27 @@ func triggerUSBStateUpdate() {
 }
 
 func checkUSBState() {
+	newState := gadget.GetUsbState()
+	if newState == "not attached" {
+		newState = attemptUSBRecovery(newState)
+	}
+
 	usbStateLock.Lock()
 	defer usbStateLock.Unlock()
 
-	newState := gadget.GetUsbState()
 	if newState == usbState {
 		return
 	}
 
+	oldState := usbState
 	usbState = newState
-	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
+	usbLogger.Info().Str("from", oldState).Str("to", newState).Msg("USB state changed")
+
+	if newState != "not attached" {
+		if err := gadget.OpenKeyboardHidFile(); err != nil {
+			usbLogger.Warn().Err(err).Str("state", newState).Msg("failed to ensure keyboard HID file is open after USB state change")
+		}
+	}
 
 	requestDisplayUpdate(false, "usb_state_changed")
 	triggerUSBStateUpdate()
