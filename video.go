@@ -106,8 +106,8 @@ func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {
 	for {
 		select {
 		case <-timer.C:
-			if getActiveSessions() > 0 {
-				nativeLogger.Warn().Msg("not going to enter HDMI sleep mode because there are active sessions")
+			if hasActiveVideoConsumers() {
+				nativeLogger.Warn().Msg("not going to enter HDMI sleep mode because there are active video consumers")
 				continue
 			}
 

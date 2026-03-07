@@ -126,6 +126,7 @@ type SessionConfig struct {
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
 	MDNSMode   string
+	OnClosed   func(*Session)
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -152,6 +153,14 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	// Sets the LocalDescription, and starts our UDP listeners
 	if err = s.peerConnection.SetLocalDescription(answer); err != nil {
 		return "", err
+	}
+
+	// /stream uses HTTP offer/answer without trickle ICE, so wait briefly for
+	// candidate gathering to complete and include candidates in the returned SDP.
+	gatherComplete := webrtc.GatheringCompletePromise(s.peerConnection)
+	select {
+	case <-gatherComplete:
+	case <-time.After(2 * time.Second):
 	}
 
 	localDescription, err := json.Marshal(s.peerConnection.LocalDescription())
@@ -458,6 +467,10 @@ func newSession(config SessionConfig) (*Session, error) {
 					onLastSessionDisconnected()
 				}
 			}
+
+			if config.OnClosed != nil {
+				config.OnClosed(session)
+			}
 		}
 	})
 	return session, nil
@@ -470,11 +483,18 @@ func onActiveSessionsChanged() {
 
 func onFirstSessionConnected() {
 	notifyFailsafeMode(currentSession)
-	_ = nativeInstance.VideoStart()
-	stopVideoSleepModeTicker()
+
+	if getActiveStreamClients() > 0 {
+		return
+	}
+
+	onFirstVideoConsumerConnected()
 }
 
 func onLastSessionDisconnected() {
-	_ = nativeInstance.VideoStop()
-	startVideoSleepModeTicker()
+	if getActiveStreamClients() > 0 {
+		return
+	}
+
+	onLastVideoConsumerDisconnected()
 }
