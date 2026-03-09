@@ -24,6 +24,7 @@ interface NavbarProps {
   showConnectionStatus?: boolean;
   picture?: string;
   kvmName?: string;
+  hostname?: string | null;
 }
 
 export default function DashboardNavbar({
@@ -33,6 +34,7 @@ export default function DashboardNavbar({
   userEmail,
   picture,
   kvmName,
+  hostname,
 }: NavbarProps) {
   const peerConnectionState = useRTCStore(state => state.peerConnectionState);
   const setUser = useUserStore(state => state.setUser);
@@ -62,6 +64,11 @@ export default function DashboardNavbar({
               <img src={LogoBlueIcon} alt="" className="h-6 dark:hidden" />
               <img src={LogoWhiteIcon} alt="" className="hidden h-6 dark:block" />
             </div>
+            {hostname && (
+              <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                {hostname}
+              </span>
+            )}
 
             <div className="flex gap-x-2">
               {primaryLinks.map(({ title, to }, i) => {
