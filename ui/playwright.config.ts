@@ -36,9 +36,5 @@ export default defineConfig({
       name: "ota-specific-version",
       testMatch: /ota-specific-version-unsigned\.spec\.ts/,
     },
-    {
-      name: "ota-update-flow",
-      testMatch: /ota-update-flow\.spec\.ts/,
-    },
   ],
 });

@@ -26,7 +26,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v6
         with:
-          go-version: oldstable
+          go-version: "^1.25.1"
       - name: Create empty resource directory
         run: |
           mkdir -p static && touch static/.gitkeep
@@ -34,4 +34,4 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           args: --verbose
-          version: v2.1
+          version: v2.4
