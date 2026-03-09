@@ -72,23 +72,32 @@ check_signing_key:
 		exit 1; \
 	}
 
-# E2E tests - normal development lane (core tests + prerelease unsigned OTA, no signing key needed)
-test_e2e: frontend
+# Common env vars for OTA Playwright tests.
+# Usage: cd ui && $(call OTA_ENV,<version>) npx playwright test --project=<name>
+OTA_ENV = JETKVM_URL=http://$(DEVICE_IP) \
+	BASELINE_BINARY_PATH=$(abspath bin/jetkvm_app_baseline) \
+	RELEASE_BINARY_PATH=$(abspath bin/jetkvm_app) \
+	TEST_UPDATE_VERSION=$(1) \
+	NODE_NO_WARNINGS=1
+
+# E2E tests - normal development lane (core tests + prerelease OTA, no signing key needed)
+test_e2e:
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
 		echo "Usage: make test_e2e DEVICE_IP=<ip>"; \
 		exit 1; \
 	fi
 	$(eval TEST_VERSION := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M))
+	$(MAKE) frontend
+	$(MAKE) check
 	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
 	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_UI_BUILD=1
 	cd ui && npm ci && npx playwright install chromium && cd ..
 	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	./scripts/test_prerelease_unsigned_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(TEST_VERSION)"
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-specific-version
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-prerelease-unsigned
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-prerelease-rejected
 
 # Production release validation lane
 test_production_release:
@@ -103,32 +112,36 @@ test_production_release:
 		exit 1; \
 	fi
 	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
-	$(MAKE) check frontend
+	$(MAKE) frontend
+	$(MAKE) check
 	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
 	$(MAKE) build_release VERSION=$(VERSION)
 	@echo "Signing release binary..."
-	@echo -n "Ready to sign with key $(SIGNING_KEY_FPR)? [y/N] " && read ans && [ "$$ans" = "y" ] || { echo "Signing cancelled."; exit 1; }
-	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
+	@rm -f bin/jetkvm_app.sig
+	@attempt=1; \
+	while [ $$attempt -le 3 ]; do \
+		echo -n "Ready to sign with key $(SIGNING_KEY_FPR)? [y/N] " && read ans && [ "$$ans" = "y" ] || { echo "Signing cancelled."; exit 1; }; \
+		if gpg --yes --detach-sign --output bin/jetkvm_app.sig --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app; then \
+			break; \
+		fi; \
+		rm -f bin/jetkvm_app.sig; \
+		if [ $$attempt -eq 3 ]; then \
+			echo "Error: GPG signing failed after 3 attempts"; \
+			exit 1; \
+		fi; \
+		echo "GPG signing failed (attempt $$attempt/3). Please retry."; \
+		attempt=$$((attempt + 1)); \
+	done
 	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
 		echo "Error: Signature file not created"; exit 1; \
 	fi
 	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
 	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	./scripts/test_local_update.sh "$(DEVICE_IP)" "bin/jetkvm_app" "$(VERSION)"
-	./scripts/test_unsigned_specific_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(VERSION)"
-	./scripts/test_prerelease_unsigned_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(VERSION)"
-	./scripts/test_signed_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(VERSION)" \
-		--signature "bin/jetkvm_app.sig"
+	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-specific-version
+	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-prerelease-unsigned
+	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-prerelease-rejected
+	cd ui && $(call OTA_ENV,$(VERSION)) RELEASE_SIGNATURE_PATH=$(abspath bin/jetkvm_app.sig) npx playwright test --project=ota-signed
 
 lint:
 	go vet ./...
@@ -250,10 +263,8 @@ dev_release: git_check_dev check_r2
 	@echo "Running mandatory dev release validation..."
 	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
 	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	./scripts/test_prerelease_unsigned_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(VERSION_DEV)"
+	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-unsigned
+	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-rejected
 
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."

@@ -188,7 +188,6 @@ export async function deployBinaryToDevice(binaryPath: string): Promise<void> {
     '"cat > /userdata/jetkvm/jetkvm_app.update"',
   ].join(" ");
   await execAsync(`${sshCmd} < "${binaryPath}"`);
-  await execAsync(`ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} "rm -f /userdata/kvm_config.json"`);
 }
 
 // ============================================================================

@@ -31,6 +31,8 @@ sshdev() {
 
 echo -e "${CYAN}Deploying binary to device...${NC}"
 sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < "$BINARY_PATH"
+sshdev "rm -f /userdata/kvm_config.json"
+sshdev "sync"
 sshdev "reboot"
 
 echo -e "${YELLOW}Waiting for device to reboot...${NC}"
@@ -70,13 +72,7 @@ if [ ! -d "node_modules" ]; then
     npm ci
 fi
 
-CORE_SPECS=$(find e2e -maxdepth 1 -name "*.spec.ts" | sort | grep -v "z-ota")
-if [ -z "$CORE_SPECS" ]; then
-    echo -e "${RED}Error: No core E2E specs found${NC}"
-    exit 1
-fi
-
-if NODE_NO_WARNINGS=1 npx playwright test $CORE_SPECS; then
+if NODE_NO_WARNINGS=1 npx playwright test --project=core; then
     echo ""
     echo -e "${GREEN}✓ Core E2E tests passed${NC}"
     TEST_RESULT=0

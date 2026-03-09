@@ -15,4 +15,30 @@ export default defineConfig({
     video: "retain-on-failure",
     screenshot: "only-on-failure",
   },
+  projects: [
+    {
+      name: "core",
+      testIgnore: /ota-.*/,
+    },
+    {
+      name: "ota-signed",
+      testMatch: /ota-signature\.spec\.ts/,
+    },
+    {
+      name: "ota-prerelease-unsigned",
+      testMatch: /ota-prerelease-unsigned\.spec\.ts/,
+    },
+    {
+      name: "ota-prerelease-rejected",
+      testMatch: /ota-prerelease-rejected\.spec\.ts/,
+    },
+    {
+      name: "ota-specific-version",
+      testMatch: /ota-specific-version-unsigned\.spec\.ts/,
+    },
+    {
+      name: "ota-update-flow",
+      testMatch: /ota-update-flow\.spec\.ts/,
+    },
+  ],
 });
