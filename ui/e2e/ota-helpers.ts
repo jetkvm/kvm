@@ -78,8 +78,10 @@ export async function createMockUpdateServer(
     if (url.pathname === "/releases") {
       handleReleasesRequest(url, res);
     } else if (url.pathname === `/app/${version}/jetkvm_app`) {
+      console.log("Streaming binary at", binaryPath);
       streamFile(binaryPath, res);
     } else if (url.pathname === `/app/${version}/jetkvm_app.sig` && signaturePath) {
+      console.log("Streaming signature at", signaturePath);
       streamFile(signaturePath, res);
     } else {
       res.writeHead(404);
@@ -146,9 +148,11 @@ export async function createMockUpdateServer(
         server.close(err => (err ? reject(err) : resolve()));
       }),
     enableSignature: (sigPath: string) => {
+      console.log("Enabling signature at", sigPath);
       signaturePath = sigPath;
     },
     disableSignature: () => {
+      console.log("Disabling signature");
       signaturePath = undefined;
     },
   };
@@ -183,8 +187,8 @@ export async function deployBinaryToDevice(binaryPath: string): Promise<void> {
     `root@${host}`,
     '"cat > /userdata/jetkvm/jetkvm_app.update"',
   ].join(" ");
-
   await execAsync(`${sshCmd} < "${binaryPath}"`);
+  await execAsync(`ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} "rm -f /userdata/kvm_config.json"`);
 }
 
 // ============================================================================
