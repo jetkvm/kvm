@@ -866,6 +866,7 @@ export default function KvmIdRoute() {
       getHdmiState: () => useVideoStore.getState().hdmiState,
       getVideoElement: () => useVideoStore.getState().videoElement,
       getKvmTerminal: () => useRTCStore.getState().terminalChannel,
+      getRpcDataChannel: () => useRTCStore.getState().rpcDataChannel,
     });
     return cleanupTestHooks;
   }, [handleKeyPress, handleAbsMouseMove]);
