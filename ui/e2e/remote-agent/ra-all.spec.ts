@@ -6,40 +6,23 @@
  * Run with:
  *   JETKVM_URL=http://<kvm-ip> JETKVM_REMOTE_HOST=<host-ip> npx playwright test ra-all
  */
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { createRemoteAgent, KEY, HID_TO_LINUX } from "./remote-agent";
 import {
   HID_KEY,
+  callJsonRpc,
   sendKeypress,
   tapKey,
-  wakeDisplay,
   waitForWebRTCReady,
   sendAbsMouseMove,
   sshExec,
   getDeviceHost,
   getLedState,
   waitForLedState,
+  restartAppViaSSH,
 } from "../helpers";
 
 const agent = createRemoteAgent();
-
-// ── JSON-RPC helper ──
-
-async function rpc(page: Page, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  return page.evaluate(
-    ({ method, params }) => {
-      return new Promise((resolve, reject) => {
-        const hooks = window.__kvmTestHooks;
-        if (!hooks) return reject(new Error("Test hooks not available"));
-        hooks.sendJsonRpc(method, params, (resp: { error?: { message: string; data?: string }; result?: unknown }) => {
-          if (resp.error) reject(new Error(`${resp.error.message}${resp.error.data ? `: ${resp.error.data}` : ""}`));
-          else resolve(resp.result);
-        });
-      });
-    },
-    { method, params },
-  );
-}
 
 // ── Macro setup via SSH (app restart, no reboot) ──
 
@@ -67,30 +50,6 @@ const TEST_MACROS = [
     sortOrder: 2,
   },
 ];
-
-async function waitForDeviceReady(timeoutMs = 15000) {
-  const host = getDeviceHost();
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://${host}`, { signal: AbortSignal.timeout(1500) });
-      if (res.ok || res.status === 401 || res.status === 302) return;
-    } catch { /* not ready */ }
-    await new Promise(r => setTimeout(r, 200));
-  }
-  throw new Error(`Device not ready after ${timeoutMs}ms`);
-}
-
-async function restartAppViaSSH() {
-  await sshExec("killall jetkvm_app", true);
-  await new Promise(r => setTimeout(r, 500));
-  await sshExec(
-    "setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib /userdata/jetkvm/bin/jetkvm_app > /userdata/jetkvm/last.log 2>&1 &",
-    true,
-  );
-  await new Promise(r => setTimeout(r, 1000));
-  await waitForDeviceReady(15000);
-}
 
 async function setupMacrosViaSSH() {
   const configStr = await sshExec("cat /userdata/kvm_config.json", true);
@@ -221,8 +180,8 @@ async function ensureNoPasswordViaAPI() {
     return;
   }
 
-  const probe = await fetch(`http://${host}/`, { redirect: "manual" });
-  if (probe.status === 302 || probe.status === 401) {
+  const probe = await fetch(`http://${host}/device`);
+  if (probe.status === 401) {
     await sshExec("rm -f /userdata/kvm_config.json && sync");
     await restartAppViaSSH();
     const res = await fetch(`http://${host}/device/setup`, {
@@ -236,7 +195,7 @@ async function ensureNoPasswordViaAPI() {
 }
 
 async function setupMacrosViaRPC(page: Page) {
-  const existing = await rpc(page, "getKeyboardMacros") as Array<{ id: string }>;
+  const existing = await callJsonRpc(page, "getKeyboardMacros") as Array<{ id: string }>;
   const ids = new Set(existing.map(m => m.id));
   if (TEST_MACROS.every(m => ids.has(m.id))) return;
 
@@ -244,7 +203,7 @@ async function setupMacrosViaRPC(page: Page) {
     ...existing.filter(m => !m.id.startsWith("e2e_test_")),
     ...TEST_MACROS,
   ];
-  await rpc(page, "setKeyboardMacros", { params: { macros: merged } });
+  await callJsonRpc(page, "setKeyboardMacros", { params: { macros: merged } });
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -274,9 +233,9 @@ test.afterAll(async () => {
   if (!agent) return;
   // Clean up test macros via RPC (no SSH needed)
   try {
-    const existing = await rpc(sharedPage, "getKeyboardMacros") as Array<{ id: string }>;
+    const existing = await callJsonRpc(sharedPage, "getKeyboardMacros") as Array<{ id: string }>;
     const filtered = existing.filter(m => !m.id.startsWith("e2e_test_"));
-    await rpc(sharedPage, "setKeyboardMacros", { params: { macros: filtered } });
+    await callJsonRpc(sharedPage, "setKeyboardMacros", { params: { macros: filtered } });
   } catch { /* page may already be closed */ }
   if (sharedPage) await sharedPage.close();
 });
@@ -301,16 +260,16 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     expect(resolution).toMatch(/^\d+x\d+$/);
 
     // Change EDID preset and verify host sees the new resolution
-    const currentEdid = await rpc(sharedPage, "getEDID") as string;
+    const currentEdid = await callJsonRpc(sharedPage, "getEDID") as string;
     const targetEdid = currentEdid === "1920x1080" ? "1280x720" : "1920x1080";
-    await rpc(sharedPage, "setEDID", { edid: targetEdid });
+    await callJsonRpc(sharedPage, "setEDID", { edid: targetEdid });
 
     const newRes = await agent!.getResolution();
     expect(newRes).not.toBeNull();
     expect(newRes).toMatch(/^\d+x\d+$/);
 
     // Restore original EDID in background (keyboard test below tolerates brief HID disruption)
-    rpc(sharedPage, "setEDID", { edid: currentEdid }).catch(() => {});
+    callJsonRpc(sharedPage, "setEDID", { edid: currentEdid }).catch(() => {});
   });
 
   // ═══════════════════════════════════════════
@@ -586,15 +545,15 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
   test("virtual-media: mount ISO from URL and verify, then unmount", async () => {
     test.setTimeout(60_000);
 
-    try { await rpc(sharedPage, "unmountImage"); } catch { /* ok if nothing mounted */ }
+    try { await callJsonRpc(sharedPage, "unmountImage"); } catch { /* ok if nothing mounted */ }
 
-    const stateBefore = await rpc(sharedPage, "getVirtualMediaState") as null | object;
+    const stateBefore = await callJsonRpc(sharedPage, "getVirtualMediaState") as null | object;
     expect(stateBefore).toBeNull();
 
     const NETBOOT_XYZ_URL = "https://boot.netboot.xyz/ipxe/netboot.xyz.iso";
-    await rpc(sharedPage, "mountWithHTTP", { url: NETBOOT_XYZ_URL, mode: "CDROM" });
+    await callJsonRpc(sharedPage, "mountWithHTTP", { url: NETBOOT_XYZ_URL, mode: "CDROM" });
 
-    const stateAfter = await rpc(sharedPage, "getVirtualMediaState") as {
+    const stateAfter = await callJsonRpc(sharedPage, "getVirtualMediaState") as {
       source: string; mode: string; url?: string;
     } | null;
     expect(stateAfter).not.toBeNull();
@@ -605,9 +564,9 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     const usbDevices = await agent!.getUSBDevices();
     expect(usbDevices.length).toBeGreaterThan(0);
 
-    await rpc(sharedPage, "unmountImage");
+    await callJsonRpc(sharedPage, "unmountImage");
 
-    const stateEnd = await rpc(sharedPage, "getVirtualMediaState") as null | object;
+    const stateEnd = await callJsonRpc(sharedPage, "getVirtualMediaState") as null | object;
     expect(stateEnd).toBeNull();
 
     const finalDevices = await agent!.getUSBDevices();
@@ -633,7 +592,7 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     expect(devices.length).toBe(3);
 
     // Switch to keyboard_only — verify mice are removed
-    await rpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_KEYBOARD_ONLY });
+    await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_KEYBOARD_ONLY });
 
     const afterDevices = await agent!.waitForInputDevices(["keyboard"], 10000);
     const afterTypes = afterDevices.map(d => d.type);
@@ -642,14 +601,14 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     expect(afterTypes).not.toContain("relative_mouse");
 
     // Restore default devices
-    await rpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_DEFAULT });
+    await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_DEFAULT });
     await agent!.waitForInputDevices(
       ["keyboard", "absolute_mouse", "relative_mouse"],
       10000,
     );
 
     // Switch USB descriptor to Logitech — verify host sees new VID/PID
-    await rpc(sharedPage, "setUsbConfig", { usbConfig: USB_LOGITECH_CONFIG });
+    await callJsonRpc(sharedPage, "setUsbConfig", { usbConfig: USB_LOGITECH_CONFIG });
 
     const logitechDevices = await agent!.waitForUSBDevice(
       d => d.id === ID_LOGITECH,
@@ -660,9 +619,9 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     expect(logitechDevices[0].name).toContain("Logitech");
 
     // Restore default descriptor
-    const deviceId = await rpc(sharedPage, "getDeviceID") as string;
+    const deviceId = await callJsonRpc(sharedPage, "getDeviceID") as string;
     const defaultConfig = { ...USB_DEFAULT_CONFIG, serial_number: deviceId || "" };
-    rpc(sharedPage, "setUsbConfig", { usbConfig: defaultConfig }).catch(() => {});
+    callJsonRpc(sharedPage, "setUsbConfig", { usbConfig: defaultConfig }).catch(() => {});
   });
 
   // ═══════════════════════════════════════════
@@ -694,7 +653,7 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     const httpsUrl = `https://${host}:443`;
 
     // Enable self-signed TLS via RPC (no UI navigation needed)
-    await rpc(sharedPage, "setTLSState", {
+    await callJsonRpc(sharedPage, "setTLSState", {
       state: { mode: "self-signed", certificate: "", privateKey: "" },
     });
 
@@ -722,7 +681,7 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     // Restore TLS to disabled via RPC.
     // sharedPage was never navigated during this test, so its WebRTC connection is still alive.
     try {
-      await rpc(sharedPage, "setTLSState", {
+      await callJsonRpc(sharedPage, "setTLSState", {
         state: { mode: "", certificate: "", privateKey: "" },
       });
     } catch {
@@ -741,6 +700,49 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
   });
 
   // ═══════════════════════════════════════════
+  // HDMI SLEEP MODE
+  // ═══════════════════════════════════════════
+
+  test("hdmi-sleep: activates when no session and deactivates on reconnect", async () => {
+    const SLEEP_MODE_SYSFS = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode";
+
+    const before = (await callJsonRpc(sharedPage, "getVideoSleepMode")) as {
+      supported: boolean;
+      duration: number;
+    };
+
+    if (!before.supported) {
+      test.skip(true, "HDMI sleep mode not supported on this device");
+      return;
+    }
+
+    const originalDuration = before.duration;
+
+    // Set a very short sleep timer so the test doesn't wait long
+    await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: 3 });
+
+    // Disconnect WebRTC by navigating the shared page away
+    await sharedPage.goto("about:blank");
+
+    // Wait for the 3s sleep timer + margin
+    await new Promise(r => setTimeout(r, 5000));
+
+    // Verify the HDMI capture chip entered sleep via sysfs
+    const sleepState = (await sshExec(`cat ${SLEEP_MODE_SYSFS}`)).trim();
+    expect(sleepState, "HDMI capture chip should be sleeping").toBe("1");
+
+    // Reconnect — session start wakes the chip
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+
+    const wakeState = (await sshExec(`cat ${SLEEP_MODE_SYSFS}`)).trim();
+    expect(wakeState, "HDMI capture chip should be awake after reconnect").toBe("0");
+
+    // Restore original duration
+    await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
+  });
+
+  // ═══════════════════════════════════════════
   // CONFIG RESET (must be last — resets device config)
   // ═══════════════════════════════════════════
 
@@ -748,7 +750,7 @@ test.describe("Remote Agent E2E (Consolidated)", () => {
     test.setTimeout(30_000);
     const host = getDeviceHost();
 
-    await rpc(sharedPage, "resetConfig");
+    await callJsonRpc(sharedPage, "resetConfig");
 
     const statusRes = await fetch(`http://${host}/device/status`);
     const status = await statusRes.json() as { isSetup: boolean };

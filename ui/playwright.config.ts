@@ -24,23 +24,10 @@ export default defineConfig({
       name: "remote-agent",
       testDir: "./e2e/remote-agent",
       testMatch: "ra-all.spec.ts",
-      use: { video: "off", trace: "retain-on-failure" },
     },
-    {
-      name: "ota-signed",
-      testMatch: /ota-signature\.spec\.ts/,
-    },
-    {
-      name: "ota-prerelease-unsigned",
-      testMatch: /ota-prerelease-unsigned\.spec\.ts/,
-    },
-    {
-      name: "ota-prerelease-rejected",
-      testMatch: /ota-prerelease-rejected\.spec\.ts/,
-    },
-    {
-      name: "ota-specific-version",
-      testMatch: /ota-specific-version-unsigned\.spec\.ts/,
-    },
+    { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/ },
+    { name: "ota-prerelease-unsigned", testMatch: /ota-prerelease-unsigned\.spec\.ts/ },
+    { name: "ota-prerelease-rejected", testMatch: /ota-prerelease-rejected\.spec\.ts/ },
+    { name: "ota-specific-version", testMatch: /ota-specific-version-unsigned\.spec\.ts/ },
   ],
 });

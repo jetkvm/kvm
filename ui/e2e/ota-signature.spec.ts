@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import { test, expect } from "@playwright/test";
 
 import {
@@ -6,56 +7,32 @@ import {
   rebootDeviceViaSSH,
   ensureLocalAuthMode,
   verifyHidAndVideo,
-} from "./helpers";
-
-import {
   createMockUpdateServer,
   deployBinaryToDevice,
   configureDeviceUpdateUrl,
   restoreDeviceUpdateUrl,
+  getOTAEnvVars,
+  triggerUpdate,
+  withTempSignature,
   type MockUpdateServer,
-} from "./ota-helpers";
+} from "./helpers";
 
 /**
  * OTA Signature Verification Tests
  *
- * These tests verify GPG signature enforcement during OTA updates.
- * They share an expensive beforeAll that:
- *   1. Deploys a baseline binary (has GPG verification code, reports low version)
- *   2. Starts a mock update server advertising the release version
- *   3. Configures the device to use the mock server
- *
- * Test order matters:
- *   - Test 1 (unsigned): mock serves NO signature -> update must fail with GPG error.
- *     The device stays at baseline because the update was rejected.
- *   - Test 2 (wrong key): mock serves a bogus signature (random bytes) -> update must
- *     fail with GPG verification error. Device stays at baseline.
- *   - Test 3 (empty sig): mock serves a 0-byte signature file -> update must
- *     fail with "signature file is empty". Regression test for empty-sig bypass.
- *   - Test 4 (signed): real signature is enabled on the mock -> update must succeed.
- *
- * Required environment variables:
- *   - JETKVM_URL: Device URL (e.g., http://192.168.1.77)
- *   - BASELINE_BINARY_PATH: Absolute path to baseline binary (deployed to device)
- *   - RELEASE_BINARY_PATH: Absolute path to release binary (served by mock)
- *   - RELEASE_SIGNATURE_PATH: Absolute path to .sig file (served by mock in test 2)
- *   - TEST_UPDATE_VERSION: Version string of the release binary
+ * Test order matters (serial, shared mock server):
+ *   1. unsigned  -> rejected (requires GPG signature)
+ *   2. wrong key -> rejected (GPG verification failed)
+ *   3. empty sig -> rejected (signature file is empty)
+ *   4. signed    -> succeeds
  */
 test.describe("OTA Signature Verification", () => {
-  test.setTimeout(420000); // 7 minutes
+  test.setTimeout(420000);
 
   let mockServer: MockUpdateServer;
+  const env = getOTAEnvVars({ requireSignature: true });
 
   test.beforeAll(async ({ browser }) => {
-    const baselinePath = process.env.BASELINE_BINARY_PATH;
-    const releasePath = process.env.RELEASE_BINARY_PATH;
-    const version = process.env.TEST_UPDATE_VERSION;
-
-    if (!baselinePath) throw new Error("BASELINE_BINARY_PATH is required");
-    if (!releasePath) throw new Error("RELEASE_BINARY_PATH is required");
-    if (!version) throw new Error("TEST_UPDATE_VERSION is required");
-
-    // Ensure device is in noPassword mode
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
     try {
@@ -65,120 +42,50 @@ test.describe("OTA Signature Verification", () => {
       await context.close();
     }
 
-    // 1. Start mock server WITHOUT signature
     mockServer = await createMockUpdateServer({
-      binaryPath: releasePath,
-      version,
-      // No signaturePath -- unsigned initially
+      binaryPath: env.releasePath,
+      version: env.releaseVersion,
     });
 
-    // 2. Deploy baseline binary to device
-    await deployBinaryToDevice(baselinePath);
+    await deployBinaryToDevice(env.baselinePath);
     await rebootDeviceViaSSH();
-
-    // 3. Configure device to use mock API and reboot
     await configureDeviceUpdateUrl(mockServer.url);
     await rebootDeviceViaSSH();
   });
 
   test("unsigned stable update fails with GPG signature error", async ({ page }) => {
-    // The mock server is NOT serving a signature.
-    // A normal stable update should fail because GPG signature is required.
-    await page.goto("/settings/general/update");
-    await page.waitForLoadState("networkidle");
-
-    const updateButton = page.getByRole("button", { name: "Update Now" });
-    await expect(updateButton).toBeVisible({ timeout: 30000 });
-    await updateButton.click();
-
-    // The OTA code should reject the update with a GPG signature error
+    await triggerUpdate(page);
     await expect(page.getByText(/requires GPG signature/i)).toBeVisible({ timeout: 30000 });
   });
 
   test("wrong-key signature fails with GPG verification error", async ({ page }) => {
-    const fs = await import("fs");
-    const path = await import("path");
-    const os = await import("os");
-    const crypto = await import("crypto");
-
-    const fakeSigPath = path.join(os.tmpdir(), `wrong_key_sig_${Date.now()}.sig`);
-    fs.writeFileSync(fakeSigPath, crypto.randomBytes(256));
-
-    try {
-      mockServer.enableSignature(fakeSigPath);
-
-      await page.goto("/settings/general/update");
-      await page.waitForLoadState("networkidle");
-
-      const retryButton = page.getByRole("button", { name: "Retry" });
-      if (await retryButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await retryButton.click();
-      }
-
-      const updateButton = page.getByRole("button", { name: "Update Now" });
-      await expect(updateButton).toBeVisible({ timeout: 30000 });
-      await updateButton.click();
-
+    await withTempSignature(mockServer, crypto.randomBytes(256), async () => {
+      await triggerUpdate(page);
       await expect(page.getByText(/GPG signature verification failed/i)).toBeVisible({
         timeout: 30000,
       });
-    } finally {
-      mockServer.disableSignature();
-      fs.unlinkSync(fakeSigPath);
-    }
+    });
   });
 
   test("empty signature file is rejected", async ({ page }) => {
-    const fs = await import("fs");
-    const path = await import("path");
-    const os = await import("os");
-
-    const emptySigPath = path.join(os.tmpdir(), `empty_sig_${Date.now()}.sig`);
-    fs.writeFileSync(emptySigPath, Buffer.alloc(0));
-
-    try {
-      mockServer.enableSignature(emptySigPath);
-
-      await page.goto("/settings/general/update");
-      await page.waitForLoadState("networkidle");
-
-      const retryButton = page.getByRole("button", { name: "Retry" });
-      if (await retryButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await retryButton.click();
-      }
-
-      const updateButton = page.getByRole("button", { name: "Update Now" });
-      await expect(updateButton).toBeVisible({ timeout: 30000 });
-      await updateButton.click();
-
+    await withTempSignature(mockServer, Buffer.alloc(0), async () => {
+      await triggerUpdate(page);
       await expect(page.getByText(/signature file is empty/i)).toBeVisible({
         timeout: 30000,
       });
-    } finally {
-      mockServer.disableSignature();
-      fs.unlinkSync(emptySigPath);
-    }
+    });
   });
 
   test("signed stable update succeeds", async ({ page }) => {
-    const sigPath = process.env.RELEASE_SIGNATURE_PATH;
-    if (!sigPath) throw new Error("RELEASE_SIGNATURE_PATH is required");
-
-    // Enable signature on the mock server so it now returns appSigUrl
-    mockServer.enableSignature(sigPath);
+    mockServer.enableSignature(env.signaturePath!);
 
     await page.goto("/settings/general/update");
     await page.waitForLoadState("networkidle");
 
     const initialVersion = await getCurrentVersion(page);
     expect(initialVersion, "Initial version should be detectable from /metrics").not.toBeNull();
-    expect(
-      initialVersion,
-      "Baseline and target versions must differ to validate OTA behavior",
-    ).not.toBe(process.env.TEST_UPDATE_VERSION);
+    expect(initialVersion, "Baseline and target must differ").not.toBe(env.releaseVersion);
 
-    // The previous test's GPG error may be cached by the device backend.
-    // If the error view is showing, click Retry to trigger a fresh update check.
     const retryButton = page.getByRole("button", { name: "Retry" });
     if (await retryButton.isVisible({ timeout: 5000 }).catch(() => false)) {
       await retryButton.click();
@@ -188,21 +95,16 @@ test.describe("OTA Signature Verification", () => {
     await expect(updateButton).toBeVisible({ timeout: 30000 });
     await updateButton.click();
 
-    // Wait for the device to complete the upgrade and reboot
     await reconnectAfterReboot(page, 35000);
 
-    // Verify we're now running the release version
     const finalVersion = await getCurrentVersion(page);
-    expect(finalVersion, "Device should be running the release version").not.toBeNull();
-    expect(finalVersion).toBe(process.env.TEST_UPDATE_VERSION);
+    expect(finalVersion).toBe(env.releaseVersion);
 
     await verifyHidAndVideo(page);
   });
 
   test.afterAll(async () => {
-    // Restore device config to production API URL
     await restoreDeviceUpdateUrl();
-    // Shut down mock server
     await mockServer?.close();
   });
 });

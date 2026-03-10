@@ -3,49 +3,29 @@ import { test, expect } from "@playwright/test";
 import {
   rebootDeviceViaSSH,
   ensureLocalAuthMode,
-} from "./helpers";
-
-import {
   createMockUpdateServer,
   deployBinaryToDevice,
   configureDeviceUpdateUrl,
   restoreDeviceUpdateUrl,
   setIncludePreRelease,
+  getOTAEnvVars,
+  toPreReleaseVersion,
+  triggerUpdate,
   type MockUpdateServer,
-} from "./ota-helpers";
+} from "./helpers";
 
 /**
- * OTA Prerelease Rejected (Not Opted-In)
- *
- * Verifies that a prerelease update served to a device that has NOT opted into
- * the dev channel is rejected with a GPG signature error. This is a regression
- * test for a bug where a compromised server could push an unsigned prerelease
- * version string to any device, bypassing signature checks regardless of the
- * device's include_pre_release setting.
- *
- * Setup:
- *   1. Deploy baseline binary, configure mock server with a prerelease version
- *   2. Set include_pre_release = false on the device
- *   3. Attempt the update — it must fail because signature is required
+ * Verifies that a prerelease update is rejected when the device has NOT
+ * opted into the dev channel (include_pre_release = false).
  */
 test.describe("OTA Prerelease Rejected (Not Opted-In)", () => {
-  test.setTimeout(420000); // 7 minutes
+  test.setTimeout(420000);
 
   let mockServer: MockUpdateServer;
+  const env = getOTAEnvVars();
+  const preReleaseVersion = toPreReleaseVersion(env.releaseVersion);
 
   test.beforeAll(async ({ browser }) => {
-    const baselinePath = process.env.BASELINE_BINARY_PATH;
-    const releasePath = process.env.RELEASE_BINARY_PATH;
-    const releaseVersion = process.env.TEST_UPDATE_VERSION;
-
-    if (!baselinePath) throw new Error("BASELINE_BINARY_PATH is required");
-    if (!releasePath) throw new Error("RELEASE_BINARY_PATH is required");
-    if (!releaseVersion) throw new Error("TEST_UPDATE_VERSION is required");
-
-    const preReleaseVersion = releaseVersion.includes("-")
-      ? releaseVersion
-      : `${releaseVersion}-dev.1`;
-
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
     try {
@@ -56,11 +36,11 @@ test.describe("OTA Prerelease Rejected (Not Opted-In)", () => {
     }
 
     mockServer = await createMockUpdateServer({
-      binaryPath: releasePath,
+      binaryPath: env.releasePath,
       version: preReleaseVersion,
     });
 
-    await deployBinaryToDevice(baselinePath);
+    await deployBinaryToDevice(env.baselinePath);
     await rebootDeviceViaSSH();
     await configureDeviceUpdateUrl(mockServer.url);
     await setIncludePreRelease(false);
@@ -68,16 +48,8 @@ test.describe("OTA Prerelease Rejected (Not Opted-In)", () => {
   });
 
   test("unsigned prerelease update is rejected when not opted in", async ({ page }) => {
-    await page.goto("/settings/general/update");
-    await page.waitForLoadState("networkidle");
-
-    const updateButton = page.getByRole("button", { name: "Update Now" });
-    await expect(updateButton).toBeVisible({ timeout: 30000 });
-    await updateButton.click();
-
-    await expect(page.getByText(/requires GPG signature/i)).toBeVisible({
-      timeout: 30000,
-    });
+    await triggerUpdate(page);
+    await expect(page.getByText(/requires GPG signature/i)).toBeVisible({ timeout: 30000 });
   });
 
   test.afterAll(async () => {
