@@ -1,4 +1,4 @@
-package kvm
+package usbgadget
 
 import (
 	"testing"
@@ -37,23 +37,23 @@ func TestShouldAttemptUSBRecovery(t *testing.T) {
 			name:        "rate limit repeated recovery attempts",
 			state:       "not attached",
 			desired:     true,
-			lastAttempt: now.Add(-usbRecoveryRetryInterval + time.Second),
+			lastAttempt: now.Add(-USBRecoveryRetryInterval + time.Second),
 			want:        false,
 		},
 		{
 			name:        "allow retry after interval passes",
 			state:       "not attached",
 			desired:     true,
-			lastAttempt: now.Add(-usbRecoveryRetryInterval),
+			lastAttempt: now.Add(-USBRecoveryRetryInterval),
 			want:        true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldAttemptUSBRecovery(tt.state, tt.desired, tt.lastAttempt, now)
+			got := ShouldAttemptUSBRecovery(tt.state, tt.desired, tt.lastAttempt, now)
 			if got != tt.want {
-				t.Fatalf("shouldAttemptUSBRecovery() = %v, want %v", got, tt.want)
+				t.Fatalf("ShouldAttemptUSBRecovery() = %v, want %v", got, tt.want)
 			}
 		})
 	}

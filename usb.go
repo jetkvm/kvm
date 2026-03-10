@@ -88,8 +88,6 @@ var (
 	lastUSBRecoveryTry  time.Time
 )
 
-const usbRecoveryRetryInterval = 5 * time.Second
-
 func rpcGetUSBState() (state string) {
 	return gadget.GetUsbState()
 }
@@ -108,21 +106,13 @@ func setUSBRecoveryTimer(lastAttempt time.Time) {
 	lastUSBRecoveryTry = lastAttempt
 }
 
-func shouldAttemptUSBRecovery(state string, desired bool, lastAttempt time.Time, now time.Time) bool {
-	if state != "not attached" || !desired {
-		return false
-	}
-
-	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= usbRecoveryRetryInterval
-}
-
 func attemptUSBRecovery(state string) string {
 	now := time.Now()
 
 	usbStateLock.Lock()
 	desired := usbEmulationDesired
 	lastAttempt := lastUSBRecoveryTry
-	shouldRecover := shouldAttemptUSBRecovery(state, desired, lastAttempt, now)
+	shouldRecover := usbgadget.ShouldAttemptUSBRecovery(state, desired, lastAttempt, now)
 	if shouldRecover {
 		lastUSBRecoveryTry = now
 	}
