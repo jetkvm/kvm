@@ -17,8 +17,14 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "core",
-      testIgnore: /ota-.*/,
+      name: "ui",
+      testIgnore: [/ota-.*/, /remote-agent\/.*/],
+    },
+    {
+      name: "remote-agent",
+      testDir: "./e2e/remote-agent",
+      testMatch: "ra-all.spec.ts",
+      use: { video: "off", trace: "retain-on-failure" },
     },
     {
       name: "ota-signed",

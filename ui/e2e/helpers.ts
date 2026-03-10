@@ -233,33 +233,6 @@ export async function getVideoStreamDimensions(page: Page): Promise<VideoStreamD
 }
 
 /**
- * Capture a region of the video frame as a base64 PNG.
- *
- * @param page - Playwright page object
- * @param x - X coordinate of the region (in video pixels)
- * @param y - Y coordinate of the region (in video pixels)
- * @param width - Width of the region
- * @param height - Height of the region
- * @returns Base64-encoded PNG string or null if capture failed
- */
-export async function captureVideoRegion(
-  page: Page,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): Promise<string | null> {
-  return page.evaluate(
-    ({ x, y, width, height }) => {
-      const hooks = window.__kvmTestHooks;
-      if (!hooks) return null;
-      return hooks.captureVideoRegion(x, y, width, height);
-    },
-    { x, y, width, height },
-  );
-}
-
-/**
  * Capture a small fingerprint of a region of the video frame.
  * This is more tolerant to small frame-to-frame noise than comparing PNGs.
  */
@@ -522,53 +495,6 @@ export async function getCurrentVersion(page: Page): Promise<string | null> {
   });
 }
 
-// TypeScript declarations for the test hooks on window
-/**
- * Send a command to the KVM terminal via the test hooks.
- *
- * @param page - Playwright page object
- * @param command - Command to send (newline will be appended automatically)
- * @param waitMs - Time to wait after sending (default: 500ms)
- */
-export async function sendTerminalCommand(
-  page: Page,
-  command: string,
-  waitMs = 200,
-): Promise<boolean> {
-  const result = await page.evaluate(cmd => {
-    return window.__kvmTestHooks?.sendTerminalCommand?.(cmd) ?? false;
-  }, command);
-
-  if (waitMs > 0) {
-    await page.waitForTimeout(waitMs);
-  }
-
-  return result;
-}
-
-/**
- * Wait for the KVM terminal data channel to be ready.
- *
- * @param page - Playwright page object
- * @param timeout - Maximum time to wait in milliseconds (default: 10000)
- */
-export async function waitForTerminalReady(page: Page, timeout = 10000): Promise<void> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeout) {
-    const ready = await page.evaluate(() => {
-      return window.__kvmTestHooks?.isTerminalReady?.() ?? false;
-    });
-
-    if (ready) {
-      return;
-    }
-
-    await page.waitForTimeout(200);
-  }
-
-  throw new Error(`Terminal not ready after ${timeout}ms`);
-}
-
 /**
  * Reconnect to the device after a reboot.
  * Waits for the device to come back online and re-establishes WebRTC connection.
@@ -605,43 +531,6 @@ const ANIMATION_DELAY = 500;
 
 // Known test passwords - used when device is in unknown state and needs login
 const KNOWN_TEST_PASSWORDS = ["TestPassword123", "NewPassword456"];
-
-/**
- * Try to login with known test passwords if on login page.
- * Returns true if login was successful or not needed.
- *
- * @param page - Playwright page object
- */
-async function tryLoginIfNeeded(page: Page): Promise<boolean> {
-  const currentUrl = page.url();
-  if (!currentUrl.includes("/login")) {
-    return true; // Not on login page, no login needed
-  }
-
-  // Try each known test password
-  for (const password of KNOWN_TEST_PASSWORDS) {
-    const passwordInput = page.locator('input[name="password"]');
-    if (!(await passwordInput.isVisible({ timeout: 2000 }).catch(() => false))) {
-      return true; // No password input visible, probably not a login page
-    }
-
-    await passwordInput.fill(password);
-    const submitButton = page.getByRole("button", { name: /Log in/i });
-    await submitButton.click();
-    await page.waitForTimeout(500);
-
-    // Check if we're no longer on login page
-    const newUrl = page.url();
-    if (!newUrl.includes("/login")) {
-      return true;
-    }
-
-    // Clear for next attempt (may fail if element is detached/disabled after rate limiting)
-    await passwordInput.clear().catch(() => {});
-  }
-
-  return false; // Could not login with any known password
-}
 
 /**
  * Reset the device to onboarding/welcome state.
@@ -1272,6 +1161,11 @@ declare global {
       getKeysDownState: () => { modifier: number; keys: number[] } | null;
       sendKeypress: (key: number, press: boolean) => void;
       sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
+      sendJsonRpc: (
+        method: string,
+        params: Record<string, unknown>,
+        callback: (resp: { error?: { message: string; data?: string }; result?: unknown }) => void,
+      ) => void;
       captureVideoRegion: (
         x: number,
         y: number,

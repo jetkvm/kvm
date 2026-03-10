@@ -15,8 +15,8 @@ const TEST_PASSWORD = "TestPassword123";
 test.describe("Welcome Password Flow Tests", () => {
   test.setTimeout(180000); // 3 minutes
 
-  // Note: "welcome flow with no password setup" is covered by config-reset.spec.ts
-  // This file focuses on password-specific flows
+  // Note: no-password welcome flow is covered by the remote-agent config-reset test (ra-all.spec.ts)
+  // This file focuses on password-specific welcome + login flows
 
   test("welcome flow with password setup and login", async ({ page }) => {
     await resetDeviceToWelcome(page);
