@@ -13,6 +13,7 @@ import {
   setIncludePreRelease,
   getOTAEnvVars,
   type MockUpdateServer,
+  type OTAEnvVars,
 } from "./helpers";
 
 /**
@@ -23,9 +24,11 @@ test.describe("OTA Specific Version Unsigned", () => {
   test.setTimeout(420000);
 
   let mockServer: MockUpdateServer;
-  const env = getOTAEnvVars();
+  let env: OTAEnvVars;
 
   test.beforeAll(async ({ browser }) => {
+    env = getOTAEnvVars();
+
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
     try {

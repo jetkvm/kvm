@@ -92,12 +92,9 @@ test_e2e:
 	$(MAKE) check
 	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
-	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_UI_BUILD=1
-	cd ui && npm ci && npx playwright install chromium && cd ..
-	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-specific-version
-	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-prerelease-unsigned
-	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-prerelease-rejected
+	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
+	cd ui && npx playwright install chromium && cd ..
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ui --project=ota-specific-version --project=ota-prerelease-unsigned --project=ota-prerelease-rejected
 
 # Production release validation lane
 test_production_release:
@@ -136,12 +133,8 @@ test_production_release:
 	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
 		echo "Error: Signature file not created"; exit 1; \
 	fi
-	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
-	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-specific-version
-	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-prerelease-unsigned
-	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-prerelease-rejected
-	cd ui && $(call OTA_ENV,$(VERSION)) RELEASE_SIGNATURE_PATH=$(abspath bin/jetkvm_app.sig) npx playwright test --project=ota-signed
+	cd ui && npx playwright install --with-deps chromium && cd ..
+	cd ui && $(call OTA_ENV,$(VERSION)) RELEASE_SIGNATURE_PATH=$(abspath bin/jetkvm_app.sig) npx playwright test
 
 lint:
 	go vet ./...
@@ -164,9 +157,9 @@ build_dev:
 		echo "Toolchain not found, running build_dev in Docker..."; \
 		rm -rf internal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
-			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
+			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	else \
-		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
+		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
 _build_dev_inner: build_native
@@ -259,10 +252,10 @@ dev_release: git_check_dev check_r2
 	$(MAKE) check frontend
 	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
-	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV) SKIP_UI_BUILD=1
+	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
 	@echo "Running mandatory dev release validation..."
 	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
-	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
+	cd ui && JETKVM_URL=http://$(DEVICE_IP) BASELINE_BINARY_PATH=$(abspath bin/jetkvm_app) NODE_NO_WARNINGS=1 npx playwright test --project=ui
 	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-unsigned
 	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-rejected
 
@@ -288,9 +281,9 @@ build_release:
 		echo "Toolchain not found, running build_release in Docker..."; \
 		rm -rf internal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
-			$(DOCKER_BUILD_TAG) make _build_release_inner VERSION=$(VERSION); \
+			$(DOCKER_BUILD_TAG) make _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	else \
-		$(MAKE) _build_release_inner VERSION=$(VERSION); \
+		$(MAKE) _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
 _build_release_inner: build_native

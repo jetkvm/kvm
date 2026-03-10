@@ -240,7 +240,7 @@ test.afterAll(async () => {
   if (sharedPage) await sharedPage.close();
 });
 
-test.describe("Remote Agent E2E (Consolidated)", () => {
+test.describe("Remote Host Agent", () => {
   // ═══════════════════════════════════════════
   // DISPLAY + EDID
   // ═══════════════════════════════════════════

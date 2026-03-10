@@ -6,6 +6,8 @@ if (!process.env.JETKVM_URL) {
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   timeout: 60000,
   workers: 1,
   reporter: [["list", { printSteps: true }]],
@@ -24,10 +26,11 @@ export default defineConfig({
       name: "remote-agent",
       testDir: "./e2e/remote-agent",
       testMatch: "ra-all.spec.ts",
+      dependencies: ["ui"],
     },
-    { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/ },
-    { name: "ota-prerelease-unsigned", testMatch: /ota-prerelease-unsigned\.spec\.ts/ },
-    { name: "ota-prerelease-rejected", testMatch: /ota-prerelease-rejected\.spec\.ts/ },
-    { name: "ota-specific-version", testMatch: /ota-specific-version-unsigned\.spec\.ts/ },
+    { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
+    { name: "ota-prerelease-unsigned", testMatch: /ota-prerelease-unsigned\.spec\.ts/, dependencies: ["remote-agent"] },
+    { name: "ota-prerelease-rejected", testMatch: /ota-prerelease-rejected\.spec\.ts/, dependencies: ["remote-agent"] },
+    { name: "ota-specific-version", testMatch: /ota-specific-version-unsigned\.spec\.ts/, dependencies: ["remote-agent"] },
   ],
 });

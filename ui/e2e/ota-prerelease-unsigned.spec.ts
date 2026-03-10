@@ -20,10 +20,12 @@ test.describe("OTA Prerelease Unsigned", () => {
   test.setTimeout(420000);
 
   let mockServer: MockUpdateServer;
-  const env = getOTAEnvVars();
-  const preReleaseVersion = toPreReleaseVersion(env.releaseVersion);
+  let preReleaseVersion: string;
 
   test.beforeAll(async ({ browser }) => {
+    const env = getOTAEnvVars();
+    preReleaseVersion = toPreReleaseVersion(env.releaseVersion);
+
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
     try {

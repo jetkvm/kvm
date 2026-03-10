@@ -15,6 +15,7 @@ import {
   triggerUpdate,
   withTempSignature,
   type MockUpdateServer,
+  type OTAEnvVars,
 } from "./helpers";
 
 /**
@@ -30,9 +31,11 @@ test.describe("OTA Signature Verification", () => {
   test.setTimeout(420000);
 
   let mockServer: MockUpdateServer;
-  const env = getOTAEnvVars({ requireSignature: true });
+  let env: OTAEnvVars;
 
   test.beforeAll(async ({ browser }) => {
+    env = getOTAEnvVars({ requireSignature: true });
+
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
     try {
