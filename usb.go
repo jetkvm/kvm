@@ -129,8 +129,26 @@ func attemptUSBRecovery(state string) string {
 		return state
 	}
 
-	if err := gadget.ReopenKeyboardHidFile(); err != nil {
-		usbLogger.Warn().Err(err).Msg("failed to reopen keyboard HID file after USB gadget rebind")
+	// After rebind, the kernel recreates /dev/hidg* but the character
+	// devices take several seconds to become usable (ENXIO until the
+	// function driver attaches). Retry the keyboard HID file open with
+	// increasing delays up to ~20 seconds total.
+	delays := []time.Duration{
+		1 * time.Second,
+		1 * time.Second,
+		2 * time.Second,
+		2 * time.Second,
+		3 * time.Second,
+		3 * time.Second,
+		4 * time.Second,
+		4 * time.Second,
+	}
+	for _, delay := range delays {
+		time.Sleep(delay)
+		if err := gadget.ReopenKeyboardHidFile(); err == nil {
+			usbLogger.Info().Msg("keyboard HID file reopened successfully after USB rebind")
+			break
+		}
 	}
 
 	return gadget.GetUsbState()

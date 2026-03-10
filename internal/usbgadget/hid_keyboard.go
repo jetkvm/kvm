@@ -312,8 +312,7 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	var err error
-	file, err := os.OpenFile("/dev/hidg0", os.O_RDWR, 0666)
+	file, err := openWithTimeout("/dev/hidg0", os.O_RDWR, 0666, 3*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to open hidg0: %w", err)
 	}
@@ -325,6 +324,25 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 	u.listenKeyboardEvents(ctx, file)
 
 	return nil
+}
+
+func openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Duration) (*os.File, error) {
+	type result struct {
+		file *os.File
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		f, err := os.OpenFile(name, flag, perm)
+		ch <- result{f, err}
+	}()
+
+	select {
+	case r := <-ch:
+		return r.file, r.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("open %s: timed out after %s", name, timeout)
+	}
 }
 
 func (u *UsbGadget) openKeyboardHidFile() error {
