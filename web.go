@@ -101,6 +101,14 @@ func setupRouter() *gin.Engine {
 		staticFS.(fs.ReadDirFS),
 	))
 
+	// Security headers middleware
+	r.Use(func(c *gin.Context) {
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Next()
+	})
+
 	// Add a custom middleware to set cache headers for images
 	// This is crucial for optimizing the initial welcome screen load time
 	// By enabling caching, we ensure that pre-loaded images are stored in the browser cache
@@ -220,7 +228,7 @@ func handleWebRTCSession(c *gin.Context) {
 	var req WebRTCSessionRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -269,9 +277,9 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 
 	scopedLogger.Info().Msg("new websocket connection established")
 
-	// Create WebSocket options with InsecureSkipVerify to bypass origin check
+	// Create WebSocket options allowing connections from the same host and loopback addresses
 	wsOptions := &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // Allow connections from any origin
+		OriginPatterns: []string{c.Request.Host, "localhost", "127.0.0.1", "[::1]"},
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
 			scopedLogger.Debug().Bytes("payload", payload).Msg("ping frame received")
 
@@ -284,7 +292,8 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 
 	wsCon, err := websocket.Accept(c.Writer, c.Request, wsOptions)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		scopedLogger.Warn().Err(err).Msg("failed to accept websocket connection")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to establish WebSocket connection"})
 		return
 	}
 
@@ -293,14 +302,14 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 
 	err = wsjson.Write(context.Background(), wsCon, gin.H{"type": "device-metadata", "data": gin.H{"deviceVersion": builtAppVersion}})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		scopedLogger.Warn().Err(err).Msg("failed to write device metadata")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send device metadata"})
 		return
 	}
 
 	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
 }
 
@@ -496,7 +505,7 @@ func handleLogin(c *gin.Context) {
 	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -770,18 +779,6 @@ func handleDeletePassword(c *gin.Context) {
 }
 
 func handleDeviceStatus(c *gin.Context) {
-	// Add CORS headers to allow cross-origin requests
-	// This is safe because device/status is a public endpoint
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type")
-
-	// Handle preflight requests
-	if c.Request.Method == "OPTIONS" {
-		c.AbortWithStatus(http.StatusNoContent)
-		return
-	}
-
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
 	}
@@ -806,14 +803,26 @@ func handleSetup(c *gin.Context) {
 		return
 	}
 
+	ip := c.ClientIP()
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":       "Too many failed attempts. Please try again later.",
+			"retry_after": retryAfter,
+		})
+		return
+	}
+
 	var req SetupRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		passwordRateLimiter.RecordFailure(ip)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	if req.LocalAuthMode != "password" && req.LocalAuthMode != "noPassword" {
+		passwordRateLimiter.RecordFailure(ip)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid localAuthMode"})
 		return
 	}
@@ -822,11 +831,13 @@ func handleSetup(c *gin.Context) {
 
 	if req.LocalAuthMode == "password" {
 		if req.Password == "" {
+			passwordRateLimiter.RecordFailure(ip)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for password mode"})
 			return
 		}
 
 		if len(req.Password) < MinPasswordLength {
+			passwordRateLimiter.RecordFailure(ip)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
 			return
 		}

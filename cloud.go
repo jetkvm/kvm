@@ -253,7 +253,8 @@ func handleCloudRegister(c *gin.Context) {
 
 	provider, err := oidc.NewProvider(c, "https://accounts.google.com")
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to initialize OIDC provider: " + err.Error()})
+		cloudLogger.Error().Err(err).Msg("failed to initialize OIDC provider")
+		c.JSON(500, gin.H{"error": "Failed to initialize OIDC provider"})
 		return
 	}
 
@@ -264,7 +265,8 @@ func handleCloudRegister(c *gin.Context) {
 	verifier := provider.Verifier(oidcConfig)
 	idToken, err := verifier.Verify(c, req.OidcGoogle)
 	if err != nil {
-		c.JSON(400, gin.H{"error": "Invalid OIDC token: " + err.Error()})
+		cloudLogger.Warn().Err(err).Msg("OIDC token verification failed")
+		c.JSON(400, gin.H{"error": "Invalid OIDC token"})
 		return
 	}
 
