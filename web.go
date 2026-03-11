@@ -101,6 +101,14 @@ func setupRouter() *gin.Engine {
 		staticFS.(fs.ReadDirFS),
 	))
 
+	// Security headers middleware
+	r.Use(func(c *gin.Context) {
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Next()
+	})
+
 	// Add a custom middleware to set cache headers for images
 	// This is crucial for optimizing the initial welcome screen load time
 	// By enabling caching, we ensure that pre-loaded images are stored in the browser cache
