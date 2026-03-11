@@ -220,7 +220,7 @@ func handleWebRTCSession(c *gin.Context) {
 	var req WebRTCSessionRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -284,7 +284,8 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 
 	wsCon, err := websocket.Accept(c.Writer, c.Request, wsOptions)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		scopedLogger.Warn().Err(err).Msg("failed to accept websocket connection")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to establish WebSocket connection"})
 		return
 	}
 
@@ -293,14 +294,14 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 
 	err = wsjson.Write(context.Background(), wsCon, gin.H{"type": "device-metadata", "data": gin.H{"deviceVersion": builtAppVersion}})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		scopedLogger.Warn().Err(err).Msg("failed to write device metadata")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send device metadata"})
 		return
 	}
 
 	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
 }
 
@@ -496,7 +497,7 @@ func handleLogin(c *gin.Context) {
 	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -809,7 +810,7 @@ func handleSetup(c *gin.Context) {
 	var req SetupRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
