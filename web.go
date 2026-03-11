@@ -806,14 +806,26 @@ func handleSetup(c *gin.Context) {
 		return
 	}
 
+	ip := c.ClientIP()
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":       "Too many failed attempts. Please try again later.",
+			"retry_after": retryAfter,
+		})
+		return
+	}
+
 	var req SetupRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		passwordRateLimiter.RecordFailure(ip)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	if req.LocalAuthMode != "password" && req.LocalAuthMode != "noPassword" {
+		passwordRateLimiter.RecordFailure(ip)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid localAuthMode"})
 		return
 	}
@@ -822,11 +834,13 @@ func handleSetup(c *gin.Context) {
 
 	if req.LocalAuthMode == "password" {
 		if req.Password == "" {
+			passwordRateLimiter.RecordFailure(ip)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for password mode"})
 			return
 		}
 
 		if len(req.Password) < MinPasswordLength {
+			passwordRateLimiter.RecordFailure(ip)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
 			return
 		}
