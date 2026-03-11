@@ -269,9 +269,9 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 
 	scopedLogger.Info().Msg("new websocket connection established")
 
-	// Create WebSocket options with InsecureSkipVerify to bypass origin check
+	// Create WebSocket options allowing connections from the same host and loopback addresses
 	wsOptions := &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // Allow connections from any origin
+		OriginPatterns: []string{c.Request.Host, "localhost", "127.0.0.1", "[::1]"},
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
 			scopedLogger.Debug().Bytes("payload", payload).Msg("ping frame received")
 
