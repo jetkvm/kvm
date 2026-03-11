@@ -49,7 +49,7 @@ export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<v
       {
         message: "Waiting for WebRTC connection and HID RPC to be ready",
         timeout,
-        intervals: [500, 1000, 2000],
+        intervals: [200, 500, 1000],
       },
     )
     .toBe(true);
@@ -66,7 +66,7 @@ export async function waitForVideoStream(page: Page, timeout = 30000): Promise<v
     .poll(async () => page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive()), {
       message: "Waiting for video stream to be active",
       timeout,
-      intervals: [500, 1000, 2000],
+      intervals: [200, 500, 1000],
     })
     .toBe(true);
 }
@@ -79,7 +79,7 @@ export async function waitForVideoStream(page: Page, timeout = 30000): Promise<v
  * @param taps - Number of key taps to send (default: 3)
  * @param delayMs - Delay between taps in milliseconds (default: 200)
  */
-export async function wakeDisplay(page: Page, taps = 3, delayMs = 500): Promise<void> {
+export async function wakeDisplay(page: Page, taps = 3, delayMs = 100): Promise<void> {
   for (let i = 0; i < taps; i++) {
     await tapKey(page, HID_KEY.SPACE);
     await page.waitForTimeout(delayMs);
@@ -111,7 +111,7 @@ export async function sendKeypress(page: Page, keyCode: number, press: boolean):
  * @param keyCode - USB HID key code
  * @param holdMs - Time to hold the key in milliseconds (default: 50)
  */
-export async function tapKey(page: Page, keyCode: number, holdMs = 50): Promise<void> {
+export async function tapKey(page: Page, keyCode: number, holdMs = 20): Promise<void> {
   await sendKeypress(page, keyCode, true);
   await page.waitForTimeout(holdMs);
   await sendKeypress(page, keyCode, false);
@@ -167,6 +167,31 @@ export async function waitForLedState(
 export interface VideoStreamDimensions {
   width: number;
   height: number;
+}
+
+/**
+ * Wait for video stream dimensions to be available (frames rendered).
+ * This polls until getVideoStreamDimensions returns non-null with valid dimensions.
+ */
+export async function waitForVideoDimensions(
+  page: Page,
+  timeout = 10000,
+): Promise<VideoStreamDimensions> {
+  let dims: VideoStreamDimensions | null = null;
+  await expect
+    .poll(
+      async () => {
+        dims = await getVideoStreamDimensions(page);
+        return dims !== null && dims.width > MIN_VIDEO_DIMENSION && dims.height > MIN_VIDEO_DIMENSION;
+      },
+      {
+        message: "Waiting for video dimensions to be available",
+        timeout,
+        intervals: [200, 500, 1000],
+      },
+    )
+    .toBe(true);
+  return dims!;
 }
 
 /**
@@ -321,20 +346,8 @@ export async function runMouseBidirectionalCheck(
     settleMs = MOUSE_SETTLE_MS,
   } = options;
 
-  // Wait for video to be ready and get dimensions (with retry)
-  let dimensions = await getVideoStreamDimensions(page);
-  if (!dimensions) {
-    await page.waitForTimeout(2000);
-    dimensions = await getVideoStreamDimensions(page);
-  }
-  expect(dimensions, "Video stream dimensions should be available").not.toBeNull();
-  const { width: videoWidth, height: videoHeight } = dimensions!;
-  expect(videoWidth, `Video width should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
-    MIN_VIDEO_DIMENSION,
-  );
-  expect(videoHeight, `Video height should be at least ${MIN_VIDEO_DIMENSION}px`).toBeGreaterThan(
-    MIN_VIDEO_DIMENSION,
-  );
+  // Wait for video dimensions to be available (with polling)
+  const { width: videoWidth, height: videoHeight } = await waitForVideoDimensions(page);
 
   const testHidX = options.testHidX ?? Math.floor(HID_MAX * 0.7);
   const testHidY = options.testHidY ?? Math.floor(HID_MAX * 0.7);
@@ -424,7 +437,7 @@ export async function verifyKeyboardWorks(page: Page): Promise<void> {
   expect(newState!.caps_lock, "CAPS_LOCK should have toggled").toBe(!initialCapsLock);
 
   // Small delay to ensure key state is stable before second toggle
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(50);
 
   // Restore original state
   await tapKey(page, HID_KEY.CAPS_LOCK);
@@ -458,8 +471,15 @@ export async function verifyHidAndVideo(page: Page): Promise<void> {
   // Wait for video stream to be active (proper polling with timeout)
   await waitForVideoStream(page, 10000);
 
-  // Verify mouse works
-  await verifyMouseWorks(page);
+  // Wait for video dimensions to be available (frames need to render)
+  await waitForVideoDimensions(page);
+
+  // Verify mouse works (use longer settle time for post-reboot scenarios)
+  await runMouseBidirectionalCheck(page, {
+    retries: MOUSE_VERIFY_RETRIES,
+    threshold: MOUSE_DISTANCE_THRESHOLD,
+    settleMs: 150,
+  });
 
   // Verify keyboard works
   await verifyKeyboardWorks(page);
@@ -513,7 +533,7 @@ export async function getCurrentVersion(page: Page): Promise<string | null> {
 export async function sendTerminalCommand(
   page: Page,
   command: string,
-  waitMs = 500,
+  waitMs = 200,
 ): Promise<boolean> {
   const result = await page.evaluate(cmd => {
     return window.__kvmTestHooks?.sendTerminalCommand?.(cmd) ?? false;
@@ -560,7 +580,7 @@ export async function waitForTerminalReady(page: Page, timeout = 10000): Promise
  */
 export async function reconnectAfterReboot(
   page: Page,
-  waitBeforeRetry = 15000,
+  waitBeforeRetry = 5000,
   maxRetries = 15,
   retryInterval = 3000,
 ): Promise<void> {
@@ -581,7 +601,7 @@ export async function reconnectAfterReboot(
 }
 
 // Time to wait for welcome screen animations (ms)
-const ANIMATION_DELAY = 3000;
+const ANIMATION_DELAY = 500;
 
 // Known test passwords - used when device is in unknown state and needs login
 const KNOWN_TEST_PASSWORDS = ["TestPassword123", "NewPassword456"];
@@ -608,7 +628,7 @@ async function tryLoginIfNeeded(page: Page): Promise<boolean> {
     await passwordInput.fill(password);
     const submitButton = page.getByRole("button", { name: /Log in/i });
     await submitButton.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     // Check if we're no longer on login page
     const newUrl = page.url();
@@ -616,8 +636,8 @@ async function tryLoginIfNeeded(page: Page): Promise<boolean> {
       return true;
     }
 
-    // Clear for next attempt
-    await passwordInput.clear();
+    // Clear for next attempt (may fail if element is detached/disabled after rate limiting)
+    await passwordInput.clear().catch(() => {});
   }
 
   return false; // Could not login with any known password
@@ -632,40 +652,26 @@ async function tryLoginIfNeeded(page: Page): Promise<boolean> {
  * @param page - Playwright page object
  */
 export async function resetDeviceToWelcome(page: Page): Promise<void> {
+  // Check if already on welcome page
   await page.goto("/");
   await page.waitForLoadState("networkidle");
 
-  // Check if we're on login page and try to login
-  await tryLoginIfNeeded(page);
-
   const currentUrl = page.url();
-  const isOnWelcome = currentUrl.includes("/welcome");
-
-  if (!isOnWelcome) {
-    // Device is set up, need to reset it first
-    await page.goto("/settings/advanced");
-    await page.waitForLoadState("networkidle");
-
-    // Check if redirected to login and try to login
-    if (page.url().includes("/login")) {
-      const loggedIn = await tryLoginIfNeeded(page);
-      if (loggedIn) {
-        await page.goto("/settings/advanced");
-        await page.waitForLoadState("networkidle");
-      }
-    }
-
-    await resetConfigViaSSH();
-    await rebootDeviceViaSSH();
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
-  } else {
-    // Navigate to the base welcome page if we're on a sub-route
+  if (currentUrl.includes("/welcome")) {
+    // Already on welcome - navigate to base if on sub-route
     if (!currentUrl.endsWith("/welcome")) {
       await page.goto("/welcome");
       await page.waitForLoadState("networkidle");
     }
+    await page.waitForTimeout(ANIMATION_DELAY);
+    return;
   }
+
+  // Device is configured - reset via SSH (most reliable approach)
+  await resetConfigViaSSH();
+  await rebootDeviceViaSSH();
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
 
   // Wait for animations to complete
   await page.waitForTimeout(ANIMATION_DELAY);
@@ -689,7 +695,7 @@ export async function goToWelcomeMode(page: Page): Promise<void> {
 
   await page.waitForURL("**/welcome/mode", { timeout: 10000 });
   await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(1000); // Wait for animations
+  await page.waitForTimeout(200); // Wait for animations
 }
 
 /**
@@ -729,7 +735,7 @@ export async function submitWelcomePassword(
 ): Promise<void> {
   await page.waitForURL("**/welcome/password", { timeout: 10000 });
   await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(1000); // Wait for animations
+  await page.waitForTimeout(200); // Wait for animations
 
   const passwordInput = page.locator('input[name="password"]');
   const confirmPasswordInput = page.locator('input[name="confirmPassword"]');
@@ -769,21 +775,41 @@ export async function loginLocal(
 ): Promise<{ success: boolean; error?: string }> {
   const passwordInput = page.locator('input[name="password"]');
   await expect(passwordInput).toBeVisible({ timeout: 5000 });
-  await passwordInput.fill(password);
 
-  const submitButton = page.getByRole("button", { name: /Log in/i });
-  await submitButton.click();
-
-  // Wait for response
-  await page.waitForTimeout(1000);
-
-  const currentUrl = page.url();
-  if (!currentUrl.includes("/login")) {
-    return { success: true };
+  // Check if input is enabled (might be disabled due to rate-limiting)
+  const isEnabled = await passwordInput.isEnabled({ timeout: 3000 }).catch(() => false);
+  if (!isEnabled) {
+    if (expectSuccess) {
+      throw new Error("Login failed: password input is disabled (likely rate-limited)");
+    }
+    return { success: false, error: "Rate limited - input disabled" };
   }
 
-  // Still on login page - get error message
-  const errorText = await page.locator(".text-red-500, .text-red-600").first().textContent();
+  await passwordInput.fill(password, { timeout: 5000 });
+
+  const submitButton = page.getByRole("button", { name: /Log in/i });
+  const submitEnabled = await submitButton.isEnabled({ timeout: 3000 }).catch(() => false);
+  if (!submitEnabled) {
+    if (expectSuccess) {
+      throw new Error("Login failed: submit button is disabled");
+    }
+    return { success: false, error: "Submit button disabled" };
+  }
+  await submitButton.click();
+
+  // Wait for navigation away from login page or for error to appear
+  try {
+    await page.waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 });
+    return { success: true };
+  } catch {
+    // Still on login page - check for error
+  }
+
+  // Still on login page - get error message (with timeout to avoid hanging)
+  const errorLocator = page.locator(".text-red-500, .text-red-600").first();
+  const errorText = await errorLocator.isVisible({ timeout: 3000 }).catch(() => false)
+    ? await errorLocator.textContent({ timeout: 3000 }).catch(() => null)
+    : null;
 
   if (expectSuccess) {
     // Test expected success but login failed
@@ -802,7 +828,7 @@ export async function logout(page: Page): Promise<void> {
   await page.evaluate(async () => {
     await fetch("/auth/logout", { method: "POST" });
   });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(200);
 }
 
 /**
@@ -815,7 +841,7 @@ export async function dismissSessionTakeoverDialog(page: Page): Promise<void> {
   const useHereButton = page.getByRole("button", { name: /Use Here/i });
   if (await useHereButton.isVisible({ timeout: 2000 }).catch(() => false)) {
     await useHereButton.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
   }
 }
 
@@ -967,7 +993,7 @@ export async function disablePasswordFromSettings(
  * @param ignoreErrors - If true, don't throw on command failure (default: false)
  * @returns The stdout from the command
  */
-async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
+export async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
   const { exec } = await import("child_process");
   const { promisify } = await import("util");
   const execAsync = promisify(exec);
@@ -1030,44 +1056,94 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
   }
 
   if (currentUrl.includes("/login")) {
-    // Device has password protection
-    if (desired.mode === "password") {
-      // Try to login with the provided password
-      const result = await loginLocal(page, desired.password, false);
+    // Device has password protection - try to login with known passwords
+    const passwordsToTry = desired.mode === "password"
+      ? [desired.password, ...KNOWN_TEST_PASSWORDS.filter(p => p !== desired.password)]
+      : [...KNOWN_TEST_PASSWORDS];
+
+    let loggedIn = false;
+    let usedPassword: string | null = null;
+    for (const pwd of passwordsToTry) {
+      const result = await loginLocal(page, pwd, false);
       if (result.success) {
+        loggedIn = true;
+        usedPassword = pwd;
+        break;
+      }
+      // Re-navigate to login if needed (page may have changed)
+      if (!page.url().includes("/login")) break;
+    }
+
+    if (loggedIn) {
+      if (desired.mode === "password" && usedPassword === desired.password) {
+        return; // Already has correct password
+      }
+      if (desired.mode === "password") {
+        // Change password via settings UI
+        await openAccessSettings(page);
+        await changePasswordFromSettings(page, usedPassword!, desired.password);
         return;
       }
-      // Login failed - password mismatch. Reset and set up fresh.
-      await resetConfigViaSSH();
-      await rebootDeviceViaSSH();
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
-      await goToWelcomeMode(page);
-      await selectWelcomeAuthMode(page, "password");
-      await submitWelcomePassword(page, desired.password);
-    } else {
-      // Need to remove password - use SSH escape hatch
-      await clearPasswordViaSSH();
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+      // desired.mode === "noPassword" - disable via settings UI
+      await openAccessSettings(page);
+      await disablePasswordFromSettings(page, usedPassword!);
+      return;
     }
-    return;
-  }
 
-  // Device is configured - check if we need to change mode
-  // At this point we're on "/" and the device has no password (or we're logged in)
-  if (desired.mode === "password") {
-    // Need to set password - we could do this via settings UI, but for simplicity
-    // reset to welcome and complete with password
+    // Could not login - fall back to SSH reset
     await resetConfigViaSSH();
     await rebootDeviceViaSSH();
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    await goToWelcomeMode(page);
-    await selectWelcomeAuthMode(page, "password");
-    await submitWelcomePassword(page, desired.password);
+    if (desired.mode === "password") {
+      await goToWelcomeMode(page);
+      await selectWelcomeAuthMode(page, "password");
+      await submitWelcomePassword(page, desired.password);
+    } else {
+      await goToWelcomeMode(page);
+      await selectWelcomeAuthMode(page, "noPassword");
+      await page.waitForURL("/", { timeout: 15000 });
+    }
+    return;
   }
-  // If desired is noPassword and we're already configured without password, nothing to do
+
+  // Device is configured and we're logged in (or no password) - check current mode
+  await openAccessSettings(page);
+
+  // Detect current mode by checking which buttons are visible
+  const hasDisableButton = await page
+    .getByRole("button")
+    .filter({ hasText: /Disable Protection/i })
+    .isVisible({ timeout: 3000 })
+    .catch(() => false);
+
+  if (desired.mode === "password") {
+    if (hasDisableButton) {
+      // Already has password - nothing to do (we're already logged in)
+      return;
+    }
+    // No password currently - enable it
+    await enablePasswordFromSettings(page, desired.password);
+  } else {
+    if (!hasDisableButton) {
+      // Already no password - nothing to do
+      return;
+    }
+    // Has password - try disabling with known passwords
+    for (const pwd of KNOWN_TEST_PASSWORDS) {
+      try {
+        await disablePasswordFromSettings(page, pwd);
+        return;
+      } catch {
+        // Wrong password, try next
+        await openAccessSettings(page);
+      }
+    }
+    // Fall back to SSH
+    await clearPasswordViaSSH();
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+  }
 }
 
 /**
@@ -1160,7 +1236,7 @@ async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> 
     } catch {
       // Device not ready yet, continue waiting
     }
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   throw new Error(`Device at ${host} did not become ready within ${timeout}ms`);
@@ -1179,13 +1255,13 @@ export async function rebootDeviceViaSSH(waitForReady = true): Promise<void> {
   await sshExec("reboot", true);
 
   if (waitForReady) {
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Wait for device to come back up
     await waitForDeviceReady(host, 60000);
 
     // Give it a moment to fully initialize
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 }
 

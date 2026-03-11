@@ -2,7 +2,9 @@ package kvm
 
 import (
 	"bufio"
-	"io"
+	"encoding/json"
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,8 @@ import (
 const serialPortPath = "/dev/ttyS3"
 
 var port serial.Port
+var serialMux *SerialMux
+var consoleBroker *ConsoleBroker
 
 func mountATXControl() error {
 	_ = port.SetMode(defaultMode)
@@ -251,11 +255,294 @@ func setDCRestoreState(state int) error {
 	return nil
 }
 
+func sendCustomCommand(command string) error {
+	scopedLogger := serialLogger.With().Str("service", "custom_buttons_tx").Logger()
+	scopedLogger.Debug().Msgf("Sending custom command: %q", command)
+	if serialMux == nil {
+		return fmt.Errorf("serial mux not initialized")
+	}
+	payload := []byte(command)
+	serialMux.Enqueue(payload, "button", true, TXUser) // echo if enabled
+	return nil
+}
+
 var defaultMode = &serial.Mode{
 	BaudRate: 115200,
 	DataBits: 8,
 	Parity:   serial.NoParity,
 	StopBits: serial.OneStopBit,
+}
+
+var serialPortMode = defaultMode
+
+var serialConfig = SerialSettings{
+	BaudRate:           defaultMode.BaudRate,
+	DataBits:           defaultMode.DataBits,
+	Parity:             "none",
+	StopBits:           "1",
+	Terminator:         Terminator{Label: "LF (\\n)", Value: "\n"},
+	HideSerialSettings: false,
+	EnableEcho:         false,
+	NormalizeMode:      "names",
+	NormalizeLineEnd:   "keep",
+	TabRender:          "",
+	PreserveANSI:       true,
+	ShowNLTag:          false,
+	Buttons:            []QuickButton{},
+}
+
+const serialSettingsPath = "/userdata/serialSettings.json"
+
+type Terminator struct {
+	Label string `json:"label"` // Terminator label
+	Value string `json:"value"` // Terminator value
+}
+
+type QuickButton struct {
+	Id         string     `json:"id"`         // Unique identifier
+	Label      string     `json:"label"`      // Button label
+	Command    string     `json:"command"`    // Command to send, raw command to send (without auto-terminator)
+	Terminator Terminator `json:"terminator"` // Terminator to use: None/CR/LF/CRLF/LFCR
+	Sort       int        `json:"sort"`       // Sort order
+}
+
+// Mode describes a serial port configuration.
+type SerialSettings struct {
+	BaudRate           int           `json:"baudRate"`           // The serial port bitrate (aka Baudrate)
+	DataBits           int           `json:"dataBits"`           // Size of the character (must be 5, 6, 7 or 8)
+	Parity             string        `json:"parity"`             // Parity (see Parity type for more info)
+	StopBits           string        `json:"stopBits"`           // Stop bits (see StopBits type for more info)
+	Terminator         Terminator    `json:"terminator"`         // Terminator to send after each command
+	HideSerialSettings bool          `json:"hideSerialSettings"` // Whether to hide the serial settings in the UI
+	EnableEcho         bool          `json:"enableEcho"`         // Whether to echo received characters back to the sender
+	NormalizeMode      string        `json:"normalizeMode"`      // Normalization mode: "carret", "names", "hex"
+	NormalizeLineEnd   string        `json:"normalizeLineEnd"`   // Line ending normalization: "keep", "lf", "cr", "crlf", "lfcr"
+	TabRender          string        `json:"tabRender"`          // How to render tabs: "spaces", "arrow", "pipe"
+	PreserveANSI       bool          `json:"preserveANSI"`       // Whether to preserve ANSI escape codes
+	ShowNLTag          bool          `json:"showNLTag"`          // Whether to show a special tag for new lines
+	Buttons            []QuickButton `json:"buttons"`            // Custom quick buttons
+}
+
+type DCMsg struct {
+	Type string          `json:"type"`           // "serial" | "system"
+	Name string          `json:"name,omitempty"` // e.g. "term.size"
+	Data json.RawMessage `json:"data"`           // string for "serial", object for "system"
+}
+
+func getSerialSettings() (SerialSettings, error) {
+	switch defaultMode.StopBits {
+	case serial.OneStopBit:
+		serialConfig.StopBits = "1"
+	case serial.OnePointFiveStopBits:
+		serialConfig.StopBits = "1.5"
+	case serial.TwoStopBits:
+		serialConfig.StopBits = "2"
+	}
+
+	switch defaultMode.Parity {
+	case serial.NoParity:
+		serialConfig.Parity = "none"
+	case serial.OddParity:
+		serialConfig.Parity = "odd"
+	case serial.EvenParity:
+		serialConfig.Parity = "even"
+	case serial.MarkParity:
+		serialConfig.Parity = "mark"
+	case serial.SpaceParity:
+		serialConfig.Parity = "space"
+	}
+
+	file, err := os.Open(serialSettingsPath)
+	if err != nil {
+		logger.Info().Msg("SerialSettings file doesn't exist, using default")
+		return serialConfig, err
+	}
+	defer file.Close()
+
+	// load and merge the default config with the user config
+	var loadedConfig SerialSettings
+	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
+		logger.Warn().Err(err).Msg("SerialSettings file JSON parsing failed")
+		return serialConfig, nil
+	}
+
+	serialConfig = loadedConfig // Update global config
+
+	// Apply settings to serial port, when opening the extension
+	var stopBits serial.StopBits
+	switch serialConfig.StopBits {
+	case "1":
+		stopBits = serial.OneStopBit
+	case "1.5":
+		stopBits = serial.OnePointFiveStopBits
+	case "2":
+		stopBits = serial.TwoStopBits
+	}
+
+	var parity serial.Parity
+	switch serialConfig.Parity {
+	case "none":
+		parity = serial.NoParity
+	case "odd":
+		parity = serial.OddParity
+	case "even":
+		parity = serial.EvenParity
+	case "mark":
+		parity = serial.MarkParity
+	case "space":
+		parity = serial.SpaceParity
+	}
+
+	serialPortMode = &serial.Mode{
+		BaudRate: serialConfig.BaudRate,
+		DataBits: serialConfig.DataBits,
+		StopBits: stopBits,
+		Parity:   parity,
+	}
+
+	_ = port.SetMode(serialPortMode)
+
+	if serialMux != nil {
+		serialMux.SetEchoEnabled(serialConfig.EnableEcho)
+	}
+
+	var normalizeMode NormalizeMode
+	switch serialConfig.NormalizeMode {
+	case "caret":
+		normalizeMode = ModeCaret
+	case "names":
+		normalizeMode = ModeNames
+	case "hex":
+		normalizeMode = ModeHex
+	default:
+		normalizeMode = ModeNames
+	}
+
+	var crlfMode LineEndingMode
+	switch serialConfig.NormalizeLineEnd {
+	case "keep":
+		crlfMode = LineEnding_AsIs
+	case "lf":
+		crlfMode = LineEnding_LF
+	case "cr":
+		crlfMode = LineEnding_CR
+	case "crlf":
+		crlfMode = LineEnding_CRLF
+	case "lfcr":
+		crlfMode = LineEnding_LFCR
+	default:
+		crlfMode = LineEnding_AsIs
+	}
+
+	if consoleBroker != nil {
+		norm := NormalizationOptions{
+			Mode: normalizeMode, LineEnding: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
+		}
+		consoleBroker.SetNormOptions(norm)
+	}
+
+	return loadedConfig, nil
+}
+
+func setSerialSettings(newSettings SerialSettings) error {
+	logger.Trace().Str("path", serialSettingsPath).Msg("Saving config")
+
+	file, err := os.Create(serialSettingsPath)
+	if err != nil {
+		return fmt.Errorf("failed to create SerialSettings file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(newSettings); err != nil {
+		return fmt.Errorf("failed to encode SerialSettings: %w", err)
+	}
+
+	var stopBits serial.StopBits
+	switch newSettings.StopBits {
+	case "1":
+		stopBits = serial.OneStopBit
+	case "1.5":
+		stopBits = serial.OnePointFiveStopBits
+	case "2":
+		stopBits = serial.TwoStopBits
+	default:
+		return fmt.Errorf("invalid stop bits: %s", newSettings.StopBits)
+	}
+
+	var parity serial.Parity
+	switch newSettings.Parity {
+	case "none":
+		parity = serial.NoParity
+	case "odd":
+		parity = serial.OddParity
+	case "even":
+		parity = serial.EvenParity
+	case "mark":
+		parity = serial.MarkParity
+	case "space":
+		parity = serial.SpaceParity
+	default:
+		return fmt.Errorf("invalid parity: %s", newSettings.Parity)
+	}
+	serialPortMode = &serial.Mode{
+		BaudRate: newSettings.BaudRate,
+		DataBits: newSettings.DataBits,
+		StopBits: stopBits,
+		Parity:   parity,
+	}
+
+	_ = port.SetMode(serialPortMode)
+
+	serialConfig = newSettings // Update global config
+
+	if serialMux != nil {
+		serialMux.SetEchoEnabled(serialConfig.EnableEcho)
+	}
+
+	var normalizeMode NormalizeMode
+	switch serialConfig.NormalizeMode {
+	case "caret":
+		normalizeMode = ModeCaret
+	case "names":
+		normalizeMode = ModeNames
+	case "hex":
+		normalizeMode = ModeHex
+	default:
+		normalizeMode = ModeNames
+	}
+
+	var crlfMode LineEndingMode
+	switch serialConfig.NormalizeLineEnd {
+	case "keep":
+		crlfMode = LineEnding_AsIs
+	case "lf":
+		crlfMode = LineEnding_LF
+	case "cr":
+		crlfMode = LineEnding_CR
+	case "crlf":
+		crlfMode = LineEnding_CRLF
+	case "lfcr":
+		crlfMode = LineEnding_LFCR
+	default:
+		crlfMode = LineEnding_AsIs
+	}
+
+	if consoleBroker != nil {
+		norm := NormalizationOptions{
+			Mode: normalizeMode, LineEnding: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
+		}
+		consoleBroker.SetNormOptions(norm)
+	}
+
+	return nil
+}
+
+func setTerminalPaused(paused bool) {
+	if consoleBroker != nil {
+		consoleBroker.SetTerminalPaused(paused)
+	}
 }
 
 func initSerialPort() {
@@ -280,53 +567,105 @@ func reopenSerialPort() error {
 			Str("path", serialPortPath).
 			Interface("mode", defaultMode).
 			Msg("Error opening serial port")
+		return err
 	}
+
+	// new broker (no sink yet—set it in handleSerialChannel.OnOpen)
+	norm := NormalizationOptions{
+		Mode: ModeNames, LineEnding: LineEnding_LF, TabRender: "", PreserveANSI: true,
+	}
+	if consoleBroker != nil {
+		consoleBroker.Close()
+	}
+	consoleBroker = NewConsoleBroker(nil, norm)
+	consoleBroker.Start()
+
+	// new mux
+	if serialMux != nil {
+		serialMux.Close()
+	}
+	serialMux = NewSerialMux(port, consoleBroker)
+	serialMux.SetEchoEnabled(serialConfig.EnableEcho) // honor your setting
+	serialMux.Start()
+
 	return nil
 }
 
-func handleSerialChannel(d *webrtc.DataChannel) {
+func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 	scopedLogger := serialLogger.With().
-		Uint16("data_channel_id", *d.ID()).Logger()
+		Uint16("data_channel_id", *dataChannel.ID()).Str("service", "serial terminal channel").Logger()
 
-	d.OnOpen(func() {
-		go func() {
-			if port == nil {
-				return
-			}
-
-			buf := make([]byte, 1024)
-			for {
-				n, err := port.Read(buf)
-				if err != nil {
-					if err != io.EOF {
-						scopedLogger.Warn().Err(err).Msg("Failed to read from serial port")
-					}
-					break
-				}
-				err = d.Send(buf[:n])
-				if err != nil {
-					scopedLogger.Warn().Err(err).Msg("Failed to send serial output")
-					break
-				}
-			}
-		}()
+	dataChannel.OnOpen(func() {
+		// Plug the terminal sink into the broker
+		scopedLogger.Info().Msg("Opening serial channel from console broker")
+		if consoleBroker != nil {
+			consoleBroker.SetSink(dataChannelSink{dataChannel: dataChannel})
+			consoleBroker.Enqueue(consoleEvent{
+				kind: evRX,
+				data: []byte("[serial attached]\n"),
+			})
+			scopedLogger.Info().Msg("Serial channel is now active")
+		}
 	})
 
-	d.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if port == nil {
+	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		if serialMux == nil || consoleBroker == nil {
 			return
 		}
-		_, err := port.Write(msg.Data)
-		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Failed to write to serial")
+
+		// Try parse as our JSON envelope
+		var m DCMsg
+		if msg.IsString && json.Unmarshal(msg.Data, &m) == nil && m.Type != "" {
+			switch m.Type {
+			case "serial":
+				// data is a JSON string (what the user typed)
+				var s string
+				if err := json.Unmarshal(m.Data, &s); err != nil {
+					scopedLogger.Warn().Err(err).Msg("Failed to decode serial payload string")
+					return
+				}
+
+				// Write to UART (echo controlled by serialConfig.EnableEcho inside mux)
+				serialMux.Enqueue([]byte(s), "webrtc", true, TXUser)
+
+			case "system":
+				// Display in terminal for debugging, but do NOT write to UART
+				// Show raw JSON that arrived
+				consoleBroker.Enqueue(consoleEvent{
+					kind:   evTX,
+					data:   append([]byte(nil), msg.Data...),
+					origin: TXSystem,
+				})
+
+				// Optional: handle known system message
+				if m.Name == "term.size" {
+					scopedLogger.Trace().RawJSON("msg", msg.Data).Msg("Terminal size message received on serial channel")
+				}
+
+			default:
+				// Unknown envelope type: show it as system/debug
+				consoleBroker.Enqueue(consoleEvent{
+					kind:   evTX,
+					data:   append([]byte(nil), msg.Data...),
+					origin: TXSystem,
+				})
+			}
+			return
 		}
+
+		// Backward compatibility: treat non-envelope as raw serial bytes
+		serialMux.Enqueue(msg.Data, "webrtc-raw", true, TXUser)
 	})
 
-	d.OnError(func(err error) {
+	dataChannel.OnError(func(err error) {
 		scopedLogger.Warn().Err(err).Msg("Serial channel error")
 	})
 
-	d.OnClose(func() {
+	dataChannel.OnClose(func() {
 		scopedLogger.Info().Msg("Serial channel closed")
+
+		if consoleBroker != nil {
+			consoleBroker.SetSink(nil)
+		}
 	})
 }

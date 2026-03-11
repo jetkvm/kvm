@@ -2,11 +2,8 @@ import { test, expect } from "@playwright/test";
 
 import { waitForWebRTCReady, verifyHidAndVideo } from "./helpers";
 
-// Time to wait after reset config before reloading (ms)
-const RESET_CONFIG_DELAY = 7000;
-
 // Time to wait for welcome screen animations (ms)
-const ANIMATION_DELAY = 3000;
+const ANIMATION_DELAY = 500;
 
 test.describe("Config Reset and Welcome Screen Tests", () => {
   // This test modifies device configuration, so use a longer timeout
@@ -49,12 +46,10 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
       await expect(resetConfigButton).toBeVisible({ timeout: 10000 });
       await resetConfigButton.click();
 
-      // === Step 5: Wait for reset to complete and reload ===
-      await page.waitForTimeout(RESET_CONFIG_DELAY);
-      await page.reload();
-
-      // === Step 6: Should redirect to /welcome screen ===
-      await page.waitForURL("**/welcome", { timeout: 10000 });
+      // === Step 5: Wait for UI to reload and redirect to /welcome ===
+      // The button handler already calls window.location.reload() after a 2s delay,
+      // so we just wait for the redirect to /welcome instead of reloading ourselves.
+      await page.waitForURL("**/welcome", { timeout: 15000 });
       await page.waitForLoadState("networkidle");
     } else {
       // Navigate to the base welcome page if we're on a sub-route
@@ -75,7 +70,7 @@ test.describe("Config Reset and Welcome Screen Tests", () => {
     // === Step 7: Wait for mode selection page ===
     await page.waitForURL("**/welcome/mode", { timeout: 10000 });
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(1000); // Wait for animations
+    await page.waitForTimeout(500); // Wait for animations
 
     // === Step 8: Select "No Password" option ===
     const noPasswordRadio = page.locator('input[type="radio"][value="noPassword"]');

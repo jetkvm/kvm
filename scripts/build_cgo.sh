@@ -37,7 +37,7 @@ VERBOSE=1 cmake -B "${BUILD_DIR}" \
     -DCMAKE_INSTALL_PREFIX="${TMP_DIR}"
 
 msg_info "▶ Copying built library and header files"
-cmake --build "${BUILD_DIR}" --target install
+cmake --build "${BUILD_DIR}" --target install --parallel $(nproc)
 cp -r "${TMP_DIR}/include" "${CGO_PATH}"
 cp -r "${TMP_DIR}/lib" "${CGO_PATH}"
 rm -rf "${TMP_DIR}"

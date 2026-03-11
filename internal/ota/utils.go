@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 )
 
@@ -47,19 +48,13 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	downloadProgress := componentUpdate.downloadProgress
 
-	if _, err := os.Stat(path); err == nil {
-		traceLogger().Msg("removing existing file")
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("error removing existing file: %w", err)
-		}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error removing existing file: %w", err)
 	}
 
 	unverifiedPath := path + ".unverified"
-	if _, err := os.Stat(unverifiedPath); err == nil {
-		traceLogger().Msg("removing existing unverified file")
-		if err := os.Remove(unverifiedPath); err != nil {
-			return fmt.Errorf("error removing existing unverified file: %w", err)
-		}
+	if err := os.Remove(unverifiedPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error removing existing unverified file: %w", err)
 	}
 
 	traceLogger().Msg("creating unverified file")
@@ -129,7 +124,72 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	return nil
 }
-func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
+
+// downloadComponentSignature checks if a signature is required and downloads it if available.
+// Returns the signature bytes (nil if not required/available) or an error if required but missing.
+func (s *State) downloadComponentSignature(
+	ctx context.Context,
+	update *componentUpdateStatus,
+	componentName string,
+	l *zerolog.Logger,
+	bypassSignatureCheck bool,
+) ([]byte, error) {
+	if bypassSignatureCheck {
+		l.Warn().
+			Str("component", componentName).
+			Str("localVersion", update.localVersion).
+			Str("targetVersion", update.version).
+			Msg("bypassing GPG signature check for OTA update")
+		return nil, nil
+	}
+
+	// Signature is required by default.
+	if update.sigUrl == "" {
+		return nil, fmt.Errorf("version %s requires GPG signature but API returned no signature URL", update.version)
+	}
+
+	l.Debug().Str("sigUrl", update.sigUrl).Msgf("downloading %s signature", componentName)
+	return s.downloadSignature(ctx, update.sigUrl)
+}
+
+// downloadSignature downloads a detached GPG signature file from the given URL.
+// Returns the signature bytes or an error.
+func (s *State) downloadSignature(ctx context.Context, sigURL string) ([]byte, error) {
+	l := s.l.With().Str("sigURL", sigURL).Logger()
+	l.Debug().Msg("downloading signature file")
+
+	req, err := http.NewRequestWithContext(ctx, "GET", sigURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating signature request: %w", err)
+	}
+
+	client := s.client()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error downloading signature: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("signature download failed with status %d", resp.StatusCode)
+	}
+
+	signature, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading signature: %w", err)
+	}
+
+	if len(signature) == 0 {
+		return nil, fmt.Errorf("signature file is empty")
+	}
+
+	l.Debug().Int("signatureBytes", len(signature)).Msg("signature downloaded")
+	return signature, nil
+}
+
+// verifyFile verifies the SHA256 hash of the downloaded file and optionally verifies
+// the GPG signature if signature bytes are provided.
+func (s *State) verifyFile(ctx context.Context, path string, expectedHash string, signature []byte, verifyProgress *float32) error {
 	l := s.l.With().Str("path", path).Logger()
 
 	unverifiedPath := path + ".unverified"
@@ -181,6 +241,15 @@ func (s *State) verifyFile(path string, expectedHash string, verifyProgress *flo
 		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)
 	}
 
+	// Verify GPG signature if provided
+	if len(signature) > 0 {
+		l.Info().Msg("verifying GPG signature")
+		if err := s.gpgVerifier.VerifySignatureFromFile(ctx, signature, unverifiedPath); err != nil {
+			return fmt.Errorf("GPG signature verification failed: %w", err)
+		}
+		l.Info().Msg("GPG signature verified successfully")
+	}
+
 	if err := os.Rename(unverifiedPath, path); err != nil {
 		return fmt.Errorf("error renaming file: %w", err)
 	}
@@ -190,4 +259,29 @@ func (s *State) verifyFile(path string, expectedHash string, verifyProgress *flo
 	}
 
 	return nil
+}
+
+// shouldBypassSignatureCheck determines whether GPG signature verification can
+// be skipped for this update. Bypass is allowed in two cases:
+//
+//  1. The user explicitly requested a specific version (customVersionUpdate).
+//     This requires local user action on the device, so it can't be triggered
+//     by a compromised server.
+//
+//  2. The remote version is a pre-release AND the device has opted into the
+//     pre-release channel (includePreRelease). We check the local opt-in flag
+//     so that a compromised server can't push an unsigned pre-release version
+//     string to devices that never subscribed to the dev channel.
+func shouldBypassSignatureCheck(version string, customVersionUpdate bool, includePreRelease bool) bool {
+	if customVersionUpdate {
+		return true
+	}
+
+	remoteVersion, err := semver.NewVersion(version)
+	if err != nil {
+		return false
+	}
+
+	isPrerelease := remoteVersion.Prerelease() != ""
+	return isPrerelease && includePreRelease
 }

@@ -21,9 +21,11 @@ type UpdateMetadata struct {
 	AppVersion    string `json:"appVersion"`
 	AppURL        string `json:"appUrl"`
 	AppHash       string `json:"appHash"`
+	AppSigURL     string `json:"appSigUrl,omitempty"`
 	SystemVersion string `json:"systemVersion"`
 	SystemURL     string `json:"systemUrl"`
 	SystemHash    string `json:"systemHash"`
+	SystemSigURL  string `json:"systemSigUrl,omitempty"`
 }
 
 // LocalMetadata represents the local metadata of the system
@@ -65,6 +67,7 @@ type componentUpdateStatus struct {
 	localVersion         string
 	url                  string
 	hash                 string
+	sigUrl               string // URL for the detached GPG signature file
 	downloadProgress     float32
 	downloadFinishedAt   time.Time
 	verificationProgress float32
@@ -83,6 +86,7 @@ func (c *componentUpdateStatus) getZerologLogger(l *zerolog.Logger) *zerolog.Log
 		Str("localVersion", c.localVersion).
 		Str("url", c.url).
 		Str("hash", c.hash).
+		Str("sigUrl", c.sigUrl).
 		Float32("downloadProgress", c.downloadProgress).
 		Time("downloadFinishedAt", c.downloadFinishedAt).
 		Float32("verificationProgress", c.verificationProgress).
@@ -131,6 +135,7 @@ type State struct {
 	onStateUpdate           OnStateUpdateFunc
 	resetConfig             ResetConfigFunc
 	setAutoUpdate           SetAutoUpdateFunc
+	gpgVerifier             *GPGVerifier
 }
 
 func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpdateStatus, error string) *UpdateStatus {
@@ -143,9 +148,11 @@ func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpd
 			AppVersion:    appUpdate.version,
 			AppURL:        appUpdate.url,
 			AppHash:       appUpdate.hash,
+			AppSigURL:     appUpdate.sigUrl,
 			SystemVersion: systemUpdate.version,
 			SystemURL:     systemUpdate.url,
 			SystemHash:    systemUpdate.hash,
+			SystemSigURL:  systemUpdate.sigUrl,
 		},
 		SystemUpdateAvailable:       systemUpdate.available,
 		SystemUpdateAvailableReason: systemUpdate.availableReason,
@@ -192,6 +199,12 @@ type Options struct {
 
 // NewState creates a new OTA state
 func NewState(opts Options) *State {
+	if opts.Logger == nil {
+		panic("ota.NewState: Logger is required")
+	}
+	if opts.GetHTTPClient == nil {
+		panic("ota.NewState: GetHTTPClient is required")
+	}
 	components := make(map[string]componentUpdateStatus)
 	for _, component := range availableComponents {
 		components[component] = componentUpdateStatus{}
@@ -207,6 +220,7 @@ func NewState(opts Options) *State {
 		releaseAPIEndpoint:      opts.ReleaseAPIEndpoint,
 		resetConfig:             opts.ResetConfig,
 		setAutoUpdate:           opts.SetAutoUpdate,
+		gpgVerifier:             NewGPGVerifier(opts.Logger, opts.GetHTTPClient),
 	}
 	if !opts.SkipConfirmSystem {
 		go s.confirmCurrentSystem()

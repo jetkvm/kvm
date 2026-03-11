@@ -43,7 +43,6 @@ test.describe("Mouse Round-Trip Tests", () => {
     const { arrive: distance, restore } = await runMouseBidirectionalCheck(page, {
       retries: 3,
       threshold: 10,
-      settleMs: 150,
       testHidX: HID_CENTER,
       testHidY: HID_CENTER,
     });
@@ -66,7 +65,6 @@ test.describe("Mouse Round-Trip Tests", () => {
     const { arrive, restore } = await runMouseBidirectionalCheck(page, {
       retries: 1,
       threshold: 10,
-      settleMs: 100,
     });
 
     expect(

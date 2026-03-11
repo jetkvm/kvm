@@ -691,6 +691,18 @@ export const useDeviceStore = create<DeviceState>(set => ({
   setSystemVersion: (version: string) => set({ systemVersion: version }),
 }));
 
+export interface TerminalState {
+  terminator: string | null;
+
+  setTerminator: (version: string) => void;
+}
+
+export const useTerminalStore = create<TerminalState>(set => ({
+  terminator: null,
+
+  setTerminator: (version: string) => set({ terminator: version }),
+}));
+
 export interface DhcpLease {
   ip?: string;
   netmask?: string;

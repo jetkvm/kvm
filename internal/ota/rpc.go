@@ -126,6 +126,8 @@ func remoteMetadataToComponentStatus(
 			componentStatus.hash = remoteMetadataVal.Field(i).String()
 		case "Version":
 			componentStatus.version = remoteMetadataVal.Field(i).String()
+		case "SigURL":
+			componentStatus.sigUrl = remoteMetadataVal.Field(i).String()
 		default:
 			// fmt.Printf("unknown field %s", fieldName)
 			continue

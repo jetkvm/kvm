@@ -2,7 +2,7 @@ BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
 REVISION  := $(shell git rev-parse HEAD)
-VERSION := 0.5.4
+VERSION := 0.5.5
 VERSION_DEV := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M)
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
@@ -16,6 +16,11 @@ SKIP_UI_BUILD ?= 0
 ENABLE_SYNC_TRACE ?= 0
 
 CMAKE_BUILD_TYPE ?= Release
+
+# GPG signing configuration
+# SIGNING_KEY_FPR: The fingerprint of the signing subkey (on YubiKey)
+# Required for signing releases
+SIGNING_KEY_FPR ?=
 
 GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
 ifeq ($(ENABLE_SYNC_TRACE), 1)
@@ -51,15 +56,92 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 test:
 	go test ./...
 
-# E2E tests - builds, sets up mock server, runs all tests including OTA
-test_e2e: build_dev
+# Fail fast if rclone cannot reach the R2 bucket.
+check_r2:
+	@command -v rclone >/dev/null 2>&1 || { echo "Error: rclone is not installed"; exit 1; }
+	@rclone lsf r2://jetkvm-update/ >/dev/null 2>&1 || { echo "Error: Cannot access R2 bucket. Check rclone configuration and credentials."; exit 1; }
+
+# Fail fast if the requested signing key is not available in local GPG keyring.
+check_signing_key:
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required"; \
+		exit 1; \
+	fi
+	@gpg --list-secret-keys --with-colons $(SIGNING_KEY_FPR) >/dev/null 2>&1 || { \
+		echo "Error: Signing key $(SIGNING_KEY_FPR) not found in local GPG keyring"; \
+		exit 1; \
+	}
+
+# Common env vars for OTA Playwright tests.
+# Usage: cd ui && $(call OTA_ENV,<version>) npx playwright test --project=<name>
+OTA_ENV = JETKVM_URL=http://$(DEVICE_IP) \
+	BASELINE_BINARY_PATH=$(abspath bin/jetkvm_app_baseline) \
+	RELEASE_BINARY_PATH=$(abspath bin/jetkvm_app) \
+	TEST_UPDATE_VERSION=$(1) \
+	NODE_NO_WARNINGS=1
+
+# E2E tests - normal development lane (core tests + prerelease OTA, no signing key needed)
+test_e2e:
 	@if [ -z "$(DEVICE_IP)" ]; then \
-		read -p "Device IP: " device_ip; \
-	else \
-		device_ip="$(DEVICE_IP)"; \
-	fi; \
-	cd ui && npm ci && npx playwright install chromium && cd ..; \
-	./scripts/test_local_update.sh "$$device_ip" "bin/jetkvm_app" "$(VERSION_DEV)"
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make test_e2e DEVICE_IP=<ip>"; \
+		exit 1; \
+	fi
+	$(eval TEST_VERSION := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M))
+	$(MAKE) frontend
+	$(MAKE) check
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
+	mv bin/jetkvm_app bin/jetkvm_app_baseline
+	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_UI_BUILD=1
+	cd ui && npm ci && npx playwright install chromium && cd ..
+	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-specific-version
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-prerelease-unsigned
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ota-prerelease-rejected
+
+# Production release validation lane
+test_production_release:
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required"; \
+		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		exit 1; \
+	fi
+	@if [ -z "$(DEVICE_IP)" ]; then \
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		exit 1; \
+	fi
+	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
+	$(MAKE) frontend
+	$(MAKE) check
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline
+	mv bin/jetkvm_app bin/jetkvm_app_baseline
+	$(MAKE) build_release VERSION=$(VERSION)
+	@echo "Signing release binary..."
+	@rm -f bin/jetkvm_app.sig
+	@attempt=1; \
+	while [ $$attempt -le 3 ]; do \
+		echo -n "Ready to sign with key $(SIGNING_KEY_FPR)? [y/N] " && read ans && [ "$$ans" = "y" ] || { echo "Signing cancelled."; exit 1; }; \
+		if gpg --yes --detach-sign --output bin/jetkvm_app.sig --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app; then \
+			break; \
+		fi; \
+		rm -f bin/jetkvm_app.sig; \
+		if [ $$attempt -eq 3 ]; then \
+			echo "Error: GPG signing failed after 3 attempts"; \
+			exit 1; \
+		fi; \
+		echo "GPG signing failed (attempt $$attempt/3). Please retry."; \
+		attempt=$$((attempt + 1)); \
+	done
+	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
+		echo "Error: Signature file not created"; exit 1; \
+	fi
+	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
+	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
+	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-specific-version
+	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-prerelease-unsigned
+	cd ui && $(call OTA_ENV,$(VERSION)) npx playwright test --project=ota-prerelease-rejected
+	cd ui && $(call OTA_ENV,$(VERSION)) RELEASE_SIGNATURE_PATH=$(abspath bin/jetkvm_app.sig) npx playwright test --project=ota-signed
 
 lint:
 	go vet ./...
@@ -157,7 +239,12 @@ git_check_dev:
 	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not installed"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "Error: gh CLI not authenticated. Run 'gh auth login'"; exit 1; }
 
-dev_release: git_check_dev
+dev_release: git_check_dev check_r2
+	@if [ -z "$(DEVICE_IP)" ]; then \
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make dev_release DEVICE_IP=<ip>"; \
+		exit 1; \
+	fi
 	@echo "═══════════════════════════════════════════════════════"
 	@echo "  DEV Release"
 	@echo "═══════════════════════════════════════════════════════"
@@ -166,16 +253,23 @@ dev_release: git_check_dev
 	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
 	@echo "  Commit:  $$(git rev-parse --short HEAD)"
 	@echo "  Time:    $$(date -u +%FT%T%z)"
+	@echo "  Signing: disabled for dev releases"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	$(MAKE) check frontend build_dev VERSION_DEV=$(VERSION_DEV)
-	@read -p "Test on device before release? [y/N] " test_confirm; \
-	if [ "$$test_confirm" = "y" ]; then \
-		read -p "Device IP: " device_ip; \
-		echo "Installing Playwright dependencies..."; \
-		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
-		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION_DEV) || exit 1; \
-	fi
+	$(MAKE) check frontend
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
+	mv bin/jetkvm_app bin/jetkvm_app_baseline
+	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV) SKIP_UI_BUILD=1
+	@echo "Running mandatory dev release validation..."
+	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
+	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
+	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-unsigned
+	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-rejected
+
+	@echo "───────────────────────────────────────────────────────"
+	@echo "  All tests completed. Everything is tested and ready for release."
+	@echo "  Version:   $(VERSION_DEV)"
+	@read -p "Are you sure you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
@@ -206,7 +300,18 @@ _build_release_inner: build_native
 		$(GO_RELEASE_BUILD_ARGS) \
 		-o bin/jetkvm_app cmd/main.go
 
-release: git_check_dev
+release: git_check_dev check_r2
+	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
+		echo "Error: SIGNING_KEY_FPR is required for releases"; \
+		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		exit 1; \
+	fi
+	@if [ -z "$(DEVICE_IP)" ]; then \
+		echo "Error: DEVICE_IP is required"; \
+		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		exit 1; \
+	fi
+	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
 	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q "jetkvm_app"; then \
 		echo "Error: Version $(VERSION) already exists in R2"; exit 1; \
 	fi
@@ -226,25 +331,26 @@ release: git_check_dev
 	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
 	@echo "  Commit:  $$(git rev-parse --short HEAD)"
 	@echo "  Time:    $$(date -u +%FT%T%z)"
+	@echo "  Signing: $(SIGNING_KEY_FPR)"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	$(MAKE) check frontend build_release VERSION=$(VERSION)
-	@read -p "Test on device before release? [y/N] " test_confirm; \
-	if [ "$$test_confirm" = "y" ]; then \
-		read -p "Device IP: " device_ip; \
-		echo "Installing Playwright dependencies..."; \
-		cd ui && npm ci && npx playwright install --with-deps chromium && cd ..; \
-		./scripts/test_local_update.sh "$$device_ip" bin/jetkvm_app $(VERSION) || exit 1; \
-	fi
+	@echo "Running mandatory production validation..."
+	$(MAKE) test_production_release DEVICE_IP=$(DEVICE_IP) SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
+	@echo "───────────────────────────────────────────────────────"
+	@echo "  All tests completed. Everything is tested and ready for release."
+	@echo "  Version:   $(VERSION)"
+	@read -p "Are you sure you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
+
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
+	rclone copyto bin/jetkvm_app.sig r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sig
 	./scripts/deploy_cloud_app.sh -v $(VERSION) --set-as-default --skip-confirmation
 	@git tag release/$(VERSION)
 	@git push origin release/$(VERSION)
 	prev_prod=$$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName'); \
-	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 \
+	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 bin/jetkvm_app.sig \
 		--title "$(VERSION)" \
 		--generate-notes \
 		--notes-start-tag "$$prev_prod" \

@@ -6,7 +6,7 @@ import {
   waitForVideoStream,
   wakeDisplay,
   sendAbsMouseMove,
-  getVideoStreamDimensions,
+  waitForVideoDimensions,
   captureVideoRegionFingerprint,
   fingerprintDistance,
   ensureLocalAuthMode,
@@ -60,7 +60,7 @@ test.describe("USB Device Round-Trip Tests", () => {
       const usbDropdown = getUsbDropdown(page);
       if (await usbDropdown.isVisible({ timeout: 5000 })) {
         await usbDropdown.selectOption(USB_PRESET_DEFAULT);
-        await page.waitForTimeout(3000); // Wait for USB reconfiguration
+        await page.waitForTimeout(1000); // Wait for USB reconfiguration
       }
     } finally {
       await page.close();
@@ -76,9 +76,7 @@ test.describe("USB Device Round-Trip Tests", () => {
     await waitForVideoStream(page);
 
     // Get video dimensions for fingerprint capture
-    const dimensions = await getVideoStreamDimensions(page);
-    expect(dimensions, "Video dimensions should be available").not.toBeNull();
-    const { width: videoWidth, height: videoHeight } = dimensions!;
+    const { width: videoWidth, height: videoHeight } = await waitForVideoDimensions(page);
 
     // Calculate a test region in the center of the screen
     const centerX = Math.floor(videoWidth / 2);
@@ -101,10 +99,12 @@ test.describe("USB Device Round-Trip Tests", () => {
     await expect(usbDropdown).toBeVisible({ timeout: 10000 });
     await expect(usbDropdown).toBeEnabled({ timeout: 10000 });
 
-    // Select keyboard-only preset
+    // Select keyboard-only preset and wait for USB gadget reconfiguration
     await usbDropdown.selectOption(USB_PRESET_KEYBOARD_ONLY);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
     await expect(usbDropdown).toBeEnabled({ timeout: USB_CONFIG_TIMEOUT });
+    // Extra wait for USB gadget teardown/setup to complete
+    await page.waitForTimeout(2000);
 
     // === Step 2: Verify mouse does NOT work ===
     await page.goto("/");

@@ -11,8 +11,14 @@ const (
 
 // DO NOT call it directly, it's not thread safe
 // Mutex is currently held by the caller, e.g. doUpdate
-func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus) error {
+func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus, bypassSignatureCheck bool) error {
 	l := s.l.With().Str("path", appUpdatePath).Logger()
+
+	// Validate signature requirement and download if available
+	signature, err := s.downloadComponentSignature(ctx, appUpdate, "app", &l, bypassSignatureCheck)
+	if err != nil {
+		return s.componentUpdateError("Error with app signature", err, &l)
+	}
 
 	if err := s.downloadFile(ctx, appUpdatePath, appUpdate.url, "app"); err != nil {
 		return s.componentUpdateError("Error downloading app update", err, &l)
@@ -24,11 +30,13 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 	s.triggerComponentUpdateState("app", appUpdate)
 
 	if err := s.verifyFile(
+		ctx,
 		appUpdatePath,
 		appUpdate.hash,
+		signature,
 		&appUpdate.verificationProgress,
 	); err != nil {
-		return s.componentUpdateError("Error verifying app update hash", err, &l)
+		return s.componentUpdateError("Error verifying app update", err, &l)
 	}
 	verifyFinished := time.Now()
 	appUpdate.verifiedAt = verifyFinished
@@ -37,7 +45,7 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 	appUpdate.updateProgress = 1
 	s.triggerComponentUpdateState("app", appUpdate)
 
-	l.Info().Msg("App update downloaded")
+	l.Info().Msg("App update downloaded and verified")
 
 	s.rebootNeeded = true
 
