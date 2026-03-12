@@ -429,7 +429,7 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	}
 
 	err := u.keyboardWriteHidFile(modifier, keys)
-	if err != nil {
+	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
 	}
 
@@ -548,7 +548,7 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 
 func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 	state, err := u.keypressReport(key, press)
-	if err != nil {
+	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("key", key).Bool("press", press).Msg("failed to report key")
 	}
 	isRolledOver := state.Keys[0] == hidErrorRollOver

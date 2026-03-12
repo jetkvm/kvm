@@ -26,7 +26,6 @@ export default defineConfig({
       name: "remote-agent",
       testDir: "./e2e/remote-agent",
       testMatch: "ra-all.spec.ts",
-      dependencies: ["ui"],
     },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
     { name: "ota-prerelease-unsigned", testMatch: /ota-prerelease-unsigned\.spec\.ts/, dependencies: ["remote-agent"] },

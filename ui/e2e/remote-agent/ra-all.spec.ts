@@ -209,11 +209,10 @@ async function setupMacrosViaRPC(page: Page) {
 test.beforeAll(async ({ browser }) => {
   test.skip(!agent, "JETKVM_REMOTE_HOST not set");
 
-  const [healthOk] = await Promise.all([
-    agent!.health(),
+  await Promise.all([
+    agent!.ensureDeployed(),
     ensureNoPasswordViaAPI(),
   ]);
-  expect(healthOk).toBe(true);
 
   sharedPage = await browser.newPage();
   await sharedPage.goto("/", { waitUntil: "networkidle" });
@@ -629,7 +628,7 @@ test.describe("Remote Host Agent", () => {
   // ═══════════════════════════════════════════
 
   test("usb-recovery: auto-recovers USB gadget after UDC unbind", async () => {
-    test.setTimeout(60_000);
+    test.setTimeout(90_000);
 
     await waitForUdcState("configured", 10_000);
     await sshExec(`echo ${UDC_NAME} > ${DWC3_PATH}/unbind 2>/dev/null`, true);
@@ -640,6 +639,42 @@ test.describe("Remote Host Agent", () => {
       ["keyboard", "absolute_mouse", "relative_mouse"],
       10000,
     );
+    await waitForWebRTCReady(sharedPage, 15_000);
+
+    const deadline = Date.now() + 45_000;
+    let keyboardRecovered = false;
+    let mouseRecovered = false;
+
+    // After gadget re-enumeration, host input device permissions and event
+    // nodes can flap briefly. Retry both paths until they stabilize.
+    while (Date.now() < deadline && (!keyboardRecovered || !mouseRecovered)) {
+      if (!keyboardRecovered) {
+        try {
+          const keyEvents = await agent!.expectKeyPress(KEY.SPACE, async () => {
+            await tapKey(sharedPage, HID_KEY.SPACE);
+          }, 1500);
+          keyboardRecovered = keyEvents.length > 0;
+        } catch { /* retry */ }
+      }
+
+      if (!mouseRecovered) {
+        try {
+          const mouseEvents = await agent!.expectMouseMove(async () => {
+            await sendAbsMouseMove(sharedPage, 0, 0);
+            await new Promise(resolve => setTimeout(resolve, 50));
+            await sendAbsMouseMove(sharedPage, 32767, 32767);
+          }, 1500);
+          mouseRecovered = mouseEvents.length > 0;
+        } catch { /* retry */ }
+      }
+
+      if (!keyboardRecovered || !mouseRecovered) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    }
+
+    expect(keyboardRecovered, "keyboard input should recover after UDC rebind").toBe(true);
+    expect(mouseRecovered, "mouse input should recover after UDC rebind").toBe(true);
   });
 
   // ═══════════════════════════════════════════

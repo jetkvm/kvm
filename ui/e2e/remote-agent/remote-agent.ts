@@ -4,6 +4,11 @@
  * instead of indirect methods like screenshot diffing or LED polling.
  */
 
+import { execSync } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
 export interface KeyboardEvent {
   time_ms: number;
   type: "key_press" | "key_release" | "key_repeat";
@@ -414,6 +419,63 @@ export class RemoteAgent {
       `Timed out waiting for resolution ${expected} (${timeoutMs}ms)`,
     );
   }
+
+  /**
+   * Ensure the remote agent is running on the target host.
+   * If the agent isn't responding, build (if needed) and deploy it via SSH.
+   */
+  async ensureDeployed(sshTarget?: string): Promise<void> {
+    if (await this.health()) return;
+
+    const host = this.baseUrl.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
+    const port = parseInt(this.baseUrl.replace(/.*:/, ""), 10);
+    const target = sshTarget ?? process.env.JETKVM_REMOTE_HOST ?? `tony@${host}`;
+
+    const thisDir = path.dirname(fileURLToPath(import.meta.url));
+    const agentDir = path.resolve(thisDir, "..", "..", "..", "e2e", "remote-agent");
+    const binary = path.join(agentDir, "remote-agent");
+    const goSource = path.join(agentDir, "main.go");
+
+    if (!fs.existsSync(binary)) {
+      if (!fs.existsSync(goSource)) {
+        throw new Error(
+          `Remote agent source not found at ${goSource}. ` +
+          `Restore it with: git checkout e2e-remote-host-agent -- e2e/remote-agent/`,
+        );
+      }
+      console.log("[remote-agent] Building remote-agent binary...");
+      execSync("GOOS=linux GOARCH=amd64 go build -o remote-agent .", {
+        cwd: agentDir,
+        stdio: "inherit",
+      });
+    }
+
+    console.log(`[remote-agent] Deploying to ${target}...`);
+    const sshOpts = "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10";
+    execSync(`scp ${sshOpts} "${binary}" ${target}:/tmp/remote-agent`, { stdio: "inherit" });
+
+    console.log(`[remote-agent] Starting on port ${port}...`);
+    execSync(
+      `ssh ${sshOpts} ${target} 'pkill -x remote-agent 2>/dev/null; sleep 0.5; PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
+      { stdio: "inherit" },
+    );
+
+    await sleep(1500);
+
+    if (!(await this.health())) {
+      let logs = "";
+      try {
+        logs = execSync(
+          `ssh ${sshOpts} ${target} "cat /tmp/remote-agent.log"`,
+          { encoding: "utf8" },
+        );
+      } catch { /* best effort */ }
+      throw new Error(
+        `Remote agent failed to start on ${host}:${port}.\nLogs:\n${logs}`,
+      );
+    }
+    console.log(`[remote-agent] Agent running at ${this.baseUrl}`);
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -425,8 +487,9 @@ function sleep(ms: number): Promise<void> {
  * Falls back to null if not configured (tests can skip gracefully).
  */
 export function createRemoteAgent(): RemoteAgent | null {
-  const host = process.env.JETKVM_REMOTE_HOST;
-  if (!host) return null;
+  const raw = process.env.JETKVM_REMOTE_HOST;
+  if (!raw) return null;
+  const host = raw.includes("@") ? raw.split("@").pop()! : raw;
   const port = parseInt(process.env.JETKVM_REMOTE_PORT || "9182", 10);
   return new RemoteAgent(host, port);
 }

@@ -23,6 +23,7 @@ export default async function globalSetup() {
 
   console.log("[global-setup] Deploying binary to device...");
   await sshExec("killall jetkvm_app", true);
+  await new Promise(r => setTimeout(r, 1000));
 
   const host = getDeviceHost();
   const sshCmd = [

@@ -53,23 +53,58 @@ func initUsbGadget() {
 }
 
 func rpcKeyboardReport(modifier byte, keys []byte) error {
-	return gadget.KeyboardReport(modifier, keys)
+	if !usbReadyForHidReports() {
+		return nil
+	}
+	err := gadget.KeyboardReport(modifier, keys)
+	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
+		return nil
+	}
+	return err
 }
 
 func rpcKeypressReport(key byte, press bool) error {
-	return gadget.KeypressReport(key, press)
+	if !usbReadyForHidReports() {
+		return nil
+	}
+	err := gadget.KeypressReport(key, press)
+	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
+		return nil
+	}
+	return err
 }
 
 func rpcAbsMouseReport(x int, y int, buttons uint8) error {
-	return gadget.AbsMouseReport(x, y, buttons)
+	if !usbReadyForHidReports() {
+		return nil
+	}
+	err := gadget.AbsMouseReport(x, y, buttons)
+	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
+		return nil
+	}
+	return err
 }
 
 func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
-	return gadget.RelMouseReport(dx, dy, buttons)
+	if !usbReadyForHidReports() {
+		return nil
+	}
+	err := gadget.RelMouseReport(dx, dy, buttons)
+	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
+		return nil
+	}
+	return err
 }
 
 func rpcWheelReport(wheelY int8) error {
-	return gadget.AbsMouseWheelReport(wheelY)
+	if !usbReadyForHidReports() {
+		return nil
+	}
+	err := gadget.AbsMouseWheelReport(wheelY)
+	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
+		return nil
+	}
+	return err
 }
 
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
@@ -87,6 +122,11 @@ var (
 	usbEmulationDesired = true
 	lastUSBRecoveryTry  time.Time
 )
+
+func usbReadyForHidReports() bool {
+	state := gadget.GetUsbState()
+	return state != "not attached" && state != "unknown"
+}
 
 func rpcGetUSBState() (state string) {
 	return gadget.GetUsbState()
@@ -129,6 +169,10 @@ func attemptUSBRecovery(state string) string {
 		return state
 	}
 
+	// Clear stale /dev/hidg* handles from the pre-rebind gadget instance.
+	// The next write/open must use the newly recreated device nodes.
+	gadget.ResetHIDFiles()
+
 	// After rebind, the kernel recreates /dev/hidg* but the character
 	// devices take several seconds to become usable (ENXIO until the
 	// function driver attaches). Retry the keyboard HID file open with
@@ -143,12 +187,31 @@ func attemptUSBRecovery(state string) string {
 		4 * time.Second,
 		4 * time.Second,
 	}
-	for _, delay := range delays {
-		time.Sleep(delay)
-		if err := gadget.ReopenKeyboardHidFile(); err == nil {
-			usbLogger.Info().Msg("keyboard HID file reopened successfully after USB rebind")
-			break
+	tryReopenKeyboard := func(openDelays []time.Duration, reason string) bool {
+		for _, delay := range openDelays {
+			time.Sleep(delay)
+			if err := gadget.ReopenKeyboardHidFile(); err == nil {
+				usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened successfully after USB recovery")
+				return true
+			}
 		}
+		return false
+	}
+
+	if tryReopenKeyboard(delays, "udc_rebind") {
+		return gadget.GetUsbState()
+	}
+
+	usbLogger.Warn().Msg("keyboard HID file not ready after UDC rebind; attempting full USB gadget reconfigure")
+
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")
+		return gadget.GetUsbState()
+	}
+	gadget.ResetHIDFiles()
+
+	if !tryReopenKeyboard(delays, "gadget_reconfigure") {
+		usbLogger.Warn().Msg("keyboard HID file not ready after full USB recovery retry window")
 	}
 
 	return gadget.GetUsbState()
@@ -172,6 +235,12 @@ func checkUSBState() {
 
 	usbStateLock.Lock()
 	defer usbStateLock.Unlock()
+
+	if newState != "not attached" {
+		// Once USB is attached again, clear recovery rate limiting so any future
+		// detach can be recovered immediately.
+		lastUSBRecoveryTry = time.Time{}
+	}
 
 	if newState == usbState {
 		return
