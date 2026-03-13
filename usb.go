@@ -52,59 +52,36 @@ func initUsbGadget() {
 	}
 }
 
-func rpcKeyboardReport(modifier byte, keys []byte) error {
+// rpcHidReport wraps a HID gadget call with the common guard (skip if USB not
+// ready) and error suppression (swallow transient HID errors during rebind).
+func rpcHidReport(fn func() error) error {
 	if !usbReadyForHidReports() {
 		return nil
 	}
-	err := gadget.KeyboardReport(modifier, keys)
-	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
-		return nil
+	if err := fn(); err != nil && !usbgadget.IsHIDTemporarilyUnavailableError(err) {
+		return err
 	}
-	return err
+	return nil
+}
+
+func rpcKeyboardReport(modifier byte, keys []byte) error {
+	return rpcHidReport(func() error { return gadget.KeyboardReport(modifier, keys) })
 }
 
 func rpcKeypressReport(key byte, press bool) error {
-	if !usbReadyForHidReports() {
-		return nil
-	}
-	err := gadget.KeypressReport(key, press)
-	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
-		return nil
-	}
-	return err
+	return rpcHidReport(func() error { return gadget.KeypressReport(key, press) })
 }
 
 func rpcAbsMouseReport(x int, y int, buttons uint8) error {
-	if !usbReadyForHidReports() {
-		return nil
-	}
-	err := gadget.AbsMouseReport(x, y, buttons)
-	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
-		return nil
-	}
-	return err
+	return rpcHidReport(func() error { return gadget.AbsMouseReport(x, y, buttons) })
 }
 
 func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
-	if !usbReadyForHidReports() {
-		return nil
-	}
-	err := gadget.RelMouseReport(dx, dy, buttons)
-	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
-		return nil
-	}
-	return err
+	return rpcHidReport(func() error { return gadget.RelMouseReport(dx, dy, buttons) })
 }
 
 func rpcWheelReport(wheelY int8) error {
-	if !usbReadyForHidReports() {
-		return nil
-	}
-	err := gadget.AbsMouseWheelReport(wheelY)
-	if usbgadget.IsHIDTemporarilyUnavailableError(err) {
-		return nil
-	}
-	return err
+	return rpcHidReport(func() error { return gadget.AbsMouseWheelReport(wheelY) })
 }
 
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
@@ -116,7 +93,7 @@ func rpcGetKeysDownState() (state usbgadget.KeysDownState) {
 }
 
 var (
-	usbState     = "unknown"
+	usbState     = usbgadget.USBStateUnknown
 	usbStateLock sync.Mutex
 
 	usbEmulationDesired = true
@@ -124,8 +101,10 @@ var (
 )
 
 func usbReadyForHidReports() bool {
-	state := gadget.GetUsbState()
-	return state != "not attached" && state != "unknown"
+	usbStateLock.Lock()
+	state := usbState
+	usbStateLock.Unlock()
+	return state != usbgadget.USBStateNotAttached && state != usbgadget.USBStateUnknown
 }
 
 func rpcGetUSBState() (state string) {
@@ -229,14 +208,14 @@ func triggerUSBStateUpdate() {
 
 func checkUSBState() {
 	newState := gadget.GetUsbState()
-	if newState == "not attached" {
+	if newState == usbgadget.USBStateNotAttached {
 		newState = attemptUSBRecovery(newState)
 	}
 
 	usbStateLock.Lock()
 	defer usbStateLock.Unlock()
 
-	if newState != "not attached" {
+	if newState != usbgadget.USBStateNotAttached {
 		// Once USB is attached again, clear recovery rate limiting so any future
 		// detach can be recovered immediately.
 		lastUSBRecoveryTry = time.Time{}
@@ -250,7 +229,7 @@ func checkUSBState() {
 	usbState = newState
 	usbLogger.Info().Str("from", oldState).Str("to", newState).Msg("USB state changed")
 
-	if newState != "not attached" {
+	if newState != usbgadget.USBStateNotAttached {
 		if err := gadget.OpenKeyboardHidFile(); err != nil {
 			usbLogger.Warn().Err(err).Str("state", newState).Msg("failed to ensure keyboard HID file is open after USB state change")
 		}

@@ -17,13 +17,13 @@ func TestShouldAttemptUSBRecovery(t *testing.T) {
 	}{
 		{
 			name:    "recover when detached and unbound",
-			state:   "not attached",
+			state:   USBStateNotAttached,
 			desired: true,
 			want:    true,
 		},
 		{
 			name:    "skip when emulation intentionally disabled",
-			state:   "not attached",
+			state:   USBStateNotAttached,
 			desired: false,
 			want:    false,
 		},
@@ -35,14 +35,14 @@ func TestShouldAttemptUSBRecovery(t *testing.T) {
 		},
 		{
 			name:        "rate limit repeated recovery attempts",
-			state:       "not attached",
+			state:       USBStateNotAttached,
 			desired:     true,
 			lastAttempt: now.Add(-USBRecoveryRetryInterval + time.Second),
 			want:        false,
 		},
 		{
 			name:        "allow retry after interval passes",
-			state:       "not attached",
+			state:       USBStateNotAttached,
 			desired:     true,
 			lastAttempt: now.Add(-USBRecoveryRetryInterval),
 			want:        true,

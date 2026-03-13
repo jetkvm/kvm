@@ -312,59 +312,21 @@ func (a *Agent) processEvent(ev inputEvent, deviceName string) {
 // discoverJetKVMDevices finds input devices associated with JetKVM.
 func discoverJetKVMDevices() map[string]string {
 	devices := make(map[string]string)
-
-	data, err := os.ReadFile("/proc/bus/input/devices")
-	if err != nil {
-		log.Printf("Cannot read /proc/bus/input/devices: %v", err)
-		return devices
-	}
-
-	blocks := strings.Split(string(data), "\n\n")
-	for _, block := range blocks {
-		if !strings.Contains(block, "JetKVM") {
+	for _, dev := range listInputDevices() {
+		if !dev.IsJetKVM {
 			continue
 		}
-		var name, handler string
-		var hasKbd, hasMouse, hasAbs, hasRel bool
-		for _, line := range strings.Split(block, "\n") {
-			if strings.HasPrefix(line, "N: Name=") {
-				name = strings.Trim(strings.TrimPrefix(line, "N: Name="), "\"")
-			}
-			if strings.HasPrefix(line, "H: Handlers=") {
-				parts := strings.Fields(strings.TrimPrefix(line, "H: Handlers="))
-				for _, p := range parts {
-					if strings.HasPrefix(p, "event") {
-						handler = p
-					}
-					if p == "kbd" {
-						hasKbd = true
-					}
-					if strings.HasPrefix(p, "mouse") {
-						hasMouse = true
-					}
-				}
-			}
-			if strings.HasPrefix(line, "B: ABS=") && line != "B: ABS=0" {
-				hasAbs = true
-			}
-			if strings.HasPrefix(line, "B: REL=") && line != "B: REL=0" {
-				hasRel = true
-			}
+		label := dev.Name
+		switch dev.Type {
+		case "absolute_mouse":
+			label += " (absolute mouse)"
+		case "relative_mouse":
+			label += " (relative mouse)"
+		case "keyboard":
+			label += " (keyboard)"
 		}
-		if handler != "" {
-			path := filepath.Join("/dev/input", handler)
-			label := name
-			if hasMouse && hasAbs {
-				label += " (absolute mouse)"
-			} else if hasMouse && hasRel {
-				label += " (relative mouse)"
-			} else if hasKbd {
-				label += " (keyboard)"
-			}
-			devices[path] = label
-		}
+		devices[dev.Path] = label
 	}
-
 	return devices
 }
 

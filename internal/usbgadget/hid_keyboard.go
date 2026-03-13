@@ -341,6 +341,13 @@ func openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Durat
 	case r := <-ch:
 		return r.file, r.err
 	case <-time.After(timeout):
+		// Drain the channel in the background to close the leaked fd if the
+		// open eventually succeeds.
+		go func() {
+			if r := <-ch; r.file != nil {
+				r.file.Close()
+			}
+		}()
 		return nil, fmt.Errorf("open %s: timed out after %s", name, timeout)
 	}
 }
