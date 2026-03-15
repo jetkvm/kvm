@@ -420,6 +420,7 @@
     "local_auth_error_enter_new_password": "请输入新密码。",
     "local_auth_error_enter_old_password": "请输入您的旧密码。",
     "local_auth_error_enter_password": "请输入密码。",
+    "local_auth_error_password_too_long": "密码不能超过72个字符",
     "local_auth_error_password_too_short": "密码必须至少8个字符",
     "local_auth_error_passwords_not_match": "两次输入的密码不匹配。",
     "local_auth_error_rate_limited": "尝试次数过多。请在 {minutes} 分钟后重试。",

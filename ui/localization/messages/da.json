@@ -420,6 +420,7 @@
     "local_auth_error_enter_new_password": "Indtast venligst en ny adgangskode",
     "local_auth_error_enter_old_password": "Indtast venligst din gamle adgangskode",
     "local_auth_error_enter_password": "Indtast venligst en adgangskode",
+    "local_auth_error_password_too_long": "Adgangskode må højst være 72 tegn",
     "local_auth_error_password_too_short": "Adgangskoden skal være mindst 8 tegn",
     "local_auth_error_passwords_not_match": "Adgangskoderne stemmer ikke overens",
     "local_auth_error_rate_limited": "For mange mislykkede forsøg. Prøv igen om {minutes} minutter.",

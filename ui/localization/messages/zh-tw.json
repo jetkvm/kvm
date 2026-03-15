@@ -425,6 +425,7 @@
     "local_auth_error_enter_new_password": "請輸入新密碼",
     "local_auth_error_enter_old_password": "請輸入您的舊密碼",
     "local_auth_error_enter_password": "請輸入密碼",
+    "local_auth_error_password_too_long": "密碼不能超過72個字元",
     "local_auth_error_password_too_short": "密碼必須至少8個字元",
     "local_auth_error_passwords_not_match": "密碼不相符",
     "local_auth_error_rate_limited": "嘗試次數過多。請在 {minutes} 分鐘後重試。",

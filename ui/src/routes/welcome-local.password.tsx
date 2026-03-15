@@ -13,7 +13,10 @@ import { Button } from "@components/Button";
 import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
-import { MIN_PASSWORD_LENGTH } from "@routes/devices.$id.settings.access.local-auth";
+import {
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
+} from "@routes/devices.$id.settings.access.local-auth";
 
 import { DeviceStatus } from "./welcome-local";
 
@@ -33,6 +36,10 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
 
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
     return { error: m.local_auth_error_password_too_short() };
+  }
+
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return { error: m.local_auth_error_password_too_long() };
   }
 
   if (password !== confirmPassword) {

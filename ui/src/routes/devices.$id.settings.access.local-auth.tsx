@@ -9,6 +9,7 @@ import api from "@/api";
 import { m } from "@localizations/messages.js";
 
 export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 72;
 
 export default function SecurityAccessLocalAuthRoute() {
   const { setModalView } = useLocalAuthModalStore();
@@ -40,6 +41,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
     if (password.length < MIN_PASSWORD_LENGTH) {
       setError(m.local_auth_error_password_too_short());
+      return;
+    }
+
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      setError(m.local_auth_error_password_too_long());
       return;
     }
 
@@ -82,6 +88,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
     // Only validate length for new password, not old password (may be shorter from before this requirement)
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
       setError(m.local_auth_error_password_too_short());
+      return;
+    }
+
+    if (newPassword.length > MAX_PASSWORD_LENGTH) {
+      setError(m.local_auth_error_password_too_long());
       return;
     }
 

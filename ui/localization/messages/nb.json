@@ -420,6 +420,7 @@
     "local_auth_error_enter_new_password": "Vennligst skriv inn et nytt passord",
     "local_auth_error_enter_old_password": "Vennligst skriv inn det gamle passordet ditt",
     "local_auth_error_enter_password": "Vennligst skriv inn et passord",
+    "local_auth_error_password_too_long": "Passordet kan være maks 72 tegn",
     "local_auth_error_password_too_short": "Passordet må være minst 8 tegn",
     "local_auth_error_passwords_not_match": "Passordene stemmer ikke overens",
     "local_auth_error_rate_limited": "For mange mislykkede forsøk. Vennligst prøv igjen om {minutes} minutter.",

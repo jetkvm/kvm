@@ -83,6 +83,11 @@ var cachableFileExtensions = []string{
 // validating existing passwords (to maintain backward compatibility).
 const MinPasswordLength = 8
 
+// MaxPasswordLength is the maximum length bcrypt can hash. Go's bcrypt
+// implementation rejects passwords over 72 bytes rather than silently
+// truncating them.
+const MaxPasswordLength = 72
+
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
@@ -664,6 +669,11 @@ func handleCreatePassword(c *gin.Context) {
 		return
 	}
 
+	if len(req.Password) > MaxPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at most 72 characters"})
+		return
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
@@ -706,6 +716,11 @@ func handleUpdatePassword(c *gin.Context) {
 	// Validate new password length (not old password - may be shorter from before this requirement)
 	if len(req.NewPassword) < MinPasswordLength {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
+		return
+	}
+
+	if len(req.NewPassword) > MaxPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at most 72 characters"})
 		return
 	}
 
@@ -828,6 +843,11 @@ func handleSetup(c *gin.Context) {
 
 		if len(req.Password) < MinPasswordLength {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
+			return
+		}
+
+		if len(req.Password) > MaxPasswordLength {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at most 72 characters"})
 			return
 		}
 
