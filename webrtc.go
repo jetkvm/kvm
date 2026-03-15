@@ -465,7 +465,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 func onActiveSessionsChanged() {
 	notifyFailsafeMode(currentSession)
-	requestDisplayUpdate(true, "active_sessions_changed")
+	requestDisplayUpdate(false, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
