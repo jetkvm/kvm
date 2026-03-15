@@ -49,7 +49,7 @@ type NetworkConfig struct {
 	TimeSyncOrdering        []string    `json:"time_sync_ordering,omitempty" one_of:"http,ntp,ntp_dhcp,ntp_user_provided,http_user_provided" default:"ntp,http"`
 	TimeSyncDisableFallback null.Bool   `json:"time_sync_disable_fallback,omitempty" default:"false"`
 	TimeSyncParallel        null.Int    `json:"time_sync_parallel,omitempty" default:"4"`
-	TimeSyncNTPServers      []string    `json:"time_sync_ntp_servers,omitempty" validate_type:"ipv4_or_ipv6" required_if:"TimeSyncOrdering=ntp_user_provided"`
+	TimeSyncNTPServers      []string    `json:"time_sync_ntp_servers,omitempty" validate_type:"hostname_or_ipv4_or_ipv6" required_if:"TimeSyncOrdering=ntp_user_provided"`
 	TimeSyncHTTPUrls        []string    `json:"time_sync_http_urls,omitempty" validate_type:"url" required_if:"TimeSyncOrdering=http_user_provided"`
 }
 

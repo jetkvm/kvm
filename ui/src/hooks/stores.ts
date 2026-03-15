@@ -868,6 +868,11 @@ export interface NetworkSettings {
   lldp_tx_tlvs: string[];
   mdns_mode: mDNSMode;
   time_sync_mode: TimeSyncMode;
+  time_sync_ordering?: string[];
+  time_sync_disable_fallback?: boolean;
+  time_sync_parallel?: number;
+  time_sync_ntp_servers?: string[];
+  time_sync_http_urls?: string[];
 }
 
 export const useNetworkStateStore = create<NetworkState>((set, get) => ({
