@@ -69,7 +69,8 @@ function Terminal({
   readonly dataChannel: RTCDataChannel;
   readonly type: AvailableTerminalTypes;
 }) {
-  const { terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
+  const { terminalType, setTerminalType, setDisableVideoFocusTrap, disableVideoFocusTrap } =
+    useUiStore();
   const { terminator } = useTerminalStore();
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
   const [terminalPaused, setTerminalPaused] = useState(false);
@@ -88,6 +89,14 @@ function Terminal({
       setDisableVideoFocusTrap(false);
     };
   }, [setDisableVideoFocusTrap, isTerminalTypeEnabled]);
+
+  // Re-focus xterm when the focus trap is released back to the terminal
+  // (e.g. after closing the Settings modal while a terminal is open)
+  useEffect(() => {
+    if (disableVideoFocusTrap && isTerminalTypeEnabled && instance) {
+      instance.focus();
+    }
+  }, [disableVideoFocusTrap, isTerminalTypeEnabled, instance]);
 
   const readyState = dataChannel.readyState;
 

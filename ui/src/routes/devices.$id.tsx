@@ -115,8 +115,14 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
-  const { sidebarView, setSidebarView, disableVideoFocusTrap, rebootState, setRebootState } =
-    useUiStore();
+  const {
+    sidebarView,
+    setSidebarView,
+    disableVideoFocusTrap,
+    setDisableVideoFocusTrap,
+    rebootState,
+    setRebootState,
+  } = useUiStore();
   const [queryParams, setQueryParams] = useSearchParams();
 
   const {
@@ -867,7 +873,14 @@ export default function KvmIdRoute() {
   const outlet = useOutlet();
   const onModalClose = useCallback(() => {
     if (location.pathname !== "/other-session") navigateTo("/");
-  }, [navigateTo, location.pathname]);
+
+    // Re-disable the focus trap if a terminal is still active, otherwise
+    // FocusTrap reclaims focus and the terminal becomes unresponsive.
+    const { terminalType } = useUiStore.getState();
+    if (terminalType !== "none") {
+      setDisableVideoFocusTrap(true);
+    }
+  }, [navigateTo, location.pathname, setDisableVideoFocusTrap]);
 
   const { appVersion, getLocalVersion } = useVersion();
 
