@@ -95,6 +95,7 @@
     "advanced_ssh_default_user": "The default SSH user is",
     "advanced_ssh_public_key_label": "SSH Public Key",
     "advanced_ssh_public_key_placeholder": "Enter your SSH public key",
+    "advanced_ssh_key_required_warning": "A public key is required for SSH access. Without one, you will not be able to connect.",
     "advanced_success_download_diagnostics": "Diagnostics downloaded successfully",
     "advanced_success_loopback_disabled": "Loopback-only mode disabled. Restart your device to apply.",
     "advanced_success_loopback_enabled": "Loopback-only mode enabled. Restart your device to apply.",

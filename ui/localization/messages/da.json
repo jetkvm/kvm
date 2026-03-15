@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "Standard SSH-brugeren er",
     "advanced_ssh_public_key_label": "Offentlig SSH-nøgle",
     "advanced_ssh_public_key_placeholder": "Indtast din offentlige SSH-nøgle",
+    "advanced_ssh_key_required_warning": "En offentlig nøgle er påkrævet for SSH-adgang. Uden en vil du ikke kunne oprette forbindelse.",
     "advanced_success_loopback_disabled": "Kun loopback-tilstand er deaktiveret. Genstart din enhed for at anvende den.",
     "advanced_success_loopback_enabled": "Kun loopback-tilstand aktiveret. Genstart din enhed for at anvende den.",
     "advanced_success_reset_config": "Konfigurationen er nulstillet til standard",

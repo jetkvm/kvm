@@ -95,6 +95,7 @@
     "advanced_ssh_default_user": "Пользователь по умолчанию для SSH:",
     "advanced_ssh_public_key_label": "Публичный SSH-ключ",
     "advanced_ssh_public_key_placeholder": "Введите ваш публичный SSH-ключ",
+    "advanced_ssh_key_required_warning": "Для SSH-доступа необходим публичный ключ. Без него подключение будет невозможно.",
     "advanced_success_download_diagnostics": "Диагностика успешно скачана",
     "advanced_success_loopback_disabled": "Режим только loopback отключён. Перезапустите устройство для применения.",
     "advanced_success_loopback_enabled": "Режим только loopback включён. Перезапустите устройство для применения.",

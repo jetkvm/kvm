@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "Standard SSH-användaren är",
     "advanced_ssh_public_key_label": "SSH-publik nyckel",
     "advanced_ssh_public_key_placeholder": "Ange din offentliga SSH-nyckel",
+    "advanced_ssh_key_required_warning": "En offentlig nyckel krävs för SSH-åtkomst. Utan en kommer du inte att kunna ansluta.",
     "advanced_success_loopback_disabled": "Endast loopback-läge inaktiverat. Starta om enheten för att tillämpa det.",
     "advanced_success_loopback_enabled": "Endast loopback-läge aktiverat. Starta om enheten för att tillämpa.",
     "advanced_success_reset_config": "Konfigurationen återställdes till standardinställningarna",

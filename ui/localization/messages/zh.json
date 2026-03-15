@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "默认 SSH 用户为",
     "advanced_ssh_public_key_label": "SSH 公钥",
     "advanced_ssh_public_key_placeholder": "请输入您的 SSH 公钥",
+    "advanced_ssh_key_required_warning": "SSH 访问需要公钥。没有公钥将无法连接。",
     "advanced_success_loopback_disabled": "环回模式已禁用。请重启设备以应用更改。",
     "advanced_success_loopback_enabled": "环回模式已启用。请重启设备以应用更改。",
     "advanced_success_reset_config": "配置已成功恢复为默认设置。",

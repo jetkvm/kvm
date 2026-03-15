@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "L'utente SSH predefinito è",
     "advanced_ssh_public_key_label": "Chiave pubblica SSH",
     "advanced_ssh_public_key_placeholder": "Inserisci la tua chiave pubblica SSH",
+    "advanced_ssh_key_required_warning": "Una chiave pubblica è necessaria per l'accesso SSH. Senza di essa, non sarà possibile connettersi.",
     "advanced_success_loopback_disabled": "Modalità loopback-only disattivata. Riavvia il dispositivo per applicare la modifica.",
     "advanced_success_loopback_enabled": "Modalità loopback abilitata. Riavvia il dispositivo per applicare la modifica.",
     "advanced_success_reset_config": "Configurazione ripristinata ai valori predefiniti con successo",

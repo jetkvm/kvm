@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "El usuario SSH predeterminado es",
     "advanced_ssh_public_key_label": "Clave pública SSH",
     "advanced_ssh_public_key_placeholder": "Ingrese su clave pública SSH",
+    "advanced_ssh_key_required_warning": "Se requiere una clave pública para el acceso SSH. Sin ella, no podrá conectarse.",
     "advanced_success_loopback_disabled": "El modo de solo bucle invertido está deshabilitado. Reinicie el dispositivo para aplicarlo.",
     "advanced_success_loopback_enabled": "Modo de solo bucle invertido habilitado. Reinicie el dispositivo para aplicarlo.",
     "advanced_success_reset_config": "La configuración se restableció a los valores predeterminados correctamente",

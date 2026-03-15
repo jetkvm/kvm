@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "L'utilisateur SSH par défaut est",
     "advanced_ssh_public_key_label": "Clé publique SSH",
     "advanced_ssh_public_key_placeholder": "Entrez votre clé publique SSH",
+    "advanced_ssh_key_required_warning": "Une clé publique est requise pour l'accès SSH. Sans celle-ci, vous ne pourrez pas vous connecter.",
     "advanced_success_loopback_disabled": "Mode de bouclage désactivé. Redémarrez votre appareil pour appliquer le mode de bouclage.",
     "advanced_success_loopback_enabled": "Mode de bouclage activé. Redémarrez votre appareil pour appliquer la fonction.",
     "advanced_success_reset_config": "La configuration par défaut a été réinitialisée avec succès",

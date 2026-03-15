@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "Standard SSH-brukeren er",
     "advanced_ssh_public_key_label": "SSH offentlig nøkkel",
     "advanced_ssh_public_key_placeholder": "Skriv inn din offentlige SSH-nøkkel",
+    "advanced_ssh_key_required_warning": "En offentlig nøkkel er påkrevd for SSH-tilgang. Uten en vil du ikke kunne koble til.",
     "advanced_success_loopback_disabled": "Kun tilbakekoblingsmodus deaktivert. Start enheten på nytt for å bruke den.",
     "advanced_success_loopback_enabled": "Kun tilbakekoblingsmodus aktivert. Start enheten på nytt for å bruke den.",
     "advanced_success_reset_config": "Konfigurasjonen ble tilbakestilt til standard",

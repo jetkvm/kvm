@@ -95,6 +95,7 @@
     "advanced_ssh_default_user": "預設 SSH 使用者為",
     "advanced_ssh_public_key_label": "SSH 公鑰",
     "advanced_ssh_public_key_placeholder": "輸入您的 SSH 公鑰",
+    "advanced_ssh_key_required_warning": "SSH 存取需要公鑰。沒有公鑰將無法連線。",
     "advanced_success_download_diagnostics": "診斷資料下載成功",
     "advanced_success_loopback_disabled": "單機回送模式已停用。請重新啟動您的裝置以套用。",
     "advanced_success_loopback_enabled": "單機回送模式已啟用。請重新啟動您的裝置以套用。",

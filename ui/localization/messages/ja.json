@@ -95,6 +95,7 @@
     "advanced_ssh_default_user": "デフォルトのSSHユーザーは",
     "advanced_ssh_public_key_label": "SSH公開鍵",
     "advanced_ssh_public_key_placeholder": "SSH公開鍵を入力してください",
+    "advanced_ssh_key_required_warning": "SSHアクセスには公開鍵が必要です。公開鍵がないと接続できません。",
     "advanced_success_download_diagnostics": "診断データが正常にダウンロードされました",
     "advanced_success_loopback_disabled": "ループバック専用モードが無効になりました。適用するにはデバイスを再起動してください。",
     "advanced_success_loopback_enabled": "ループバック専用モードが有効になりました。適用するにはデバイスを再起動してください。",

@@ -91,6 +91,7 @@
     "advanced_ssh_default_user": "Der Standard-SSH-Benutzer ist",
     "advanced_ssh_public_key_label": "Öffentlicher SSH-Schlüssel",
     "advanced_ssh_public_key_placeholder": "Geben Sie Ihren öffentlichen SSH-Schlüssel ein",
+    "advanced_ssh_key_required_warning": "Ein öffentlicher Schlüssel ist für den SSH-Zugang erforderlich. Ohne diesen können Sie keine Verbindung herstellen.",
     "advanced_success_loopback_disabled": "Nur-Loopback-Modus deaktiviert. Starten Sie Ihr Gerät neu, um die Funktion anzuwenden.",
     "advanced_success_loopback_enabled": "Nur-Loopback-Modus aktiviert. Starten Sie Ihr Gerät neu, um die Funktion anzuwenden.",
     "advanced_success_reset_config": "Konfiguration erfolgreich auf Standard zurückgesetzt",
