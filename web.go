@@ -142,7 +142,9 @@ func setupRouter() *gin.Engine {
 	r.POST("/device/setup", handleSetup)
 
 	// A Prometheus metrics endpoint.
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	// Requires auth (cookie or basic auth) when password mode is enabled,
+	// open when localAuthMode is noPassword (consistent with other endpoints).
+	r.GET("/metrics", metricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
 
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
@@ -551,6 +553,39 @@ func protectedMiddleware() gin.HandlerFunc {
 func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 	c.JSON(status, gin.H{"error": message})
 	c.Abort()
+}
+
+// metricsAuthMiddleware authenticates the /metrics endpoint using either the
+// session cookie or HTTP basic auth (for Prometheus scrape configs). When
+// localAuthMode is noPassword, all requests are allowed through — consistent
+// with every other endpoint on the device.
+func metricsAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		// Try cookie auth first (browser access)
+		authToken, err := c.Cookie("authToken")
+		if err == nil && authToken == config.LocalAuthToken && authToken != "" {
+			c.Next()
+			return
+		}
+
+		// Fall back to basic auth (Prometheus scraper)
+		_, password, ok := c.Request.BasicAuth()
+		if ok {
+			if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password)); err == nil {
+				c.Next()
+				return
+			}
+		}
+
+		c.Header("WWW-Authenticate", `Basic realm="JetKVM Metrics"`)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.Abort()
+	}
 }
 
 func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
