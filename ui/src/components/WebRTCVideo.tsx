@@ -662,7 +662,7 @@ export default function WebRTCVideo({
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          "max-h-full max-w-full object-contain transition-all duration-1000",
+                          "h-full w-full bg-black/50 object-contain transition-all duration-1000",
                           {
                             "bg-black/50 sm:min-h-[384px] sm:min-w-[512px]": !isDetachedWindow,
                             "cursor-none": settings.isCursorHidden,
