@@ -924,8 +924,13 @@ func handleDiagnosticsDownload(c *gin.Context) {
 			}
 		}
 
-		// 4. Configuration
-		if configData, err := json.MarshalIndent(config, "", "  "); err == nil {
+		// 4. Configuration (with secrets redacted)
+		redactedConfig := *config
+		redactedConfig.CloudToken = ""
+		redactedConfig.LocalAuthToken = ""
+		redactedConfig.HashedPassword = ""
+		redactedConfig.GoogleIdentity = ""
+		if configData, err := json.MarshalIndent(redactedConfig, "", "  "); err == nil {
 			if err := addBytesToZip(zw, "config.json", configData); err != nil {
 				logger.Warn().Err(err).Msg("failed to add config to zip")
 			}
