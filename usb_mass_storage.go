@@ -103,6 +103,11 @@ func rpcMountBuiltInImage(filename string) error {
 		return err
 	}
 
+	filename, err := sanitizeFilename(filename)
+	if err != nil {
+		return fmt.Errorf("invalid filename: %w", err)
+	}
+
 	imagePath := filepath.Join(imagesFolder, filename)
 
 	// Check if the file exists in the imagesFolder
