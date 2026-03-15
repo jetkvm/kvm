@@ -6,6 +6,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 import validator from "validator";
 
 import PublicIPCard from "@components/PublicIPCard";
+import TailscaleCard from "@components/TailscaleCard";
 import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
@@ -517,6 +518,8 @@ export default function SettingsNetworkRoute() {
               </SettingsItem>
 
               <PublicIPCard />
+
+              <TailscaleCard />
 
               <div>
                 <AutoHeight>

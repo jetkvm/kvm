@@ -760,6 +760,23 @@ export interface PublicIP {
   last_updated: Date;
 }
 
+export interface TailscalePeer {
+  hostName: string;
+  dnsName: string;
+  tailscaleIPs: string[];
+  online: boolean;
+  os: string;
+}
+
+export interface TailscaleStatus {
+  installed: boolean;
+  running: boolean;
+  backendState?: string;
+  authURL?: string;
+  self?: TailscalePeer;
+  health?: string[];
+}
+
 export interface NetworkState {
   interface_name?: string;
   mac_address?: string;
