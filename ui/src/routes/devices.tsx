@@ -54,7 +54,7 @@ export default function DevicesRoute() {
           picture={user?.picture}
         />
 
-        <div className="flex h-full overflow-hidden">
+        <div className="flex h-full overflow-y-auto">
           <div className="mx-auto h-full w-full space-y-6 px-4 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
             <div className="mt-8 flex items-center justify-between border-b border-b-slate-800/20 pb-4 dark:border-b-slate-300/20">
               <div>
