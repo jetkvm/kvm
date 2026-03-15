@@ -512,6 +512,11 @@ func handleLogin(c *gin.Context) {
 
 	config.LocalAuthToken = uuid.New().String()
 
+	if err := SaveConfig(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
+		return
+	}
+
 	// Set the cookie
 	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
 
