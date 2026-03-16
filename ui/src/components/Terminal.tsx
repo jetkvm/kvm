@@ -144,16 +144,19 @@ function Terminal({
     );
 
     const onDataHandler = instance.onData(data => {
-      if (data === "\r") {
-        // Intercept enter key to add terminator
-        dataChannel.send(terminator ?? "");
+      if (type === "kvm") {
+        dataChannel.send(data);
       } else {
-        dataChannel.send(
-          JSON.stringify({
-            type: "serial",
-            data, // string
-          }),
-        );
+        if (data === "\r") {
+          dataChannel.send(terminator ?? "");
+        } else {
+          dataChannel.send(
+            JSON.stringify({
+              type: "serial",
+              data,
+            }),
+          );
+        }
       }
     });
 
@@ -169,13 +172,19 @@ function Terminal({
 
     // Send initial terminal size
     if (dataChannel.readyState === "open") {
-      dataChannel.send(
-        JSON.stringify({
-          type: "system",
-          name: "term.size",
-          data: { rows: instance.rows, cols: instance.cols },
-        }),
-      );
+      if (type === "kvm") {
+        dataChannel.send(
+          JSON.stringify({ rows: instance.rows, cols: instance.cols }),
+        );
+      } else {
+        dataChannel.send(
+          JSON.stringify({
+            type: "system",
+            name: "term.size",
+            data: { rows: instance.rows, cols: instance.cols },
+          }),
+        );
+      }
     }
 
     return () => {
