@@ -240,18 +240,25 @@ git_check_dev:
 dev_release: git_check_dev check_r2
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
-		echo "Usage: make dev_release DEVICE_IP=<ip>"; \
+		echo "Usage: make dev_release DEVICE_IP=<ip> JETKVM_REMOTE_HOST=<host>"; \
+		exit 1; \
+	fi
+	@if [ -z "$(JETKVM_REMOTE_HOST)" ]; then \
+		echo "Error: JETKVM_REMOTE_HOST is required"; \
+		echo "Usage: make dev_release DEVICE_IP=<ip> JETKVM_REMOTE_HOST=<host>"; \
 		exit 1; \
 	fi
 	@echo "═══════════════════════════════════════════════════════"
 	@echo "  DEV Release"
 	@echo "═══════════════════════════════════════════════════════"
-	@echo "  Version: $(VERSION_DEV)"
-	@echo "  Tag:     release/$(VERSION_DEV)"
-	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
-	@echo "  Commit:  $$(git rev-parse --short HEAD)"
-	@echo "  Time:    $$(date -u +%FT%T%z)"
-	@echo "  Signing: disabled for dev releases"
+	@echo "  Version:    $(VERSION_DEV)"
+	@echo "  Tag:        release/$(VERSION_DEV)"
+	@echo "  Branch:     $$(git rev-parse --abbrev-ref HEAD)"
+	@echo "  Commit:     $$(git rev-parse --short HEAD)"
+	@echo "  Time:       $$(date -u +%FT%T%z)"
+	@echo "  Device:     $(DEVICE_IP)"
+	@echo "  Remote:     $(JETKVM_REMOTE_HOST)"
+	@echo "  Signing:    disabled for dev releases"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend
@@ -260,9 +267,9 @@ dev_release: git_check_dev check_r2
 	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
 	@echo "Running mandatory dev release validation..."
 	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
-	cd ui && JETKVM_URL=http://$(DEVICE_IP) BASELINE_BINARY_PATH=$(abspath bin/jetkvm_app) NODE_NO_WARNINGS=1 npx playwright test --project=ui
-	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-unsigned
-	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-rejected
+	cd ui && $(call OTA_ENV,$(VERSION_DEV)) \
+		JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST) \
+		npx playwright test --project=ui --project=ota-prerelease-unsigned --project=ota-prerelease-rejected --project=ota-specific-version
 
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
