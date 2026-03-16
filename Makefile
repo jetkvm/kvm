@@ -84,7 +84,7 @@ OTA_ENV = JETKVM_URL=http://$(DEVICE_IP) \
 test_e2e:
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
-		echo "Usage: make test_e2e DEVICE_IP=<ip>"; \
+		echo "Usage: make test_e2e DEVICE_IP=<ip> [JETKVM_REMOTE_HOST=<host>]"; \
 		exit 1; \
 	fi
 	$(eval TEST_VERSION := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M))
@@ -93,22 +93,26 @@ test_e2e:
 	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
 	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
-	cd ui && npx playwright install chromium && cd ..
+	cd ui && npx playwright install chromium
 	cd ui && $(call OTA_ENV,$(TEST_VERSION)) \
 		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
-		npx playwright test --project=ui --project=ota-prerelease-unsigned \
-		$(if $(JETKVM_REMOTE_HOST),--project=remote-agent)
+		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned
 
 # Production release validation lane
 test_production_release:
 	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
 		echo "Error: SIGNING_KEY_FPR is required"; \
-		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint> JETKVM_REMOTE_HOST=<host>"; \
 		exit 1; \
 	fi
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
-		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint> JETKVM_REMOTE_HOST=<host>"; \
+		exit 1; \
+	fi
+	@if [ -z "$(JETKVM_REMOTE_HOST)" ]; then \
+		echo "Error: JETKVM_REMOTE_HOST is required"; \
+		echo "Usage: make test_production_release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint> JETKVM_REMOTE_HOST=<host>"; \
 		exit 1; \
 	fi
 	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
@@ -137,7 +141,9 @@ test_production_release:
 		echo "Error: Signature file not created"; exit 1; \
 	fi
 	cd ui && npx playwright install --with-deps chromium && cd ..
-	cd ui && $(call OTA_ENV,$(VERSION)) RELEASE_SIGNATURE_PATH=$(abspath bin/jetkvm_app.sig) npx playwright test
+	cd ui && $(call OTA_ENV,$(VERSION)) RELEASE_SIGNATURE_PATH=$(abspath bin/jetkvm_app.sig) \
+		JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST) \
+		npx playwright test
 
 lint:
 	go vet ./...
@@ -266,10 +272,10 @@ dev_release: git_check_dev check_r2
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
 	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
 	@echo "Running mandatory dev release validation..."
-	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
+	cd ui && npx playwright install --with-deps chromium
 	cd ui && $(call OTA_ENV,$(VERSION_DEV)) \
 		JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST) \
-		npx playwright test --project=ui --project=ota-prerelease-unsigned --project=ota-prerelease-rejected --project=ota-specific-version
+		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-prerelease-rejected --project=ota-specific-version
 
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
@@ -305,17 +311,22 @@ _build_release_inner: build_native
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
 		$(GO_RELEASE_BUILD_ARGS) \
-		-o bin/jetkvm_app cmd/main.go
+		-o $(BIN_DIR)/jetkvm_app cmd/main.go
 
 release: git_check_dev check_r2
 	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
 		echo "Error: SIGNING_KEY_FPR is required for releases"; \
-		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint> JETKVM_REMOTE_HOST=<host>"; \
 		exit 1; \
 	fi
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
-		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint>"; \
+		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint> JETKVM_REMOTE_HOST=<host>"; \
+		exit 1; \
+	fi
+	@if [ -z "$(JETKVM_REMOTE_HOST)" ]; then \
+		echo "Error: JETKVM_REMOTE_HOST is required"; \
+		echo "Usage: make release DEVICE_IP=<ip> SIGNING_KEY_FPR=<fingerprint> JETKVM_REMOTE_HOST=<host>"; \
 		exit 1; \
 	fi
 	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
@@ -339,10 +350,11 @@ release: git_check_dev check_r2
 	@echo "  Commit:  $$(git rev-parse --short HEAD)"
 	@echo "  Time:    $$(date -u +%FT%T%z)"
 	@echo "  Signing: $(SIGNING_KEY_FPR)"
+	@echo "  Remote:  $(JETKVM_REMOTE_HOST)"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@echo "Running mandatory production validation..."
-	$(MAKE) test_production_release DEVICE_IP=$(DEVICE_IP) SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
+	$(MAKE) test_production_release DEVICE_IP=$(DEVICE_IP) SIGNING_KEY_FPR=$(SIGNING_KEY_FPR) JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
 	@echo "  Version:   $(VERSION)"
