@@ -43,8 +43,8 @@ export const SplitButtonPrimary = React.forwardRef<
     icon?: React.FC<{ className: string | undefined }>;
     label: string;
   } & React.ButtonHTMLAttributes<HTMLButtonElement>
->(({ icon: Icon, label, ...props }, ref) => (
-  <button ref={ref} type="button" {...props} className={primaryClass}>
+>(({ icon: Icon, label, className, ...props }, ref) => (
+  <button ref={ref} type="button" {...props} className={cx(primaryClass, className)}>
     {Icon && <Icon className={iconClass} />}
     <span className="truncate">{label}</span>
   </button>
@@ -118,30 +118,5 @@ export function SplitButtonCaret({ menuItems }: { menuItems: SplitButtonMenuItem
         </div>
       </MenuItems>
     </Menu>
-  );
-}
-
-interface SplitButtonProps {
-  primaryItem: {
-    label: string;
-    icon?: React.FC<{ className: string | undefined }>;
-    onClick: () => void;
-    disabled?: boolean;
-  };
-  menuItems: SplitButtonMenuItem[];
-  className?: string;
-}
-
-export function SplitButton({ primaryItem, menuItems, className }: SplitButtonProps) {
-  return (
-    <SplitButtonGroup className={className}>
-      <SplitButtonPrimary
-        icon={primaryItem.icon}
-        label={primaryItem.label}
-        disabled={primaryItem.disabled}
-        onClick={primaryItem.onClick}
-      />
-      <SplitButtonCaret menuItems={menuItems} />
-    </SplitButtonGroup>
   );
 }
