@@ -173,9 +173,7 @@ function Terminal({
     // Send initial terminal size
     if (dataChannel.readyState === "open") {
       if (type === "kvm") {
-        dataChannel.send(
-          JSON.stringify({ rows: instance.rows, cols: instance.cols }),
-        );
+        dataChannel.send(JSON.stringify({ rows: instance.rows, cols: instance.cols }));
       } else {
         dataChannel.send(
           JSON.stringify({
