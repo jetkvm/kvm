@@ -58,7 +58,7 @@ export default function Actionbar({
             <Button
               size="XS"
               theme="light"
-              text={m.action_bar_web_terminal()}
+              text={m.kvm_terminal()}
               LeadingIcon={({ className }) => <CommandLineIcon className={className} />}
               onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
             />

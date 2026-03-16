@@ -38,7 +38,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
 			triggerVideoStateUpdate()
-			requestDisplayUpdate(true, "video_state_changed")
+			requestDisplayUpdate(false, "video_state_changed")
 		},
 		OnIndevEvent: func(event string) {
 			nativeLogger.Trace().Str("event", event).Msg("indev event received")

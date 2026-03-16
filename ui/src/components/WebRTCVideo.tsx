@@ -401,6 +401,15 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     }
   }, []);
 
+  const videoKeyDownHandler = useCallback((e: KeyboardEvent) => {
+    // Prevent the browser's native <video> play/pause toggle on Space.
+    // The document-level keyDownHandler already calls preventDefault, but
+    // in fullscreen the video element receives the event first.
+    if (e.code === "Space") {
+      e.preventDefault();
+    }
+  }, []);
+
   const addStreamToVideoElm = useCallback(
     (mediaStream: MediaStream) => {
       if (!videoElm.current) return;
@@ -470,6 +479,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       const signal = abortController.signal;
 
       // To prevent the video from being paused when the user presses a space in fullscreen mode
+      videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
 
       // We need to know when the video is playing to update state and video size
@@ -479,7 +489,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyUpHandler],
+    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler],
   );
 
   // Setup Mouse Events
