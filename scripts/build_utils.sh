@@ -37,6 +37,21 @@ DOCKER_GO_CACHE_DIR=${DOCKER_GO_CACHE_DIR:-$(pwd)/.cache}
 
 BUILD_IN_DOCKER=${BUILD_IN_DOCKER:-false}
 
+# Auto-detect container runtime: prefer docker, fall back to podman
+if [ -z "$CONTAINER_CMD" ]; then
+    if command -v docker &> /dev/null; then
+        CONTAINER_CMD="docker"
+    elif command -v podman &> /dev/null; then
+        CONTAINER_CMD="podman"
+    fi
+fi
+
+CONTAINER_RUN_EXTRA_ARGS=""
+if [ "$CONTAINER_CMD" = "podman" ]; then
+    # Podman defaults to pulling; use local image built by build_docker_image
+    CONTAINER_RUN_EXTRA_ARGS="--pull=never"
+fi
+
 
 function prepare_docker_build_context() {
     msg_info "▶ Preparing docker build context ..."
@@ -45,6 +60,16 @@ function prepare_docker_build_context() {
         go.sum \
         Dockerfile.build \
         "${DOCKER_BUILD_CONTEXT_DIR}"
+
+    # Podman/buildah auto-sets BUILDPLATFORM to the host arch and ignores
+    # --build-arg overrides. On non-x86_64 hosts, patch the Dockerfile to
+    # hardcode linux/amd64 so the correct base image is pulled.
+    if [ "$CONTAINER_CMD" = "podman" ] && [ "$(uname -m)" != "x86_64" ]; then
+        sed -i.bak 's/--platform=${BUILDPLATFORM}/--platform=linux\/amd64/' \
+            "${DOCKER_BUILD_CONTEXT_DIR}/Dockerfile.build"
+        rm -f "${DOCKER_BUILD_CONTEXT_DIR}/Dockerfile.build.bak"
+    fi
+
     cat > "${DOCKER_BUILD_CONTEXT_DIR}/entrypoint.sh" << 'EOF'
 #!/bin/bash
 git config --global --add safe.directory /build
@@ -59,27 +84,35 @@ function build_docker_image() {
         exit
     fi
 
-    BUILD_ARGS="--build-arg BUILDPLATFORM=linux/amd64"
+    BUILD_ARGS=""
+    # Docker needs BUILDPLATFORM as a build-arg; podman on non-x86_64 gets the
+    # Dockerfile patched directly in prepare_docker_build_context instead.
+    if [ "$CONTAINER_CMD" != "podman" ] || [ "$(uname -m)" = "x86_64" ]; then
+        BUILD_ARGS="--build-arg BUILDPLATFORM=linux/amd64"
+    fi
     if [ "$DOCKER_BUILD_DEBUG" = true ]; then
         BUILD_ARGS="$BUILD_ARGS --progress=plain --no-cache"
     fi
 
-    msg_info "Checking if Docker is available ..."
-    if ! command -v docker &> /dev/null; then
-        msg_err "Error: Docker is not installed"
+    msg_info "Checking if container runtime is available ..."
+    if [ -z "$CONTAINER_CMD" ]; then
+        msg_err "Error: Neither docker nor podman is installed"
         exit 1
     fi
+    msg_info "Using container runtime: $CONTAINER_CMD"
 
-    DOCKER_BIN=$(which docker)
-    if echo "$DOCKER_BIN" | grep -q "snap"; then
-        msg_warn "Docker was installed using snap, this may cause issues with the build."
-        msg_warn "Please consider installing Docker Engine from: https://docs.docker.com/engine/install/ubuntu/"
+    if [ "$CONTAINER_CMD" = "docker" ]; then
+        DOCKER_BIN=$(which docker)
+        if echo "$DOCKER_BIN" | grep -q "snap"; then
+            msg_warn "Docker was installed using snap, this may cause issues with the build."
+            msg_warn "Please consider installing Docker Engine from: https://docs.docker.com/engine/install/ubuntu/"
+        fi
     fi
 
     prepare_docker_build_context
     pushd "${DOCKER_BUILD_CONTEXT_DIR}" > /dev/null
-    msg_info "▶ Building docker image ..."
-    docker build $BUILD_ARGS -t ${DOCKER_BUILD_TAG} -f Dockerfile.build .
+    msg_info "▶ Building container image ..."
+    $CONTAINER_CMD build $BUILD_ARGS -t ${DOCKER_BUILD_TAG} -f Dockerfile.build .
     popd > /dev/null
 }
 
@@ -89,9 +122,10 @@ function do_make() {
         DOCKER_BUILD_ARGS="$DOCKER_BUILD_ARGS --interactive --tty"
     fi
     if [ "$BUILD_IN_DOCKER" = true ]; then
-        msg_info "▶ Building the project in Docker ..."
+        msg_info "▶ Building the project in container ($CONTAINER_CMD) ..."
         set -x
-        docker run \
+        $CONTAINER_CMD run \
+            $CONTAINER_RUN_EXTRA_ARGS \
             --env JETKVM_INSIDE_DOCKER=1 \
             -v "$(pwd):/build" \
             -v "${DOCKER_GO_CACHE_DIR}:/root/.cache/go-build" \

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 #
+# Dev deploy script. Supports both docker and podman as container runtimes.
+# Auto-detects which is available (prefers docker, falls back to podman).
+# Override with: CONTAINER_CMD=podman ./scripts/dev_deploy.sh -r <ip>
+#
 # Exit immediately if a command exits with a non-zero status
 set -e
 
@@ -19,15 +23,20 @@ show_help() {
     echo "      --skip-native-build    Skip native build"
     echo "      --log-trace <scopes>   Comma-separated scopes to trace"
     echo "                             (e.g., usb, usb,hidrpc, all)"
-    echo "      --disable-docker       Disable docker build"
+    echo "      --disable-docker       Disable container build"
     echo "      --enable-sync-trace    Enable sync trace (do not use in release builds)"
     echo "      --native-binary        Build and deploy the native binary (FOR DEBUGGING ONLY)"
     echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
     echo
+    echo "Container runtime:"
+    echo "  Supports both docker and podman. Auto-detects which is available."
+    echo "  Override with: CONTAINER_CMD=podman $0 -r <ip>"
+    echo
     echo "Example:"
     echo "  $0 -r 192.168.0.17"
     echo "  $0 -r 192.168.0.17 -u admin"
+    echo "  CONTAINER_CMD=podman $0 -r 192.168.0.17"
 }
 
 # Function to check if device is pingable
