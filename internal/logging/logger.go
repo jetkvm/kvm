@@ -79,6 +79,7 @@ var (
 	// that should always log at a certain level regardless of the global default.
 	subsystemDefaultLevels = map[string]zerolog.Level{
 		"diagnostics": zerolog.InfoLevel,
+		"supervisor":  zerolog.InfoLevel,
 	}
 )
 

@@ -14,9 +14,12 @@ import (
 	"github.com/erikdubbelboer/gspt"
 	"github.com/jetkvm/kvm"
 	"github.com/jetkvm/kvm/internal/diagnostics"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
+
+var supervisorLogger = logging.GetSubsystemLogger("supervisor")
 
 var (
 	subcomponent string
@@ -66,8 +69,10 @@ func main() {
 	case kvm.GetBuiltAppVersion():
 		program()
 	default:
-		fmt.Printf("Invalid build version: %s != %s\n", childID, kvm.GetBuiltAppVersion())
-		os.Exit(1)
+		supervisorLogger.Fatal().
+			Str("child_id", childID).
+			Str("expected", kvm.GetBuiltAppVersion()).
+			Msg("build version mismatch")
 	}
 }
 
@@ -233,8 +238,6 @@ func ensureErrorDumpDir() error {
 }
 
 func createErrorDump(logFile *os.File) {
-	fmt.Println()
-
 	fileName := fmt.Sprintf(
 		supervisor.ErrorDumpTemplate,
 		time.Now().Format("20060102-150405"),
@@ -242,22 +245,22 @@ func createErrorDump(logFile *os.File) {
 
 	// check if the directory exists
 	if err := ensureErrorDumpDir(); err != nil {
-		fmt.Printf("failed to ensure error dump directory: %v\n", err)
+		supervisorLogger.Error().Err(err).Msg("failed to ensure error dump directory")
 		return
 	}
 
 	filePath := filepath.Join(supervisor.ErrorDumpDir, fileName)
 	if err := renameFile(logFile, filePath); err != nil {
-		fmt.Printf("failed to rename file: %v\n", err)
+		supervisorLogger.Error().Err(err).Msg("failed to copy error dump")
 		return
 	}
 
-	fmt.Printf("error dump copied: %s\n", filePath)
+	supervisorLogger.Info().Str("path", filePath).Msg("error dump saved")
 
 	lastFilePath := filepath.Join(supervisor.ErrorDumpDir, supervisor.ErrorDumpLastFile)
 
 	if err := ensureSymlink(filePath, lastFilePath); err != nil {
-		fmt.Printf("failed to create symlink: %v\n", err)
+		supervisorLogger.Error().Err(err).Msg("failed to create symlink")
 		return
 	}
 }
