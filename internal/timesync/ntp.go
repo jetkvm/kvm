@@ -29,13 +29,11 @@ var DefaultNTPServerIPs = []string{
 }
 
 var DefaultNTPServerHostnames = []string{
-	// should use something from https://github.com/jauderho/public-ntp-servers
 	"time.apple.com",
 	"time.aws.com",
 	"time.windows.com",
 	"time.google.com",
 	"time.cloudflare.com",
-	"pool.ntp.org",
 }
 
 func (t *TimeSync) filterNTPServers(ntpServers []string) ([]string, error) {
