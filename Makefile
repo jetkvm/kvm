@@ -94,7 +94,10 @@ test_e2e:
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
 	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
 	cd ui && npx playwright install chromium && cd ..
-	cd ui && $(call OTA_ENV,$(TEST_VERSION)) npx playwright test --project=ui --project=ota-specific-version --project=ota-prerelease-unsigned --project=ota-prerelease-rejected
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) \
+		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
+		npx playwright test --project=ui --project=ota-prerelease-unsigned \
+		$(if $(JETKVM_REMOTE_HOST),--project=remote-agent)
 
 # Production release validation lane
 test_production_release:
@@ -157,6 +160,8 @@ build_dev:
 		echo "Toolchain not found, running build_dev in Docker..."; \
 		rm -rf internal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
+			-v go-mod-cache:/root/go/pkg/mod \
+			-v go-build-cache:/root/.cache/go-build \
 			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	else \
 		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
@@ -281,6 +286,8 @@ build_release:
 		echo "Toolchain not found, running build_release in Docker..."; \
 		rm -rf internal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
+			-v go-mod-cache:/root/go/pkg/mod \
+			-v go-build-cache:/root/.cache/go-build \
 			$(DOCKER_BUILD_TAG) make _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	else \
 		$(MAKE) _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
