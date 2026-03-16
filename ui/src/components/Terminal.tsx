@@ -247,8 +247,8 @@ function Terminal({
           )}
         >
           <div className="h-[500px] w-full bg-[#0f172a]">
-            <div className="flex items-center justify-center border-y border-y-slate-800/30 bg-white px-2 py-1 dark:border-y-slate-300/20 dark:bg-slate-800">
-              <h2 className="self-center font-sans text-[12px] text-slate-700 select-none dark:text-slate-300">
+            <div className="flex items-center justify-center border-y border-y-slate-800/30 bg-white px-2 py-4 dark:border-y-slate-300/20 dark:bg-slate-800">
+              <h2 className="self-center font-sans text-sm leading-none font-medium text-slate-700 select-none dark:text-slate-300">
                 {title}
               </h2>
               <div className="absolute right-2">
