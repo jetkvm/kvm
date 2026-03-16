@@ -58,6 +58,9 @@ func (t *TimeSync) filterNTPServers(ntpServers []string) ([]string, error) {
 		ip := net.ParseIP(server)
 		t.l.Trace().Str("server", server).Interface("ip", ip).Msg("checking NTP server")
 		if ip == nil {
+			// Not a literal IP — treat as a hostname and pass through.
+			// The NTP library handles DNS resolution itself.
+			filteredServers = append(filteredServers, server)
 			continue
 		}
 

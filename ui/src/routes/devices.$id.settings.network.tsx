@@ -270,7 +270,7 @@ export default function SettingsNetworkRoute() {
         });
       }
 
-      if (dirty.ipv4_static?.dns?.every(dirty => dirty)) {
+      if (dirty.ipv4_static?.dns && dirty.ipv4_static.dns.length > 0 && dirty.ipv4_static.dns.every(dirty => dirty)) {
         changes.push({
           label: m.network_ipv4_dns(),
           from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
@@ -302,7 +302,7 @@ export default function SettingsNetworkRoute() {
         });
       }
 
-      if (dirty.ipv6_static?.dns?.every(dirty => dirty)) {
+      if (dirty.ipv6_static?.dns && dirty.ipv6_static.dns.length > 0 && dirty.ipv6_static.dns.every(dirty => dirty)) {
         changes.push({
           label: m.network_ipv6_dns(),
           from: initialSettingsRef.current?.ipv6_static?.dns.join(", ").toString() ?? "",

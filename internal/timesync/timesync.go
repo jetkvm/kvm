@@ -95,6 +95,10 @@ func (t *TimeSync) SetDhcpNtpAddresses(addresses []string) {
 	t.dhcpNtpAddresses = addresses
 }
 
+func (t *TimeSync) SetNetworkConfig(cfg *types.NetworkConfig) {
+	t.networkConfig = cfg
+}
+
 func (t *TimeSync) getSyncMode() SyncMode {
 	syncMode := SyncMode{
 		Ntp:             true,
@@ -110,6 +114,8 @@ func (t *TimeSync) getSyncMode() SyncMode {
 			syncMode.Http = false
 		case "http_only":
 			syncMode.Ntp = false
+		case "custom":
+			syncMode.Ordering = []string{"ntp_user_provided", "http_user_provided", "ntp_dhcp", "ntp", "http"}
 		}
 
 		if t.networkConfig.TimeSyncDisableFallback.Bool {
