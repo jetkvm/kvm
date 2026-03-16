@@ -22,6 +22,7 @@ interface TestHooksInternal {
   _getHdmiState?: () => string;
   _getVideoElement?: () => HTMLVideoElement | null;
   _getKvmTerminal?: () => RTCDataChannel | null;
+  _getRpcDataChannel?: () => RTCDataChannel | null;
 }
 
 export interface KvmTestHooks extends TestHooksInternal {
@@ -29,6 +30,11 @@ export interface KvmTestHooks extends TestHooksInternal {
   getKeysDownState: () => KeysDownState | null;
   sendKeypress: (key: number, press: boolean) => void;
   sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
+  sendJsonRpc: (
+    method: string,
+    params: Record<string, unknown>,
+    callback: (resp: { error?: { message: string; data?: string }; result?: unknown }) => void,
+  ) => void;
   sendTerminalCommand: (command: string) => boolean;
   isTerminalReady: () => boolean;
   captureVideoRegion: (
@@ -82,6 +88,40 @@ export function initTestHooks(): void {
       } else {
         console.warn("[E2E] sendAbsMouseMove called but no handler registered");
       }
+    },
+
+    sendJsonRpc: (
+      method: string,
+      params: Record<string, unknown>,
+      callback: (resp: { error?: { message: string; data?: string }; result?: unknown }) => void,
+    ) => {
+      const dc = hooks._getRpcDataChannel?.();
+      if (!dc || dc.readyState !== "open") {
+        callback({ error: { message: "RPC data channel not available" } });
+        return;
+      }
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      let settled = false;
+      const handler = (e: MessageEvent) => {
+        try {
+          const resp = JSON.parse(e.data);
+          if (resp.id === id) {
+            settled = true;
+            clearTimeout(timer);
+            dc.removeEventListener("message", handler);
+            callback(resp);
+          }
+        } catch { /* ignore non-JSON */ }
+      };
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          dc.removeEventListener("message", handler);
+          callback({ error: { message: `RPC timeout for ${method}` } });
+        }
+      }, 10000);
+      dc.addEventListener("message", handler);
+      dc.send(JSON.stringify({ jsonrpc: "2.0", method, params, id }));
     },
 
     sendTerminalCommand: (command: string) => {
@@ -226,6 +266,7 @@ export function registerTestHandlers(handlers: {
   getHdmiState: () => string;
   getVideoElement: () => HTMLVideoElement | null;
   getKvmTerminal: () => RTCDataChannel | null;
+  getRpcDataChannel: () => RTCDataChannel | null;
 }): void {
   if (!window.__kvmTestHooks) return;
 
@@ -239,6 +280,7 @@ export function registerTestHandlers(handlers: {
   window.__kvmTestHooks._getHdmiState = handlers.getHdmiState;
   window.__kvmTestHooks._getVideoElement = handlers.getVideoElement;
   window.__kvmTestHooks._getKvmTerminal = handlers.getKvmTerminal;
+  window.__kvmTestHooks._getRpcDataChannel = handlers.getRpcDataChannel;
 }
 
 /**
@@ -257,4 +299,5 @@ export function cleanupTestHooks(): void {
   window.__kvmTestHooks._getHdmiState = undefined;
   window.__kvmTestHooks._getVideoElement = undefined;
   window.__kvmTestHooks._getKvmTerminal = undefined;
+  window.__kvmTestHooks._getRpcDataChannel = undefined;
 }

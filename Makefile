@@ -2,7 +2,7 @@ BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
 REVISION  := $(shell git rev-parse HEAD)
-VERSION := 0.5.4
+VERSION := 0.5.5
 VERSION_DEV := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M)
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
@@ -72,23 +72,32 @@ check_signing_key:
 		exit 1; \
 	}
 
-# E2E tests - normal development lane (core tests + unsigned OTA, no signing key needed)
-test_e2e: frontend
+# Common env vars for OTA Playwright tests.
+# Usage: cd ui && $(call OTA_ENV,<version>) npx playwright test --project=<name>
+OTA_ENV = JETKVM_URL=http://$(DEVICE_IP) \
+	BASELINE_BINARY_PATH=$(abspath bin/jetkvm_app_baseline) \
+	RELEASE_BINARY_PATH=$(abspath bin/jetkvm_app) \
+	TEST_UPDATE_VERSION=$(1) \
+	NODE_NO_WARNINGS=1
+
+# E2E tests - normal development lane (core tests + prerelease OTA, no signing key needed)
+test_e2e:
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
 		echo "Usage: make test_e2e DEVICE_IP=<ip>"; \
 		exit 1; \
 	fi
 	$(eval TEST_VERSION := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M))
-	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_NATIVE_IF_EXISTS=1 SKIP_UI_BUILD=1
+	$(MAKE) frontend
+	$(MAKE) check
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
-	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_NATIVE_IF_EXISTS=1 SKIP_UI_BUILD=1
-	cd ui && npm ci && npx playwright install chromium && cd ..
-	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	./scripts/test_unsigned_specific_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(TEST_VERSION)"
+	$(MAKE) build_dev VERSION_DEV=$(TEST_VERSION) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
+	cd ui && npx playwright install chromium && cd ..
+	cd ui && $(call OTA_ENV,$(TEST_VERSION)) \
+		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
+		npx playwright test --project=ui --project=ota-prerelease-unsigned \
+		$(if $(JETKVM_REMOTE_HOST),--project=remote-agent)
 
 # Production release validation lane
 test_production_release:
@@ -103,32 +112,32 @@ test_production_release:
 		exit 1; \
 	fi
 	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
-	$(MAKE) check frontend
+	$(MAKE) frontend
+	$(MAKE) check
 	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline
 	mv bin/jetkvm_app bin/jetkvm_app_baseline
 	$(MAKE) build_release VERSION=$(VERSION)
 	@echo "Signing release binary..."
-	@echo -n "Ready to sign with key $(SIGNING_KEY_FPR)? [y/N] " && read ans && [ "$$ans" = "y" ] || { echo "Signing cancelled."; exit 1; }
-	gpg --detach-sign --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app || { echo "Error: GPG signing failed"; exit 1; }
+	@rm -f bin/jetkvm_app.sig
+	@attempt=1; \
+	while [ $$attempt -le 3 ]; do \
+		echo -n "Ready to sign with key $(SIGNING_KEY_FPR)? [y/N] " && read ans && [ "$$ans" = "y" ] || { echo "Signing cancelled."; exit 1; }; \
+		if gpg --yes --detach-sign --output bin/jetkvm_app.sig --local-user $(SIGNING_KEY_FPR) bin/jetkvm_app; then \
+			break; \
+		fi; \
+		rm -f bin/jetkvm_app.sig; \
+		if [ $$attempt -eq 3 ]; then \
+			echo "Error: GPG signing failed after 3 attempts"; \
+			exit 1; \
+		fi; \
+		echo "GPG signing failed (attempt $$attempt/3). Please retry."; \
+		attempt=$$((attempt + 1)); \
+	done
 	@if [ ! -f "bin/jetkvm_app.sig" ]; then \
 		echo "Error: Signature file not created"; exit 1; \
 	fi
-	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
-	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	./scripts/test_local_update.sh "$(DEVICE_IP)" "bin/jetkvm_app" "$(VERSION)"
-	./scripts/test_unsigned_specific_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(VERSION)"
-	./scripts/test_prerelease_unsigned_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(VERSION)"
-	./scripts/test_signed_ota.sh "$(DEVICE_IP)" \
-		"bin/jetkvm_app_baseline" \
-		"bin/jetkvm_app" \
-		"$(VERSION)" \
-		--signature "bin/jetkvm_app.sig"
+	cd ui && npx playwright install --with-deps chromium && cd ..
+	cd ui && $(call OTA_ENV,$(VERSION)) RELEASE_SIGNATURE_PATH=$(abspath bin/jetkvm_app.sig) npx playwright test
 
 lint:
 	go vet ./...
@@ -151,9 +160,11 @@ build_dev:
 		echo "Toolchain not found, running build_dev in Docker..."; \
 		rm -rf internal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
-			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
+			-v go-mod-cache:/root/go/pkg/mod \
+			-v go-build-cache:/root/.cache/go-build \
+			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	else \
-		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
+		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
 _build_dev_inner: build_native
@@ -243,11 +254,15 @@ dev_release: git_check_dev check_r2
 	@echo "  Signing: disabled for dev releases"
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	$(MAKE) check frontend build_dev VERSION_DEV=$(VERSION_DEV)
+	$(MAKE) check frontend
+	$(MAKE) build_dev VERSION_DEV=0.0.1-test-baseline SKIP_UI_BUILD=1
+	mv bin/jetkvm_app bin/jetkvm_app_baseline
+	$(MAKE) build_dev VERSION_DEV=$(VERSION_DEV) SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
 	@echo "Running mandatory dev release validation..."
 	cd ui && npm ci && npx playwright install --with-deps chromium && cd ..
-	./scripts/test_core_e2e.sh "$(DEVICE_IP)" "bin/jetkvm_app"
-	./scripts/test_local_update.sh "$(DEVICE_IP)" "bin/jetkvm_app" "$(VERSION_DEV)"
+	cd ui && JETKVM_URL=http://$(DEVICE_IP) BASELINE_BINARY_PATH=$(abspath bin/jetkvm_app) NODE_NO_WARNINGS=1 npx playwright test --project=ui
+	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-unsigned
+	cd ui && $(call OTA_ENV,$(VERSION_DEV)) npx playwright test --project=ota-prerelease-rejected
 
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
@@ -271,9 +286,11 @@ build_release:
 		echo "Toolchain not found, running build_release in Docker..."; \
 		rm -rf internal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
-			$(DOCKER_BUILD_TAG) make _build_release_inner VERSION=$(VERSION); \
+			-v go-mod-cache:/root/go/pkg/mod \
+			-v go-build-cache:/root/.cache/go-build \
+			$(DOCKER_BUILD_TAG) make _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	else \
-		$(MAKE) _build_release_inner VERSION=$(VERSION); \
+		$(MAKE) _build_release_inner VERSION=$(VERSION) SKIP_NATIVE_IF_EXISTS=$(SKIP_NATIVE_IF_EXISTS); \
 	fi
 
 _build_release_inner: build_native

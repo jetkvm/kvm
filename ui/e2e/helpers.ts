@@ -1,18 +1,21 @@
+import * as http from "http";
+import * as fs from "fs";
+import * as crypto from "crypto";
+import * as os from "os";
+import * as path from "path";
+import { exec, execSync } from "child_process";
+import { promisify } from "util";
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-/**
- * USB HID Key Codes
- */
+const execAsync = promisify(exec);
+
 export const HID_KEY = {
   SPACE: 0x2c, // 44
   CAPS_LOCK: 0x39, // 57
   NUM_LOCK: 0x53, // 83
 } as const;
 
-/**
- * Keyboard LED state interface (matches KeyboardLedState from stores.ts)
- */
 export interface KeyboardLedState {
   num_lock: boolean;
   caps_lock: boolean;
@@ -22,13 +25,6 @@ export interface KeyboardLedState {
   shift: boolean;
 }
 
-/**
- * Wait for the WebRTC connection to be established and HID RPC to be ready.
- * This polls the test hooks until both conditions are met.
- *
- * @param page - Playwright page object
- * @param timeout - Maximum time to wait in milliseconds (default: 30000)
- */
 export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<void> {
   await expect
     .poll(
@@ -55,12 +51,6 @@ export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<v
     .toBe(true);
 }
 
-/**
- * Wait for video stream to be active.
- *
- * @param page - Playwright page object
- * @param timeout - Maximum time to wait in milliseconds (default: 30000)
- */
 export async function waitForVideoStream(page: Page, timeout = 30000): Promise<void> {
   await expect
     .poll(async () => page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive()), {
@@ -71,14 +61,6 @@ export async function waitForVideoStream(page: Page, timeout = 30000): Promise<v
     .toBe(true);
 }
 
-/**
- * Wake the display by sending keystrokes to dismiss screensaver/sleep.
- * Sends multiple Space key taps with delays.
- *
- * @param page - Playwright page object
- * @param taps - Number of key taps to send (default: 3)
- * @param delayMs - Delay between taps in milliseconds (default: 200)
- */
 export async function wakeDisplay(page: Page, taps = 3, delayMs = 100): Promise<void> {
   for (let i = 0; i < taps; i++) {
     await tapKey(page, HID_KEY.SPACE);
@@ -86,13 +68,6 @@ export async function wakeDisplay(page: Page, taps = 3, delayMs = 100): Promise<
   }
 }
 
-/**
- * Send a keypress event via the test hooks.
- *
- * @param page - Playwright page object
- * @param keyCode - USB HID key code
- * @param press - true for key down, false for key up
- */
 export async function sendKeypress(page: Page, keyCode: number, press: boolean): Promise<void> {
   await page.evaluate(
     ({ key, isPress }) => {
@@ -104,25 +79,12 @@ export async function sendKeypress(page: Page, keyCode: number, press: boolean):
   );
 }
 
-/**
- * Send a complete key tap (press + release) with a small delay between.
- *
- * @param page - Playwright page object
- * @param keyCode - USB HID key code
- * @param holdMs - Time to hold the key in milliseconds (default: 50)
- */
 export async function tapKey(page: Page, keyCode: number, holdMs = 20): Promise<void> {
   await sendKeypress(page, keyCode, true);
   await page.waitForTimeout(holdMs);
   await sendKeypress(page, keyCode, false);
 }
 
-/**
- * Get the current keyboard LED state.
- *
- * @param page - Playwright page object
- * @returns The current LED state or null if not available
- */
 export async function getLedState(page: Page): Promise<KeyboardLedState | null> {
   return page.evaluate(() => {
     const hooks = window.__kvmTestHooks;
@@ -131,15 +93,6 @@ export async function getLedState(page: Page): Promise<KeyboardLedState | null> 
   });
 }
 
-/**
- * Wait for a specific LED state to change.
- * Useful for verifying round-trip after sending a key.
- *
- * @param page - Playwright page object
- * @param ledName - Name of the LED to check (e.g., 'caps_lock', 'num_lock')
- * @param expectedValue - Expected boolean value
- * @param timeout - Maximum time to wait in milliseconds (default: 5000)
- */
 export async function waitForLedState(
   page: Page,
   ledName: keyof KeyboardLedState,
@@ -161,18 +114,11 @@ export async function waitForLedState(
     .toBe(expectedValue);
 }
 
-/**
- * Video stream dimensions interface
- */
 export interface VideoStreamDimensions {
   width: number;
   height: number;
 }
 
-/**
- * Wait for video stream dimensions to be available (frames rendered).
- * This polls until getVideoStreamDimensions returns non-null with valid dimensions.
- */
 export async function waitForVideoDimensions(
   page: Page,
   timeout = 10000,
@@ -194,14 +140,6 @@ export async function waitForVideoDimensions(
   return dims!;
 }
 
-/**
- * Send an absolute mouse move event via the test hooks.
- *
- * @param page - Playwright page object
- * @param x - X coordinate in HID absolute range (0-32767)
- * @param y - Y coordinate in HID absolute range (0-32767)
- * @param buttons - Mouse button bitmask (default: 0)
- */
 export async function sendAbsMouseMove(
   page: Page,
   x: number,
@@ -218,12 +156,6 @@ export async function sendAbsMouseMove(
   );
 }
 
-/**
- * Get the video stream dimensions.
- *
- * @param page - Playwright page object
- * @returns The video dimensions or null if not available
- */
 export async function getVideoStreamDimensions(page: Page): Promise<VideoStreamDimensions | null> {
   return page.evaluate(() => {
     const hooks = window.__kvmTestHooks;
@@ -232,37 +164,6 @@ export async function getVideoStreamDimensions(page: Page): Promise<VideoStreamD
   });
 }
 
-/**
- * Capture a region of the video frame as a base64 PNG.
- *
- * @param page - Playwright page object
- * @param x - X coordinate of the region (in video pixels)
- * @param y - Y coordinate of the region (in video pixels)
- * @param width - Width of the region
- * @param height - Height of the region
- * @returns Base64-encoded PNG string or null if capture failed
- */
-export async function captureVideoRegion(
-  page: Page,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): Promise<string | null> {
-  return page.evaluate(
-    ({ x, y, width, height }) => {
-      const hooks = window.__kvmTestHooks;
-      if (!hooks) return null;
-      return hooks.captureVideoRegion(x, y, width, height);
-    },
-    { x, y, width, height },
-  );
-}
-
-/**
- * Capture a small fingerprint of a region of the video frame.
- * This is more tolerant to small frame-to-frame noise than comparing PNGs.
- */
 export async function captureVideoRegionFingerprint(
   page: Page,
   x: number,
@@ -288,15 +189,6 @@ export function fingerprintDistance(a: number[], b: number[]): number {
   return sum;
 }
 
-/**
- * Convert HID absolute coordinates (0-32767) to video pixel coordinates.
- *
- * @param hidX - X in HID absolute range
- * @param hidY - Y in HID absolute range
- * @param videoWidth - Video width in pixels
- * @param videoHeight - Video height in pixels
- * @returns Pixel coordinates
- */
 export function hidToPixelCoords(
   hidX: number,
   hidY: number,
@@ -416,82 +308,31 @@ export async function runMouseBidirectionalCheck(
   return { arrive: lastDistArrive, restore: lastDistRestore };
 }
 
-/**
- * Verify keyboard works using LED round-trip.
- * Taps CAPS_LOCK and verifies the LED state toggles.
- *
- * @param page - Playwright page object
- */
 export async function verifyKeyboardWorks(page: Page): Promise<void> {
-  // Get initial CAPS_LOCK state
   const initialState = await getLedState(page);
   expect(initialState, "LED state should be available").not.toBeNull();
   const initialCapsLock = initialState!.caps_lock;
 
-  // Toggle CAPS_LOCK
   await tapKey(page, HID_KEY.CAPS_LOCK);
   await waitForLedState(page, "caps_lock", !initialCapsLock);
 
-  // Verify the state changed
   const newState = await getLedState(page);
   expect(newState!.caps_lock, "CAPS_LOCK should have toggled").toBe(!initialCapsLock);
 
-  // Small delay to ensure key state is stable before second toggle
-  await page.waitForTimeout(50);
-
-  // Restore original state
   await tapKey(page, HID_KEY.CAPS_LOCK);
   await waitForLedState(page, "caps_lock", initialCapsLock);
 }
 
-/**
- * Verify mouse works using fingerprint comparison.
- * Moves the cursor and verifies the video region changes.
- *
- * @param page - Playwright page object
- */
-export async function verifyMouseWorks(page: Page): Promise<void> {
-  await runMouseBidirectionalCheck(page, {
-    retries: MOUSE_VERIFY_RETRIES,
-    threshold: MOUSE_DISTANCE_THRESHOLD,
-    settleMs: MOUSE_SETTLE_MS,
-  });
-}
-
-/**
- * Combined verification for video stream, mouse, and keyboard.
- * This is a convenience function that runs all three verifications.
- *
- * @param page - Playwright page object
- */
+/** Verifies video stream, mouse movement, and keyboard LED round-trip. */
 export async function verifyHidAndVideo(page: Page): Promise<void> {
-  // Wake display first (sends 3 space key presses to wake target machine)
   await wakeDisplay(page);
-
-  // Wait for video stream to be active (proper polling with timeout)
   await waitForVideoStream(page, 10000);
-
-  // Wait for video dimensions to be available (frames need to render)
   await waitForVideoDimensions(page);
-
-  // Verify mouse works (use longer settle time for post-reboot scenarios)
-  await runMouseBidirectionalCheck(page, {
-    retries: MOUSE_VERIFY_RETRIES,
-    threshold: MOUSE_DISTANCE_THRESHOLD,
-    settleMs: 150,
-  });
-
-  // Verify keyboard works
+  await runMouseBidirectionalCheck(page);
   await verifyKeyboardWorks(page);
 }
 
-/**
- * Get the current app version from the /metrics endpoint.
- * This endpoint exposes Prometheus metrics including the version.
- *
- * @param page - Playwright page object
- * @returns The version string or null if not found
- */
+/** Get the current app version from the /metrics endpoint. */
 export async function getCurrentVersion(page: Page): Promise<string | null> {
   return page.evaluate(async () => {
     try {
@@ -522,67 +363,11 @@ export async function getCurrentVersion(page: Page): Promise<string | null> {
   });
 }
 
-// TypeScript declarations for the test hooks on window
-/**
- * Send a command to the KVM terminal via the test hooks.
- *
- * @param page - Playwright page object
- * @param command - Command to send (newline will be appended automatically)
- * @param waitMs - Time to wait after sending (default: 500ms)
- */
-export async function sendTerminalCommand(
-  page: Page,
-  command: string,
-  waitMs = 200,
-): Promise<boolean> {
-  const result = await page.evaluate(cmd => {
-    return window.__kvmTestHooks?.sendTerminalCommand?.(cmd) ?? false;
-  }, command);
-
-  if (waitMs > 0) {
-    await page.waitForTimeout(waitMs);
-  }
-
-  return result;
-}
-
-/**
- * Wait for the KVM terminal data channel to be ready.
- *
- * @param page - Playwright page object
- * @param timeout - Maximum time to wait in milliseconds (default: 10000)
- */
-export async function waitForTerminalReady(page: Page, timeout = 10000): Promise<void> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeout) {
-    const ready = await page.evaluate(() => {
-      return window.__kvmTestHooks?.isTerminalReady?.() ?? false;
-    });
-
-    if (ready) {
-      return;
-    }
-
-    await page.waitForTimeout(200);
-  }
-
-  throw new Error(`Terminal not ready after ${timeout}ms`);
-}
-
-/**
- * Reconnect to the device after a reboot.
- * Waits for the device to come back online and re-establishes WebRTC connection.
- *
- * @param page - Playwright page object
- * @param waitBeforeRetry - Initial wait time before starting retries (default: 30000ms)
- * @param maxRetries - Maximum number of reconnection attempts (default: 15)
- * @param retryInterval - Time between retry attempts (default: 3000ms)
- */
 export async function reconnectAfterReboot(
   page: Page,
-  waitBeforeRetry = 5000,
+  waitBeforeRetry = 2000,
   maxRetries = 15,
-  retryInterval = 3000,
+  retryInterval = 2000,
 ): Promise<void> {
   await page.waitForTimeout(waitBeforeRetry);
 
@@ -600,111 +385,45 @@ export async function reconnectAfterReboot(
   }
 }
 
-// Time to wait for welcome screen animations (ms)
-const ANIMATION_DELAY = 500;
+const ANIMATION_DELAY = 150;
 
 // Known test passwords - used when device is in unknown state and needs login
 const KNOWN_TEST_PASSWORDS = ["TestPassword123", "NewPassword456"];
 
 /**
- * Try to login with known test passwords if on login page.
- * Returns true if login was successful or not needed.
- *
- * @param page - Playwright page object
- */
-async function tryLoginIfNeeded(page: Page): Promise<boolean> {
-  const currentUrl = page.url();
-  if (!currentUrl.includes("/login")) {
-    return true; // Not on login page, no login needed
-  }
-
-  // Try each known test password
-  for (const password of KNOWN_TEST_PASSWORDS) {
-    const passwordInput = page.locator('input[name="password"]');
-    if (!(await passwordInput.isVisible({ timeout: 2000 }).catch(() => false))) {
-      return true; // No password input visible, probably not a login page
-    }
-
-    await passwordInput.fill(password);
-    const submitButton = page.getByRole("button", { name: /Log in/i });
-    await submitButton.click();
-    await page.waitForTimeout(500);
-
-    // Check if we're no longer on login page
-    const newUrl = page.url();
-    if (!newUrl.includes("/login")) {
-      return true;
-    }
-
-    // Clear for next attempt (may fail if element is detached/disabled after rate limiting)
-    await passwordInput.clear().catch(() => {});
-  }
-
-  return false; // Could not login with any known password
-}
-
-/**
- * Reset the device to onboarding/welcome state.
- * Uses SSH to delete config and reboot if device is already configured.
- * Use this for tests that need to test the welcome/onboarding UI flow itself.
- * For tests that just need device in a specific auth mode, use ensureLocalAuthMode() instead.
- *
- * @param page - Playwright page object
+ * Reset the device to onboarding/welcome state via SSH.
+ * Prefer ensureLocalAuthMode() unless testing the welcome flow itself.
  */
 export async function resetDeviceToWelcome(page: Page): Promise<void> {
-  // Check if already on welcome page
   await page.goto("/");
   await page.waitForLoadState("networkidle");
 
   const currentUrl = page.url();
   if (currentUrl.includes("/welcome")) {
-    // Already on welcome - navigate to base if on sub-route
     if (!currentUrl.endsWith("/welcome")) {
       await page.goto("/welcome");
-      await page.waitForLoadState("networkidle");
     }
     await page.waitForTimeout(ANIMATION_DELAY);
     return;
   }
 
-  // Device is configured - reset via SSH (most reliable approach)
   await resetConfigViaSSH();
-  await rebootDeviceViaSSH();
+  await restartAppViaSSH();
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-
-  // Wait for animations to complete
   await page.waitForTimeout(ANIMATION_DELAY);
 }
 
-// ============================================================================
-// Welcome Flow Primitives (internal building blocks for ensureLocalAuthMode)
-// Prefer using ensureLocalAuthMode() or resetDeviceToWelcome() in tests.
-// ============================================================================
+// ── Welcome Flow Primitives ──
 
-/**
- * Navigate to the welcome mode selection page and wait for it to load.
- * Prerequisite: page should be on /welcome.
- *
- * @param page - Playwright page object
- */
 export async function goToWelcomeMode(page: Page): Promise<void> {
   const setupButton = page.getByRole("link", { name: /Set up your JetKVM/i });
   await expect(setupButton).toBeVisible({ timeout: 10000 });
   await setupButton.click();
 
   await page.waitForURL("**/welcome/mode", { timeout: 10000 });
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(200); // Wait for animations
 }
 
-/**
- * Select an auth mode on the welcome/mode page and click Continue.
- * Prerequisite: page should be on /welcome/mode.
- *
- * @param page - Playwright page object
- * @param mode - "password" or "noPassword"
- */
 export async function selectWelcomeAuthMode(
   page: Page,
   mode: "password" | "noPassword",
@@ -718,15 +437,6 @@ export async function selectWelcomeAuthMode(
   await continueButton.click();
 }
 
-/**
- * Submit password on the welcome/password page.
- * Prerequisite: page should be on /welcome/password.
- *
- * @param page - Playwright page object
- * @param password - Password to enter
- * @param confirmPassword - Confirm password (defaults to same as password)
- * @param expectSuccess - If true, wait for redirect to /. If false, stay on page (for validation tests)
- */
 export async function submitWelcomePassword(
   page: Page,
   password: string,
@@ -734,8 +444,6 @@ export async function submitWelcomePassword(
   expectSuccess = true,
 ): Promise<void> {
   await page.waitForURL("**/welcome/password", { timeout: 10000 });
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(200); // Wait for animations
 
   const passwordInput = page.locator('input[name="password"]');
   const confirmPasswordInput = page.locator('input[name="confirmPassword"]');
@@ -750,24 +458,12 @@ export async function submitWelcomePassword(
   if (expectSuccess) {
     await page.waitForURL("/", { timeout: 15000 });
   } else {
-    // Wait for error to appear (form stays on same page)
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
   }
 }
 
-// ============================================================================
-// Login/Logout Helpers
-// ============================================================================
+// ── Login/Logout ──
 
-/**
- * Login with the given password on the login page.
- * Prerequisite: page should be on /login-local.
- *
- * @param page - Playwright page object
- * @param password - Password to use
- * @param expectSuccess - If true, wait for redirect away from login. If false, stay on page.
- * @returns Object with success status and any error message
- */
 export async function loginLocal(
   page: Page,
   password: string,
@@ -797,19 +493,23 @@ export async function loginLocal(
   }
   await submitButton.click();
 
-  // Wait for navigation away from login page or for error to appear
-  try {
-    await page.waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 });
+  // Race between successful navigation and error message appearance so failed
+  // logins resolve quickly (~500ms) instead of waiting for the full URL timeout.
+  const errorLocator = page.locator(".text-red-500, .text-red-600").first();
+  const outcome = await Promise.race([
+    page
+      .waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 })
+      .then(() => "navigated" as const),
+    errorLocator
+      .waitFor({ state: "visible", timeout: 5000 })
+      .then(() => "error" as const),
+  ]).catch(() => "timeout" as const);
+
+  if (outcome === "navigated") {
     return { success: true };
-  } catch {
-    // Still on login page - check for error
   }
 
-  // Still on login page - get error message (with timeout to avoid hanging)
-  const errorLocator = page.locator(".text-red-500, .text-red-600").first();
-  const errorText = await errorLocator.isVisible({ timeout: 3000 }).catch(() => false)
-    ? await errorLocator.textContent({ timeout: 3000 }).catch(() => null)
-    : null;
+  const errorText = await errorLocator.textContent({ timeout: 1000 }).catch(() => null);
 
   if (expectSuccess) {
     // Test expected success but login failed
@@ -819,41 +519,23 @@ export async function loginLocal(
   return { success: false, error: errorText || undefined };
 }
 
-/**
- * Logout from the device (clears auth cookie).
- *
- * @param page - Playwright page object
- */
 export async function logout(page: Page): Promise<void> {
   await page.evaluate(async () => {
     await fetch("/auth/logout", { method: "POST" });
   });
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(100);
 }
 
-/**
- * Dismiss the "Another Active Session Detected" dialog if it appears.
- * This dialog shows when another WebRTC session is active.
- *
- * @param page - Playwright page object
- */
 export async function dismissSessionTakeoverDialog(page: Page): Promise<void> {
   const useHereButton = page.getByRole("button", { name: /Use Here/i });
   if (await useHereButton.isVisible({ timeout: 2000 }).catch(() => false)) {
     await useHereButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
   }
 }
 
-// ============================================================================
-// Settings Access Page Helpers
-// ============================================================================
+// ── Settings Access Page ──
 
-/**
- * Navigate to /settings/access and wait for the local auth section to load.
- *
- * @param page - Playwright page object
- */
 export async function openAccessSettings(page: Page): Promise<void> {
   await page.goto("/settings/access");
   await page.waitForLoadState("networkidle");
@@ -864,15 +546,6 @@ export async function openAccessSettings(page: Page): Promise<void> {
   await expect(localSectionHeader).toBeVisible({ timeout: 15000 });
 }
 
-/**
- * Enable password protection from settings when in noPassword mode.
- * Prerequisite: page should be on /settings/access with noPassword mode active.
- *
- * @param page - Playwright page object
- * @param password - Password to set
- * @param confirmPassword - Confirm password (defaults to same as password)
- * @param expectSuccess - If true, wait for success modal. If false, expect error.
- */
 export async function enablePasswordFromSettings(
   page: Page,
   password: string,
@@ -903,16 +576,6 @@ export async function enablePasswordFromSettings(
   }
 }
 
-/**
- * Change password from settings when in password mode.
- * Prerequisite: page should be on /settings/access with password mode active.
- *
- * @param page - Playwright page object
- * @param oldPassword - Current password
- * @param newPassword - New password to set
- * @param confirmNewPassword - Confirm new password (defaults to same as newPassword)
- * @param expectSuccess - If true, wait for success modal. If false, expect error.
- */
 export async function changePasswordFromSettings(
   page: Page,
   oldPassword: string,
@@ -947,14 +610,6 @@ export async function changePasswordFromSettings(
   }
 }
 
-/**
- * Disable password protection from settings when in password mode.
- * Prerequisite: page should be on /settings/access with password mode active.
- *
- * @param page - Playwright page object
- * @param currentPassword - Current password to confirm deletion
- * @param expectSuccess - If true, wait for success modal. If false, expect error.
- */
 export async function disablePasswordFromSettings(
   page: Page,
   currentPassword: string,
@@ -981,23 +636,9 @@ export async function disablePasswordFromSettings(
   }
 }
 
-// ============================================================================
-// SSH Helpers (DRY implementation)
-// ============================================================================
+// ── SSH ──
 
-/**
- * Execute a command on the device via SSH.
- * This is the single internal helper for all SSH operations.
- *
- * @param cmd - Command to execute on the device
- * @param ignoreErrors - If true, don't throw on command failure (default: false)
- * @returns The stdout from the command
- */
 export async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
-  const { exec } = await import("child_process");
-  const { promisify } = await import("util");
-  const execAsync = promisify(exec);
-
   const host = getDeviceHost();
   const sshCmd = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} '${cmd}'`;
 
@@ -1013,28 +654,28 @@ export async function sshExec(cmd: string, ignoreErrors = false): Promise<string
 }
 
 export async function resetConfigViaSSH(): Promise<void> {
-  await sshExec("rm /userdata/kvm_config.json");
+  await sshExec("rm -f /userdata/kvm_config.json");
   await sshExec("sync");
 }
 
-// ============================================================================
-// Local Auth Mode Management
-// ============================================================================
+export async function restartAppViaSSH(): Promise<void> {
+  await sshExec("killall jetkvm_app", true);
+  await new Promise(r => setTimeout(r, 500));
+  await sshExec(
+    "setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib /userdata/jetkvm/bin/jetkvm_app > /userdata/jetkvm/last.log 2>&1 &",
+    true,
+  );
+  await new Promise(r => setTimeout(r, 1000));
+  await waitForDeviceReady(getDeviceHost(), 15000);
+}
 
-/** Desired local auth mode configuration */
+// ── Local Auth Mode Management ──
+
 export type LocalAuthModeConfig = { mode: "noPassword" } | { mode: "password"; password: string };
 
 /**
- * Ensure the device is configured with the desired local auth mode.
- * This is the preferred way to set up device state at the start of tests.
- *
- * Handles all states:
- * - If on /welcome: completes onboarding with desired mode
- * - If on /login-local: either logs in (password mode) or clears password via SSH (noPassword mode)
- * - If already configured: uses SSH to adjust if needed
- *
- * @param page - Playwright page object
- * @param desired - The desired auth mode configuration
+ * Ensure the device is in the desired local auth mode.
+ * Handles welcome, login, and already-configured states transparently.
  */
 export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConfig): Promise<void> {
   await page.goto("/");
@@ -1090,9 +731,8 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
       return;
     }
 
-    // Could not login - fall back to SSH reset
     await resetConfigViaSSH();
-    await rebootDeviceViaSSH();
+    await restartAppViaSSH();
     await page.goto("/");
     await page.waitForLoadState("networkidle");
     if (desired.mode === "password") {
@@ -1107,14 +747,18 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
     return;
   }
 
+  // Fresh browser context at "/" with no cookies and no redirect means no password is set.
+  if (desired.mode === "noPassword") {
+    return;
+  }
+
   // Device is configured and we're logged in (or no password) - check current mode
   await openAccessSettings(page);
 
-  // Detect current mode by checking which buttons are visible
   const hasDisableButton = await page
     .getByRole("button")
     .filter({ hasText: /Disable Protection/i })
-    .isVisible({ timeout: 3000 })
+    .isVisible({ timeout: 2000 })
     .catch(() => false);
 
   if (desired.mode === "password") {
@@ -1146,15 +790,7 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
   }
 }
 
-/**
- * Clear password from device config via SSH without resetting the entire config.
- * This keeps the device in a configured state (not onboarding) but removes password protection.
- *
- * The config file is at /userdata/kvm_config.json with fields:
- * - hashed_password: the bcrypt hash
- * - local_auth_token: the session token
- * - local_auth_mode: "password" or "noPassword"
- */
+/** Clear password fields from device config via SSH (keeps device configured). */
 export async function clearPasswordViaSSH(): Promise<void> {
   try {
     // Run separate sed commands to avoid complex quoting issues
@@ -1172,22 +808,13 @@ export async function clearPasswordViaSSH(): Promise<void> {
       'sed -i "s/\\"localAuthMode\\": \\"[^\\"]*\\"/\\"localAuthMode\\": \\"noPassword\\"/g" /userdata/kvm_config.json',
     );
 
-    // Reboot to apply the config change (the app loads config on startup)
-    await rebootDeviceViaSSH(true);
+    await restartAppViaSSH();
   } catch (error) {
     console.error("[E2E Cleanup] Error clearing password:", error);
     throw error; // Don't swallow errors silently
   }
 }
 
-/**
- * Submit wrong password attempts until rate limited or max attempts reached.
- * Returns true if rate limit message was shown.
- *
- * @param page - Playwright page object
- * @param maxAttempts - Maximum number of attempts before giving up (default: 10)
- * @returns Whether rate limit message was detected
- */
 export async function triggerRateLimit(page: Page, maxAttempts = 10): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     const result = await loginLocal(page, "wrongpassword123", false);
@@ -1196,18 +823,12 @@ export async function triggerRateLimit(page: Page, maxAttempts = 10): Promise<bo
       return true;
     }
 
-    // Small delay between attempts
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(100);
   }
 
   return false;
 }
 
-/**
- * Get the device IP from the JETKVM_URL environment variable.
- *
- * @returns The device IP/hostname
- */
 export function getDeviceHost(): string {
   const url = process.env.JETKVM_URL;
   if (!url) {
@@ -1216,13 +837,7 @@ export function getDeviceHost(): string {
   return new URL(url).hostname;
 }
 
-/**
- * Wait for the device to be reachable via HTTP.
- *
- * @param host - The device hostname/IP
- * @param timeout - Maximum time to wait in milliseconds (default: 60000)
- */
-async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> {
+export async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> {
   const startTime = Date.now();
   const url = `http://${host}`;
 
@@ -1242,12 +857,6 @@ async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> 
   throw new Error(`Device at ${host} did not become ready within ${timeout}ms`);
 }
 
-/**
- * Reboot the device via SSH to clear in-memory state like rate limiting.
- * This is useful after rate limiting tests to reset the device state.
- *
- * @param waitForReady - Whether to wait for the device to come back online (default: true)
- */
 export async function rebootDeviceViaSSH(waitForReady = true): Promise<void> {
   const host = getDeviceHost();
 
@@ -1255,13 +864,289 @@ export async function rebootDeviceViaSSH(waitForReady = true): Promise<void> {
   await sshExec("reboot", true);
 
   if (waitForReady) {
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Wait for device to come back up
+    await new Promise(resolve => setTimeout(resolve, 2000));
     await waitForDeviceReady(host, 60000);
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
 
-    // Give it a moment to fully initialize
-    await new Promise(resolve => setTimeout(resolve, 1000));
+export async function callJsonRpc(
+  page: Page,
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<unknown> {
+  return page.evaluate(
+    ({ method, params }) => {
+      return new Promise((resolve, reject) => {
+        const hooks = window.__kvmTestHooks;
+        if (!hooks) return reject(new Error("Test hooks not available"));
+        hooks.sendJsonRpc(method, params, (resp: { error?: { message: string; data?: string }; result?: unknown }) => {
+          if (resp.error) reject(new Error(`${resp.error.message}${resp.error.data ? `: ${resp.error.data}` : ""}`));
+          else resolve(resp.result);
+        });
+      });
+    },
+    { method, params },
+  );
+}
+
+// ── OTA: Mock Update Server ──
+
+export interface MockUpdateServerConfig {
+  binaryPath: string;
+  version: string;
+  signaturePath?: string;
+  port?: number;
+}
+
+export interface MockUpdateServer {
+  url: string;
+  port: number;
+  close: () => Promise<void>;
+  enableSignature: (sigPath: string) => void;
+  disableSignature: () => void;
+}
+
+export async function createMockUpdateServer(
+  config: MockUpdateServerConfig,
+): Promise<MockUpdateServer> {
+  const { binaryPath, version } = config;
+  const port = config.port ?? 0;
+
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Binary not found: ${binaryPath}`);
+  }
+
+  const binaryHash = await computeFileHash(binaryPath);
+  const localIP = getLocalNetworkIP();
+  const timestamp = Date.now();
+
+  let signaturePath: string | undefined = config.signaturePath;
+
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url!, `http://localhost`);
+
+    if (url.pathname === "/releases") {
+      handleReleasesRequest(url, res);
+    } else if (url.pathname === `/app/${version}/jetkvm_app`) {
+      streamFile(binaryPath, res);
+    } else if (url.pathname === `/app/${version}/jetkvm_app.sig` && signaturePath) {
+      streamFile(signaturePath, res);
+    } else {
+      res.writeHead(404);
+      res.end("Not found");
+    }
+  });
+
+  function handleReleasesRequest(url: URL, res: http.ServerResponse) {
+    const query = Object.fromEntries(url.searchParams);
+    const isCustomVersion = "appVersion" in query || "systemVersion" in query;
+    const appVersion = isCustomVersion ? (query.appVersion ?? version) : version;
+
+    const actualPort = (server.address() as { port: number }).port;
+
+    const response: Record<string, unknown> = {
+      appVersion,
+      appUrl: `http://${localIP}:${actualPort}/app/${version}/jetkvm_app`,
+      appHash: binaryHash,
+      appCachedAt: timestamp,
+      appMaxSatisfying: "*",
+      systemVersion: "0.0.1",
+      systemUrl: "",
+      systemHash: "",
+      systemCachedAt: timestamp,
+      systemMaxSatisfying: "*",
+    };
+
+    if (signaturePath) {
+      response.appSigUrl = `http://${localIP}:${actualPort}/app/${version}/jetkvm_app.sig`;
+    }
+
+    const body = JSON.stringify(response);
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body),
+    });
+    res.end(body);
+  }
+
+  function streamFile(filePath: string, res: http.ServerResponse) {
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+      "Content-Length": stat.size,
+      "Content-Type": "application/octet-stream",
+    });
+    fs.createReadStream(filePath).pipe(res);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.on("error", reject);
+    server.listen(port, "0.0.0.0", () => resolve());
+  });
+
+  const actualPort = (server.address() as { port: number }).port;
+  const serverUrl = `http://${localIP}:${actualPort}`;
+
+  return {
+    url: serverUrl,
+    port: actualPort,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close(err => (err ? reject(err) : resolve()));
+      }),
+    enableSignature: (sigPath: string) => {
+      signaturePath = sigPath;
+    },
+    disableSignature: () => {
+      signaturePath = undefined;
+    },
+  };
+}
+
+// ── OTA: Binary Deployment ──
+
+export async function deployBinaryToDevice(binaryPath: string): Promise<void> {
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Binary not found: ${binaryPath}`);
+  }
+
+  const host = getDeviceHost();
+  const sshCmd = [
+    "ssh",
+    "-o UserKnownHostsFile=/dev/null",
+    "-o StrictHostKeyChecking=no",
+    "-o ConnectTimeout=10",
+    `root@${host}`,
+    '"cat > /userdata/jetkvm/jetkvm_app.update"',
+  ].join(" ");
+  await execAsync(`${sshCmd} < "${binaryPath}"`);
+}
+
+// ── OTA: Device Config ──
+
+const PRODUCTION_API_URL = "https://api.jetkvm.com";
+
+export async function configureDeviceUpdateUrl(url: string): Promise<void> {
+  await sshExec(
+    `sed -i "s|\\"update_api_url\\": \\"[^\\"]*\\"|\\"update_api_url\\": \\"${url}\\"|" /userdata/kvm_config.json`,
+  );
+}
+
+export async function restoreDeviceUpdateUrl(): Promise<void> {
+  try {
+    await configureDeviceUpdateUrl(PRODUCTION_API_URL);
+  } catch {
+    // Best-effort cleanup
+  }
+}
+
+export async function setIncludePreRelease(value: boolean): Promise<void> {
+  await sshExec(
+    `sed -i "s|\\"include_pre_release\\": [^,]*|\\"include_pre_release\\": ${value}|" /userdata/kvm_config.json`,
+  );
+}
+
+// ── OTA: Utilities ──
+
+export async function computeFileHash(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("data", data => hash.update(data));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", reject);
+  });
+}
+
+export function getLocalNetworkIP(): string {
+  try {
+    const routeOutput = execSync("ip route get 1", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const routeMatch = routeOutput.match(/\bsrc\s+(\d+\.\d+\.\d+\.\d+)\b/);
+    if (routeMatch?.[1]) {
+      return routeMatch[1];
+    }
+  } catch {
+    // Fall through to interface scan
+  }
+
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]!) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  throw new Error("Could not detect local network IP address");
+}
+
+// ── OTA: Test Helpers ──
+
+export interface OTAEnvVars {
+  baselinePath: string;
+  releasePath: string;
+  releaseVersion: string;
+  signaturePath?: string;
+}
+
+export function getOTAEnvVars(opts?: { requireSignature?: boolean }): OTAEnvVars {
+  const baselinePath = process.env.BASELINE_BINARY_PATH;
+  const releasePath = process.env.RELEASE_BINARY_PATH;
+  const releaseVersion = process.env.TEST_UPDATE_VERSION;
+  const signaturePath = process.env.RELEASE_SIGNATURE_PATH;
+
+  if (!baselinePath) throw new Error("BASELINE_BINARY_PATH is required");
+  if (!releasePath) throw new Error("RELEASE_BINARY_PATH is required");
+  if (!releaseVersion) throw new Error("TEST_UPDATE_VERSION is required");
+  if (opts?.requireSignature && !signaturePath) {
+    throw new Error("RELEASE_SIGNATURE_PATH is required");
+  }
+
+  return { baselinePath, releasePath, releaseVersion, signaturePath };
+}
+
+export function toPreReleaseVersion(version: string): string {
+  return version.includes("-") ? version : `${version}-dev.1`;
+}
+
+/**
+ * Navigate to the update page, dismiss a cached error (Retry button) if present,
+ * and click "Update Now".
+ */
+export async function triggerUpdate(page: Page): Promise<void> {
+  await page.goto("/settings/general/update");
+  await page.waitForLoadState("networkidle");
+
+  const retryButton = page.getByRole("button", { name: "Retry" });
+  if (await retryButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await retryButton.click();
+  }
+
+  const updateButton = page.getByRole("button", { name: "Update Now" });
+  await expect(updateButton).toBeVisible({ timeout: 30000 });
+  await updateButton.click();
+}
+
+/**
+ * Create a temporary signature file, run the callback with the mock server
+ * configured to serve it, then clean up.
+ */
+export async function withTempSignature(
+  mockServer: MockUpdateServer,
+  content: Buffer,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const sigPath = path.join(os.tmpdir(), `e2e_sig_${Date.now()}.sig`);
+  fs.writeFileSync(sigPath, content);
+  try {
+    mockServer.enableSignature(sigPath);
+    await fn();
+  } finally {
+    mockServer.disableSignature();
+    fs.unlinkSync(sigPath);
   }
 }
 
@@ -1272,6 +1157,11 @@ declare global {
       getKeysDownState: () => { modifier: number; keys: number[] } | null;
       sendKeypress: (key: number, press: boolean) => void;
       sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
+      sendJsonRpc: (
+        method: string,
+        params: Record<string, unknown>,
+        callback: (resp: { error?: { message: string; data?: string }; result?: unknown }) => void,
+      ) => void;
       captureVideoRegion: (
         x: number,
         y: number,

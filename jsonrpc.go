@@ -612,6 +612,8 @@ func rpcGetUsbEmulationState() (bool, error) {
 }
 
 func rpcSetUsbEmulationState(enabled bool) error {
+	setUSBEmulationDesired(enabled)
+
 	if enabled {
 		return gadget.BindUDC()
 	} else {
@@ -834,6 +836,9 @@ func updateUsbRelatedConfig() error {
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
 	}
+	// Reset recovery timer so auto-recovery doesn't interfere during
+	// the host's USB re-enumeration window after a deliberate config change.
+	setUSBRecoveryTimer(time.Now())
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}

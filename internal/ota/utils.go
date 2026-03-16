@@ -179,6 +179,10 @@ func (s *State) downloadSignature(ctx context.Context, sigURL string) ([]byte, e
 		return nil, fmt.Errorf("error reading signature: %w", err)
 	}
 
+	if len(signature) == 0 {
+		return nil, fmt.Errorf("signature file is empty")
+	}
+
 	l.Debug().Int("signatureBytes", len(signature)).Msg("signature downloaded")
 	return signature, nil
 }
@@ -257,12 +261,27 @@ func (s *State) verifyFile(ctx context.Context, path string, expectedHash string
 	return nil
 }
 
-func shouldBypassSignatureCheck(version string, customVersionUpdate bool) bool {
+// shouldBypassSignatureCheck determines whether GPG signature verification can
+// be skipped for this update. Bypass is allowed in two cases:
+//
+//  1. The user explicitly requested a specific version (customVersionUpdate).
+//     This requires local user action on the device, so it can't be triggered
+//     by a compromised server.
+//
+//  2. The remote version is a pre-release AND the device has opted into the
+//     pre-release channel (includePreRelease). We check the local opt-in flag
+//     so that a compromised server can't push an unsigned pre-release version
+//     string to devices that never subscribed to the dev channel.
+func shouldBypassSignatureCheck(version string, customVersionUpdate bool, includePreRelease bool) bool {
+	if customVersionUpdate {
+		return true
+	}
+
 	remoteVersion, err := semver.NewVersion(version)
 	if err != nil {
 		return false
 	}
 
-	isPrereleaseVersion := remoteVersion.Prerelease() != ""
-	return customVersionUpdate || isPrereleaseVersion
+	isPrerelease := remoteVersion.Prerelease() != ""
+	return isPrerelease && includePreRelease
 }

@@ -6,41 +6,25 @@ import {
   rebootDeviceViaSSH,
   ensureLocalAuthMode,
   verifyHidAndVideo,
-} from "./helpers";
-
-import {
   createMockUpdateServer,
   deployBinaryToDevice,
   configureDeviceUpdateUrl,
   restoreDeviceUpdateUrl,
   setIncludePreRelease,
+  getOTAEnvVars,
+  toPreReleaseVersion,
   type MockUpdateServer,
-} from "./ota-helpers";
+} from "./helpers";
 
-/**
- * OTA Prerelease Unsigned
- *
- * Verifies that prerelease OTA updates bypass the signature requirement.
- * This mirrors the dev-release lane where prerelease updates are expected
- * to work without appSigUrl.
- */
 test.describe("OTA Prerelease Unsigned", () => {
-  test.setTimeout(420000); // 7 minutes
+  test.setTimeout(420000);
 
   let mockServer: MockUpdateServer;
+  let preReleaseVersion: string;
 
   test.beforeAll(async ({ browser }) => {
-    const baselinePath = process.env.BASELINE_BINARY_PATH;
-    const releasePath = process.env.RELEASE_BINARY_PATH;
-    const releaseVersion = process.env.TEST_UPDATE_VERSION;
-
-    if (!baselinePath) throw new Error("BASELINE_BINARY_PATH is required");
-    if (!releasePath) throw new Error("RELEASE_BINARY_PATH is required");
-    if (!releaseVersion) throw new Error("TEST_UPDATE_VERSION is required");
-
-    const preReleaseVersion = releaseVersion.includes("-")
-      ? releaseVersion
-      : `${releaseVersion}-dev.1`;
+    const env = getOTAEnvVars();
+    preReleaseVersion = toPreReleaseVersion(env.releaseVersion);
 
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
@@ -52,12 +36,11 @@ test.describe("OTA Prerelease Unsigned", () => {
     }
 
     mockServer = await createMockUpdateServer({
-      binaryPath: releasePath,
+      binaryPath: env.releasePath,
       version: preReleaseVersion,
-      // No signaturePath on purpose.
     });
 
-    await deployBinaryToDevice(baselinePath);
+    await deployBinaryToDevice(env.baselinePath);
     await rebootDeviceViaSSH();
     await configureDeviceUpdateUrl(mockServer.url);
     await setIncludePreRelease(true);
@@ -69,7 +52,7 @@ test.describe("OTA Prerelease Unsigned", () => {
     await page.waitForLoadState("networkidle");
 
     const initialVersion = await getCurrentVersion(page);
-    expect(initialVersion, "Initial version should be detectable from /metrics").not.toBeNull();
+    expect(initialVersion).not.toBeNull();
 
     const updateButton = page.getByRole("button", { name: "Update Now" });
     await expect(updateButton).toBeVisible({ timeout: 30000 });
@@ -78,7 +61,7 @@ test.describe("OTA Prerelease Unsigned", () => {
     await reconnectAfterReboot(page, 35000);
 
     const finalVersion = await getCurrentVersion(page);
-    expect(finalVersion, "Version should be detectable after reboot").not.toBeNull();
+    expect(finalVersion).not.toBeNull();
     expect(finalVersion).not.toBe(initialVersion);
 
     await verifyHidAndVideo(page);

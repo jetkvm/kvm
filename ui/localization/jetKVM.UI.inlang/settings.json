@@ -4,6 +4,7 @@
   "sourceLanguageTag": "en",
   "locales": [
     "en",
+    "cy",
     "da",
     "de",
     "es",
@@ -12,12 +13,14 @@
     "ja",
     "nb",
     "pt",
+    "ru",
     "sv",
     "zh-tw",
     "zh"
   ],
   "languageTags": [
     "en",
+    "cy",
     "da",
     "de",
     "es",
@@ -26,6 +29,7 @@
     "ja",
     "nb",
     "pt",
+    "ru",
     "sv",
     "zh-tw",
     "zh"

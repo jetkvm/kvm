@@ -26,6 +26,7 @@ export interface KeyboardLayout {
 
 // To add a new layout, create a file like the above and add it to the list
 import { cs_CZ } from "@/keyboardLayouts/cs_CZ";
+import { da_DK } from "@/keyboardLayouts/da_DK";
 import { de_CH } from "@/keyboardLayouts/de_CH";
 import { de_DE } from "@/keyboardLayouts/de_DE";
 import { en_US } from "@/keyboardLayouts/en_US";
@@ -34,15 +35,17 @@ import { es_ES } from "@/keyboardLayouts/es_ES";
 import { fr_BE } from "@/keyboardLayouts/fr_BE";
 import { fr_CH } from "@/keyboardLayouts/fr_CH";
 import { fr_FR } from "@/keyboardLayouts/fr_FR";
+import { hu_HU } from "@/keyboardLayouts/hu_HU";
 import { it_IT } from "@/keyboardLayouts/it_IT";
+import { ja_JP } from "@/keyboardLayouts/ja_JP";
 import { nb_NO } from "@/keyboardLayouts/nb_NO";
 import { sv_SE } from "@/keyboardLayouts/sv_SE";
-import { da_DK } from "@/keyboardLayouts/da_DK";
-import { ja_JP } from "@/keyboardLayouts/ja_JP";
 import { sl_SI } from "@/keyboardLayouts/sl_SI";
+import { ru_RU } from "@/keyboardLayouts/ru_RU";
 
 export const keyboards: KeyboardLayout[] = [
   cs_CZ,
+  da_DK,
   de_CH,
   de_DE,
   en_UK,
@@ -51,10 +54,11 @@ export const keyboards: KeyboardLayout[] = [
   fr_BE,
   fr_CH,
   fr_FR,
+  hu_HU,
   it_IT,
+  ja_JP,
   nb_NO,
   sv_SE,
-  da_DK,
-  ja_JP,
   sl_SI,
+  ru_RU,
 ];

@@ -243,7 +243,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 			Str("hash", appUpdate.hash).
 			Msg("App update available")
 
-		bypassSignatureCheck := shouldBypassSignatureCheck(appUpdate.version, appUpdate.customVersionUpdate)
+		bypassSignatureCheck := shouldBypassSignatureCheck(appUpdate.version, appUpdate.customVersionUpdate, params.IncludePreRelease)
 		if err := s.updateApp(ctx, appUpdate, bypassSignatureCheck); err != nil {
 			return s.componentUpdateError("Error updating app", err, &scopedLogger)
 		}
@@ -254,7 +254,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	scopedLogger.Trace().Bool("pending", systemUpdate.pending).Msg("Checking for system update")
 
 	if systemUpdate.pending {
-		bypassSignatureCheck := shouldBypassSignatureCheck(systemUpdate.version, systemUpdate.customVersionUpdate)
+		bypassSignatureCheck := shouldBypassSignatureCheck(systemUpdate.version, systemUpdate.customVersionUpdate, params.IncludePreRelease)
 		if err := s.updateSystem(ctx, systemUpdate, bypassSignatureCheck); err != nil {
 			return s.componentUpdateError("Error updating system", err, &scopedLogger)
 		}

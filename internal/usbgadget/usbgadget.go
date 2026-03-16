@@ -189,3 +189,26 @@ func (u *UsbGadget) Close() error {
 
 	return nil
 }
+
+// ResetHIDFiles closes all open HID gadget file descriptors.
+// After a UDC rebind, previously open /dev/hidg* handles may point to a stale
+// transport endpoint and must be reopened before use.
+func (u *UsbGadget) ResetHIDFiles() {
+	u.keyboardLock.Lock()
+	u.closeKeyboardHidFileLocked()
+	unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile reset")
+
+	u.absMouseLock.Lock()
+	if u.absMouseHidFile != nil {
+		u.absMouseHidFile.Close()
+		u.absMouseHidFile = nil
+	}
+	unlockWithLog(&u.absMouseLock, u.log, "absMouseHidFile reset")
+
+	u.relMouseLock.Lock()
+	if u.relMouseHidFile != nil {
+		u.relMouseHidFile.Close()
+		u.relMouseHidFile = nil
+	}
+	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
+}
