@@ -979,9 +979,11 @@ export default function KvmIdRoute() {
           </FocusTrap>
         )}
 
-        <div className={cx("grid h-full select-none", {
-          "grid-rows-(--grid-headerBody)": !isDetachedWindow,
-        })}>
+        <div
+          className={cx("grid h-full select-none", {
+            "grid-rows-(--grid-headerBody)": !isDetachedWindow,
+          })}
+        >
           {!isDetachedWindow && (
             <DashboardNavbar
               primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}

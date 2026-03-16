@@ -641,9 +641,11 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div className={cx("relative flex items-center justify-center overflow-hidden", {
-                    "mx-4 my-2": !isDetachedWindow,
-                  })}>
+                  <div
+                    className={cx("relative flex items-center justify-center overflow-hidden", {
+                      "mx-4 my-2": !isDetachedWindow,
+                    })}
+                  >
                     <div
                       ref={fullscreenContainerRef}
                       className="relative flex h-full w-full items-center justify-center"
