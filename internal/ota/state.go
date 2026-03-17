@@ -1,6 +1,8 @@
 package ota
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -178,9 +180,82 @@ func (s *State) ToUpdateStatus() *UpdateStatus {
 	return toUpdateStatus(&appUpdate, &systemUpdate, s.error)
 }
 
-// IsUpdatePending returns true if an update is pending
-func (s *State) IsUpdatePending() bool {
-	return s.updating
+// ApplyOfflineUpdate applies a pre-verified, pre-staged offline update for
+// the given component. For app updates, this simply triggers a reboot (the
+// boot sequence picks up jetkvm_app.update). For system updates, it runs
+// rk_ota then reboots. The caller is responsible for ensuring the file has
+// been verified and staged at the correct path before calling this.
+func (s *State) ApplyOfflineUpdate(ctx context.Context, component string) error {
+	locked := s.mu.TryLock()
+	if !locked {
+		return fmt.Errorf("update already in progress")
+	}
+	defer s.mu.Unlock()
+
+	s.updating = true
+	s.metadataFetchedAt = time.Now()
+	s.triggerStateUpdate()
+
+	componentStatus := componentUpdateStatus{
+		pending:              true,
+		downloadProgress:     1,
+		downloadFinishedAt:   time.Now(),
+		verificationProgress: 1,
+		verifiedAt:           time.Now(),
+	}
+
+	s.triggerComponentUpdateState(component, &componentStatus)
+
+	l := s.l.With().Str("component", component).Logger()
+
+	if component == "system" {
+		if err := s.applySystemImage(&componentStatus); err != nil {
+			return s.componentUpdateError("Error applying offline system update", err, &l)
+		}
+	} else {
+		// App: the verified binary is already at appUpdatePath; just mark complete.
+		componentStatus.updateProgress = 1
+		componentStatus.updatedAt = time.Now()
+		s.triggerComponentUpdateState(component, &componentStatus)
+	}
+
+	s.rebootNeeded = true
+
+	// Disable auto-update: the user explicitly chose an offline update version.
+	if _, err := s.setAutoUpdate(false); err != nil {
+		l.Warn().Err(err).Msg("failed to disable auto-update after offline update")
+	}
+
+	l.Info().Msg("rebooting after offline update")
+
+	postRebootAction := &PostRebootAction{
+		HealthCheck: "/device/status",
+		RedirectTo:  "/settings/general/update",
+	}
+
+	if err := s.reboot(true, postRebootAction, 5*time.Second); err != nil {
+		return s.componentUpdateError("Error requesting reboot", err, &l)
+	}
+
+	return nil
+}
+
+// GPGVerifier returns the GPG verifier instance used by this state.
+func (s *State) GPGVerifier() *GPGVerifier {
+	return s.gpgVerifier
+}
+
+// ComponentUpdatePath returns the filesystem path where verified update
+// files should be staged for the given component.
+func ComponentUpdatePath(component string) (string, error) {
+	switch component {
+	case "app":
+		return appUpdatePath, nil
+	case "system":
+		return systemUpdatePath, nil
+	default:
+		return "", fmt.Errorf("unknown component: %s", component)
+	}
 }
 
 // Options represents the options for the OTA state
