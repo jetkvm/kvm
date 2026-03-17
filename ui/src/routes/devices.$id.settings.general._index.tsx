@@ -5,6 +5,7 @@ import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { useDeviceStore } from "@hooks/stores";
 import { Button } from "@components/Button";
 import Checkbox from "@components/Checkbox";
+import OfflineUpdateCard from "@components/OfflineUpdateCard";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -136,6 +137,7 @@ export default function SettingsGeneralRoute() {
               />
             </SettingsItem>
           </div>
+          <OfflineUpdateCard />
           <div className="mt-2 flex items-center justify-between gap-x-2">
             <SettingsItem
               title={m.general_reboot_device()}
