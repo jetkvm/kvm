@@ -218,6 +218,9 @@ func setupRouter() *gin.Engine {
 		protected.DELETE("/auth/local-password", handleDeletePassword)
 		protected.POST("/storage/upload", handleUploadHttp)
 
+		protected.POST("/ota/upload", handleOfflineUpdateUpload)
+		protected.POST("/ota/apply", handleOfflineUpdateApply)
+
 		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
