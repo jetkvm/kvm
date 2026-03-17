@@ -67,14 +67,14 @@ export default function TailscaleCard() {
               {ipv4 && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">IPv4</span>
-                  <span className="font-mono text-sm font-medium">{ipv4}</span>
+                  <span className="font-mono text-[13px] font-medium">{ipv4}</span>
                 </div>
               )}
 
               {ipv6 && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">IPv6</span>
-                  <span className="font-mono text-sm font-medium">{ipv6}</span>
+                  <span className="font-mono text-[13px] font-medium">{ipv6}</span>
                 </div>
               )}
 
@@ -110,16 +110,6 @@ export default function TailscaleCard() {
               Tailscale is installed but not running.
               {status.backendState && ` State: ${status.backendState}`}
             </p>
-          )}
-
-          {status.health && status.health.length > 0 && (
-            <div className="space-y-1 border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
-              {status.health.map((warning, idx) => (
-                <p key={idx} className="text-xs text-amber-600 dark:text-amber-400">
-                  {warning}
-                </p>
-              ))}
-            </div>
           )}
         </div>
       </div>
