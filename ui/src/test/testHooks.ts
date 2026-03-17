@@ -111,7 +111,9 @@ export function initTestHooks(): void {
             dc.removeEventListener("message", handler);
             callback(resp);
           }
-        } catch { /* ignore non-JSON */ }
+        } catch {
+          /* ignore non-JSON */
+        }
       };
       const timer = setTimeout(() => {
         if (!settled) {

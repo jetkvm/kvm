@@ -253,16 +253,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	}
 
-	mDNSNetworkTypes := make([]webrtc.NetworkType, 0)
-	if config.MDNSMode == "auto" || config.MDNSMode == "ipv4_only" {
-		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP4)
-	}
-	if config.MDNSMode == "auto" || config.MDNSMode == "ipv6_only" {
-		mDNSNetworkTypes = append(mDNSNetworkTypes, webrtc.NetworkTypeUDP6)
-	}
-
-	if len(mDNSNetworkTypes) > 0 {
-		webrtcSettingEngine.SetNetworkTypes(mDNSNetworkTypes)
+	if config.MDNSMode != "" && config.MDNSMode != "disabled" {
 		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeQueryOnly)
 	} else {
 		webrtcSettingEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)

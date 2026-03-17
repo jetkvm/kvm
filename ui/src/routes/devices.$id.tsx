@@ -148,6 +148,7 @@ export default function KvmIdRoute() {
   const location = useLocation();
   const isLegacySignalingEnabled = useRef(false);
   const [connectionFailed, setConnectionFailed] = useState(false);
+  const [displayHostname, setDisplayHostname] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
@@ -780,6 +781,17 @@ export default function KvmIdRoute() {
       console.debug("Setting HDMI state", hdmiState);
       setHdmiState(hdmiState);
     });
+
+    console.log("Requesting network settings");
+    send("getNetworkSettings", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const result = resp.result as { hostname?: string };
+      if (result.hostname) {
+        setDisplayHostname(result.hostname);
+      } else {
+        setDisplayHostname(null);
+      }
+    });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
   const [needLedState, setNeedLedState] = useState(true);
@@ -950,6 +962,7 @@ export default function KvmIdRoute() {
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
+      <title>{displayHostname ? `${displayHostname} - JetKVM` : "JetKVM"}</title>
       {!isDetachedWindow && !outlet && otaState.updating && (
         <AnimatePresence>
           <motion.div
@@ -992,6 +1005,7 @@ export default function KvmIdRoute() {
               userEmail={user?.email}
               picture={user?.picture}
               kvmName={deviceName ?? m.jetkvm_device()}
+              hostname={displayHostname}
             />
           )}
 

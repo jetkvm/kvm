@@ -88,6 +88,15 @@ const MinPasswordLength = 8
 // truncating them.
 const MaxPasswordLength = 72
 
+const (
+	// Cache durations for HTTP responses, in seconds.
+	cacheImmutableMaxAge = 365 * 24 * 60 * 60 // 1 year
+	cacheShortMaxAge     = 5 * 60             // 5 minutes
+
+	// authTokenMaxAge is the lifetime of the authToken cookie, in seconds.
+	authTokenMaxAge = 7 * 24 * 60 * 60 // 1 week
+)
+
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
@@ -120,7 +129,7 @@ func setupRouter() *gin.Engine {
 	// This allows for a smoother enter animation and improved user experience on the welcome screen
 	r.Use(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/static/assets/immutable/") {
-			c.Header("Cache-Control", "public, max-age=31536000, immutable") // Cache for 1 year
+			c.Header("Cache-Control", fmt.Sprintf("public, max-age=%d, immutable", cacheImmutableMaxAge))
 			c.Next()
 			return
 		}
@@ -128,7 +137,7 @@ func setupRouter() *gin.Engine {
 		if strings.HasPrefix(c.Request.URL.Path, "/static/") {
 			ext := filepath.Ext(c.Request.URL.Path)
 			if slices.Contains(cachableFileExtensions, ext) {
-				c.Header("Cache-Control", "public, max-age=300") // Cache for 5 minutes
+				c.Header("Cache-Control", fmt.Sprintf("public, max-age=%d", cacheShortMaxAge))
 			}
 		}
 
@@ -137,7 +146,7 @@ func setupRouter() *gin.Engine {
 
 	r.GET("/robots.txt", func(c *gin.Context) {
 		c.Header("Content-Type", "text/plain")
-		c.Header("Cache-Control", "public, max-age=31536000, immutable") // Cache for 1 year
+		c.Header("Cache-Control", fmt.Sprintf("public, max-age=%d, immutable", cacheImmutableMaxAge))
 		c.String(http.StatusOK, "User-agent: *\nDisallow: /")
 	})
 
@@ -532,7 +541,7 @@ func handleLogin(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
@@ -703,7 +712,7 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
@@ -757,7 +766,7 @@ func handleUpdatePassword(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
@@ -890,7 +899,7 @@ func handleSetup(c *gin.Context) {
 		config.LocalAuthToken = uuid.New().String()
 
 		// Set the cookie
-		c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+		c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
 	} else {
 		// For noPassword mode, ensure the password field is empty
 		config.HashedPassword = ""

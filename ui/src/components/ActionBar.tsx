@@ -15,6 +15,8 @@ import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
+import { SplitButtonGroup, SplitButtonPrimary, SplitButtonCaret } from "@components/SplitButton";
+
 import { cx } from "@/cva.config";
 import {
   useHidStore,
@@ -92,26 +94,26 @@ export default function Actionbar({
               onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
             />
           )}
-          <Button
-            size="XS"
-            theme={isOcrMode ? "primary" : "light"}
-            text={m.action_bar_copy_text()}
-            LeadingIcon={LuScanText}
-            disabled={videoWidth === 0 || videoHeight === 0}
-            onClick={() => setOcrMode(!isOcrMode)}
-          />
           <Popover>
-            <PopoverButton as={Fragment}>
-              <Button
-                size="XS"
-                theme="light"
-                text={m.paste_text()}
-                LeadingIcon={MdOutlineContentPasteGo}
-                onClick={() => {
-                  setDisableVideoFocusTrap(true);
-                }}
+            <SplitButtonGroup>
+              <PopoverButton
+                as={SplitButtonPrimary}
+                icon={MdOutlineContentPasteGo}
+                label={m.paste_text()}
+                onClick={() => setDisableVideoFocusTrap(true)}
               />
-            </PopoverButton>
+              <SplitButtonCaret
+                menuItems={[
+                  {
+                    label: m.action_bar_copy_text(),
+                    icon: LuScanText,
+                    onClick: () => setOcrMode(!isOcrMode),
+                    active: isOcrMode,
+                    disabled: videoWidth === 0 || videoHeight === 0,
+                  },
+                ]}
+              />
+            </SplitButtonGroup>
             <PopoverPanel
               anchor="bottom start"
               transition

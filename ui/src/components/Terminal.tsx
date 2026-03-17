@@ -190,7 +190,15 @@ function Terminal({
       onDataHandler.dispose();
       onKeyHandler.dispose();
     };
-  }, [dataChannel, instance, readyState, setDisableVideoFocusTrap, setTerminalType, terminator]);
+  }, [
+    dataChannel,
+    instance,
+    readyState,
+    setDisableVideoFocusTrap,
+    setTerminalType,
+    terminator,
+    type,
+  ]);
 
   useEffect(() => {
     if (!instance) return;
