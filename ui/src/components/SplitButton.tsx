@@ -37,11 +37,13 @@ const primaryClass = cx(
 
 const iconClass = "h-3.5 shrink-0 text-black dark:text-white";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const SplitButtonPrimary = React.forwardRef<
   HTMLButtonElement,
   {
     icon?: React.FC<{ className: string | undefined }>;
     label: string;
+    className?: string;
   } & React.ButtonHTMLAttributes<HTMLButtonElement>
 >(({ icon: Icon, label, className, ...props }, ref) => (
   <button ref={ref} type="button" {...props} className={cx(primaryClass, className)}>

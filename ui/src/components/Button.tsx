@@ -168,6 +168,7 @@ type ButtonPropsType = Pick<
     fetcher?: FetcherWithComponents<unknown>;
   };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, onClick, formNoValidate, loading, fetcher, ...props }, ref) => {
     const classes = cx(

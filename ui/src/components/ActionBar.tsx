@@ -5,11 +5,7 @@ import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
-import {
-  SplitButtonGroup,
-  SplitButtonPrimary,
-  SplitButtonCaret,
-} from "@components/SplitButton";
+import { SplitButtonGroup, SplitButtonPrimary, SplitButtonCaret } from "@components/SplitButton";
 
 import { cx } from "@/cva.config";
 import {
