@@ -288,6 +288,7 @@ func (tx *UsbGadgetTransaction) writeGadgetAttrs(basePath string, attrs gadgetAt
 			Description:     "write gadget attribute",
 			DependsOn:       []string{basePath},
 			BeforeChange:    beforeChange,
+			IgnoreErrors:    key == "wakeup_on_write", // optional kernel feature (rv1106-system#57)
 		})
 		files = append(files, filePath)
 	}
