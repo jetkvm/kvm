@@ -15,6 +15,8 @@ var absoluteMouseConfig = gadgetConfigItem{
 		"subclass":        "0",
 		"report_length":   "6",
 		"no_out_endpoint": "1",
+	},
+	optionalAttrs: gadgetAttributes{
 		"wakeup_on_write": "1",
 	},
 	reportDesc: absoluteMouseCombinedReportDesc,

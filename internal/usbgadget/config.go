@@ -9,8 +9,9 @@ type gadgetConfigItem struct {
 	order       uint
 	device      string
 	path        []string
-	attrs       gadgetAttributes
-	configAttrs gadgetAttributes
+	attrs         gadgetAttributes
+	optionalAttrs gadgetAttributes // written with IgnoreErrors; for kernel features that may not exist
+	configAttrs   gadgetAttributes
 	configPath  []string
 	reportDesc  []byte
 }

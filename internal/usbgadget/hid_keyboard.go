@@ -23,6 +23,8 @@ var keyboardConfig = gadgetConfigItem{
 		"subclass":        "1",
 		"report_length":   "8",
 		"no_out_endpoint": "0",
+	},
+	optionalAttrs: gadgetAttributes{
 		"wakeup_on_write": "1",
 	},
 	reportDesc: keyboardReportDesc,
