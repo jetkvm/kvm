@@ -144,6 +144,7 @@ tail -f /userdata/jetkvm/last.log
 
 - `web.go` - Add new API endpoints here
 - `config.go` - Add new settings here
+- `tailscale.go` - Tailscale status and control-server logic
 - `ui/src/routes/` - Add new pages here
 - `ui/src/components/` - Add new UI components here
 
@@ -249,6 +250,32 @@ curl -X POST http://<IP>/auth/password-local \
   -H "Content-Type: application/json" \
   -d '{"password": "test123"}'
 ```
+
+### Tailscale control server testing
+
+JetKVM exposes Tailscale control-server configuration through JSON-RPC so self-hosted control planes (for example Headscale) can be used.
+
+- `getTailscaleStatus` returns current state and effective `controlURL`
+- `getTailscaleControlURL` returns the effective control server URL
+- `setTailscaleControlURL` updates and persists the URL (empty value resets to default)
+
+Example JSON-RPC payloads:
+
+```bash
+curl -X POST http://<IP>/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"setTailscaleControlURL","params":{"controlURL":"https://headscale.example.com"},"id":1}'
+
+curl -X POST http://<IP>/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"getTailscaleStatus","params":{},"id":2}'
+```
+
+Notes:
+
+- URLs must be `http://` or `https://` and include a host.
+- Query strings, fragments, user info, and non-root paths are rejected.
+- If `tailscale set --login-server` is unavailable on the target client, JetKVM falls back to `tailscale up --login-server`.
 
 
 ### End to End Testing
