@@ -17,6 +17,7 @@ JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse) s
 
 - **Ultra-low Latency** - 1080p@60FPS video with 30-60ms latency using H.264 encoding. Smooth mouse and keyboard interaction for responsive remote control.
 - **Free & Optional Remote Access** - Remote management via JetKVM Cloud using WebRTC.
+- **Optional Tailscale Networking** - Built-in Tailscale status and control-server configuration, including custom [Headscale](https://headscale.net/)-compatible endpoints.
 - **Open-source software** - Written in Golang on Linux. Easily customizable through SSH access to the JetKVM device.
 
 ## Contributing
