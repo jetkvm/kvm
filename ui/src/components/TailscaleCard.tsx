@@ -3,13 +3,19 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
+import { InputFieldWithLabel } from "@components/InputField";
 import { TailscaleStatus } from "@hooks/stores";
 import { useJsonRpc } from "@hooks/useJsonRpc";
+import notifications from "@/notifications";
+
+const defaultControlURL = "https://controlplane.tailscale.com";
 
 export default function TailscaleCard() {
   const { send } = useJsonRpc();
 
   const [status, setStatus] = useState<TailscaleStatus | null>(null);
+  const [controlURLInput, setControlURLInput] = useState("");
+  const [isSavingControlURL, setIsSavingControlURL] = useState(false);
 
   const refreshStatus = useCallback(() => {
     send("getTailscaleStatus", {}, resp => {
@@ -17,9 +23,29 @@ export default function TailscaleCard() {
         setStatus(null);
         return;
       }
-      setStatus(resp.result as TailscaleStatus);
+      const nextStatus = resp.result as TailscaleStatus;
+      setStatus(nextStatus);
+      setControlURLInput(
+        nextStatus.controlURL === defaultControlURL ? "" : (nextStatus.controlURL ?? ""),
+      );
     });
   }, [send]);
+
+  const saveControlURL = useCallback(() => {
+    setIsSavingControlURL(true);
+    send("setTailscaleControlURL", { controlURL: controlURLInput }, resp => {
+      setIsSavingControlURL(false);
+      if ("error" in resp) {
+        const errorMessage =
+          typeof resp.error.data === "string" ? resp.error.data : resp.error.message;
+        notifications.error(`Failed to update Tailscale control server: ${errorMessage}`);
+        return;
+      }
+
+      notifications.success("Tailscale control server updated");
+      refreshStatus();
+    });
+  }, [controlURLInput, refreshStatus, send]);
 
   useEffect(() => {
     refreshStatus();
@@ -51,6 +77,30 @@ export default function TailscaleCard() {
                 text="Refresh"
                 LeadingIcon={LuRefreshCcw}
                 onClick={refreshStatus}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+            <InputFieldWithLabel
+              size="SM"
+              label="Control Server URL"
+              placeholder="https://headscale.example.com"
+              value={controlURLInput}
+              onChange={e => setControlURLInput(e.target.value)}
+              description="Leave empty to use the default Tailscale control server."
+            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-600 dark:text-slate-400">
+                Active: {status.controlURL ?? defaultControlURL}
+              </span>
+              <Button
+                size="XS"
+                theme="light"
+                type="button"
+                text={isSavingControlURL ? "Saving..." : "Save"}
+                disabled={isSavingControlURL}
+                onClick={saveControlURL}
               />
             </div>
           </div>

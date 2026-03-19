@@ -3,7 +3,9 @@ package kvm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -11,12 +13,15 @@ import (
 
 const tailscaleCommandTimeout = 10 * time.Second
 
+const tailscaleDefaultControlURL = "https://controlplane.tailscale.com"
+
 // TailscaleStatus represents the current state of Tailscale on the device.
 type TailscaleStatus struct {
 	Installed    bool           `json:"installed"`
 	Running      bool           `json:"running"`
 	BackendState string         `json:"backendState,omitempty"`
 	AuthURL      string         `json:"authURL,omitempty"`
+	ControlURL   string         `json:"controlURL,omitempty"`
 	Self         *TailscalePeer `json:"self,omitempty"`
 	Health       []string       `json:"health,omitempty"`
 }
@@ -52,41 +57,120 @@ func isTailscaleInstalled() bool {
 	return err == nil
 }
 
-// execTailscaleStatus runs `tailscale status --json` and returns the raw output.
-// This is a package-level var to allow test substitution.
-var execTailscaleStatus = func() ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), tailscaleCommandTimeout)
-	defer cancel()
+// These package-level vars allow deterministic unit tests.
+var (
+	checkTailscaleInstalled = isTailscaleInstalled
+	saveTailscaleConfig     = SaveConfig
+	execTailscaleCommand    = func(args ...string) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), tailscaleCommandTimeout)
+		defer cancel()
 
-	output, err := exec.CommandContext(ctx, "tailscale", "status", "--json").CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("tailscale status: %w: %s", err, strings.TrimSpace(string(output)))
+		output, err := exec.CommandContext(ctx, "tailscale", args...).CombinedOutput()
+		if err != nil {
+			cmd := "tailscale " + strings.Join(args, " ")
+			return nil, fmt.Errorf("%s: %w: %s", cmd, err, strings.TrimSpace(string(output)))
+		}
+
+		return output, nil
+	}
+)
+
+// execTailscaleStatus runs `tailscale status --json` and returns the raw output.
+func execTailscaleStatus() ([]byte, error) {
+	return execTailscaleCommand("status", "--json")
+}
+
+func normalizeTailscaleControlURL(controlURL string) (string, error) {
+	trimmed := strings.TrimSpace(controlURL)
+	if trimmed == "" {
+		return "", nil
 	}
 
-	return output, nil
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("invalid control URL: %w", err)
+	}
+
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return "", errors.New("control URL must start with http:// or https://")
+	}
+	if parsed.Host == "" {
+		return "", errors.New("control URL must include a host")
+	}
+	if parsed.User != nil {
+		return "", errors.New("control URL must not include user info")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("control URL must not include query or fragment")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", errors.New("control URL path is not supported")
+	}
+
+	parsed.Path = ""
+	parsed.RawPath = ""
+
+	return strings.TrimSuffix(parsed.String(), "/"), nil
+}
+
+func effectiveTailscaleControlURL(controlURL string) string {
+	if controlURL == "" {
+		return tailscaleDefaultControlURL
+	}
+	return controlURL
+}
+
+func applyTailscaleControlURL(controlURL string) error {
+	effectiveURL := effectiveTailscaleControlURL(controlURL)
+	loginServerFlag := "--login-server=" + effectiveURL
+
+	_, setErr := execTailscaleCommand("set", loginServerFlag)
+	if setErr == nil {
+		return nil
+	}
+
+	// Some tailscale builds may not support "tailscale set --login-server".
+	_, upErr := execTailscaleCommand("up", loginServerFlag)
+	if upErr != nil {
+		return fmt.Errorf(
+			"failed to apply login server (%s); set error: %v; up error: %w",
+			effectiveURL,
+			setErr,
+			upErr,
+		)
+	}
+
+	return nil
 }
 
 // getTailscaleStatus queries the Tailscale daemon for current status.
 // Returns a TailscaleStatus with Installed=false when the binary is not found.
 func getTailscaleStatus() (*TailscaleStatus, error) {
-	if !isTailscaleInstalled() {
-		return &TailscaleStatus{Installed: false}, nil
+	ensureConfigLoaded()
+
+	controlURL := config.TailscaleControlURL
+	if !checkTailscaleInstalled() {
+		return &TailscaleStatus{
+			Installed:  false,
+			ControlURL: effectiveTailscaleControlURL(controlURL),
+		}, nil
 	}
 
 	output, err := execTailscaleStatus()
 	if err != nil {
 		tailscaleLogger.Warn().Err(err).Msg("failed to get tailscale status")
 		return &TailscaleStatus{
-			Installed: true,
-			Running:   false,
+			Installed:  true,
+			Running:    false,
+			ControlURL: effectiveTailscaleControlURL(controlURL),
 		}, nil
 	}
 
-	return parseTailscaleStatus(output)
+	return parseTailscaleStatus(output, controlURL)
 }
 
 // parseTailscaleStatus parses the JSON output from `tailscale status --json`.
-func parseTailscaleStatus(data []byte) (*TailscaleStatus, error) {
+func parseTailscaleStatus(data []byte, controlURL string) (*TailscaleStatus, error) {
 	var raw tailscaleRawStatus
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse tailscale status: %w", err)
@@ -97,6 +181,7 @@ func parseTailscaleStatus(data []byte) (*TailscaleStatus, error) {
 		Running:      raw.BackendState == "Running",
 		BackendState: raw.BackendState,
 		AuthURL:      raw.AuthURL,
+		ControlURL:   effectiveTailscaleControlURL(controlURL),
 		Health:       raw.Health,
 	}
 
@@ -115,4 +200,33 @@ func parseTailscaleStatus(data []byte) (*TailscaleStatus, error) {
 
 func rpcGetTailscaleStatus() (*TailscaleStatus, error) {
 	return getTailscaleStatus()
+}
+
+func rpcGetTailscaleControlURL() (string, error) {
+	ensureConfigLoaded()
+	return effectiveTailscaleControlURL(config.TailscaleControlURL), nil
+}
+
+func rpcSetTailscaleControlURL(controlURL string) error {
+	ensureConfigLoaded()
+
+	normalizedURL, err := normalizeTailscaleControlURL(controlURL)
+	if err != nil {
+		return err
+	}
+
+	config.TailscaleControlURL = normalizedURL
+	if err := saveTailscaleConfig(); err != nil {
+		return fmt.Errorf("failed to save tailscale control URL: %w", err)
+	}
+
+	if !checkTailscaleInstalled() {
+		return nil
+	}
+
+	if err := applyTailscaleControlURL(normalizedURL); err != nil {
+		return err
+	}
+
+	return nil
 }

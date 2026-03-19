@@ -783,6 +783,7 @@ export interface TailscaleStatus {
   running: boolean;
   backendState?: string;
   authURL?: string;
+  controlURL?: string;
   self?: TailscalePeer;
   health?: string[];
 }
