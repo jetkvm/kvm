@@ -331,12 +331,12 @@ function UrlView({
   const popularImages = [
     {
       name: "Ubuntu 24.04 LTS",
-      url: "https://releases.ubuntu.com/24.04.3/ubuntu-24.04.3-desktop-amd64.iso",
+      url: "https://releases.ubuntu.com/24.04.4/ubuntu-24.04.4-desktop-amd64.iso",
       icon: UbuntuIcon,
     },
     {
       name: "Debian 13 Trixie",
-      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.0.0-amd64-netinst.iso",
+      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso",
       icon: DebianIcon,
     },
     {
