@@ -302,6 +302,43 @@ func TestFetchPublicKey_CachedKeyIsValid(t *testing.T) {
 	assert.Equal(t, int32(1), callCount.Load(), "VerifySignature should use cached key")
 }
 
+func TestParseAndValidateKeyring_FiltersRogueKeys(t *testing.T) {
+	// Generate the trusted key and a rogue key
+	trustedEntity, err := openpgp.NewEntity("Trusted", "", "trusted@example.com", nil)
+	require.NoError(t, err)
+	rogueEntity, err := openpgp.NewEntity("Rogue", "", "rogue@example.com", nil)
+	require.NoError(t, err)
+
+	// Armor both keys into a single keyring (as a malicious keyserver would)
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, openpgp.PublicKeyType, nil)
+	require.NoError(t, err)
+	require.NoError(t, trustedEntity.Serialize(w))
+	require.NoError(t, rogueEntity.Serialize(w))
+	require.NoError(t, w.Close())
+
+	trustedFP := strings.ToUpper(hex.EncodeToString(trustedEntity.PrimaryKey.Fingerprint[:]))
+
+	v := newTestGPGVerifier()
+	v.rootKeyFP = trustedFP
+
+	keyring, err := v.parseAndValidateKeyring(buf.Bytes())
+	require.NoError(t, err)
+	require.Len(t, keyring, 1, "keyring must contain only the trusted key, not the rogue key")
+
+	returnedFP := strings.ToUpper(hex.EncodeToString(keyring[0].PrimaryKey.Fingerprint[:]))
+	assert.Equal(t, trustedFP, returnedFP)
+
+	// Sign data with the rogue key — verification must fail
+	testData := []byte("payload")
+	var sigBuf bytes.Buffer
+	err = openpgp.DetachSign(&sigBuf, rogueEntity, bytes.NewReader(testData), nil)
+	require.NoError(t, err)
+
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(testData), bytes.NewReader(sigBuf.Bytes()), nil)
+	assert.Error(t, err, "signature from rogue key must not verify against filtered keyring")
+}
+
 func TestFetchPublicKey_RejectsFingerprintMismatch(t *testing.T) {
 	expectedKey := generateTestArmoredKey(t)
 	servedKey := generateTestArmoredKey(t)

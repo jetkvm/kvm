@@ -195,7 +195,7 @@ func (g *GPGVerifier) parseAndValidateKeyring(key []byte) (openpgp.EntityList, e
 
 		fp := normalizeFingerprint(hex.EncodeToString(entity.PrimaryKey.Fingerprint[:]))
 		if fp == expected {
-			return keyring, nil
+			return openpgp.EntityList{entity}, nil
 		}
 	}
 
