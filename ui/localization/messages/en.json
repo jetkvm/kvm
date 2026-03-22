@@ -986,9 +986,6 @@
     "offline_update_apply": "Apply Update",
     "offline_update_hash_ok": "Hash verified",
     "offline_update_signature_ok": "Signature verified",
-    "offline_update_signature_bypass_title": "Signature Verification Unavailable",
-    "offline_update_signature_bypass_description": "This device cannot reach GPG keyservers to verify the update signature. This is expected on air-gapped networks. You may proceed without signature verification if you trust the source of this update file.",
-    "offline_update_signature_bypass_confirm": "Apply Without Signature Verification",
     "offline_update_error": "Upload failed: {error}",
     "offline_update_invalid_file": "Please select a .tar.gz archive"
 }

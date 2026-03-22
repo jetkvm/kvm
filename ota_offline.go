@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/ota"
@@ -14,18 +13,14 @@ import (
 const (
 	// maxOfflineUploadSize limits offline update archives to 200MB.
 	maxOfflineUploadSize = 200 << 20
-	// offlineUploadTimeout bounds the entire upload+verify cycle.
-	offlineUploadTimeout = 10 * time.Minute
 )
 
 // offlineUpdateUploadResponse is returned by POST /ota/upload.
 type offlineUpdateUploadResponse struct {
-	Verified       bool   `json:"verified"`
-	HashOK         bool   `json:"hashOK"`
-	SignatureOK    bool   `json:"signatureOK"`
-	KeyFetchFailed bool   `json:"keyFetchFailed"`
-	SignatureError string `json:"signatureError,omitempty"`
-	Error          string `json:"error,omitempty"`
+	Verified    bool   `json:"verified"`
+	HashOK      bool   `json:"hashOK"`
+	SignatureOK bool   `json:"signatureOK"`
+	Error       string `json:"error,omitempty"`
 }
 
 // handleOfflineUpdateUpload handles POST /ota/upload.
@@ -96,10 +91,7 @@ func handleOfflineUpdateUpload(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), offlineUploadTimeout)
-	defer cancel()
-
-	result, err := ota.VerifyOfflineBundle(ctx, bundle, otaState.GPGVerifier(), &l)
+	result, err := ota.VerifyOfflineBundle(bundle, otaState.GPGVerifier(), &l)
 	if err != nil {
 		l.Warn().Err(err).Msg("offline bundle verification failed")
 		c.JSON(http.StatusUnprocessableEntity, offlineUpdateUploadResponse{
@@ -135,22 +127,18 @@ func handleOfflineUpdateUpload(c *gin.Context) {
 	l.Info().
 		Bool("hashOK", result.HashOK).
 		Bool("signatureOK", result.SignatureOK).
-		Bool("keyFetchFailed", result.KeyFetchFailed).
 		Msg("offline update uploaded and verified")
 
 	c.JSON(http.StatusOK, offlineUpdateUploadResponse{
-		Verified:       result.HashOK && (result.SignatureOK || result.KeyFetchFailed),
-		HashOK:         result.HashOK,
-		SignatureOK:    result.SignatureOK,
-		KeyFetchFailed: result.KeyFetchFailed,
-		SignatureError: result.SignatureError,
+		Verified:    result.HashOK && result.SignatureOK,
+		HashOK:      result.HashOK,
+		SignatureOK: result.SignatureOK,
 	})
 }
 
 // offlineUpdateApplyRequest is the body for POST /ota/apply.
 type offlineUpdateApplyRequest struct {
-	Component       string `json:"component" binding:"required"`
-	BypassSignature bool   `json:"bypassSignature"`
+	Component string `json:"component" binding:"required"`
 }
 
 // handleOfflineUpdateApply handles POST /ota/apply.
@@ -180,7 +168,7 @@ func handleOfflineUpdateApply(c *gin.Context) {
 	}
 
 	l := otaLogger.With().Str("component", req.Component).Logger()
-	l.Info().Bool("bypassSignature", req.BypassSignature).Msg("applying offline update")
+	l.Info().Msg("applying offline update")
 
 	// Apply asynchronously — the device will reboot
 	go func() {

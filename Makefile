@@ -314,17 +314,18 @@ _build_release_inner: build_native
 		-o $(BIN_DIR)/jetkvm_app cmd/main.go
 
 # Package a signed app binary into an offline update archive.
-# Expects bin/jetkvm_app, bin/jetkvm_app.sha256, and bin/jetkvm_app.sig
-# to already exist (produced by the signing step in release/test_production_release).
+# Expects bin/jetkvm_app, bin/jetkvm_app.sha256, bin/jetkvm_app.sig,
+# and bin/jetkvm_app.pub to already exist (produced by the signing step
+# in release/test_production_release).
 offline_archive_app:
 	@echo "Creating offline update archive for app..."
-	@for f in jetkvm_app jetkvm_app.sha256 jetkvm_app.sig; do \
+	@for f in jetkvm_app jetkvm_app.sha256 jetkvm_app.sig jetkvm_app.pub; do \
 		if [ ! -f "$(BIN_DIR)/$$f" ]; then \
 			echo "Error: $(BIN_DIR)/$$f not found. Run signing step first."; exit 1; \
 		fi; \
 	done
 	tar czf $(BIN_DIR)/jetkvm_app_offline_update.tar.gz \
-		-C $(BIN_DIR) jetkvm_app jetkvm_app.sha256 jetkvm_app.sig
+		-C $(BIN_DIR) jetkvm_app jetkvm_app.sha256 jetkvm_app.sig jetkvm_app.pub
 	@echo "✓ Created $(BIN_DIR)/jetkvm_app_offline_update.tar.gz"
 
 release: git_check_dev check_r2

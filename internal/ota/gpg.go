@@ -256,6 +256,31 @@ func (g *GPGVerifier) VerifySignatureFromFile(ctx context.Context, signature []b
 	return nil
 }
 
+// VerifySignatureFromFileWithKey verifies a detached GPG signature against a
+// file using a caller-supplied armored public key rather than fetching from
+// keyservers. The key is validated against the pinned root fingerprint before
+// use. This is the verification path for offline updates where keyservers are
+// unreachable.
+func (g *GPGVerifier) VerifySignatureFromFileWithKey(signature []byte, filePath string, armoredKey []byte) error {
+	keyring, err := g.parseAndValidateKeyring(armoredKey)
+	if err != nil {
+		return fmt.Errorf("bundled public key rejected: %w", err)
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file for verification: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := openpgp.CheckDetachedSignature(keyring, file, bytes.NewReader(signature), nil); err != nil {
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	g.logger.Info().Str("file", filePath).Msg("offline signature verification successful")
+	return nil
+}
+
 // ClearCache clears the cached public key (useful for testing)
 func (g *GPGVerifier) ClearCache() {
 	g.mu.Lock()

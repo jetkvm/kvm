@@ -180,6 +180,11 @@ func (s *State) ToUpdateStatus() *UpdateStatus {
 	return toUpdateStatus(&appUpdate, &systemUpdate, s.error)
 }
 
+// IsUpdatePending returns true if an update is currently in progress.
+func (s *State) IsUpdatePending() bool {
+	return s.updating
+}
+
 // ApplyOfflineUpdate applies a pre-verified, pre-staged offline update for
 // the given component. For app updates, this simply triggers a reboot (the
 // boot sequence picks up jetkvm_app.update). For system updates, it runs

@@ -4,13 +4,12 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
-	"sync/atomic"
+	"strings"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -52,15 +51,40 @@ func testLogger() *zerolog.Logger {
 	return &l
 }
 
+// armorPublicKey returns the armored public key bytes for the given entity.
+func armorPublicKey(t *testing.T, entity *openpgp.Entity) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, openpgp.PublicKeyType, nil)
+	require.NoError(t, err)
+	require.NoError(t, entity.Serialize(w))
+	require.NoError(t, w.Close())
+	return buf.Bytes()
+}
+
+// buildAppArchive creates a complete 4-file offline update archive for
+// the "app" component using the given binary, signature, and public key.
+func buildAppArchive(t *testing.T, binary, sig, pub []byte) *bytes.Buffer {
+	t.Helper()
+	return buildArchive(t, map[string][]byte{
+		"jetkvm_app":        binary,
+		"jetkvm_app.sha256": []byte(sha256hex(binary) + "  jetkvm_app\n"),
+		"jetkvm_app.sig":    sig,
+		"jetkvm_app.pub":    pub,
+	})
+}
+
 func TestExtractOfflineArchive_ValidApp(t *testing.T) {
 	binary := []byte("fake-app-binary")
 	hash := sha256hex(binary)
 	sig := []byte("fake-signature-bytes")
+	pub := []byte("fake-public-key")
 
 	archive := buildArchive(t, map[string][]byte{
 		"jetkvm_app":        binary,
 		"jetkvm_app.sha256": []byte(hash + "  jetkvm_app\n"),
 		"jetkvm_app.sig":    sig,
+		"jetkvm_app.pub":    pub,
 	})
 
 	destDir := t.TempDir()
@@ -70,6 +94,7 @@ func TestExtractOfflineArchive_ValidApp(t *testing.T) {
 	assert.Equal(t, "app", bundle.Component)
 	assert.Equal(t, hash, bundle.ExpectedHash)
 	assert.Equal(t, sig, bundle.Signature)
+	assert.Equal(t, pub, bundle.PublicKeyData)
 	assert.Equal(t, filepath.Join(destDir, "jetkvm_app"), bundle.BinaryPath)
 
 	// binary should be on disk
@@ -82,11 +107,13 @@ func TestExtractOfflineArchive_ValidSystem(t *testing.T) {
 	binary := []byte("fake-system-tar")
 	hash := sha256hex(binary)
 	sig := []byte("fake-sig")
+	pub := []byte("fake-pub")
 
 	archive := buildArchive(t, map[string][]byte{
 		"update_system.tar":        binary,
 		"update_system.tar.sha256": []byte(hash),
 		"update_system.tar.sig":    sig,
+		"update_system.tar.pub":    pub,
 	})
 
 	destDir := t.TempDir()
@@ -95,15 +122,17 @@ func TestExtractOfflineArchive_ValidSystem(t *testing.T) {
 
 	assert.Equal(t, "system", bundle.Component)
 	assert.Equal(t, hash, bundle.ExpectedHash)
+	assert.Equal(t, pub, bundle.PublicKeyData)
 }
 
-func TestExtractOfflineArchive_HashOnly(t *testing.T) {
+func TestExtractOfflineArchive_MissingSig(t *testing.T) {
 	binary := []byte("binary")
 	hash := sha256hex(binary)
 
 	archive := buildArchive(t, map[string][]byte{
 		"jetkvm_app":        binary,
 		"jetkvm_app.sha256": []byte(hash),
+		"jetkvm_app.pub":    []byte("pub"),
 	})
 
 	destDir := t.TempDir()
@@ -111,10 +140,26 @@ func TestExtractOfflineArchive_HashOnly(t *testing.T) {
 	assert.ErrorContains(t, err, "missing required signature file")
 }
 
+func TestExtractOfflineArchive_MissingPub(t *testing.T) {
+	binary := []byte("binary")
+	hash := sha256hex(binary)
+
+	archive := buildArchive(t, map[string][]byte{
+		"jetkvm_app":        binary,
+		"jetkvm_app.sha256": []byte(hash),
+		"jetkvm_app.sig":    []byte("sig"),
+	})
+
+	destDir := t.TempDir()
+	_, err := ExtractOfflineArchive(archive, destDir, "app", testLogger())
+	assert.ErrorContains(t, err, "missing required public key file")
+}
+
 func TestExtractOfflineArchive_MissingHash(t *testing.T) {
 	archive := buildArchive(t, map[string][]byte{
 		"jetkvm_app":     []byte("binary"),
 		"jetkvm_app.sig": []byte("sig"),
+		"jetkvm_app.pub": []byte("pub"),
 	})
 
 	destDir := t.TempDir()
@@ -126,6 +171,7 @@ func TestExtractOfflineArchive_MissingBinary(t *testing.T) {
 	archive := buildArchive(t, map[string][]byte{
 		"jetkvm_app.sha256": []byte("abc123"),
 		"jetkvm_app.sig":    []byte("sig"),
+		"jetkvm_app.pub":    []byte("pub"),
 	})
 
 	destDir := t.TempDir()
@@ -141,12 +187,13 @@ func TestExtractOfflineArchive_UnexpectedFile(t *testing.T) {
 		"jetkvm_app":        binary,
 		"jetkvm_app.sha256": []byte(hash),
 		"jetkvm_app.sig":    []byte("sig"),
+		"jetkvm_app.pub":    []byte("pub"),
 		"malicious.sh":      []byte("#!/bin/bash\nrm -rf /"),
 	})
 
 	destDir := t.TempDir()
 	_, err := ExtractOfflineArchive(archive, destDir, "app", testLogger())
-	assert.Error(t, err) // either "unexpected file" or "more than 3 files"
+	assert.Error(t, err) // either "unexpected file" or "more than 4 files"
 }
 
 func TestExtractOfflineArchive_PathTraversal(t *testing.T) {
@@ -165,7 +212,6 @@ func TestExtractOfflineArchive_PathTraversal(t *testing.T) {
 
 	destDir := t.TempDir()
 	_, err := ExtractOfflineArchive(&buf, destDir, "app", testLogger())
-	// Will fail as unexpected file since basename won't match expected names
 	assert.Error(t, err)
 }
 
@@ -181,11 +227,10 @@ func TestExtractOfflineArchive_CorruptGzip(t *testing.T) {
 }
 
 func TestExtractOfflineArchive_NestedDirectory(t *testing.T) {
-	// Archives created with `tar czf` often wrap files in a directory.
-	// The extractor should strip the leading directory and match by basename.
 	binary := []byte("app-binary")
 	hash := sha256hex(binary)
 	sig := []byte("sig-bytes")
+	pub := []byte("pub-bytes")
 
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
@@ -195,6 +240,7 @@ func TestExtractOfflineArchive_NestedDirectory(t *testing.T) {
 		"jetkvm_app_offline_update/jetkvm_app":        binary,
 		"jetkvm_app_offline_update/jetkvm_app.sha256": []byte(hash + "  jetkvm_app\n"),
 		"jetkvm_app_offline_update/jetkvm_app.sig":    sig,
+		"jetkvm_app_offline_update/jetkvm_app.pub":    pub,
 	} {
 		_ = tw.WriteHeader(&tar.Header{Name: name, Size: int64(len(content)), Mode: 0644})
 		_, _ = tw.Write(content)
@@ -207,6 +253,7 @@ func TestExtractOfflineArchive_NestedDirectory(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, hash, bundle.ExpectedHash)
 	assert.Equal(t, sig, bundle.Signature)
+	assert.Equal(t, pub, bundle.PublicKeyData)
 }
 
 func TestHashFile(t *testing.T) {
@@ -221,45 +268,23 @@ func TestHashFile(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
-func TestIsKeyFetchError(t *testing.T) {
-	tests := []struct {
-		err    string
-		expect bool
-	}{
-		{"all keyservers failed: [err1, err2]", true},
-		{"failed to fetch public key: connection refused", true},
-		{"key fetch cancelled: context deadline exceeded", true},
-		{"signature verification failed: openpgp: invalid signature", false},
-		{"hash mismatch: abc != def", false},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.expect, isKeyFetchError(tt.err), "input: %s", tt.err)
-	}
-}
-
 // --- VerifyOfflineBundle tests ---
 
-// newSigningTestFixture generates a GPG key pair and returns:
-//   - a GPGVerifier wired to a mock keyserver that serves the public key
-//   - the private entity (for producing signatures)
-//   - a cleanup function (restores global keyservers)
-func newSigningTestFixture(t *testing.T) (*GPGVerifier, *openpgp.Entity) {
+// newOfflineSigningFixture generates a GPG key pair and returns a GPGVerifier
+// with the correct root fingerprint and the entity for signing.
+// Unlike the keyserver-based fixture, this verifier doesn't need a mock HTTP
+// client — offline verification uses VerifySignatureFromFileWithKey directly.
+func newOfflineSigningFixture(t *testing.T) (*GPGVerifier, *openpgp.Entity) {
 	t.Helper()
 
 	entity, err := openpgp.NewEntity("Offline Test", "", "offline@test.local", nil)
 	require.NoError(t, err)
 
-	// Armour the public key
-	var pubBuf bytes.Buffer
-	w, err := armor.Encode(&pubBuf, openpgp.PublicKeyType, nil)
-	require.NoError(t, err)
-	require.NoError(t, entity.Serialize(w))
-	require.NoError(t, w.Close())
-
-	callCount := &atomic.Int32{}
-	mock := &keyServingHTTPClient{key: pubBuf.Bytes(), callCount: callCount}
-	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
-	v.rootKeyFP = extractFingerprintFromArmoredKey(t, pubBuf.Bytes())
+	logger := zerolog.New(os.Stdout).Level(zerolog.WarnLevel)
+	v := &GPGVerifier{
+		logger:    &logger,
+		rootKeyFP: strings.ToUpper(hex.EncodeToString(entity.PrimaryKey.Fingerprint[:])),
+	}
 
 	return v, entity
 }
@@ -274,140 +299,134 @@ func signData(t *testing.T, entity *openpgp.Entity, data []byte) []byte {
 }
 
 // writeBundle writes a binary to disk and returns an OfflineBundle ready for verification.
-func writeBundle(t *testing.T, binary []byte, sig []byte) *OfflineBundle {
+func writeBundle(t *testing.T, binary, sig, pub []byte) *OfflineBundle {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "jetkvm_app")
 	require.NoError(t, os.WriteFile(path, binary, 0644))
 	return &OfflineBundle{
-		BinaryPath:   path,
-		ExpectedHash: sha256hex(binary),
-		Signature:    sig,
-		Component:    "app",
+		BinaryPath:    path,
+		ExpectedHash:  sha256hex(binary),
+		Signature:     sig,
+		PublicKeyData: pub,
+		Component:     "app",
 	}
 }
 
 func TestVerifyOfflineBundle_ValidSignature(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("valid-app-binary-content")
 	sig := signData(t, entity, binary)
-	bundle := writeBundle(t, binary, sig)
+	bundle := writeBundle(t, binary, sig, pub)
 
-	result, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	result, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.NoError(t, err)
 	assert.True(t, result.HashOK, "hash should pass")
 	assert.True(t, result.SignatureOK, "signature should pass")
-	assert.False(t, result.KeyFetchFailed, "key fetch should succeed")
-	assert.Empty(t, result.SignatureError)
 }
 
 func TestVerifyOfflineBundle_HashMismatch(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("real-binary")
 	sig := signData(t, entity, binary)
-	bundle := writeBundle(t, binary, sig)
+	bundle := writeBundle(t, binary, sig, pub)
 
-	// Corrupt the expected hash so it won't match the file on disk
 	bundle.ExpectedHash = "0000000000000000000000000000000000000000000000000000000000000000"
 
-	_, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "hash mismatch")
 }
 
 func TestVerifyOfflineBundle_InvalidSignature(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("the-real-binary")
 	differentContent := []byte("tampered-binary")
 
-	// Sign the tampered content, but the bundle points at the real binary.
-	// This means the signature won't match the file being verified.
 	sig := signData(t, entity, differentContent)
-	bundle := writeBundle(t, binary, sig)
+	bundle := writeBundle(t, binary, sig, pub)
 
-	_, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "GPG signature verification failed")
 }
 
 func TestVerifyOfflineBundle_WrongKey(t *testing.T) {
-	// Verifier is wired to key A, but the binary is signed with key B.
-	gpgVerifier, _ := newSigningTestFixture(t)
+	gpgVerifier, _ := newOfflineSigningFixture(t)
 
-	// Generate a completely different key pair for signing
+	// Sign with a completely different key pair
 	otherEntity, err := openpgp.NewEntity("Attacker", "", "evil@attacker.com", nil)
 	require.NoError(t, err)
+	otherPub := armorPublicKey(t, otherEntity)
 
 	binary := []byte("innocent-looking-binary")
 	sig := signData(t, otherEntity, binary)
-	bundle := writeBundle(t, binary, sig)
+	// Bundle includes the attacker's pub key, which won't match the pinned fingerprint
+	bundle := writeBundle(t, binary, sig, otherPub)
 
-	_, err = VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err = VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "GPG signature verification failed")
+	assert.Contains(t, err.Error(), "bundled public key rejected")
 }
 
 func TestVerifyOfflineBundle_EmptySignature(t *testing.T) {
-	gpgVerifier, _ := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("unsigned-binary")
-	bundle := writeBundle(t, binary, nil)
+	bundle := writeBundle(t, binary, nil, pub)
 	bundle.Signature = nil
 
-	_, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signature is required")
 }
 
-func TestVerifyOfflineBundle_KeyFetchFailure(t *testing.T) {
-	// Simulate an air-gapped device: all keyserver requests fail.
-	callCount := &atomic.Int32{}
-	mock := &failingHTTPClient{callCount: callCount}
-	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
-	// rootKeyFP doesn't matter since we'll never get a key to compare it against
+func TestVerifyOfflineBundle_EmptyPublicKey(t *testing.T) {
+	gpgVerifier, entity := newOfflineSigningFixture(t)
 
-	binary := []byte("offline-binary")
-	sig := []byte("some-signature-bytes") // content irrelevant; key fetch fails first
-	bundle := writeBundle(t, binary, sig)
+	binary := []byte("binary-without-key")
+	sig := signData(t, entity, binary)
+	bundle := writeBundle(t, binary, sig, nil)
+	bundle.PublicKeyData = nil
 
-	result, err := VerifyOfflineBundle(context.Background(), bundle, v, testLogger())
-	require.NoError(t, err, "key fetch failure should not be a hard error")
-	assert.True(t, result.HashOK, "hash should still pass")
-	assert.False(t, result.SignatureOK, "signature should not be marked OK")
-	assert.True(t, result.KeyFetchFailed, "should indicate key fetch failed")
-	assert.NotEmpty(t, result.SignatureError)
+	_, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "public key is required")
 }
 
 func TestVerifyOfflineBundle_TruncatedSignature(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("binary-with-truncated-sig")
 	fullSig := signData(t, entity, binary)
 
-	// Truncate the signature to corrupt it
 	truncatedSig := fullSig[:len(fullSig)/2]
-	bundle := writeBundle(t, binary, truncatedSig)
+	bundle := writeBundle(t, binary, truncatedSig, pub)
 
-	_, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "GPG signature verification failed")
 }
 
 func TestVerifyOfflineBundle_CorruptedBinary(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	originalBinary := []byte("original-binary-content")
 	sig := signData(t, entity, originalBinary)
 
-	// Write the original, get a valid bundle, then overwrite the file
-	bundle := writeBundle(t, originalBinary, sig)
+	bundle := writeBundle(t, originalBinary, sig, pub)
 	require.NoError(t, os.WriteFile(bundle.BinaryPath, []byte("corrupted-binary"), 0644))
 
-	// Hash will mismatch because the file content no longer matches ExpectedHash
-	_, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "hash mismatch")
 }
@@ -436,53 +455,43 @@ func TestComponentUpdatePath_Unknown(t *testing.T) {
 // TestEndToEnd_ExtractAndVerify_ValidArchive exercises the full pipeline:
 // build a tar.gz with a real GPG signature → extract → verify.
 func TestEndToEnd_ExtractAndVerify_ValidArchive(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("end-to-end-test-binary-content-here")
-	hash := sha256hex(binary)
 	sig := signData(t, entity, binary)
 
-	archive := buildArchive(t, map[string][]byte{
-		"jetkvm_app":        binary,
-		"jetkvm_app.sha256": []byte(hash + "  jetkvm_app\n"),
-		"jetkvm_app.sig":    sig,
-	})
+	archive := buildAppArchive(t, binary, sig, pub)
 
 	extractDir := t.TempDir()
 	bundle, err := ExtractOfflineArchive(archive, extractDir, "app", testLogger())
 	require.NoError(t, err)
 
-	result, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	result, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.NoError(t, err)
 	assert.True(t, result.HashOK)
 	assert.True(t, result.SignatureOK)
-	assert.False(t, result.KeyFetchFailed)
 }
 
 // TestEndToEnd_ExtractAndVerify_TamperedBinary builds a valid archive then
 // overwrites the extracted binary before verification — simulating
 // file-level tampering after extraction.
 func TestEndToEnd_ExtractAndVerify_TamperedBinary(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("legitimate-binary")
-	hash := sha256hex(binary)
 	sig := signData(t, entity, binary)
 
-	archive := buildArchive(t, map[string][]byte{
-		"jetkvm_app":        binary,
-		"jetkvm_app.sha256": []byte(hash),
-		"jetkvm_app.sig":    sig,
-	})
+	archive := buildAppArchive(t, binary, sig, pub)
 
 	extractDir := t.TempDir()
 	bundle, err := ExtractOfflineArchive(archive, extractDir, "app", testLogger())
 	require.NoError(t, err)
 
-	// Tamper with extracted binary on disk
 	require.NoError(t, os.WriteFile(bundle.BinaryPath, []byte("tampered!"), 0644))
 
-	_, err = VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err = VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "hash mismatch")
 }
@@ -490,34 +499,36 @@ func TestEndToEnd_ExtractAndVerify_TamperedBinary(t *testing.T) {
 // TestEndToEnd_ExtractAndVerify_WrongSignature builds an archive where
 // the signature was produced by a different key than the verifier expects.
 func TestEndToEnd_ExtractAndVerify_WrongSignature(t *testing.T) {
-	gpgVerifier, _ := newSigningTestFixture(t) // verifier expects key A
+	gpgVerifier, _ := newOfflineSigningFixture(t) // verifier expects key A
 
 	attackerEntity, err := openpgp.NewEntity("Attacker", "", "evil@example.com", nil)
 	require.NoError(t, err)
+	attackerPub := armorPublicKey(t, attackerEntity)
 
 	binary := []byte("innocuous-binary")
-	hash := sha256hex(binary)
 	sig := signData(t, attackerEntity, binary) // signed with key B
 
 	archive := buildArchive(t, map[string][]byte{
 		"jetkvm_app":        binary,
-		"jetkvm_app.sha256": []byte(hash),
+		"jetkvm_app.sha256": []byte(sha256hex(binary)),
 		"jetkvm_app.sig":    sig,
+		"jetkvm_app.pub":    attackerPub,
 	})
 
 	extractDir := t.TempDir()
 	bundle, err := ExtractOfflineArchive(archive, extractDir, "app", testLogger())
 	require.NoError(t, err)
 
-	_, err = VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err = VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "GPG signature verification failed")
+	assert.Contains(t, err.Error(), "bundled public key rejected")
 }
 
 // TestEndToEnd_ExtractAndVerify_HashMismatchInArchive builds an archive
 // where the .sha256 file contains the wrong hash for the binary.
 func TestEndToEnd_ExtractAndVerify_HashMismatchInArchive(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("real-binary-content")
 	wrongHash := "0000000000000000000000000000000000000000000000000000000000000000"
@@ -527,15 +538,15 @@ func TestEndToEnd_ExtractAndVerify_HashMismatchInArchive(t *testing.T) {
 		"jetkvm_app":        binary,
 		"jetkvm_app.sha256": []byte(wrongHash),
 		"jetkvm_app.sig":    sig,
+		"jetkvm_app.pub":    pub,
 	})
 
 	extractDir := t.TempDir()
 	bundle, err := ExtractOfflineArchive(archive, extractDir, "app", testLogger())
 	require.NoError(t, err)
-	// The extraction succeeds — hash mismatch is caught at verification time
 	assert.Equal(t, wrongHash, bundle.ExpectedHash)
 
-	_, err = VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	_, err = VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "hash mismatch")
 }
@@ -543,7 +554,8 @@ func TestEndToEnd_ExtractAndVerify_HashMismatchInArchive(t *testing.T) {
 // TestEndToEnd_SystemArchive verifies the full pipeline works for system
 // component archives with the different expected file names.
 func TestEndToEnd_SystemArchive(t *testing.T) {
-	gpgVerifier, entity := newSigningTestFixture(t)
+	gpgVerifier, entity := newOfflineSigningFixture(t)
+	pub := armorPublicKey(t, entity)
 
 	binary := []byte("system-image-tar-content")
 	hash := sha256hex(binary)
@@ -553,6 +565,7 @@ func TestEndToEnd_SystemArchive(t *testing.T) {
 		"update_system.tar":        binary,
 		"update_system.tar.sha256": []byte(hash),
 		"update_system.tar.sig":    sig,
+		"update_system.tar.pub":    pub,
 	})
 
 	extractDir := t.TempDir()
@@ -560,7 +573,7 @@ func TestEndToEnd_SystemArchive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "system", bundle.Component)
 
-	result, err := VerifyOfflineBundle(context.Background(), bundle, gpgVerifier, testLogger())
+	result, err := VerifyOfflineBundle(bundle, gpgVerifier, testLogger())
 	require.NoError(t, err)
 	assert.True(t, result.HashOK)
 	assert.True(t, result.SignatureOK)

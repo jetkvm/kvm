@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import { LuUpload, LuCheck } from "react-icons/lu";
-import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 
 import { Button } from "@components/Button";
 import { SettingsItem } from "@components/SettingsItem";
@@ -11,8 +10,6 @@ interface UploadResult {
   verified: boolean;
   hashOK: boolean;
   signatureOK: boolean;
-  keyFetchFailed: boolean;
-  signatureError?: string;
   error?: string;
 }
 
@@ -34,7 +31,6 @@ const initialState: ComponentUploadState = {
 
 function ComponentUpload({ component, label }: { component: string; label: string }) {
   const [upload, setUpload] = useState<ComponentUploadState>(initialState);
-  const [showBypassPrompt, setShowBypassPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback(
@@ -80,9 +76,6 @@ function ComponentUpload({ component, label }: { component: string; label: strin
               result,
               error: null,
             });
-            if (result.keyFetchFailed) {
-              setShowBypassPrompt(true);
-            }
           } else {
             setUpload({
               state: "error",
@@ -119,14 +112,13 @@ function ComponentUpload({ component, label }: { component: string; label: strin
   );
 
   const handleApply = useCallback(
-    (bypassSignature: boolean) => {
+    () => {
       setUpload(prev => ({ ...prev, state: "applying" }));
-      setShowBypassPrompt(false);
 
       fetch(`${DEVICE_API}/ota/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ component, bypassSignature }),
+        body: JSON.stringify({ component }),
       }).catch(() => {
         // Expected: the device reboots, dropping the connection
       });
@@ -136,7 +128,6 @@ function ComponentUpload({ component, label }: { component: string; label: strin
 
   const reset = useCallback(() => {
     setUpload(initialState);
-    setShowBypassPrompt(false);
   }, []);
 
   return (
@@ -183,49 +174,22 @@ function ComponentUpload({ component, label }: { component: string; label: strin
         </div>
       )}
 
-      {upload.state === "verified" && upload.result && !showBypassPrompt && (
+      {upload.state === "verified" && upload.result && (
         <div className="space-y-2">
           <div className="flex items-center gap-x-2 text-sm text-green-700 dark:text-green-400">
             <LuCheck className="h-4 w-4" />
             <span>{m.offline_update_hash_ok()}</span>
           </div>
-          {upload.result.signatureOK && (
-            <div className="flex items-center gap-x-2 text-sm text-green-700 dark:text-green-400">
-              <LuCheck className="h-4 w-4" />
-              <span>{m.offline_update_signature_ok()}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-x-2 text-sm text-green-700 dark:text-green-400">
+            <LuCheck className="h-4 w-4" />
+            <span>{m.offline_update_signature_ok()}</span>
+          </div>
           <div className="flex gap-x-2">
             <Button
               size="SM"
               theme="primary"
               text={m.offline_update_apply()}
-              onClick={() => handleApply(false)}
-            />
-            <Button size="SM" theme="light" text={m.cancel()} onClick={reset} />
-          </div>
-        </div>
-      )}
-
-      {showBypassPrompt && (
-        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/20">
-          <div className="flex items-start gap-x-2">
-            <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                {m.offline_update_signature_bypass_title()}
-              </p>
-              <p className="text-sm text-amber-700 dark:text-amber-300">
-                {m.offline_update_signature_bypass_description()}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-x-2">
-            <Button
-              size="SM"
-              theme="danger"
-              text={m.offline_update_signature_bypass_confirm()}
-              onClick={() => handleApply(true)}
+              onClick={handleApply}
             />
             <Button size="SM" theme="light" text={m.cancel()} onClick={reset} />
           </div>
