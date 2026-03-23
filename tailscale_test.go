@@ -255,24 +255,37 @@ func TestGetTailscaleStatus_ValidJSON(t *testing.T) {
 	assert.Equal(t, []string{"100.64.0.1"}, status.Self.TailscaleIPs)
 }
 
-func TestApplyTailscaleControlURL_FallbackToUp(t *testing.T) {
+func TestApplyTailscaleControlURL_SetOnly(t *testing.T) {
 	origExec := execTailscaleCommand
 	defer func() { execTailscaleCommand = origExec }()
 
 	var commands [][]string
 	execTailscaleCommand = func(args ...string) ([]byte, error) {
 		commands = append(commands, append([]string{}, args...))
-		if args[0] == "set" {
-			return nil, fmt.Errorf("unknown command")
-		}
 		return []byte("ok"), nil
 	}
 
 	err := applyTailscaleControlURL("https://headscale.example.com")
 	require.NoError(t, err)
-	require.Len(t, commands, 2)
+	require.Len(t, commands, 1)
 	assert.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, commands[0])
-	assert.Equal(t, []string{"up", "--login-server=https://headscale.example.com"}, commands[1])
+}
+
+func TestApplyTailscaleControlURL_SetFailureReturnedWithoutFallback(t *testing.T) {
+	origExec := execTailscaleCommand
+	defer func() { execTailscaleCommand = origExec }()
+
+	var commands [][]string
+	execTailscaleCommand = func(args ...string) ([]byte, error) {
+		commands = append(commands, append([]string{}, args...))
+		return nil, fmt.Errorf("unknown command")
+	}
+
+	err := applyTailscaleControlURL("https://headscale.example.com")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to apply login server")
+	require.Len(t, commands, 1)
+	assert.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, commands[0])
 }
 
 func TestRPCSetTailscaleControlURL_SaveAndApply(t *testing.T) {

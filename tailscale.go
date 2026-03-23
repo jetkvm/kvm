@@ -124,20 +124,8 @@ func applyTailscaleControlURL(controlURL string) error {
 	effectiveURL := effectiveTailscaleControlURL(controlURL)
 	loginServerFlag := "--login-server=" + effectiveURL
 
-	_, setErr := execTailscaleCommand("set", loginServerFlag)
-	if setErr == nil {
-		return nil
-	}
-
-	// Some tailscale builds may not support "tailscale set --login-server".
-	_, upErr := execTailscaleCommand("up", loginServerFlag)
-	if upErr != nil {
-		return fmt.Errorf(
-			"failed to apply login server (%s); set error: %v; up error: %w",
-			effectiveURL,
-			setErr,
-			upErr,
-		)
+	if _, err := execTailscaleCommand("set", loginServerFlag); err != nil {
+		return fmt.Errorf("failed to apply login server (%s): %w", effectiveURL, err)
 	}
 
 	return nil
