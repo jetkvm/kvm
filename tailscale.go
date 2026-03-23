@@ -215,17 +215,25 @@ func rpcSetTailscaleControlURL(controlURL string) error {
 		return err
 	}
 
+	previousURL := config.TailscaleControlURL
 	config.TailscaleControlURL = normalizedURL
-	if err := saveTailscaleConfig(); err != nil {
-		return fmt.Errorf("failed to save tailscale control URL: %w", err)
-	}
 
 	if !checkTailscaleInstalled() {
+		if err := saveTailscaleConfig(); err != nil {
+			config.TailscaleControlURL = previousURL
+			return fmt.Errorf("failed to save tailscale control URL: %w", err)
+		}
 		return nil
 	}
 
 	if err := applyTailscaleControlURL(normalizedURL); err != nil {
+		config.TailscaleControlURL = previousURL
 		return err
+	}
+
+	if err := saveTailscaleConfig(); err != nil {
+		config.TailscaleControlURL = previousURL
+		return fmt.Errorf("failed to save tailscale control URL: %w", err)
 	}
 
 	return nil

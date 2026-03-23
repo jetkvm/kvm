@@ -289,24 +289,53 @@ func TestRPCSetTailscaleControlURL_SaveAndApply(t *testing.T) {
 
 	config = &Config{}
 	checkTailscaleInstalled = func() bool { return true }
-	saveCalled := false
+	var callOrder []string
 	saveTailscaleConfig = func() error {
-		saveCalled = true
+		callOrder = append(callOrder, "save")
 		return nil
 	}
 
 	var commands [][]string
 	execTailscaleCommand = func(args ...string) ([]byte, error) {
+		callOrder = append(callOrder, "apply")
 		commands = append(commands, append([]string{}, args...))
 		return []byte("ok"), nil
 	}
 
 	err := rpcSetTailscaleControlURL("https://headscale.example.com/")
 	require.NoError(t, err)
-	assert.True(t, saveCalled)
+	assert.Equal(t, []string{"apply", "save"}, callOrder)
 	assert.Equal(t, "https://headscale.example.com", config.TailscaleControlURL)
 	require.Len(t, commands, 1)
 	assert.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, commands[0])
+}
+
+func TestRPCSetTailscaleControlURL_ApplyFailureDoesNotSaveOrPersistConfig(t *testing.T) {
+	origCheck := checkTailscaleInstalled
+	origExec := execTailscaleCommand
+	origSave := saveTailscaleConfig
+	origConfig := config
+	defer func() {
+		checkTailscaleInstalled = origCheck
+		execTailscaleCommand = origExec
+		saveTailscaleConfig = origSave
+		config = origConfig
+	}()
+
+	config = &Config{TailscaleControlURL: "https://previous.example.com"}
+	checkTailscaleInstalled = func() bool { return true }
+	saveTailscaleConfig = func() error {
+		t.Fatal("save should not be called when apply fails")
+		return nil
+	}
+	execTailscaleCommand = func(args ...string) ([]byte, error) {
+		require.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, args)
+		return nil, fmt.Errorf("apply failed")
+	}
+
+	err := rpcSetTailscaleControlURL("https://headscale.example.com")
+	require.Error(t, err)
+	assert.Equal(t, "https://previous.example.com", config.TailscaleControlURL)
 }
 
 func TestRPCSetTailscaleControlURL_NotInstalledSkipsApply(t *testing.T) {
