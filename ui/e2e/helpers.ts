@@ -1,4 +1,5 @@
 import * as http from "http";
+import * as https from "https";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import * as os from "os";
@@ -1081,6 +1082,62 @@ export function getLocalNetworkIP(): string {
     }
   }
   throw new Error("Could not detect local network IP address");
+}
+
+// ── OTA: Production Release Fetching ──
+
+export interface StableReleaseInfo {
+  appVersion: string;
+  appUrl: string;
+  appHash: string;
+}
+
+export async function fetchLatestStableRelease(): Promise<StableReleaseInfo> {
+  const url = "https://api.jetkvm.com/releases?deviceId=e2e-test";
+  const body = await new Promise<string>((resolve, reject) => {
+    https.get(url, res => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`Release API returned ${res.statusCode}`));
+        res.resume();
+        return;
+      }
+      let data = "";
+      res.on("data", chunk => (data += chunk));
+      res.on("end", () => resolve(data));
+      res.on("error", reject);
+    }).on("error", reject);
+  });
+
+  const json = JSON.parse(body);
+  if (!json.appVersion || !json.appUrl || !json.appHash) {
+    throw new Error(`Unexpected release API response: ${body}`);
+  }
+  return { appVersion: json.appVersion, appUrl: json.appUrl, appHash: json.appHash };
+}
+
+export async function downloadFile(url: string, destPath: string): Promise<void> {
+  const proto = url.startsWith("https") ? https : http;
+  const file = fs.createWriteStream(destPath);
+
+  await new Promise<void>((resolve, reject) => {
+    const request = (requestUrl: string) => {
+      proto.get(requestUrl, res => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          request(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`Download failed: ${res.statusCode} for ${requestUrl}`));
+          res.resume();
+          return;
+        }
+        res.pipe(file);
+        file.on("finish", () => file.close(() => resolve()));
+        res.on("error", reject);
+      }).on("error", reject);
+    };
+    request(url);
+  });
 }
 
 // ── OTA: Test Helpers ──
