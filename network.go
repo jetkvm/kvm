@@ -122,9 +122,7 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(false, "network_state_changed")
 
-	if currentSession != nil {
-		writeJSONRPCEvent("networkState", state.ToRpcInterfaceState(), currentSession)
-	}
+	forEachSession(func(s *Session) { writeJSONRPCEvent("networkState", state.ToRpcInterfaceState(), s) })
 
 	if state.Online {
 		networkLogger.Info().Msg("network state changed to online, triggering time sync")
@@ -317,7 +315,7 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	// If reboot required, send willReboot event before applying network config
 	if rebootRequired {
 		l.Info().Msg("Sending willReboot event before applying network config")
-		writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
+		forEachSession(func(s *Session) { writeJSONRPCEvent("willReboot", postRebootAction, s) })
 	}
 
 	_ = setHostname(networkManager, netConfig.Hostname.String, netConfig.Domain.String)

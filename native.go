@@ -68,20 +68,26 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
-			if currentSession != nil {
-				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
-				if err != nil {
-					nativeLogger.Warn().Err(err).Msg("error writing sample")
+			// 1. WebRTC: fan out to ALL active sessions
+			forEachSession(func(s *Session) {
+				if err := s.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration}); err != nil {
+					nativeLogger.Warn().Err(err).Msg("error writing sample to session")
 				}
+			})
+
+			// 2. RTSP server (always, if enabled and running)
+			if rtspServer != nil {
+				rtspServer.WriteNALU(frame, duration)
 			}
+
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
 			info := diagnostics.SessionInfo{
 				ActiveSessions:    getActiveSessions(),
-				HasCurrentSession: currentSession != nil,
+				HasCurrentSession: anySession(),
 			}
-			if currentSession != nil {
-				sessionInfo := currentSession.GetDiagnosticsInfo()
+			if s := getFirstSession(); s != nil {
+				sessionInfo := s.GetDiagnosticsInfo()
 				info.ICEConnectionState = sessionInfo.ICEConnectionState
 				info.SignalingState = sessionInfo.SignalingState
 				info.ConnectionState = sessionInfo.ConnectionState

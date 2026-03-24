@@ -126,6 +126,14 @@ func Main() {
 	// start video sleep mode timer
 	startVideoSleepModeTicker()
 
+	// Start RTSP server if enabled
+	if config.RTSPEnabled {
+		if err := StartRTSPServer(config.RTSPPort); err != nil {
+			rtspLogger.Error().Err(err).Msg("failed to start RTSP server")
+		}
+	}
+
+
 	go func() {
 		// wait for 15 minutes before starting auto-update checks
 		// this is to avoid interfering with initial setup processes
@@ -140,7 +148,7 @@ func Main() {
 				continue
 			}
 
-			if currentSession != nil {
+			if anySession() {
 				logger.Debug().Msg("skipping update since a session is active")
 				time.Sleep(1 * time.Minute)
 				continue

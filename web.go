@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	gosync "sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -166,6 +167,7 @@ func setupRouter() *gin.Engine {
 	// A Prometheus metrics endpoint.
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
 	developerModeRouter.Use(basicAuthProtectedMiddleware(true))
@@ -235,8 +237,49 @@ func setupRouter() *gin.Engine {
 	return r
 }
 
-// TODO: support multiple sessions?
-var currentSession *Session
+// sessionsMu protects the sessions map for concurrent access.
+var sessionsMu gosync.RWMutex
+var sessions = make(map[*Session]struct{})
+
+// addSession registers a session for video fan-out and event broadcasting.
+func addSession(s *Session) {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	sessions[s] = struct{}{}
+}
+
+// removeSession unregisters a session.
+func removeSession(s *Session) {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	delete(sessions, s)
+}
+
+// forEachSession calls fn for every active session (read-locked).
+func forEachSession(fn func(s *Session)) {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	for s := range sessions {
+		fn(s)
+	}
+}
+
+// anySession returns true if at least one session exists.
+func anySession() bool {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	return len(sessions) > 0
+}
+
+// getFirstSession returns an arbitrary session (for diagnostics). May return nil.
+func getFirstSession() *Session {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	for s := range sessions {
+		return s
+	}
+	return nil
+}
 
 func handleWebRTCSession(c *gin.Context) {
 	var req WebRTCSessionRequest
@@ -257,19 +300,7 @@ func handleWebRTCSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
-	}
-
-	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
-
-	currentSession = session
+	addSession(session)
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
@@ -334,6 +365,8 @@ func handleWebRTCSignalWsMessages(
 	connectionID string,
 	scopedLogger *zerolog.Logger,
 ) error {
+	var wsSession *Session // tracks the session for this WebSocket connection
+
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer func() {
 		if isCloudConnection {
@@ -464,11 +497,13 @@ func handleWebRTCSignalWsMessages(
 
 			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
+			var newSession *Session
+			newSession, err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("error starting new session")
 				continue
 			}
+			wsSession = newSession
 		} else if message.Type == "new-ice-candidate" {
 			l.Info().Str("data", string(message.Data)).Msg("The client sent us a new ICE candidate")
 			var candidate webrtc.ICECandidateInit
@@ -486,13 +521,13 @@ func handleWebRTCSignalWsMessages(
 
 			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("unmarshalled incoming ICE candidate")
 
-			if currentSession == nil {
-				l.Warn().Msg("no current session, skipping incoming ICE candidate")
+			if wsSession == nil {
+				l.Warn().Msg("no session for this connection, skipping incoming ICE candidate")
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to current session")
-			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
+			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to session")
+			if err = wsSession.peerConnection.AddICECandidate(candidate); err != nil {
 				l.Warn().Str("error", err.Error()).Msg("failed to add incoming ICE candidate to our peer connection")
 			}
 		}
@@ -955,10 +990,10 @@ func handleDiagnosticsDownload(c *gin.Context) {
 			GetSessionInfo: func() diagnostics.SessionInfo {
 				info := diagnostics.SessionInfo{
 					ActiveSessions:    getActiveSessions(),
-					HasCurrentSession: currentSession != nil,
+					HasCurrentSession: anySession(),
 				}
-				if currentSession != nil {
-					sessionInfo := currentSession.GetDiagnosticsInfo()
+				if s := getFirstSession(); s != nil {
+					sessionInfo := s.GetDiagnosticsInfo()
 					info.ICEConnectionState = sessionInfo.ICEConnectionState
 					info.SignalingState = sessionInfo.SignalingState
 					info.ConnectionState = sessionInfo.ConnectionState

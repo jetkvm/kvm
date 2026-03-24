@@ -117,6 +117,9 @@ type Config struct {
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+	RTSPEnabled          bool                 `json:"rtsp_enabled"`
+	RTSPPort             int                  `json:"rtsp_port"`
+	CastReceiverAppID    string               `json:"cast_receiver_app_id"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -208,6 +211,9 @@ func getDefaultConfig() Config {
 			EnableActions:     true,
 			DebounceMs:        500,
 		},
+		RTSPEnabled:        true,
+		RTSPPort:           8554,
+		CastReceiverAppID:  "F311D863",
 	}
 }
 

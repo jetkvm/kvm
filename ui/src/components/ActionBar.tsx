@@ -16,6 +16,7 @@ import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { SplitButtonGroup, SplitButtonPrimary, SplitButtonCaret } from "@components/SplitButton";
+import CastButton from "@components/CastButton";
 
 import { cx } from "@/cva.config";
 import {
@@ -288,6 +289,8 @@ export default function Actionbar({
               }}
             />
           </div>
+          <CastButton />
+
           {!isDetachedWindow && (
             <div>
               <Button

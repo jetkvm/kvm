@@ -419,12 +419,8 @@ func newSession(config SessionConfig) (*Session, error) {
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
-			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
-			if session == currentSession {
-				// Cancel any ongoing keyboard report multi when session closes
-				cancelKeyboardMacro()
-				currentSession = nil
-			}
+			scopedLogger.Debug().Msg("ICE Connection State is closed, cleaning up session")
+			removeSession(session)
 			// Stop RPC processor
 			if session.rpcQueue != nil {
 				close(session.rpcQueue)
@@ -462,12 +458,12 @@ func newSession(config SessionConfig) (*Session, error) {
 }
 
 func onActiveSessionsChanged() {
-	notifyFailsafeMode(currentSession)
+	forEachSession(notifyFailsafeMode)
 	requestDisplayUpdate(false, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
-	notifyFailsafeMode(currentSession)
+	forEachSession(notifyFailsafeMode)
 	_ = nativeInstance.VideoStart()
 	stopVideoSleepModeTicker()
 }

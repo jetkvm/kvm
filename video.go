@@ -20,7 +20,7 @@ const (
 
 func triggerVideoStateUpdate() {
 	go func() {
-		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
+		forEachSession(func(s *Session) { writeJSONRPCEvent("videoInputState", lastVideoState, s) })
 	}()
 
 	// Publish video state to MQTT
@@ -32,7 +32,7 @@ func triggerVideoStateUpdate() {
 }
 
 func rpcGetVideoState() (native.VideoState, error) {
-	notifyFailsafeMode(currentSession)
+	forEachSession(notifyFailsafeMode)
 	return lastVideoState, nil
 }
 
