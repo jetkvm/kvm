@@ -62,12 +62,7 @@ export function SettingsItem(props: SettingsItemProps) {
           </div>
           {loading && <LoadingSpinner className="h-4 w-4 text-blue-500" />}
         </div>
-        <div
-          className={cx(
-            "text-slate-700 dark:text-slate-300",
-            isSM ? "text-xs" : "text-sm",
-          )}
-        >
+        <div className={cx("text-slate-700 dark:text-slate-300", isSM ? "text-xs" : "text-sm")}>
           {description}
         </div>
       </div>

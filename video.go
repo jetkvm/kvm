@@ -23,6 +23,11 @@ func triggerVideoStateUpdate() {
 		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
 	}()
 
+	// Publish video state to MQTT
+	if mqttManager != nil {
+		mqttManager.publishVideoState()
+	}
+
 	nativeLogger.Info().Interface("state", lastVideoState).Msg("video state updated")
 }
 

@@ -669,7 +669,7 @@ type DCPowerState struct {
 }
 
 func rpcGetDCPowerState() (DCPowerState, error) {
-	return dcState, nil
+	return getDCState(), nil
 }
 
 func rpcSetDCPowerState(enabled bool) error {
@@ -714,6 +714,12 @@ func rpcSetActiveExtension(extensionId string) error {
 	case "dc-power":
 		_ = mountDCControl()
 	}
+
+	// Re-publish MQTT HA Discovery for the new extension
+	if mqttManager != nil {
+		mqttManager.republishHADiscovery()
+	}
+
 	return nil
 }
 
@@ -741,8 +747,8 @@ type ATXState struct {
 
 func rpcGetATXState() (ATXState, error) {
 	state := ATXState{
-		Power: ledPWRState,
-		HDD:   ledHDDState,
+		Power: ledPWRState.Load(),
+		HDD:   ledHDDState.Load(),
 	}
 	return state, nil
 }
@@ -1210,4 +1216,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getTailscaleStatus":         {Func: rpcGetTailscaleStatus},
 	"getTailscaleControlURL":     {Func: rpcGetTailscaleControlURL},
 	"setTailscaleControlURL":     {Func: rpcSetTailscaleControlURL, Params: []string{"controlURL"}},
+	"getMqttSettings":            {Func: rpcGetMqttSettings},
+	"setMqttSettings":            {Func: rpcSetMqttSettings, Params: []string{"settings"}},
+	"getMqttStatus":              {Func: rpcGetMqttStatus},
+	"testMqttConnection":         {Func: rpcTestMqttConnection, Params: []string{"settings"}},
 }

@@ -280,18 +280,21 @@ test.describe("Remote Host Agent", () => {
 
     const initialState = await getLedState(sharedPage);
     expect(initialState).not.toBeNull();
-    const initialCaps = initialState!.caps_lock;
 
-    // EDID restore may still be in-flight; retry until full HID stack (including LED reports) stabilizes
+    // EDID restore may still be in-flight; retry until full HID stack (including LED reports) stabilizes.
+    // Re-read caps_lock each iteration so a failed-try + successful-undo doesn't leave us
+    // permanently toggling in the wrong direction.
     const deadline = Date.now() + 15000;
     let capsToggled = false;
+    let capsBeforeToggle = initialState!.caps_lock;
     while (Date.now() < deadline) {
+      capsBeforeToggle = (await getLedState(sharedPage))!.caps_lock;
       await agent!.clearKeyboardEvents();
       try {
         await agent!.expectKeyPress(KEY.CAPS_LOCK, async () => {
           await tapKey(sharedPage, HID_KEY.CAPS_LOCK);
         }, 3000);
-        await waitForLedState(sharedPage, "caps_lock", !initialCaps, 2000);
+        await waitForLedState(sharedPage, "caps_lock", !capsBeforeToggle, 2000);
         capsToggled = true;
         break;
       } catch {
@@ -301,13 +304,13 @@ test.describe("Remote Host Agent", () => {
       }
     }
     expect(capsToggled, "CAPS_LOCK LED should toggle").toBe(true);
-    expect((await getLedState(sharedPage))!.caps_lock).toBe(!initialCaps);
+    expect((await getLedState(sharedPage))!.caps_lock).toBe(!capsBeforeToggle);
 
     // Restore CAPS_LOCK
     await agent!.expectKeyPress(KEY.CAPS_LOCK, async () => {
       await tapKey(sharedPage, HID_KEY.CAPS_LOCK);
     });
-    await waitForLedState(sharedPage, "caps_lock", initialCaps);
+    await waitForLedState(sharedPage, "caps_lock", capsBeforeToggle);
 
     // NUM_LOCK: same round-trip verification
     const initialNum = initialState!.num_lock;
