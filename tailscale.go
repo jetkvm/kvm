@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -54,11 +55,20 @@ func isTailscaleInstalled() bool {
 
 // execTailscaleStatus runs `tailscale status --json` and returns the raw output.
 // This is a package-level var to allow test substitution.
+// newTailscaleCommand creates an exec.Cmd for a tailscale subcommand with the
+// SSL_CERT_FILE environment variable set so that the tailscale binary can
+// validate TLS certificates using the embedded CA bundle written at startup.
+func newTailscaleCommand(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "tailscale", args...)
+	cmd.Env = append(os.Environ(), "SSL_CERT_FILE="+caCertBundlePath)
+	return cmd
+}
+
 var execTailscaleStatus = func() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), tailscaleCommandTimeout)
 	defer cancel()
 
-	output, err := exec.CommandContext(ctx, "tailscale", "status", "--json").CombinedOutput()
+	output, err := newTailscaleCommand(ctx, "status", "--json").CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("tailscale status: %w: %s", err, strings.TrimSpace(string(output)))
 	}

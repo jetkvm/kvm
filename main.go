@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"context"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,8 +17,28 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// caCertBundlePath is the path where the embedded CA certificate bundle is
+// written at startup so that child processes (e.g. tailscale) can validate TLS
+// certificates even though the device rootfs ships no system CA store.
+const caCertBundlePath = "/tmp/jetkvm-cacerts.pem"
+
 var appCtx context.Context
 var procPrefix string = "jetkvm: [app]"
+
+// writeCABundleFile converts the embedded rootcerts DER certificates to PEM
+// and writes them to caCertBundlePath. This allows child processes to use the
+// bundle via the SSL_CERT_FILE environment variable.
+func writeCABundleFile() error {
+	var bundle []byte
+	for _, c := range rootcerts.CertsByTrust(rootcerts.ServerTrustedDelegator) {
+		block := &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: c.DER,
+		}
+		bundle = append(bundle, pem.EncodeToMemory(block)...)
+	}
+	return os.WriteFile(caCertBundlePath, bundle, 0644) //nolint:gosec
+}
 
 func setProcTitle(status string) {
 	if status != "" {
@@ -80,6 +101,12 @@ func Main() {
 	logger.Info().
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
+
+	// Write the embedded CA bundle to disk so child processes (tailscale, etc.)
+	// can validate TLS certificates via SSL_CERT_FILE.
+	if werr := writeCABundleFile(); werr != nil {
+		logger.Warn().Err(werr).Msg("failed to write CA certificate bundle to disk")
+	}
 
 	initOta()
 
