@@ -84,6 +84,13 @@ type CastStatus struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// CastPreferredDevice is the saved preferred casting target.
+type CastPreferredDevice struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+}
+
 // castMessage is a simple payload for custom namespace messages.
 type castMessage struct {
 	Type string `json:"type"`
@@ -338,12 +345,14 @@ func rpcGetCastingStatus() CastStatus {
 }
 
 type CastConfig struct {
-	ReceiverAppID string `json:"receiverAppId"`
+	ReceiverAppID   string               `json:"receiverAppId"`
+	PreferredDevice *CastPreferredDevice `json:"preferredDevice"`
 }
 
 func rpcGetCastConfig() CastConfig {
 	return CastConfig{
-		ReceiverAppID: config.CastReceiverAppID,
+		ReceiverAppID:   config.CastReceiverAppID,
+		PreferredDevice: config.CastPreferredDevice,
 	}
 }
 
@@ -358,4 +367,53 @@ func rpcSetCastConfig(receiverAppID string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
+}
+
+func rpcSetPreferredCastDevice(name string, address string, port int) error {
+	if address == "" {
+		// Clear preferred device
+		config.CastPreferredDevice = nil
+	} else {
+		config.CastPreferredDevice = &CastPreferredDevice{
+			Name:    name,
+			Address: address,
+			Port:    port,
+		}
+	}
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	chromecastLogger.Info().Str("name", name).Str("address", address).Msg("preferred cast device updated")
+	return nil
+}
+
+// rpcQuickCast casts to the preferred device, or the first discovered device if none set.
+// Called from the LCD touch screen.
+func rpcQuickCast() error {
+	castState.mu.Lock()
+	if castState.active {
+		castState.mu.Unlock()
+		return rpcStopCasting()
+	}
+	castState.mu.Unlock()
+
+	// Use preferred device if set
+	if dev := config.CastPreferredDevice; dev != nil {
+		chromecastLogger.Info().Str("name", dev.Name).Msg("quick cast to preferred device")
+		return rpcStartCasting(dev.Address, dev.Port)
+	}
+
+	// Otherwise discover and use the first found
+	chromecastLogger.Info().Msg("quick cast: no preferred device, discovering...")
+	devices, err := rpcDiscoverChromecasts()
+	if err != nil {
+		return fmt.Errorf("discovery failed: %w", err)
+	}
+	if len(devices) == 0 {
+		return fmt.Errorf("no Chromecast devices found")
+	}
+
+	dev := devices[0]
+	chromecastLogger.Info().Str("name", dev.Name).Msg("quick cast to first discovered device")
+	return rpcStartCasting(dev.Address, dev.Port)
 }

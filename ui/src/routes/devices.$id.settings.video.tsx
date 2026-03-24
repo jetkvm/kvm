@@ -141,6 +141,7 @@ export default function SettingsVideoRoute() {
 
   // Cast settings
   const [castAppId, setCastAppId] = useState("F311D863");
+  const [preferredDeviceName, setPreferredDeviceName] = useState<string | null>(null);
 
   useEffect(() => {
     send("getRTSPConfig", {}, (resp: JsonRpcResponse) => {
@@ -151,8 +152,12 @@ export default function SettingsVideoRoute() {
     });
     send("getCastConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      const cfg = resp.result as { receiverAppId: string };
+      const cfg = resp.result as {
+        receiverAppId: string;
+        preferredDevice: { name: string; address: string; port: number } | null;
+      };
       setCastAppId(cfg.receiverAppId);
+      setPreferredDeviceName(cfg.preferredDevice?.name || null);
     });
   }, [send]);
 
@@ -410,6 +415,34 @@ export default function SettingsVideoRoute() {
 
           {/* Chromecast Settings */}
           <div className="space-y-4">
+            <SettingsItem
+              title="Preferred Cast Device"
+              description={
+                preferredDeviceName
+                  ? `"${preferredDeviceName}" will be used for quick cast from the device LCD. You can change this by starring a device in the Cast dropdown.`
+                  : "No preferred device set. Star a device in the Cast dropdown, or the first discovered device will be used for quick cast from the LCD."
+              }
+            >
+              {preferredDeviceName ? (
+                <Button
+                  size="SM"
+                  theme="light"
+                  text="Clear"
+                  onClick={() => {
+                    send("setPreferredCastDevice", { name: "", address: "", port: 0 }, (resp: JsonRpcResponse) => {
+                      if ("error" in resp) {
+                        notifications.error("Failed to clear preferred device");
+                        return;
+                      }
+                      setPreferredDeviceName(null);
+                      notifications.success("Preferred cast device cleared");
+                    });
+                  }}
+                />
+              ) : (
+                <span className="text-sm text-slate-400">None</span>
+              )}
+            </SettingsItem>
             <SettingsItem
               title="Cast Receiver App ID"
               description="The Google Cast custom receiver application ID used for Chromecast streaming."

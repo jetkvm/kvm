@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useJsonRpc, JsonRpcResponse } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
@@ -10,6 +10,12 @@ export interface ChromecastDevice {
   port: number;
 }
 
+export interface PreferredDevice {
+  name: string;
+  address: string;
+  port: number;
+}
+
 export interface CastState {
   isCasting: boolean;
   activeDevice: { name: string; address: string; port: number } | null;
@@ -17,6 +23,7 @@ export interface CastState {
   isDiscovering: boolean;
   isStarting: boolean;
   error: string | null;
+  preferredDevice: PreferredDevice | null;
 }
 
 export function useCast() {
@@ -28,7 +35,28 @@ export function useCast() {
     isDiscovering: false,
     isStarting: false,
     error: null,
+    preferredDevice: null,
   });
+
+  // Load preferred device and casting status on mount
+  useEffect(() => {
+    send("getCastConfig", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const cfg = resp.result as { preferredDevice: PreferredDevice | null };
+      setState(s => ({ ...s, preferredDevice: cfg.preferredDevice }));
+    });
+    send("getCastingStatus", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const status = resp.result as { active: boolean; deviceName: string };
+      setState(s => ({
+        ...s,
+        isCasting: status.active,
+        activeDevice: status.active
+          ? { name: status.deviceName, address: "", port: 0 }
+          : null,
+      }));
+    });
+  }, [send]);
 
   const discoverDevices = useCallback(() => {
     setState(s => ({ ...s, isDiscovering: true, error: null }));
@@ -93,6 +121,34 @@ export function useCast() {
     });
   }, [send]);
 
+  const setPreferredDevice = useCallback(
+    (device: ChromecastDevice | null) => {
+      const name = device?.name || "";
+      const address = device?.address || "";
+      const port = device?.port || 0;
+      send(
+        "setPreferredCastDevice",
+        { name, address, port },
+        (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            notifications.error("Failed to set preferred device");
+            return;
+          }
+          const pref = device
+            ? { name: device.name, address: device.address, port: device.port }
+            : null;
+          setState(s => ({ ...s, preferredDevice: pref }));
+          notifications.success(
+            device
+              ? `${device.name} set as preferred cast device`
+              : "Preferred cast device cleared",
+          );
+        },
+      );
+    },
+    [send],
+  );
+
   const refreshStatus = useCallback(() => {
     send("getCastingStatus", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
@@ -112,6 +168,7 @@ export function useCast() {
     discoverDevices,
     startCasting,
     stopCasting,
+    setPreferredDevice,
     refreshStatus,
   };
 }

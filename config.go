@@ -117,9 +117,10 @@ type Config struct {
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
-	RTSPEnabled          bool                 `json:"rtsp_enabled"`
-	RTSPPort             int                  `json:"rtsp_port"`
-	CastReceiverAppID    string               `json:"cast_receiver_app_id"`
+	RTSPEnabled          bool                  `json:"rtsp_enabled"`
+	RTSPPort             int                   `json:"rtsp_port"`
+	CastReceiverAppID    string                `json:"cast_receiver_app_id"`
+	CastPreferredDevice  *CastPreferredDevice  `json:"cast_preferred_device,omitempty"`
 }
 
 // GetUpdateAPIURL returns the update API URL

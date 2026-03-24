@@ -1220,8 +1220,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setRTSPConfig":              {Func: rpcSetRTSPConfig, Params: []string{"enabled", "port"}},
 	"getCastConfig":              {Func: rpcGetCastConfig},
 	"setCastConfig":              {Func: rpcSetCastConfig, Params: []string{"receiverAppId"}},
+	"setPreferredCastDevice":     {Func: rpcSetPreferredCastDevice, Params: []string{"name", "address", "port"}},
 	"discoverChromecasts":        {Func: rpcDiscoverChromecasts},
 	"startCasting":               {Func: rpcStartCasting, Params: []string{"address", "port"}},
 	"stopCasting":                {Func: rpcStopCasting},
 	"getCastingStatus":           {Func: rpcGetCastingStatus},
+	"quickCast":                  {Func: rpcQuickCast},
 }
