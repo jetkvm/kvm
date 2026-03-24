@@ -1,6 +1,8 @@
 import { cx } from "@/cva.config";
 import LoadingSpinner from "@components/LoadingSpinner";
 
+type SettingsItemSize = "SM" | "MD";
+
 interface SettingsItemProps {
   readonly title: string;
   readonly description: string | React.ReactNode;
@@ -9,6 +11,7 @@ interface SettingsItemProps {
   readonly className?: string;
   readonly loading?: boolean;
   readonly children?: React.ReactNode;
+  readonly size?: SettingsItemSize;
 }
 
 const badgeTheme = {
@@ -27,8 +30,11 @@ export function SettingsItem(props: SettingsItemProps) {
     children,
     className,
     loading,
+    size = "MD",
   } = props;
   const badgeThemeClass = badgeTheme[badgeThemeProp];
+
+  const isSM = size === "SM";
 
   return (
     <label
@@ -36,7 +42,12 @@ export function SettingsItem(props: SettingsItemProps) {
     >
       <div className="space-y-0.5">
         <div className="flex items-center gap-x-2">
-          <div className="flex items-center text-base font-semibold text-black dark:text-white">
+          <div
+            className={cx(
+              "flex items-center font-semibold text-black dark:text-white",
+              isSM ? "text-sm" : "text-base",
+            )}
+          >
             {title}
             {badge && (
               <span
@@ -51,7 +62,14 @@ export function SettingsItem(props: SettingsItemProps) {
           </div>
           {loading && <LoadingSpinner className="h-4 w-4 text-blue-500" />}
         </div>
-        <div className="text-sm text-slate-700 dark:text-slate-300">{description}</div>
+        <div
+          className={cx(
+            "text-slate-700 dark:text-slate-300",
+            isSM ? "text-xs" : "text-sm",
+          )}
+        >
+          {description}
+        </div>
       </div>
       {children ? <div>{children}</div> : null}
     </label>
