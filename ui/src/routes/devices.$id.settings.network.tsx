@@ -8,7 +8,7 @@ import validator from "validator";
 import PublicIPCard from "@components/PublicIPCard";
 import TailscaleCard from "@components/TailscaleCard";
 import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
-import { useJsonRpc } from "@hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
 import { ConfirmDialog } from "@components/ConfirmDialog";
@@ -91,6 +91,7 @@ export default function SettingsNetworkRoute() {
   const [customDomain, setCustomDomain] = useState<string>("");
 
   // Confirm dialog
+  const [isCloudAdopted, setIsCloudAdopted] = useState(false);
   const [showRenewLeaseConfirm, setShowRenewLeaseConfirm] = useState(false);
 
   // We use this to determine whether the settings have changed
@@ -148,6 +149,15 @@ export default function SettingsNetworkRoute() {
       throw err;
     }
   }, [setNetworkState, setCustomDomain]);
+
+  useEffect(() => {
+    send("getCloudState", {}, (resp: JsonRpcResponse) => {
+      if ("result" in resp) {
+        const state = resp.result as { connected: boolean };
+        setIsCloudAdopted(state.connected);
+      }
+    });
+  }, [send]);
 
   const formMethods = useForm<NetworkSettings>({
     mode: "onBlur",
@@ -517,7 +527,7 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
-              <PublicIPCard />
+              {isCloudAdopted && <PublicIPCard />}
 
               <TailscaleCard />
 

@@ -373,7 +373,9 @@ func rpcGetPublicIPAddresses(refresh bool) ([]myip.PublicIP, error) {
 		return nil, fmt.Errorf("public IP state not initialized")
 	}
 
-	if refresh {
+	// Only allow refresh when cloud is adopted, to avoid sending requests
+	// to api.jetkvm.com when the user has not opted into cloud features.
+	if refresh && config.CloudToken != "" && config.CloudURL != "" {
 		if err := publicIPState.ForceUpdate(); err != nil {
 			return nil, err
 		}
@@ -385,6 +387,11 @@ func rpcGetPublicIPAddresses(refresh bool) ([]myip.PublicIP, error) {
 func rpcCheckPublicIPAddresses() error {
 	if publicIPState == nil {
 		return fmt.Errorf("public IP state not initialized")
+	}
+
+	// Only check public IPs when cloud is adopted.
+	if config.CloudToken == "" || config.CloudURL == "" {
+		return fmt.Errorf("cloud is not enabled")
 	}
 
 	return publicIPState.ForceUpdate()
