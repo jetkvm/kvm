@@ -15,6 +15,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -337,6 +338,191 @@ func TestParseAndValidateKeyring_FiltersRogueKeys(t *testing.T) {
 
 	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(testData), bytes.NewReader(sigBuf.Bytes()), nil)
 	assert.Error(t, err, "signature from rogue key must not verify against filtered keyring")
+}
+
+// generateEntityWithSigningSubkey creates an entity with a signing subkey,
+// mirroring production key setups where a root key has signing subkeys on YubiKeys.
+func generateEntityWithSigningSubkey(t *testing.T) *openpgp.Entity {
+	t.Helper()
+	entity, err := openpgp.NewEntity("Test Root", "", "root@example.com", nil)
+	require.NoError(t, err)
+	require.NoError(t, entity.AddSigningSubkey(nil))
+	return entity
+}
+
+func armorEntity(t *testing.T, entity *openpgp.Entity) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, openpgp.PublicKeyType, nil)
+	require.NoError(t, err)
+	require.NoError(t, entity.Serialize(w))
+	require.NoError(t, w.Close())
+	return buf.Bytes()
+}
+
+func signWithEntity(t *testing.T, entity *openpgp.Entity, data []byte) []byte {
+	t.Helper()
+	var sigBuf bytes.Buffer
+	require.NoError(t, openpgp.DetachSign(&sigBuf, entity, bytes.NewReader(data), nil))
+	return sigBuf.Bytes()
+}
+
+func TestSubkey_SigningWithSubkeyVerifies(t *testing.T) {
+	t.Parallel()
+	entity := generateEntityWithSigningSubkey(t)
+	armoredKey := armorEntity(t, entity)
+
+	fp := strings.ToUpper(hex.EncodeToString(entity.PrimaryKey.Fingerprint[:]))
+	v := newTestGPGVerifier()
+	v.rootKeyFP = fp
+
+	keyring, err := v.parseAndValidateKeyring(armoredKey)
+	require.NoError(t, err)
+
+	// DetachSign with a signing subkey present will prefer the subkey
+	data := []byte("release binary payload")
+	sig := signWithEntity(t, entity, data)
+
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(data), bytes.NewReader(sig), nil)
+	require.NoError(t, err, "signature from signing subkey must verify")
+}
+
+func TestSubkey_SubkeySurvivesKeyringFiltering(t *testing.T) {
+	t.Parallel()
+	entity := generateEntityWithSigningSubkey(t)
+	rogueEntity, err := openpgp.NewEntity("Rogue", "", "rogue@example.com", nil)
+	require.NoError(t, err)
+
+	// Armor both into a single keyring as a malicious keyserver would
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, openpgp.PublicKeyType, nil)
+	require.NoError(t, err)
+	require.NoError(t, entity.Serialize(w))
+	require.NoError(t, rogueEntity.Serialize(w))
+	require.NoError(t, w.Close())
+
+	fp := strings.ToUpper(hex.EncodeToString(entity.PrimaryKey.Fingerprint[:]))
+	v := newTestGPGVerifier()
+	v.rootKeyFP = fp
+
+	keyring, err := v.parseAndValidateKeyring(buf.Bytes())
+	require.NoError(t, err)
+	require.Len(t, keyring, 1)
+
+	// Subkeys must survive the filtering
+	var signingSubkeys int
+	for _, sk := range keyring[0].Subkeys {
+		if sk.Sig.FlagSign {
+			signingSubkeys++
+		}
+	}
+	assert.GreaterOrEqual(t, signingSubkeys, 1, "signing subkey must survive parseAndValidateKeyring filtering")
+
+	// Signature from the trusted entity's subkey must verify
+	data := []byte("filtered payload")
+	sig := signWithEntity(t, entity, data)
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(data), bytes.NewReader(sig), nil)
+	require.NoError(t, err, "subkey signature must verify after keyring filtering")
+
+	// Signature from the rogue entity must fail
+	rogueSig := signWithEntity(t, rogueEntity, data)
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(data), bytes.NewReader(rogueSig), nil)
+	assert.Error(t, err, "rogue signature must not verify against filtered keyring")
+}
+
+func TestSubkey_RotatedSubkeysBothVerify(t *testing.T) {
+	t.Parallel()
+	entity := generateEntityWithSigningSubkey(t)
+
+	// Sign data with the first signing subkey
+	dataV1 := []byte("release v1")
+	sigV1 := signWithEntity(t, entity, dataV1)
+
+	// Add a second signing subkey (simulates rotation to a new YubiKey)
+	require.NoError(t, entity.AddSigningSubkey(nil))
+
+	// Sign new data — DetachSign picks the newest signing subkey
+	dataV2 := []byte("release v2")
+	sigV2 := signWithEntity(t, entity, dataV2)
+
+	// Re-armor the entity with both subkeys (as a keyserver would serve after rotation)
+	armoredKey := armorEntity(t, entity)
+	fp := strings.ToUpper(hex.EncodeToString(entity.PrimaryKey.Fingerprint[:]))
+	v := newTestGPGVerifier()
+	v.rootKeyFP = fp
+
+	keyring, err := v.parseAndValidateKeyring(armoredKey)
+	require.NoError(t, err)
+
+	var signingSubkeys int
+	for _, sk := range keyring[0].Subkeys {
+		if sk.Sig.FlagSign {
+			signingSubkeys++
+		}
+	}
+	assert.Equal(t, 2, signingSubkeys, "both signing subkeys must be present")
+
+	// Both signatures must verify against the keyring
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(dataV1), bytes.NewReader(sigV1), nil)
+	require.NoError(t, err, "signature from original subkey must still verify after rotation")
+
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(dataV2), bytes.NewReader(sigV2), nil)
+	require.NoError(t, err, "signature from rotated subkey must verify")
+}
+
+func TestSubkey_RevokedSubkeyIsRejected(t *testing.T) {
+	t.Parallel()
+	entity := generateEntityWithSigningSubkey(t)
+
+	// Find the signing subkey
+	var signingSubkey *openpgp.Subkey
+	for i := range entity.Subkeys {
+		if entity.Subkeys[i].Sig.FlagSign {
+			signingSubkey = &entity.Subkeys[i]
+			break
+		}
+	}
+	require.NotNil(t, signingSubkey, "entity must have a signing subkey")
+	subkeyId := signingSubkey.PublicKey.KeyId
+
+	data := []byte("signed before revocation")
+	sig := signWithEntity(t, entity, data)
+
+	// Verify signature works before revocation
+	armoredBefore := armorEntity(t, entity)
+	fp := strings.ToUpper(hex.EncodeToString(entity.PrimaryKey.Fingerprint[:]))
+	v := newTestGPGVerifier()
+	v.rootKeyFP = fp
+
+	keyringBefore, err := v.parseAndValidateKeyring(armoredBefore)
+	require.NoError(t, err)
+	_, err = openpgp.CheckDetachedSignature(keyringBefore, bytes.NewReader(data), bytes.NewReader(sig), nil)
+	require.NoError(t, err, "signature must verify before revocation")
+
+	// Revoke the signing subkey (simulates compromised YubiKey)
+	require.NoError(t, entity.RevokeSubkey(signingSubkey, packet.KeyCompromised, "compromised", nil))
+
+	// Re-armor and parse — the keyserver now serves the key with revocation
+	armoredAfter := armorEntity(t, entity)
+	keyringAfter, err := v.parseAndValidateKeyring(armoredAfter)
+	require.NoError(t, err)
+
+	// The revoked subkey must report as revoked when looked up by key ID
+	keys := keyringAfter.KeysById(subkeyId)
+	require.NotEmpty(t, keys, "revoked subkey should still be findable by ID")
+	assert.True(t, keys[0].Revoked(time.Now()), "subkey must report as revoked")
+
+	// SigningKeyById(now, 0) may fall back to the primary key, but it must
+	// NOT return the revoked subkey as the selected signing key.
+	selectedKey, ok := keyringAfter[0].SigningKeyById(time.Now(), 0)
+	if ok {
+		assert.NotEqual(t, subkeyId, selectedKey.PublicKey.KeyId,
+			"revoked subkey must not be selected as the signing key")
+	}
+
+	// Explicitly asking for the revoked subkey by ID must fail
+	_, ok = keyringAfter[0].SigningKeyById(time.Now(), subkeyId)
+	assert.False(t, ok, "requesting revoked subkey by ID must return not-found")
 }
 
 func TestFetchPublicKey_RejectsFingerprintMismatch(t *testing.T) {
