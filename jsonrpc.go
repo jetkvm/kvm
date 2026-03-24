@@ -1217,4 +1217,5 @@ var rpcHandlers = map[string]RPCHandler{
 	"getMqttSettings":            {Func: rpcGetMqttSettings},
 	"setMqttSettings":            {Func: rpcSetMqttSettings, Params: []string{"settings"}},
 	"getMqttStatus":              {Func: rpcGetMqttStatus},
+	"testMqttConnection":         {Func: rpcTestMqttConnection, Params: []string{"settings"}},
 }

@@ -41,6 +41,7 @@ type MQTTManager struct {
 	deviceID  string
 	baseTopic string
 	connected atomic.Bool
+	lastError atomic.Value // stores string; cleared on successful connect
 
 	updateRequested atomic.Bool // set when an update is triggered via MQTT, cleared when OTA finishes
 
@@ -156,6 +157,7 @@ func NewMQTTManager(cfg *MQTTConfig, deviceID string) (*MQTTManager, error) {
 	go func() {
 		token.Wait()
 		if token.Error() != nil {
+			m.setLastError(token.Error())
 			mqttLogger.Warn().Err(token.Error()).Str("broker", brokerURL).Msg("initial MQTT connection attempt failed, will retry")
 		}
 	}()
@@ -163,9 +165,29 @@ func NewMQTTManager(cfg *MQTTConfig, deviceID string) (*MQTTManager, error) {
 	return m, nil
 }
 
+func (m *MQTTManager) setLastError(err error) {
+	if err != nil {
+		m.lastError.Store(err.Error())
+	}
+}
+
+func (m *MQTTManager) clearLastError() {
+	m.lastError.Store("")
+}
+
+// LastError returns the last connection error, or empty string if none.
+func (m *MQTTManager) LastError() string {
+	v := m.lastError.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(string)
+}
+
 func (m *MQTTManager) onConnect(client mqtt.Client) {
 	mqttLogger.Info().Str("deviceID", m.deviceID).Msg("connected to MQTT broker")
 	m.connected.Store(true)
+	m.clearLastError()
 
 	// Publish online status
 	m.publish(m.topic("status"), mqttStatusPayload{Online: true}, true)
@@ -195,6 +217,7 @@ func (m *MQTTManager) onConnect(client mqtt.Client) {
 func (m *MQTTManager) onConnectionLost(client mqtt.Client, err error) {
 	mqttLogger.Warn().Err(err).Msg("MQTT connection lost")
 	m.connected.Store(false)
+	m.setLastError(err)
 }
 
 // IsConnected returns the current connection state.
@@ -255,7 +278,8 @@ func (m *MQTTManager) actionsAllowed() bool {
 // --- JSON-RPC Handlers ---
 
 type MQTTStatusResponse struct {
-	Connected bool `json:"connected"`
+	Connected bool   `json:"connected"`
+	Error     string `json:"error,omitempty"`
 }
 
 const mqttPasswordMask = "********"
@@ -327,10 +351,71 @@ func rpcSetMqttSettings(settings MQTTConfig) error {
 
 func rpcGetMqttStatus() (MQTTStatusResponse, error) {
 	connected := false
+	lastError := ""
 	if mqttManager != nil {
 		connected = mqttManager.IsConnected()
+		lastError = mqttManager.LastError()
 	}
-	return MQTTStatusResponse{Connected: connected}, nil
+	return MQTTStatusResponse{Connected: connected, Error: lastError}, nil
+}
+
+// testMqttConnectionTimeout is the maximum time to wait for a test connection attempt.
+const testMqttConnectionTimeout = 5 * time.Second
+
+type MQTTTestResult struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+func rpcTestMqttConnection(settings MQTTConfig) (MQTTTestResult, error) {
+	if settings.Broker == "" {
+		return MQTTTestResult{Error: "broker address is required"}, nil
+	}
+
+	// If the password is the mask placeholder, use the existing password.
+	if settings.Password == mqttPasswordMask && config.MqttConfig != nil {
+		settings.Password = config.MqttConfig.Password
+	}
+
+	scheme := "tcp"
+	port := settings.Port
+	if port == 0 {
+		port = 1883
+	}
+	if settings.UseTLS {
+		scheme = "ssl"
+	}
+	brokerURL := fmt.Sprintf("%s://%s:%d", scheme, settings.Broker, port)
+
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(brokerURL)
+	opts.SetClientID(fmt.Sprintf("jetkvm-%s-test", GetDeviceID()))
+	opts.SetUsername(settings.Username)
+	opts.SetPassword(settings.Password)
+	opts.SetAutoReconnect(false)
+	opts.SetConnectRetry(false)
+	opts.SetConnectTimeout(testMqttConnectionTimeout)
+
+	if settings.UseTLS {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: settings.TLSInsecure, //nolint:gosec
+		}
+		if !settings.TLSInsecure {
+			tlsConfig.RootCAs = rootcerts.ServerCertPool()
+		}
+		opts.SetTLSConfig(tlsConfig)
+	}
+
+	client := mqtt.NewClient(opts)
+	token := client.Connect()
+	token.Wait()
+
+	if err := token.Error(); err != nil {
+		return MQTTTestResult{Error: err.Error()}, nil
+	}
+
+	client.Disconnect(250)
+	return MQTTTestResult{Success: true}, nil
 }
 
 // restartMQTT stops the existing MQTT connection and starts a new one if enabled.
