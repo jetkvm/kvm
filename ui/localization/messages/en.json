@@ -1049,5 +1049,19 @@
     "wake_on_lan_invalid_mac": "Invalid MAC address",
     "wake_on_lan_magic_sent_success": "Magic Packet sent successfully",
     "welcome_to_jetkvm": "Welcome to JetKVM",
-    "welcome_to_jetkvm_description": "Control any computer remotely"
+    "welcome_to_jetkvm_description": "Control any computer remotely",
+    "offline_update_title": "Offline Update",
+    "offline_update_description": "Upload an offline update archive (.tar.gz) downloaded from JetKVM releases.",
+    "offline_update_app_label": "App Update",
+    "offline_update_system_label": "System Update",
+    "offline_update_select_file": "Select File",
+    "offline_update_uploading": "Uploading…",
+    "offline_update_verifying": "Verifying…",
+    "offline_update_verified": "Verified",
+    "offline_update_applying": "Applying update…",
+    "offline_update_apply": "Apply Update",
+    "offline_update_hash_ok": "Hash verified",
+    "offline_update_signature_ok": "Signature verified",
+    "offline_update_error": "Upload failed: {error}",
+    "offline_update_invalid_file": "Please select a .tar.gz archive"
 }

@@ -313,6 +313,21 @@ _build_release_inner: build_native
 		$(GO_RELEASE_BUILD_ARGS) \
 		-o $(BIN_DIR)/jetkvm_app cmd/main.go
 
+# Package a signed app binary into an offline update archive.
+# Expects bin/jetkvm_app, bin/jetkvm_app.sha256, bin/jetkvm_app.sig,
+# and bin/jetkvm_app.pub to already exist (produced by the signing step
+# in release/test_production_release).
+offline_archive_app:
+	@echo "Creating offline update archive for app..."
+	@for f in jetkvm_app jetkvm_app.sha256 jetkvm_app.sig jetkvm_app.pub; do \
+		if [ ! -f "$(BIN_DIR)/$$f" ]; then \
+			echo "Error: $(BIN_DIR)/$$f not found. Run signing step first."; exit 1; \
+		fi; \
+	done
+	tar czf $(BIN_DIR)/jetkvm_app_offline_update.tar.gz \
+		-C $(BIN_DIR) jetkvm_app jetkvm_app.sha256 jetkvm_app.sig jetkvm_app.pub
+	@echo "✓ Created $(BIN_DIR)/jetkvm_app_offline_update.tar.gz"
+
 release: git_check_dev check_r2
 	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
 		echo "Error: SIGNING_KEY_FPR is required for releases"; \
@@ -365,11 +380,13 @@ release: git_check_dev check_r2
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app.sig r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sig
+	$(MAKE) offline_archive_app
+	rclone copyto bin/jetkvm_app_offline_update.tar.gz r2://jetkvm-update/app/$(VERSION)/jetkvm_app_offline_update.tar.gz
 	./scripts/deploy_cloud_app.sh -v $(VERSION) --set-as-default --skip-confirmation
 	@git tag release/$(VERSION)
 	@git push origin release/$(VERSION)
 	prev_prod=$$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName'); \
-	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 bin/jetkvm_app.sig \
+	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 bin/jetkvm_app.sig bin/jetkvm_app_offline_update.tar.gz \
 		--title "$(VERSION)" \
 		--generate-notes \
 		--notes-start-tag "$$prev_prod" \

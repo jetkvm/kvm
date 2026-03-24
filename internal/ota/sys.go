@@ -49,6 +49,23 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 
 	l.Info().Msg("System update downloaded")
 
+	if err := s.applySystemImage(systemUpdate); err != nil {
+		return err
+	}
+
+	s.rebootNeeded = true
+	systemUpdate.updateProgress = 1
+	systemUpdate.updatedAt = verifyFinished
+	s.triggerComponentUpdateState("system", systemUpdate)
+
+	return nil
+}
+
+// applySystemImage runs rk_ota to flash a verified system tar that is
+// already staged at systemUpdatePath.
+func (s *State) applySystemImage(systemUpdate *componentUpdateStatus) error {
+	l := s.l.With().Str("path", systemUpdatePath).Logger()
+
 	l.Info().Msg("Starting rk_ota command")
 
 	cmd := exec.Command("rk_ota", "--misc=update", "--tar_path=/userdata/jetkvm/update_system.tar", "--save_dir=/userdata/jetkvm/ota_save", "--partition=all")
@@ -82,20 +99,19 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 		}
 	}()
 
-	err = cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		cancel()
+		rkLogger := s.l.With().
+			Str("output", b.String()).
+			Int("exitCode", cmd.ProcessState.ExitCode()).Logger()
+		return s.componentUpdateError("Error executing rk_ota command", err, &rkLogger)
+	}
 	cancel()
+
 	rkLogger := s.l.With().
 		Str("output", b.String()).
 		Int("exitCode", cmd.ProcessState.ExitCode()).Logger()
-	if err != nil {
-		return s.componentUpdateError("Error executing rk_ota command", err, &rkLogger)
-	}
 	rkLogger.Info().Msg("rk_ota success")
-
-	s.rebootNeeded = true
-	systemUpdate.updateProgress = 1
-	systemUpdate.updatedAt = verifyFinished
-	s.triggerComponentUpdateState("system", systemUpdate)
 
 	return nil
 }
