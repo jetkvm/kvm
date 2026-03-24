@@ -1,4 +1,4 @@
-package kvm
+package tailscale
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseTailscaleStatus(t *testing.T) {
+func TestParseStatus(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
@@ -53,7 +53,7 @@ func TestParseTailscaleStatus(t *testing.T) {
 			wantRunning: false,
 			wantState:   "NeedsLogin",
 			wantAuthURL: "https://login.tailscale.com/a/abc123",
-			wantControl: tailscaleDefaultControlURL,
+			wantControl: DefaultControlURL,
 		},
 		{
 			name: "stopped",
@@ -77,7 +77,7 @@ func TestParseTailscaleStatus(t *testing.T) {
 			controlURL:  "",
 			wantRunning: false,
 			wantState:   "Starting",
-			wantControl: tailscaleDefaultControlURL,
+			wantControl: DefaultControlURL,
 		},
 		{
 			name:       "invalid json",
@@ -108,7 +108,7 @@ func TestParseTailscaleStatus(t *testing.T) {
 			controlURL:   "",
 			wantRunning:  true,
 			wantState:    "Running",
-			wantControl:  tailscaleDefaultControlURL,
+			wantControl:  DefaultControlURL,
 			wantHostName: "test-node",
 			wantIPs:      []string{},
 		},
@@ -116,7 +116,7 @@ func TestParseTailscaleStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status, err := parseTailscaleStatus([]byte(tt.input), tt.controlURL)
+			status, err := ParseStatus([]byte(tt.input), tt.controlURL)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
@@ -142,49 +142,46 @@ func TestParseTailscaleStatus(t *testing.T) {
 	}
 }
 
-func TestNormalizeTailscaleControlURL(t *testing.T) {
+func TestNormalizeControlURL(t *testing.T) {
 	t.Run("empty means default", func(t *testing.T) {
-		got, err := normalizeTailscaleControlURL("")
+		got, err := NormalizeControlURL("")
 		require.NoError(t, err)
 		assert.Equal(t, "", got)
 	})
 
 	t.Run("valid URL trimmed", func(t *testing.T) {
-		got, err := normalizeTailscaleControlURL(" https://headscale.example.com/ ")
+		got, err := NormalizeControlURL(" https://headscale.example.com/ ")
 		require.NoError(t, err)
 		assert.Equal(t, "https://headscale.example.com", got)
 	})
 
 	t.Run("rejects path", func(t *testing.T) {
-		_, err := normalizeTailscaleControlURL("https://headscale.example.com/api")
+		_, err := NormalizeControlURL("https://headscale.example.com/api")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "path")
 	})
 
 	t.Run("rejects invalid scheme", func(t *testing.T) {
-		_, err := normalizeTailscaleControlURL("ftp://headscale.example.com")
+		_, err := NormalizeControlURL("ftp://headscale.example.com")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "http:// or https://")
 	})
 }
 
-func TestGetTailscaleStatus_NotInstalled(t *testing.T) {
-	origCheck := checkTailscaleInstalled
-	origExec := execTailscaleCommand
-	origConfig := config
+func TestGetStatus_NotInstalled(t *testing.T) {
+	origCheck := CheckInstalled
+	origExec := ExecCommand
 	defer func() {
-		checkTailscaleInstalled = origCheck
-		execTailscaleCommand = origExec
-		config = origConfig
+		CheckInstalled = origCheck
+		ExecCommand = origExec
 	}()
 
-	config = &Config{TailscaleControlURL: "https://headscale.example.com"}
-	checkTailscaleInstalled = func() bool { return false }
-	execTailscaleCommand = func(_ ...string) ([]byte, error) {
+	CheckInstalled = func() bool { return false }
+	ExecCommand = func(_ ...string) ([]byte, error) {
 		return nil, fmt.Errorf("should not be called")
 	}
 
-	status, err := getTailscaleStatus()
+	status, err := GetStatus("https://headscale.example.com", nil)
 	require.NoError(t, err)
 	require.NotNil(t, status)
 	assert.False(t, status.Installed)
@@ -192,44 +189,38 @@ func TestGetTailscaleStatus_NotInstalled(t *testing.T) {
 	assert.Equal(t, "https://headscale.example.com", status.ControlURL)
 }
 
-func TestGetTailscaleStatus_ExecFailure(t *testing.T) {
-	origCheck := checkTailscaleInstalled
-	origExec := execTailscaleCommand
-	origConfig := config
+func TestGetStatus_ExecFailure(t *testing.T) {
+	origCheck := CheckInstalled
+	origExec := ExecCommand
 	defer func() {
-		checkTailscaleInstalled = origCheck
-		execTailscaleCommand = origExec
-		config = origConfig
+		CheckInstalled = origCheck
+		ExecCommand = origExec
 	}()
 
-	config = &Config{}
-	checkTailscaleInstalled = func() bool { return true }
-	execTailscaleCommand = func(args ...string) ([]byte, error) {
+	CheckInstalled = func() bool { return true }
+	ExecCommand = func(args ...string) ([]byte, error) {
 		require.Equal(t, []string{"status", "--json"}, args)
 		return nil, fmt.Errorf("connection refused")
 	}
 
-	status, err := getTailscaleStatus()
+	status, err := GetStatus("", nil)
 	require.NoError(t, err)
 	require.NotNil(t, status)
 	assert.True(t, status.Installed)
 	assert.False(t, status.Running)
-	assert.Equal(t, tailscaleDefaultControlURL, status.ControlURL)
+	assert.Equal(t, DefaultControlURL, status.ControlURL)
 }
 
-func TestGetTailscaleStatus_ValidJSON(t *testing.T) {
-	origCheck := checkTailscaleInstalled
-	origExec := execTailscaleCommand
-	origConfig := config
+func TestGetStatus_ValidJSON(t *testing.T) {
+	origCheck := CheckInstalled
+	origExec := ExecCommand
 	defer func() {
-		checkTailscaleInstalled = origCheck
-		execTailscaleCommand = origExec
-		config = origConfig
+		CheckInstalled = origCheck
+		ExecCommand = origExec
 	}()
 
-	config = &Config{TailscaleControlURL: "https://headscale.example.com"}
-	checkTailscaleInstalled = func() bool { return true }
-	execTailscaleCommand = func(args ...string) ([]byte, error) {
+	CheckInstalled = func() bool { return true }
+	ExecCommand = func(args ...string) ([]byte, error) {
 		require.Equal(t, []string{"status", "--json"}, args)
 		return []byte(`{
 			"BackendState": "Running",
@@ -244,7 +235,7 @@ func TestGetTailscaleStatus_ValidJSON(t *testing.T) {
 		}`), nil
 	}
 
-	status, err := getTailscaleStatus()
+	status, err := GetStatus("https://headscale.example.com", nil)
 	require.NoError(t, err)
 	require.NotNil(t, status)
 	assert.True(t, status.Installed)
@@ -255,122 +246,93 @@ func TestGetTailscaleStatus_ValidJSON(t *testing.T) {
 	assert.Equal(t, []string{"100.64.0.1"}, status.Self.TailscaleIPs)
 }
 
-func TestApplyTailscaleControlURL_SetOnly(t *testing.T) {
-	origExec := execTailscaleCommand
-	defer func() { execTailscaleCommand = origExec }()
+func TestApplyControlURL_SetOnly(t *testing.T) {
+	origExec := ExecCommand
+	defer func() { ExecCommand = origExec }()
 
 	var commands [][]string
-	execTailscaleCommand = func(args ...string) ([]byte, error) {
+	ExecCommand = func(args ...string) ([]byte, error) {
 		commands = append(commands, append([]string{}, args...))
 		return []byte("ok"), nil
 	}
 
-	err := applyTailscaleControlURL("https://headscale.example.com")
+	err := ApplyControlURL("https://headscale.example.com")
 	require.NoError(t, err)
 	require.Len(t, commands, 1)
 	assert.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, commands[0])
 }
 
-func TestApplyTailscaleControlURL_SetFailureReturnedWithoutFallback(t *testing.T) {
-	origExec := execTailscaleCommand
-	defer func() { execTailscaleCommand = origExec }()
+func TestApplyControlURL_SetFailure(t *testing.T) {
+	origExec := ExecCommand
+	defer func() { ExecCommand = origExec }()
 
 	var commands [][]string
-	execTailscaleCommand = func(args ...string) ([]byte, error) {
+	ExecCommand = func(args ...string) ([]byte, error) {
 		commands = append(commands, append([]string{}, args...))
 		return nil, fmt.Errorf("unknown command")
 	}
 
-	err := applyTailscaleControlURL("https://headscale.example.com")
+	err := ApplyControlURL("https://headscale.example.com")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to apply login server")
 	require.Len(t, commands, 1)
 	assert.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, commands[0])
 }
 
-func TestRPCSetTailscaleControlURL_SaveAndApply(t *testing.T) {
-	origCheck := checkTailscaleInstalled
-	origExec := execTailscaleCommand
-	origSave := saveTailscaleConfig
-	origConfig := config
+func TestSetControlURL_InstalledAppliesAndReturnsNormalized(t *testing.T) {
+	origCheck := CheckInstalled
+	origExec := ExecCommand
 	defer func() {
-		checkTailscaleInstalled = origCheck
-		execTailscaleCommand = origExec
-		saveTailscaleConfig = origSave
-		config = origConfig
+		CheckInstalled = origCheck
+		ExecCommand = origExec
 	}()
 
-	config = &Config{}
-	checkTailscaleInstalled = func() bool { return true }
-	var callOrder []string
-	saveTailscaleConfig = func() error {
-		callOrder = append(callOrder, "save")
-		return nil
-	}
-
+	CheckInstalled = func() bool { return true }
 	var commands [][]string
-	execTailscaleCommand = func(args ...string) ([]byte, error) {
-		callOrder = append(callOrder, "apply")
+	ExecCommand = func(args ...string) ([]byte, error) {
 		commands = append(commands, append([]string{}, args...))
 		return []byte("ok"), nil
 	}
 
-	err := rpcSetTailscaleControlURL("https://headscale.example.com/")
+	normalized, err := SetControlURL("https://headscale.example.com/")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"apply", "save"}, callOrder)
-	assert.Equal(t, "https://headscale.example.com", config.TailscaleControlURL)
+	assert.Equal(t, "https://headscale.example.com", normalized)
 	require.Len(t, commands, 1)
 	assert.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, commands[0])
 }
 
-func TestRPCSetTailscaleControlURL_ApplyFailureDoesNotSaveOrPersistConfig(t *testing.T) {
-	origCheck := checkTailscaleInstalled
-	origExec := execTailscaleCommand
-	origSave := saveTailscaleConfig
-	origConfig := config
+func TestSetControlURL_ApplyFailureReturnsError(t *testing.T) {
+	origCheck := CheckInstalled
+	origExec := ExecCommand
 	defer func() {
-		checkTailscaleInstalled = origCheck
-		execTailscaleCommand = origExec
-		saveTailscaleConfig = origSave
-		config = origConfig
+		CheckInstalled = origCheck
+		ExecCommand = origExec
 	}()
 
-	config = &Config{TailscaleControlURL: "https://previous.example.com"}
-	checkTailscaleInstalled = func() bool { return true }
-	saveTailscaleConfig = func() error {
-		t.Fatal("save should not be called when apply fails")
-		return nil
-	}
-	execTailscaleCommand = func(args ...string) ([]byte, error) {
-		require.Equal(t, []string{"set", "--login-server=https://headscale.example.com"}, args)
+	CheckInstalled = func() bool { return true }
+	ExecCommand = func(args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("apply failed")
 	}
 
-	err := rpcSetTailscaleControlURL("https://headscale.example.com")
+	_, err := SetControlURL("https://headscale.example.com")
 	require.Error(t, err)
-	assert.Equal(t, "https://previous.example.com", config.TailscaleControlURL)
 }
 
-func TestRPCSetTailscaleControlURL_NotInstalledSkipsApply(t *testing.T) {
-	origCheck := checkTailscaleInstalled
-	origExec := execTailscaleCommand
-	origSave := saveTailscaleConfig
-	origConfig := config
+func TestSetControlURL_NotInstalledSkipsApply(t *testing.T) {
+	origCheck := CheckInstalled
+	origExec := ExecCommand
 	defer func() {
-		checkTailscaleInstalled = origCheck
-		execTailscaleCommand = origExec
-		saveTailscaleConfig = origSave
-		config = origConfig
+		CheckInstalled = origCheck
+		ExecCommand = origExec
 	}()
 
-	config = &Config{}
-	checkTailscaleInstalled = func() bool { return false }
-	saveTailscaleConfig = func() error { return nil }
-	execTailscaleCommand = func(_ ...string) ([]byte, error) {
-		return nil, fmt.Errorf("should not be called")
+	CheckInstalled = func() bool { return false }
+	ExecCommand = func(_ ...string) ([]byte, error) {
+		t.Fatal("exec should not be called when not installed")
+		return nil, nil
 	}
 
-	err := rpcSetTailscaleControlURL("")
+	normalized, err := SetControlURL("")
 	require.NoError(t, err)
-	assert.Equal(t, "", config.TailscaleControlURL)
+	assert.Equal(t, "", normalized)
 }
