@@ -9,12 +9,17 @@ import { useJsonRpc } from "@hooks/useJsonRpc";
 import notifications from "@/notifications";
 
 const defaultControlURL = "https://controlplane.tailscale.com";
+const controlServerModeDefault = "default";
+const controlServerModeCustom = "custom";
+type ControlServerMode = typeof controlServerModeDefault | typeof controlServerModeCustom;
 
 export default function TailscaleCard() {
   const { send } = useJsonRpc();
 
   const [status, setStatus] = useState<TailscaleStatus | null>(null);
   const [controlURLInput, setControlURLInput] = useState("");
+  const [controlServerMode, setControlServerMode] =
+    useState<ControlServerMode>(controlServerModeDefault);
   const [isSavingControlURL, setIsSavingControlURL] = useState(false);
 
   const refreshStatus = useCallback(() => {
@@ -25,15 +30,23 @@ export default function TailscaleCard() {
       }
       const nextStatus = resp.result as TailscaleStatus;
       setStatus(nextStatus);
-      setControlURLInput(
-        nextStatus.controlURL === defaultControlURL ? "" : (nextStatus.controlURL ?? ""),
-      );
+      const activeControlURL = nextStatus.controlURL ?? defaultControlURL;
+      if (activeControlURL === defaultControlURL) {
+        setControlServerMode(controlServerModeDefault);
+        setControlURLInput("");
+      } else {
+        setControlServerMode(controlServerModeCustom);
+        setControlURLInput(activeControlURL);
+      }
     });
   }, [send]);
 
   const saveControlURL = useCallback(() => {
     setIsSavingControlURL(true);
-    send("setTailscaleControlURL", { controlURL: controlURLInput }, resp => {
+    const nextControlURL =
+      controlServerMode === controlServerModeDefault ? "" : controlURLInput.trim();
+
+    send("setTailscaleControlURL", { controlURL: nextControlURL }, resp => {
       setIsSavingControlURL(false);
       if ("error" in resp) {
         const errorMessage =
@@ -45,7 +58,7 @@ export default function TailscaleCard() {
       notifications.success("Tailscale control server updated");
       refreshStatus();
     });
-  }, [controlURLInput, refreshStatus, send]);
+  }, [controlServerMode, controlURLInput, refreshStatus, send]);
 
   useEffect(() => {
     refreshStatus();
@@ -82,14 +95,26 @@ export default function TailscaleCard() {
           </div>
 
           <div className="space-y-2 border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
-            <InputFieldWithLabel
-              size="SM"
-              label="Control Server URL"
-              placeholder="https://headscale.example.com"
-              value={controlURLInput}
-              onChange={e => setControlURLInput(e.target.value)}
-              description="Leave empty to use the default Tailscale control server."
-            />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium">Control Server</label>
+              <select
+                className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                value={controlServerMode}
+                onChange={e => setControlServerMode(e.target.value as ControlServerMode)}
+              >
+                <option value={controlServerModeDefault}>Default</option>
+                <option value={controlServerModeCustom}>Custom</option>
+              </select>
+            </div>
+            {controlServerMode === controlServerModeCustom && (
+              <InputFieldWithLabel
+                size="SM"
+                label="Custom Control Server URL"
+                placeholder="https://headscale.example.com"
+                value={controlURLInput}
+                onChange={e => setControlURLInput(e.target.value)}
+              />
+            )}
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-slate-600 dark:text-slate-400">
                 Active: {status.controlURL ?? defaultControlURL}

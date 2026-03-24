@@ -259,23 +259,12 @@ JetKVM exposes Tailscale control-server configuration through JSON-RPC so self-h
 - `getTailscaleControlURL` returns the effective control server URL
 - `setTailscaleControlURL` updates and persists the URL (empty value resets to default)
 
-Example JSON-RPC payloads:
-
-```bash
-curl -X POST http://<IP>/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"setTailscaleControlURL","params":{"controlURL":"https://headscale.example.com"},"id":1}'
-
-curl -X POST http://<IP>/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"getTailscaleStatus","params":{},"id":2}'
-```
-
 Notes:
 
 - URLs must be `http://` or `https://` and include a host.
 - Query strings, fragments, user info, and non-root paths are rejected.
-- If `tailscale set --login-server` is unavailable on the target client, JetKVM falls back to `tailscale up --login-server`.
+- Control server changes are applied with `tailscale set --login-server=...`.
+- When apply fails, the previous configured URL is restored and not persisted.
 
 
 ### End to End Testing
