@@ -947,5 +947,8 @@
     "wake_on_lan_invalid_mac": "Ugyldig MAC-adresse",
     "wake_on_lan_magic_sent_success": "Magisk pakke sendt",
     "welcome_to_jetkvm": "Velkommen til JetKVM",
-    "welcome_to_jetkvm_description": "Fjernstyr enhver datamaskin"
+    "welcome_to_jetkvm_description": "Fjernstyr enhver datamaskin",
+    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
+    "macro_modifier_left": "Left",
+    "macro_modifier_right": "Right"
 }

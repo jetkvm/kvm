@@ -406,7 +406,7 @@ export default function SettingsAdvancedRoute() {
 
                 <div>
                   <CheckboxWithLabel
-                    label="I understand version changes may break my device and require factory reset"
+                    label={m.advanced_version_change_acknowledged_label()}
                     checked={versionChangeAcknowledged}
                     onChange={e => setVersionChangeAcknowledged(e.target.checked)}
                   />

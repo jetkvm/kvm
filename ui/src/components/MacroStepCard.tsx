@@ -14,10 +14,18 @@ import { m } from "@localizations/messages.js";
 // Filter out modifier keys since they're handled in the modifiers section
 const modifierKeyPrefixes = ["Alt", "Control", "Shift", "Meta"];
 
-const modifierOptions = Object.keys(modifiers).map(modifier => ({
-  value: modifier,
-  label: modifier.replace(/^(Control|Alt|Shift|Meta)(Left|Right)$/, "$1 $2"),
-}));
+const directionLabels: Record<string, () => string> = {
+  Left: () => m.macro_modifier_left(),
+  Right: () => m.macro_modifier_right(),
+};
+
+const modifierOptions = Object.keys(modifiers).map(modifier => {
+  const match = modifier.match(/^(Control|Alt|Shift|Meta)(Left|Right)$/);
+  const label = match
+    ? `${match[1]} ${directionLabels[match[2]]()}`
+    : modifier;
+  return { value: modifier, label };
+});
 
 const groupedModifiers: Record<string, typeof modifierOptions> = {
   Control: modifierOptions.filter(mod => mod.value.startsWith("Control")),

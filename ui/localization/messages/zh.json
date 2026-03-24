@@ -947,5 +947,8 @@
     "wake_on_lan_invalid_mac": "无效的 MAC 地址。",
     "wake_on_lan_magic_sent_success": "“魔术包”发送成功。",
     "welcome_to_jetkvm": "欢迎使用 JetKVM",
-    "welcome_to_jetkvm_description": "远程控制您的任意计算机"
+    "welcome_to_jetkvm_description": "远程控制您的任意计算机",
+    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
+    "macro_modifier_left": "Left",
+    "macro_modifier_right": "Right"
 }

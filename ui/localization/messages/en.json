@@ -973,5 +973,8 @@
     "wake_on_lan_invalid_mac": "Invalid MAC address",
     "wake_on_lan_magic_sent_success": "Magic Packet sent successfully",
     "welcome_to_jetkvm": "Welcome to JetKVM",
-    "welcome_to_jetkvm_description": "Control any computer remotely"
+    "welcome_to_jetkvm_description": "Control any computer remotely",
+    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
+    "macro_modifier_left": "Left",
+    "macro_modifier_right": "Right"
 }
