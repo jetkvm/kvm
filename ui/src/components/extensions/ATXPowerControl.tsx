@@ -109,11 +109,11 @@ export function ATXPowerControl() {
       />
 
       {atxState === null ? (
-        <Card className="flex h-[120px] items-center justify-center p-3">
+        <Card className="flex min-h-[120px] items-center justify-center p-3">
           <LoadingSpinner className="h-6 w-6 text-blue-500 dark:text-blue-400" />
         </Card>
       ) : (
-        <Card className="h-[120px] animate-fadeIn opacity-0">
+        <Card className="min-h-[120px] animate-fadeIn opacity-0">
           <div className="space-y-4 p-3">
             {/* Control Buttons */}
             <div className="flex items-center space-x-2">
@@ -147,6 +147,7 @@ export function ATXPowerControl() {
                 }}
               />
             </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{m.atx_power_control_hold_hint()}</p>
 
             <hr className="border-slate-700/30 dark:border-slate-600/30" />
             {/* Status Indicators */}
