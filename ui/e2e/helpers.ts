@@ -80,6 +80,10 @@ export async function sendKeypress(page: Page, keyCode: number, press: boolean):
   );
 }
 
+export async function sendText(page: Page, text: string): Promise<void> {
+  await page.evaluate(t => window.__kvmTestHooks?.sendText(t), text);
+}
+
 export async function tapKey(page: Page, keyCode: number, holdMs = 20): Promise<void> {
   await sendKeypress(page, keyCode, true);
   await page.waitForTimeout(holdMs);
@@ -129,7 +133,9 @@ export async function waitForVideoDimensions(
     .poll(
       async () => {
         dims = await getVideoStreamDimensions(page);
-        return dims !== null && dims.width > MIN_VIDEO_DIMENSION && dims.height > MIN_VIDEO_DIMENSION;
+        return (
+          dims !== null && dims.width > MIN_VIDEO_DIMENSION && dims.height > MIN_VIDEO_DIMENSION
+        );
       },
       {
         message: "Waiting for video dimensions to be available",
@@ -501,9 +507,7 @@ export async function loginLocal(
     page
       .waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 })
       .then(() => "navigated" as const),
-    errorLocator
-      .waitFor({ state: "visible", timeout: 5000 })
-      .then(() => "error" as const),
+    errorLocator.waitFor({ state: "visible", timeout: 5000 }).then(() => "error" as const),
   ]).catch(() => "timeout" as const);
 
   if (outcome === "navigated") {
@@ -699,9 +703,10 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
 
   if (currentUrl.includes("/login")) {
     // Device has password protection - try to login with known passwords
-    const passwordsToTry = desired.mode === "password"
-      ? [desired.password, ...KNOWN_TEST_PASSWORDS.filter(p => p !== desired.password)]
-      : [...KNOWN_TEST_PASSWORDS];
+    const passwordsToTry =
+      desired.mode === "password"
+        ? [desired.password, ...KNOWN_TEST_PASSWORDS.filter(p => p !== desired.password)]
+        : [...KNOWN_TEST_PASSWORDS];
 
     let loggedIn = false;
     let usedPassword: string | null = null;
@@ -881,10 +886,17 @@ export async function callJsonRpc(
       return new Promise((resolve, reject) => {
         const hooks = window.__kvmTestHooks;
         if (!hooks) return reject(new Error("Test hooks not available"));
-        hooks.sendJsonRpc(method, params, (resp: { error?: { message: string; data?: string }; result?: unknown }) => {
-          if (resp.error) reject(new Error(`${resp.error.message}${resp.error.data ? `: ${resp.error.data}` : ""}`));
-          else resolve(resp.result);
-        });
+        hooks.sendJsonRpc(
+          method,
+          params,
+          (resp: { error?: { message: string; data?: string }; result?: unknown }) => {
+            if (resp.error)
+              reject(
+                new Error(`${resp.error.message}${resp.error.data ? `: ${resp.error.data}` : ""}`),
+              );
+            else resolve(resp.result);
+          },
+        );
       });
     },
     { method, params },
@@ -1095,17 +1107,19 @@ export interface StableReleaseInfo {
 export async function fetchLatestStableRelease(): Promise<StableReleaseInfo> {
   const url = "https://api.jetkvm.com/releases?deviceId=e2e-test";
   const body = await new Promise<string>((resolve, reject) => {
-    https.get(url, res => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`Release API returned ${res.statusCode}`));
-        res.resume();
-        return;
-      }
-      let data = "";
-      res.on("data", chunk => (data += chunk));
-      res.on("end", () => resolve(data));
-      res.on("error", reject);
-    }).on("error", reject);
+    https
+      .get(url, res => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Release API returned ${res.statusCode}`));
+          res.resume();
+          return;
+        }
+        let data = "";
+        res.on("data", chunk => (data += chunk));
+        res.on("end", () => resolve(data));
+        res.on("error", reject);
+      })
+      .on("error", reject);
   });
 
   const json = JSON.parse(body);
@@ -1121,20 +1135,27 @@ export async function downloadFile(url: string, destPath: string): Promise<void>
 
   await new Promise<void>((resolve, reject) => {
     const request = (requestUrl: string) => {
-      proto.get(requestUrl, res => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          request(res.headers.location);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`Download failed: ${res.statusCode} for ${requestUrl}`));
-          res.resume();
-          return;
-        }
-        res.pipe(file);
-        file.on("finish", () => file.close(() => resolve()));
-        res.on("error", reject);
-      }).on("error", reject);
+      proto
+        .get(requestUrl, res => {
+          if (
+            res.statusCode &&
+            res.statusCode >= 300 &&
+            res.statusCode < 400 &&
+            res.headers.location
+          ) {
+            request(res.headers.location);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            reject(new Error(`Download failed: ${res.statusCode} for ${requestUrl}`));
+            res.resume();
+            return;
+          }
+          res.pipe(file);
+          file.on("finish", () => file.close(() => resolve()));
+          res.on("error", reject);
+        })
+        .on("error", reject);
     };
     request(url);
   });
@@ -1236,6 +1257,7 @@ declare global {
       isWebRTCConnected: () => boolean;
       isHidRpcReady: () => boolean;
       isVideoStreamActive: () => boolean;
+      sendText: (text: string) => Promise<void>;
       sendTerminalCommand: (command: string) => boolean;
       isTerminalReady: () => boolean;
     };

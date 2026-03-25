@@ -56,6 +56,7 @@ import { m } from "@localizations/messages.js";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
+import { keyboards } from "@/keyboardLayouts";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -880,6 +881,15 @@ export default function KvmIdRoute() {
       getVideoElement: () => useVideoStore.getState().videoElement,
       getKvmTerminal: () => useRTCStore.getState().terminalChannel,
       getRpcDataChannel: () => useRTCStore.getState().rpcDataChannel,
+      getKeyboardLayout: () => {
+        const { keyboardLayout } = useSettingsStore.getState();
+        const isoCode = (keyboardLayout || "en-US").replace("en_US", "en-US");
+        return (
+          keyboards.find(kb => kb.isoCode === isoCode) ??
+          keyboards.find(kb => kb.isoCode === "en-US") ??
+          null
+        );
+      },
     });
     return cleanupTestHooks;
   }, [handleKeyPress, handleAbsMouseMove]);
