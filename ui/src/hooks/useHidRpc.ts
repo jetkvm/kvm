@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Logger } from "tslog";
 
 import { useRTCStore } from "@hooks/stores";
@@ -247,10 +247,20 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     [sendMessage],
   );
 
+  const lastAbsButtons = useRef(0);
+
   const reportAbsMouseEvent = useCallback(
     (x: number, y: number, buttons: number) => {
+      const buttonsChanged = buttons !== lastAbsButtons.current;
+      lastAbsButtons.current = buttons;
+
       sendMessage(new PointerReportMessage(x, y, buttons), {
-        useUnreliableChannel: true,
+        // Use the reliable channel for button state changes to guarantee delivery.
+        // Movement-only events use the unreliable channel for lower latency;
+        // lost movement packets self-correct via subsequent mousemove events,
+        // but button-only changes (pointerdown/pointerup without movement) have
+        // no such redundancy and must not be dropped.
+        useUnreliableChannel: !buttonsChanged,
       });
     },
     [sendMessage],

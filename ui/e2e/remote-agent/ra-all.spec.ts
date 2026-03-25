@@ -901,6 +901,54 @@ test.describe("Remote Host Agent", () => {
     }
   });
 
+  test("mouse: multi-button combinations (hold left, press right)", async () => {
+    const BTN_LEFT = 0x110; // 272
+    const BTN_RIGHT = 0x111; // 273
+
+    // Move mouse to a stable position first
+    await sendAbsMouseMove(sharedPage, 16384, 16384);
+    await new Promise(r => setTimeout(r, 100));
+
+    let successes = 0;
+    const attempts = 20;
+
+    for (let i = 0; i < attempts; i++) {
+      await agent!.clearMouseEvents();
+
+      // Press left button (buttons bitmask: 1 = left)
+      await sendAbsMouseMove(sharedPage, 16384, 16384, 1);
+      await new Promise(r => setTimeout(r, 100));
+
+      // While holding left, press right button (buttons bitmask: 3 = left + right)
+      await sendAbsMouseMove(sharedPage, 16384, 16384, 3);
+      await new Promise(r => setTimeout(r, 100));
+
+      // Release right button, left still held (buttons bitmask: 1 = left)
+      await sendAbsMouseMove(sharedPage, 16384, 16384, 1);
+      await new Promise(r => setTimeout(r, 100));
+
+      // Release all buttons (buttons bitmask: 0)
+      await sendAbsMouseMove(sharedPage, 16384, 16384, 0);
+      await new Promise(r => setTimeout(r, 150));
+
+      const events = await agent!.getMouseEvents();
+      const buttonEvents = events.filter(ev => ev.type === "mouse_button");
+
+      // We expect to see button events for both left and right buttons
+      const leftPress = buttonEvents.find(ev => ev.code === BTN_LEFT && ev.value === 1);
+      const rightPress = buttonEvents.find(ev => ev.code === BTN_RIGHT && ev.value === 1);
+      const rightRelease = buttonEvents.find(ev => ev.code === BTN_RIGHT && ev.value === 0);
+      const leftRelease = buttonEvents.find(ev => ev.code === BTN_LEFT && ev.value === 0);
+
+      if (leftPress && rightPress && rightRelease && leftRelease) {
+        successes++;
+      }
+    }
+
+    // All attempts must succeed — button state changes must be reliably delivered
+    expect(successes, `Multi-button succeeded ${successes}/${attempts} times`).toBe(attempts);
+  });
+
   // ═══════════════════════════════════════════
   // MOUSE: BLUR DOES NOT JUMP TO TOP-LEFT (#392)
   // ═══════════════════════════════════════════

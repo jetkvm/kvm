@@ -62,7 +62,7 @@ type InputEvent struct {
 	Time   int64  `json:"time_ms"`
 	Type   string `json:"type"`             // "key_press", "key_release", "key_repeat", "mouse_move_rel", "mouse_move_abs", "mouse_button"
 	Code   uint16 `json:"code"`             // Linux key code or axis
-	Value  int32  `json:"value,omitempty"`   // Key: 0/1/2, Mouse: delta or position
+	Value  int32  `json:"value"`             // Key: 0/1/2, Mouse: delta or position
 	X      int32  `json:"x"`                 // Mouse X (for move events)
 	Y      int32  `json:"y"`                 // Mouse Y (for move events)
 	Device string `json:"device,omitempty"`  // Source device name
