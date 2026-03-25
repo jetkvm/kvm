@@ -66,7 +66,22 @@ func setMassStorageMode(cdrom bool) error {
 		return nil
 	}
 
-	return gadget.UpdateGadgetConfig()
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		return err
+	}
+
+	// USB gadget was rebound — HID device nodes were recreated.
+	// Reset stale file handles so subsequent HID writes use fresh descriptors.
+	gadget.ResetHIDFiles()
+
+	// Give the kernel time to attach the HID function driver to new device nodes.
+	time.Sleep(1 * time.Second)
+
+	if err := gadget.OpenKeyboardHidFile(); err != nil {
+		usbLogger.Warn().Err(err).Msg("failed to reopen keyboard HID file after mass storage mode change")
+	}
+
+	return nil
 }
 
 func mountImage(imagePath string) error {
