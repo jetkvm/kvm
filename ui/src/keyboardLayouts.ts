@@ -39,6 +39,7 @@ import { hu_HU } from "@/keyboardLayouts/hu_HU";
 import { it_IT } from "@/keyboardLayouts/it_IT";
 import { ja_JP } from "@/keyboardLayouts/ja_JP";
 import { nb_NO } from "@/keyboardLayouts/nb_NO";
+import { pt_PT } from "@/keyboardLayouts/pt_PT";
 import { sv_SE } from "@/keyboardLayouts/sv_SE";
 import { sl_SI } from "@/keyboardLayouts/sl_SI";
 import { ru_RU } from "@/keyboardLayouts/ru_RU";
@@ -58,6 +59,7 @@ export const keyboards: KeyboardLayout[] = [
   it_IT,
   ja_JP,
   nb_NO,
+  pt_PT,
   sv_SE,
   sl_SI,
   ru_RU,
