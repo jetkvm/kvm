@@ -226,10 +226,17 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 	state := u.GetKeysDownState()
 	alreadyReleased := true
 
-	for i := range state.Keys {
-		if state.Keys[i] == key {
+	if mask, exists := KeyCodeToMaskMap[key]; exists {
+		// Modifier keys are tracked in state.Modifier bitmask, not in state.Keys
+		if state.Modifier&mask != 0 {
 			alreadyReleased = false
-			break
+		}
+	} else {
+		for i := range state.Keys {
+			if state.Keys[i] == key {
+				alreadyReleased = false
+				break
+			}
 		}
 	}
 

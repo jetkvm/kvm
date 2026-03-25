@@ -423,6 +423,8 @@ func newSession(config SessionConfig) (*Session, error) {
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
 				cancelKeyboardMacro()
+				// Release all keys to prevent stuck keys after disconnect
+				_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 				currentSession = nil
 			}
 			// Stop RPC processor
@@ -473,6 +475,8 @@ func onFirstSessionConnected() {
 }
 
 func onLastSessionDisconnected() {
+	// Safety net: ensure all keys are released when the last session disconnects
+	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 	_ = nativeInstance.VideoStop()
 	startVideoSleepModeTicker()
 }
