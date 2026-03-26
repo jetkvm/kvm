@@ -543,6 +543,215 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
+  // KEYBOARD: KEEPALIVE & AUTO-RELEASE
+  // ═══════════════════════════════════════════
+
+  test("keepalive: held key survives beyond 100ms with keepalives", async () => {
+    // The device-side auto-release timer fires at 100ms (DefaultAutoReleaseDuration).
+    // The browser sends keepalives every 50ms, each extending the timer by up to 100ms
+    // (baseExtension = expectedRate + maxLateness = 50ms + 50ms).
+    // A key held for 300ms via the browser must NOT auto-release prematurely.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0x04, true);
+    await new Promise(r => setTimeout(r, 300));
+    await sendKeypress(sharedPage, 0x04, false);
+    await new Promise(r => setTimeout(r, 150));
+
+    const events = await agent!.getKeyboardEvents();
+    const presses = events.filter(ev => ev.code === KEY.A && ev.type === "key_press");
+    const releases = events.filter(ev => ev.code === KEY.A && ev.type === "key_release");
+
+    expect(presses.length, "Key A should have been pressed").toBeGreaterThanOrEqual(1);
+    expect(releases.length, "Key A should have exactly one release").toBe(1);
+
+    const holdDuration = releases[0].time_ms - presses[0].time_ms;
+    expect(
+      holdDuration,
+      "Key should be held for at least 250ms (keepalives kept it alive)",
+    ).toBeGreaterThanOrEqual(250);
+  });
+
+  test("keepalive: auto-release fires at ~100ms without keepalives", async () => {
+    // Bypass the browser keepalive by using keypressReport RPC directly.
+    // The device schedules auto-release at 100ms (DefaultAutoReleaseDuration).
+    // After 300ms the key must have been auto-released.
+    await agent!.clearKeyboardEvents();
+
+    await callJsonRpc(sharedPage, "keypressReport", { key: 0x04, press: true });
+    await new Promise(r => setTimeout(r, 300));
+
+    const events = await agent!.getKeyboardEvents();
+    const presses = events.filter(ev => ev.code === KEY.A && ev.type === "key_press");
+    const releases = events.filter(ev => ev.code === KEY.A && ev.type === "key_release");
+
+    expect(presses.length, "Key A should have been pressed").toBeGreaterThanOrEqual(1);
+    expect(releases.length, "Key A should have auto-released").toBeGreaterThanOrEqual(1);
+
+    const holdDuration = releases[0].time_ms - presses[0].time_ms;
+    // Auto-release fires at 100ms. Allow some slack for scheduling jitter.
+    expect(holdDuration, "Auto-release should fire near 100ms").toBeLessThan(200);
+  });
+
+  test("keepalive: key auto-releases after window blur, no stuck keys on re-focus", async () => {
+    // When the browser loses focus, resetKeyboardState fires: cancels keepalives
+    // and sends a zero-key report. The device then auto-releases any held keys.
+    // On re-focus, no phantom presses should appear.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0x04, true);
+    await new Promise(r => setTimeout(r, 100));
+
+    // Blur triggers resetKeyboardState — cancels keepalives, sends zero-key report
+    await sharedPage.evaluate(() => window.dispatchEvent(new Event("blur")));
+
+    // Wait for device-side auto-release (100ms timer + network margin)
+    await new Promise(r => setTimeout(r, 400));
+
+    const events = await agent!.getKeyboardEvents();
+    const releases = events.filter(ev => ev.code === KEY.A && ev.type === "key_release");
+    expect(releases.length, "Key A should auto-release after blur").toBeGreaterThanOrEqual(1);
+
+    // Re-focus and verify no phantom key events
+    await agent!.clearKeyboardEvents();
+    await sharedPage.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await new Promise(r => setTimeout(r, 200));
+
+    const focusEvents = await agent!.getKeyboardEvents();
+    const stuckPresses = focusEvents.filter(ev => ev.type === "key_press");
+    expect(stuckPresses.length, "No stuck keys after re-focus").toBe(0);
+  });
+
+  test("keepalive: arrow key held for 500ms is not prematurely released", async () => {
+    // Regression: arrow keys would release intermittently during hold when browser
+    // setInterval jitter exceeded the old tolerance window.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0x4f, true); // HID Right Arrow
+    await new Promise(r => setTimeout(r, 500));
+    await sendKeypress(sharedPage, 0x4f, false);
+    await new Promise(r => setTimeout(r, 150));
+
+    const events = await agent!.getKeyboardEvents();
+    const presses = events.filter(ev => ev.code === KEY.RIGHT && ev.type === "key_press");
+    const releases = events.filter(ev => ev.code === KEY.RIGHT && ev.type === "key_release");
+
+    expect(presses.length, "Right arrow should have been pressed").toBeGreaterThanOrEqual(1);
+    expect(releases.length, "Right arrow should have exactly one release").toBe(1);
+
+    const holdDuration = releases[0].time_ms - presses[0].time_ms;
+    expect(holdDuration, "Right arrow should be held for at least 400ms").toBeGreaterThanOrEqual(
+      400,
+    );
+  });
+
+  test("keepalive: modifier + key combo does not auto-release modifier", async () => {
+    // Hold Shift, hold A, release A, release Shift.
+    // Shift must not auto-release independently while A is held.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0xe1, true); // HID ShiftLeft
+    await new Promise(r => setTimeout(r, 50));
+    await sendKeypress(sharedPage, 0x04, true); // HID A
+    await new Promise(r => setTimeout(r, 200));
+    await sendKeypress(sharedPage, 0x04, false);
+    await new Promise(r => setTimeout(r, 50));
+    await sendKeypress(sharedPage, 0xe1, false);
+    await new Promise(r => setTimeout(r, 150));
+
+    const events = await agent!.getKeyboardEvents();
+    const shiftReleases = events.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+    );
+    const aReleases = events.filter(ev => ev.code === KEY.A && ev.type === "key_release");
+
+    expect(shiftReleases.length, "Shift should have exactly one release").toBe(1);
+    expect(aReleases.length, "A should have exactly one release").toBe(1);
+
+    // Shift must be released after A
+    expect(shiftReleases[0].time_ms).toBeGreaterThan(aReleases[0].time_ms);
+  });
+
+  test("keepalive: multiple simultaneous keys held for 300ms", async () => {
+    // Hold A + B + C simultaneously, wait 300ms, release all.
+    // Each key should get exactly 1 release — tests per-key timer independence.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0x04, true); // A
+    await sendKeypress(sharedPage, 0x05, true); // B
+    await sendKeypress(sharedPage, 0x06, true); // C
+    await new Promise(r => setTimeout(r, 300));
+    await sendKeypress(sharedPage, 0x04, false);
+    await sendKeypress(sharedPage, 0x05, false);
+    await sendKeypress(sharedPage, 0x06, false);
+    await new Promise(r => setTimeout(r, 150));
+
+    const events = await agent!.getKeyboardEvents();
+    for (const [code, label] of [
+      [KEY.A, "A"],
+      [KEY.B, "B"],
+      [KEY.C, "C"],
+    ] as const) {
+      const presses = events.filter(ev => ev.code === code && ev.type === "key_press");
+      const releases = events.filter(ev => ev.code === code && ev.type === "key_release");
+      expect(presses.length, `${label} should have at least 1 press`).toBeGreaterThanOrEqual(1);
+      expect(releases.length, `${label} should have exactly 1 release`).toBe(1);
+    }
+  });
+
+  test("keepalive: rapid press/release cycles produce no phantom releases", async () => {
+    // Tap a key 20 times fast (~30ms apart). Should get exactly 20 press + 20 release.
+    const TAP_COUNT = 20;
+    await agent!.clearKeyboardEvents();
+
+    await sharedPage.evaluate(async (count: number) => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) throw new Error("Test hooks not available");
+      for (let i = 0; i < count; i++) {
+        hooks.sendKeypress(0x04, true);
+        await new Promise(r => setTimeout(r, 10));
+        hooks.sendKeypress(0x04, false);
+        await new Promise(r => setTimeout(r, 20));
+      }
+    }, TAP_COUNT);
+
+    await new Promise(r => setTimeout(r, 500));
+
+    const events = await agent!.getKeyboardEvents();
+    const presses = events.filter(ev => ev.code === KEY.A && ev.type === "key_press");
+    const releases = events.filter(ev => ev.code === KEY.A && ev.type === "key_release");
+
+    expect(presses.length, `Should have ${TAP_COUNT} presses`).toBe(TAP_COUNT);
+    expect(releases.length, `Should have ${TAP_COUNT} releases (no phantom releases)`).toBe(
+      TAP_COUNT,
+    );
+  });
+
+  test("keepalive: long hold (2s) stays held with keepalives", async () => {
+    // Real-world scenario: holding Backspace to delete a line, or holding an arrow
+    // key to scroll through code. The key must stay held for the full 2s.
+    // Keepalives arrive every 50ms, each extending the 100ms auto-release timer.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0x2a, true); // HID Backspace
+    await new Promise(r => setTimeout(r, 2000));
+    await sendKeypress(sharedPage, 0x2a, false);
+    await new Promise(r => setTimeout(r, 150));
+
+    const events = await agent!.getKeyboardEvents();
+    const presses = events.filter(ev => ev.code === KEY.BACKSPACE && ev.type === "key_press");
+    const releases = events.filter(ev => ev.code === KEY.BACKSPACE && ev.type === "key_release");
+
+    expect(presses.length, "Backspace should have been pressed").toBeGreaterThanOrEqual(1);
+    expect(releases.length, "Backspace should have exactly one release").toBe(1);
+
+    const holdDuration = releases[0].time_ms - presses[0].time_ms;
+    expect(holdDuration, "Backspace should be held for at least 1800ms").toBeGreaterThanOrEqual(
+      1800,
+    );
+  });
+
+  // ═══════════════════════════════════════════
   // KEYBOARD: KEYS RELEASED ON DISCONNECT
   // ═══════════════════════════════════════════
 
