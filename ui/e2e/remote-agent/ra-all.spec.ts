@@ -771,6 +771,92 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
+  // INPUT: POLISH DIACRITICS PASTE
+  // ═══════════════════════════════════════════
+
+  test("input: paste Polish diacritics via pl-PL layout", async () => {
+    test.setTimeout(30_000);
+
+    // Save current layout, switch to pl-PL
+    const prevLayout = await callJsonRpc(sharedPage, "getKeyboardLayout") as string;
+    await callJsonRpc(sharedPage, "setKeyboardLayout", { layout: "pl-PL" });
+
+    // Reload so the paste modal picks up the new layout
+    await sharedPage.reload({ waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+
+    const polishText = "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ";
+
+    // Expected base key codes for each diacritic (lowercase then uppercase, same base keys)
+    // ą/Ą→A, ć/Ć→C, ę/Ę→E, ł/Ł→L, ń/Ń→N, ó/Ó→O, ś/Ś→S, ź/Ź→X, ż/Ż→Z
+    const expectedBaseKeys = [
+      KEY.A, KEY.C, KEY.E, KEY.L, KEY.N, KEY.O, KEY.S, KEY.X, KEY.Z, // lowercase
+      KEY.A, KEY.C, KEY.E, KEY.L, KEY.N, KEY.O, KEY.S, KEY.X, KEY.Z, // uppercase
+    ];
+
+    await agent!.clearKeyboardEvents();
+
+    // Open paste modal, fill text, confirm
+    await sharedPage.getByRole("button", { name: "Paste text" }).click();
+    const textarea = sharedPage.locator("textarea#asd");
+    await textarea.waitFor({ state: "visible", timeout: 3000 });
+    await textarea.fill(polishText);
+
+    const confirmBtn = sharedPage.getByRole("button", { name: "Confirm Paste" });
+    await confirmBtn.waitFor({ state: "visible", timeout: 2000 });
+    await confirmBtn.click({ force: true });
+
+    // Wait for all expected base keys to arrive in order
+    const pasteDeadline = Date.now() + 15000;
+    let matchIdx = 0;
+    while (Date.now() < pasteDeadline) {
+      const events = await agent!.getKeyboardEvents();
+      const pressedCodes = events.filter(ev => ev.type === "key_press").map(ev => ev.code);
+      matchIdx = 0;
+      for (const code of pressedCodes) {
+        if (code === expectedBaseKeys[matchIdx]) {
+          matchIdx++;
+          if (matchIdx === expectedBaseKeys.length) break;
+        }
+      }
+      if (matchIdx === expectedBaseKeys.length) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    expect(
+      matchIdx,
+      `Polish paste: expected ${expectedBaseKeys.length} base keys but matched ${matchIdx}`,
+    ).toBe(expectedBaseKeys.length);
+
+    // Verify RIGHT_ALT was pressed at least 18 times (once per diacritic)
+    const allEvents = await agent!.getKeyboardEvents();
+    const altRightPresses = allEvents.filter(
+      ev => ev.code === KEY.RIGHT_ALT && ev.type === "key_press",
+    );
+    expect(
+      altRightPresses.length,
+      `Expected ≥18 RIGHT_ALT presses, got ${altRightPresses.length}`,
+    ).toBeGreaterThanOrEqual(18);
+
+    // Verify LEFT_SHIFT was pressed at least 9 times (once per uppercase diacritic)
+    const shiftPresses = allEvents.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_press",
+    );
+    expect(
+      shiftPresses.length,
+      `Expected ≥9 LEFT_SHIFT presses, got ${shiftPresses.length}`,
+    ).toBeGreaterThanOrEqual(9);
+
+    // Dismiss any lingering paste dialog
+    const cancelBtn = sharedPage.getByRole("button", { name: "Cancel" });
+    if (await cancelBtn.isVisible({ timeout: 300 }).catch(() => false)) {
+      await cancelBtn.click();
+    }
+
+    // Restore original layout
+    await callJsonRpc(sharedPage, "setKeyboardLayout", { layout: prevLayout || "en-US" });
+  });
+
+  // ═══════════════════════════════════════════
   // VIRTUAL MEDIA
   // ═══════════════════════════════════════════
 
