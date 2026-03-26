@@ -3,6 +3,7 @@ package kvm
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"net"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,8 +25,9 @@ var (
 	)
 )
 
-// SendWOLMagicPacket sends a Wake-on-LAN magic packet to the specified MAC address
-func rpcSendWOLMagicPacket(macAddress string) error {
+// SendWOLMagicPacket sends a Wake-on-LAN magic packet to the specified MAC address.
+// broadcastIP optionally overrides the default 255.255.255.255 broadcast address.
+func rpcSendWOLMagicPacket(macAddress string, broadcastIP string) error {
 	// Parse the MAC address
 	mac, err := net.ParseMAC(macAddress)
 	if err != nil {
@@ -33,11 +35,21 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 		return ErrorfL(wolLogger, "invalid MAC address", err)
 	}
 
+	// Determine broadcast address
+	target := "255.255.255.255"
+	if broadcastIP != "" {
+		if ip := net.ParseIP(broadcastIP); ip == nil || ip.To4() == nil {
+			wolErrors.Inc()
+			return ErrorfL(wolLogger, "invalid broadcast IP address", fmt.Errorf("invalid IP: %s", broadcastIP))
+		}
+		target = broadcastIP
+	}
+
 	// Create the magic packet
 	packet := createMagicPacket(mac)
 
 	// Set up UDP connection
-	conn, err := net.Dial("udp", "255.255.255.255:9")
+	conn, err := net.Dial("udp", target+":9")
 	if err != nil {
 		wolErrors.Inc()
 		return ErrorfL(wolLogger, "failed to establish UDP connection", err)

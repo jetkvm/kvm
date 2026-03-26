@@ -925,7 +925,8 @@ func handleSendWOLMagicPacket(c *gin.Context) {
 	}
 
 	macAddrString := macAddr.String()
-	err = rpcSendWOLMagicPacket(macAddrString)
+	broadcastIP := c.Query("broadcastIP")
+	err = rpcSendWOLMagicPacket(macAddrString, broadcastIP)
 	if err != nil {
 		logger.Warn().Err(err).Str("macAddrString", macAddrString).Msg("Failed to send WOL magic packet")
 		c.String(http.StatusInternalServerError, "Failed to send WOL to %s: %v", macAddrString, err)

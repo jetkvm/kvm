@@ -430,8 +430,9 @@ func rpcSetTLSState(state TLSState) error {
 }
 
 type RPCHandler struct {
-	Func   any
-	Params []string
+	Func           any
+	Params         []string
+	OptionalParams []string
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
@@ -462,21 +463,30 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	}
 
 	numParams := handlerType.NumIn()
-	paramNames := handler.Params // Get the parameter names from the RPCHandler
+	allParamNames := append(handler.Params, handler.OptionalParams...) //nolint:gocritic
 
-	if len(paramNames) != numParams {
-		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(paramNames))
-		logger.Error().Strs("paramNames", paramNames).Err(err).Msg("Cannot call RPC handler")
+	if len(allParamNames) != numParams {
+		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(allParamNames))
+		logger.Error().Strs("paramNames", allParamNames).Err(err).Msg("Cannot call RPC handler")
 		return nil, err
+	}
+
+	optionalSet := make(map[string]bool, len(handler.OptionalParams))
+	for _, name := range handler.OptionalParams {
+		optionalSet[name] = true
 	}
 
 	args := make([]reflect.Value, numParams)
 
 	for i := range numParams {
 		paramType := handlerType.In(i)
-		paramName := paramNames[i]
+		paramName := allParamNames[i]
 		paramValue, ok := params[paramName]
 		if !ok {
+			if optionalSet[paramName] {
+				args[i] = reflect.Zero(paramType)
+				continue
+			}
 			err := fmt.Errorf("missing parameter: %s", paramName)
 			logger.Error().Err(err).Msg("Cannot marshal arguments for RPC handler")
 			return nil, err
@@ -1183,7 +1193,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setJigglerConfig":           {Func: rpcSetJigglerConfig, Params: []string{"jigglerConfig"}},
 	"getJigglerConfig":           {Func: rpcGetJigglerConfig},
 	"getTimezones":               {Func: rpcGetTimezones},
-	"sendWOLMagicPacket":         {Func: rpcSendWOLMagicPacket, Params: []string{"macAddress"}},
+	"sendWOLMagicPacket":         {Func: rpcSendWOLMagicPacket, Params: []string{"macAddress"}, OptionalParams: []string{"broadcastIP"}},
 	"getStreamQualityFactor":     {Func: rpcGetStreamQualityFactor},
 	"setStreamQualityFactor":     {Func: rpcSetStreamQualityFactor, Params: []string{"factor"}},
 	"getAutoUpdateState":         {Func: rpcGetAutoUpdateState},
