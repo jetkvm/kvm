@@ -392,6 +392,53 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
+  // KEYBOARD: MODIFIER RECONCILIATION (Firefox RFP)
+  // ═══════════════════════════════════════════
+
+  test("keyboard: modifier reconciliation when standalone modifier events are suppressed (#1305)", async () => {
+    // Firefox resistFingerprinting suppresses standalone Shift keydown/keyup events.
+    // When Shift+A is pressed, only the "KeyA" event fires with shiftKey=true.
+    // The reconciliation logic should synthesize the missing Shift press/release.
+    await agent!.clearKeyboardEvents();
+
+    // Simulate Firefox RFP: dispatch keydown for "KeyA" with shiftKey=true (no prior Shift keydown)
+    // then keyup for "KeyA" with shiftKey=false (Shift was released but no Shift keyup fires)
+    await sharedPage.evaluate(() => {
+      const downEvent = new KeyboardEvent("keydown", {
+        code: "KeyA",
+        key: "A",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(downEvent);
+    });
+    await new Promise(r => setTimeout(r, 50));
+
+    await sharedPage.evaluate(() => {
+      const upEvent = new KeyboardEvent("keyup", {
+        code: "KeyA",
+        key: "a",
+        shiftKey: false,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(upEvent);
+    });
+    await new Promise(r => setTimeout(r, 100));
+
+    // Verify the remote host received both LEFT_SHIFT and A key presses
+    const events = await agent!.getKeyboardEvents();
+    const pressedCodes = events.filter(ev => ev.type === "key_press").map(ev => ev.code);
+    const releasedCodes = events.filter(ev => ev.type === "key_release").map(ev => ev.code);
+
+    expect(pressedCodes, "Shift press should be synthesized").toContain(KEY.LEFT_SHIFT);
+    expect(pressedCodes, "A press should be sent").toContain(KEY.A);
+    expect(releasedCodes, "Shift release should be synthesized").toContain(KEY.LEFT_SHIFT);
+    expect(releasedCodes, "A release should be sent").toContain(KEY.A);
+  });
+
+  // ═══════════════════════════════════════════
   // MOUSE
   // ═══════════════════════════════════════════
 
