@@ -953,6 +953,8 @@
     "usb_device_enable_mass_storage_title": "Enable USB Mass Storage",
     "usb_device_enable_relative_mouse_description": "Enable Relative Mouse",
     "usb_device_enable_relative_mouse_title": "Enable Relative Mouse",
+    "usb_device_enable_serial_console_description": "Exposes a USB serial (CDC-ACM) device to the target host",
+    "usb_device_enable_serial_console_title": "Enable USB Serial Console",
     "usb_device_failed_load": "Failed to load USB devices: {error}",
     "usb_device_failed_set": "Failed to set USB devices: {error}",
     "usb_device_keyboard_mouse_and_mass_storage": "Keyboard, Mouse and Mass Storage",

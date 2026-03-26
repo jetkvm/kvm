@@ -24,6 +24,7 @@ export interface UsbDeviceConfig {
   absolute_mouse: boolean;
   relative_mouse: boolean;
   mass_storage: boolean;
+  serial_console: boolean;
 }
 
 const defaultUsbDeviceConfig: UsbDeviceConfig = {
@@ -31,6 +32,7 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   absolute_mouse: true,
   relative_mouse: true,
   mass_storage: true,
+  serial_console: false,
 };
 
 const usbPresets = [
@@ -42,6 +44,7 @@ const usbPresets = [
       absolute_mouse: true,
       relative_mouse: true,
       mass_storage: true,
+      serial_console: false,
     },
   },
   {
@@ -52,6 +55,7 @@ const usbPresets = [
       absolute_mouse: false,
       relative_mouse: false,
       mass_storage: false,
+      serial_console: false,
     },
   },
   {
@@ -216,6 +220,17 @@ export function UsbDeviceSetting() {
                 <Checkbox
                   checked={usbDeviceConfig.mass_storage}
                   onChange={onUsbConfigItemChange("mass_storage")}
+                />
+              </SettingsItem>
+            </div>
+            <div className="space-y-4">
+              <SettingsItem
+                title={m.usb_device_enable_serial_console_title()}
+                description={m.usb_device_enable_serial_console_description()}
+              >
+                <Checkbox
+                  checked={usbDeviceConfig.serial_console}
+                  onChange={onUsbConfigItemChange("serial_console")}
                 />
               </SettingsItem>
             </div>
