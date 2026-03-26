@@ -9,12 +9,13 @@ import { FieldError } from "@components/InputField";
 export interface StoredDevice {
   name: string;
   macAddress: string;
+  broadcastIP?: string;
 }
 
 interface DeviceListProps {
   storedDevices: StoredDevice[];
   errorMessage: string | null;
-  onSendMagicPacket: (macAddress: string) => void;
+  onSendMagicPacket: (macAddress: string, broadcastIP?: string) => void;
   onDeleteDevice: (index: number) => void;
   onCancelWakeOnLanModal: () => void;
   setShowAddForm: (show: boolean) => void;
@@ -67,7 +68,7 @@ export default function DeviceList({
                   theme="light"
                   text={m.wake_on_lan_device_list_wake()}
                   LeadingIcon={LuSend}
-                  onClick={() => onSendMagicPacket(device.macAddress)}
+                  onClick={() => onSendMagicPacket(device.macAddress, device.broadcastIP)}
                 />
                 <Button
                   size="XS"

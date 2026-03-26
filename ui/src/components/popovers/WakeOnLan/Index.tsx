@@ -3,8 +3,6 @@ import { useClose } from "@headlessui/react";
 
 import { m } from "@localizations/messages.js";
 import { GridCard } from "@components/Card";
-import { InputFieldWithLabel } from "@components/InputField";
-import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useRTCStore, useUiStore } from "@hooks/stores";
@@ -23,8 +21,6 @@ export default function WakeOnLanModal() {
   const close = useClose();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addDeviceErrorMessage, setAddDeviceErrorMessage] = useState<string | null>(null);
-  const [broadcastMode, setBroadcastMode] = useState<string>("auto");
-  const [customBroadcastIP, setCustomBroadcastIP] = useState<string>("");
 
   const onCancelWakeOnLanModal = useCallback(() => {
     setDisableVideoFocusTrap(false);
@@ -32,13 +28,13 @@ export default function WakeOnLanModal() {
   }, [close, setDisableVideoFocusTrap]);
 
   const onSendMagicPacket = useCallback(
-    (macAddress: string) => {
+    (macAddress: string, broadcastIP?: string) => {
       setErrorMessage(null);
       if (rpcDataChannel?.readyState !== "open") return;
 
       const params: Record<string, string> = { macAddress };
-      if (broadcastMode === "custom" && customBroadcastIP) {
-        params.broadcastIP = customBroadcastIP;
+      if (broadcastIP) {
+        params.broadcastIP = broadcastIP;
       }
 
       send("sendWOLMagicPacket", params, (resp: JsonRpcResponse) => {
@@ -56,14 +52,7 @@ export default function WakeOnLanModal() {
         }
       });
     },
-    [
-      broadcastMode,
-      close,
-      customBroadcastIP,
-      rpcDataChannel?.readyState,
-      send,
-      setDisableVideoFocusTrap,
-    ],
+    [close, rpcDataChannel?.readyState, send, setDisableVideoFocusTrap],
   );
 
   const syncStoredDevices = useCallback(() => {
@@ -101,9 +90,11 @@ export default function WakeOnLanModal() {
   );
 
   const onAddDevice = useCallback(
-    (name: string, macAddress: string) => {
+    (name: string, macAddress: string, broadcastIP?: string) => {
       if (!name || !macAddress) return;
-      const updatedDevices = [...storedDevices, { name, macAddress }];
+      const newDevice: StoredDevice = { name, macAddress };
+      if (broadcastIP) newDevice.broadcastIP = broadcastIP;
+      const updatedDevices = [...storedDevices, newDevice];
       console.log("updatedDevices", updatedDevices);
       send(
         "setWakeOnLanDevices",
@@ -128,30 +119,6 @@ export default function WakeOnLanModal() {
         <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="space-y-4">
             <SettingsPageHeader title={m.wake_on_lan()} description={m.wake_on_lan_description()} />
-
-            <div className="space-y-2">
-              <SelectMenuBasic
-                size="SM"
-                label="Broadcast Address"
-                fullWidth
-                options={[
-                  { value: "auto", label: "Auto (global broadcast)" },
-                  { value: "custom", label: "Custom subnet" },
-                ]}
-                value={broadcastMode}
-                onChange={e => setBroadcastMode(e.target.value)}
-              />
-              {broadcastMode === "custom" && (
-                <InputFieldWithLabel
-                  size="SM"
-                  type="text"
-                  label="Subnet Broadcast IP"
-                  placeholder="192.168.1.255"
-                  value={customBroadcastIP}
-                  onChange={e => setCustomBroadcastIP(e.target.value)}
-                />
-              )}
-            </div>
 
             {showAddForm ? (
               <AddDeviceForm

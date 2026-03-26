@@ -271,6 +271,7 @@ async function waitForRpcReady(page: Page, timeoutMs = 30000) {
     }
   }
   throw new Error(`RPC channel not ready after ${timeoutMs}ms`);
+
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -1401,6 +1402,67 @@ test.describe("Remote Host Agent", () => {
 
     // Restore original duration
     await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
+  });
+
+  // ═══════════════════════════════════════════
+  // WAKE-ON-LAN: BROADCAST ADDRESS UI
+  // ═══════════════════════════════════════════
+
+  test("wol: broadcast address field only on add form, defaults to Auto", async () => {
+    test.setTimeout(90_000);
+
+    // Navigate to device page and ensure WebRTC is ready
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+
+    // Clean up any existing WoL devices
+    await callJsonRpc(sharedPage, "setWakeOnLanDevices", { params: { devices: [] } });
+
+    // Add a device via RPC, then verify the list doesn't show broadcast controls
+    await callJsonRpc(sharedPage, "setWakeOnLanDevices", {
+      params: { devices: [{ name: "E2E WoL Test", macAddress: "00:11:22:33:44:55" }] },
+    });
+
+    // Open the WoL popover
+    const wolButton = sharedPage.getByRole("button", { name: /wake on lan/i });
+    await wolButton.waitFor({ state: "visible", timeout: 5000 });
+    await wolButton.click();
+
+    // Wait for the device list to appear
+    await sharedPage.getByText("E2E WoL Test").waitFor({ state: "visible", timeout: 5000 });
+
+    // Verify NO broadcast dropdown is visible in the device list view
+    const broadcastSelectInList = sharedPage.locator("select").filter({
+      has: sharedPage.locator('option[value="auto"]'),
+    });
+    await expect(broadcastSelectInList).not.toBeVisible();
+
+    // Click "Add New Device" to open the add form
+    const addNewBtn = sharedPage.getByRole("button", { name: /add new device/i });
+    await addNewBtn.waitFor({ state: "visible", timeout: 5000 });
+    await addNewBtn.click();
+
+    // Verify broadcast address dropdown IS visible in add form and defaults to "Auto"
+    const broadcastSelect = sharedPage.locator("select").filter({
+      has: sharedPage.locator('option[value="auto"]'),
+    });
+    await expect(broadcastSelect).toBeVisible({ timeout: 5000 });
+    await expect(broadcastSelect).toHaveValue("auto");
+
+    // Switch to custom — verify IP input appears
+    await broadcastSelect.selectOption("custom");
+    const ipInput = sharedPage.getByPlaceholder("192.168.1.255");
+    await expect(ipInput).toBeVisible({ timeout: 3000 });
+
+    // Switch back to auto — IP input disappears
+    await broadcastSelect.selectOption("auto");
+    await expect(ipInput).not.toBeVisible();
+
+    // Close the popover by pressing Escape
+    await sharedPage.keyboard.press("Escape");
+
+    // Clean up
+    await callJsonRpc(sharedPage, "setWakeOnLanDevices", { params: { devices: [] } });
   });
 
   // ═══════════════════════════════════════════

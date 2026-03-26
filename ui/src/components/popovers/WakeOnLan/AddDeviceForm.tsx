@@ -3,10 +3,11 @@ import { LuPlus, LuArrowLeft } from "react-icons/lu";
 
 import { m } from "@localizations/messages.js";
 import { InputFieldWithLabel } from "@components/InputField";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { Button } from "@components/Button";
 
 interface AddDeviceFormProps {
-  onAddDevice: (name: string, macAddress: string) => void;
+  onAddDevice: (name: string, macAddress: string, broadcastIP?: string) => void;
   setShowAddForm: (show: boolean) => void;
   errorMessage: string | null;
   setErrorMessage: (errorMessage: string | null) => void;
@@ -20,6 +21,8 @@ export default function AddDeviceForm({
 }: AddDeviceFormProps) {
   const [isDeviceNameValid, setIsDeviceNameValid] = useState<boolean>(false);
   const [isMacAddressValid, setIsMacAddressValid] = useState<boolean>(false);
+  const [broadcastMode, setBroadcastMode] = useState<string>("auto");
+  const [customBroadcastIP, setCustomBroadcastIP] = useState<string>("");
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const macInputRef = useRef<HTMLInputElement>(null);
@@ -64,7 +67,8 @@ export default function AddDeviceForm({
                 e.preventDefault();
                 const deviceName = nameInputRef.current?.value || "";
                 const macAddress = macInputRef.current?.value || "";
-                onAddDevice(deviceName, macAddress);
+                const broadcastIP = broadcastMode === "custom" ? customBroadcastIP : undefined;
+                onAddDevice(deviceName, macAddress, broadcastIP);
               } else if (e.key === "Escape") {
                 e.preventDefault();
                 setShowAddForm(false);
@@ -72,6 +76,27 @@ export default function AddDeviceForm({
             }
           }}
         />
+        <SelectMenuBasic
+          size="SM"
+          label="Broadcast Address"
+          fullWidth
+          options={[
+            { value: "auto", label: "Auto (global broadcast)" },
+            { value: "custom", label: "Custom subnet" },
+          ]}
+          value={broadcastMode}
+          onChange={e => setBroadcastMode(e.target.value)}
+        />
+        {broadcastMode === "custom" && (
+          <InputFieldWithLabel
+            size="SM"
+            type="text"
+            label="Subnet Broadcast IP"
+            placeholder="192.168.1.255"
+            value={customBroadcastIP}
+            onChange={e => setCustomBroadcastIP(e.target.value)}
+          />
+        )}
       </div>
       <div
         className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
@@ -95,7 +120,8 @@ export default function AddDeviceForm({
           onClick={() => {
             const deviceName = nameInputRef.current?.value || "";
             const macAddress = macInputRef.current?.value || "";
-            onAddDevice(deviceName, macAddress);
+            const broadcastIP = broadcastMode === "custom" ? customBroadcastIP : undefined;
+            onAddDevice(deviceName, macAddress, broadcastIP);
           }}
           LeadingIcon={LuPlus}
         />

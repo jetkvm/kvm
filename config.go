@@ -23,8 +23,9 @@ const (
 )
 
 type WakeOnLanDevice struct {
-	Name       string `json:"name"`
-	MacAddress string `json:"macAddress"`
+	Name        string `json:"name"`
+	MacAddress  string `json:"macAddress"`
+	BroadcastIP string `json:"broadcastIP,omitempty"`
 }
 
 // Constants for keyboard macro limits
