@@ -379,6 +379,12 @@ export interface SettingsState {
 
   videoContrast: number;
   setVideoContrast: (value: number) => void;
+
+  showHeaderBar: boolean;
+  setShowHeaderBar: (show: boolean) => void;
+
+  showStatusBar: boolean;
+  setShowStatusBar: (show: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -425,6 +431,12 @@ export const useSettingsStore = create(
 
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
+
+      showHeaderBar: true,
+      setShowHeaderBar: (show: boolean) => set({ showHeaderBar: show }),
+
+      showStatusBar: true,
+      setShowStatusBar: (show: boolean) => set({ showStatusBar: show }),
     }),
     {
       name: "settings",

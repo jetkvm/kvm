@@ -34,6 +34,7 @@ import {
   useVideoStore,
   VideoState,
   useFailsafeModeStore,
+  useSettingsStore,
 } from "@hooks/stores";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
@@ -125,6 +126,7 @@ export default function KvmIdRoute() {
   } = useUiStore();
   const [queryParams, setQueryParams] = useSearchParams();
   const isDetachedWindow = queryParams.get("detached") === "true";
+  const showHeaderBar = useSettingsStore(state => state.showHeaderBar);
 
   const {
     peerConnection,
@@ -994,10 +996,10 @@ export default function KvmIdRoute() {
 
         <div
           className={cx("grid h-full select-none", {
-            "grid-rows-(--grid-headerBody)": !isDetachedWindow,
+            "grid-rows-(--grid-headerBody)": !isDetachedWindow && showHeaderBar,
           })}
         >
-          {!isDetachedWindow && (
+          {!isDetachedWindow && showHeaderBar && (
             <DashboardNavbar
               primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
               showConnectionStatus={true}

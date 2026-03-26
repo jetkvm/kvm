@@ -1055,5 +1055,9 @@
     "wake_on_lan_invalid_mac": "Invalid MAC address",
     "wake_on_lan_magic_sent_success": "Magic Packet sent successfully",
     "welcome_to_jetkvm": "Welcome to JetKVM",
-    "welcome_to_jetkvm_description": "Control any computer remotely"
+    "welcome_to_jetkvm_description": "Control any computer remotely",
+    "appearance_show_header_bar": "Show header bar",
+    "appearance_show_header_bar_description": "Show the top navigation bar with connection status and device info",
+    "appearance_show_status_bar": "Show status bar",
+    "appearance_show_status_bar_description": "Show the bottom status bar with stream information"
 }
