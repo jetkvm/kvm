@@ -129,10 +129,8 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
     stAttr->stVencAttr.u32Profile = H264E_PROFILE_HIGH;
     stAttr->stVencAttr.u32PicWidth = width;
     stAttr->stVencAttr.u32PicHeight = height;
-    // stAttr->stVencAttr.u32VirWidth = (width + 15) & (~15);
-    // stAttr->stVencAttr.u32VirHeight = (height + 15) & (~15);
-    stAttr->stVencAttr.u32VirWidth = RK_ALIGN_2(width);
-    stAttr->stVencAttr.u32VirHeight = RK_ALIGN_2(height);
+    stAttr->stVencAttr.u32VirWidth = RK_ALIGN_16(width);
+    stAttr->stVencAttr.u32VirHeight = RK_ALIGN_16(height);
     stAttr->stVencAttr.u32StreamBufCnt = 3;
     stAttr->stVencAttr.u32BufSize = width * height * 3 / 2;
     stAttr->stVencAttr.enMirror = MIRROR_NONE;
@@ -592,10 +590,8 @@ void *run_video_stream(void *arg)
             stFrame.stVFrame.pMbBlk = blk;
             stFrame.stVFrame.u32Width = width;
             stFrame.stVFrame.u32Height = height;
-            // stFrame.stVFrame.u32VirWidth = (width + 15) & (~15);
-            // stFrame.stVFrame.u32VirHeight = (height + 15) & (~15);
-            stFrame.stVFrame.u32VirWidth = RK_ALIGN_2(width);
-            stFrame.stVFrame.u32VirHeight = RK_ALIGN_2(height);
+            stFrame.stVFrame.u32VirWidth = RK_ALIGN_16(width);
+            stFrame.stVFrame.u32VirHeight = RK_ALIGN_16(height);
             stFrame.stVFrame.u32TimeRef = num; // frame number
             stFrame.stVFrame.u64PTS = get_us();
             stFrame.stVFrame.enPixelFormat = RK_FMT_YUV422_YUYV;

@@ -14,6 +14,7 @@ import {
   sendKeypress,
   tapKey,
   waitForWebRTCReady,
+  waitForVideoDimensions,
   sendAbsMouseMove,
   sshExec,
   getDeviceHost,
@@ -1072,6 +1073,62 @@ test.describe("Remote Host Agent", () => {
 
     // Restore original duration
     await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
+  });
+
+  // ═══════════════════════════════════════════
+  // VIDEO: NON-ALIGNED RESOLUTION (1366x768) — #699
+  // ═══════════════════════════════════════════
+
+  // EDID for a 1366x768 monitor (pixel clock 85.5 MHz, 60 Hz)
+  const EDID_1366x768 =
+    "00ffffffffffff0028b401000100000001220103802213780aee95a3544c99260f50540000000101010101010101010101010101010166" +
+    "2156aa51002030468f350058c21000001e000000fc004a65744b564d20313336367837000000fd00384c1e530a00202020202020200000" +
+    "0010002020202020202020202020202000d0";
+
+  test("video: non-aligned resolution 1366x768 produces video frames", async () => {
+    test.setTimeout(60_000);
+
+    const originalEdid = (await callJsonRpc(sharedPage, "getEDID")) as string;
+
+    await callJsonRpc(sharedPage, "setEDID", { edid: EDID_1366x768 });
+
+    try {
+      await agent!.waitForResolution("1366x768", 15_000);
+
+      await expect
+        .poll(
+          async () => {
+            const state = (await callJsonRpc(sharedPage, "getVideoState")) as {
+              ready: boolean;
+              width: number;
+              height: number;
+            };
+            return state;
+          },
+          {
+            message: "Waiting for KVM to report 1366x768",
+            timeout: 15_000,
+            intervals: [500, 1000],
+          },
+        )
+        .toMatchObject({ ready: true, width: 1366, height: 768 });
+
+      await sharedPage.goto("/", { waitUntil: "networkidle" });
+      await waitForWebRTCReady(sharedPage);
+
+      const dims = await waitForVideoDimensions(sharedPage, 15_000);
+      expect(dims.width).toBe(1366);
+      expect(dims.height).toBe(768);
+    } finally {
+      await callJsonRpc(sharedPage, "setEDID", { edid: originalEdid }).catch(() => {
+        /* ignore */
+      });
+
+      await new Promise(r => setTimeout(r, 3000));
+
+      await sharedPage.goto("/", { waitUntil: "networkidle" });
+      await waitForWebRTCReady(sharedPage);
+    }
   });
 
   // ═══════════════════════════════════════════
