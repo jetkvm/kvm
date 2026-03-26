@@ -269,6 +269,7 @@ async function waitForRpcReady(page: Page, timeoutMs = 30000) {
     }
   }
   throw new Error(`RPC channel not ready after ${timeoutMs}ms`);
+
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -808,6 +809,65 @@ test.describe("Remote Host Agent", () => {
 
     const finalDevices = await agent!.getUSBDevices();
     expect(finalDevices.length).toBeGreaterThan(0);
+  });
+
+  test("virtual-media: mount ISO as Disk mode preserves keyboard (#560)", async () => {
+    test.setTimeout(90_000);
+
+    // Ensure clean state
+    try {
+      await callJsonRpc(sharedPage, "unmountImage");
+    } catch {
+      /* ok */
+    }
+
+    // Verify keyboard works before mount
+    const preEvents = await agent!.expectKeyPress(KEY.SPACE, async () => {
+      await tapKey(sharedPage, HID_KEY.SPACE);
+    });
+    expect(preEvents.length, "keyboard should work before disk mount").toBeGreaterThan(0);
+
+    // Mount as Disk mode — this triggers USB rebind (unlike CDROM which skips it)
+    const NETBOOT_XYZ_URL = "https://boot.netboot.xyz/ipxe/netboot.xyz.iso";
+    await callJsonRpc(sharedPage, "mountWithHTTP", { url: NETBOOT_XYZ_URL, mode: "Disk" });
+
+    const stateAfter = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as {
+      source: string;
+      mode: string;
+    } | null;
+    expect(stateAfter).not.toBeNull();
+    expect(stateAfter!.mode).toBe("Disk");
+
+    // Wait for HID devices to re-enumerate after USB rebind
+    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
+
+    // Verify keyboard works after disk mount (this would fail without the ResetHIDFiles fix)
+    const postMountEvents = await agent!.expectKeyPress(
+      KEY.SPACE,
+      async () => {
+        await tapKey(sharedPage, HID_KEY.SPACE);
+      },
+      5000,
+    );
+    expect(postMountEvents.length, "keyboard should work after disk mount").toBeGreaterThan(0);
+
+    // Unmount
+    await callJsonRpc(sharedPage, "unmountImage");
+    const stateEnd = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
+    expect(stateEnd).toBeNull();
+
+    // Wait for HID devices after unmount (unmount also triggers rebind back to CDROM default)
+    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
+
+    // Verify keyboard works after unmount too
+    const postUnmountEvents = await agent!.expectKeyPress(
+      KEY.SPACE,
+      async () => {
+        await tapKey(sharedPage, HID_KEY.SPACE);
+      },
+      5000,
+    );
+    expect(postUnmountEvents.length, "keyboard should work after unmount").toBeGreaterThan(0);
   });
 
   // ═══════════════════════════════════════════
