@@ -271,6 +271,7 @@ async function waitForRpcReady(page: Page, timeoutMs = 30000) {
     }
   }
   throw new Error(`RPC channel not ready after ${timeoutMs}ms`);
+
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -300,6 +301,19 @@ test.beforeAll(async ({ browser }) => {
   await waitForWebRTCReady(sharedPage);
 
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
+
+  // Verify the keyboard HID path works end-to-end before any tests run.
+  // After reboot, Init() rebinds the USB gadget and the host needs time
+  // to re-enumerate before HID reports are delivered.
+  const kbDeadline = Date.now() + 15000;
+  while (Date.now() < kbDeadline) {
+    try {
+      await agent!.expectKeyPress(KEY.SPACE, async () => {
+        await tapKey(sharedPage, HID_KEY.SPACE);
+      }, 3000);
+      break;
+    } catch { /* not ready yet */ }
+  }
 });
 
 test.afterAll(async () => {
@@ -1363,6 +1377,63 @@ test.describe("Remote Host Agent", () => {
 
     // Restore original duration
     await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
+  });
+
+  // ═══════════════════════════════════════════
+  // WAKE-ON-LAN: BROADCAST ADDRESS UI
+  // ═══════════════════════════════════════════
+
+  test("wol: custom broadcast IP stored via RPC and UI add form works", async () => {
+    test.setTimeout(30_000);
+
+    // Clean slate
+    await callJsonRpc(sharedPage, "setWakeOnLanDevices", { params: { devices: [] } });
+
+    // Store a device with custom broadcast IP via RPC
+    await callJsonRpc(sharedPage, "setWakeOnLanDevices", {
+      params: {
+        devices: [{
+          name: "E2E Broadcast Test",
+          macAddress: "AA:BB:CC:DD:EE:FF",
+          broadcastIP: "10.0.0.255",
+        }],
+      },
+    });
+
+    // Read it back and verify broadcastIP was persisted
+    const devices = (await callJsonRpc(sharedPage, "getWakeOnLanDevices")) as {
+      name: string; macAddress: string; broadcastIP?: string;
+    }[];
+    expect(devices.length).toBe(1);
+    expect(devices[0].broadcastIP).toBe("10.0.0.255");
+
+    // Verify the UI add form shows broadcast dropdown with Auto default
+    const wolButton = sharedPage.getByRole("button", { name: /wake on lan/i });
+    await wolButton.click();
+    await sharedPage.getByText("E2E Broadcast Test").waitFor({ state: "visible", timeout: 3000 });
+
+    const addNewBtn = sharedPage.getByRole("button", { name: /add new device/i });
+    await addNewBtn.click();
+
+    const broadcastSelect = sharedPage.locator("select").filter({
+      has: sharedPage.locator('option[value="auto"]'),
+    });
+    await expect(broadcastSelect).toBeVisible({ timeout: 3000 });
+    await expect(broadcastSelect).toHaveValue("auto");
+
+    // Switch to custom, verify nested IP input appears
+    await broadcastSelect.selectOption("custom");
+    const ipInput = sharedPage.getByPlaceholder("192.168.1.255");
+    await expect(ipInput).toBeVisible({ timeout: 2000 });
+
+    // Switch back to auto, IP input disappears
+    await broadcastSelect.selectOption("auto");
+    await expect(ipInput).not.toBeVisible();
+
+    await sharedPage.keyboard.press("Escape");
+
+    // Clean up
+    await callJsonRpc(sharedPage, "setWakeOnLanDevices", { params: { devices: [] } });
   });
 
   // ═══════════════════════════════════════════
