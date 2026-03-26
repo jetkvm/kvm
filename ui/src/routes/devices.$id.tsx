@@ -126,7 +126,7 @@ export default function KvmIdRoute() {
   } = useUiStore();
   const [queryParams, setQueryParams] = useSearchParams();
   const isDetachedWindow = queryParams.get("detached") === "true";
-  const showHeaderBar = useSettingsStore(state => state.showHeaderBar);
+  const hideHeaderBar = useSettingsStore(state => state.hideHeaderBar);
 
   const {
     peerConnection,
@@ -996,10 +996,10 @@ export default function KvmIdRoute() {
 
         <div
           className={cx("grid h-full select-none", {
-            "grid-rows-(--grid-headerBody)": !isDetachedWindow && showHeaderBar,
+            "grid-rows-(--grid-headerBody)": !isDetachedWindow && !hideHeaderBar,
           })}
         >
-          {!isDetachedWindow && showHeaderBar && (
+          {!isDetachedWindow && !hideHeaderBar && (
             <DashboardNavbar
               primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
               showConnectionStatus={true}

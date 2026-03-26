@@ -705,7 +705,7 @@ export default function WebRTCVideo({
           </div>
         </div>
       </div>
-      {!hideActionBar && settings.showStatusBar && (
+      {!hideActionBar && !settings.hideStatusBar && (
         <div>
           <InfoBar />
         </div>

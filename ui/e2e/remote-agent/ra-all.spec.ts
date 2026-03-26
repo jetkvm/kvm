@@ -269,7 +269,6 @@ async function waitForRpcReady(page: Page, timeoutMs = 30000) {
     }
   }
   throw new Error(`RPC channel not ready after ${timeoutMs}ms`);
-
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -1073,6 +1072,57 @@ test.describe("Remote Host Agent", () => {
 
     // Restore original duration
     await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
+  });
+
+  // ═══════════════════════════════════════════
+  // PANEL VISIBILITY: HIDE HEADER BAR / STATUS BAR
+  // ═══════════════════════════════════════════
+
+  test("panel-visibility: hide and show header and status bars via appearance settings", async () => {
+    const checkboxFor = (label: string) => sharedPage.getByRole("checkbox", { name: label });
+
+    const headerBar = sharedPage.locator('img[alt=""]').first();
+
+    await sharedPage.evaluate(() => {
+      const stored = localStorage.getItem("settings");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.state) {
+          delete parsed.state.hideHeaderBar;
+          delete parsed.state.hideStatusBar;
+          delete parsed.state.showHeaderBar;
+          delete parsed.state.showStatusBar;
+          localStorage.setItem("settings", JSON.stringify(parsed));
+        }
+      }
+    });
+
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+    await expect(headerBar).toBeVisible({ timeout: 5000 });
+
+    await sharedPage.goto("/settings/appearance", { waitUntil: "networkidle" });
+    await checkboxFor("Hide header bar").check();
+
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+    await expect(headerBar).not.toBeVisible({ timeout: 5000 });
+
+    await sharedPage.goto("/settings/appearance", { waitUntil: "networkidle" });
+    await checkboxFor("Hide status bar").check();
+
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+    await expect(headerBar).not.toBeVisible({ timeout: 5000 });
+    await expect(sharedPage.getByText("Caps Lock").first()).not.toBeVisible({ timeout: 5000 });
+
+    await sharedPage.goto("/settings/appearance", { waitUntil: "networkidle" });
+    await checkboxFor("Hide header bar").uncheck();
+    await checkboxFor("Hide status bar").uncheck();
+
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+    await expect(headerBar).toBeVisible({ timeout: 5000 });
   });
 
   // ═══════════════════════════════════════════

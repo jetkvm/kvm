@@ -57,21 +57,21 @@ export default function SettingsAppearanceRoute() {
         />
       </SettingsItem>
       <SettingsItem
-        title={m.appearance_show_header_bar()}
-        description={m.appearance_show_header_bar_description()}
+        title={m.appearance_hide_header_bar()}
+        description={m.appearance_hide_header_bar_description()}
       >
         <Checkbox
-          checked={settings.showHeaderBar}
-          onChange={e => settings.setShowHeaderBar(e.target.checked)}
+          checked={settings.hideHeaderBar}
+          onChange={e => settings.setHideHeaderBar(e.target.checked)}
         />
       </SettingsItem>
       <SettingsItem
-        title={m.appearance_show_status_bar()}
-        description={m.appearance_show_status_bar_description()}
+        title={m.appearance_hide_status_bar()}
+        description={m.appearance_hide_status_bar_description()}
       >
         <Checkbox
-          checked={settings.showStatusBar}
-          onChange={e => settings.setShowStatusBar(e.target.checked)}
+          checked={settings.hideStatusBar}
+          onChange={e => settings.setHideStatusBar(e.target.checked)}
         />
       </SettingsItem>
     </div>
