@@ -1102,6 +1102,64 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
+  // USB SERIAL CONSOLE (CDC-ACM)
+  // ═══════════════════════════════════════════
+
+  test("usb: serial console CDC-ACM toggle creates and removes ttyACM on host", async () => {
+    test.setTimeout(30_000);
+
+    const remoteHost = process.env.JETKVM_REMOTE_HOST;
+    test.skip(!remoteHost, "JETKVM_REMOTE_HOST not set");
+
+    const sshTarget = remoteHost!.includes("@") ? remoteHost! : `tony@${remoteHost}`;
+    const sshOpts = "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10";
+    const { execSync } = await import("child_process");
+
+    const remoteExec = (cmd: string) =>
+      execSync(`ssh ${sshOpts} ${sshTarget} "${cmd}"`, { encoding: "utf8" }).trim();
+
+    // Ensure serial console is off initially
+    await callJsonRpc(sharedPage, "setUsbDevices", {
+      devices: { ...USB_DEVICES_DEFAULT, serial_console: false },
+    });
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Verify the host does NOT see a ttyACM device
+    const beforeACM = remoteExec("ls /dev/ttyACM* 2>/dev/null || echo MISSING");
+    expect(beforeACM).toBe("MISSING");
+
+    // Enable serial console
+    await callJsonRpc(sharedPage, "setUsbDevices", {
+      devices: { ...USB_DEVICES_DEFAULT, serial_console: true },
+    });
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Verify the host now sees a ttyACM device
+    const afterACM = remoteExec("ls /dev/ttyACM* 2>/dev/null || echo MISSING");
+    expect(afterACM).not.toBe("MISSING");
+
+    // Verify /dev/ttyGS0 exists on the KVM device
+    const afterGS0 = (await sshExec("ls /dev/ttyGS0 2>/dev/null || echo MISSING", true)).trim();
+    expect(afterGS0).toBe("/dev/ttyGS0");
+
+    // Disable serial console
+    await callJsonRpc(sharedPage, "setUsbDevices", {
+      devices: { ...USB_DEVICES_DEFAULT, serial_console: false },
+    });
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Verify the host no longer sees a ttyACM device
+    const removedACM = remoteExec("ls /dev/ttyACM* 2>/dev/null || echo MISSING");
+    expect(removedACM).toBe("MISSING");
+
+    // Verify other USB functions still work (keyboard, mouse)
+    await agent!.waitForInputDevices(
+      ["keyboard", "absolute_mouse", "relative_mouse"],
+      10000,
+    );
+  });
+
+  // ═══════════════════════════════════════════
   // USB RECOVERY
   // ═══════════════════════════════════════════
 
