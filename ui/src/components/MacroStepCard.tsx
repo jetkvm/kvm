@@ -21,9 +21,7 @@ const directionLabels: Record<string, () => string> = {
 
 const modifierOptions = Object.keys(modifiers).map(modifier => {
   const match = modifier.match(/^(Control|Alt|Shift|Meta)(Left|Right)$/);
-  const label = match
-    ? `${match[1]} ${directionLabels[match[2]]()}`
-    : modifier;
+  const label = match ? `${match[1]} ${directionLabels[match[2]]()}` : modifier;
   return { value: modifier, label };
 });
 
