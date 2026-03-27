@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useJsonRpc } from "./useJsonRpc";
 import { useHidRpc } from "./useHidRpc";
@@ -19,6 +19,9 @@ export default function useMouse() {
   const [blockWheelEvent, setBlockWheelEvent] = useState(false);
 
   const { mouseMode, scrollThrottling } = useSettingsStore();
+
+  // Track last absolute mouse position for resetMousePosition
+  const lastAbsPos = useRef({ x: 0, y: 0 });
 
   // RPC hooks
   const { send } = useJsonRpc();
@@ -65,6 +68,7 @@ export default function useMouse() {
       }
       // We set that for the debug info bar
       setMousePosition(x, y);
+      lastAbsPos.current = { x, y };
     },
     [send, reportAbsMouseEvent, setMousePosition, mouseMode, rpcHidReady],
   );
@@ -150,7 +154,7 @@ export default function useMouse() {
   );
 
   const resetMousePosition = useCallback(() => {
-    sendAbsMouseMovement(0, 0, 0);
+    sendAbsMouseMovement(lastAbsPos.current.x, lastAbsPos.current.y, 0);
   }, [sendAbsMouseMovement]);
 
   return {
