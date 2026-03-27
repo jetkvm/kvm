@@ -94,10 +94,10 @@
     "advanced_ssh_access_description": "Aggiungi la tua chiave pubblica SSH per abilitare l'accesso remoto sicuro al dispositivo",
     "advanced_ssh_access_title": "Accesso SSH",
     "advanced_ssh_default_user": "L'utente SSH predefinito è",
+    "advanced_ssh_key_required_warning": "Una chiave pubblica è necessaria per l'accesso SSH. Senza di essa, non sarà possibile connettersi.",
     "advanced_ssh_public_key_label": "Chiave pubblica SSH",
     "advanced_ssh_public_key_placeholder": "Inserisci la tua chiave pubblica SSH",
     "advanced_success_download_diagnostics": "Diagnostica scaricata correttamente",
-    "advanced_ssh_key_required_warning": "Una chiave pubblica è necessaria per l'accesso SSH. Senza di essa, non sarà possibile connettersi.",
     "advanced_success_loopback_disabled": "Modalità loopback-only disattivata. Riavvia il dispositivo per applicare la modifica.",
     "advanced_success_loopback_enabled": "Modalità loopback abilitata. Riavvia il dispositivo per applicare la modifica.",
     "advanced_success_reset_config": "Configurazione ripristinata ai valori predefiniti con successo",
@@ -108,6 +108,7 @@
     "advanced_update_ssh_key_button": "Aggiorna la chiave SSH",
     "advanced_usb_emulation_description": "Controlla lo stato di emulazione USB",
     "advanced_usb_emulation_title": "Emulazione USB",
+    "advanced_version_change_acknowledged_label": "Capisco che i cambiamenti di versione possono danneggiare il mio dispositivo e richiedere un ripristino delle impostazioni di fabbrica",
     "advanced_version_update_app_label": "Versione dell'app",
     "advanced_version_update_button": "Aggiorna alla versione",
     "advanced_version_update_description": "Installa una versione specifica dalle versioni di GitHub",
@@ -470,6 +471,8 @@
     "macro_at_least_one_step_required": "È richiesto almeno un passaggio",
     "macro_max_steps_error": "È possibile aggiungere al massimo {max} passaggi per macro.",
     "macro_max_steps_reached": "( {max} max)",
+    "macro_modifier_left": "Sinistra",
+    "macro_modifier_right": "Destra",
     "macro_name_label": "Nome macro",
     "macro_name_required": "Il nome è obbligatorio",
     "macro_name_too_long": "Il nome deve contenere meno di 50 caratteri",
@@ -947,8 +950,5 @@
     "wake_on_lan_invalid_mac": "Indirizzo MAC non valido",
     "wake_on_lan_magic_sent_success": "Pacchetto magico inviato con successo",
     "welcome_to_jetkvm": "Benvenuti a JetKVM",
-    "welcome_to_jetkvm_description": "Controlla qualsiasi computer da remoto",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "Controlla qualsiasi computer da remoto"
 }

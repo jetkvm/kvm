@@ -94,10 +94,10 @@
     "advanced_ssh_access_description": "添加您的 SSH 公钥以启用对设备的安全远程访问。",
     "advanced_ssh_access_title": "SSH 访问",
     "advanced_ssh_default_user": "默认 SSH 用户为",
+    "advanced_ssh_key_required_warning": "SSH 访问需要公钥。没有公钥将无法连接。",
     "advanced_ssh_public_key_label": "SSH 公钥",
     "advanced_ssh_public_key_placeholder": "请输入您的 SSH 公钥",
     "advanced_success_download_diagnostics": "诊断文件已成功下载",
-    "advanced_ssh_key_required_warning": "SSH 访问需要公钥。没有公钥将无法连接。",
     "advanced_success_loopback_disabled": "环回模式已禁用。请重启设备以应用更改。",
     "advanced_success_loopback_enabled": "环回模式已启用。请重启设备以应用更改。",
     "advanced_success_reset_config": "配置已成功恢复为默认设置。",
@@ -108,6 +108,7 @@
     "advanced_update_ssh_key_button": "更新 SSH 密钥",
     "advanced_usb_emulation_description": "控制 USB 模拟的状态。",
     "advanced_usb_emulation_title": "USB 模拟",
+    "advanced_version_change_acknowledged_label": "我了解版本更改可能会损坏我的设备并需要恢复出厂设置",
     "advanced_version_update_app_label": "应用版本",
     "advanced_version_update_button": "更新至版本",
     "advanced_version_update_description": "从 GitHub Releases 安装指定版本。",
@@ -470,6 +471,8 @@
     "macro_at_least_one_step_required": "至少需要一个步骤。",
     "macro_max_steps_error": "每个宏最多只能添加 {max} 个步骤。",
     "macro_max_steps_reached": "({max} 为上限)",
+    "macro_modifier_left": "左",
+    "macro_modifier_right": "右",
     "macro_name_label": "宏名称",
     "macro_name_required": "名称为必填项。",
     "macro_name_too_long": "名称长度不能超过 50 个字符。",
@@ -947,8 +950,5 @@
     "wake_on_lan_invalid_mac": "无效的 MAC 地址。",
     "wake_on_lan_magic_sent_success": "“魔术包”发送成功。",
     "welcome_to_jetkvm": "欢迎使用 JetKVM",
-    "welcome_to_jetkvm_description": "远程控制您的任意计算机",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "远程控制您的任意计算机"
 }

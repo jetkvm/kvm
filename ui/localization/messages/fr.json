@@ -94,10 +94,10 @@
     "advanced_ssh_access_description": "Ajoutez votre clé publique SSH pour activer l'accès à distance sécurisé à l'appareil",
     "advanced_ssh_access_title": "Accès SSH",
     "advanced_ssh_default_user": "L'utilisateur SSH par défaut est",
+    "advanced_ssh_key_required_warning": "Une clé publique est requise pour l'accès SSH. Sans celle-ci, vous ne pourrez pas vous connecter.",
     "advanced_ssh_public_key_label": "Clé publique SSH",
     "advanced_ssh_public_key_placeholder": "Entrez votre clé publique SSH",
     "advanced_success_download_diagnostics": "Diagnostics téléchargés avec succès",
-    "advanced_ssh_key_required_warning": "Une clé publique est requise pour l'accès SSH. Sans celle-ci, vous ne pourrez pas vous connecter.",
     "advanced_success_loopback_disabled": "Mode de bouclage désactivé. Redémarrez votre appareil pour appliquer le mode de bouclage.",
     "advanced_success_loopback_enabled": "Mode de bouclage activé. Redémarrez votre appareil pour appliquer la fonction.",
     "advanced_success_reset_config": "La configuration par défaut a été réinitialisée avec succès",
@@ -108,6 +108,7 @@
     "advanced_update_ssh_key_button": "Mettre à jour la clé SSH",
     "advanced_usb_emulation_description": "Contrôler l'état de l'émulation USB",
     "advanced_usb_emulation_title": "Émulation USB",
+    "advanced_version_change_acknowledged_label": "Je comprends que les changements de version peuvent endommager mon appareil et nécessiter une réinitialisation d'usine",
     "advanced_version_update_app_label": "Version de l'application",
     "advanced_version_update_button": "Mise à jour vers la version",
     "advanced_version_update_description": "Installer une version spécifique à partir des versions GitHub",
@@ -470,6 +471,8 @@
     "macro_at_least_one_step_required": "Au moins une étape est requise",
     "macro_max_steps_error": "Vous ne pouvez ajouter qu'un maximum de {max} étapes par macro.",
     "macro_max_steps_reached": "( {max} max)",
+    "macro_modifier_left": "Gauche",
+    "macro_modifier_right": "Droite",
     "macro_name_label": "Nom de la macro",
     "macro_name_required": "Le nom est obligatoire",
     "macro_name_too_long": "Le nom doit comporter moins de 50 caractères",
@@ -947,8 +950,5 @@
     "wake_on_lan_invalid_mac": "Adresse MAC invalide",
     "wake_on_lan_magic_sent_success": "Paquet magique envoyé avec succès",
     "welcome_to_jetkvm": "Bienvenue chez JetKVM",
-    "welcome_to_jetkvm_description": "Contrôlez n'importe quel ordinateur à distance",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "Contrôlez n'importe quel ordinateur à distance"
 }

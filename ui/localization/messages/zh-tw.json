@@ -94,9 +94,9 @@
     "advanced_ssh_access_description": "新增您的 SSH 公鑰以啟用對裝置的安全遠端存取",
     "advanced_ssh_access_title": "SSH 存取",
     "advanced_ssh_default_user": "預設 SSH 使用者為",
+    "advanced_ssh_key_required_warning": "SSH 存取需要公鑰。沒有公鑰將無法連線。",
     "advanced_ssh_public_key_label": "SSH 公鑰",
     "advanced_ssh_public_key_placeholder": "輸入您的 SSH 公鑰",
-    "advanced_ssh_key_required_warning": "SSH 存取需要公鑰。沒有公鑰將無法連線。",
     "advanced_success_download_diagnostics": "診斷資料下載成功",
     "advanced_success_loopback_disabled": "單機回送模式已停用。請重新啟動您的裝置以套用。",
     "advanced_success_loopback_enabled": "單機回送模式已啟用。請重新啟動您的裝置以套用。",
@@ -108,6 +108,7 @@
     "advanced_update_ssh_key_button": "更新 SSH 金鑰",
     "advanced_usb_emulation_description": "控制 USB 模擬狀態",
     "advanced_usb_emulation_title": "USB 模擬",
+    "advanced_version_change_acknowledged_label": "我了解版本變更可能會損壞我的裝置並需要恢復出廠設定",
     "advanced_version_update_app_label": "App 版本",
     "advanced_version_update_button": "更新至版本",
     "advanced_version_update_description": "從 GitHub Releases 安裝特定版本",
@@ -470,6 +471,8 @@
     "macro_at_least_one_step_required": "至少需要一個步驟",
     "macro_max_steps_error": "每個巨集最多只能新增 {max} 個步驟。",
     "macro_max_steps_reached": "(上限 {max})",
+    "macro_modifier_left": "左",
+    "macro_modifier_right": "右",
     "macro_name_label": "巨集名稱",
     "macro_name_required": "名稱為必填",
     "macro_name_too_long": "名稱必須少於 50 個字元",
@@ -947,8 +950,5 @@
     "wake_on_lan_invalid_mac": "無效的 MAC 位址",
     "wake_on_lan_magic_sent_success": "Magic Packet 傳送成功",
     "welcome_to_jetkvm": "歡迎使用 JetKVM",
-    "welcome_to_jetkvm_description": "遠端控制任何電腦",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "遠端控制任何電腦"
 }

@@ -93,9 +93,9 @@
     "advanced_ssh_access_description": "Добавьте ваш публичный SSH-ключ для безопасного удалённого доступа к устройству",
     "advanced_ssh_access_title": "SSH-доступ",
     "advanced_ssh_default_user": "Пользователь по умолчанию для SSH:",
+    "advanced_ssh_key_required_warning": "Для SSH-доступа необходим публичный ключ. Без него подключение будет невозможно.",
     "advanced_ssh_public_key_label": "Публичный SSH-ключ",
     "advanced_ssh_public_key_placeholder": "Введите ваш публичный SSH-ключ",
-    "advanced_ssh_key_required_warning": "Для SSH-доступа необходим публичный ключ. Без него подключение будет невозможно.",
     "advanced_success_download_diagnostics": "Диагностика успешно скачана",
     "advanced_success_loopback_disabled": "Режим только loopback отключён. Перезапустите устройство для применения.",
     "advanced_success_loopback_enabled": "Режим только loopback включён. Перезапустите устройство для применения.",
@@ -107,6 +107,7 @@
     "advanced_update_ssh_key_button": "Обновить SSH-ключ",
     "advanced_usb_emulation_description": "Управление состоянием эмуляции USB",
     "advanced_usb_emulation_title": "Эмуляция USB",
+    "advanced_version_change_acknowledged_label": "Я понимаю, что изменение версии может повредить моё устройство и потребовать сброса к заводским настройкам",
     "advanced_version_update_app_label": "Версия приложения",
     "advanced_version_update_button": "Обновить до версии",
     "advanced_version_update_description": "Установить определённую версию из релизов GitHub",
@@ -469,6 +470,8 @@
     "macro_at_least_one_step_required": "Требуется хотя бы один шаг",
     "macro_max_steps_error": "Вы можете добавить максимум {max} шагов на макрос.",
     "macro_max_steps_reached": "({max} максимум)",
+    "macro_modifier_left": "Левый",
+    "macro_modifier_right": "Правый",
     "macro_name_label": "Имя макроса",
     "macro_name_required": "Имя обязательно",
     "macro_name_too_long": "Имя должно быть менее 50 символов",
@@ -964,8 +967,5 @@
     "wake_on_lan_invalid_mac": "Недопустимый MAC-адрес",
     "wake_on_lan_magic_sent_success": "Magic Packet успешно отправлен",
     "welcome_to_jetkvm": "Добро пожаловать в JetKVM",
-    "welcome_to_jetkvm_description": "Управляйте любым компьютером удалённо",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "Управляйте любым компьютером удалённо"
 }

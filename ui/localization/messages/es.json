@@ -94,10 +94,10 @@
     "advanced_ssh_access_description": "Agregue su clave pública SSH para habilitar el acceso remoto seguro al dispositivo",
     "advanced_ssh_access_title": "Acceso SSH",
     "advanced_ssh_default_user": "El usuario SSH predeterminado es",
+    "advanced_ssh_key_required_warning": "Se requiere una clave pública para el acceso SSH. Sin ella, no podrá conectarse.",
     "advanced_ssh_public_key_label": "Clave pública SSH",
     "advanced_ssh_public_key_placeholder": "Ingrese su clave pública SSH",
     "advanced_success_download_diagnostics": "Diagnóstico descargado exitosamente",
-    "advanced_ssh_key_required_warning": "Se requiere una clave pública para el acceso SSH. Sin ella, no podrá conectarse.",
     "advanced_success_loopback_disabled": "El modo de solo bucle invertido está deshabilitado. Reinicie el dispositivo para aplicarlo.",
     "advanced_success_loopback_enabled": "Modo de solo bucle invertido habilitado. Reinicie el dispositivo para aplicarlo.",
     "advanced_success_reset_config": "La configuración se restableció a los valores predeterminados correctamente",
@@ -108,6 +108,7 @@
     "advanced_update_ssh_key_button": "Actualizar clave SSH",
     "advanced_usb_emulation_description": "Controlar el estado de emulación USB",
     "advanced_usb_emulation_title": "Emulación USB",
+    "advanced_version_change_acknowledged_label": "Entiendo que los cambios de versión pueden dañar mi dispositivo y requerir un restablecimiento de fábrica",
     "advanced_version_update_app_label": "Versión de la aplicación",
     "advanced_version_update_button": "Actualización a la versión",
     "advanced_version_update_description": "Instala una versión específica desde las versiones de GitHub.",
@@ -470,6 +471,8 @@
     "macro_at_least_one_step_required": "Se requiere al menos un paso",
     "macro_max_steps_error": "Solo puede agregar un máximo de {max} pasos por macro.",
     "macro_max_steps_reached": "( {max} máx.)",
+    "macro_modifier_left": "Izquierda",
+    "macro_modifier_right": "Derecha",
     "macro_name_label": "Nombre de la macro",
     "macro_name_required": "El nombre es obligatorio",
     "macro_name_too_long": "El nombre debe tener menos de 50 caracteres.",
@@ -947,8 +950,5 @@
     "wake_on_lan_invalid_mac": "Dirección MAC no válida",
     "wake_on_lan_magic_sent_success": "Paquete mágico enviado con éxito",
     "welcome_to_jetkvm": "Bienvenido a JetKVM",
-    "welcome_to_jetkvm_description": "Controla cualquier computadora de forma remota",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "Controla cualquier computadora de forma remota"
 }

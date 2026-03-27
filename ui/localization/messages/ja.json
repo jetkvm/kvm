@@ -94,9 +94,9 @@
     "advanced_ssh_access_description": "SSH公開鍵を追加して、デバイスへの安全なリモートアクセスを有効にします",
     "advanced_ssh_access_title": "SSHアクセス",
     "advanced_ssh_default_user": "デフォルトのSSHユーザーは",
+    "advanced_ssh_key_required_warning": "SSHアクセスには公開鍵が必要です。公開鍵がないと接続できません。",
     "advanced_ssh_public_key_label": "SSH公開鍵",
     "advanced_ssh_public_key_placeholder": "SSH公開鍵を入力してください",
-    "advanced_ssh_key_required_warning": "SSHアクセスには公開鍵が必要です。公開鍵がないと接続できません。",
     "advanced_success_download_diagnostics": "診断データが正常にダウンロードされました",
     "advanced_success_loopback_disabled": "ループバック専用モードが無効になりました。適用するにはデバイスを再起動してください。",
     "advanced_success_loopback_enabled": "ループバック専用モードが有効になりました。適用するにはデバイスを再起動してください。",
@@ -108,6 +108,7 @@
     "advanced_update_ssh_key_button": "SSHキーを更新",
     "advanced_usb_emulation_description": "USBエミュレーションの状態を制御します",
     "advanced_usb_emulation_title": "USBエミュレーション",
+    "advanced_version_change_acknowledged_label": "バージョン変更によりデバイスが破損し、工場出荷時のリセットが必要になる場合があることを理解しています",
     "advanced_version_update_app_label": "アプリバージョン",
     "advanced_version_update_button": "バージョンを更新",
     "advanced_version_update_description": "GitHubリリースから特定のバージョンをインストールします",
@@ -470,6 +471,8 @@
     "macro_at_least_one_step_required": "少なくとも1つのステップが必要です",
     "macro_max_steps_error": "マクロごとに追加できるのは最大 {max} ステップまでです。",
     "macro_max_steps_reached": "(最大 {max})",
+    "macro_modifier_left": "左",
+    "macro_modifier_right": "右",
     "macro_name_label": "マクロ名",
     "macro_name_required": "名前が必要です",
     "macro_name_too_long": "名前は50文字以内である必要があります",
@@ -947,8 +950,5 @@
     "wake_on_lan_invalid_mac": "無効なMACアドレス",
     "wake_on_lan_magic_sent_success": "マジックパケットが正常に送信されました",
     "welcome_to_jetkvm": "JetKVMへようこそ",
-    "welcome_to_jetkvm_description": "あらゆるコンピュータをリモート制御",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "あらゆるコンピュータをリモート制御"
 }

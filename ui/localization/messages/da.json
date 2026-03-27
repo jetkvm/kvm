@@ -94,10 +94,10 @@
     "advanced_ssh_access_description": "Tilføj din offentlige SSH-nøgle for at aktivere sikker fjernadgang til enheden",
     "advanced_ssh_access_title": "SSH-adgang",
     "advanced_ssh_default_user": "Standard SSH-brugeren er",
+    "advanced_ssh_key_required_warning": "En offentlig nøgle er påkrævet for SSH-adgang. Uden en vil du ikke kunne oprette forbindelse.",
     "advanced_ssh_public_key_label": "Offentlig SSH-nøgle",
     "advanced_ssh_public_key_placeholder": "Indtast din offentlige SSH-nøgle",
     "advanced_success_download_diagnostics": "Diagnostik blev downloadet",
-    "advanced_ssh_key_required_warning": "En offentlig nøgle er påkrævet for SSH-adgang. Uden en vil du ikke kunne oprette forbindelse.",
     "advanced_success_loopback_disabled": "Kun loopback-tilstand er deaktiveret. Genstart din enhed for at anvende den.",
     "advanced_success_loopback_enabled": "Kun loopback-tilstand aktiveret. Genstart din enhed for at anvende den.",
     "advanced_success_reset_config": "Konfigurationen er nulstillet til standard",
@@ -108,6 +108,7 @@
     "advanced_update_ssh_key_button": "Opdater SSH-nøgle",
     "advanced_usb_emulation_description": "Styr USB-emuleringstilstanden",
     "advanced_usb_emulation_title": "USB-emulering",
+    "advanced_version_change_acknowledged_label": "Jeg forstår, at versionsændringer kan ødelægge min enhed og kræve fabriksnulstilling",
     "advanced_version_update_app_label": "App-version",
     "advanced_version_update_button": "Opdatering til version",
     "advanced_version_update_description": "Installer en specifik version fra GitHub-udgivelser",
@@ -470,6 +471,8 @@
     "macro_at_least_one_step_required": "Mindst ét trin er påkrævet",
     "macro_max_steps_error": "Du kan maksimalt tilføje {max} trin pr. makro.",
     "macro_max_steps_reached": "( {max} maks)",
+    "macro_modifier_left": "Venstre",
+    "macro_modifier_right": "Højre",
     "macro_name_label": "Makronavn",
     "macro_name_required": "Navn er påkrævet",
     "macro_name_too_long": "Navnet skal være mindre end 50 tegn",
@@ -947,8 +950,5 @@
     "wake_on_lan_invalid_mac": "Ugyldig MAC-adresse",
     "wake_on_lan_magic_sent_success": "Magisk pakke sendt",
     "welcome_to_jetkvm": "Velkommen til JetKVM",
-    "welcome_to_jetkvm_description": "Styr enhver computer eksternt",
-    "advanced_version_change_acknowledged_label": "I understand version changes may break my device and require factory reset",
-    "macro_modifier_left": "Left",
-    "macro_modifier_right": "Right"
+    "welcome_to_jetkvm_description": "Styr enhver computer eksternt"
 }
