@@ -893,18 +893,10 @@ export interface MacrosState {
   loadMacros: () => Promise<void>;
   saveMacros: (macros: KeySequence[]) => Promise<void>;
   sendFn:
-    | ((
-        method: string,
-        params: unknown,
-        callback?: ((resp: JsonRpcResponse) => void) | undefined,
-      ) => void)
+    | ((method: string, params: unknown, callback?: (resp: JsonRpcResponse) => void) => void)
     | null;
   setSendFn: (
-    sendFn: (
-      method: string,
-      params: unknown,
-      callback?: ((resp: JsonRpcResponse) => void) | undefined,
-    ) => void,
+    sendFn: (method: string, params: unknown, callback?: (resp: JsonRpcResponse) => void) => void,
   ) => void;
 }
 

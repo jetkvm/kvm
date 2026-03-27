@@ -161,7 +161,6 @@ type ButtonPropsType = Pick<
   | "onMouseLeave"
   | "onMouseDown"
   | "onMouseUp"
-  | "onMouseLeave"
   | "data-testid"
 > &
   React.ComponentProps<typeof ButtonContent> & {
@@ -220,9 +219,9 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
     props.className,
   );
 
-  if (to.toString().startsWith("http")) {
+  if (typeof to === "string" && to.startsWith("http")) {
     return (
-      <ExtLink href={to.toString()} className={classes} target={props.target}>
+      <ExtLink href={to} className={classes} target={props.target}>
         <ButtonContent {...props} />
       </ExtLink>
     );

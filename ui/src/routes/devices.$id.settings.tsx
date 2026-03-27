@@ -34,7 +34,7 @@ export default function SettingsRoute() {
   const { width = 0 } = useResizeObserver({
     ref: scrollContainerRef as React.RefObject<HTMLDivElement>,
   });
-  const { isFailsafeMode: isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
+  const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
   const isVideoDisabled = isFailsafeMode && failsafeReason === "video";
 
   // Handle scroll position to show/hide gradients
