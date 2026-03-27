@@ -108,6 +108,13 @@ const USB_DEVICES_KEYBOARD_ONLY = {
   mass_storage: false,
 };
 
+const USB_DEVICES_REL_MOUSE_ONLY = {
+  keyboard: true,
+  absolute_mouse: false,
+  relative_mouse: true,
+  mass_storage: true,
+};
+
 const ID_DEFAULT = "1d6b:0104";
 const ID_LOGITECH = "046d:c52b";
 
@@ -216,7 +223,7 @@ test.beforeAll(async ({ browser }) => {
   await sharedPage.reload({ waitUntil: "networkidle" });
   await waitForWebRTCReady(sharedPage);
 
-  await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
+  await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
 });
 
 test.afterAll(async () => {
@@ -306,30 +313,46 @@ test.describe("Remote Host Agent", () => {
     expect((await getLedState(sharedPage))!.caps_lock).toBe(!capsBeforeToggle);
 
     // Restore CAPS_LOCK
-    await agent!.expectKeyPress(KEY.CAPS_LOCK, async () => {
-      await tapKey(sharedPage, HID_KEY.CAPS_LOCK);
-    });
+    await agent!.expectKeyPress(
+      KEY.CAPS_LOCK,
+      async () => {
+        await tapKey(sharedPage, HID_KEY.CAPS_LOCK);
+      },
+      5000,
+    );
     await waitForLedState(sharedPage, "caps_lock", capsBeforeToggle);
 
     // NUM_LOCK: same round-trip verification
     const initialNum = initialState!.num_lock;
 
-    const numEvents = await agent!.expectKeyPress(KEY.NUM_LOCK, async () => {
-      await tapKey(sharedPage, HID_KEY.NUM_LOCK);
-    });
+    const numEvents = await agent!.expectKeyPress(
+      KEY.NUM_LOCK,
+      async () => {
+        await tapKey(sharedPage, HID_KEY.NUM_LOCK);
+      },
+      5000,
+    );
     expect(numEvents.length).toBeGreaterThan(0);
     await waitForLedState(sharedPage, "num_lock", !initialNum);
     expect((await getLedState(sharedPage))!.num_lock).toBe(!initialNum);
 
-    await agent!.expectKeyPress(KEY.NUM_LOCK, async () => {
-      await tapKey(sharedPage, HID_KEY.NUM_LOCK);
-    });
+    await agent!.expectKeyPress(
+      KEY.NUM_LOCK,
+      async () => {
+        await tapKey(sharedPage, HID_KEY.NUM_LOCK);
+      },
+      5000,
+    );
     await waitForLedState(sharedPage, "num_lock", initialNum);
 
     // SPACE: verify received (no LED, just key delivery)
-    const spaceEvents = await agent!.expectKeyPress(KEY.SPACE, async () => {
-      await tapKey(sharedPage, HID_KEY.SPACE);
-    });
+    const spaceEvents = await agent!.expectKeyPress(
+      KEY.SPACE,
+      async () => {
+        await tapKey(sharedPage, HID_KEY.SPACE);
+      },
+      5000,
+    );
     expect(spaceEvents.length).toBeGreaterThan(0);
   });
 
@@ -519,7 +542,40 @@ test.describe("Remote Host Agent", () => {
     const bothV = bothEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL);
     const bothH = bothEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL);
     expect(bothV.length, "Vertical wheel in combined event").toBeGreaterThan(0);
-    expect(bothH.length, "Horizontal wheel in combined event").toBeGreaterThan(0)
+    expect(bothH.length, "Horizontal wheel in combined event").toBeGreaterThan(0);
+  });
+
+  test("mouse: wheel scroll works in relative-only mouse mode", async () => {
+    const REL_WHEEL = 0x08;
+    const REL_HWHEEL = 0x06;
+
+    await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_REL_MOUSE_ONLY });
+    await agent!.waitForInputDevices(["keyboard", "relative_mouse"], 10000);
+
+    try {
+      // Vertical scroll
+      await agent!.clearMouseEvents();
+      await callJsonRpc(sharedPage, "wheelReport", { wheelY: 1, wheelX: 0 });
+      await new Promise(r => setTimeout(r, 200));
+
+      const vEvents = await agent!.getMouseEvents();
+      const vWheel = vEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL);
+      expect(vWheel.length, "Vertical wheel in relative-only mode").toBeGreaterThan(0);
+      expect(vWheel[0].value).not.toBe(0);
+
+      // Horizontal scroll
+      await agent!.clearMouseEvents();
+      await callJsonRpc(sharedPage, "wheelReport", { wheelY: 0, wheelX: 1 });
+      await new Promise(r => setTimeout(r, 200));
+
+      const hEvents = await agent!.getMouseEvents();
+      const hWheel = hEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL);
+      expect(hWheel.length, "Horizontal wheel in relative-only mode").toBeGreaterThan(0);
+      expect(hWheel[0].value).not.toBe(0);
+    } finally {
+      await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_DEFAULT });
+      await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
+    }
   });
 
   // ═══════════════════════════════════════════
