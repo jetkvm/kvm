@@ -61,6 +61,13 @@ var absoluteMouseCombinedReportDesc = []byte{
 	0x75, 0x08, //     Report Size (8)
 	0x95, 0x01, //     Report Count (1)
 	0x81, 0x06, //     Input (Data, Var, Rel)
+	0x05, 0x0C, //     Usage Page (Consumer)
+	0x0A, 0x38, 0x02, // Usage (AC Pan)
+	0x15, 0x81, //     Logical Minimum (-127)
+	0x25, 0x7F, //     Logical Maximum (127)
+	0x75, 0x08, //     Report Size (8)
+	0x95, 0x01, //     Report Count (1)
+	0x81, 0x06, //     Input (Data, Var, Rel)
 
 	0xC0, // End Collection
 }
@@ -109,7 +116,7 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	return nil
 }
 
-func (u *UsbGadget) AbsMouseWheelReport(wheelY int8) error {
+func (u *UsbGadget) AbsMouseWheelReport(wheelY int8, wheelX int8) error {
 	if !u.enabledDevices.AbsoluteMouse {
 		return nil
 	}
@@ -117,14 +124,15 @@ func (u *UsbGadget) AbsMouseWheelReport(wheelY int8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
-	// Only send a report if the value is non-zero
-	if wheelY == 0 {
+	// Only send a report if at least one value is non-zero
+	if wheelY == 0 && wheelX == 0 {
 		return nil
 	}
 
 	err := u.absMouseWriteHidFile([]byte{
 		2,            // Report ID 2
 		byte(wheelY), // Wheel Y (signed)
+		byte(wheelX), // Wheel X / AC Pan (signed)
 	})
 
 	u.resetUserInputTime()

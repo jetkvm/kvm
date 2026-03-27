@@ -13,7 +13,7 @@ var relativeMouseConfig = gadgetConfigItem{
 	attrs: gadgetAttributes{
 		"protocol":        "2",
 		"subclass":        "1",
-		"report_length":   "4",
+		"report_length":   "5",
 		"no_out_endpoint": "1",
 	},
 	reportDesc: relativeMouseCombinedReportDesc,
@@ -50,6 +50,15 @@ var relativeMouseCombinedReportDesc = []byte{
 	0x95, 0x03, // REPORT_COUNT (3)
 	0x81, 0x06, // INPUT (Data,Var,Rel)
 
+	// Horizontal Scroll
+	0x05, 0x0C, //   USAGE_PAGE (Consumer)
+	0x0A, 0x38, 0x02, // USAGE (AC Pan)
+	0x15, 0x81, //   LOGICAL_MINIMUM (-127)
+	0x25, 0x7f, //   LOGICAL_MAXIMUM (127)
+	0x75, 0x08, //   REPORT_SIZE (8)
+	0x95, 0x01, //   REPORT_COUNT (1)
+	0x81, 0x06, //   INPUT (Data,Var,Rel)
+
 	// End
 	0xc0, //       End Collection (Physical)
 	0xc0, //       End Collection
@@ -84,10 +93,11 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	defer u.relMouseLock.Unlock()
 
 	err := u.relMouseWriteHidFile([]byte{
-		buttons,  // Buttons
+		buttons, // Buttons
 		byte(mx), // X
 		byte(my), // Y
 		0,        // Wheel
+		0,        // AC Pan (Horizontal Scroll)
 	})
 	if err != nil {
 		return err
@@ -95,4 +105,28 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 
 	u.resetUserInputTime()
 	return nil
+}
+
+func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
+	if !u.enabledDevices.RelativeMouse {
+		return nil
+	}
+
+	u.relMouseLock.Lock()
+	defer u.relMouseLock.Unlock()
+
+	if wheelY == 0 && wheelX == 0 {
+		return nil
+	}
+
+	err := u.relMouseWriteHidFile([]byte{
+		0,            // Buttons (none)
+		0,            // X
+		0,            // Y
+		byte(wheelY), // Wheel (signed)
+		byte(wheelX), // AC Pan (signed)
+	})
+
+	u.resetUserInputTime()
+	return err
 }

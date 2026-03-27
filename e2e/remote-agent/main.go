@@ -38,9 +38,10 @@ const (
 
 // Relative axes
 const (
-	relX     = 0x00
-	relY     = 0x01
-	relWheel = 0x08
+	relX      = 0x00
+	relY      = 0x01
+	relHWheel = 0x06
+	relWheel  = 0x08
 )
 
 // Absolute axes

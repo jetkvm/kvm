@@ -7,7 +7,6 @@
  *   JETKVM_URL=http://<kvm-ip> JETKVM_REMOTE_HOST=<host-ip> npx playwright test ra-all
  */
 import { test, expect, type Page } from "@playwright/test";
-import { createRemoteAgent, KEY, HID_TO_LINUX } from "./remote-agent";
 import {
   HID_KEY,
   callJsonRpc,
@@ -21,6 +20,7 @@ import {
   waitForLedState,
   restartAppViaSSH,
 } from "../helpers";
+import { createRemoteAgent, KEY, HID_TO_LINUX } from "./remote-agent";
 
 const agent = createRemoteAgent();
 
@@ -61,14 +61,12 @@ async function setupMacrosViaSSH() {
   }
 
   if (Array.isArray(config.keyboard_macros)) {
-    const ids = new Set((config.keyboard_macros as Array<{ id: string }>).map(m => m.id));
+    const ids = new Set((config.keyboard_macros as { id: string }[]).map(m => m.id));
     if (TEST_MACROS.every(m => ids.has(m.id))) return;
   }
 
   const existingMacros = Array.isArray(config.keyboard_macros) ? config.keyboard_macros : [];
-  const filtered = (existingMacros as Array<{ id: string }>).filter(
-    m => !m.id.startsWith("e2e_test_"),
-  );
+  const filtered = (existingMacros as { id: string }[]).filter(m => !m.id.startsWith("e2e_test_"));
   config.keyboard_macros = [...filtered, ...TEST_MACROS];
 
   const json = JSON.stringify(config);
@@ -146,7 +144,8 @@ const ALL_SCAN_KEYS = (() => {
   const keys: { hid: number; linux: number; label: string }[] = [];
   for (let i = 0; i < 26; i++) {
     const hid = 0x04 + i;
-    if (HID_TO_LINUX[hid]) keys.push({ hid, linux: HID_TO_LINUX[hid], label: String.fromCharCode(65 + i) });
+    if (HID_TO_LINUX[hid])
+      keys.push({ hid, linux: HID_TO_LINUX[hid], label: String.fromCharCode(65 + i) });
   }
   for (let i = 0; i < 10; i++) {
     const hid = 0x1e + i;
@@ -167,8 +166,9 @@ let sharedPage: Page;
 
 async function ensureNoPasswordViaAPI() {
   const host = getDeviceHost();
-  const status = await fetch(`http://${host}/device/status`)
-    .then(r => r.json() as Promise<{ isSetup: boolean }>);
+  const status = await fetch(`http://${host}/device/status`).then(
+    r => r.json() as Promise<{ isSetup: boolean }>,
+  );
 
   if (!status.isSetup) {
     const res = await fetch(`http://${host}/device/setup`, {
@@ -195,24 +195,18 @@ async function ensureNoPasswordViaAPI() {
 }
 
 async function setupMacrosViaRPC(page: Page) {
-  const existing = await callJsonRpc(page, "getKeyboardMacros") as Array<{ id: string }>;
+  const existing = (await callJsonRpc(page, "getKeyboardMacros")) as { id: string }[];
   const ids = new Set(existing.map(m => m.id));
   if (TEST_MACROS.every(m => ids.has(m.id))) return;
 
-  const merged = [
-    ...existing.filter(m => !m.id.startsWith("e2e_test_")),
-    ...TEST_MACROS,
-  ];
+  const merged = [...existing.filter(m => !m.id.startsWith("e2e_test_")), ...TEST_MACROS];
   await callJsonRpc(page, "setKeyboardMacros", { params: { macros: merged } });
 }
 
 test.beforeAll(async ({ browser }) => {
   test.skip(!agent, "JETKVM_REMOTE_HOST not set");
 
-  await Promise.all([
-    agent!.ensureDeployed(),
-    ensureNoPasswordViaAPI(),
-  ]);
+  await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 
   sharedPage = await browser.newPage();
   await sharedPage.goto("/", { waitUntil: "networkidle" });
@@ -222,20 +216,19 @@ test.beforeAll(async ({ browser }) => {
   await sharedPage.reload({ waitUntil: "networkidle" });
   await waitForWebRTCReady(sharedPage);
 
-  await agent!.waitForInputDevices(
-    ["keyboard", "absolute_mouse", "relative_mouse"],
-    10000,
-  );
+  await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
 });
 
 test.afterAll(async () => {
   if (!agent) return;
   // Clean up test macros via RPC (no SSH needed)
   try {
-    const existing = await callJsonRpc(sharedPage, "getKeyboardMacros") as Array<{ id: string }>;
+    const existing = (await callJsonRpc(sharedPage, "getKeyboardMacros")) as { id: string }[];
     const filtered = existing.filter(m => !m.id.startsWith("e2e_test_"));
     await callJsonRpc(sharedPage, "setKeyboardMacros", { params: { macros: filtered } });
-  } catch { /* page may already be closed */ }
+  } catch {
+    /* page may already be closed */
+  }
   if (sharedPage) await sharedPage.close();
 });
 
@@ -259,7 +252,7 @@ test.describe("Remote Host Agent", () => {
     expect(resolution).toMatch(/^\d+x\d+$/);
 
     // Change EDID preset and verify host sees the new resolution
-    const currentEdid = await callJsonRpc(sharedPage, "getEDID") as string;
+    const currentEdid = (await callJsonRpc(sharedPage, "getEDID")) as string;
     const targetEdid = currentEdid === "1920x1080" ? "1280x720" : "1920x1080";
     await callJsonRpc(sharedPage, "setEDID", { edid: targetEdid });
 
@@ -268,7 +261,9 @@ test.describe("Remote Host Agent", () => {
     expect(newRes).toMatch(/^\d+x\d+$/);
 
     // Restore original EDID in background (keyboard test below tolerates brief HID disruption)
-    callJsonRpc(sharedPage, "setEDID", { edid: currentEdid }).catch(() => {});
+    callJsonRpc(sharedPage, "setEDID", { edid: currentEdid }).catch(() => {
+      /* ignore */
+    });
   });
 
   // ═══════════════════════════════════════════
@@ -291,9 +286,13 @@ test.describe("Remote Host Agent", () => {
       capsBeforeToggle = (await getLedState(sharedPage))!.caps_lock;
       await agent!.clearKeyboardEvents();
       try {
-        await agent!.expectKeyPress(KEY.CAPS_LOCK, async () => {
-          await tapKey(sharedPage, HID_KEY.CAPS_LOCK);
-        }, 3000);
+        await agent!.expectKeyPress(
+          KEY.CAPS_LOCK,
+          async () => {
+            await tapKey(sharedPage, HID_KEY.CAPS_LOCK);
+          },
+          3000,
+        );
         await waitForLedState(sharedPage, "caps_lock", !capsBeforeToggle, 2000);
         capsToggled = true;
         break;
@@ -342,23 +341,24 @@ test.describe("Remote Host Agent", () => {
     // Batch all 48 key scans in a single evaluate (eliminates per-key round-trip overhead)
     await agent!.clearKeyboardEvents();
 
-    await sharedPage.evaluate(async (keys: number[]) => {
-      const hooks = window.__kvmTestHooks;
-      if (!hooks) throw new Error("Test hooks not available");
-      for (const hid of keys) {
-        hooks.sendKeypress(hid, true);
-        hooks.sendKeypress(hid, false);
-        await new Promise(r => setTimeout(r, 5));
-      }
-    }, ALL_SCAN_KEYS.map(k => k.hid));
+    await sharedPage.evaluate(
+      async (keys: number[]) => {
+        const hooks = window.__kvmTestHooks;
+        if (!hooks) throw new Error("Test hooks not available");
+        for (const hid of keys) {
+          hooks.sendKeypress(hid, true);
+          hooks.sendKeypress(hid, false);
+          await new Promise(r => setTimeout(r, 5));
+        }
+      },
+      ALL_SCAN_KEYS.map(k => k.hid),
+    );
 
     const scanDeadline = Date.now() + 3000;
     let failed: string[] = [];
     while (Date.now() < scanDeadline) {
       const events = await agent!.getKeyboardEvents();
-      const pressedCodes = new Set(
-        events.filter(ev => ev.type === "key_press").map(ev => ev.code),
-      );
+      const pressedCodes = new Set(events.filter(ev => ev.type === "key_press").map(ev => ev.code));
       failed = ALL_SCAN_KEYS.filter(k => !pressedCodes.has(k.linux)).map(k => k.label);
       if (failed.length === 0) break;
       await new Promise(r => setTimeout(r, 50));
@@ -483,6 +483,46 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
+  // MOUSE: WHEEL SCROLL (VERTICAL + HORIZONTAL)
+  // ═══════════════════════════════════════════
+
+  test("mouse: vertical and horizontal wheel scroll", async () => {
+    const REL_WHEEL = 0x08;
+    const REL_HWHEEL = 0x06;
+
+    // Vertical scroll
+    await agent!.clearMouseEvents();
+    await callJsonRpc(sharedPage, "wheelReport", { wheelY: 1, wheelX: 0 });
+    await new Promise(r => setTimeout(r, 200));
+
+    const vEvents = await agent!.getMouseEvents();
+    const vWheel = vEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL);
+    expect(vWheel.length, "Vertical wheel event should be received").toBeGreaterThan(0);
+    expect(vWheel[0].value).not.toBe(0);
+
+    // Horizontal scroll
+    await agent!.clearMouseEvents();
+    await callJsonRpc(sharedPage, "wheelReport", { wheelY: 0, wheelX: 1 });
+    await new Promise(r => setTimeout(r, 200));
+
+    const hEvents = await agent!.getMouseEvents();
+    const hWheel = hEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL);
+    expect(hWheel.length, "Horizontal wheel event should be received").toBeGreaterThan(0);
+    expect(hWheel[0].value).not.toBe(0);
+
+    // Both axes simultaneously
+    await agent!.clearMouseEvents();
+    await callJsonRpc(sharedPage, "wheelReport", { wheelY: -1, wheelX: 1 });
+    await new Promise(r => setTimeout(r, 200));
+
+    const bothEvents = await agent!.getMouseEvents();
+    const bothV = bothEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL);
+    const bothH = bothEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL);
+    expect(bothV.length, "Vertical wheel in combined event").toBeGreaterThan(0);
+    expect(bothH.length, "Horizontal wheel in combined event").toBeGreaterThan(0)
+  });
+
+  // ═══════════════════════════════════════════
   // INPUT: PASTE + MACROS
   // ═══════════════════════════════════════════
 
@@ -515,7 +555,9 @@ test.describe("Remote Host Agent", () => {
       if (pasteMatchIdx === expectedPasteKeys.length) break;
       await new Promise(r => setTimeout(r, 50));
     }
-    expect(pasteMatchIdx, `Paste: expected 3 keys but matched ${pasteMatchIdx}`).toBe(expectedPasteKeys.length);
+    expect(pasteMatchIdx, `Paste: expected 3 keys but matched ${pasteMatchIdx}`).toBe(
+      expectedPasteKeys.length,
+    );
 
     // Dismiss any lingering paste dialog
     const cancelBtn = sharedPage.getByRole("button", { name: "Cancel" });
@@ -542,7 +584,8 @@ test.describe("Remote Host Agent", () => {
     await sharedPage.getByRole("button", { name: "E2E Ctrl+A" }).click();
 
     const ctrlDeadline = Date.now() + 3000;
-    let gotCtrl = false, gotA = false;
+    let gotCtrl = false,
+      gotA = false;
     while (Date.now() < ctrlDeadline && (!gotCtrl || !gotA)) {
       macroEvents = (await agent!.getKeyboardEvents()).filter(ev => ev.type === "key_press");
       for (const ev of macroEvents) {
@@ -568,7 +611,10 @@ test.describe("Remote Host Agent", () => {
       for (const code of presses) {
         if (code === expectedSeq[idx]) {
           idx++;
-          if (idx === expectedSeq.length) { matched = true; break; }
+          if (idx === expectedSeq.length) {
+            matched = true;
+            break;
+          }
         }
       }
       if (!matched) await new Promise(r => setTimeout(r, 50));
@@ -583,16 +629,22 @@ test.describe("Remote Host Agent", () => {
   test("virtual-media: mount ISO from URL and verify, then unmount", async () => {
     test.setTimeout(60_000);
 
-    try { await callJsonRpc(sharedPage, "unmountImage"); } catch { /* ok if nothing mounted */ }
+    try {
+      await callJsonRpc(sharedPage, "unmountImage");
+    } catch {
+      /* ok if nothing mounted */
+    }
 
-    const stateBefore = await callJsonRpc(sharedPage, "getVirtualMediaState") as null | object;
+    const stateBefore = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
     expect(stateBefore).toBeNull();
 
     const NETBOOT_XYZ_URL = "https://boot.netboot.xyz/ipxe/netboot.xyz.iso";
     await callJsonRpc(sharedPage, "mountWithHTTP", { url: NETBOOT_XYZ_URL, mode: "CDROM" });
 
-    const stateAfter = await callJsonRpc(sharedPage, "getVirtualMediaState") as {
-      source: string; mode: string; url?: string;
+    const stateAfter = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as {
+      source: string;
+      mode: string;
+      url?: string;
     } | null;
     expect(stateAfter).not.toBeNull();
     expect(stateAfter!.source).toBe("HTTP");
@@ -604,7 +656,7 @@ test.describe("Remote Host Agent", () => {
 
     await callJsonRpc(sharedPage, "unmountImage");
 
-    const stateEnd = await callJsonRpc(sharedPage, "getVirtualMediaState") as null | object;
+    const stateEnd = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
     expect(stateEnd).toBeNull();
 
     const finalDevices = await agent!.getUSBDevices();
@@ -640,26 +692,21 @@ test.describe("Remote Host Agent", () => {
 
     // Restore default devices
     await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_DEFAULT });
-    await agent!.waitForInputDevices(
-      ["keyboard", "absolute_mouse", "relative_mouse"],
-      10000,
-    );
+    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
 
     // Switch USB descriptor to Logitech — verify host sees new VID/PID
     await callJsonRpc(sharedPage, "setUsbConfig", { usbConfig: USB_LOGITECH_CONFIG });
 
-    const logitechDevices = await agent!.waitForUSBDevice(
-      d => d.id === ID_LOGITECH,
-      true,
-      8000,
-    );
+    const logitechDevices = await agent!.waitForUSBDevice(d => d.id === ID_LOGITECH, true, 8000);
     expect(logitechDevices.length).toBeGreaterThan(0);
     expect(logitechDevices[0].name).toContain("Logitech");
 
     // Restore default descriptor
-    const deviceId = await callJsonRpc(sharedPage, "getDeviceID") as string;
+    const deviceId = (await callJsonRpc(sharedPage, "getDeviceID")) as string;
     const defaultConfig = { ...USB_DEFAULT_CONFIG, serial_number: deviceId || "" };
-    callJsonRpc(sharedPage, "setUsbConfig", { usbConfig: defaultConfig }).catch(() => {});
+    callJsonRpc(sharedPage, "setUsbConfig", { usbConfig: defaultConfig }).catch(() => {
+      /* ignore */
+    });
   });
 
   // ═══════════════════════════════════════════
@@ -674,10 +721,7 @@ test.describe("Remote Host Agent", () => {
 
     await waitForUdcState("configured", 30_000);
 
-    await agent!.waitForInputDevices(
-      ["keyboard", "absolute_mouse", "relative_mouse"],
-      10000,
-    );
+    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
     await waitForWebRTCReady(sharedPage, 15_000);
 
     const deadline = Date.now() + 45_000;
@@ -689,11 +733,17 @@ test.describe("Remote Host Agent", () => {
     while (Date.now() < deadline && (!keyboardRecovered || !mouseRecovered)) {
       if (!keyboardRecovered) {
         try {
-          const keyEvents = await agent!.expectKeyPress(KEY.SPACE, async () => {
-            await tapKey(sharedPage, HID_KEY.SPACE);
-          }, 1500);
+          const keyEvents = await agent!.expectKeyPress(
+            KEY.SPACE,
+            async () => {
+              await tapKey(sharedPage, HID_KEY.SPACE);
+            },
+            1500,
+          );
           keyboardRecovered = keyEvents.length > 0;
-        } catch { /* retry */ }
+        } catch {
+          /* retry */
+        }
       }
 
       if (!mouseRecovered) {
@@ -704,7 +754,9 @@ test.describe("Remote Host Agent", () => {
             await sendAbsMouseMove(sharedPage, 32767, 32767);
           }, 1500);
           mouseRecovered = mouseEvents.length > 0;
-        } catch { /* retry */ }
+        } catch {
+          /* retry */
+        }
       }
 
       if (!keyboardRecovered || !mouseRecovered) {
@@ -827,7 +879,7 @@ test.describe("Remote Host Agent", () => {
     await callJsonRpc(sharedPage, "resetConfig");
 
     const statusRes = await fetch(`http://${host}/device/status`);
-    const status = await statusRes.json() as { isSetup: boolean };
+    const status = (await statusRes.json()) as { isSetup: boolean };
     expect(status.isSetup, "Device should be not set up after reset").toBe(false);
 
     const setupRes = await fetch(`http://${host}/device/setup`, {
@@ -838,7 +890,7 @@ test.describe("Remote Host Agent", () => {
     expect(setupRes.ok, `Setup POST failed: ${setupRes.status}`).toBe(true);
 
     const verifyRes = await fetch(`http://${host}/device/status`);
-    const verify = await verifyRes.json() as { isSetup: boolean };
+    const verify = (await verifyRes.json()) as { isSetup: boolean };
     expect(verify.isSetup, "Device should be set up after POST /device/setup").toBe(true);
   });
 });

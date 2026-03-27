@@ -80,8 +80,8 @@ func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
 	return rpcHidReport(func() error { return gadget.RelMouseReport(dx, dy, buttons) })
 }
 
-func rpcWheelReport(wheelY int8) error {
-	return rpcHidReport(func() error { return gadget.AbsMouseWheelReport(wheelY) })
+func rpcWheelReport(wheelY int8, wheelX int8) error {
+	return rpcHidReport(func() error { return gadget.AbsMouseWheelReport(wheelY, wheelX) })
 }
 
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {

@@ -124,25 +124,18 @@ export default function useMouse() {
         return;
       }
 
-      // Determine if the wheel event is an accel scroll value
-      const isAccel = Math.abs(e.deltaY) >= 100;
+      const clampWheel = (delta: number): number => {
+        const isAccel = Math.abs(delta) >= 100;
+        const scrollValue = isAccel ? delta / 100 : Math.sign(delta);
+        return -Math.max(-127, Math.min(127, scrollValue));
+      };
 
-      // Calculate the accel scroll value
-      const accelScrollValue = e.deltaY / 100;
+      const wheelY = clampWheel(e.deltaY);
+      const wheelX = clampWheel(e.deltaX);
 
-      // Calculate the no accel scroll value
-      const noAccelScrollValue = Math.sign(e.deltaY);
+      if (wheelY === 0 && wheelX === 0) return;
 
-      // Get scroll value
-      const scrollValue = isAccel ? accelScrollValue : noAccelScrollValue;
-
-      // Apply clamping (i.e. min and max mouse wheel hardware value)
-      const clampedScrollValue = Math.max(-127, Math.min(127, scrollValue));
-
-      // Invert the clamped scroll value to match expected behavior
-      const invertedScrollValue = -clampedScrollValue;
-
-      send("wheelReport", { wheelY: invertedScrollValue });
+      send("wheelReport", { wheelY, wheelX });
 
       // Apply blocking delay based of throttling settings
       if (scrollThrottling && !blockWheelEvent) {
