@@ -161,6 +161,25 @@ export default function PasteModal() {
                     onKeyUpCapture={e => e.stopPropagation()}
                   >
                     <div className="space-y-1">
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setHideText(!hideText)}
+                          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                        >
+                          {hideText ? (
+                            <>
+                              <LuEyeOff className="h-3.5 w-3.5" />
+                              {m.paste_modal_show_text()}
+                            </>
+                          ) : (
+                            <>
+                              <LuEye className="h-3.5 w-3.5" />
+                              {m.paste_modal_hide_text()}
+                            </>
+                          )}
+                        </button>
+                      </div>
                       {hideText ? (
                         <InputFieldWithLabel
                           ref={PasswordRef}
@@ -210,25 +229,6 @@ export default function PasteModal() {
                           }}
                         />
                       )}
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setHideText(!hideText)}
-                          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                        >
-                          {hideText ? (
-                            <>
-                              <LuEyeOff className="h-3.5 w-3.5" />
-                              {m.paste_modal_show_text()}
-                            </>
-                          ) : (
-                            <>
-                              <LuEye className="h-3.5 w-3.5" />
-                              {m.paste_modal_hide_text()}
-                            </>
-                          )}
-                        </button>
-                      </div>
                     </div>
 
                     {invalidChars.length > 0 && (
