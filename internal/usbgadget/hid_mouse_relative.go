@@ -93,7 +93,7 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	defer u.relMouseLock.Unlock()
 
 	err := u.relMouseWriteHidFile([]byte{
-		buttons, // Buttons
+		buttons,  // Buttons
 		byte(mx), // X
 		byte(my), // Y
 		0,        // Wheel
