@@ -94,6 +94,19 @@ export async function getLedState(page: Page): Promise<KeyboardLedState | null> 
   });
 }
 
+export interface KeysDownState {
+  modifier: number;
+  keys: number[];
+}
+
+export async function getKeysDownState(page: Page): Promise<KeysDownState | null> {
+  return page.evaluate(() => {
+    const hooks = window.__kvmTestHooks;
+    if (!hooks) return null;
+    return hooks.getKeysDownState();
+  });
+}
+
 export async function waitForLedState(
   page: Page,
   ledName: keyof KeyboardLedState,

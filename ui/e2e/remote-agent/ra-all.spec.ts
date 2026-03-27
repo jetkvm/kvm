@@ -18,6 +18,7 @@ import {
   sshExec,
   getDeviceHost,
   getLedState,
+  getKeysDownState,
   waitForLedState,
   restartAppViaSSH,
 } from "../helpers";
@@ -389,6 +390,104 @@ test.describe("Remote Host Agent", () => {
     const cEvents = await agent!.getKeyboardEvents();
     const cPresses = cEvents.filter(ev => ev.code === KEY.C && ev.type === "key_press");
     expect(cPresses.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // ═══════════════════════════════════════════
+  // KEYBOARD: MODIFIER AUTO-RELEASE
+  // ═══════════════════════════════════════════
+
+  test("keyboard: modifier keys auto-release after timeout", async () => {
+    test.setTimeout(15_000);
+
+    const modifiers = [
+      { hid: 0xE0, linux: KEY.LEFT_CTRL, label: "LeftCtrl" },
+      { hid: 0xE1, linux: KEY.LEFT_SHIFT, label: "LeftShift" },
+      { hid: 0xE2, linux: KEY.LEFT_ALT, label: "LeftAlt" },
+    ];
+
+    for (const { hid, linux, label } of modifiers) {
+      await agent!.clearKeyboardEvents();
+
+      // Call keypressReport directly via JSON-RPC to bypass the browser's
+      // keepalive timer, which would otherwise extend the auto-release indefinitely.
+      await callJsonRpc(sharedPage, "keypressReport", { key: hid, press: true });
+      await new Promise(r => setTimeout(r, 300));
+
+      const events = await agent!.getKeyboardEvents();
+      const presses = events.filter(
+        ev => ev.code === linux && ev.type === "key_press",
+      );
+      const releases = events.filter(
+        ev => ev.code === linux && ev.type === "key_release",
+      );
+
+      expect(presses.length, `${label} press should be received`).toBeGreaterThanOrEqual(1);
+      expect(releases.length, `${label} should auto-release after timeout`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  // ═══════════════════════════════════════════
+  // KEYBOARD: KEYS RELEASED ON DISCONNECT
+  // ═══════════════════════════════════════════
+
+  test("keyboard: all keys released when WebRTC session disconnects", async ({ browser }) => {
+    test.setTimeout(30_000);
+
+    // Opening a new page takes over currentSession (single-session device),
+    // kicking sharedPage. We'll reconnect sharedPage at the end.
+    const freshPage = await browser.newPage();
+    await freshPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(freshPage);
+
+    await agent!.clearKeyboardEvents();
+
+    // Hold down a modifier (LeftShift) and a regular key (Space) without releasing
+    await sendKeypress(freshPage, 0xE1, true);
+    await new Promise(r => setTimeout(r, 20));
+    await sendKeypress(freshPage, HID_KEY.SPACE, true);
+    await new Promise(r => setTimeout(r, 50));
+
+    // Verify the host received the presses before we disconnect
+    const preEvents = await agent!.getKeyboardEvents();
+    const shiftPresses = preEvents.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_press",
+    );
+    expect(shiftPresses.length, "Host should see LeftShift press").toBeGreaterThanOrEqual(1);
+
+    // Close the page to sever the WebRTC session, triggering the all-keys-up report
+    await freshPage.close();
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Verify the host received releases for both keys
+    const allEvents = await agent!.getKeyboardEvents();
+    const shiftReleases = allEvents.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+    );
+    const spaceReleases = allEvents.filter(
+      ev => ev.code === KEY.SPACE && ev.type === "key_release",
+    );
+
+    expect(
+      shiftReleases.length,
+      "Host should see LeftShift release after disconnect",
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      spaceReleases.length,
+      "Host should see Space release after disconnect",
+    ).toBeGreaterThanOrEqual(1);
+
+    // Reconnect sharedPage so subsequent tests can use it
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+
+    // Verify device-side keys-down state is clear
+    const state = await getKeysDownState(sharedPage);
+    expect(state, "Keys-down state should be available").not.toBeNull();
+    expect(state!.modifier, "Modifier byte should be 0 after disconnect").toBe(0);
+    expect(
+      state!.keys.every((k: number) => k === 0),
+      "All key slots should be clear after disconnect",
+    ).toBe(true);
   });
 
   // ═══════════════════════════════════════════
