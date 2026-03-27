@@ -683,10 +683,10 @@ func rpcFactoryReset() error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("factory reset completed with %d error(s), rebooting anyway", len(errs))
+		logger.Warn().Int("errors", len(errs)).Msg("factory reset completed with errors, rebooting anyway")
+	} else {
+		logger.Info().Msg("Factory reset complete, rebooting device")
 	}
-
-	logger.Info().Msg("Factory reset complete, rebooting device")
 
 	// Reboot asynchronously to allow the RPC response to be sent first.
 	go func() {
