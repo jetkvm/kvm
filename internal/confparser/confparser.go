@@ -413,6 +413,12 @@ func (f *FieldConfig) validateSingleValue(val string, index int) error {
 			if _, err := net.ParseMAC(val); err != nil {
 				return fmt.Errorf("%s is not a valid MAC address: %s", fieldRef, val)
 			}
+		case "hostname_or_ipv4_or_ipv6":
+			if net.ParseIP(val) == nil {
+				if _, err := idna.Lookup.ToASCII(val); err != nil {
+					return fmt.Errorf("%s is not a valid hostname, IPv4 or IPv6 address: %s", fieldRef, val)
+				}
+			}
 		case "hostname":
 			if _, err := idna.Lookup.ToASCII(val); err != nil {
 				return fmt.Errorf("%s is not a valid hostname: %s", fieldRef, val)

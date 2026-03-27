@@ -12,6 +12,7 @@ import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
 import { ConfirmDialog } from "@components/ConfirmDialog";
+import CustomTimeConfigurationCard from "@components/CustomTimeConfigurationCard";
 import DhcpLeaseCard from "@components/DhcpLeaseCard";
 import EmptyCard from "@components/EmptyCard";
 import { GridCard } from "@components/Card";
@@ -120,6 +121,11 @@ export default function SettingsNetworkRoute() {
         domain: settings.domain || "local", // TODO: null means local domain TRUE?????
         mdns_mode: settings.mdns_mode || "disabled",
         time_sync_mode: settings.time_sync_mode || "ntp_only",
+        time_sync_ordering: settings.time_sync_ordering || [],
+        time_sync_disable_fallback: settings.time_sync_disable_fallback || false,
+        time_sync_ntp_servers: settings.time_sync_ntp_servers || [],
+        time_sync_http_urls: settings.time_sync_http_urls || [],
+        time_sync_parallel: settings.time_sync_parallel || 4,
         ipv4_static: {
           address: settings.ipv4_static?.address || state.dhcp_lease?.ip || "",
           netmask: settings.ipv4_static?.netmask || state.dhcp_lease?.netmask || "",
@@ -182,7 +188,33 @@ export default function SettingsNetworkRoute() {
     [customDomain],
   );
 
-  const { register, handleSubmit, watch, formState, reset } = formMethods;
+  const { register, handleSubmit, watch, formState, reset, setValue } = formMethods;
+
+  const onTimeModeSelect = useCallback(
+    (mode: string) => {
+      let ordering: string[] = ["ntp", "http"];
+      if (mode === "ntp_only") ordering = ["ntp"];
+      if (mode === "http_only") ordering = ["http"];
+
+      const timesyncSettings = {
+        time_sync_ordering: ordering,
+        time_sync_parallel: 4,
+        time_sync_disable_fallback: false,
+        time_sync_ntp_servers: [],
+        time_sync_http_urls: [],
+      };
+
+      Object.entries(timesyncSettings).forEach(([key, value]) => {
+        setValue(
+          key as keyof NetworkSettings,
+          mode === "custom" && initialSettingsRef.current
+            ? initialSettingsRef.current[key as keyof NetworkSettings]
+            : value,
+        );
+      });
+    },
+    [setValue],
+  );
 
   const onSubmit = useCallback(
     async (settings: NetworkSettings) => {
@@ -331,6 +363,7 @@ export default function SettingsNetworkRoute() {
   const ipv4mode = watch("ipv4_mode");
   const ipv6mode = watch("ipv6_mode");
   const domain = watch("domain");
+  const time_sync_mode = watch("time_sync_mode");
 
   const onDhcpLeaseRenew = () => {
     send("renewDHCPLease", {}, resp => {
@@ -493,11 +526,16 @@ export default function SettingsNetworkRoute() {
                     { value: "ntp_only", label: m.network_time_sync_ntp_only() },
                     { value: "ntp_and_http", label: m.network_time_sync_ntp_and_http() },
                     { value: "http_only", label: m.network_time_sync_http_only() },
-                    // { value: "custom", label: "Custom" },
+                    { value: "custom", label: m.network_time_sync_custom() },
                   ]}
-                  {...register("time_sync_mode")}
+                  {...register("time_sync_mode", {
+                    onChange: e => {
+                      onTimeModeSelect(e.target.value);
+                    },
+                  })}
                 />
               </SettingsItem>
+              {time_sync_mode === "custom" && <CustomTimeConfigurationCard />}
 
               <SettingsItem
                 title={m.network_dhcp_client_title()}
