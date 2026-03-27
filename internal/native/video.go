@@ -192,8 +192,18 @@ func (n *Native) VideoStart() error {
 	n.videoLock.Lock()
 	defer n.videoLock.Unlock()
 
+	// check if the chip is currently in sleep mode
+	wasSleeping, _ := n.getSleepMode()
+
 	// disable sleep mode before starting video
 	_ = n.setSleepMode(false)
+
+	// when waking from sleep, the capture chip needs time to re-lock the HDMI
+	// signal before we can start streaming (similar to the delay in useExtraLock)
+	if wasSleeping {
+		n.l.Info().Msg("capture chip was sleeping, waiting for signal re-lock")
+		time.Sleep(extraLockTimeout)
+	}
 
 	videoStart()
 	return nil

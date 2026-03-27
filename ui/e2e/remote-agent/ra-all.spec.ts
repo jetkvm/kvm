@@ -6,6 +6,7 @@
  * Run with:
  *   JETKVM_URL=http://<kvm-ip> JETKVM_REMOTE_HOST=<host-ip> npx playwright test ra-all
  */
+import { execSync } from "child_process";
 import { test, expect, type Page } from "@playwright/test";
 import {
   HID_KEY,
@@ -21,6 +22,28 @@ import {
   restartAppViaSSH,
 } from "../helpers";
 import { createRemoteAgent, KEY, HID_TO_LINUX } from "./remote-agent";
+
+/** Run a command on the remote host (the machine whose display is captured by the KVM). */
+function remoteHostExec(cmd: string): string {
+  const target = process.env.JETKVM_REMOTE_HOST;
+  if (!target) throw new Error("JETKVM_REMOTE_HOST not set");
+  const sshOpts =
+    "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10";
+  return execSync(`ssh ${sshOpts} ${target} '${cmd}'`, {
+    encoding: "utf8",
+    timeout: 15000,
+  });
+}
+
+/** Toggle DPMS on the remote host via GNOME ScreenSaver D-Bus API. */
+function remoteHostSetDPMS(off: boolean): void {
+  remoteHostExec(
+    `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus ` +
+      `gdbus call --session --dest org.gnome.ScreenSaver ` +
+      `--object-path /org/gnome/ScreenSaver ` +
+      `--method org.gnome.ScreenSaver.SetActive ${off ? "true" : "false"}`,
+  );
+}
 
 const agent = createRemoteAgent();
 
@@ -955,6 +978,90 @@ test.describe("Remote Host Agent", () => {
 
     // Restore original duration
     await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
+  });
+
+  // ═══════════════════════════════════════════
+  // HDMI SLEEP WAKE: SIGNAL RE-DETECTION AFTER DPMS OFF→ON
+  // ═══════════════════════════════════════════
+
+  test("hdmi-sleep-wake: re-detects signal after DPMS off→on with chip asleep", async () => {
+    test.setTimeout(120_000);
+
+    const SLEEP_MODE_SYSFS = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode";
+
+    const sleepInfo = (await callJsonRpc(sharedPage, "getVideoSleepMode")) as {
+      supported: boolean;
+      duration: number;
+    };
+
+    if (!sleepInfo.supported) {
+      test.skip(true, "HDMI sleep mode not supported on this device");
+      return;
+    }
+
+    const originalDuration = sleepInfo.duration;
+
+    try {
+      // Set a short sleep timer (3s) so the chip enters sleep quickly
+      await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: 3 });
+
+      // Disconnect WebRTC so there are no active sessions → sleep timer starts
+      await sharedPage.goto("about:blank");
+
+      // Wait for sleep timer + margin
+      await new Promise(r => setTimeout(r, 6000));
+
+      // Verify chip entered sleep mode
+      const sleepState = (await sshExec(`cat ${SLEEP_MODE_SYSFS}`)).trim();
+      expect(sleepState, "Capture chip should be in sleep mode").toBe("1");
+
+      // Toggle DPMS off on the remote host (simulates host GPU cutting signal)
+      remoteHostSetDPMS(true);
+
+      // Wait for the GPU to fully cut the TMDS clock
+      await new Promise(r => setTimeout(r, 3000));
+
+      // Bring the display back on
+      remoteHostSetDPMS(false);
+
+      // Wait for host display to stabilize
+      await new Promise(r => setTimeout(r, 3000));
+
+      // Reconnect — this triggers VideoStart() which must wake the chip and re-lock
+      await sharedPage.goto("/", { waitUntil: "networkidle" });
+      await waitForWebRTCReady(sharedPage);
+
+      // Verify the chip woke up
+      const wakeState = (await sshExec(`cat ${SLEEP_MODE_SYSFS}`)).trim();
+      expect(wakeState, "Capture chip should be awake after reconnect").toBe("0");
+
+      // Verify video state shows a valid signal (no error)
+      const videoState = (await callJsonRpc(sharedPage, "getVideoState")) as {
+        ready: boolean;
+        error?: string;
+        width: number;
+        height: number;
+      };
+      expect(videoState.ready, `Video should be ready but got error: ${videoState.error}`).toBe(
+        true,
+      );
+      expect(videoState.width).toBeGreaterThan(0);
+      expect(videoState.height).toBeGreaterThan(0);
+    } finally {
+      // Always restore DPMS and sleep duration, even if test fails
+      try {
+        remoteHostSetDPMS(false);
+      } catch {
+        // best effort
+      }
+
+      // Reconnect if needed to restore sleep duration via RPC
+      if (sharedPage.url() === "about:blank") {
+        await sharedPage.goto("/", { waitUntil: "networkidle" });
+        await waitForWebRTCReady(sharedPage);
+      }
+      await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
+    }
   });
 
   // ═══════════════════════════════════════════
