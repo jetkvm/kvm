@@ -163,8 +163,11 @@ const chars = {
   // SC 1A (OEM_PLUS) → BracketLeft: + * ¨(dead)
   "+": { key: "BracketLeft" },
   "*": { key: "BracketLeft", shift: true },
+  "¨": { key: "BracketLeft", altRight: true, deadKey: true },
 
-  // SC 1B (OEM_1) → BracketRight: ´(dead) `(dead) — handled via dead key combos above
+  // SC 1B (OEM_1) → BracketRight: ´(dead) `(dead)
+  "´": { key: "BracketRight", deadKey: true },
+  "`": { key: "BracketRight", shift: true, deadKey: true },
 
   // SC 27 (OEM_3) → Semicolon: ç Ç
   ç: { key: "Semicolon" },
@@ -174,7 +177,9 @@ const chars = {
   º: { key: "Quote" },
   ª: { key: "Quote", shift: true },
 
-  // SC 2B (OEM_2) → Backslash: ~(dead) ^(dead) — handled via dead key combos above
+  // SC 2B (OEM_2) → Backslash: ~(dead) ^(dead)
+  "~": { key: "Backslash", deadKey: true },
+  "^": { key: "Backslash", shift: true, deadKey: true },
 
   // SC 33-35: Comma, Period, Slash
   ",": { key: "Comma" },
