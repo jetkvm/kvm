@@ -18,37 +18,35 @@ export default defineConfig(({ mode, command }) => {
   const { JETKVM_PROXY_URL, USE_SSL } = process.env;
   const useSSL = USE_SSL === "true";
 
-  const plugins = [
-    tailwindcss(),
-    tsconfigPaths(),
-    react()
-  ];
+  const plugins = [tailwindcss(), tsconfigPaths(), react()];
 
   if (useSSL) {
     plugins.push(basicSsl());
   }
 
-  plugins.push(paraglideVitePlugin({
-    project: "./localization/jetKVM.UI.inlang",
-    outdir: "./localization/paraglide",
-    outputStructure: 'message-modules',
-    cookieName: 'JETKVM_LOCALE',
-    strategy: ['cookie', 'baseLocale'],
-  }))
+  plugins.push(
+    paraglideVitePlugin({
+      project: "./localization/jetKVM.UI.inlang",
+      outdir: "./localization/paraglide",
+      outputStructure: "message-modules",
+      cookieName: "JETKVM_LOCALE",
+      strategy: ["cookie", "baseLocale"],
+    }),
+  );
 
   return {
     plugins,
-    esbuild: {
-      pure: command === "build" ? ["console.debug"]: [],
+    oxc: {
+      pure: command === "build" ? ["console.debug"] : [],
     },
     assetsInclude: ["**/*.woff2"],
     build: {
       outDir: isCloud ? "dist" : "../static",
-      rollupOptions: {
+      rolldownOptions: {
         output: {
-          manualChunks: (id) => {
+          manualChunks: id => {
             if (id.includes("node_modules")) {
-              // Let Rollup handle tesseract.js naturally via dynamic import
+              // Let Rolldown handle tesseract.js naturally via dynamic import
               // to avoid CommonJS/ESM interop issues across chunks
               if (id.includes("tesseract")) return;
               return "vendor";
@@ -66,14 +64,14 @@ export default defineConfig(({ mode, command }) => {
       https: useSSL,
       proxy: JETKVM_PROXY_URL
         ? {
-          "/me": JETKVM_PROXY_URL,
-          "/device": JETKVM_PROXY_URL,
-          "/webrtc": JETKVM_PROXY_URL,
-          "/auth": JETKVM_PROXY_URL,
-          "/storage": JETKVM_PROXY_URL,
-          "/cloud": JETKVM_PROXY_URL,
-          "/developer": JETKVM_PROXY_URL,
-        }
+            "/me": JETKVM_PROXY_URL,
+            "/device": JETKVM_PROXY_URL,
+            "/webrtc": JETKVM_PROXY_URL,
+            "/auth": JETKVM_PROXY_URL,
+            "/storage": JETKVM_PROXY_URL,
+            "/cloud": JETKVM_PROXY_URL,
+            "/developer": JETKVM_PROXY_URL,
+          }
         : undefined,
     },
     base: onDevice && command === "build" ? "/static" : "/",

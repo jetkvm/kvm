@@ -1,11 +1,8 @@
 {
   "name": "kvm-ui",
-  "private": true,
   "version": "2025.12.11.1200",
+  "private": true,
   "type": "module",
-  "engines": {
-    "node": "^22.21.1"
-  },
   "scripts": {
     "dev": "./dev_device.sh",
     "dev:ssl": "USE_SSL=true ./dev_device.sh",
@@ -15,9 +12,9 @@
     "build:staging": "npm run i18n:compile && tsc && vite build --mode=cloud-staging",
     "build:prod": "npm run i18n:compile && tsc && vite build --mode=cloud-production",
     "lint": "npm run i18n:compile && npm run lint:only",
-    "lint:only": "eslint './src/**/*.{ts,tsx}'",
+    "lint:only": "oxlint ./src",
     "lint:fix": "npm run i18n:compile && npm run lint:fixonly",
-    "lint:fixonly": "eslint './src/**/*.{ts,tsx}' --fix",
+    "lint:fixonly": "oxlint ./src --fix",
     "i18n": "npm run i18n:resort && npm run i18n:validate && npm run i18n:compile",
     "i18n:resort": "python3 tools/resort_messages.py",
     "i18n:validate": "inlang validate --project ./localization/jetKVM.UI.inlang",
@@ -34,7 +31,7 @@
     "@headlessui/react": "^2.2.9",
     "@headlessui/tailwindcss": "^0.2.2",
     "@heroicons/react": "^2.2.0",
-    "@vitejs/plugin-basic-ssl": "^2.1.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@xterm/addon-clipboard": "^0.1.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-unicode11": "^0.8.0",
@@ -66,9 +63,6 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@eslint/compat": "^2.0.0",
-    "@eslint/eslintrc": "^3.3.3",
-    "@eslint/js": "^9.39.2",
     "@inlang/cli": "^3.0.12",
     "@inlang/paraglide-js": "^2.6.0",
     "@inlang/plugin-m-function-matcher": "^2.1.0",
@@ -78,38 +72,30 @@
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/typography": "^0.5.19",
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@types/semver": "^7.7.1",
     "@types/validator": "^13.15.10",
-    "@typescript-eslint/eslint-plugin": "^8.49.0",
-    "@typescript-eslint/parser": "^8.49.0",
-    "@vitejs/plugin-react-swc": "^4.2.2",
+    "@vitejs/plugin-react-swc": "^4.3.0",
     "autoprefixer": "^10.4.23",
-    "eslint": "^9.39.2",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-import-resolver-alias": "^1.1.2",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-prettier": "^5.5.4",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.25",
-    "globals": "^16.5.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "^0.18.1",
     "postcss": "^8.5.6",
-    "prettier": "^3.7.4",
-    "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.49.0",
-    "vite": "^7.2.7",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite": "^8.0.3",
+    "vite-tsconfig-paths": "^6.1.1"
   },
   "lint-staged": {
-    "*.{ts,tsx}": "eslint --fix",
-    "*.{ts,tsx,js,jsx,json,css,md}": "prettier --write"
+    "*.{ts,tsx}": "oxlint --fix --deny-warnings",
+    "*.{ts,tsx,js,jsx,json,css,md}": "oxfmt"
+  },
+  "engines": {
+    "node": "^22.21.1"
   }
 }
