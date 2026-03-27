@@ -31,7 +31,7 @@ func initOta() {
 		},
 		GetLocalVersion: GetLocalVersion,
 		HwReboot:        hwReboot,
-		ResetConfig:     rpcResetConfig,
+		ResetConfig:     resetConfig,
 		SetAutoUpdate:   rpcSetAutoUpdateState,
 		OnStateUpdate: func(state *ota.RPCState) {
 			triggerOTAStateUpdate(state)

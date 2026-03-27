@@ -251,7 +251,6 @@ async function waitForRpcReady(page: Page, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   let reloaded = false;
   while (Date.now() < deadline) {
-    // Dismiss "Another Active Session" dialog if it appears
     const useHereBtn = page.getByRole("button", { name: "Use Here" });
     if (await useHereBtn.isVisible({ timeout: 200 }).catch(() => false)) {
       await useHereBtn.click();
@@ -261,7 +260,6 @@ async function waitForRpcReady(page: Page, timeoutMs = 30000) {
       await callJsonRpc(page, "getDeviceID");
       return;
     } catch {
-      // If RPC keeps failing, try a full page reload once
       if (!reloaded && Date.now() > deadline - timeoutMs + 10000) {
         reloaded = true;
         await page.reload({ waitUntil: "networkidle" });
@@ -1102,18 +1100,37 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
-  // CONFIG RESET (must be last — resets device config)
+  // FACTORY RESET (must be last — erases all user data and reboots)
   // ═══════════════════════════════════════════
 
-  test("config-reset: reset config via RPC and verify setup endpoint", async () => {
-    test.setTimeout(30_000);
+  test("factory-reset: reset device via RPC and verify setup endpoint after reboot", async () => {
+    test.setTimeout(120_000);
     const host = getDeviceHost();
 
-    await callJsonRpc(sharedPage, "resetConfig");
+    await callJsonRpc(sharedPage, "factoryReset");
 
-    const statusRes = await fetch(`http://${host}/device/status`);
-    const status = (await statusRes.json()) as { isSetup: boolean };
-    expect(status.isSetup, "Device should be not set up after reset").toBe(false);
+    // Wait for the device to go down and come back up after reboot
+    const waitForDevice = async (timeout: number) => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        try {
+          const res = await fetch(`http://${host}/device/status`, {
+            signal: AbortSignal.timeout(2000),
+          });
+          if (res.ok) return (await res.json()) as { isSetup: boolean };
+        } catch {
+          // Device is still rebooting
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      throw new Error(`Device did not come back within ${timeout}ms`);
+    };
+
+    // Give the device time to start rebooting
+    await new Promise(r => setTimeout(r, 3000));
+
+    const status = await waitForDevice(90_000);
+    expect(status.isSetup, "Device should be not set up after factory reset").toBe(false);
 
     const setupRes = await fetch(`http://${host}/device/setup`, {
       method: "POST",
@@ -1125,5 +1142,36 @@ test.describe("Remote Host Agent", () => {
     const verifyRes = await fetch(`http://${host}/device/status`);
     const verify = (await verifyRes.json()) as { isSetup: boolean };
     expect(verify.isSetup, "Device should be set up after POST /device/setup").toBe(true);
+
+    // Restore SSH key so subsequent test runs can SSH into the device.
+    const context = await sharedPage
+      .context()
+      .browser()!
+      .newContext({
+        baseURL: `http://${host}`,
+      });
+    const freshPage = await context.newPage();
+    try {
+      await freshPage.goto("/");
+      await freshPage.waitForLoadState("networkidle");
+      await waitForWebRTCReady(freshPage);
+
+      const fs = await import("fs");
+      const os = await import("os");
+      const path = await import("path");
+      const sshPubKeyPath = path.join(os.homedir(), ".ssh", "id_ed25519.pub");
+      let sshKey: string;
+      try {
+        sshKey = fs.readFileSync(sshPubKeyPath, "utf-8").trim();
+      } catch {
+        const rsaPath = path.join(os.homedir(), ".ssh", "id_rsa.pub");
+        sshKey = fs.readFileSync(rsaPath, "utf-8").trim();
+      }
+
+      await callJsonRpc(freshPage, "setSSHKeyState", { sshKey });
+    } finally {
+      await freshPage.close();
+      await context.close();
+    }
   });
 });

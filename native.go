@@ -52,7 +52,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			switch event {
 			case "resetConfig":
 				nativeLogger.Info().Msg("Reset configuration request via native rpc event")
-				err := rpcResetConfig()
+				err := resetConfig()
 				if err != nil {
 					nativeLogger.Warn().Err(err).Msg("error resetting config")
 				}

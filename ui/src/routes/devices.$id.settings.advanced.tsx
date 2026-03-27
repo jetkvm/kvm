@@ -16,7 +16,6 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
-import { sleep } from "@/utils";
 import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
 import { SystemVersionInfo } from "@hooks/useVersion";
 
@@ -36,6 +35,7 @@ export default function SettingsAdvancedRoute() {
   const [appVersion, setAppVersion] = useState<string>("");
   const [systemVersion, setSystemVersion] = useState<string>("");
   const [resetConfig, setResetConfig] = useState(false);
+  const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
@@ -97,15 +97,15 @@ export default function SettingsAdvancedRoute() {
     [getUsbEmulationState, send],
   );
 
-  const handleResetConfig = useCallback(() => {
-    send("resetConfig", {}, (resp: JsonRpcResponse) => {
+  const handleFactoryReset = useCallback(() => {
+    send("factoryReset", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          m.advanced_error_reset_config({ error: resp.error.data || m.unknown_error() }),
+          m.advanced_factory_reset_error({ error: resp.error.data || m.unknown_error() }),
         );
         return;
       }
-      notifications.success(m.advanced_success_reset_config());
+      notifications.success(m.advanced_factory_reset_success());
     });
   }, [send]);
 
@@ -472,19 +472,14 @@ export default function SettingsAdvancedRoute() {
             </SettingsItem>
 
             <SettingsItem
-              title={m.advanced_reset_config_title()}
-              description={m.advanced_reset_config_description()}
+              title={m.advanced_factory_reset_title()}
+              description={m.advanced_factory_reset_description()}
             >
               <Button
                 size="SM"
-                theme="light"
-                text={m.advanced_reset_config_button()}
-                onClick={async () => {
-                  handleResetConfig();
-                  // Add 2s delay between resetting the configuration and calling reload() to prevent reload from interrupting the RPC call to reset things.
-                  await sleep(2000);
-                  window.location.reload();
-                }}
+                theme="danger"
+                text={m.advanced_factory_reset_button()}
+                onClick={() => setShowFactoryResetConfirm(true)}
               />
             </SettingsItem>
 
@@ -504,6 +499,19 @@ export default function SettingsAdvancedRoute() {
           </NestedSettingsGroup>
         )}
       </div>
+
+      <ConfirmDialog
+        open={showFactoryResetConfirm}
+        onClose={() => setShowFactoryResetConfirm(false)}
+        title={m.advanced_factory_reset_dialog_title()}
+        description={m.advanced_factory_reset_dialog_description()}
+        variant="danger"
+        confirmText={m.advanced_factory_reset_confirm()}
+        onConfirm={() => {
+          setShowFactoryResetConfirm(false);
+          handleFactoryReset();
+        }}
+      />
 
       <ConfirmDialog
         open={showLoopbackWarning}
