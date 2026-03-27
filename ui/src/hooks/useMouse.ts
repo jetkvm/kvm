@@ -127,10 +127,12 @@ export default function useMouse() {
       const clampWheel = (delta: number): number => {
         const isAccel = Math.abs(delta) >= 100;
         const scrollValue = isAccel ? delta / 100 : Math.sign(delta);
-        return -Math.max(-127, Math.min(127, scrollValue));
+        return Math.max(-127, Math.min(127, scrollValue));
       };
 
-      const wheelY = clampWheel(e.deltaY);
+      // Negate Y: browser deltaY positive = scroll down, HID Wheel positive = scroll up
+      const wheelY = -clampWheel(e.deltaY);
+      // Keep X as-is: browser deltaX and HID AC Pan both use positive = right
       const wheelX = clampWheel(e.deltaX);
 
       if (wheelY === 0 && wheelX === 0) return;
