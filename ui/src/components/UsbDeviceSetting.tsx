@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useUiStore } from "@hooks/stores";
 import { m } from "@localizations/messages.js";
 import { SettingsItem } from "@components/SettingsItem";
 import Checkbox from "@components/Checkbox";
@@ -67,6 +68,7 @@ const usbPresets = [
 export function UsbDeviceSetting() {
   const { send } = useJsonRpc();
   const [loading, setLoading] = useState(false);
+  const { setUsbSerialConsoleEnabled } = useUiStore();
 
   const [usbDeviceConfig, setUsbDeviceConfig] = useState<UsbDeviceConfig>(defaultUsbDeviceConfig);
   const [selectedPreset, setSelectedPreset] = useState<string>("default");
@@ -81,6 +83,7 @@ export function UsbDeviceSetting() {
       } else {
         const usbConfigState = resp.result as UsbDeviceConfig;
         setUsbDeviceConfig(usbConfigState);
+        setUsbSerialConsoleEnabled(usbConfigState.serial_console);
 
         // Set the appropriate preset based on current config
         const matchingPreset = usbPresets.find(
@@ -97,7 +100,7 @@ export function UsbDeviceSetting() {
         setSelectedPreset(matchingPreset ? matchingPreset.value : "custom");
       }
     });
-  }, [send]);
+  }, [send, setUsbSerialConsoleEnabled]);
 
   const handleUsbConfigChange = useCallback(
     (devices: UsbDeviceConfig) => {

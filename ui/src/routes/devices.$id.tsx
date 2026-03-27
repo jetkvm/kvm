@@ -1072,7 +1072,7 @@ export default function KvmIdRoute() {
       )}
 
       {cdcACMConsole && (
-        <Terminal type="cdcacm" dataChannel={cdcACMConsole} title="CDC-ACM Console" />
+        <Terminal type="cdcacm" dataChannel={cdcACMConsole} title="USB Serial Console" />
       )}
     </FeatureFlagProvider>
   );

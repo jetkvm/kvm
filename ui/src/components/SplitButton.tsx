@@ -74,6 +74,7 @@ export function SplitButtonCaret({ menuItems }: { menuItems: SplitButtonMenuItem
           lightHover,
           "inline-flex cursor-pointer items-center rounded-r-sm px-1",
           "border-l-slate-800/15 dark:border-l-slate-300/10",
+          "disabled:pointer-events-none disabled:opacity-50",
         )}
       >
         <ChevronDownIcon className="size-3.5 text-black dark:text-white" />

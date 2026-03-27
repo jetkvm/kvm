@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef } from "react";
 import { useParams } from "react-router";
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import {
@@ -55,21 +55,22 @@ export default function Actionbar({
     toggleSidebarView,
     isOcrMode,
     setOcrMode,
+    usbSerialConsoleEnabled,
+    setUsbSerialConsoleEnabled,
   } = useUiStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
   const { openDetachedWindow } = useDetachedWindow();
   const { send } = useJsonRpc();
-  const [serialConsoleEnabled, setSerialConsoleEnabled] = useState(false);
 
   useEffect(() => {
     send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const devices = resp.result as { serial_console?: boolean };
-      setSerialConsoleEnabled(devices.serial_console === true);
+      setUsbSerialConsoleEnabled(devices.serial_console === true);
     });
-  }, [send]);
+  }, [send, setUsbSerialConsoleEnabled]);
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
@@ -97,7 +98,25 @@ export default function Actionbar({
         className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1.5"
       >
         <div className="relative flex flex-wrap items-center gap-x-2 gap-y-2">
-          {developerMode && (
+          {developerMode && usbSerialConsoleEnabled ? (
+            <SplitButtonGroup>
+              <SplitButtonPrimary
+                icon={({ className }) => <CommandLineIcon className={className} />}
+                label={m.kvm_terminal()}
+                onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
+              />
+              <SplitButtonCaret
+                menuItems={[
+                  {
+                    label: "USB Serial Console",
+                    icon: LuTerminal,
+                    onClick: () => setTerminalType(terminalType === "cdcacm" ? "none" : "cdcacm"),
+                    active: terminalType === "cdcacm",
+                  },
+                ]}
+              />
+            </SplitButtonGroup>
+          ) : developerMode ? (
             <Button
               size="XS"
               theme="light"
@@ -105,16 +124,15 @@ export default function Actionbar({
               LeadingIcon={({ className }) => <CommandLineIcon className={className} />}
               onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
             />
-          )}
-          {serialConsoleEnabled && (
+          ) : usbSerialConsoleEnabled ? (
             <Button
               size="XS"
               theme="light"
-              text="CDC-ACM Console"
+              text="USB Serial Console"
               LeadingIcon={LuTerminal}
               onClick={() => setTerminalType(terminalType === "cdcacm" ? "none" : "cdcacm")}
             />
-          )}
+          ) : null}
           <Popover>
             <SplitButtonGroup>
               <PopoverButton

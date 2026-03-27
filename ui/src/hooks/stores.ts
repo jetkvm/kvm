@@ -78,6 +78,9 @@ export interface UIState {
 
   isOcrMode: boolean;
   setOcrMode: (enabled: boolean) => void;
+
+  usbSerialConsoleEnabled: boolean;
+  setUsbSerialConsoleEnabled: (enabled: boolean) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
@@ -111,6 +114,9 @@ export const useUiStore = create<UIState>(set => ({
 
   isOcrMode: false,
   setOcrMode: (enabled: boolean) => set({ isOcrMode: enabled }),
+
+  usbSerialConsoleEnabled: false,
+  setUsbSerialConsoleEnabled: (enabled: boolean) => set({ usbSerialConsoleEnabled: enabled }),
 }));
 
 export interface RTCState {

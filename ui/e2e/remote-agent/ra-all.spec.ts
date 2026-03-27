@@ -1160,10 +1160,10 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
-  // CDC-ACM CONSOLE UI
+  // USB SERIAL CONSOLE UI
   // ═══════════════════════════════════════════
 
-  test("usb: CDC-ACM Console terminal sends and receives data via ttyGS0", async () => {
+  test("usb: USB Serial Console terminal sends and receives data via ttyGS0", async () => {
     test.setTimeout(60_000);
 
     const remoteHost = process.env.JETKVM_REMOTE_HOST;
@@ -1191,8 +1191,8 @@ test.describe("Remote Host Agent", () => {
     await sharedPage.reload({ waitUntil: "networkidle" });
     await waitForWebRTCReady(sharedPage);
 
-    // Verify the CDC-ACM Console button is visible
-    const cdcButton = sharedPage.getByRole("button", { name: "CDC-ACM Console" });
+    // Verify the USB Serial Console button is visible
+    const cdcButton = sharedPage.getByRole("button", { name: "USB Serial Console" });
     await expect(cdcButton).toBeVisible({ timeout: 5000 });
 
     // Click the button to open the terminal
@@ -1205,7 +1205,7 @@ test.describe("Remote Host Agent", () => {
     remoteExec(`sudo bash -c "nohup cat ${ttyACM} > /tmp/cdcacm_rx.txt 2>/dev/null &"`);
     await new Promise(r => setTimeout(r, 500));
 
-    // Type a string into the CDC-ACM terminal
+    // Type a string into the USB Serial Console terminal
     // The terminal is focused after opening, so we type directly
     await sharedPage.keyboard.type(testString, { delay: 50 });
     await new Promise(r => setTimeout(r, 2000));
@@ -1240,7 +1240,7 @@ test.describe("Remote Host Agent", () => {
     await sharedPage.reload({ waitUntil: "networkidle" });
     await waitForWebRTCReady(sharedPage);
     await expect(
-      sharedPage.getByRole("button", { name: "CDC-ACM Console" }),
+      sharedPage.getByRole("button", { name: "USB Serial Console" }),
     ).not.toBeVisible({ timeout: 5000 });
   });
 
