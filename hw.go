@@ -34,7 +34,7 @@ func extractSerialNumber() (string, error) {
 func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Duration) error {
 	logger.Info().Dur("delayMs", delay).Msg("reboot requested")
 
-	writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
+	forEachSession(func(s *Session) { writeJSONRPCEvent("willReboot", postRebootAction, s) })
 	time.Sleep(1 * time.Second) // Wait for the JSONRPCEvent to be sent
 
 	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")

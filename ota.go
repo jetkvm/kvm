@@ -45,7 +45,7 @@ func initOta() {
 			}
 		},
 		OnProgressUpdate: func(progress float32) {
-			writeJSONRPCEvent("otaProgress", progress, currentSession)
+			forEachSession(func(s *Session) { writeJSONRPCEvent("otaProgress", progress, s) })
 			// Also update MQTT update state for HA progress feedback
 			if mqttManager != nil {
 				mqttManager.publishUpdateState()
@@ -56,13 +56,13 @@ func initOta() {
 
 func triggerOTAStateUpdate(state *ota.RPCState) {
 	go func() {
-		if currentSession == nil || (otaState == nil && state == nil) {
+		if !anySession() || (otaState == nil && state == nil) {
 			return
 		}
 		if state == nil {
 			state = otaState.ToRPCState()
 		}
-		writeJSONRPCEvent("otaState", state, currentSession)
+		forEachSession(func(s *Session) { writeJSONRPCEvent("otaState", state, s) })
 	}()
 }
 

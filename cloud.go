@@ -434,7 +434,7 @@ func handleSessionRequest(
 	isCloudConnection bool,
 	source string,
 	scopedLogger *zerolog.Logger,
-) error {
+) (*Session, error) {
 	var sourceType string
 	if isCloudConnection {
 		sourceType = "cloud"
@@ -451,7 +451,7 @@ func handleSessionRequest(
 	// If the message is from the cloud, we need to authenticate the session.
 	if isCloudConnection {
 		if err := authenticateSession(ctx, c, req); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -465,32 +465,21 @@ func handleSessionRequest(
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-		return err
+		return nil, err
 	}
 
 	sd, err := session.ExchangeOffer(req.Sd)
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-		return err
+		return nil, err
 	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
-	}
+
+	addSession(session)
 
 	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
-	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
 
-	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
-
-	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
-	return nil
+	return session, nil
 }
 
 func RunWebsocketClient() {

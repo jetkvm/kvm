@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSettingsStore } from "@hooks/stores";
 import { Button } from "@components/Button";
 import { TextAreaWithLabel } from "@components/TextArea";
+import { InputFieldWithLabel } from "@components/InputField";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -131,6 +132,73 @@ export default function SettingsVideoRoute() {
       );
       // Update the EDID value in the UI
       setEdid(newEdid);
+    });
+  };
+
+  // RTSP settings
+  const [rtspEnabled, setRtspEnabled] = useState(true);
+  const [rtspPort, setRtspPort] = useState("8554");
+
+  // Cast settings
+  const [castAppId, setCastAppId] = useState("F311D863");
+  const [preferredDeviceName, setPreferredDeviceName] = useState<string | null>(null);
+
+  useEffect(() => {
+    send("getRTSPConfig", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const cfg = resp.result as { enabled: boolean; port: number };
+      setRtspEnabled(cfg.enabled);
+      setRtspPort(String(cfg.port));
+    });
+    send("getCastConfig", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const cfg = resp.result as {
+        receiverAppId: string;
+        preferredDevice: { name: string; address: string; port: number } | null;
+      };
+      setCastAppId(cfg.receiverAppId);
+      setPreferredDeviceName(cfg.preferredDevice?.name || null);
+    });
+  }, [send]);
+
+  const handleRtspToggle = (enabled: boolean) => {
+    const port = parseInt(rtspPort, 10) || 8554;
+    send("setRTSPConfig", { enabled, port }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to update RTSP config: ${resp.error?.message}`);
+        return;
+      }
+      setRtspEnabled(enabled);
+      notifications.success(enabled ? "RTSP server enabled" : "RTSP server disabled");
+    });
+  };
+
+  const handleCastAppIdChange = () => {
+    if (!castAppId.trim()) {
+      notifications.error("App ID cannot be empty");
+      return;
+    }
+    send("setCastConfig", { receiverAppId: castAppId.trim() }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to update Cast config: ${resp.error?.message}`);
+        return;
+      }
+      notifications.success("Cast receiver app ID updated");
+    });
+  };
+
+  const handleRtspPortChange = () => {
+    const port = parseInt(rtspPort, 10);
+    if (!port || port < 1 || port > 65535) {
+      notifications.error("Invalid port number");
+      return;
+    }
+    send("setRTSPConfig", { enabled: rtspEnabled, port }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to update RTSP port: ${resp.error?.message}`);
+        return;
+      }
+      notifications.success(`RTSP port set to ${port}`);
     });
   };
 
@@ -300,6 +368,101 @@ export default function SettingsVideoRoute() {
                 </>
               )}
             </Fieldset>
+          </div>
+
+          {/* RTSP Streaming */}
+          <div className="space-y-4">
+            <SettingsItem
+              title="RTSP Server"
+              description="Expose the HDMI capture as an RTSP stream for VLC, Frigate, go2rtc, and other consumers."
+            >
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={rtspEnabled ? "enabled" : "disabled"}
+                options={[
+                  { value: "enabled", label: "Enabled" },
+                  { value: "disabled", label: "Disabled" },
+                ]}
+                onChange={e => handleRtspToggle(e.target.value === "enabled")}
+              />
+            </SettingsItem>
+            {rtspEnabled && (
+              <NestedSettingsGroup>
+                <SettingsItem
+                  title="RTSP Port"
+                  description={`Stream URL: rtsp://<device-ip>:${rtspPort}/stream`}
+                >
+                  <div className="flex items-center gap-2">
+                    <InputFieldWithLabel
+                      label=""
+                      type="number"
+                      value={rtspPort}
+                      onChange={e => setRtspPort(e.target.value)}
+                      size="SM"
+                    />
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text="Apply"
+                      onClick={handleRtspPortChange}
+                    />
+                  </div>
+                </SettingsItem>
+              </NestedSettingsGroup>
+            )}
+          </div>
+
+          {/* Chromecast Settings */}
+          <div className="space-y-4">
+            <SettingsItem
+              title="Preferred Cast Device"
+              description={
+                preferredDeviceName
+                  ? `"${preferredDeviceName}" will be used for quick cast from the device LCD. You can change this by starring a device in the Cast dropdown.`
+                  : "No preferred device set. Star a device in the Cast dropdown, or the first discovered device will be used for quick cast from the LCD."
+              }
+            >
+              {preferredDeviceName ? (
+                <Button
+                  size="SM"
+                  theme="light"
+                  text="Clear"
+                  onClick={() => {
+                    send("setPreferredCastDevice", { name: "", address: "", port: 0 }, (resp: JsonRpcResponse) => {
+                      if ("error" in resp) {
+                        notifications.error("Failed to clear preferred device");
+                        return;
+                      }
+                      setPreferredDeviceName(null);
+                      notifications.success("Preferred cast device cleared");
+                    });
+                  }}
+                />
+              ) : (
+                <span className="text-sm text-slate-400">None</span>
+              )}
+            </SettingsItem>
+            <SettingsItem
+              title="Cast Receiver App ID"
+              description="The Google Cast custom receiver application ID used for Chromecast streaming."
+            >
+              <div className="flex items-center gap-2">
+                <InputFieldWithLabel
+                  label=""
+                  type="text"
+                  value={castAppId}
+                  onChange={e => setCastAppId(e.target.value)}
+                  size="SM"
+                />
+                <Button
+                  size="SM"
+                  theme="light"
+                  text="Apply"
+                  onClick={handleCastAppIdChange}
+                />
+              </div>
+            </SettingsItem>
           </div>
 
           {debugMode && (

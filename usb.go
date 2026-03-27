@@ -29,21 +29,15 @@ func initUsbGadget() {
 	}()
 
 	gadget.SetOnKeyboardStateChange(func(state usbgadget.KeyboardState) {
-		if currentSession != nil {
-			currentSession.reportHidRPCKeyboardLedState(state)
-		}
+		forEachSession(func(s *Session) { s.reportHidRPCKeyboardLedState(state) })
 	})
 
 	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
-		if currentSession != nil {
-			currentSession.enqueueKeysDownState(state)
-		}
+		forEachSession(func(s *Session) { s.enqueueKeysDownState(state) })
 	})
 
 	gadget.SetOnKeepAliveReset(func() {
-		if currentSession != nil {
-			currentSession.resetKeepAliveTime()
-		}
+		forEachSession(func(s *Session) { s.resetKeepAliveTime() })
 	})
 
 	// open the keyboard hid file to listen for keyboard events
@@ -203,11 +197,11 @@ func attemptUSBRecovery(state string) string {
 
 func triggerUSBStateUpdate() {
 	go func() {
-		if currentSession == nil {
+		if !anySession() {
 			usbLogger.Info().Msg("No active RPC session, skipping USB state update")
 			return
 		}
-		writeJSONRPCEvent("usbState", usbState, currentSession)
+		forEachSession(func(s *Session) { writeJSONRPCEvent("usbState", usbState, s) })
 	}()
 }
 

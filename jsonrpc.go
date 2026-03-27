@@ -1093,18 +1093,14 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 		IsPaste: true,
 	}
 
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
-	}
+	forEachSession(func(sess *Session) { sess.reportHidRPCKeyboardMacroState(s) })
 
 	err := rpcDoExecuteKeyboardMacro(ctx, macro)
 
 	setKeyboardMacroCancel(nil)
 
 	s.State = false
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
-	}
+	forEachSession(func(sess *Session) { sess.reportHidRPCKeyboardMacroState(s) })
 
 	return err
 }
@@ -1260,4 +1256,14 @@ var rpcHandlers = map[string]RPCHandler{
 	"setMqttSettings":            {Func: rpcSetMqttSettings, Params: []string{"settings"}},
 	"getMqttStatus":              {Func: rpcGetMqttStatus},
 	"testMqttConnection":         {Func: rpcTestMqttConnection, Params: []string{"settings"}},
+	"getRTSPConfig":              {Func: rpcGetRTSPConfig},
+	"setRTSPConfig":              {Func: rpcSetRTSPConfig, Params: []string{"enabled", "port"}},
+	"getCastConfig":              {Func: rpcGetCastConfig},
+	"setCastConfig":              {Func: rpcSetCastConfig, Params: []string{"receiverAppId"}},
+	"setPreferredCastDevice":     {Func: rpcSetPreferredCastDevice, Params: []string{"name", "address", "port"}},
+	"discoverChromecasts":        {Func: rpcDiscoverChromecasts},
+	"startCasting":               {Func: rpcStartCasting, Params: []string{"address", "port"}},
+	"stopCasting":                {Func: rpcStopCasting},
+	"getCastingStatus":           {Func: rpcGetCastingStatus},
+	"quickCast":                  {Func: rpcQuickCast},
 }

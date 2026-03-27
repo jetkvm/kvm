@@ -68,9 +68,7 @@ func runATXControl() {
 			HDD:   newLedHDDState,
 		}
 
-		if currentSession != nil {
-			writeJSONRPCEvent("atxState", atxState, currentSession)
-		}
+		forEachSession(func(s *Session) { writeJSONRPCEvent("atxState", atxState, s) })
 
 		if mqttManager != nil {
 			mqttManager.publishATXState(atxState)
@@ -238,9 +236,7 @@ func runDCControl() {
 		// Update Prometheus metrics
 		updateDCMetrics(snapshot)
 
-		if currentSession != nil {
-			writeJSONRPCEvent("dcState", snapshot, currentSession)
-		}
+		forEachSession(func(s *Session) { writeJSONRPCEvent("dcState", snapshot, s) })
 
 		if mqttManager != nil {
 			mqttManager.publishDCState(snapshot)

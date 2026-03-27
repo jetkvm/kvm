@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #111; color: #0f0; font: 20px monospace; padding: 20px; width: 100vw; height: 100vh; overflow: hidden; }
+  video { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; object-fit: contain; z-index: 1; }
+  #log { position: fixed; top: 0; left: 0; z-index: 10; padding: 20px; background: rgba(0,0,0,0.8); max-height: 100vh; overflow: auto; transition: opacity 1s; }
+  #log.hidden { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="log">Cast receiver loading...</div>
+<video id="video" autoplay playsinline muted></video>
+
+<script>
+const logEl = document.getElementById('log');
+const videoEl = document.getElementById('video');
+const NAMESPACE = 'urn:x-cast:com.jetkvm.cast';
+
+function log(msg) {
+  const line = document.createElement('div');
+  line.textContent = new Date().toISOString().substr(11,8) + ' ' + msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log('[JetKVM]', msg);
+}
+
+function hideLog() {
+  setTimeout(() => logEl.classList.add('hidden'), 5000);
+}
+
+log('Loading CAF receiver SDK...');
+</script>
+
+<script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+
+<script>
+log('CAF SDK loaded, initializing...');
+
+try {
+  const context = cast.framework.CastReceiverContext.getInstance();
+  const playerManager = context.getPlayerManager();
+
+  // Don't handle default media loads
+  playerManager.setMessageInterceptor(
+    cast.framework.messages.MessageType.LOAD,
+    (request) => { log('Ignoring LOAD request'); return null; }
+  );
+
+  // Listen for our custom namespace
+  context.addCustomMessageListener(NAMESPACE, (event) => {
+    log('Got message: ' + JSON.stringify(event.data));
+    const data = event.data;
+    if (data.type === 'connect') {
+      log('Connecting to JetKVM at ' + data.ip);
+      connectWebRTC(data.ip);
+    }
+  });
+
+  // Start the receiver
+  const options = new cast.framework.CastReceiverOptions();
+  options.disableIdleTimeout = true;
+  options.customNamespaces = {};
+  options.customNamespaces[NAMESPACE] = cast.framework.system.MessageType.JSON;
+
+  log('Starting receiver context...');
+  context.start(options);
+  log('Receiver context started OK');
+
+} catch(e) {
+  log('ERROR: ' + e.message);
+}
+
+// --- WebRTC ---
+
+let pc = null;
+let ws = null;
+
+function connectWebRTC(ip) {
+  if (pc) { pc.close(); pc = null; }
+  if (ws) { ws.close(); ws = null; }
+
+  const wsUrl = 'ws://' + ip + '/webrtc/signaling/client';
+  log('Opening WebSocket: ' + wsUrl);
+
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => log('WebSocket connected');
+
+  ws.onerror = (e) => log('WebSocket error');
+
+  ws.onclose = (e) => log('WebSocket closed: code=' + e.code);
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    log('WS recv: ' + msg.type);
+
+    if (msg.type === 'device-metadata') {
+      setupPeerConnection();
+    } else if (msg.type === 'answer') {
+      const answer = JSON.parse(atob(msg.data));
+      pc.setRemoteDescription(new RTCSessionDescription(answer))
+        .then(() => log('Remote description set'))
+        .catch(e => log('setRemoteDesc error: ' + e.message));
+    } else if (msg.type === 'new-ice-candidate' && msg.data) {
+      pc.addIceCandidate(new RTCIceCandidate(msg.data))
+        .catch(e => log('addIce error: ' + e.message));
+    }
+  };
+}
+
+async function setupPeerConnection() {
+  log('Creating RTCPeerConnection...');
+
+  pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+
+  pc.ontrack = (event) => {
+    log('Got video track');
+    videoEl.srcObject = event.streams[0] || new MediaStream([event.track]);
+    videoEl.play().then(() => { log('Playing!'); hideLog(); })
+      .catch(e => log('Play error: ' + e.message));
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    log('ICE: ' + pc.iceConnectionState);
+  };
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'new-ice-candidate', data: event.candidate }));
+    }
+  };
+
+  // Data channels required by JetKVM
+  pc.createDataChannel('rpc', { ordered: true });
+  pc.createDataChannel('hidrpc', { ordered: true });
+  pc.createDataChannel('hidrpc-unreliable-ordered', { ordered: true, maxRetransmits: 0 });
+  pc.createDataChannel('hidrpc-unreliable-nonordered', { ordered: false, maxRetransmits: 0 });
+  pc.createDataChannel('terminal', { ordered: true });
+
+  pc.addTransceiver('video', { direction: 'recvonly' });
+
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const sdpB64 = btoa(JSON.stringify(pc.localDescription));
+    ws.send(JSON.stringify({ type: 'offer', data: { sd: sdpB64 } }));
+    log('Offer sent');
+  } catch(e) {
+    log('Offer error: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
