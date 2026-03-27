@@ -3,6 +3,7 @@ package native
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -85,7 +86,7 @@ func (n *Native) getSleepMode() (bool, error) {
 
 	data, err := os.ReadFile(sleepModeFile)
 	if err == nil {
-		return string(data) == "1", nil
+		return strings.TrimSpace(string(data)) == "1", nil
 	}
 
 	return false, nil
