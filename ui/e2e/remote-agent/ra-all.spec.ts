@@ -506,6 +506,39 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
+  // MOUSE: BACK/FORWARD BUTTONS (4 & 5)
+  // ═══════════════════════════════════════════
+
+  test("mouse: back and forward buttons via absolute mouse", async () => {
+    const BTN_SIDE = 0x113;
+    const BTN_EXTRA = 0x114;
+
+    for (const { buttons, btnCode, label } of [
+      { buttons: 0x08, btnCode: BTN_SIDE, label: "back (button 4)" },
+      { buttons: 0x10, btnCode: BTN_EXTRA, label: "forward (button 5)" },
+    ]) {
+      await agent!.clearMouseEvents();
+
+      await sendAbsMouseMove(sharedPage, 16384, 16384, buttons);
+      await new Promise(r => setTimeout(r, 50));
+      await sendAbsMouseMove(sharedPage, 16384, 16384, 0);
+      await new Promise(r => setTimeout(r, 50));
+
+      const deadline = Date.now() + 3000;
+      let found = false;
+      while (Date.now() < deadline) {
+        const events = await agent!.getMouseEvents();
+        if (events.some(ev => ev.type === "mouse_button" && ev.code === btnCode)) {
+          found = true;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 50));
+      }
+      expect(found, `${label} should be received by host`).toBe(true);
+    }
+  });
+
+  // ═══════════════════════════════════════════
   // MOUSE: WHEEL SCROLL (VERTICAL + HORIZONTAL)
   // ═══════════════════════════════════════════
 
