@@ -92,6 +92,11 @@ export default function WebRTCVideo({
   const lastKeyDownRef = useRef<{ hidKey: number; time: number } | null>(null);
   const altGrLoopRef = useRef(false);
 
+  // Firefox resistFingerprinting suppresses standalone modifier key events.
+  // Reconcile modifier state from event boolean properties as a fallback.
+  // Track which modifiers we synthetically pressed so we don't double-send.
+  const syntheticModifiersRef = useRef<Set<number>>(new Set());
+
   useResizeObserver({
     ref: videoElm as React.RefObject<HTMLElement>,
     onResize: handleResize,
@@ -289,6 +294,38 @@ export default function WebRTCVideo({
     return code;
   }
 
+  // Firefox resistFingerprinting suppresses standalone modifier key events.
+  // Reconcile modifier state from event boolean properties as a fallback.
+  const reconcileModifiers = useCallback(
+    (e: KeyboardEvent, isKeyDown: boolean) => {
+      const mapping: [boolean, number][] = [
+        [e.shiftKey, keys.ShiftLeft],
+        [e.ctrlKey, keys.ControlLeft],
+        [e.altKey, keys.AltLeft],
+        [e.metaKey, keys.MetaLeft],
+      ];
+      const synthetic = syntheticModifiersRef.current;
+      for (const [active, hidKey] of mapping) {
+        if (isKeyDown && active && !synthetic.has(hidKey)) {
+          // The modifier is active but we never saw a keydown for it.
+          // Only synthesize if the current event is NOT for this modifier key itself
+          // (if it is, the normal path already handles it).
+          const code = getAdjustedKeyCode(e);
+          const eventHidKey = keys[code];
+          if (eventHidKey !== hidKey) {
+            synthetic.add(hidKey);
+            handleKeyPress(hidKey, true);
+          }
+        } else if (!active && synthetic.has(hidKey)) {
+          // The modifier was released but we never saw a keyup for it.
+          synthetic.delete(hidKey);
+          handleKeyPress(hidKey, false);
+        }
+      }
+    },
+    [handleKeyPress],
+  );
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
@@ -300,6 +337,10 @@ export default function WebRTCVideo({
         console.warn(`Key down not mapped: ${code}`);
         return;
       }
+
+      // If a real modifier keydown fires, clear its synthetic tracking
+      // so we don't double-release later.
+      syntheticModifiersRef.current.delete(hidKey);
 
       // Detect Windows synthetic AltGr (CtrlLeft then AltRight within ~3ms) and cancel the synthetic Ctrl
       if (isWindowsClient) {
@@ -350,6 +391,8 @@ export default function WebRTCVideo({
       console.debug(`Key down: ${hidKey}`);
       handleKeyPress(hidKey, true);
 
+      reconcileModifiers(e, true);
+
       if (!isKeyboardLockActive && hidKey === keys.MetaLeft) {
         // If the left meta key was just pressed and we're not keyboard locked
         // we'll never see the keyup event because the browser is going to lose
@@ -360,7 +403,7 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient, reconcileModifiers],
   );
 
   const keyUpHandler = useCallback(
@@ -402,8 +445,10 @@ export default function WebRTCVideo({
 
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
+
+      reconcileModifiers(e, false);
     },
-    [handleKeyPress, isOcrMode, isWindowsClient],
+    [handleKeyPress, isOcrMode, isWindowsClient, reconcileModifiers],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {

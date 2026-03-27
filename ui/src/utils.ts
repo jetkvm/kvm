@@ -226,7 +226,34 @@ export function isMac() {
 }
 
 export function isWindows() {
-  return !!/win/i.exec(navigator.platform);
+  // Prefer NavigatorUAData.platform (User-Agent Client Hints API) when available.
+  // Supported in Chromium-based browsers and not spoofed by Firefox RFP.
+  const uaData = (navigator as Navigator & { userAgentData?: { platform: string } })
+    .userAgentData;
+  if (uaData?.platform) {
+    return !!/win/i.exec(uaData.platform);
+  }
+
+  // For browsers without userAgentData (Firefox, Safari):
+  // Firefox's resistFingerprinting (RFP) spoofs navigator.platform to "Win32"
+  // on all OSes, which incorrectly activates Windows-specific AltGr key
+  // buffering. RFP also clamps event timestamps to ~100ms precision, making
+  // the 3ms AltGr timing check unreliable.
+  //
+  // Detect RFP by checking if timestamps are clamped to 100ms boundaries.
+  // Date.now() returns epoch ms — its mod 100 is essentially uniformly
+  // distributed. RFP clamps it to 100ms, so mod 100 is always 0.
+  // performance.timeOrigin is also epoch-based and independently clamped.
+  // Combined false-positive rate: ~0.01% (1/100 × 1/100).
+  if (!!/win/i.exec(navigator.platform)) {
+    const rfpLikely = Date.now() % 100 === 0 && performance.timeOrigin % 100 === 0;
+    if (rfpLikely) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 export function isIOS() {
