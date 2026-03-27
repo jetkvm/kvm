@@ -663,6 +663,7 @@ func resetConfig() error {
 // factoryResetPaths lists all user data paths that should be removed during a factory reset.
 var factoryResetPaths = []string{
 	configPath,
+	configPath + ".bak",
 	imagesFolder,
 	tlsStorePath,
 	sshKeyDir,
