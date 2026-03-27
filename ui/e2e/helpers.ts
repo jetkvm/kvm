@@ -129,7 +129,9 @@ export async function waitForVideoDimensions(
     .poll(
       async () => {
         dims = await getVideoStreamDimensions(page);
-        return dims !== null && dims.width > MIN_VIDEO_DIMENSION && dims.height > MIN_VIDEO_DIMENSION;
+        return (
+          dims !== null && dims.width > MIN_VIDEO_DIMENSION && dims.height > MIN_VIDEO_DIMENSION
+        );
       },
       {
         message: "Waiting for video dimensions to be available",
@@ -501,9 +503,7 @@ export async function loginLocal(
     page
       .waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 })
       .then(() => "navigated" as const),
-    errorLocator
-      .waitFor({ state: "visible", timeout: 5000 })
-      .then(() => "error" as const),
+    errorLocator.waitFor({ state: "visible", timeout: 5000 }).then(() => "error" as const),
   ]).catch(() => "timeout" as const);
 
   if (outcome === "navigated") {
@@ -639,19 +639,47 @@ export async function disablePasswordFromSettings(
 
 // ── SSH ──
 
+export const SSH_OPTS = [
+  "-o UserKnownHostsFile=/dev/null",
+  "-o StrictHostKeyChecking=no",
+  "-o ConnectTimeout=30",
+  "-o ServerAliveInterval=5",
+  "-o ServerAliveCountMax=3",
+].join(" ");
+
+const SSH_MAX_RETRIES = 3;
+const SSH_RETRY_BASE_DELAY_MS = 2000;
+
 export async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
   const host = getDeviceHost();
-  const sshCmd = `ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} '${cmd}'`;
+  const sshCmd = `ssh ${SSH_OPTS} root@${host} '${cmd}'`;
 
-  try {
-    const { stdout } = await execAsync(sshCmd);
-    return stdout;
-  } catch (error) {
-    if (ignoreErrors) {
-      return "";
+  for (let attempt = 1; attempt <= SSH_MAX_RETRIES; attempt++) {
+    try {
+      const { stdout } = await execAsync(sshCmd);
+      return stdout;
+    } catch (error) {
+      if (ignoreErrors) return "";
+
+      const msg = error instanceof Error ? error.message : String(error);
+      const isTransient =
+        msg.includes("Connection reset") ||
+        msg.includes("Connection refused") ||
+        msg.includes("Connection timed out") ||
+        msg.includes("No route to host");
+
+      if (isTransient && attempt < SSH_MAX_RETRIES) {
+        const delay = SSH_RETRY_BASE_DELAY_MS * attempt;
+        console.log(
+          `[ssh] Attempt ${attempt}/${SSH_MAX_RETRIES} failed (${msg.split("\n")[0]}), retrying in ${delay}ms...`,
+        );
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw error;
     }
-    throw error;
   }
+  throw new Error("sshExec: unreachable");
 }
 
 export async function resetConfigViaSSH(): Promise<void> {
@@ -699,9 +727,10 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
 
   if (currentUrl.includes("/login")) {
     // Device has password protection - try to login with known passwords
-    const passwordsToTry = desired.mode === "password"
-      ? [desired.password, ...KNOWN_TEST_PASSWORDS.filter(p => p !== desired.password)]
-      : [...KNOWN_TEST_PASSWORDS];
+    const passwordsToTry =
+      desired.mode === "password"
+        ? [desired.password, ...KNOWN_TEST_PASSWORDS.filter(p => p !== desired.password)]
+        : [...KNOWN_TEST_PASSWORDS];
 
     let loggedIn = false;
     let usedPassword: string | null = null;
@@ -881,10 +910,17 @@ export async function callJsonRpc(
       return new Promise((resolve, reject) => {
         const hooks = window.__kvmTestHooks;
         if (!hooks) return reject(new Error("Test hooks not available"));
-        hooks.sendJsonRpc(method, params, (resp: { error?: { message: string; data?: string }; result?: unknown }) => {
-          if (resp.error) reject(new Error(`${resp.error.message}${resp.error.data ? `: ${resp.error.data}` : ""}`));
-          else resolve(resp.result);
-        });
+        hooks.sendJsonRpc(
+          method,
+          params,
+          (resp: { error?: { message: string; data?: string }; result?: unknown }) => {
+            if (resp.error)
+              reject(
+                new Error(`${resp.error.message}${resp.error.data ? `: ${resp.error.data}` : ""}`),
+              );
+            else resolve(resp.result);
+          },
+        );
       });
     },
     { method, params },
@@ -1012,14 +1048,7 @@ export async function deployBinaryToDevice(binaryPath: string): Promise<void> {
   }
 
   const host = getDeviceHost();
-  const sshCmd = [
-    "ssh",
-    "-o UserKnownHostsFile=/dev/null",
-    "-o StrictHostKeyChecking=no",
-    "-o ConnectTimeout=10",
-    `root@${host}`,
-    '"cat > /userdata/jetkvm/jetkvm_app.update"',
-  ].join(" ");
+  const sshCmd = `ssh ${SSH_OPTS} root@${host} "cat > /userdata/jetkvm/jetkvm_app.update"`;
   await execAsync(`${sshCmd} < "${binaryPath}"`);
 }
 
@@ -1095,17 +1124,19 @@ export interface StableReleaseInfo {
 export async function fetchLatestStableRelease(): Promise<StableReleaseInfo> {
   const url = "https://api.jetkvm.com/releases?deviceId=e2e-test";
   const body = await new Promise<string>((resolve, reject) => {
-    https.get(url, res => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`Release API returned ${res.statusCode}`));
-        res.resume();
-        return;
-      }
-      let data = "";
-      res.on("data", chunk => (data += chunk));
-      res.on("end", () => resolve(data));
-      res.on("error", reject);
-    }).on("error", reject);
+    https
+      .get(url, res => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Release API returned ${res.statusCode}`));
+          res.resume();
+          return;
+        }
+        let data = "";
+        res.on("data", chunk => (data += chunk));
+        res.on("end", () => resolve(data));
+        res.on("error", reject);
+      })
+      .on("error", reject);
   });
 
   const json = JSON.parse(body);
@@ -1121,20 +1152,27 @@ export async function downloadFile(url: string, destPath: string): Promise<void>
 
   await new Promise<void>((resolve, reject) => {
     const request = (requestUrl: string) => {
-      proto.get(requestUrl, res => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          request(res.headers.location);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`Download failed: ${res.statusCode} for ${requestUrl}`));
-          res.resume();
-          return;
-        }
-        res.pipe(file);
-        file.on("finish", () => file.close(() => resolve()));
-        res.on("error", reject);
-      }).on("error", reject);
+      proto
+        .get(requestUrl, res => {
+          if (
+            res.statusCode &&
+            res.statusCode >= 300 &&
+            res.statusCode < 400 &&
+            res.headers.location
+          ) {
+            request(res.headers.location);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            reject(new Error(`Download failed: ${res.statusCode} for ${requestUrl}`));
+            res.resume();
+            return;
+          }
+          res.pipe(file);
+          file.on("finish", () => file.close(() => resolve()));
+          res.on("error", reject);
+        })
+        .on("error", reject);
     };
     request(url);
   });

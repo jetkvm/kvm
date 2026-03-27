@@ -59,18 +59,51 @@ export interface DisplayInfo {
 // Linux evdev key codes (matching input-event-codes.h)
 export const KEY = {
   ESC: 1,
-  KEY_1: 2, KEY_2: 3, KEY_3: 4, KEY_4: 5, KEY_5: 6,
-  KEY_6: 7, KEY_7: 8, KEY_8: 9, KEY_9: 10, KEY_0: 11,
-  MINUS: 12, EQUAL: 13,
-  Q: 16, W: 17, E: 18, R: 19, T: 20,
-  Y: 21, U: 22, I: 23, O: 24, P: 25,
-  LEFT_BRACE: 26, RIGHT_BRACE: 27,
-  A: 30, S: 31, D: 32, F: 33, G: 34,
-  H: 35, J: 36, K: 37, L: 38,
-  SEMICOLON: 39, APOSTROPHE: 40,
-  Z: 44, X: 45, C: 46, V: 47, B: 48,
-  N: 49, M: 50,
-  COMMA: 51, DOT: 52, SLASH: 53,
+  KEY_1: 2,
+  KEY_2: 3,
+  KEY_3: 4,
+  KEY_4: 5,
+  KEY_5: 6,
+  KEY_6: 7,
+  KEY_7: 8,
+  KEY_8: 9,
+  KEY_9: 10,
+  KEY_0: 11,
+  MINUS: 12,
+  EQUAL: 13,
+  Q: 16,
+  W: 17,
+  E: 18,
+  R: 19,
+  T: 20,
+  Y: 21,
+  U: 22,
+  I: 23,
+  O: 24,
+  P: 25,
+  LEFT_BRACE: 26,
+  RIGHT_BRACE: 27,
+  A: 30,
+  S: 31,
+  D: 32,
+  F: 33,
+  G: 34,
+  H: 35,
+  J: 36,
+  K: 37,
+  L: 38,
+  SEMICOLON: 39,
+  APOSTROPHE: 40,
+  Z: 44,
+  X: 45,
+  C: 46,
+  V: 47,
+  B: 48,
+  N: 49,
+  M: 50,
+  COMMA: 51,
+  DOT: 52,
+  SLASH: 53,
   ENTER: 28,
   SPACE: 57,
   BACKSPACE: 14,
@@ -89,8 +122,18 @@ export const KEY = {
   DOWN: 108,
   LEFT: 105,
   RIGHT: 106,
-  F1: 59, F2: 60, F3: 61, F4: 62, F5: 63, F6: 64,
-  F7: 65, F8: 66, F9: 67, F10: 68, F11: 87, F12: 88,
+  F1: 59,
+  F2: 60,
+  F3: 61,
+  F4: 62,
+  F5: 63,
+  F6: 64,
+  F7: 65,
+  F8: 66,
+  F9: 67,
+  F10: 68,
+  F11: 87,
+  F12: 88,
   DELETE: 111,
   HOME: 102,
   END: 107,
@@ -105,29 +148,77 @@ export const KEY = {
  */
 export const HID_TO_LINUX: Record<number, number> = {
   // Letters (HID 0x04-0x1D → Linux KEY_A-KEY_Z)
-  0x04: KEY.A, 0x05: KEY.B, 0x06: KEY.C, 0x07: KEY.D, 0x08: KEY.E,
-  0x09: KEY.F, 0x0a: KEY.G, 0x0b: KEY.H, 0x0c: KEY.I, 0x0d: KEY.J,
-  0x0e: KEY.K, 0x0f: KEY.L, 0x10: KEY.M, 0x11: KEY.N, 0x12: KEY.O,
-  0x13: KEY.P, 0x14: KEY.Q, 0x15: KEY.R, 0x16: KEY.S, 0x17: KEY.T,
-  0x18: KEY.U, 0x19: KEY.V, 0x1a: KEY.W, 0x1b: KEY.X, 0x1c: KEY.Y,
+  0x04: KEY.A,
+  0x05: KEY.B,
+  0x06: KEY.C,
+  0x07: KEY.D,
+  0x08: KEY.E,
+  0x09: KEY.F,
+  0x0a: KEY.G,
+  0x0b: KEY.H,
+  0x0c: KEY.I,
+  0x0d: KEY.J,
+  0x0e: KEY.K,
+  0x0f: KEY.L,
+  0x10: KEY.M,
+  0x11: KEY.N,
+  0x12: KEY.O,
+  0x13: KEY.P,
+  0x14: KEY.Q,
+  0x15: KEY.R,
+  0x16: KEY.S,
+  0x17: KEY.T,
+  0x18: KEY.U,
+  0x19: KEY.V,
+  0x1a: KEY.W,
+  0x1b: KEY.X,
+  0x1c: KEY.Y,
   0x1d: KEY.Z,
   // Numbers (HID 0x1E-0x27)
-  0x1e: KEY.KEY_1, 0x1f: KEY.KEY_2, 0x20: KEY.KEY_3, 0x21: KEY.KEY_4,
-  0x22: KEY.KEY_5, 0x23: KEY.KEY_6, 0x24: KEY.KEY_7, 0x25: KEY.KEY_8,
-  0x26: KEY.KEY_9, 0x27: KEY.KEY_0,
+  0x1e: KEY.KEY_1,
+  0x1f: KEY.KEY_2,
+  0x20: KEY.KEY_3,
+  0x21: KEY.KEY_4,
+  0x22: KEY.KEY_5,
+  0x23: KEY.KEY_6,
+  0x24: KEY.KEY_7,
+  0x25: KEY.KEY_8,
+  0x26: KEY.KEY_9,
+  0x27: KEY.KEY_0,
   // Special keys
-  0x28: KEY.ENTER, 0x29: KEY.ESC, 0x2a: KEY.BACKSPACE, 0x2b: KEY.TAB,
+  0x28: KEY.ENTER,
+  0x29: KEY.ESC,
+  0x2a: KEY.BACKSPACE,
+  0x2b: KEY.TAB,
   0x2c: KEY.SPACE,
   // Modifiers and toggles
-  0x39: KEY.CAPS_LOCK, 0x53: KEY.NUM_LOCK, 0x47: KEY.SCROLL_LOCK,
+  0x39: KEY.CAPS_LOCK,
+  0x53: KEY.NUM_LOCK,
+  0x47: KEY.SCROLL_LOCK,
   // F-keys (HID 0x3A-0x45)
-  0x3a: KEY.F1, 0x3b: KEY.F2, 0x3c: KEY.F3, 0x3d: KEY.F4,
-  0x3e: KEY.F5, 0x3f: KEY.F6, 0x40: KEY.F7, 0x41: KEY.F8,
-  0x42: KEY.F9, 0x43: KEY.F10, 0x44: KEY.F11, 0x45: KEY.F12,
+  0x3a: KEY.F1,
+  0x3b: KEY.F2,
+  0x3c: KEY.F3,
+  0x3d: KEY.F4,
+  0x3e: KEY.F5,
+  0x3f: KEY.F6,
+  0x40: KEY.F7,
+  0x41: KEY.F8,
+  0x42: KEY.F9,
+  0x43: KEY.F10,
+  0x44: KEY.F11,
+  0x45: KEY.F12,
   // Navigation
-  0x4f: KEY.RIGHT, 0x50: KEY.LEFT, 0x51: KEY.DOWN, 0x52: KEY.UP,
-  0x4a: KEY.HOME, 0x4d: KEY.END, 0x4b: KEY.PAGE_UP, 0x4e: KEY.PAGE_DOWN,
-  0x49: KEY.INSERT, 0x4c: KEY.DELETE,
+  0x4f: KEY.RIGHT,
+  0x50: KEY.LEFT,
+  0x51: KEY.DOWN,
+  0x52: KEY.UP,
+  0x4a: KEY.HOME,
+  0x4d: KEY.END,
+  0x4b: KEY.PAGE_UP,
+  0x4e: KEY.PAGE_DOWN,
+  0x49: KEY.INSERT,
+  0x4c: KEY.DELETE,
 };
 
 export class RemoteAgent {
@@ -256,18 +347,13 @@ export class RemoteAgent {
       }
       await sleep(100);
     }
-    throw new Error(
-      `Timed out waiting for key sequence [${keyCodes.join(", ")}] (${timeoutMs}ms)`,
-    );
+    throw new Error(`Timed out waiting for key sequence [${keyCodes.join(", ")}] (${timeoutMs}ms)`);
   }
 
   /**
    * Verify mouse movement occurred on the remote host.
    */
-  async expectMouseMove(
-    action: () => Promise<void>,
-    timeoutMs = 3000,
-  ): Promise<MouseEvent[]> {
+  async expectMouseMove(action: () => Promise<void>, timeoutMs = 3000): Promise<MouseEvent[]> {
     await this.clearMouseEvents();
     await action();
     return this.waitForMouseEvent(
@@ -279,10 +365,7 @@ export class RemoteAgent {
   /**
    * Verify a mouse button was clicked.
    */
-  async expectMouseButton(
-    action: () => Promise<void>,
-    timeoutMs = 3000,
-  ): Promise<MouseEvent[]> {
+  async expectMouseButton(action: () => Promise<void>, timeoutMs = 3000): Promise<MouseEvent[]> {
     await this.clearMouseEvents();
     await action();
     return this.waitForMouseEvent(ev => ev.type === "mouse_button", timeoutMs);
@@ -293,9 +376,7 @@ export class RemoteAgent {
    */
   async expectJetKVMConnected(): Promise<USBDevice | undefined> {
     const devices = await this.getUSBDevices();
-    return devices.find(
-      d => d.name.includes("JetKVM") || d.id === "1d6b:0104",
-    );
+    return devices.find(d => d.name.includes("JetKVM") || d.id === "1d6b:0104");
   }
 
   /**
@@ -405,19 +486,14 @@ export class RemoteAgent {
   /**
    * Wait for display resolution to change.
    */
-  async waitForResolution(
-    expected: string,
-    timeoutMs = 15000,
-  ): Promise<string> {
+  async waitForResolution(expected: string, timeoutMs = 15000): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const res = await this.getResolution();
       if (res === expected) return res;
       await sleep(500);
     }
-    throw new Error(
-      `Timed out waiting for resolution ${expected} (${timeoutMs}ms)`,
-    );
+    throw new Error(`Timed out waiting for resolution ${expected} (${timeoutMs}ms)`);
   }
 
   /**
@@ -440,7 +516,7 @@ export class RemoteAgent {
       if (!fs.existsSync(goSource)) {
         throw new Error(
           `Remote agent source not found at ${goSource}. ` +
-          `Restore it with: git checkout e2e-remote-host-agent -- e2e/remote-agent/`,
+            `Restore it with: git checkout e2e-remote-host-agent -- e2e/remote-agent/`,
         );
       }
       console.log("[remote-agent] Building remote-agent binary...");
@@ -451,7 +527,8 @@ export class RemoteAgent {
     }
 
     console.log(`[remote-agent] Deploying to ${target}...`);
-    const sshOpts = "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10";
+    const sshOpts =
+      "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=5 -o ServerAliveCountMax=3";
     execSync(`scp ${sshOpts} "${binary}" ${target}:/tmp/remote-agent`, { stdio: "inherit" });
 
     console.log(`[remote-agent] Starting on port ${port}...`);
@@ -465,14 +542,13 @@ export class RemoteAgent {
     if (!(await this.health())) {
       let logs = "";
       try {
-        logs = execSync(
-          `ssh ${sshOpts} ${target} "cat /tmp/remote-agent.log"`,
-          { encoding: "utf8" },
-        );
-      } catch { /* best effort */ }
-      throw new Error(
-        `Remote agent failed to start on ${host}:${port}.\nLogs:\n${logs}`,
-      );
+        logs = execSync(`ssh ${sshOpts} ${target} "cat /tmp/remote-agent.log"`, {
+          encoding: "utf8",
+        });
+      } catch {
+        /* best effort */
+      }
+      throw new Error(`Remote agent failed to start on ${host}:${port}.\nLogs:\n${logs}`);
     }
     console.log(`[remote-agent] Agent running at ${this.baseUrl}`);
   }

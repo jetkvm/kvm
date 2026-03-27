@@ -1,12 +1,7 @@
-import {
-  sshExec,
-  getDeviceHost,
-  resetConfigViaSSH,
-  restartAppViaSSH,
-} from "./helpers";
 import * as fs from "fs";
 import { promisify } from "util";
 import { exec } from "child_process";
+import { sshExec, getDeviceHost, resetConfigViaSSH, restartAppViaSSH, SSH_OPTS } from "./helpers";
 
 const execAsync = promisify(exec);
 
@@ -26,14 +21,7 @@ export default async function globalSetup() {
   await new Promise(r => setTimeout(r, 1000));
 
   const host = getDeviceHost();
-  const sshCmd = [
-    "ssh",
-    "-o UserKnownHostsFile=/dev/null",
-    "-o StrictHostKeyChecking=no",
-    "-o ConnectTimeout=10",
-    `root@${host}`,
-    '"cat > /userdata/jetkvm/bin/jetkvm_app"',
-  ].join(" ");
+  const sshCmd = `ssh ${SSH_OPTS} root@${host} "cat > /userdata/jetkvm/bin/jetkvm_app"`;
   await execAsync(`${sshCmd} < "${binaryPath}"`);
 
   await sshExec("chmod +x /userdata/jetkvm/bin/jetkvm_app");
