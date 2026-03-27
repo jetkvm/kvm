@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import {
@@ -9,6 +9,7 @@ import {
   LuScanText,
   LuSettings,
   LuSignal,
+  LuTerminal,
   LuX,
 } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
@@ -33,6 +34,7 @@ import PasteModal from "@components/popovers/PasteModal";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
 import MountPopopover from "@components/popovers/MountPopover";
 import ExtensionPopover from "@components/popovers/ExtensionPopover";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { m } from "@localizations/messages.js";
 
 export default function Actionbar({
@@ -58,6 +60,16 @@ export default function Actionbar({
   const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
   const { openDetachedWindow } = useDetachedWindow();
+  const { send } = useJsonRpc();
+  const [serialConsoleEnabled, setSerialConsoleEnabled] = useState(false);
+
+  useEffect(() => {
+    send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const devices = resp.result as { serial_console?: boolean };
+      setSerialConsoleEnabled(devices.serial_console === true);
+    });
+  }, [send]);
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
@@ -92,6 +104,15 @@ export default function Actionbar({
               text={m.kvm_terminal()}
               LeadingIcon={({ className }) => <CommandLineIcon className={className} />}
               onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
+            />
+          )}
+          {serialConsoleEnabled && (
+            <Button
+              size="XS"
+              theme="light"
+              text="CDC-ACM Console"
+              LeadingIcon={LuTerminal}
+              onClick={() => setTerminalType(terminalType === "cdcacm" ? "none" : "cdcacm")}
             />
           )}
           <Popover>

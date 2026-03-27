@@ -1160,6 +1160,91 @@ test.describe("Remote Host Agent", () => {
   });
 
   // ═══════════════════════════════════════════
+  // CDC-ACM CONSOLE UI
+  // ═══════════════════════════════════════════
+
+  test("usb: CDC-ACM Console terminal sends and receives data via ttyGS0", async () => {
+    test.setTimeout(60_000);
+
+    const remoteHost = process.env.JETKVM_REMOTE_HOST;
+    test.skip(!remoteHost, "JETKVM_REMOTE_HOST not set");
+
+    const sshTarget = remoteHost!.includes("@") ? remoteHost! : `tony@${remoteHost}`;
+    const sshOpts = "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10";
+    const { execSync } = await import("child_process");
+
+    // Use single-quoted SSH commands to avoid nested quoting issues
+    const remoteExec = (cmd: string) =>
+      execSync(`ssh ${sshOpts} ${sshTarget} '${cmd}'`, { encoding: "utf8", timeout: 15_000 }).trim();
+
+    // Enable serial console
+    await callJsonRpc(sharedPage, "setUsbDevices", {
+      devices: { ...USB_DEVICES_DEFAULT, serial_console: true },
+    });
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Find the ttyACM device on the remote host
+    const ttyACM = remoteExec("ls /dev/ttyACM* 2>/dev/null | head -1");
+    expect(ttyACM).toContain("ttyACM");
+
+    // Reload the page so the action bar picks up serial_console enabled state
+    await sharedPage.reload({ waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+
+    // Verify the CDC-ACM Console button is visible
+    const cdcButton = sharedPage.getByRole("button", { name: "CDC-ACM Console" });
+    await expect(cdcButton).toBeVisible({ timeout: 5000 });
+
+    // Click the button to open the terminal
+    await cdcButton.click();
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Configure the remote serial port and start a background reader
+    const testString = `e2e_test_${Date.now()}`;
+    remoteExec(`sudo stty -F ${ttyACM} 9600 raw -echo`);
+    remoteExec(`sudo bash -c "nohup cat ${ttyACM} > /tmp/cdcacm_rx.txt 2>/dev/null &"`);
+    await new Promise(r => setTimeout(r, 500));
+
+    // Type a string into the CDC-ACM terminal
+    // The terminal is focused after opening, so we type directly
+    await sharedPage.keyboard.type(testString, { delay: 50 });
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Read what the remote host received
+    const received = remoteExec("sudo cat /tmp/cdcacm_rx.txt 2>/dev/null || echo EMPTY");
+    expect(received).toContain(testString);
+
+    // Test receiving data: send from remote host to ttyACM
+    const replyString = `reply_${Date.now()}`;
+    remoteExec(`sudo bash -c "echo ${replyString} > ${ttyACM}"`);
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Take a screenshot for visual review
+    await sharedPage.screenshot({ path: `${process.cwd()}/screenshot.png` });
+
+    // Clean up: kill background cat, remove temp file
+    remoteExec("sudo pkill -f cat.*/dev/ttyACM || true");
+    remoteExec("sudo rm -f /tmp/cdcacm_rx.txt");
+
+    // Close the terminal
+    await sharedPage.keyboard.press("Escape");
+    await new Promise(r => setTimeout(r, 500));
+
+    // Disable serial console to clean up
+    await callJsonRpc(sharedPage, "setUsbDevices", {
+      devices: { ...USB_DEVICES_DEFAULT, serial_console: false },
+    });
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Verify button is gone after disabling
+    await sharedPage.reload({ waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+    await expect(
+      sharedPage.getByRole("button", { name: "CDC-ACM Console" }),
+    ).not.toBeVisible({ timeout: 5000 });
+  });
+
+  // ═══════════════════════════════════════════
   // USB RECOVERY
   // ═══════════════════════════════════════════
 

@@ -144,7 +144,7 @@ function Terminal({
     );
 
     const onDataHandler = instance.onData(data => {
-      if (type === "kvm") {
+      if (type === "kvm" || type === "cdcacm") {
         dataChannel.send(data);
       } else {
         if (data === "\r") {
@@ -170,8 +170,8 @@ function Terminal({
       }
     });
 
-    // Send initial terminal size
-    if (dataChannel.readyState === "open") {
+    // Send initial terminal size (not applicable for CDC-ACM raw serial)
+    if (dataChannel.readyState === "open" && type !== "cdcacm") {
       if (type === "kvm") {
         dataChannel.send(JSON.stringify({ rows: instance.rows, cols: instance.cols }));
       } else {

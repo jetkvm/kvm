@@ -868,6 +868,16 @@ export default function KvmIdRoute() {
     }
   }, [peerConnection, serialConsole]);
 
+  // CDC-ACM console data channel
+  const [cdcACMConsole, setCdcACMConsole] = useState<RTCDataChannel | null>(null);
+
+  useEffect(() => {
+    if (!peerConnection) return;
+    if (!cdcACMConsole) {
+      setCdcACMConsole(peerConnection.createDataChannel("cdcacm"));
+    }
+  }, [peerConnection, cdcACMConsole]);
+
   // Register E2E test hooks
   useEffect(() => {
     registerTestHandlers({
@@ -1059,6 +1069,10 @@ export default function KvmIdRoute() {
 
       {serialConsole && (
         <Terminal type="serial" dataChannel={serialConsole} title={m.serial_console()} />
+      )}
+
+      {cdcACMConsole && (
+        <Terminal type="cdcacm" dataChannel={cdcACMConsole} title="CDC-ACM Console" />
       )}
     </FeatureFlagProvider>
   );

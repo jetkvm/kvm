@@ -26,6 +26,7 @@ var (
 	otaLogger       = logging.GetSubsystemLogger("ota")
 	serialLogger    = logging.GetSubsystemLogger("serial")
 	terminalLogger  = logging.GetSubsystemLogger("terminal")
+	cdcACMLogger    = logging.GetSubsystemLogger("cdcacm")
 	displayLogger   = logging.GetSubsystemLogger("display")
 	wolLogger       = logging.GetSubsystemLogger("wol")
 	usbLogger       = logging.GetSubsystemLogger("usb")

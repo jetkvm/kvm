@@ -356,6 +356,8 @@ func newSession(config SessionConfig) (*Session, error) {
 			handleTerminalChannel(d)
 		case "serial":
 			handleSerialChannel(d)
+		case "cdcacm":
+			handleCDCACMChannel(d)
 		default:
 			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
 				go handleUploadChannel(d)
