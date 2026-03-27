@@ -57,10 +57,5 @@ test.describe("Factory Reset UI", () => {
     // Close dialog without confirming
     await page.getByRole("button", { name: /cancel/i }).click();
     await expect(page.getByText("Factory reset this device?")).not.toBeVisible();
-
-    // Take screenshot for visual review
-    await page.screenshot({
-      path: "/home/ai/kvm-worktrees/fix-529/screenshot.png",
-    });
   });
 });

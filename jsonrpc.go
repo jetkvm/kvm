@@ -662,13 +662,13 @@ func resetConfig() error {
 
 // factoryResetPaths lists all user data paths that should be removed during a factory reset.
 var factoryResetPaths = []string{
-	configPath,                  // /userdata/kvm_config.json
-	imagesFolder,                // /userdata/jetkvm/images
-	tlsStorePath,                // /userdata/jetkvm/tls
-	sshKeyDir,                   // /userdata/dropbear/.ssh
-	serialSettingsPath,          // /userdata/serialSettings.json
-	SerialCommandHistoryPath,    // /userdata/serialCommandHistory.json
-	failsafeDefaultLastCrashPath, // /userdata/jetkvm/crashdump/last-crash.log
+	configPath,
+	imagesFolder,
+	tlsStorePath,
+	sshKeyDir,
+	serialSettingsPath,
+	SerialCommandHistoryPath,
+	failsafeDefaultLastCrashPath,
 }
 
 func rpcFactoryReset() error {
