@@ -687,6 +687,33 @@ export async function resetConfigViaSSH(): Promise<void> {
   await sshExec("sync");
 }
 
+export interface SSHDevState {
+  sshKey: string;
+  devModeEnabled: boolean;
+}
+
+export async function saveSSHDevState(): Promise<SSHDevState> {
+  const sshKey = await sshExec("cat /userdata/dropbear/.ssh/authorized_keys 2>/dev/null", true);
+  const devMode = await sshExec(
+    "test -f /userdata/jetkvm/devmode.enable && echo 1 || echo 0",
+    true,
+  );
+  return { sshKey: sshKey.trim(), devModeEnabled: devMode.trim() === "1" };
+}
+
+export async function restoreSSHDevState(state: SSHDevState): Promise<void> {
+  if (state.sshKey) {
+    await sshExec("mkdir -p /userdata/dropbear/.ssh && chmod 700 /userdata/dropbear/.ssh");
+    const b64 = Buffer.from(state.sshKey).toString("base64");
+    await sshExec(
+      `echo ${b64} | base64 -d > /userdata/dropbear/.ssh/authorized_keys && chmod 600 /userdata/dropbear/.ssh/authorized_keys`,
+    );
+  }
+  if (state.devModeEnabled) {
+    await sshExec("mkdir -p /userdata/jetkvm && touch /userdata/jetkvm/devmode.enable");
+  }
+}
+
 export async function restartAppViaSSH(): Promise<void> {
   await sshExec("killall jetkvm_app", true);
   await new Promise(r => setTimeout(r, 500));

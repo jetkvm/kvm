@@ -1,7 +1,15 @@
 import * as fs from "fs";
 import { promisify } from "util";
 import { exec } from "child_process";
-import { sshExec, getDeviceHost, resetConfigViaSSH, restartAppViaSSH, SSH_OPTS } from "./helpers";
+import {
+  sshExec,
+  getDeviceHost,
+  resetConfigViaSSH,
+  restartAppViaSSH,
+  saveSSHDevState,
+  restoreSSHDevState,
+  SSH_OPTS,
+} from "./helpers";
 
 const execAsync = promisify(exec);
 
@@ -25,7 +33,11 @@ export default async function globalSetup() {
   await execAsync(`${sshCmd} < "${binaryPath}"`);
 
   await sshExec("chmod +x /userdata/jetkvm/bin/jetkvm_app");
+
+  const saved = await saveSSHDevState();
   await resetConfigViaSSH();
+  await restoreSSHDevState(saved);
+
   await restartAppViaSSH();
   console.log("[global-setup] Device ready.");
 }

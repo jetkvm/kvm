@@ -1,6 +1,12 @@
 import * as fs from "fs";
 import * as path from "path";
-import { sshExec, resetConfigViaSSH, restartAppViaSSH } from "./helpers";
+import {
+  sshExec,
+  resetConfigViaSSH,
+  restartAppViaSSH,
+  saveSSHDevState,
+  restoreSSHDevState,
+} from "./helpers";
 
 export default async function globalTeardown() {
   const resultsDir = path.resolve(
@@ -31,7 +37,9 @@ export default async function globalTeardown() {
 
   console.log("[global-teardown] Resetting device to clean state...");
   try {
+    const saved = await saveSSHDevState();
     await resetConfigViaSSH();
+    await restoreSSHDevState(saved);
     await restartAppViaSSH();
     console.log("[global-teardown] Device reset complete.");
   } catch {
