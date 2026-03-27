@@ -1,6 +1,6 @@
-import { sshExec } from "./helpers";
 import * as fs from "fs";
 import * as path from "path";
+import { sshExec, resetConfigViaSSH, restartAppViaSSH } from "./helpers";
 
 export default async function globalTeardown() {
   const resultsDir = path.resolve(
@@ -8,25 +8,34 @@ export default async function globalTeardown() {
     "../test-results",
   );
 
-  if (!hasTestFailures(resultsDir)) return;
+  if (hasTestFailures(resultsDir)) {
+    console.log("[global-teardown] Test failures detected, capturing device logs...");
+    const logDir = path.join(resultsDir, "device-logs");
+    fs.mkdirSync(logDir, { recursive: true });
 
-  console.log("[global-teardown] Test failures detected, capturing device logs...");
-  const logDir = path.join(resultsDir, "device-logs");
-  fs.mkdirSync(logDir, { recursive: true });
+    const logs: Record<string, string> = {
+      "device-last.log": "cat /userdata/jetkvm/last.log",
+      "device-config.json": "cat /userdata/kvm_config.json",
+      "device-dmesg.txt": "dmesg | tail -200",
+    };
 
-  const logs: Record<string, string> = {
-    "device-last.log": "cat /userdata/jetkvm/last.log",
-    "device-config.json": "cat /userdata/kvm_config.json",
-    "device-dmesg.txt": "dmesg | tail -200",
-  };
-
-  for (const [filename, cmd] of Object.entries(logs)) {
-    try {
-      const output = await sshExec(cmd, true);
-      fs.writeFileSync(path.join(logDir, filename), output);
-    } catch {
-      // Best-effort
+    for (const [filename, cmd] of Object.entries(logs)) {
+      try {
+        const output = await sshExec(cmd, true);
+        fs.writeFileSync(path.join(logDir, filename), output);
+      } catch {
+        // Best-effort
+      }
     }
+  }
+
+  console.log("[global-teardown] Resetting device to clean state...");
+  try {
+    await resetConfigViaSSH();
+    await restartAppViaSSH();
+    console.log("[global-teardown] Device reset complete.");
+  } catch {
+    console.log("[global-teardown] Device reset failed (best-effort).");
   }
 }
 
