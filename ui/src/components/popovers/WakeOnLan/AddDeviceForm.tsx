@@ -78,11 +78,11 @@ export default function AddDeviceForm({
         />
         <SelectMenuBasic
           size="SM"
-          label="Broadcast Address"
+          label={m.wake_on_lan_add_device_broadcast_address()}
           fullWidth
           options={[
-            { value: "auto", label: "Auto" },
-            { value: "custom", label: "Custom subnet" },
+            { value: "auto", label: m.wake_on_lan_add_device_broadcast_auto() },
+            { value: "custom", label: m.wake_on_lan_add_device_broadcast_custom() },
           ]}
           value={broadcastMode}
           onChange={e => setBroadcastMode(e.target.value)}
@@ -92,7 +92,7 @@ export default function AddDeviceForm({
             <InputFieldWithLabel
               size="SM"
               type="text"
-              label="Subnet Broadcast IP"
+              label={m.wake_on_lan_add_device_broadcast_ip()}
               placeholder="192.168.1.255"
               value={customBroadcastIP}
               onChange={e => setCustomBroadcastIP(e.target.value)}
