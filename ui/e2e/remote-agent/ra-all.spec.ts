@@ -271,7 +271,6 @@ async function waitForRpcReady(page: Page, timeoutMs = 30000) {
     }
   }
   throw new Error(`RPC channel not ready after ${timeoutMs}ms`);
-
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -301,7 +300,6 @@ test.beforeAll(async ({ browser }) => {
   await waitForWebRTCReady(sharedPage);
 
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
-
 });
 
 test.afterAll(async () => {
@@ -436,16 +434,22 @@ test.describe("Remote Host Agent", () => {
 
     // Verify keyboard works after EDID changes
     const kbDeadline = Date.now() + 30000;
+    let kbEvents: RAKeyboardEvent[] = [];
     while (Date.now() < kbDeadline) {
       try {
-        await agent!.expectKeyPress(
+        kbEvents = await agent!.expectKeyPress(
           KEY.SPACE,
-          async () => { await tapKey(sharedPage, HID_KEY.SPACE); },
+          async () => {
+            await tapKey(sharedPage, HID_KEY.SPACE);
+          },
           3000,
         );
         break;
-      } catch { /* USB/HID not recovered yet */ }
+      } catch {
+        /* USB/HID not recovered yet */
+      }
     }
+    expect(kbEvents.length, "keyboard should work after EDID restore").toBeGreaterThan(0);
   });
 
   // ═══════════════════════════════════════════
@@ -514,9 +518,9 @@ test.describe("Remote Host Agent", () => {
     test.setTimeout(15_000);
 
     const modifiers = [
-      { hid: 0xE0, linux: KEY.LEFT_CTRL, label: "LeftCtrl" },
-      { hid: 0xE1, linux: KEY.LEFT_SHIFT, label: "LeftShift" },
-      { hid: 0xE2, linux: KEY.LEFT_ALT, label: "LeftAlt" },
+      { hid: 0xe0, linux: KEY.LEFT_CTRL, label: "LeftCtrl" },
+      { hid: 0xe1, linux: KEY.LEFT_SHIFT, label: "LeftShift" },
+      { hid: 0xe2, linux: KEY.LEFT_ALT, label: "LeftAlt" },
     ];
 
     for (const { hid, linux, label } of modifiers) {
@@ -528,15 +532,13 @@ test.describe("Remote Host Agent", () => {
       await new Promise(r => setTimeout(r, 300));
 
       const events = await agent!.getKeyboardEvents();
-      const presses = events.filter(
-        ev => ev.code === linux && ev.type === "key_press",
-      );
-      const releases = events.filter(
-        ev => ev.code === linux && ev.type === "key_release",
-      );
+      const presses = events.filter(ev => ev.code === linux && ev.type === "key_press");
+      const releases = events.filter(ev => ev.code === linux && ev.type === "key_release");
 
       expect(presses.length, `${label} press should be received`).toBeGreaterThanOrEqual(1);
-      expect(releases.length, `${label} should auto-release after timeout`).toBeGreaterThanOrEqual(1);
+      expect(releases.length, `${label} should auto-release after timeout`).toBeGreaterThanOrEqual(
+        1,
+      );
     }
   });
 
@@ -556,7 +558,7 @@ test.describe("Remote Host Agent", () => {
     await agent!.clearKeyboardEvents();
 
     // Hold down a modifier (LeftShift) and a regular key (Space) without releasing
-    await sendKeypress(freshPage, 0xE1, true);
+    await sendKeypress(freshPage, 0xe1, true);
     await new Promise(r => setTimeout(r, 20));
     await sendKeypress(freshPage, HID_KEY.SPACE, true);
     await new Promise(r => setTimeout(r, 50));
@@ -966,11 +968,15 @@ test.describe("Remote Host Agent", () => {
       try {
         postMountEvents = await agent!.expectKeyPress(
           KEY.SPACE,
-          async () => { await tapKey(sharedPage, HID_KEY.SPACE); },
+          async () => {
+            await tapKey(sharedPage, HID_KEY.SPACE);
+          },
           3000,
         );
         break;
-      } catch { /* retry */ }
+      } catch {
+        /* retry */
+      }
     }
     expect(postMountEvents.length, "keyboard should work after disk mount").toBeGreaterThan(0);
 
@@ -989,11 +995,15 @@ test.describe("Remote Host Agent", () => {
       try {
         postUnmountEvents = await agent!.expectKeyPress(
           KEY.SPACE,
-          async () => { await tapKey(sharedPage, HID_KEY.SPACE); },
+          async () => {
+            await tapKey(sharedPage, HID_KEY.SPACE);
+          },
           3000,
         );
         break;
-      } catch { /* retry */ }
+      } catch {
+        /* retry */
+      }
     }
     expect(postUnmountEvents.length, "keyboard should work after unmount").toBeGreaterThan(0);
   });
@@ -1055,7 +1065,8 @@ test.describe("Remote Host Agent", () => {
     test.skip(!remoteHost, "JETKVM_REMOTE_HOST not set");
 
     const sshTarget = remoteHost!.includes("@") ? remoteHost! : `tony@${remoteHost}`;
-    const sshOpts = "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10";
+    const sshOpts =
+      "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10";
     const { execSync } = await import("child_process");
 
     const remoteExec = (cmd: string) =>
@@ -1096,10 +1107,7 @@ test.describe("Remote Host Agent", () => {
     expect(removedACM).toBe("");
 
     // Verify other USB functions still work (keyboard, mouse)
-    await agent!.waitForInputDevices(
-      ["keyboard", "absolute_mouse", "relative_mouse"],
-      10000,
-    );
+    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
   });
 
   // ═══════════════════════════════════════════
@@ -1113,11 +1121,15 @@ test.describe("Remote Host Agent", () => {
     test.skip(!remoteHost, "JETKVM_REMOTE_HOST not set");
 
     const sshTarget = remoteHost!.includes("@") ? remoteHost! : `tony@${remoteHost}`;
-    const sshOpts = "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10";
+    const sshOpts =
+      "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10";
     const { execSync } = await import("child_process");
 
     const remoteExec = (cmd: string) =>
-      execSync(`ssh ${sshOpts} ${sshTarget} "${cmd}"`, { encoding: "utf8", timeout: 15_000 }).trim();
+      execSync(`ssh ${sshOpts} ${sshTarget} "${cmd}"`, {
+        encoding: "utf8",
+        timeout: 15_000,
+      }).trim();
 
     // Enable serial console
     await callJsonRpc(sharedPage, "setUsbDevices", {
@@ -1165,8 +1177,16 @@ test.describe("Remote Host Agent", () => {
     await sharedPage.screenshot({ path: `${process.cwd()}/screenshot.png` });
 
     // Clean up: kill background cat, remove temp file
-    try { remoteExec("sudo pkill -f cat./dev/ttyACM"); } catch { /* no matching process */ }
-    try { remoteExec("sudo rm -f /tmp/cdcacm_rx.txt"); } catch { /* ignore */ }
+    try {
+      remoteExec("sudo pkill -f cat./dev/ttyACM");
+    } catch {
+      /* no matching process */
+    }
+    try {
+      remoteExec("sudo rm -f /tmp/cdcacm_rx.txt");
+    } catch {
+      /* ignore */
+    }
 
     // Close the terminal
     await sharedPage.keyboard.press("Escape");
@@ -1181,9 +1201,9 @@ test.describe("Remote Host Agent", () => {
     // Verify button is gone after disabling
     await sharedPage.reload({ waitUntil: "networkidle" });
     await waitForWebRTCReady(sharedPage);
-    await expect(
-      sharedPage.getByRole("button", { name: "USB Serial Console" }),
-    ).not.toBeVisible({ timeout: 5000 });
+    await expect(sharedPage.getByRole("button", { name: "USB Serial Console" })).not.toBeVisible({
+      timeout: 5000,
+    });
   });
 
   // ═══════════════════════════════════════════
