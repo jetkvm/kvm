@@ -15,6 +15,7 @@
 // static lv_color_t buf[DISP_BUF_SIZE];
 
 lv_display_t *disp = NULL;
+lv_indev_t *touch_indev = NULL;
 
 indev_handler_t *indev_handler = NULL;
 
@@ -29,6 +30,33 @@ void handle_indev_event(lv_event_t *e) {
     indev_handler(lv_event_get_code(e));
 }
 
+// The physical LCD panel and touch digitizer are misaligned by ~20 pixels in
+// the Y axis (the 300px dimension). Because LVGL's rotation transform inverts
+// the Y-to-X mapping between 90° and 270°, the calibration offset must flip
+// direction with rotation. The evdev calibration remaps the raw touch Y range
+// so that coordinates shift by +TOUCH_Y_OFFSET at 90° and -TOUCH_Y_OFFSET at
+// 270°, keeping touch aligned with visible content at both orientations.
+#define TOUCH_Y_OFFSET 20
+
+static u_int16_t current_rotation = 270;
+
+static void apply_touch_calibration(void) {
+    if (touch_indev == NULL) return;
+
+    if (current_rotation == 90) {
+        // At 90°, physical Y maps to logical X inverted (x = 299 - y).
+        // Shift Y by +TOUCH_Y_OFFSET to align touch with content.
+        lv_evdev_set_calibration(touch_indev,
+            0, -TOUCH_Y_OFFSET,
+            239, 299 - TOUCH_Y_OFFSET);
+        log_info("touch calibration: rotation=%d, Y offset=+%d", current_rotation, TOUCH_Y_OFFSET);
+    } else {
+        // At 270° (and 0°/180°), no calibration offset needed.
+        lv_evdev_set_calibration(touch_indev, 0, 0, 239, 299);
+        log_info("touch calibration: rotation=%d, no offset", current_rotation);
+    }
+}
+
 static void evdev_discovery_cb(lv_indev_t *indev, lv_evdev_type_t type, void *user_data) {
     LV_UNUSED(user_data);
 
@@ -41,6 +69,10 @@ static void evdev_discovery_cb(lv_indev_t *indev, lv_evdev_type_t type, void *us
     lv_indev_set_group(indev, lv_group_get_default());
     lv_indev_set_display(indev, disp);
     lv_indev_add_event_cb(indev, handle_indev_event, LV_EVENT_ALL, NULL);
+
+    touch_indev = indev;
+    apply_touch_calibration();
+
     log_info("[C-UI-INIT] touchscreen configured successfully");
 }
 
@@ -96,6 +128,9 @@ void lvgl_set_rotation(lv_display_t *disp_ref, u_int16_t rotation) {
         log_error("invalid rotation %d", rotation);
     }
 
+    current_rotation = rotation;
+    apply_touch_calibration();
+
     lv_style_t *flex_screen_style = ui_get_style("flex_screen");
     if (flex_screen_style == NULL) {
         log_error("flex_screen style not found");
@@ -111,9 +146,13 @@ void lvgl_set_rotation(lv_display_t *disp_ref, u_int16_t rotation) {
     if (rotation == 90) {
         lv_style_set_pad_left(flex_screen_style, 24);
         lv_style_set_pad_right(flex_screen_style, 44);
+        lv_style_set_pad_left(flex_screen_menu_style, 24);
+        lv_style_set_pad_right(flex_screen_menu_style, 44);
     } else if (rotation == 270) {
         lv_style_set_pad_left(flex_screen_style, 44);
         lv_style_set_pad_right(flex_screen_style, 24);
+        lv_style_set_pad_left(flex_screen_menu_style, 44);
+        lv_style_set_pad_right(flex_screen_menu_style, 24);
     }
 
     log_info("refreshing objects");
