@@ -131,11 +131,10 @@ export default function useMouse() {
       };
 
       // Negate Y: browser deltaY positive = scroll down, HID Wheel positive = scroll up
-      // When invertScroll is enabled, skip the negation for natural scrolling
-      const scrollSign = invertScroll ? 1 : -1;
-      const wheelY = scrollSign * clampWheel(e.deltaY);
-      // Keep X as-is: browser deltaX and HID AC Pan both use positive = right
-      const wheelX = clampWheel(e.deltaX);
+      const wheelY = (invertScroll ? 1 : -1) * clampWheel(e.deltaY);
+      // X conventions already match (positive = right), but macOS Natural Scrolling
+      // inverts both axes at OS level, so we negate X to counteract when inverted
+      const wheelX = (invertScroll ? -1 : 1) * clampWheel(e.deltaX);
 
       if (wheelY === 0 && wheelX === 0) return;
 
