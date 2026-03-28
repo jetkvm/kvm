@@ -300,6 +300,25 @@ test.beforeAll(async ({ browser }) => {
   await waitForWebRTCReady(sharedPage);
 
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
+
+  // Verify the keyboard HID path works end-to-end before any tests run.
+  // After reboot, Init() rebinds the USB gadget and the host needs time
+  // to re-enumerate before HID reports are delivered.
+  const kbDeadline = Date.now() + 15000;
+  while (Date.now() < kbDeadline) {
+    try {
+      await agent!.expectKeyPress(
+        KEY.SPACE,
+        async () => {
+          await tapKey(sharedPage, HID_KEY.SPACE);
+        },
+        3000,
+      );
+      break;
+    } catch {
+      /* not ready yet */
+    }
+  }
 });
 
 test.afterAll(async () => {
@@ -1006,6 +1025,131 @@ test.describe("Remote Host Agent", () => {
       }
     }
     expect(postUnmountEvents.length, "keyboard should work after unmount").toBeGreaterThan(0);
+  });
+
+  // ═══════════════════════════════════════════
+  // VIRTUAL MEDIA: EBUSY UNMOUNT FALLBACK (#834)
+  // ═══════════════════════════════════════════
+
+  test("virtual-media: unmount succeeds when host holds device open via EBUSY fallback (#834)", async () => {
+    test.setTimeout(120_000);
+
+    // Ensure clean state
+    try {
+      await callJsonRpc(sharedPage, "unmountImage");
+    } catch {
+      /* ok if nothing mounted */
+    }
+
+    // Verify keyboard works before test
+    const preEvents = await agent!.expectKeyPress(KEY.SPACE, async () => {
+      await tapKey(sharedPage, HID_KEY.SPACE);
+    });
+    expect(preEvents.length, "keyboard should work before EBUSY test").toBeGreaterThan(0);
+
+    // Mount ISO as CDROM
+    const NETBOOT_XYZ_URL = "https://boot.netboot.xyz/ipxe/netboot.xyz.iso";
+    await callJsonRpc(sharedPage, "mountWithHTTP", { url: NETBOOT_XYZ_URL, mode: "CDROM" });
+
+    const vmState = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as {
+      source: string;
+      mode: string;
+    } | null;
+    expect(vmState).not.toBeNull();
+    expect(vmState!.mode).toBe("CDROM");
+
+    // Wait for the host to enumerate the USB mass storage device
+    await new Promise(r => setTimeout(r, 5000));
+
+    // Find the JetKVM CDROM block device on the remote host by matching USB VID:PID
+    const findBlockDevCmd =
+      `for sr in /sys/class/block/sr*; do ` +
+      `[ -e "$sr" ] || continue; ` +
+      `dev=$(basename "$sr"); ` +
+      `p=$(readlink -f "$sr/device"); ` +
+      `while [ "$p" != "/" ] && [ -n "$p" ]; do ` +
+      `if [ -f "$p/idVendor" ] && [ -f "$p/idProduct" ]; then ` +
+      `v=$(cat "$p/idVendor"); ` +
+      `pid=$(cat "$p/idProduct"); ` +
+      `if [ "$v" = "1d6b" ] && [ "$pid" = "0104" ]; then ` +
+      `echo "/dev/$dev"; exit 0; fi; break; fi; ` +
+      `p=$(dirname "$p"); done; done`;
+
+    let blockDev = "";
+    const devDeadline = Date.now() + 15000;
+    while (Date.now() < devDeadline) {
+      try {
+        blockDev = remoteHostExec(findBlockDevCmd).trim();
+        if (blockDev) break;
+      } catch {
+        /* retry */
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    expect(blockDev, "JetKVM CDROM block device should appear on host").not.toBe("");
+
+    // Mount the ISO on the remote host — triggers PREVENT MEDIUM REMOVAL SCSI command,
+    // which causes the KVM kernel to return EBUSY when clearing the backing file.
+    const mountPoint = "/tmp/jetkvm-e2e-cdrom";
+    try {
+      remoteHostExec(`sudo mkdir -p ${mountPoint} && sudo mount -o ro ${blockDev} ${mountPoint}`);
+    } catch {
+      // If ISO mount fails, try eject -i on as fallback to lock the medium
+      try {
+        remoteHostExec(`sudo eject -i on ${blockDev}`);
+      } catch {
+        test.skip(true, "Could not lock CDROM medium on remote host");
+        return;
+      }
+    }
+
+    try {
+      // Unmount on the KVM side — should hit EBUSY, then fallback rebinds USB
+      await callJsonRpc(sharedPage, "unmountImage");
+
+      // Verify virtual media state is cleared
+      const stateEnd = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
+      expect(stateEnd, "Virtual media should be unmounted after EBUSY fallback").toBeNull();
+
+      // Wait for HID devices to re-enumerate after the USB rebind
+      await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
+
+      // Verify keyboard still works after the rebind
+      const postDeadline = Date.now() + 30000;
+      let postEvents: RAKeyboardEvent[] = [];
+      while (Date.now() < postDeadline) {
+        try {
+          postEvents = await agent!.expectKeyPress(
+            KEY.SPACE,
+            async () => {
+              await tapKey(sharedPage, HID_KEY.SPACE);
+            },
+            3000,
+          );
+          break;
+        } catch {
+          /* retry */
+        }
+      }
+      expect(
+        postEvents.length,
+        "keyboard should work after EBUSY unmount fallback",
+      ).toBeGreaterThan(0);
+    } finally {
+      // Clean up: unmount on remote host (may already be ejected by USB rebind)
+      try {
+        remoteHostExec(
+          `sudo umount -l ${mountPoint} 2>/dev/null; sudo rmdir ${mountPoint} 2>/dev/null`,
+        );
+      } catch {
+        /* best effort */
+      }
+      try {
+        remoteHostExec(`sudo eject -i off ${blockDev} 2>/dev/null`);
+      } catch {
+        /* best effort */
+      }
+    }
   });
 
   // ═══════════════════════════════════════════
