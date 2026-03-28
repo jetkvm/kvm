@@ -235,8 +235,22 @@ func checkUSBState() {
 	usbLogger.Info().Str("from", oldState).Str("to", newState).Msg("USB state changed")
 
 	if newState != usbgadget.USBStateNotAttached {
-		if err := gadget.OpenKeyboardHidFile(); err != nil {
-			usbLogger.Warn().Err(err).Str("state", newState).Msg("failed to ensure keyboard HID file is open after USB state change")
+		openErr := gadget.OpenKeyboardHidFile()
+		if openErr != nil {
+			usbLogger.Warn().Err(openErr).Str("state", newState).Msg("HID chardev broken after state change, attempting corrective rebind")
+
+			lastUSBRecoveryTry = time.Now()
+			usbStateLock.Unlock()
+
+			if rebindErr := gadget.RebindUsb(true); rebindErr == nil {
+				gadget.ResetHIDFiles()
+				time.Sleep(1 * time.Second)
+				_ = gadget.OpenKeyboardHidFile()
+			}
+
+			usbStateLock.Lock()
+			usbState = gadget.GetUsbState()
+			lastUSBRecoveryTry = time.Now()
 		}
 	}
 

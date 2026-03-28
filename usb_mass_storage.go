@@ -66,9 +66,17 @@ func setMassStorageMode(cdrom bool) error {
 		return nil
 	}
 
+	// Suppress the auto-recovery poller BEFORE the rebind so it doesn't see
+	// the transient "not attached" UDC state during the transaction's unbind/bind
+	// and trigger a competing RebindUsb that corrupts HID chardev state.
+	setUSBRecoveryTimer(time.Now())
+
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return err
 	}
+
+	// Suppress the auto-recovery poller so it doesn't interfere.
+	setUSBRecoveryTimer(time.Now())
 
 	// USB gadget was rebound — HID device nodes were recreated.
 	// Reset stale file handles so subsequent HID writes use fresh descriptors.
@@ -77,8 +85,25 @@ func setMassStorageMode(cdrom bool) error {
 	// Give the kernel time to attach the HID function driver to new device nodes.
 	time.Sleep(1 * time.Second)
 
-	if err := gadget.OpenKeyboardHidFile(); err != nil {
-		usbLogger.Warn().Err(err).Msg("failed to reopen keyboard HID file after mass storage mode change")
+	openErr := gadget.OpenKeyboardHidFile()
+	if openErr != nil {
+		// The DWC3 controller on the RV1106 has a race condition where
+		// rapid unbind→bind can permanently corrupt HID chardev state.
+		// The host's re-enumeration can also trigger device resets that
+		// compound the issue. Recover by doing another rebind with a
+		// brief pause for kernel cleanup.
+		usbLogger.Warn().Err(openErr).Msg("HID chardev broken after rebind, attempting corrective rebind")
+
+		if err := gadget.RebindUsb(true); err != nil {
+			return fmt.Errorf("corrective USB rebind failed: %w", err)
+		}
+		setUSBRecoveryTimer(time.Now())
+		gadget.ResetHIDFiles()
+		time.Sleep(1 * time.Second)
+
+		if retryErr := gadget.OpenKeyboardHidFile(); retryErr != nil {
+			usbLogger.Warn().Err(retryErr).Msg("failed to reopen keyboard HID file after corrective rebind")
+		}
 	}
 
 	return nil
@@ -225,6 +250,7 @@ func unmountImageLocked() error {
 			return fmt.Errorf("failed to unmount image: %w, gadget rebind also failed: %w", err, rebindErr)
 		}
 
+		setUSBRecoveryTimer(time.Now())
 		gadget.ResetHIDFiles()
 
 		time.Sleep(1 * time.Second)

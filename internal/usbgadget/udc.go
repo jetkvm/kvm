@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 func getUdcs() []string {
@@ -25,6 +26,9 @@ func getUdcs() []string {
 	return udcs
 }
 
+// hidgDevicePath is the chardev used to verify HID function health after rebind.
+const hidgDevicePath = "/dev/hidg0"
+
 func rebindUsb(udc string, ignoreUnbindError bool) error {
 	err := os.WriteFile(path.Join(dwc3Path, "unbind"), []byte(udc), 0644)
 	if err != nil && !ignoreUnbindError {
@@ -34,7 +38,35 @@ func rebindUsb(udc string, ignoreUnbindError bool) error {
 	if err != nil {
 		return err
 	}
+
+	// The DWC3 controller on the RV1106 has a race condition where rapid
+	// unbind→bind can leave HID chardevs (e.g. /dev/hidg0) permanently
+	// returning ENXIO even though the sysfs entry and device node exist.
+	// Verify the chardev is functional; if not, rebind once more with a
+	// brief pause to allow the kernel to finish cleanup.
+	if !isHidgChardevHealthy() {
+		_ = os.WriteFile(path.Join(dwc3Path, "unbind"), []byte(udc), 0644)
+		time.Sleep(100 * time.Millisecond)
+		if err := os.WriteFile(path.Join(dwc3Path, "bind"), []byte(udc), 0644); err != nil {
+			return fmt.Errorf("retry bind after hidg verification failed: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// IsHidgChardevHealthy checks if the HID gadget chardev can be opened.
+func (u *UsbGadget) IsHidgChardevHealthy() bool {
+	return isHidgChardevHealthy()
+}
+
+func isHidgChardevHealthy() bool {
+	f, err := os.OpenFile(hidgDevicePath, os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	f.Close()
+	return true
 }
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
