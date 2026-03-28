@@ -628,7 +628,7 @@ export default function WebRTCVideo({
           {!isDetachedWindow && (
             <div
               className={cx(
-                "absolute inset-0 -z-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
+                "absolute inset-0 z-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
                 "bg-[radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px),radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px)] dark:bg-[radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px),radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px)]",
                 "bg-position-[0_0,10px_10px]",
                 "bg-size-[20px_20px]",
@@ -662,9 +662,8 @@ export default function WebRTCVideo({
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          "h-full w-full bg-black/50 object-contain transition-all duration-1000",
+                          "h-full w-full object-contain transition-all duration-1000",
                           {
-                            "bg-black/50 sm:min-h-[384px] sm:min-w-[512px]": !isDetachedWindow,
                             "cursor-none": settings.isCursorHidden,
                             "pointer-events-none": isOcrMode,
                             "opacity-0!":
@@ -673,7 +672,7 @@ export default function WebRTCVideo({
                               hasConnectionIssues ||
                               peerConnectionState !== "connected",
                             "opacity-60!": showPointerLockBar,
-                            "animate-slideUpFade border border-slate-800/30 shadow-xs dark:border-slate-300/20":
+                            "animate-slideUpFade":
                               isPlaying && !isDetachedWindow,
                           },
                         )}
