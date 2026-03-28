@@ -94,6 +94,10 @@ func setMassStorageMode(cdrom bool) error {
 		// brief pause for kernel cleanup.
 		usbLogger.Warn().Err(openErr).Msg("HID chardev broken after rebind, attempting corrective rebind")
 
+		// Re-suppress the poller — the timer from line 72 may have expired
+		// during the OpenKeyboardHidFile 3-second timeout.
+		setUSBRecoveryTimer(time.Now())
+
 		if err := gadget.RebindUsb(true); err != nil {
 			return fmt.Errorf("corrective USB rebind failed: %w", err)
 		}
@@ -245,6 +249,11 @@ func unmountImageLocked() error {
 		}
 
 		logger.Warn().Err(err).Msg("unmount failed with EBUSY, rebinding USB gadget to force-eject")
+
+		// Suppress the auto-recovery poller BEFORE the rebind so it doesn't
+		// see the transient "not attached" UDC state and trigger a competing
+		// RebindUsb that corrupts HID chardev state.
+		setUSBRecoveryTimer(time.Now())
 
 		if rebindErr := gadget.RebindUsb(true); rebindErr != nil {
 			return fmt.Errorf("failed to unmount image: %w, gadget rebind also failed: %w", err, rebindErr)
