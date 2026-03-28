@@ -81,21 +81,23 @@ export default function AddDeviceForm({
           label="Broadcast Address"
           fullWidth
           options={[
-            { value: "auto", label: "Auto (global broadcast)" },
+            { value: "auto", label: "Auto" },
             { value: "custom", label: "Custom subnet" },
           ]}
           value={broadcastMode}
           onChange={e => setBroadcastMode(e.target.value)}
         />
         {broadcastMode === "custom" && (
-          <InputFieldWithLabel
-            size="SM"
-            type="text"
-            label="Subnet Broadcast IP"
-            placeholder="192.168.1.255"
-            value={customBroadcastIP}
-            onChange={e => setCustomBroadcastIP(e.target.value)}
-          />
+          <div className="ml-2 space-y-4 border-l-2 border-slate-200 pl-4 dark:border-slate-700">
+            <InputFieldWithLabel
+              size="SM"
+              type="text"
+              label="Subnet Broadcast IP"
+              placeholder="192.168.1.255"
+              value={customBroadcastIP}
+              onChange={e => setCustomBroadcastIP(e.target.value)}
+            />
+          </div>
         )}
       </div>
       <div
