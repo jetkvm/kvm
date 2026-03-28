@@ -55,11 +55,6 @@ func rebindUsb(udc string, ignoreUnbindError bool) error {
 	return nil
 }
 
-// IsHidgChardevHealthy checks if the HID gadget chardev can be opened.
-func (u *UsbGadget) IsHidgChardevHealthy() bool {
-	return isHidgChardevHealthy()
-}
-
 func isHidgChardevHealthy() bool {
 	f, err := os.OpenFile(hidgDevicePath, os.O_RDWR, 0)
 	if err != nil {

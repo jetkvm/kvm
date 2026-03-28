@@ -242,8 +242,8 @@ func checkUSBState() {
 			lastUSBRecoveryTry = time.Now()
 			usbStateLock.Unlock()
 
+			gadget.ResetHIDFiles()
 			if rebindErr := gadget.RebindUsb(true); rebindErr == nil {
-				gadget.ResetHIDFiles()
 				time.Sleep(1 * time.Second)
 				_ = gadget.OpenKeyboardHidFile()
 			}
