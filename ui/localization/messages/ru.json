@@ -629,6 +629,8 @@
   "mouse_scroll_low": "Низкий",
   "mouse_scroll_medium": "Средний",
   "mouse_scroll_off": "Выкл",
+  "mouse_scroll_invert_description": "Enable if your host machine scrolls in the wrong direction",
+  "mouse_scroll_invert_title": "Invert Scroll Direction",
   "mouse_scroll_throttling_description": "Снизить частоту событий прокрутки",
   "mouse_scroll_throttling_title": "Ограничение прокрутки",
   "mouse_scroll_very_high": "Очень высокий",

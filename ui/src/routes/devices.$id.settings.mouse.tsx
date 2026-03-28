@@ -70,6 +70,8 @@ export default function SettingsMouseRoute() {
     setMouseMode,
     scrollThrottling,
     setScrollThrottling,
+    invertScroll,
+    setInvertScroll,
   } = useSettingsStore();
 
   const [selectedJigglerOption, setSelectedJigglerOption] = useState<JigglerValues | null>(null);
@@ -206,6 +208,13 @@ export default function SettingsMouseRoute() {
             onChange={e => setScrollThrottling(parseInt(e.target.value))}
             options={scrollThrottlingOptions}
           />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.mouse_scroll_invert_title()}
+          description={m.mouse_scroll_invert_description()}
+        >
+          <Checkbox checked={invertScroll} onChange={e => setInvertScroll(e.target.checked)} />
         </SettingsItem>
 
         <SettingsItem title={m.mouse_jiggler_title()} description={m.mouse_jiggler_description()}>

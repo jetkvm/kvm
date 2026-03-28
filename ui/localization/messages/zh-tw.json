@@ -629,6 +629,8 @@
   "mouse_scroll_low": "低",
   "mouse_scroll_medium": "中",
   "mouse_scroll_off": "關閉",
+  "mouse_scroll_invert_description": "Enable if your host machine scrolls in the wrong direction",
+  "mouse_scroll_invert_title": "Invert Scroll Direction",
   "mouse_scroll_throttling_description": "降低捲動事件的頻率",
   "mouse_scroll_throttling_title": "捲動節流",
   "mouse_scroll_very_high": "非常高",

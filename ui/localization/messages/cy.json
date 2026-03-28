@@ -629,6 +629,8 @@
   "mouse_scroll_low": "Isel",
   "mouse_scroll_medium": "Canolig",
   "mouse_scroll_off": "Diffodd",
+  "mouse_scroll_invert_description": "Enable if your host machine scrolls in the wrong direction",
+  "mouse_scroll_invert_title": "Invert Scroll Direction",
   "mouse_scroll_throttling_description": "Lleihau amlder digwyddiadau sgrolio",
   "mouse_scroll_throttling_title": "Tagfa Sgrolio",
   "mouse_scroll_very_high": "Uchel Iawn",

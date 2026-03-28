@@ -629,6 +629,8 @@
   "mouse_scroll_low": "Faible",
   "mouse_scroll_medium": "Moyen",
   "mouse_scroll_off": "Désactivé",
+  "mouse_scroll_invert_description": "Enable if your host machine scrolls in the wrong direction",
+  "mouse_scroll_invert_title": "Invert Scroll Direction",
   "mouse_scroll_throttling_description": "Réduire la fréquence des événements de défilement",
   "mouse_scroll_throttling_title": "Limitation du défilement",
   "mouse_scroll_very_high": "Très élevé",

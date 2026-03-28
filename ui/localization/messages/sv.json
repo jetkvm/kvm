@@ -629,6 +629,8 @@
   "mouse_scroll_low": "Låg",
   "mouse_scroll_medium": "Medium",
   "mouse_scroll_off": "Av",
+  "mouse_scroll_invert_description": "Enable if your host machine scrolls in the wrong direction",
+  "mouse_scroll_invert_title": "Invert Scroll Direction",
   "mouse_scroll_throttling_description": "Minska frekvensen av scrollhändelser",
   "mouse_scroll_throttling_title": "Scrollbegränsning",
   "mouse_scroll_very_high": "Mycket hög",

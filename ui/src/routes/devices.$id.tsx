@@ -12,7 +12,8 @@ import type { LoaderFunction, LoaderFunctionArgs, Params } from "react-router";
 import { useInterval } from "usehooks-ts";
 import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
-import useWebSocket from "react-use-websocket";
+import pkg from "react-use-websocket";
+const useWebSocket = pkg.default ?? pkg;
 
 import { cx } from "@/cva.config";
 import { CLOUD_API } from "@/ui.config";

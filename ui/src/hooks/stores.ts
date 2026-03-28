@@ -373,6 +373,9 @@ export interface SettingsState {
   scrollThrottling: number;
   setScrollThrottling: (value: number) => void;
 
+  invertScroll: boolean;
+  setInvertScroll: (value: boolean) => void;
+
   showPressedKeys: boolean;
   setShowPressedKeys: (show: boolean) => void;
 
@@ -424,6 +427,9 @@ export const useSettingsStore = create(
 
       scrollThrottling: 0,
       setScrollThrottling: (value: number) => set({ scrollThrottling: value }),
+
+      invertScroll: false,
+      setInvertScroll: (value: boolean) => set({ invertScroll: value }),
 
       showPressedKeys: true,
       setShowPressedKeys: (show: boolean) => set({ showPressedKeys: show }),
