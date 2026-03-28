@@ -213,10 +213,11 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       if (useUnreliableChannel) {
         if (requireOrdered && rpcHidUnreliableReady) {
           rpcHidUnreliableChannel?.send(data as unknown as ArrayBuffer);
+          return;
         } else if (!requireOrdered && rpcHidUnreliableNonOrderedReady) {
           rpcHidUnreliableNonOrderedChannel?.send(data as unknown as ArrayBuffer);
+          return;
         }
-        return;
       }
 
       rpcHidChannel?.send(data as unknown as ArrayBuffer);

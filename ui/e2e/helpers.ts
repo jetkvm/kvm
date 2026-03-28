@@ -655,6 +655,7 @@ export async function disablePasswordFromSettings(
 export const SSH_OPTS = [
   "-o UserKnownHostsFile=/dev/null",
   "-o StrictHostKeyChecking=no",
+  "-o LogLevel=ERROR",
   "-o ConnectTimeout=30",
   "-o ServerAliveInterval=5",
   "-o ServerAliveCountMax=3",
