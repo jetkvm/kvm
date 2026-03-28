@@ -498,11 +498,9 @@ export class RemoteAgent {
 
   /**
    * Ensure the remote agent is running on the target host.
-   * If the agent isn't responding, build (if needed) and deploy it via SSH.
+   * Always rebuilds from source when it has changed and redeploys.
    */
   async ensureDeployed(sshTarget?: string): Promise<void> {
-    if (await this.health()) return;
-
     const host = this.baseUrl.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
     const port = parseInt(this.baseUrl.replace(/.*:/, ""), 10);
     const target = sshTarget ?? process.env.JETKVM_REMOTE_HOST ?? `tony@${host}`;
@@ -512,13 +510,18 @@ export class RemoteAgent {
     const binary = path.join(agentDir, "remote-agent");
     const goSource = path.join(agentDir, "main.go");
 
-    if (!fs.existsSync(binary)) {
-      if (!fs.existsSync(goSource)) {
-        throw new Error(
-          `Remote agent source not found at ${goSource}. ` +
-            `Restore it with: git checkout e2e-remote-host-agent -- e2e/remote-agent/`,
-        );
-      }
+    if (!fs.existsSync(goSource)) {
+      throw new Error(
+        `Remote agent source not found at ${goSource}. ` +
+          `Restore it with: git checkout e2e-remote-host-agent -- e2e/remote-agent/`,
+      );
+    }
+
+    // Rebuild if source is newer than binary (or binary doesn't exist)
+    const needsBuild =
+      !fs.existsSync(binary) || fs.statSync(goSource).mtimeMs > fs.statSync(binary).mtimeMs;
+
+    if (needsBuild) {
       console.log("[remote-agent] Building remote-agent binary...");
       execSync("GOOS=linux GOARCH=amd64 go build -o remote-agent .", {
         cwd: agentDir,
@@ -526,9 +529,13 @@ export class RemoteAgent {
       });
     }
 
-    console.log(`[remote-agent] Deploying to ${target}...`);
+    // Skip deploy only when the binary hasn't changed and the agent is already running
+    if (!needsBuild && (await this.health())) return;
+
     const sshOpts =
       "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=5 -o ServerAliveCountMax=3";
+
+    console.log(`[remote-agent] Deploying to ${target}...`);
     execSync(`scp ${sshOpts} "${binary}" ${target}:/tmp/remote-agent`, { stdio: "inherit" });
 
     console.log(`[remote-agent] Starting on port ${port}...`);
