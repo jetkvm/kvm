@@ -209,24 +209,48 @@ func rpcGetVirtualMediaState() (*VirtualMediaState, error) {
 	return currentVirtualMediaState, nil
 }
 
-func unmountImageLocked() {
+func unmountImageLocked() error {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
+
 	err := setMassStorageImage("\n")
 	if err != nil {
-		logger.Warn().Err(err).Msg("Remove Mass Storage Image Error")
+		if !errors.Is(err, syscall.EBUSY) {
+			return fmt.Errorf("failed to unmount image: %w", err)
+		}
+
+		logger.Warn().Err(err).Msg("unmount failed with EBUSY, rebinding USB gadget to force-eject")
+
+		if rebindErr := gadget.RebindUsb(true); rebindErr != nil {
+			return fmt.Errorf("failed to unmount image: %w, gadget rebind also failed: %w", err, rebindErr)
+		}
+
+		gadget.ResetHIDFiles()
+
+		time.Sleep(1 * time.Second)
+
+		if openErr := gadget.OpenKeyboardHidFile(); openErr != nil {
+			logger.Warn().Err(openErr).Msg("failed to reopen keyboard HID file after EBUSY unmount rebind")
+		}
+
+		if retryErr := setMassStorageImage("\n"); retryErr != nil {
+			return fmt.Errorf("failed to unmount image after gadget rebind: %w", retryErr)
+		}
 	}
-	//TODO: check if we still need it
+
 	time.Sleep(500 * time.Millisecond)
 	if nbdDevice != nil {
 		nbdDevice.Close()
 		nbdDevice = nil
 	}
 	currentVirtualMediaState = nil
+	return nil
 }
 
 func rpcUnmountImage() error {
-	unmountImageLocked()
+	if err := unmountImageLocked(); err != nil {
+		return err
+	}
 	if mqttManager != nil {
 		mqttManager.publishVirtualMediaState()
 	}
