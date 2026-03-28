@@ -88,8 +88,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3",
-    "vite-tsconfig-paths": "^6.1.1"
+    "vite": "^8.0.3"
   },
   "lint-staged": {
     "*.{ts,tsx}": "oxlint --fix --deny-warnings",
