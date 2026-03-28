@@ -89,17 +89,13 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 	}
 
 	t := time.Now()
+	handleHidRPCMessage(message, session)
+	d := time.Since(t)
 
-	r := make(chan interface{}, 1)
-	go func() {
-		handleHidRPCMessage(message, session)
-		r <- nil
-	}()
-	select {
-	case <-time.After(200 * time.Millisecond):
-		scopedLogger.Warn().Msg("HID RPC message timed out")
-	case <-r:
-		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
+	if d > 200*time.Millisecond {
+		scopedLogger.Warn().Dur("duration", d).Msg("HID RPC message slow")
+	} else {
+		scopedLogger.Debug().Dur("duration", d).Msg("HID RPC message handled")
 	}
 }
 
