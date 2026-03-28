@@ -48,14 +48,14 @@ export default function PasteModal() {
   const { selectedKeyboard } = useKeyboardLayout();
 
   useEffect(() => {
-    send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
+    void send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setKeyboardLayout(resp.result as string);
     });
   }, [send, setKeyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
-    cancelExecuteMacro();
+    void cancelExecuteMacro();
     setDisableVideoFocusTrap(false);
     setInvalidChars([]);
   }, [setDisableVideoFocusTrap, cancelExecuteMacro]);
@@ -64,8 +64,7 @@ export default function PasteModal() {
     (value: string) => {
       const chars = [
         ...new Set(
-          // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
-          [...new Intl.Segmenter().segment(value)]
+          [...(new Intl.Segmenter().segment(value) ?? [])]
             .map(x => x.segment.normalize("NFC"))
             .filter(char => !selectedKeyboard?.chars[char]),
         ),
@@ -161,29 +160,33 @@ export default function PasteModal() {
                     onKeyUpCapture={e => e.stopPropagation()}
                   >
                     <div className="space-y-1">
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setHideText(!hideText)}
-                          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                        >
-                          {hideText ? (
-                            <>
-                              <LuEyeOff className="h-3.5 w-3.5" />
-                              {m.paste_modal_show_text()}
-                            </>
-                          ) : (
-                            <>
-                              <LuEye className="h-3.5 w-3.5" />
-                              {m.paste_modal_hide_text()}
-                            </>
-                          )}
-                        </button>
-                      </div>
                       {hideText ? (
                         <InputFieldWithLabel
                           ref={PasswordRef}
-                          label={m.paste_modal_paste_from_host()}
+                          label={
+                            <div className="flex items-center justify-between">
+                              <div className="font-display text-[13px] leading-snug font-semibold text-black dark:text-white">
+                                {m.paste_modal_paste_from_host()}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setHideText(!hideText)}
+                                className="flex items-center gap-1 text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                              >
+                                {hideText ? (
+                                  <>
+                                    <LuEyeOff className="h-3.5 w-3.5" />
+                                    {m.paste_modal_show_text()}
+                                  </>
+                                ) : (
+                                  <>
+                                    <LuEye className="h-3.5 w-3.5" />
+                                    {m.paste_modal_hide_text()}
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          }
                           type="password"
                           value={textValue}
                           maxLength={pasteMaxLength}
@@ -192,7 +195,7 @@ export default function PasteModal() {
                             e.stopPropagation();
                             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                               e.preventDefault();
-                              onConfirmPaste();
+                              void onConfirmPaste();
                             } else if (e.key === "Escape") {
                               e.preventDefault();
                               onCancelPasteMode();
@@ -207,7 +210,30 @@ export default function PasteModal() {
                       ) : (
                         <TextAreaWithLabel
                           ref={TextAreaRef}
-                          label={m.paste_modal_paste_from_host()}
+                          label={
+                            <div className="flex items-center justify-between">
+                              <div className="font-display text-[13px] leading-snug font-semibold text-black dark:text-white">
+                                {m.paste_modal_paste_from_host()}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setHideText(!hideText)}
+                                className="flex items-center gap-1 text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                              >
+                                {hideText ? (
+                                  <>
+                                    <LuEyeOff className="h-3.5 w-3.5" />
+                                    {m.paste_modal_show_text()}
+                                  </>
+                                ) : (
+                                  <>
+                                    <LuEye className="h-3.5 w-3.5" />
+                                    {m.paste_modal_hide_text()}
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          }
                           rows={4}
                           value={textValue}
                           onKeyUp={e => e.stopPropagation()}
@@ -216,7 +242,7 @@ export default function PasteModal() {
                             e.stopPropagation();
                             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                               e.preventDefault();
-                              onConfirmPaste();
+                              void onConfirmPaste();
                             } else if (e.key === "Escape") {
                               e.preventDefault();
                               onCancelPasteMode();
