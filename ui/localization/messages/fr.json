@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Le délai doit être compris entre {min} et {max}",
   "paste_modal_failed_paste": "Échec du collage du texte : {error}",
   "paste_modal_hide_text": "Masquer le texte",
+  "paste_modal_invalid_chars_hidden": "Certains caractères du texte ne seront pas collés",
   "paste_modal_invalid_chars_intro": "Les caractères suivants ne seront pas collés :",
   "paste_modal_paste_from_host": "Coller depuis l'hôte",
   "paste_modal_sending_using_layout": "Envoi de texte avec la disposition clavier : {iso}-{name}",

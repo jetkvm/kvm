@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Задержка должна быть от {min} до {max}",
   "paste_modal_failed_paste": "Не удалось вставить текст: {error}",
   "paste_modal_hide_text": "Скрыть текст",
+  "paste_modal_invalid_chars_hidden": "Некоторые символы в тексте не будут вставлены",
   "paste_modal_invalid_chars_intro": "Следующие символы не будут вставлены:",
   "paste_modal_paste_from_host": "Вставить с хоста",
   "paste_modal_sending_using_layout": "Отправка текста с использованием раскладки клавиатуры: {iso}-{name}",

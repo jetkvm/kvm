@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Die Verzögerung muss zwischen {min} und {max} liegen",
   "paste_modal_failed_paste": "Fehler beim Einfügen des Textes: {error}",
   "paste_modal_hide_text": "Text ausblenden",
+  "paste_modal_invalid_chars_hidden": "Einige Zeichen im Text werden nicht eingefügt",
   "paste_modal_invalid_chars_intro": "Die folgenden Zeichen werden nicht eingefügt:",
   "paste_modal_paste_from_host": "Vom Host einfügen",
   "paste_modal_sending_using_layout": "Text wird mit Tastaturlayout gesendet: {iso}-{name}",

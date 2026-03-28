@@ -804,6 +804,7 @@
   "paste_modal_delay_out_of_range": "Delay must be between {min} and {max}",
   "paste_modal_failed_paste": "Failed to paste text: {error}",
   "paste_modal_hide_text": "Hide text",
+  "paste_modal_invalid_chars_hidden": "Some characters in the text won't be pasted",
   "paste_modal_invalid_chars_intro": "The following characters won't be pasted:",
   "paste_modal_paste_from_host": "Paste from host",
   "paste_modal_sending_using_layout": "Sending text using keyboard layout: {iso}-{name}",

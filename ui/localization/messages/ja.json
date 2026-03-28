@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "遅延は {min} から {max} の間である必要があります",
   "paste_modal_failed_paste": "テキストの貼り付けに失敗しました: {error}",
   "paste_modal_hide_text": "テキストを非表示",
+  "paste_modal_invalid_chars_hidden": "テキスト内の一部の文字は貼り付けられません",
   "paste_modal_invalid_chars_intro": "以下の文字は貼り付けられません:",
   "paste_modal_paste_from_host": "ホストから貼り付け",
   "paste_modal_sending_using_layout": "キーボードレイアウト {iso}-{name} を使用してテキストを送信中",

@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Rhaid i'r oedi fod rhwng {min} a {max}",
   "paste_modal_failed_paste": "Methwyd â gludo testun: {error}",
   "paste_modal_hide_text": "Cuddio testun",
+  "paste_modal_invalid_chars_hidden": "Ni fydd rhai nodau yn y testun yn cael eu gludo",
   "paste_modal_invalid_chars_intro": "Ni fydd y nodau canlynol yn cael eu gludo:",
   "paste_modal_paste_from_host": "Gludo o'r gwesteiwr",
   "paste_modal_sending_using_layout": "Anfon testun gan ddefnyddio cynllun bysellfwrdd: {iso}-{name}",

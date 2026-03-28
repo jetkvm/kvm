@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Forsinkelsen skal være mellem {min} og {max}",
   "paste_modal_failed_paste": "Kunne ikke indsætte tekst: {error}",
   "paste_modal_hide_text": "Skjul tekst",
+  "paste_modal_invalid_chars_hidden": "Nogle tegn i teksten vil ikke blive indsat",
   "paste_modal_invalid_chars_intro": "Følgende tegn vil ikke blive indsat:",
   "paste_modal_paste_from_host": "Indsæt fra vært",
   "paste_modal_sending_using_layout": "Sender tekst med tastaturlayout: {iso}-{name}",

@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Fördröjningen måste vara mellan {min} och {max}",
   "paste_modal_failed_paste": "Kunde inte klistra in text: {error}",
   "paste_modal_hide_text": "Dölj text",
+  "paste_modal_invalid_chars_hidden": "Vissa tecken i texten kommer inte att klistras in",
   "paste_modal_invalid_chars_intro": "Följande tecken klistras inte in:",
   "paste_modal_paste_from_host": "Klistra in från värd",
   "paste_modal_sending_using_layout": "Skickar text med tangentbordslayout: {iso}-{name}",

@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "El retraso debe estar entre {min} y {max}",
   "paste_modal_failed_paste": "No se pudo pegar el texto: {error}",
   "paste_modal_hide_text": "Ocultar texto",
+  "paste_modal_invalid_chars_hidden": "Algunos caracteres del texto no se pegarán",
   "paste_modal_invalid_chars_intro": "Los siguientes caracteres no se pegarán:",
   "paste_modal_paste_from_host": "Pegar desde el host",
   "paste_modal_sending_using_layout": "Enviando texto usando la distribución del teclado: {iso}-{name}",

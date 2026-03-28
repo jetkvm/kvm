@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Il ritardo deve essere compreso tra {min} e {max}",
   "paste_modal_failed_paste": "Impossibile incollare il testo: {error}",
   "paste_modal_hide_text": "Nascondi testo",
+  "paste_modal_invalid_chars_hidden": "Alcuni caratteri nel testo non verranno incollati",
   "paste_modal_invalid_chars_intro": "I seguenti caratteri non verranno incollati:",
   "paste_modal_paste_from_host": "Incolla dall'host",
   "paste_modal_sending_using_layout": "Invio testo con layout tastiera: {iso}-{name}",

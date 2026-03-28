@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "延遲必須介於 {min} 和 {max} 之間",
   "paste_modal_failed_paste": "貼上文字失敗：{error}",
   "paste_modal_hide_text": "隱藏文字",
+  "paste_modal_invalid_chars_hidden": "文字中的部分字元無法貼上",
   "paste_modal_invalid_chars_intro": "以下字元將不會被貼上：",
   "paste_modal_paste_from_host": "從主機貼上",
   "paste_modal_sending_using_layout": "正在使用鍵盤配置傳送文字：{iso}-{name}",

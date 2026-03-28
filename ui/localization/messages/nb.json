@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "Forsinkelsen må være mellom {min} og {max}",
   "paste_modal_failed_paste": "Kunne ikke lime inn tekst: {error}",
   "paste_modal_hide_text": "Skjul tekst",
+  "paste_modal_invalid_chars_hidden": "Noen tegn i teksten vil ikke bli limt inn",
   "paste_modal_invalid_chars_intro": "Følgende tegn vil ikke bli limt inn:",
   "paste_modal_paste_from_host": "Lim inn fra verten",
   "paste_modal_sending_using_layout": "Sender tekst med tastaturoppsett: {iso}-{name}",

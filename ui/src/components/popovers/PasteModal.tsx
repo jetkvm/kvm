@@ -208,7 +208,9 @@ export default function PasteModal() {
                       <div className="mt-2 flex items-center gap-x-2">
                         <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
-                          {m.paste_modal_invalid_chars_intro()} {invalidChars.join(", ")}
+                          {hideText
+                            ? m.paste_modal_invalid_chars_hidden()
+                            : `${m.paste_modal_invalid_chars_intro()} ${invalidChars.join(", ")}`}
                         </span>
                       </div>
                     )}

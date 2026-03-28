@@ -799,6 +799,7 @@
   "paste_modal_delay_out_of_range": "延迟必须介于 {min} 和 {max} 之间",
   "paste_modal_failed_paste": "粘贴文本失败：{error}",
   "paste_modal_hide_text": "隐藏文本",
+  "paste_modal_invalid_chars_hidden": "文本中的部分字符无法粘贴",
   "paste_modal_invalid_chars_intro": "以下字符将不会被粘贴：",
   "paste_modal_paste_from_host": "从本机粘贴",
   "paste_modal_sending_using_layout": "正在使用键盘布局发送文本：{iso}-{name}",
