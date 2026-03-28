@@ -536,11 +536,15 @@ export class RemoteAgent {
       "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=5 -o ServerAliveCountMax=3";
 
     console.log(`[remote-agent] Deploying to ${target}...`);
+    // Kill the running agent first — Linux prevents overwriting a running binary
+    execSync(`ssh ${sshOpts} ${target} 'pkill -x remote-agent 2>/dev/null; sleep 0.5'`, {
+      stdio: "inherit",
+    });
     execSync(`scp ${sshOpts} "${binary}" ${target}:/tmp/remote-agent`, { stdio: "inherit" });
 
     console.log(`[remote-agent] Starting on port ${port}...`);
     execSync(
-      `ssh ${sshOpts} ${target} 'pkill -x remote-agent 2>/dev/null; sleep 0.5; PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
+      `ssh ${sshOpts} ${target} 'PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
       { stdio: "inherit" },
     );
 
