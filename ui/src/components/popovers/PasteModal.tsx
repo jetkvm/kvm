@@ -22,7 +22,6 @@ const defaultDelay = 20;
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
-  const PasswordRef = useRef<HTMLInputElement>(null);
   const { isPasteInProgress } = useHidStore();
   const [textValue, setTextValue] = useState("");
   const [hideText, setHideText] = useState(false);
@@ -129,11 +128,7 @@ export default function PasteModal() {
   }, [selectedKeyboard, executeMacro, delay, textValue]);
 
   useEffect(() => {
-    if (hideText) {
-      PasswordRef.current?.focus();
-    } else {
-      TextAreaRef.current?.focus();
-    }
+    TextAreaRef.current?.focus();
   }, [hideText]);
 
   return (
@@ -160,101 +155,53 @@ export default function PasteModal() {
                     onKeyUpCapture={e => e.stopPropagation()}
                   >
                     <div className="space-y-1">
-                      {hideText ? (
-                        <InputFieldWithLabel
-                          ref={PasswordRef}
-                          label={
-                            <div className="flex items-center justify-between">
-                              <div className="font-display text-[13px] leading-snug font-semibold text-black dark:text-white">
-                                {m.paste_modal_paste_from_host()}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setHideText(!hideText)}
-                                className="flex items-center gap-1 text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                              >
-                                {hideText ? (
-                                  <>
-                                    <LuEyeOff className="h-3.5 w-3.5" />
-                                    {m.paste_modal_show_text()}
-                                  </>
-                                ) : (
-                                  <>
-                                    <LuEye className="h-3.5 w-3.5" />
-                                    {m.paste_modal_hide_text()}
-                                  </>
-                                )}
-                              </button>
+                      <TextAreaWithLabel
+                        ref={TextAreaRef}
+                        label={
+                          <div className="flex items-center justify-between">
+                            <div className="font-display text-[13px] leading-snug font-semibold text-black dark:text-white">
+                              {m.paste_modal_paste_from_host()}
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => setHideText(!hideText)}
+                              className="flex items-center gap-1 text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                            >
+                              {hideText ? (
+                                <>
+                                  <LuEyeOff className="h-3.5 w-3.5" />
+                                  {m.paste_modal_show_text()}
+                                </>
+                              ) : (
+                                <>
+                                  <LuEye className="h-3.5 w-3.5" />
+                                  {m.paste_modal_hide_text()}
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        }
+                        rows={4}
+                        value={textValue}
+                        style={hideText ? { WebkitTextSecurity: "disc" } : undefined}
+                        onKeyUp={e => e.stopPropagation()}
+                        maxLength={pasteMaxLength}
+                        onKeyDown={e => {
+                          e.stopPropagation();
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                            e.preventDefault();
+                            void onConfirmPaste();
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            onCancelPasteMode();
                           }
-                          type="password"
-                          value={textValue}
-                          maxLength={pasteMaxLength}
-                          onKeyUp={e => e.stopPropagation()}
-                          onKeyDown={e => {
-                            e.stopPropagation();
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              void onConfirmPaste();
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              onCancelPasteMode();
-                            }
-                          }}
-                          onChange={e => {
-                            const value = e.target.value;
-                            setTextValue(value);
-                            updateInvalidChars(value);
-                          }}
-                        />
-                      ) : (
-                        <TextAreaWithLabel
-                          ref={TextAreaRef}
-                          label={
-                            <div className="flex items-center justify-between">
-                              <div className="font-display text-[13px] leading-snug font-semibold text-black dark:text-white">
-                                {m.paste_modal_paste_from_host()}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setHideText(!hideText)}
-                                className="flex items-center gap-1 text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                              >
-                                {hideText ? (
-                                  <>
-                                    <LuEyeOff className="h-3.5 w-3.5" />
-                                    {m.paste_modal_show_text()}
-                                  </>
-                                ) : (
-                                  <>
-                                    <LuEye className="h-3.5 w-3.5" />
-                                    {m.paste_modal_hide_text()}
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          }
-                          rows={4}
-                          value={textValue}
-                          onKeyUp={e => e.stopPropagation()}
-                          maxLength={pasteMaxLength}
-                          onKeyDown={e => {
-                            e.stopPropagation();
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              void onConfirmPaste();
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              onCancelPasteMode();
-                            }
-                          }}
-                          onChange={e => {
-                            const value = e.target.value;
-                            setTextValue(value);
-                            updateInvalidChars(value);
-                          }}
-                        />
-                      )}
+                        }}
+                        onChange={e => {
+                          const value = e.target.value;
+                          setTextValue(value);
+                          updateInvalidChars(value);
+                        }}
+                      />
                     </div>
 
                     {invalidChars.length > 0 && (
