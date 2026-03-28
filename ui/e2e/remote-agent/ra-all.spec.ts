@@ -1710,8 +1710,26 @@ test.describe("Remote Host Agent", () => {
 
     await callJsonRpc(sharedPage, "factoryReset");
 
-    // Wait for the device to go down and come back up after reboot
-    const waitForDevice = async (timeout: number) => {
+    // First, wait for the device to go DOWN (become unreachable).
+    // Without this, we may poll /device/status before the reboot starts
+    // and get the stale pre-reset isSetup=true response.
+    const waitForDeviceDown = async (timeout: number) => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        try {
+          await fetch(`http://${host}/device/status`, {
+            signal: AbortSignal.timeout(2000),
+          });
+          // Still reachable — keep waiting
+        } catch {
+          return; // Device is down
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      throw new Error(`Device did not go down within ${timeout}ms`);
+    };
+
+    const waitForDeviceUp = async (timeout: number) => {
       const start = Date.now();
       while (Date.now() - start < timeout) {
         try {
@@ -1727,10 +1745,8 @@ test.describe("Remote Host Agent", () => {
       throw new Error(`Device did not come back within ${timeout}ms`);
     };
 
-    // Give the device time to start rebooting
-    await new Promise(r => setTimeout(r, 3000));
-
-    const status = await waitForDevice(90_000);
+    await waitForDeviceDown(30_000);
+    const status = await waitForDeviceUp(90_000);
     expect(status.isSetup, "Device should be not set up after factory reset").toBe(false);
 
     const setupRes = await fetch(`http://${host}/device/setup`, {
