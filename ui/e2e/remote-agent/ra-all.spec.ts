@@ -10,6 +10,7 @@ import { execSync } from "child_process";
 import { test, expect, type Page } from "@playwright/test";
 import {
   HID_KEY,
+  SSH_OPTS,
   callJsonRpc,
   sendKeypress,
   tapKey,
@@ -27,20 +28,51 @@ import {
   createRemoteAgent,
   KEY,
   HID_TO_LINUX,
+  type RemoteAgent,
   type MouseEvent as RAMouseEvent,
   type KeyboardEvent as RAKeyboardEvent,
 } from "./remote-agent";
 
 /** Run a command on the remote host (the machine whose display is captured by the KVM). */
-function remoteHostExec(cmd: string): string {
+function remoteHostExec(cmd: string, timeoutMs = 15000): string {
   const target = process.env.JETKVM_REMOTE_HOST;
   if (!target) throw new Error("JETKVM_REMOTE_HOST not set");
-  const sshOpts =
-    "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10";
-  return execSync(`ssh ${sshOpts} ${target} '${cmd}'`, {
+  // Use single-quote wrapping. Commands containing single quotes must
+  // use the '\'' escape sequence (end quote, literal quote, resume quote).
+  const escaped = cmd.replace(/'/g, "'\\''");
+  return execSync(`ssh ${SSH_OPTS} ${target} '${escaped}'`, {
     encoding: "utf8",
-    timeout: 15000,
+    timeout: timeoutMs,
   });
+}
+
+/**
+ * Retry keyboard round-trip (send Space, verify host received it) until success
+ * or timeout. Used after USB rebinds where the HID channel needs time to stabilize.
+ */
+async function waitForKeyboardReady(
+  ra: RemoteAgent,
+  page: Page,
+  timeoutMs = 30000,
+  perTryMs = 3000,
+): Promise<RAKeyboardEvent[]> {
+  const deadline = Date.now() + timeoutMs;
+  let events: RAKeyboardEvent[] = [];
+  while (Date.now() < deadline) {
+    try {
+      events = await ra.expectKeyPress(
+        KEY.SPACE,
+        async () => {
+          await tapKey(page, HID_KEY.SPACE);
+        },
+        perTryMs,
+      );
+      return events;
+    } catch {
+      /* HID not ready yet */
+    }
+  }
+  return events;
 }
 
 /** Toggle DPMS on the remote host via GNOME ScreenSaver D-Bus API. */
@@ -304,21 +336,7 @@ test.beforeAll(async ({ browser }) => {
   // Verify the keyboard HID path works end-to-end before any tests run.
   // After reboot, Init() rebinds the USB gadget and the host needs time
   // to re-enumerate before HID reports are delivered.
-  const kbDeadline = Date.now() + 15000;
-  while (Date.now() < kbDeadline) {
-    try {
-      await agent!.expectKeyPress(
-        KEY.SPACE,
-        async () => {
-          await tapKey(sharedPage, HID_KEY.SPACE);
-        },
-        3000,
-      );
-      break;
-    } catch {
-      /* not ready yet */
-    }
-  }
+  await waitForKeyboardReady(agent!, sharedPage, 15000);
 });
 
 test.afterAll(async () => {
@@ -452,22 +470,7 @@ test.describe("Remote Host Agent", () => {
     await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
 
     // Verify keyboard works after EDID changes
-    const kbDeadline = Date.now() + 30000;
-    let kbEvents: RAKeyboardEvent[] = [];
-    while (Date.now() < kbDeadline) {
-      try {
-        kbEvents = await agent!.expectKeyPress(
-          KEY.SPACE,
-          async () => {
-            await tapKey(sharedPage, HID_KEY.SPACE);
-          },
-          3000,
-        );
-        break;
-      } catch {
-        /* USB/HID not recovered yet */
-      }
-    }
+    const kbEvents = await waitForKeyboardReady(agent!, sharedPage);
     expect(kbEvents.length, "keyboard should work after EDID restore").toBeGreaterThan(0);
   });
 
@@ -616,14 +619,22 @@ test.describe("Remote Host Agent", () => {
     await waitForWebRTCReady(sharedPage);
     await waitForRpcReady(sharedPage);
 
-    // Verify device-side keys-down state is clear
-    const state = await getKeysDownState(sharedPage);
-    expect(state, "Keys-down state should be available").not.toBeNull();
-    expect(state!.modifier, "Modifier byte should be 0 after disconnect").toBe(0);
-    expect(
-      state!.keys.every((k: number) => k === 0),
-      "All key slots should be clear after disconnect",
-    ).toBe(true);
+    // Verify device-side keys-down state is clear (poll briefly for the
+    // all-keys-up report to propagate through the HID stack)
+    await expect
+      .poll(
+        async () => {
+          const s = await getKeysDownState(sharedPage);
+          if (!s) return false;
+          return s.modifier === 0 && s.keys.every((k: number) => k === 0);
+        },
+        {
+          message: "All key slots should be clear after disconnect",
+          timeout: 5000,
+          intervals: [200, 500],
+        },
+      )
+      .toBe(true);
   });
 
   // ═══════════════════════════════════════════
@@ -980,23 +991,7 @@ test.describe("Remote Host Agent", () => {
     await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
 
     // Verify keyboard works after disk mount (this would fail without the ResetHIDFiles fix)
-    // Retry — the HID channel may need time to stabilize after USB rebind
-    const postMountDeadline = Date.now() + 30000;
-    let postMountEvents: RAKeyboardEvent[] = [];
-    while (Date.now() < postMountDeadline) {
-      try {
-        postMountEvents = await agent!.expectKeyPress(
-          KEY.SPACE,
-          async () => {
-            await tapKey(sharedPage, HID_KEY.SPACE);
-          },
-          3000,
-        );
-        break;
-      } catch {
-        /* retry */
-      }
-    }
+    const postMountEvents = await waitForKeyboardReady(agent!, sharedPage);
     expect(postMountEvents.length, "keyboard should work after disk mount").toBeGreaterThan(0);
 
     // Unmount
@@ -1008,22 +1003,7 @@ test.describe("Remote Host Agent", () => {
     await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
 
     // Verify keyboard works after unmount too
-    const postUnmountDeadline = Date.now() + 30000;
-    let postUnmountEvents: RAKeyboardEvent[] = [];
-    while (Date.now() < postUnmountDeadline) {
-      try {
-        postUnmountEvents = await agent!.expectKeyPress(
-          KEY.SPACE,
-          async () => {
-            await tapKey(sharedPage, HID_KEY.SPACE);
-          },
-          3000,
-        );
-        break;
-      } catch {
-        /* retry */
-      }
-    }
+    const postUnmountEvents = await waitForKeyboardReady(agent!, sharedPage);
     expect(postUnmountEvents.length, "keyboard should work after unmount").toBeGreaterThan(0);
   });
 
@@ -1115,22 +1095,7 @@ test.describe("Remote Host Agent", () => {
       await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
 
       // Verify keyboard still works after the rebind
-      const postDeadline = Date.now() + 30000;
-      let postEvents: RAKeyboardEvent[] = [];
-      while (Date.now() < postDeadline) {
-        try {
-          postEvents = await agent!.expectKeyPress(
-            KEY.SPACE,
-            async () => {
-              await tapKey(sharedPage, HID_KEY.SPACE);
-            },
-            3000,
-          );
-          break;
-        } catch {
-          /* retry */
-        }
-      }
+      const postEvents = await waitForKeyboardReady(agent!, sharedPage);
       expect(
         postEvents.length,
         "keyboard should work after EBUSY unmount fallback",
@@ -1205,16 +1170,7 @@ test.describe("Remote Host Agent", () => {
   test("usb: serial console CDC-ACM toggle creates and removes ttyACM on host", async () => {
     test.setTimeout(30_000);
 
-    const remoteHost = process.env.JETKVM_REMOTE_HOST;
-    test.skip(!remoteHost, "JETKVM_REMOTE_HOST not set");
-
-    const sshTarget = remoteHost!.includes("@") ? remoteHost! : `tony@${remoteHost}`;
-    const sshOpts =
-      "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10";
-    const { execSync } = await import("child_process");
-
-    const remoteExec = (cmd: string) =>
-      execSync(`ssh ${sshOpts} ${sshTarget} "${cmd}"`, { encoding: "utf8" }).trim();
+    test.skip(!process.env.JETKVM_REMOTE_HOST, "JETKVM_REMOTE_HOST not set");
 
     // Ensure serial console is off initially
     await callJsonRpc(sharedPage, "setUsbDevices", {
@@ -1223,7 +1179,7 @@ test.describe("Remote Host Agent", () => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Verify the host does NOT see a ttyACM device
-    const beforeACM = remoteExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true");
+    const beforeACM = remoteHostExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true").trim();
     expect(beforeACM).toBe("");
 
     // Enable serial console
@@ -1233,7 +1189,7 @@ test.describe("Remote Host Agent", () => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Verify the host now sees a ttyACM device
-    const afterACM = remoteExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1");
+    const afterACM = remoteHostExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1").trim();
     expect(afterACM).toContain("ttyACM");
 
     // Verify /dev/ttyGS0 exists on the KVM device
@@ -1247,7 +1203,7 @@ test.describe("Remote Host Agent", () => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Verify the host no longer sees a ttyACM device
-    const removedACM = remoteExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true");
+    const removedACM = remoteHostExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true").trim();
     expect(removedACM).toBe("");
 
     // Verify other USB functions still work (keyboard, mouse)
@@ -1261,19 +1217,7 @@ test.describe("Remote Host Agent", () => {
   test("usb: USB Serial Console terminal sends and receives data via ttyGS0", async () => {
     test.setTimeout(60_000);
 
-    const remoteHost = process.env.JETKVM_REMOTE_HOST;
-    test.skip(!remoteHost, "JETKVM_REMOTE_HOST not set");
-
-    const sshTarget = remoteHost!.includes("@") ? remoteHost! : `tony@${remoteHost}`;
-    const sshOpts =
-      "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=10";
-    const { execSync } = await import("child_process");
-
-    const remoteExec = (cmd: string) =>
-      execSync(`ssh ${sshOpts} ${sshTarget} "${cmd}"`, {
-        encoding: "utf8",
-        timeout: 15_000,
-      }).trim();
+    test.skip(!process.env.JETKVM_REMOTE_HOST, "JETKVM_REMOTE_HOST not set");
 
     // Enable serial console
     await callJsonRpc(sharedPage, "setUsbDevices", {
@@ -1282,7 +1226,7 @@ test.describe("Remote Host Agent", () => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Find the ttyACM device on the remote host
-    const ttyACM = remoteExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1");
+    const ttyACM = remoteHostExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1").trim();
     expect(ttyACM).toContain("ttyACM");
 
     // Reload the page so the action bar picks up serial_console enabled state
@@ -1299,22 +1243,21 @@ test.describe("Remote Host Agent", () => {
 
     // Configure the remote serial port and start a background reader
     const testString = `e2e_test_${Date.now()}`;
-    remoteExec(`sudo stty -F ${ttyACM} 9600 raw -echo`);
-    remoteExec(`sudo bash -c 'nohup cat ${ttyACM} > /tmp/cdcacm_rx.txt 2>/dev/null &'`);
+    remoteHostExec(`sudo stty -F ${ttyACM} 9600 raw -echo`);
+    remoteHostExec(`sudo bash -c 'nohup cat ${ttyACM} > /tmp/cdcacm_rx.txt 2>/dev/null &'`);
     await new Promise(r => setTimeout(r, 500));
 
     // Type a string into the USB Serial Console terminal
-    // The terminal is focused after opening, so we type directly
     await sharedPage.keyboard.type(testString, { delay: 50 });
     await new Promise(r => setTimeout(r, 2000));
 
     // Read what the remote host received
-    const received = remoteExec("sudo cat /tmp/cdcacm_rx.txt 2>/dev/null || echo EMPTY");
+    const received = remoteHostExec("sudo cat /tmp/cdcacm_rx.txt 2>/dev/null || echo EMPTY").trim();
     expect(received).toContain(testString);
 
     // Test receiving data: send from remote host to ttyACM
     const replyString = `reply_${Date.now()}`;
-    remoteExec(`sudo bash -c 'echo ${replyString} > ${ttyACM}'`);
+    remoteHostExec(`sudo bash -c 'echo ${replyString} > ${ttyACM}'`);
     await new Promise(r => setTimeout(r, 2000));
 
     // Take a screenshot for visual review
@@ -1322,12 +1265,12 @@ test.describe("Remote Host Agent", () => {
 
     // Clean up: kill background cat, remove temp file
     try {
-      remoteExec("sudo pkill -f cat./dev/ttyACM");
+      remoteHostExec("sudo pkill -f cat./dev/ttyACM");
     } catch {
       /* no matching process */
     }
     try {
-      remoteExec("sudo rm -f /tmp/cdcacm_rx.txt");
+      remoteHostExec("sudo rm -f /tmp/cdcacm_rx.txt");
     } catch {
       /* ignore */
     }

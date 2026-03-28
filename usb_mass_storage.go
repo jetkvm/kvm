@@ -51,6 +51,23 @@ func setMassStorageImage(imagePath string) error {
 	return nil
 }
 
+// rebindAndRecoverHID performs a corrective USB rebind with recovery poller
+// suppression, resets HID file handles, waits for the kernel to re-attach the
+// HID function driver, and reopens the keyboard chardev.
+func rebindAndRecoverHID(context string) error {
+	setUSBRecoveryTimer(time.Now())
+	if err := gadget.RebindUsb(true); err != nil {
+		return fmt.Errorf("%s: corrective USB rebind failed: %w", context, err)
+	}
+	setUSBRecoveryTimer(time.Now())
+	gadget.ResetHIDFiles()
+	time.Sleep(1 * time.Second)
+	if err := gadget.OpenKeyboardHidFile(); err != nil {
+		usbLogger.Warn().Err(err).Msgf("failed to reopen keyboard HID file after %s rebind", context)
+	}
+	return nil
+}
+
 func setMassStorageMode(cdrom bool) error {
 	mode := "0"
 	if cdrom {
@@ -75,9 +92,6 @@ func setMassStorageMode(cdrom bool) error {
 		return err
 	}
 
-	// Suppress the auto-recovery poller so it doesn't interfere.
-	setUSBRecoveryTimer(time.Now())
-
 	// USB gadget was rebound — HID device nodes were recreated.
 	// Reset stale file handles so subsequent HID writes use fresh descriptors.
 	gadget.ResetHIDFiles()
@@ -87,26 +101,9 @@ func setMassStorageMode(cdrom bool) error {
 
 	openErr := gadget.OpenKeyboardHidFile()
 	if openErr != nil {
-		// The DWC3 controller on the RV1106 has a race condition where
-		// rapid unbind→bind can permanently corrupt HID chardev state.
-		// The host's re-enumeration can also trigger device resets that
-		// compound the issue. Recover by doing another rebind with a
-		// brief pause for kernel cleanup.
 		usbLogger.Warn().Err(openErr).Msg("HID chardev broken after rebind, attempting corrective rebind")
-
-		// Re-suppress the poller — the timer from line 72 may have expired
-		// during the OpenKeyboardHidFile 3-second timeout.
-		setUSBRecoveryTimer(time.Now())
-
-		if err := gadget.RebindUsb(true); err != nil {
-			return fmt.Errorf("corrective USB rebind failed: %w", err)
-		}
-		setUSBRecoveryTimer(time.Now())
-		gadget.ResetHIDFiles()
-		time.Sleep(1 * time.Second)
-
-		if retryErr := gadget.OpenKeyboardHidFile(); retryErr != nil {
-			usbLogger.Warn().Err(retryErr).Msg("failed to reopen keyboard HID file after corrective rebind")
+		if err := rebindAndRecoverHID("mass-storage-mode-change"); err != nil {
+			return err
 		}
 	}
 
@@ -250,22 +247,8 @@ func unmountImageLocked() error {
 
 		logger.Warn().Err(err).Msg("unmount failed with EBUSY, rebinding USB gadget to force-eject")
 
-		// Suppress the auto-recovery poller BEFORE the rebind so it doesn't
-		// see the transient "not attached" UDC state and trigger a competing
-		// RebindUsb that corrupts HID chardev state.
-		setUSBRecoveryTimer(time.Now())
-
-		if rebindErr := gadget.RebindUsb(true); rebindErr != nil {
-			return fmt.Errorf("failed to unmount image: %w, gadget rebind also failed: %w", err, rebindErr)
-		}
-
-		setUSBRecoveryTimer(time.Now())
-		gadget.ResetHIDFiles()
-
-		time.Sleep(1 * time.Second)
-
-		if openErr := gadget.OpenKeyboardHidFile(); openErr != nil {
-			logger.Warn().Err(openErr).Msg("failed to reopen keyboard HID file after EBUSY unmount rebind")
+		if rebindErr := rebindAndRecoverHID("ebusy-unmount"); rebindErr != nil {
+			return fmt.Errorf("failed to unmount image: %w, %w", err, rebindErr)
 		}
 
 		if retryErr := setMassStorageImage("\n"); retryErr != nil {
