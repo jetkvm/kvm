@@ -9,10 +9,13 @@
  */
 
 import { KeyboardLedState, KeysDownState } from "@/hooks/stores";
+import { KeyboardLayout } from "@/keyboardLayouts";
+import { keys } from "@/keyboardMappings";
 
 /** Internal handlers set by React components (prefixed with _ to indicate internal use) */
 interface TestHooksInternal {
   _handleKeyPress?: (key: number, press: boolean) => void;
+  _getKeyboardLayout?: () => KeyboardLayout | null;
   _handleAbsMouseMove?: (x: number, y: number, buttons: number) => void;
   _getKeyboardLedState?: () => KeyboardLedState;
   _getKeysDownState?: () => KeysDownState;
@@ -51,6 +54,7 @@ export interface KvmTestHooks extends TestHooksInternal {
     gridSize?: number,
   ) => number[] | null;
   getVideoStreamDimensions: () => { width: number; height: number } | null;
+  sendText: (text: string) => Promise<void>;
   isWebRTCConnected: () => boolean;
   isHidRpcReady: () => boolean;
   isVideoStreamActive: () => boolean;
@@ -87,6 +91,37 @@ export function initTestHooks(): void {
         hooks._handleAbsMouseMove(x, y, buttons);
       } else {
         console.warn("[E2E] sendAbsMouseMove called but no handler registered");
+      }
+    },
+
+    sendText: async (text: string): Promise<void> => {
+      const layout = hooks._getKeyboardLayout?.();
+      if (!layout) {
+        console.warn("[E2E] sendText: no keyboard layout");
+        return;
+      }
+      const sendPair = async (k: number, mods: number[]) => {
+        for (const m of mods) hooks._handleKeyPress?.(m, true);
+        hooks._handleKeyPress?.(k, true);
+        await new Promise(r => setTimeout(r, 20));
+        hooks._handleKeyPress?.(k, false);
+        for (const m of [...mods].reverse()) hooks._handleKeyPress?.(m, false);
+        await new Promise(r => setTimeout(r, 20));
+      };
+      for (const char of text) {
+        const keyprops = layout.chars[char.normalize("NFC")];
+        if (!keyprops?.key) continue;
+        const { key, shift, altRight, deadKey, accentKey } = keyprops;
+        if (accentKey) {
+          const mods = [
+            ...(accentKey.shift ? [keys.ShiftLeft] : []),
+            ...(accentKey.altRight ? [keys.AltRight] : []),
+          ];
+          await sendPair(keys[String(accentKey.key) as keyof typeof keys], mods);
+        }
+        const mods = [...(shift ? [keys.ShiftLeft] : []), ...(altRight ? [keys.AltRight] : [])];
+        await sendPair(keys[String(key) as keyof typeof keys], mods);
+        if (deadKey) await sendPair(keys.Space, []);
       }
     },
 
@@ -269,6 +304,7 @@ export function registerTestHandlers(handlers: {
   getVideoElement: () => HTMLVideoElement | null;
   getKvmTerminal: () => RTCDataChannel | null;
   getRpcDataChannel: () => RTCDataChannel | null;
+  getKeyboardLayout: () => KeyboardLayout | null;
 }): void {
   if (!window.__kvmTestHooks) return;
 
@@ -283,6 +319,7 @@ export function registerTestHandlers(handlers: {
   window.__kvmTestHooks._getVideoElement = handlers.getVideoElement;
   window.__kvmTestHooks._getKvmTerminal = handlers.getKvmTerminal;
   window.__kvmTestHooks._getRpcDataChannel = handlers.getRpcDataChannel;
+  window.__kvmTestHooks._getKeyboardLayout = handlers.getKeyboardLayout;
 }
 
 /**
@@ -293,6 +330,7 @@ export function cleanupTestHooks(): void {
 
   window.__kvmTestHooks._handleKeyPress = undefined;
   window.__kvmTestHooks._handleAbsMouseMove = undefined;
+  window.__kvmTestHooks._getKeyboardLayout = undefined;
   window.__kvmTestHooks._getKeyboardLedState = undefined;
   window.__kvmTestHooks._getKeysDownState = undefined;
   window.__kvmTestHooks._getPeerConnectionState = undefined;

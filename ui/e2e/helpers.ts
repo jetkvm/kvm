@@ -80,6 +80,10 @@ export async function sendKeypress(page: Page, keyCode: number, press: boolean):
   );
 }
 
+export async function sendText(page: Page, text: string): Promise<void> {
+  await page.evaluate(t => window.__kvmTestHooks?.sendText(t), text);
+}
+
 export async function tapKey(page: Page, keyCode: number, holdMs = 20): Promise<void> {
   await sendKeypress(page, keyCode, true);
   await page.waitForTimeout(holdMs);
@@ -1315,6 +1319,7 @@ declare global {
       isWebRTCConnected: () => boolean;
       isHidRpcReady: () => boolean;
       isVideoStreamActive: () => boolean;
+      sendText: (text: string) => Promise<void>;
       sendTerminalCommand: (command: string) => boolean;
       isTerminalReady: () => boolean;
     };
