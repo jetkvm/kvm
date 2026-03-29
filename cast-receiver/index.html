@@ -82,7 +82,7 @@ function connectWebRTC(ip) {
   if (pc) { pc.close(); pc = null; }
   if (ws) { ws.close(); ws = null; }
 
-  const wsUrl = 'ws://' + ip + '/webrtc/signaling/client';
+  const wsUrl = 'ws://' + ip + '/webrtc/signaling/cast';
   log('Opening WebSocket: ' + wsUrl);
 
   ws = new WebSocket(wsUrl);

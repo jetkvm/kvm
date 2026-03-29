@@ -167,6 +167,10 @@ func setupRouter() *gin.Engine {
 	// A Prometheus metrics endpoint.
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	// Unauthenticated WebRTC signaling for Chromecast cast receiver.
+	// The cast receiver runs on a Chromecast and cannot send auth cookies/tokens.
+	r.GET("/webrtc/signaling/cast", handleLocalWebRTCSignal)
+
 
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
