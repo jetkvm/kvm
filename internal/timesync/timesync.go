@@ -109,6 +109,11 @@ func (t *TimeSync) getSyncMode() SyncMode {
 	}
 
 	if t.networkConfig != nil {
+		var syncOrdering = t.networkConfig.TimeSyncOrdering
+		if len(syncOrdering) > 0 {
+			syncMode.Ordering = syncOrdering
+		}
+
 		switch t.networkConfig.TimeSyncMode.String {
 		case "ntp_only":
 			syncMode.Http = false
@@ -121,11 +126,6 @@ func (t *TimeSync) getSyncMode() SyncMode {
 		if t.networkConfig.TimeSyncDisableFallback.Bool {
 			syncMode.NtpUseFallback = false
 			syncMode.HttpUseFallback = false
-		}
-
-		var syncOrdering = t.networkConfig.TimeSyncOrdering
-		if len(syncOrdering) > 0 {
-			syncMode.Ordering = syncOrdering
 		}
 	}
 
