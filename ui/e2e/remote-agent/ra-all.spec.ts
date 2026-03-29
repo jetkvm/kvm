@@ -20,7 +20,6 @@ import {
   sshExec,
   getDeviceHost,
   getLedState,
-  getKeysDownState,
   waitForLedState,
   restartAppViaSSH,
 } from "../helpers";
@@ -828,13 +827,15 @@ test.describe("Remote Host Agent", () => {
     await waitForWebRTCReady(sharedPage);
     await waitForRpcReady(sharedPage);
 
-    // Verify device-side keys-down state is clear (poll briefly for the
-    // all-keys-up report to propagate through the HID stack)
+    // Verify device-side keys-down state is clear by querying the device
+    // directly via JSON-RPC (bypasses Zustand store / hidRpc timing)
     await expect
       .poll(
         async () => {
-          const s = await getKeysDownState(sharedPage);
-          if (!s) return false;
+          const s = (await callJsonRpc(sharedPage, "getKeyDownState")) as {
+            modifier: number;
+            keys: number[];
+          };
           return s.modifier === 0 && s.keys.every((k: number) => k === 0);
         },
         {
@@ -1436,7 +1437,9 @@ test.describe("Remote Host Agent", () => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Verify the host does NOT see a ttyACM device
-    const beforeACM = remoteHostExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true").trim();
+    const beforeACM = remoteHostExec(
+      "find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true",
+    ).trim();
     expect(beforeACM).toBe("");
 
     // Enable serial console
@@ -1460,7 +1463,9 @@ test.describe("Remote Host Agent", () => {
     await new Promise(r => setTimeout(r, 3000));
 
     // Verify the host no longer sees a ttyACM device
-    const removedACM = remoteHostExec("find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true").trim();
+    const removedACM = remoteHostExec(
+      "find /dev -maxdepth 1 -name 'ttyACM*' | head -1 || true",
+    ).trim();
     expect(removedACM).toBe("");
 
     // Verify other USB functions still work (keyboard, mouse)

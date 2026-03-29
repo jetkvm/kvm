@@ -425,7 +425,11 @@ func newSession(config SessionConfig) (*Session, error) {
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
 				cancelKeyboardMacro()
-				// Release all keys to prevent stuck keys after disconnect
+				// Stop pending auto-release timers (avoids unnecessary work),
+				// then clear all keys. keyboardMutex inside KeyboardReport
+				// serialises with any auto-release goroutine already in flight,
+				// so the clear is guaranteed to be the final state.
+				gadget.CancelAllAutoReleaseTimers()
 				_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 				currentSession = nil
 			}

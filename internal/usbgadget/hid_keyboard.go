@@ -196,6 +196,22 @@ func (u *UsbGadget) cancelAutoRelease(key byte) {
 	}
 }
 
+// CancelAllAutoReleaseTimers stops and removes all pending auto-release timers.
+// This must be called when forcibly clearing the keyboard state (e.g. on session
+// disconnect) to prevent racing auto-release goroutines from re-introducing
+// stale key state after the clear.
+func (u *UsbGadget) CancelAllAutoReleaseTimers() {
+	u.kbdAutoReleaseLock.Lock()
+	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "all autoRelease timers cancelled")
+
+	for key, timer := range u.kbdAutoReleaseTimers {
+		if timer != nil {
+			timer.Stop()
+		}
+		delete(u.kbdAutoReleaseTimers, key)
+	}
+}
+
 func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease delayed")
@@ -382,11 +398,17 @@ func (u *UsbGadget) ReopenKeyboardHidFile() error {
 	return u.reopenKeyboardHidFile()
 }
 
-var keyboardWriteHidFileLock sync.Mutex
+// keyboardMutex serialises all keyboard state mutations. Every path that
+// reads keysDownState, computes a new state, writes the HID report, and
+// updates keysDownState must hold this lock for the entire sequence.
+// This eliminates read-modify-write races between concurrent callers
+// (e.g. two auto-release timers firing simultaneously, or an auto-release
+// racing with a session-disconnect clear).
+var keyboardMutex sync.Mutex
 
-func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
-	keyboardWriteHidFileLock.Lock()
-	defer keyboardWriteHidFileLock.Unlock()
+// keyboardWriteHidFileLocked writes a keyboard HID report to the device.
+// Caller MUST hold keyboardMutex.
+func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error {
 	if err := u.openKeyboardHidFile(); err != nil {
 		return err
 	}
@@ -443,12 +465,14 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 		keys = append(keys, make([]byte, hidKeyBufferSize-len(keys))...)
 	}
 
-	err := u.keyboardWriteHidFile(modifier, keys)
+	keyboardMutex.Lock()
+	err := u.keyboardWriteHidFileLocked(modifier, keys)
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
 	}
-
 	u.UpdateKeysDown(modifier, keys)
+	keyboardMutex.Unlock()
+
 	return err
 }
 
@@ -497,6 +521,11 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 		requestID := xid.New()
 		l = l.With().Str("requestID", requestID.String()).Logger()
 	}
+
+	// Hold keyboardMutex for the entire read-compute-write-update sequence.
+	// This prevents concurrent callers (auto-release timers, session disconnect
+	// clears, other key events) from interleaving and causing lost updates.
+	keyboardMutex.Lock()
 
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
 	// for handling key presses and releases. It ensures that the USB gadget
@@ -557,8 +586,11 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 		}
 	}
 
-	err := u.keyboardWriteHidFile(modifier, keys)
-	return u.UpdateKeysDown(modifier, keys), err
+	err := u.keyboardWriteHidFileLocked(modifier, keys)
+	newState := u.UpdateKeysDown(modifier, keys)
+	keyboardMutex.Unlock()
+
+	return newState, err
 }
 
 func (u *UsbGadget) KeypressReport(key byte, press bool) error {
