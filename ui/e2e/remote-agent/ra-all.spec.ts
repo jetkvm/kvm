@@ -333,9 +333,28 @@ test.beforeAll(async ({ browser }) => {
 
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
 
+  // Wake the remote host display — it may have entered DPMS sleep during
+  // the build/deploy phase, preventing the KVM from detecting an HDMI signal.
+  try {
+    remoteHostSetDPMS(false);
+  } catch {
+    /* best-effort: not all hosts have GNOME ScreenSaver */
+  }
+
   // Wait for the video stream to be flowing — LED state reports are only
   // reliable once the full WebRTC media pipeline is up.
-  await waitForVideoDimensions(sharedPage, 15000);
+  // Use a generous timeout: after app restart, the HDMI capture chip may need
+  // time to re-detect the signal, especially if the display was in DPMS sleep.
+  try {
+    await waitForVideoDimensions(sharedPage, 30000);
+  } catch {
+    // If video dimensions still aren't available, reload the page and retry.
+    // This handles the case where the WebRTC session connected before the
+    // HDMI signal was detected and the video track never started.
+    await sharedPage.reload({ waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+    await waitForVideoDimensions(sharedPage, 30000);
+  }
 
   // Verify the keyboard HID path works end-to-end before any tests run.
   // After reboot, Init() rebinds the USB gadget and the host needs time
