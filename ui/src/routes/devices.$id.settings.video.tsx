@@ -56,6 +56,7 @@ const codecOptions = [
 export default function SettingsVideoRoute() {
   const { send } = useJsonRpc();
   const [streamQuality, setStreamQuality] = useState("1");
+  const [streamQualityLoading, setStreamQualityLoading] = useState(true);
   const [codecPreference, setCodecPreference] = useState("auto");
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
@@ -72,17 +73,18 @@ export default function SettingsVideoRoute() {
   } = useSettingsStore();
 
   useEffect(() => {
-    send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {
+    void send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {
+      setStreamQualityLoading(false);
       if ("error" in resp) return;
-      setStreamQuality(String(resp.result));
+      setStreamQuality(String(resp.result as number));
     });
 
-    send("getVideoCodecPreference", {}, (resp: JsonRpcResponse) => {
+    void send("getVideoCodecPreference", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setCodecPreference(resp.result as string);
     });
 
-    send("getEDID", {}, (resp: JsonRpcResponse) => {
+    void send("getEDID", {}, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
         notifications.error(
@@ -108,7 +110,9 @@ export default function SettingsVideoRoute() {
   }, [send]);
 
   const handleStreamQualityChange = (factor: string) => {
-    send("setStreamQualityFactor", { factor: Number(factor) }, (resp: JsonRpcResponse) => {
+    setStreamQualityLoading(true);
+    void send("setStreamQualityFactor", { factor: Number(factor) }, (resp: JsonRpcResponse) => {
+      setStreamQualityLoading(false);
       if ("error" in resp) {
         notifications.error(
           m.video_failed_set_stream_quality({ error: resp.error.data || m.unknown_error() }),
@@ -127,7 +131,7 @@ export default function SettingsVideoRoute() {
 
   const handleCodecChange = (codec: string) => {
     if (codec === codecPreference) return;
-    send("setVideoCodecPreference", { codec }, (resp: JsonRpcResponse) => {
+    void send("setVideoCodecPreference", { codec }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.video_failed_set_codec({ error: resp.error.data || m.unknown_error() }),
@@ -141,7 +145,7 @@ export default function SettingsVideoRoute() {
 
   const handleEDIDChange = (newEdid: string) => {
     setEdidLoading(true);
-    send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
+    void send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
         notifications.error(
@@ -164,7 +168,7 @@ export default function SettingsVideoRoute() {
   const [debugInfoLoading, setDebugInfoLoading] = useState(false);
   const getDebugInfo = useCallback(() => {
     setDebugInfoLoading(true);
-    send("getVideoLogStatus", {}, (resp: JsonRpcResponse) => {
+    void send("getVideoLogStatus", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.video_failed_get_debug_info({ error: resp.error.data || m.unknown_error() }),
@@ -193,20 +197,19 @@ export default function SettingsVideoRoute() {
             <SettingsItem
               title={m.video_stream_quality_title()}
               description={m.video_stream_quality_description()}
+              loading={streamQualityLoading}
             >
               <SelectMenuBasic
                 size="SM"
                 label=""
+                disabled={streamQualityLoading}
                 value={streamQuality}
                 options={streamQualityOptions}
                 onChange={e => handleStreamQualityChange(e.target.value)}
               />
             </SettingsItem>
 
-            <SettingsItem
-              title={m.video_codec_title()}
-              description={m.video_codec_description()}
-            >
+            <SettingsItem title={m.video_codec_title()} description={m.video_codec_description()}>
               <SelectMenuBasic
                 size="SM"
                 label=""
@@ -367,7 +370,6 @@ export default function SettingsVideoRoute() {
           )}
         </div>
       </div>
-
     </div>
   );
 }
