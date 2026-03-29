@@ -107,7 +107,7 @@ double calculate_bitrate(float bitrate_factor, int width, int height)
 
     int32_t bitrate = (int32_t)(base_bitrate * scale_factor);
 
-    const int32_t min_bitrate = 100;
+    const int32_t min_bitrate = 200;
     if (bitrate < min_bitrate)
     {
         bitrate = min_bitrate;
@@ -120,12 +120,17 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
 {
     memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
 
+    RK_U32 min_bitrate = bitrate / 2;
+    if (min_bitrate < 2) min_bitrate = 2;
+
     if (codec_type == 1) {
         // H.265 (HEVC)
         stAttr->stRcAttr.enRcMode = VENC_RC_MODE_H265VBR;
         stAttr->stRcAttr.stH265Vbr.u32BitRate = bitrate;
         stAttr->stRcAttr.stH265Vbr.u32MaxBitRate = max_bitrate;
-        stAttr->stRcAttr.stH265Vbr.u32Gop = 60;
+        stAttr->stRcAttr.stH265Vbr.u32MinBitRate = min_bitrate;
+        stAttr->stRcAttr.stH265Vbr.u32Gop = 30;
+        stAttr->stRcAttr.stH265Vbr.u32StatTime = 2;
         stAttr->stVencAttr.enType = RK_VIDEO_ID_HEVC;
         stAttr->stVencAttr.u32Profile = H265E_PROFILE_MAIN;
     } else {
@@ -133,7 +138,9 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
         stAttr->stRcAttr.enRcMode = VENC_RC_MODE_H264VBR;
         stAttr->stRcAttr.stH264Vbr.u32BitRate = bitrate;
         stAttr->stRcAttr.stH264Vbr.u32MaxBitRate = max_bitrate;
-        stAttr->stRcAttr.stH264Vbr.u32Gop = 60;
+        stAttr->stRcAttr.stH264Vbr.u32MinBitRate = min_bitrate;
+        stAttr->stRcAttr.stH264Vbr.u32Gop = 30;
+        stAttr->stRcAttr.stH264Vbr.u32StatTime = 2;
         stAttr->stVencAttr.enType = RK_VIDEO_ID_AVC;
         stAttr->stVencAttr.u32Profile = H264E_PROFILE_HIGH;
     }
