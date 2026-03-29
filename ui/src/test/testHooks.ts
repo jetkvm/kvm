@@ -23,6 +23,7 @@ interface TestHooksInternal {
   _getVideoElement?: () => HTMLVideoElement | null;
   _getKvmTerminal?: () => RTCDataChannel | null;
   _getRpcDataChannel?: () => RTCDataChannel | null;
+  _getPeerConnection?: () => RTCPeerConnection | null;
 }
 
 export interface KvmTestHooks extends TestHooksInternal {
@@ -54,6 +55,14 @@ export interface KvmTestHooks extends TestHooksInternal {
   isWebRTCConnected: () => boolean;
   isHidRpcReady: () => boolean;
   isVideoStreamActive: () => boolean;
+  getInboundVideoStats: () => Promise<{
+    bytesReceived: number;
+    timestamp: number;
+    jitterBufferDelay: number;
+    jitterBufferEmittedCount: number;
+    framesPerSecond: number;
+    codecMimeType: string;
+  } | null>;
 }
 
 declare global {
@@ -247,6 +256,42 @@ export function initTestHooks(): void {
       const videoTracks = stream.getVideoTracks();
       return videoTracks.length > 0 && videoTracks[0].readyState === "live";
     },
+
+    getInboundVideoStats: async () => {
+      const pc = hooks._getPeerConnection?.();
+      if (!pc) return null;
+      const stats = await pc.getStats();
+      let result: {
+        bytesReceived: number;
+        timestamp: number;
+        jitterBufferDelay: number;
+        jitterBufferEmittedCount: number;
+        framesPerSecond: number;
+        codecMimeType: string;
+      } | null = null;
+      let codecId: string | null = null;
+      stats.forEach(report => {
+        if (report.type === "inbound-rtp" && report.kind === "video") {
+          codecId = report.codecId ?? null;
+          result = {
+            bytesReceived: report.bytesReceived,
+            timestamp: report.timestamp,
+            jitterBufferDelay: report.jitterBufferDelay ?? 0,
+            jitterBufferEmittedCount: report.jitterBufferEmittedCount ?? 0,
+            framesPerSecond: report.framesPerSecond ?? 0,
+            codecMimeType: "",
+          };
+        }
+      });
+      // Resolve codecId to mimeType
+      if (result && codecId) {
+        const codecReport = stats.get(codecId);
+        if (codecReport && codecReport.mimeType) {
+          result.codecMimeType = codecReport.mimeType;
+        }
+      }
+      return result;
+    },
   };
 
   window.__kvmTestHooks = hooks;
@@ -269,6 +314,7 @@ export function registerTestHandlers(handlers: {
   getVideoElement: () => HTMLVideoElement | null;
   getKvmTerminal: () => RTCDataChannel | null;
   getRpcDataChannel: () => RTCDataChannel | null;
+  getPeerConnection: () => RTCPeerConnection | null;
 }): void {
   if (!window.__kvmTestHooks) return;
 
@@ -283,6 +329,7 @@ export function registerTestHandlers(handlers: {
   window.__kvmTestHooks._getVideoElement = handlers.getVideoElement;
   window.__kvmTestHooks._getKvmTerminal = handlers.getKvmTerminal;
   window.__kvmTestHooks._getRpcDataChannel = handlers.getRpcDataChannel;
+  window.__kvmTestHooks._getPeerConnection = handlers.getPeerConnection;
 }
 
 /**
@@ -302,4 +349,5 @@ export function cleanupTestHooks(): void {
   window.__kvmTestHooks._getVideoElement = undefined;
   window.__kvmTestHooks._getKvmTerminal = undefined;
   window.__kvmTestHooks._getRpcDataChannel = undefined;
+  window.__kvmTestHooks._getPeerConnection = undefined;
 }

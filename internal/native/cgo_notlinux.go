@@ -108,6 +108,16 @@ func videoSetStreamQualityFactor(factor float64) error {
 	return nil
 }
 
+func videoSetCodecType(codecType int) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func videoGetCodecType() (int, error) {
+	panicPlatformNotSupported()
+	return 0, nil
+}
+
 func videoLogStatus() string {
 	panicPlatformNotSupported()
 	return ""

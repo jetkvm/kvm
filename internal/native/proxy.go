@@ -564,6 +564,25 @@ func (p *NativeProxy) VideoGetQualityFactor() (float64, error) {
 	})
 }
 
+func (p *NativeProxy) VideoSetCodecType(codecType int) error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoSetCodecType(codecType)
+	})
+}
+
+func (p *NativeProxy) VideoGetCodecType() (int, error) {
+	var result int
+	err := nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		codecType, err := client.VideoGetCodecType()
+		if err != nil {
+			return err
+		}
+		result = codecType
+		return nil
+	})
+	return result, err
+}
+
 func (p *NativeProxy) VideoSetEDID(edid string) error {
 	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
 		return client.VideoSetEDID(edid)

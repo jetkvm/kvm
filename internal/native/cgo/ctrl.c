@@ -380,7 +380,7 @@ uint8_t jetkvm_video_get_streaming_status() {
 }
 
 int jetkvm_video_set_quality_factor(float quality_factor) {
-    if (quality_factor <= 0 || quality_factor > 1) {
+    if (quality_factor <= 0) {
         return -1;
     }
     video_set_quality_factor(quality_factor);
@@ -389,6 +389,18 @@ int jetkvm_video_set_quality_factor(float quality_factor) {
 
 float jetkvm_video_get_quality_factor() {
     return video_get_quality_factor();
+}
+
+int jetkvm_video_set_codec_type(int codec_type) {
+    if (codec_type < 0 || codec_type > 1) {
+        return -1;
+    }
+    video_set_codec_type(codec_type);
+    return 0;
+}
+
+int jetkvm_video_get_codec_type() {
+    return video_get_codec_type();
 }
 
 int jetkvm_video_set_edid(const char *edid_hex) {

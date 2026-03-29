@@ -38,6 +38,7 @@ let requestCounter = 0;
 const blockedMethodsByReason: Record<string, string[]> = {
   video: [
     "setStreamQualityFactor",
+    "setVideoCodecPreference",
     "getEDID",
     "setEDID",
     "getVideoLogStatus",

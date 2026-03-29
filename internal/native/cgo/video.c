@@ -43,6 +43,7 @@ MB_POOL memPool = MB_INVALID_POOLID;
 bool sleep_mode_available = false;
 bool should_exit = false;
 float quality_factor = 1.0f;
+int codec_type = 0;
 
 static void *venc_read_stream(void *arg);
 
@@ -119,14 +120,25 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
 {
     memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
 
-    stAttr->stRcAttr.enRcMode = VENC_RC_MODE_H264VBR;
-    stAttr->stRcAttr.stH264Vbr.u32BitRate = bitrate;
-    stAttr->stRcAttr.stH264Vbr.u32MaxBitRate = max_bitrate;
-    stAttr->stRcAttr.stH264Vbr.u32Gop = 60;
+    if (codec_type == 1) {
+        // H.265 (HEVC)
+        stAttr->stRcAttr.enRcMode = VENC_RC_MODE_H265VBR;
+        stAttr->stRcAttr.stH265Vbr.u32BitRate = bitrate;
+        stAttr->stRcAttr.stH265Vbr.u32MaxBitRate = max_bitrate;
+        stAttr->stRcAttr.stH265Vbr.u32Gop = 60;
+        stAttr->stVencAttr.enType = RK_VIDEO_ID_HEVC;
+        stAttr->stVencAttr.u32Profile = H265E_PROFILE_MAIN;
+    } else {
+        // H.264 (AVC)
+        stAttr->stRcAttr.enRcMode = VENC_RC_MODE_H264VBR;
+        stAttr->stRcAttr.stH264Vbr.u32BitRate = bitrate;
+        stAttr->stRcAttr.stH264Vbr.u32MaxBitRate = max_bitrate;
+        stAttr->stRcAttr.stH264Vbr.u32Gop = 60;
+        stAttr->stVencAttr.enType = RK_VIDEO_ID_AVC;
+        stAttr->stVencAttr.u32Profile = H264E_PROFILE_HIGH;
+    }
 
-    stAttr->stVencAttr.enType = RK_VIDEO_ID_AVC;
     stAttr->stVencAttr.enPixelFormat = RK_FMT_YUV422_YUYV;
-    stAttr->stVencAttr.u32Profile = H264E_PROFILE_HIGH;
     stAttr->stVencAttr.u32PicWidth = width;
     stAttr->stVencAttr.u32PicHeight = height;
     stAttr->stVencAttr.u32VirWidth = RK_ALIGN_16(width);
@@ -233,7 +245,7 @@ int video_init(float factor)
 {
     detect_sleep_mode();
 
-    if (factor <= 0 || factor > 1) {
+    if (factor <= 0) {
         factor = 1.0f;
     }
     quality_factor = factor;
@@ -884,4 +896,12 @@ void video_set_quality_factor(float factor)
 
 float video_get_quality_factor() {
     return quality_factor;
+}
+
+void video_set_codec_type(int type) {
+    codec_type = type;
+}
+
+int video_get_codec_type() {
+    return codec_type;
 }

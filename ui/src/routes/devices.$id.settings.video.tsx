@@ -47,9 +47,16 @@ const streamQualityOptions = [
   { value: "0.1", label: m.video_quality_low() },
 ];
 
+const codecOptions = [
+  { value: "auto", label: m.video_codec_auto() },
+  { value: "h265", label: m.video_codec_h265() },
+  { value: "h264", label: m.video_codec_h264() },
+];
+
 export default function SettingsVideoRoute() {
   const { send } = useJsonRpc();
   const [streamQuality, setStreamQuality] = useState("1");
+  const [codecPreference, setCodecPreference] = useState("auto");
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
@@ -68,6 +75,11 @@ export default function SettingsVideoRoute() {
     send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setStreamQuality(String(resp.result));
+    });
+
+    send("getVideoCodecPreference", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setCodecPreference(resp.result as string);
     });
 
     send("getEDID", {}, (resp: JsonRpcResponse) => {
@@ -110,6 +122,20 @@ export default function SettingsVideoRoute() {
         }),
       );
       setStreamQuality(factor);
+    });
+  };
+
+  const handleCodecChange = (codec: string) => {
+    if (codec === codecPreference) return;
+    send("setVideoCodecPreference", { codec }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.video_failed_set_codec({ error: resp.error.data || m.unknown_error() }),
+        );
+        return;
+      }
+      // Full page reload to renegotiate WebRTC with the new codec.
+      window.location.reload();
     });
   };
 
@@ -174,6 +200,19 @@ export default function SettingsVideoRoute() {
                 value={streamQuality}
                 options={streamQualityOptions}
                 onChange={e => handleStreamQualityChange(e.target.value)}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.video_codec_title()}
+              description={m.video_codec_description()}
+            >
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={codecPreference}
+                options={codecOptions}
+                onChange={e => handleCodecChange(e.target.value)}
               />
             </SettingsItem>
 
@@ -328,6 +367,7 @@ export default function SettingsVideoRoute() {
           )}
         </div>
       </div>
+
     </div>
   );
 }

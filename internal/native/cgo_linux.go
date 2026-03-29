@@ -383,8 +383,29 @@ func videoSetStreamQualityFactor(factor float64) error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	C.jetkvm_video_set_quality_factor(C.float(factor))
+	ret := C.jetkvm_video_set_quality_factor(C.float(factor))
+	if ret != 0 {
+		return fmt.Errorf("failed to set quality factor: %v", factor)
+	}
 	return nil
+}
+
+func videoSetCodecType(codecType int) error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	ret := C.jetkvm_video_set_codec_type(C.int(codecType))
+	if ret != 0 {
+		return fmt.Errorf("failed to set codec type: %v", codecType)
+	}
+	return nil
+}
+
+func videoGetCodecType() (int, error) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	return int(C.jetkvm_video_get_codec_type()), nil
 }
 
 func videoGetEDID() (string, error) {

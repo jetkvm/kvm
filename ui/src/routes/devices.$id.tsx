@@ -893,6 +893,7 @@ export default function KvmIdRoute() {
       getVideoElement: () => useVideoStore.getState().videoElement,
       getKvmTerminal: () => useRTCStore.getState().terminalChannel,
       getRpcDataChannel: () => useRTCStore.getState().rpcDataChannel,
+      getPeerConnection: () => useRTCStore.getState().peerConnection,
     });
     return cleanupTestHooks;
   }, [handleKeyPress, handleAbsMouseMove]);

@@ -52,4 +52,14 @@ void video_set_quality_factor(float factor);
  */
 float video_get_quality_factor();
 
+/**
+ * @brief Set the codec type (0 = H.264, 1 = H.265)
+ */
+void video_set_codec_type(int type);
+
+/**
+ * @brief Get the codec type (0 = H.264, 1 = H.265)
+ */
+int video_get_codec_type();
+
 #endif //VIDEO_DAEMON_VIDEO_H

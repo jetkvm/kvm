@@ -8,6 +8,8 @@ type NativeInterface interface {
 	VideoSleepModeSupported() bool
 	VideoSetQualityFactor(factor float64) error
 	VideoGetQualityFactor() (float64, error)
+	VideoSetCodecType(codecType int) error
+	VideoGetCodecType() (int, error)
 	VideoSetEDID(edid string) error
 	VideoGetEDID() (string, error)
 	VideoLogStatus() (string, error)

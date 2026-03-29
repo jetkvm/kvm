@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   useHidStore,
@@ -29,8 +29,55 @@ export default function InfoBar() {
   const { debugMode, mouseMode, showPressedKeys } = useSettingsStore();
   const { isPasteInProgress } = useHidStore();
   const { keyboardLedState, usbState } = useHidStore();
-  const { isTurnServerInUse } = useRTCStore();
+  const { isTurnServerInUse, peerConnection, peerConnectionState } = useRTCStore();
   const { hdmiState } = useVideoStore();
+
+  const [videoCodec, setVideoCodec] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!debugMode || !peerConnection || peerConnectionState !== "connected") {
+      setVideoCodec(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function extractCodec() {
+      const stats = await peerConnection!.getStats();
+      let codecId: string | null = null;
+      stats.forEach(report => {
+        if (report.type === "inbound-rtp" && report.kind === "video") {
+          codecId = report.codecId ?? null;
+        }
+      });
+      if (cancelled || !codecId) return false;
+      const codecReport = stats.get(codecId);
+      if (codecReport?.mimeType) {
+        const mime = codecReport.mimeType as string;
+        const short = mime.replace("video/", "").replace("H264", "H.264").replace("H265", "H.265");
+        setVideoCodec(short);
+        return true;
+      }
+      return false;
+    }
+
+    // Codec stats may not be available immediately — retry a few times.
+    let attempts = 0;
+    const timer = setInterval(async () => {
+      if (cancelled || attempts++ >= 10) {
+        clearInterval(timer);
+        return;
+      }
+      if (await extractCodec()) {
+        clearInterval(timer);
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [debugMode, peerConnection, peerConnectionState]);
 
   const displayKeys = useMemo(() => {
     if (!showPressedKeys) return "";
@@ -97,6 +144,13 @@ export default function InfoBar() {
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{m.info_hdmi_state()}</span>
                 <span className="text-xs">{hdmiState}</span>
+              </div>
+            )}
+
+            {debugMode && videoCodec && (
+              <div className="flex items-center gap-x-1">
+                <span className="text-xs font-semibold">{m.info_codec()}</span>
+                <span className="text-xs">{videoCodec}</span>
               </div>
             )}
 

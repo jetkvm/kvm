@@ -150,6 +150,21 @@ func (n *Native) VideoGetQualityFactor() (float64, error) {
 	return videoGetStreamQualityFactor()
 }
 
+// VideoSetCodecType must be called before VideoStart(), not mid-stream.
+func (n *Native) VideoSetCodecType(codecType int) error {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	return videoSetCodecType(codecType)
+}
+
+func (n *Native) VideoGetCodecType() (int, error) {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	return videoGetCodecType()
+}
+
 // VideoSetEDID sets the EDID for the video stream.
 func (n *Native) VideoSetEDID(edid string) error {
 	n.videoLock.Lock()

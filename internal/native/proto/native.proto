@@ -15,6 +15,8 @@ service NativeService {
   rpc VideoSleepModeSupported(Empty) returns (VideoSleepModeSupportedResponse);
   rpc VideoSetQualityFactor(VideoSetQualityFactorRequest) returns (Empty);
   rpc VideoGetQualityFactor(Empty) returns (VideoGetQualityFactorResponse);
+  rpc VideoSetCodecType(VideoSetCodecTypeRequest) returns (Empty);
+  rpc VideoGetCodecType(Empty) returns (VideoGetCodecTypeResponse);
   rpc VideoSetEDID(VideoSetEDIDRequest) returns (Empty);
   rpc VideoGetEDID(Empty) returns (VideoGetEDIDResponse);
   rpc VideoLogStatus(Empty) returns (VideoLogStatusResponse);
@@ -86,6 +88,14 @@ message VideoSetQualityFactorRequest {
 
 message VideoGetQualityFactorResponse {
   double factor = 1;
+}
+
+message VideoSetCodecTypeRequest {
+  int32 codec_type = 1;
+}
+
+message VideoGetCodecTypeResponse {
+  int32 codec_type = 1;
 }
 
 message VideoSetEDIDRequest {

@@ -40,6 +40,8 @@ type Session struct {
 	hidQueue                 []chan hidQueueMessage
 
 	keysDownStateQueue chan usbgadget.KeysDownState
+
+	codecMimeType string
 }
 
 var (
@@ -128,6 +130,28 @@ type SessionConfig struct {
 	MDNSMode   string
 }
 
+// resolveCodec picks the video codec based on user preference and browser support.
+// Always validates against the browser's SDP offer to prevent negotiation failure.
+func resolveCodec(offerSDP string) string {
+	browserSupportsH265 := strings.Contains(offerSDP, "H265")
+
+	switch config.VideoCodecPreference {
+	case "h265":
+		if browserSupportsH265 {
+			return webrtc.MimeTypeH265
+		}
+		logger.Warn().Msg("H.265 preferred but browser does not support it, falling back to H.264")
+		return webrtc.MimeTypeH264
+	case "h264":
+		return webrtc.MimeTypeH264
+	default: // "auto" or ""
+		if browserSupportsH265 {
+			return webrtc.MimeTypeH265
+		}
+		return webrtc.MimeTypeH264
+	}
+}
+
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	b, err := base64.StdEncoding.DecodeString(offerStr)
 	if err != nil {
@@ -138,6 +162,31 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	codec := resolveCodec(offer.SDP)
+	s.codecMimeType = codec
+
+	s.VideoTrack, err = webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: codec}, "video", "kvm")
+	if err != nil {
+		return "", err
+	}
+
+	rtpSender, err := s.peerConnection.AddTrack(s.VideoTrack)
+	if err != nil {
+		return "", err
+	}
+
+	// Read incoming RTCP packets (required for NACK handling).
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+				return
+			}
+		}
+	}()
+
 	// Set the remote SessionDescription
 	if err = s.peerConnection.SetRemoteDescription(offer); err != nil {
 		return "", err
@@ -365,29 +414,6 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 
-	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm")
-	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to create VideoTrack")
-		return nil, err
-	}
-
-	rtpSender, err := peerConnection.AddTrack(session.VideoTrack)
-	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
-		return nil, err
-	}
-
-	// Read incoming RTCP packets
-	// Before these packets are returned they are processed by interceptors. For things
-	// like NACK this needs to be called.
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-				return
-			}
-		}
-	}()
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
@@ -476,6 +502,11 @@ func onActiveSessionsChanged() {
 
 func onFirstSessionConnected() {
 	notifyFailsafeMode(currentSession)
+	if currentSession != nil && currentSession.codecMimeType == webrtc.MimeTypeH265 {
+		_ = nativeInstance.VideoSetCodecType(1)
+	} else {
+		_ = nativeInstance.VideoSetCodecType(0)
+	}
 	_ = nativeInstance.VideoStart()
 	stopVideoSleepModeTicker()
 }

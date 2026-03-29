@@ -46,6 +46,21 @@ func (s *grpcServer) VideoGetQualityFactor(ctx context.Context, req *pb.Empty) (
 	return &pb.VideoGetQualityFactorResponse{Factor: factor}, nil
 }
 
+func (s *grpcServer) VideoSetCodecType(ctx context.Context, req *pb.VideoSetCodecTypeRequest) (*pb.Empty, error) {
+	if err := s.native.VideoSetCodecType(int(req.CodecType)); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) VideoGetCodecType(ctx context.Context, req *pb.Empty) (*pb.VideoGetCodecTypeResponse, error) {
+	codecType, err := s.native.VideoGetCodecType()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.VideoGetCodecTypeResponse{CodecType: int32(codecType)}, nil
+}
+
 func (s *grpcServer) VideoSetEDID(ctx context.Context, req *pb.VideoSetEDIDRequest) (*pb.Empty, error) {
 	if err := s.native.VideoSetEDID(req.Edid); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
