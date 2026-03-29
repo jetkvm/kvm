@@ -28,9 +28,30 @@ export default defineConfig({
       testMatch: "ra-all.spec.ts",
     },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
-    { name: "ota-prerelease-unsigned", testMatch: /ota-prerelease-unsigned\.spec\.ts/, dependencies: ["remote-agent"] },
-    { name: "ota-prerelease-rejected", testMatch: /ota-prerelease-rejected\.spec\.ts/, dependencies: ["remote-agent"] },
-    { name: "ota-specific-version", testMatch: /ota-specific-version-unsigned\.spec\.ts/, dependencies: ["remote-agent"] },
-    { name: "ota-upgrade-from-stable", testMatch: /ota-upgrade-from-stable\.spec\.ts/, dependencies: ["remote-agent"] },
+    {
+      name: "ota-prerelease-unsigned",
+      testMatch: /ota-prerelease-unsigned\.spec\.ts/,
+      dependencies: ["remote-agent"],
+    },
+    {
+      name: "ota-prerelease-rejected",
+      testMatch: /ota-prerelease-rejected\.spec\.ts/,
+      dependencies: ["remote-agent"],
+    },
+    {
+      name: "ota-specific-version",
+      testMatch: /ota-specific-version-unsigned\.spec\.ts/,
+      dependencies: ["remote-agent"],
+    },
+    {
+      name: "ota-upgrade-from-stable",
+      testMatch: /ota-upgrade-from-stable\.spec\.ts/,
+      dependencies: ["remote-agent"],
+    },
+    {
+      name: "ota-upgrade-to-signed",
+      testMatch: /ota-upgrade-to-signed\.spec\.ts/,
+      dependencies: ["remote-agent"],
+    },
   ],
 });

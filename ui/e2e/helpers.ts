@@ -1160,6 +1160,7 @@ export interface StableReleaseInfo {
   appVersion: string;
   appUrl: string;
   appHash: string;
+  appSigUrl?: string;
 }
 
 export async function fetchLatestStableRelease(): Promise<StableReleaseInfo> {
@@ -1184,7 +1185,12 @@ export async function fetchLatestStableRelease(): Promise<StableReleaseInfo> {
   if (!json.appVersion || !json.appUrl || !json.appHash) {
     throw new Error(`Unexpected release API response: ${body}`);
   }
-  return { appVersion: json.appVersion, appUrl: json.appUrl, appHash: json.appHash };
+  return {
+    appVersion: json.appVersion,
+    appUrl: json.appUrl,
+    appHash: json.appHash,
+    appSigUrl: json.appSigUrl,
+  };
 }
 
 export async function downloadFile(url: string, destPath: string): Promise<void> {

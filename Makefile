@@ -96,7 +96,7 @@ test_e2e:
 	cd ui && npx playwright install chromium
 	cd ui && $(call OTA_ENV,$(TEST_VERSION)) \
 		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
-		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-upgrade-from-stable
+		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
 
 # Production release validation lane
 test_production_release:
