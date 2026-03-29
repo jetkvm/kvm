@@ -363,6 +363,7 @@
   "hide": "Ausblenden",
   "ice_gathering_completed": "ICE-Treffen abgeschlossen",
   "info_caps_lock": "Feststelltaste",
+  "info_bitrate": "Bitrate:",
   "info_codec": "Codec:",
   "info_compose": "Komponieren",
   "info_hdmi_state": "HDMI-Status:",

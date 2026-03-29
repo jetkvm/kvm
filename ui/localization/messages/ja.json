@@ -363,6 +363,7 @@
   "hide": "隠す",
   "ice_gathering_completed": "ICE収集完了",
   "info_caps_lock": "Caps Lock",
+  "info_bitrate": "ビットレート:",
   "info_codec": "コーデック:",
   "info_compose": "Compose",
   "info_hdmi_state": "HDMI状態:",

@@ -363,6 +363,7 @@
   "hide": "隱藏",
   "ice_gathering_completed": "ICE 收集完成",
   "info_caps_lock": "大寫鎖定 (Caps Lock)",
+  "info_bitrate": "位元率:",
   "info_codec": "編解碼器:",
   "info_compose": "組合鍵 (Compose)",
   "info_hdmi_state": "HDMI 狀態：",

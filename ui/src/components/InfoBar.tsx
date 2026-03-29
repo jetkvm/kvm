@@ -33,21 +33,37 @@ export default function InfoBar() {
   const { hdmiState } = useVideoStore();
 
   const [videoCodec, setVideoCodec] = useState<string | null>(null);
+  const [videoBitrate, setVideoBitrate] = useState<string | null>(null);
 
   useEffect(() => {
     if (!debugMode || !peerConnection || peerConnectionState !== "connected") {
       setVideoCodec(null);
+      setVideoBitrate(null);
       return;
     }
 
     let cancelled = false;
+    let lastBytes = 0;
+    let lastTimestamp = 0;
 
-    async function extractCodec() {
+    async function extractStats() {
       const stats = await peerConnection!.getStats();
       let codecId: string | null = null;
       stats.forEach(report => {
         if (report.type === "inbound-rtp" && report.kind === "video") {
           codecId = report.codecId ?? null;
+
+          const bytes = report.bytesReceived as number;
+          const ts = report.timestamp as number;
+          if (lastBytes > 0 && lastTimestamp > 0) {
+            const deltaSec = (ts - lastTimestamp) / 1000;
+            if (deltaSec > 0) {
+              const kbps = ((bytes - lastBytes) * 8) / 1000 / deltaSec;
+              setVideoBitrate(`${Math.round(kbps)} kbps`);
+            }
+          }
+          lastBytes = bytes;
+          lastTimestamp = ts;
         }
       });
       if (cancelled || !codecId) return false;
@@ -61,17 +77,21 @@ export default function InfoBar() {
       return false;
     }
 
-    // Codec stats may not be available immediately — retry a few times.
+    // Stats may not be available immediately — retry a few times for codec,
+    // then keep polling for bitrate updates.
+    let codecResolved = false;
     let attempts = 0;
     const timer = setInterval(async () => {
-      if (cancelled || attempts++ >= 10) {
+      if (cancelled) {
         clearInterval(timer);
         return;
       }
-      if (await extractCodec()) {
+      const found = await extractStats();
+      if (found && !codecResolved) codecResolved = true;
+      if (!codecResolved && attempts++ >= 10) {
         clearInterval(timer);
       }
-    }, 500);
+    }, 1000);
 
     return () => {
       cancelled = true;
@@ -151,6 +171,13 @@ export default function InfoBar() {
               <div className="flex items-center gap-x-1">
                 <span className="text-xs font-semibold">{m.info_codec()}</span>
                 <span className="text-xs">{videoCodec}</span>
+              </div>
+            )}
+
+            {debugMode && videoBitrate && (
+              <div className="flex items-center gap-x-1">
+                <span className="text-xs font-semibold">{m.info_bitrate()}</span>
+                <span className="text-xs">{videoBitrate}</span>
               </div>
             )}
 

@@ -363,6 +363,7 @@
   "hide": "Скрыть",
   "ice_gathering_completed": "Сбор ICE завершён",
   "info_caps_lock": "Caps Lock",
+  "info_bitrate": "Битрейт:",
   "info_codec": "Кодек:",
   "info_compose": "Compose",
   "info_hdmi_state": "Состояние HDMI:",

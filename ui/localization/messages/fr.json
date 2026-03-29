@@ -363,6 +363,7 @@
   "hide": "Masquer",
   "ice_gathering_completed": "Rassemblement ICE terminé",
   "info_caps_lock": "Verrouillage des majuscules",
+  "info_bitrate": "Débit :",
   "info_codec": "Codec :",
   "info_compose": "Composer",
   "info_hdmi_state": "État HDMI :",

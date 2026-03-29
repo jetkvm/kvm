@@ -363,6 +363,7 @@
   "hide": "隐藏",
   "ice_gathering_completed": "ICE 候选地址收集完成。",
   "info_caps_lock": "大写锁定",
+  "info_bitrate": "比特率:",
   "info_codec": "编解码器:",
   "info_compose": "组合键",
   "info_hdmi_state": "HDMI 状态：",
