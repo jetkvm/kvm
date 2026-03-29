@@ -35,6 +35,7 @@ export interface KvmTestHooks extends TestHooksInternal {
     method: string,
     params: Record<string, unknown>,
     callback: (resp: { error?: { message: string; data?: string }; result?: unknown }) => void,
+    timeoutMs?: number,
   ) => void;
   sendTerminalCommand: (command: string) => boolean;
   isTerminalReady: () => boolean;
@@ -108,6 +109,7 @@ export function initTestHooks(): void {
       method: string,
       params: Record<string, unknown>,
       callback: (resp: { error?: { message: string; data?: string }; result?: unknown }) => void,
+      timeoutMs = 10000,
     ) => {
       const dc = hooks._getRpcDataChannel?.();
       if (!dc || dc.readyState !== "open") {
@@ -135,7 +137,7 @@ export function initTestHooks(): void {
           dc.removeEventListener("message", handler);
           callback({ error: { message: `RPC timeout for ${method}` } });
         }
-      }, 10000);
+      }, timeoutMs);
       dc.addEventListener("message", handler);
       dc.send(JSON.stringify({ jsonrpc: "2.0", method, params, id }));
     },

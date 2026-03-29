@@ -945,9 +945,10 @@ export async function callJsonRpc(
   page: Page,
   method: string,
   params: Record<string, unknown> = {},
+  timeoutMs?: number,
 ): Promise<unknown> {
   return page.evaluate(
-    ({ method, params }) => {
+    ({ method, params, timeoutMs }) => {
       return new Promise((resolve, reject) => {
         const hooks = window.__kvmTestHooks;
         if (!hooks) return reject(new Error("Test hooks not available"));
@@ -961,10 +962,11 @@ export async function callJsonRpc(
               );
             else resolve(resp.result);
           },
+          timeoutMs,
         );
       });
     },
-    { method, params },
+    { method, params, timeoutMs },
   );
 }
 

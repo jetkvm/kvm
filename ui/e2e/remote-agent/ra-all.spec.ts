@@ -329,8 +329,13 @@ test.beforeAll(async ({ browser }) => {
   await setupMacrosViaRPC(sharedPage);
   await sharedPage.reload({ waitUntil: "networkidle" });
   await waitForWebRTCReady(sharedPage);
+  await waitForRpcReady(sharedPage);
 
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
+
+  // Wait for the video stream to be flowing — LED state reports are only
+  // reliable once the full WebRTC media pipeline is up.
+  await waitForVideoDimensions(sharedPage, 15000);
 
   // Verify the keyboard HID path works end-to-end before any tests run.
   // After reboot, Init() rebinds the USB gadget and the host needs time
@@ -454,14 +459,14 @@ test.describe("Remote Host Agent", () => {
 
     const currentEdid = (await callJsonRpc(sharedPage, "getEDID")) as string;
     const targetEdid = currentEdid === "1920x1080" ? "1280x720" : "1920x1080";
-    await callJsonRpc(sharedPage, "setEDID", { edid: targetEdid });
+    await callJsonRpc(sharedPage, "setEDID", { edid: targetEdid }, 20000);
 
     const newRes = await agent!.getResolution();
     expect(newRes).not.toBeNull();
     expect(newRes).toMatch(/^\d+x\d+$/);
 
     // Restore original EDID. This triggers USB disconnect/reconnect.
-    await callJsonRpc(sharedPage, "setEDID", { edid: currentEdid });
+    await callJsonRpc(sharedPage, "setEDID", { edid: currentEdid }, 20000);
 
     await sharedPage.goto("/", { waitUntil: "networkidle" });
     await waitForWebRTCReady(sharedPage);
@@ -1729,7 +1734,7 @@ test.describe("Remote Host Agent", () => {
 
     const originalEdid = (await callJsonRpc(sharedPage, "getEDID")) as string;
 
-    await callJsonRpc(sharedPage, "setEDID", { edid: EDID_1366x768 });
+    await callJsonRpc(sharedPage, "setEDID", { edid: EDID_1366x768 }, 20000);
 
     try {
       await agent!.waitForResolution("1366x768", 15_000);
@@ -1759,7 +1764,7 @@ test.describe("Remote Host Agent", () => {
       expect(dims.width).toBe(1366);
       expect(dims.height).toBe(768);
     } finally {
-      await callJsonRpc(sharedPage, "setEDID", { edid: originalEdid }).catch(() => {
+      await callJsonRpc(sharedPage, "setEDID", { edid: originalEdid }, 20000).catch(() => {
         /* ignore */
       });
 
