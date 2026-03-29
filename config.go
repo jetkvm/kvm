@@ -201,7 +201,7 @@ func getDefaultConfig() Config {
 			_ = confparser.SetDefaultsAndValidate(c)
 			return c
 		}(),
-		DefaultLogLevel:    "WARN",
+		DefaultLogLevel:      "WARN",
 		VideoQualityFactor:   1.0,
 		VideoCodecPreference: "auto",
 		MqttConfig: &MQTTConfig{

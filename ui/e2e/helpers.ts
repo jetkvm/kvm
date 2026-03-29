@@ -968,31 +968,6 @@ export async function callJsonRpc(
   );
 }
 
-// ── Remote Host: Visual Noise ──
-
-const REMOTE_HOST = process.env.JETKVM_REMOTE_HOST ?? "tony@192.168.1.180";
-
-export async function remoteSSH(cmd: string): Promise<string> {
-  const host = REMOTE_HOST;
-  const { stdout } = await execAsync(
-    `ssh ${SSH_OPTS} ${host} ${JSON.stringify(cmd)}`,
-  );
-  return stdout.trim();
-}
-
-export async function startVisualNoise(): Promise<void> {
-  await remoteSSH(
-    "DISPLAY=:0 gnome-terminal --full-screen -- bash -c 'while true; do head -c 2000 /dev/urandom | base64; sleep 0.05; done' &>/dev/null &",
-  );
-  await new Promise(r => setTimeout(r, 2000));
-}
-
-export async function stopVisualNoise(): Promise<void> {
-  await remoteSSH(
-    "pkill -f 'head -c 2000 /dev/urandom' || true; wmctrl -c :ACTIVE: 2>/dev/null || true",
-  ).catch(() => {});
-}
-
 // ── OTA: Mock Update Server ──
 
 export interface MockUpdateServerConfig {

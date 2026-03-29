@@ -133,7 +133,7 @@ type SessionConfig struct {
 // resolveCodec picks the video codec based on user preference and browser support.
 // Always validates against the browser's SDP offer to prevent negotiation failure.
 func resolveCodec(offerSDP string) string {
-	browserSupportsH265 := strings.Contains(offerSDP, "H265")
+	browserSupportsH265 := strings.Contains(strings.ToUpper(offerSDP), "H265")
 
 	switch config.VideoCodecPreference {
 	case "h265":
