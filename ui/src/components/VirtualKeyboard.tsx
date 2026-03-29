@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { AnimatePresence, motion } from "framer-motion";
-import Keyboard from "react-simple-keyboard";
+import { KeyboardReact as Keyboard } from "react-simple-keyboard";
 import { LuKeyboard } from "react-icons/lu";
 
 import "react-simple-keyboard/build/css/index.css";
@@ -172,8 +172,8 @@ function KeyboardWrapper() {
       // if they press any of the latching keys, we send a keypress down event and the release it automatically (on timer)
       if (latchingKeys.includes(key)) {
         console.debug(`Latching key pressed: ${key} sending down and delayed up pair`);
-        handleKeyPress(keys[key], true);
-        setTimeout(() => handleKeyPress(keys[key], false), 100);
+        void handleKeyPress(keys[key], true);
+        setTimeout(() => void handleKeyPress(keys[key], false), 100);
         return;
       }
 
@@ -183,15 +183,15 @@ function KeyboardWrapper() {
         console.debug(
           `Dynamic key pressed: ${key} was currently down: ${currentlyDown}, toggling state`,
         );
-        handleKeyPress(keys[key], !currentlyDown);
+        void handleKeyPress(keys[key], !currentlyDown);
         return;
       }
 
       // otherwise, just treat it as a down+up pair
       const cleanKey = key.replace(/[()]/g, "");
       console.debug(`Regular key pressed: ${cleanKey} sending down and up pair`);
-      handleKeyPress(keys[cleanKey], true);
-      setTimeout(() => handleKeyPress(keys[cleanKey], false), 50);
+      void handleKeyPress(keys[cleanKey], true);
+      setTimeout(() => void handleKeyPress(keys[cleanKey], false), 50);
     },
     [executeMacro, handleKeyPress, keyNamesForDownKeys],
   );
