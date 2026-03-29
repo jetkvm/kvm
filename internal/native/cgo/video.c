@@ -95,7 +95,7 @@ static void detect_sleep_mode()
 
 double calculate_bitrate(float bitrate_factor, int width, int height)
 {
-    const int32_t base_bitrate_high = 2000;
+    const int32_t base_bitrate_high = 4000;
     const int32_t base_bitrate_low = 512;
 
     double pixels = (double)width * height;
@@ -546,7 +546,7 @@ void *run_video_stream(void *arg)
 
         // Set VENC parameters
         int32_t bitrate = calculate_bitrate(quality_factor, width, height);
-        RK_S32 ret = venc_start(bitrate, bitrate * 2, width, height);
+        RK_S32 ret = venc_start(bitrate, bitrate * 3 / 2, width, height);
         if (ret != RK_SUCCESS)
         {
             log_error("Set VENC parameters failed with %#x", ret);

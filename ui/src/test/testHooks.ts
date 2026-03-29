@@ -61,6 +61,11 @@ export interface KvmTestHooks extends TestHooksInternal {
     jitterBufferDelay: number;
     jitterBufferEmittedCount: number;
     framesPerSecond: number;
+    framesDecoded: number;
+    framesDropped: number;
+    totalDecodeTime: number;
+    freezeCount: number;
+    totalFreezesDuration: number;
     codecMimeType: string;
   } | null>;
 }
@@ -267,6 +272,11 @@ export function initTestHooks(): void {
         jitterBufferDelay: number;
         jitterBufferEmittedCount: number;
         framesPerSecond: number;
+        framesDecoded: number;
+        framesDropped: number;
+        totalDecodeTime: number;
+        freezeCount: number;
+        totalFreezesDuration: number;
         codecMimeType: string;
       } | null = null;
       let codecId: string | null = null;
@@ -279,6 +289,11 @@ export function initTestHooks(): void {
             jitterBufferDelay: report.jitterBufferDelay ?? 0,
             jitterBufferEmittedCount: report.jitterBufferEmittedCount ?? 0,
             framesPerSecond: report.framesPerSecond ?? 0,
+            framesDecoded: report.framesDecoded ?? 0,
+            framesDropped: report.framesDropped ?? 0,
+            totalDecodeTime: report.totalDecodeTime ?? 0,
+            freezeCount: report.freezeCount ?? 0,
+            totalFreezesDuration: report.totalFreezesDuration ?? 0,
             codecMimeType: "",
           };
         }
