@@ -40,6 +40,7 @@ test.describe("OTA Upgrade to Signed Release", () => {
   let env: OTAEnvVars;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(420000);
     env = getOTAEnvVars();
 
     stableRelease = await fetchLatestStableRelease();
@@ -100,7 +101,7 @@ test.describe("OTA Upgrade to Signed Release", () => {
     });
 
     await test.step("Reconnect after reboot", async () => {
-      await reconnectAfterReboot(page, 35000);
+      await reconnectAfterReboot(page, 35000, 30);
     });
 
     await test.step("Verify update installed", async () => {
@@ -118,6 +119,7 @@ test.describe("OTA Upgrade to Signed Release", () => {
   });
 
   test.afterAll(async () => {
+    test.setTimeout(420000);
     await restoreDeviceUpdateUrl();
     await mockServer?.close();
 

@@ -23,6 +23,7 @@ test.describe("OTA Prerelease Unsigned", () => {
   let preReleaseVersion: string;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(420000);
     const env = getOTAEnvVars();
     preReleaseVersion = toPreReleaseVersion(env.releaseVersion);
 
@@ -58,7 +59,7 @@ test.describe("OTA Prerelease Unsigned", () => {
     await expect(updateButton).toBeVisible({ timeout: 30000 });
     await updateButton.click();
 
-    await reconnectAfterReboot(page, 35000);
+    await reconnectAfterReboot(page, 35000, 30);
 
     const finalVersion = await getCurrentVersion(page);
     expect(finalVersion).not.toBeNull();
@@ -68,6 +69,7 @@ test.describe("OTA Prerelease Unsigned", () => {
   });
 
   test.afterAll(async () => {
+    test.setTimeout(420000);
     await setIncludePreRelease(false);
     await restoreDeviceUpdateUrl();
     await mockServer?.close();

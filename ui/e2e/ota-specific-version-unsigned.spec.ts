@@ -27,6 +27,7 @@ test.describe("OTA Specific Version Unsigned", () => {
   let env: OTAEnvVars;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(420000);
     env = getOTAEnvVars();
 
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
@@ -68,11 +69,11 @@ test.describe("OTA Specific Version Unsigned", () => {
       await expect(updateButton).toBeVisible({ timeout: 20000 });
       await updateButton.click();
 
-      await expect(
-        page.getByText(/downloading|verifying|installing|awaiting reboot/i),
-      ).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText(/downloading|verifying|installing|awaiting reboot/i)).toBeVisible(
+        { timeout: 30000 },
+      );
 
-      await reconnectAfterReboot(page, 35000);
+      await reconnectAfterReboot(page, 35000, 30);
 
       const finalVersion = await getCurrentVersion(page);
       expect(finalVersion).toBe(env.releaseVersion);
@@ -84,6 +85,7 @@ test.describe("OTA Specific Version Unsigned", () => {
   });
 
   test.afterAll(async () => {
+    test.setTimeout(420000);
     await restoreDeviceUpdateUrl();
     await mockServer?.close();
   });

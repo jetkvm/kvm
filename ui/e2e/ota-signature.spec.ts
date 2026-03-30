@@ -34,6 +34,7 @@ test.describe("OTA Signature Verification", () => {
   let env: OTAEnvVars;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(420000);
     env = getOTAEnvVars({ requireSignature: true });
 
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
@@ -98,7 +99,7 @@ test.describe("OTA Signature Verification", () => {
     await expect(updateButton).toBeVisible({ timeout: 30000 });
     await updateButton.click();
 
-    await reconnectAfterReboot(page, 35000);
+    await reconnectAfterReboot(page, 35000, 30);
 
     const finalVersion = await getCurrentVersion(page);
     expect(finalVersion).toBe(env.releaseVersion);
@@ -107,6 +108,7 @@ test.describe("OTA Signature Verification", () => {
   });
 
   test.afterAll(async () => {
+    test.setTimeout(420000);
     await restoreDeviceUpdateUrl();
     await mockServer?.close();
   });

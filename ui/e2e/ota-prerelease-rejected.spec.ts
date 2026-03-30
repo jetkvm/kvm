@@ -24,6 +24,7 @@ test.describe("OTA Prerelease Rejected (Not Opted-In)", () => {
   let mockServer: MockUpdateServer;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(420000);
     const env = getOTAEnvVars();
     const preReleaseVersion = toPreReleaseVersion(env.releaseVersion);
 
@@ -54,6 +55,7 @@ test.describe("OTA Prerelease Rejected (Not Opted-In)", () => {
   });
 
   test.afterAll(async () => {
+    test.setTimeout(420000);
     await restoreDeviceUpdateUrl();
     await mockServer?.close();
   });

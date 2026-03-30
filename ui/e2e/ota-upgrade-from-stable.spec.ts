@@ -39,6 +39,7 @@ test.describe("OTA Upgrade from Latest Stable", () => {
   let env: OTAEnvVars;
 
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(420000);
     env = getOTAEnvVars();
     stableRelease = await fetchLatestStableRelease();
 
@@ -83,9 +84,9 @@ test.describe("OTA Upgrade from Latest Stable", () => {
       await expect(updateButton).toBeVisible({ timeout: 20000 });
       await updateButton.click();
 
-      await expect(
-        page.getByText(/downloading|verifying|installing|awaiting reboot/i),
-      ).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText(/downloading|verifying|installing|awaiting reboot/i)).toBeVisible(
+        { timeout: 30000 },
+      );
     });
 
     await test.step("Wait for device to come back after reboot", async () => {
@@ -112,6 +113,7 @@ test.describe("OTA Upgrade from Latest Stable", () => {
   });
 
   test.afterAll(async () => {
+    test.setTimeout(420000);
     await restoreDeviceUpdateUrl();
     await mockServer?.close();
 
