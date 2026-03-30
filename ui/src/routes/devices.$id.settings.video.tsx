@@ -47,11 +47,20 @@ const streamQualityOptions = [
   { value: "0.1", label: m.video_quality_low() },
 ];
 
-const codecOptions = [
+const allCodecOptions = [
   { value: "auto", label: m.video_codec_auto() },
   { value: "h265", label: m.video_codec_h265() },
   { value: "h264", label: m.video_codec_h264() },
 ];
+
+const h265Supported = (() => {
+  const caps = RTCRtpReceiver.getCapabilities?.("video");
+  return caps?.codecs.some(c => c.mimeType === "video/H265") ?? false;
+})();
+
+const codecOptions = h265Supported
+  ? allCodecOptions
+  : allCodecOptions.filter(o => o.value !== "h265");
 
 export default function SettingsVideoRoute() {
   const { send } = useJsonRpc();
