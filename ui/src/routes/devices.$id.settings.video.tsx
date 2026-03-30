@@ -90,7 +90,9 @@ export default function SettingsVideoRoute() {
 
     void send("getVideoCodecPreference", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      setCodecPreference(resp.result as string);
+      const codec = resp.result as string;
+      const isAvailable = codecOptions.some(o => o.value === codec);
+      setCodecPreference(isAvailable ? codec : "auto");
     });
 
     void send("getEDID", {}, (resp: JsonRpcResponse) => {
