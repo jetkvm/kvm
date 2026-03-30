@@ -1,5 +1,4 @@
 import { Fragment, useCallback, useEffect, useRef } from "react";
-import { useParams } from "react-router";
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import {
   LuCable,
@@ -27,7 +26,6 @@ import {
   useVideoStore,
 } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { useDetachedWindow } from "@hooks/useDetachedWindow";
 import { Button } from "@components/Button";
 import Container from "@components/Container";
 import PasteModal from "@components/popovers/PasteModal";
@@ -39,13 +37,9 @@ import { m } from "@localizations/messages.js";
 
 export default function Actionbar({
   requestFullscreen,
-  isDetachedWindow,
 }: {
   requestFullscreen: () => Promise<void>;
-  isDetachedWindow?: boolean;
 }) {
-  const params = useParams() as { id?: string };
-  const deviceId = params.id || "local";
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
   const {
@@ -57,11 +51,11 @@ export default function Actionbar({
     setOcrMode,
     usbSerialConsoleEnabled,
     setUsbSerialConsoleEnabled,
+    isEmbedMode,
   } = useUiStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
-  const { openDetachedWindow } = useDetachedWindow();
   const { send } = useJsonRpc();
 
   useEffect(() => {
@@ -327,7 +321,7 @@ export default function Actionbar({
               }}
             />
           </div>
-          {!isDetachedWindow && (
+          {!isEmbedMode && (
             <div>
               <Button
                 size="XS"
@@ -344,7 +338,7 @@ export default function Actionbar({
 
           <div className="hidden items-center gap-x-2 lg:flex">
             <div className="h-4 w-px bg-slate-300 dark:bg-slate-600" />
-            {isDetachedWindow ? (
+            {isEmbedMode ? (
               <Button
                 size="XS"
                 theme="light"
@@ -353,22 +347,26 @@ export default function Actionbar({
                 onClick={() => window.close()}
               />
             ) : (
-              <>
-                <Button
-                  size="XS"
-                  theme="light"
-                  text={m.detach()}
-                  LeadingIcon={LuExternalLink}
-                  onClick={() => openDetachedWindow(deviceId)}
-                />
-                <Button
-                  size="XS"
-                  theme="light"
-                  text={m.action_bar_fullscreen()}
-                  LeadingIcon={LuMaximize}
+              <SplitButtonGroup>
+                <SplitButtonPrimary
+                  icon={LuMaximize}
+                  label={m.action_bar_fullscreen()}
                   onClick={() => requestFullscreen()}
                 />
-              </>
+                <SplitButtonCaret
+                  menuItems={[
+                    {
+                      label: m.action_bar_compact_window(),
+                      icon: LuExternalLink,
+                      onClick: () => {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set("embed", "");
+                        window.open(url.toString(), "_blank", "noopener");
+                      },
+                    },
+                  ]}
+                />
+              </SplitButtonGroup>
             )}
           </div>
         </div>

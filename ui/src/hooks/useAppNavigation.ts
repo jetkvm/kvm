@@ -1,4 +1,4 @@
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import type { NavigateOptions } from "react-router";
 import { useCallback, useMemo } from "react";
 
@@ -41,7 +41,6 @@ export function getDeviceUiPath(path: string, deviceId?: string): string {
 export function useDeviceUiNavigation() {
   const navigate = useNavigate();
   const params = useParams();
-  const [searchParams] = useSearchParams();
 
   // Get the device ID from params
   const deviceId = useMemo(() => params.id, [params.id]);
@@ -57,13 +56,9 @@ export function useDeviceUiNavigation() {
   // Function to navigate to the correct path with all options
   const navigateTo = useCallback(
     (path: string, options?: NavigateOptions) => {
-      let computedPath = getPath(path);
-      if (searchParams.get("detached") === "true") {
-        computedPath += computedPath.includes("?") ? "&detached=true" : "?detached=true";
-      }
-      navigate(computedPath, options);
+      void navigate(getPath(path), options);
     },
-    [getPath, navigate, searchParams],
+    [getPath, navigate],
   );
 
   return {

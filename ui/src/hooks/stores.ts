@@ -81,6 +81,9 @@ export interface UIState {
 
   usbSerialConsoleEnabled: boolean;
   setUsbSerialConsoleEnabled: (enabled: boolean) => void;
+
+  isEmbedMode: boolean;
+  setEmbedMode: (enabled: boolean) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
@@ -117,6 +120,9 @@ export const useUiStore = create<UIState>(set => ({
 
   usbSerialConsoleEnabled: false,
   setUsbSerialConsoleEnabled: (enabled: boolean) => set({ usbSerialConsoleEnabled: enabled }),
+
+  isEmbedMode: false,
+  setEmbedMode: (enabled: boolean) => set({ isEmbedMode: enabled }),
 }));
 
 export interface RTCState {

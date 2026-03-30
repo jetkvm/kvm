@@ -124,10 +124,24 @@ export default function KvmIdRoute() {
     setDisableVideoFocusTrap,
     rebootState,
     setRebootState,
+    isEmbedMode,
+    setEmbedMode,
   } = useUiStore();
   const [queryParams, setQueryParams] = useSearchParams();
-  const isDetachedWindow = queryParams.get("detached") === "true";
-  const hideHeaderBar = useSettingsStore(state => state.hideHeaderBar);
+  const hasEmbedParam = queryParams.has("embed");
+
+  // Latch embed mode once from ?embed query param — persists across in-app
+  // navigation even if the query param is lost (e.g. opening settings)
+  useEffect(() => {
+    if (hasEmbedParam && !isEmbedMode) {
+      setEmbedMode(true);
+    }
+  }, [hasEmbedParam, isEmbedMode, setEmbedMode]);
+
+  const settingsHideHeaderBar = useSettingsStore(state => state.hideHeaderBar);
+  const settingsHideStatusBar = useSettingsStore(state => state.hideStatusBar);
+  const hideHeaderBar = isEmbedMode || settingsHideHeaderBar;
+  const hideStatusBar = isEmbedMode || settingsHideStatusBar;
 
   const {
     peerConnection,
@@ -977,7 +991,7 @@ export default function KvmIdRoute() {
   return (
     <FeatureFlagProvider appVersion={appVersion}>
       <title>{displayHostname ? `${displayHostname} - JetKVM` : "JetKVM"}</title>
-      {!isDetachedWindow && !outlet && otaState.updating && (
+      {!isEmbedMode && !outlet && otaState.updating && (
         <AnimatePresence>
           <motion.div
             className="pointer-events-none fixed inset-0 top-16 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center"
@@ -991,7 +1005,7 @@ export default function KvmIdRoute() {
         </AnimatePresence>
       )}
       <div className="relative h-full">
-        {!isDetachedWindow && (
+        {!hideHeaderBar && (
           <FocusTrap
             paused={disableVideoFocusTrap}
             focusTrapOptions={{
@@ -1008,10 +1022,10 @@ export default function KvmIdRoute() {
 
         <div
           className={cx("grid h-full select-none", {
-            "grid-rows-(--grid-headerBody)": !isDetachedWindow && !hideHeaderBar,
+            "grid-rows-(--grid-headerBody)": !hideHeaderBar,
           })}
         >
-          {!isDetachedWindow && !hideHeaderBar && (
+          {!hideHeaderBar && (
             <DashboardNavbar
               primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
               showConnectionStatus={true}
@@ -1027,7 +1041,7 @@ export default function KvmIdRoute() {
             {isFailsafeMode && failsafeReason === "video" ? null : (
               <WebRTCVideo
                 hasConnectionIssues={!!ConnectionStatusElement}
-                isDetachedWindow={isDetachedWindow}
+                hideStatusBar={hideStatusBar}
               />
             )}
             <div

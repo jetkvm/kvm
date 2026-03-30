@@ -23,12 +23,10 @@ import { m } from "@localizations/messages.js";
 
 export default function WebRTCVideo({
   hasConnectionIssues,
-  hideActionBar,
-  isDetachedWindow,
+  hideStatusBar,
 }: {
   hasConnectionIssues: boolean;
-  hideActionBar?: boolean;
-  isDetachedWindow?: boolean;
+  hideStatusBar?: boolean;
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
@@ -606,35 +604,30 @@ export default function WebRTCVideo({
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
-      {!hideActionBar && (
-        <div className="flex min-h-[39.5px] flex-col">
-          <div className="flex flex-col">
-            <fieldset
-              disabled={peerConnection?.connectionState !== "connected"}
-              className="contents"
-            >
-              <Actionbar
-                requestFullscreen={requestFullscreen}
-                isDetachedWindow={isDetachedWindow}
-              />
-              <MacroBar />
-            </fieldset>
-          </div>
+      <div className="flex min-h-[39.5px] flex-col">
+        <div className="flex flex-col">
+          <fieldset
+            disabled={peerConnection?.connectionState !== "connected"}
+            className="contents"
+          >
+            <Actionbar
+              requestFullscreen={requestFullscreen}
+            />
+            <MacroBar />
+          </fieldset>
         </div>
-      )}
+      </div>
 
       <div ref={containerRef} className="h-full overflow-hidden">
         <div className="relative h-full">
-          {!isDetachedWindow && (
-            <div
-              className={cx(
-                "absolute inset-0 z-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
-                "bg-[radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px),radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px)] dark:bg-[radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px),radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px)]",
-                "bg-position-[0_0,10px_10px]",
-                "bg-size-[20px_20px]",
-              )}
-            />
-          )}
+          <div
+            className={cx(
+              "absolute inset-0 z-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
+              "bg-[radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px),radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px)] dark:bg-[radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px),radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px)]",
+              "bg-position-[0_0,10px_10px]",
+              "bg-size-[20px_20px]",
+            )}
+          />
           <div className="flex h-full flex-col">
             <div className="relative grow overflow-hidden">
               <div className="flex h-full flex-col">
@@ -642,9 +635,7 @@ export default function WebRTCVideo({
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
                   <div
-                    className={cx("relative flex items-center justify-center overflow-hidden", {
-                      "mx-4 my-2": !isDetachedWindow,
-                    })}
+                    className="relative mx-4 my-2 flex items-center justify-center overflow-hidden"
                   >
                     <div
                       ref={fullscreenContainerRef}
@@ -672,8 +663,7 @@ export default function WebRTCVideo({
                               hasConnectionIssues ||
                               peerConnectionState !== "connected",
                             "opacity-60!": showPointerLockBar,
-                            "animate-slideUpFade":
-                              isPlaying && !isDetachedWindow,
+                            "animate-slideUpFade": isPlaying,
                           },
                         )}
                       />
@@ -704,7 +694,7 @@ export default function WebRTCVideo({
           </div>
         </div>
       </div>
-      {!hideActionBar && !settings.hideStatusBar && (
+      {!hideStatusBar && (
         <div>
           <InfoBar />
         </div>
