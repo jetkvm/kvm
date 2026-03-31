@@ -8,6 +8,7 @@ package native
 import (
 	"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/rs/zerolog"
@@ -81,7 +82,10 @@ func jetkvm_go_log_handler(level C.int, filename *C.cchar_t, funcname *C.cchar_t
 
 //export jetkvm_go_video_handler
 func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t) {
-	videoFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
+	videoFrameChan <- timestampedFrame{
+		data:      C.GoBytes(unsafe.Pointer(frame), C.int(len)),
+		timestamp: time.Now(),
+	}
 }
 
 //export jetkvm_go_indev_handler

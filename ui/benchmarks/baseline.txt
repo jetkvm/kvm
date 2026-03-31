@@ -1,0 +1,47 @@
+npm warn Unknown user config "min-release-age". This will stop working in the next major version of npm.
+[global-setup] BASELINE_BINARY_PATH not set, skipping deployment.
+
+Running 1 test using 1 worker
+
+[remote-agent] Building remote-agent binary...
+[remote-agent] Deploying to tony@192.168.1.134...
+Warning: Permanently added '192.168.1.134' (ED25519) to the list of known hosts.
+Warning: Permanently added '192.168.1.134' (ED25519) to the list of known hosts.
+[remote-agent] Starting on port 9182...
+Warning: Permanently added '192.168.1.134' (ED25519) to the list of known hosts.
+[remote-agent] Agent running at http://192.168.1.134:9182
+
+Calibrating clock offset...
+Clock offset: -3.0ms
+Video dimensions: 1920x1080
+Stripe display + visual noise started, stabilizing...
+Collecting for 30s under visual noise stress...
+
+==================================================
+VIDEO PIPELINE BENCHMARK (under stress)
+==================================================
+
+  Latency (screen change → browser frame)
+  ------------------------------------------------
+        Samples:      1691
+    Sample rate:  56.4/sec
+            Min:   115.0ms
+           Mean:   139.4ms
+         Median:   136.0ms
+            P95:   152.0ms
+            Max:   184.0ms
+
+  Pipeline health
+  ------------------------------------------------
+  Jitter buffer:    59.7ms
+ Frames dropped:         0
+        Freezes:         0
+    Freeze time:       0ms
+
+==================================================
+Pipeline healthy — no drops or freezes
+  ✓  1 benchmarks/pipeline-benchmark.spec.ts:45:3 › Video pipeline benchmark › end-to-end pipeline performance under stress (46.2s)
+[global-teardown] Resetting device to clean state...
+[global-teardown] Device reset complete.
+
+  1 passed (50.8s)

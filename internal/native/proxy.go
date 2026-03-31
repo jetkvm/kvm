@@ -26,6 +26,7 @@ import (
 const (
 	maxFrameSize                   = 1920 * 1080 / 2
 	defaultMaxRestartAttempts uint = 5
+	frameHeaderSize                = 12 // 4 bytes frame size + 8 bytes duration (microseconds)
 )
 
 type nativeProxyOptions struct {
@@ -195,6 +196,16 @@ func (p *NativeProxy) startVideoStreamListener() error {
 			}
 
 			logger.Info().Msg("video stream socket accepted")
+
+			// Increase socket receive buffer to reduce IPC scheduling jitter
+			if uc, ok := conn.(*net.UnixConn); ok {
+				if raw, err := uc.SyscallConn(); err == nil {
+					_ = raw.Control(func(fd uintptr) {
+						_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, 512*1024)
+					})
+				}
+			}
+
 			go p.handleVideoFrame(conn)
 		}
 	}()
@@ -266,20 +277,22 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	defer conn.Close()
 
 	inboundPacket := make([]byte, maxFrameSize)
-	var frameSizeBuffer [4]byte
-	lastFrame := time.Now()
+	var header [frameHeaderSize]byte
 
 	for {
-		// Read 4-byte frame length prefix
-		_, err := io.ReadFull(conn, frameSizeBuffer[:])
+		// Read 12-byte header: 4-byte frame size + 8-byte duration (microseconds)
+		_, err := io.ReadFull(conn, header[:])
 		if err != nil {
 			if err != io.EOF {
-				p.logger.Warn().Err(err).Msg("failed to read frame size from socket")
+				p.logger.Warn().Err(err).Msg("failed to read frame header from socket")
 			}
 			break
 		}
 
-		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
+		frameSize := binary.LittleEndian.Uint32(header[0:4])
+		durationUs := binary.LittleEndian.Uint64(header[4:12])
+		duration := time.Duration(durationUs) * time.Microsecond
+
 		if frameSize == 0 || frameSize > maxFrameSize {
 			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
 				Msg("received invalid frame size")
@@ -293,10 +306,7 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 			break
 		}
 
-		now := time.Now()
-		sinceLastFrame := now.Sub(lastFrame)
-		lastFrame = now
-		p.options.OnVideoFrameReceived(inboundPacket[:frameSize], sinceLastFrame)
+		p.options.OnVideoFrameReceived(inboundPacket[:frameSize], duration)
 	}
 }
 

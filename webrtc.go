@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
 	"github.com/pion/ice/v4"
+	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -345,7 +346,30 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	}
 
-	api := webrtc.NewAPI(webrtc.WithSettingEngine(webrtcSettingEngine))
+	// Custom MediaEngine and InterceptorRegistry to add playout-delay extension
+	// which tells the browser to minimize its jitter buffer for lowest latency.
+	mediaEngine := &webrtc.MediaEngine{}
+	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+		return nil, err
+	}
+	if err := mediaEngine.RegisterHeaderExtension(
+		webrtc.RTPHeaderExtensionCapability{URI: playoutDelayExtensionURI},
+		webrtc.RTPCodecTypeVideo,
+	); err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to register playout-delay extension")
+	}
+
+	interceptorRegistry := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, interceptorRegistry); err != nil {
+		return nil, err
+	}
+	interceptorRegistry.Add(&playoutDelayInterceptorFactory{})
+
+	api := webrtc.NewAPI(
+		webrtc.WithSettingEngine(webrtcSettingEngine),
+		webrtc.WithMediaEngine(mediaEngine),
+		webrtc.WithInterceptorRegistry(interceptorRegistry),
+	)
 	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{iceServer},
 	})

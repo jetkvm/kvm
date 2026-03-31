@@ -1,0 +1,40 @@
+npm warn Unknown user config "min-release-age". This will stop working in the next major version of npm.
+[global-setup] BASELINE_BINARY_PATH not set, skipping deployment.
+
+Running 1 test using 1 worker
+
+
+Calibrating clock offset...
+Clock offset: -6.5ms
+Video dimensions: 1920x1080
+Stripe display + visual noise started, stabilizing...
+Collecting for 30s under visual noise stress...
+
+==================================================
+VIDEO PIPELINE BENCHMARK (under stress)
+==================================================
+
+  Latency (screen change → browser frame)
+  ------------------------------------------------
+        Samples:      1108
+    Sample rate:  36.9/sec
+            Min:    70.5ms
+           Mean:    92.9ms
+         Median:    89.5ms
+            P95:   118.5ms
+            Max:   141.5ms
+
+  Pipeline health
+  ------------------------------------------------
+  Jitter buffer:    11.2ms
+ Frames dropped:         0
+        Freezes:         0
+    Freeze time:       0ms
+
+==================================================
+Pipeline healthy — no drops or freezes
+  ✓  1 benchmarks/pipeline-benchmark.spec.ts:45:3 › Video pipeline benchmark › end-to-end pipeline performance under stress (37.4s)
+[global-teardown] Resetting device to clean state...
+[global-teardown] Device reset complete.
+
+  1 passed (41.3s)

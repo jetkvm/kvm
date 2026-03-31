@@ -97,6 +97,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	if err := nativeInstance.Start(); err != nil {
 		nativeLogger.Fatal().Err(err).Msg("failed to start native proxy")
 	}
+
 	go func() {
 		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
 			nativeLogger.Warn().Err(err).Msg("error setting EDID")

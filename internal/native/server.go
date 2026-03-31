@@ -93,18 +93,28 @@ func RunNativeProcess(binaryName string) {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
 	}
+
+	// Increase socket send buffer to reduce IPC scheduling jitter
+	if uc, ok := conn.(*net.UnixConn); ok {
+		if raw, err := uc.SyscallConn(); err == nil {
+			_ = raw.Control(func(fd uintptr) {
+				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, 512*1024)
+			})
+		}
+	}
+
 	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
 
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
-		// Write 4-byte frame length prefix, then frame data
-		var frameSizeBuffer [4]byte
-		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
+		// Write 12-byte header (4-byte frame size + 8-byte duration in microseconds) + frame data
+		// Combined into a single write to reduce syscalls and timing jitter
+		var header [frameHeaderSize]byte
+		binary.LittleEndian.PutUint32(header[0:4], uint32(len(frame)))
+		binary.LittleEndian.PutUint64(header[4:12], uint64(duration.Microseconds()))
 
-		if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
-		}
-		if _, err := conn.Write(frame); err != nil {
+		bufs := net.Buffers{header[:], frame}
+		if _, err := bufs.WriteTo(conn); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
 		}
 	}
