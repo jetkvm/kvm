@@ -507,6 +507,12 @@ export default function KvmIdRoute() {
     };
 
     pc.ontrack = function (event) {
+      // Minimize jitter buffer for lowest latency - critical for real-time KVM.
+      // Works together with the server-side playout-delay RTP extension.
+      const receiver = event.receiver;
+      if ("playoutDelayHint" in receiver) {
+        (receiver as any).playoutDelayHint = 0;
+      }
       setMediaStream(event.streams[0]);
     };
 
