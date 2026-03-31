@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { ensureLocalAuthMode, waitForWebRTCReady, callJsonRpc } from "./helpers";
+import {
+  ensureLocalAuthMode,
+  waitForWebRTCReady,
+  waitForVideoStream,
+  wakeDisplay,
+  callJsonRpc,
+} from "./helpers";
 
 /**
  * Wait for inbound video stats to report a non-empty codec mimeType.
@@ -10,9 +16,7 @@ async function getActiveCodec(page: Page, timeout = 15000): Promise<string> {
   await expect
     .poll(
       async () => {
-        const stats = await page.evaluate(() =>
-          window.__kvmTestHooks?.getInboundVideoStats(),
-        );
+        const stats = await page.evaluate(() => window.__kvmTestHooks?.getInboundVideoStats());
         if (stats?.codecMimeType) codec = stats.codecMimeType;
         return codec;
       },
@@ -49,6 +53,8 @@ async function reconnect(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle");
   await ensureLocalAuthMode(page, { mode: "noPassword" });
   await waitForWebRTCReady(page);
+  await wakeDisplay(page);
+  await waitForVideoStream(page);
 }
 
 test.describe("Video codec negotiation", () => {
@@ -59,6 +65,8 @@ test.describe("Video codec negotiation", () => {
     await page.waitForLoadState("networkidle");
     await ensureLocalAuthMode(page, { mode: "noPassword" });
     await waitForWebRTCReady(page);
+    await wakeDisplay(page);
+    await waitForVideoStream(page);
 
     const originalCodec = (await callJsonRpc(page, "getVideoCodecPreference")) as string;
 
@@ -88,6 +96,8 @@ test.describe("Video codec negotiation", () => {
     await page.waitForLoadState("networkidle");
     await ensureLocalAuthMode(page, { mode: "noPassword" });
     await waitForWebRTCReady(page);
+    await wakeDisplay(page);
+    await waitForVideoStream(page);
 
     const originalCodec = (await callJsonRpc(page, "getVideoCodecPreference")) as string;
 
@@ -118,6 +128,8 @@ test.describe("Video codec negotiation", () => {
     await page.waitForLoadState("networkidle");
     await ensureLocalAuthMode(page, { mode: "noPassword" });
     await waitForWebRTCReady(page);
+    await wakeDisplay(page);
+    await waitForVideoStream(page);
 
     const originalCodec = (await callJsonRpc(page, "getVideoCodecPreference")) as string;
 
