@@ -240,6 +240,12 @@ export class RemoteAgent {
     return res.json() as Promise<T>;
   }
 
+  private async post<T>(path: string): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, { method: "POST" });
+    if (!res.ok) throw new Error(`Remote agent POST ${path}: ${res.status}`);
+    return res.json() as Promise<T>;
+  }
+
   /** Check if the agent is running. */
   async health(): Promise<boolean> {
     try {
@@ -296,6 +302,53 @@ export class RemoteAgent {
 
   async getDisplays(): Promise<DisplayInfo[]> {
     return this.get<DisplayInfo[]>("/display");
+  }
+
+  // ── Latency measurement APIs ──
+
+  /** Get the remote agent's current time in unix milliseconds. */
+  async getTime(): Promise<number> {
+    const res = await this.get<{ time_ms: number }>("/time");
+    return res.time_ms;
+  }
+
+  /**
+   * Calibrate clock offset between this machine and the remote host.
+   * Uses NTP-style approach: measures RTT, estimates offset from midpoint.
+   * Returns offset in ms: remoteTime ≈ localTime + offset
+   */
+  async calibrateClockOffset(rounds = 10): Promise<number> {
+    const offsets: number[] = [];
+    for (let i = 0; i < rounds; i++) {
+      const t1 = Date.now();
+      const remoteTime = await this.getTime();
+      const t2 = Date.now();
+      const rtt = t2 - t1;
+      const offset = remoteTime - (t1 + rtt / 2);
+      offsets.push(offset);
+    }
+    offsets.sort((a, b) => a - b);
+    return offsets[Math.floor(offsets.length / 2)];
+  }
+
+  /** Start QR code timestamp display on the remote host's screen. */
+  async startQRDisplay(): Promise<void> {
+    await this.post("/latency/qr/start");
+  }
+
+  /** Stop QR code timestamp display. */
+  async stopQRDisplay(): Promise<void> {
+    await this.post("/latency/qr/stop");
+  }
+
+  /** Start visual noise (fullscreen terminal blasting random text to stress encoder). */
+  async startVisualNoise(): Promise<void> {
+    await this.post("/latency/noise/start");
+  }
+
+  /** Stop visual noise. */
+  async stopVisualNoise(): Promise<void> {
+    await this.post("/latency/noise/stop");
   }
 
   // ── High-level verification helpers ──
@@ -517,9 +570,13 @@ export class RemoteAgent {
       );
     }
 
-    // Rebuild if source is newer than binary (or binary doesn't exist)
-    const needsBuild =
-      !fs.existsSync(binary) || fs.statSync(goSource).mtimeMs > fs.statSync(binary).mtimeMs;
+    // Rebuild if any Go source is newer than binary (or binary doesn't exist)
+    let needsBuild = !fs.existsSync(binary);
+    if (!needsBuild) {
+      const binaryMtime = fs.statSync(binary).mtimeMs;
+      const goFiles = fs.readdirSync(agentDir).filter(f => f.endsWith(".go"));
+      needsBuild = goFiles.some(f => fs.statSync(path.join(agentDir, f)).mtimeMs > binaryMtime);
+    }
 
     if (needsBuild) {
       console.log("[remote-agent] Building remote-agent binary...");
@@ -544,7 +601,7 @@ export class RemoteAgent {
 
     console.log(`[remote-agent] Starting on port ${port}...`);
     execSync(
-      `ssh ${sshOpts} ${target} 'PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
+      `ssh ${sshOpts} ${target} 'DISPLAY=:0 PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
       { stdio: "inherit" },
     );
 

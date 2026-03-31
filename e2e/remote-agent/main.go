@@ -151,6 +151,10 @@ type Agent struct {
 		x  int32
 		y  int32
 	}
+	qrMu       sync.Mutex
+	qrCancel   context.CancelFunc // nil when QR display is not running
+	noiseMu    sync.Mutex
+	noiseCancel context.CancelFunc
 }
 
 func newAgent() *Agent {
@@ -616,6 +620,73 @@ func main() {
 	mux.HandleFunc("/display", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(getDisplayInfo())
+	})
+
+	// Start visual noise (fullscreen terminal blasting random text — stresses the encoder)
+	mux.HandleFunc("/latency/noise/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		agent.startVisualNoise()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+	})
+
+	// Stop visual noise
+	mux.HandleFunc("/latency/noise/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		agent.stopVisualNoise()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+	})
+
+	// Get server time for NTP-style clock offset calibration
+	mux.HandleFunc("/time", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int64{"time_ms": time.Now().UnixMilli()})
+	})
+
+	// Start QR code latency display
+	mux.HandleFunc("/latency/qr/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		agent.qrMu.Lock()
+		defer agent.qrMu.Unlock()
+		// Stop existing display if running
+		if agent.qrCancel != nil {
+			agent.qrCancel()
+			agent.qrCancel = nil
+			time.Sleep(100 * time.Millisecond)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		agent.qrCancel = cancel
+		go agent.runQRDisplay(ctx)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+	})
+
+	// Stop QR code latency display
+	mux.HandleFunc("/latency/qr/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		agent.qrMu.Lock()
+		defer agent.qrMu.Unlock()
+		if agent.qrCancel == nil {
+			http.Error(w, "not running", http.StatusNotFound)
+			return
+		}
+		agent.qrCancel()
+		agent.qrCancel = nil
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
 	})
 
 	log.Printf("JetKVM Remote Agent listening on :%s", port)

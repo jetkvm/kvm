@@ -42,6 +42,7 @@
     "dayjs": "^1.11.19",
     "focus-trap-react": "^11.0.4",
     "framer-motion": "^12.23.26",
+    "jsqr": "^1.4.0",
     "mini-svg-data-uri": "^1.4.4",
     "react": "^19.2.3",
     "react-animate-height": "^3.2.3",
