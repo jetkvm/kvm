@@ -198,11 +198,6 @@ test.describe("Video pipeline benchmark", () => {
     };
 
     // 11. Compute WebRTC pipeline stats (delta over collection window)
-    const deltaJitterDelay = statsAfter!.jitterBufferDelay - statsBefore!.jitterBufferDelay;
-    const deltaJitterEmitted =
-      statsAfter!.jitterBufferEmittedCount - statsBefore!.jitterBufferEmittedCount;
-    const jitterBufMs = deltaJitterEmitted > 0 ? (deltaJitterDelay / deltaJitterEmitted) * 1000 : 0;
-
     const droppedFrames = statsAfter!.framesDropped - statsBefore!.framesDropped;
     const freezeCount = statsAfter!.freezeCount - statsBefore!.freezeCount;
     const freezeDurationMs =
@@ -226,7 +221,6 @@ test.describe("Video pipeline benchmark", () => {
 
     console.log("\n  Pipeline health");
     console.log("  " + "-".repeat(w - 2));
-    console.log(pad("Jitter buffer:", 16) + pad(`${jitterBufMs.toFixed(1)}ms`, 10));
     console.log(pad("Frames dropped:", 16) + pad(droppedFrames.toString(), 10));
     console.log(pad("Freezes:", 16) + pad(freezeCount.toString(), 10));
     console.log(pad("Freeze time:", 16) + pad(`${freezeDurationMs.toFixed(0)}ms`, 10));
