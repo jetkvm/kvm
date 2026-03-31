@@ -738,6 +738,203 @@ test.describe("Remote Host Agent", () => {
     expect(shiftReleases[0].time_ms).toBeGreaterThan(aReleases[0].time_ms);
   });
 
+  test("keepalive: modifier held while tapping multiple keys (Shift+10 chars over 10s)", async () => {
+    // Reproduces https://github.com/jetkvm/kvm/issues/1386
+    // Hold Shift and tap 10 letter keys with ~1s inter-key delays (~10s total).
+    // The modifier must remain held throughout all letter presses.
+    test.setTimeout(30_000);
+    await agent!.clearKeyboardEvents();
+
+    // HID codes for A-J (0x04-0x0D)
+    const letters = [0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d];
+
+    await sendKeypress(sharedPage, 0xe1, true); // Shift down
+    await new Promise(r => setTimeout(r, 500));
+
+    for (const hid of letters) {
+      await sendKeypress(sharedPage, hid, true);
+      await new Promise(r => setTimeout(r, 50));
+      await sendKeypress(sharedPage, hid, false);
+      await new Promise(r => setTimeout(r, 950)); // ~1s between keys
+    }
+
+    await sendKeypress(sharedPage, 0xe1, false); // Shift up
+    await new Promise(r => setTimeout(r, 300));
+
+    const events = await agent!.getKeyboardEvents();
+
+    const shiftPresses = events.filter(ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_press");
+    const shiftReleases = events.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+    );
+    expect(shiftPresses.length, "Shift should have exactly 1 press").toBe(1);
+    expect(
+      shiftReleases.length,
+      "Shift should have exactly 1 release (no premature auto-release)",
+    ).toBe(1);
+
+    // All 10 letter keys should have been pressed
+    const expectedLinux: number[] = [
+      KEY.A,
+      KEY.B,
+      KEY.C,
+      KEY.D,
+      KEY.E,
+      KEY.F,
+      KEY.G,
+      KEY.H,
+      KEY.I,
+      KEY.J,
+    ];
+    for (const code of expectedLinux) {
+      const presses = events.filter(ev => ev.code === code && ev.type === "key_press");
+      expect(presses.length, `Key ${code} should have been pressed`).toBeGreaterThanOrEqual(1);
+    }
+
+    // Shift release must come after the last letter press
+    const lastLetterPress = Math.max(
+      ...events
+        .filter(ev => expectedLinux.includes(ev.code) && ev.type === "key_press")
+        .map(ev => ev.time_ms),
+    );
+    expect(
+      shiftReleases[0].time_ms,
+      "Shift release must come after all letter key presses",
+    ).toBeGreaterThan(lastLetterPress);
+  });
+
+  test("keepalive: modifier held with key-repeat simulation", async () => {
+    // Simulates browser key-repeat: Shift held, then rapid repeated A presses
+    // without releases (mimicking how browsers fire keydown with repeat=true).
+    // Key-repeat must not starve the keepalive and cause modifier auto-release.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0xe1, true); // Shift down
+    await new Promise(r => setTimeout(r, 50));
+
+    // Simulate key-repeat: 20 rapid A presses at ~30ms (no releases between)
+    await sharedPage.evaluate(async () => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) throw new Error("Test hooks not available");
+      for (let i = 0; i < 20; i++) {
+        hooks.sendKeypress(0x04, true); // repeated A press
+        await new Promise(r => setTimeout(r, 30));
+      }
+    });
+
+    await sendKeypress(sharedPage, 0x04, false);
+    await new Promise(r => setTimeout(r, 200));
+    await sendKeypress(sharedPage, 0xe1, false);
+    await new Promise(r => setTimeout(r, 200));
+
+    const events = await agent!.getKeyboardEvents();
+    const shiftReleases = events.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+    );
+    expect(shiftReleases.length, "Shift should have exactly 1 release").toBe(1);
+  });
+
+  test("keepalive: modifier held across rapid tap burst", async () => {
+    // Hold Shift, tap 20 keys at ~50ms spacing. Shift must survive throughout.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0xe1, true);
+    await new Promise(r => setTimeout(r, 50));
+
+    await sharedPage.evaluate(async () => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) throw new Error("Test hooks not available");
+      for (let i = 0; i < 20; i++) {
+        const hid = 0x04 + (i % 10); // cycle A-J
+        hooks.sendKeypress(hid, true);
+        await new Promise(r => setTimeout(r, 20));
+        hooks.sendKeypress(hid, false);
+        await new Promise(r => setTimeout(r, 30));
+      }
+    });
+
+    await sendKeypress(sharedPage, 0xe1, false);
+    await new Promise(r => setTimeout(r, 200));
+
+    const events = await agent!.getKeyboardEvents();
+    const shiftReleases = events.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+    );
+    expect(shiftReleases.length, "Shift should have exactly 1 release").toBe(1);
+  });
+
+  test("keepalive: multiple simultaneous modifiers + key", async () => {
+    // Hold Ctrl+Shift, tap A, release both. Neither modifier should auto-release.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0xe0, true); // Ctrl
+    await sendKeypress(sharedPage, 0xe1, true); // Shift
+    await new Promise(r => setTimeout(r, 50));
+    await sendKeypress(sharedPage, 0x04, true); // A
+    await new Promise(r => setTimeout(r, 50));
+    await sendKeypress(sharedPage, 0x04, false);
+    await new Promise(r => setTimeout(r, 200));
+    await sendKeypress(sharedPage, 0xe1, false);
+    await sendKeypress(sharedPage, 0xe0, false);
+    await new Promise(r => setTimeout(r, 200));
+
+    const events = await agent!.getKeyboardEvents();
+    for (const [code, label] of [
+      [KEY.LEFT_CTRL, "Ctrl"],
+      [KEY.LEFT_SHIFT, "Shift"],
+    ] as const) {
+      const releases = events.filter(ev => ev.code === code && ev.type === "key_release");
+      expect(releases.length, `${label} should have exactly 1 release`).toBe(1);
+    }
+    const aPresses = events.filter(ev => ev.code === KEY.A && ev.type === "key_press");
+    expect(aPresses.length, "A should have been pressed").toBeGreaterThanOrEqual(1);
+  });
+
+  test("keepalive: modifier released before non-modifier (reversed release order)", async () => {
+    // Shift down, A down, Shift up (while A still held), A up.
+    // Tests that releasing the modifier first doesn't corrupt the key buffer.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0xe1, true); // Shift
+    await new Promise(r => setTimeout(r, 50));
+    await sendKeypress(sharedPage, 0x04, true); // A
+    await new Promise(r => setTimeout(r, 100));
+    await sendKeypress(sharedPage, 0xe1, false); // Shift up first
+    await new Promise(r => setTimeout(r, 100));
+    await sendKeypress(sharedPage, 0x04, false); // A up
+    await new Promise(r => setTimeout(r, 200));
+
+    const events = await agent!.getKeyboardEvents();
+    const shiftRelease = events.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+    );
+    const aRelease = events.filter(ev => ev.code === KEY.A && ev.type === "key_release");
+
+    expect(shiftRelease.length, "Shift should have exactly 1 release").toBe(1);
+    expect(aRelease.length, "A should have exactly 1 release").toBe(1);
+    // Shift released before A
+    expect(shiftRelease[0].time_ms).toBeLessThan(aRelease[0].time_ms);
+  });
+
+  test("keepalive: AltGr (AltRight) held while tapping key", async () => {
+    // Hold AltRight (AltGr on international layouts), tap A.
+    // AltRight must not auto-release prematurely.
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0xe6, true); // AltRight
+    await new Promise(r => setTimeout(r, 50));
+    await sendKeypress(sharedPage, 0x04, true); // A
+    await new Promise(r => setTimeout(r, 50));
+    await sendKeypress(sharedPage, 0x04, false);
+    await new Promise(r => setTimeout(r, 200));
+    await sendKeypress(sharedPage, 0xe6, false);
+    await new Promise(r => setTimeout(r, 200));
+
+    const events = await agent!.getKeyboardEvents();
+    const altReleases = events.filter(ev => ev.code === KEY.RIGHT_ALT && ev.type === "key_release");
+    expect(altReleases.length, "AltRight should have exactly 1 release").toBe(1);
+  });
+
   test("keepalive: multiple simultaneous keys held for 300ms", async () => {
     // Hold A + B + C simultaneously, wait 300ms, release all.
     // Each key should get exactly 1 release — tests per-key timer independence.

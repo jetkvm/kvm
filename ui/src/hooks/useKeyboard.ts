@@ -45,6 +45,7 @@ export default function useKeyboard() {
 
   // Keepalive timer management
   const keepAliveTimerRef = useRef<number | null>(null);
+  const heldKeysRef = useRef<Set<number>>(new Set());
 
   // INTRODUCTION: The earlier version of the JetKVM device shipped with all keyboard state
   // being tracked on the browser/client-side. When adding the keyPressReport API to the
@@ -82,11 +83,16 @@ export default function useKeyboard() {
     }
   });
 
+  // Ref ensures the setInterval closure always calls the latest send function,
+  // even after WebRTC reconnection produces a new rpcHidChannel.
+  const sendKeepAliveRef = useRef(sendKeypressKeepAliveHidRpc);
+  sendKeepAliveRef.current = sendKeypressKeepAliveHidRpc;
+
   const handleLegacyKeyboardReport = useCallback(
     async (keys: number[], modifier: number) => {
-      send("keyboardReport", { keys, modifier }, (resp: JsonRpcResponse) => {
+      void send("keyboardReport", { keys, modifier }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          console.error(`Failed to send keyboard report ${keys} ${modifier}`, resp.error);
+          console.error("Failed to send keyboard report", keys, modifier, resp.error);
         }
 
         // On older backends, we need to set the keysDownState manually since without the hidRpc API, the state doesn't trickle down from the backend
@@ -105,7 +111,7 @@ export default function useKeyboard() {
 
         ac?.signal?.addEventListener("abort", abortListener);
 
-        send("keyboardReport", { keys, modifier }, params => {
+        void send("keyboardReport", { keys, modifier }, params => {
           if ("error" in params) return reject(params.error);
           resolve();
         });
@@ -128,22 +134,23 @@ export default function useKeyboard() {
     cancelKeepAlive();
 
     keepAliveTimerRef.current = setInterval(() => {
-      sendKeypressKeepAliveHidRpc();
+      sendKeepAliveRef.current();
     }, KEEPALIVE_INTERVAL);
-  }, [cancelKeepAlive, sendKeypressKeepAliveHidRpc]);
+  }, [cancelKeepAlive]);
 
   // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
   // This is useful for macros, in case of client-side rollover, and when the browser loses focus
   const resetKeyboardState = useCallback(async () => {
     // Cancel keepalive since we're resetting the keyboard state
     cancelKeepAlive();
+    heldKeysRef.current.clear();
     // Reset the keys buffer to zeros and the modifier state to zero
     const { keys, modifier } = MACRO_RESET_KEYBOARD_STATE;
     if (rpcHidReady) {
       sendKeyboardEventHidRpc(keys, modifier);
     } else {
       // Older backends don't support the hidRpc API, so we send the full reset state
-      handleLegacyKeyboardReport(keys, modifier);
+      void handleLegacyKeyboardReport(keys, modifier);
     }
   }, [rpcHidReady, sendKeyboardEventHidRpc, handleLegacyKeyboardReport, cancelKeepAlive]);
 
@@ -197,7 +204,7 @@ export default function useKeyboard() {
       // If we reach here it means we didn't find an empty slot or the key in the buffer
       if (overrun) {
         if (press) {
-          console.warn(`keyboard buffer overflow current keys ${keys}, key: ${key} not added`);
+          console.warn("keyboard buffer overflow current keys", keys, "key:", key, "not added");
           // Fill all key slots with ErrorRollOver (0x01) to indicate overflow
           keys.length = hidKeyBufferSize;
           keys.fill(hidErrorRollOver);
@@ -212,12 +219,24 @@ export default function useKeyboard() {
 
   const sendKeypress = useCallback(
     (key: number, press: boolean) => {
-      cancelKeepAlive();
+      if (press) {
+        heldKeysRef.current.add(key);
+      } else {
+        heldKeysRef.current.delete(key);
+      }
 
       sendKeypressEventHidRpc(key, press);
 
-      if (press) {
-        scheduleKeepAlive();
+      if (heldKeysRef.current.size > 0) {
+        // Start keepalive if not already running. Don't restart an existing
+        // interval — key-repeat events fire faster (~33ms) than the keepalive
+        // period (50ms), so cancel+restart would prevent the tick from ever
+        // firing, starving the device-side auto-release extension (issue #1386).
+        if (!keepAliveTimerRef.current) {
+          scheduleKeepAlive();
+        }
+      } else {
+        cancelKeepAlive();
       }
     },
     [sendKeypressEventHidRpc, scheduleKeepAlive, cancelKeepAlive],
@@ -248,11 +267,11 @@ export default function useKeyboard() {
         // 2. Send the newly calculated state to the device
         const downState = simulateDeviceSideKeyHandlingForLegacyDevices(keysDownState, key, press);
 
-        handleLegacyKeyboardReport(downState.keys, downState.modifier);
+        void handleLegacyKeyboardReport(downState.keys, downState.modifier);
 
         // if we just sent ErrorRollOver, reset to empty state
         if (downState.keys[0] === hidErrorRollOver) {
-          resetKeyboardState();
+          void resetKeyboardState();
         }
       }
     },
