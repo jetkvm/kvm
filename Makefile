@@ -275,7 +275,7 @@ dev_release: git_check_dev check_r2
 	cd ui && npx playwright install --with-deps chromium
 	cd ui && $(call OTA_ENV,$(VERSION_DEV)) \
 		JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST) \
-		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-prerelease-rejected --project=ota-specific-version --project=ota-upgrade-from-stable
+		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-prerelease-rejected --project=ota-specific-version --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
 
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
