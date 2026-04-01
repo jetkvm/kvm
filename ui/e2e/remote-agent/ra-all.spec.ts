@@ -1347,6 +1347,67 @@ test.describe("Remote Host Agent", () => {
     }
   });
 
+  test("mouse: wheel scroll should not produce duplicate events from both HID devices", async () => {
+    test.setTimeout(30_000);
+    const REL_WHEEL = 0x08;
+    const REL_HWHEEL = 0x06;
+
+    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
+
+    // Retry until the agent starts receiving wheel events (host may still
+    // be re-enumerating HID devices after previous test's USB changes).
+    const vDeadline = Date.now() + 10000;
+    let vWheelEvents: RAMouseEvent[] = [];
+    while (Date.now() < vDeadline) {
+      await agent!.clearMouseEvents();
+      await callJsonRpc(sharedPage, "wheelReport", { wheelY: 1, wheelX: 0 });
+      try {
+        await agent!.waitForMouseEvent(
+          ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL,
+          2000,
+        );
+        break;
+      } catch {
+        /* agent not ready yet, retry */
+      }
+    }
+    // Allow any duplicate from the second HID device to arrive
+    await new Promise(r => setTimeout(r, 500));
+
+    const allEvents = await agent!.getMouseEvents();
+    vWheelEvents = allEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL);
+    const devices = new Set(vWheelEvents.map(ev => ev.device));
+    console.log(
+      `Vertical wheel: ${vWheelEvents.length} event(s) from device(s): ${[...devices].join(", ")}`,
+    );
+    expect(
+      vWheelEvents.length,
+      `Expected 1 vertical wheel event, got ${vWheelEvents.length} from [${[...devices].join(", ")}]. ` +
+        `Duplicate means rpcWheelReport sends to both abs and rel mouse HID devices.`,
+    ).toBe(1);
+
+    await agent!.clearMouseEvents();
+    await callJsonRpc(sharedPage, "wheelReport", { wheelY: 0, wheelX: 1 });
+    await agent!.waitForMouseEvent(
+      ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL,
+      3000,
+    );
+    await new Promise(r => setTimeout(r, 500));
+
+    const allHEvents = await agent!.getMouseEvents();
+    const hWheelEvents = allHEvents.filter(
+      ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL,
+    );
+    const hDevices = new Set(hWheelEvents.map(ev => ev.device));
+    console.log(
+      `Horizontal wheel: ${hWheelEvents.length} event(s) from device(s): ${[...hDevices].join(", ")}`,
+    );
+    expect(
+      hWheelEvents.length,
+      `Expected 1 horizontal wheel event, got ${hWheelEvents.length} from [${[...hDevices].join(", ")}].`,
+    ).toBe(1);
+  });
+
   // ═══════════════════════════════════════════
   // INPUT: MACROS
   // ═══════════════════════════════════════════

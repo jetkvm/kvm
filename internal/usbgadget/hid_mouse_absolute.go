@@ -93,6 +93,10 @@ func (u *UsbGadget) absMouseWriteHidFile(data []byte) error {
 	return nil
 }
 
+func (u *UsbGadget) HasAbsoluteMouse() bool {
+	return u.enabledDevices.AbsoluteMouse
+}
+
 func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	if !u.enabledDevices.AbsoluteMouse {
 		return nil
