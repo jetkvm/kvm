@@ -1294,6 +1294,20 @@ export async function withTempSignature(
   }
 }
 
+/**
+ * Compare two semver strings (ignoring prerelease suffixes).
+ * Returns true if `version` >= `minimum`.
+ */
+export function semverGte(version: string, minimum: string): boolean {
+  const v = version.replace(/^v/, "").split("-")[0].split(".").map(Number);
+  const m = minimum.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((v[i] ?? 0) > (m[i] ?? 0)) return true;
+    if ((v[i] ?? 0) < (m[i] ?? 0)) return false;
+  }
+  return true;
+}
+
 declare global {
   interface Window {
     __kvmTestHooks?: {

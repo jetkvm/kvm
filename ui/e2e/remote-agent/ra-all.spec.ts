@@ -22,6 +22,7 @@ import {
   getLedState,
   waitForLedState,
   restartAppViaSSH,
+  semverGte,
 } from "../helpers";
 import {
   createRemoteAgent,
@@ -2221,6 +2222,203 @@ test.describe("Remote Host Agent", () => {
       }
       await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
     }
+  });
+
+  // ═══════════════════════════════════════════
+  // USB REMOTE WAKEUP: S3 SUSPEND → HID WAKE
+  // ═══════════════════════════════════════════
+
+  test("usb-wake: S3 suspend and wake via HID keypress", async () => {
+    test.setTimeout(120_000);
+
+    // Requires system firmware >= 0.2.8 (f_hid wakeup_on_write kernel patch)
+    const localVersion = (await callJsonRpc(sharedPage, "getLocalVersion")) as {
+      appVersion: string;
+      systemVersion: string;
+    };
+    if (!semverGte(localVersion.systemVersion, "0.2.8")) {
+      test.skip(true, `S3 wake requires system >= 0.2.8 (got ${localVersion.systemVersion})`);
+      return;
+    }
+
+    // Check S3 deep sleep is available on the remote host
+    let memSleep: string;
+    try {
+      memSleep = remoteHostExec("cat /sys/power/mem_sleep").trim();
+    } catch {
+      test.skip(true, "Cannot read /sys/power/mem_sleep on remote host");
+      return;
+    }
+    if (!memSleep.includes("deep") && !memSleep.includes("[mem]")) {
+      test.skip(true, `S3 deep sleep not available (mem_sleep: ${memSleep})`);
+      return;
+    }
+
+    // Enable USB wakeup on JetKVM's USB device (and parent hub)
+    try {
+      remoteHostExec(
+        "for d in /sys/bus/usb/devices/*/; do " +
+          'if grep -q JetKVM "$d/product" 2>/dev/null; then ' +
+          'echo enabled | sudo tee "$d/power/wakeup" > /dev/null; ' +
+          'p=$(dirname $(readlink -f "$d"))/power/wakeup; ' +
+          '[ -f "$p" ] && echo enabled | sudo tee "$p" > /dev/null; ' +
+          "fi; done",
+      );
+    } catch {
+      /* best effort */
+    }
+
+    // Verify everything is working before we suspend
+    await waitForVideoDimensions(sharedPage, 10000);
+    expect(await agent!.health()).toBe(true);
+
+    // Fire-and-forget S3 suspend with a short delay so SSH can return
+    try {
+      remoteHostExec(
+        "sudo sh -c 'nohup sh -c \"sleep 0.5 && echo mem > /sys/power/state\" >/dev/null 2>&1 &'",
+        5000,
+      );
+    } catch {
+      /* SSH may drop during suspend, that's expected */
+    }
+
+    // Give the host 10s to fully enter S3
+    await new Promise(r => setTimeout(r, 10000));
+
+    // Sanity check: host should be unreachable
+    expect(await agent!.health(), "Host should be asleep after 10s").toBe(false);
+
+    // Send wake signal via HID (spacebar press+release)
+    await callJsonRpc(sharedPage, "keyboardReport", {
+      keys: [0x2c, 0, 0, 0, 0, 0],
+      modifier: 0,
+    });
+    await callJsonRpc(sharedPage, "keyboardReport", {
+      keys: [0, 0, 0, 0, 0, 0],
+      modifier: 0,
+    });
+
+    // Poll until host wakes up (remote agent responds again)
+    const wakeDeadline = Date.now() + 30000;
+    let hostUp = false;
+    while (Date.now() < wakeDeadline) {
+      if (await agent!.health()) {
+        hostUp = true;
+        break;
+      }
+      // Re-send wake signal periodically in case the first was lost
+      try {
+        await callJsonRpc(sharedPage, "keyboardReport", {
+          keys: [0x2c, 0, 0, 0, 0, 0],
+          modifier: 0,
+        });
+        await callJsonRpc(sharedPage, "keyboardReport", {
+          keys: [0, 0, 0, 0, 0, 0],
+          modifier: 0,
+        });
+      } catch {
+        /* RPC may fail if WebRTC is reconnecting */
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    expect(hostUp, "Host should wake from S3 after HID wake signal").toBe(true);
+
+    // Wait for video stream to recover after host resume
+    await new Promise(r => setTimeout(r, 5000));
+
+    // Reload page to re-establish clean WebRTC session
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+
+    await waitForVideoDimensions(sharedPage, 30000);
+
+    // Verify keyboard works after wake
+    const postEvents = await waitForKeyboardReady(agent!, sharedPage);
+    expect(postEvents.length, "keyboard should work after S3 wake").toBeGreaterThan(0);
+  });
+
+  test("usb-wake: S3 suspend and wake via mouse input", async () => {
+    test.setTimeout(120_000);
+
+    const localVersion = (await callJsonRpc(sharedPage, "getLocalVersion")) as {
+      appVersion: string;
+      systemVersion: string;
+    };
+    if (!semverGte(localVersion.systemVersion, "0.2.8")) {
+      test.skip(true, `S3 wake requires system >= 0.2.8 (got ${localVersion.systemVersion})`);
+      return;
+    }
+
+    let memSleep: string;
+    try {
+      memSleep = remoteHostExec("cat /sys/power/mem_sleep").trim();
+    } catch {
+      test.skip(true, "Cannot read /sys/power/mem_sleep on remote host");
+      return;
+    }
+    if (!memSleep.includes("deep") && !memSleep.includes("[mem]")) {
+      test.skip(true, `S3 deep sleep not available (mem_sleep: ${memSleep})`);
+      return;
+    }
+
+    // Enable USB wakeup
+    try {
+      remoteHostExec(
+        "for d in /sys/bus/usb/devices/*/; do " +
+          'if grep -q JetKVM "$d/product" 2>/dev/null; then ' +
+          'echo enabled | sudo tee "$d/power/wakeup" > /dev/null; ' +
+          "fi; done",
+      );
+    } catch {
+      /* best effort */
+    }
+
+    await waitForVideoDimensions(sharedPage, 10000);
+    expect(await agent!.health()).toBe(true);
+
+    // Suspend host
+    try {
+      remoteHostExec(
+        "sudo sh -c 'nohup sh -c \"sleep 0.5 && echo mem > /sys/power/state\" >/dev/null 2>&1 &'",
+        5000,
+      );
+    } catch {
+      /* SSH may drop */
+    }
+
+    await new Promise(r => setTimeout(r, 10000));
+    expect(await agent!.health(), "Host should be asleep after 10s").toBe(false);
+
+    // Wake via mouse movement
+    await sendAbsMouseMove(sharedPage, 16384, 16384);
+
+    const wakeDeadline = Date.now() + 30000;
+    let hostUp = false;
+    while (Date.now() < wakeDeadline) {
+      if (await agent!.health()) {
+        hostUp = true;
+        break;
+      }
+      try {
+        await sendAbsMouseMove(
+          sharedPage,
+          100 + Math.random() * 32000,
+          100 + Math.random() * 32000,
+        );
+      } catch {
+        /* best effort */
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    expect(hostUp, "Host should wake from S3 after mouse input").toBe(true);
+
+    await new Promise(r => setTimeout(r, 5000));
+    await sharedPage.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(sharedPage);
+    await waitForVideoDimensions(sharedPage, 30000);
+
+    const postEvents = await waitForKeyboardReady(agent!, sharedPage);
+    expect(postEvents.length, "keyboard should work after S3 mouse wake").toBeGreaterThan(0);
   });
 
   // ═══════════════════════════════════════════
