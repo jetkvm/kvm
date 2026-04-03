@@ -112,6 +112,8 @@
     "advanced_success_reset_config": "Konfigurasjonen ble tilbakestilt til standard",
     "advanced_success_update_ssh_key": "SSH-nøkkelen er oppdatert",
     "advanced_title": "Avansert",
+    "advanced_troubleshooting_log_level_description": "Angi detaljnivå for systemlogger. Høyere nivåer gir mer loggdata og kan påvirke ytelsen",
+    "advanced_troubleshooting_log_level_title": "Loggnivå",
     "advanced_troubleshooting_mode_description": "Diagnostiske verktøy og tilleggskontroller for feilsøking og utviklingsformål",
     "advanced_troubleshooting_mode_title": "Feilsøkingsverktøy",
     "advanced_update_ssh_key_button": "Oppdater SSH-nøkkel",

@@ -28,6 +28,7 @@ export default function SettingsAdvancedRoute() {
   const [sshKey, setSSHKey] = useState<string>("");
   const { setDeveloperMode } = useSettingsStore();
   const [devChannel, setDevChannel] = useState(false);
+  const [defaultLogLevel, setDefaultLogLevel] = useState<string>("WARN");
   const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
   const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);
   const [localLoopbackOnly, setLocalLoopbackOnly] = useState(false);
@@ -41,35 +42,40 @@ export default function SettingsAdvancedRoute() {
   const settings = useSettingsStore();
 
   useEffect(() => {
-    send("getDevModeState", {}, (resp: JsonRpcResponse) => {
+    void send("getDevModeState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const result = resp.result as { enabled: boolean };
       setDeveloperMode(result.enabled);
     });
 
-    send("getSSHKeyState", {}, (resp: JsonRpcResponse) => {
+    void send("getSSHKeyState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setSSHKey(resp.result as string);
     });
 
-    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
+    void send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
 
-    send("getDevChannelState", {}, (resp: JsonRpcResponse) => {
+    void send("getDevChannelState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setDevChannel(resp.result as boolean);
     });
 
-    send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
+    void send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setLocalLoopbackOnly(resp.result as boolean);
+    });
+
+    void send("getDefaultLogLevel", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setDefaultLogLevel(resp.result as string);
     });
   }, [send, setDeveloperMode]);
 
   const getUsbEmulationState = useCallback(() => {
-    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
+    void send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
@@ -77,7 +83,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleUsbEmulationToggle = useCallback(
     (enabled: boolean) => {
-      send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
+      void send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             enabled
@@ -98,7 +104,7 @@ export default function SettingsAdvancedRoute() {
   );
 
   const handleFactoryReset = useCallback(() => {
-    send("factoryReset", {}, (resp: JsonRpcResponse) => {
+    void send("factoryReset", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.advanced_factory_reset_error({ error: resp.error.data || m.unknown_error() }),
@@ -110,7 +116,7 @@ export default function SettingsAdvancedRoute() {
   }, [send]);
 
   const handleUpdateSSHKey = useCallback(() => {
-    send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
+    void send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.advanced_error_update_ssh_key({ error: resp.error.data || m.unknown_error() }),
@@ -123,7 +129,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleDevModeChange = useCallback(
     (developerMode: boolean) => {
-      send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
+      void send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             m.advanced_error_set_dev_mode({ error: resp.error.data || m.unknown_error() }),
@@ -138,7 +144,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleDevChannelChange = useCallback(
     (enabled: boolean) => {
-      send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
+      void send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             m.advanced_error_set_dev_channel({ error: resp.error.data || m.unknown_error() }),
@@ -153,7 +159,7 @@ export default function SettingsAdvancedRoute() {
 
   const applyLoopbackOnlyMode = useCallback(
     (enabled: boolean) => {
-      send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
+      void send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             enabled
@@ -455,6 +461,35 @@ export default function SettingsAdvancedRoute() {
 
         {settings.debugMode && (
           <NestedSettingsGroup>
+            <SettingsItem
+              title={m.advanced_troubleshooting_log_level_title()}
+              description={m.advanced_troubleshooting_log_level_description()}
+            >
+              <SelectMenuBasic
+                size="SM"
+                value={defaultLogLevel}
+                options={[
+                  { label: "Error", value: "ERROR" },
+                  { label: "Warning", value: "WARN" },
+                  { label: "Info", value: "INFO" },
+                  { label: "Debug", value: "DEBUG" },
+                  { label: "Trace", value: "TRACE" },
+                ]}
+                onChange={e => {
+                  const level = e.target.value;
+                  void send("setDefaultLogLevel", { level }, (resp: JsonRpcResponse) => {
+                    if ("error" in resp) {
+                      notifications.error(
+                        `Failed to set log level: ${resp.error.data || m.unknown_error()}`,
+                      );
+                      return;
+                    }
+                    setDefaultLogLevel(level);
+                  });
+                }}
+              />
+            </SettingsItem>
+
             <SettingsItem
               title={m.advanced_usb_emulation_title()}
               description={m.advanced_usb_emulation_description()}

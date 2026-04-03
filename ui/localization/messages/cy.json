@@ -107,6 +107,8 @@
     "advanced_success_loopback_enabled": "Modd loopback yn unig wedi'i alluogi. Ailgychwynnwch eich dyfais i'w gymhwyso.",
     "advanced_success_update_ssh_key": "Allwedd SSH wedi'i diweddaru'n llwyddiannus",
     "advanced_title": "Uwch",
+    "advanced_troubleshooting_log_level_description": "Gosodwch lefel manylder logiau'r system. Mae lefelau uwch yn cynhyrchu mwy o ddata log a gallant effeithio ar berfformiad",
+    "advanced_troubleshooting_log_level_title": "Lefel log",
     "advanced_troubleshooting_mode_description": "Offer diagnostig a rheolaethau ychwanegol ar gyfer datrys problemau a dibenion datblygu",
     "advanced_troubleshooting_mode_title": "Modd Datrys Problemau",
     "advanced_update_ssh_key_button": "Diweddaru Allwedd SSH",

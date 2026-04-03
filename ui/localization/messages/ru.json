@@ -112,6 +112,8 @@
     "advanced_success_reset_config": "Конфигурация успешно сброшена по умолчанию",
     "advanced_success_update_ssh_key": "SSH-ключ успешно обновлён",
     "advanced_title": "Дополнительно",
+    "advanced_troubleshooting_log_level_description": "Задайте уровень детализации системных журналов. Более высокие уровни увеличивают объём данных и могут повлиять на производительность",
+    "advanced_troubleshooting_log_level_title": "Уровень журналирования",
     "advanced_troubleshooting_mode_description": "Диагностические инструменты и дополнительные элементы управления для устранения неполадок и разработки",
     "advanced_troubleshooting_mode_title": "Режим устранения неполадок",
     "advanced_update_ssh_key_button": "Обновить SSH-ключ",

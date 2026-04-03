@@ -112,6 +112,8 @@
     "advanced_success_reset_config": "設定已成功重設為預設值",
     "advanced_success_update_ssh_key": "SSH 金鑰更新成功",
     "advanced_title": "進階",
+    "advanced_troubleshooting_log_level_description": "設定系統日誌的詳細程度。較高的級別會產生更多日誌輸出，可能影響效能",
+    "advanced_troubleshooting_log_level_title": "日誌級別",
     "advanced_troubleshooting_mode_description": "用於故障排除和開發目的的診斷工具及額外控制項",
     "advanced_troubleshooting_mode_title": "故障排除模式",
     "advanced_update_ssh_key_button": "更新 SSH 金鑰",

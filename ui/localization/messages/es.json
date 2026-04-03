@@ -112,6 +112,8 @@
     "advanced_success_reset_config": "La configuración se restableció a los valores predeterminados correctamente",
     "advanced_success_update_ssh_key": "Clave SSH actualizada exitosamente",
     "advanced_title": "Avanzado",
+    "advanced_troubleshooting_log_level_description": "Configure el nivel de detalle de los registros del sistema. Los niveles más altos generan más datos y pueden afectar el rendimiento",
+    "advanced_troubleshooting_log_level_title": "Nivel de registro",
     "advanced_troubleshooting_mode_description": "Herramientas de diagnóstico y controles adicionales para resolución de problemas y fines de desarrollo",
     "advanced_troubleshooting_mode_title": "Modo de solución de problemas",
     "advanced_update_ssh_key_button": "Actualizar clave SSH",
