@@ -329,7 +329,7 @@ export default function SettingsAdvancedRoute() {
                 />
                 <p className="text-xs text-slate-600 dark:text-slate-400">
                   {m.advanced_ssh_default_user()}
-                  <strong>root</strong>.
+                  <strong> root</strong>.
                 </p>
                 {!sshKey?.trim() && (
                   <p className="text-xs text-amber-600 dark:text-amber-500">
