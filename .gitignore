@@ -15,5 +15,3 @@ node_modules
 #internal/native/lib
 
 ui/reports
-
-watch-pr.sh
