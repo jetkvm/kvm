@@ -34,6 +34,52 @@ export interface MacroStep {
 
 export type MacroSteps = MacroStep[];
 
+/**
+ * Converts a text string into a sequence of MacroSteps using the given keyboard layout.
+ * Each character is normalized to NFC, looked up in the layout's chars map,
+ * and converted into the appropriate key presses (including accent keys and dead keys).
+ */
+export function textToMacroSteps(text: string, keyboard: KeyboardLayout, delay: number): MacroStep[] {
+  const steps: MacroStep[] = [];
+
+  for (const char of text) {
+    const normalizedChar = char.normalize("NFC");
+    const keyprops = keyboard.chars[normalizedChar];
+    if (!keyprops) continue;
+
+    const { key, shift, altRight, deadKey, accentKey } = keyprops;
+    if (!key) continue;
+
+    if (accentKey) {
+      const accentModifiers: string[] = [];
+      if (accentKey.shift) accentModifiers.push("ShiftLeft");
+      if (accentKey.altRight) accentModifiers.push("AltRight");
+
+      steps.push({
+        keys: [String(accentKey.key)],
+        modifiers: accentModifiers.length > 0 ? accentModifiers : null,
+        delay,
+      });
+    }
+
+    const charModifiers: string[] = [];
+    if (shift) charModifiers.push("ShiftLeft");
+    if (altRight) charModifiers.push("AltRight");
+
+    steps.push({
+      keys: [String(key)],
+      modifiers: charModifiers.length > 0 ? charModifiers : null,
+      delay,
+    });
+
+    if (deadKey) {
+      steps.push({ keys: ["Space"], modifiers: null, delay });
+    }
+  }
+
+  return steps;
+}
+
 export default function useKeyboard() {
   const { send } = useJsonRpc();
   const { rpcDataChannel } = useRTCStore();
@@ -382,44 +428,7 @@ export default function useKeyboard() {
       const expanded: MacroSteps = [];
       for (const step of steps) {
         if (step.text !== undefined && step.text.length > 0) {
-          // Expand text into individual keystroke steps, reusing paste-text logic
-          for (const char of step.text) {
-            const normalizedChar = char.normalize("NFC");
-            const keyprops = keyboard.chars[normalizedChar];
-            if (!keyprops) continue;
-
-            const { key, shift, altRight, deadKey, accentKey } = keyprops;
-            if (!key) continue;
-
-            // If accented character, send accent key first
-            if (accentKey) {
-              const accentModifiers: string[] = [];
-              if (accentKey.shift) accentModifiers.push("ShiftLeft");
-              if (accentKey.altRight) accentModifiers.push("AltRight");
-
-              expanded.push({
-                keys: [String(accentKey.key)],
-                modifiers: accentModifiers.length > 0 ? accentModifiers : null,
-                delay: step.delay,
-              });
-            }
-
-            // Send the actual key
-            const charModifiers: string[] = [];
-            if (shift) charModifiers.push("ShiftLeft");
-            if (altRight) charModifiers.push("AltRight");
-
-            expanded.push({
-              keys: [String(key)],
-              modifiers: charModifiers.length > 0 ? charModifiers : null,
-              delay: step.delay,
-            });
-
-            // If dead key, send space to emit just the accent
-            if (deadKey) {
-              expanded.push({ keys: ["Space"], modifiers: null, delay: step.delay });
-            }
-          }
+          expanded.push(...textToMacroSteps(step.text, keyboard, step.delay));
         } else {
           expanded.push(step);
         }
