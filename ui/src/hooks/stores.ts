@@ -900,6 +900,7 @@ export interface KeySequenceStep {
   keys: string[];
   modifiers: string[];
   delay: number;
+  text?: string;
 }
 
 export interface KeySequence {
