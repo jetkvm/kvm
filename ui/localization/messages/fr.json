@@ -483,7 +483,7 @@
     "login_password_label": "Mot de passe",
     "login_welcome_back": "Bienvenue à JetKVM",
     "macro_add_step": "Ajouter l'étape {maxed_out}",
-    "macro_at_least_one_step_keys_or_modifiers": "Au moins une étape doit avoir des clés ou des modificateurs",
+    "macro_at_least_one_step_keys_or_modifiers": "Au moins une étape doit avoir des touches, des modificateurs ou du texte",
     "macro_at_least_one_step_required": "Au moins une étape est requise",
     "macro_max_steps_error": "Vous ne pouvez ajouter qu'un maximum de {max} étapes par macro.",
     "macro_max_steps_reached": "( {max} max)",

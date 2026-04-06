@@ -483,7 +483,7 @@
     "login_password_label": "パスワード",
     "login_welcome_back": "JetKVMへようこそ",
     "macro_add_step": "ステップを追加{maxed_out}",
-    "macro_at_least_one_step_keys_or_modifiers": "少なくとも1つのステップにキーまたは修飾キーが必要です",
+    "macro_at_least_one_step_keys_or_modifiers": "少なくとも1つのステップにキー、修飾キー、またはテキストが必要です",
     "macro_at_least_one_step_required": "少なくとも1つのステップが必要です",
     "macro_max_steps_error": "マクロごとに追加できるのは最大 {max} ステップまでです。",
     "macro_max_steps_reached": "(最大 {max})",

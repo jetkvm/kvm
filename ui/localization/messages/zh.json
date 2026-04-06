@@ -483,7 +483,7 @@
     "login_password_label": "密码",
     "login_welcome_back": "欢迎回到 JetKVM",
     "macro_add_step": "添加步骤{maxed_out}",
-    "macro_at_least_one_step_keys_or_modifiers": "至少一个步骤中必须包含按键或修饰键。",
+    "macro_at_least_one_step_keys_or_modifiers": "至少一个步骤中必须包含按键、修饰键或文本。",
     "macro_at_least_one_step_required": "至少需要一个步骤。",
     "macro_max_steps_error": "每个宏最多只能添加 {max} 个步骤。",
     "macro_max_steps_reached": "({max} 为上限)",

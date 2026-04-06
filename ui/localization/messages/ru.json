@@ -483,7 +483,7 @@
     "login_password_label": "Пароль",
     "login_welcome_back": "Добро пожаловать обратно в JetKVM",
     "macro_add_step": "Добавить шаг{maxed_out}",
-    "macro_at_least_one_step_keys_or_modifiers": "По крайней мере один шаг должен содержать клавиши или модификаторы",
+    "macro_at_least_one_step_keys_or_modifiers": "По крайней мере один шаг должен содержать клавиши, модификаторы или текст",
     "macro_at_least_one_step_required": "Требуется хотя бы один шаг",
     "macro_max_steps_error": "Вы можете добавить максимум {max} шагов на макрос.",
     "macro_max_steps_reached": "({max} максимум)",

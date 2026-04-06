@@ -478,7 +478,7 @@
     "login_password_label": "Cyfrinair",
     "login_welcome_back": "Croeso nôl i JetKVM",
     "macro_add_step": "Ychwanegu Cam{maxed_out}",
-    "macro_at_least_one_step_keys_or_modifiers": "Rhaid i o leiaf un cam gynnwys bysellau neu addasyddion",
+    "macro_at_least_one_step_keys_or_modifiers": "Rhaid i o leiaf un cam gynnwys bysellau, addasyddion neu destun",
     "macro_at_least_one_step_required": "Mae angen o leiaf un cam",
     "macro_max_steps_error": "Gallwch ychwanegu uchafswm o {max} cam fesul macro yn unig.",
     "macro_max_steps_reached": "({max} uchafswm)",

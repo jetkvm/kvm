@@ -483,7 +483,7 @@
     "login_password_label": "Contraseña",
     "login_welcome_back": "Bienvenido de nuevo a JetKVM",
     "macro_add_step": "Agregar paso {maxed_out}",
-    "macro_at_least_one_step_keys_or_modifiers": "Al menos un paso debe tener claves o modificadores",
+    "macro_at_least_one_step_keys_or_modifiers": "Al menos un paso debe tener teclas, modificadores o texto",
     "macro_at_least_one_step_required": "Se requiere al menos un paso",
     "macro_max_steps_error": "Solo puede agregar un máximo de {max} pasos por macro.",
     "macro_max_steps_reached": "( {max} máx.)",
