@@ -1095,6 +1095,8 @@ var validLogLevels = map[string]bool{
 	"ERROR": true,
 }
 
+const testLogProbeMessage = "JSON-RPC test log probe"
+
 func rpcGetDefaultLogLevel() (string, error) {
 	return config.DefaultLogLevel, nil
 }
@@ -1114,6 +1116,29 @@ func rpcSetDefaultLogLevel(level string) error {
 	}
 
 	logging.GetRootLogger().UpdateLogLevel(level)
+
+	return nil
+}
+
+func rpcEmitTestLog(level string) error {
+	if !validLogLevels[level] {
+		return fmt.Errorf("invalid log level: %s", level)
+	}
+
+	testLogger := logging.GetSubsystemLogger("testlog")
+
+	switch level {
+	case "TRACE":
+		testLogger.Trace().Msg(testLogProbeMessage)
+	case "DEBUG":
+		testLogger.Debug().Msg(testLogProbeMessage)
+	case "INFO":
+		testLogger.Info().Msg(testLogProbeMessage)
+	case "WARN":
+		testLogger.Warn().Msg(testLogProbeMessage)
+	case "ERROR":
+		testLogger.Error().Msg(testLogProbeMessage)
+	}
 
 	return nil
 }
@@ -1315,6 +1340,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setLocalLoopbackOnly":       {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 	"getDefaultLogLevel":         {Func: rpcGetDefaultLogLevel},
 	"setDefaultLogLevel":         {Func: rpcSetDefaultLogLevel, Params: []string{"level"}},
+	"emitTestLog":                {Func: rpcEmitTestLog, Params: []string{"level"}},
 	"getPublicIPAddresses":       {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses":     {Func: rpcCheckPublicIPAddresses},
 	"getTailscaleStatus":         {Func: rpcGetTailscaleStatus},
