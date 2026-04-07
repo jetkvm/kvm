@@ -469,22 +469,24 @@ export default function SettingsAdvancedRoute() {
                 size="SM"
                 value={defaultLogLevel}
                 options={[
-                  { label: "Error", value: "ERROR" },
-                  { label: "Warning", value: "WARN" },
-                  { label: "Info", value: "INFO" },
-                  { label: "Debug", value: "DEBUG" },
-                  { label: "Trace", value: "TRACE" },
+                  { label: m.advanced_log_level_error(), value: "ERROR" },
+                  { label: m.advanced_log_level_warning(), value: "WARN" },
+                  { label: m.advanced_log_level_info(), value: "INFO" },
+                  { label: m.advanced_log_level_debug(), value: "DEBUG" },
+                  { label: m.advanced_log_level_trace(), value: "TRACE" },
                 ]}
                 onChange={e => {
                   const level = e.target.value;
+                  const previousLevel = defaultLogLevel;
+                  setDefaultLogLevel(level);
                   send("setDefaultLogLevel", { level }, (resp: JsonRpcResponse) => {
                     if ("error" in resp) {
+                      setDefaultLogLevel(previousLevel);
                       notifications.error(
-                        `Failed to set log level: ${resp.error.data || m.unknown_error()}`,
+                        m.advanced_error_set_log_level({ error: resp.error.data || m.unknown_error() }),
                       );
                       return;
                     }
-                    setDefaultLogLevel(level);
                   });
                 }}
               />
