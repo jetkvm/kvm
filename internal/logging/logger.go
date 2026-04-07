@@ -188,13 +188,12 @@ func (l *Logger) UpdateLogLevel(configDefaultLogLevel string) {
 
 	if configDefaultLogLevel != "" {
 		if logLevel, ok := zerologLevels[configDefaultLogLevel]; ok {
+			if l.defaultLogLevelFromConfig != logLevel {
+				needUpdate = true
+			}
 			l.defaultLogLevelFromConfig = logLevel
 		} else {
 			l.l.Warn().Str("logLevel", configDefaultLogLevel).Msg("invalid defaultLogLevel from config, using ERROR")
-		}
-
-		if l.defaultLogLevelFromConfig != l.defaultLogLevel {
-			needUpdate = true
 		}
 	}
 
