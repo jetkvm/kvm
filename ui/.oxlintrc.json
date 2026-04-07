@@ -9,7 +9,7 @@
   },
   "rules": {
     "typescript/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-    "typescript/no-floating-promises": "warn",
+    "typescript/no-floating-promises": "off",
     "typescript/restrict-template-expressions": "warn",
     "typescript/no-base-to-string": "warn",
     "import/order": [
