@@ -92,7 +92,8 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": "oxlint --fix --deny-warnings",
-    "*.{ts,tsx,js,jsx,json,css,md}": "oxfmt"
+    "*.{ts,tsx,js,jsx,json,css,md}": "oxfmt",
+    "localization/messages/*.json": "npm run i18n:resort"
   },
   "engines": {
     "node": "^22.21.1"

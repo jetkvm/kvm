@@ -15,3 +15,6 @@ node_modules
 #internal/native/lib
 
 ui/reports
+
+# compiled remote-agent test binary
+e2e/remote-agent/remote-agent
