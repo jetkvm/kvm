@@ -42,40 +42,40 @@ export default function SettingsAdvancedRoute() {
   const settings = useSettingsStore();
 
   useEffect(() => {
-    void send("getDevModeState", {}, (resp: JsonRpcResponse) => {
+    send("getDevModeState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const result = resp.result as { enabled: boolean };
       setDeveloperMode(result.enabled);
     });
 
-    void send("getSSHKeyState", {}, (resp: JsonRpcResponse) => {
+    send("getSSHKeyState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setSSHKey(resp.result as string);
     });
 
-    void send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
+    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
 
-    void send("getDevChannelState", {}, (resp: JsonRpcResponse) => {
+    send("getDevChannelState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setDevChannel(resp.result as boolean);
     });
 
-    void send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
+    send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setLocalLoopbackOnly(resp.result as boolean);
     });
 
-    void send("getDefaultLogLevel", {}, (resp: JsonRpcResponse) => {
+    send("getDefaultLogLevel", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setDefaultLogLevel(resp.result as string);
     });
   }, [send, setDeveloperMode]);
 
   const getUsbEmulationState = useCallback(() => {
-    void send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
+    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
@@ -83,7 +83,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleUsbEmulationToggle = useCallback(
     (enabled: boolean) => {
-      void send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
+      send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             enabled
@@ -104,7 +104,7 @@ export default function SettingsAdvancedRoute() {
   );
 
   const handleFactoryReset = useCallback(() => {
-    void send("factoryReset", {}, (resp: JsonRpcResponse) => {
+    send("factoryReset", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.advanced_factory_reset_error({ error: resp.error.data || m.unknown_error() }),
@@ -116,7 +116,7 @@ export default function SettingsAdvancedRoute() {
   }, [send]);
 
   const handleUpdateSSHKey = useCallback(() => {
-    void send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
+    send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.advanced_error_update_ssh_key({ error: resp.error.data || m.unknown_error() }),
@@ -129,7 +129,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleDevModeChange = useCallback(
     (developerMode: boolean) => {
-      void send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
+      send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             m.advanced_error_set_dev_mode({ error: resp.error.data || m.unknown_error() }),
@@ -144,7 +144,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleDevChannelChange = useCallback(
     (enabled: boolean) => {
-      void send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
+      send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             m.advanced_error_set_dev_channel({ error: resp.error.data || m.unknown_error() }),
@@ -159,7 +159,7 @@ export default function SettingsAdvancedRoute() {
 
   const applyLoopbackOnlyMode = useCallback(
     (enabled: boolean) => {
-      void send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
+      send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             enabled
@@ -477,7 +477,7 @@ export default function SettingsAdvancedRoute() {
                 ]}
                 onChange={e => {
                   const level = e.target.value;
-                  void send("setDefaultLogLevel", { level }, (resp: JsonRpcResponse) => {
+                  send("setDefaultLogLevel", { level }, (resp: JsonRpcResponse) => {
                     if ("error" in resp) {
                       notifications.error(
                         `Failed to set log level: ${resp.error.data || m.unknown_error()}`,
