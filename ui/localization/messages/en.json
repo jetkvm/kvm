@@ -118,7 +118,7 @@
     "advanced_success_reset_config": "Configuration reset to default successfully",
     "advanced_success_update_ssh_key": "SSH key updated successfully",
     "advanced_title": "Advanced",
-    "advanced_troubleshooting_log_level_description": "Set the verbosity of system logs. Higher verbosity levels produce more log output and may affect performance",
+    "advanced_troubleshooting_log_level_description": "Adjust log detail for diagnostics. Higher levels may impact performance",
     "advanced_troubleshooting_log_level_title": "Log Level",
     "advanced_troubleshooting_mode_description": "Diagnostic tools and additional controls for troubleshooting and development purposes",
     "advanced_troubleshooting_mode_title": "Troubleshooting Mode",

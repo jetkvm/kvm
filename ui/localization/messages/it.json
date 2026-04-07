@@ -118,7 +118,7 @@
     "advanced_success_reset_config": "Configurazione ripristinata ai valori predefiniti con successo",
     "advanced_success_update_ssh_key": "Chiave SSH aggiornata correttamente",
     "advanced_title": "Avanzato",
-    "advanced_troubleshooting_log_level_description": "Imposta il livello di dettaglio dei log di sistema. Livelli più alti producono più dati e possono influire sulle prestazioni",
+    "advanced_troubleshooting_log_level_description": "Regola il dettaglio dei log per la diagnostica. Livelli più alti possono influire sulle prestazioni",
     "advanced_troubleshooting_log_level_title": "Livello di log",
     "advanced_troubleshooting_mode_description": "Strumenti diagnostici e controlli aggiuntivi per la risoluzione dei problemi e lo sviluppo",
     "advanced_troubleshooting_mode_title": "Modalità di risoluzione dei problemi",

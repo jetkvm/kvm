@@ -118,7 +118,7 @@
     "advanced_success_reset_config": "Konfiguration erfolgreich auf Standard zurückgesetzt",
     "advanced_success_update_ssh_key": "SSH-Schlüssel erfolgreich aktualisiert",
     "advanced_title": "Erweitert",
-    "advanced_troubleshooting_log_level_description": "Legen Sie die Ausführlichkeit der Systemprotokolle fest. Höhere Stufen erzeugen mehr Protokollausgabe und können die Leistung beeinträchtigen",
+    "advanced_troubleshooting_log_level_description": "Protokolldetails für die Diagnose anpassen. Höhere Stufen können die Leistung beeinträchtigen",
     "advanced_troubleshooting_log_level_title": "Protokollebene",
     "advanced_troubleshooting_mode_description": "Diagnosetools und zusätzliche Steuerelemente für Fehlerbehebungs- und Entwicklungszwecke",
     "advanced_troubleshooting_mode_title": "Fehlerbehebungsmodus",

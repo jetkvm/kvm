@@ -118,7 +118,7 @@
     "advanced_success_reset_config": "配置已成功恢复为默认设置。",
     "advanced_success_update_ssh_key": "SSH 密钥更新成功。",
     "advanced_title": "高级设置",
-    "advanced_troubleshooting_log_level_description": "设置系统日志的详细程度。级别越高，日志输出越多，可能影响性能",
+    "advanced_troubleshooting_log_level_description": "调整日志详细程度以便诊断。较高级别可能影响性能",
     "advanced_troubleshooting_log_level_title": "日志级别",
     "advanced_troubleshooting_mode_description": "用于故障排查和开发的诊断工具及额外控制选项。",
     "advanced_troubleshooting_mode_title": "故障排查模式",

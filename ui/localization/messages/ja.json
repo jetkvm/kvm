@@ -118,7 +118,7 @@
     "advanced_success_reset_config": "設定が正常にデフォルトにリセットされました",
     "advanced_success_update_ssh_key": "SSHキーが正常に更新されました",
     "advanced_title": "詳細設定",
-    "advanced_troubleshooting_log_level_description": "システムログの詳細レベルを設定します。レベルが高いほどログ出力が増加し、パフォーマンスに影響する場合があります",
+    "advanced_troubleshooting_log_level_description": "診断用にログの詳細度を調整します。レベルが高いほどパフォーマンスに影響する場合があります",
     "advanced_troubleshooting_log_level_title": "ログレベル",
     "advanced_troubleshooting_mode_description": "トラブルシューティングおよび開発目的の診断ツールと追加コントロール",
     "advanced_troubleshooting_mode_title": "トラブルシューティングモード",
