@@ -732,7 +732,7 @@ export async function restartAppViaSSH(): Promise<void> {
   await sshExec("killall jetkvm_app", true);
   await new Promise(r => setTimeout(r, 500));
   await sshExec(
-    "setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib /userdata/jetkvm/bin/jetkvm_app > /userdata/jetkvm/last.log 2>&1 &",
+    "setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib /userdata/jetkvm/bin/jetkvm_app > /dev/null 2>&1 &",
     true,
   );
   await new Promise(r => setTimeout(r, 1000));

@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type Logger struct {
@@ -24,6 +26,9 @@ type Logger struct {
 
 const (
 	defaultLogLevel = zerolog.ErrorLevel
+	AppLogPath      = "/userdata/jetkvm/app.log"
+	appLogMaxSizeMB = 50
+	appLogBackups   = 1
 )
 
 type logOutput struct {
@@ -44,6 +49,22 @@ func (w *logOutput) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func newDefaultLogOutput() io.Writer {
+	writers := []io.Writer{consoleLogOutput, fileLogOutput}
+
+	dir := filepath.Dir(AppLogPath)
+	if _, err := os.Stat(dir); err == nil {
+		writers = append(writers, &lumberjack.Logger{
+			Filename:   AppLogPath,
+			MaxSize:    appLogMaxSizeMB,
+			MaxBackups: appLogBackups,
+			Compress:   false,
+		})
+	}
+
+	return zerolog.MultiLevelWriter(writers...)
+}
+
 var (
 	consoleLogOutput io.Writer = zerolog.ConsoleWriter{
 		Out:           os.Stdout,
@@ -61,7 +82,7 @@ var (
 		},
 	}
 	fileLogOutput    io.Writer = &logOutput{mu: &sync.Mutex{}}
-	defaultLogOutput           = zerolog.MultiLevelWriter(consoleLogOutput, fileLogOutput)
+	defaultLogOutput           = newDefaultLogOutput()
 
 	zerologLevels = map[string]zerolog.Level{
 		"DISABLE": zerolog.Disabled,

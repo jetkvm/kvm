@@ -20,7 +20,7 @@ export default async function globalTeardown() {
     fs.mkdirSync(logDir, { recursive: true });
 
     const logs: Record<string, string> = {
-      "device-last.log": "cat /userdata/jetkvm/last.log",
+      "device-app.log": "cat /userdata/jetkvm/app.log",
       "device-config.json": "cat /userdata/kvm_config.json",
       "device-dmesg.txt": "dmesg | tail -200",
     };
