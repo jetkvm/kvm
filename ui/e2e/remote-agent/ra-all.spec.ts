@@ -2389,8 +2389,12 @@ test.describe("Remote Host Agent", () => {
     await new Promise(r => setTimeout(r, 10000));
     expect(await agent!.health(), "Host should be asleep after 10s").toBe(false);
 
-    // Wake via mouse movement
-    await sendAbsMouseMove(sharedPage, 16384, 16384);
+    // Wake via relative mouse activity. This exercises the boot-style mouse HID
+    // interface, which is typically a more reliable suspend wake source than
+    // the absolute mouse reports used during normal pointer sync.
+    await callJsonRpc(sharedPage, "relMouseReport", { dx: 8, dy: 0, buttons: 0 });
+    await callJsonRpc(sharedPage, "relMouseReport", { dx: 0, dy: 0, buttons: 1 });
+    await callJsonRpc(sharedPage, "relMouseReport", { dx: 0, dy: 0, buttons: 0 });
 
     const wakeDeadline = Date.now() + 30000;
     let hostUp = false;
@@ -2400,11 +2404,13 @@ test.describe("Remote Host Agent", () => {
         break;
       }
       try {
-        await sendAbsMouseMove(
-          sharedPage,
-          100 + Math.random() * 32000,
-          100 + Math.random() * 32000,
-        );
+        await callJsonRpc(sharedPage, "relMouseReport", {
+          dx: Math.random() > 0.5 ? 12 : -12,
+          dy: Math.random() > 0.5 ? 6 : -6,
+          buttons: 0,
+        });
+        await callJsonRpc(sharedPage, "relMouseReport", { dx: 0, dy: 0, buttons: 1 });
+        await callJsonRpc(sharedPage, "relMouseReport", { dx: 0, dy: 0, buttons: 0 });
       } catch {
         /* best effort */
       }
