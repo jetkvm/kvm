@@ -106,6 +106,8 @@ tail -f /userdata/jetkvm/last.log
 ├── internal/                 # Internal Go packages
 │   ├── confparser/           # Configuration file implementation
 │   ├── hidrpc/               # HIDRPC implementation for HID devices (keyboard, mouse, etc.)
+│   ├── keyboard/             # KLE keyboard layout parser, built-in layouts, RPC handlers
+│   │   └── layouts/          # Built-in KLE JSON files (ANSI/ISO/JIS)
 │   ├── logging/              # Logging implementation
 │   ├── mdns/                 # mDNS implementation
 │   ├── native/               # CGO / Native code glue layer (on-device hardware)
@@ -134,7 +136,6 @@ tail -f /userdata/jetkvm/last.log
         ├── assets/           # UI in-page images
         ├── components/       # UI components
         ├── hooks/            # Hooks (stores, RPC handling, virtual devices)
-        ├── keyboardLayouts/  # Keyboard layout definitions
         ├── paraglide/        #  (localization compiled messages output)
         ├── providers/        # Feature flags
         └── routes/           # Pages (login, settings, etc.)
@@ -589,6 +590,39 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
 - Run `npm run i18n:audit` to do all the above checks.
 - Using [inlang CLI](https://inlang.com/m/2qj2w8pu/app-inlang-cli) to support the npm commands.
 - You can install the [Sherlock VS Code extension](https://marketplace.visualstudio.com/items?itemName=inlang.vs-code-extension) in your devcontainer.
+
+### Keyboard Layouts
+
+The virtual keyboard and paste-text system are driven by [KLE](https://keyboard-layout-editor.com) JSON files parsed on the Go backend. Built-in layouts live in `internal/keyboard/layouts/` and are embedded into the binary via `go:embed`.
+
+#### How it works
+
+1. Each `.kle.json` file describes a physical keyboard layout (key positions, sizes, legends per layer)
+2. The Go parser (`internal/keyboard/keyboard.go`) processes KLE JSON into a `KeyboardLayout` struct:
+   - Infers USB HID scancodes from key positions
+   - Builds a `charMap` mapping characters to scancode + modifier combinations
+   - Auto-generates uppercase shift legends for single-letter keys (e.g. `q` → `Q`, `ö` → `Ö`)
+   - Builds dead key compositions automatically using Unicode NFC normalization (e.g. `^` + `a` → `â`)
+3. The frontend receives the processed layout via JSON-RPC and uses it for rendering, paste, and macro display
+
+#### Adding a new built-in layout
+
+1. Create a KLE JSON file at `internal/keyboard/layouts/<locale>.kle.json` (e.g. `ko_KR.kle.json`)
+   - Use [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com) to design the layout, then export the JSON
+   - Key legends use `\n` to separate layers: `"normal\nshift\naltgr\nshift+altgr"`
+   - Use Unicode symbols for special keys: `⌫` (Backspace), `↵` (Enter), `⇥` (Tab), `⇪` (Caps Lock), `↑↓←→` (arrows)
+2. Add the hyphenated ID to the `builtinLayouts` map in `internal/keyboard/handler.go` (e.g. `"ko-KR": {}`)
+   - IDs use hyphens (`ko-KR`) to match the format stored in device configs
+   - The file lookup converts hyphens to underscores automatically (`ko-KR` → `ko_KR.kle.json`)
+3. Run the tests to validate: `go test ./internal/keyboard/...`
+   - `TestAllBuiltinLayoutsParse` verifies every registered layout loads and parses
+   - `TestAllLayoutFilesRegistered` verifies every file in `layouts/` is registered
+
+#### User-uploaded layouts
+
+Users can also upload custom KLE JSON files via the settings UI or the HTTP endpoint (`POST /keyboard/upload`). These are stored on the device at `/userdata/kvm_layouts/` and appear alongside built-in layouts in the settings dropdown.
+
+For more details on the KLE format and transport schema, see [docs/keyboard/DESIGN.md](docs/keyboard/DESIGN.md) and [docs/keyboard/TRANSPORT.md](docs/keyboard/TRANSPORT.md).
 
 ---
 

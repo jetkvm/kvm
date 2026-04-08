@@ -1,0 +1,428 @@
+/*
+ * All styles for the virtual keyboard component.
+ *
+ * Design principles:
+ *   - Layer switching is PURE CSS via data-layer attribute on .vkb
+ *   - Entire board scales by changing --u (one keyboard unit)
+ *   - Key shapes (ISO enter, stepped caps) use clip-path or named classes
+ *   - KLE per-key colors applied via --key-color CSS variable set inline
+ *
+ * All rules are scoped under .vkb-wrapper or .vkb to avoid collisions
+ * with other components (e.g. .key, .legend are generic class names).
+ *
+ * CSS custom properties used by the component:
+ *   --u          1 keyboard unit in px/rem (set on .vkb, default 3.5rem)
+ *   --gap        gap between keys (default 0.2rem)
+ *   --board-w    total board width in units (set inline from KeyboardLayout)
+ *   --board-h    total board height in units (set inline from KeyboardLayout)
+ *   --kx         key x position in units (set inline per key)
+ *   --ky         key y position in units (set inline per key)
+ *   --kh         key height in units (set inline, default 1)
+ *   --key-color  keycap background color (from KLE 'c' property or default)
+ *   --key-w      for non-standard widths with class 'w-custom'
+ */
+
+/* ===========================================================================
+   WRAPPER
+   =========================================================================== */
+
+.vkb-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--vkb-bg, #1a1a1a);
+  border-radius: 0.5rem;
+  user-select: none;
+  container-type: inline-size;
+  width: 100%;
+  min-width: 600px;
+  max-width: 1200px;
+}
+
+/* ===========================================================================
+   BOARD
+   =========================================================================== */
+
+.vkb {
+  /*
+   * --u is 1 keyboard unit, auto-scaled to fill the container width.
+   * 100cqi = full container width. Dividing by --board-w gives the
+   * per-unit size that makes the keyboard exactly fill its container.
+   * Font sizes scale with --u since keys scale with --u.
+   */
+  --u: calc(100cqi / var(--board-w));
+  --pad: 1px; /* visual gap between keys (inset on each side) */
+
+  position: relative;
+  width: 100%;
+  height: calc(var(--board-h) * var(--u));
+}
+
+/* ===========================================================================
+   KEYCAP BASE
+   All .key rules are scoped under .vkb to avoid collisions.
+   =========================================================================== */
+
+.vkb .key {
+  --key-color: #2d2d2d;
+  --key-text-color: #e0e0e0;
+  --key-border: color-mix(in srgb, var(--key-color) 60%, black);
+  --key-shadow: color-mix(in srgb, var(--key-color) 40%, black);
+
+  position: absolute;
+  left: calc(var(--kx) * var(--u) + var(--pad));
+  top: calc(var(--ky) * var(--u) + var(--pad));
+  width: calc(1 * var(--u) - var(--pad) * 2);
+  height: calc(var(--kh, 1) * var(--u) - var(--pad) * 2);
+
+  background: var(--key-color);
+  border-radius: 0.25rem;
+
+  /* Physical key depth effect */
+  border-bottom: 3px solid var(--key-border);
+  box-shadow: 0 2px 4px var(--key-shadow);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  color: var(--key-text-color);
+  font-family: inherit;
+  font-size: calc(var(--u) * 0.27);
+  line-height: 1;
+  overflow: hidden;
+
+  transition:
+    transform 60ms ease,
+    border-bottom-width 60ms ease,
+    box-shadow 60ms ease;
+}
+
+.vkb .key:hover {
+  background: color-mix(in srgb, var(--key-color) 85%, white);
+}
+
+/* Press animation */
+.vkb .key:active,
+.vkb .key.pressed {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+  box-shadow: 0 0px 2px var(--key-shadow);
+  background: color-mix(in srgb, var(--key-color) 80%, #4a9eff);
+}
+
+/* ===========================================================================
+   KEYCAP WIDTH CLASSES
+   =========================================================================== */
+
+/* Generated from standard layout widths. Subtract padding for visual gap. */
+.vkb .key.w-125 {
+  width: calc(1.25 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-150 {
+  width: calc(1.50 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-175 {
+  width: calc(1.75 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-200 {
+  width: calc(2.00 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-225 {
+  width: calc(2.25 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-250 {
+  width: calc(2.50 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-275 {
+  width: calc(2.75 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-300 {
+  width: calc(3.00 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-350{
+  width: calc(3.50 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-400 {
+  width: calc(4.00 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-600 {
+  width: calc(6.00 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-625 {
+  width: calc(6.25 * var(--u) - var(--pad) * 2);
+}
+.vkb .key.w-700 {
+  width: calc(7.00 * var(--u) - var(--pad) * 2);
+}
+
+/* Non-standard width fallback — --key-w set inline by getCustomWidthStyle() */
+.vkb .key.w-custom {
+  width: calc(var(--key-w) * var(--u) - var(--pad) * 2);
+}
+
+/* ===========================================================================
+   KEYCAP SHAPE CLASSES
+   =========================================================================== */
+
+/*
+ * ISO Enter — L-shaped key.
+ * KLE encodes this as two overlapping rectangles:
+ *   rect1: w=1.25, h=2  (the narrow bottom part)
+ *   rect2: x2=-0.25, w2=1.5, h2=1  (the wide top part)
+ *
+ * We approximate the L-shape with clip-path.
+ * The notch cuts out the bottom-right corner.
+ * Exact proportions: top section is 1.5u wide, bottom section is 1.25u wide,
+ * so the notch is 0.25u = (0.25/1.5) = 16.7% of the width.
+ *
+ * clip-path coordinates are percentages of the element's bounding box.
+ */
+.vkb .key.iso-enter {
+  width: calc(1.50 * var(--u) - var(--pad) * 2);
+  height: calc(2.00 * var(--u) - var(--pad) * 2);
+
+  /*
+   * ISO Enter L-shape:
+   * - Top part: full 1.5u width
+   * - Bottom part: 1.25u, right-aligned (notch cuts bottom-left)
+   * - Notch width: (1.5-1.25)/1.5 = 16.7% from left
+   * - 1% inset at the midpoint creates a visible gap with the key below
+   */
+  clip-path: polygon(
+    0%    0%,
+    100%  0%,
+    100%  100%,
+    16.7% 100%,
+    16.7% 46%,
+    0%    46%
+  );
+}
+
+/*
+ * Big-ass Enter — inverted L-shape (wide bottom, narrow top).
+ * KLE encodes: w=1.5 (top), w2=2.25 (bottom), x2=-0.75, y2=1.
+ * Rendered at the wider w2 width. Clip cuts the top-left corner.
+ * Notch: (w2-w)/w2 = (2.25-1.5)/2.25 = 33.3% from left.
+ */
+.vkb .key.bigass-enter {
+  width: calc(2.25 * var(--u) - var(--pad) * 2);
+  height: calc(2.00 * var(--u) - var(--pad) * 2);
+  clip-path: polygon(
+    33.3% 0%,
+    100%  0%,
+    100%  100%,
+    0%    100%,
+    0%    54%,
+    33.3% 54%
+  );
+}
+
+/* ISO/big-ass Enter: in "all" mode, keep legend in the top half (visible area) */
+.vkb[data-layer="all"] .key.iso-enter .legend,
+.vkb[data-layer="all"] .key.bigass-enter .legend {
+  top: 10%;
+  bottom: 50%;
+  left: 0;
+  right: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Stepped Caps Lock */
+.vkb .key.stepped-caps {
+  /* Visual step: slightly lighter right side to indicate stepped profile */
+  background-image: linear-gradient(
+    90deg,
+    var(--key-color) 75%,
+    color-mix(in srgb, var(--key-color) 85%, black) 75%
+  );
+}
+
+/* Homing keys (F, J, numpad 5) — subtle bar indicator like the physical tactile bump */
+.vkb .key.homing::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 35%;
+  height: 1.5px;
+  background: color-mix(in srgb, var(--key-text-color) 40%, transparent);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/*
+ * Lock key LED indicators — driven by classes on .vkb container.
+ * CapsLock=57 (0x39), ScrollLock=71 (0x47), NumLock=83 (0x53)
+ */
+.vkb.caps-lock-on   .key[data-scancode="57"]::before,
+.vkb.scroll-lock-on .key[data-scancode="71"]::before,
+.vkb.num-lock-on    .key[data-scancode="83"]::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 4px rgba(74, 222, 128, 0.6);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Decal — a label on the keyboard housing, not a physical keycap.
+   Always shows all legends in quadrant positions regardless of active layer. */
+.vkb .key.decal {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: default;
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.25);
+  font-size: calc(var(--u) * 0.17);
+}
+
+.vkb .key.decal .legend {
+  display: flex;
+  align-items: flex-end;
+  font-size: calc(var(--u) * 0.15);
+}
+
+.vkb .key.decal .legend.normal {
+  bottom: 3px;
+  left: 4px;
+}
+.vkb .key.decal .legend.shift {
+  top: 3px;
+  left: 4px;
+  align-items: flex-start;
+}
+.vkb .key.decal .legend.altgr {
+  bottom: 3px;
+  right: 4px;
+}
+.vkb .key.decal .legend.shift-altgr {
+  top: 3px;
+  right: 4px;
+  align-items: flex-start;
+}
+
+/* ===========================================================================
+   LEGENDS — base state (all hidden)
+   =========================================================================== */
+
+.vkb .key .legend {
+  position: absolute;
+  display: none; /* hidden by default; shown by data-layer selectors below */
+  pointer-events: none;
+  font-size: calc(var(--u) * 0.25);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===========================================================================
+   LEGEND VISIBILITY — single layer mode
+   Legend is centered within the key when only one layer is active.
+   =========================================================================== */
+
+.vkb[data-layer="normal"] .legend.normal,
+.vkb[data-layer="shift"] .legend.shift,
+.vkb[data-layer="altgr"] .legend.altgr,
+.vkb[data-layer="shift-altgr"] .legend.shift-altgr {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * Fallback: when no legend exists for the active layer, show the normal legend
+ * at reduced opacity to indicate "no change in this layer."
+ */
+.vkb[data-layer="shift"] .key:not(:has(.legend.shift)) .legend.normal,
+.vkb[data-layer="altgr"] .key:not(:has(.legend.altgr)) .legend.normal,
+.vkb[data-layer="shift-altgr"] .key:not(:has(.legend.shift-altgr)) .legend.normal {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+}
+
+/* ===========================================================================
+   LEGEND VISIBILITY — CapsLock
+   When CapsLock is on: letter keys show shift legend, non-letters stay normal.
+   When CapsLock + Shift: letters revert to normal, non-letters show shift.
+   Behavior is consistent across Windows, macOS, and Linux.
+   =========================================================================== */
+
+/* CapsLock on, no shift: letters → shift legend */
+.vkb.caps-lock-on[data-layer="normal"] .key.letter .legend.normal { display: none; }
+.vkb.caps-lock-on[data-layer="normal"] .key.letter .legend.shift {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+/* CapsLock on + Shift: letters → normal legend (Shift cancels CapsLock for letters) */
+.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.shift { display: none; }
+.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.normal {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+}
+
+/* ===========================================================================
+   LEGEND VISIBILITY — "all" preview mode
+   All legends shown simultaneously in quadrant positions.
+   =========================================================================== */
+
+.vkb[data-layer="all"] .legend {
+  display: flex;
+  align-items: flex-end;
+  font-size: calc(var(--u) * 0.19);
+}
+
+/* Quadrant positions */
+.vkb[data-layer="all"] .legend.normal {
+  bottom: 3px;
+  left: 4px;
+}
+.vkb[data-layer="all"] .legend.shift {
+  top: 3px;
+  left: 4px;
+  align-items: flex-start;
+}
+.vkb[data-layer="all"] .legend.altgr {
+  bottom: 3px;
+  right: 4px;
+}
+.vkb[data-layer="all"] .legend.shift-altgr {
+  top: 3px;
+  right: 4px;
+  align-items: flex-start;
+}
+
+/* ===========================================================================
+   DEAD KEY INDICATOR
+   Keys with dead key legends get a small orange dot suffix.
+   Applied via ::after on the visible legend span.
+   =========================================================================== */
+
+.vkb .key.dead .legend::after {
+  content: "●";
+  font-size: 0.5em;
+  vertical-align: super;
+  color: #f6ad55;
+  margin-left: 2px;
+  text-shadow: 0 0 3px rgba(246, 173, 85, 0.6);
+}

@@ -1,0 +1,85 @@
+name: Keyboard Layout
+type: 'Feature'
+description: Submit a new keyboard layout or fix an existing one.
+labels:
+- 'type: keyboard-layout'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing a keyboard layout! The virtual keyboard and paste-text system use [KLE (keyboard-layout-editor.com)](https://keyboard-layout-editor.com) JSON files.
+
+        **How to create a layout:**
+        1. Go to [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com)
+        2. Design your layout (or start from a preset and modify it)
+        3. Copy the JSON from the **Raw data** tab
+        4. Paste it below
+
+        **Before submitting**, validate your layout locally if you can:
+        ```bash
+        go run scripts/validate_layout.go your-layout.kle.json
+        ```
+
+  - type: input
+    id: locale
+    attributes:
+      label: Locale code
+      description: |
+        The ISO locale code for this layout (e.g. `ko-KR`, `tr-TR`, `pt-BR`).
+        Use the format `language-COUNTRY` with a hyphen.
+      placeholder: "e.g. ko-KR"
+    validations:
+      required: true
+
+  - type: input
+    id: layout-name
+    attributes:
+      label: Layout name
+      description: Human-readable name for the layout (e.g. "Korean", "Turkish Q", "Portuguese (Brazil)").
+      placeholder: "e.g. Korean"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layout-type
+    attributes:
+      label: Physical layout type
+      description: What type of physical keyboard does this layout use?
+      options:
+        - ISO 105-key (most European/international keyboards)
+        - ANSI 104-key (US standard)
+        - JIS 109-key (Japanese)
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: kle-json
+    attributes:
+      label: KLE JSON
+      description: |
+        Paste the raw KLE JSON here. You can get this from the **Raw data** tab on keyboard-layout-editor.com.
+        Alternatively, attach a `.json` file to this issue.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: |
+        Any special notes about this layout — dead key behavior, AltGr layer details,
+        regional variants, or differences from standard layouts.
+    validations:
+      required: false
+
+  - type: checkboxes
+    attributes:
+      label: Checklist
+      options:
+        - label: I have verified the layout matches a real physical keyboard for this locale
+          required: true
+        - label: The legends include all layers (normal, shift, and AltGr where applicable)
+          required: true
+        - label: I have tested the layout with `go run scripts/validate_layout.go` (optional but appreciated)

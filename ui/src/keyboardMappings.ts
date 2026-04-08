@@ -235,24 +235,6 @@ export const keys = {
   VolumeUp: 0x80,
 } as Record<string, number>;
 
-export const deadKeys = {
-  Acute: 0x00b4,
-  Breve: 0x02d8,
-  Caron: 0x02c7,
-  Cedilla: 0x00b8,
-  Circumflex: 0x005e, // or 0x02c6?
-  Comma: 0x002c,
-  Dot: 0x00b7,
-  DoubleAcute: 0x02dd,
-  Grave: 0x0060,
-  Kreis: 0x00b0,
-  Ogonek: 0x02db,
-  Ring: 0x02da,
-  Slash: 0x02f8,
-  Tilde: 0x007e,
-  Umlaut: 0x00a8,
-} as Record<string, number>;
-
 export const modifiers = {
   ControlLeft: 0x01,
   ControlRight: 0x10,
@@ -276,14 +258,8 @@ export const hidKeyToModifierMask = {
   0xe7: modifiers.MetaRight,
 } as Record<number, number>;
 
-export const latchingKeys = ["CapsLock", "ScrollLock", "NumLock", "Meta", "Compose", "Kana"];
+/** HID modifier scancodes occupy the 0xE0–0xE7 range */
+export const isModifierScancode = (scancode: number) => scancode >= 0xe0 && scancode <= 0xe7;
 
-export function decodeModifiers(modifier: number) {
-  return {
-    isShiftActive: (modifier & (modifiers.ShiftLeft | modifiers.ShiftRight)) !== 0,
-    isControlActive: (modifier & (modifiers.ControlLeft | modifiers.ControlRight)) !== 0,
-    isAltActive: (modifier & (modifiers.AltLeft | modifiers.AltRight)) !== 0,
-    isMetaActive: (modifier & (modifiers.MetaLeft | modifiers.MetaRight)) !== 0,
-    isAltGrActive: (modifier & modifiers.AltGr) !== 0,
-  };
-}
+/** Modifier key names from the `modifiers` map (excludes the AltGr alias) */
+export const modifierKeyNames = Object.keys(modifiers).filter(n => n !== "AltGr");

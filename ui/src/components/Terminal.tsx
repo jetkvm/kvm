@@ -1,4 +1,3 @@
-import "react-simple-keyboard/build/css/index.css";
 import { ChevronDownIcon, PauseCircleIcon, PlayCircleIcon } from "@heroicons/react/16/solid";
 import { useEffect, useMemo, useCallback, useState } from "react";
 import { useXTerm } from "react-xtermjs";

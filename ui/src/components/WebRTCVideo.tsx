@@ -17,7 +17,7 @@ import {
   PointerLockBar,
 } from "@components/VideoOverlay";
 import OcrOverlay from "@components/OcrOverlay";
-import { keys } from "@/keyboardMappings";
+import { keys, isModifierScancode } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
@@ -339,7 +339,7 @@ export default function WebRTCVideo({
       // event, so we need to clear the keys after a short delay
       // https://bugs.chromium.org/p/chromium/issues/detail?id=28089
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1299553
-      if (e.metaKey && hidKey < 0xe0) {
+      if (e.metaKey && !isModifierScancode(hidKey)) {
         setTimeout(() => {
           console.debug(`Forcing the meta key release of associated key: ${hidKey}`);
           handleKeyPress(hidKey, false);

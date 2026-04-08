@@ -396,6 +396,27 @@ export default function useKeyboard() {
     [rpcHidReady, executeMacroRemote, executeMacroClientSide],
   );
 
+  // executeHidMacro sends pre-built KeyboardMacroStep[] (scancode-based) directly,
+  // bypassing the name→scancode conversion in executeMacro. Used by the paste system
+  // when working with KLE charMap data that already provides scancodes and modifier bytes.
+  const executeHidMacro = useCallback(
+    async (steps: KeyboardMacroStep[]) => {
+      if (rpcHidReady) {
+        sendKeyboardMacroEventHidRpc(steps);
+      } else {
+        // Legacy path: send each step as a full keyboard report
+        const ac = new AbortController();
+        setAbortController(ac);
+        for (const step of steps) {
+          if (ac.signal.aborted) break;
+          await sendKeystrokeLegacy(step.keys, step.modifier, ac);
+          await sleep(step.delay || 20);
+        }
+      }
+    },
+    [rpcHidReady, sendKeyboardMacroEventHidRpc, sendKeystrokeLegacy, setAbortController],
+  );
+
   const cancelExecuteMacro = useCallback(async () => {
     if (abortController.current) {
       abortController.current.abort();
@@ -411,6 +432,7 @@ export default function useKeyboard() {
     handleKeyPress,
     resetKeyboardState,
     executeMacro,
+    executeHidMacro,
     cleanup,
     cancelExecuteMacro,
     pauseKeepAlive,

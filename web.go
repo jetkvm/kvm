@@ -25,6 +25,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/diagnostics"
+	"github.com/jetkvm/kvm/internal/keyboard"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/pion/webrtc/v4"
@@ -219,6 +220,8 @@ func setupRouter() *gin.Engine {
 		protected.POST("/storage/upload", handleUploadHttp)
 
 		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
+
+		protected.POST("/keyboard/upload", keyboard.HandleKeyboardUpload)
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}

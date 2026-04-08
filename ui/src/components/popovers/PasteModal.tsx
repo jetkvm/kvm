@@ -7,8 +7,10 @@ import { cx } from "@/cva.config";
 import { m } from "@localizations/messages.js";
 import { useHidStore, useSettingsStore, useUiStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
-import useKeyboard, { type MacroStep } from "@hooks/useKeyboard";
-import useKeyboardLayout from "@hooks/useKeyboardLayout";
+import useKeyboard from "@hooks/useKeyboard";
+import { KeyboardMacroStep } from "@/hooks/hidRpc";
+import { hidKeyBufferSize } from "@/hooks/stores";
+import type { KeyboardLayout } from "@components/keyboard/types/schema";
 import notifications from "@/notifications";
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
@@ -20,6 +22,12 @@ import { TextAreaWithLabel } from "@components/TextArea";
 const pasteMaxLength = 1073741824;
 const defaultDelay = 20;
 
+const MACRO_RESET: KeyboardMacroStep = {
+  keys: new Array(hidKeyBufferSize).fill(0),
+  modifier: 0,
+  delay: 0,
+};
+
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
   const { isPasteInProgress } = useHidStore();
@@ -28,7 +36,7 @@ export default function PasteModal() {
   const { setDisableVideoFocusTrap } = useUiStore();
 
   const { send } = useJsonRpc();
-  const { executeMacro, cancelExecuteMacro } = useKeyboard();
+  const { executeHidMacro, cancelExecuteMacro } = useKeyboard();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const [delayValue, setDelayValue] = useState(defaultDelay);
@@ -43,15 +51,20 @@ export default function PasteModal() {
   const debugMode = useSettingsStore(state => state.debugMode);
   const delayClassName = useMemo(() => (debugMode ? "" : "hidden"), [debugMode]);
 
-  const { setKeyboardLayout } = useSettingsStore();
-  const { selectedKeyboard } = useKeyboardLayout();
+  // Fetch the KLE layout from the backend
+  const { keyboardLayout } = useSettingsStore();
+  const [kleLayout, setKleLayout] = useState<KeyboardLayout | null>(null);
 
   useEffect(() => {
-    void send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setKeyboardLayout(resp.result as string);
+    if (!keyboardLayout) return;
+    void send("getKeyboardLayoutData", { id: keyboardLayout }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        setKleLayout(null);
+        return;
+      }
+      setKleLayout(resp.result as KeyboardLayout);
     });
-  }, [send, setKeyboardLayout]);
+  }, [send, keyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
     void cancelExecuteMacro();
@@ -61,71 +74,51 @@ export default function PasteModal() {
 
   const updateInvalidChars = useCallback(
     (value: string) => {
+      if (!kleLayout) return;
       const chars = [
         ...new Set(
           [...(new Intl.Segmenter().segment(value) ?? [])]
             .map(x => x.segment.normalize("NFC"))
-            .filter(char => !selectedKeyboard?.chars[char]),
+            .filter(char => !kleLayout.charMap[char]),
         ),
       ];
       setInvalidChars(chars);
     },
-    [selectedKeyboard],
+    [kleLayout],
   );
 
   const onConfirmPaste = useCallback(async () => {
-    if (!selectedKeyboard) return;
+    if (!kleLayout) return;
 
     const text = textValue;
 
     try {
-      const macroSteps: MacroStep[] = [];
+      const macro: KeyboardMacroStep[] = [];
 
       for (const char of text) {
         const normalizedChar = char.normalize("NFC");
-        const keyprops = selectedKeyboard.chars[normalizedChar];
-        if (!keyprops) continue;
+        const combo = kleLayout.charMap[normalizedChar];
+        if (!combo || combo.s === 0) continue;
 
-        const { key, shift, altRight, deadKey, accentKey } = keyprops;
-        if (!key) continue;
-
-        // if this is an accented character, we need to send that accent FIRST
-        if (accentKey) {
-          const accentModifiers: string[] = [];
-          if (accentKey.shift) accentModifiers.push("ShiftLeft");
-          if (accentKey.altRight) accentModifiers.push("AltRight");
-
-          macroSteps.push({
-            keys: [String(accentKey.key)],
-            modifiers: accentModifiers.length > 0 ? accentModifiers : null,
-            delay,
-          });
+        // Dead key prefix: send the dead key first, release, then the base key
+        if (combo.p) {
+          macro.push({ keys: [combo.p.s], modifier: combo.p.m, delay: 20 });
+          macro.push({ ...MACRO_RESET, delay });
         }
 
-        // now send the actual key
-        const modifiers: string[] = [];
-        if (shift) modifiers.push("ShiftLeft");
-        if (altRight) modifiers.push("AltRight");
-
-        macroSteps.push({
-          keys: [String(key)],
-          modifiers: modifiers.length > 0 ? modifiers : null,
-          delay,
-        });
-
-        // if what was requested was a dead key, we need to send an unmodified space to emit
-        // just the accent character
-        if (deadKey) macroSteps.push({ keys: ["Space"], modifiers: null, delay });
+        // Press the key with its modifiers, then release
+        macro.push({ keys: [combo.s], modifier: combo.m, delay: 20 });
+        macro.push({ ...MACRO_RESET, delay });
       }
 
-      if (macroSteps.length > 0) {
-        await executeMacro(macroSteps);
+      if (macro.length > 0) {
+        await executeHidMacro(macro);
       }
     } catch (error) {
       console.error("Failed to paste text:", error);
       notifications.error(m.paste_modal_failed_paste({ error: String(error) }));
     }
-  }, [selectedKeyboard, executeMacro, delay, textValue]);
+  }, [kleLayout, executeHidMacro, delay, textValue]);
 
   useEffect(() => {
     TextAreaRef.current?.focus();
@@ -240,10 +233,15 @@ export default function PasteModal() {
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {m.paste_modal_sending_using_layout({
-                      iso: selectedKeyboard.isoCode,
-                      name: selectedKeyboard.name,
-                    })}
+                    {kleLayout
+                      ? m.paste_modal_sending_using_layout({
+                          iso: kleLayout.id,
+                          name: kleLayout.name,
+                        })
+                      : m.paste_modal_sending_using_layout({
+                          iso: keyboardLayout ?? "",
+                          name: keyboardLayout ?? "",
+                        })}
                   </p>
                 </div>
               </div>
@@ -270,7 +268,7 @@ export default function PasteModal() {
             size="SM"
             theme="primary"
             text={m.paste_modal_confirm_paste()}
-            disabled={isPasteInProgress}
+            disabled={isPasteInProgress || !kleLayout}
             onClick={onConfirmPaste}
             LeadingIcon={LuCornerDownLeft}
           />

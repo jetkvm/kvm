@@ -11,8 +11,10 @@ import {
   LuCommand,
 } from "react-icons/lu";
 
-import { KeySequence, useMacrosStore, generateMacroId } from "@hooks/stores";
-import useKeyboardLayout from "@hooks/useKeyboardLayout";
+import { KeySequence, useMacrosStore, useSettingsStore, generateMacroId } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import type { KeyboardLayout } from "@components/keyboard/types/schema";
+import { buildKeyDisplayMap, modifierDisplayMap } from "@/keyDisplayNames";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
@@ -30,7 +32,20 @@ export default function SettingsMacrosRoute() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [macroToDelete, setMacroToDelete] = useState<KeySequence | null>(null);
-  const { selectedKeyboard } = useKeyboardLayout();
+
+  const { send } = useJsonRpc();
+  const { keyboardLayout } = useSettingsStore();
+  const [kleLayout, setKleLayout] = useState<KeyboardLayout | null>(null);
+
+  useEffect(() => {
+    if (!keyboardLayout) return;
+    void send("getKeyboardLayoutData", { id: keyboardLayout }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setKleLayout(resp.result as KeyboardLayout);
+    });
+  }, [send, keyboardLayout]);
+
+  const keyDisplayMap = useMemo(() => buildKeyDisplayMap(kleLayout), [kleLayout]);
 
   const isMaxMacrosReached = useMemo(() => macros.length >= MAX_TOTAL_MACROS, [macros.length]);
 
@@ -149,6 +164,7 @@ export default function SettingsMacrosRoute() {
                   onClick={() => handleMoveMacro(index, "up", macro.id)}
                   disabled={index === 0 || actionLoadingId === macro.id}
                   LeadingIcon={LuArrowUp}
+                  data-testid={`macro-move-up-${macro.id}`}
                   aria-label={m.macros_aria_move_up({ name: macro.name })}
                 />
                 <Button
@@ -157,6 +173,7 @@ export default function SettingsMacrosRoute() {
                   onClick={() => handleMoveMacro(index, "down", macro.id)}
                   disabled={index === macros.length - 1 || actionLoadingId === macro.id}
                   LeadingIcon={LuArrowDown}
+                  data-testid={`macro-move-down-${macro.id}`}
                   aria-label={m.macros_aria_move_down({ name: macro.name })}
                 />
               </div>
@@ -181,7 +198,7 @@ export default function SettingsMacrosRoute() {
                                   step.modifiers.map((modifier, idx) => (
                                     <Fragment key={`mod-${idx}`}>
                                       <span className="font-medium text-slate-600 dark:text-slate-200">
-                                        {selectedKeyboard.modifierDisplayMap[modifier] || modifier}
+                                        {modifierDisplayMap[modifier] || modifier}
                                       </span>
                                       {idx < step.modifiers.length - 1 && (
                                         <span className="text-slate-400 dark:text-slate-600">
@@ -204,7 +221,7 @@ export default function SettingsMacrosRoute() {
                                   step.keys.map((key, idx) => (
                                     <Fragment key={`key-${idx}`}>
                                       <span className="font-medium text-blue-600 dark:text-blue-400">
-                                        {selectedKeyboard.keyDisplayMap[key] || key}
+                                        {keyDisplayMap[key] || key}
                                       </span>
                                       {idx < step.keys.length - 1 && (
                                         <span className="text-slate-400 dark:text-slate-600">
@@ -243,6 +260,7 @@ export default function SettingsMacrosRoute() {
                     setShowDeleteConfirm(true);
                   }}
                   disabled={actionLoadingId === macro.id}
+                  data-testid={`macro-delete-${macro.id}`}
                   aria-label={m.macros_aria_delete({ name: macro.name })}
                 />
                 <Button
@@ -251,6 +269,7 @@ export default function SettingsMacrosRoute() {
                   LeadingIcon={LuCopy}
                   onClick={() => handleDuplicateMacro(macro)}
                   disabled={actionLoadingId === macro.id}
+                  data-testid={`macro-duplicate-${macro.id}`}
                   aria-label={m.macros_aria_duplicate({ name: macro.name })}
                 />
                 <Button
@@ -260,6 +279,7 @@ export default function SettingsMacrosRoute() {
                   text={m.macros_edit_button()}
                   onClick={() => navigate(`${macro.id}/edit`)}
                   disabled={actionLoadingId === macro.id}
+                  data-testid={`macro-edit-${macro.id}`}
                   aria-label={m.macros_aria_edit({ name: macro.name })}
                 />
               </div>
@@ -292,9 +312,8 @@ export default function SettingsMacrosRoute() {
       actionLoadingId,
       handleDeleteMacro,
       handleMoveMacro,
-      selectedKeyboard.modifierDisplayMap,
-      selectedKeyboard.keyDisplayMap,
       handleDuplicateMacro,
+      keyDisplayMap,
       navigate,
     ],
   );
@@ -311,6 +330,7 @@ export default function SettingsMacrosRoute() {
               text={isMaxMacrosReached ? m.macros_max_reached() : m.macros_add_new_macro()}
               onClick={() => navigate("add")}
               disabled={isMaxMacrosReached}
+              data-testid="macro-add-new"
               aria-label={m.macros_aria_add_new()}
             />
           </div>
@@ -340,6 +360,7 @@ export default function SettingsMacrosRoute() {
                 text={m.macros_add_new_macro()}
                 onClick={() => navigate("add")}
                 disabled={isMaxMacrosReached}
+                data-testid="macro-add-new-empty"
                 aria-label={m.macros_aria_add_new()}
               />
             }

@@ -1,15 +1,26 @@
-import { useState } from "react";
-import { LuPlus } from "react-icons/lu";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { LuKeyboard, LuPlus, LuType } from "react-icons/lu";
+import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 
-import { KeySequence } from "@hooks/stores";
-import useKeyboardLayout from "@hooks/useKeyboardLayout";
+import { KeySequence, useSettingsStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import type { KeyboardLayout } from "@components/keyboard/types/schema";
+import { textToMacroSteps, scancodeToKeyName } from "@components/textToMacroSteps";
+import { VirtualKeyboard } from "@components/keyboard/VirtualKeyboard";
+import { buildKeyDisplayMap } from "@/keyDisplayNames";
+import Modal from "@components/Modal";
 import { Button } from "@components/Button";
 import FieldLabel from "@components/FieldLabel";
 import Fieldset from "@components/Fieldset";
 import { InputFieldWithLabel, FieldError } from "@components/InputField";
+import { TextAreaWithLabel } from "@components/TextArea";
 import { MacroStepCard } from "@components/MacroStepCard";
+import { keys, isModifierScancode, modifierKeyNames } from "@/keyboardMappings";
 import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
+import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+
+import "@components/keyboard/virtual-keyboard.css";
 
 interface ValidationErrors {
   name?: string;
@@ -40,7 +51,59 @@ export function MacroForm({
   const [keyQueries, setKeyQueries] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { selectedKeyboard } = useKeyboardLayout();
+
+  const { send } = useJsonRpc();
+  const { keyboardLayout } = useSettingsStore();
+  const [kleLayout, setKleLayout] = useState<KeyboardLayout | null>(null);
+
+  useEffect(() => {
+    if (!keyboardLayout) return;
+    void send("getKeyboardLayoutData", { id: keyboardLayout }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setKleLayout(resp.result as KeyboardLayout);
+    });
+  }, [send, keyboardLayout]);
+
+  const keyDisplayMap = useMemo(() => buildKeyDisplayMap(kleLayout), [kleLayout]);
+
+  // Text-to-macro
+  const [textInput, setTextInput] = useState("");
+  const [textInvalidChars, setTextInvalidChars] = useState<string[]>([]);
+  const [showTextInput, setShowTextInput] = useState(false);
+
+  const handleGenerateFromText = useCallback(() => {
+    if (!kleLayout) {
+      showTemporaryError(m.macro_add_from_text_no_layout());
+      return;
+    }
+    if (!textInput.trim()) {
+      showTemporaryError(m.macro_add_from_text_empty());
+      return;
+    }
+
+    const { steps: newSteps, invalidChars } = textToMacroSteps(textInput, kleLayout);
+    setTextInvalidChars(invalidChars);
+
+    if (newSteps.length === 0) return;
+
+    // Check step limit
+    const currentCount = macro.steps?.length ?? 0;
+    const available = MAX_STEPS_PER_MACRO - currentCount;
+    const stepsToAdd = newSteps.slice(0, available);
+
+    setMacro(prev => ({
+      ...prev,
+      steps: [...(prev.steps || []), ...stepsToAdd],
+    }));
+    setErrors({});
+    setTextInput("");
+
+    notifications.success(m.macro_add_from_text_generated({ count: stepsToAdd.length }));
+
+    if (stepsToAdd.length < newSteps.length) {
+      showTemporaryError(m.macro_max_steps_error({ max: MAX_STEPS_PER_MACRO }));
+    }
+  }, [kleLayout, textInput, macro.steps]);
 
   const showTemporaryError = (message: string) => {
     setErrorMessage(message);
@@ -132,6 +195,59 @@ export function MacroForm({
       setErrors(newErrors);
     }
   };
+
+  // Keyboard picker — modifier latching + sequential key steps
+  const [keyboardPickerOpen, setKeyboardPickerOpen] = useState(false);
+  const [latchedModifiers, setLatchedModifiers] = useState<Set<number>>(new Set());
+
+  const handleKeyboardPick = (scancode: number) => {
+    // Toggle modifier latch
+    if (isModifierScancode(scancode)) {
+      setLatchedModifiers(prev => {
+        const next = new Set(prev);
+        if (next.has(scancode)) {
+          next.delete(scancode);
+        } else {
+          next.add(scancode);
+        }
+        return next;
+      });
+      return;
+    }
+
+    const keyName = scancodeToKeyName.get(scancode);
+    if (!keyName) return;
+
+    const currentCount = macro.steps?.length ?? 0;
+    if (currentCount >= MAX_STEPS_PER_MACRO) {
+      showTemporaryError(m.macro_max_steps_error({ max: MAX_STEPS_PER_MACRO }));
+      return;
+    }
+
+    // Build modifier list from latched modifiers using the keys mapping
+    const mods: string[] = [];
+    for (const name of modifierKeyNames) {
+      if (latchedModifiers.has(keys[name])) {
+        mods.push(name);
+      }
+    }
+
+    setMacro(prev => ({
+      ...prev,
+      steps: [...(prev.steps || []), { keys: [keyName], modifiers: mods, delay: DEFAULT_DELAY }],
+    }));
+    setErrors({});
+  };
+
+  // Visual highlight for latched modifiers on the picker keyboard
+  const pickerPressedScancodes = useMemo(() => latchedModifiers, [latchedModifiers]);
+
+  // Clear latched modifiers when picker closes
+  useEffect(() => {
+    if (!keyboardPickerOpen) {
+      setLatchedModifiers(new Set());
+    }
+  }, [keyboardPickerOpen]);
 
   const handleKeyQueryChange = (stepIndex: number, query: string) => {
     setKeyQueries(prev => ({ ...prev, [stepIndex]: query }));
@@ -232,13 +348,13 @@ export function MacroForm({
                 onModifierChange={modifiers => handleModifierChange(stepIndex, modifiers)}
                 onDelayChange={delay => handleDelayChange(stepIndex, delay)}
                 isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
-                keyboard={selectedKeyboard}
+                keyDisplayMap={keyDisplayMap}
               />
             ))}
           </div>
         </Fieldset>
 
-        <div className="mt-4">
+        <div className="mt-4 flex gap-2">
           <Button
             size="MD"
             theme="light"
@@ -263,7 +379,70 @@ export function MacroForm({
             }}
             disabled={isMaxStepsReached}
           />
+          <Button
+            size="MD"
+            theme="light"
+            fullWidth
+            LeadingIcon={LuType}
+            text={m.macro_add_from_text()}
+            onClick={() => setShowTextInput(!showTextInput)}
+            disabled={isMaxStepsReached}
+            data-testid="macro-add-from-text-toggle"
+          />
+          {kleLayout && (
+            <Button
+              size="MD"
+              theme="light"
+              fullWidth
+              LeadingIcon={LuKeyboard}
+              text={m.macro_step_type_on_keyboard()}
+              onClick={() => setKeyboardPickerOpen(true)}
+              disabled={isMaxStepsReached}
+              data-testid="macro-open-keyboard-picker"
+            />
+          )}
         </div>
+
+        {showTextInput && (
+          <div className="mt-4 space-y-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+            <FieldLabel
+              label={m.macro_add_from_text()}
+              description={m.macro_add_from_text_description()}
+            />
+            <div
+              onKeyUp={e => e.stopPropagation()}
+              onKeyDown={e => e.stopPropagation()}
+              onKeyDownCapture={e => e.stopPropagation()}
+              onKeyUpCapture={e => e.stopPropagation()}
+            >
+              <TextAreaWithLabel
+                rows={3}
+                value={textInput}
+                placeholder={m.macro_add_from_text_placeholder()}
+                onChange={e => {
+                  setTextInput(e.target.value);
+                  setTextInvalidChars([]);
+                }}
+              />
+            </div>
+            {textInvalidChars.length > 0 && (
+              <div className="flex items-center gap-x-2">
+                <ExclamationCircleIcon className="h-4 w-4 shrink-0 text-amber-500" />
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  {m.macro_add_from_text_invalid_chars({ chars: textInvalidChars.join(", ") })}
+                </span>
+              </div>
+            )}
+            <Button
+              size="SM"
+              theme="primary"
+              text={m.macro_add_from_text_generate()}
+              onClick={handleGenerateFromText}
+              disabled={!kleLayout || !textInput.trim() || isMaxStepsReached}
+              data-testid="macro-generate-from-text"
+            />
+          </div>
+        )}
 
         {errorMessage && (
           <div className="mt-4">
@@ -282,6 +461,47 @@ export function MacroForm({
           <Button size="SM" theme="light" text={m.cancel()} onClick={onCancel} />
         </div>
       </div>
+
+      {kleLayout && (
+        <Modal
+          open={keyboardPickerOpen}
+          onClose={() => setKeyboardPickerOpen(false)}
+        >
+          <div className="mx-auto max-w-7xl px-4">
+            <div className="pointer-events-auto relative w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-3 dark:border-slate-700">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {m.macro_step_type_on_keyboard_title()}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">
+                    {m.macro_step_count({
+                      steps: macro.steps?.length || 0,
+                      max: MAX_STEPS_PER_MACRO,
+                    })}
+                  </span>
+                  <Button
+                    size="SM"
+                    theme="blank"
+                    text={m.keyboard_layout_preview_close()}
+                    onClick={() => setKeyboardPickerOpen(false)}
+                  />
+                </div>
+              </div>
+              <div className="overflow-x-auto bg-slate-50 p-4 dark:bg-slate-800/50">
+                <div className="flex justify-center">
+                  <VirtualKeyboard
+                    keyboard={kleLayout}
+                    isMetaActive={false}
+                    onKeySend={handleKeyboardPick}
+                    pressedScancodes={pickerPressedScancodes}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

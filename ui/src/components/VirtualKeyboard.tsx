@@ -1,71 +1,132 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { AnimatePresence, motion } from "framer-motion";
-import { KeyboardReact as Keyboard } from "react-simple-keyboard";
 import { LuKeyboard } from "react-icons/lu";
 
-import "react-simple-keyboard/build/css/index.css";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import { cx } from "@/cva.config";
-import { useHidStore, useUiStore } from "@hooks/stores";
+import { useHidStore, useSettingsStore, useUiStore } from "@hooks/stores";
 import useKeyboard from "@hooks/useKeyboard";
-import useKeyboardLayout from "@hooks/useKeyboardLayout";
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
-import { decodeModifiers, keys, latchingKeys, modifiers } from "@/keyboardMappings";
+import { useJsonRpc, JsonRpcResponse } from "@hooks/useJsonRpc";
+import { VirtualKeyboard as KleKeyboard } from "@components/keyboard/VirtualKeyboard";
+import { QuickActions } from "@components/QuickActions";
+import type { KeyboardLayout } from "@components/keyboard/types/schema";
+import { isModifierScancode, hidKeyToModifierMask } from "@/keyboardMappings";
 import { m } from "@localizations/messages.js";
+
+import "@components/keyboard/virtual-keyboard.css";
 
 export const DetachIcon = ({ className }: { className?: string }) => {
   return <img src={DetachIconRaw} alt="Detach Icon" className={className} />;
 };
 
+// Reverse map: modifier bit → HID scancode (for decoding keysDownState.modifier)
+const modifierBitToScancode: [number, number][] = Object.entries(hidKeyToModifierMask).map(
+  ([sc, bit]) => [bit as number, Number(sc)],
+);
+
 function KeyboardWrapper() {
   const keyboardRef = useRef<HTMLDivElement>(null);
   const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } = useUiStore();
-  const { keyboardLedState, keysDownState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
+  const { keysDownState, keyboardLedState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
     useHidStore();
   const { handleKeyPress, executeMacro } = useKeyboard();
-  const { selectedKeyboard } = useKeyboardLayout();
+  const { keyboardLayout, modifierLatching } = useSettingsStore();
+  const { send } = useJsonRpc();
 
+  // KLE layout fetched from backend
+  const [kleLayout, setKleLayout] = useState<KeyboardLayout | null>(null);
+
+  // Dragging state for detached mode
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [newPosition, setNewPosition] = useState({ x: 0, y: 0 });
 
-  const keyDisplayMap = useMemo(() => {
-    return selectedKeyboard.keyDisplayMap;
-  }, [selectedKeyboard]);
+  // Track which modifiers the virtual keyboard has latched.
+  // This provides immediate visual feedback without waiting 
+  // for the HID round-trip via keysDownState.
+  const [latchedModifiers, setLatchedModifiers] = useState<Set<number>>(new Set());
 
-  const virtualKeyboard = useMemo(() => {
-    return selectedKeyboard.virtualKeyboard;
-  }, [selectedKeyboard]);
+  // ---------------------------------------------------------------------------
+  // Fetch KLE layout from backend when keyboard layout changes
+  // ---------------------------------------------------------------------------
 
-  const { isShiftActive } = useMemo(() => {
-    return decodeModifiers(keysDownState.modifier);
-  }, [keysDownState]);
+  useEffect(() => {
+    if (!keyboardLayout) return;
 
-  const isCapsLockActive = useMemo(() => {
-    return keyboardLedState.caps_lock;
-  }, [keyboardLedState]);
+    void send("getKeyboardLayoutData", { id: keyboardLayout }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        setKleLayout(null);
+        return;
+      }
+      setKleLayout(resp.result as KeyboardLayout);
+    });
+  }, [send, keyboardLayout]);
 
-  const mainLayoutName = useMemo(() => {
-    // if you have the CapsLock "latched", then the shift state is inverted
-    const effectiveShift = isCapsLockActive ? false === isShiftActive : isShiftActive;
-    return effectiveShift ? "shift" : "default";
-  }, [isCapsLockActive, isShiftActive]);
+  // ---------------------------------------------------------------------------
+  // Pressed scancodes — derived entirely from keysDownState (single source of truth)
+  // ---------------------------------------------------------------------------
 
-  const keyNamesForDownKeys = useMemo(() => {
-    const activeModifierMask = keysDownState.modifier || 0;
-    const modifierNames = Object.entries(modifiers)
-      .filter(([_, mask]) => (activeModifierMask & mask) !== 0)
-      .map(([name, _]) => name);
+  const pressedScancodes = useMemo(() => {
+    const set = new Set<number>();
 
-    const keysDown = keysDownState.keys || [];
-    const keyNames = Object.entries(keys)
-      .filter(([_, value]) => keysDown.includes(value))
-      .map(([name, _]) => name);
+    // Non-modifier keys from the HID key buffer
+    if (keysDownState.keys) {
+      for (const k of keysDownState.keys) {
+        if (k !== 0) set.add(k);
+      }
+    }
 
-    return [...modifierNames, ...keyNames, " "]; // we have to have at least one space to avoid keyboard whining
-  }, [keysDownState]);
+    // Decode modifier byte into individual scancodes
+    if (keysDownState.modifier) {
+      for (const [bit, scancode] of modifierBitToScancode) {
+        if (keysDownState.modifier & bit) {
+          set.add(scancode);
+        }
+      }
+    }
+
+    // Merge optimistic latch state for immediate visual feedback
+    for (const sc of latchedModifiers) {
+      set.add(sc);
+    }
+
+    return set;
+  }, [keysDownState, latchedModifiers]);
+
+  // ---------------------------------------------------------------------------
+  // Key send handler — bridges the KLE keyboard to the HID layer
+  // ---------------------------------------------------------------------------
+
+  const onKeySend = useCallback(
+    (scancode: number) => {
+      if (scancode === 0) return;
+
+      if (isModifierScancode(scancode) && modifierLatching) {
+        // Latch mode: click to toggle on/off
+        const isLatched = latchedModifiers.has(scancode);
+        const next = new Set(latchedModifiers);
+        if (isLatched) {
+          next.delete(scancode);
+        } else {
+          next.add(scancode);
+        }
+        setLatchedModifiers(next);
+        void handleKeyPress(scancode, !isLatched);
+      } else {
+        // Regular key (or non-latching modifier): press then release
+        void handleKeyPress(scancode, true);
+        setTimeout(() => void handleKeyPress(scancode, false), 50);
+      }
+    },
+    [handleKeyPress, latchedModifiers, modifierLatching],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Drag handling (for detached/floating mode)
+  // ---------------------------------------------------------------------------
 
   const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
     if (!keyboardRef.current) return;
@@ -110,7 +171,6 @@ function KeyboardWrapper() {
   }, []);
 
   useEffect(() => {
-    // Is the keyboard detached or attached?
     if (isAttachedVirtualKeyboardVisible) return;
 
     const handle = keyboardRef.current;
@@ -139,62 +199,9 @@ function KeyboardWrapper() {
     };
   }, [isAttachedVirtualKeyboardVisible, endDrag, onDrag, startDrag]);
 
-  const onKeyUp = useCallback(async (_: string, e: MouseEvent | undefined) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-  }, []);
-
-  const onKeyDown = useCallback(
-    async (key: string, e: MouseEvent | undefined) => {
-      e?.preventDefault();
-      e?.stopPropagation();
-
-      // handle the fake key-macros we have defined for common combinations
-      if (key === "CtrlAltDelete") {
-        await executeMacro([
-          { keys: ["Delete"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 },
-        ]);
-        return;
-      }
-
-      if (key === "AltMetaEscape") {
-        await executeMacro([{ keys: ["Escape"], modifiers: ["AltLeft", "MetaLeft"], delay: 100 }]);
-        return;
-      }
-
-      if (key === "CtrlAltBackspace") {
-        await executeMacro([
-          { keys: ["Backspace"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 },
-        ]);
-        return;
-      }
-
-      // if they press any of the latching keys, we send a keypress down event and the release it automatically (on timer)
-      if (latchingKeys.includes(key)) {
-        console.debug(`Latching key pressed: ${key} sending down and delayed up pair`);
-        void handleKeyPress(keys[key], true);
-        setTimeout(() => void handleKeyPress(keys[key], false), 100);
-        return;
-      }
-
-      // if they press any of the dynamic keys, we send a keypress down event but we don't release it until they click it again
-      if (Object.keys(modifiers).includes(key)) {
-        const currentlyDown = keyNamesForDownKeys.includes(key);
-        console.debug(
-          `Dynamic key pressed: ${key} was currently down: ${currentlyDown}, toggling state`,
-        );
-        void handleKeyPress(keys[key], !currentlyDown);
-        return;
-      }
-
-      // otherwise, just treat it as a down+up pair
-      const cleanKey = key.replace(/[()]/g, "");
-      console.debug(`Regular key pressed: ${cleanKey} sending down and up pair`);
-      void handleKeyPress(keys[cleanKey], true);
-      setTimeout(() => void handleKeyPress(keys[cleanKey], false), 50);
-    },
-    [executeMacro, handleKeyPress, keyNamesForDownKeys],
-  );
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div
@@ -217,8 +224,8 @@ function KeyboardWrapper() {
             <div
               className={cx(
                 !isAttachedVirtualKeyboardVisible
-                  ? "fixed top-0 left-0 z-10 select-none"
-                  : "relative",
+                  ? "fixed top-0 left-0 z-10 min-w-[600px] max-w-[1200px] select-none"
+                  : "mx-auto min-w-[600px] max-w-[1200px]",
               )}
               ref={keyboardRef}
               style={{
@@ -233,13 +240,14 @@ function KeyboardWrapper() {
                   "keyboard-detached": !isAttachedVirtualKeyboardVisible,
                 })}
               >
-                <div className="flex items-center justify-center border-b border-b-slate-800/30 bg-white px-2 py-4 dark:border-b-slate-300/20 dark:bg-slate-800">
-                  <div className="absolute left-2 flex items-center gap-x-2">
+                <div className="flex items-center justify-between border-b border-b-slate-800/30 bg-white px-2 py-3 dark:border-b-slate-300/20 dark:bg-slate-800">
+                  <div className="flex items-center gap-x-2">
                     {isAttachedVirtualKeyboardVisible ? (
                       <Button
                         size="XS"
                         theme="light"
                         text={m.detach()}
+                        data-testid="virtual-keyboard-detach"
                         onClick={() => setAttachedVirtualKeyboardVisibility(false)}
                       />
                     ) : (
@@ -247,95 +255,57 @@ function KeyboardWrapper() {
                         size="XS"
                         theme="light"
                         text={m.attach()}
+                        data-testid="virtual-keyboard-attach"
                         onClick={() => setAttachedVirtualKeyboardVisibility(true)}
                       />
                     )}
+                    <h2 className="font-sans text-sm leading-none font-medium text-slate-700 select-none dark:text-slate-300">
+                      {m.virtual_keyboard_header()}
+                    </h2>
                   </div>
-                  <h2 className="self-center font-sans text-sm leading-none font-medium text-slate-700 select-none dark:text-slate-300">
-                    {m.virtual_keyboard_header()}
-                  </h2>
-                  <div className="absolute right-2 flex items-center gap-x-2">
+                  <div className="flex items-center gap-x-2">
                     <div className="hidden items-center gap-x-2 md:flex">
+                      <QuickActions onExecuteMacro={executeMacro} />
+                      <div className="h-5 w-px bg-slate-800/20 dark:bg-slate-200/20" />
                       <LinkButton
                         size="XS"
                         to="settings/keyboard"
                         theme="light"
-                        text={selectedKeyboard.name}
+                        text={kleLayout?.name ?? keyboardLayout ?? "Keyboard"}
                         LeadingIcon={LuKeyboard}
                       />
-                      <div className="h-[20px] w-px bg-slate-800/20 dark:bg-slate-200/20" />
+                      <div className="h-5 w-px bg-slate-800/20 dark:bg-slate-200/20" />
                     </div>
 
                     <Button
                       size="XS"
                       theme="light"
                       text={m.hide()}
+                      data-testid="virtual-keyboard-hide"
                       LeadingIcon={ChevronDownIcon}
                       onClick={() => setVirtualKeyboardEnabled(false)}
                     />
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex flex-col bg-blue-50/80 md:flex-row dark:bg-slate-700">
-                    <Keyboard
-                      baseClass="simple-keyboard-main"
-                      layoutName={mainLayoutName}
-                      onKeyPress={onKeyDown}
-                      onKeyReleased={onKeyUp}
-                      buttonTheme={[
-                        {
-                          class: "combination-key",
-                          buttons: "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
-                        },
-                        {
-                          class: "down-key",
-                          buttons: keyNamesForDownKeys.join(" "),
-                        },
-                      ]}
-                      display={keyDisplayMap}
-                      layout={virtualKeyboard.main}
-                      disableButtonHold={true}
-                      enableLayoutCandidates={false}
-                      preventMouseDownDefault={true}
-                      preventMouseUpDefault={true}
-                      stopMouseDownPropagation={true}
-                      stopMouseUpPropagation={true}
+                <div className="bg-blue-50/80 dark:bg-slate-700">
+                  {kleLayout ? (
+                    <KleKeyboard
+                      keyboard={kleLayout}
+                      isMetaActive={false}
+                      onKeySend={onKeySend}
+                      pressedScancodes={pressedScancodes}
+                      vkbClassName={[
+                        keyboardLedState.caps_lock && 'caps-lock-on',
+                        keyboardLedState.num_lock && 'num-lock-on',
+                        keyboardLedState.scroll_lock && 'scroll-lock-on',
+                      ].filter(Boolean).join(' ')}
                     />
-
-                    <div className="controlArrows">
-                      <Keyboard
-                        baseClass="simple-keyboard-control"
-                        theme="simple-keyboard hg-theme-default hg-layout-default"
-                        layoutName="default"
-                        onKeyPress={onKeyDown}
-                        onKeyReleased={onKeyUp}
-                        display={keyDisplayMap}
-                        layout={virtualKeyboard.control}
-                        disableButtonHold={true}
-                        enableLayoutCandidates={false}
-                        preventMouseDownDefault={true}
-                        preventMouseUpDefault={true}
-                        stopMouseDownPropagation={true}
-                        stopMouseUpPropagation={true}
-                      />
-                      <Keyboard
-                        baseClass="simple-keyboard-arrows"
-                        theme="simple-keyboard hg-theme-default hg-layout-default"
-                        onKeyPress={onKeyDown}
-                        onKeyReleased={onKeyUp}
-                        display={keyDisplayMap}
-                        layout={virtualKeyboard.arrows}
-                        disableButtonHold={true}
-                        enableLayoutCandidates={false}
-                        preventMouseDownDefault={true}
-                        preventMouseUpDefault={true}
-                        stopMouseDownPropagation={true}
-                        stopMouseUpPropagation={true}
-                      />
+                  ) : (
+                    <div className="flex items-center justify-center p-8 text-sm text-slate-500 dark:text-slate-400">
+                      {m.virtual_keyboard_header()}
                     </div>
-                    {/* TODO add optional number pad */}
-                  </div>
+                  )}
                 </div>
               </Card>
             </div>

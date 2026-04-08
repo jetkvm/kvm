@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/keyboard"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
@@ -1334,6 +1335,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"setCloudUrl":                {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getKeyboardLayout":          {Func: rpcGetKeyboardLayout},
 	"setKeyboardLayout":          {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
+	"getKeyboardLayouts":         {Func: keyboard.RpcGetKeyboardLayouts},
+	"getKeyboardLayoutData":      {Func: keyboard.RpcGetKeyboardLayoutData, Params: []string{"id"}},
+	"deleteKeyboardLayout":       {Func: keyboard.RpcDeleteKeyboardLayout, Params: []string{"id"}},
 	"getKeyboardMacros":          {Func: getKeyboardMacros},
 	"setKeyboardMacros":          {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":       {Func: rpcGetLocalLoopbackOnly},
