@@ -23,6 +23,7 @@ msg_info "▶ Generating UI index"
 ./ui_index.gen.sh
 
 msg_info "▶ Building native library"
+git config --global --add safe.directory "/build/internal/*"
 VERBOSE=1 cmake -B "${BUILD_DIR}" \
     -DCMAKE_SYSTEM_PROCESSOR=armv7l \
     -DCMAKE_SYSTEM_NAME=Linux \

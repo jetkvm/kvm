@@ -829,7 +829,9 @@ export interface NetworkState {
   ipv6_gateway?: string;
   dhcp_lease?: DhcpLease;
   hostname?: string;
+}
 
+interface NetworkStateStore extends NetworkState {
   setNetworkState: (state: NetworkState) => void;
   setDhcpLease: (lease: NetworkState["dhcp_lease"]) => void;
   setDhcpLeaseExpiry: (expiry: Date) => void;
@@ -881,7 +883,7 @@ export interface NetworkSettings {
   time_sync_http_urls?: string[];
 }
 
-export const useNetworkStateStore = create<NetworkState>((set, get) => ({
+export const useNetworkStateStore = create<NetworkStateStore>((set, get) => ({
   setNetworkState: (state: NetworkState) => set(state),
   setDhcpLease: (lease: NetworkState["dhcp_lease"]) => set({ dhcp_lease: lease }),
   setDhcpLeaseExpiry: (expiry: Date) => {
@@ -891,8 +893,7 @@ export const useNetworkStateStore = create<NetworkState>((set, get) => ({
       return;
     }
 
-    lease.lease_expiry = expiry;
-    set({ dhcp_lease: lease });
+    set({ dhcp_lease: { ...lease, lease_expiry: expiry } });
   },
 }));
 

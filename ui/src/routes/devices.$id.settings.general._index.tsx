@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useShallow } from "zustand/shallow";
 import { useDeviceStore } from "@hooks/stores";
 import { Button } from "@components/Button";
 import Checkbox from "@components/Checkbox";
@@ -17,11 +18,10 @@ export default function SettingsGeneralRoute() {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const [autoUpdate, setAutoUpdate] = useState(true);
-  const currentVersions = useDeviceStore(state => {
-    const { appVersion, systemVersion } = state;
-    if (!appVersion || !systemVersion) return null;
-    return { appVersion, systemVersion };
-  });
+  const { appVersion, systemVersion } = useDeviceStore(
+    useShallow(state => ({ appVersion: state.appVersion, systemVersion: state.systemVersion })),
+  );
+  const currentVersions = appVersion && systemVersion ? { appVersion, systemVersion } : null;
 
   useEffect(() => {
     send("getAutoUpdateState", {}, (resp: JsonRpcResponse) => {

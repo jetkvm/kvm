@@ -8,6 +8,7 @@ import validator from "validator";
 import PublicIPCard from "@components/PublicIPCard";
 import TailscaleCard from "@components/TailscaleCard";
 import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
+import { useShallow } from "zustand/shallow";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
@@ -33,32 +34,13 @@ dayjs.extend(relativeTime);
 
 const isLLDPAvailable = false; // LLDP is not supported yet
 
-const resolveOnRtcReady = () => {
-  return new Promise(resolve => {
-    // Check if RTC is already connected
-    const currentState = useRTCStore.getState();
-    if (currentState.rpcDataChannel?.readyState === "open") {
-      // Already connected, fetch data immediately
-      return resolve(void 0);
-    }
-
-    // Not connected yet, subscribe to state changes
-    const unsubscribe = useRTCStore.subscribe(state => {
-      if (state.rpcDataChannel?.readyState === "open") {
-        unsubscribe(); // Clean up subscription
-        return resolve(void 0);
-      }
-    });
-  });
-};
-
 export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
   const [remaining, setRemaining] = useState<string | null>(null);
 
-  // rrecalculate remaining time every 30 seconds
+  // recalculate remaining time every 30 seconds
   useEffect(() => {
-    // schedule immediate initial update
-    setInterval(() => setRemaining(dayjs(lifetime).fromNow()), 0);
+    // immediate initial update
+    setRemaining(dayjs(lifetime).fromNow());
 
     const interval = setInterval(() => {
       setRemaining(dayjs(lifetime).fromNow());
@@ -85,7 +67,16 @@ const NonCustomDomainOptions = ["dhcp", "local"];
 export default function SettingsNetworkRoute() {
   const { send } = useJsonRpc();
 
-  const networkState = useNetworkStateStore(state => state);
+  const networkState = useNetworkStateStore(
+    useShallow(state => ({
+      mac_address: state.mac_address,
+      hostname: state.hostname,
+      dhcp_lease: state.dhcp_lease,
+      ipv6_addresses: state.ipv6_addresses,
+      ipv6_link_local: state.ipv6_link_local,
+      ipv6_gateway: state.ipv6_gateway,
+    })),
+  );
   const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
 
   // Some input needs direct state management. Mostly options that open more details
@@ -164,8 +155,6 @@ export default function SettingsNetworkRoute() {
     mode: "onBlur",
 
     defaultValues: async () => {
-      // Ensure data channel is ready, before fetching network data from the device
-      await resolveOnRtcReady();
       const { settings } = await fetchNetworkData();
       return settings;
     },
@@ -215,7 +204,6 @@ export default function SettingsNetworkRoute() {
           } catch (error) {
             console.error("Failed to fetch network data:", error);
           }
-          notifications.success(m.network_dhcp_lease_renew_success());
         }
       });
     },
@@ -270,7 +258,11 @@ export default function SettingsNetworkRoute() {
         });
       }
 
-      if (dirty.ipv4_static?.dns && dirty.ipv4_static.dns.length > 0 && dirty.ipv4_static.dns.every(dirty => dirty)) {
+      if (
+        dirty.ipv4_static?.dns &&
+        dirty.ipv4_static.dns.length > 0 &&
+        dirty.ipv4_static.dns.every(dirty => dirty)
+      ) {
         changes.push({
           label: m.network_ipv4_dns(),
           from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
@@ -302,7 +294,11 @@ export default function SettingsNetworkRoute() {
         });
       }
 
-      if (dirty.ipv6_static?.dns && dirty.ipv6_static.dns.length > 0 && dirty.ipv6_static.dns.every(dirty => dirty)) {
+      if (
+        dirty.ipv6_static?.dns &&
+        dirty.ipv6_static.dns.length > 0 &&
+        dirty.ipv6_static.dns.every(dirty => dirty)
+      ) {
         changes.push({
           label: m.network_ipv6_dns(),
           from: initialSettingsRef.current?.ipv6_static?.dns.join(", ").toString() ?? "",
