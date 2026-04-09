@@ -5,6 +5,8 @@ import {
   waitForWebRTCReady,
   dismissSessionTakeoverDialog,
   callJsonRpc,
+  reconnectAfterReboot,
+  rebootDeviceViaSSH,
   sshExec,
 } from "./helpers";
 
@@ -78,6 +80,40 @@ test.describe("Log level filtering", () => {
           `${moreVerboseLevel} log should be suppressed when default log level is ${level}`,
         ).toBe(0);
       }
+    } finally {
+      await callJsonRpc(page, "setDefaultLogLevel", { level: originalLevel }).catch(() => {});
+    }
+  });
+
+  test("reverts INFO to WARN after reboot", async ({ page }) => {
+    test.setTimeout(90_000);
+
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await ensureLocalAuthMode(page, { mode: "noPassword" });
+    await dismissSessionTakeoverDialog(page);
+    await waitForWebRTCReady(page);
+
+    const originalLevel = (await callJsonRpc(page, "getDefaultLogLevel")) as LogLevel;
+
+    try {
+      await callJsonRpc(page, "setDefaultLogLevel", { level: "INFO" });
+      await expect
+        .poll(() => callJsonRpc(page, "getDefaultLogLevel"), {
+          message: "Waiting for default log level to be INFO after setDefaultLogLevel",
+          intervals: [200, 500, 1000],
+        })
+        .toBe("INFO");
+
+      await rebootDeviceViaSSH();
+      await reconnectAfterReboot(page, 3000, 20);
+
+      await expect
+        .poll(() => callJsonRpc(page, "getDefaultLogLevel"), {
+          message: "Waiting for default log level to revert to WARN after reboot",
+          intervals: [200, 500, 1000],
+        })
+        .toBe("WARN");
     } finally {
       await callJsonRpc(page, "setDefaultLogLevel", { level: originalLevel }).catch(() => {});
     }

@@ -8,19 +8,31 @@ def main():
         description="Sort translations keys in message *.json files"
     )
     p.add_argument(
+        "files", nargs="*", help="specific message JSON files to sort"
+    )
+    p.add_argument(
         "--path", default="./localization/messages/", help="path to messages *.json"
     )
     args = p.parse_args()
 
-    messages_path = Path(args.path)
-    if not messages_path.is_dir():
-        print(f"message path is not a directory: {messages_path}")
-        raise SystemExit(2)
+    if args.files:
+        files = [Path(file) for file in args.files]
+        missing = [file for file in files if not file.is_file()]
+        if missing:
+            print("message file(s) not found:")
+            for file in missing:
+                print(f" - {file}")
+            raise SystemExit(2)
+    else:
+        messages_path = Path(args.path)
+        if not messages_path.is_dir():
+            print(f"message path is not a directory: {messages_path}")
+            raise SystemExit(2)
 
-    files = list(messages_path.glob("*.json"))
-    if len(files) == 0:
-        print(f"no message files (*.json) found in: {messages_path}")
-        raise SystemExit(3)
+        files = list(messages_path.glob("*.json"))
+        if len(files) == 0:
+            print(f"no message files (*.json) found in: {messages_path}")
+            raise SystemExit(3)
 
     for f in files:
         print(f"Processing {f.name} ...")
@@ -43,7 +55,10 @@ def main():
             json.dumps(out, ensure_ascii=False, indent=4) + "\n", encoding="utf-8"
         )
 
-    print(f"Processed {len(files)} files in {messages_path}")
+    if args.files:
+        print(f"Processed {len(files)} files")
+    else:
+        print(f"Processed {len(files)} files in {messages_path}")
 
 if __name__ == "__main__":
     main()

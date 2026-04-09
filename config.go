@@ -291,6 +291,9 @@ func LoadConfig() {
 		loadedConfig.KeyboardLayout = "en-US"
 	}
 
+	// Until rolling logs land, do not persist verbose levels across reboots.
+	loadedConfig.DefaultLogLevel = "WARN"
+
 	// Migrate old default EDID (Toshiba TSB, no CEA extension) to new JetKVM v1 EDID
 	const oldDefaultEDID = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
 	if loadedConfig.EdidString == "" || loadedConfig.EdidString == oldDefaultEDID {
