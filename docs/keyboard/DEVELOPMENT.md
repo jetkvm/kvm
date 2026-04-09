@@ -30,7 +30,7 @@
 
 3. **Save the file** as `internal/keyboard/layouts/<locale>.kle.json` using underscores (e.g. `hu_HU.kle.json`). The layout ID in code uses hyphens (`hu-HU`); the file lookup converts automatically.
 
-4. **Register the layout** in `internal/keyboard/builtin.go` by adding it to the layout list.
+4. **No manual registration needed.** Built-in layouts are auto-discovered from the `layouts/` directory via `go:embed` at compile time. Just placing the `.kle.json` file in the directory is sufficient. Aliases (e.g. `nl-BE` → `fr_BE`) are defined in `layoutAliases` in `builtin.go`.
 
 5. **Run the tests:**
 
@@ -83,11 +83,17 @@ Common HID Usage IDs for overrides:
 
 ## Compact Layout Support
 
-The parser automatically detects compact form factors (60%, 65%, 75%, TKL) based on board width and key count. Compact layouts use a different scancode position table that does not expect the y:0.5 gap between the function row and number row.
+The parser supports **75% and TKL** compact form factors using a separate
+position table without the y:0.5 gap. Selection criteria:
 
-Detection criteria: `boardW <= 20` and `keyCount < 100`.
+- **Full-size:** `boardW > 20` or `keyCount >= 100`
+- **Compact (75%/TKL):** `boardW <= 20`, `keyCount < 100`, `boardH >= 6`
+- **60%/65%:** Falls back to full-size table (most keys get `scancode=0`).
+  These layouts require `scancodes` metadata overrides for every key.
 
-If the automatic compact table gets a few keys wrong for a particular layout, use the `scancodes` metadata override to fix them rather than modifying the table (which would affect all compact layouts).
+If the compact table maps a few edge-case keys incorrectly, use `scancodes`
+metadata overrides to fix them rather than modifying the table (which would
+affect all compact layouts).
 
 ---
 

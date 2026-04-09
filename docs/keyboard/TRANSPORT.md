@@ -72,7 +72,7 @@ regardless of its physical position.
    format, served cheaply on every client connect.
 2. **Testable in isolation:** The KLE parser has comprehensive table-driven
    tests covering edge cases (ISO enter, stepped caps, dead key compositions,
-   auto-uppercase, all built-in layouts).
+   auto-case, all built-in layouts).
 3. **Validation owns errors:** parse errors surface at upload time with clear
    messages, not silently at render time in the browser.
 4. **The client is a renderer:** React only needs to know *what to draw* and
@@ -118,7 +118,7 @@ sync — the JSON field names are the contract.
   "shape": "iso-enter",
 
   // Legends — only present layers included; absent = key has no legend for that layer.
-  // The Go parser auto-generates the shift legend for single-letter keys (e.g. "q" → shift: "Q").
+  // The Go parser auto-generates case pairs for single-letter keys (e.g. "Q" → normal: "q", shift: "Q").
   "legends": {
     "normal":     "1",
     "shift":      "!",
@@ -218,7 +218,16 @@ Query params:
   ?name=My+Layout    optional display name override
 
 Response 200:
-  { "id": "uuid-abc123", "name": "My Layout", "keyCount": 87 }
+  {
+    "id": "uuid-abc123",
+    "name": "My Layout",
+    "keyCount": 87,
+    "warnings": ["3 of 87 keys have no HID scancode (97% coverage)..."]
+  }
+
+  The `warnings` array is omitted when empty. Warnings are non-fatal — the
+  layout is stored and usable, but the user should review the issues (e.g.
+  unmapped keys, low charMap coverage, unsupported form factor).
 
 Response 400:
   { "error": "KLE parse error: row 3 contains invalid property object" }

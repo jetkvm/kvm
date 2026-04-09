@@ -1,8 +1,6 @@
 # JetKVM Virtual Keyboard — Design Document
 
 > **Purpose:** Design and implementation record for the KLE-based virtual keyboard system in the JetKVM React frontend.
->
-> **Context:** This work emerged from a code review of [jetkvm/kvm](https://github.com/jetkvm/kvm). The full conversation history is summarised in the [Background](#background) section.
 
 ---
 
@@ -27,7 +25,7 @@
     - [Dead Key Compositions](#dead-key-compositions)
     - [Scancode Overrides via KLE Metadata](#scancode-overrides-via-kle-metadata)
     - [Compact Form Factor Support](#compact-form-factor-support)
-    - [Auto-Uppercase Legends](#auto-uppercase-legends)
+    - [Auto-Case Legends](#auto-case-legends)
   - [Component Tree](#component-tree)
   - [CSS-First Rendering Strategy](#css-first-rendering-strategy)
     - [Layer Switching](#layer-switching)
@@ -53,10 +51,10 @@ served from the device itself.
 
 The keyboard system has been a persistent source of bugs and user frustration. As of the time of this design:
 
-- The virtual keyboard is English-only (`react-simple-keyboard`, hardcoded QWERTY)
-- The "Paste Text" feature only has US scancode tables, so pasting to a German/French/etc. target produces garbled output
-- Users with non-US *operator* keyboards (AZERTY, Dvorak) perceive wrong characters when their layout differs from the target's — this is actually correct KVM behaviour (physical position passthrough), but the virtual keyboard and paste system can now provide character-accurate input for these cases
-- There is no clear contribution path for new layouts (see GitHub issues #1184, #1067, #65, #30, #649, #223) — now addressed with KLE upload, built-in layouts, a validate script, and a GitHub issue template
+- The virtual keyboard was English-only (`react-simple-keyboard`, hardcoded QWERTY)
+- The "Paste Text" feature only had US scancode tables, so pasting to a German/French/etc. target produced garbled output
+- Users with non-US *operator* keyboards (AZERTY, Dvorak) perceived wrong characters when their layout differed from the target's — this is actually correct KVM behaviour (physical position passthrough), but the virtual keyboard and paste system now provide character-accurate input for these cases
+- There was no clear contribution path for new layouts (see GitHub issues #1184, #1067, #65, #30, #649, #223) — now addressed with KLE upload, built-in layouts, and a GitHub issue template
 
 ---
 
@@ -88,7 +86,7 @@ graph TD
     subgraph "Go Backend: internal/keyboard"
         GOPARSE[ParseKLE\nkeyboard.go] --> VALIDATE[Validate]
         VALIDATE --> STORE[Store\n/userdata/kvm_layouts/id.layout.json]
-        GOPARSE --> SCANCODE[inferScancode\nscancode.go]
+        GOPARSE --> SCANCODE[inferScancodeWithTable\nscancode.go]
         GOPARSE --> CHARMAP[buildCharMap +\naddDeadKeyCompositions]
         BUILTINS[Built-in layouts\ngo:embed layouts/*.kle.json] --> RPC
         STORE --> RPC[getKeyboardLayoutData\nhandler.go]
@@ -169,8 +167,8 @@ keyboard or when layouts differ.
 ```json
 [
   { "name": "German QWERTZ", "author": "example" },
-  ["^", "1\n!\n²\n¹", "2\n\"\n³", "3\n§\n³", ...],
-  [{"w":1.5}, "Tab", "q\nQ", "w\nW", ...]
+  ["^", "!\n1\n¹\n²", "\"\n2\n³", "§\n3\n³", ...],
+  [{"w":1.5}, "Tab", "Q", "W", ...]
 ]
 ```
 
@@ -180,20 +178,25 @@ keyboard or when layouts differ.
 
 ### Key Legend Encoding
 
-Legends are newline-separated strings. Position order (when `a=4`, the default):
+Legends are newline-separated strings. Following the standard KLE community
+convention (shift-first), the position indices map to keyboard layers as:
 
 ```
-position 0 = unshifted (bottom-left by KLE convention, but semantically: normal)
-position 1 = shifted    (top-left)
-position 2 = AltGr      (bottom-right)  
-position 3 = Shift+AltGr (top-right)
+position 0 = shifted       (top-left on keycap)
+position 1 = unshifted     (bottom-left on keycap)
+position 2 = Shift+AltGr   (top-right on keycap)
+position 3 = AltGr         (bottom-right on keycap)
 ```
 
-So `"1\n!\n²\n¹"` means:
-- Normal: `1`
+So `"!\n1\n¹\n²"` means:
 - Shift: `!`
-- AltGr: `²`
+- Normal: `1`
 - Shift+AltGr: `¹`
+- AltGr: `²`
+
+Both JetKVM's built-in layouts and community KLE files from
+keyboard-layout-editor.com use this convention, so uploaded layouts
+parse correctly without any configuration.
 
 ### Key Property Objects
 
@@ -208,13 +211,13 @@ Property objects appear before the keys they modify:
 
 Properties `w`, `h`, `x`, `y`, `w2`, `h2`, `x2`, `y2`, `l` (stepped), `n` (homing), `d` (decal) apply to the **next key only**.
 
-Properties `c` (color), `t` (text color), `a` (alignment), `f` (font size) apply to **all subsequent keys**.
+Properties `c` (color), `t` (text color), `a` (alignment), `f` (font size) apply to **all subsequent keys**. Note: the `a` (alignment) property is parsed but not consumed — the parser always uses the standard KLE legend slot mapping regardless of alignment value.
 
 ### What KLE Does NOT Contain (and JetKVM Extensions)
 
 Standard KLE has no concept of:
 
-- **HID scancodes** — inferred from physical position by `inferScancode()` in `scancode.go`. Can be overridden per-key via the `scancodes` metadata extension.
+- **HID scancodes** — inferred from physical position by `inferScancodeWithTable()` in `scancode.go`. Can be overridden per-key via the `scancodes` metadata extension.
 - **Dead key declarations** — the `deadKeys` metadata extension declares which legend characters are dead keys. This gates both the CSS dead key indicator AND charMap composition generation. Dead key composition rules are derived from Unicode NFC normalization by `addDeadKeyCompositions()` in `keyboard.go`. Layouts without `deadKeys` produce no compositions.
 
 JetKVM extends the KLE metadata object with two optional fields:
@@ -238,13 +241,13 @@ flowchart LR
         KLEFILE --> META2[Extract metadata]
         KLEFILE --> ROWS[Parse rows\naccumulate x/y]
         ROWS --> PROPS[Apply property\nobjects]
-        PROPS --> LEGENDS[Split legend string\nauto-uppercase letters]
+        PROPS --> LEGENDS[Split legend string\nshift-first → normal/shift\nauto-case letters]
         LEGENDS --> SHAPE[Detect shape\niso-enter / stepped]
         SHAPE --> SCANCODE[Infer HID scancode\nfrom x/y position]
     end
 
     subgraph "KeyboardLayout"
-        SCANCODE --> PKB[keys: TransportKey[]\nboardW, boardH]
+        SCANCODE --> PKB[keys: TransportKey array\nboardW, boardH]
     end
 
     subgraph "Derived maps"
@@ -261,26 +264,81 @@ flowchart LR
 
 ### HID Scancode Inference
 
-Since KLE doesn't carry scancodes, we infer from physical position. The standard key grid is well-defined:
+Since KLE doesn't carry scancodes, we infer from physical position using
+two position tables in `internal/keyboard/scancode.go`.
+
+**Full-size table** (ANSI 104, ISO 105, JIS 109 — `boardW > 20` or `keyCount >= 100`):
+
+Standard KLE templates have a y:0.5 gap between the function row and the
+number row. `math.Round(y)` maps the fractional Y positions to integer row
+indices:
 
 ```
-Row 0: Escape, F1-F12                    (y=0)
-Row 1: `, 1-9, 0, -, =, Backspace        (y=1, x=0..14)
-Row 2: Tab, Q-P, [, ], \                 (y=2, x=0..13.5)
-Row 3: CapsLock, A-L, ;, ', Enter        (y=3, x=0..13.75)
-Row 4: LShift, Z-M, ,, ., /, RShift      (y=4)
-Row 5: LCtrl, Meta, LAlt, Space, RAlt... (y=5)
+Row 0 (y=0.00): Escape, F1-F12, PrtSc/ScrLk/Pause
+Row 2 (y=1.50): `, 1-9, 0, -, =, Backspace, Insert/Home/PgUp, NumLock/÷/×/−
+Row 3 (y=2.50): Tab, Q-P, [, ], \, Delete/End/PgDn, KP7-9/+
+Row 4 (y=3.50): CapsLock, A-L, ;, ', Enter, KP4-6
+Row 5 (y=4.50): LShift, Z-M, ,, ., /, RShift, ↑, KP1-3/Enter
+Row 6 (y=5.50): LCtrl, Meta, LAlt, Space, RAlt..., ←↓→, KP0/.
 ```
 
-The position-to-scancode table is in `internal/keyboard/scancode.go`. It covers
-ANSI, ISO, and basic numpad/nav cluster positions. JIS-specific keys (Yen,
-Ro, Muhenkan, Henkan, Kana) are handled by position as well.
+Note: Row 1 does not exist (y:0.5 gap means y=1.5 rounds to 2, not 1).
+
+**Compact table** (75%, TKL — `boardW <= 20`, `keyCount < 100`, `boardH >= 6`):
+
+For keyboards without the y:0.5 gap, rows sit at integer Y positions:
+
+```
+Row 0 (y=0): Esc, F1-F12 (packed, no gaps between F-key groups)
+Row 1 (y=1): `, 1-9, 0, -, =, Backspace
+Row 2 (y=2): Tab, Q-P, [, ], \
+Row 3 (y=3): CapsLock, A-L, ;, ', Enter
+Row 4 (y=4): LShift, Z-M, ,, ., /, RShift, ↑
+Row 5 (y=5): LCtrl, Meta, LAlt, Space, RAlt..., ←↓→
+```
+
+**60%/65% keyboards** (fewer than 6 rows or no function row) fall back to the
+full-size table. Since their row Y positions don't match either table well,
+most keys will get `scancode=0`. These layouts require `scancodes` metadata
+overrides to be usable.
+
+The lookup algorithm walks each row left-to-right, finding the last entry
+where `xStart <= key.X + epsilon`. Special cases:
+- **ISO Enter** (`h >= 2, x < 15`): always maps to `hidEnter`
+- **ISO hash key** (`x ≈ 12.75, w < 1.5`): maps to `hidHash` (narrow), while
+  ANSI Enter at the same x (wider, `w >= 2`) is caught by the table entry
+
+Both tables cover ANSI, ISO, and basic numpad/nav cluster positions. JIS-specific
+keys (Yen, Ro, Muhenkan, Henkan, Kana) are handled by position as well.
 
 ### Dead Key Compositions
 
-Dead keys (^, `, ´, ¨, ~, ¸, ˛, ˙, ˚, ˝, ˇ, ˘) don't produce a character
-immediately — they modify the next keypress. There are two related but
-independent mechanisms:
+Dead keys don't produce a character immediately — they modify the next keypress.
+The `deadKeys` metadata declaration in each KLE file gates **both** the visual
+indicator and the charMap composition generation.
+
+**Supported dead key characters** (`deadKeyToCombining` in `keyboard.go`):
+
+| Legend | Unicode name | Combining form | Example |
+|--------|-------------|----------------|---------|
+| `^`    | Circumflex  | U+0302 | ^+a → â |
+| `` ` ``| Grave       | U+0300 | `+e → è |
+| `´`    | Acute       | U+0301 | ´+e → é |
+| `¨`    | Diaeresis   | U+0308 | ¨+u → ü |
+| `~`    | Tilde       | U+0303 | ~+n → ñ |
+| `˜`    | Tilde (spacing variant) | U+0303 | same as ~ |
+| `¸`    | Cedilla     | U+0327 | ¸+c → ç |
+| `˛`    | Ogonek      | U+0328 | ˛+a → ą |
+| `˙`    | Dot above   | U+0307 | ˙+z → ż |
+| `˚`    | Ring above (spacing) | U+030A | ˚+u → ů |
+| `°`    | Ring above (degree sign) | U+030A | same as ˚ (Czech keyboards) |
+| `˝`    | Double acute| U+030B | ˝+o → ő |
+| `ˇ`    | Caron (háček)| U+030C | ˇ+s → š |
+| `˘`    | Breve       | U+0306 | ˘+a → ă |
+
+Note: `~`/`˜` and `˚`/`°` are alternate legend glyphs that map to the same
+combining character. The lookup uses the actual legend from the key, so
+standalone dead key entries always match the correct display character.
 
 **1. Dead key CSS flag (metadata-driven)**
 
@@ -294,7 +352,8 @@ dead keys for this layout. Example from `de-DE`:
 Only keys whose **normal** legend matches a declared dead key character get
 the `dead: true` flag on their `TransportKey`, which the frontend renders
 with the `.dead` CSS class (visual indicator dot). If the metadata has no
-`deadKeys` array (e.g. `en-US`), no keys are flagged.
+`deadKeys` array (e.g. `en-US`), no keys are flagged and no compositions
+are generated (see below).
 
 **2. Dead key compositions in charMap (metadata-gated, Unicode NFC)**
 
@@ -306,15 +365,17 @@ paste would produce `^a` instead of `â` on the target machine.
 
 The process for layouts that do declare dead keys:
 
-1. `deadKeyToCombining` maps each dead key character to its Unicode combining
-   form (e.g. `^` → U+0302 COMBINING CIRCUMFLEX ACCENT)
-2. `addDeadKeyCompositions()` collects only key legends that appear in both
-   `declaredDeadKeys` and `deadKeyToCombining`
-3. For each dead key × base character pair, `norm.NFC` checks for composed forms
-4. Composed characters get a `HIDCombo` with a `Prefix` field — e.g.
+1. For each key legend, check if it appears in both the layout's `declaredDeadKeys`
+   set AND the `deadKeyToCombining` table. Only these are treated as dead keys.
+   The **display character** (the actual legend rune) is captured alongside the
+   combining form — this avoids a non-deterministic reverse map lookup for
+   characters like `~`/`˜` that share the same combining code point.
+2. For each dead key × base character pair, `norm.NFC` checks for composed forms.
+   If NFC produces a different single character, it's a valid composition.
+3. Composed characters get a `HIDCombo` with a `Prefix` field — e.g.
    `"â"` → `{s: 4, m: 0, p: {s: 47, m: 0}}` (press `^` dead key, then `a`)
-5. Standalone dead key characters get `Prefix` + Space follow-up (e.g.
-   pressing `^` then Space produces the `^` character itself)
+4. Standalone dead key characters (e.g. typing just `^`) get `Prefix` + Space
+   follow-up, using the captured display character for the charMap key.
 
 Layouts without `deadKeys` metadata (e.g. `en-US`, `ru-RU`) produce zero
 prefixed charMap entries — characters like `^`, `~`, `` ` `` are treated as
@@ -330,7 +391,7 @@ layouts, but non-standard form factors (split, ortholinear, custom) may have
 keys in positions that don't match any table entry.
 
 The `scancodes` field in KLE metadata maps a **key index** (0-based, in parse
-order) to a USB HID Usage ID, overriding whatever `inferScancode()` would
+order) to a USB HID Usage ID, overriding whatever `inferScancodeWithTable()` would
 have returned:
 
 ```json
@@ -341,48 +402,55 @@ have returned:
 ```
 
 In this example, key #42 is forced to scancode 76 (0x4C = Delete) and key #55
-to scancode 83 (0x53 = NumLock). The override is applied immediately after
-legend parsing and before compact-layout re-inference, so metadata overrides
-are never clobbered by the compact table pass.
+to scancode 83 (0x53 = NumLock). Overrides are applied during the single-pass
+scancode inference — keys with a metadata override skip position-based lookup
+entirely.
 
 This is primarily useful for:
 
 - Community-uploaded layouts with unusual physical arrangements
 - Keys that fall outside the standard ANSI/ISO grid
-- Compact layouts where the automatic `compactTable` gets a few edge-case
-  keys wrong
+- 60%/65% layouts where position-based inference fails (no matching table)
+- Edge cases in 75%/TKL layouts where the compact table maps a key incorrectly
 
 ### Compact Form Factor Support
 
-The scancode inference engine supports compact keyboards (60%, 65%, 75%, TKL)
+The scancode inference engine supports **75% and TKL** compact keyboards
 in addition to full-size layouts.
 
-`selectPositionTable()` in `scancode.go` selects the appropriate position
-table based on board dimensions and key count:
+`selectPositionTable()` in `scancode.go` selects the position table in a
+**single pass** after all keys are parsed and board dimensions are known:
 
-- **Full-size** (`boardW > 20` or `keyCount >= 100`): uses `fullSizeTable`,
-  which expects the standard y:0.5 gap between the function row and the
-  number row, plus numpad and navigation clusters.
-- **Compact** (everything else): uses `compactTable`, which handles layouts
-  without the y:0.5 gap. Rows are at integer Y positions (0, 1, 2, 3, 4, 5).
-  The compact table covers 60%, 65%, 75%, and TKL form factors with nav keys
-  on the right side of typing rows.
+- **Full-size** (`boardW > 20` or `keyCount >= 100`): `fullSizeTable` —
+  expects the y:0.5 gap, numpad, and nav cluster.
+- **Compact** (`boardW <= 20`, `keyCount < 100`, `boardH >= 6`): `compactTable` —
+  rows at integer Y (no y:0.5 gap), no numpad. Requires a function row at y=0.
+- **60%/65% fallback** (fewer than 6 rows): falls back to `fullSizeTable`.
+  Since row Y positions don't match either table, most keys get `scancode=0`.
+  These layouts need `scancodes` metadata overrides to work.
 
-After the initial full-size inference pass during parsing, the parser detects
-compact layouts (`boardW <= 20 && keyCount < 100`) and re-infers scancodes
-using the compact table. Keys that already have a scancode override from
-metadata are skipped during re-inference.
+The table is selected once and all scancodes are inferred in a single pass.
+Keys that have a scancode override from metadata are skipped during inference.
 
-For edge cases where even the compact table produces incorrect mappings,
+For edge cases where the compact table produces incorrect mappings,
 the `scancodes` metadata field can provide per-key overrides (see above).
 
-### Auto-Uppercase Legends
+### Auto-Case Legends
 
-The Go parser auto-generates shift legends for single-character keys.
-If a KLE legend is just `"q"` (no explicit shift layer), the parser
-produces `normal: "q", shift: "Q"` automatically. This works for Latin,
-accented (ö → Ö), and Cyrillic (й → Й) characters. Multi-character
-legends like `"Tab"` or `"Enter"` are not affected.
+The Go parser auto-generates case pairs for single-letter keys. In the
+standard KLE shift-first convention, a single-letter legend like `"Q"`
+lands in the shift slot (position 0) with no normal slot. The parser
+detects this and produces `normal: "q", shift: "Q"` — the **mirror-case**
+logic. Lowercase single letters (e.g. `"q"`) work the same way: the
+parser fills in the missing shift legend.
+
+This works for Latin, accented (ö → Ö), and Cyrillic (й → Й) characters.
+Multi-character legends like `"Tab"` or `"Enter"` are not affected.
+
+A round-trip safety check prevents incorrect auto-casing for scripts where
+case mapping is not bijective — notably Turkish dotless-ı (U+0131) and
+dotted-İ (U+0130), where `ToUpper('ı') = 'I'` but `ToLower('I') = 'i' ≠ 'ı'`.
+Keys with these characters must specify both legends explicitly.
 
 ---
 
@@ -409,7 +477,7 @@ graph TD
 **Key design rules:**
 
 - **Single source of truth:** `keysDownState` from the HID store drives all visual state. The wrapper decodes both `keys[]` (non-modifier scancodes) and `modifier` byte (via `hidKeyToModifierMask` reverse lookup) into a single `pressedScancodes` set.
-- **Modifier latching:** Virtual keyboard modifier clicks toggle on/off (press once to hold, press again to release). Gated by `MODIFIER_LATCH_ENABLED` constant, ready to become a user setting. Latch intent is tracked in a ref; visual state comes from `keysDownState`.
+- **Modifier latching:** Virtual keyboard modifier clicks toggle on/off (press once to hold, press again to release). Controlled by the `modifierLatching` user setting. Visual state comes from `keysDownState`.
 - **Layer derivation:** `VirtualKeyboard` derives the display layer purely from `pressedScancodes`. Default is `'all'` (quadrant preview). When Shift/AltGr scancodes are present, switches to single-layer view.
 - **Pure renderer:** `VirtualKeyboard` has no effects, no refs, no event listeners — it's a pure function of its props.
 - `QuickActions` lives in the `KeyboardWrapper` header, not inside `VirtualKeyboard`
@@ -454,24 +522,29 @@ The entire layer-switching mechanism is a single attribute change on `.vkb`. No 
 
 ### Key Sizing
 
-Uses CSS custom properties set inline per-key from KLE data:
+The keyboard auto-scales to fit its container using CSS container queries.
+The unit size `--u` is derived from the container width and the board's
+total width in keyboard units:
 
 ```css
-.vkb {
-  --u: 3.5rem;   /* 1 keyboard unit — change to scale entire board */
-  --gap: 0.2rem;
-}
+.vkb-wrapper { container-type: inline-size; }
+.vkb { --u: calc(100cqi / var(--board-w)); }
+```
 
+Each key is absolutely positioned using per-key custom properties:
+
+```css
 .key {
   position: absolute;
-  left:   calc(var(--kx) * (var(--u) + var(--gap)));
-  top:    calc(var(--ky) * (var(--u) + var(--gap)));
-  width:  calc(1 * var(--u));          /* overridden by .w-NNN classes */
-  height: calc(var(--kh, 1) * var(--u));
+  left:   calc(var(--kx) * var(--u));
+  top:    calc(var(--ky) * var(--u));
+  width:  calc(1 * var(--u) - var(--pad) * 2);   /* overridden by .w-NNN classes */
+  height: calc(var(--kh, 1) * var(--u) - var(--pad) * 2);
 }
 ```
 
-Width classes (e.g. `.w-150` for 1.5u) are generated from a lookup table in `Keycap.tsx`.
+Width classes (e.g. `.w-150` for 1.5u) are mapped from a lookup table in `Keycap.tsx`.
+Non-standard widths fall back to a `--key-w` inline custom property.
 
 ### LED Indicators
 
