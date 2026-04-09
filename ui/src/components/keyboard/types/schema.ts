@@ -231,7 +231,8 @@ export interface LayoutMeta {
  * Returned by POST /keyboard/upload on success.
  */
 export interface LayoutUploadResponse {
-  id:       string;  // UUID assigned to the new layout
-  name:     string;  // display name (from KLE meta or ?name param)
-  keyCount: number;  // number of keys parsed (for user confirmation)
+  id:        string;    // UUID assigned to the new layout
+  name:      string;    // display name (from KLE meta or ?name param)
+  keyCount:  number;    // number of keys parsed (for user confirmation)
+  warnings?: string[];  // non-fatal issues found during parsing
 }

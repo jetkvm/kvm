@@ -2,7 +2,7 @@
  * A single keycap. Consumes TransportKey from the Go backend directly.
  *
  * The `shape` field is a pre-computed CSS class name ('' | 'iso-enter' |
- * 'bigass-enter' | 'stepped-caps') applied directly to the div.
+ * 'big-ass-enter' | 'stepped-caps') applied directly to the div.
  *
  * Layer visibility is CSS-only via data-layer on the parent .vkb element.
  * React.memo ensures layer changes do NOT rerender any Keycap instance.
@@ -39,14 +39,14 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
   const isCustomWidth = widthClass === 'w-custom';
 
   // `shape` is already the correct CSS class, no client-side shape detection needed.
-  // A key is a "letter" if its normal legend is a single Unicode letter.
+  // A key is a "letter" if its normal legend is a single Unicode letter (any script).
   // Used by CSS to apply CapsLock layer switching (shift legend for letters only).
-  const isLetter = legends.normal?.length === 1 && legends.normal !== legends.normal.toUpperCase();
+  const isLetter = legends.normal != null && /^\p{Ll}$/u.test(legends.normal);
 
   const className = [
     'key',
     widthClass,
-    shape,            // '' | 'iso-enter' | 'bigass-enter' | 'stepped-caps'
+    shape,            // '' | 'iso-enter' | 'big-ass-enter' | 'stepped-caps'
     dead      && 'dead',
     homing    && 'homing',
     decal     && 'decal',
@@ -82,7 +82,7 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
       onPointerDown={handlePointerDown}
       aria-label={ariaLabel(legends)}
       role="button"
-      tabIndex={-1}
+      tabIndex={-1} /* intentionally unfocusable — physical keyboard must always reach the KVM session */
     >
       {legends.normal     && <span className="legend normal"      aria-hidden="true">{legends.normal}</span>}
       {legends.shift      && <span className="legend shift"       aria-hidden="true">{legends.shift}</span>}

@@ -208,7 +208,7 @@
  * Rendered at the wider w2 width. Clip cuts the top-left corner.
  * Notch: (w2-w)/w2 = (2.25-1.5)/2.25 = 33.3% from left.
  */
-.vkb .key.bigass-enter {
+.vkb .key.big-ass-enter {
   width: calc(2.25 * var(--u) - var(--pad) * 2);
   height: calc(2.00 * var(--u) - var(--pad) * 2);
   clip-path: polygon(
@@ -223,7 +223,7 @@
 
 /* ISO/big-ass Enter: in "all" mode, keep legend in the top half (visible area) */
 .vkb[data-layer="all"] .key.iso-enter .legend,
-.vkb[data-layer="all"] .key.bigass-enter .legend {
+.vkb[data-layer="all"] .key.big-ass-enter .legend {
   top: 10%;
   bottom: 50%;
   left: 0;
@@ -362,16 +362,17 @@
    Behavior is consistent across Windows, macOS, and Linux.
    =========================================================================== */
 
-/* CapsLock on, no shift: letters → shift legend */
-.vkb.caps-lock-on[data-layer="normal"] .key.letter .legend.normal { display: none; }
-.vkb.caps-lock-on[data-layer="normal"] .key.letter .legend.shift {
-  display: flex;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
+/* CapsLock on, idle ("all" mode): letter keys swap normal→shift in their quadrant */
+.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.normal { display: none; }
+.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.shift {
+  /* Take the normal legend's quadrant position (bottom-left) */
+  bottom: 3px;
+  left: 4px;
+  top: auto;
+  align-items: flex-end;
 }
 
-/* CapsLock on + Shift: letters → normal legend (Shift cancels CapsLock for letters) */
+/* CapsLock on + Shift: letters revert to normal (Shift cancels CapsLock) */
 .vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.shift { display: none; }
 .vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.normal {
   display: flex;

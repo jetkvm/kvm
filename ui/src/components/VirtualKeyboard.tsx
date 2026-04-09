@@ -45,9 +45,11 @@ function KeyboardWrapper() {
   const [newPosition, setNewPosition] = useState({ x: 0, y: 0 });
 
   // Track which modifiers the virtual keyboard has latched.
-  // This provides immediate visual feedback without waiting 
+  // This provides immediate visual feedback without waiting
   // for the HID round-trip via keysDownState.
   const [latchedModifiers, setLatchedModifiers] = useState<Set<number>>(new Set());
+  const latchedModifiersRef = useRef(latchedModifiers);
+  latchedModifiersRef.current = latchedModifiers;
 
   // ---------------------------------------------------------------------------
   // Fetch KLE layout from backend when keyboard layout changes
@@ -105,9 +107,12 @@ function KeyboardWrapper() {
       if (scancode === 0) return;
 
       if (isModifierScancode(scancode) && modifierLatching) {
-        // Latch mode: click to toggle on/off
-        const isLatched = latchedModifiers.has(scancode);
-        const next = new Set(latchedModifiers);
+        // Latch mode: click to toggle on/off.
+        // Read from ref so this callback's identity stays stable across
+        // latch toggles — prevents defeating React.memo on all keycaps.
+        const current = latchedModifiersRef.current;
+        const isLatched = current.has(scancode);
+        const next = new Set(current);
         if (isLatched) {
           next.delete(scancode);
         } else {
@@ -121,7 +126,7 @@ function KeyboardWrapper() {
         setTimeout(() => void handleKeyPress(scancode, false), 50);
       }
     },
-    [handleKeyPress, latchedModifiers, modifierLatching],
+    [handleKeyPress, modifierLatching],
   );
 
   // ---------------------------------------------------------------------------

@@ -59,6 +59,11 @@ export default function SettingsKeyboardRoute() {
           keys: uploadResult.keyCount,
         }),
       );
+      if (uploadResult.warnings?.length) {
+        for (const warning of uploadResult.warnings) {
+          notifications.error(warning, { duration: 8000 });
+        }
+      }
       setPreviewLayoutId(uploadResult.id);
       clearUpload();
       refreshLayouts();

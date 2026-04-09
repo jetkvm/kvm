@@ -68,6 +68,8 @@ func HandleKeyboardUpload(c *gin.Context) {
 		return
 	}
 
+	warnings := collectLayoutWarnings(layout)
+
 	if err := storeLayout(layout); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to store layout: %v", err)})
 		return
@@ -77,6 +79,7 @@ func HandleKeyboardUpload(c *gin.Context) {
 		ID:       layout.ID,
 		Name:     layout.Name,
 		KeyCount: len(layout.Keys),
+		Warnings: warnings,
 	})
 }
 

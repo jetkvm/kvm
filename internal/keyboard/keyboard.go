@@ -119,9 +119,10 @@ type LayoutMeta struct {
 
 // LayoutUploadResponse is returned by the HTTP upload endpoint on success.
 type LayoutUploadResponse struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	KeyCount int    `json:"keyCount"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	KeyCount int      `json:"keyCount"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +255,6 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 	// Persistent state (carries across rows and keys)
 	currentColor := ""
 	currentTextColor := ""
-	currentAlignment := 4 // KLE default
 	currentY := 0.0
 
 	for rowIdx := startIdx; rowIdx < len(topLevel); rowIdx++ {
@@ -320,16 +320,15 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 					if props.Decal {
 						nextDecal = true
 					}
-					// Persistent properties (color, alignment, font size) are applied immediately
-					// and affect subsequent keys until overridden again
+					// Persistent properties (color, font size) are applied immediately
+					// and affect subsequent keys until overridden again.
+					// Note: KLE alignment (props.Alignment) is parsed but not consumed —
+					// we always use the standard KLE legend slot mapping.
 					if props.KeyColor != "" {
 						currentColor = props.KeyColor
 					}
 					if props.TextColor != "" {
 						currentTextColor = props.TextColor
-					}
-					if props.Alignment != 0 {
-						currentAlignment = props.Alignment
 					}
 					/*
 						if props.FontSize != 0 {
@@ -360,7 +359,7 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 			w := nextW
 			h := nextH
 
-			legends := parseLegends(legendStr, currentAlignment)
+			legends := parseLegends(legendStr)
 			dead := isDeadKey(legends, declaredDeadKeys)
 			shape := detectShape(w, h, nextW2, nextH2, nextStepped, hasW2)
 
@@ -480,7 +479,7 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
  *
  * Both JetKVM's built-in layouts and community KLE files use this convention.
  */
-func parseLegends(legendStr string, alignment int) KeyLegends {
+func parseLegends(legendStr string) KeyLegends {
 	parts := strings.Split(legendStr, "\n")
 	get := func(i int) *string {
 		if i >= len(parts) {
@@ -798,15 +797,76 @@ func validateLayout(layout *KeyboardLayout) error {
 	if layout.BoardH < 2 || layout.BoardH > 10 {
 		return fmt.Errorf("unusual board height %.2f units (expected 2–10)", layout.BoardH)
 	}
-	recognised := 0
+	recognised, total := 0, 0
 	for _, k := range layout.Keys {
+		if k.Decal {
+			continue // decorative labels don't have scancodes by design
+		}
+		total++
 		if k.Scancode != 0 {
 			recognised++
 		}
 	}
-	pct := float64(recognised) / float64(len(layout.Keys)) * 100
+	if total == 0 {
+		return fmt.Errorf("layout has no non-decal keys")
+	}
+	pct := float64(recognised) / float64(total) * 100
 	if pct < 50 {
 		return fmt.Errorf("only %.0f%% of keys mapped to HID scancodes — layout may be non-standard", pct)
 	}
 	return nil
+}
+
+// collectLayoutWarnings returns non-fatal issues found in a parsed layout.
+// These don't prevent the layout from being used but may indicate problems
+// the user should know about (e.g. unmapped keys, missing charMap coverage).
+func collectLayoutWarnings(layout *KeyboardLayout) []string {
+	var warnings []string
+
+	// Check scancode coverage
+	unmapped := 0
+	total := 0
+	for _, k := range layout.Keys {
+		if k.Decal {
+			continue
+		}
+		total++
+		if k.Scancode == 0 {
+			unmapped++
+		}
+	}
+	if unmapped > 0 {
+		pct := float64(total-unmapped) / float64(total) * 100
+		warnings = append(warnings,
+			fmt.Sprintf("%d of %d keys have no HID scancode (%.0f%% coverage). "+
+				"These keys will not send input. Consider adding scancode overrides "+
+				"in the KLE metadata.", unmapped, total, pct))
+	}
+
+	// Check charMap coverage — are common characters reachable?
+	if len(layout.CharMap) == 0 {
+		warnings = append(warnings, "No characters mapped — paste text will not work with this layout.")
+	} else if len(layout.CharMap) < 30 {
+		warnings = append(warnings,
+			fmt.Sprintf("Only %d characters mapped (expected 50+). "+
+				"Paste text may not work for some characters.", len(layout.CharMap)))
+	}
+
+	// Check for keys with legends but no scancode (likely position inference failures)
+	legendless := 0
+	for _, k := range layout.Keys {
+		if k.Decal || k.Scancode != 0 {
+			continue
+		}
+		if k.Legends.Normal != nil || k.Legends.Shift != nil {
+			legendless++
+		}
+	}
+	if legendless > 5 {
+		warnings = append(warnings,
+			fmt.Sprintf("%d keys have legends but no scancode — the layout's form factor "+
+				"may not be fully supported. 75%% and larger keyboards work best.", legendless))
+	}
+
+	return warnings
 }

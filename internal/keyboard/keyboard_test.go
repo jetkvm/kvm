@@ -75,7 +75,7 @@ func TestParsesMinimalLayout(t *testing.T) {
 
 func TestLegendLayers(t *testing.T) {
 	// Standard KLE: "!\n1\n¹\n²" → shift=!, normal=1, shiftAltgr=¹, altgr=²
-	legends := parseLegends("!\n1\n¹\n²", 4)
+	legends := parseLegends("!\n1\n¹\n²")
 
 	if legends.Normal == nil || *legends.Normal != "1" {
 		t.Errorf("normal: expected '1', got %v", legends.Normal)
@@ -93,7 +93,7 @@ func TestLegendLayers(t *testing.T) {
 
 func TestLegendEmptySlots(t *testing.T) {
 	// Standard KLE: "Q\nq" → shift=Q, normal=q, altgr=nil, shiftAltgr=nil
-	legends := parseLegends("Q\nq", 4)
+	legends := parseLegends("Q\nq")
 
 	if legends.Normal == nil || *legends.Normal != "q" {
 		t.Errorf("normal: expected 'q'")
@@ -112,7 +112,7 @@ func TestLegendEmptySlots(t *testing.T) {
 func TestLegendSingleChar(t *testing.T) {
 	// Single uppercase letter in shift slot (standard KLE: "A" = shift only).
 	// Mirror-case moves to Normal and auto-cases → normal="a", shift="A"
-	legends := parseLegends("A", 4)
+	legends := parseLegends("A")
 	if legends.Normal == nil || *legends.Normal != "a" {
 		t.Errorf("expected normal='a', got %v", legends.Normal)
 	}
@@ -123,7 +123,7 @@ func TestLegendSingleChar(t *testing.T) {
 
 func TestLegendAutoUppercase(t *testing.T) {
 	// Single lowercase letter: mirror-case from shift slot → normal=q, shift=Q
-	legends := parseLegends("q", 4)
+	legends := parseLegends("q")
 	if legends.Normal == nil || *legends.Normal != "q" {
 		t.Errorf("expected normal='q', got %v", legends.Normal)
 	}
@@ -132,7 +132,7 @@ func TestLegendAutoUppercase(t *testing.T) {
 	}
 
 	// Accented letters should also work
-	legends2 := parseLegends("ö", 4)
+	legends2 := parseLegends("ö")
 	if legends2.Normal == nil || *legends2.Normal != "ö" {
 		t.Errorf("expected normal='ö', got %v", legends2.Normal)
 	}
@@ -141,13 +141,13 @@ func TestLegendAutoUppercase(t *testing.T) {
 	}
 
 	// Cyrillic should work
-	legends3 := parseLegends("й", 4)
+	legends3 := parseLegends("й")
 	if legends3.Shift == nil || *legends3.Shift != "Й" {
 		t.Errorf("expected auto shift='Й', got %v", legends3.Shift)
 	}
 
 	// Uppercase single letter — mirror-case + auto-lowercase → normal="q", shift="Q"
-	legends4 := parseLegends("Q", 4)
+	legends4 := parseLegends("Q")
 	if legends4.Normal == nil || *legends4.Normal != "q" {
 		t.Errorf("expected auto normal='q', got %v", legends4.Normal)
 	}
@@ -156,7 +156,7 @@ func TestLegendAutoUppercase(t *testing.T) {
 	}
 
 	// Multi-char legend "Tab": goes to shift slot (pos 0), no mirror-case (not a letter)
-	legends5 := parseLegends("Tab", 4)
+	legends5 := parseLegends("Tab")
 	if legends5.Normal != nil {
 		t.Errorf("expected normal=nil for 'Tab', got %q", *legends5.Normal)
 	}
@@ -165,7 +165,7 @@ func TestLegendAutoUppercase(t *testing.T) {
 	}
 
 	// Explicit two-part legend should be respected: "!\n1" → shift="!", normal="1"
-	legends6 := parseLegends("!\n1", 4)
+	legends6 := parseLegends("!\n1")
 	if legends6.Normal == nil || *legends6.Normal != "1" {
 		t.Errorf("expected normal='1', got %v", legends6.Normal)
 	}
@@ -175,7 +175,7 @@ func TestLegendAutoUppercase(t *testing.T) {
 
 	// Turkish dotless-ı (U+0131): mirror-case moves to Normal, but round-trip
 	// fails (ToUpper('ı')='I', ToLower('I')='i' ≠ 'ı'), so no auto-case.
-	legends7 := parseLegends("ı", 4)
+	legends7 := parseLegends("ı")
 	if legends7.Normal == nil || *legends7.Normal != "ı" {
 		t.Errorf("Turkish ı: expected normal='ı', got %v", legends7.Normal)
 	}
@@ -184,7 +184,7 @@ func TestLegendAutoUppercase(t *testing.T) {
 	}
 
 	// Turkish İ (U+0130): mirror-case moves to Normal, round-trip fails.
-	legends8 := parseLegends("İ", 4)
+	legends8 := parseLegends("İ")
 	if legends8.Normal == nil || *legends8.Normal != "İ" {
 		t.Errorf("Turkish İ: expected normal='İ', got %v", legends8.Normal)
 	}
@@ -216,8 +216,13 @@ func TestShapeSteppedCaps(t *testing.T) {
 }
 
 func TestShapeBigAssEnter(t *testing.T) {
+	// Exact 1.5×2 match
 	if s := detectShape(1.5, 2, 0, 0, false, false); s != ShapeBigAssEnter {
-		t.Errorf("big-ass enter: expected ShapeBigAssEnter, got %q", s)
+		t.Errorf("1.5×2 big-ass enter: expected ShapeBigAssEnter, got %q", s)
+	}
+	// Alternate tall key (h > 1.5, no w2) — second code path
+	if s := detectShape(1.0, 2, 0, 0, false, false); s != ShapeBigAssEnter {
+		t.Errorf("1×2 tall key: expected ShapeBigAssEnter, got %q", s)
 	}
 }
 
@@ -327,6 +332,31 @@ func TestScancodeInferenceCompact(t *testing.T) {
 					tt.x, tt.y, tt.w, tt.h, tt.expected, got)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Position table sort-order invariant
+// ---------------------------------------------------------------------------
+
+func TestPositionTablesSorted(t *testing.T) {
+	// inferScancodeWithTable relies on posEntry slices being sorted by xStart
+	// for its early-break optimization. A misordered entry would silently
+	// produce wrong scancodes with no error.
+	tables := map[string]map[int][]posEntry{
+		"fullSize": fullSizeTable,
+		"compact":  compactTable,
+	}
+	for name, table := range tables {
+		for rowIdx, row := range table {
+			for i := 1; i < len(row); i++ {
+				if row[i].xStart < row[i-1].xStart {
+					t.Errorf("%s table row %d: entries out of order at index %d "+
+						"(%.2f < %.2f)", name, rowIdx, i,
+						row[i].xStart, row[i-1].xStart)
+				}
+			}
+		}
 	}
 }
 
@@ -854,6 +884,17 @@ func TestCharMapFirstOccurrenceWins(t *testing.T) {
 	}
 }
 
+func TestCharMapExcludesScancode0(t *testing.T) {
+	keys := []TransportKey{
+		{X: 0, Y: 0, W: 1, H: 1, Scancode: 0,
+			Legends: KeyLegends{Normal: str("x")}},
+	}
+	m := buildCharMap(keys)
+	if _, ok := m["x"]; ok {
+		t.Error("key with Scancode=0 should not appear in charMap")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Full round-trip: parse → JSON marshal → unmarshal
 // ---------------------------------------------------------------------------
@@ -876,6 +917,39 @@ func TestRoundTrip(t *testing.T) {
 	}
 	if len(restored.Keys) != len(layout.Keys) {
 		t.Errorf("key count mismatch: %d vs %d", len(restored.Keys), len(layout.Keys))
+	}
+}
+
+func TestRoundTripWithDeadKeys(t *testing.T) {
+	layout, err := loadBuiltinLayout("de-DE")
+	if err != nil {
+		t.Fatalf("failed to load de-DE: %v", err)
+	}
+
+	data, err := json.Marshal(layout)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	var restored KeyboardLayout
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	// Dead key composition should survive the round-trip
+	combo, ok := restored.CharMap["â"]
+	if !ok {
+		t.Fatal("â missing from charMap after round-trip")
+	}
+	if combo.Prefix == nil {
+		t.Fatal("â dead key prefix lost in round-trip")
+	}
+	if combo.Prefix.Scancode == 0 {
+		t.Error("prefix scancode is zero after round-trip")
+	}
+	// Prefix should not have its own prefix (no nested dead keys)
+	if combo.Prefix.Prefix != nil {
+		t.Error("prefix should not have a nested prefix")
 	}
 }
 
@@ -918,6 +992,17 @@ func TestDeadKeyDetection(t *testing.T) {
 	if isDeadKey(KeyLegends{Normal: str("^")}, nil) {
 		t.Error("^ should not be dead with no declarations")
 	}
+
+	// nil Normal legend — should never be dead even if Shift matches
+	if isDeadKey(KeyLegends{Normal: nil, Shift: str("^")}, declared) {
+		t.Error("nil Normal should not be flagged dead even if Shift matches")
+	}
+
+	// Dead key on shift layer only — isDeadKey checks Normal only, so not flagged.
+	// (addDeadKeyCompositions still generates compositions from the shift layer.)
+	if isDeadKey(KeyLegends{Normal: str("°"), Shift: str("^")}, declared) {
+		t.Error("key with ^ only on Shift layer should not be flagged dead (Normal is °)")
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -926,9 +1011,9 @@ func TestDeadKeyDetection(t *testing.T) {
 
 func TestDeadKeyComposition(t *testing.T) {
 	// Load German layout — has ^ and ´ dead keys
-	layout, err := loadBuiltinLayout("de_DE")
+	layout, err := loadBuiltinLayout("de-DE")
 	if err != nil {
-		t.Fatalf("failed to load de_DE: %v", err)
+		t.Fatalf("failed to load de-DE: %v", err)
 	}
 
 	// â should exist: ^ (dead) + a → â
