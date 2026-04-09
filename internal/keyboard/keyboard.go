@@ -572,8 +572,9 @@ func sanitizeName(name string) string {
 		return r
 	}, name)
 	cleaned = strings.TrimSpace(cleaned)
-	if len(cleaned) > maxNameLength {
-		cleaned = cleaned[:maxNameLength]
+	if utf8.RuneCountInString(cleaned) > maxNameLength {
+		runes := []rune(cleaned)
+		cleaned = string(runes[:maxNameLength])
 	}
 	if cleaned == "" {
 		return "Unnamed Layout"
@@ -619,13 +620,18 @@ func isDeadKey(legends KeyLegends, declaredDeadKeys map[rune]bool) bool {
 func buildCharMap(keys []TransportKey) map[string]HIDCombo {
 	m := make(map[string]HIDCombo)
 
-	// Sort keys by position for deterministic first-occurrence behaviour
-	slices.SortStableFunc(keys, func(a, b TransportKey) int {
+	// Sort a copy by position for deterministic first-occurrence behaviour.
+	// We must not mutate the original slice — it preserves KLE parse order,
+	// which the scancodes metadata override uses (0-based index).
+	sorted := make([]TransportKey, len(keys))
+	copy(sorted, keys)
+	slices.SortStableFunc(sorted, func(a, b TransportKey) int {
 		if comp := cmp.Compare(a.Y, b.Y); comp != 0 {
 			return comp
 		}
 		return cmp.Compare(a.X, b.X)
 	})
+	keys = sorted
 
 	for _, key := range keys {
 		if key.Scancode == 0 {
@@ -680,8 +686,9 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 	}
 
 	type deadKeyInfo struct {
-		combo     HIDCombo // scancode + modifiers to press the dead key
-		combining rune     // Unicode combining character
+		combo      HIDCombo // scancode + modifiers to press the dead key
+		combining  rune     // Unicode combining character
+		displayKey rune     // the legend character as it appears on the keycap
 	}
 
 	// Collect dead key legends that are both declared AND have a known
@@ -713,8 +720,9 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 				continue
 			}
 			deadKeys = append(deadKeys, deadKeyInfo{
-				combo:     HIDCombo{Scancode: key.Scancode, Modifiers: layer.mods},
-				combining: combining,
+				combo:      HIDCombo{Scancode: key.Scancode, Modifiers: layer.mods},
+				combining:  combining,
+				displayKey: r,
 			})
 		}
 	}
@@ -764,15 +772,11 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 			}
 		}
 
-		// Standalone dead key: dead key + Space → the dead key character itself
-		deadChar := string([]rune{dk.combining})
-		// Find the display character (not the combining form)
-		for displayRune, combiningRune := range deadKeyToCombining {
-			if combiningRune == dk.combining {
-				deadChar = string(displayRune)
-				break
-			}
-		}
+		// Standalone dead key: dead key + Space → the dead key character itself.
+		// Use the display rune captured from the actual key legend, not a
+		// reverse lookup from deadKeyToCombining (which has duplicate values
+		// and non-deterministic map iteration order).
+		deadChar := string(dk.displayKey)
 		if _, exists := charMap[deadChar]; exists {
 			// Replace the simple entry with a prefixed one (dead key + space)
 			charMap[deadChar] = HIDCombo{

@@ -140,131 +140,136 @@ const (
 
 	// Additional keys that may not be present on all layouts
 	hidApplication uint8 = 0x65
-	hidPower       uint8 = 0x66
-	hidKPEquals    uint8 = 0x67
 
-	hidF13 uint8 = 0x68
-	hidF14 uint8 = 0x69
-	hidF15 uint8 = 0x6A
-	hidF16 uint8 = 0x6B
-	hidF17 uint8 = 0x6C
-	hidF18 uint8 = 0x6D
-	hidF19 uint8 = 0x6E
-	hidF20 uint8 = 0x6F
-	hidF21 uint8 = 0x70
-	hidF22 uint8 = 0x71
-	hidF23 uint8 = 0x72
-	hidF24 uint8 = 0x73
+	// These keys are less common and may not be present on many keyboards,
+	// but we include them for completeness.
+	/*
+		hidPower       uint8 = 0x66
+		hidKPEquals    uint8 = 0x67
 
-	hidExecute uint8 = 0x74
-	hidHelp    uint8 = 0x75
-	hidMenu    uint8 = 0x76
-	hidSelect  uint8 = 0x77
-	hidStop    uint8 = 0x78
-	hidAgain   uint8 = 0x79
-	hidUndo    uint8 = 0x7A
-	hidCut     uint8 = 0x7B
-	hidCopy    uint8 = 0x7C
-	hidPaste   uint8 = 0x7D
-	hidFind    uint8 = 0x7E
-	hidMute    uint8 = 0x7F
+		hidF13 uint8 = 0x68
+		hidF14 uint8 = 0x69
+		hidF15 uint8 = 0x6A
+		hidF16 uint8 = 0x6B
+		hidF17 uint8 = 0x6C
+		hidF18 uint8 = 0x6D
+		hidF19 uint8 = 0x6E
+		hidF20 uint8 = 0x6F
+		hidF21 uint8 = 0x70
+		hidF22 uint8 = 0x71
+		hidF23 uint8 = 0x72
+		hidF24 uint8 = 0x73
 
-	hidVolumeUp   uint8 = 0x80
-	hidVolumeDown uint8 = 0x81
+		hidExecute uint8 = 0x74
+		hidHelp    uint8 = 0x75
+		hidMenu    uint8 = 0x76
+		hidSelect  uint8 = 0x77
+		hidStop    uint8 = 0x78
+		hidAgain   uint8 = 0x79
+		hidUndo    uint8 = 0x7A
+		hidCut     uint8 = 0x7B
+		hidCopy    uint8 = 0x7C
+		hidPaste   uint8 = 0x7D
+		hidFind    uint8 = 0x7E
+		hidMute    uint8 = 0x7F
 
-	hidLockingCapsLock   uint8 = 0x82
-	hidLockingNumLock    uint8 = 0x83
-	hidLockingScrollLock uint8 = 0x84
+		hidVolumeUp   uint8 = 0x80
+		hidVolumeDown uint8 = 0x81
 
-	hidKPComma      uint8 = 0x85
-	hidKPEqualAS400 uint8 = 0x86
+		hidLockingCapsLock   uint8 = 0x82
+		hidLockingNumLock    uint8 = 0x83
+		hidLockingScrollLock uint8 = 0x84
 
-	hidIntl1 uint8 = 0x87
-	hidIntl2 uint8 = 0x88
-	hidIntl3 uint8 = 0x89
-	hidIntl4 uint8 = 0x8A
-	hidIntl5 uint8 = 0x8B
-	hidIntl6 uint8 = 0x8C
-	hidIntl7 uint8 = 0x8D
-	hidIntl8 uint8 = 0x8E
-	hidIntl9 uint8 = 0x8F
+		hidKPComma      uint8 = 0x85
+		hidKPEqualAS400 uint8 = 0x86
 
-	hidLang1 uint8 = 0x90
-	hidLang2 uint8 = 0x91
-	hidLang3 uint8 = 0x92
-	hidLang4 uint8 = 0x93
-	hidLang5 uint8 = 0x94
-	hidLang6 uint8 = 0x95
-	hidLang7 uint8 = 0x96
-	hidLang8 uint8 = 0x97
-	hidLang9 uint8 = 0x98
+		hidIntl1 uint8 = 0x87
+		hidIntl2 uint8 = 0x88
+		hidIntl3 uint8 = 0x89
+		hidIntl4 uint8 = 0x8A
+		hidIntl5 uint8 = 0x8B
+		hidIntl6 uint8 = 0x8C
+		hidIntl7 uint8 = 0x8D
+		hidIntl8 uint8 = 0x8E
+		hidIntl9 uint8 = 0x8F
 
-	hidErase      uint8 = 0x99
-	hidSysReq     uint8 = 0x9A
-	hidCancel     uint8 = 0x9B
-	hidClear      uint8 = 0x9C
-	hidPrior      uint8 = 0x9D
-	hidReturn     uint8 = 0x9E
-	hidSeparator  uint8 = 0x9F
-	hidOut        uint8 = 0xA0
-	hidOper       uint8 = 0xA1
-	hidClearAgain uint8 = 0xA2
-	hidCrSel      uint8 = 0xA3
-	hidExSel      uint8 = 0xA4
+		hidLang1 uint8 = 0x90
+		hidLang2 uint8 = 0x91
+		hidLang3 uint8 = 0x92
+		hidLang4 uint8 = 0x93
+		hidLang5 uint8 = 0x94
+		hidLang6 uint8 = 0x95
+		hidLang7 uint8 = 0x96
+		hidLang8 uint8 = 0x97
+		hidLang9 uint8 = 0x98
 
-	hidKP00               uint8 = 0xB0
-	hidKP000              uint8 = 0xB1
-	hidThousandsSeparator uint8 = 0xB2
-	hidDecimalSeparator   uint8 = 0xB3
-	hidCurrencyUnit       uint8 = 0xB4
-	hidCurrencySubUnit    uint8 = 0xB5
+		hidErase      uint8 = 0x99
+		hidSysReq     uint8 = 0x9A
+		hidCancel     uint8 = 0x9B
+		hidClear      uint8 = 0x9C
+		hidPrior      uint8 = 0x9D
+		hidReturn     uint8 = 0x9E
+		hidSeparator  uint8 = 0x9F
+		hidOut        uint8 = 0xA0
+		hidOper       uint8 = 0xA1
+		hidClearAgain uint8 = 0xA2
+		hidCrSel      uint8 = 0xA3
+		hidExSel      uint8 = 0xA4
 
-	hidKPLeftParen  uint8 = 0xB6
-	hidKPRightParen uint8 = 0xB7
-	hidKPLeftBrace  uint8 = 0xB8
-	hidKPRightBrace uint8 = 0xB9
+		hidKP00               uint8 = 0xB0
+		hidKP000              uint8 = 0xB1
+		hidThousandsSeparator uint8 = 0xB2
+		hidDecimalSeparator   uint8 = 0xB3
+		hidCurrencyUnit       uint8 = 0xB4
+		hidCurrencySubUnit    uint8 = 0xB5
 
-	hidKPTab       uint8 = 0xBA
-	hidKPBackspace uint8 = 0xBB
+		hidKPLeftParen  uint8 = 0xB6
+		hidKPRightParen uint8 = 0xB7
+		hidKPLeftBrace  uint8 = 0xB8
+		hidKPRightBrace uint8 = 0xB9
 
-	hidKPA uint8 = 0xBC
-	hidKPB uint8 = 0xBD
-	hidKPC uint8 = 0xBE
-	hidKPD uint8 = 0xBF
-	hidKPE uint8 = 0xC0
-	hidKPF uint8 = 0xC1
+		hidKPTab       uint8 = 0xBA
+		hidKPBackspace uint8 = 0xBB
 
-	hidKPXor     uint8 = 0xC2
-	hidKPCaret   uint8 = 0xC3
-	hidKPPercent uint8 = 0xC4
-	hidKPLess    uint8 = 0xC5
-	hidKPGreater uint8 = 0xC6
-	hidKPAnd     uint8 = 0xC7
-	hidKPAndAnd  uint8 = 0xC8
-	hidKPOr      uint8 = 0xC9
-	hidKPOrOr    uint8 = 0xCA
-	hidKPColon   uint8 = 0xCC
-	hidKPHash    uint8 = 0xCD
-	hidKPSpace   uint8 = 0xCE
-	hidKPAt      uint8 = 0xCF
-	hidKPExclam  uint8 = 0xD0
+		hidKPA uint8 = 0xBC
+		hidKPB uint8 = 0xBD
+		hidKPC uint8 = 0xBE
+		hidKPD uint8 = 0xBF
+		hidKPE uint8 = 0xC0
+		hidKPF uint8 = 0xC1
 
-	hidKPMemStore    uint8 = 0xD1
-	hidKPMemRecall   uint8 = 0xD2
-	hidKPMemClear    uint8 = 0xD3
-	hidKPMemAdd      uint8 = 0xD4
-	hidKPMemSubtract uint8 = 0xD5
-	hidKPMemMultiply uint8 = 0xD6
-	hidKPMemDivide   uint8 = 0xD7
+		hidKPXor     uint8 = 0xC2
+		hidKPCaret   uint8 = 0xC3
+		hidKPPercent uint8 = 0xC4
+		hidKPLess    uint8 = 0xC5
+		hidKPGreater uint8 = 0xC6
+		hidKPAnd     uint8 = 0xC7
+		hidKPAndAnd  uint8 = 0xC8
+		hidKPOr      uint8 = 0xC9
+		hidKPOrOr    uint8 = 0xCA
+		hidKPColon   uint8 = 0xCC
+		hidKPHash    uint8 = 0xCD
+		hidKPSpace   uint8 = 0xCE
+		hidKPAt      uint8 = 0xCF
+		hidKPExclam  uint8 = 0xD0
 
-	hidKPPlusMinus  uint8 = 0xD8
-	hidKPClear      uint8 = 0xD9
-	hidKPClearEntry uint8 = 0xDA
+		hidKPMemStore    uint8 = 0xD1
+		hidKPMemRecall   uint8 = 0xD2
+		hidKPMemClear    uint8 = 0xD3
+		hidKPMemAdd      uint8 = 0xD4
+		hidKPMemSubtract uint8 = 0xD5
+		hidKPMemMultiply uint8 = 0xD6
+		hidKPMemDivide   uint8 = 0xD7
 
-	hidKPBinary      uint8 = 0xDB
-	hidKPOctal       uint8 = 0xDC
-	hidKPDecimal     uint8 = 0xDD
-	hidKPHexadecimal uint8 = 0xDE
+		hidKPPlusMinus  uint8 = 0xD8
+		hidKPClear      uint8 = 0xD9
+		hidKPClearEntry uint8 = 0xDA
+
+		hidKPBinary      uint8 = 0xDB
+		hidKPOctal       uint8 = 0xDC
+		hidKPDecimal     uint8 = 0xDD
+		hidKPHexadecimal uint8 = 0xDE
+	*/
 
 	hidUnknown uint8 = 0x00
 )

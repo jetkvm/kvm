@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // ---------------------------------------------------------------------------
@@ -400,8 +401,18 @@ func TestSanitizeNameTrimsWhitespace(t *testing.T) {
 func TestSanitizeNameTruncates(t *testing.T) {
 	long := strings.Repeat("x", 200)
 	got := sanitizeName(long)
-	if len(got) != maxNameLength {
-		t.Errorf("expected length %d, got %d", maxNameLength, len(got))
+	if utf8.RuneCountInString(got) != maxNameLength {
+		t.Errorf("expected %d runes, got %d", maxNameLength, utf8.RuneCountInString(got))
+	}
+
+	// Multi-byte: 200 CJK characters → truncate to maxNameLength runes, not bytes
+	cjk := strings.Repeat("漢", 200)
+	gotCJK := sanitizeName(cjk)
+	if utf8.RuneCountInString(gotCJK) != maxNameLength {
+		t.Errorf("CJK: expected %d runes, got %d", maxNameLength, utf8.RuneCountInString(gotCJK))
+	}
+	if !utf8.ValidString(gotCJK) {
+		t.Error("CJK truncation produced invalid UTF-8")
 	}
 }
 
