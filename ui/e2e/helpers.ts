@@ -1361,3 +1361,34 @@ declare global {
     };
   }
 }
+
+/** Navigate to the device session page and wait for connectivity. */
+export async function goToSession(page: Page) {
+  await page.goto("/");
+  await waitForWebRTCReady(page);
+}
+
+/** Navigate to the keyboard settings page. */
+export async function goToKeyboardSettings(page: Page) {
+  await page.goto("/settings/keyboard");
+  await page.waitForLoadState("networkidle");
+}
+
+/** Get the list of layouts via JSON-RPC. */
+export async function getLayouts(page: Page) {
+  return callJsonRpc(page, "getKeyboardLayouts") as Promise<
+    Array<{ id: string; name: string; builtin: boolean }>
+  >;
+}
+
+/** Get a specific layout's full data via JSON-RPC. */
+export async function getLayoutData(page: Page, id: string) {
+  return callJsonRpc(page, "getKeyboardLayoutData", { id }) as Promise<{
+    id: string;
+    name: string;
+    keys: Array<{ scancode: number; legends: Record<string, string> }>;
+    charMap: Record<string, unknown>;
+    boardW: number;
+    boardH: number;
+  }>;
+}

@@ -25,6 +25,10 @@ import {
   waitForLedState,
   restartAppViaSSH,
   semverGte,
+  goToSession,
+  goToKeyboardSettings,
+  getLayouts,
+  getLayoutData,
 } from "../helpers";
 import {
   createRemoteAgent,
@@ -3007,5 +3011,456 @@ test.describe("Remote Host Agent", () => {
       await freshPage.close();
       await context.close();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// JSON-RPC: Layout API
+// ---------------------------------------------------------------------------
+
+test.describe("Keyboard Layout JSON-RPC API", () => {
+  test.beforeEach(async ({ page }) => {
+    await goToSession(page);
+  });
+
+  test("getKeyboardLayouts returns built-in layouts", async ({ page }) => {
+    const layouts = await getLayouts(page);
+    expect(layouts.length).toBeGreaterThanOrEqual(19);
+
+    // en-US must always exist
+    const enUS = layouts.find(l => l.id === "en-US");
+    expect(enUS).toBeDefined();
+    expect(enUS!.builtin).toBe(true);
+
+    // nl-BE alias should be present
+    const nlBE = layouts.find(l => l.id === "nl-BE");
+    expect(nlBE).toBeDefined();
+    expect(nlBE!.builtin).toBe(true);
+
+    // All built-ins should be flagged
+    const builtins = layouts.filter(l => l.builtin);
+    expect(builtins.length).toBeGreaterThanOrEqual(19);
+  });
+
+  test("getKeyboardLayoutData returns full en-US layout", async ({ page }) => {
+    const layout = await getLayoutData(page, "en-US");
+    expect(layout.id).toBe("en-US");
+    expect(layout.keys.length).toBeGreaterThanOrEqual(100);
+    expect(layout.boardW).toBeGreaterThan(20);
+
+    // charMap should have common characters
+    expect(layout.charMap).toHaveProperty("a");
+    expect(layout.charMap).toHaveProperty("A");
+    expect(layout.charMap).toHaveProperty("1");
+    expect(layout.charMap).toHaveProperty("!");
+  });
+
+  test("getKeyboardLayoutData returns de-DE with dead key compositions", async ({
+    page,
+  }) => {
+    const layout = await getLayoutData(page, "de-DE");
+    expect(layout.id).toBe("de-DE");
+
+    // Dead key composition: ^+a → â should be in charMap with prefix
+    const aCirc = layout.charMap["â"] as { s: number; m: number; p?: unknown };
+    expect(aCirc).toBeDefined();
+    expect(aCirc.p).toBeDefined(); // has dead key prefix
+  });
+
+  test("getKeyboardLayoutData falls back to en-US for unknown ID", async ({
+    page,
+  }) => {
+    const layout = await getLayoutData(page, "xx-NONEXISTENT");
+    expect(layout.id).toBe("en-US");
+  });
+
+  test("nl-BE alias returns same keys as fr-BE", async ({ page }) => {
+    const nlBE = await getLayoutData(page, "nl-BE");
+    const frBE = await getLayoutData(page, "fr-BE");
+    expect(nlBE.keys.length).toBe(frBE.keys.length);
+    expect(Object.keys(nlBE.charMap).length).toBe(
+      Object.keys(frBE.charMap).length,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Settings page: Layout selection
+// ---------------------------------------------------------------------------
+
+test.describe("Keyboard Settings Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await goToSession(page);
+  });
+
+  test("settings page shows layout dropdown with built-ins", async ({
+    page,
+  }) => {
+    await goToKeyboardSettings(page);
+
+    // The layout listbox should be visible
+    const listbox = page.getByRole("listbox").first();
+    await expect(listbox).toBeVisible({ timeout: 10000 });
+  });
+
+  test("preview button opens layout preview dialog", async ({ page }) => {
+    await goToKeyboardSettings(page);
+
+    // Click preview for en-US
+    const previewBtn = page.locator('[data-testid="preview-layout-en-US"]').first();
+    await previewBtn.click();
+
+    // Preview dialog should open with a virtual keyboard
+    const vkb = page.locator(".vkb");
+    await expect(vkb).toBeVisible({ timeout: 5000 });
+
+    // Should show keys
+    const keys = page.locator(".vkb .key");
+    const count = await keys.count();
+    expect(count).toBeGreaterThanOrEqual(50);
+
+    // Close dialog
+    const closeBtn = page.locator('[data-testid="preview-layout-close"]');
+    await closeBtn.click();
+    await expect(vkb).not.toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Virtual Keyboard: Rendering
+// ---------------------------------------------------------------------------
+
+test.describe("Virtual Keyboard Rendering", () => {
+  test.beforeEach(async ({ page }) => {
+    await goToSession(page);
+  });
+
+  test("virtual keyboard toggle shows and hides keyboard", async ({
+    page,
+  }) => {
+    // The virtual keyboard toggle button should exist
+    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+
+    // If keyboard is not visible, click to show
+    const vkb = page.locator(".vkb");
+    if (!(await vkb.isVisible())) {
+      await toggleBtn.click();
+    }
+    await expect(vkb).toBeVisible({ timeout: 5000 });
+
+    // Should have keys rendered
+    const keys = page.locator(".vkb .key");
+    const count = await keys.count();
+    expect(count).toBeGreaterThanOrEqual(50);
+
+    // Hide button should work
+    const hideBtn = page.locator('[data-testid="virtual-keyboard-hide"]');
+    await hideBtn.click();
+    await expect(vkb).not.toBeVisible();
+  });
+
+  test("virtual keyboard shows all legend quadrants in default (all) mode", async ({
+    page,
+  }) => {
+    // Show keyboard
+    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const vkb = page.locator(".vkb");
+    if (!(await vkb.isVisible())) {
+      await toggleBtn.click();
+    }
+    await expect(vkb).toBeVisible({ timeout: 5000 });
+
+    // Default layer should be "all"
+    const layer = await vkb.getAttribute("data-layer");
+    expect(layer).toBe("all");
+
+    // In "all" mode, both normal and shift legends should be visible on a letter key
+    // Find a key with data-scancode for 'a' (scancode 4)
+    const aKey = page.locator('.vkb .key[data-scancode="4"]');
+    if ((await aKey.count()) > 0) {
+      const normalLegend = aKey.locator(".legend.normal");
+      const shiftLegend = aKey.locator(".legend.shift");
+      await expect(normalLegend).toBeVisible();
+      await expect(shiftLegend).toBeVisible();
+    }
+  });
+
+  test("virtual keyboard has correct data-scancode attributes", async ({
+    page,
+  }) => {
+    // Show keyboard
+    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const vkb = page.locator(".vkb");
+    if (!(await vkb.isVisible())) {
+      await toggleBtn.click();
+    }
+    await expect(vkb).toBeVisible({ timeout: 5000 });
+
+    // Check some known scancodes exist
+    const escKey = page.locator('.vkb .key[data-scancode="41"]'); // Escape = 0x29 = 41
+    expect(await escKey.count()).toBeGreaterThanOrEqual(1);
+
+    const spaceKey = page.locator('.vkb .key[data-scancode="44"]'); // Space = 0x2C = 44
+    expect(await spaceKey.count()).toBeGreaterThanOrEqual(1);
+
+    const enterKey = page.locator('.vkb .key[data-scancode="40"]'); // Enter = 0x28 = 40
+    expect(await enterKey.count()).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Virtual Keyboard: LED indicators
+// ---------------------------------------------------------------------------
+
+test.describe("Virtual Keyboard LED Indicators", () => {
+  test.beforeEach(async ({ page }) => {
+    await goToSession(page);
+  });
+
+  test("CapsLock LED indicator appears when CapsLock is toggled", async ({
+    page,
+  }) => {
+    // Show keyboard
+    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const vkb = page.locator(".vkb");
+    if (!(await vkb.isVisible())) {
+      await toggleBtn.click();
+    }
+    await expect(vkb).toBeVisible({ timeout: 5000 });
+
+    // Get initial CapsLock state
+    const initialLed = await getLedState(page);
+    const initialCaps = initialLed?.caps_lock ?? false;
+
+    // Toggle CapsLock
+    await tapKey(page, HID_KEY.CAPS_LOCK);
+    await waitForLedState(page, "caps_lock", !initialCaps);
+
+    // The .vkb should now have (or not have) the caps-lock-on class
+    if (!initialCaps) {
+      await expect(vkb).toHaveClass(/caps-lock-on/);
+    } else {
+      await expect(vkb).not.toHaveClass(/caps-lock-on/);
+    }
+
+    // Restore original state
+    await tapKey(page, HID_KEY.CAPS_LOCK);
+    await waitForLedState(page, "caps_lock", initialCaps);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Virtual Keyboard: Key click sends HID
+// ---------------------------------------------------------------------------
+
+test.describe("Virtual Keyboard Key Interaction", () => {
+  test.beforeEach(async ({ page }) => {
+    await goToSession(page);
+  });
+
+  test("clicking a virtual key sends the correct scancode", async ({
+    page,
+  }) => {
+    // Show keyboard
+    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const vkb = page.locator(".vkb");
+    if (!(await vkb.isVisible())) {
+      await toggleBtn.click();
+    }
+    await expect(vkb).toBeVisible({ timeout: 5000 });
+
+    // Get initial CapsLock state
+    const initialLed = await getLedState(page);
+    const initialCaps = initialLed?.caps_lock ?? false;
+
+    // Click the CapsLock key on the virtual keyboard (scancode 57 = 0x39)
+    const capsKey = page.locator('.vkb .key[data-scancode="57"]');
+    if ((await capsKey.count()) > 0) {
+      await capsKey.click();
+
+      // CapsLock state should toggle
+      await waitForLedState(page, "caps_lock", !initialCaps);
+
+      // Restore
+      await capsKey.click();
+      await waitForLedState(page, "caps_lock", initialCaps);
+    }
+  });
+
+  test("detach and attach buttons work", async ({ page }) => {
+    // Show keyboard
+    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const vkb = page.locator(".vkb");
+    if (!(await vkb.isVisible())) {
+      await toggleBtn.click();
+    }
+    await expect(vkb).toBeVisible({ timeout: 5000 });
+
+    // Detach
+    const detachBtn = page.locator('[data-testid="virtual-keyboard-detach"]');
+    if ((await detachBtn.count()) > 0) {
+      await detachBtn.click();
+      // After detach, attach button should appear
+      const attachBtn = page.locator('[data-testid="virtual-keyboard-attach"]');
+      await expect(attachBtn).toBeVisible({ timeout: 3000 });
+
+      // Re-attach
+      await attachBtn.click();
+      await expect(detachBtn).toBeVisible({ timeout: 3000 });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Upload and Delete custom layout
+// ---------------------------------------------------------------------------
+
+test.describe("Custom Layout Upload and Delete", () => {
+  const testLayoutKLE = JSON.stringify([
+    { name: "E2E Test Layout", author: "Playwright" },
+    [
+      "Esc",
+      "F1",
+      "F2",
+      "F3",
+      "F4",
+      "F5",
+      "F6",
+      "F7",
+      "F8",
+      "F9",
+      "F10",
+      "F11",
+      "F12",
+    ],
+    [
+      { w: 1.5 },
+      "Tab",
+      "Q",
+      "W",
+      "E",
+      "R",
+      "T",
+      "Y",
+      "U",
+      "I",
+      "O",
+      "P",
+      "[\n{",
+      "]\n}",
+    ],
+    [
+      { w: 1.75 },
+      "Caps",
+      "A",
+      "S",
+      "D",
+      "F",
+      "G",
+      "H",
+      "J",
+      "K",
+      "L",
+      ";\n:",
+      "'\n\"",
+      { w: 2.25 },
+      "Enter",
+    ],
+    [
+      { w: 2.25 },
+      "Shift",
+      "Z",
+      "X",
+      "C",
+      "V",
+      "B",
+      "N",
+      "M",
+      ",\n<",
+      ".\n>",
+      "/\n?",
+      { w: 2.75 },
+      "Shift",
+    ],
+    [
+      { w: 1.25 },
+      "Ctrl",
+      { w: 1.25 },
+      "Win",
+      { w: 1.25 },
+      "Alt",
+      { w: 6.25 },
+      "Space",
+      { w: 1.25 },
+      "Alt",
+      { w: 1.25 },
+      "Win",
+      { w: 1.25 },
+      "Menu",
+      { w: 1.25 },
+      "Ctrl",
+    ],
+  ]);
+
+  let uploadedId: string | null = null;
+
+  test("upload a custom layout via HTTP", async ({ page }) => {
+    await goToSession(page);
+
+    // Upload via fetch (same as useKleUpload hook)
+    const result = await page.evaluate(async (kleJson: string) => {
+      const resp = await fetch("/keyboard/upload?name=E2E+Test+Layout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: kleJson,
+      });
+      return resp.json();
+    }, testLayoutKLE);
+
+    expect(result.id).toBeDefined();
+    expect(result.name).toBe("E2E Test Layout");
+    expect(result.keyCount).toBeGreaterThan(40);
+    uploadedId = result.id;
+
+    // The uploaded layout should appear in the layout list
+    const layouts = await getLayouts(page);
+    const uploaded = layouts.find(l => l.id === uploadedId);
+    expect(uploaded).toBeDefined();
+    expect(uploaded!.builtin).toBe(false);
+  });
+
+  test("delete the uploaded custom layout", async ({ page }) => {
+    await goToSession(page);
+
+    // If we don't have an ID from a prior upload, upload one now
+    if (!uploadedId) {
+      const result = await page.evaluate(async (kleJson: string) => {
+        const resp = await fetch("/keyboard/upload?name=E2E+Temp+Layout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: kleJson,
+        });
+        return resp.json();
+      }, testLayoutKLE);
+      uploadedId = result.id;
+    }
+
+    // Delete via JSON-RPC
+    await callJsonRpc(page, "deleteKeyboardLayout", { id: uploadedId });
+
+    // Should no longer appear in list
+    const layouts = await getLayouts(page);
+    const deleted = layouts.find(l => l.id === uploadedId);
+    expect(deleted).toBeUndefined();
+
+    uploadedId = null;
+  });
+
+  test("cannot delete a built-in layout", async ({ page }) => {
+    await goToSession(page);
+
+    await expect(
+      callJsonRpc(page, "deleteKeyboardLayout", { id: "en-US" }),
+    ).rejects.toThrow(/cannot delete built-in/i);
   });
 });
