@@ -7,7 +7,7 @@ import validator from "validator";
 
 import PublicIPCard from "@components/PublicIPCard";
 import TailscaleCard from "@components/TailscaleCard";
-import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
+import { NetworkSettings, NetworkState, useNetworkStateStore } from "@hooks/stores";
 import { useShallow } from "zustand/shallow";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
