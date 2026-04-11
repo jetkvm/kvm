@@ -462,10 +462,11 @@ func inferScancodeWithTable(x, y, w, h float64, table map[int][]posEntry) uint8 
 		return hidEnter
 	}
 
-	// ISO hash key (#/~): on ISO layouts, the key at x≈12.75 on the home row
-	// is the hash key (narrow, w=1), not Enter (wide, w≥2). ANSI Enter at the
-	// same position is wider (w=2.25) and caught by the table entry.
-	if approxEq(x, 12.75) && w < 1.5 && math.Round(y) == 4 {
+	// ISO hash key (#/~): on ISO layouts, the narrow key at x≈12.75 on the
+	// home row is the hash key (w≈1), not Enter (w≥2). The width check alone
+	// distinguishes them — no row index check needed, so this works for both
+	// full-size (home row at y≈3.5→4) and compact (home row at y=3) tables.
+	if approxEq(x, 12.75) && w < 1.5 {
 		return hidHash
 	}
 
