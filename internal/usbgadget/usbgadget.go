@@ -26,11 +26,12 @@ type Devices struct {
 // Config is a struct that represents the customizations for a USB gadget.
 // TODO: rename to something else that won't confuse with the USB gadget configuration
 type Config struct {
-	VendorId     string `json:"vendor_id"`
-	ProductId    string `json:"product_id"`
-	SerialNumber string `json:"serial_number"`
-	Manufacturer string `json:"manufacturer"`
-	Product      string `json:"product"`
+	VendorId      string `json:"vendor_id"`
+	ProductId     string `json:"product_id"`
+	SerialNumber  string `json:"serial_number"`
+	Manufacturer  string `json:"manufacturer"`
+	Product       string `json:"product"`
+	Configuration string `json:"configuration"`
 
 	strictMode bool // when it's enabled, all warnings will be converted to errors
 	isEmpty    bool

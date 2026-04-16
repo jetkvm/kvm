@@ -975,6 +975,8 @@
     "usb_config_update_identifiers": "Update USB Identifiers",
     "usb_config_vendor_id_label": "Vendor ID",
     "usb_config_vendor_id_placeholder": "Enter Vendor ID",
+    "usb_config_configuration_label": "Configuration",
+    "usb_config_configuration_placeholder": "Enter Configuration",
     "usb_device_classes_description": "USB device classes in the composite device",
     "usb_device_classes_title": "Classes",
     "usb_device_custom": "Custom",

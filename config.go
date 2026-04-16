@@ -163,11 +163,12 @@ var (
 		Timezone:               "UTC",
 	}
 	defaultUsbConfig = usbgadget.Config{
-		VendorId:     "0x1d6b", //The Linux Foundation
-		ProductId:    "0x0104", //Multifunction Composite Gadget
-		SerialNumber: "",
-		Manufacturer: "JetKVM",
-		Product:      "USB Emulation Device",
+		VendorId:      "0x1d6b", //The Linux Foundation
+		ProductId:     "0x0104", //Multifunction Composite Gadget
+		SerialNumber:  "",
+		Manufacturer:  "JetKVM",
+		Product:       "USB Emulation Device",
+		Configuration: "Config 1: HID",
 	}
 	defaultUsbDevices = usbgadget.Devices{
 		AbsoluteMouse: true,
