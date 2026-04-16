@@ -287,15 +287,15 @@ function USBConfigDialog({
         />
         <InputFieldWithLabel
           required
-          label={m.usb_config_configuration_label()}
-          placeholder={m.usb_config_configuration_placeholder()}
-          defaultValue={usbConfigState?.configuration}
-          onChange={e => handleUsbConfiguration(e.target.value)}
+          label={m.usb_config_product_name_label()}
+          placeholder={m.usb_config_product_name_placeholder()}
+          defaultValue={usbConfigState?.product}
+          onChange={e => handleUsbProduct(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Configuration"
-          placeholder="Config 1: HID"
+          label={m.usb_config_configuration_label()}
+          placeholder={m.usb_config_configuration_placeholder()}
           defaultValue={usbConfigState?.configuration}
           onChange={e => handleUsbConfiguration(e.target.value)}
         />
