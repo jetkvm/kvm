@@ -975,6 +975,8 @@
     "usb_config_update_identifiers": "更新 USB 标识符",
     "usb_config_vendor_id_label": "供应商ID",
     "usb_config_vendor_id_placeholder": "输入供应商ID",
+    "usb_config_configuration_label": "配置",
+    "usb_config_configuration_placeholder": "输入配置",
     "usb_device_classes_description": "复合设备中包含的 USB 设备类。",
     "usb_device_classes_title": "设备类",
     "usb_device_custom": "自定义",

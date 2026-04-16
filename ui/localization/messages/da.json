@@ -975,6 +975,8 @@
     "usb_config_update_identifiers": "Opdater USB-identifikatorer",
     "usb_config_vendor_id_label": "Leverandør-ID",
     "usb_config_vendor_id_placeholder": "Indtast leverandør-ID",
+    "usb_config_configuration_label": "Konfiguration",
+    "usb_config_configuration_placeholder": "Indtast konfiguration",
     "usb_device_classes_description": "USB-enhedsklasser i den sammensatte enhed",
     "usb_device_classes_title": "Klasser",
     "usb_device_custom": "Tilpasset",

@@ -962,6 +962,8 @@
     "usb_config_update_identifiers": "Diweddaru Dynodwyr USB",
     "usb_config_vendor_id_label": "ID Gwerthwr",
     "usb_config_vendor_id_placeholder": "Rhowch ID Gwerthwr",
+    "usb_config_configuration_label": "Ffurfweddiad",
+    "usb_config_configuration_placeholder": "Rhowch ffurfweddiad", 
     "usb_device_classes_description": "Dosbarthiadau dyfais USB yn y ddyfais gyfansawdd",
     "usb_device_classes_title": "Dosbarthiadau",
     "usb_device_custom": "Personol",

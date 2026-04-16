@@ -975,6 +975,8 @@
     "usb_config_update_identifiers": "Обновить идентификаторы USB",
     "usb_config_vendor_id_label": "ID поставщика",
     "usb_config_vendor_id_placeholder": "Введите ID поставщика",
+    "usb_config_configuration_label": "Конфигурация",
+    "usb_config_configuration_placeholder": "Введите конфигурацию",
     "usb_device_classes_description": "Классы USB-устройств в составном устройстве",
     "usb_device_classes_title": "Классы",
     "usb_device_custom": "Пользовательский",

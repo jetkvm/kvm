@@ -67,7 +67,7 @@ export function UsbInfoSetting() {
         serial_number: deviceId,
         manufacturer: "JetKVM",
         product: "USB Emulation Device",
-        configuration: "Config 1: HID1",
+        configuration: "Config 1: HID",
       },
       "Logitech USB Input Device": {
         vendor_id: "0x046d",
@@ -75,7 +75,7 @@ export function UsbInfoSetting() {
         serial_number: generatedSerialNumber,
         manufacturer: "Logitech (x64)",
         product: "Logitech USB Input Device",
-        configuration: "Config 1: HID2",
+        configuration: "RQR24.11_B0036",
       },
       "Wireless MultiMedia Keyboard": {
         vendor_id: "0x045e",
@@ -83,7 +83,7 @@ export function UsbInfoSetting() {
         serial_number: generatedSerialNumber,
         manufacturer: "Microsoft",
         product: "Wireless MultiMedia Keyboard",
-        configuration: "Config 1: HID3",
+        configuration: "Config 1: HID",
       },
       "Multimedia Pro Keyboard": {
         vendor_id: "0x413c",
@@ -91,7 +91,7 @@ export function UsbInfoSetting() {
         serial_number: generatedSerialNumber,
         manufacturer: "Dell Inc.",
         product: "Multimedia Pro Keyboard",
-        configuration: "Config 1: HID4",
+        configuration: "Config 1: HID",
       },
     }),
     [deviceId],

@@ -975,6 +975,8 @@
     "usb_config_update_identifiers": "更新 USB 識別碼",
     "usb_config_vendor_id_label": "供應商 ID",
     "usb_config_vendor_id_placeholder": "輸入供應商 ID",
+    "usb_config_configuration_label": "設定",
+    "usb_config_configuration_placeholder": "輸入設定",
     "usb_device_classes_description": "複合裝置中的 USB 裝置類別",
     "usb_device_classes_title": "類別",
     "usb_device_custom": "自訂",

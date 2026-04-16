@@ -975,6 +975,8 @@
     "usb_config_update_identifiers": "USB識別子を更新",
     "usb_config_vendor_id_label": "ベンダーID",
     "usb_config_vendor_id_placeholder": "ベンダーIDを入力",
+    "usb_config_configuration_label": "構成",
+    "usb_config_configuration_placeholder": "構成を入力",
     "usb_device_classes_description": "複合デバイス内のUSBデバイスクラス",
     "usb_device_classes_title": "クラス",
     "usb_device_custom": "カスタム",
