@@ -278,7 +278,6 @@ func NewConsoleBroker(s Sink, norm NormalizationOptions) *ConsoleBroker {
 }
 
 func (b *ConsoleBroker) Start() { go b.loop() }
-func (b *ConsoleBroker) Close() { close(b.done) }
 func (b *ConsoleBroker) SetSink(s Sink) {
 	b.sinkLock.Lock()
 	defer b.sinkLock.Unlock()
@@ -295,6 +294,14 @@ func (b *ConsoleBroker) ClearSink(s Sink) {
 	}
 }
 func (b *ConsoleBroker) SetNormOptions(norm NormalizationOptions) { b.norm = norm }
+func (b *ConsoleBroker) Close() {
+	select {
+	case <-b.done:
+		return
+	default:
+		close(b.done)
+	}
+}
 func (b *ConsoleBroker) SetTerminalPaused(v bool) {
 	if b == nil {
 		return
@@ -645,7 +652,14 @@ func (m *SerialMux) Start() {
 	go m.writer()
 }
 
-func (m *SerialMux) Close() { close(m.done) }
+func (m *SerialMux) Close() {
+	select {
+	case <-m.done:
+		return
+	default:
+		close(m.done)
+	}
+}
 
 func (m *SerialMux) SetEchoEnabled(v bool) { m.echoEnabled.Store(v) }
 
