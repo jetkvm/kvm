@@ -580,10 +580,20 @@ func initSerialPort() {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
+	case "serial-console":
+		_ = mountSerialConsole()
 	}
 }
 
 func reopenSerialPort() error {
+	if serialMux != nil {
+		serialMux.Close()
+		serialMux = nil
+	}
+	if consoleBroker != nil {
+		consoleBroker.Close()
+		consoleBroker = nil
+	}
 	if port != nil {
 		port.Close()
 	}
@@ -598,6 +608,10 @@ func reopenSerialPort() error {
 		return err
 	}
 
+	return nil
+}
+
+func mountSerialConsole() error {
 	// new broker (no sink yet—set it in handleSerialChannel.OnOpen)
 	norm := NormalizationOptions{
 		Mode: ModeNames, LineEnding: LineEnding_LF, TabRender: "", PreserveANSI: true,
@@ -616,6 +630,11 @@ func reopenSerialPort() error {
 	serialMux.SetEchoEnabled(serialConfig.EnableEcho) // honor your setting
 	serialMux.Start()
 
+	return nil
+}
+
+func unmountSerialConsole() error {
+	_ = reopenSerialPort()
 	return nil
 }
 

@@ -770,6 +770,8 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = unmountATXControl()
 	case "dc-power":
 		_ = unmountDCControl()
+	case "serial-console":
+		_ = unmountSerialConsole()
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
@@ -780,6 +782,8 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
+	case "serial-console":
+		_ = mountSerialConsole()
 	}
 
 	// Re-publish MQTT HA Discovery for the new extension
