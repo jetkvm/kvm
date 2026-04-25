@@ -80,6 +80,21 @@ func GetDeviceID() string {
 	return deviceID
 }
 
+var deviceSKU string
+var deviceSKUOnce sync.Once
+
+func GetDeviceSKU() string {
+	deviceSKUOnce.Do(func() {
+		content, err := os.ReadFile("/etc/jetkvm-sku")
+		if err != nil || strings.TrimSpace(string(content)) == "" {
+			deviceSKU = "jetkvm-v2"
+		} else {
+			deviceSKU = strings.TrimSpace(string(content))
+		}
+	})
+	return deviceSKU
+}
+
 func GetDefaultHostname() string {
 	deviceId := GetDeviceID()
 	if deviceId == "unknown_device_id" {
