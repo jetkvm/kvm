@@ -155,6 +155,7 @@ func Main() {
 			includePreRelease := config.IncludePreRelease
 			err = otaState.TryUpdate(context.Background(), ota.UpdateParams{
 				DeviceID:          GetDeviceID(),
+				SKU:               GetDeviceSKU(),
 				IncludePreRelease: includePreRelease,
 			})
 			if err != nil {
