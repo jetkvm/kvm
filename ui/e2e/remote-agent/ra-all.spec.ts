@@ -3055,9 +3055,7 @@ test.describe("Keyboard Layout JSON-RPC API", () => {
     expect(layout.charMap).toHaveProperty("!");
   });
 
-  test("getKeyboardLayoutData returns de-DE with dead key compositions", async ({
-    page,
-  }) => {
+  test("getKeyboardLayoutData returns de-DE with dead key compositions", async ({ page }) => {
     const layout = await getLayoutData(page, "de-DE");
     expect(layout.id).toBe("de-DE");
 
@@ -3067,9 +3065,7 @@ test.describe("Keyboard Layout JSON-RPC API", () => {
     expect(aCirc.p).toBeDefined(); // has dead key prefix
   });
 
-  test("getKeyboardLayoutData falls back to en-US for unknown ID", async ({
-    page,
-  }) => {
+  test("getKeyboardLayoutData falls back to en-US for unknown ID", async ({ page }) => {
     const layout = await getLayoutData(page, "xx-NONEXISTENT");
     expect(layout.id).toBe("en-US");
   });
@@ -3078,9 +3074,7 @@ test.describe("Keyboard Layout JSON-RPC API", () => {
     const nlBE = await getLayoutData(page, "nl-BE");
     const frBE = await getLayoutData(page, "fr-BE");
     expect(nlBE.keys.length).toBe(frBE.keys.length);
-    expect(Object.keys(nlBE.charMap).length).toBe(
-      Object.keys(frBE.charMap).length,
-    );
+    expect(Object.keys(nlBE.charMap).length).toBe(Object.keys(frBE.charMap).length);
   });
 });
 
@@ -3093,9 +3087,7 @@ test.describe("Keyboard Settings Page", () => {
     await goToSession(page);
   });
 
-  test("settings page shows layout dropdown with built-ins", async ({
-    page,
-  }) => {
+  test("settings page shows layout dropdown with built-ins", async ({ page }) => {
     await goToKeyboardSettings(page);
 
     // The layout listbox should be visible
@@ -3135,11 +3127,12 @@ test.describe("Virtual Keyboard Rendering", () => {
     await goToSession(page);
   });
 
-  test("virtual keyboard toggle shows and hides keyboard", async ({
-    page,
-  }) => {
+  test("virtual keyboard toggle shows and hides keyboard", async ({ page }) => {
     // The virtual keyboard toggle button should exist
-    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const toggleBtn = page
+      .locator("button")
+      .filter({ hasText: /keyboard/i })
+      .first();
 
     // If keyboard is not visible, click to show
     const vkb = page.locator(".vkb");
@@ -3159,11 +3152,12 @@ test.describe("Virtual Keyboard Rendering", () => {
     await expect(vkb).not.toBeVisible();
   });
 
-  test("virtual keyboard shows all legend quadrants in default (all) mode", async ({
-    page,
-  }) => {
+  test("virtual keyboard shows all legend quadrants in default (all) mode", async ({ page }) => {
     // Show keyboard
-    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const toggleBtn = page
+      .locator("button")
+      .filter({ hasText: /keyboard/i })
+      .first();
     const vkb = page.locator(".vkb");
     if (!(await vkb.isVisible())) {
       await toggleBtn.click();
@@ -3177,7 +3171,9 @@ test.describe("Virtual Keyboard Rendering", () => {
     // In "all" mode, both normal and shift legends should be visible on a letter key
     // Find a key with data-scancode for 'a' (scancode 4)
     const aKey = page.locator('.vkb .key[data-scancode="4"]');
-    if ((await aKey.count()) > 0) {
+    const aCount = await aKey.count();
+    expect(aCount).toBeGreaterThanOrEqual(1);
+    if (aCount > 0) {
       const normalLegend = aKey.locator(".legend.normal");
       const shiftLegend = aKey.locator(".legend.shift");
       await expect(normalLegend).toBeVisible();
@@ -3185,11 +3181,12 @@ test.describe("Virtual Keyboard Rendering", () => {
     }
   });
 
-  test("virtual keyboard has correct data-scancode attributes", async ({
-    page,
-  }) => {
+  test("virtual keyboard has correct data-scancode attributes", async ({ page }) => {
     // Show keyboard
-    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const toggleBtn = page
+      .locator("button")
+      .filter({ hasText: /keyboard/i })
+      .first();
     const vkb = page.locator(".vkb");
     if (!(await vkb.isVisible())) {
       await toggleBtn.click();
@@ -3217,11 +3214,12 @@ test.describe("Virtual Keyboard LED Indicators", () => {
     await goToSession(page);
   });
 
-  test("CapsLock LED indicator appears when CapsLock is toggled", async ({
-    page,
-  }) => {
+  test("CapsLock LED indicator appears when CapsLock is toggled", async ({ page }) => {
     // Show keyboard
-    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const toggleBtn = page
+      .locator("button")
+      .filter({ hasText: /keyboard/i })
+      .first();
     const vkb = page.locator(".vkb");
     if (!(await vkb.isVisible())) {
       await toggleBtn.click();
@@ -3258,11 +3256,12 @@ test.describe("Virtual Keyboard Key Interaction", () => {
     await goToSession(page);
   });
 
-  test("clicking a virtual key sends the correct scancode", async ({
-    page,
-  }) => {
+  test("clicking a virtual key sends the correct scancode", async ({ page }) => {
     // Show keyboard
-    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const toggleBtn = page
+      .locator("button")
+      .filter({ hasText: /keyboard/i })
+      .first();
     const vkb = page.locator(".vkb");
     if (!(await vkb.isVisible())) {
       await toggleBtn.click();
@@ -3275,7 +3274,9 @@ test.describe("Virtual Keyboard Key Interaction", () => {
 
     // Click the CapsLock key on the virtual keyboard (scancode 57 = 0x39)
     const capsKey = page.locator('.vkb .key[data-scancode="57"]');
-    if ((await capsKey.count()) > 0) {
+    const capsCount = await capsKey.count();
+    expect(capsCount).toBeGreaterThanOrEqual(1);
+    if (capsCount > 0) {
       await capsKey.click();
 
       // CapsLock state should toggle
@@ -3289,7 +3290,10 @@ test.describe("Virtual Keyboard Key Interaction", () => {
 
   test("detach and attach buttons work", async ({ page }) => {
     // Show keyboard
-    const toggleBtn = page.locator("button").filter({ hasText: /keyboard/i }).first();
+    const toggleBtn = page
+      .locator("button")
+      .filter({ hasText: /keyboard/i })
+      .first();
     const vkb = page.locator(".vkb");
     if (!(await vkb.isVisible())) {
       await toggleBtn.click();
@@ -3318,37 +3322,8 @@ test.describe("Virtual Keyboard Key Interaction", () => {
 test.describe("Custom Layout Upload and Delete", () => {
   const testLayoutKLE = JSON.stringify([
     { name: "E2E Test Layout", author: "Playwright" },
-    [
-      "Esc",
-      "F1",
-      "F2",
-      "F3",
-      "F4",
-      "F5",
-      "F6",
-      "F7",
-      "F8",
-      "F9",
-      "F10",
-      "F11",
-      "F12",
-    ],
-    [
-      { w: 1.5 },
-      "Tab",
-      "Q",
-      "W",
-      "E",
-      "R",
-      "T",
-      "Y",
-      "U",
-      "I",
-      "O",
-      "P",
-      "[\n{",
-      "]\n}",
-    ],
+    ["Esc", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"],
+    [{ w: 1.5 }, "Tab", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[\n{", "]\n}"],
     [
       { w: 1.75 },
       "Caps",
@@ -3459,8 +3434,8 @@ test.describe("Custom Layout Upload and Delete", () => {
   test("cannot delete a built-in layout", async ({ page }) => {
     await goToSession(page);
 
-    await expect(
-      callJsonRpc(page, "deleteKeyboardLayout", { id: "en-US" }),
-    ).rejects.toThrow(/cannot delete built-in/i);
+    await expect(callJsonRpc(page, "deleteKeyboardLayout", { id: "en-US" })).rejects.toThrow(
+      /cannot delete built-in/i,
+    );
   });
 });
