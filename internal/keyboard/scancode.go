@@ -3,8 +3,9 @@
 // Infers USB HID Usage IDs from physical key positions in the KLE grid.
 //
 // Standard keyboard grids are well-defined. This table covers ANSI and ISO
-// standard layouts. For non-standard boards (JIS, ABNT2, ortholinear), a
-// .scan.json sidecar can override individual key scancodes post-parse.
+// standard layouts. For non-standard boards (JIS, ABNT2, ortholinear).
+// You can override individual key scancodes post-parse with a "scancodes"
+// dictionary in the KLE.json file.
 //
 // HID Usage Table: USB HID Usage Tables 1.3, Keyboard/Keypad Page (0x07)
 // https://usb.org/sites/default/files/hut1_3_0.pdf
