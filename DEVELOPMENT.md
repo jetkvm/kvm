@@ -608,13 +608,11 @@ The virtual keyboard and paste-text system are driven by [KLE](https://keyboard-
 #### Adding a new built-in layout
 
 1. Create a KLE JSON file at `internal/keyboard/layouts/<locale>.kle.json` (e.g. `ko_KR.kle.json`)
+   - IDs use hyphens (`ko-KR`) to match the format stored in device configs
    - Use [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com) to design the layout, then export the JSON
    - Key legends use `\n` to separate layers: `"normal\nshift\naltgr\nshift+altgr"`
    - Use Unicode symbols for special keys: `⌫` (Backspace), `↵` (Enter), `⇥` (Tab), `⇪` (Caps Lock), `↑↓←→` (arrows)
-2. Add the hyphenated ID to the `builtinLayouts` map in `internal/keyboard/handler.go` (e.g. `"ko-KR": {}`)
-   - IDs use hyphens (`ko-KR`) to match the format stored in device configs
-   - The file lookup converts hyphens to underscores automatically (`ko-KR` → `ko_KR.kle.json`)
-3. Run the tests to validate: `go test ./internal/keyboard/...`
+2. Run the tests to validate: `go test ./internal/keyboard/...`
    - `TestAllBuiltinLayoutsParse` verifies every registered layout loads and parses
    - `TestAllLayoutFilesRegistered` verifies every file in `layouts/` is registered
 
