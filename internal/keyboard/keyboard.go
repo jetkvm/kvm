@@ -652,6 +652,9 @@ func addChar(m map[string]HIDCombo, legend *string, scancode, mods uint8) {
 	if legend == nil || *legend == "" {
 		return
 	}
+	if !scancodeProducesText(scancode) {
+		return
+	}
 	if utf8.RuneCountInString(*legend) != 1 {
 		// Only single Unicode codepoints; skip named keys like "Enter"
 		return
@@ -664,6 +667,31 @@ func addChar(m map[string]HIDCombo, legend *string, scancode, mods uint8) {
 	if _, exists := m[*legend]; !exists {
 		m[*legend] = HIDCombo{Scancode: scancode, Modifiers: mods}
 	}
+}
+
+func scancodeProducesText(scancode uint8) bool {
+	// Alphabet keys
+	if scancode >= hidA && scancode <= hidZ {
+		return true
+	}
+	// Number row keys
+	if scancode >= hidN1 && scancode <= hidN0 {
+		return true
+	}
+	// Space and printable punctuation keys. Excludes Enter/Escape/Backspace/Tab.
+	if scancode == hidSpace ||
+		(scancode >= hidMinus && scancode <= hidSlash) ||
+		scancode == hidHash ||
+		scancode == hidISOKey {
+		return true
+	}
+	// Numpad printable characters. Excludes NumLock and KPEnter.
+	if (scancode >= hidKPSlash && scancode <= hidKPPlus) ||
+		(scancode >= hidKP1 && scancode <= hidKPDot) {
+		return true
+	}
+
+	return false
 }
 
 // addDeadKeyCompositions enriches the charMap with composed characters

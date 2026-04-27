@@ -905,6 +905,32 @@ func TestCharMapExcludesScancode0(t *testing.T) {
 	}
 }
 
+func TestCharMapSkipsGlyphLegendsForNonTextKeys(t *testing.T) {
+	keys := []TransportKey{
+		{X: 0, Y: 0, W: 1, H: 1, Scancode: hidBackspace,
+			Legends: KeyLegends{Normal: str("⌫")}},
+		{X: 1, Y: 0, W: 1, H: 1, Scancode: hidTab,
+			Legends: KeyLegends{Normal: str("⇥")}},
+		{X: 2, Y: 0, W: 1, H: 1, Scancode: hidArrowUp,
+			Legends: KeyLegends{Normal: str("↑")}},
+		{X: 3, Y: 0, W: 1, H: 1, Scancode: hidLShift,
+			Legends: KeyLegends{Normal: str("⇧")}},
+		{X: 4, Y: 0, W: 1, H: 1, Scancode: hidQ,
+			Legends: KeyLegends{Normal: str("q")}},
+	}
+	m := buildCharMap(keys)
+
+	for _, glyph := range []string{"⌫", "⇥", "↑", "⇧"} {
+		if _, ok := m[glyph]; ok {
+			t.Errorf("non-text glyph legend %q should not appear in charMap", glyph)
+		}
+	}
+
+	if _, ok := m["q"]; !ok {
+		t.Error("printable key legend 'q' should still appear in charMap")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Full round-trip: parse → JSON marshal → unmarshal
 // ---------------------------------------------------------------------------
