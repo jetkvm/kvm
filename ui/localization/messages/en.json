@@ -447,6 +447,7 @@
     "keyboard_layout_title": "Keyboard Layout",
     "keyboard_modifier_latching_description": "When enabled, clicking a modifier key (Shift, Ctrl, Alt, etc.) on the virtual keyboard holds it down until clicked again. When disabled, modifiers are released immediately like regular keys.",
     "keyboard_modifier_latching_title": "Sticky Modifier Keys",
+    "keyboard_quick_actions_description": "Quick Actions",
     "keyboard_show_pressed_keys_description": "Display currently pressed keys in the status bar",
     "keyboard_show_pressed_keys_title": "Show Pressed Keys",
     "keyboard_title": "Keyboard",

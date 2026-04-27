@@ -20,18 +20,18 @@ import { m } from "@localizations/messages.js";
 // ---------------------------------------------------------------------------
 
 const SYM = {
-  ctrl:  "⌃",
-  alt:   "⌥",
+  ctrl: "⌃",
+  alt: "⌥",
   shift: "⇧",
-  meta:  "⌘",
-  bksp:  "⌫",
-  del:   "⌦",
-  esc:   "Esc",
-  tab:   "⇥",
+  meta: "⌘",
+  bksp: "⌫",
+  del: "⌦",
+  esc: "Esc",
+  tab: "⇥",
   space: "␣",
-  f4:   "F4",
-  l:   "L",
-  r:  "R",
+  f4: "F4",
+  l: "L",
+  r: "R",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -156,6 +156,7 @@ export function QuickActions({ onExecuteMacro }: QuickActionsProps) {
         data-testid="quick-actions-menu"
       >
         <LuKeyboard className="h-3.5 w-3.5" />
+        <span className="text-[10px]">{m.keyboard_quick_actions_description()}</span>
         <LuChevronDown className="h-3 w-3" />
       </MenuButton>
 
@@ -163,14 +164,14 @@ export function QuickActions({ onExecuteMacro }: QuickActionsProps) {
         anchor="bottom start"
         transition
         className={cx(
-          "z-30 mt-1 min-w-[160px] origin-top-left rounded-md",
+          "z-30 mt-1 min-w-40 origin-top-left rounded-md",
           "border border-slate-700 bg-slate-800 shadow-lg",
           "transition duration-150 ease-out data-closed:scale-95 data-closed:opacity-0",
         )}
       >
         {ACTION_GROUPS.map(group => (
           <div key={group.title}>
-            <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
               {group.title}
             </div>
             <div className="px-1 pb-1">
