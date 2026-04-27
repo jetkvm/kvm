@@ -28,8 +28,12 @@ export default function SettingsKeyboardRoute() {
   const [deleteTarget, setDeleteTarget] = useState<LayoutMeta | null>(null);
   const [previewLayoutId, setPreviewLayoutId] = useState<string | null>(null);
 
-  const { result: uploadResult, error: uploadError, openFilePicker, clear: clearUpload } =
-    useKleUpload();
+  const {
+    result: uploadResult,
+    error: uploadError,
+    openFilePicker,
+    clear: clearUpload,
+  } = useKleUpload();
 
   const refreshLayouts = useCallback(() => {
     void send("getKeyboardLayouts", {}, (resp: JsonRpcResponse) => {
@@ -167,22 +171,6 @@ export default function SettingsKeyboardRoute() {
                       <LuCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     </span>
                     <span className="flex-1 truncate">{layout.name}</span>
-                    <button
-                      type="button"
-                      className={cx(
-                        "ml-2 rounded p-1 transition-opacity",
-                        "text-slate-300 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400",
-                        "group-data-focus:text-slate-500 dark:group-data-focus:text-slate-300",
-                      )}
-                      data-testid={`preview-layout-${layout.id}`}
-                      title={m.keyboard_layout_custom_preview()}
-                      onClick={e => {
-                        e.stopPropagation();
-                        setPreviewLayoutId(layout.id);
-                      }}
-                    >
-                      <LuEye className="h-3.5 w-3.5" />
-                    </button>
                   </ListboxOption>
                 ))}
               </ListboxOptions>
@@ -292,10 +280,7 @@ export default function SettingsKeyboardRoute() {
         onConfirm={handleDeleteLayout}
       />
 
-      <LayoutPreviewDialog
-        layoutId={previewLayoutId}
-        onClose={() => setPreviewLayoutId(null)}
-      />
+      <LayoutPreviewDialog layoutId={previewLayoutId} onClose={() => setPreviewLayoutId(null)} />
     </div>
   );
 }
