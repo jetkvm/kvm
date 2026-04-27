@@ -361,7 +361,7 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 
 			legends := parseLegends(legendStr)
 			dead := isDeadKey(legends, declaredDeadKeys)
-			shape := detectShape(w, h, nextW2, nextH2, nextStepped, hasW2)
+			shape := detectShape(x, w, h, nextW2, nextH2, nextStepped, hasW2)
 
 			// Scancode is inferred in a post-parse pass after board dimensions are known
 
@@ -585,7 +585,7 @@ func approxEq(a, b float64) bool {
 	return math.Abs(a-b) < 0.1
 }
 
-func detectShape(w, h, w2, h2 float64, stepped, hasW2 bool) KeyShape {
+func detectShape(x, w, h, w2, h2 float64, stepped, hasW2 bool) KeyShape {
 	if stepped {
 		return ShapeSteppedCaps
 	}
@@ -593,12 +593,14 @@ func detectShape(w, h, w2, h2 float64, stepped, hasW2 bool) KeyShape {
 	if hasW2 && approxEq(h, 2) && approxEq(w, 1.25) && approxEq(w2, 1.5) {
 		return ShapeISOEnter
 	}
+	// Big-ass Enter exists in the main typing area; avoid matching tall numpad keys.
+	inMainTypingArea := x < 15
 	// Big-ass Enter: tall and wider than normal
-	if approxEq(w, 1.5) && approxEq(h, 2) {
+	if inMainTypingArea && approxEq(w, 1.5) && approxEq(h, 2) {
 		return ShapeBigAssEnter
 	}
 	// Big-ass Enter: tall with no second rect
-	if h > 1.5 && !hasW2 {
+	if inMainTypingArea && h > 1.5 && !hasW2 {
 		return ShapeBigAssEnter
 	}
 	return ShapeNormal

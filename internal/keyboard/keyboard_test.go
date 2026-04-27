@@ -198,31 +198,40 @@ func TestLegendAutoUppercase(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestShapeNormal(t *testing.T) {
-	if s := detectShape(1, 1, 0, 0, false, false); s != ShapeNormal {
+	if s := detectShape(0, 1, 1, 0, 0, false, false); s != ShapeNormal {
 		t.Errorf("1×1 key: expected ShapeNormal, got %q", s)
 	}
 }
 
 func TestShapeISOEnter(t *testing.T) {
-	if s := detectShape(1.25, 2, 1.5, 1, false, true); s != ShapeISOEnter {
+	if s := detectShape(13, 1.25, 2, 1.5, 1, false, true); s != ShapeISOEnter {
 		t.Errorf("ISO Enter: expected ShapeISOEnter, got %q", s)
 	}
 }
 
 func TestShapeSteppedCaps(t *testing.T) {
-	if s := detectShape(1.75, 1, 0, 0, true, false); s != ShapeSteppedCaps {
+	if s := detectShape(0, 1.75, 1, 0, 0, true, false); s != ShapeSteppedCaps {
 		t.Errorf("stepped: expected ShapeSteppedCaps, got %q", s)
 	}
 }
 
 func TestShapeBigAssEnter(t *testing.T) {
 	// Exact 1.5×2 match
-	if s := detectShape(1.5, 2, 0, 0, false, false); s != ShapeBigAssEnter {
+	if s := detectShape(13, 1.5, 2, 0, 0, false, false); s != ShapeBigAssEnter {
 		t.Errorf("1.5×2 big-ass enter: expected ShapeBigAssEnter, got %q", s)
 	}
 	// Alternate tall key (h > 1.5, no w2) — second code path
-	if s := detectShape(1.0, 2, 0, 0, false, false); s != ShapeBigAssEnter {
+	if s := detectShape(13, 1.0, 2, 0, 0, false, false); s != ShapeBigAssEnter {
 		t.Errorf("1×2 tall key: expected ShapeBigAssEnter, got %q", s)
+	}
+}
+
+func TestShapeNumpadTallKeysNotBigAssEnter(t *testing.T) {
+	if s := detectShape(17.5, 1.0, 2, 0, 0, false, false); s != ShapeNormal {
+		t.Errorf("numpad 1×2 key: expected ShapeNormal, got %q", s)
+	}
+	if s := detectShape(17.5, 1.5, 2, 0, 0, false, false); s != ShapeNormal {
+		t.Errorf("numpad 1.5×2 key: expected ShapeNormal, got %q", s)
 	}
 }
 
