@@ -23,28 +23,30 @@
  * - 'shift'       : Shift held
  * - 'altgr'       : AltGr (Right Alt) held
  * - 'shift-altgr' : Shift + AltGr held
+ * - 'kana'        : Kana LED on
+ * - 'shift-kana'  : Kana LED on + Shift held
  * - 'all'         : preview mode — shows all layers simultaneously in quadrants
  *
  * This value is set as data-layer="..." on the .vkb container.
  * All legend show/hide logic is handled entirely by CSS selectors on this attribute.
  */
-export type KeyLayer = 'normal' | 'shift' | 'altgr' | 'shift-altgr' | 'all';
+export type KeyLayer = "normal" | "shift" | "altgr" | "shift-altgr" | "kana" | "shift-kana" | "all";
 
 // ---------------------------------------------------------------------------
 // HID modifier constants
 // ---------------------------------------------------------------------------
 
-export const MOD_NONE: number   = 0x00;
-export const MOD_LCTRL: number  = 0x01;
-export const MOD_LSHIFT: number  = 0x02;
-export const MOD_LALT: number   = 0x04;
-export const MOD_LMETA: number   = 0x08;
-export const MOD_RCTRL: number  = 0x10;
+export const MOD_NONE: number = 0x00;
+export const MOD_LCTRL: number = 0x01;
+export const MOD_LSHIFT: number = 0x02;
+export const MOD_LALT: number = 0x04;
+export const MOD_LMETA: number = 0x08;
+export const MOD_RCTRL: number = 0x10;
 export const MOD_RSHIFT: number = 0x20;
-export const MOD_RALT: number  = 0x40;
-export const MOD_RMETA: number  = 0x80;
+export const MOD_RALT: number = 0x40;
+export const MOD_RMETA: number = 0x80;
 
-export const MOD_ALTGR: number  = MOD_RALT; // Right Alt
+export const MOD_ALTGR: number = MOD_RALT; // Right Alt
 export const MOD_SHIFT_ALTGR: number = MOD_LSHIFT | MOD_ALTGR; // Shift + AltGr
 
 // ---------------------------------------------------------------------------
@@ -85,10 +87,12 @@ export interface HIDCombo {
  *   { normal: '1', shift: '!', altgr: '²', shiftAltgr: '¹' }
  */
 export interface KeyLegends {
-  normal?:     string;
-  shift?:      string;
-  altgr?:      string;
+  normal?: string;
+  shift?: string;
+  altgr?: string;
   shiftAltgr?: string;
+  kana?: string;
+  shiftKana?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,10 +105,10 @@ export interface KeyLegends {
  * Applied directly as a CSS class — no client-side shape detection needed.
  */
 export type KeyShape =
-  | ''             // standard rectangle
-  | 'iso-enter'
-  | 'big-ass-enter'
-  | 'stepped-caps';
+  | "" // standard rectangle
+  | "iso-enter"
+  | "big-ass-enter"
+  | "stepped-caps";
 
 // ---------------------------------------------------------------------------
 // TransportKey — a single keycap, fully resolved
@@ -118,8 +122,8 @@ export interface TransportKey {
   // --- Position and size (in keyboard units) ---
   x: number;
   y: number;
-  w: number;   // width,  default 1
-  h: number;   // height, default 1
+  w: number; // width,  default 1
+  h: number; // height, default 1
 
   // Second rectangle for L-shaped keys (ISO enter, stepped caps).
   // Omitted entirely for standard rectangular keys.
@@ -157,8 +161,8 @@ export interface TransportKey {
   decal: boolean;
 
   // --- Optional KLE colorway (only present when KLE file specifies colors) ---
-  color?:     string;  // CSS color string, e.g. "#2d2d2d"
-  textColor?: string;  // CSS color string, e.g. "#e0e0e0"
+  color?: string; // CSS color string, e.g. "#2d2d2d"
+  textColor?: string; // CSS color string, e.g. "#e0e0e0"
 }
 
 // ---------------------------------------------------------------------------
@@ -218,8 +222,8 @@ export interface KeyboardLayout {
  * Does NOT include keys or charMap — just enough to populate a picker.
  */
 export interface LayoutMeta {
-  id:      string;
-  name:    string;
+  id: string;
+  name: string;
   builtin: boolean;
 }
 
@@ -231,8 +235,8 @@ export interface LayoutMeta {
  * Returned by POST /keyboard/upload on success.
  */
 export interface LayoutUploadResponse {
-  id:        string;    // UUID assigned to the new layout
-  name:      string;    // display name (from KLE meta or ?name param)
-  keyCount:  number;    // number of keys parsed (for user confirmation)
-  warnings?: string[];  // non-fatal issues found during parsing
+  id: string; // UUID assigned to the new layout
+  name: string; // display name (from KLE meta or ?name param)
+  keyCount: number; // number of keys parsed (for user confirmation)
+  warnings?: string[]; // non-fatal issues found during parsing
 }

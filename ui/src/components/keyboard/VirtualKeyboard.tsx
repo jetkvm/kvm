@@ -8,10 +8,10 @@
  * the parent wrapper — this component is stateless except for the derived layer.
  */
 
-import React, { useMemo, useCallback } from 'react';
-import { KeyboardLayout, KeyLegends, KeyLayer } from './types/schema';
-import { keys } from '@/keyboardMappings';
-import { Keycap } from './Keycap';
+import React, { useMemo, useCallback } from "react";
+import { KeyboardLayout, KeyLegends, KeyLayer } from "./types/schema";
+import { keys } from "@/keyboardMappings";
+import { Keycap } from "./Keycap";
 
 export interface VirtualKeyboardProps {
   /** KeyboardLayout received from Go backend via JSON-RPC. */
@@ -32,6 +32,9 @@ export interface VirtualKeyboardProps {
 
   /** Extra CSS classes to add to the .vkb container (e.g. LED state classes). */
   vkbClassName?: string;
+
+  /** True when host keyboard Kana LED is on. */
+  kanaLedOn?: boolean;
 }
 
 export function VirtualKeyboard({
@@ -40,32 +43,42 @@ export function VirtualKeyboard({
   onKeySend,
   pressedScancodes,
   vkbClassName,
+  kanaLedOn = false,
 }: VirtualKeyboardProps) {
   // Derive display layer purely from pressedScancodes
   const layer: KeyLayer = useMemo(() => {
-    const hasShift = pressedScancodes?.has(keys.ShiftLeft) ||
-                     pressedScancodes?.has(keys.ShiftRight);
+    const hasShift =
+      pressedScancodes?.has(keys.ShiftLeft) || pressedScancodes?.has(keys.ShiftRight);
     const hasAltgr = pressedScancodes?.has(keys.AltRight);
 
-    if (hasShift && hasAltgr) return 'shift-altgr';
-    if (hasShift)             return 'shift';
-    if (hasAltgr)             return 'altgr';
-    return 'all';
-  }, [pressedScancodes]);
+    if (kanaLedOn) {
+      return hasShift ? "shift-kana" : "kana";
+    }
 
-  const handleKeyPress = useCallback((scancode: number, _legends: KeyLegends) => {
-    onKeySend(scancode);
-  }, [onKeySend]);
+    if (hasShift && hasAltgr) return "shift-altgr";
+    if (hasShift) return "shift";
+    if (hasAltgr) return "altgr";
+    return "all";
+  }, [pressedScancodes, kanaLedOn]);
+
+  const handleKeyPress = useCallback(
+    (scancode: number, _legends: KeyLegends) => {
+      onKeySend(scancode);
+    },
+    [onKeySend],
+  );
 
   return (
     <div className="vkb-wrapper">
       <div
-        className={['vkb', vkbClassName].filter(Boolean).join(' ')}
+        className={["vkb", vkbClassName].filter(Boolean).join(" ")}
         data-layer={layer}
-        style={{
-          '--board-w': keyboard.boardW,
-          '--board-h': keyboard.boardH,
-        } as React.CSSProperties}
+        style={
+          {
+            "--board-w": keyboard.boardW,
+            "--board-h": keyboard.boardH,
+          } as React.CSSProperties
+        }
         onMouseDown={e => e.preventDefault()}
       >
         {keyboard.keys.map((key, i) => (

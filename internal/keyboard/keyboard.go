@@ -63,6 +63,8 @@ type KeyLegends struct {
 	Shift      *string `json:"shift,omitempty"`
 	AltGr      *string `json:"altgr,omitempty"`
 	ShiftAltGr *string `json:"shiftAltgr,omitempty"`
+	Kana       *string `json:"kana,omitempty"`
+	ShiftKana  *string `json:"shiftKana,omitempty"`
 }
 
 // KeyShape is the pre-computed CSS class for the keycap.
@@ -469,15 +471,20 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 }
 
 /**
- * Parse a KLE legend string into the four layer slots.
+ * Parse a KLE legend string into supported layer slots.
  *
  * KLE encodes legends as a newline-separated string. Following the standard
- * KLE convention (shift-first):
+ * KLE convention (shift-first), JetKVM maps:
  *
  *   index 0 = shift         (top-left on keycap)
  *   index 1 = normal        (bottom-left on keycap)
  *   index 2 = shift+altgr   (top-right on keycap)
  *   index 3 = altgr         (bottom-right on keycap)
+ *
+ * For Japanese KLE exports with kana legends, JetKVM also maps:
+ *
+ *   index 8  = kana         (kana layer)
+ *   index 10 = shift+kana   (shifted kana layer)
  *
  * Both JetKVM's built-in layouts and community KLE files use this convention.
  */
@@ -499,6 +506,8 @@ func parseLegends(legendStr string) KeyLegends {
 		Shift:      get(0),
 		AltGr:      get(3),
 		ShiftAltGr: get(2),
+		Kana:       get(8),
+		ShiftKana:  get(10),
 	}
 
 	// Auto-populate shift/normal legends for single-letter keys.
@@ -734,6 +743,8 @@ func normalizeControlLegendsForDisplay(keys []TransportKey) {
 		normalize(&k.Legends.Shift)
 		normalize(&k.Legends.AltGr)
 		normalize(&k.Legends.ShiftAltGr)
+		normalize(&k.Legends.Kana)
+		normalize(&k.Legends.ShiftKana)
 	}
 }
 

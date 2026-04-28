@@ -229,8 +229,8 @@ function KeyboardWrapper() {
             <div
               className={cx(
                 !isAttachedVirtualKeyboardVisible
-                  ? "fixed top-0 left-0 z-10 min-w-[600px] max-w-[1200px] select-none"
-                  : "mx-auto min-w-[600px] max-w-[1200px]",
+                  ? "fixed top-0 left-0 z-10 max-w-[1200px] min-w-[600px] select-none"
+                  : "mx-auto max-w-[1200px] min-w-[600px]",
               )}
               ref={keyboardRef}
               style={{
@@ -300,11 +300,15 @@ function KeyboardWrapper() {
                       isMetaActive={false}
                       onKeySend={onKeySend}
                       pressedScancodes={pressedScancodes}
+                      kanaLedOn={keyboardLedState.kana}
                       vkbClassName={[
-                        keyboardLedState.caps_lock && 'caps-lock-on',
-                        keyboardLedState.num_lock && 'num-lock-on',
-                        keyboardLedState.scroll_lock && 'scroll-lock-on',
-                      ].filter(Boolean).join(' ')}
+                        keyboardLedState.caps_lock && "caps-lock-on",
+                        keyboardLedState.num_lock && "num-lock-on",
+                        keyboardLedState.scroll_lock && "scroll-lock-on",
+                        keyboardLedState.kana && "kana-on",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                     />
                   ) : (
                     <div className="flex items-center justify-center p-8 text-sm text-slate-500 dark:text-slate-400">

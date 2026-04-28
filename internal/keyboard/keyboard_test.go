@@ -91,6 +91,24 @@ func TestLegendLayers(t *testing.T) {
 	}
 }
 
+func TestLegendKanaSlots(t *testing.T) {
+	// Japanese KLE export style with kana in slot 8 and shifted kana in slot 10.
+	legends := parseLegends("A\na\n\n\n\n\n\n\nｱ\n\nｧ")
+
+	if legends.Normal == nil || *legends.Normal != "a" {
+		t.Errorf("normal: expected 'a', got %v", legends.Normal)
+	}
+	if legends.Shift == nil || *legends.Shift != "A" {
+		t.Errorf("shift: expected 'A', got %v", legends.Shift)
+	}
+	if legends.Kana == nil || *legends.Kana != "ｱ" {
+		t.Errorf("kana: expected 'ｱ', got %v", legends.Kana)
+	}
+	if legends.ShiftKana == nil || *legends.ShiftKana != "ｧ" {
+		t.Errorf("shiftKana: expected 'ｧ', got %v", legends.ShiftKana)
+	}
+}
+
 func TestLegendEmptySlots(t *testing.T) {
 	// Standard KLE: "Q\nq" → shift=Q, normal=q, altgr=nil, shiftAltgr=nil
 	legends := parseLegends("Q\nq")

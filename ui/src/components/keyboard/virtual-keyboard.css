@@ -123,40 +123,40 @@
   width: calc(1.25 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-150 {
-  width: calc(1.50 * var(--u) - var(--pad) * 2);
+  width: calc(1.5 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-175 {
   width: calc(1.75 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-200 {
-  width: calc(2.00 * var(--u) - var(--pad) * 2);
+  width: calc(2 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-225 {
   width: calc(2.25 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-250 {
-  width: calc(2.50 * var(--u) - var(--pad) * 2);
+  width: calc(2.5 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-275 {
   width: calc(2.75 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-300 {
-  width: calc(3.00 * var(--u) - var(--pad) * 2);
+  width: calc(3 * var(--u) - var(--pad) * 2);
 }
-.vkb .key.w-350{
-  width: calc(3.50 * var(--u) - var(--pad) * 2);
+.vkb .key.w-350 {
+  width: calc(3.5 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-400 {
-  width: calc(4.00 * var(--u) - var(--pad) * 2);
+  width: calc(4 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-600 {
-  width: calc(6.00 * var(--u) - var(--pad) * 2);
+  width: calc(6 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-625 {
   width: calc(6.25 * var(--u) - var(--pad) * 2);
 }
 .vkb .key.w-700 {
-  width: calc(7.00 * var(--u) - var(--pad) * 2);
+  width: calc(7 * var(--u) - var(--pad) * 2);
 }
 
 /* Non-standard width fallback — --key-w set inline by getCustomWidthStyle() */
@@ -182,8 +182,8 @@
  * clip-path coordinates are percentages of the element's bounding box.
  */
 .vkb .key.iso-enter {
-  width: calc(1.50 * var(--u) - var(--pad) * 2);
-  height: calc(2.00 * var(--u) - var(--pad) * 2);
+  width: calc(1.5 * var(--u) - var(--pad) * 2);
+  height: calc(2 * var(--u) - var(--pad) * 2);
 
   /*
    * ISO Enter L-shape:
@@ -192,14 +192,7 @@
    * - Notch width: (1.5-1.25)/1.5 = 16.7% from left
    * - 1% inset at the midpoint creates a visible gap with the key below
    */
-  clip-path: polygon(
-    0%    0%,
-    100%  0%,
-    100%  100%,
-    16.7% 100%,
-    16.7% 46%,
-    0%    46%
-  );
+  clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 16.7% 100%, 16.7% 46%, 0% 46%);
 }
 
 /*
@@ -210,15 +203,8 @@
  */
 .vkb .key.big-ass-enter {
   width: calc(2.25 * var(--u) - var(--pad) * 2);
-  height: calc(2.00 * var(--u) - var(--pad) * 2);
-  clip-path: polygon(
-    33.3% 0%,
-    100%  0%,
-    100%  100%,
-    0%    100%,
-    0%    54%,
-    33.3% 54%
-  );
+  height: calc(2 * var(--u) - var(--pad) * 2);
+  clip-path: polygon(33.3% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 54%, 33.3% 54%);
 }
 
 /* ISO/big-ass Enter: in "all" mode, keep legend in the top half (visible area) */
@@ -258,11 +244,12 @@
 
 /*
  * Lock key LED indicators — driven by classes on .vkb container.
- * CapsLock=57 (0x39), ScrollLock=71 (0x47), NumLock=83 (0x53)
+ * CapsLock=57 (0x39), ScrollLock=71 (0x47), NumLock=83 (0x53), Kana=136 (0x88)
  */
-.vkb.caps-lock-on   .key[data-scancode="57"]::before,
+.vkb.caps-lock-on .key[data-scancode="57"]::before,
 .vkb.scroll-lock-on .key[data-scancode="71"]::before,
-.vkb.num-lock-on    .key[data-scancode="83"]::before {
+.vkb.num-lock-on .key[data-scancode="83"]::before,
+.vkb.kana-on .key[data-scancode="136"]::before {
   content: "";
   position: absolute;
   top: 3px;
@@ -334,7 +321,9 @@
 .vkb[data-layer="normal"] .legend.normal,
 .vkb[data-layer="shift"] .legend.shift,
 .vkb[data-layer="altgr"] .legend.altgr,
-.vkb[data-layer="shift-altgr"] .legend.shift-altgr {
+.vkb[data-layer="shift-altgr"] .legend.shift-altgr,
+.vkb[data-layer="kana"] .legend.kana,
+.vkb[data-layer="shift-kana"] .legend.shift-kana {
   display: flex;
   inset: 0;
   align-items: center;
@@ -347,7 +336,9 @@
  */
 .vkb[data-layer="shift"] .key:not(:has(.legend.shift)) .legend.normal,
 .vkb[data-layer="altgr"] .key:not(:has(.legend.altgr)) .legend.normal,
-.vkb[data-layer="shift-altgr"] .key:not(:has(.legend.shift-altgr)) .legend.normal {
+.vkb[data-layer="shift-altgr"] .key:not(:has(.legend.shift-altgr)) .legend.normal,
+.vkb[data-layer="kana"] .key:not(:has(.legend.kana)) .legend.normal,
+.vkb[data-layer="shift-kana"] .key:not(:has(.legend.shift-kana)) .legend.normal {
   display: flex;
   inset: 0;
   align-items: center;
@@ -363,7 +354,9 @@
    =========================================================================== */
 
 /* CapsLock on, idle ("all" mode): letter keys swap normal→shift in their quadrant */
-.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.normal { display: none; }
+.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.normal {
+  display: none;
+}
 .vkb.caps-lock-on[data-layer="all"] .key.letter .legend.shift {
   /* Take the normal legend's quadrant position (bottom-left) */
   bottom: 3px;
@@ -373,7 +366,9 @@
 }
 
 /* CapsLock on + Shift: letters revert to normal (Shift cancels CapsLock) */
-.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.shift { display: none; }
+.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.shift {
+  display: none;
+}
 .vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.normal {
   display: flex;
   inset: 0;
