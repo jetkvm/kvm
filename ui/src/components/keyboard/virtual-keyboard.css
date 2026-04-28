@@ -91,7 +91,7 @@
 
   color: var(--key-text-color);
   font-family: inherit;
-  font-size: calc(var(--u) * 0.27);
+  font-size: calc(var(--u) * 0.3);
   line-height: 1;
   overflow: hidden;
 
@@ -272,13 +272,13 @@
   cursor: default;
   pointer-events: none;
   color: rgba(255, 255, 255, 0.25);
-  font-size: calc(var(--u) * 0.17);
+  font-size: calc(var(--u) * 0.25);
 }
 
 .vkb .key.decal .legend {
   display: flex;
   align-items: flex-end;
-  font-size: calc(var(--u) * 0.15);
+  font-size: calc(var(--u) * 0.3);
 }
 
 .vkb .key.decal .legend.normal {
@@ -330,6 +330,14 @@
   justify-content: center;
 }
 
+/* If a key has exactly one legend span, center it regardless of layer. */
+.vkb .key:has(.legend:only-child) .legend {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+}
+
 /*
  * Fallback: when no legend exists for the active layer, show the normal legend
  * at reduced opacity to indicate "no change in this layer."
@@ -344,6 +352,19 @@
   align-items: center;
   justify-content: center;
   opacity: 0.75;
+}
+
+/*
+ * AltGr mode: explicitly keep control/meta key labels visible as a ghosted
+ * normal legend. We intentionally do not hide AltGr legends here.
+ */
+.vkb[data-layer="altgr"] .key.meta-control .legend.normal,
+.vkb[data-layer="shift-altgr"] .key.meta-control .legend.normal {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
 }
 
 /* ===========================================================================
@@ -385,7 +406,7 @@
 .vkb[data-layer="all"] .legend {
   display: flex;
   align-items: flex-end;
-  font-size: calc(var(--u) * 0.19);
+  font-size: calc(var(--u) * 0.32);
 }
 
 /* Quadrant positions */

@@ -42,6 +42,7 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
   // A key is a "letter" if its normal legend is a single Unicode letter (any script).
   // Used by CSS to apply CapsLock layer switching (shift legend for letters only).
   const isLetter = legends.normal != null && /^\p{Ll}$/u.test(legends.normal);
+  const isMetaControl = META_CONTROL_SCANCODES.has(scancode);
 
   const className = [
     "key",
@@ -52,6 +53,7 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
     decal && "decal",
     isPressed && "pressed",
     isLetter && "letter",
+    isMetaControl && "meta-control",
   ]
     .filter(Boolean)
     .join(" ");
@@ -131,84 +133,162 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
  * from KLE files that screen readers would not pronounce correctly.
  */
 const KEY_ARIA_NAMES: Record<string, () => string> = {
-  // Unicode symbols (used by built-in layouts)
-  "⌦": () => m.keys_delete(),
-  "⌫": () => m.keys_backspace(),
-  "↵": () => m.keys_enter(),
-  "⏎": () => m.keys_enter(),
-  "⇥": () => m.keys_tab(),
-  "⇪": () => m.keys_caps_lock(),
-  "↑": () => m.keys_arrow_up(),
-  "↓": () => m.keys_arrow_down(),
-  "←": () => m.keys_arrow_left(),
-  "→": () => m.keys_arrow_right(),
-  "⌥": () => m.keys_alt(),
+  "⇮": () => m.keys_alt(), // up-down arrow U21EE
+  "⌥": () => m.keys_alt(), // alternative key symbol U2387
   "⌥ Alt": () => m.keys_alt(),
-  "⌃": () => m.keys_control(),
-  "⌃ Ctrl": () => m.keys_control(),
-  "⇧": () => m.keys_shift(),
-  "⇧ Shift": () => m.keys_shift(),
-  "⌘": () => m.keys_meta(),
-  "⌘ Meta": () => m.keys_meta(),
-  "☰": () => m.keys_menu(),
-  "☰ Menu": () => m.keys_menu(),
-  "⊞": () => m.keys_meta(),
-  // Spelled-out equivalents (for user-uploaded KLE files)
-  Backspace: () => m.keys_backspace(),
-  Enter: () => m.keys_enter(),
-  Tab: () => m.keys_tab(),
-  "Caps Lock": () => m.keys_caps_lock(),
-  Caps: () => m.keys_caps_lock(),
-  "Arrow Up": () => m.keys_arrow_up(),
-  "Arrow Down": () => m.keys_arrow_down(),
-  "Arrow Left": () => m.keys_arrow_left(),
-  "Arrow Right": () => m.keys_arrow_right(),
-  Up: () => m.keys_arrow_up(),
+  Alt: () => m.keys_alt(),
+  LAlt: () => m.keys_alt(),
+  RAlt: () => m.keys_alt(),
+  AltGr: () => m.keys_altgr(),
+
+  App: () => m.keys_application(),
+  Application: () => m.keys_application(),
+
+  "↓": () => m.keys_arrow_down(), // downwards arrow U2193
+  "▼": () => m.keys_arrow_down(), // black down-pointing triangle U25B7
   Down: () => m.keys_arrow_down(),
+  ArrowDown: () => m.keys_arrow_down(),
+  "Arrow Down": () => m.keys_arrow_down(),
+
+  "←": () => m.keys_arrow_left(), // leftwards arrow U2190
+  "◀": () => m.keys_arrow_left(), // black left-pointing triangle U25C0
   Left: () => m.keys_arrow_left(),
+  ArrowLeft: () => m.keys_arrow_left(),
+  "Arrow Left": () => m.keys_arrow_left(),
+
+  "→": () => m.keys_arrow_right(), // rightwards arrow U2192
+  "▶": () => m.keys_arrow_right(), // black right-pointing triangle U25B6
   Right: () => m.keys_arrow_right(),
-  // Abbreviations
-  Esc: () => m.keys_escape(),
-  Escape: () => m.keys_escape(),
-  Space: () => m.keys_space(),
-  Ins: () => m.keys_insert(),
-  Insert: () => m.keys_insert(),
-  Del: () => m.keys_delete(),
-  Delete: () => m.keys_delete(),
-  Home: () => m.keys_home(),
-  End: () => m.keys_end(),
-  PgUp: () => m.keys_page_up(),
-  "Page Up": () => m.keys_page_up(),
-  PgDn: () => m.keys_page_down(),
-  "Page Down": () => m.keys_page_down(),
-  PrtSc: () => m.keys_print_screen(),
-  "Print Screen": () => m.keys_print_screen(),
-  ScrLk: () => m.keys_scroll_lock(),
-  "Scroll Lock": () => m.keys_scroll_lock(),
-  NumLk: () => m.keys_num_lock(),
-  "Num Lock": () => m.keys_num_lock(),
-  Pause: () => m.keys_pause(),
-  // Modifiers
+  ArrowRight: () => m.keys_arrow_right(),
+  "Arrow Right": () => m.keys_arrow_right(),
+
+  "↑": () => m.keys_arrow_up(), // upwards arrow U2191
+  "▲": () => m.keys_arrow_up(), // black up-pointing triangle U25B2
+  Up: () => m.keys_arrow_up(),
+  ArrowUp: () => m.keys_arrow_up(),
+  "Arrow Up": () => m.keys_arrow_up(),
+
+  "⌫": () => m.keys_backspace(), // erase to the left symbol U27F5
+  "⟵": () => m.keys_backspace(), // long leftwards arrow U27F5 sometimes used on Apple layouts
+  "␈": () => m.keys_backspace(),
+  BS: () => m.keys_backspace(),
+  Backspace: () => m.keys_backspace(),
+
+  "⇪": () => m.keys_caps_lock(), // upward arrow with horizontal bar U21EA
+  "🄰": () => m.keys_caps_lock(), // squared latin capital A
+  "🅰": () => m.keys_caps_lock(), // negative squared latin capital A
+  "⇬": () => m.keys_caps_lock(), // up arrow with double horizontal bar U21AC sometimes used on Candian layouts
+  Caps: () => m.keys_caps_lock(),
+  CapsLock: () => m.keys_caps_lock(),
+  "Caps Lock": () => m.keys_caps_lock(),
+
+  "⌘": () => m.keys_command(), // place of interest symbol U2318 sometimes used on Mac layouts
+  "⌘ Meta": () => m.keys_command(),
+  Command: () => m.keys_command(),
+
+  "⌃": () => m.keys_control(), // upward arrowhead symbol U2303 sometimes used for Ctrl
+  "⌃ Ctrl": () => m.keys_control(),
+  "✲": () => m.keys_control(), // open-center-asterisk symbol
+  "⎈": () => m.keys_control(), // helm symbol sometimes used on Mac layouts
   LCtrl: () => m.keys_control(),
   RCtrl: () => m.keys_control(),
   Ctrl: () => m.keys_control(),
   Control: () => m.keys_control(),
-  LShift: () => m.keys_shift(),
-  RShift: () => m.keys_shift(),
-  Shift: () => m.keys_shift(),
-  LAlt: () => m.keys_alt(),
-  RAlt: () => m.keys_alt(),
-  Alt: () => m.keys_alt(),
-  AltGr: () => m.keys_altgr(),
+
+  "⌦": () => m.keys_delete(),
+  Del: () => m.keys_delete(),
+  Delete: () => m.keys_delete(),
+
+  "⤓": () => m.keys_end(), // downwards arrow to bar U2913
+  "⇥": () => m.keys_end(), // rightwards arrow to bar U21E5
+  End: () => m.keys_end(),
+
+  "↵": () => m.keys_enter(), // downwards arrow U21B5
+  "⏎": () => m.keys_enter(), // return symbol U23CE
+  "↩": () => m.keys_enter(), // downwards arrow with corner leftwards U21A9
+  "⮠.": () => m.keys_enter(), // downwards triangle-headed arrow with long tip leftwards U2B20 sometimes used on Japanese layouts
+  "⌤": () => m.keys_enter(), // up arrowhead between two horizontal bars U2324 sometimes used for number keypad Enter on Apple layouts
+  "⎆": () => m.keys_enter(), // enter symbol U2386
+  "␍": () => m.keys_enter(),
+  CR: () => m.keys_enter(),
+  Enter: () => m.keys_enter(),
+
+  "⎋": () => m.keys_escape(), // broken circle with northwest arrow U238B sometimes used on Apple layouts
+  "␛": () => m.keys_escape(),
+  Esc: () => m.keys_escape(),
+  Escape: () => m.keys_escape(),
+
+  "⤒": () => m.keys_home(), // upwards arrow to bar U2912
+  "⇤": () => m.keys_home(), // leftwards arrow to bar U21E4
+  Home: () => m.keys_home(),
+
+  "⎀": () => m.keys_insert(), // insert symbol U2380
+  Ins: () => m.keys_insert(),
+  Insert: () => m.keys_insert(),
+
+  "☰": () => m.keys_menu(), // trigram for heaven symbol U2630
+  "☰ Menu": () => m.keys_menu(),
+  "▤": () => m.keys_menu(), // square with horizontal fill symbol U25A4
+  "▤ Menu": () => m.keys_menu(),
+  Menu: () => m.keys_menu(),
+
+  "❖": () => m.keys_meta(), // black diamond minus white X symbol
+  "◆": () => m.keys_meta(), // black diamond symbol U25C6
+  "⊞": () => m.keys_meta(), // squared plus symbol U229E
   LWin: () => m.keys_meta(),
   RWin: () => m.keys_meta(),
   Win: () => m.keys_meta(),
   Super: () => m.keys_meta(),
   Meta: () => m.keys_meta(),
-  Menu: () => m.keys_menu(),
-  App: () => m.keys_menu(),
   Windows: () => m.keys_meta(),
-  Command: () => m.keys_meta(),
+
+  "⇭": () => m.keys_num_lock(), // upwards white arrow on pedestal with vertical bar U21ED
+  NumLk: () => m.keys_num_lock(),
+  "Num Lock": () => m.keys_num_lock(),
+
+  Option: () => m.keys_option(), // common Mac label for Alt
+
+  "⇟": () => m.keys_page_down(), // downwards arrow with double stroke U21DF
+  PgDn: () => m.keys_page_down(),
+  PageDown: () => m.keys_page_down(),
+  "Page Down": () => m.keys_page_down(),
+
+  "⇞": () => m.keys_page_up(), // upwards arrow with double stroke U21DE
+  PgUp: () => m.keys_page_up(),
+  PageUp: () => m.keys_page_up(),
+  "Page Up": () => m.keys_page_up(),
+
+  Pause: () => m.keys_pause(),
+
+  "⎙": () => m.keys_print_screen(), // print screen symbol U2399
+  PrtSc: () => m.keys_print_screen(),
+  PrintScreen: () => m.keys_print_screen(),
+  "Print Screen": () => m.keys_print_screen(),
+
+  "⇳": () => m.keys_scroll_lock(), // up down white arrow U21F3
+  ScrLk: () => m.keys_scroll_lock(),
+  ScrollLock: () => m.keys_scroll_lock(),
+  "Scroll Lock": () => m.keys_scroll_lock(),
+
+  "⇧": () => m.keys_shift(), // upwards white arrow U21E7
+  "⇧ Shift": () => m.keys_shift(),
+  "Shift ⇧": () => m.keys_shift(),
+  Shift: () => m.keys_shift(),
+  LShift: () => m.keys_shift(),
+  RShift: () => m.keys_shift(),
+
+  " ": () => m.keys_space(),
+  "␣": () => m.keys_space(),
+  "␠": () => m.keys_space(),
+  SP: () => m.keys_space(),
+  Space: () => m.keys_space(),
+
+  "⭾": () => m.keys_tab(), // horizontal tab key U2B7E
+  "↹": () => m.keys_tab(), // leftwards arrow to bar over rightwards arrow to bar U21B9
+  "⇄": () => m.keys_tab(), // rightwards arrow over leftwards arrow U21E4
+  "␉": () => m.keys_tab(),
+  HT: () => m.keys_tab(),
+  Tab: () => m.keys_tab(),
 };
 
 function resolveKeyName(legend: string): string {
@@ -239,6 +319,24 @@ function ariaLabel(legends: KeyLegends): string {
 
   return parts.join(", ") || "key";
 }
+
+// Keys whose base label should remain visible in AltGr preview layers.
+const META_CONTROL_SCANCODES = new Set<number>([
+  40, // Enter
+  41, // Esc
+  42, // Backspace
+  43, // Tab
+  57, // CapsLock
+  101, // Menu/Application
+  224, // Left Ctrl
+  225, // Left Shift
+  226, // Left Alt
+  227, // Left Meta
+  228, // Right Ctrl
+  229, // Right Shift
+  230, // Right Alt (AltGr)
+  231, // Right Meta
+]);
 
 /**
  * Maps KLE width values to CSS class names.

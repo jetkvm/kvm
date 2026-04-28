@@ -227,7 +227,7 @@ func TestNormalizeControlLegendsForDisplay(t *testing.T) {
 	if keys[0].Legends.Normal == nil || *keys[0].Legends.Normal != "Esc" {
 		t.Fatalf("escape normal legend: expected Esc, got %v", keys[0].Legends.Normal)
 	}
-	if keys[1].Legends.Normal == nil || *keys[1].Legends.Normal != "⇥" {
+	if keys[1].Legends.Normal == nil || *keys[1].Legends.Normal != "⭾" {
 		t.Fatalf("tab normal legend: expected ⇥, got %v", keys[1].Legends.Normal)
 	}
 	if keys[2].Legends.Normal == nil || *keys[2].Legends.Normal != "⌫" {
@@ -589,7 +589,7 @@ func TestLoadBuiltinLayoutNotFound(t *testing.T) {
 const compact65KLE = `[
   {"name": "Compact 65%", "author": "Test"},
   ["~\n\u0060","!\n1","@\n2","#\n3","$\n4","%\n5","^\n6","&\n7","*\n8","(\n9",")\n0","_\n-","+\n=",{"w":2},"⌫","Del"],
-  [{"w":1.5},"⇥","q","w","e","r","t","y","u","i","o","p","{\n[","}\n]",{"w":1.5},"|\n\\","PgUp"],
+  [{"w":1.5},"⭾","q","w","e","r","t","y","u","i","o","p","{\n[","}\n]",{"w":1.5},"|\n\\","PgUp"],
   [{"w":1.75},"⇪","a","s","d","f","g","h","j","k","l",":\n;","'\n\"",{"w":2.25},"⏎","PgDn"],
   [{"w":2.25},"⇧ Shift","z","x","c","v","b","n","m","<\n,",">\n.","?\n/",{"w":1.75},"⇧ Shift","↑","End"],
   [{"w":1.25},"⌃ Ctrl",{"w":1.25},"⌘ Meta",{"w":1.25},"⌥ Alt",{"w":6.25},"Space",{"w":1},"⌥ Alt",{"w":1},"⌃ Ctrl","←","↓","→"]
@@ -600,7 +600,7 @@ const compact75KLE = `[
   {"name": "Compact 75%", "author": "Test"},
   ["Esc","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","PrtSc","Del"],
   ["~\n\u0060","!\n1","@\n2","#\n3","$\n4","%\n5","^\n6","&\n7","*\n8","(\n9",")\n0","_\n-","+\n=",{"w":2},"⌫","Home"],
-  [{"w":1.5},"⇥","q","w","e","r","t","y","u","i","o","p","{\n[","}\n]",{"w":1.5},"|\n\\","PgUp"],
+  [{"w":1.5},"⭾","q","w","e","r","t","y","u","i","o","p","{\n[","}\n]",{"w":1.5},"|\n\\","PgUp"],
   [{"w":1.75},"⇪","a","s","d","f","g","h","j","k","l",":\n;","'\n\"",{"w":2.25},"⏎","PgDn"],
   [{"w":2.25},"⇧ Shift","z","x","c","v","b","n","m","<\n,",">\n.","?\n/",{"w":1.75},"⇧ Shift","↑","End"],
   [{"w":1.25},"⌃ Ctrl",{"w":1.25},"⌘ Meta",{"w":1.25},"⌥ Alt",{"w":6.25},"Space",{"w":1},"⌥ Alt",{"w":1},"⌃ Ctrl","←","↓","→"]
@@ -961,7 +961,7 @@ func TestCharMapSkipsGlyphLegendsForNonTextKeys(t *testing.T) {
 		{X: 0, Y: 0, W: 1, H: 1, Scancode: hidBackspace,
 			Legends: KeyLegends{Normal: str("⌫")}},
 		{X: 1, Y: 0, W: 1, H: 1, Scancode: hidTab,
-			Legends: KeyLegends{Normal: str("⇥")}},
+			Legends: KeyLegends{Normal: str("⭾")}},
 		{X: 2, Y: 0, W: 1, H: 1, Scancode: hidArrowUp,
 			Legends: KeyLegends{Normal: str("↑")}},
 		{X: 3, Y: 0, W: 1, H: 1, Scancode: hidLShift,
@@ -971,7 +971,7 @@ func TestCharMapSkipsGlyphLegendsForNonTextKeys(t *testing.T) {
 	}
 	m := buildCharMap(keys)
 
-	for _, glyph := range []string{"⌫", "⇥", "↑", "⇧"} {
+	for _, glyph := range []string{"⌫", "⭾", "↑", "⇧"} {
 		if _, ok := m[glyph]; ok {
 			t.Errorf("non-text glyph legend %q should not appear in charMap", glyph)
 		}

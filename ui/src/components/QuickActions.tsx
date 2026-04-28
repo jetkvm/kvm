@@ -27,7 +27,7 @@ const SYM = {
   bksp: "⌫",
   del: "⌦",
   esc: "Esc",
-  tab: "⇥",
+  tab: "⭾",
   space: "␣",
   f4: "F4",
   l: "L",

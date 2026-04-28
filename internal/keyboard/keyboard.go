@@ -710,7 +710,7 @@ var controlLegendDisplayMap = map[string]string{
 	"␍": "⏎",
 	"␊": "⏎",
 	"␈": "⌫",
-	"␉": "⇥",
+	"␉": "⭾",
 	"␠": "Space",
 	"␡": "Del",
 }
