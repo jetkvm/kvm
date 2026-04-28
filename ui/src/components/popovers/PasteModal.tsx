@@ -95,8 +95,8 @@ export default function PasteModal() {
     try {
       const macro: KeyboardMacroStep[] = [];
 
-      for (const char of text) {
-        const normalizedChar = char.normalize("NFC");
+      for (const { segment } of new Intl.Segmenter().segment(text)) {
+        const normalizedChar = segment.normalize("NFC");
         const combo = kleLayout.charMap[normalizedChar];
         if (!combo || combo.s === 0) continue;
 
