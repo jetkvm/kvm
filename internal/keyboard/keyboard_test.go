@@ -39,6 +39,15 @@ func findKey(layout *KeyboardLayout, x, y float64) *TransportKey {
 
 func str(s string) *string { return &s }
 
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // Minimal valid layout
 // ---------------------------------------------------------------------------
@@ -1065,30 +1074,43 @@ func TestDeadKeyDetection(t *testing.T) {
 	// With declared dead keys, only matching legends get flagged
 	declared := map[rune]bool{'^': true, '´': true}
 
-	if !isDeadKey(KeyLegends{Normal: str("^")}, declared) {
-		t.Error("^ should be dead when declared")
+	// ^ in Normal slot — should be detected
+	slots := getDeadKeyInfo(KeyLegends{Normal: str("^")}, declared)
+	if !contains(slots, "normal") {
+		t.Error("^ in Normal should be detected")
 	}
-	if isDeadKey(KeyLegends{Normal: str("a")}, declared) {
-		t.Error("'a' should not be dead")
+
+	// 'a' is not declared — should not be detected
+	slots = getDeadKeyInfo(KeyLegends{Normal: str("a")}, declared)
+	if len(slots) > 0 {
+		t.Error("'a' should not be detected as dead")
 	}
-	if isDeadKey(KeyLegends{Normal: str("~")}, declared) {
-		t.Error("~ should not be dead when not declared")
+
+	// ~ is not declared — should not be detected
+	slots = getDeadKeyInfo(KeyLegends{Normal: str("~")}, declared)
+	if len(slots) > 0 {
+		t.Error("~ should not be detected as dead when not declared")
 	}
 
 	// With empty declared set, nothing is dead
-	if isDeadKey(KeyLegends{Normal: str("^")}, nil) {
-		t.Error("^ should not be dead with no declarations")
+	slots = getDeadKeyInfo(KeyLegends{Normal: str("^")}, nil)
+	if len(slots) > 0 {
+		t.Error("^ should not be detected with no declarations")
 	}
 
-	// nil Normal legend — should never be dead even if Shift matches
-	if isDeadKey(KeyLegends{Normal: nil, Shift: str("^")}, declared) {
-		t.Error("nil Normal should not be flagged dead even if Shift matches")
+	// nil Normal legend — not detected in Normal, but Shift is checked
+	slots = getDeadKeyInfo(KeyLegends{Normal: nil, Shift: str("^")}, declared)
+	if !contains(slots, "shift") {
+		t.Error("^ in Shift should be detected even if Normal is nil")
 	}
 
-	// Dead key on shift layer only — isDeadKey checks Normal only, so not flagged.
-	// (addDeadKeyCompositions still generates compositions from the shift layer.)
-	if isDeadKey(KeyLegends{Normal: str("°"), Shift: str("^")}, declared) {
-		t.Error("key with ^ only on Shift layer should not be flagged dead (Normal is °)")
+	// Dead key on shift layer only — now detected in "shift" slot
+	slots = getDeadKeyInfo(KeyLegends{Normal: str("°"), Shift: str("^")}, declared)
+	if !contains(slots, "shift") {
+		t.Error("^ on Shift layer should be detected in 'shift' slot")
+	}
+	if contains(slots, "normal") {
+		t.Error("° in Normal should not be detected as dead")
 	}
 }
 
@@ -1151,7 +1173,7 @@ func TestDeadKeyComposition(t *testing.T) {
 
 func TestNoDeadKeysMetadataProducesNoPrefixes(t *testing.T) {
 	// Layouts without deadKeys metadata should have:
-	// - No keys with Dead=true (CSS flag)
+	// - No keys with DeadLegends set (empty slice)
 	// - No charMap entries with a Prefix (no compositions)
 	// This prevents e.g. en-US from treating ^ as a dead key during paste.
 	noDeadKeyLayouts := []string{"en-US", "en-UK", "it-IT", "ja-JP", "pl-PL", "ru-RU"}
@@ -1163,8 +1185,8 @@ func TestNoDeadKeysMetadataProducesNoPrefixes(t *testing.T) {
 				t.Fatalf("failed to load %s: %v", id, err)
 			}
 			for _, key := range layout.Keys {
-				if key.Dead {
-					t.Errorf("key at (%.1f, %.1f) flagged dead but %s has no deadKeys metadata",
+				if len(key.DeadLegends) > 0 {
+					t.Errorf("key at (%.1f, %.1f) has dead legends but %s has no deadKeys metadata",
 						key.X, key.Y, id)
 				}
 			}
@@ -1178,8 +1200,8 @@ func TestNoDeadKeysMetadataProducesNoPrefixes(t *testing.T) {
 }
 
 func TestDeadKeysMetadataFlagsCorrectKeys(t *testing.T) {
-	// Layouts WITH deadKeys metadata should flag keys whose normal legend
-	// matches a declared dead key.
+	// Layouts WITH deadKeys metadata should flag keys whose legend
+	// (in any slot) matches a declared dead key.
 	layout, err := loadBuiltinLayout("de-DE")
 	if err != nil {
 		t.Fatalf("failed to load de-DE: %v", err)
@@ -1187,11 +1209,14 @@ func TestDeadKeysMetadataFlagsCorrectKeys(t *testing.T) {
 
 	deadCount := 0
 	for _, key := range layout.Keys {
-		if key.Dead {
+		if len(key.DeadLegends) > 0 {
 			deadCount++
-			// Every flagged key must have a normal legend in deadKeyToCombining
-			if key.Legends.Normal == nil {
-				t.Errorf("dead key at (%.1f, %.1f) has nil normal legend", key.X, key.Y)
+			// Every flagged key must have at least one legend that could be dead
+			hasLegend := key.Legends.Normal != nil || key.Legends.Shift != nil ||
+				key.Legends.AltGr != nil || key.Legends.ShiftAltGr != nil ||
+				key.Legends.Kana != nil || key.Legends.ShiftKana != nil
+			if !hasLegend {
+				t.Errorf("dead key at (%.1f, %.1f) has no legends", key.X, key.Y)
 			}
 		}
 	}
