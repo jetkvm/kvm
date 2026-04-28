@@ -447,6 +447,8 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 		k.Scancode = inferScancodeWithTable(k.X, k.Y, k.W, k.H, table)
 	}
 
+	normalizeControlLegendsForDisplay(keys)
+
 	layout := &KeyboardLayout{
 		ID:     id,
 		Name:   name,
@@ -692,6 +694,47 @@ func scancodeProducesText(scancode uint8) bool {
 	}
 
 	return false
+}
+
+var controlLegendDisplayMap = map[string]string{
+	"␛": "Esc",
+	"␍": "⏎",
+	"␊": "⏎",
+	"␈": "⌫",
+	"␉": "⇥",
+	"␠": "Space",
+	"␡": "Del",
+}
+
+// normalizeControlLegendsForDisplay converts control-character glyph legends
+// commonly found in kbdlayout.info exports into friendly UI labels.
+//
+// This is intentionally limited to non-text keys plus Space so printable
+// legends and typing behavior remain unchanged.
+func normalizeControlLegendsForDisplay(keys []TransportKey) {
+	normalize := func(legend **string) {
+		if *legend == nil {
+			return
+		}
+		if pretty, ok := controlLegendDisplayMap[**legend]; ok {
+			v := pretty
+			*legend = &v
+		}
+	}
+
+	for i := range keys {
+		k := &keys[i]
+		if k.Scancode == 0 {
+			continue
+		}
+		if scancodeProducesText(k.Scancode) && k.Scancode != hidSpace {
+			continue
+		}
+		normalize(&k.Legends.Normal)
+		normalize(&k.Legends.Shift)
+		normalize(&k.Legends.AltGr)
+		normalize(&k.Legends.ShiftAltGr)
+	}
 }
 
 // addDeadKeyCompositions enriches the charMap with composed characters

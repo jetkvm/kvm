@@ -193,6 +193,39 @@ func TestLegendAutoUppercase(t *testing.T) {
 	}
 }
 
+func TestNormalizeControlLegendsForDisplay(t *testing.T) {
+	keys := []TransportKey{
+		{Scancode: hidEscape, Legends: KeyLegends{Normal: str("␛"), Shift: str("␛")}},
+		{Scancode: hidTab, Legends: KeyLegends{Normal: str("␉")}},
+		{Scancode: hidBackspace, Legends: KeyLegends{Normal: str("␈")}},
+		{Scancode: hidEnter, Legends: KeyLegends{Normal: str("␍")}},
+		{Scancode: hidSpace, Legends: KeyLegends{Normal: str("␠")}},
+		// Printable key should remain untouched.
+		{Scancode: hidA, Legends: KeyLegends{Normal: str("a"), Shift: str("A")}},
+	}
+
+	normalizeControlLegendsForDisplay(keys)
+
+	if keys[0].Legends.Normal == nil || *keys[0].Legends.Normal != "Esc" {
+		t.Fatalf("escape normal legend: expected Esc, got %v", keys[0].Legends.Normal)
+	}
+	if keys[1].Legends.Normal == nil || *keys[1].Legends.Normal != "⇥" {
+		t.Fatalf("tab normal legend: expected ⇥, got %v", keys[1].Legends.Normal)
+	}
+	if keys[2].Legends.Normal == nil || *keys[2].Legends.Normal != "⌫" {
+		t.Fatalf("backspace normal legend: expected ⌫, got %v", keys[2].Legends.Normal)
+	}
+	if keys[3].Legends.Normal == nil || *keys[3].Legends.Normal != "⏎" {
+		t.Fatalf("enter normal legend: expected ⏎, got %v", keys[3].Legends.Normal)
+	}
+	if keys[4].Legends.Normal == nil || *keys[4].Legends.Normal != "Space" {
+		t.Fatalf("space normal legend: expected Space, got %v", keys[4].Legends.Normal)
+	}
+	if keys[5].Legends.Normal == nil || *keys[5].Legends.Normal != "a" {
+		t.Fatalf("printable key should stay unchanged, got %v", keys[5].Legends.Normal)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Shape detection
 // ---------------------------------------------------------------------------
