@@ -18,13 +18,15 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
 
 const (
 	layoutsDir     = "/userdata/kvm_layouts"
-	maxUploadBytes = 512 * 1024 // 512 KB
+	maxUploadBytes = 64 * 1024 // 64 KB
+	maxUploadKB    = maxUploadBytes / 1024
 )
 
 // HandleKeyboardUpload parses an uploaded KLE JSON file and stores the
@@ -47,7 +49,7 @@ func HandleKeyboardUpload(c *gin.Context) {
 		return
 	}
 	if len(body) > maxUploadBytes {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large (max 512 KB)"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("file too large (max %d KB)", maxUploadKB)})
 		return
 	}
 
@@ -74,6 +76,7 @@ func HandleKeyboardUpload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to store layout: %v", err)})
 		return
 	}
+	invalidateLayoutListCache()
 
 	c.JSON(http.StatusOK, LayoutUploadResponse{
 		ID:       layout.ID,
@@ -125,37 +128,85 @@ func loadLayout(id string) (*KeyboardLayout, error) {
 	return &layout, nil
 }
 
+// Built-in layouts are embedded in builtin.go via go:embed.
+
 // loadBuiltinLayout reads a built-in layout from the embedded KLE files.
-// Implemented in builtin.go via go:embed.
 var loadBuiltinLayout = loadBuiltinLayoutFromFS
 
-// ---------------------------------------------------------------------------
-// JSON-RPC handlers
-// ---------------------------------------------------------------------------
+// loadBuiltinLayoutMeta reads LayoutMeta data (id/name) for built-in layouts
+var loadBuiltinLayoutMeta = loadBuiltinLayoutMetaFromFS
 
-// RpcGetKeyboardLayouts returns the list of available layouts.
-// Maps to JSON-RPC method "getKeyboardLayouts".
-func RpcGetKeyboardLayouts() ([]LayoutMeta, error) {
-	var layouts []LayoutMeta
+var layoutListCache struct {
+	mu      sync.RWMutex
+	layouts []LayoutMeta
+}
 
-	// Built-ins first
+func cloneLayoutMetas(layouts []LayoutMeta) []LayoutMeta {
+	if len(layouts) == 0 {
+		return nil
+	}
+	return append([]LayoutMeta(nil), layouts...)
+}
+
+func getLayoutListCache() ([]LayoutMeta, bool) {
+	layoutListCache.mu.RLock()
+	defer layoutListCache.mu.RUnlock()
+	if layoutListCache.layouts == nil {
+		return nil, false
+	}
+	return cloneLayoutMetas(layoutListCache.layouts), true
+}
+
+func setLayoutListCache(layouts []LayoutMeta) {
+	layoutListCache.mu.Lock()
+	defer layoutListCache.mu.Unlock()
+	layoutListCache.layouts = cloneLayoutMetas(layouts)
+}
+
+func invalidateLayoutListCache() {
+	layoutListCache.mu.Lock()
+	defer layoutListCache.mu.Unlock()
+	layoutListCache.layouts = nil
+}
+
+func loadStoredLayoutMeta(id string) (LayoutMeta, error) {
+	path := layoutPath(id)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return LayoutMeta{}, err
+	}
+	var stored struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return LayoutMeta{}, fmt.Errorf("corrupt layout file %s: %w", id, err)
+	}
+	return LayoutMeta{ID: id, Name: stored.Name, Builtin: false}, nil
+}
+
+func buildKeyboardLayoutsList() []LayoutMeta {
+	var builtins []LayoutMeta
+
+	// Built-ins first (lightweight metadata only)
 	for id := range builtinLayouts {
-		l, err := loadLayout(id)
+		meta, err := loadBuiltinLayoutMeta(id)
 		if err != nil {
 			continue // built-in not yet embedded — skip gracefully
 		}
-		layouts = append(layouts, LayoutMeta{ID: id, Name: l.Name, Builtin: true})
+		builtins = append(builtins, meta)
 	}
 
 	// Sort built-ins by name
-	slices.SortFunc(layouts, func(a, b LayoutMeta) int {
+	slices.SortFunc(builtins, func(a, b LayoutMeta) int {
 		return strings.Compare(a.Name, b.Name)
 	})
+
+	layouts := cloneLayoutMetas(builtins)
 
 	// User-uploaded (appended after sorted built-ins)
 	entries, err := os.ReadDir(layoutsDir)
 	if err != nil && !os.IsNotExist(err) {
-		return layouts, nil // return built-ins even if dir missing
+		return layouts // return built-ins even if dir missing
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".layout.json") {
@@ -165,13 +216,29 @@ func RpcGetKeyboardLayouts() ([]LayoutMeta, error) {
 		if _, ok := builtinLayouts[id]; ok {
 			continue // already included above
 		}
-		l, err := loadLayout(id)
+		meta, err := loadStoredLayoutMeta(id)
 		if err != nil {
 			continue
 		}
-		layouts = append(layouts, LayoutMeta{ID: id, Name: l.Name, Builtin: false})
+		layouts = append(layouts, meta)
 	}
 
+	return layouts
+}
+
+// ---------------------------------------------------------------------------
+// JSON-RPC handlers
+// ---------------------------------------------------------------------------
+
+// RpcGetKeyboardLayouts returns the list of available layouts.
+// Maps to JSON-RPC method "getKeyboardLayouts".
+func RpcGetKeyboardLayouts() ([]LayoutMeta, error) {
+	if cached, ok := getLayoutListCache(); ok {
+		return cached, nil
+	}
+
+	layouts := buildKeyboardLayoutsList()
+	setLayoutListCache(layouts)
 	return layouts, nil
 }
 
@@ -211,5 +278,6 @@ func RpcDeleteKeyboardLayout(id string) error {
 		}
 		return fmt.Errorf("failed to delete layout: %w", err)
 	}
+	invalidateLayoutListCache()
 	return nil
 }
