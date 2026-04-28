@@ -860,8 +860,11 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 		// reverse lookup from deadKeyToCombining (which has duplicate values
 		// and non-deterministic map iteration order).
 		deadChar := string(dk.displayKey)
-		if _, exists := charMap[deadChar]; exists {
-			// Replace the simple entry with a prefixed one (dead key + space)
+		if existing, exists := charMap[deadChar]; exists && existing.Prefix == nil {
+			// Replace the simple entry with a prefixed one (dead key + space).
+			// Guard with Prefix==nil so only the first (simplest-modifier) layer
+			// wins when the same dead key character appears on multiple layers
+			// (e.g. ´ on both AltGr and ShiftAltGr in fr_BE).
 			charMap[deadChar] = HIDCombo{
 				Scancode:  hidSpace,
 				Modifiers: ModNone,
