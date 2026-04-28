@@ -318,12 +318,12 @@
    Legend is centered within the key when only one layer is active.
    =========================================================================== */
 
-.vkb[data-layer="normal"] .legend.normal,
-.vkb[data-layer="shift"] .legend.shift,
-.vkb[data-layer="altgr"] .legend.altgr,
-.vkb[data-layer="shift-altgr"] .legend.shift-altgr,
-.vkb[data-layer="kana"] .legend.kana,
-.vkb[data-layer="shift-kana"] .legend.shift-kana {
+.vkb[data-layer="normal"] .key:not(.decal) .legend.normal,
+.vkb[data-layer="shift"] .key:not(.decal) .legend.shift,
+.vkb[data-layer="altgr"] .key:not(.decal) .legend.altgr,
+.vkb[data-layer="shift-altgr"] .key:not(.decal) .legend.shift-altgr,
+.vkb[data-layer="kana"] .key:not(.decal) .legend.kana,
+.vkb[data-layer="shift-kana"] .key:not(.decal) .legend.shift-kana {
   display: flex;
   inset: 0;
   align-items: center;
@@ -331,22 +331,23 @@
 }
 
 /* If a key has exactly one legend span, center it regardless of layer. */
-.vkb .key:has(.legend:only-child) .legend {
+.vkb .key:not(.decal):has(.legend:only-child) .legend {
   display: flex;
   inset: 0;
   align-items: center;
   justify-content: center;
+  font-size: calc(var(--u) * 0.4);
 }
 
 /*
  * Fallback: when no legend exists for the active layer, show the normal legend
  * at reduced opacity to indicate "no change in this layer."
  */
-.vkb[data-layer="shift"] .key:not(:has(.legend.shift)) .legend.normal,
-.vkb[data-layer="altgr"] .key:not(:has(.legend.altgr)) .legend.normal,
-.vkb[data-layer="shift-altgr"] .key:not(:has(.legend.shift-altgr)) .legend.normal,
-.vkb[data-layer="kana"] .key:not(:has(.legend.kana)) .legend.normal,
-.vkb[data-layer="shift-kana"] .key:not(:has(.legend.shift-kana)) .legend.normal {
+.vkb[data-layer="shift"] .key:not(.decal):not(:has(.legend.shift)) .legend.normal,
+.vkb[data-layer="altgr"] .key:not(.decal):not(:has(.legend.altgr)) .legend.normal,
+.vkb[data-layer="shift-altgr"] .key:not(.decal):not(:has(.legend.shift-altgr)) .legend.normal,
+.vkb[data-layer="kana"] .key:not(.decal):not(:has(.legend.kana)) .legend.normal,
+.vkb[data-layer="shift-kana"] .key:not(.decal):not(:has(.legend.shift-kana)) .legend.normal {
   display: flex;
   inset: 0;
   align-items: center;
@@ -432,10 +433,10 @@
 /* ===========================================================================
    DEAD KEY INDICATOR
    Keys with dead key legends get a small orange dot suffix.
-   Applied via ::after on the visible legend span.
+   Applied via ::after on the visible legend span with the dead class.
    =========================================================================== */
 
-.vkb .key.dead .legend::after {
+.vkb .key .legend.dead::after {
   content: "●";
   font-size: 0.5em;
   vertical-align: super;

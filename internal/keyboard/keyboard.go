@@ -89,12 +89,12 @@ type TransportKey struct {
 	X2 float64 `json:"x2,omitempty"`
 	Y2 float64 `json:"y2,omitempty"`
 
-	Shape    KeyShape   `json:"shape"`
-	Legends  KeyLegends `json:"legends"`
-	Scancode uint8      `json:"scancode"`
-	Dead     bool       `json:"dead"`
-	Homing   bool       `json:"homing"`
-	Decal    bool       `json:"decal"`
+	Shape       KeyShape   `json:"shape"`
+	Legends     KeyLegends `json:"legends"`
+	Scancode    uint8      `json:"scancode"`
+	DeadLegends []string   `json:"deadLegends,omitempty"`
+	Homing      bool       `json:"homing"`
+	Decal       bool       `json:"decal"`
 
 	Color     string `json:"color,omitempty"`
 	TextColor string `json:"textColor,omitempty"`
@@ -362,21 +362,21 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 			h := nextH
 
 			legends := parseLegends(legendStr)
-			dead := isDeadKey(legends, declaredDeadKeys)
+			deadLegends := getDeadKeyInfo(legends, declaredDeadKeys)
 			shape := detectShape(x, w, h, nextW2, nextH2, nextStepped, hasW2)
 
 			// Scancode is inferred in a post-parse pass after board dimensions are known
 
 			key := TransportKey{
-				X:       x,
-				Y:       y,
-				W:       w,
-				H:       h,
-				Shape:   shape,
-				Legends: legends,
-				Dead:    dead,
-				Homing:  nextHoming,
-				Decal:   nextDecal,
+				X:           x,
+				Y:           y,
+				W:           w,
+				H:           h,
+				Shape:       shape,
+				Legends:     legends,
+				DeadLegends: deadLegends,
+				Homing:      nextHoming,
+				Decal:       nextDecal,
 			}
 
 			if hasW2 {
@@ -617,16 +617,56 @@ func detectShape(x, w, h, w2, h2 float64, stepped, hasW2 bool) KeyShape {
 	return ShapeNormal
 }
 
-// isDeadKey checks if the key's normal legend is in the layout's declared
-// dead key set. Returns false if no dead keys are declared (e.g. en-US).
-// The same declaredDeadKeys set also gates addDeadKeyCompositions(), so
-// layouts without declared dead keys produce no compositions.
-func isDeadKey(legends KeyLegends, declaredDeadKeys map[rune]bool) bool {
-	if len(declaredDeadKeys) == 0 || legends.Normal == nil {
-		return false
+// getDeadKeyInfo checks which legend slots contain dead key characters.
+// Returns a slice of slot names ("normal", "shift", "altgr",
+// "shift-altgr", "kana", "shift-kana") for each slot where the legend
+// character is in declaredDeadKeys.
+// Returns an empty slice if no dead keys are declared or no legends match.
+func getDeadKeyInfo(legends KeyLegends, declaredDeadKeys map[rune]bool) []string {
+	var deadSlots []string
+
+	if len(declaredDeadKeys) == 0 {
+		return deadSlots
 	}
-	r, _ := utf8.DecodeRuneInString(*legends.Normal)
-	return declaredDeadKeys[r]
+
+	if legends.Normal != nil {
+		r, _ := utf8.DecodeRuneInString(*legends.Normal)
+		if declaredDeadKeys[r] {
+			deadSlots = append(deadSlots, "normal")
+		}
+	}
+	if legends.Shift != nil {
+		r, _ := utf8.DecodeRuneInString(*legends.Shift)
+		if declaredDeadKeys[r] {
+			deadSlots = append(deadSlots, "shift")
+		}
+	}
+	if legends.AltGr != nil {
+		r, _ := utf8.DecodeRuneInString(*legends.AltGr)
+		if declaredDeadKeys[r] {
+			deadSlots = append(deadSlots, "altgr")
+		}
+	}
+	if legends.ShiftAltGr != nil {
+		r, _ := utf8.DecodeRuneInString(*legends.ShiftAltGr)
+		if declaredDeadKeys[r] {
+			deadSlots = append(deadSlots, "shift-altgr")
+		}
+	}
+	if legends.Kana != nil {
+		r, _ := utf8.DecodeRuneInString(*legends.Kana)
+		if declaredDeadKeys[r] {
+			deadSlots = append(deadSlots, "kana")
+		}
+	}
+	if legends.ShiftKana != nil {
+		r, _ := utf8.DecodeRuneInString(*legends.ShiftKana)
+		if declaredDeadKeys[r] {
+			deadSlots = append(deadSlots, "shift-kana")
+		}
+	}
+
+	return deadSlots
 }
 
 func buildCharMap(keys []TransportKey) map[string]HIDCombo {

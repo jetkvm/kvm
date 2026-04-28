@@ -32,7 +32,7 @@ export interface KeycapProps {
 // ---------------------------------------------------------------------------
 
 export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }: KeycapProps) {
-  const { x, y, w, h, shape, legends, scancode, dead, homing, decal, color, textColor } =
+  const { x, y, w, h, shape, legends, scancode, deadLegends, homing, decal, color, textColor } =
     transportKey;
 
   const widthClass = getWidthClass(w);
@@ -48,7 +48,6 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
     "key",
     widthClass,
     shape, // '' | 'iso-enter' | 'big-ass-enter' | 'stepped-caps'
-    dead && "dead",
     homing && "homing",
     decal && "decal",
     isPressed && "pressed",
@@ -81,6 +80,20 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
     [scancode, legends, onPress],
   );
 
+  const isDeadLegend = (legendType: string): boolean => {
+    return deadLegends != null && deadLegends.includes(legendType);
+  };
+
+  const renderLegend = (text: string | undefined, type: string, displayClass: string) => {
+    if (!text) return null;
+    const deadClass = isDeadLegend(type) ? "dead" : "";
+    return (
+      <span className={`legend ${displayClass} ${deadClass}`} aria-hidden="true">
+        {text}
+      </span>
+    );
+  };
+
   return (
     <div
       className={className}
@@ -93,36 +106,12 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
         -1
       } /* intentionally unfocusable — physical keyboard must always reach the KVM session */
     >
-      {legends.normal && (
-        <span className="legend normal" aria-hidden="true">
-          {legends.normal}
-        </span>
-      )}
-      {legends.shift && (
-        <span className="legend shift" aria-hidden="true">
-          {legends.shift}
-        </span>
-      )}
-      {legends.altgr && (
-        <span className="legend altgr" aria-hidden="true">
-          {legends.altgr}
-        </span>
-      )}
-      {legends.shiftAltgr && (
-        <span className="legend shift-altgr" aria-hidden="true">
-          {legends.shiftAltgr}
-        </span>
-      )}
-      {legends.kana && (
-        <span className="legend kana" aria-hidden="true">
-          {legends.kana}
-        </span>
-      )}
-      {legends.shiftKana && (
-        <span className="legend shift-kana" aria-hidden="true">
-          {legends.shiftKana}
-        </span>
-      )}
+      {renderLegend(legends.normal, "normal", "normal")}
+      {renderLegend(legends.shift, "shift", "shift")}
+      {renderLegend(legends.altgr, "altgr", "altgr")}
+      {renderLegend(legends.shiftAltgr, "shift-altgr", "shift-altgr")}
+      {renderLegend(legends.kana, "kana", "kana")}
+      {renderLegend(legends.shiftKana, "shift-kana", "shift-kana")}
     </div>
   );
 });

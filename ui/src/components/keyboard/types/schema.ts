@@ -148,11 +148,11 @@ export interface TransportKey {
   scancode: number;
 
   /**
-   * True if any legend on this key is a dead key character.
-   * (^, ~, ¨, `, ´, ¸ etc.)
-   * CSS class 'dead' is added to the keycap when true.
+   * Which specific legend slots on this key are dead key characters.
+   * Values are legend class names: 'normal', 'shift', 'altgr', 'shift-altgr', 'kana', 'shift-kana'.
+   * Empty if no legends on this key are dead key characters.
    */
-  dead: boolean;
+  deadLegends?: string[];
 
   /** Homing key — has a tactile bump or bar (typically F and J keys). */
   homing: boolean;
