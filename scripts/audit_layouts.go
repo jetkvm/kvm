@@ -1,3 +1,5 @@
+//go:build ignore
+
 // audit-layouts validates built-in KLE layout files against their
 // kbdlayout.info reference. Each layout's "kbdLayoutInfo" metadata field
 // is used to derive the reference download URL; the reference is then parsed

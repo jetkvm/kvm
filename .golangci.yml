@@ -27,6 +27,9 @@ linters:
           - forbidigo
         path: cmd/main.go
       - linters:
+          - forbidigo
+        path: scripts/audit_layouts.go
+      - linters:
           - gochecknoinits
         path: internal/logging/sse.go
     paths:
