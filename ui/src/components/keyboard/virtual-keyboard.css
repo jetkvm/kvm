@@ -38,7 +38,6 @@
   container-type: inline-size;
   width: 100%;
   min-width: 600px;
-  max-width: 1200px;
 }
 
 /* ===========================================================================
@@ -336,7 +335,6 @@
   inset: 0;
   align-items: center;
   justify-content: center;
-  font-size: calc(var(--u) * 0.4);
 }
 
 /*
@@ -438,7 +436,7 @@
 
 .vkb .key .legend.dead::after {
   content: "●";
-  font-size: 0.5em;
+  font-size: 0.25em;
   vertical-align: super;
   color: #f6ad55;
   margin-left: 2px;

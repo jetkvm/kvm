@@ -27,6 +27,19 @@ const modifierBitToScancode: [number, number][] = Object.entries(hidKeyToModifie
   ([sc, bit]) => [bit as number, Number(sc)],
 );
 
+type ResizeDirection =
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
+const DETACHED_MIN_WIDTH = 600;
+const DETACHED_MAX_WIDTH = 1800;
+
 function KeyboardWrapper() {
   const keyboardRef = useRef<HTMLDivElement>(null);
   const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } = useUiStore();
@@ -41,8 +54,19 @@ function KeyboardWrapper() {
 
   // Dragging state for detached mode
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [newPosition, setNewPosition] = useState({ x: 0, y: 0 });
+  const [detachedWidth, setDetachedWidth] = useState<number | null>(null);
+  const resizeDirectionRef = useRef<ResizeDirection | null>(null);
+  const resizeStartRef = useRef({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    pointerX: 0,
+    pointerY: 0,
+  });
 
   // Track which modifiers the virtual keyboard has latched.
   // This provides immediate visual feedback without waiting
@@ -133,27 +157,119 @@ function KeyboardWrapper() {
   // Drag handling (for detached/floating mode)
   // ---------------------------------------------------------------------------
 
-  const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!keyboardRef.current) return;
-    if (e instanceof TouchEvent && e.touches.length > 1) return;
-    setIsDragging(true);
+  const getClientPoint = (e: MouseEvent | TouchEvent) => {
+    if (e instanceof TouchEvent) {
+      if (e.touches.length === 0) return null;
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+  };
 
-    const clientX = e instanceof TouchEvent ? e.touches[0].clientX : e.clientX;
-    const clientY = e instanceof TouchEvent ? e.touches[0].clientY : e.clientY;
-
-    const rect = keyboardRef.current.getBoundingClientRect();
-    setPosition({
-      x: clientX - rect.left,
-      y: clientY - rect.top,
-    });
-  }, []);
-
-  const onDrag = useCallback(
+  const startDrag = useCallback(
     (e: MouseEvent | TouchEvent) => {
       if (!keyboardRef.current) return;
+      if (isResizing) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-resize-handle="true"]')) return;
+      if (e instanceof TouchEvent && e.touches.length > 1) return;
+      setIsDragging(true);
+
+      const point = getClientPoint(e);
+      if (!point) return;
+
+      const rect = keyboardRef.current.getBoundingClientRect();
+      setPosition({
+        x: point.x - rect.left,
+        y: point.y - rect.top,
+      });
+    },
+    [isResizing],
+  );
+
+  const startResize = useCallback(
+    (direction: ResizeDirection, e: MouseEvent | TouchEvent) => {
+      if (!keyboardRef.current) return;
+      if (e instanceof TouchEvent && e.touches.length > 1) return;
+
+      const point = getClientPoint(e);
+      if (!point) return;
+
+      const rect = keyboardRef.current.getBoundingClientRect();
+      resizeDirectionRef.current = direction;
+      resizeStartRef.current = {
+        x: newPosition.x,
+        y: newPosition.y,
+        width: rect.width,
+        height: rect.height,
+        pointerX: point.x,
+        pointerY: point.y,
+      };
+      setIsResizing(true);
+      setIsDragging(false);
+    },
+    [newPosition.x, newPosition.y],
+  );
+
+  const onPointerMove = useCallback(
+    (e: MouseEvent | TouchEvent) => {
+      if (!keyboardRef.current) return;
+      const point = getClientPoint(e);
+      if (!point) return;
+
+      if (isResizing && resizeDirectionRef.current) {
+        const start = resizeStartRef.current;
+        const dir = resizeDirectionRef.current;
+
+        const dx = point.x - start.pointerX;
+        const dy = point.y - start.pointerY;
+
+        const hasLeft = dir.includes("left");
+        const hasRight = dir.includes("right");
+        const hasTop = dir.includes("top");
+        const hasBottom = dir.includes("bottom");
+
+        const aspect = start.height > 0 ? start.width / start.height : 1;
+        const fromX = (hasLeft ? -dx : 0) + (hasRight ? dx : 0);
+        const fromY = ((hasTop ? -dy : 0) + (hasBottom ? dy : 0)) * aspect;
+
+        let deltaW = fromX;
+        if ((hasLeft || hasRight) && (hasTop || hasBottom)) {
+          deltaW = (fromX + fromY) / 2;
+        } else if (hasTop || hasBottom) {
+          deltaW = fromY;
+        }
+
+        const nextWidth = Math.max(
+          DETACHED_MIN_WIDTH,
+          Math.min(DETACHED_MAX_WIDTH, start.width + deltaW),
+        );
+        const scale = nextWidth / start.width;
+        const nextHeight = start.height * scale;
+
+        let nextX = start.x;
+        let nextY = start.y;
+
+        if (hasLeft) {
+          nextX = start.x + (start.width - nextWidth);
+        }
+        if (hasTop) {
+          nextY = start.y + (start.height - nextHeight);
+        }
+
+        const maxX = window.innerWidth - nextWidth;
+        const maxY = window.innerHeight - nextHeight;
+
+        setDetachedWidth(nextWidth);
+        setNewPosition({
+          x: Math.min(Math.max(nextX, 0), Math.max(maxX, 0)),
+          y: Math.min(Math.max(nextY, 0), Math.max(maxY, 0)),
+        });
+        return;
+      }
+
       if (isDragging) {
-        const clientX = e instanceof TouchEvent ? e.touches[0].clientX : e.clientX;
-        const clientY = e instanceof TouchEvent ? e.touches[0].clientY : e.clientY;
+        const clientX = point.x;
+        const clientY = point.y;
 
         const newX = clientX - position.x;
         const newY = clientY - position.y;
@@ -168,12 +284,41 @@ function KeyboardWrapper() {
         });
       }
     },
-    [isDragging, position.x, position.y],
+    [isDragging, isResizing, position.x, position.y],
   );
 
   const endDrag = useCallback(() => {
     setIsDragging(false);
+    setIsResizing(false);
+    resizeDirectionRef.current = null;
   }, []);
+
+  const onResizeHandleMouseDown = useCallback(
+    (direction: ResizeDirection) => (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startResize(direction, e.nativeEvent);
+    },
+    [startResize],
+  );
+
+  const onResizeHandleTouchStart = useCallback(
+    (direction: ResizeDirection) => (e: React.TouchEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startResize(direction, e.nativeEvent);
+    },
+    [startResize],
+  );
+
+  useEffect(() => {
+    if (!isAttachedVirtualKeyboardVisible && keyboardRef.current && detachedWidth == null) {
+      const rect = keyboardRef.current.getBoundingClientRect();
+      if (rect.width > 0) {
+        setDetachedWidth(Math.max(DETACHED_MIN_WIDTH, Math.min(DETACHED_MAX_WIDTH, rect.width)));
+      }
+    }
+  }, [isAttachedVirtualKeyboardVisible, detachedWidth]);
 
   useEffect(() => {
     if (isAttachedVirtualKeyboardVisible) return;
@@ -187,8 +332,8 @@ function KeyboardWrapper() {
     document.addEventListener("mouseup", endDrag);
     document.addEventListener("touchend", endDrag);
 
-    document.addEventListener("mousemove", onDrag);
-    document.addEventListener("touchmove", onDrag);
+    document.addEventListener("mousemove", onPointerMove);
+    document.addEventListener("touchmove", onPointerMove);
 
     return () => {
       if (handle) {
@@ -199,10 +344,10 @@ function KeyboardWrapper() {
       document.removeEventListener("mouseup", endDrag);
       document.removeEventListener("touchend", endDrag);
 
-      document.removeEventListener("mousemove", onDrag);
-      document.removeEventListener("touchmove", onDrag);
+      document.removeEventListener("mousemove", onPointerMove);
+      document.removeEventListener("touchmove", onPointerMove);
     };
-  }, [isAttachedVirtualKeyboardVisible, endDrag, onDrag, startDrag]);
+  }, [isAttachedVirtualKeyboardVisible, endDrag, onPointerMove, startDrag]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -229,13 +374,16 @@ function KeyboardWrapper() {
             <div
               className={cx(
                 !isAttachedVirtualKeyboardVisible
-                  ? "fixed top-0 left-0 z-10 max-w-[1200px] min-w-[600px] select-none"
+                  ? "fixed top-0 left-0 z-10 max-w-[1800px] min-w-[600px] select-none"
                   : "mx-auto max-w-[1200px] min-w-[600px]",
               )}
               ref={keyboardRef}
               style={{
                 ...(!isAttachedVirtualKeyboardVisible
-                  ? { transform: `translate(${newPosition.x}px, ${newPosition.y}px)` }
+                  ? {
+                      transform: `translate(${newPosition.x}px, ${newPosition.y}px)`,
+                      width: detachedWidth ? `${detachedWidth}px` : undefined,
+                    }
                   : {}),
               }}
             >
@@ -317,6 +465,59 @@ function KeyboardWrapper() {
                   )}
                 </div>
               </Card>
+
+              {!isAttachedVirtualKeyboardVisible && (
+                <>
+                  <div
+                    className="absolute top-0 bottom-0 -left-1 z-20 w-2 cursor-ew-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("left")}
+                    onTouchStart={onResizeHandleTouchStart("left")}
+                  />
+                  <div
+                    className="absolute top-0 -right-1 bottom-0 z-20 w-2 cursor-ew-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("right")}
+                    onTouchStart={onResizeHandleTouchStart("right")}
+                  />
+                  <div
+                    className="absolute -top-1 right-0 left-0 z-20 h-2 cursor-ns-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("top")}
+                    onTouchStart={onResizeHandleTouchStart("top")}
+                  />
+                  <div
+                    className="absolute right-0 -bottom-1 left-0 z-20 h-2 cursor-ns-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("bottom")}
+                    onTouchStart={onResizeHandleTouchStart("bottom")}
+                  />
+                  <div
+                    className="absolute -top-1 -left-1 z-30 h-3 w-3 cursor-nwse-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("top-left")}
+                    onTouchStart={onResizeHandleTouchStart("top-left")}
+                  />
+                  <div
+                    className="absolute -top-1 -right-1 z-30 h-3 w-3 cursor-nesw-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("top-right")}
+                    onTouchStart={onResizeHandleTouchStart("top-right")}
+                  />
+                  <div
+                    className="absolute -bottom-1 -left-1 z-30 h-3 w-3 cursor-nesw-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("bottom-left")}
+                    onTouchStart={onResizeHandleTouchStart("bottom-left")}
+                  />
+                  <div
+                    className="absolute -right-1 -bottom-1 z-30 h-3 w-3 cursor-nwse-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("bottom-right")}
+                    onTouchStart={onResizeHandleTouchStart("bottom-right")}
+                  />
+                </>
+              )}
             </div>
           </motion.div>
         )}
