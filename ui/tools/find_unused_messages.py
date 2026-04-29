@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 import re
-from datetime import datetime
+import datetime
 from pathlib import Path
 
 def flatten(d, prefix=""):
@@ -82,7 +82,7 @@ def main():
 
     print(f"Generating report for {len(usages)} usages ...")
     report = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
         "en_json": str(en_path),
         "src_root": args.src,
         "total_keys": len(keys),
@@ -94,7 +94,8 @@ def main():
         used = bool(occ)
         report["keys"][k] = {"used": used, "occurrences": occ}
 
-    unused_keys = [k for k, v in report["keys"].items() if not v["used"]]
+    # ignore keys starting with locale_ as they are computed dynamically for language selection
+    unused_keys = [k for k, v in report["keys"].items() if not v["used"] and not k.startswith("locale_")]
     unused_count = len(unused_keys)
     print(f"Found {unused_count} unused keys")
 
