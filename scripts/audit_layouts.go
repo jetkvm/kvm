@@ -407,7 +407,10 @@ func auditLocale(locale, localPath string) auditResult {
 					subject: fmt.Sprintf("sc 0x%02X normal: ref=%q local=%q", sc, ref.N, local.N),
 				})
 			}
-			if ref.S != "" && ref.S != local.S {
+			// Numpad shift legends are cosmetic in source data and vary by
+			// convention (e.g. + in both slots vs normal-only). Treat them as
+			// non-semantic to avoid noisy WARNs.
+			if !isNumpadHID(sc) && ref.S != "" && ref.S != local.S {
 				res.findings = append(res.findings, finding{
 					kind:    diffLegend,
 					subject: fmt.Sprintf("sc 0x%02X shift:  ref=%q local=%q", sc, ref.S, local.S),
