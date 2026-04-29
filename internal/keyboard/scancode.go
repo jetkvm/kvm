@@ -143,7 +143,7 @@ const (
 	hidApplication uint8 = 0x65
 
 	// These keys are less common and may not be present on many keyboards,
-	// but we include them for completeness.
+	// but we document them for completeness.
 	/*
 		hidPower       uint8 = 0x66
 		hidKPEquals    uint8 = 0x67
@@ -456,6 +456,9 @@ func selectPositionTable(boardW, boardH float64, keyCount int) map[int][]posEntr
 // inferScancodeWithTable returns the USB HID Usage ID for a key at position
 // (x, y) using the given position table. For ISO Enter (h >= 2, x < 15),
 // returns hidEnter directly.
+//
+// Uses closest-match with tolerance: finds the table entry with minimum
+// distance to the key position, and matches if distance < maxDistance.
 func inferScancodeWithTable(x, y, w, h float64, table map[int][]posEntry) uint8 {
 	// ISO / big-ass Enter: spans two rows, in the main typing area (x < 15)
 	// Don't match numpad + or numpad Enter which also have h >= 2
@@ -477,16 +480,18 @@ func inferScancodeWithTable(x, y, w, h float64, table map[int][]posEntry) uint8 
 		return hidUnknown
 	}
 
-	// Find the entry whose x_start is closest to and <= key.x
-	// (keys are listed left-to-right; find last entry where x_start <= key.x + epsilon)
-	const epsilon = 0.1 // tolerance for floating point drift
-	best := hidUnknown
+	// Closest-match algorithm: find the entry with minimum distance to x,
+	// match if distance <= maxDistance tolerance (0.3u).
+	// This handles positional variance across different keyboard layouts.
+	const maxDistance = 0.3 // tolerance for key position variance
+	var closest = hidUnknown
+	var minDist = math.Inf(1)
 	for _, entry := range row {
-		if entry.xStart <= x+epsilon {
-			best = entry.scancode
-		} else {
-			break
+		dist := math.Abs(entry.xStart - x)
+		if dist < minDist && dist <= maxDistance {
+			minDist = dist
+			closest = entry.scancode
 		}
 	}
-	return best
+	return closest // Will still be hidUnknown if the closest entry is beyond tolerance
 }

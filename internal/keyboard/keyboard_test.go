@@ -391,6 +391,10 @@ var compactScancodeTests = []struct {
 	{"RAlt", 10, 5, 1, 1, hidRAlt},
 	// ISO Enter still detected by h >= 2 rule
 	{"ISO Enter (compact)", 13.5, 2, 1.25, 2, hidEnter},
+	// 75% keyboard arrow key positioning variance (0.25u off from table)
+	// Reference table: {14.25, hidArrowUp} but 1.75u RShift (start 12.25, end 14.0) places arrow at 14.0
+	{"75%: ArrowUp (shifted left)", 14.0, 4, 1, 1, hidArrowUp},
+	{"75%: ArrowDown (shifted left)", 14.0, 5, 1, 1, hidArrowDown},
 }
 
 func TestScancodeInferenceCompact(t *testing.T) {
