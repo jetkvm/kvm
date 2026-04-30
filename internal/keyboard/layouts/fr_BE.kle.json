@@ -1,6 +1,6 @@
 [
     {
-        "name": "Belgisch Nederlands fr-BE/nl-BE (ISO 105)",
+        "name": "Belgisch Nederlands fr-BE (ISO 105)",
         "author": "JetKVM",
         "deadKeys": [
             "^",
@@ -45,7 +45,7 @@
             "d": true,
             "w": 4
         },
-        "Belgisch Nederlands fr-BE/nl-BE (ISO 105)\nfr-BE\n\n(ISO 105)"
+        "Belgisch Nederlands fr-BE (ISO 105)\nfr-BE\nnl-BE\n(ISO 105)"
     ],
     [
         {
@@ -123,7 +123,7 @@
         {
             "h": 2
         },
-        "+\n+"
+        "\n+"
     ],
     [
         {

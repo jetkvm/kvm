@@ -10,6 +10,7 @@
 
 import React, { memo, useCallback } from "react";
 import { TransportKey, KeyLegends } from "./types/schema";
+import { isControlScancode } from "../../keyboardMappings";
 import { m } from "@localizations/messages.js";
 
 // ---------------------------------------------------------------------------
@@ -38,11 +39,10 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
   const widthClass = getWidthClass(w);
   const isCustomWidth = widthClass === "w-custom";
 
-  // `shape` is already the correct CSS class, no client-side shape detection needed.
   // A key is a "letter" if its normal legend is a single Unicode letter (any script).
   // Used by CSS to apply CapsLock layer switching (shift legend for letters only).
   const isLetter = legends.normal != null && /^\p{Ll}$/u.test(legends.normal);
-  const isMetaControl = META_CONTROL_SCANCODES.has(scancode);
+  const isMetaControl = isControlScancode(scancode);
 
   const className = [
     "key",
@@ -84,11 +84,12 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
     return deadLegends != null && deadLegends.includes(legendType);
   };
 
-  const renderLegend = (text: string | undefined, type: string, displayClass: string) => {
+  const renderLegend = (text: string | undefined, type: string, normalDupsShift = false) => {
     if (!text) return null;
     const deadClass = isDeadLegend(type) ? "dead" : "";
+    const dupsClass = normalDupsShift ? "nds" : "";
     return (
-      <span className={`legend ${displayClass} ${deadClass}`} aria-hidden="true">
+      <span className={`legend ${type} ${deadClass} ${dupsClass}`.trim()} aria-hidden="true">
         {text}
       </span>
     );
@@ -106,12 +107,12 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
         -1
       } /* intentionally unfocusable — physical keyboard must always reach the KVM session */
     >
-      {renderLegend(legends.normal, "normal", "normal")}
-      {renderLegend(legends.shift, "shift", "shift")}
-      {renderLegend(legends.altgr, "altgr", "altgr")}
-      {renderLegend(legends.shiftAltgr, "shift-altgr", "shift-altgr")}
-      {renderLegend(legends.kana, "kana", "kana")}
-      {renderLegend(legends.shiftKana, "shift-kana", "shift-kana")}
+      {renderLegend(legends.normal, "normal", legends.normal === legends.shift)}
+      {renderLegend(legends.shift, "shift", legends.shift === legends.normal)}
+      {renderLegend(legends.altgr, "altgr")}
+      {renderLegend(legends.shiftAltgr, "shift-altgr")}
+      {renderLegend(legends.kana, "kana")}
+      {renderLegend(legends.shiftKana, "shift-kana")}
     </div>
   );
 });
@@ -308,24 +309,6 @@ function ariaLabel(legends: KeyLegends): string {
 
   return parts.join(", ") || "key";
 }
-
-// Keys whose base label should remain visible in AltGr preview layers.
-const META_CONTROL_SCANCODES = new Set<number>([
-  40, // Enter
-  41, // Esc
-  42, // Backspace
-  43, // Tab
-  57, // CapsLock
-  101, // Menu/Application
-  224, // Left Ctrl
-  225, // Left Shift
-  226, // Left Alt
-  227, // Left Meta
-  228, // Right Ctrl
-  229, // Right Shift
-  230, // Right Alt (AltGr)
-  231, // Right Meta
-]);
 
 /**
  * Maps KLE width values to CSS class names.

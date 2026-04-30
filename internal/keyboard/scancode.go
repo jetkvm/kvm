@@ -67,7 +67,7 @@ const (
 	hidLBracket  uint8 = 0x2F // [ {
 	hidRBracket  uint8 = 0x30 // ] }
 	hidBackslash uint8 = 0x31 // \ |
-	hidHash      uint8 = 0x32 // # ~ (ISO layouts only)
+	hidHashTilde uint8 = 0x32 // # ~ (ISO layouts only)
 	hidSemicolon uint8 = 0x33 // ; :
 	hidQuote     uint8 = 0x34 // ' "
 	hidGrave     uint8 = 0x35 // ` ~
@@ -275,6 +275,83 @@ const (
 	hidUnknown uint8 = 0x00
 )
 
+// IsModifierScancode reports whether sc is a keyboard modifier usage ID
+// (Left/Right Ctrl, Shift, Alt, Meta).
+func IsModifierScancode(sc uint8) bool {
+	return sc >= hidLCtrl && sc <= hidRMeta
+}
+
+// IsPrintableScancode reports whether sc is in the HID ranges that produce
+// typed text on standard keyboard layouts.
+//
+// Keep this aligned with ui/src/keyboardMappings.ts.
+func IsPrintableScancode(sc uint8) bool {
+	return (sc >= hidA && sc <= hidSlash) || (sc >= hidNumLock && sc <= hidKPDot)
+}
+
+// IsControlScancode reports whether sc should be treated as a control-like key
+// for legend and layer-display logic.
+//
+// Keep this aligned with ui/src/keyboardMappings.ts.
+func IsControlScancode(sc uint8) bool {
+	if IsModifierScancode(sc) {
+		return true
+	}
+
+	switch sc {
+	case hidEscape,
+		hidEnter,
+		hidBackspace,
+		hidTab,
+		hidSpace,
+		hidCapsLock,
+		hidPrintScreen,
+		hidScrollLock,
+		hidPause,
+		hidInsert,
+		hidDelete,
+		hidHome,
+		hidEnd,
+		hidPageUp,
+		hidPageDown,
+		hidArrowUp,
+		hidArrowDown,
+		hidArrowLeft,
+		hidArrowRight,
+		hidNumLock,
+		hidKPEnter,
+		hidApplication:
+		return true
+	}
+
+	return !IsPrintableScancode(sc)
+}
+
+func ScancodeProducesText(scancode uint8) bool {
+	// Alphabet keys
+	if scancode >= hidA && scancode <= hidZ {
+		return true
+	}
+	// Number row keys
+	if scancode >= hidN1 && scancode <= hidN0 {
+		return true
+	}
+	// Space and printable punctuation keys. Excludes Enter/Escape/Backspace/Tab.
+	if scancode == hidSpace ||
+		(scancode >= hidMinus && scancode <= hidSlash) ||
+		scancode == hidHashTilde ||
+		scancode == hidISOKey {
+		return true
+	}
+	// Numpad printable characters. Excludes NumLock and KPEnter.
+	if (scancode >= hidKPSlash && scancode <= hidKPPlus) ||
+		(scancode >= hidKP1 && scancode <= hidKPDot) {
+		return true
+	}
+
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // Position table
 // ---------------------------------------------------------------------------
@@ -466,12 +543,12 @@ func inferScancodeWithTable(x, y, w, h float64, table map[int][]posEntry) uint8 
 		return hidEnter
 	}
 
-	// ISO hash key (#/~): on ISO layouts, the narrow key at x≈12.75 on the
+	// ISO hash/tilde key (#/~): on ISO layouts, the narrow key at x≈12.75 on the
 	// home row is the hash key (w≈1), not Enter (w≥2). The width check alone
 	// distinguishes them — no row index check needed, so this works for both
 	// full-size (home row at y≈3.5→4) and compact (home row at y=3) tables.
 	if approxEq(x, 12.75) && w < 1.5 {
-		return hidHash
+		return hidHashTilde
 	}
 
 	rowIdx := int(math.Round(y))

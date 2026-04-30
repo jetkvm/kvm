@@ -593,7 +593,7 @@ func sanitizeName(name string) string {
 }
 
 func approxEq(a, b float64) bool {
-	return math.Abs(a-b) < 0.1
+	return math.Abs(a-b) < 0.25
 }
 
 func detectShape(x, w, h, w2, h2 float64, stepped, hasW2 bool) KeyShape {
@@ -674,7 +674,7 @@ func buildCharMap(keys []TransportKey) map[string]HIDCombo {
 
 	// Sort a copy by position for deterministic first-occurrence behaviour.
 	// We must not mutate the original slice — it preserves KLE parse order,
-	// which the scancodes metadata override uses (0-based index).
+	// which the scancodes metadata override uses.
 	sorted := make([]TransportKey, len(keys))
 	copy(sorted, keys)
 	slices.SortStableFunc(sorted, func(a, b TransportKey) int {
@@ -683,9 +683,8 @@ func buildCharMap(keys []TransportKey) map[string]HIDCombo {
 		}
 		return cmp.Compare(a.X, b.X)
 	})
-	keys = sorted
 
-	for _, key := range keys {
+	for _, key := range sorted {
 		if key.Scancode == 0 {
 			continue // non-typeable keys and decals don't send HID events
 		}
@@ -703,7 +702,7 @@ func addChar(m map[string]HIDCombo, legend *string, scancode, mods uint8) {
 	if legend == nil || *legend == "" {
 		return
 	}
-	if !scancodeProducesText(scancode) {
+	if !ScancodeProducesText(scancode) {
 		return
 	}
 	if utf8.RuneCountInString(*legend) != 1 {
@@ -718,31 +717,6 @@ func addChar(m map[string]HIDCombo, legend *string, scancode, mods uint8) {
 	if _, exists := m[*legend]; !exists {
 		m[*legend] = HIDCombo{Scancode: scancode, Modifiers: mods}
 	}
-}
-
-func scancodeProducesText(scancode uint8) bool {
-	// Alphabet keys
-	if scancode >= hidA && scancode <= hidZ {
-		return true
-	}
-	// Number row keys
-	if scancode >= hidN1 && scancode <= hidN0 {
-		return true
-	}
-	// Space and printable punctuation keys. Excludes Enter/Escape/Backspace/Tab.
-	if scancode == hidSpace ||
-		(scancode >= hidMinus && scancode <= hidSlash) ||
-		scancode == hidHash ||
-		scancode == hidISOKey {
-		return true
-	}
-	// Numpad printable characters. Excludes NumLock and KPEnter.
-	if (scancode >= hidKPSlash && scancode <= hidKPPlus) ||
-		(scancode >= hidKP1 && scancode <= hidKPDot) {
-		return true
-	}
-
-	return false
 }
 
 var controlLegendDisplayMap = map[string]string{
@@ -776,7 +750,7 @@ func normalizeControlLegendsForDisplay(keys []TransportKey) {
 		if k.Scancode == 0 {
 			continue
 		}
-		if scancodeProducesText(k.Scancode) && k.Scancode != hidSpace {
+		if ScancodeProducesText(k.Scancode) && k.Scancode != hidSpace {
 			continue
 		}
 		normalize(&k.Legends.Normal)

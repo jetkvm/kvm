@@ -154,7 +154,7 @@ func fetchReference(infoURL string) ([]byte, error) {
 var reUnquotedKey = regexp.MustCompile(`([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)`)
 
 var (
-	// charMap entries for \\ and | commonly swap between 0x31 and 0x32
+	// charMap entries for \\ and | commonly swap between 0x31 hidBackslash and 0x32 hidHashTilde
 	// across ANSI and ISO variants of an otherwise equivalent layout.
 	reISOANSIBackslashSwap = regexp.MustCompile(`^charMap "\\\\": ref=([0-9a-f]{2}):[0-9a-f]{2} local=([0-9a-f]{2}):[0-9a-f]{2}$`)
 	reISOANSIPipeSwap      = regexp.MustCompile(`^charMap "\|": ref=([0-9a-f]{2}):[0-9a-f]{2} local=([0-9a-f]{2}):[0-9a-f]{2}$`)
@@ -175,36 +175,10 @@ func sv(p *string) string {
 	return *p
 }
 
-// printableSC returns true for scancodes that carry typed text.
-func printableSC(sc uint8) bool {
-	return (sc >= 0x04 && sc <= 0x38) || (sc >= 0x57 && sc <= 0x63)
-}
-
-// controlSC returns true for scancodes whose only "legend" is a display name
-// (Esc, Enter, Backspace, Tab, Space). These work by scancode not charMap, so
-// legend differences are cosmetic and excluded from audit comparisons.
-func controlSC(sc uint8) bool {
-	switch sc {
-	case 0x28, // Return / Enter
-		0x29, // Escape
-		0x2A, // Backspace
-		0x2B, // Tab
-		0x2C, // Space
-		0x39, // Caps Lock
-		0x46, // PrintScreen / SysReq
-		0x47, // Scroll Lock
-		0x48, // Pause / Break
-		0x53, // Num Lock
-		0x58: // KP Enter
-		return true
-	}
-	return false
-}
-
 func legendsByScancode(l *keyboard.KeyboardLayout) map[uint8]layers {
 	m := make(map[uint8]layers, len(l.Keys))
 	for _, k := range l.Keys {
-		if k.Decal || !printableSC(k.Scancode) {
+		if k.Decal || !keyboard.IsPrintableScancode(k.Scancode) {
 			continue
 		}
 		m[k.Scancode] = layers{
@@ -282,11 +256,11 @@ func (r auditResult) warn() bool {
 
 func allowReason(f finding) string {
 	if f.kind == diffExtra && strings.HasPrefix(f.subject, "sc 0x32: key absent in local") {
-		return "expected ISO/ANSI difference (ISO-specific key 0x32)"
+		return "expected ISO/ANSI difference (ISO-specific key hidHashTilde 0x32)"
 	}
 
 	if f.kind == diffLegend && (strings.HasPrefix(f.subject, "sc 0x31 ") || strings.HasPrefix(f.subject, "sc 0x32 ")) {
-		return "expected ISO/ANSI legend placement difference (0x31/0x32)"
+		return "expected ISO/ANSI legend placement difference (hidBackslash 0x31/hidHashTilde 0x32)"
 	}
 
 	if f.kind == diffRemap {
@@ -305,12 +279,12 @@ func allowReason(f finding) string {
 
 		if m := reISOANSIBackslashSwap.FindStringSubmatch(f.subject); len(m) == 3 {
 			if (m[1] == "31" && m[2] == "32") || (m[1] == "32" && m[2] == "31") {
-				return "expected ISO/ANSI remap for \\ (0x31/0x32)"
+				return "expected ISO/ANSI remap for \\ to hidBackslash/hidHashTilde (0x31/0x32)"
 			}
 		}
 		if m := reISOANSIPipeSwap.FindStringSubmatch(f.subject); len(m) == 3 {
 			if (m[1] == "31" && m[2] == "32") || (m[1] == "32" && m[2] == "31") {
-				return "expected ISO/ANSI remap for | (0x31/0x32)"
+				return "expected ISO/ANSI remap for | to hidBackslash/hidHashTilde (0x31/0x32)"
 			}
 		}
 	}
@@ -400,7 +374,7 @@ func auditLocale(locale, localPath string) auditResult {
 
 		// Normal / Shift legend comparison — skip for control keys whose legends
 		// are just display names (Esc, ⏎, ⌫, etc.), not typed characters.
-		if !controlSC(sc) {
+		if !keyboard.IsControlScancode(sc) {
 			if ref.N != "" && ref.N != local.N {
 				res.findings = append(res.findings, finding{
 					kind:    diffLegend,
@@ -822,9 +796,15 @@ func firstRune(s string) rune {
 	return 0
 }
 
+const (
+	hidBackslash uint8 = 0x31
+	hidHashTilde uint8 = 0x32
+	hidISOKey    uint8 = 0x64
+)
+
 func hasEquivalentISOANSIKey(set map[uint8]bool, hid uint8) bool {
-	if hid == 0x31 || hid == 0x32 || hid == 0x64 {
-		return set[0x31] || set[0x32] || set[0x64]
+	if hid == hidBackslash || hid == hidHashTilde || hid == hidISOKey {
+		return set[hidBackslash] || set[hidHashTilde] || set[hidISOKey]
 	}
 	return set[hid]
 }
@@ -887,8 +867,8 @@ func auditKLCScancodes(localRaw []byte, localLayout *keyboard.KeyboardLayout) ([
 			if isNumpadHID(key.Scancode) && !isNumpadHID(expected) && isAmbiguousNumpadRune(r) {
 				continue
 			}
-			if (key.Scancode == 0x31 || key.Scancode == 0x32 || key.Scancode == 0x64) &&
-				(expected == 0x31 || expected == 0x32 || expected == 0x64) {
+			if (key.Scancode == hidBackslash || key.Scancode == hidHashTilde || key.Scancode == hidISOKey) &&
+				(expected == hidBackslash || expected == hidHashTilde || expected == hidISOKey) {
 				continue
 			}
 			if key.Scancode != expected {

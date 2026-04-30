@@ -263,3 +263,45 @@ export const isModifierScancode = (scancode: number) => scancode >= 0xe0 && scan
 
 /** Modifier key names from the `modifiers` map (excludes the AltGr alias) */
 export const modifierKeyNames = Object.keys(modifiers).filter(n => n !== "AltGr");
+
+// HID scancodes that are not modifiers but should still be considered "control-like" for the purposes of
+// legend display and AltGr preview behavior. This is a hand-curated list based on keys that typically don't
+// have a "printable" legend, even if they technically could be considered printable keys by the HID spec.
+const explicitControlLikeScancodes = new Set<number>([
+  keys.Escape,
+  keys.Enter,
+  keys.Backspace,
+  keys.Tab,
+  keys.Space,
+  keys.CapsLock,
+  keys.ScrollLock,
+  keys.NumLock,
+  keys.PrintScreen,
+  keys.Pause,
+  keys.Insert,
+  keys.Delete,
+  keys.Home,
+  keys.End,
+  keys.PageUp,
+  keys.PageDown,
+  keys.ArrowUp,
+  keys.ArrowDown,
+  keys.ArrowLeft,
+  keys.ArrowRight,
+  keys.NumpadEnter,
+  keys.Application,
+]);
+
+// Keep this in sync with the backend's notion of printable HID keys.
+// Printable key ranges:
+// - 0x04..0x38: main typing cluster
+// - 0x53..0x63: numpad typing/operators
+const isPrintableScancode = (scancode: number) =>
+  (scancode >= 0x04 && scancode <= 0x38) || (scancode >= 0x53 && scancode <= 0x63);
+
+// Used by the keyboard UI to decide which keys should retain normal legends
+// in AltGr preview modes.
+export const isControlScancode = (scancode: number) =>
+  isModifierScancode(scancode) ||
+  explicitControlLikeScancodes.has(scancode) ||
+  !isPrintableScancode(scancode);

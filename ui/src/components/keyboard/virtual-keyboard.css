@@ -63,7 +63,6 @@
    KEYCAP BASE
    All .key rules are scoped under .vkb to avoid collisions.
    =========================================================================== */
-
 .vkb .key {
   --key-color: #2d2d2d;
   --key-text-color: #e0e0e0;
@@ -116,7 +115,6 @@
 /* ===========================================================================
    KEYCAP WIDTH CLASSES
    =========================================================================== */
-
 /* Generated from standard layout widths. Subtract padding for visual gap. */
 .vkb .key.w-125 {
   width: calc(1.25 * var(--u) - var(--pad) * 2);
@@ -157,7 +155,6 @@
 .vkb .key.w-700 {
   width: calc(7 * var(--u) - var(--pad) * 2);
 }
-
 /* Non-standard width fallback — --key-w set inline by getCustomWidthStyle() */
 .vkb .key.w-custom {
   width: calc(var(--key-w) * var(--u) - var(--pad) * 2);
@@ -166,7 +163,6 @@
 /* ===========================================================================
    KEYCAP SHAPE CLASSES
    =========================================================================== */
-
 /*
  * ISO Enter — L-shaped key.
  * KLE encodes this as two overlapping rectangles:
@@ -227,7 +223,161 @@
   );
 }
 
-/* Homing keys (F, J, numpad 5) — subtle bar indicator like the physical tactile bump */
+/* ===========================================================================
+   LEGENDS — base state (all hidden)
+   =========================================================================== */
+.vkb .key .legend {
+  position: absolute;
+  display: none; /* hidden by default; shown by data-layer selectors below */
+  pointer-events: none;
+  font-size: calc(var(--u) * 0.3);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quadrant positions for keys legends. */
+.vkb .key .legend {
+  display: flex;
+  font-size: calc(var(--u) * 0.3);
+}
+.vkb .key .legend.normal {
+  bottom: 3px;
+  left: 4px;
+  align-items: flex-end;
+}
+.vkb .key .legend.shift {
+  top: 3px;
+  left: 4px;
+  align-items: flex-start;
+}
+.vkb .key .legend.altgr {
+  bottom: 3px;
+  right: 4px;
+  align-items: flex-end;
+}
+.vkb .key .legend.shift-altgr {
+  top: 3px;
+  right: 4px;
+  align-items: flex-start;
+}
+
+/* Decal — a label on the keyboard housing, not a physical keycap. */
+.vkb .key.decal {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: default;
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.25);
+  font-size: calc(var(--u) * 0.25);
+}
+
+.vkb .key.decal .legend {
+  display: flex;
+}
+
+/* ===========================================================================
+   LEGEND VISIBILITY — "all" mode (no other layer active)
+   All legends shown simultaneously in quadrant positions.
+   =========================================================================== */
+.vkb[data-layer="all"] .key:not(.decal) .legend {
+  display: flex;
+  align-items: flex-end;
+  font-size: calc(var(--u) * 0.3);
+}
+
+/* in all mode, if the shift legend is the same as normal, hide the 
+shift legend to avoid redundancy */
+.vkb[data-layer="all"] .key:not(.decal):has(.legend.normal.nds) .legend.shift.nds {
+  display: none;
+}
+
+/* ===========================================================================
+   LEGEND VISIBILITY — single layer mode
+   Legend is centered within the key when only one layer is active.
+   =========================================================================== */
+/*
+  On a modifier active layer, make sure other layer legends are shown
+  at reduced opacity and smaller font size to indicate they are
+  reachable by other modifiers
+ */
+.vkb[data-layer="shift"] .key:not(.decal) .legend:not(.shift),
+.vkb[data-layer="altgr"] .key:not(.decal) .legend:not(.altgr),
+.vkb[data-layer="shift-altgr"] .key:not(.decal) .legend:not(.shift-altgr),
+.vkb[data-layer="kana"] .key:not(.decal) .legend:not(.kana),
+.vkb[data-layer="shift-kana"] .key:not(.decal) .legend:not(.shift-kana) {
+  opacity: 0.65;
+  font-size: calc(var(--u) * 0.25);
+}
+
+.vkb[data-layer="shift"] .key:not(.decal) .legend.shift,
+.vkb[data-layer="altgr"] .key:not(.decal) .legend.altgr,
+.vkb[data-layer="shift-altgr"] .key:not(.decal) .legend.shift-altgr,
+.vkb[data-layer="kana"] .key:not(.decal) .legend.kana,
+.vkb[data-layer="shift-kana"] .key:not(.decal) .legend.shift-kana,
+.vkb[data-layer="all"] .key:not(.decal) .legend.nds,
+.vkb .key:not(.decal):has(.legend:only-child) .legend {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--u) * 0.35);
+}
+
+/*
+  Fallback: when no legend exists for the active layer, show the normal legend
+  to indicate "no change in this layer" with slightly reduced opacity.
+ */
+.vkb[data-layer="shift"] .key:not(.decal):not(:has(.legend.shift)) .legend.normal,
+.vkb[data-layer="altgr"] .key:not(.decal):not(:has(.legend.altgr)) .legend.normal,
+.vkb[data-layer="shift-altgr"] .key:not(.decal):not(:has(.legend.shift-altgr)) .legend.normal,
+.vkb[data-layer="kana"] .key:not(.decal):not(:has(.legend.kana)) .legend.normal,
+.vkb[data-layer="shift-kana"] .key:not(.decal):not(:has(.legend.shift-kana)) .legend.normal {
+  display: flex;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+}
+
+/* ===========================================================================
+   LEGEND VISIBILITY — CapsLock
+   When CapsLock is on: letter keys show shift legend, non-letters stay normal.
+   When CapsLock + Shift: letters revert to normal, non-letters show shift.
+   Behavior is consistent across Windows, macOS, and Linux.
+   ============================================================================ */
+/* CapsLock on, idle ("all" mode): letter keys swap quadrants positions normal→shift */
+.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.normal {
+  /* Take the shift legend's quadrant position (top-left) */
+  top: 3px;
+  bottom: auto;
+  align-items: flex-start;
+  /* display: none; */
+}
+.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.shift {
+  /* Take the normal legend's quadrant position (bottom-left) */
+  bottom: 3px;
+  top: auto;
+  align-items: flex-end;
+}
+
+/* CapsLock on + Shift: letters revert to normal (Shift cancels CapsLock) */
+.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.normal {
+  bottom: 3px;
+  top: auto;
+  align-items: flex-end;
+}
+.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.shift {
+  top: 3px;
+  bottom: auto;
+  align-items: flex-start;
+  /* display: none; */
+}
+
+/* =================================================================================
+  HOMING KEY INDICATORS
+  Homing keys (F, J, numpad 5) — subtle bar indicator like the physical tactile bump
+  ================================================================================== */
 .vkb .key.homing::after {
   content: "";
   position: absolute;
@@ -241,10 +391,11 @@
   pointer-events: none;
 }
 
-/*
- * Lock key LED indicators — driven by classes on .vkb container.
- * CapsLock=57 (0x39), ScrollLock=71 (0x47), NumLock=83 (0x53), Kana=136 (0x88)
- */
+/* ===========================================================================
+  LOCK KEY INDICATORS
+  Lock key LED indicators 
+  CapsLock=57 (0x39), ScrollLock=71 (0x47), NumLock=83 (0x53), Kana=136 (0x88)
+  ============================================================================ */
 .vkb.caps-lock-on .key[data-scancode="57"]::before,
 .vkb.scroll-lock-on .key[data-scancode="71"]::before,
 .vkb.num-lock-on .key[data-scancode="83"]::before,
@@ -262,178 +413,11 @@
   z-index: 1;
 }
 
-/* Decal — a label on the keyboard housing, not a physical keycap.
-   Always shows all legends in quadrant positions regardless of active layer. */
-.vkb .key.decal {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  cursor: default;
-  pointer-events: none;
-  color: rgba(255, 255, 255, 0.25);
-  font-size: calc(var(--u) * 0.25);
-}
-
-.vkb .key.decal .legend {
-  display: flex;
-  align-items: flex-end;
-  font-size: calc(var(--u) * 0.3);
-}
-
-.vkb .key.decal .legend.normal {
-  bottom: 3px;
-  left: 4px;
-}
-.vkb .key.decal .legend.shift {
-  top: 3px;
-  left: 4px;
-  align-items: flex-start;
-}
-.vkb .key.decal .legend.altgr {
-  bottom: 3px;
-  right: 4px;
-}
-.vkb .key.decal .legend.shift-altgr {
-  top: 3px;
-  right: 4px;
-  align-items: flex-start;
-}
-
-/* ===========================================================================
-   LEGENDS — base state (all hidden)
-   =========================================================================== */
-
-.vkb .key .legend {
-  position: absolute;
-  display: none; /* hidden by default; shown by data-layer selectors below */
-  pointer-events: none;
-  font-size: calc(var(--u) * 0.25);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ===========================================================================
-   LEGEND VISIBILITY — single layer mode
-   Legend is centered within the key when only one layer is active.
-   =========================================================================== */
-
-.vkb[data-layer="normal"] .key:not(.decal) .legend.normal,
-.vkb[data-layer="shift"] .key:not(.decal) .legend.shift,
-.vkb[data-layer="altgr"] .key:not(.decal) .legend.altgr,
-.vkb[data-layer="shift-altgr"] .key:not(.decal) .legend.shift-altgr,
-.vkb[data-layer="kana"] .key:not(.decal) .legend.kana,
-.vkb[data-layer="shift-kana"] .key:not(.decal) .legend.shift-kana {
-  display: flex;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-}
-
-/* If a key has exactly one legend span, center it regardless of layer. */
-.vkb .key:not(.decal):has(.legend:only-child) .legend {
-  display: flex;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-}
-
-/*
- * Fallback: when no legend exists for the active layer, show the normal legend
- * at reduced opacity to indicate "no change in this layer."
- */
-.vkb[data-layer="shift"] .key:not(.decal):not(:has(.legend.shift)) .legend.normal,
-.vkb[data-layer="altgr"] .key:not(.decal):not(:has(.legend.altgr)) .legend.normal,
-.vkb[data-layer="shift-altgr"] .key:not(.decal):not(:has(.legend.shift-altgr)) .legend.normal,
-.vkb[data-layer="kana"] .key:not(.decal):not(:has(.legend.kana)) .legend.normal,
-.vkb[data-layer="shift-kana"] .key:not(.decal):not(:has(.legend.shift-kana)) .legend.normal {
-  display: flex;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.75;
-}
-
-/*
- * AltGr mode: explicitly keep control/meta key labels visible as a ghosted
- * normal legend. We intentionally do not hide AltGr legends here.
- */
-.vkb[data-layer="altgr"] .key.meta-control .legend.normal,
-.vkb[data-layer="shift-altgr"] .key.meta-control .legend.normal {
-  display: flex;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.7;
-}
-
-/* ===========================================================================
-   LEGEND VISIBILITY — CapsLock
-   When CapsLock is on: letter keys show shift legend, non-letters stay normal.
-   When CapsLock + Shift: letters revert to normal, non-letters show shift.
-   Behavior is consistent across Windows, macOS, and Linux.
-   =========================================================================== */
-
-/* CapsLock on, idle ("all" mode): letter keys swap normal→shift in their quadrant */
-.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.normal {
-  display: none;
-}
-.vkb.caps-lock-on[data-layer="all"] .key.letter .legend.shift {
-  /* Take the normal legend's quadrant position (bottom-left) */
-  bottom: 3px;
-  left: 4px;
-  top: auto;
-  align-items: flex-end;
-}
-
-/* CapsLock on + Shift: letters revert to normal (Shift cancels CapsLock) */
-.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.shift {
-  display: none;
-}
-.vkb.caps-lock-on[data-layer="shift"] .key.letter .legend.normal {
-  display: flex;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-  opacity: 1;
-}
-
-/* ===========================================================================
-   LEGEND VISIBILITY — "all" preview mode
-   All legends shown simultaneously in quadrant positions.
-   =========================================================================== */
-
-.vkb[data-layer="all"] .legend {
-  display: flex;
-  align-items: flex-end;
-  font-size: calc(var(--u) * 0.32);
-}
-
-/* Quadrant positions */
-.vkb[data-layer="all"] .legend.normal {
-  bottom: 3px;
-  left: 4px;
-}
-.vkb[data-layer="all"] .legend.shift {
-  top: 3px;
-  left: 4px;
-  align-items: flex-start;
-}
-.vkb[data-layer="all"] .legend.altgr {
-  bottom: 3px;
-  right: 4px;
-}
-.vkb[data-layer="all"] .legend.shift-altgr {
-  top: 3px;
-  right: 4px;
-  align-items: flex-start;
-}
-
 /* ===========================================================================
    DEAD KEY INDICATOR
    Keys with dead key legends get a small orange dot suffix.
    Applied via ::after on the visible legend span with the dead class.
    =========================================================================== */
-
 .vkb .key .legend.dead::after {
   content: "●";
   font-size: 0.25em;
