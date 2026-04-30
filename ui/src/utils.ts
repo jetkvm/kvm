@@ -247,6 +247,25 @@ export function isChromeOS() {
   return !!navigator.userAgent.match(" CrOS ");
 }
 
+/**
+ * Linux desktop browsers, excluding Android and ChromeOS.
+ *
+ * Used to gate H.265 support: many Linux browsers advertise H.265 in
+ * `RTCRtpReceiver.getCapabilities()` and in their SDP offers but cannot
+ * actually decode the stream (Chrome on NVIDIA proprietary, Brave/Chromium
+ * on Wayland, Firefox on most Linux setups), leaving users stuck on the
+ * "Loading video stream..." screen. See jetkvm/kvm#1413.
+ */
+export function isLinuxDesktop() {
+  const uaData = (navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  }).userAgentData;
+
+  if (uaData?.platform) return uaData.platform === "Linux";
+
+  return /\bLinux\b/.test(navigator.userAgent) && !isAndroid() && !isChromeOS();
+}
+
 export function normalizeSortOrders(macros: KeySequence[]): KeySequence[] {
   return macros.map((macro, index) => ({
     ...macro,

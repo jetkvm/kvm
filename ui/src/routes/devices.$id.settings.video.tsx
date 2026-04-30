@@ -10,6 +10,7 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import Fieldset from "@components/Fieldset";
 import notifications from "@/notifications";
+import { isLinuxDesktop } from "@/utils";
 import { m } from "@localizations/messages.js";
 
 const defaultEdid =
@@ -54,6 +55,10 @@ const allCodecOptions = [
 ];
 
 const h265Supported = (() => {
+  // Linux browsers frequently advertise H.265 they cannot actually decode,
+  // leaving users stuck on a black "Loading video stream..." screen. See
+  // jetkvm/kvm#1413.
+  if (isLinuxDesktop()) return false;
   const caps = RTCRtpReceiver.getCapabilities?.("video");
   return caps?.codecs.some(c => c.mimeType === "video/H265") ?? false;
 })();

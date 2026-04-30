@@ -58,6 +58,7 @@ import { m } from "@localizations/messages.js";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
+import { isLinuxDesktop } from "@/utils";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -107,6 +108,31 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
 const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
   return isOnDevice ? deviceLoader() : cloudLoader(params);
 };
+
+/**
+ * Removes H.265 from each video transceiver's preferred codec list so the
+ * generated SDP offer does not advertise it. Called immediately before
+ * createOffer() on Linux only — see jetkvm/kvm#1413 for context.
+ */
+function stripH265FromVideoTransceivers(pc: RTCPeerConnection) {
+  try {
+    const caps = RTCRtpReceiver.getCapabilities?.("video");
+    if (!caps) return;
+    const filtered = caps.codecs.filter(c => c.mimeType !== "video/H265");
+    if (filtered.length === caps.codecs.length) return;
+
+    for (const t of pc.getTransceivers()) {
+      // addTransceiver("video", ...) populates receiver.track with kind "video".
+      if (t.receiver.track?.kind !== "video") continue;
+      t.setCodecPreferences(filtered);
+    }
+    console.debug(
+      "[setupPeerConnection] Linux: stripped H.265 from video codec preferences",
+    );
+  } catch (e) {
+    console.warn("[setupPeerConnection] setCodecPreferences failed", e);
+  }
+}
 
 export default function KvmIdRoute() {
   const loaderResp = useLoaderData();
@@ -466,6 +492,10 @@ export default function KvmIdRoute() {
       try {
         console.debug("[setupPeerConnection] Creating offer");
         makingOffer.current = true;
+
+        if (isLinuxDesktop()) {
+          stripH265FromVideoTransceivers(pc);
+        }
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
