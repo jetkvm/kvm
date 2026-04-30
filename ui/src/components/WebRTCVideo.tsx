@@ -351,10 +351,13 @@ export default function WebRTCVideo({
       if (!isKeyboardLockActive && hidKey === keys.MetaLeft) {
         // If the left meta key was just pressed and we're not keyboard locked
         // we'll never see the keyup event because the browser is going to lose
-        // focus so set a deferred keyup after a short delay
+        // focus so set a deferred keyup after a short delay.
+        // Only synthesize the release if focus was actually lost.
         setTimeout(() => {
-          console.debug(`Forcing the left meta key release`);
-          handleKeyPress(hidKey, false);
+          if (document.visibilityState !== "visible" || !document.hasFocus()) {
+            console.debug(`Forcing the left meta key release after focus loss`);
+            handleKeyPress(hidKey, false);
+          }
         }, 100);
       }
     },
@@ -473,11 +476,17 @@ export default function WebRTCVideo({
       const abortController = new AbortController();
       const signal = abortController.signal;
 
+      const onVisibilityChange = () => {
+        if (document.visibilityState === "hidden") {
+          resetKeyboardState();
+        }
+      };
+
       document.addEventListener("keydown", keyDownHandler, { signal });
       document.addEventListener("keyup", keyUpHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
-      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
+      document.addEventListener("visibilitychange", onVisibilityChange, { signal });
 
       return () => {
         abortController.abort();
@@ -606,13 +615,8 @@ export default function WebRTCVideo({
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
-          <fieldset
-            disabled={peerConnection?.connectionState !== "connected"}
-            className="contents"
-          >
-            <Actionbar
-              requestFullscreen={requestFullscreen}
-            />
+          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <Actionbar requestFullscreen={requestFullscreen} />
             <MacroBar />
           </fieldset>
         </div>
@@ -634,9 +638,7 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div
-                    className="relative mx-4 my-2 flex items-center justify-center overflow-hidden"
-                  >
+                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}
                       className="relative flex h-full w-full items-center justify-center"
@@ -652,20 +654,17 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx(
-                          "h-full w-full object-contain transition-all duration-1000",
-                          {
-                            "cursor-none": settings.isCursorHidden,
-                            "pointer-events-none": isOcrMode,
-                            "opacity-0!":
-                              isVideoLoading ||
-                              hdmiError ||
-                              hasConnectionIssues ||
-                              peerConnectionState !== "connected",
-                            "opacity-60!": showPointerLockBar,
-                            "animate-slideUpFade": isPlaying,
-                          },
-                        )}
+                        className={cx("h-full w-full object-contain transition-all duration-1000", {
+                          "cursor-none": settings.isCursorHidden,
+                          "pointer-events-none": isOcrMode,
+                          "opacity-0!":
+                            isVideoLoading ||
+                            hdmiError ||
+                            hasConnectionIssues ||
+                            peerConnectionState !== "connected",
+                          "opacity-60!": showPointerLockBar,
+                          "animate-slideUpFade": isPlaying,
+                        })}
                       />
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (

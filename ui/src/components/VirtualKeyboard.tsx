@@ -45,7 +45,8 @@ function KeyboardWrapper() {
   const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } = useUiStore();
   const { keysDownState, keyboardLedState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
     useHidStore();
-  const { handleKeyPress, executeMacro } = useKeyboard();
+  const { handleKeyPress, pressLatchedModifier, releaseLatchedModifier, executeMacro } =
+    useKeyboard();
   const { keyboardLayout, modifierLatching } = useSettingsStore();
   const { send } = useJsonRpc();
 
@@ -130,27 +131,33 @@ function KeyboardWrapper() {
     (scancode: number) => {
       if (scancode === 0) return;
 
-      if (isModifierScancode(scancode) && modifierLatching) {
-        // Latch mode: click to toggle on/off.
-        // Read from ref so this callback's identity stays stable across
-        // latch toggles — prevents defeating React.memo on all keycaps.
-        const current = latchedModifiersRef.current;
-        const isLatched = current.has(scancode);
+      // Regular key (or non-latching modifier): press then release.
+      if (!modifierLatching || !isModifierScancode(scancode)) {
+        void handleKeyPress(scancode, true);
+        setTimeout(() => void handleKeyPress(scancode, false), 50);
+        return;
+      }
+
+      // Latch mode: click to toggle on/off.
+      // Read from ref so this stays stable across latch toggles
+      const wasLatched = latchedModifiersRef.current.has(scancode);
+      setLatchedModifiers(current => {
         const next = new Set(current);
-        if (isLatched) {
+        if (wasLatched) {
           next.delete(scancode);
         } else {
           next.add(scancode);
         }
-        setLatchedModifiers(next);
-        void handleKeyPress(scancode, !isLatched);
+        return next;
+      });
+
+      if (wasLatched) {
+        releaseLatchedModifier(scancode);
       } else {
-        // Regular key (or non-latching modifier): press then release
-        void handleKeyPress(scancode, true);
-        setTimeout(() => void handleKeyPress(scancode, false), 50);
+        pressLatchedModifier(scancode);
       }
     },
-    [handleKeyPress, modifierLatching],
+    [handleKeyPress, modifierLatching, pressLatchedModifier, releaseLatchedModifier],
   );
 
   // ---------------------------------------------------------------------------

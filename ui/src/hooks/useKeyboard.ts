@@ -39,6 +39,7 @@ export default function useKeyboard() {
     useHidStore();
 
   const abortController = useRef<AbortController | null>(null);
+  const latchedModifierKeysRef = useRef<Set<number>>(new Set());
   const setAbortController = useCallback((ac: AbortController | null) => {
     abortController.current = ac;
   }, []);
@@ -157,6 +158,7 @@ export default function useKeyboard() {
     // Cancel keepalive since we're resetting the keyboard state
     cancelKeepAlive();
     heldKeysRef.current.clear();
+    latchedModifierKeysRef.current.clear();
     // Reset the keys buffer to zeros and the modifier state to zero
     const { keys, modifier } = MACRO_RESET_KEYBOARD_STATE;
     if (rpcHidReady) {
@@ -266,6 +268,12 @@ export default function useKeyboard() {
       if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
       if ((key || 0) === 0) return; // ignore zero key presses (they are bad mappings)
 
+      // If a modifier is currently latched by the virtual keyboard,
+      // a physical keyup for the same HID key must not release it.
+      if (!press && latchedModifierKeysRef.current.has(key)) {
+        return;
+      }
+
       if (rpcHidReady) {
         // if the keyPress api is available, we can just send the key press event
         // sendKeypressEvent is used to send a single key press/release event to the device.
@@ -296,6 +304,22 @@ export default function useKeyboard() {
       resetKeyboardState,
       sendKeypress,
     ],
+  );
+
+  const pressLatchedModifier = useCallback(
+    (key: number) => {
+      latchedModifierKeysRef.current.add(key);
+      void handleKeyPress(key, true);
+    },
+    [handleKeyPress],
+  );
+
+  const releaseLatchedModifier = useCallback(
+    (key: number) => {
+      latchedModifierKeysRef.current.delete(key);
+      void handleKeyPress(key, false);
+    },
+    [handleKeyPress],
   );
 
   // Cleanup function to cancel keepalive timer
@@ -430,6 +454,8 @@ export default function useKeyboard() {
 
   return {
     handleKeyPress,
+    pressLatchedModifier,
+    releaseLatchedModifier,
     resetKeyboardState,
     executeMacro,
     executeHidMacro,
