@@ -382,7 +382,7 @@ var compactScancodeTests = []struct {
 	{"CapsLock", 0, 3, 1.75, 1, hidCapsLock},
 	{"A", 1.75, 3, 1, 1, hidA},
 	{"Enter (compact)", 12.75, 3, 2.25, 1, hidEnter},
-	{"Hash (ISO compact)", 12.75, 3, 1, 1, hidHash}, // narrow key at same x = hash, not enter
+	{"Hash (ISO compact)", 12.75, 3, 1, 1, hidHashTilde}, // narrow key at same x = hash, not enter
 	{"LShift", 0, 4, 2.25, 1, hidLShift},
 	{"Z", 2.25, 4, 1, 1, hidZ},
 	{"RShift", 12.25, 4, 2.75, 1, hidRShift},
