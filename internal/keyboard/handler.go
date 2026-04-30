@@ -139,19 +139,19 @@ var loadBuiltinLayoutMeta = loadBuiltinLayoutMetaFromFS
 var layoutListCache struct {
 	mu      sync.RWMutex
 	layouts []LayoutMeta
+	ready   bool
 }
 
 func cloneLayoutMetas(layouts []LayoutMeta) []LayoutMeta {
-	if len(layouts) == 0 {
-		return nil
-	}
-	return append([]LayoutMeta(nil), layouts...)
+	cloned := make([]LayoutMeta, len(layouts))
+	copy(cloned, layouts)
+	return cloned
 }
 
 func getLayoutListCache() ([]LayoutMeta, bool) {
 	layoutListCache.mu.RLock()
 	defer layoutListCache.mu.RUnlock()
-	if layoutListCache.layouts == nil {
+	if !layoutListCache.ready {
 		return nil, false
 	}
 	return cloneLayoutMetas(layoutListCache.layouts), true
@@ -161,12 +161,14 @@ func setLayoutListCache(layouts []LayoutMeta) {
 	layoutListCache.mu.Lock()
 	defer layoutListCache.mu.Unlock()
 	layoutListCache.layouts = cloneLayoutMetas(layouts)
+	layoutListCache.ready = true
 }
 
 func invalidateLayoutListCache() {
 	layoutListCache.mu.Lock()
 	defer layoutListCache.mu.Unlock()
 	layoutListCache.layouts = nil
+	layoutListCache.ready = false
 }
 
 func loadStoredLayoutMeta(id string) (LayoutMeta, error) {
