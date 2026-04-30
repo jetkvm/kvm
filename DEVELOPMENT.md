@@ -609,8 +609,11 @@ The virtual keyboard and paste-text system are driven by [KLE](https://keyboard-
 
 1. Create a KLE JSON file at `internal/keyboard/layouts/<locale>.kle.json` (e.g. `ko_KR.kle.json`)
    - IDs use hyphens (`ko-KR`) to match the format stored in device configs
-   - Use [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com) to design the layout, then export the JSON
-   - Key legends use `\n` to separate layers: `"normal\nshift\naltgr\nshift+altgr"`
+   - Get a baseline layout `.KLE.json` file:
+     - Copy any existing layout file
+     - Use [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com) to design the layout, then export the JSON.
+     - Download the KLE json for any keyboard at [https://kbdlayout.info](https://kbdlayout.info)
+   - Key legends use `\n` to separate layers: `"shift\nnormal\naltgr\nshift+altgr"`
    - Use Unicode symbols for special keys: `⌫` (Backspace), `↵` (Enter), `⇥` (Tab), `⇪` (Caps Lock), `↑↓←→` (arrows)
 2. Run the tests to validate: `go test ./internal/keyboard/...`
    - `TestAllBuiltinLayoutsParse` verifies every registered layout loads and parses

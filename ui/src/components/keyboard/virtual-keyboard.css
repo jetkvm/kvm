@@ -228,7 +228,7 @@
    =========================================================================== */
 .vkb .key .legend {
   position: absolute;
-  display: none; /* hidden by default; shown by data-layer selectors below */
+  display: flex;
   pointer-events: none;
   font-size: calc(var(--u) * 0.3);
   line-height: 1;
@@ -236,10 +236,6 @@
 }
 
 /* Quadrant positions for keys legends. */
-.vkb .key .legend {
-  display: flex;
-  font-size: calc(var(--u) * 0.3);
-}
 .vkb .key .legend.normal {
   bottom: 3px;
   left: 4px;

@@ -327,7 +327,7 @@ var fullSizeScancodeTests = []struct {
 	{"A", 1.75, 3.5, 1, 1, hidA},
 	{"CapsLock", 0, 3.5, 1.75, 1, hidCapsLock},
 	{"Enter (ANSI)", 12.75, 3.5, 2.25, 1, hidEnter},
-	{"Hash (ISO)", 12.75, 3.5, 1, 1, hidHash},
+	{"Hash (ISO)", 12.75, 3.5, 1, 1, hidHashTilde},
 	{"KP5", 19.5, 3.5, 1, 1, hidKP5},
 	{"LShift", 0, 4.5, 2.25, 1, hidLShift},
 	{"ISO extra key", 1.25, 4.5, 1, 1, hidISOKey},

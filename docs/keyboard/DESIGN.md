@@ -305,7 +305,7 @@ overrides to be usable.
 The lookup algorithm walks each row left-to-right, finding the last entry
 where `xStart <= key.X + epsilon`. Special cases:
 - **ISO Enter** (`h >= 2, x < 15`): always maps to `hidEnter`
-- **ISO hash key** (`x ≈ 12.75, w < 1.5`): maps to `hidHash` (narrow), while
+- **ISO hash key** (`x ≈ 12.75, w < 1.5`): maps to `hidHashTilde` (narrow), while
   ANSI Enter at the same x (wider, `w >= 2`) is caught by the table entry
 
 Both tables cover ANSI, ISO, and basic numpad/nav cluster positions. JIS-specific
