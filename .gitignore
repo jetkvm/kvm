@@ -20,3 +20,6 @@ ui/reports
 e2e/remote-agent/remote-agent
 
 audit-layouts
+build/.cmake/
+build/_deps/
+build/CMakeFiles/
