@@ -233,6 +233,44 @@ export default function WebRTCVideo({
     });
   }, [isFullscreenEnabled, requestKeyboardLock, requestPointerLock]);
 
+  // Conditionally set the filter style so we don't fallback to software
+  // rendering if these values are default of 1.0. The screenshot canvas
+  // applies the same string so the captured image matches the display.
+  const videoFilter = useMemo(() => {
+    const isDefault = videoSaturation === 1.0 && videoBrightness === 1.0 && videoContrast === 1.0;
+    return isDefault
+      ? "" // No filter if all settings are default (1.0)
+      : `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`;
+  }, [videoSaturation, videoBrightness, videoContrast]);
+
+  const takeScreenshot = useCallback(() => {
+    const video = videoElm.current;
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    if (videoFilter) {
+      ctx.filter = videoFilter;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp =
+      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+      ` at ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+
+    const a = document.createElement("a");
+    a.download = `JetKVM ${canvas.width}x${canvas.height} ${stamp}.png`;
+    a.href = canvas.toDataURL("image/png");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }, [videoFilter]);
+
   // setup to release the keyboard lock anytime the fullscreen ends
   useEffect(() => {
     if (!videoElm.current) return;
@@ -592,27 +630,16 @@ export default function WebRTCVideo({
     videoWidth,
   ]);
 
-  // Conditionally set the filter style so we don't fallback to software rendering if these values are default of 1.0
   const videoStyle = useMemo(() => {
-    const isDefault = videoSaturation === 1.0 && videoBrightness === 1.0 && videoContrast === 1.0;
-    return isDefault
-      ? {} // No filter if all settings are default (1.0)
-      : {
-          filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
-        };
-  }, [videoSaturation, videoBrightness, videoContrast]);
+    return videoFilter ? { filter: videoFilter } : {};
+  }, [videoFilter]);
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
-          <fieldset
-            disabled={peerConnection?.connectionState !== "connected"}
-            className="contents"
-          >
-            <Actionbar
-              requestFullscreen={requestFullscreen}
-            />
+          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <Actionbar requestFullscreen={requestFullscreen} takeScreenshot={takeScreenshot} />
             <MacroBar />
           </fieldset>
         </div>
@@ -634,9 +661,7 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div
-                    className="relative mx-4 my-2 flex items-center justify-center overflow-hidden"
-                  >
+                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}
                       className="relative flex h-full w-full items-center justify-center"
@@ -652,20 +677,17 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx(
-                          "h-full w-full object-contain transition-all duration-1000",
-                          {
-                            "cursor-none": settings.isCursorHidden,
-                            "pointer-events-none": isOcrMode,
-                            "opacity-0!":
-                              isVideoLoading ||
-                              hdmiError ||
-                              hasConnectionIssues ||
-                              peerConnectionState !== "connected",
-                            "opacity-60!": showPointerLockBar,
-                            "animate-slideUpFade": isPlaying,
-                          },
-                        )}
+                        className={cx("h-full w-full object-contain transition-all duration-1000", {
+                          "cursor-none": settings.isCursorHidden,
+                          "pointer-events-none": isOcrMode,
+                          "opacity-0!":
+                            isVideoLoading ||
+                            hdmiError ||
+                            hasConnectionIssues ||
+                            peerConnectionState !== "connected",
+                          "opacity-60!": showPointerLockBar,
+                          "animate-slideUpFade": isPlaying,
+                        })}
                       />
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (

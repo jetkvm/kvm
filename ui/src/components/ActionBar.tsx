@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef } from "react";
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import {
   LuCable,
+  LuCamera,
   LuExternalLink,
   LuHardDrive,
   LuMaximize,
@@ -37,8 +38,10 @@ import { m } from "@localizations/messages.js";
 
 export default function Actionbar({
   requestFullscreen,
+  takeScreenshot,
 }: {
   requestFullscreen: () => Promise<void>;
+  takeScreenshot: () => void;
 }) {
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
@@ -338,6 +341,13 @@ export default function Actionbar({
 
           <div className="hidden items-center gap-x-2 lg:flex">
             <div className="h-4 w-px bg-slate-300 dark:bg-slate-600" />
+            <Button
+              size="XS"
+              theme="light"
+              text={m.action_bar_screenshot()}
+              LeadingIcon={LuCamera}
+              onClick={() => takeScreenshot()}
+            />
             {isEmbedMode ? (
               <Button
                 size="XS"
