@@ -683,7 +683,7 @@ export default function KvmIdRoute() {
   const { setFailsafeMode } = useFailsafeModeStore();
 
   // Keyboard handler for E2E tests
-  const { handleKeyPress } = useKeyboard();
+  const { handleKeyPress, pauseKeepAlive } = useKeyboard();
 
   // Mouse handler for E2E tests
   const { reportAbsMouseEvent, rpcHidReady } = useHidRpc();
@@ -897,6 +897,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     registerTestHandlers({
       handleKeyPress,
+      pauseKeepAlive,
       handleAbsMouseMove,
       getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
       getKeysDownState: () => useHidStore.getState().keysDownState,
@@ -910,7 +911,7 @@ export default function KvmIdRoute() {
       getPeerConnection: () => useRTCStore.getState().peerConnection,
     });
     return cleanupTestHooks;
-  }, [handleKeyPress, handleAbsMouseMove]);
+  }, [handleKeyPress, pauseKeepAlive, handleAbsMouseMove]);
 
   const outlet = useOutlet();
   const onModalClose = useCallback(() => {

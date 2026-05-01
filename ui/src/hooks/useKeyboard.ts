@@ -138,6 +138,23 @@ export default function useKeyboard() {
     }, KEEPALIVE_INTERVAL);
   }, [cancelKeepAlive]);
 
+  // pauseKeepAlive is a test-only helper that simulates a network gap by
+  // stopping the keepalive interval for `ms` milliseconds and then
+  // re-scheduling it (only if keys are still held). Used by E2E tests to
+  // reproduce keepalive-jitter scenarios (e.g. issue #1428) without
+  // depending on real network conditions.
+  const pauseKeepAlive = useCallback(
+    (ms: number) => {
+      cancelKeepAlive();
+      window.setTimeout(() => {
+        if (heldKeysRef.current.size > 0) {
+          scheduleKeepAlive();
+        }
+      }, ms);
+    },
+    [cancelKeepAlive, scheduleKeepAlive],
+  );
+
   // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
   // This is useful for macros, in case of client-side rollover, and when the browser loses focus
   const resetKeyboardState = useCallback(async () => {
@@ -400,5 +417,6 @@ export default function useKeyboard() {
     executeMacro,
     cleanup,
     cancelExecuteMacro,
+    pauseKeepAlive,
   };
 }

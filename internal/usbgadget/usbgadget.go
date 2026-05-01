@@ -48,6 +48,15 @@ type KeysDownState struct {
 	Keys     ByteSlice `json:"keys"`
 }
 
+func allZero(b []byte) bool {
+	for _, v := range b {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // UsbGadget is a struct that represents a USB gadget.
 type UsbGadget struct {
 	name          string
