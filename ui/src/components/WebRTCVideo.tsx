@@ -4,7 +4,7 @@ import { useResizeObserver } from "usehooks-ts";
 import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
-import useMouse from "@hooks/useMouse";
+import useMouse, { isPicphoneTouchscreenMode } from "@hooks/useMouse";
 import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
@@ -53,6 +53,7 @@ export default function WebRTCVideo({
   const {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
+    getTouchscreenMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   } = useMouse();
@@ -249,7 +250,9 @@ export default function WebRTCVideo({
     const abortController = new AbortController();
     const signal = abortController.signal;
 
-    document.addEventListener("pointerlockchange", handlePointerLockChange, { signal });
+    document.addEventListener("pointerlockchange", handlePointerLockChange, {
+      signal,
+    });
 
     return () => {
       abortController.abort();
@@ -296,6 +299,17 @@ export default function WebRTCVideo({
   );
 
   const relMouseMoveHandler = useMemo(() => getRelMouseMoveHandler(), [getRelMouseMoveHandler]);
+
+  const touchscreenMoveHandler = useMemo(
+    () =>
+      getTouchscreenMoveHandler({
+        videoClientWidth,
+        videoClientHeight,
+        videoWidth,
+        videoHeight,
+      }),
+    [getTouchscreenMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
+  );
 
   const mouseWheelHandler = useMemo(() => getMouseWheelHandler(), [getMouseWheelHandler]);
 
@@ -537,7 +551,9 @@ export default function WebRTCVideo({
       document.addEventListener("keyup", keyUpHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
-      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
+      document.addEventListener("visibilitychange", resetKeyboardState, {
+        signal,
+      });
 
       return () => {
         abortController.abort();
@@ -556,7 +572,9 @@ export default function WebRTCVideo({
       const signal = abortController.signal;
 
       // To prevent the video from being paused when the user presses a space in fullscreen mode
-      videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
+      videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, {
+        signal,
+      });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
 
       // We need to know when the video is playing to update state and video size
@@ -576,13 +594,19 @@ export default function WebRTCVideo({
       if (!videoElmRefValue) return;
 
       const isRelativeMouseMode = settings.mouseMode === "relative";
-      const mouseHandler = isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler;
+      const mouseHandler = isPicphoneTouchscreenMode()
+        ? touchscreenMoveHandler
+        : isRelativeMouseMode
+          ? relMouseMoveHandler
+          : absMouseMoveHandler;
 
       const abortController = new AbortController();
       const signal = abortController.signal;
 
       videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", mouseHandler, { signal });
+      videoElmRefValue.addEventListener("pointerdown", mouseHandler, {
+        signal,
+      });
       videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
@@ -602,11 +626,15 @@ export default function WebRTCVideo({
       } else {
         // Reset the mouse position when the window is blurred or the document is hidden
         window.addEventListener("blur", resetMousePosition, { signal });
-        document.addEventListener("visibilitychange", resetMousePosition, { signal });
+        document.addEventListener("visibilitychange", resetMousePosition, {
+          signal,
+        });
       }
 
       const preventContextMenu = (e: MouseEvent) => e.preventDefault();
-      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, { signal });
+      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, {
+        signal,
+      });
 
       // Suppress browser Back/Forward navigation on X1/X2 mouse buttons so
       // those presses are forwarded to the remote target instead.
@@ -627,6 +655,7 @@ export default function WebRTCVideo({
       requestPointerLock,
       absMouseMoveHandler,
       relMouseMoveHandler,
+      touchscreenMoveHandler,
       mouseWheelHandler,
       resetMousePosition,
       settings.mouseMode,

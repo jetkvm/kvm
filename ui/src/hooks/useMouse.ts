@@ -6,6 +6,9 @@ import { useMouseStore, useSettingsStore } from "./stores";
 
 const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
 
+export const isPicphoneTouchscreenMode = () =>
+  typeof window !== "undefined" && window.localStorage.getItem("picphoneTouchscreen") === "1";
+
 export interface AbsMouseMoveHandlerProps {
   videoClientWidth: number;
   videoClientHeight: number;
@@ -122,6 +125,45 @@ export default function useMouse() {
     [mouseMode, sendAbsMouseMovement],
   );
 
+  const getTouchscreenMoveHandler = useCallback(
+    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
+      (e: MouseEvent) => {
+        if (!videoClientWidth || !videoClientHeight) return;
+        if (!isPicphoneTouchscreenMode()) return;
+
+        const videoElementAspectRatio = videoClientWidth / videoClientHeight;
+        const videoStreamAspectRatio = videoWidth / videoHeight;
+
+        let effectiveWidth = videoClientWidth;
+        let effectiveHeight = videoClientHeight;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (videoElementAspectRatio > videoStreamAspectRatio) {
+          effectiveWidth = videoClientHeight * videoStreamAspectRatio;
+          offsetX = (videoClientWidth - effectiveWidth) / 2;
+        } else if (videoElementAspectRatio < videoStreamAspectRatio) {
+          effectiveHeight = videoClientWidth / videoStreamAspectRatio;
+          offsetY = (videoClientHeight - effectiveHeight) / 2;
+        }
+
+        const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
+        const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
+
+        const relativeX = (clampedX - offsetX) / effectiveWidth;
+        const relativeY = (clampedY - offsetY) / effectiveHeight;
+
+        const x = Math.round(relativeX * 32767);
+        const y = Math.round(relativeY * 32767);
+        const touching = e.buttons !== 0;
+
+        send("touchscreenReport", { x, y, touching });
+        setMousePosition(x, y);
+        lastAbsPos.current = { x, y };
+      },
+    [send, setMousePosition],
+  );
+
   const getMouseWheelHandler = useCallback(
     () => (e: WheelEvent) => {
       if (scrollThrottling && blockWheelEvent) {
@@ -160,6 +202,7 @@ export default function useMouse() {
   return {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
+    getTouchscreenMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   };
