@@ -1239,6 +1239,69 @@ test.describe("Remote Host Agent", () => {
     expect(shiftReleases.length, "Shift should have exactly 1 release (the explicit one)").toBe(1);
   });
 
+  test("regression #1428: auto-released key under modifier does not poison next chord", async () => {
+    test.setTimeout(15_000);
+    await agent!.clearKeyboardEvents();
+
+    await sendKeypress(sharedPage, 0xe1, true); // Shift down
+    await new Promise(r => setTimeout(r, 80));
+    await sendKeypress(sharedPage, 0x04, true); // A down
+    await new Promise(r => setTimeout(r, 80));
+    await pauseKeepAlive(sharedPage, 5000);
+    await new Promise(r => setTimeout(r, 300));
+
+    await expect
+      .poll(
+        async () => {
+          const state = await getKeysDownState(sharedPage);
+          return state?.modifier === 0x02 && state.keys.every((k: number) => k === 0);
+        },
+        {
+          message: "A should auto-release while LeftShift remains held",
+          timeout: 5000,
+          intervals: [100, 200, 500],
+        },
+      )
+      .toBe(true);
+
+    await new Promise(r => setTimeout(r, 3000));
+
+    await agent!.clearKeyboardEvents();
+    const bPressStart = Date.now();
+    await sendKeypress(sharedPage, 0x05, true); // B down
+
+    for (const t of [50, 150, 300, 450]) {
+      await new Promise(r => setTimeout(r, Math.max(0, t - (Date.now() - bPressStart))));
+      const state = await getKeysDownState(sharedPage);
+      expect(
+        state?.modifier === 0x02 && state.keys.includes(0x05),
+        `B should still be held with LeftShift at t+${t}ms`,
+      ).toBe(true);
+    }
+
+    await sendKeypress(sharedPage, 0x05, false);
+    await sendKeypress(sharedPage, 0x04, false);
+    await sendKeypress(sharedPage, 0xe1, false);
+    await new Promise(r => setTimeout(r, 200));
+
+    const events = await agent!.getKeyboardEvents();
+    const bPresses = events.filter(ev => ev.code === KEY.B && ev.type === "key_press");
+    const bReleases = events.filter(ev => ev.code === KEY.B && ev.type === "key_release");
+    const shiftReleases = events.filter(
+      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+    );
+
+    expect(bPresses.length, "B pressed exactly once").toBe(1);
+    expect(bReleases.length, "B should have exactly one release").toBe(1);
+    expect(shiftReleases.length, "LeftShift should release only explicitly").toBe(1);
+
+    const holdDuration = bReleases[0].time_ms - bPresses[0].time_ms;
+    expect(
+      holdDuration,
+      "B should not auto-release at ~100ms under LeftShift",
+    ).toBeGreaterThanOrEqual(400);
+  });
+
   test("regression #1428: lone-modifier hold does not poison next hold's auto-release", async () => {
     test.setTimeout(15_000);
     await agent!.clearKeyboardEvents();

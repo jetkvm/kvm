@@ -9,18 +9,6 @@ import (
 
 var gadget *usbgadget.UsbGadget
 
-func keysDownStateEmpty(state usbgadget.KeysDownState) bool {
-	if state.Modifier != 0 {
-		return false
-	}
-	for _, key := range state.Keys {
-		if key != 0 {
-			return false
-		}
-	}
-	return true
-}
-
 // initUsbGadget initializes the USB gadget.
 // call it only after the config is loaded.
 func initUsbGadget() {
@@ -49,9 +37,7 @@ func initUsbGadget() {
 	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
 		if currentSession != nil {
 			currentSession.enqueueKeysDownState(state)
-			if keysDownStateEmpty(state) {
-				currentSession.resetKeepAliveTime()
-			}
+			currentSession.resetKeepAliveTime()
 		}
 	})
 
