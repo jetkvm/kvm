@@ -176,9 +176,6 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	})
 }
 
-// cancelAutoRelease is a pure timer primitive: it stops and removes the
-// auto-release timer for key, if any. Callers wanting to also reset the
-// session's keepalive jitter state must do so explicitly (see KeypressReport).
 func (u *UsbGadget) cancelAutoRelease(key byte) {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease cancelled")
@@ -233,9 +230,7 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 	delete(u.kbdAutoReleaseTimers, key)
 	u.kbdAutoReleaseLock.Unlock()
 
-	// Skip if already released. Modifier keys never reach this function:
-	// KeypressReport structurally bypasses scheduleAutoRelease for them
-	// (see #1428 fix), so we only need to scan the non-modifier key buffer.
+	// Timers are only scheduled for non-modifier keys.
 	state := u.GetKeysDownState()
 	alreadyReleased := true
 	for i := range state.Keys {
@@ -590,11 +585,8 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 	isRolledOver := state.Keys[0] == hidErrorRollOver
 	_, isModifier := KeyCodeToMaskMap[key]
 
-	// Modifiers don't participate in per-key auto-release. Stuck-modifier
-	// recovery is handled by browser blur (resetKeyboardState in useKeyboard.ts),
-	// WebRTC ICE close (CancelAllAutoReleaseTimers + zero-key report in webrtc.go),
-	// and onLastSessionDisconnected. Per-key auto-release was racing with normal
-	// network jitter and dropping modifiers mid-chord (issue #1428).
+	// Modifiers are tracked separately from the key buffer and must only be
+	// released by explicit state clears or matching key-up reports.
 	if !isModifier {
 		switch {
 		case isRolledOver, !press:

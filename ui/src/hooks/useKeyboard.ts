@@ -138,11 +138,7 @@ export default function useKeyboard() {
     }, KEEPALIVE_INTERVAL);
   }, [cancelKeepAlive]);
 
-  // pauseKeepAlive is a test-only helper that simulates a network gap by
-  // stopping the keepalive interval for `ms` milliseconds and then
-  // re-scheduling it (only if keys are still held). Used by E2E tests to
-  // reproduce keepalive-jitter scenarios (e.g. issue #1428) without
-  // depending on real network conditions.
+  // Test hook: pause keepalives while preserving the held-key set.
   const pauseKeepAlive = useCallback(
     (ms: number) => {
       cancelKeepAlive();

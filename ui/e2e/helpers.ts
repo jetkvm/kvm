@@ -81,20 +81,14 @@ export async function sendKeypress(page: Page, keyCode: number, press: boolean):
 }
 
 /**
- * Stop the browser keepalive interval for `ms` milliseconds, then re-arm it
- * (only if keys remain held). Used by E2E tests to deterministically reproduce
- * keepalive jitter scenarios (e.g. a Wi-Fi blip mid-hold) without depending on
- * real network conditions. See useKeyboard.ts::pauseKeepAlive.
+ * Temporarily pause browser keypress keepalives while preserving held keys.
  */
 export async function pauseKeepAlive(page: Page, ms: number): Promise<void> {
-  await page.evaluate(
-    durationMs => {
-      const hooks = window.__kvmTestHooks;
-      if (!hooks) throw new Error("Test hooks not available");
-      hooks.pauseKeepAlive(durationMs);
-    },
-    ms,
-  );
+  await page.evaluate(durationMs => {
+    const hooks = window.__kvmTestHooks;
+    if (!hooks) throw new Error("Test hooks not available");
+    hooks.pauseKeepAlive(durationMs);
+  }, ms);
 }
 
 export async function tapKey(page: Page, keyCode: number, holdMs = 20): Promise<void> {

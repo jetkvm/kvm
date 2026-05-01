@@ -636,14 +636,6 @@ test.describe("Remote Host Agent", () => {
   // ═══════════════════════════════════════════
 
   test("keyboard: modifiers do not participate in per-key auto-release (10s lone hold)", async () => {
-    // Structural invariant for #1428: modifier keys must never enter
-    // kbdAutoReleaseTimers, so a lone modifier hold survives indefinitely as long
-    // as keepalives flow. Stuck-modifier recovery is handled by other mechanisms
-    // (browser blur, ICE close, last-session disconnect — see KeypressReport).
-    //
-    // This test catches any future regression that re-introduces modifier
-    // auto-release at any timeout (1s, 5s, etc.): the 10s hold would fail.
-    // Each of 3 modifier iterations holds for 10s plus overhead, so allow 60s.
     test.setTimeout(60_000);
 
     const modifiers = [
@@ -655,13 +647,8 @@ test.describe("Remote Host Agent", () => {
     for (const { hid, linux, label, maskBit } of modifiers) {
       await agent!.clearKeyboardEvents();
 
-      // Press the modifier via the regular keypress path so the browser's
-      // keepalive interval is started (matching real-user behaviour).
       await sendKeypress(sharedPage, hid, true);
 
-      // Sample device-side state and the host's evdev log every 500ms for 10s.
-      // The modifier bit must remain set in keysDownState on every sample, and
-      // no key_release events must appear in the evdev log.
       const SAMPLES = 20;
       const SAMPLE_INTERVAL = 500;
       for (let i = 0; i < SAMPLES; i++) {
@@ -680,8 +667,6 @@ test.describe("Remote Host Agent", () => {
         );
       }
 
-      // Now release explicitly. Exactly one release event, after the explicit
-      // release moment (not earlier from auto-release).
       const releaseStart = Date.now();
       await sendKeypress(sharedPage, hid, false);
       await new Promise(r => setTimeout(r, 200));
@@ -693,9 +678,6 @@ test.describe("Remote Host Agent", () => {
       expect(presses.length, `${label} should have exactly 1 press`).toBe(1);
       expect(releases.length, `${label} should have exactly 1 release`).toBe(1);
 
-      // The release happened after the explicit release call, not at any earlier
-      // auto-release deadline. release timestamp must be within ~500ms of the
-      // explicit release call (network + scheduling slack).
       const releaseLatency = releases[0].time_ms - presses[0].time_ms;
       expect(
         releaseLatency,
@@ -1214,38 +1196,22 @@ test.describe("Remote Host Agent", () => {
   // ═══════════════════════════════════════════
 
   test("regression #1428: modifier survives induced keepalive gap mid-chord", async () => {
-    // Reproduces https://github.com/jetkvm/kvm/issues/1428 deterministically.
-    //
-    // Bug: a single dropped/late keepalive (>100ms gap) caused performAutoRelease
-    // to fire for a modifier the user was still physically holding, dropping the
-    // modifier mid-chord (e.g. Shift+H in "HELLO" → "Hello"). The fix was to
-    // structurally exclude modifiers from the per-key auto-release lifecycle.
-    //
-    // We force the failure conditions via pauseKeepAlive (no real network jitter
-    // needed): hold Shift, stop the keepalive interval for 250ms (well past the
-    // 100ms auto-release timer and 225ms maxStaleness), tap 'a' inside the gap,
-    // then verify the host saw KEY.A *without* a Shift release in between.
     await agent!.clearKeyboardEvents();
 
     await sendKeypress(sharedPage, 0xe1, true); // Shift down
-    // Let the first keepalive land cleanly so device-side jitter state is established.
     await new Promise(r => setTimeout(r, 80));
 
-    // Stop the browser-side keepalive interval for 250ms. With the old buggy
-    // code this would trigger Shift auto-release at ~100ms.
+    // Exceeds the per-key auto-release deadline but stays below the session
+    // replacement/ICE cleanup paths.
     await pauseKeepAlive(sharedPage, 250);
 
-    // Inside the gap, send the chord key. If Shift has been auto-released the
-    // host receives a lowercase 'a'; with the fix the chord is intact.
     await new Promise(r => setTimeout(r, 50));
     await sendKeypress(sharedPage, 0x04, true); // A down
     await new Promise(r => setTimeout(r, 30));
     await sendKeypress(sharedPage, 0x04, false); // A up
 
-    // Wait for the keepalive interval to resume and one more tick to land.
     await new Promise(r => setTimeout(r, 250));
 
-    // Verify Shift was held continuously across the gap (no spurious release).
     const events = await agent!.getKeyboardEvents();
     const shiftPressesPreRelease = events.filter(
       ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_press",
@@ -1259,13 +1225,10 @@ test.describe("Remote Host Agent", () => {
       "Shift must NOT have been auto-released during the keepalive gap (#1428)",
     ).toBe(0);
 
-    // Verify A press happened *after* the Shift press (chord ordering)
-    // and that A's evdev event arrived at all.
     const aPresses = events.filter(ev => ev.code === KEY.A && ev.type === "key_press");
     expect(aPresses.length, "A should have been pressed inside the gap").toBeGreaterThanOrEqual(1);
     expect(aPresses[0].time_ms).toBeGreaterThan(shiftPressesPreRelease[0].time_ms);
 
-    // Now release Shift explicitly and assert the expected single release.
     await sendKeypress(sharedPage, 0xe1, false);
     await new Promise(r => setTimeout(r, 200));
 
@@ -1277,45 +1240,19 @@ test.describe("Remote Host Agent", () => {
   });
 
   test("regression #1428: lone-modifier hold does not poison next hold's auto-release", async () => {
-    // Subtle correctness check for the cross-hold keepalive jitter reset.
-    //
-    // Background: with the modifier carve-out, releasing a lone modifier no longer
-    // goes through cancelAutoRelease (no timer to cancel). Without explicitly
-    // resetting the session's keepalive jitter state on empty-state, the device's
-    // lastKeepAliveArrivalTime / lastTimerResetTime stay set to the moment of the
-    // last keepalive of the modifier hold. The NEXT hold's first keepalive then
-    // looks ancient (>maxStaleness), gets rejected by handleHidRPCKeypressKeepAlive,
-    // never extends the new hold's auto-release timer, and the new key auto-releases
-    // at 100ms regardless of how long the user is physically holding it.
-    //
-    // KeypressReport now triggers onKeepAliveReset whenever the resulting
-    // keysDownState is empty (state.Modifier == 0 && allZero(state.Keys)),
-    // which is exactly the moment the browser stops its keepalive setInterval.
-    //
-    // This test catches any future refactor of cancelAutoRelease or KeypressReport
-    // that breaks the empty-state reset trigger.
     test.setTimeout(15_000);
     await agent!.clearKeyboardEvents();
 
-    // Phase 1: lone-Shift hold (no chord keys). Browser keepalive runs.
     await sendKeypress(sharedPage, 0xe1, true);
     await new Promise(r => setTimeout(r, 1000));
     await sendKeypress(sharedPage, 0xe1, false);
 
-    // Phase 2: idle long enough that without the reset, lastTimerResetTime
-    // would now be ~3s old — well past the 225ms maxStaleness window (or 500ms
-    // if the constants have been loosened).
     await new Promise(r => setTimeout(r, 3000));
 
-    // Phase 3: hold a non-modifier for 500ms. With the fix, keepalives extend the
-    // 'a' auto-release timer normally. Without the fix, the device's filter rejects
-    // every keepalive of this hold and 'a' auto-releases at ~100ms.
     await agent!.clearKeyboardEvents();
     const aPressStart = Date.now();
     await sendKeypress(sharedPage, 0x04, true);
 
-    // Sample keysDownState at intervals well past 100ms — they would all show
-    // 'a' missing if the cross-hold reset was broken.
     for (const t of [50, 150, 300, 450]) {
       await new Promise(r => setTimeout(r, t - (Date.now() - aPressStart)));
       const state = await getKeysDownState(sharedPage);
@@ -1328,8 +1265,6 @@ test.describe("Remote Host Agent", () => {
     await sendKeypress(sharedPage, 0x04, false);
     await new Promise(r => setTimeout(r, 200));
 
-    // Final assertion via evdev: exactly one release, hold duration close to 500ms
-    // (not ~100ms which would indicate premature auto-release).
     const events = await agent!.getKeyboardEvents();
     const aPresses = events.filter(ev => ev.code === KEY.A && ev.type === "key_press");
     const aReleases = events.filter(ev => ev.code === KEY.A && ev.type === "key_release");
@@ -1349,8 +1284,6 @@ test.describe("Remote Host Agent", () => {
     test.setTimeout(15_000);
     await agent!.clearKeyboardEvents();
 
-    // Phase 1: hold A long enough for keepalive timing to initialize, then stop
-    // keepalives and let the device-side auto-release produce an empty state.
     await sendKeypress(sharedPage, 0x04, true);
     await new Promise(r => setTimeout(r, 80));
     await pauseKeepAlive(sharedPage, 5000);
@@ -1370,14 +1303,13 @@ test.describe("Remote Host Agent", () => {
       )
       .toBe(true);
 
-    // Phase 2: wait past maxStaleness. If auto-release did not reset jitter
-    // state, the next hold's keepalives are rejected and B releases at ~100ms.
     await new Promise(r => setTimeout(r, 3000));
 
     await agent!.clearKeyboardEvents();
     const bPressStart = Date.now();
     await sendKeypress(sharedPage, 0x05, true);
 
+    // Keepalive timing must reset when auto-release empties the keyboard state.
     for (const t of [50, 150, 300, 450]) {
       await new Promise(r => setTimeout(r, Math.max(0, t - (Date.now() - bPressStart))));
       const state = await getKeysDownState(sharedPage);
@@ -1411,15 +1343,12 @@ test.describe("Remote Host Agent", () => {
   test("keyboard: all keys released when WebRTC session disconnects", async ({ browser }) => {
     test.setTimeout(30_000);
 
-    // Opening a new page takes over currentSession (single-session device),
-    // kicking sharedPage. We'll reconnect sharedPage at the end.
     const freshPage = await browser.newPage();
     await freshPage.goto("/", { waitUntil: "networkidle" });
     await waitForWebRTCReady(freshPage);
 
     await agent!.clearKeyboardEvents();
 
-    // Hold down a modifier (LeftShift) and a regular key (Space) without releasing
     await sendKeypress(freshPage, 0xe1, true);
     await new Promise(r => setTimeout(r, 20));
     await sendKeypress(freshPage, HID_KEY.SPACE, true);
@@ -1438,7 +1367,6 @@ test.describe("Remote Host Agent", () => {
       )
       .toBe(true);
 
-    // Verify the host received the presses before we disconnect
     await expect
       .poll(
         async () => {
@@ -1456,8 +1384,7 @@ test.describe("Remote Host Agent", () => {
       )
       .toBe(true);
 
-    // Close the peer connection directly to trigger the WebRTC disconnect clear
-    // without relying on browser blur/page-unload keyboard cleanup.
+    // Close the peer directly so browser blur/page-unload cleanup cannot satisfy the test.
     await freshPage.evaluate(() => {
       const peerConnection = (
         globalThis as typeof globalThis & {
@@ -1468,7 +1395,6 @@ test.describe("Remote Host Agent", () => {
       peerConnection.close();
     });
 
-    // Verify the host received releases for both keys
     await expect
       .poll(
         async () => {
@@ -1488,13 +1414,10 @@ test.describe("Remote Host Agent", () => {
 
     await freshPage.close();
 
-    // Reconnect sharedPage so subsequent tests can use it
     await sharedPage.goto("/", { waitUntil: "networkidle" });
     await waitForWebRTCReady(sharedPage);
     await waitForRpcReady(sharedPage);
 
-    // Verify device-side keys-down state is clear by querying the device
-    // directly via JSON-RPC (bypasses Zustand store / hidRpc timing)
     await expect
       .poll(
         async () => {

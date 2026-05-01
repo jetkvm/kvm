@@ -32,9 +32,7 @@ export interface KvmTestHooks extends TestHooksInternal {
   getKeysDownState: () => KeysDownState | null;
   sendKeypress: (key: number, press: boolean) => void;
   /**
-   * Test-only: stop the browser keepalive interval for `ms` and then re-arm it
-   * (only if keys remain held). Used to reproduce keepalive jitter scenarios
-   * (e.g. issue #1428) deterministically without depending on real network jitter.
+   * Test-only: pause keypress keepalives while preserving held keys.
    */
   pauseKeepAlive: (ms: number) => void;
   sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
