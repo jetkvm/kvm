@@ -120,6 +120,25 @@ type Config struct {
 	VideoCodecPreference string               `json:"video_codec_preference"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+
+	// VncEnabled toggles the VNC server. When true, the WebRTC video
+	// codec is forced to H.264 — the OpenH264 RFB pseudo-encoding (50)
+	// only carries H.264, and a mid-stream H.265 negotiation would
+	// desync any connected VNC client's decoder.
+	VncEnabled bool `json:"vnc_enabled"`
+	// VncPort is the TCP port the VNC server listens on. Default 5900.
+	VncPort int `json:"vnc_port"`
+	// VncPassword is the plaintext VNCAuth password (max 8 characters
+	// used; longer values are truncated). An empty value disables
+	// authentication entirely. VNCAuth transmits responses over plain
+	// TCP and is trivially crackable from a captured handshake — see
+	// VncAllowOverWAN.
+	VncPassword string `json:"vnc_password"`
+	// VncAllowOverWAN must be set explicitly to allow the VNC server
+	// to bind a non-loopback address. When false (the default), the
+	// server refuses to listen on public/LAN addresses unless
+	// LocalLoopbackOnly is also true. Tunnel via SSH or Tailscale.
+	VncAllowOverWAN bool `json:"vnc_allow_over_wan"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -212,6 +231,10 @@ func getDefaultConfig() Config {
 			EnableActions:     true,
 			DebounceMs:        500,
 		},
+		VncEnabled:      false,
+		VncPort:         5900,
+		VncPassword:     "",
+		VncAllowOverWAN: false,
 	}
 }
 
