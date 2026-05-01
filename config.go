@@ -176,6 +176,7 @@ var (
 		AbsoluteMouse: true,
 		RelativeMouse: true,
 		Keyboard:      true,
+		Touchscreen:   true,
 		MassStorage:   true,
 		Audio:         true,
 	}

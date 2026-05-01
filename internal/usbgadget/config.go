@@ -60,6 +60,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"relative_mouse": relativeMouseConfig,
 	// USB audio sink
 	"audio": audioConfig,
+	// touchscreen/digitizer HID
+	"touchscreen": touchscreenConfig,
 	// mass storage
 	"mass_storage_base": massStorageBaseConfig,
 	"mass_storage_lun0": massStorageLun0Config,
@@ -75,6 +77,8 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.RelativeMouse
 	case "keyboard":
 		return u.enabledDevices.Keyboard
+	case "touchscreen":
+		return u.enabledDevices.Touchscreen
 	case "mass_storage_base":
 		return u.enabledDevices.MassStorage
 	case "mass_storage_lun0":
