@@ -56,6 +56,7 @@ const SecurityAccessLocalAuthRoute = lazy(
   () => import("@routes/devices.$id.settings.access.local-auth"),
 );
 const SettingsMqttRoute = lazy(() => import("@routes/devices.$id.settings.mqtt"));
+const SettingsVncRoute = lazy(() => import("@routes/devices.$id.settings.vnc"));
 const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
 const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
 const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
@@ -165,6 +166,10 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
         {
           path: "mqtt",
           element: <SettingsMqttRoute />,
+        },
+        {
+          path: "vnc",
+          element: <SettingsVncRoute />,
         },
         {
           path: "access",
