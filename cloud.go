@@ -475,6 +475,8 @@ func handleSessionRequest(
 	}
 	if currentSession != nil {
 		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
+		gadget.CancelAllAutoReleaseTimers()
+		_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 		peerConn := currentSession.peerConnection
 		go func() {
 			time.Sleep(1 * time.Second)

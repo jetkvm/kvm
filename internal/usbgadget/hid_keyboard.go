@@ -157,10 +157,6 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
-func (u *UsbGadget) SetOnKeepAliveReset(f func()) {
-	u.onKeepAliveReset = &f
-}
-
 // DefaultAutoReleaseDuration is the default duration for auto-release of a key.
 const DefaultAutoReleaseDuration = 100 * time.Millisecond
 
@@ -606,14 +602,6 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 		default:
 			u.scheduleAutoRelease(key)
 		}
-	}
-
-	// When the device has zero held keys the browser stops its keepalive
-	// setInterval. Clear jitter-detection state so the next hold's first
-	// keepalive isn't compared against this hold's stale timestamps and
-	// rejected (which would prevent it from extending auto-release timers).
-	if state.Modifier == 0 && allZero(state.Keys) && u.onKeepAliveReset != nil {
-		(*u.onKeepAliveReset)()
 	}
 
 	return err
