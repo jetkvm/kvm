@@ -169,6 +169,13 @@ func Main() {
 	//go RunFuseServer()
 	go RunWebServer()
 
+	if config.VncEnabled {
+		setProcTitle("initVnc")
+		if err := StartVNCServer(); err != nil {
+			vncLogger.Error().Err(err).Msg("failed to start VNC server")
+		}
+	}
+
 	go RunWebSecureServer()
 	// Web secure server is started only if TLS mode is enabled
 	if config.TLSMode != "" {

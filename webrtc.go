@@ -132,7 +132,15 @@ type SessionConfig struct {
 
 // resolveCodec picks the video codec based on user preference and browser support.
 // Always validates against the browser's SDP offer to prevent negotiation failure.
+//
+// When config.VncEnabled is true, the codec is forced to H.264 regardless of
+// preference or browser support: the OpenH264 RFB pseudo-encoding (50) only
+// carries H.264, so a mid-stream H.265 negotiation would desync any connected
+// VNC client's decoder.
 func resolveCodec(offerSDP string) string {
+	if config.VncEnabled {
+		return webrtc.MimeTypeH264
+	}
 	browserSupportsH265 := strings.Contains(strings.ToUpper(offerSDP), "H265")
 
 	switch config.VideoCodecPreference {
