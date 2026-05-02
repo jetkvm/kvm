@@ -13,51 +13,71 @@ var touchscreenConfig = gadgetConfigItem{
 	attrs: gadgetAttributes{
 		"protocol":        "0",
 		"subclass":        "0",
-		"report_length":   "5",
+		"report_length":   "7",
 		"no_out_endpoint": "1",
 		"wakeup_on_write": "1",
 	},
 	reportDesc: touchscreenReportDesc,
 }
 
-// Single-touch digitizer (Android-compatible baseline)
+// One-contact HID multitouch digitizer.
+//
+// Report layout, 7 bytes:
+//
+//	byte 0: bit0 Tip Switch, bit1 In Range, bits2-7 padding
+//	byte 1: Contact Identifier
+//	byte 2-3: X, little-endian, 0..32767
+//	byte 4-5: Y, little-endian, 0..32767
+//	byte 6: Contact Count
 var touchscreenReportDesc = []byte{
-	0x05, 0x0D,
-	0x09, 0x04,
-	0xA1, 0x01,
+	0x05, 0x0D, // Usage Page (Digitizers)
+	0x09, 0x04, // Usage (Touch Screen)
+	0xA1, 0x01, // Collection (Application)
 
-	0x09, 0x22,
-	0xA1, 0x02,
+	0x09, 0x22, //   Usage (Finger)
+	0xA1, 0x02, //   Collection (Logical)
 
-	0x09, 0x42,
-	0x15, 0x00,
-	0x25, 0x01,
-	0x75, 0x01,
-	0x95, 0x01,
-	0x81, 0x02,
+	0x09, 0x42, //     Usage (Tip Switch)
+	0x09, 0x32, //     Usage (In Range)
+	0x15, 0x00, //     Logical Minimum (0)
+	0x25, 0x01, //     Logical Maximum (1)
+	0x75, 0x01, //     Report Size (1)
+	0x95, 0x02, //     Report Count (2)
+	0x81, 0x02, //     Input (Data,Var,Abs)
 
-	0x09, 0x32,
-	0x75, 0x01,
-	0x95, 0x01,
-	0x81, 0x02,
+	0x75, 0x01, //     Report Size (1)
+	0x95, 0x06, //     Report Count (6)
+	0x81, 0x03, //     Input (Const,Var,Abs) padding
 
-	0x75, 0x01,
-	0x95, 0x06,
-	0x81, 0x03,
+	0x09, 0x51, //     Usage (Contact Identifier)
+	0x15, 0x00, //     Logical Minimum (0)
+	0x25, 0x0F, //     Logical Maximum (15)
+	0x75, 0x08, //     Report Size (8)
+	0x95, 0x01, //     Report Count (1)
+	0x81, 0x02, //     Input (Data,Var,Abs)
 
-	0x05, 0x01,
-	0x09, 0x30,
-	0x09, 0x31,
-	0x16, 0x00, 0x00,
-	0x26, 0xFF, 0x7F,
-	0x36, 0x00, 0x00,
-	0x46, 0xFF, 0x7F,
-	0x75, 0x10,
-	0x95, 0x02,
-	0x81, 0x02,
+	0x05, 0x01, //     Usage Page (Generic Desktop)
+	0x09, 0x30, //     Usage (X)
+	0x09, 0x31, //     Usage (Y)
+	0x16, 0x00, 0x00, // Logical Minimum (0)
+	0x26, 0xFF, 0x7F, // Logical Maximum (32767)
+	0x36, 0x00, 0x00, // Physical Minimum (0)
+	0x46, 0xFF, 0x7F, // Physical Maximum (32767)
+	0x75, 0x10, //     Report Size (16)
+	0x95, 0x02, //     Report Count (2)
+	0x81, 0x02, //     Input (Data,Var,Abs)
 
-	0xC0,
-	0xC0,
+	0xC0, //   End Collection
+
+	0x05, 0x0D, // Usage Page (Digitizers)
+	0x09, 0x54, // Usage (Contact Count)
+	0x15, 0x00, // Logical Minimum (0)
+	0x25, 0x01, // Logical Maximum (1)
+	0x75, 0x08, // Report Size (8)
+	0x95, 0x01, // Report Count (1)
+	0x81, 0x02, // Input (Data,Var,Abs)
+
+	0xC0, // End Collection
 }
 
 func (u *UsbGadget) touchscreenWriteHidFile(data []byte) error {
@@ -100,15 +120,19 @@ func (u *UsbGadget) TouchscreenReport(x int, y int, touching bool) error {
 	}
 
 	flags := byte(0)
+	contactCount := byte(0)
 	if touching {
 		flags = 0x03
+		contactCount = 0x01
 	}
 
 	return u.touchscreenWriteHidFile([]byte{
 		flags,
+		0x00,
 		byte(x),
 		byte(x >> 8),
 		byte(y),
 		byte(y >> 8),
+		contactCount,
 	})
 }
