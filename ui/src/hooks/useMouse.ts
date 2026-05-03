@@ -7,7 +7,7 @@ import { useMouseStore, useSettingsStore } from "./stores";
 const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
 
 export const isPicphoneTouchscreenMode = () =>
-  typeof window !== "undefined" && window.localStorage.getItem("picphoneTouchscreen") === "1";
+  typeof window !== "undefined" && window.localStorage.getItem("picphoneTouchscreen") !== "0";
 
 export interface AbsMouseMoveHandlerProps {
   videoClientWidth: number;
