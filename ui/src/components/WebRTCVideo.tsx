@@ -9,6 +9,10 @@ import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
+
+const isPicphoneDisplayCropMode = () =>
+  typeof window !== "undefined" && window.localStorage.getItem("picphoneDisplayCrop") !== "0";
+
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
@@ -49,7 +53,28 @@ export default function WebRTCVideo({
 
   // Store hooks
   const settings = useSettingsStore();
-  const { handleKeyPress, resetKeyboardState } = useKeyboard();
+  const { executeMacro, handleKeyPress, resetKeyboardState } = useKeyboard();
+
+  const sendPicphoneKeyTap = useCallback(
+    (key: number) => {
+      void handleKeyPress(key, true);
+      window.setTimeout(() => void handleKeyPress(key, false), 80);
+    },
+    [handleKeyPress],
+  );
+
+  const sendPicphoneAndroidBack = useCallback(() => {
+    sendPicphoneKeyTap(keys.Escape);
+  }, [sendPicphoneKeyTap]);
+
+  const sendPicphoneAndroidHome = useCallback(() => {
+    sendPicphoneKeyTap(keys.Home);
+  }, [sendPicphoneKeyTap]);
+
+  const sendPicphoneAndroidRecents = useCallback(() => {
+    void executeMacro([{ keys: ["Tab"], modifiers: ["AltLeft"], delay: 100 }]);
+  }, [executeMacro]);
+
   const {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
@@ -612,6 +637,12 @@ export default function WebRTCVideo({
         const pointerHandler = (e: PointerEvent) => {
           e.preventDefault();
 
+          if (e.type === "pointerdown" && e.button === 2) {
+            e.stopPropagation();
+            sendPicphoneAndroidBack();
+            return;
+          }
+
           if (e.type === "pointerdown") {
             try {
               videoElmRefValue.setPointerCapture(e.pointerId);
@@ -646,7 +677,7 @@ export default function WebRTCVideo({
       }
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
-        passive: true,
+        passive: !isTouchscreenMode,
       });
 
       if (isRelativeMouseMode) {
@@ -695,6 +726,7 @@ export default function WebRTCVideo({
       mouseWheelHandler,
       resetMousePosition,
       settings.mouseMode,
+      sendPicphoneAndroidBack,
     ],
   );
 
@@ -743,6 +775,17 @@ export default function WebRTCVideo({
         };
   }, [videoSaturation, videoBrightness, videoContrast]);
 
+  const showPicphoneNavOverlay = useMemo(() => {
+    if (!isPicphoneTouchscreenMode()) return false;
+    if (typeof window === "undefined") return false;
+
+    const setting = window.localStorage.getItem("picphoneNavOverlay");
+    if (setting === "0") return false;
+    if (setting === "1") return true;
+
+    return window.matchMedia("(pointer: coarse)").matches;
+  }, []);
+
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
@@ -773,7 +816,12 @@ export default function WebRTCVideo({
                   <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}
-                      className="relative flex h-full w-full items-center justify-center"
+                      className={cx(
+                        "relative flex h-full items-center justify-center",
+                        isPicphoneDisplayCropMode()
+                          ? "aspect-[9/20] max-w-full overflow-hidden"
+                          : "w-full",
+                      )}
                     >
                       <video
                         ref={videoElm}
@@ -786,20 +834,77 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx("h-full w-full object-contain transition-all duration-1000", {
-                          "cursor-none": settings.isCursorHidden,
-                          "pointer-events-none": isOcrMode,
-                          "opacity-0!":
-                            isVideoLoading ||
-                            hdmiError ||
-                            hasConnectionIssues ||
-                            peerConnectionState !== "connected",
-                          "opacity-60!": showPointerLockBar,
-                          "animate-slideUpFade": isPlaying,
-                        })}
+                        className={cx(
+                          isPicphoneDisplayCropMode()
+                            ? "h-full w-auto max-w-none object-fill transition-all duration-1000"
+                            : "h-full w-full object-contain transition-all duration-1000",
+                          {
+                            "cursor-none": settings.isCursorHidden,
+                            "pointer-events-none": isOcrMode,
+                            "opacity-0!":
+                              isVideoLoading ||
+                              hdmiError ||
+                              hasConnectionIssues ||
+                              peerConnectionState !== "connected",
+                            "opacity-60!": showPointerLockBar,
+                            "animate-slideUpFade": isPlaying,
+                          },
+                        )}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />
+                      {showPicphoneNavOverlay && (
+                        <div
+                          aria-label="PicPhone nav overlay"
+                          className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur"
+                          onPointerDown={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onPointerMove={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onPointerUp={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              sendPicphoneAndroidBack();
+                            }}
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              sendPicphoneAndroidHome();
+                            }}
+                          >
+                            Home
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              sendPicphoneAndroidRecents();
+                            }}
+                          >
+                            Recents
+                          </button>
+                        </div>
+                      )}
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
