@@ -594,7 +594,8 @@ export default function WebRTCVideo({
       if (!videoElmRefValue) return;
 
       const isRelativeMouseMode = settings.mouseMode === "relative";
-      const mouseHandler = isPicphoneTouchscreenMode()
+      const isTouchscreenMode = isPicphoneTouchscreenMode();
+      const mouseHandler = isTouchscreenMode
         ? touchscreenMoveHandler
         : isRelativeMouseMode
           ? relMouseMoveHandler
@@ -603,11 +604,46 @@ export default function WebRTCVideo({
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", mouseHandler, {
-        signal,
-      });
-      videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
+      if (isTouchscreenMode) {
+        videoElmRefValue.style.touchAction = "none";
+        videoElmRefValue.style.userSelect = "none";
+        videoElmRefValue.draggable = false;
+
+        const pointerHandler = (e: PointerEvent) => {
+          e.preventDefault();
+
+          if (e.type === "pointerdown") {
+            try {
+              videoElmRefValue.setPointerCapture(e.pointerId);
+            } catch (err) {
+              console.debug("Unable to capture pointer", err);
+            }
+          }
+
+          mouseHandler(e);
+
+          if (e.type === "pointerup" || e.type === "pointercancel") {
+            try {
+              if (videoElmRefValue.hasPointerCapture(e.pointerId)) {
+                videoElmRefValue.releasePointerCapture(e.pointerId);
+              }
+            } catch (err) {
+              console.debug("Unable to release pointer capture", err);
+            }
+          }
+        };
+
+        videoElmRefValue.addEventListener("pointerdown", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointermove", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointerup", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointercancel", pointerHandler, { signal });
+      } else {
+        videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
+        videoElmRefValue.addEventListener("pointerdown", mouseHandler, {
+          signal,
+        });
+        videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
+      }
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
         passive: true,
