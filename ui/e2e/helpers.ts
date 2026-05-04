@@ -720,6 +720,53 @@ export async function resetConfigViaSSH(): Promise<void> {
   await sshExec("sync");
 }
 
+// On-device backup of the user's pre-test kvm_config.json. Saved once at the
+// start of the suite and consumed (mv'd back) at teardown so the device is left
+// with the same configuration it had before tests ran. /userdata persists
+// across reboots, which the OTA tests rely on.
+const ORIGINAL_CONFIG_DEVICE_PATH = "/userdata/kvm_config.json";
+const ORIGINAL_CONFIG_BACKUP_PATH = "/userdata/kvm_config.original.json";
+
+async function deviceFileExists(path: string): Promise<boolean> {
+  const out = await sshExec(`test -f ${path} && echo 1 || echo 0`, true);
+  return out.trim() === "1";
+}
+
+/**
+ * Save the user's current kvm_config.json so it can be restored after the
+ * e2e suite finishes. Idempotent: if a backup already exists from a prior
+ * interrupted run, it is left alone so the original is never overwritten by
+ * a test-polluted config.
+ */
+export async function backupOriginalConfigIfNeeded(): Promise<void> {
+  if (await deviceFileExists(ORIGINAL_CONFIG_BACKUP_PATH)) {
+    console.log(
+      `[e2e] Original config backup already present at ${ORIGINAL_CONFIG_BACKUP_PATH}, skipping save.`,
+    );
+    return;
+  }
+  if (!(await deviceFileExists(ORIGINAL_CONFIG_DEVICE_PATH))) {
+    console.log("[e2e] No current kvm_config.json on device; nothing to back up.");
+    return;
+  }
+  await sshExec(`cp ${ORIGINAL_CONFIG_DEVICE_PATH} ${ORIGINAL_CONFIG_BACKUP_PATH} && sync`);
+  console.log(`[e2e] Saved original kvm_config.json to ${ORIGINAL_CONFIG_BACKUP_PATH}.`);
+}
+
+/**
+ * Restore the user's original kvm_config.json (saved by
+ * backupOriginalConfigIfNeeded). Returns true if a backup was found and
+ * restored. The backup file is consumed (mv'd back into place).
+ */
+export async function restoreOriginalConfig(): Promise<boolean> {
+  if (!(await deviceFileExists(ORIGINAL_CONFIG_BACKUP_PATH))) {
+    return false;
+  }
+  await sshExec(`mv ${ORIGINAL_CONFIG_BACKUP_PATH} ${ORIGINAL_CONFIG_DEVICE_PATH} && sync`);
+  console.log(`[e2e] Restored original kvm_config.json from ${ORIGINAL_CONFIG_BACKUP_PATH}.`);
+  return true;
+}
+
 export interface SSHDevState {
   sshKey: string;
   devModeEnabled: boolean;

@@ -6,6 +6,7 @@ import {
   restartAppViaSSH,
   saveSSHDevState,
   restoreSSHDevState,
+  restoreOriginalConfig,
 } from "./helpers";
 
 export default async function globalTeardown() {
@@ -35,15 +36,20 @@ export default async function globalTeardown() {
     }
   }
 
-  console.log("[global-teardown] Resetting device to clean state...");
   try {
+    if (await restoreOriginalConfig()) {
+      await restartAppViaSSH();
+      console.log("[global-teardown] Original device config restored.");
+      return;
+    }
+    console.log("[global-teardown] No original config backup; resetting to clean state...");
     const saved = await saveSSHDevState();
     await resetConfigViaSSH();
     await restoreSSHDevState(saved);
     await restartAppViaSSH();
     console.log("[global-teardown] Device reset complete.");
   } catch {
-    console.log("[global-teardown] Device reset failed (best-effort).");
+    console.log("[global-teardown] Device cleanup failed (best-effort).");
   }
 }
 
