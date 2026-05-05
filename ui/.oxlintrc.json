@@ -11,14 +11,7 @@
     "typescript/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     "typescript/no-floating-promises": "off",
     "typescript/restrict-template-expressions": "warn",
-    "typescript/no-base-to-string": "warn",
-    "import/order": [
-      "error",
-      {
-        "groups": ["builtin", "external", "internal", "parent", "sibling"],
-        "newlines-between": "ignore"
-      }
-    ]
+    "typescript/no-base-to-string": "warn"
   },
   "settings": {
     "react": {
