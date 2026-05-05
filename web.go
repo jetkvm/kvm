@@ -52,7 +52,7 @@ type SetPasswordRequest struct {
 
 type LoginRequest struct {
 	Password     string `json:"password"`
-	StayLoggedIn bool   `json:"stayLoggedIn"`
+	StayLoggedIn *bool  `json:"stayLoggedIn,omitempty"`
 }
 
 type ChangePasswordRequest struct {
@@ -548,10 +548,16 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Set the cookie. Unchecked "stay logged in" uses a session cookie.
-	maxAge := 0
-	if req.StayLoggedIn {
-		maxAge = authTokenStayLoggedInMaxAge
+	// Set the cookie. Existing clients that omit stayLoggedIn keep the
+	// historical persistent cookie; only an explicit false requests a session
+	// cookie.
+	maxAge := authTokenMaxAge
+	if req.StayLoggedIn != nil {
+		if *req.StayLoggedIn {
+			maxAge = authTokenStayLoggedInMaxAge
+		} else {
+			maxAge = 0
+		}
 	}
 	c.SetCookie("authToken", config.LocalAuthToken, maxAge, "/", "", false, true)
 
