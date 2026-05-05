@@ -79,7 +79,10 @@ func parseKeyAliases(raw []byte) ([]SpecialKey, *regexp.Regexp, map[string]strin
 		if sk.AriaKey == "" || sk.Canonical == "" {
 			panic(fmt.Sprintf("keyaliases.json: entry with empty ariaKey or canonical: %+v", sk))
 		}
-		if existing, dup := display[sk.Canonical]; dup && existing != sk.Canonical {
+		if existing, dup := display[sk.Canonical]; dup {
+			if existing == sk.Canonical {
+				panic(fmt.Sprintf("keyaliases.json: canonical %q declared by multiple entries (duplicate ariaKey %q)", sk.Canonical, sk.AriaKey))
+			}
 			panic(fmt.Sprintf("keyaliases.json: canonical %q collides with alias of %q", sk.Canonical, existing))
 		}
 		display[sk.Canonical] = sk.Canonical

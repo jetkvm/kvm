@@ -1824,6 +1824,61 @@ func TestSpecialKeysAliasesUniqueAndCanonical(t *testing.T) {
 	}
 }
 
+// TestParseKeyAliasesRejectsDuplicates verifies that parseKeyAliases panics
+// when the JSON declares two entries that share a canonical, or when a
+// canonical collides with another entry's alias. The post-load
+// TestSpecialKeysAliasesUniqueAndCanonical only inspects the production data;
+// this test guards the parser itself so a future refactor can't reintroduce
+// silent last-write-wins behaviour.
+func TestParseKeyAliasesRejectsDuplicates(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		want string
+	}{
+		{
+			name: "duplicate canonical",
+			json: `{"specialKeys":[
+				{"ariaKey":"enter","canonical":"Enter","aliases":[]},
+				{"ariaKey":"return","canonical":"Enter","aliases":[]}
+			]}`,
+			want: "declared by multiple entries",
+		},
+		{
+			name: "canonical collides with alias of other entry",
+			json: `{"specialKeys":[
+				{"ariaKey":"enter","canonical":"Enter","aliases":["Return"]},
+				{"ariaKey":"return","canonical":"Return","aliases":[]}
+			]}`,
+			want: "collides with alias",
+		},
+		{
+			name: "alias claimed by two entries",
+			json: `{"specialKeys":[
+				{"ariaKey":"enter","canonical":"Enter","aliases":["⏎"]},
+				{"ariaKey":"return","canonical":"Return","aliases":["⏎"]}
+			]}`,
+			want: "used by both",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected panic, got none")
+				}
+				msg, _ := r.(string)
+				if !strings.Contains(msg, tc.want) {
+					t.Errorf("panic %q does not contain %q", msg, tc.want)
+				}
+			}()
+			parseKeyAliases([]byte(tc.json))
+		})
+	}
+}
+
 // TestBuiltinLayoutLegendsAreKnown is the drift guard. For every built-in
 // layout, every legend on a non-text-producing key (and on Space) must be
 // either:
