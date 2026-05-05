@@ -969,6 +969,58 @@ func TestCharMapExcludesScancode0(t *testing.T) {
 	}
 }
 
+func TestCharMapMapsPasteableControlChars(t *testing.T) {
+	// Newline, CR, CRLF, and tab in pasted text need charMap entries because
+	// PasteModal looks up each segmented codepoint verbatim. The standard
+	// addChar path filters runes < U+0020, so these have to be added explicitly.
+	keys := []TransportKey{
+		{X: 0, Y: 0, W: 1, H: 1, Scancode: hidA, Legends: KeyLegends{Normal: str("a")}},
+		{X: 1, Y: 0, W: 1, H: 1, Scancode: hidEnter, Legends: KeyLegends{Normal: str("⏎")}},
+		{X: 2, Y: 0, W: 1, H: 1, Scancode: hidTab, Legends: KeyLegends{Normal: str("⭾")}},
+	}
+	m := buildCharMap(keys)
+
+	cases := []struct {
+		name string
+		key  string
+		want uint8
+	}{
+		{"newline", "\n", hidEnter},
+		{"carriage return", "\r", hidEnter},
+		{"CRLF (Intl.Segmenter grapheme cluster)", "\r\n", hidEnter},
+		{"tab", "\t", hidTab},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, ok := m[tc.key]
+			if !ok {
+				t.Fatalf("charMap[%q] missing", tc.key)
+			}
+			if c.Scancode != tc.want {
+				t.Errorf("charMap[%q].Scancode = 0x%02x, want 0x%02x", tc.key, c.Scancode, tc.want)
+			}
+			if c.Modifiers != ModNone {
+				t.Errorf("charMap[%q].Modifiers = 0x%02x, want 0", tc.key, c.Modifiers)
+			}
+		})
+	}
+}
+
+func TestCharMapOmitsControlCharsWhenScancodeAbsent(t *testing.T) {
+	// If a layout lacks an Enter key (e.g. a decal-only test fixture) we should
+	// not invent a charMap entry pointing at hidEnter — the paste would target
+	// a key that isn't on the keyboard.
+	keys := []TransportKey{
+		{X: 0, Y: 0, W: 1, H: 1, Scancode: hidA, Legends: KeyLegends{Normal: str("a")}},
+	}
+	m := buildCharMap(keys)
+	for _, k := range []string{"\n", "\r", "\r\n", "\t"} {
+		if _, ok := m[k]; ok {
+			t.Errorf("charMap[%q] should be absent when no Enter/Tab key exists", k)
+		}
+	}
+}
+
 func TestCharMapMapsSpaceCharRegardlessOfLegend(t *testing.T) {
 	// The Space key's legend is variable across layouts: kbdlayout.info uses "␠",
 	// the built-in layouts use "Space" (5 chars), some sources use literal " ".

@@ -695,7 +695,40 @@ func buildCharMap(keys []TransportKey) map[string]HIDCombo {
 		addChar(m, key.Legends.ShiftAltGr, key.Scancode, ModShiftAltGr)
 	}
 
+	addPasteableControlChars(keys, m)
+
 	return m
+}
+
+// addPasteableControlChars maps the small set of control characters that
+// commonly appear in pasted text — newline (\n), carriage return (\r),
+// CRLF (\r\n), and tab (\t) — to the corresponding HID scancode. Without
+// these the paste path would silently drop them: PasteModal looks up each
+// segmented input character verbatim in charMap, but addChar/Intl.Segmenter
+// never produce entries for runes < U+0020.
+//
+// Layouts that lack an Enter or Tab key (decals only, hypothetically) get
+// no entry — paste of those control chars will continue to be skipped.
+func addPasteableControlChars(keys []TransportKey, m map[string]HIDCombo) {
+	hasScancode := func(target uint8) bool {
+		for _, k := range keys {
+			if k.Scancode == target {
+				return true
+			}
+		}
+		return false
+	}
+	if hasScancode(hidEnter) {
+		enter := HIDCombo{Scancode: hidEnter, Modifiers: ModNone}
+		// Intl.Segmenter on the frontend treats CRLF as a single grapheme
+		// cluster, so map all three forms.
+		m["\n"] = enter
+		m["\r"] = enter
+		m["\r\n"] = enter
+	}
+	if hasScancode(hidTab) {
+		m["\t"] = HIDCombo{Scancode: hidTab, Modifiers: ModNone}
+	}
 }
 
 func addChar(m map[string]HIDCombo, legend *string, scancode, mods uint8) {
