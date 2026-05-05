@@ -221,27 +221,27 @@ export default function PasteModal() {
                       setDelayValue(parseInt(e.target.value, 10));
                     }}
                   />
-                  {delayValue < 50 ||
-                    (delayValue > 65534 && (
+                  {(delayValue < 50 || delayValue > 65534)
+                    && (
                       <div className="mt-2 flex items-center gap-x-2">
                         <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
                           {m.paste_modal_delay_out_of_range({ min: 50, max: 65534 })}
                         </span>
                       </div>
-                    ))}
+                    )}
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
                     {kleLayout
                       ? m.paste_modal_sending_using_layout({
-                          iso: kleLayout.id,
-                          name: kleLayout.name,
-                        })
+                        iso: kleLayout.id,
+                        name: kleLayout.name,
+                      })
                       : m.paste_modal_sending_using_layout({
-                          iso: keyboardLayout ?? "",
-                          name: keyboardLayout ?? "",
-                        })}
+                        iso: keyboardLayout ?? "",
+                        name: keyboardLayout ?? "",
+                      })}
                   </p>
                 </div>
               </div>
