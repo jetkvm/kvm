@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">JetKVM</string>
+    <string name="app_description">Fullscreen Android controller for a JetKVM device.</string>
 </resources>

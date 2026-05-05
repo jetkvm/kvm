@@ -152,50 +152,46 @@ export default function useMouse() {
     [send, setMousePosition],
   );
 
+  // Wheel events stay as HID wheel reports in Android touchscreen mode. Android
+  // then scrolls only focused/scrollable content, instead of treating wheel
+  // input as synthetic swipe gestures such as launcher/app-drawer pulls.
   const getMouseWheelHandler = useCallback(
     (_: AbsMouseMoveHandlerProps) => (e: WheelEvent) => {
-        if (scrollThrottling && blockWheelEvent) {
-          return;
-        }
+      if (scrollThrottling && blockWheelEvent) {
+        return;
+      }
 
-        const clampWheel = (delta: number): number => {
-          const isAccel = Math.abs(delta) >= 100;
-          const scrollValue = isAccel ? Math.round(delta / 100) : Math.sign(delta);
-          return Math.max(-127, Math.min(127, scrollValue));
-        };
+      const clampWheel = (delta: number): number => {
+        const isAccel = Math.abs(delta) >= 100;
+        const scrollValue = isAccel ? Math.round(delta / 100) : Math.sign(delta);
+        return Math.max(-127, Math.min(127, scrollValue));
+      };
 
-        // Negate Y: browser deltaY positive = scroll down, HID Wheel positive = scroll up
-        const wheelY = (invertScroll ? 1 : -1) * clampWheel(e.deltaY);
-        // X conventions already match (positive = right), but macOS Natural Scrolling
-        // inverts both axes at OS level, so we negate X to counteract when inverted
-        const wheelX = (invertScroll ? -1 : 1) * clampWheel(e.deltaX);
+      // Negate Y: browser deltaY positive = scroll down, HID Wheel positive = scroll up
+      const wheelY = (invertScroll ? 1 : -1) * clampWheel(e.deltaY);
+      // X conventions already match (positive = right), but macOS Natural Scrolling
+      // inverts both axes at OS level, so we negate X to counteract when inverted
+      const wheelX = (invertScroll ? -1 : 1) * clampWheel(e.deltaX);
 
-        if (wheelY === 0 && wheelX === 0) return;
+      if (wheelY === 0 && wheelX === 0) return;
 
-        if (isAndroidTouchscreenMode()) {
-          e.preventDefault();
-        }
+      if (isAndroidTouchscreenMode()) {
+        e.preventDefault();
+      }
 
-        if (rpcHidReady) {
-          reportWheelEvent(wheelY, wheelX);
-        } else {
-          send("wheelReport", { wheelY, wheelX });
-        }
+      if (rpcHidReady) {
+        reportWheelEvent(wheelY, wheelX);
+      } else {
+        send("wheelReport", { wheelY, wheelX });
+      }
 
-        // Apply blocking delay based of throttling settings
-        if (scrollThrottling && !blockWheelEvent) {
-          setBlockWheelEvent(true);
-          setTimeout(() => setBlockWheelEvent(false), scrollThrottling);
-        }
-      },
-    [
-      send,
-      blockWheelEvent,
-      scrollThrottling,
-      invertScroll,
-      rpcHidReady,
-      reportWheelEvent,
-    ],
+      // Apply blocking delay based of throttling settings
+      if (scrollThrottling && !blockWheelEvent) {
+        setBlockWheelEvent(true);
+        setTimeout(() => setBlockWheelEvent(false), scrollThrottling);
+      }
+    },
+    [send, blockWheelEvent, scrollThrottling, invertScroll, rpcHidReady, reportWheelEvent],
   );
 
   const resetMousePosition = useCallback(() => {

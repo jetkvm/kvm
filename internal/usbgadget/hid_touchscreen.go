@@ -20,7 +20,11 @@ var touchscreenConfig = gadgetConfigItem{
 	reportDesc: touchscreenReportDesc,
 }
 
-// One-contact HID multitouch digitizer.
+// One-contact HID multitouch digitizer for Android targets.
+//
+// Android treats this descriptor as a direct touchscreen rather than a mouse,
+// which avoids cursor/IME behavior and routes gestures through the same input
+// path as physical touch.
 //
 // Report layout, 7 bytes:
 //
