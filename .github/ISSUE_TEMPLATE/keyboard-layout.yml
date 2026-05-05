@@ -1,32 +1,39 @@
 name: Keyboard Layout
 type: 'Feature'
-description: Submit a new keyboard layout or fix an existing one.
+description: Submit a new keyboard layout, fix an existing one, or request one we don't ship.
 labels:
 - 'type: keyboard-layout'
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for contributing a keyboard layout! The virtual keyboard and paste-text system use [KLE (keyboard-layout-editor.com)](https://keyboard-layout-editor.com) JSON files.
+        Thanks for helping us cover more keyboard layouts!
 
-        **How to create a layout:**
-        1. Go to [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com)
-        2. Design your layout (or start from a preset and modify it)
-        3. Copy the JSON from the **Raw data** tab
-        4. Paste it below
+        ## Are you ready to open a PR?
 
-        **Before submitting**, validate your layout locally if you can:
-        ```bash
-        go run scripts/validate_layout.go your-layout.kle.json
-        ```
+        **If yes**, please follow the step-by-step contributor walkthrough — it covers everything from picking a starting point to validating against `kbdlayout.info`:
+
+        👉 **[docs/keyboard/ADDING_A_LAYOUT.md](https://github.com/jetkvm/kvm/blob/dev/docs/keyboard/ADDING_A_LAYOUT.md)**
+
+        A PR is the fastest path: you drop a single `.kle.json` into `internal/keyboard/layouts/`, the test suite tells you if anything is off, and we can merge it directly.
+
+        **If no** (you don't code Go, you can't run the build, or you're just flagging a bug), keep filling in this issue. The fields below give us enough to do the work for you.
+
+        ---
+
+        ## What we need
+
+        - The **locale code** and **display name** (always).
+        - At least one of: a `kbdlayout.info` URL **or** a KLE JSON pasted below.
+        - Anything you know about **dead keys** on this layout.
 
   - type: input
     id: locale
     attributes:
       label: Locale code
       description: |
-        The ISO locale code for this layout (e.g. `ko-KR`, `tr-TR`, `pt-BR`).
-        Use the format `language-COUNTRY` with a hyphen.
+        Use `language-REGION` with a hyphen, e.g. `ko-KR`, `tr-TR`, `pt-BR`, `el-GR`.
+        Lowercased language, uppercased region.
       placeholder: "e.g. ko-KR"
     validations:
       required: true
@@ -34,9 +41,11 @@ body:
   - type: input
     id: layout-name
     attributes:
-      label: Layout name
-      description: Human-readable name for the layout (e.g. "Korean", "Turkish Q", "Portuguese (Brazil)").
-      placeholder: "e.g. Korean"
+      label: Display name
+      description: |
+        What the dropdown will show. Convention: native script + locale code + form factor —
+        e.g. "한국어 ko-KR (ANSI 103)", "Türkçe tr-TR (ISO 105)", "Português (Brasil) pt-BR (ABNT2)".
+      placeholder: 'e.g. 한국어 ko-KR (ANSI 103)'
     validations:
       required: true
 
@@ -44,23 +53,64 @@ body:
     id: layout-type
     attributes:
       label: Physical layout type
-      description: What type of physical keyboard does this layout use?
+      description: |
+        ANSI is the flat single-row Enter (US standard).
+        ISO is the L-shaped Enter (most of Europe).
+        JIS is the Japanese variant with extra keys around the spacebar.
       options:
         - ISO 105-key (most European/international keyboards)
         - ANSI 104-key (US standard)
         - JIS 109-key (Japanese)
-        - Other (describe below)
+        - Other (describe in Notes)
     validations:
       required: true
+
+  - type: input
+    id: kbdlayout-url
+    attributes:
+      label: kbdlayout.info URL (preferred)
+      description: |
+        If your layout exists at [kbdlayout.info](https://kbdlayout.info/), paste the URL here.
+        This is the **most reliable** way to give us what we need — the page has the canonical
+        legends and dead-key behaviour, and our audit script can validate against it directly.
+      placeholder: "https://kbdlayout.info/00000412/"
+    validations:
+      required: false
 
   - type: textarea
     id: kle-json
     attributes:
-      label: KLE JSON
+      label: KLE JSON (alternative if no kbdlayout.info URL)
       description: |
-        Paste the raw KLE JSON here. You can get this from the **Raw data** tab on keyboard-layout-editor.com.
-        Alternatively, attach a `.json` file to this issue.
+        If your layout isn't on kbdlayout.info, paste a KLE JSON here. You can:
+
+        - Download one from [kbdlayout.info](https://kbdlayout.info/) for the closest match and edit it, or
+        - Build one on [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com) and copy the **Raw data** tab.
+
+        If you can run Go locally, please validate first:
+
+        ```bash
+        go run scripts/validate_layout.go path/to/your-layout.kle.json
+        ```
       render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: dead-keys
+    attributes:
+      label: Dead keys
+      description: |
+        A **dead key** is one that doesn't type a character on its own — pressing it puts
+        the keyboard in a "waiting" state, and the next key combines to produce an accented
+        character (e.g. on French AZERTY, `^` then `a` produces `â`).
+
+        Paste the literal characters that act as dead keys on this layout, separated by
+        spaces — e.g. `^ ¨ ´ ` ~`. If the layout has no dead keys, write `none`.
+
+        **Verify on a real machine running this layout** — some characters look like
+        accents but type immediately on a given layout.
+      placeholder: "^ ¨ ´ ` ~     (or 'none')"
     validations:
       required: true
 
@@ -69,8 +119,9 @@ body:
     attributes:
       label: Additional notes
       description: |
-        Any special notes about this layout — dead key behavior, AltGr layer details,
-        regional variants, or differences from standard layouts.
+        Anything we should know — regional variants, AltGr-layer quirks, keys that
+        differ from kbdlayout.info, alternative locale codes that should alias to
+        this layout (e.g. `nl-BE` aliasing to `fr-BE`), unusual physical layouts.
     validations:
       required: false
 
@@ -78,8 +129,13 @@ body:
     attributes:
       label: Checklist
       options:
-        - label: I have verified the layout matches a real physical keyboard for this locale
+        - label: The locale code matches `language-REGION` (hyphen, lowercase language, uppercase region).
           required: true
-        - label: The legends include all layers (normal, shift, and AltGr where applicable)
+        - label: I have access to a real machine running this layout (or the kbdlayout.info reference) and have verified the legends.
           required: true
-        - label: I have tested the layout with `go run scripts/validate_layout.go` (optional but appreciated)
+        - label: The dead-keys list reflects actual dead-key behaviour on the target OS, not just keys that look like accents.
+          required: true
+        - label: 'I have read [ADDING_A_LAYOUT.md](https://github.com/jetkvm/kvm/blob/dev/docs/keyboard/ADDING_A_LAYOUT.md) (optional but recommended — many questions are answered there).'
+          required: false
+        - label: 'I have run `go run scripts/validate_layout.go` against my KLE JSON (optional, only if you have Go installed).'
+          required: false
