@@ -317,6 +317,7 @@ shift legend to avoid redundancy */
   inset: 0;
   align-items: center;
   justify-content: center;
+  text-align: center;
   font-size: calc(var(--u) * 0.35);
 }
 
@@ -334,6 +335,7 @@ shift legend to avoid redundancy */
   align-items: center;
   justify-content: center;
   opacity: 0.9;
+  text-align: center;
 }
 
 /* ===========================================================================
