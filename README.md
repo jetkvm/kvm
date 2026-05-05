@@ -20,6 +20,75 @@
 > Android controller APK release:
 > [JetKVM Android Support 1.3](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.3)
 
+## Android Support Fork
+
+This fork is an Android-focused JetKVM experiment and upstream PR. It keeps the
+normal JetKVM device, web UI, and firmware structure, but adds support for two
+Android-specific workflows:
+
+- **Android as a target device**: control a stock Android phone through JetKVM
+  using USB HID touchscreen input instead of absolute mouse input.
+- **Android as a controller device**: use another Android phone or tablet as the
+  controller for the JetKVM web UI through a compact mobile UI or native wrapper
+  APK.
+
+The target use case is a stock Android phone connected to JetKVM as the remote
+device. Video still comes from the JetKVM capture path. Input is sent through a
+USB HID digitizer so Android sees direct touch events, not mouse events. This
+avoids Android cursor behavior and makes taps, drags, and scroll behavior match
+what Android apps expect from a real touchscreen.
+
+### Android Target Support
+
+The backend adds a USB HID touchscreen/digitizer gadget and a `touchscreenReport`
+RPC path. When Android touchscreen mode is active, the browser maps pointer
+events over the video to HID touchscreen coordinates and sends:
+
+- one-contact touch down/move/up reports,
+- direct `ABS_X`/`ABS_Y` style coordinates in the HID range,
+- wheel events as HID wheel reports rather than fake swipe gestures.
+
+This is intended to address Android target input problems where Android treats
+JetKVM absolute mouse input as a mouse, producing cursor/IME behavior instead of
+normal touch behavior.
+
+### Android Controller UI
+
+The web UI includes an Android compact controller mode. In that mode it removes
+desktop-oriented chrome around the stream and replaces the usual header/action
+bars with a draggable floating control button. The floating menu exposes the
+same core JetKVM actions while preserving more screen space for the remote phone
+video.
+
+The compact mode also scopes phone-shaped display crop behavior to Android
+compact controller mode only, so desktop users keep the normal JetKVM video
+layout.
+
+### Native Android Controller APK
+
+The `jetkvm-android/` directory contains a small native Android wrapper. It
+opens a native login screen first so Android password managers can autofill the
+JetKVM password reliably, then loads the JetKVM web UI in a fullscreen WebView.
+
+The wrapper accepts HTTPS URLs and local HTTP JetKVM URLs. Local HTTP is limited
+in the native login flow to localhost, `.local` hostnames, IPv4 private ranges,
+and link-local IPv4 addresses. This keeps raw JetKVM LAN IPs usable while
+rejecting arbitrary public cleartext HTTP URLs before the WebView is opened.
+
+Latest APK:
+
+- Release:
+  [JetKVM Android Support 1.3](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.3)
+- Asset:
+  `JetKVM-android-controller-1.3.apk`
+
+### Upstream Status
+
+This work is proposed upstream in
+[jetkvm/kvm PR #1441](https://github.com/jetkvm/kvm/pull/1441). The PR is still
+draft while review feedback is being handled. The fork keeps the implementation
+visible and testable while that upstream discussion continues.
+
 JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse) solution designed for efficient remote management of computers, servers, and workstations. Whether you're dealing with boot failures, installing a new operating system, adjusting BIOS settings, or simply taking control of a machine from afar, JetKVM provides the tools to get it done effectively.
 
 ## Features
