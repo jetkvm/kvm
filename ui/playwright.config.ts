@@ -29,7 +29,13 @@ export default defineConfig({
     {
       name: "remote-agent",
       testDir: "./e2e/remote-agent",
-      testMatch: /.*\.spec\.ts/,
+      testMatch: "ra-all.spec.ts",
+    },
+    {
+      name: "keyboard-paste",
+      testDir: "./e2e/remote-agent",
+      testMatch: /keyboard-paste\.spec\.ts/,
+      dependencies: ["remote-agent"],
     },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
     {
