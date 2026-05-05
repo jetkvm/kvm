@@ -281,16 +281,42 @@ func IsModifierScancode(sc uint8) bool {
 	return sc >= hidLCtrl && sc <= hidRMeta
 }
 
-// IsPrintableScancode reports whether sc is in the HID ranges that produce
-// typed text on standard keyboard layouts.
+// ScancodeProducesText reports whether sc produces typed text on standard
+// keyboard layouts. Includes letters, digits, space, printable punctuation,
+// the ISO key (0x64), and printable numpad keys. Excludes control keys whose
+// HID usage IDs sit inside those ranges (Enter, Escape, Backspace, Tab,
+// NumLock, KPEnter).
 //
-// Keep this aligned with ui/src/keyboardMappings.ts.
-func IsPrintableScancode(sc uint8) bool {
-	return (sc >= hidA && sc <= hidSlash) || (sc >= hidNumLock && sc <= hidKPDot)
+// Keep this aligned with ui/src/keyboardMappings.ts (scancodeProducesText).
+func ScancodeProducesText(scancode uint8) bool {
+	// Alphabet keys
+	if scancode >= hidA && scancode <= hidZ {
+		return true
+	}
+	// Number row keys
+	if scancode >= hidN1 && scancode <= hidN0 {
+		return true
+	}
+	// Space and printable punctuation keys. Excludes Enter/Escape/Backspace/Tab.
+	if scancode == hidSpace ||
+		(scancode >= hidMinus && scancode <= hidSlash) ||
+		scancode == hidHashTilde ||
+		scancode == hidISOKey {
+		return true
+	}
+	// Numpad printable characters. Excludes NumLock and KPEnter.
+	if (scancode >= hidKPSlash && scancode <= hidKPPlus) ||
+		(scancode >= hidKP1 && scancode <= hidKPDot) {
+		return true
+	}
+
+	return false
 }
 
 // IsControlScancode reports whether sc should be treated as a control-like key
-// for legend and layer-display logic.
+// for legend and layer-display logic. The explicit switch list covers keys
+// like Space and Enter that the rest of the code treats as control even though
+// Space technically produces a typed character.
 //
 // Keep this aligned with ui/src/keyboardMappings.ts.
 func IsControlScancode(sc uint8) bool {
@@ -324,32 +350,7 @@ func IsControlScancode(sc uint8) bool {
 		return true
 	}
 
-	return !IsPrintableScancode(sc)
-}
-
-func ScancodeProducesText(scancode uint8) bool {
-	// Alphabet keys
-	if scancode >= hidA && scancode <= hidZ {
-		return true
-	}
-	// Number row keys
-	if scancode >= hidN1 && scancode <= hidN0 {
-		return true
-	}
-	// Space and printable punctuation keys. Excludes Enter/Escape/Backspace/Tab.
-	if scancode == hidSpace ||
-		(scancode >= hidMinus && scancode <= hidSlash) ||
-		scancode == hidHashTilde ||
-		scancode == hidISOKey {
-		return true
-	}
-	// Numpad printable characters. Excludes NumLock and KPEnter.
-	if (scancode >= hidKPSlash && scancode <= hidKPPlus) ||
-		(scancode >= hidKP1 && scancode <= hidKPDot) {
-		return true
-	}
-
-	return false
+	return !ScancodeProducesText(sc)
 }
 
 // ---------------------------------------------------------------------------

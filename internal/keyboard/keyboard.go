@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/bits"
 	"slices"
 	"strings"
 	"unicode"
@@ -821,11 +822,17 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 		combo      HIDCombo // scancode + modifiers to press the dead key
 		combining  rune     // Unicode combining character
 		displayKey rune     // the legend character as it appears on the keycap
+		layerIdx   int      // 0..3 — used to break ties at equal modifier complexity
 	}
 
 	// Collect dead key legends that are both declared AND have a known
-	// combining character mapping.
-	var deadKeys []deadKeyInfo
+	// combining character mapping. When the same dead-key character appears on
+	// multiple layers (e.g. ´ on both AltGr and ShiftAltGr in fr_BE) or on
+	// multiple physical keys, we keep only the entry with the simplest
+	// modifier — otherwise the composition loop and the standalone replacement
+	// below could end up using different combos for the same character,
+	// producing inconsistent dead-key-then-base sequences.
+	chosen := map[rune]deadKeyInfo{}
 	for _, key := range keys {
 		if key.Scancode == 0 {
 			continue
@@ -839,7 +846,7 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 			{key.Legends.AltGr, ModAltGr},
 			{key.Legends.ShiftAltGr, ModShiftAltGr},
 		}
-		for _, layer := range layers {
+		for layerIdx, layer := range layers {
 			if layer.legend == nil {
 				continue
 			}
@@ -851,17 +858,37 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 			if !ok {
 				continue
 			}
-			deadKeys = append(deadKeys, deadKeyInfo{
+			candidate := deadKeyInfo{
 				combo:      HIDCombo{Scancode: key.Scancode, Modifiers: layer.mods},
 				combining:  combining,
 				displayKey: r,
-			})
+				layerIdx:   layerIdx,
+			}
+			existing, seen := chosen[r]
+			// Prefer fewer modifier bits; tie-break with the layer enum order
+			// (Normal < Shift < AltGr < ShiftAltGr) so the result is deterministic.
+			if !seen ||
+				bits.OnesCount8(candidate.combo.Modifiers) < bits.OnesCount8(existing.combo.Modifiers) ||
+				(bits.OnesCount8(candidate.combo.Modifiers) == bits.OnesCount8(existing.combo.Modifiers) &&
+					candidate.layerIdx < existing.layerIdx) {
+				chosen[r] = candidate
+			}
 		}
 	}
 
-	if len(deadKeys) == 0 {
+	if len(chosen) == 0 {
 		return
 	}
+
+	// Materialise in displayKey order so charMap construction is deterministic
+	// even when callers iterate it (or compare two parses for equality).
+	deadKeys := make([]deadKeyInfo, 0, len(chosen))
+	for _, dk := range chosen {
+		deadKeys = append(deadKeys, dk)
+	}
+	slices.SortFunc(deadKeys, func(a, b deadKeyInfo) int {
+		return cmp.Compare(a.displayKey, b.displayKey)
+	})
 
 	// Snapshot base chars to iterate (we'll be adding to charMap)
 	type baseEntry struct {
@@ -908,12 +935,14 @@ func addDeadKeyCompositions(keys []TransportKey, charMap map[string]HIDCombo, de
 		// Use the display rune captured from the actual key legend, not a
 		// reverse lookup from deadKeyToCombining (which has duplicate values
 		// and non-deterministic map iteration order).
+		//
+		// The Prefix==nil guard is defensive: deadKeys is already deduped to
+		// one entry per displayKey above, so we shouldn't see this entry's
+		// char already prefixed by an earlier loop iteration. The check still
+		// prevents accidental rewrites if a future caller pre-populates
+		// charMap with prefixed entries before invoking this function.
 		deadChar := string(dk.displayKey)
 		if existing, exists := charMap[deadChar]; exists && existing.Prefix == nil {
-			// Replace the simple entry with a prefixed one (dead key + space).
-			// Guard with Prefix==nil so only the first (simplest-modifier) layer
-			// wins when the same dead key character appears on multiple layers
-			// (e.g. ´ on both AltGr and ShiftAltGr in fr_BE).
 			charMap[deadChar] = HIDCombo{
 				Scancode:  hidSpace,
 				Modifiers: ModNone,

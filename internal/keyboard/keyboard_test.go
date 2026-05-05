@@ -8,6 +8,7 @@ package keyboard
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -966,6 +967,137 @@ func TestCharMapExcludesScancode0(t *testing.T) {
 	m := buildCharMap(keys)
 	if _, ok := m["x"]; ok {
 		t.Error("key with Scancode=0 should not appear in charMap")
+	}
+}
+
+// Lock the contracts of ScancodeProducesText and IsControlScancode.
+func TestScancodeClassificationContract(t *testing.T) {
+	type tc struct {
+		name        string
+		sc          uint8
+		producesTxt bool
+		controlLike bool
+	}
+	cases := []tc{
+		// Text-producing keys
+		{"A", hidA, true, false},
+		{"Z", hidZ, true, false},
+		{"1", hidN1, true, false},
+		{"0", hidN0, true, false},
+		{"Space", hidSpace, true, true}, // text, but treated as control-like for layer logic
+		{"Minus", hidMinus, true, false},
+		{"Slash", hidSlash, true, false},
+		{"HashTilde", hidHashTilde, true, false},
+		{"ISOKey", hidISOKey, true, false},
+		{"KPSlash", hidKPSlash, true, false},
+		{"KPPlus", hidKPPlus, true, false},
+		{"KP1", hidKP1, true, false},
+		{"KPDot", hidKPDot, true, false},
+		// Non-text keys whose HID IDs fall inside the naïve printable ranges.
+		// These are the ones the old helper misclassified.
+		{"Enter", hidEnter, false, true},
+		{"Escape", hidEscape, false, true},
+		{"Backspace", hidBackspace, false, true},
+		{"Tab", hidTab, false, true},
+		{"NumLock", hidNumLock, false, true},
+		{"KPEnter", hidKPEnter, false, true},
+		// Modifier and navigation keys
+		{"LShift", hidLShift, false, true},
+		{"ArrowUp", hidArrowUp, false, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := ScancodeProducesText(c.sc); got != c.producesTxt {
+				t.Errorf("ScancodeProducesText(%s/0x%02x) = %v, want %v", c.name, c.sc, got, c.producesTxt)
+			}
+			if got := IsControlScancode(c.sc); got != c.controlLike {
+				t.Errorf("IsControlScancode(%s/0x%02x) = %v, want %v", c.name, c.sc, got, c.controlLike)
+			}
+		})
+	}
+}
+
+func TestIsControlScancodeISOKey(t *testing.T) {
+	// hidISOKey (0x64) sits past the old naïve printable range, needs explicit confirmation
+	if IsControlScancode(hidISOKey) {
+		t.Errorf("IsControlScancode(hidISOKey) = true, want false (it is a text-producing key)")
+	}
+}
+
+// When the same dead-key character appears on multiple layers (or on
+// multiple physical keys), addDeadKeyCompositions must use one consistent
+// combo for both the composition entries (â) and the standalone replacement
+// (^). Picking simplest modifier first guarantees that.
+func TestDeadKeyCompositionsPickSimplestLayer(t *testing.T) {
+	declared := map[rune]bool{'^': true}
+	keys := []TransportKey{
+		// Key Y: ^ is on AltGr (mods != 0). Encountered first because of
+		// input order — would be picked under the old "input-order wins"
+		// logic.
+		{X: 0, Y: 0, W: 1, H: 1, Scancode: hidY,
+			Legends: KeyLegends{Normal: str("y"), Shift: str("Y"), AltGr: str("^")}},
+		// Key 6: ^ is on Shift (still has a modifier, but simpler than AltGr).
+		{X: 1, Y: 0, W: 1, H: 1, Scancode: hidN6,
+			Legends: KeyLegends{Normal: str("6"), Shift: str("^")}},
+		// 'a' base
+		{X: 0, Y: 1, W: 1, H: 1, Scancode: hidA,
+			Legends: KeyLegends{Normal: str("a"), Shift: str("A")}},
+	}
+	charMap := buildCharMap(keys)
+	addDeadKeyCompositions(keys, charMap, declared)
+
+	want := HIDCombo{Scancode: hidN6, Modifiers: ModLShift}
+
+	// Composition: â must use the simplest-layer ^ (Shift on key 6).
+	aHat, ok := charMap["â"]
+	if !ok {
+		t.Fatalf("charMap[â] missing — composition didn't run")
+	}
+	if aHat.Prefix == nil {
+		t.Fatalf("charMap[â].Prefix nil — should be a dead-key composition")
+	}
+	if *aHat.Prefix != want {
+		t.Errorf("charMap[â].Prefix = %+v, want %+v (simpler Shift layer should beat AltGr)", *aHat.Prefix, want)
+	}
+
+	// Standalone: ^ must use the same combo so the two paths agree.
+	hat, ok := charMap["^"]
+	if !ok {
+		t.Fatalf("charMap[^] missing")
+	}
+	if hat.Prefix == nil {
+		t.Fatalf("charMap[^].Prefix nil — standalone dead key must be prefixed")
+	}
+	if *hat.Prefix != want {
+		t.Errorf("charMap[^].Prefix = %+v, want %+v", *hat.Prefix, want)
+	}
+}
+
+func TestDeadKeyCompositionsPreferNormalOverShift(t *testing.T) {
+	// When ^ appears on both Normal and AltGr layers of the same physical key,
+	// Normal (no modifier) wins for both compositions and standalone.
+	declared := map[rune]bool{'^': true}
+	keys := []TransportKey{
+		{X: 0, Y: 0, W: 1, H: 1, Scancode: hidY,
+			Legends: KeyLegends{Normal: str("^"), AltGr: str("^")}},
+		{X: 0, Y: 1, W: 1, H: 1, Scancode: hidA, Legends: KeyLegends{Normal: str("a")}},
+	}
+	charMap := buildCharMap(keys)
+	addDeadKeyCompositions(keys, charMap, declared)
+
+	want := HIDCombo{Scancode: hidY, Modifiers: ModNone}
+	for _, ch := range []string{"â", "^"} {
+		entry, ok := charMap[ch]
+		if !ok {
+			t.Fatalf("charMap[%q] missing", ch)
+		}
+		if entry.Prefix == nil || *entry.Prefix != want {
+			got := "<nil>"
+			if entry.Prefix != nil {
+				got = fmt.Sprintf("%+v", *entry.Prefix)
+			}
+			t.Errorf("charMap[%q].Prefix = %s, want %+v", ch, got, want)
+		}
 	}
 }
 

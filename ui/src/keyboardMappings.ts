@@ -292,16 +292,25 @@ const explicitControlLikeScancodes = new Set<number>([
   keys.Application,
 ]);
 
-// Keep this in sync with the backend's notion of printable HID keys.
-// Printable key ranges:
-// - 0x04..0x38: main typing cluster
-// - 0x53..0x63: numpad typing/operators
-const isPrintableScancode = (scancode: number) =>
-  (scancode >= 0x04 && scancode <= 0x38) || (scancode >= 0x53 && scancode <= 0x63);
+// Mirrors the backend's ScancodeProducesText.
+const scancodeProducesText = (scancode: number) => {
+  // Letters: A..Z (0x04..0x1D)
+  if (scancode >= 0x04 && scancode <= 0x1d) return true;
+  // Number row: 1..0 (0x1E..0x27)
+  if (scancode >= 0x1e && scancode <= 0x27) return true;
+  // Space and printable punctuation: Space (0x2C), Minus..Slash (0x2D..0x38)
+  if (scancode === 0x2c || (scancode >= 0x2d && scancode <= 0x38)) return true;
+  // ISO key (Non-US `|`)
+  if (scancode === 0x64) return true;
+  // Numpad printable: KPSlash..KPPlus (0x54..0x57), KP1..KPDot (0x59..0x63)
+  if (scancode >= 0x54 && scancode <= 0x57) return true;
+  if (scancode >= 0x59 && scancode <= 0x63) return true;
+  return false;
+};
 
 // Used by the keyboard UI to decide which keys should retain normal legends
 // in AltGr preview modes.
 export const isControlScancode = (scancode: number) =>
   isModifierScancode(scancode) ||
   explicitControlLikeScancodes.has(scancode) ||
-  !isPrintableScancode(scancode);
+  !scancodeProducesText(scancode);

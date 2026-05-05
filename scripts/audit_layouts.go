@@ -178,7 +178,7 @@ func sv(p *string) string {
 func legendsByScancode(l *keyboard.KeyboardLayout) map[uint8]layers {
 	m := make(map[uint8]layers, len(l.Keys))
 	for _, k := range l.Keys {
-		if k.Decal || !keyboard.IsPrintableScancode(k.Scancode) {
+		if k.Decal || !keyboard.ScancodeProducesText(k.Scancode) {
 			continue
 		}
 		m[k.Scancode] = layers{
