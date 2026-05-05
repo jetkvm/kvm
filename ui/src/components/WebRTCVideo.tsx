@@ -10,8 +10,10 @@ import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import AndroidCompactControls from "@components/AndroidCompactControls";
 
-const isAndroidDisplayCropMode = () =>
-  typeof window !== "undefined" && window.localStorage.getItem("androidDisplayCrop") !== "0";
+const isAndroidDisplayCropMode = (compactAndroidMode?: boolean) =>
+  Boolean(compactAndroidMode) &&
+  typeof window !== "undefined" &&
+  window.localStorage.getItem("androidDisplayCrop") !== "0";
 
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
@@ -35,6 +37,8 @@ export default function WebRTCVideo({
   hideStatusBar?: boolean;
   compactAndroidMode?: boolean;
 }) {
+  const androidDisplayCropMode = isAndroidDisplayCropMode(compactAndroidMode);
+
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
@@ -724,12 +728,18 @@ export default function WebRTCVideo({
 
   return (
     <div
-      className={cx("grid h-full w-full", compactAndroidMode ? "grid-rows-[1fr]" : "grid-rows-(--grid-layout)")}
+      className={cx(
+        "grid h-full w-full",
+        compactAndroidMode ? "grid-rows-[1fr]" : "grid-rows-(--grid-layout)",
+      )}
     >
       {!compactAndroidMode && (
         <div className="flex min-h-[39.5px] flex-col">
           <div className="flex flex-col">
-            <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <fieldset
+              disabled={peerConnection?.connectionState !== "connected"}
+              className="contents"
+            >
               <Actionbar requestFullscreen={requestFullscreen} />
               <MacroBar />
             </fieldset>
@@ -763,7 +773,7 @@ export default function WebRTCVideo({
                       ref={fullscreenContainerRef}
                       className={cx(
                         "relative flex h-full items-center justify-center",
-                        isAndroidDisplayCropMode()
+                        androidDisplayCropMode
                           ? "aspect-[9/20] max-w-full overflow-hidden"
                           : "w-full",
                       )}
@@ -780,7 +790,7 @@ export default function WebRTCVideo({
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          isAndroidDisplayCropMode()
+                          androidDisplayCropMode
                             ? "h-full w-auto max-w-none object-fill transition-all duration-1000"
                             : "h-full w-full object-contain transition-all duration-1000",
                           {
