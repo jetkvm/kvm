@@ -111,6 +111,9 @@ func (u *UsbGadget) TouchscreenReport(x int, y int, touching bool) error {
 		return nil
 	}
 
+	u.touchscreenHidLock.Lock()
+	defer u.touchscreenHidLock.Unlock()
+
 	if x < 0 {
 		x = 0
 	} else if x > 32767 {
