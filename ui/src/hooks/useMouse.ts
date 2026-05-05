@@ -3,8 +3,11 @@ import { useCallback, useRef, useState } from "react";
 import { useJsonRpc } from "./useJsonRpc";
 import { useHidRpc } from "./useHidRpc";
 import { useMouseStore, useSettingsStore } from "./stores";
+import { isAndroidTouchscreenMode } from "@/utils/androidController";
 
 const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
+
+export { isAndroidTouchscreenMode };
 
 export interface AbsMouseMoveHandlerProps {
   videoClientWidth: number;
@@ -12,6 +15,40 @@ export interface AbsMouseMoveHandlerProps {
   videoWidth: number;
   videoHeight: number;
 }
+
+const getVideoHidCoordinates = (
+  e: MouseEvent,
+  { videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps,
+) => {
+  if (!videoClientWidth || !videoClientHeight) return;
+
+  const videoElementAspectRatio = videoClientWidth / videoClientHeight;
+  const videoStreamAspectRatio = videoWidth / videoHeight;
+
+  let effectiveWidth = videoClientWidth;
+  let effectiveHeight = videoClientHeight;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (videoElementAspectRatio > videoStreamAspectRatio) {
+    effectiveWidth = videoClientHeight * videoStreamAspectRatio;
+    offsetX = (videoClientWidth - effectiveWidth) / 2;
+  } else if (videoElementAspectRatio < videoStreamAspectRatio) {
+    effectiveHeight = videoClientWidth / videoStreamAspectRatio;
+    offsetY = (videoClientHeight - effectiveHeight) / 2;
+  }
+
+  const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
+  const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
+
+  const relativeX = (clampedX - offsetX) / effectiveWidth;
+  const relativeY = (clampedY - offsetY) / effectiveHeight;
+
+  return {
+    x: Math.round(relativeX * 32767),
+    y: Math.round(relativeY * 32767),
+  };
+};
 
 export default function useMouse() {
   // states
@@ -25,7 +62,7 @@ export default function useMouse() {
 
   // RPC hooks
   const { send } = useJsonRpc();
-  const { reportAbsMouseEvent, reportRelMouseEvent, rpcHidReady } = useHidRpc();
+  const { reportAbsMouseEvent, reportRelMouseEvent, reportWheelEvent, rpcHidReady } = useHidRpc();
   // Mouse-related
 
   const sendRelMouseMovement = useCallback(
@@ -76,77 +113,89 @@ export default function useMouse() {
   const getAbsMouseMoveHandler = useCallback(
     ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
       (e: MouseEvent) => {
-        if (!videoClientWidth || !videoClientHeight) return;
         if (mouseMode !== "absolute") return;
 
-        // Get the aspect ratios of the video element and the video stream
-        const videoElementAspectRatio = videoClientWidth / videoClientHeight;
-        const videoStreamAspectRatio = videoWidth / videoHeight;
-
-        // Calculate the effective video display area
-        let effectiveWidth = videoClientWidth;
-        let effectiveHeight = videoClientHeight;
-        let offsetX = 0;
-        let offsetY = 0;
-
-        if (videoElementAspectRatio > videoStreamAspectRatio) {
-          // Pillarboxing: black bars on the left and right
-          effectiveWidth = videoClientHeight * videoStreamAspectRatio;
-          offsetX = (videoClientWidth - effectiveWidth) / 2;
-        } else if (videoElementAspectRatio < videoStreamAspectRatio) {
-          // Letterboxing: black bars on the top and bottom
-          effectiveHeight = videoClientWidth / videoStreamAspectRatio;
-          offsetY = (videoClientHeight - effectiveHeight) / 2;
-        }
-
-        // Clamp mouse position within the effective video boundaries
-        const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
-        const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
-
-        // Map clamped mouse position to the video stream's coordinate system
-        const relativeX = (clampedX - offsetX) / effectiveWidth;
-        const relativeY = (clampedY - offsetY) / effectiveHeight;
-
-        // Convert to HID absolute coordinate system (0-32767 range)
-        const x = Math.round(relativeX * 32767);
-        const y = Math.round(relativeY * 32767);
+        const coords = getVideoHidCoordinates(e, {
+          videoClientWidth,
+          videoClientHeight,
+          videoWidth,
+          videoHeight,
+        });
+        if (!coords) return;
 
         // Send mouse movement
         const { buttons } = e;
-        sendAbsMouseMovement(x, y, buttons);
+        sendAbsMouseMovement(coords.x, coords.y, buttons);
       },
     [mouseMode, sendAbsMouseMovement],
   );
 
+  const getTouchscreenMoveHandler = useCallback(
+    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
+      (e: MouseEvent) => {
+        if (!isAndroidTouchscreenMode()) return;
+
+        const coords = getVideoHidCoordinates(e, {
+          videoClientWidth,
+          videoClientHeight,
+          videoWidth,
+          videoHeight,
+        });
+        if (!coords) return;
+
+        const touching = e.buttons !== 0;
+
+        send("touchscreenReport", { x: coords.x, y: coords.y, touching });
+        setMousePosition(coords.x, coords.y);
+        lastAbsPos.current = coords;
+      },
+    [send, setMousePosition],
+  );
+
   const getMouseWheelHandler = useCallback(
-    () => (e: WheelEvent) => {
-      if (scrollThrottling && blockWheelEvent) {
-        return;
-      }
+    (_: AbsMouseMoveHandlerProps) => (e: WheelEvent) => {
+        if (scrollThrottling && blockWheelEvent) {
+          return;
+        }
 
-      const clampWheel = (delta: number): number => {
-        const isAccel = Math.abs(delta) >= 100;
-        const scrollValue = isAccel ? delta / 100 : Math.sign(delta);
-        return Math.max(-127, Math.min(127, scrollValue));
-      };
+        const clampWheel = (delta: number): number => {
+          const isAccel = Math.abs(delta) >= 100;
+          const scrollValue = isAccel ? Math.round(delta / 100) : Math.sign(delta);
+          return Math.max(-127, Math.min(127, scrollValue));
+        };
 
-      // Negate Y: browser deltaY positive = scroll down, HID Wheel positive = scroll up
-      const wheelY = (invertScroll ? 1 : -1) * clampWheel(e.deltaY);
-      // X conventions already match (positive = right), but macOS Natural Scrolling
-      // inverts both axes at OS level, so we negate X to counteract when inverted
-      const wheelX = (invertScroll ? -1 : 1) * clampWheel(e.deltaX);
+        // Negate Y: browser deltaY positive = scroll down, HID Wheel positive = scroll up
+        const wheelY = (invertScroll ? 1 : -1) * clampWheel(e.deltaY);
+        // X conventions already match (positive = right), but macOS Natural Scrolling
+        // inverts both axes at OS level, so we negate X to counteract when inverted
+        const wheelX = (invertScroll ? -1 : 1) * clampWheel(e.deltaX);
 
-      if (wheelY === 0 && wheelX === 0) return;
+        if (wheelY === 0 && wheelX === 0) return;
 
-      send("wheelReport", { wheelY, wheelX });
+        if (isAndroidTouchscreenMode()) {
+          e.preventDefault();
+        }
 
-      // Apply blocking delay based of throttling settings
-      if (scrollThrottling && !blockWheelEvent) {
-        setBlockWheelEvent(true);
-        setTimeout(() => setBlockWheelEvent(false), scrollThrottling);
-      }
-    },
-    [send, blockWheelEvent, scrollThrottling, invertScroll],
+        if (rpcHidReady) {
+          reportWheelEvent(wheelY, wheelX);
+        } else {
+          send("wheelReport", { wheelY, wheelX });
+        }
+
+        // Apply blocking delay based of throttling settings
+        if (scrollThrottling && !blockWheelEvent) {
+          setBlockWheelEvent(true);
+          setTimeout(() => setBlockWheelEvent(false), scrollThrottling);
+        }
+      },
+    [
+      send,
+      blockWheelEvent,
+      scrollThrottling,
+      invertScroll,
+      rpcHidReady,
+      reportWheelEvent,
+    ],
   );
 
   const resetMousePosition = useCallback(() => {
@@ -156,6 +205,7 @@ export default function useMouse() {
   return {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
+    getTouchscreenMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   };

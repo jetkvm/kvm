@@ -131,3 +131,7 @@ func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
 	u.resetUserInputTime()
 	return err
 }
+
+func (u *UsbGadget) HasRelativeMouse() bool {
+	return u.enabledDevices.RelativeMouse
+}

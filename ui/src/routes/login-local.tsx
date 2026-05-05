@@ -32,10 +32,12 @@ const loader: LoaderFunction = async () => {
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const password = formData.get("password");
+  const stayLoggedIn = formData.get("stayLoggedIn") === "on";
 
   try {
     const response = await api.POST(`${DEVICE_API}/auth/login-local`, {
       password,
+      stayLoggedIn,
     });
 
     if (response.ok) {
@@ -82,13 +84,27 @@ export default function LoginLocalRoute() {
               </div>
 
               <Fieldset className="space-y-12">
-                <Form method="POST" className="mx-auto max-w-sm space-y-4">
+                <Form method="POST" autoComplete="on" className="mx-auto max-w-sm space-y-4">
                   <div className="space-y-4">
+                    <input
+                      type="text"
+                      name="username"
+                      value="JetKVM"
+                      autoComplete="username"
+                      readOnly
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      className="sr-only"
+                    />
                     <InputFieldWithLabel
+                      id="password"
                       label={m.login_password_label()}
                       type={showPassword ? "text" : "password"}
                       name="password"
                       autoComplete="current-password"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       placeholder={m.login_enter_password()}
                       autoFocus
                       error={actionData?.error}
@@ -114,6 +130,15 @@ export default function LoginLocalRoute() {
                         )
                       }
                     />
+                    <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        name="stayLoggedIn"
+                        defaultChecked
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Stay logged in</span>
+                    </label>
                   </div>
 
                   <Button

@@ -4,10 +4,15 @@ import { useResizeObserver } from "usehooks-ts";
 import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
-import useMouse from "@hooks/useMouse";
+import useMouse, { isAndroidTouchscreenMode } from "@hooks/useMouse";
 import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
+import AndroidCompactControls from "@components/AndroidCompactControls";
+
+const isAndroidDisplayCropMode = () =>
+  typeof window !== "undefined" && window.localStorage.getItem("androidDisplayCrop") !== "0";
+
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
@@ -24,9 +29,11 @@ import { m } from "@localizations/messages.js";
 export default function WebRTCVideo({
   hasConnectionIssues,
   hideStatusBar,
+  compactAndroidMode,
 }: {
   hasConnectionIssues: boolean;
   hideStatusBar?: boolean;
+  compactAndroidMode?: boolean;
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
@@ -41,10 +48,32 @@ export default function WebRTCVideo({
 
   // Store hooks
   const settings = useSettingsStore();
-  const { handleKeyPress, resetKeyboardState } = useKeyboard();
+  const { executeMacro, handleKeyPress, resetKeyboardState } = useKeyboard();
+
+  const sendAndroidKeyTap = useCallback(
+    (key: number) => {
+      void handleKeyPress(key, true);
+      window.setTimeout(() => void handleKeyPress(key, false), 80);
+    },
+    [handleKeyPress],
+  );
+
+  const sendAndroidBack = useCallback(() => {
+    sendAndroidKeyTap(keys.Escape);
+  }, [sendAndroidKeyTap]);
+
+  const sendAndroidHome = useCallback(() => {
+    sendAndroidKeyTap(keys.Home);
+  }, [sendAndroidKeyTap]);
+
+  const sendAndroidRecents = useCallback(() => {
+    void executeMacro([{ keys: ["Tab"], modifiers: ["AltLeft"], delay: 100 }]);
+  }, [executeMacro]);
+
   const {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
+    getTouchscreenMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   } = useMouse();
@@ -211,7 +240,9 @@ export default function WebRTCVideo({
     const abortController = new AbortController();
     const signal = abortController.signal;
 
-    document.addEventListener("pointerlockchange", handlePointerLockChange, { signal });
+    document.addEventListener("pointerlockchange", handlePointerLockChange, {
+      signal,
+    });
 
     return () => {
       abortController.abort();
@@ -259,7 +290,27 @@ export default function WebRTCVideo({
 
   const relMouseMoveHandler = useMemo(() => getRelMouseMoveHandler(), [getRelMouseMoveHandler]);
 
-  const mouseWheelHandler = useMemo(() => getMouseWheelHandler(), [getMouseWheelHandler]);
+  const touchscreenMoveHandler = useMemo(
+    () =>
+      getTouchscreenMoveHandler({
+        videoClientWidth,
+        videoClientHeight,
+        videoWidth,
+        videoHeight,
+      }),
+    [getTouchscreenMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
+  );
+
+  const mouseWheelHandler = useMemo(
+    () =>
+      getMouseWheelHandler({
+        videoClientWidth,
+        videoClientHeight,
+        videoWidth,
+        videoHeight,
+      }),
+    [getMouseWheelHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
+  );
 
   function getAdjustedKeyCode(e: KeyboardEvent) {
     const key = e.key;
@@ -477,7 +528,9 @@ export default function WebRTCVideo({
       document.addEventListener("keyup", keyUpHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
-      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
+      document.addEventListener("visibilitychange", resetKeyboardState, {
+        signal,
+      });
 
       return () => {
         abortController.abort();
@@ -496,7 +549,9 @@ export default function WebRTCVideo({
       const signal = abortController.signal;
 
       // To prevent the video from being paused when the user presses a space in fullscreen mode
-      videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
+      videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, {
+        signal,
+      });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
 
       // We need to know when the video is playing to update state and video size
@@ -516,17 +571,65 @@ export default function WebRTCVideo({
       if (!videoElmRefValue) return;
 
       const isRelativeMouseMode = settings.mouseMode === "relative";
-      const mouseHandler = isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler;
+      const isTouchscreenMode = isAndroidTouchscreenMode();
+      const mouseHandler = isTouchscreenMode
+        ? touchscreenMoveHandler
+        : isRelativeMouseMode
+          ? relMouseMoveHandler
+          : absMouseMoveHandler;
 
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", mouseHandler, { signal });
-      videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
+      if (isTouchscreenMode) {
+        videoElmRefValue.style.touchAction = "none";
+        videoElmRefValue.style.userSelect = "none";
+        videoElmRefValue.draggable = false;
+
+        const pointerHandler = (e: PointerEvent) => {
+          e.preventDefault();
+
+          if (e.type === "pointerdown" && e.button === 2) {
+            e.stopPropagation();
+            sendAndroidBack();
+            return;
+          }
+
+          if (e.type === "pointerdown") {
+            try {
+              videoElmRefValue.setPointerCapture(e.pointerId);
+            } catch (err) {
+              console.debug("Unable to capture pointer", err);
+            }
+          }
+
+          mouseHandler(e);
+
+          if (e.type === "pointerup" || e.type === "pointercancel") {
+            try {
+              if (videoElmRefValue.hasPointerCapture(e.pointerId)) {
+                videoElmRefValue.releasePointerCapture(e.pointerId);
+              }
+            } catch (err) {
+              console.debug("Unable to release pointer capture", err);
+            }
+          }
+        };
+
+        videoElmRefValue.addEventListener("pointerdown", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointermove", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointerup", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointercancel", pointerHandler, { signal });
+      } else {
+        videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
+        videoElmRefValue.addEventListener("pointerdown", mouseHandler, {
+          signal,
+        });
+        videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
+      }
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
-        passive: true,
+        passive: !isTouchscreenMode,
       });
 
       if (isRelativeMouseMode) {
@@ -542,11 +645,15 @@ export default function WebRTCVideo({
       } else {
         // Reset the mouse position when the window is blurred or the document is hidden
         window.addEventListener("blur", resetMousePosition, { signal });
-        document.addEventListener("visibilitychange", resetMousePosition, { signal });
+        document.addEventListener("visibilitychange", resetMousePosition, {
+          signal,
+        });
       }
 
       const preventContextMenu = (e: MouseEvent) => e.preventDefault();
-      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, { signal });
+      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, {
+        signal,
+      });
 
       return () => {
         abortController.abort();
@@ -558,9 +665,11 @@ export default function WebRTCVideo({
       requestPointerLock,
       absMouseMoveHandler,
       relMouseMoveHandler,
+      touchscreenMoveHandler,
       mouseWheelHandler,
       resetMousePosition,
       settings.mouseMode,
+      sendAndroidBack,
     ],
   );
 
@@ -602,21 +711,31 @@ export default function WebRTCVideo({
         };
   }, [videoSaturation, videoBrightness, videoContrast]);
 
+  const showAndroidNavOverlay = useMemo(() => {
+    if (!isAndroidTouchscreenMode()) return false;
+    if (typeof window === "undefined") return false;
+
+    const setting = window.localStorage.getItem("androidNavOverlay");
+    if (setting === "0") return false;
+    if (setting === "1") return true;
+
+    return false;
+  }, []);
+
   return (
-    <div className="grid h-full w-full grid-rows-(--grid-layout)">
-      <div className="flex min-h-[39.5px] flex-col">
-        <div className="flex flex-col">
-          <fieldset
-            disabled={peerConnection?.connectionState !== "connected"}
-            className="contents"
-          >
-            <Actionbar
-              requestFullscreen={requestFullscreen}
-            />
-            <MacroBar />
-          </fieldset>
+    <div
+      className={cx("grid h-full w-full", compactAndroidMode ? "grid-rows-[1fr]" : "grid-rows-(--grid-layout)")}
+    >
+      {!compactAndroidMode && (
+        <div className="flex min-h-[39.5px] flex-col">
+          <div className="flex flex-col">
+            <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+              <Actionbar requestFullscreen={requestFullscreen} />
+              <MacroBar />
+            </fieldset>
+          </div>
         </div>
-      </div>
+      )}
 
       <div ref={containerRef} className="h-full overflow-hidden">
         <div className="relative h-full">
@@ -635,11 +754,19 @@ export default function WebRTCVideo({
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
                   <div
-                    className="relative mx-4 my-2 flex items-center justify-center overflow-hidden"
+                    className={cx(
+                      "relative flex items-center justify-center overflow-hidden",
+                      compactAndroidMode ? "m-0 h-full" : "mx-4 my-2",
+                    )}
                   >
                     <div
                       ref={fullscreenContainerRef}
-                      className="relative flex h-full w-full items-center justify-center"
+                      className={cx(
+                        "relative flex h-full items-center justify-center",
+                        isAndroidDisplayCropMode()
+                          ? "aspect-[9/20] max-w-full overflow-hidden"
+                          : "w-full",
+                      )}
                     >
                       <video
                         ref={videoElm}
@@ -653,7 +780,9 @@ export default function WebRTCVideo({
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          "h-full w-full object-contain transition-all duration-1000",
+                          isAndroidDisplayCropMode()
+                            ? "h-full w-auto max-w-none object-fill transition-all duration-1000"
+                            : "h-full w-full object-contain transition-all duration-1000",
                           {
                             "cursor-none": settings.isCursorHidden,
                             "pointer-events-none": isOcrMode,
@@ -668,6 +797,58 @@ export default function WebRTCVideo({
                         )}
                       />
                       <OcrOverlay />
+                      {showAndroidNavOverlay && (
+                        <div
+                          aria-label="JetKVM nav overlay"
+                          className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur"
+                          onPointerDown={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onPointerMove={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onPointerUp={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              sendAndroidBack();
+                            }}
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              sendAndroidHome();
+                            }}
+                          >
+                            Home
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              sendAndroidRecents();
+                            }}
+                          >
+                            Recents
+                          </button>
+                        </div>
+                      )}
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
@@ -694,7 +875,8 @@ export default function WebRTCVideo({
           </div>
         </div>
       </div>
-      {!hideStatusBar && (
+      {compactAndroidMode && <AndroidCompactControls requestFullscreen={requestFullscreen} />}
+      {!hideStatusBar && !compactAndroidMode && (
         <div>
           <InfoBar />
         </div>

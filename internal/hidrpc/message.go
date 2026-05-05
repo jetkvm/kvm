@@ -189,6 +189,28 @@ func (m *Message) MouseReport() (MouseReport, error) {
 	}, nil
 }
 
+// WheelReport ..
+type WheelReport struct {
+	WheelY int8
+	WheelX int8
+}
+
+// WheelReport returns the wheel report from the message.
+func (m *Message) WheelReport() (WheelReport, error) {
+	if m.t != TypeWheelReport {
+		return WheelReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	if len(m.d) != 2 {
+		return WheelReport{}, fmt.Errorf("invalid message length: %d", len(m.d))
+	}
+
+	return WheelReport{
+		WheelY: int8(m.d[0]),
+		WheelX: int8(m.d[1]),
+	}, nil
+}
+
 type KeyboardMacroState struct {
 	State   bool
 	IsPaste bool

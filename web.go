@@ -51,7 +51,8 @@ type SetPasswordRequest struct {
 }
 
 type LoginRequest struct {
-	Password string `json:"password"`
+	Password     string `json:"password"`
+	StayLoggedIn bool   `json:"stayLoggedIn"`
 }
 
 type ChangePasswordRequest struct {
@@ -93,8 +94,13 @@ const (
 	cacheImmutableMaxAge = 365 * 24 * 60 * 60 // 1 year
 	cacheShortMaxAge     = 5 * 60             // 5 minutes
 
-	// authTokenMaxAge is the lifetime of the authToken cookie, in seconds.
+	// authTokenMaxAge is the default lifetime of authToken cookies.
 	authTokenMaxAge = 7 * 24 * 60 * 60 // 1 week
+
+	// authTokenStayLoggedInMaxAge is the lifetime of persistent authToken cookies
+	// from the local login form. Non-persistent local login uses a browser
+	// session cookie.
+	authTokenStayLoggedInMaxAge = 365 * 24 * 60 * 60 // 1 year
 )
 
 func setupRouter() *gin.Engine {
@@ -542,8 +548,12 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	// Set the cookie. Unchecked "stay logged in" uses a session cookie.
+	maxAge := 0
+	if req.StayLoggedIn {
+		maxAge = authTokenStayLoggedInMaxAge
+	}
+	c.SetCookie("authToken", config.LocalAuthToken, maxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }

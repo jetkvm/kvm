@@ -932,6 +932,8 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.RelativeMouse = enabled
 	case "keyboard":
 		config.UsbDevices.Keyboard = enabled
+	case "touchscreen":
+		config.UsbDevices.Touchscreen = enabled
 	case "massStorage":
 		config.UsbDevices.MassStorage = enabled
 	case "serialConsole":
@@ -1256,6 +1258,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
+	"touchscreenReport":          {Func: rpcTouchscreenReport, Params: []string{"x", "y", "touching"}},
 	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
 	"getVideoState":              {Func: rpcGetVideoState},
 	"getUSBState":                {Func: rpcGetUSBState},

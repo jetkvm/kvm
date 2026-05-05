@@ -59,6 +59,7 @@ import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
 import { isLinuxDesktop } from "@/utils";
+import { isAndroidCompactControllerMode } from "@/utils/androidController";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -166,8 +167,9 @@ export default function KvmIdRoute() {
 
   const settingsHideHeaderBar = useSettingsStore(state => state.hideHeaderBar);
   const settingsHideStatusBar = useSettingsStore(state => state.hideStatusBar);
-  const hideHeaderBar = isEmbedMode || settingsHideHeaderBar;
-  const hideStatusBar = isEmbedMode || settingsHideStatusBar;
+  const androidCompactMode = isAndroidCompactControllerMode();
+  const hideHeaderBar = isEmbedMode || settingsHideHeaderBar || androidCompactMode;
+  const hideStatusBar = isEmbedMode || settingsHideStatusBar || androidCompactMode;
 
   const {
     peerConnection,
@@ -1073,6 +1075,7 @@ export default function KvmIdRoute() {
               <WebRTCVideo
                 hasConnectionIssues={!!ConnectionStatusElement}
                 hideStatusBar={hideStatusBar}
+                compactAndroidMode={androidCompactMode}
               />
             )}
             <div

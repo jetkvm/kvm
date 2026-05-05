@@ -54,6 +54,13 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			return
 		}
 		rpcErr = rpcRelMouseReport(mouseReport.DX, mouseReport.DY, mouseReport.Button)
+	case hidrpc.TypeWheelReport:
+		wheelReport, err := message.WheelReport()
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to get wheel report")
+			return
+		}
+		rpcErr = rpcWheelReport(wheelReport.WheelY, wheelReport.WheelX)
 	default:
 		logger.Warn().Uint8("type", uint8(message.Type())).Msg("unknown HID RPC message type")
 	}

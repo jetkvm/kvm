@@ -15,6 +15,7 @@ import {
   MouseReportMessage,
   PointerReportMessage,
   RpcMessage,
+  WheelReportMessage,
   unmarshalHidRpcMessage,
 } from "./hidRpc";
 
@@ -273,6 +274,13 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     [sendMessage],
   );
 
+  const reportWheelEvent = useCallback(
+    (wheelY: number, wheelX: number) => {
+      sendMessage(new WheelReportMessage(wheelY, wheelX));
+    },
+    [sendMessage],
+  );
+
   const reportKeyboardMacroEvent = useCallback(
     (steps: KeyboardMacroStep[]) => {
       sendMessage(new KeyboardMacroReportMessage(false, steps.length, steps));
@@ -314,7 +322,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     };
 
     const errorHandler = (e: Event) => {
-      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${e}`);
+      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}'`, e);
     };
 
     rpcHidChannel.addEventListener("message", messageHandler);
@@ -331,6 +339,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     reportKeypressEvent,
     reportAbsMouseEvent,
     reportRelMouseEvent,
+    reportWheelEvent,
     reportKeyboardMacroEvent,
     cancelOngoingKeyboardMacro,
     reportKeypressKeepAlive,

@@ -19,6 +19,7 @@ type Devices struct {
 	AbsoluteMouse bool `json:"absolute_mouse"`
 	RelativeMouse bool `json:"relative_mouse"`
 	Keyboard      bool `json:"keyboard"`
+	Touchscreen   bool `json:"touchscreen"`
 	MassStorage   bool `json:"mass_storage"`
 	SerialConsole bool `json:"serial_console"`
 }
@@ -40,6 +41,7 @@ var defaultUsbGadgetDevices = Devices{
 	AbsoluteMouse: true,
 	RelativeMouse: true,
 	Keyboard:      true,
+	Touchscreen:   true,
 	MassStorage:   true,
 }
 
@@ -60,12 +62,14 @@ type UsbGadget struct {
 
 	configLock sync.Mutex
 
-	keyboardHidFile *os.File
-	keyboardLock    sync.Mutex
-	absMouseHidFile *os.File
-	absMouseLock    sync.Mutex
-	relMouseHidFile *os.File
-	relMouseLock    sync.Mutex
+	keyboardHidFile    *os.File
+	keyboardLock       sync.Mutex
+	absMouseHidFile    *os.File
+	absMouseLock       sync.Mutex
+	relMouseHidFile    *os.File
+	relMouseLock       sync.Mutex
+	touchscreenHidFile *os.File
+	touchscreenHidLock sync.Mutex
 
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
@@ -132,6 +136,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		keyboardLock:         sync.Mutex{},
 		absMouseLock:         sync.Mutex{},
 		relMouseLock:         sync.Mutex{},
+		touchscreenHidLock:   sync.Mutex{},
 		txLock:               sync.Mutex{},
 		keyboardStateCtx:     keyboardCtx,
 		keyboardStateCancel:  keyboardCancel,
@@ -186,6 +191,10 @@ func (u *UsbGadget) Close() error {
 		u.relMouseHidFile.Close()
 		u.relMouseHidFile = nil
 	}
+	if u.touchscreenHidFile != nil {
+		u.touchscreenHidFile.Close()
+		u.touchscreenHidFile = nil
+	}
 
 	return nil
 }
@@ -211,4 +220,11 @@ func (u *UsbGadget) ResetHIDFiles() {
 		u.relMouseHidFile = nil
 	}
 	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
+
+	u.touchscreenHidLock.Lock()
+	if u.touchscreenHidFile != nil {
+		u.touchscreenHidFile.Close()
+		u.touchscreenHidFile = nil
+	}
+	unlockWithLog(&u.touchscreenHidLock, u.log, "touchscreenHidFile reset")
 }
