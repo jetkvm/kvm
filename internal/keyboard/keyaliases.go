@@ -28,16 +28,27 @@ type SpecialKey struct {
 //go:embed keyaliases.json
 var keyAliasesJSON []byte
 
-// SpecialKeys is the parsed taxonomy. Read-only after init.
-var SpecialKeys []SpecialKey
-
+// SpecialKeys is the parsed taxonomy. Read-only after package load.
+//
 // PassthroughLegendPattern matches multi-character legends that are
 // self-explanatory across keyboards (e.g. F1–F24) and need no aria translation.
-var PassthroughLegendPattern *regexp.Regexp
-
+//
 // controlLegendDisplayMap is the alias→canonical lookup used by
-// normalizeControlLegendsForDisplay. Built from SpecialKeys at init.
-var controlLegendDisplayMap map[string]string
+// normalizeControlLegendsForDisplay; built from SpecialKeys.
+//
+// All three are initialised together at package load time via parseKeyAliases.
+// A parse failure during var-initializer panics: the JSON is embedded in the
+// binary, so a failure here means a broken build, not a recoverable runtime error.
+var (
+	SpecialKeys              []SpecialKey
+	PassthroughLegendPattern *regexp.Regexp
+	controlLegendDisplayMap  map[string]string
+
+	_ = func() struct{} {
+		SpecialKeys, PassthroughLegendPattern, controlLegendDisplayMap = parseKeyAliases(keyAliasesJSON)
+		return struct{}{}
+	}()
+)
 
 // IsKnownSpecialLegend reports whether legend is recognized by the taxonomy:
 // either as a canonical form, a declared alias, or a passthrough match (F-keys).
@@ -51,41 +62,43 @@ func IsKnownSpecialLegend(legend string) bool {
 	return false
 }
 
-func init() {
+func parseKeyAliases(raw []byte) ([]SpecialKey, *regexp.Regexp, map[string]string) {
 	var doc struct {
 		SpecialKeys              []SpecialKey `json:"specialKeys"`
 		PassthroughLegendPattern string       `json:"passthroughLegendPattern"`
 	}
-	if err := json.Unmarshal(keyAliasesJSON, &doc); err != nil {
+	if err := json.Unmarshal(raw, &doc); err != nil {
 		panic(fmt.Sprintf("keyaliases.json: parse failed: %v", err))
 	}
 
-	SpecialKeys = doc.SpecialKeys
-	controlLegendDisplayMap = make(map[string]string, len(SpecialKeys)*4)
+	display := make(map[string]string, len(doc.SpecialKeys)*4)
 
 	// Verify uniqueness as we build: every alias and canonical must map to
 	// exactly one SpecialKey. Duplicates would silently corrupt the lookup.
-	for _, sk := range SpecialKeys {
+	for _, sk := range doc.SpecialKeys {
 		if sk.AriaKey == "" || sk.Canonical == "" {
 			panic(fmt.Sprintf("keyaliases.json: entry with empty ariaKey or canonical: %+v", sk))
 		}
-		if existing, dup := controlLegendDisplayMap[sk.Canonical]; dup && existing != sk.Canonical {
+		if existing, dup := display[sk.Canonical]; dup && existing != sk.Canonical {
 			panic(fmt.Sprintf("keyaliases.json: canonical %q collides with alias of %q", sk.Canonical, existing))
 		}
-		controlLegendDisplayMap[sk.Canonical] = sk.Canonical
+		display[sk.Canonical] = sk.Canonical
 		for _, alias := range sk.Aliases {
-			if existing, dup := controlLegendDisplayMap[alias]; dup {
+			if existing, dup := display[alias]; dup {
 				panic(fmt.Sprintf("keyaliases.json: alias %q used by both %q and %q", alias, existing, sk.Canonical))
 			}
-			controlLegendDisplayMap[alias] = sk.Canonical
+			display[alias] = sk.Canonical
 		}
 	}
 
+	var pattern *regexp.Regexp
 	if doc.PassthroughLegendPattern != "" {
 		re, err := regexp.Compile(doc.PassthroughLegendPattern)
 		if err != nil {
 			panic(fmt.Sprintf("keyaliases.json: invalid passthroughLegendPattern: %v", err))
 		}
-		PassthroughLegendPattern = re
+		pattern = re
 	}
+
+	return doc.SpecialKeys, pattern, display
 }

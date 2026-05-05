@@ -122,7 +122,7 @@ export function Metric<T, K extends keyof T>({
   supported,
   map,
   domain = [0, 600],
-  unit = "",
+  unit,
   heightClassName = "h-[127px]",
   badge,
   badgeTheme,
