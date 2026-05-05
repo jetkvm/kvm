@@ -18,7 +18,7 @@
 > controller APK.
 >
 > Android controller APK release:
-> [JetKVM Android Support 1.3](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.3)
+> [JetKVM Android Support 1.4](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.4)
 
 ## Android Support Fork
 
@@ -78,9 +78,9 @@ rejecting arbitrary public cleartext HTTP URLs before the WebView is opened.
 Latest APK:
 
 - Release:
-  [JetKVM Android Support 1.3](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.3)
+  [JetKVM Android Support 1.4](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.4)
 - Asset:
-  `JetKVM-android-controller-1.3.apk`
+  `JetKVM-android-controller-1.4.apk`
 
 ### Upstream Status
 
