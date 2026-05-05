@@ -42,6 +42,8 @@ APT_PACKAGES=(
   ca-certificates
   curl
   gnupg
+  nodejs
+  npm
 )
 
 if [ "${ARCH}" = "amd64" ]; then
@@ -66,6 +68,10 @@ wget https://github.com/jetkvm/rv1106-system/releases/download/${BUILDKIT_VERSIO
 popd
 rm -rf "${BUILDKIT_TMPDIR}"
 
+# Playwright Chromium system libraries (libnspr4, libnss3, libgbm, X11/xcb, etc.)
+# Needed for `make test_e2e` / `npx playwright test` to launch the bundled headless shell.
+sudo env "PATH=$PATH" npm exec --yes playwright@latest install-deps chromium
+
 # Docker CLI
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
@@ -75,5 +81,6 @@ echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
   trixie stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-sudo apt update
-sudo apt install docker-ce-cli
+sudo apt-get update && \
+  sudo apt-get install -y docker-ce-cli && \
+  sudo rm -rf /var/lib/apt/lists/*
