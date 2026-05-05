@@ -214,34 +214,33 @@ export default function PasteModal() {
                     type="number"
                     label={m.paste_modal_delay_between_keys()}
                     placeholder={m.paste_modal_delay_between_keys()}
-                    min={50}
+                    min={20}
                     max={65534}
                     value={delayValue}
                     onChange={e => {
                       setDelayValue(parseInt(e.target.value, 10));
                     }}
                   />
-                  {(delayValue < 50 || delayValue > 65534)
-                    && (
-                      <div className="mt-2 flex items-center gap-x-2">
-                        <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
-                        <span className="text-xs text-red-500 dark:text-red-400">
-                          {m.paste_modal_delay_out_of_range({ min: 50, max: 65534 })}
-                        </span>
-                      </div>
-                    )}
+                  {(delayValue < 20 || delayValue > 65534) && (
+                    <div className="mt-2 flex items-center gap-x-2">
+                      <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
+                      <span className="text-xs text-red-500 dark:text-red-400">
+                        {m.paste_modal_delay_out_of_range({ min: 20, max: 65534 })}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
                     {kleLayout
                       ? m.paste_modal_sending_using_layout({
-                        iso: kleLayout.id,
-                        name: kleLayout.name,
-                      })
+                          iso: kleLayout.id,
+                          name: kleLayout.name,
+                        })
                       : m.paste_modal_sending_using_layout({
-                        iso: keyboardLayout ?? "",
-                        name: keyboardLayout ?? "",
-                      })}
+                          iso: keyboardLayout ?? "",
+                          name: keyboardLayout ?? "",
+                        })}
                   </p>
                 </div>
               </div>
@@ -259,6 +258,7 @@ export default function PasteModal() {
             size="SM"
             theme="blank"
             text={m.cancel()}
+            data-testid="paste-modal-cancel"
             onClick={() => {
               onCancelPasteMode();
               close();
@@ -268,6 +268,7 @@ export default function PasteModal() {
             size="SM"
             theme="primary"
             text={m.paste_modal_confirm_paste()}
+            data-testid="paste-modal-confirm-paste"
             disabled={isPasteInProgress || !kleLayout}
             onClick={onConfirmPaste}
             LeadingIcon={LuCornerDownLeft}
