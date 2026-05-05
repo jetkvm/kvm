@@ -39,6 +39,9 @@ APT_PACKAGES=(
   python3-venv
   python3-kconfiglib
   ripgrep
+  ca-certificates
+  curl
+  gnupg
 )
 
 if [ "${ARCH}" = "amd64" ]; then
@@ -62,3 +65,15 @@ wget https://github.com/jetkvm/rv1106-system/releases/download/${BUILDKIT_VERSIO
     rm buildkit.tar.zst
 popd
 rm -rf "${BUILDKIT_TMPDIR}"
+
+# Docker CLI
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  trixie stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install docker-ce-cli
