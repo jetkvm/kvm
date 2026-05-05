@@ -31,3 +31,7 @@ ui/tsconfig.node.tsbuildinfo
 
 # devcontainer lock file
 .devcontainer/docker/devcontainer-lock.json
+
+ui/localization/jetKVM.UI.inlang/cache/
+ui/localization/jetKVM.UI.inlang/README.md
+ui/localization/jetKVM.UI.inlang/.meta.json

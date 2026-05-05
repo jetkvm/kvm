@@ -38,6 +38,7 @@ APT_PACKAGES=(
   zstd
   python3-venv
   python3-kconfiglib
+  ripgrep
 )
 
 if [ "${ARCH}" = "amd64" ]; then
