@@ -69,7 +69,7 @@ export function VirtualKeyboard({
   );
 
   return (
-    <div className="vkb-wrapper">
+    <div className="vkb-wrapper" style={{ minWidth: "600px" }}>
       <div
         className={["vkb", vkbClassName].filter(Boolean).join(" ")}
         data-layer={layer}

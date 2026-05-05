@@ -37,7 +37,6 @@
   user-select: none;
   container-type: inline-size;
   width: 100%;
-  min-width: 600px;
 }
 
 /* ===========================================================================
@@ -302,8 +301,8 @@ shift legend to avoid redundancy */
 .vkb[data-layer="shift-altgr"] .key:not(.decal) .legend:not(.shift-altgr),
 .vkb[data-layer="kana"] .key:not(.decal) .legend:not(.kana),
 .vkb[data-layer="shift-kana"] .key:not(.decal) .legend:not(.shift-kana) {
-  opacity: 0.65;
-  font-size: calc(var(--u) * 0.25);
+  opacity: 0.5;
+  font-size: calc(var(--u) * 0.2);
 }
 
 .vkb[data-layer="shift"] .key:not(.decal) .legend.shift,
@@ -318,7 +317,7 @@ shift legend to avoid redundancy */
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: calc(var(--u) * 0.32);
+  font-size: calc(var(--u) * 0.3);
 }
 
 /*
@@ -336,6 +335,7 @@ shift legend to avoid redundancy */
   justify-content: center;
   opacity: 0.9;
   text-align: center;
+  font-size: calc(var(--u) * 0.3);
 }
 
 /* ===========================================================================
@@ -350,7 +350,6 @@ shift legend to avoid redundancy */
   top: 3px;
   bottom: auto;
   align-items: flex-start;
-  /* display: none; */
 }
 .vkb.caps-lock-on[data-layer="all"] .key.letter .legend.shift {
   /* Take the normal legend's quadrant position (bottom-left) */
@@ -369,7 +368,6 @@ shift legend to avoid redundancy */
   top: 3px;
   bottom: auto;
   align-items: flex-start;
-  /* display: none; */
 }
 
 /* =================================================================================
