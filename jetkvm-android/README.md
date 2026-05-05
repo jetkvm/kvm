@@ -18,10 +18,10 @@ remains reachable.
 The native login screen stores the last controller URL. Use the in-app logout
 action to return to the native login screen and change the URL or credentials.
 
-The wrapper allows cleartext HTTP for `.local` JetKVM hostnames. This avoids
-the certificate installation step that mobile browsers require before they will
-install or run a PWA from a self-signed HTTPS JetKVM endpoint, without enabling
-cleartext HTTP globally for arbitrary domains.
+The wrapper accepts HTTPS URLs and local HTTP JetKVM URLs. Local HTTP is limited
+in the native login flow to localhost, `.local` hostnames, IPv4 private ranges,
+and link-local IPv4 addresses. This keeps raw JetKVM LAN IPs usable while
+rejecting arbitrary public cleartext HTTP URLs before the WebView is opened.
 
 Build:
 

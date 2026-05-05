@@ -426,8 +426,53 @@ public class MainActivity extends Activity {
         return url;
     }
 
+    private boolean isAllowedControllerUrl(String value) {
+        try {
+            URL url = new URL(normalizeUrl(value));
+            String protocol = url.getProtocol();
+            if ("https".equalsIgnoreCase(protocol)) return true;
+            if (!"http".equalsIgnoreCase(protocol)) return false;
+
+            String host = url.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase();
+
+            return "localhost".equals(host)
+                || host.endsWith(".local")
+                || isPrivateIpv4(host);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isPrivateIpv4(String host) {
+        String[] parts = host.split("\\.");
+        if (parts.length != 4) return false;
+
+        int[] octets = new int[4];
+        for (int i = 0; i < parts.length; i++) {
+            try {
+                octets[i] = Integer.parseInt(parts[i]);
+            } catch (NumberFormatException e) {
+                return false;
+            }
+            if (octets[i] < 0 || octets[i] > 255) return false;
+        }
+
+        return octets[0] == 10
+            || (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31)
+            || (octets[0] == 192 && octets[1] == 168)
+            || (octets[0] == 169 && octets[1] == 254)
+            || octets[0] == 127;
+    }
+
     private void submitNativeLogin(final String controllerUrl, final String password, final boolean stayLoggedIn) {
         final String normalizedUrl = normalizeUrl(controllerUrl);
+        if (!isAllowedControllerUrl(normalizedUrl)) {
+            showLoginFailed("Use HTTPS or a local JetKVM address.");
+            return;
+        }
+
         prefs.edit().putString(KEY_URL, normalizedUrl).apply();
         setBusy(true);
         statusText.setText("Logging in...");
