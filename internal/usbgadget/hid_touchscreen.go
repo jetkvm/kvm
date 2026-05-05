@@ -85,23 +85,38 @@ var touchscreenReportDesc = []byte{
 }
 
 func (u *UsbGadget) touchscreenWriteHidFile(data []byte) error {
+	hidPath := u.touchscreenHidDevicePath()
 	if u.touchscreenHidFile == nil {
 		var err error
-		u.touchscreenHidFile, err = os.OpenFile("/dev/hidg3", os.O_RDWR, 0666)
+		u.touchscreenHidFile, err = os.OpenFile(hidPath, os.O_RDWR, 0666)
 		if err != nil {
-			return fmt.Errorf("failed to open hidg3: %w", err)
+			return fmt.Errorf("failed to open %s: %w", hidPath, err)
 		}
 	}
 
 	_, err := u.writeWithTimeout(u.touchscreenHidFile, data)
 	if err != nil {
-		u.logWithSuppression("touchscreenWriteHidFile", 100, u.log, err, "failed to write to hidg3")
+		u.logWithSuppression("touchscreenWriteHidFile", 100, u.log, err, "failed to write to %s", hidPath)
 		u.touchscreenHidFile.Close()
 		u.touchscreenHidFile = nil
 		return err
 	}
 	u.resetLogSuppressionCounter("touchscreenWriteHidFile")
 	return nil
+}
+
+func (u *UsbGadget) touchscreenHidDevicePath() string {
+	hidIndex := 0
+	if u.enabledDevices.Keyboard {
+		hidIndex++
+	}
+	if u.enabledDevices.AbsoluteMouse {
+		hidIndex++
+	}
+	if u.enabledDevices.RelativeMouse {
+		hidIndex++
+	}
+	return fmt.Sprintf("/dev/hidg%d", hidIndex)
 }
 
 func (u *UsbGadget) TouchscreenReport(x int, y int, touching bool) error {

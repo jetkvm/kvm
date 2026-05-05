@@ -58,7 +58,7 @@ const usbPresets = [
       keyboard: true,
       absolute_mouse: false,
       relative_mouse: false,
-      touchscreen: true,
+      touchscreen: false,
       mass_storage: false,
       serial_console: false,
     },
