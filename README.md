@@ -13,9 +13,9 @@
 
 > [!NOTE]
 > This fork contains in-progress Android support work for
-> [PR #1441](https://github.com/jetkvm/kvm/pull/1441): Android touchscreen HID
-> target support, Android/mobile compact controller UI, and a native Android
-> controller APK.
+> [PR #1441](https://github.com/jetkvm/kvm/pull/1441): USB HID touchscreen
+> target support for Android devices, Android/mobile compact controller UI, and
+> a native Android controller APK.
 >
 > Android controller APK release:
 > [JetKVM Android Support 1.4](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.4)
@@ -24,7 +24,7 @@
 
 This fork is an Android-focused JetKVM experiment and upstream PR. It keeps the
 normal JetKVM device, web UI, and firmware structure, but adds support for two
-Android-specific workflows:
+separate Android workflows:
 
 - **Android as a target device**: control a stock Android phone through JetKVM
   using USB HID touchscreen input instead of absolute mouse input.
@@ -32,11 +32,13 @@ Android-specific workflows:
   controller for the JetKVM web UI through a compact mobile UI or native wrapper
   APK.
 
-The target use case is a stock Android phone connected to JetKVM as the remote
-device. Video still comes from the JetKVM capture path. Input is sent through a
-USB HID digitizer so Android sees direct touch events, not mouse events. This
-avoids Android cursor behavior and makes taps, drags, and scroll behavior match
-what Android apps expect from a real touchscreen.
+The target-device use case is a stock Android phone connected to JetKVM as the
+remote device. Video still comes from the JetKVM capture path. Input is sent
+through a USB HID digitizer so Android sees direct touch events, not mouse
+events. This avoids Android cursor behavior and makes taps and drags match what
+Android apps expect from a real touchscreen. Wheel input remains HID wheel input
+so Android scrolls scrollable content instead of treating the wheel as synthetic
+swipe gestures.
 
 ### Android Target Support
 
@@ -66,9 +68,10 @@ layout.
 
 ### Native Android Controller APK
 
-The `jetkvm-android/` directory contains a small native Android wrapper. It
-opens a native login screen first so Android password managers can autofill the
-JetKVM password reliably, then loads the JetKVM web UI in a fullscreen WebView.
+The `jetkvm-android/` directory contains a small native Android wrapper for the
+controller side. It opens a native login screen first so Android password
+managers can autofill the JetKVM password reliably, then loads the JetKVM web UI
+in a fullscreen WebView.
 
 The wrapper accepts HTTPS URLs and local HTTP JetKVM URLs. Local HTTP is limited
 in the native login flow to localhost, `.local` hostnames, IPv4 private ranges,
