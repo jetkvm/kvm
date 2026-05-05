@@ -102,7 +102,7 @@ test_e2e:
 	cd ui && npx playwright install chromium
 	cd ui && $(call OTA_ENV,$(TEST_VERSION)) \
 		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
-		npx playwright test --project=ui --project=remote-agent --project=keyboard-paste --project=ota-prerelease-unsigned --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
+		npx playwright test --project=ui --project=remote-agent --project=keyboard-paste --project=keyboard-macros --project=ota-prerelease-unsigned --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
 
 # Production release validation lane
 test_production_release:
@@ -281,7 +281,7 @@ dev_release: git_check_dev check_r2
 	cd ui && npx playwright install --with-deps chromium
 	cd ui && $(call OTA_ENV,$(VERSION_DEV)) \
 		JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST) \
-		npx playwright test --project=ui --project=remote-agent --project=keyboard-paste --project=ota-prerelease-unsigned --project=ota-prerelease-rejected --project=ota-specific-version --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
+		npx playwright test --project=ui --project=remote-agent --project=keyboard-paste --project=keyboard-macros --project=ota-prerelease-unsigned --project=ota-prerelease-rejected --project=ota-specific-version --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
 
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
