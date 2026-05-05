@@ -12,13 +12,13 @@
 </div>
 
 > [!NOTE]
-> This fork contains in-progress Android controller work for
+> This fork contains in-progress Android support work for
 > [PR #1441](https://github.com/jetkvm/kvm/pull/1441): Android touchscreen HID
 > target support, Android/mobile compact controller UI, and a native Android
-> controller wrapper.
+> controller APK.
 >
-> Android APK release:
-> [JetKVM Android Controller 1.3](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.3)
+> Android controller APK release:
+> [JetKVM Android Support 1.3](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.3)
 
 JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse) solution designed for efficient remote management of computers, servers, and workstations. Whether you're dealing with boot failures, installing a new operating system, adjusting BIOS settings, or simply taking control of a machine from afar, JetKVM provides the tools to get it done effectively.
 
