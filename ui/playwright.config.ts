@@ -29,7 +29,7 @@ export default defineConfig({
     {
       name: "remote-agent",
       testDir: "./e2e/remote-agent",
-      testMatch: "ra-all.spec.ts",
+      testMatch: /.*\.spec\.ts/,
     },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
     {

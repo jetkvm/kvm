@@ -9,12 +9,15 @@
  */
 
 import { KeyboardLedState, KeysDownState } from "@/hooks/stores";
+import { KeyboardMacroStep } from "@/hooks/hidRpc";
 
 /** Internal handlers set by React components (prefixed with _ to indicate internal use) */
 interface TestHooksInternal {
   _handleKeyPress?: (key: number, press: boolean) => void;
   _pauseKeepAlive?: (ms: number) => void;
   _handleAbsMouseMove?: (x: number, y: number, buttons: number) => void;
+  _executeHidMacro?: (steps: KeyboardMacroStep[]) => Promise<void>;
+  _cancelExecuteMacro?: () => Promise<void>;
   _getKeyboardLedState?: () => KeyboardLedState;
   _getKeysDownState?: () => KeysDownState;
   _getPeerConnectionState?: () => RTCPeerConnectionState | null;
@@ -36,6 +39,13 @@ export interface KvmTestHooks extends TestHooksInternal {
    */
   pauseKeepAlive: (ms: number) => void;
   sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
+  /**
+   * Test-only: send a pre-built scancode-based macro through the same path
+   * the PasteModal uses (executeHidMacro → hidrpc → device → host).
+   */
+  executeHidMacro: (steps: KeyboardMacroStep[]) => Promise<void>;
+  /** Test-only: cancel an in-flight macro/paste. */
+  cancelExecuteMacro: () => Promise<void>;
   sendJsonRpc: (
     method: string,
     params: Record<string, unknown>,
@@ -115,6 +125,22 @@ export function initTestHooks(): void {
         hooks._handleAbsMouseMove(x, y, buttons);
       } else {
         console.warn("[E2E] sendAbsMouseMove called but no handler registered");
+      }
+    },
+
+    executeHidMacro: async (steps: KeyboardMacroStep[]) => {
+      if (hooks._executeHidMacro) {
+        await hooks._executeHidMacro(steps);
+      } else {
+        console.warn("[E2E] executeHidMacro called but no handler registered");
+      }
+    },
+
+    cancelExecuteMacro: async () => {
+      if (hooks._cancelExecuteMacro) {
+        await hooks._cancelExecuteMacro();
+      } else {
+        console.warn("[E2E] cancelExecuteMacro called but no handler registered");
       }
     },
 
@@ -336,6 +362,8 @@ export function registerTestHandlers(handlers: {
   handleKeyPress: (key: number, press: boolean) => void;
   pauseKeepAlive: (ms: number) => void;
   handleAbsMouseMove: (x: number, y: number, buttons: number) => void;
+  executeHidMacro: (steps: KeyboardMacroStep[]) => Promise<void>;
+  cancelExecuteMacro: () => Promise<void>;
   getKeyboardLedState: () => KeyboardLedState;
   getKeysDownState: () => KeysDownState;
   getPeerConnectionState: () => RTCPeerConnectionState | null;
@@ -352,6 +380,8 @@ export function registerTestHandlers(handlers: {
   window.__kvmTestHooks._handleKeyPress = handlers.handleKeyPress;
   window.__kvmTestHooks._pauseKeepAlive = handlers.pauseKeepAlive;
   window.__kvmTestHooks._handleAbsMouseMove = handlers.handleAbsMouseMove;
+  window.__kvmTestHooks._executeHidMacro = handlers.executeHidMacro;
+  window.__kvmTestHooks._cancelExecuteMacro = handlers.cancelExecuteMacro;
   window.__kvmTestHooks._getKeyboardLedState = handlers.getKeyboardLedState;
   window.__kvmTestHooks._getKeysDownState = handlers.getKeysDownState;
   window.__kvmTestHooks._getPeerConnectionState = handlers.getPeerConnectionState;
@@ -373,6 +403,8 @@ export function cleanupTestHooks(): void {
   window.__kvmTestHooks._handleKeyPress = undefined;
   window.__kvmTestHooks._pauseKeepAlive = undefined;
   window.__kvmTestHooks._handleAbsMouseMove = undefined;
+  window.__kvmTestHooks._executeHidMacro = undefined;
+  window.__kvmTestHooks._cancelExecuteMacro = undefined;
   window.__kvmTestHooks._getKeyboardLedState = undefined;
   window.__kvmTestHooks._getKeysDownState = undefined;
   window.__kvmTestHooks._getPeerConnectionState = undefined;
