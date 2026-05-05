@@ -104,9 +104,12 @@ test.describe.configure({ mode: "serial" });
 let sharedPage: Page;
 
 test.beforeAll(async ({ browser }) => {
+  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
   test.setTimeout(60_000);
-  sharedPage = await browser.newPage();
+
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
+
+  sharedPage = await browser.newPage();
   await goToSession(sharedPage);
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
 });

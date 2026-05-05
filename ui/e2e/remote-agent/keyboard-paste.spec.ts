@@ -15,13 +15,7 @@
  *     npx playwright test keyboard-paste --project=remote-agent
  */
 import { test, expect, type Page } from "@playwright/test";
-import {
-  callJsonRpc,
-  getDeviceHost,
-  goToSession,
-  restartAppViaSSH,
-  sshExec,
-} from "../helpers";
+import { callJsonRpc, getDeviceHost, goToSession, restartAppViaSSH, sshExec } from "../helpers";
 import {
   createRemoteAgent,
   KEY,
@@ -97,10 +91,7 @@ async function pasteText(page: Page, layoutId: string, text: string): Promise<Ma
  * key codes in order (other key_press events between them are ignored — paste
  * with shift modifier produces interleaved shift/key press events).
  */
-async function waitForKeyPresses(
-  expected: number[],
-  timeoutMs = 5000,
-): Promise<RAKeyboardEvent[]> {
+async function waitForKeyPresses(expected: number[], timeoutMs = 5000): Promise<RAKeyboardEvent[]> {
   const deadline = Date.now() + timeoutMs;
   let lastPresses: number[] = [];
   while (Date.now() < deadline) {
@@ -171,9 +162,12 @@ test.describe.configure({ mode: "serial" });
 let sharedPage: Page;
 
 test.beforeAll(async ({ browser }) => {
+  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
   test.setTimeout(60_000);
-  sharedPage = await browser.newPage();
+
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
+
+  sharedPage = await browser.newPage();
   await goToSession(sharedPage);
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30000);
 });
