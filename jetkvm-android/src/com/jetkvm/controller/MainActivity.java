@@ -101,22 +101,7 @@ public class MainActivity extends Activity {
         webView.setHapticFeedbackEnabled(true);
 
         enterImmersiveMode();
-        if (prefs.getBoolean(KEY_STAY_LOGGED_IN, false)) {
-            showController();
-        } else {
-            CookieManager.getInstance().removeAllCookies(new ValueCallback<Boolean>() {
-                @Override
-                public void onReceiveValue(Boolean value) {
-                    CookieManager.getInstance().flush();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            showLoginPanel("");
-                        }
-                    });
-                }
-            });
-        }
+        showLoginPanel("");
     }
 
     @Override
