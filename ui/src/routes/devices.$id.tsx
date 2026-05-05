@@ -126,9 +126,7 @@ function stripH265FromVideoTransceivers(pc: RTCPeerConnection) {
       if (t.receiver.track?.kind !== "video") continue;
       t.setCodecPreferences(filtered);
     }
-    console.debug(
-      "[setupPeerConnection] Linux: stripped H.265 from video codec preferences",
-    );
+    console.debug("[setupPeerConnection] Linux: stripped H.265 from video codec preferences");
   } catch (e) {
     console.warn("[setupPeerConnection] setCodecPreferences failed", e);
   }
@@ -475,7 +473,7 @@ export default function KvmIdRoute() {
       console.debug("[setupPeerConnection] Peer connection created", pc);
       setLoadingMessage(m.setting_up_connection_to_device());
     } catch (e) {
-      console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
+      console.error(`[setupPeerConnection] Error creating peer connection: ${String(e)}`);
       setTimeout(() => {
         cleanupAndStopReconnecting();
       }, 1000);
@@ -507,7 +505,10 @@ export default function KvmIdRoute() {
           console.log("Legacy signaling. Waiting for ICE Gathering to complete...");
         }
       } catch (e) {
-        console.error(`[setupPeerConnection] Error creating offer: ${e}`, new Date().toISOString());
+        console.error(
+          `[setupPeerConnection] Error creating offer: ${String(e)}`,
+          new Date().toISOString(),
+        );
         cleanupAndStopReconnecting();
       } finally {
         makingOffer.current = false;
@@ -548,7 +549,7 @@ export default function KvmIdRoute() {
       setRpcDataChannel(null);
     };
     rpcDataChannel.onerror = (ev: Event) =>
-      console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev}`);
+      console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev.type}`);
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
     };
@@ -557,7 +558,7 @@ export default function KvmIdRoute() {
     rpcHidChannel.binaryType = "arraybuffer";
     rpcHidChannel.onclose = () => console.log("rpcHidChannel has closed");
     rpcHidChannel.onerror = (ev: Event) =>
-      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${ev}`);
+      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${ev.type}`);
     rpcHidChannel.onopen = () => {
       setRpcHidChannel(rpcHidChannel);
     };
@@ -570,7 +571,9 @@ export default function KvmIdRoute() {
     rpcHidUnreliableChannel.binaryType = "arraybuffer";
     rpcHidUnreliableChannel.onclose = () => console.log("rpcHidUnreliableChannel has closed");
     rpcHidUnreliableChannel.onerror = (ev: Event) =>
-      console.error(`Error on rpcHidUnreliableChannel '${rpcHidUnreliableChannel.label}': ${ev}`);
+      console.error(
+        `Error on rpcHidUnreliableChannel '${rpcHidUnreliableChannel.label}': ${ev.type}`,
+      );
     rpcHidUnreliableChannel.onopen = () => {
       setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
     };
@@ -584,7 +587,7 @@ export default function KvmIdRoute() {
       console.log("rpcHidUnreliableNonOrderedChannel has closed");
     rpcHidUnreliableNonOrderedChannel.onerror = (ev: Event) =>
       console.error(
-        `Error on rpcHidUnreliableNonOrderedChannel '${rpcHidUnreliableNonOrderedChannel.label}': ${ev}`,
+        `Error on rpcHidUnreliableNonOrderedChannel '${rpcHidUnreliableNonOrderedChannel.label}': ${ev.type}`,
       );
     rpcHidUnreliableNonOrderedChannel.onopen = () => {
       setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
@@ -594,7 +597,7 @@ export default function KvmIdRoute() {
     const terminalDataChannel = pc.createDataChannel("terminal");
     terminalDataChannel.onclose = () => console.log("terminalDataChannel has closed");
     terminalDataChannel.onerror = (ev: Event) =>
-      console.error(`Error on terminalDataChannel '${terminalDataChannel.label}': ${ev}`);
+      console.error(`Error on terminalDataChannel '${terminalDataChannel.label}': ${ev.type}`);
     terminalDataChannel.onopen = () => {
       setTerminalChannel(terminalDataChannel);
     };
