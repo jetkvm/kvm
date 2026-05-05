@@ -12,15 +12,26 @@
  * Run with:
  *   JETKVM_URL=http://<kvm-ip> npx playwright test keyboard-layouts --project=ui
  */
+import { readFileSync } from "fs";
+import { resolve } from "path";
+import { fileURLToPath } from "url";
 import { test, expect, type Page } from "@playwright/test";
-import { callJsonRpc, ensureLocalAuthMode, getDeviceHost, goToSession, sshExec } from "./helpers";
+import { callJsonRpc, ensureLocalAuthMode, goToSession, sshExec } from "./helpers";
 
 const TEST_LAYOUT_ID = "e2e-test-layout";
 
-// Minimal KLE: a single A key. Enough to exercise parse + store.
-// (The schema requires only an array of rows, each an array of mixed metadata
-// objects and string legends.)
-const MINIMAL_KLE_JSON = JSON.stringify([[{ name: "E2E Test Layout" }], ["a"]]);
+// Use a known-good KLE fixture that already passes the Go parser's
+// validation (≥10 keys, position-based scancode inference covers ≥~75%).
+// internal/keyboard/testdata/ansi_60.kle.json is what the Go unit tests
+// (TestANSI60Parse, etc.) use; reading it at runtime keeps the test
+// fixture and the parser tests in lock-step automatically.
+const ANSI_60_KLE = readFileSync(
+  resolve(
+    fileURLToPath(new URL(".", import.meta.url)),
+    "../../internal/keyboard/testdata/ansi_60.kle.json",
+  ),
+  "utf8",
+);
 
 interface LayoutMeta {
   id: string;
@@ -35,22 +46,37 @@ interface UploadResponse {
   warnings?: string[];
 }
 
-async function uploadTestLayout(name?: string, replaceId?: string): Promise<UploadResponse> {
-  const host = getDeviceHost();
-  const params = new URLSearchParams();
-  if (name) params.set("name", name);
-  if (replaceId) params.set("id", replaceId);
-  const qs = params.toString();
-  const url = `http://${host}/keyboard/upload${qs ? "?" + qs : ""}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: MINIMAL_KLE_JSON,
-  });
-  if (!res.ok) {
-    throw new Error(`upload failed: ${res.status} ${await res.text()}`);
-  }
-  return (await res.json()) as UploadResponse;
+async function uploadTestLayout(
+  page: Page,
+  name?: string,
+  replaceId?: string,
+): Promise<UploadResponse> {
+  // Upload via the page so the auth cookie set by goToSession travels with the
+  // request — POST /keyboard/upload is gated behind the same session as the UI.
+  return page.evaluate(
+    async ({ body, name: n, replaceId: r }) => {
+      const params = new URLSearchParams();
+      if (n) params.set("name", n);
+      if (r) params.set("id", r);
+      const qs = params.toString();
+      const url = `/keyboard/upload${qs ? "?" + qs : ""}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (!res.ok) {
+        throw new Error(`upload failed: ${res.status} ${await res.text()}`);
+      }
+      return (await res.json()) as {
+        id: string;
+        name: string;
+        keyCount: number;
+        warnings?: string[];
+      };
+    },
+    { body: ANSI_60_KLE, name, replaceId },
+  );
 }
 
 async function getLayouts(page: Page): Promise<LayoutMeta[]> {
@@ -121,7 +147,7 @@ test.describe("layouts: custom KLE upload + delete", () => {
   test("upload installs the layout, getKeyboardLayouts lists it, delete removes it", async () => {
     // Upload — Go assigns an ID derived from the name when no id query is set.
     // To get a known ID we replace into TEST_LAYOUT_ID.
-    const result = await uploadTestLayout("E2E Test Layout", TEST_LAYOUT_ID);
+    const result = await uploadTestLayout(sharedPage, "E2E Test Layout", TEST_LAYOUT_ID);
     expect(result.id).toBe(TEST_LAYOUT_ID);
     expect(result.keyCount).toBeGreaterThan(0);
 
@@ -151,7 +177,7 @@ test.describe("layouts: custom KLE upload + delete", () => {
 
 test.describe("layouts: settings UI", () => {
   test("uploaded layout renders with delete and preview buttons", async () => {
-    await uploadTestLayout("E2E Test Layout", TEST_LAYOUT_ID);
+    await uploadTestLayout(sharedPage, "E2E Test Layout", TEST_LAYOUT_ID);
 
     await sharedPage.goto("/settings/keyboard");
     await sharedPage.waitForLoadState("networkidle");
