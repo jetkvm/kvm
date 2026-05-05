@@ -705,32 +705,32 @@ func addChar(m map[string]HIDCombo, legend *string, scancode, mods uint8) {
 	if !ScancodeProducesText(scancode) {
 		return
 	}
-	if utf8.RuneCountInString(*legend) != 1 {
+
+	// Space's legend is normalized to "Space" by normalizeControlLegendsForDisplay
+	// for the UI, and user-uploaded layouts may use "␠", " ", or "Space". The
+	// pasted character that should map to this scancode is always U+0020.
+	char := *legend
+	if scancode == hidSpace {
+		char = " "
+	}
+
+	if utf8.RuneCountInString(char) != 1 {
 		// Only single Unicode codepoints; skip named keys like "Enter"
 		return
 	}
-	r, _ := utf8.DecodeRuneInString(*legend)
+	r, _ := utf8.DecodeRuneInString(char)
 	if r < 0x20 {
 		// skip control characters
 		return
 	}
-	if _, exists := m[*legend]; !exists {
-		m[*legend] = HIDCombo{Scancode: scancode, Modifiers: mods}
+	if _, exists := m[char]; !exists {
+		m[char] = HIDCombo{Scancode: scancode, Modifiers: mods}
 	}
 }
 
-var controlLegendDisplayMap = map[string]string{
-	"␛": "Esc",
-	"␍": "⏎",
-	"␊": "⏎",
-	"␈": "⌫",
-	"␉": "⭾",
-	"␠": "Space",
-	"␡": "Del",
-}
-
-// normalizeControlLegendsForDisplay converts control-character glyph legends
-// commonly found in kbdlayout.info exports into friendly UI labels.
+// normalizeControlLegendsForDisplay rewrites alternate forms of special-key
+// legends to their canonical display form, using the taxonomy in
+// keyaliases.json. For example, "Backspace" / "⟵" / "␈" / "BS" all become "⌫".
 //
 // This is intentionally limited to non-text keys plus Space so printable
 // legends and typing behavior remain unchanged.
@@ -739,10 +739,12 @@ func normalizeControlLegendsForDisplay(keys []TransportKey) {
 		if *legend == nil {
 			return
 		}
-		if pretty, ok := controlLegendDisplayMap[**legend]; ok {
-			v := pretty
-			*legend = &v
+		canonical, ok := controlLegendDisplayMap[**legend]
+		if !ok || canonical == **legend {
+			return
 		}
+		v := canonical
+		*legend = &v
 	}
 
 	for i := range keys {

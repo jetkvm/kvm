@@ -64,6 +64,9 @@ export default defineConfig(({ mode, command }) => {
     server: {
       host: "0.0.0.0",
       https: useSSL,
+      // Keycap.tsx imports the shared key-alias taxonomy at
+      // ../../internal/keyboard/keyaliases.json (single source of truth with Go).
+      fs: { allow: [".", ".."] },
       proxy: JETKVM_PROXY_URL
         ? {
             "/me": JETKVM_PROXY_URL,

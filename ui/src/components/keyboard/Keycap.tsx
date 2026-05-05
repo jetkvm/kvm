@@ -13,6 +13,13 @@ import { TransportKey, KeyLegends } from "./types/schema";
 import { isControlScancode } from "../../keyboardMappings";
 import { m } from "@localizations/messages.js";
 
+// Shared key-alias taxonomy with the Go backend (which embeds the same file
+// at internal/keyboard/keyaliases.json). Each (canonical + alias) string is
+// mapped to m.keys_<ariaKey>() via ARIA_KEY_TO_FN below — adding a new alias
+// means editing only the JSON; adding a new logical key means editing both
+// the JSON and ARIA_KEY_TO_FN.
+import keyAliases from "../../../../internal/keyboard/keyaliases.json";
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -117,169 +124,56 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
   );
 });
 
-/**
- * Maps legend strings (symbols and abbreviations) to localized accessible names.
- * Covers the unicode symbols we use for special keys plus common abbreviations
- * from KLE files that screen readers would not pronounce correctly.
- */
-const KEY_ARIA_NAMES: Record<string, () => string> = {
-  "⇮": () => m.keys_alt(), // up-down arrow U21EE
-  "⌥": () => m.keys_alt(), // alternative key symbol U2387
-  "⌥ Alt": () => m.keys_alt(),
-  Alt: () => m.keys_alt(),
-  LAlt: () => m.keys_alt(),
-  RAlt: () => m.keys_alt(),
-  AltGr: () => m.keys_altgr(),
-
-  App: () => m.keys_application(),
-  Application: () => m.keys_application(),
-
-  "↓": () => m.keys_arrow_down(), // downwards arrow U2193
-  "▼": () => m.keys_arrow_down(), // black down-pointing triangle U25B7
-  Down: () => m.keys_arrow_down(),
-  ArrowDown: () => m.keys_arrow_down(),
-  "Arrow Down": () => m.keys_arrow_down(),
-
-  "←": () => m.keys_arrow_left(), // leftwards arrow U2190
-  "◀": () => m.keys_arrow_left(), // black left-pointing triangle U25C0
-  Left: () => m.keys_arrow_left(),
-  ArrowLeft: () => m.keys_arrow_left(),
-  "Arrow Left": () => m.keys_arrow_left(),
-
-  "→": () => m.keys_arrow_right(), // rightwards arrow U2192
-  "▶": () => m.keys_arrow_right(), // black right-pointing triangle U25B6
-  Right: () => m.keys_arrow_right(),
-  ArrowRight: () => m.keys_arrow_right(),
-  "Arrow Right": () => m.keys_arrow_right(),
-
-  "↑": () => m.keys_arrow_up(), // upwards arrow U2191
-  "▲": () => m.keys_arrow_up(), // black up-pointing triangle U25B2
-  Up: () => m.keys_arrow_up(),
-  ArrowUp: () => m.keys_arrow_up(),
-  "Arrow Up": () => m.keys_arrow_up(),
-
-  "⌫": () => m.keys_backspace(), // erase to the left symbol U27F5
-  "⟵": () => m.keys_backspace(), // long leftwards arrow U27F5 sometimes used on Apple layouts
-  "␈": () => m.keys_backspace(),
-  BS: () => m.keys_backspace(),
-  Backspace: () => m.keys_backspace(),
-
-  "⇪": () => m.keys_caps_lock(), // upward arrow with horizontal bar U21EA
-  "🄰": () => m.keys_caps_lock(), // squared latin capital A
-  "🅰": () => m.keys_caps_lock(), // negative squared latin capital A
-  "⇬": () => m.keys_caps_lock(), // up arrow with double horizontal bar U21AC sometimes used on Candian layouts
-  Caps: () => m.keys_caps_lock(),
-  CapsLock: () => m.keys_caps_lock(),
-  "Caps Lock": () => m.keys_caps_lock(),
-
-  "⌘": () => m.keys_command(), // place of interest symbol U2318 sometimes used on Mac layouts
-  "⌘ Meta": () => m.keys_command(),
-  Command: () => m.keys_command(),
-
-  "⌃": () => m.keys_control(), // upward arrowhead symbol U2303 sometimes used for Ctrl
-  "⌃ Ctrl": () => m.keys_control(),
-  "✲": () => m.keys_control(), // open-center-asterisk symbol
-  "⎈": () => m.keys_control(), // helm symbol sometimes used on Mac layouts
-  LCtrl: () => m.keys_control(),
-  RCtrl: () => m.keys_control(),
-  Ctrl: () => m.keys_control(),
-  Control: () => m.keys_control(),
-
-  "⌦": () => m.keys_delete(),
-  Del: () => m.keys_delete(),
-  Delete: () => m.keys_delete(),
-
-  "⤓": () => m.keys_end(), // downwards arrow to bar U2913
-  "⇥": () => m.keys_end(), // rightwards arrow to bar U21E5
-  End: () => m.keys_end(),
-
-  "↵": () => m.keys_enter(), // downwards arrow U21B5
-  "⏎": () => m.keys_enter(), // return symbol U23CE
-  "↩": () => m.keys_enter(), // downwards arrow with corner leftwards U21A9
-  "⮠.": () => m.keys_enter(), // downwards triangle-headed arrow with long tip leftwards U2B20 sometimes used on Japanese layouts
-  "⌤": () => m.keys_enter(), // up arrowhead between two horizontal bars U2324 sometimes used for number keypad Enter on Apple layouts
-  "⎆": () => m.keys_enter(), // enter symbol U2386
-  "␍": () => m.keys_enter(),
-  CR: () => m.keys_enter(),
-  Enter: () => m.keys_enter(),
-
-  "⎋": () => m.keys_escape(), // broken circle with northwest arrow U238B sometimes used on Apple layouts
-  "␛": () => m.keys_escape(),
-  Esc: () => m.keys_escape(),
-  Escape: () => m.keys_escape(),
-
-  "⤒": () => m.keys_home(), // upwards arrow to bar U2912
-  "⇤": () => m.keys_home(), // leftwards arrow to bar U21E4
-  Home: () => m.keys_home(),
-
-  "⎀": () => m.keys_insert(), // insert symbol U2380
-  Ins: () => m.keys_insert(),
-  Insert: () => m.keys_insert(),
-
-  "☰": () => m.keys_menu(), // trigram for heaven symbol U2630
-  "☰ Menu": () => m.keys_menu(),
-  "▤": () => m.keys_menu(), // square with horizontal fill symbol U25A4
-  "▤ Menu": () => m.keys_menu(),
-  Menu: () => m.keys_menu(),
-
-  "❖": () => m.keys_meta(), // black diamond minus white X symbol
-  "◆": () => m.keys_meta(), // black diamond symbol U25C6
-  "⊞": () => m.keys_meta(), // squared plus symbol U229E
-  LWin: () => m.keys_meta(),
-  RWin: () => m.keys_meta(),
-  Win: () => m.keys_meta(),
-  Super: () => m.keys_meta(),
-  Meta: () => m.keys_meta(),
-  Windows: () => m.keys_meta(),
-
-  "⇭": () => m.keys_num_lock(), // upwards white arrow on pedestal with vertical bar U21ED
-  NumLk: () => m.keys_num_lock(),
-  "Num Lock": () => m.keys_num_lock(),
-
-  Option: () => m.keys_option(), // common Mac label for Alt
-
-  "⇟": () => m.keys_page_down(), // downwards arrow with double stroke U21DF
-  PgDn: () => m.keys_page_down(),
-  PageDown: () => m.keys_page_down(),
-  "Page Down": () => m.keys_page_down(),
-
-  "⇞": () => m.keys_page_up(), // upwards arrow with double stroke U21DE
-  PgUp: () => m.keys_page_up(),
-  PageUp: () => m.keys_page_up(),
-  "Page Up": () => m.keys_page_up(),
-
-  Pause: () => m.keys_pause(),
-
-  "⎙": () => m.keys_print_screen(), // print screen symbol U2399
-  PrtSc: () => m.keys_print_screen(),
-  PrintScreen: () => m.keys_print_screen(),
-  "Print Screen": () => m.keys_print_screen(),
-
-  "⇳": () => m.keys_scroll_lock(), // up down white arrow U21F3
-  ScrLk: () => m.keys_scroll_lock(),
-  ScrollLock: () => m.keys_scroll_lock(),
-  "Scroll Lock": () => m.keys_scroll_lock(),
-
-  "⇧": () => m.keys_shift(), // upwards white arrow U21E7
-  "⇧ Shift": () => m.keys_shift(),
-  "Shift ⇧": () => m.keys_shift(),
-  Shift: () => m.keys_shift(),
-  LShift: () => m.keys_shift(),
-  RShift: () => m.keys_shift(),
-
-  " ": () => m.keys_space(),
-  "␣": () => m.keys_space(),
-  "␠": () => m.keys_space(),
-  SP: () => m.keys_space(),
-  Space: () => m.keys_space(),
-
-  "⭾": () => m.keys_tab(), // horizontal tab key U2B7E
-  "↹": () => m.keys_tab(), // leftwards arrow to bar over rightwards arrow to bar U21B9
-  "⇄": () => m.keys_tab(), // rightwards arrow over leftwards arrow U21E4
-  "␉": () => m.keys_tab(),
-  HT: () => m.keys_tab(),
-  Tab: () => m.keys_tab(),
+// One entry per logical key. Compile-time validation that every ariaKey used
+// in keyaliases.json corresponds to a real localization message.
+const ARIA_KEY_TO_FN: Record<string, () => string> = {
+  alt: m.keys_alt,
+  altgr: m.keys_altgr,
+  application: m.keys_application,
+  arrow_down: m.keys_arrow_down,
+  arrow_left: m.keys_arrow_left,
+  arrow_right: m.keys_arrow_right,
+  arrow_up: m.keys_arrow_up,
+  backspace: m.keys_backspace,
+  caps_lock: m.keys_caps_lock,
+  command: m.keys_command,
+  control: m.keys_control,
+  delete: m.keys_delete,
+  end: m.keys_end,
+  enter: m.keys_enter,
+  escape: m.keys_escape,
+  home: m.keys_home,
+  insert: m.keys_insert,
+  menu: m.keys_menu,
+  meta: m.keys_meta,
+  num_lock: m.keys_num_lock,
+  option: m.keys_option,
+  page_down: m.keys_page_down,
+  page_up: m.keys_page_up,
+  pause: m.keys_pause,
+  print_screen: m.keys_print_screen,
+  scroll_lock: m.keys_scroll_lock,
+  shift: m.keys_shift,
+  space: m.keys_space,
+  tab: m.keys_tab,
 };
+
+const KEY_ARIA_NAMES: Record<string, () => string> = (() => {
+  const map: Record<string, () => string> = {};
+  for (const sk of keyAliases.specialKeys) {
+    const fn = ARIA_KEY_TO_FN[sk.ariaKey];
+    if (!fn) {
+      throw new Error(
+        `keyAliases.json: ariaKey "${sk.ariaKey}" has no localization in ARIA_KEY_TO_FN`,
+      );
+    }
+    map[sk.canonical] = fn;
+    for (const alias of sk.aliases) {
+      map[alias] = fn;
+    }
+  }
+  return map;
+})();
 
 function resolveKeyName(legend: string): string {
   const lookup = KEY_ARIA_NAMES[legend];

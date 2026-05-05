@@ -1,0 +1,151 @@
+{
+  "_comment": "Canonical taxonomy of special-key legends. Source of truth for both Go (controlLegendDisplayMap, for keycap display normalization) and TypeScript (KEY_ARIA_NAMES, for screen-reader aria-labels). The TS file ui/src/components/keyboard/keyAliases.json is a symlink to this file. Each entry: ariaKey is the i18n message suffix (m.keys_<ariaKey>); canonical is the preferred display form; aliases is every other form a KLE source might use. Aliases must be unique across all entries.",
+  "specialKeys": [
+    {
+      "ariaKey": "alt",
+      "canonical": "Alt",
+      "aliases": ["⌥", "⇮", "⌥ Alt", "LAlt", "RAlt"]
+    },
+    {
+      "ariaKey": "altgr",
+      "canonical": "AltGr",
+      "aliases": []
+    },
+    {
+      "ariaKey": "application",
+      "canonical": "App",
+      "aliases": ["Application"]
+    },
+    {
+      "ariaKey": "arrow_down",
+      "canonical": "↓",
+      "aliases": ["▼", "Down", "ArrowDown", "Arrow Down"]
+    },
+    {
+      "ariaKey": "arrow_left",
+      "canonical": "←",
+      "aliases": ["◀", "Left", "ArrowLeft", "Arrow Left"]
+    },
+    {
+      "ariaKey": "arrow_right",
+      "canonical": "→",
+      "aliases": ["▶", "Right", "ArrowRight", "Arrow Right"]
+    },
+    {
+      "ariaKey": "arrow_up",
+      "canonical": "↑",
+      "aliases": ["▲", "Up", "ArrowUp", "Arrow Up"]
+    },
+    {
+      "ariaKey": "backspace",
+      "canonical": "⌫",
+      "aliases": ["⟵", "␈", "BS", "Backspace"]
+    },
+    {
+      "ariaKey": "caps_lock",
+      "canonical": "Caps Lock",
+      "aliases": ["⇪", "🄰", "🅰", "⇬", "Caps", "CapsLock"]
+    },
+    {
+      "ariaKey": "command",
+      "canonical": "⌘ Meta",
+      "aliases": ["⌘", "Command"]
+    },
+    {
+      "ariaKey": "control",
+      "canonical": "Ctrl",
+      "aliases": ["⌃", "⌃ Ctrl", "✲", "⎈", "LCtrl", "RCtrl", "Control"]
+    },
+    {
+      "ariaKey": "delete",
+      "canonical": "Del",
+      "aliases": ["␡", "⌦", "Delete"]
+    },
+    {
+      "ariaKey": "end",
+      "canonical": "End",
+      "aliases": ["⤓", "⇥"]
+    },
+    {
+      "ariaKey": "enter",
+      "canonical": "⏎",
+      "aliases": ["↵", "↩", "⮠.", "⌤", "⎆", "␍", "␊", "CR", "Enter"]
+    },
+    {
+      "ariaKey": "escape",
+      "canonical": "Esc",
+      "aliases": ["⎋", "␛", "Escape"]
+    },
+    {
+      "ariaKey": "home",
+      "canonical": "Home",
+      "aliases": ["⤒", "⇤"]
+    },
+    {
+      "ariaKey": "insert",
+      "canonical": "Ins",
+      "aliases": ["⎀", "Insert"]
+    },
+    {
+      "ariaKey": "menu",
+      "canonical": "☰ Menu",
+      "aliases": ["☰", "▤", "▤ Menu", "Menu"]
+    },
+    {
+      "ariaKey": "meta",
+      "canonical": "Win",
+      "aliases": ["❖", "◆", "⊞", "LWin", "RWin", "Super", "Meta", "Windows"]
+    },
+    {
+      "ariaKey": "num_lock",
+      "canonical": "Num Lock",
+      "aliases": ["⇭", "Num", "NumLk"]
+    },
+    {
+      "ariaKey": "option",
+      "canonical": "Option",
+      "aliases": []
+    },
+    {
+      "ariaKey": "page_down",
+      "canonical": "PgDn",
+      "aliases": ["⇟", "PageDown", "Page Down"]
+    },
+    {
+      "ariaKey": "page_up",
+      "canonical": "PgUp",
+      "aliases": ["⇞", "PageUp", "Page Up"]
+    },
+    {
+      "ariaKey": "pause",
+      "canonical": "Pause",
+      "aliases": []
+    },
+    {
+      "ariaKey": "print_screen",
+      "canonical": "PrtSc",
+      "aliases": ["⎙", "PrintScreen", "Print Screen"]
+    },
+    {
+      "ariaKey": "scroll_lock",
+      "canonical": "Scroll Lock",
+      "aliases": ["⇳", "ScrLk", "ScrollLock"]
+    },
+    {
+      "ariaKey": "shift",
+      "canonical": "Shift",
+      "aliases": ["⇧", "⇧ Shift", "Shift ⇧", "LShift", "RShift"]
+    },
+    {
+      "ariaKey": "space",
+      "canonical": "Space",
+      "aliases": ["␣", "␠", "SP"]
+    },
+    {
+      "ariaKey": "tab",
+      "canonical": "⭾",
+      "aliases": ["↹", "⇄", "␉", "HT", "Tab"]
+    }
+  ],
+  "passthroughLegendPattern": "^F([1-9]|1[0-9]|2[0-4])$"
+}

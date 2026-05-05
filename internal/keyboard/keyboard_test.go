@@ -969,6 +969,36 @@ func TestCharMapExcludesScancode0(t *testing.T) {
 	}
 }
 
+func TestCharMapMapsSpaceCharRegardlessOfLegend(t *testing.T) {
+	// The Space key's legend is variable across layouts: kbdlayout.info uses "␠",
+	// the built-in layouts use "Space" (5 chars), some sources use literal " ".
+	// In all cases, pasting a literal space (U+0020) must work.
+	cases := []struct {
+		name   string
+		legend string
+	}{
+		{"display label", "Space"},
+		{"control glyph", "␠"},
+		{"literal space", " "},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			keys := []TransportKey{
+				{X: 0, Y: 0, W: 6.25, H: 1, Scancode: hidSpace,
+					Legends: KeyLegends{Normal: str(tc.legend)}},
+			}
+			m := buildCharMap(keys)
+			c, ok := m[" "]
+			if !ok {
+				t.Fatalf("charMap[\" \"] missing for legend %q (entries=%v)", tc.legend, m)
+			}
+			if c.Scancode != hidSpace || c.Modifiers != ModNone {
+				t.Errorf("charMap[\" \"] = %+v, want {Scancode:hidSpace, Modifiers:0}", c)
+			}
+		})
+	}
+}
+
 func TestCharMapSkipsGlyphLegendsForNonTextKeys(t *testing.T) {
 	keys := []TransportKey{
 		{X: 0, Y: 0, W: 1, H: 1, Scancode: hidBackspace,
@@ -1496,5 +1526,106 @@ func TestAllLayoutFilesRegistered(t *testing.T) {
 			}
 			t.Errorf("layout file %s (id %q) has no entry in builtinLayouts", name, hyphenated)
 		})
+	}
+}
+
+// TestSpecialKeysAliasesUniqueAndCanonical asserts the keyaliases.json
+// invariants the init() panics rely on: every alias and canonical maps to
+// exactly one SpecialKey, and the AriaKey/Canonical fields are non-empty.
+// init() already enforces this on parse; this test gives a clean failure
+// message instead of a panic on `go test`.
+func TestSpecialKeysAliasesUniqueAndCanonical(t *testing.T) {
+	seen := map[string]string{} // legend → ariaKey of owning entry
+	for _, sk := range SpecialKeys {
+		if sk.AriaKey == "" {
+			t.Errorf("entry with empty ariaKey: %+v", sk)
+		}
+		if sk.Canonical == "" {
+			t.Errorf("entry %q has empty canonical", sk.AriaKey)
+		}
+		all := append([]string{sk.Canonical}, sk.Aliases...)
+		for _, leg := range all {
+			if owner, dup := seen[leg]; dup {
+				t.Errorf("legend %q claimed by both %q and %q", leg, owner, sk.AriaKey)
+			}
+			seen[leg] = sk.AriaKey
+		}
+	}
+}
+
+// TestBuiltinLayoutLegendsAreKnown is the drift guard. For every built-in
+// layout, every legend on a non-text-producing key (and on Space) must be
+// either:
+//   - a single printable rune (these don't need normalization), or
+//   - a known canonical / alias from keyaliases.json, or
+//   - matched by PassthroughLegendPattern (F-keys).
+//
+// A failure means a layout introduced a new alias the taxonomy doesn't know
+// about. Either add the alias to keyaliases.json (preferred) or change the
+// layout file to use a recognized form.
+func TestBuiltinLayoutLegendsAreKnown(t *testing.T) {
+	entries, err := layoutFS.ReadDir("layouts")
+	if err != nil {
+		t.Fatalf("read layouts dir: %v", err)
+	}
+
+	type unknownLegend struct {
+		layout, legend string
+	}
+	var unknown []unknownLegend
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".kle.json") {
+			continue
+		}
+		stem := strings.TrimSuffix(name, ".kle.json")
+		data, err := layoutFS.ReadFile("layouts/" + name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		layout, err := ParseKLE(data, stem, "")
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+
+		for _, k := range layout.Keys {
+			if k.Scancode == 0 {
+				continue
+			}
+			// Skip text-producing keys except Space — their legends are
+			// the actual characters they produce and are handled by addChar.
+			if ScancodeProducesText(k.Scancode) && k.Scancode != hidSpace {
+				continue
+			}
+			legends := []*string{
+				k.Legends.Normal, k.Legends.Shift,
+				k.Legends.AltGr, k.Legends.ShiftAltGr,
+				k.Legends.Kana, k.Legends.ShiftKana,
+			}
+			for _, leg := range legends {
+				if leg == nil || *leg == "" {
+					continue
+				}
+				if utf8.RuneCountInString(*leg) == 1 {
+					continue // single rune; no aria translation needed
+				}
+				if IsKnownSpecialLegend(*leg) {
+					continue
+				}
+				unknown = append(unknown, unknownLegend{stem, *leg})
+			}
+		}
+	}
+
+	if len(unknown) > 0 {
+		// Dedupe for readable output.
+		dedup := map[string][]string{}
+		for _, u := range unknown {
+			dedup[u.legend] = append(dedup[u.legend], u.layout)
+		}
+		for legend, layouts := range dedup {
+			t.Errorf("legend %q in layouts %v is not in keyaliases.json (add it as an alias of an existing entry, or as a new SpecialKey)", legend, layouts)
+		}
 	}
 }
