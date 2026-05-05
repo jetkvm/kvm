@@ -1,5 +1,4 @@
 {
-  "_comment": "Canonical taxonomy of special-key legends. Source of truth for both Go (controlLegendDisplayMap, for keycap display normalization) and TypeScript (KEY_ARIA_NAMES, for screen-reader aria-labels). The TS file ui/src/components/keyboard/keyAliases.json is a symlink to this file. Each entry: ariaKey is the i18n message suffix (m.keys_<ariaKey>); canonical is the preferred display form; aliases is every other form a KLE source might use. Aliases must be unique across all entries.",
   "specialKeys": [
     {
       "ariaKey": "alt",
@@ -64,12 +63,12 @@
     {
       "ariaKey": "end",
       "canonical": "End",
-      "aliases": ["⤓", "⇥"]
+      "aliases": ["⤓"]
     },
     {
       "ariaKey": "enter",
       "canonical": "⏎",
-      "aliases": ["↵", "↩", "⮠.", "⌤", "⎆", "␍", "␊", "CR", "Enter"]
+      "aliases": ["↵", "↩", "⮠", "⌤", "⎆", "␍", "␊", "CR", "Enter"]
     },
     {
       "ariaKey": "escape",
@@ -79,7 +78,7 @@
     {
       "ariaKey": "home",
       "canonical": "Home",
-      "aliases": ["⤒", "⇤"]
+      "aliases": ["⤒"]
     },
     {
       "ariaKey": "insert",
@@ -144,7 +143,7 @@
     {
       "ariaKey": "tab",
       "canonical": "⭾",
-      "aliases": ["↹", "⇄", "␉", "HT", "Tab"]
+      "aliases": ["⇥", "⇄", "␉", "HT", "Tab"]
     }
   ],
   "passthroughLegendPattern": "^F([1-9]|1[0-9]|2[0-4])$"
