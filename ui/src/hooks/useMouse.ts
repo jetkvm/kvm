@@ -62,7 +62,13 @@ export default function useMouse() {
 
   // RPC hooks
   const { send } = useJsonRpc();
-  const { reportAbsMouseEvent, reportRelMouseEvent, reportWheelEvent, rpcHidReady } = useHidRpc();
+  const {
+    reportAbsMouseEvent,
+    reportRelMouseEvent,
+    reportWheelEvent,
+    reportTouchscreenEvent,
+    rpcHidReady,
+  } = useHidRpc();
   // Mouse-related
 
   const sendRelMouseMovement = useCallback(
@@ -145,11 +151,15 @@ export default function useMouse() {
 
         const touching = e.buttons !== 0;
 
-        send("touchscreenReport", { x: coords.x, y: coords.y, touching });
+        if (rpcHidReady) {
+          reportTouchscreenEvent(coords.x, coords.y, touching);
+        } else {
+          send("touchscreenReport", { x: coords.x, y: coords.y, touching });
+        }
         setMousePosition(coords.x, coords.y);
         lastAbsPos.current = coords;
       },
-    [send, setMousePosition],
+    [reportTouchscreenEvent, rpcHidReady, send, setMousePosition],
   );
 
   // Wheel events stay as HID wheel reports in Android touchscreen mode. Android

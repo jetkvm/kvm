@@ -11,6 +11,7 @@ export const HID_RPC_MESSAGE_TYPES = {
   KeyboardMacroReport: 0x07,
   CancelKeyboardMacroReport: 0x08,
   KeyboardLedState: 0x32,
+  TouchscreenReport: 0x0a,
   KeysDownState: 0x33,
   KeyboardMacroState: 0x34,
 };
@@ -405,6 +406,28 @@ export class WheelReportMessage extends RpcMessage {
       this.messageType,
       fromInt8ToUint8(this.wheelY),
       fromInt8ToUint8(this.wheelX),
+    ]);
+  }
+}
+
+export class TouchscreenReportMessage extends RpcMessage {
+  x: number;
+  y: number;
+  touching: boolean;
+
+  constructor(x: number, y: number, touching: boolean) {
+    super(HID_RPC_MESSAGE_TYPES.TouchscreenReport);
+    this.x = x;
+    this.y = y;
+    this.touching = touching;
+  }
+
+  marshal(): Uint8Array {
+    return new Uint8Array([
+      this.messageType,
+      ...fromInt32toUint8(this.x),
+      ...fromInt32toUint8(this.y),
+      this.touching ? 1 : 0,
     ]);
   }
 }

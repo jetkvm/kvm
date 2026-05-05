@@ -44,6 +44,11 @@ func (m *Message) String() string {
 			return fmt.Sprintf("MouseReport{Malformed: %v}", m.d)
 		}
 		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	case TypeTouchscreenReport:
+		if len(m.d) < 9 {
+			return fmt.Sprintf("TouchscreenReport{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("TouchscreenReport{X: %d, Y: %d, Touching: %v}", m.d[0:4], m.d[4:8], m.d[8] == uint8(1))
 	case TypeKeypressKeepAliveReport:
 		return "KeypressKeepAliveReport"
 	case TypeKeyboardMacroReport:
@@ -208,6 +213,30 @@ func (m *Message) WheelReport() (WheelReport, error) {
 	return WheelReport{
 		WheelY: int8(m.d[0]),
 		WheelX: int8(m.d[1]),
+	}, nil
+}
+
+// TouchscreenReport ..
+type TouchscreenReport struct {
+	X        int
+	Y        int
+	Touching bool
+}
+
+// TouchscreenReport returns the touchscreen report from the message.
+func (m *Message) TouchscreenReport() (TouchscreenReport, error) {
+	if m.t != TypeTouchscreenReport {
+		return TouchscreenReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	if len(m.d) != 9 {
+		return TouchscreenReport{}, fmt.Errorf("invalid message length: %d", len(m.d))
+	}
+
+	return TouchscreenReport{
+		X:        toInt(m.d[0:4]),
+		Y:        toInt(m.d[4:8]),
+		Touching: m.d[8] == uint8(1),
 	}, nil
 }
 

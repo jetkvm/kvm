@@ -15,6 +15,7 @@ import {
   MouseReportMessage,
   PointerReportMessage,
   RpcMessage,
+  TouchscreenReportMessage,
   WheelReportMessage,
   unmarshalHidRpcMessage,
 } from "./hidRpc";
@@ -281,6 +282,20 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     [sendMessage],
   );
 
+  const lastTouching = useRef(false);
+
+  const reportTouchscreenEvent = useCallback(
+    (x: number, y: number, touching: boolean) => {
+      const touchingChanged = touching !== lastTouching.current;
+      lastTouching.current = touching;
+
+      sendMessage(new TouchscreenReportMessage(x, y, touching), {
+        useUnreliableChannel: !touchingChanged,
+      });
+    },
+    [sendMessage],
+  );
+
   const reportKeyboardMacroEvent = useCallback(
     (steps: KeyboardMacroStep[]) => {
       sendMessage(new KeyboardMacroReportMessage(false, steps.length, steps));
@@ -340,6 +355,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     reportAbsMouseEvent,
     reportRelMouseEvent,
     reportWheelEvent,
+    reportTouchscreenEvent,
     reportKeyboardMacroEvent,
     cancelOngoingKeyboardMacro,
     reportKeypressKeepAlive,
