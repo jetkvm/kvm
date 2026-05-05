@@ -318,7 +318,7 @@ shift legend to avoid redundancy */
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: calc(var(--u) * 0.35);
+  font-size: calc(var(--u) * 0.32);
 }
 
 /*
