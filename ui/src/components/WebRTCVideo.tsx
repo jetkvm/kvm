@@ -305,16 +305,7 @@ export default function WebRTCVideo({
     [getTouchscreenMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
   );
 
-  const mouseWheelHandler = useMemo(
-    () =>
-      getMouseWheelHandler({
-        videoClientWidth,
-        videoClientHeight,
-        videoWidth,
-        videoHeight,
-      }),
-    [getMouseWheelHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
-  );
+  const mouseWheelHandler = useMemo(() => getMouseWheelHandler(), [getMouseWheelHandler]);
 
   function getAdjustedKeyCode(e: KeyboardEvent) {
     const key = e.key;

@@ -156,7 +156,7 @@ export default function useMouse() {
   // then scrolls only focused/scrollable content, instead of treating wheel
   // input as synthetic swipe gestures such as launcher/app-drawer pulls.
   const getMouseWheelHandler = useCallback(
-    (_: AbsMouseMoveHandlerProps) => (e: WheelEvent) => {
+    () => (e: WheelEvent) => {
       if (scrollThrottling && blockWheelEvent) {
         return;
       }
