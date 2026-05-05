@@ -1,6 +1,6 @@
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true" />
+    <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">jetkvm.local</domain>
+        <domain includeSubdomains="true">local</domain>
     </domain-config>
 </network-security-config>
