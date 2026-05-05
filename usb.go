@@ -81,11 +81,11 @@ func rpcTouchscreenReport(x int, y int, touching bool) error {
 
 func rpcWheelReport(wheelY int8, wheelX int8) error {
 	return rpcHidReport(func() error {
-		if gadget.HasRelativeMouse() {
-			return gadget.RelMouseWheelReport(wheelY, wheelX)
-		}
 		if gadget.HasAbsoluteMouse() {
 			return gadget.AbsMouseWheelReport(wheelY, wheelX)
+		}
+		if gadget.HasRelativeMouse() {
+			return gadget.RelMouseWheelReport(wheelY, wheelX)
 		}
 		return nil
 	})

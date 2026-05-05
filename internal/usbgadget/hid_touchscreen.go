@@ -133,7 +133,7 @@ func (u *UsbGadget) TouchscreenReport(x int, y int, touching bool) error {
 		contactCount = 0x01
 	}
 
-	return u.touchscreenWriteHidFile([]byte{
+	err := u.touchscreenWriteHidFile([]byte{
 		flags,
 		0x00,
 		byte(x),
@@ -142,4 +142,10 @@ func (u *UsbGadget) TouchscreenReport(x int, y int, touching bool) error {
 		byte(y >> 8),
 		contactCount,
 	})
+	if err != nil {
+		return err
+	}
+
+	u.resetUserInputTime()
+	return nil
 }
