@@ -1,49 +1,21 @@
 # JetKVM Virtual Keyboard — Development Guide
 
-> **Purpose:** Practical guide for contributors adding or modifying keyboard layouts.
+> **Purpose:** Reference for engineers working on the keyboard subsystem internals (parser, charMap, scancode tables).
 >
-> **See also:** [DESIGN.md](DESIGN.md) for architecture, [TRANSPORT.md](TRANSPORT.md) for the wire format.
+> **Adding a new layout?** See **[ADDING_A_LAYOUT.md](ADDING_A_LAYOUT.md)** — a step-by-step contributor walkthrough. The summary below is just a reminder of the moving parts.
 
 ---
 
-## Adding a New Built-in Layout
+## Adding a Layout (Quick Reference)
 
-1. **Create the KLE file** on [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com) or copy an existing layout from `internal/keyboard/layouts/` as a starting point.
+For the full step-by-step guide, see **[ADDING_A_LAYOUT.md](ADDING_A_LAYOUT.md)**.
 
-2. **Add metadata** as the first element of the KLE array:
+Quick summary:
 
-   ```json
-   [
-     {
-       "name": "Magyar hu-HU (ISO 105)",
-       "author": "JetKVM",
-       "deadKeys": ["´", "˝", "¨", "˛", "ˇ", "˘", "°", "˙", "˜", "¸", "^"]
-     },
-     ["Esc", {"x": 1}, "F1", "..."],
-     ...
-   ]
-   ```
-
-   - `name`: Display name shown in the UI dropdown.
-   - `author`: Attribution (use `"JetKVM"` for built-in layouts).
-   - `deadKeys`: Array of legend characters that are dead keys on this layout. **This gates both the CSS dead key indicator and charMap composition generation.** If the layout has no dead keys (e.g. `en-US`, `ru-RU`), omit the field entirely — this ensures paste treats characters like `^` and `~` as direct output, not dead key prefixes.
-
-3. **Save the file** as `internal/keyboard/layouts/<locale>.kle.json` using underscores (e.g. `hu_HU.kle.json`). The layout ID in code uses hyphens (`hu-HU`); the file lookup converts automatically.
-
-4. **No manual registration needed.** Built-in layouts are auto-discovered from the `layouts/` directory via `go:embed` at compile time. Just placing the `.kle.json` file in the directory is sufficient. Aliases (e.g. `nl-BE` → `fr_BE`) are defined in `layoutAliases` in `builtin.go`.
-
-5. **Run the tests:**
-
-   ```bash
-   cd internal/keyboard && go test ./...
-   ```
-
-   The test suite validates all built-in layouts: key count, scancode coverage, charMap completeness, and dead key compositions.
-
-6. **Test in the UI** by selecting the new layout in Settings and verifying:
-   - All legends render correctly in all layers (normal, shift, AltGr, shift+AltGr)
-   - Dead key indicators (orange dot) appear on the correct keys
-   - Paste text produces the correct characters on a target machine configured for this layout
+1. Drop a new `<locale>.kle.json` into `internal/keyboard/layouts/`. Filename uses underscores (`de_DE`); the layout ID uses hyphens (`de-DE`) — converted automatically.
+2. First element of the JSON is the metadata block (`name`, `author`, optional `deadKeys`, optional `kbdLayoutInfo`).
+3. Auto-discovered via `go:embed`; no registration code to write. Aliases live in `layoutAliases` in `builtin.go`.
+4. Validate with `go test ./internal/keyboard/...` and `go run ./scripts/audit_layouts.go <locale>`.
 
 ---
 

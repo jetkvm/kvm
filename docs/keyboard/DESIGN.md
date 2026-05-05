@@ -1,6 +1,8 @@
 # JetKVM Virtual Keyboard — Design Document
 
 > **Purpose:** Design and implementation record for the KLE-based virtual keyboard system in the JetKVM React frontend.
+>
+> **Just want to add a layout?** This document is the wrong place. See **[ADDING_A_LAYOUT.md](ADDING_A_LAYOUT.md)** for the step-by-step contributor guide.
 
 ---
 

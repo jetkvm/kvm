@@ -1,5 +1,7 @@
 # KLE Transport Schema
 
+> **Just want to add a layout?** See **[ADDING_A_LAYOUT.md](ADDING_A_LAYOUT.md)** for the step-by-step contributor guide. This document is the wire-format reference.
+
 ## Overview
 
 KLE JSON files are parsed **on the Go backend** (the KVM device). The React client receives a single processed `KeyboardLayout` JSON object via JSON-RPC and uses it directly for rendering and HID dispatch. The client does zero parsing and zero scancode inference.
