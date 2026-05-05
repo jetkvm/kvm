@@ -2,7 +2,6 @@ package com.jetkvm.controller;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -10,6 +9,7 @@ import android.net.http.SslError;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.text.InputType;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
@@ -28,11 +28,13 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.content.DialogInterface;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -47,10 +49,16 @@ public class MainActivity extends Activity {
     private static final String DEFAULT_URL = "http://jetkvm.local/?jetkvmAndroid=1";
 
     private WebView webView;
+    private LinearLayout loginPanel;
+    private EditText urlInput;
+    private EditText usernameInput;
+    private EditText passwordInput;
+    private CheckBox stayLoggedInInput;
+    private Button loginButton;
+    private TextView statusText;
+    private ProgressBar progressBar;
     private SharedPreferences prefs;
     private PowerManager.WakeLock wakeLock;
-    private boolean urlDialogShowing;
-    private boolean loginDialogShowing;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,19 +82,40 @@ public class MainActivity extends Activity {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ));
+
+        loginPanel = createLoginPanel();
+        root.addView(loginPanel, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ));
         setContentView(root);
 
         webView.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
-                showUrlDialog();
+                showLoginPanel("Change JetKVM URL or log in again.");
                 return true;
             }
         });
         webView.setHapticFeedbackEnabled(true);
 
         enterImmersiveMode();
-        loadControllerAfterCookieSetup();
+        if (prefs.getBoolean(KEY_STAY_LOGGED_IN, false)) {
+            showController();
+        } else {
+            CookieManager.getInstance().removeAllCookies(new ValueCallback<Boolean>() {
+                @Override
+                public void onReceiveValue(Boolean value) {
+                    CookieManager.getInstance().flush();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            showLoginPanel("");
+                        }
+                    });
+                }
+            });
+        }
     }
 
     @Override
@@ -114,11 +143,121 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (loginPanel != null && loginPanel.getVisibility() == View.VISIBLE) {
+            super.onBackPressed();
+            return;
+        }
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
             return;
         }
-        super.onBackPressed();
+        showLoginPanel("Change JetKVM URL or log in again.");
+    }
+
+    private LinearLayout createLoginPanel() {
+        int padding = dp(24);
+
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.VERTICAL);
+        outer.setGravity(Gravity.CENTER);
+        outer.setPadding(padding, padding, padding, padding);
+        outer.setBackgroundColor(Color.rgb(7, 12, 28));
+
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setGravity(Gravity.CENTER_HORIZONTAL);
+        form.setPadding(0, 0, 0, 0);
+        outer.addView(form, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView title = new TextView(this);
+        title.setText("JetKVM");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(28);
+        title.setGravity(Gravity.CENTER);
+        form.addView(title, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        statusText = new TextView(this);
+        statusText.setTextColor(Color.rgb(148, 163, 184));
+        statusText.setTextSize(14);
+        statusText.setGravity(Gravity.CENTER);
+        statusText.setPadding(0, dp(8), 0, dp(16));
+        form.addView(statusText, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        urlInput = new EditText(this);
+        urlInput.setSingleLine(true);
+        urlInput.setText(normalizeUrl(prefs.getString(KEY_URL, DEFAULT_URL)));
+        urlInput.setHint("JetKVM URL");
+        urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        urlInput.setSelectAllOnFocus(true);
+        form.addView(urlInput, fieldLayoutParams());
+
+        usernameInput = new EditText(this);
+        usernameInput.setSingleLine(true);
+        usernameInput.setText("JetKVM");
+        usernameInput.setHint("Username");
+        usernameInput.setInputType(InputType.TYPE_CLASS_TEXT);
+        usernameInput.setAutofillHints(View.AUTOFILL_HINT_USERNAME);
+        usernameInput.setSelectAllOnFocus(true);
+        form.addView(usernameInput, fieldLayoutParams());
+
+        passwordInput = new EditText(this);
+        passwordInput.setSingleLine(true);
+        passwordInput.setHint("Password");
+        passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        passwordInput.setAutofillHints(View.AUTOFILL_HINT_PASSWORD);
+        form.addView(passwordInput, fieldLayoutParams());
+
+        stayLoggedInInput = new CheckBox(this);
+        stayLoggedInInput.setText("Stay logged in");
+        stayLoggedInInput.setTextColor(Color.WHITE);
+        stayLoggedInInput.setChecked(true);
+        form.addView(stayLoggedInInput, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        loginButton = new Button(this);
+        loginButton.setText("Log in");
+        loginButton.setAllCaps(false);
+        loginButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                submitNativeLogin(
+                    urlInput.getText().toString(),
+                    passwordInput.getText().toString(),
+                    stayLoggedInInput.isChecked()
+                );
+            }
+        });
+        form.addView(loginButton, fieldLayoutParams());
+
+        progressBar = new ProgressBar(this);
+        progressBar.setVisibility(View.GONE);
+        form.addView(progressBar, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        return outer;
+    }
+
+    private LinearLayout.LayoutParams fieldLayoutParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, 0, 0, dp(12));
+        return params;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -129,8 +268,8 @@ public class MainActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        settings.setSaveFormData(true);
-        settings.setSavePassword(true);
+        settings.setSaveFormData(false);
+        settings.setSavePassword(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setLoadWithOverviewMode(false);
         settings.setUseWideViewPort(false);
@@ -147,7 +286,7 @@ public class MainActivity extends Activity {
         cookieManager.setAcceptThirdPartyCookies(view, true);
 
         view.addJavascriptInterface(new JetKVMBridge(), "JetKVMAndroid");
-        view.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
+        view.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         view.setOverScrollMode(View.OVER_SCROLL_NEVER);
         view.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         view.setVerticalScrollBarEnabled(false);
@@ -181,7 +320,7 @@ public class MainActivity extends Activity {
                 injectJetKVMHooks(view);
                 CookieManager.getInstance().flush();
                 if (url.contains("/login-local")) {
-                    showNativeLoginDialog(url);
+                    showLoginPanel("Session expired. Log in again.");
                 }
             }
 
@@ -192,24 +331,21 @@ public class MainActivity extends Activity {
                 WebResourceResponse errorResponse
             ) {
                 if (request.isForMainFrame()) {
-                    Toast.makeText(MainActivity.this, "JetKVM HTTP error", Toast.LENGTH_SHORT).show();
-                    showUrlDialog();
+                    showLoginPanel("JetKVM returned an HTTP error.");
                 }
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request.isForMainFrame()) {
-                    Toast.makeText(MainActivity.this, "Unable to load JetKVM", Toast.LENGTH_SHORT).show();
-                    showUrlDialog();
+                    showLoginPanel("Unable to load JetKVM. Check the URL.");
                 }
             }
 
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.cancel();
-                Toast.makeText(MainActivity.this, "JetKVM certificate is not trusted", Toast.LENGTH_LONG).show();
-                showUrlDialog();
+                showLoginPanel("JetKVM certificate is not trusted.");
             }
         });
 
@@ -222,28 +358,32 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void loadController() {
+    private void showController() {
+        hideKeyboard();
+        loginPanel.setVisibility(View.GONE);
+        webView.setVisibility(View.VISIBLE);
         webView.loadUrl(normalizeUrl(prefs.getString(KEY_URL, DEFAULT_URL)));
+        enterImmersiveMode();
     }
 
-    private void loadControllerAfterCookieSetup() {
-        if (prefs.getBoolean(KEY_STAY_LOGGED_IN, false)) {
-            loadController();
-            return;
-        }
+    private void showLoginPanel(String message) {
+        if (loginPanel == null) return;
+        webView.setVisibility(View.GONE);
+        loginPanel.setVisibility(View.VISIBLE);
+        setBusy(false);
+        statusText.setText(message == null ? "" : message);
+        urlInput.setText(normalizeUrl(prefs.getString(KEY_URL, urlInput.getText().toString())));
+        passwordInput.setText("");
+        passwordInput.requestFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(passwordInput, InputMethodManager.SHOW_IMPLICIT);
+        enterImmersiveMode();
+    }
 
-        CookieManager.getInstance().removeAllCookies(new ValueCallback<Boolean>() {
-            @Override
-            public void onReceiveValue(Boolean value) {
-                CookieManager.getInstance().flush();
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        loadController();
-                    }
-                });
-            }
-        });
+    private void setBusy(boolean busy) {
+        if (loginButton == null) return;
+        loginButton.setEnabled(!busy);
+        progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
     }
 
     private String normalizeUrl(String value) {
@@ -260,126 +400,17 @@ public class MainActivity extends Activity {
         return url;
     }
 
-    private void showUrlDialog() {
-        if (urlDialogShowing) return;
-        urlDialogShowing = true;
-        enterImmersiveMode();
+    private void submitNativeLogin(final String controllerUrl, final String password, final boolean stayLoggedIn) {
+        final String normalizedUrl = normalizeUrl(controllerUrl);
+        prefs.edit().putString(KEY_URL, normalizedUrl).apply();
+        setBusy(true);
+        statusText.setText("Logging in...");
 
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setText(normalizeUrl(prefs.getString(KEY_URL, DEFAULT_URL)));
-        input.setSelectAllOnFocus(true);
-
-        new AlertDialog.Builder(this)
-            .setTitle("JetKVM URL")
-            .setView(input)
-            .setPositiveButton("Load", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    String url = normalizeUrl(input.getText().toString());
-                    prefs.edit().putString(KEY_URL, url).apply();
-                    webView.loadUrl(url);
-                    enterImmersiveMode();
-                }
-            })
-            .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    enterImmersiveMode();
-                }
-            })
-            .setNeutralButton("Reset", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    prefs.edit().remove(KEY_URL).apply();
-                    loadController();
-                    enterImmersiveMode();
-                }
-            })
-            .setOnDismissListener(new DialogInterface.OnDismissListener() {
-                @Override
-                public void onDismiss(DialogInterface dialog) {
-                    urlDialogShowing = false;
-                }
-            })
-            .show();
-    }
-
-    private void showNativeLoginDialog(final String pageUrl) {
-        if (loginDialogShowing) return;
-        loginDialogShowing = true;
-        enterImmersiveMode();
-
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        int padding = Math.round(20 * getResources().getDisplayMetrics().density);
-        layout.setPadding(padding, 0, padding, 0);
-
-        EditText usernameInput = new EditText(this);
-        usernameInput.setSingleLine(true);
-        usernameInput.setText("JetKVM");
-        usernameInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        usernameInput.setAutofillHints(View.AUTOFILL_HINT_USERNAME);
-        usernameInput.setSelectAllOnFocus(true);
-        layout.addView(usernameInput);
-
-        final EditText passwordInput = new EditText(this);
-        passwordInput.setSingleLine(true);
-        passwordInput.setHint("Password");
-        passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        passwordInput.setAutofillHints(View.AUTOFILL_HINT_PASSWORD);
-        layout.addView(passwordInput);
-
-        final CheckBox stayLoggedInInput = new CheckBox(this);
-        stayLoggedInInput.setText("Stay logged in");
-        stayLoggedInInput.setChecked(true);
-        layout.addView(stayLoggedInInput);
-
-        final AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("JetKVM Login")
-            .setView(layout)
-            .setPositiveButton("Log in", null)
-            .setNegativeButton("Use web form", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    enterImmersiveMode();
-                }
-            })
-            .setOnDismissListener(new DialogInterface.OnDismissListener() {
-                @Override
-                public void onDismiss(DialogInterface dialog) {
-                    loginDialogShowing = false;
-                }
-            })
-            .create();
-
-        dialog.setOnShowListener(new DialogInterface.OnShowListener() {
-            @Override
-            public void onShow(DialogInterface dialogInterface) {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        submitNativeLogin(
-                            pageUrl,
-                            passwordInput.getText().toString(),
-                            stayLoggedInInput.isChecked()
-                        );
-                        dialog.dismiss();
-                    }
-                });
-                passwordInput.requestFocus();
-                dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
-            }
-        });
-        dialog.show();
-    }
-
-    private void submitNativeLogin(final String pageUrl, final String password, final boolean stayLoggedIn) {
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    String origin = getOrigin(pageUrl);
+                    final String origin = getOrigin(normalizedUrl);
                     URL url = new URL(origin + "/auth/login-local");
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("POST");
@@ -396,7 +427,7 @@ public class MainActivity extends Activity {
 
                     int status = conn.getResponseCode();
                     if (status < 200 || status >= 300) {
-                        showNativeLoginFailed(pageUrl);
+                        showLoginFailed("Invalid password or login failed.");
                         return;
                     }
 
@@ -408,30 +439,33 @@ public class MainActivity extends Activity {
                         }
                     }
                     CookieManager.getInstance().flush();
-                    prefs.edit().putBoolean(KEY_STAY_LOGGED_IN, stayLoggedIn).apply();
+                    prefs.edit()
+                        .putString(KEY_URL, normalizedUrl)
+                        .putBoolean(KEY_STAY_LOGGED_IN, stayLoggedIn)
+                        .apply();
 
-                    final String controllerUrl = origin + "/?jetkvmAndroid=1";
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            hideKeyboard();
-                            webView.loadUrl(controllerUrl);
-                            enterImmersiveMode();
+                            setBusy(false);
+                            showController();
                         }
                     });
                 } catch (Exception e) {
-                    showNativeLoginFailed(pageUrl);
+                    showLoginFailed("Unable to reach JetKVM. Check the URL.");
                 }
             }
         }).start();
     }
 
-    private void showNativeLoginFailed(final String pageUrl) {
+    private void showLoginFailed(final String message) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                Toast.makeText(MainActivity.this, "JetKVM login failed", Toast.LENGTH_SHORT).show();
-                showNativeLoginDialog(pageUrl);
+                Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                setBusy(false);
+                statusText.setText(message);
+                passwordInput.requestFocus();
             }
         });
     }
@@ -454,8 +488,9 @@ public class MainActivity extends Activity {
 
     private void hideKeyboard() {
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null && webView != null) {
-            imm.hideSoftInputFromWindow(webView.getWindowToken(), 0);
+        View tokenView = loginPanel != null && loginPanel.getVisibility() == View.VISIBLE ? loginPanel : webView;
+        if (imm != null && tokenView != null) {
+            imm.hideSoftInputFromWindow(tokenView.getWindowToken(), 0);
         }
     }
 
@@ -476,37 +511,16 @@ public class MainActivity extends Activity {
             "(function(){"
                 + "if(window.__jetkvmAndroidHooksInstalled)return;"
                 + "window.__jetkvmAndroidHooksInstalled=true;"
-                + "function installLoginHook(){"
-                    + "var form=document.querySelector('form');"
-                    + "var box=document.querySelector('input[name=\"stayLoggedIn\"]');"
-                    + "var password=document.querySelector('input[name=\"password\"]');"
-                    + "if(form&&password&&!window.__jetkvmNativeLoginRequested){"
-                        + "window.__jetkvmNativeLoginRequested=true;"
-                        + "setTimeout(function(){window.JetKVMAndroid.showNativeLogin(location.href);},100);"
-                    + "}"
-                    + "if(!form||!box||form.__jetkvmStayHook)return;"
-                    + "form.__jetkvmStayHook=true;"
-                    + "form.addEventListener('submit',function(){"
-                        + "window.JetKVMAndroid.setStayLoggedIn(!!box.checked);"
-                        + "if(isEditable(document.activeElement))document.activeElement.blur();"
-                        + "window.JetKVMAndroid.hideKeyboard();"
-                    + "},true);"
-                + "}"
                 + "function isEditable(el){"
                     + "if(!el)return false;"
                     + "var tag=(el.tagName||'').toLowerCase();"
                     + "return tag==='input'||tag==='textarea'||tag==='select'||el.isContentEditable;"
                 + "}"
-                + "if(!document.__jetkvmImeHook){"
-                    + "document.__jetkvmImeHook=true;"
-                    + "document.addEventListener('pointerdown',function(e){"
-                        + "if(isEditable(e.target))return;"
-                        + "if(isEditable(document.activeElement))document.activeElement.blur();"
-                        + "window.JetKVMAndroid.hideKeyboard();"
-                    + "},true);"
-                + "}"
-                + "installLoginHook();"
-                + "setInterval(function(){installLoginHook();},1000);"
+                + "document.addEventListener('pointerdown',function(e){"
+                    + "if(isEditable(e.target))return;"
+                    + "if(isEditable(document.activeElement))document.activeElement.blur();"
+                    + "window.JetKVMAndroid.hideKeyboard();"
+                + "},true);"
             + "})();",
             null
         );
@@ -519,13 +533,8 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void showNativeLogin(final String url) {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    showNativeLoginDialog(url);
-                }
-            });
+        public void showNativeLogin(String url) {
+            showLoginPanel("Session expired. Log in again.");
         }
 
         @JavascriptInterface
