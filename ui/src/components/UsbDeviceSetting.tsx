@@ -24,6 +24,7 @@ export interface UsbDeviceConfig {
   keyboard: boolean;
   absolute_mouse: boolean;
   relative_mouse: boolean;
+  touchscreen: boolean;
   mass_storage: boolean;
   serial_console: boolean;
 }
@@ -32,6 +33,7 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   keyboard: true,
   absolute_mouse: true,
   relative_mouse: true,
+  touchscreen: true,
   mass_storage: true,
   serial_console: false,
 };
@@ -44,6 +46,7 @@ const usbPresets = [
       keyboard: true,
       absolute_mouse: true,
       relative_mouse: true,
+      touchscreen: true,
       mass_storage: true,
       serial_console: false,
     },
@@ -55,6 +58,7 @@ const usbPresets = [
       keyboard: true,
       absolute_mouse: false,
       relative_mouse: false,
+      touchscreen: true,
       mass_storage: false,
       serial_console: false,
     },

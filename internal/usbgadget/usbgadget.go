@@ -4,6 +4,7 @@ package usbgadget
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path"
 	"time"
@@ -22,6 +23,18 @@ type Devices struct {
 	Touchscreen   bool `json:"touchscreen"`
 	MassStorage   bool `json:"mass_storage"`
 	SerialConsole bool `json:"serial_console"`
+}
+
+func (d *Devices) UnmarshalJSON(data []byte) error {
+	type devicesAlias Devices
+
+	devices := devicesAlias(defaultUsbGadgetDevices)
+	if err := json.Unmarshal(data, &devices); err != nil {
+		return err
+	}
+
+	*d = Devices(devices)
+	return nil
 }
 
 // Config is a struct that represents the customizations for a USB gadget.
