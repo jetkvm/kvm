@@ -51,12 +51,20 @@ and a target machine (the server/PC being managed), forwarding keyboard,
 video, and mouse over WebRTC. The frontend is a React + TypeScript app
 served from the device itself.
 
-The keyboard system has been a persistent source of bugs and user frustration. As of the time of this design:
+The keyboard subsystem covers three intertwined concerns:
 
-- The virtual keyboard was English-only (`react-simple-keyboard`, hardcoded QWERTY)
-- The "Paste Text" feature only had US scancode tables, so pasting to a German/French/etc. target produced garbled output
-- Users with non-US *operator* keyboards (AZERTY, Dvorak) perceived wrong characters when their layout differed from the target's — this is actually correct KVM behaviour (physical position passthrough), but the virtual keyboard and paste system now provide character-accurate input for these cases
-- There was no clear contribution path for new layouts (see GitHub issues #1184, #1067, #65, #30, #649, #223) — now addressed with KLE upload, built-in layouts, and a GitHub issue template
+- **Virtual on-screen keyboard** — must render the *target's* layout
+  (correct shapes, legends in all layers) for any locale users select.
+- **Paste Text** — must convert pasted Unicode characters into the
+  HID scancode + modifier combinations the target's layout produces.
+- **Physical-keyboard passthrough** — must use position-based scancodes
+  (HID Usage IDs) so the operator's keyboard behaves like a USB cable
+  into the target, regardless of the operator's own layout.
+
+The system is driven by KLE JSON files (one per layout) parsed in Go and
+served to the React client. Built-in layouts live under
+`internal/keyboard/layouts/`; users can also upload their own. Tracked
+in GitHub issues #1184, #1067, #65, #30, #649, #223.
 
 ---
 
@@ -351,11 +359,13 @@ dead keys for this layout. Example from `de-DE`:
 { "name": "Deutsch de-DE (ISO 105)", "deadKeys": ["^", "´", "`"] }
 ```
 
-Only keys whose **normal** legend matches a declared dead key character get
-the `dead: true` flag on their `TransportKey`, which the frontend renders
-with the `.dead` CSS class (visual indicator dot). If the metadata has no
-`deadKeys` array (e.g. `en-US`), no keys are flagged and no compositions
-are generated (see below).
+For each key, every legend slot whose value matches a declared dead key
+character is recorded by name (`"normal"`, `"shift"`, `"altgr"`, …) in
+the `deadLegends` array on its `TransportKey`. The frontend applies the
+`.dead` CSS class to the matching legend slot only — so a key whose AltGr
+layer is a dead key but whose Normal layer isn't shows the dot only on
+the AltGr corner. If the metadata has no `deadKeys` array (e.g. `en-US`),
+no slot is ever flagged and no compositions are generated (see below).
 
 **2. Dead key compositions in charMap (metadata-gated, Unicode NFC)**
 
@@ -486,7 +496,7 @@ graph TD
 - `Keycap` is `memo()`'d — layer changes do NOT trigger keycap rerenders
 - All legend show/hide logic is **CSS only** via `data-layer` attribute
 - `onPointerDown` (not `onClick`) prevents focus steal from video feed
-- Aria labels map key symbols (both symbol-only `⇧` and compound `⇧ Shift`) to localized names via `KEY_ARIA_NAMES` in `Keycap.tsx`
+- Aria labels map key symbols (both symbol-only `⇧` and compound `⇧ Shift`) to localized names via `KEY_ARIA_NAMES` in `Keycap.tsx`, derived at module load from the shared taxonomy in `internal/keyboard/keyaliases.json` (the same JSON the Go parser uses to canonicalise legends — single source of truth for both sides)
 
 ---
 
@@ -611,7 +621,8 @@ label above the numpad area.
 ├── docs/keyboard/
 │   ├── DESIGN.md                ← this file
 │   ├── TRANSPORT.md             ← wire contract documentation
-│   └── DEVELOPMENT.md           ← contributor guide (adding layouts, dead keys, overrides)
+│   ├── ADDING_A_LAYOUT.md       ← step-by-step contributor walkthrough
+│   └── DEVELOPMENT.md           ← engineer reference (overrides, compact form factors, dead-key auditing)
 ```
 
 ```text
@@ -638,10 +649,12 @@ label above the numpad area.
 ```text
 ├── internal/keyboard/
 │   ├── keyboard.go               ← ParseKLE(), types, charMap, dead key compositions
-│   ├── scancode.go               ← x/y position → HID Usage ID table
+│   ├── scancode.go               ← x/y position → HID Usage ID table; ScancodeProducesText / IsControlScancode
+│   ├── keyaliases.go             ← parses keyaliases.json; controlLegendDisplayMap, IsKnownSpecialLegend
+│   ├── keyaliases.json           ← shared taxonomy of special-key legends (Go + TS)
 │   ├── handler.go                ← HTTP upload + JSON-RPC handlers + builtinLayouts
 │   ├── builtin.go                ← go:embed for layouts/*.kle.json + alias handling
-│   ├── keyboard_test.go          ← table-driven tests + builtin layout validation
+│   ├── keyboard_test.go          ← table-driven tests + builtin layout validation + drift guard
 │   └── layouts/                  ← 19 KLE JSON files (ANSI/ISO/JIS)
 ```
 

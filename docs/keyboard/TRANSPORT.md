@@ -46,7 +46,7 @@ JetKVM-specific fields in addition to the standard KLE `name`, `author`, etc.:
 
 | Field | Type | Default | Purpose |
 |---|---|---|---|
-| `deadKeys` | `string[]` | `[]` (none) | Legend characters that are dead keys. Gates **both** the `dead: true` flag on `TransportKey` (CSS `.dead` class) **and** charMap composition generation via Unicode NFC. Layouts without this field produce no dead key compositions — characters like `^` and `~` are treated as normal keys that output directly. |
+| `deadKeys` | `string[]` | `[]` (none) | Legend characters that are dead keys. Gates **both** the `deadLegends` list on each affected `TransportKey` (the frontend applies the `.dead` CSS class to the matching legend slot) **and** charMap composition generation via Unicode NFC. Layouts without this field produce no dead key compositions — characters like `^` and `~` are treated as normal keys that output directly. |
 | `scancodes` | `Record<string, number>` | `{}` (none) | Maps key index (0-based, parse order) to a USB HID Usage ID, overriding position-based inference. Use for non-standard layouts where keys are in unusual positions. |
 
 **Example** (German QWERTZ with dead keys and a hypothetical scancode override):
@@ -131,10 +131,12 @@ sync — the JSON field names are the contract.
   // USB HID Usage ID (0x07 page). 0 = non-typeable (modifier, etc.)
   "scancode": 30,
 
-  // Whether this key is a dead key, driven by metadata `deadKeys` array,
-  // not character detection. True only if the normal legend matches a
-  // declared dead key in the KLE metadata.
-  "dead": false,
+  // Names of the legend slots on this key whose legend matches a declared
+  // dead key character (from KLE metadata's `deadKeys`). Slot names are
+  // 'normal', 'shift', 'altgr', 'shift-altgr', 'kana', 'shift-kana'. The
+  // frontend applies the `.dead` CSS class to each listed slot. Omitted
+  // when no slot is a dead key.
+  "deadLegends": ["normal"],
 
   // Whether this key has a homing bump (KLE "n" property)
   "homing": false,
@@ -153,24 +155,21 @@ sync — the JSON field names are the contract.
 
 #### Scancode classification (`controlLike`)
 
-The Go backend is the single source of truth for whether a scancode is
-"control-like" (modifier, navigation, function key, …) versus
-text-producing (letters, digits, punctuation, the ISO key, printable
-numpad keys). Two helpers in `internal/keyboard/scancode.go`:
+The Go backend owns scancode classification. Two helpers in
+`internal/keyboard/scancode.go`:
 
-- `ScancodeProducesText(sc)` — true for keys that, when pressed, type a
-  character. Excludes Enter, Escape, Backspace, Tab, NumLock, KPEnter
-  even though their HID usage IDs sit inside the printable ranges.
-- `IsControlScancode(sc)` — the inverse plus an explicit list of
-  "looks-like-text-but-treat-as-control" keys (notably Space, which
-  produces a character but should still take the meta-control CSS
-  class on a keycap).
+- `ScancodeProducesText(sc)` — true for keys that type a character
+  (letters, digits, printable punctuation, the ISO key, printable numpad
+  keys). False for Enter, Escape, Backspace, Tab, NumLock, KPEnter.
+- `IsControlScancode(sc)` — the complement, plus an explicit list of
+  "looks-like-text-but-render-as-control" keys (notably Space, which
+  types a character but takes the meta-control CSS class on the keycap).
 
 `ParseKLE` evaluates `IsControlScancode(Scancode)` once per key and
 stamps the result onto `TransportKey.controlLike`. The frontend reads
-this field directly and does **not** maintain its own classifier — any
-classification logic must be added on the Go side, where it can be unit
-tested (`TestScancodeClassificationContract` in `keyboard_test.go`).
+the field directly and has no classifier of its own — any classification
+logic lives only in Go, with unit tests in
+`TestScancodeClassificationContract` in `keyboard_test.go`.
 
 ### `HIDCombo` (values in `charMap`)
 
@@ -222,9 +221,19 @@ the full key data — just enough to populate the settings dropdown.
 
 Returns the full transport type for the given layout ID.
 Called once when the session starts (or when the user changes layout in settings).
+If `id` is unknown (deleted, corrupted, missing from config) the handler falls
+back to `en-US` so the UI always has a usable keyboard.
 
-Note: the existing `getKeyboardLayout` RPC (no params) returns the active layout
-ID string from config. `getKeyboardLayoutData` returns the full layout content.
+### `getKeyboardLayout() → string`
+
+Returns the active layout ID string from device config (e.g. `"de-DE"`).
+This is the lightweight counterpart to `getKeyboardLayoutData` — use it when
+you only need to know which layout is selected.
+
+### `setKeyboardLayout(layout: string) → void`
+
+Updates the active layout ID and persists it to the device config.
+The layout ID must be a built-in layout or a previously-uploaded user layout.
 
 ### `deleteKeyboardLayout(id: string) → void`
 
@@ -242,6 +251,8 @@ Content-Type: application/json   (raw KLE JSON body)
 
 Query params:
   ?name=My+Layout    optional display name override
+  ?id=existing-id    optional: replace an existing user-uploaded layout
+                     (cannot replace a built-in layout — request is rejected)
 
 Response 200:
   {

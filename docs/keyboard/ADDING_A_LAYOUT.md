@@ -396,7 +396,6 @@ flowchart LR
 | Audit reports *"legend differs"* on a specific scancode | One of your legend strings differs from the reference. Verify the legend on the relevant key. |
 | The keycap shows the legend in the wrong corner | You put the character in the wrong layer slot. See [How layers map to corners](#how-layers-map-to-corners-on-the-rendered-keycap). |
 | Pasted text comes out wrong on the target | Either your `deadKeys` list is wrong, or a layered character is in the wrong slot. Run the audit with `-v` to compare against the reference. |
-| Aria label on a single-legend key says *"Shift: Foo"* | You're on an old build — the parser was changed so a single legend goes to Normal. Rebuild and the label becomes just *"Foo"*. |
 
 ---
 
