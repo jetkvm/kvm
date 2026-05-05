@@ -183,13 +183,64 @@ func TestLegendAutoUppercase(t *testing.T) {
 		t.Errorf("expected auto shift='Q', got %v", legends4.Shift)
 	}
 
-	// Multi-char legend "Tab": goes to shift slot (pos 0), no mirror-case (not a letter)
+	// Multi-char single legend "Tab" / "Space" / "Esc": named keys label the
+	// unmodified press, so the mirror-case promotes them to the Normal slot.
+	// Without this, addChar (for Space, which is text-producing) would attach
+	// the LShift modifier to charMap[" "].
 	legends5 := parseLegends("Tab")
-	if legends5.Normal != nil {
-		t.Errorf("expected normal=nil for 'Tab', got %q", *legends5.Normal)
+	if legends5.Normal == nil || *legends5.Normal != "Tab" {
+		t.Errorf("expected normal='Tab', got %v", legends5.Normal)
 	}
-	if legends5.Shift == nil || *legends5.Shift != "Tab" {
-		t.Errorf("expected shift='Tab' (KLE pos 0), got %v", legends5.Shift)
+	if legends5.Shift != nil {
+		t.Errorf("expected shift=nil for 'Tab', got %q", *legends5.Shift)
+	}
+
+	legendsSpace := parseLegends("Space")
+	if legendsSpace.Normal == nil || *legendsSpace.Normal != "Space" {
+		t.Errorf("expected normal='Space', got %v", legendsSpace.Normal)
+	}
+	if legendsSpace.Shift != nil {
+		t.Errorf("expected shift=nil for 'Space', got %q", *legendsSpace.Shift)
+	}
+
+	// Explicit shift-only "Q\n" (two parts, second empty) must still go in Shift.
+	legendsShiftOnly := parseLegends("Q\n")
+	if legendsShiftOnly.Normal != nil {
+		t.Errorf("expected normal=nil for 'Q\\n', got %q", *legendsShiftOnly.Normal)
+	}
+	if legendsShiftOnly.Shift == nil || *legendsShiftOnly.Shift != "Q" {
+		t.Errorf("expected shift='Q' for 'Q\\n', got %v", legendsShiftOnly.Shift)
+	}
+
+	// "X\nX" shorthand from kbdlayout.info exports collapses to a single
+	// Normal legend so it's morally equivalent to "X". Numpad digits and
+	// symbols arrive in this form when re-exporting external KLE data.
+	for _, tc := range []struct {
+		input        string
+		wantNormal   string
+		wantShift    string // "" means nil; non-empty means Shift should be set (auto-cased letters)
+		wantShiftNil bool
+	}{
+		{input: "7\n7", wantNormal: "7", wantShiftNil: true},
+		{input: "+\n+", wantNormal: "+", wantShiftNil: true},
+		{input: "Space\nSpace", wantNormal: "Space", wantShiftNil: true},
+		// Letter X\nX is also collapsed, then auto-cased into a proper pair.
+		{input: "Q\nQ", wantNormal: "q", wantShift: "Q"},
+		{input: "q\nq", wantNormal: "q", wantShift: "Q"},
+	} {
+		got := parseLegends(tc.input)
+		if got.Normal == nil || *got.Normal != tc.wantNormal {
+			t.Errorf("parseLegends(%q): Normal = %v, want %q", tc.input, got.Normal, tc.wantNormal)
+		}
+		if tc.wantShiftNil {
+			if got.Shift != nil {
+				t.Errorf("parseLegends(%q): Shift = %q, want nil", tc.input, *got.Shift)
+			}
+		} else {
+			if got.Shift == nil || *got.Shift != tc.wantShift {
+				t.Errorf("parseLegends(%q): Shift = %v, want %q", tc.input, got.Shift, tc.wantShift)
+			}
+		}
 	}
 
 	// Explicit two-part legend should be respected: "!\n1" → shift="!", normal="1"

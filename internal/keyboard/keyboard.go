@@ -516,6 +516,21 @@ func parseLegends(legendStr string) KeyLegends {
 		ShiftKana:  get(10),
 	}
 
+	// Collapse same-on-both-layers shorthand: kbdlayout.info exports keys
+	// like the numpad as "7\n7", "+\n+", "Space\nSpace" — the same legend on
+	// both Shift and Normal slots. Reduce to a single Normal legend so the
+	// downstream auto-case logic can fire (e.g. "Q\nQ" → "Q" → Normal="q",
+	// Shift="Q") and the keycap renderer doesn't draw the same glyph twice
+	// in different quadrants. Same treatment for the AltGr and Kana pairs.
+	collapseEqual := func(primary, shifted **string) {
+		if *primary != nil && *shifted != nil && **primary == **shifted {
+			*shifted = nil
+		}
+	}
+	collapseEqual(&legends.Normal, &legends.Shift)
+	collapseEqual(&legends.AltGr, &legends.ShiftAltGr)
+	collapseEqual(&legends.Kana, &legends.ShiftKana)
+
 	// Auto-populate shift/normal legends for single-letter keys.
 	//
 	// Lowercase normal ("q") → generate shift: "Q"
@@ -550,14 +565,21 @@ func parseLegends(legendStr string) KeyLegends {
 		}
 	}
 
-	// Mirror case: standard KLE single letter "Q" → after swap: Normal=nil, Shift="Q".
-	// Move it to Normal and let auto-case handle it.
-	if legends.Normal == nil && legends.Shift != nil {
-		r, size := utf8.DecodeRuneInString(*legends.Shift)
-		if size == len(*legends.Shift) && r != utf8.RuneError && unicode.IsLetter(r) {
-			legends.Normal = legends.Shift
-			legends.Shift = nil
-			// Re-run the auto-case logic above
+	// Mirror case: a single-string KLE legend (no '\n' separator) lands in the
+	// Shift slot because position 0 = top-left in our schema. But a single
+	// legend conceptually labels the *unmodified* press of the key — "Space"
+	// means pressing Space (not Shift+Space), "Tab" means pressing Tab. Only
+	// promote when the entire input was one legend; an explicit two-part
+	// legend like "Q\n" with an empty normal slot means "shift-only" and
+	// should be left alone.
+	if len(parts) == 1 && legends.Normal == nil && legends.Shift != nil {
+		legend := *legends.Shift
+		legends.Normal = legends.Shift
+		legends.Shift = nil
+
+		// For single letters, generate the case pair (Normal=q, Shift=Q).
+		r, size := utf8.DecodeRuneInString(legend)
+		if size == len(legend) && r != utf8.RuneError && unicode.IsLetter(r) {
 			upperR := unicode.ToUpper(r)
 			lowerR := unicode.ToLower(r)
 			if upperR != lowerR &&
