@@ -143,11 +143,84 @@ tail -f /userdata/jetkvm/last.log
 
 **Key files for beginners:**
 
-- `web.go` - Add new API endpoints here
-- `config.go` - Add new settings here
+- `jsonrpc.go` - JSON-RPC method registry. Most "I need the frontend to call something new on the device" changes go here.
+- `web.go` - HTTP/REST + WebSocket endpoints (Gin). WebRTC signalling lives in `webrtc.go`.
+- `config.go` - Add new settings here. Stored as `/userdata/kvm_config.json` on the device.
 - `tailscale.go` - Tailscale status and control-server logic
 - `ui/src/routes/` - Add new pages here
 - `ui/src/components/` - Add new UI components here
+
+---
+
+## Architecture Pointers
+
+A few things you'd otherwise have to grep for:
+
+### The binary runs as one of three processes
+
+`cmd/main.go` is the entry point for *every* JetKVM process. The same binary takes on a different role depending on environment variables:
+
+1. **Supervisor** (default invocation): forks the same binary as a child, restarts it on crash, captures dumps to `supervisor.ErrorDumpDir`. The first `jetkvm_app` you start is always the supervisor.
+2. **Main app** (`EnvChildID` matches the built version): runs `kvm.Main()` — the WebRTC, HTTP, JSON-RPC, USB, etc. Most code in the repo runs in this mode.
+3. **Native subprocess** (`subcomponent=native` flag, or `EnvSubcomponent` env var): runs `native.RunNativeProcess()`. The CGO-heavy HDMI capture and LVGL touchscreen process is isolated here so a native crash doesn't kill the main app.
+
+When debugging a crash, `/userdata/jetkvm/last.log` may contain output from any of the three. The supervisor crash dumps live alongside.
+
+### Internal package purposes
+
+A short tour of what's in `internal/`:
+
+| Package | Purpose |
+|---|---|
+| `confparser` | Configuration file parser shared between subsystems |
+| `diagnostics` | System diagnostics dump used on supervisor crash |
+| `hidrpc` | Binary HID protocol bridge between the main app and the native subprocess |
+| `keyboard` | KLE keyboard layout parser + built-in layouts (`go:embed` from `layouts/`); user uploads stored at `/userdata/kvm_layouts/` on the device. See [docs/keyboard/](docs/keyboard/) for the full design and contributor guide. |
+| `logging` | zerolog-based structured logging with subsystem scopes |
+| `mdns` | mDNS service announcement |
+| `native` | CGO bridge to the C native library (HDMI, touchscreen via LVGL). The `cgo/ui` symlink targets `../eez/src/ui` (EEZ Studio output). |
+| `network` / `nmlite` (in `pkg/`) | Network configuration |
+| `ota` | Over-the-air updates with GPG signature verification |
+| `supervisor` | Constants and env-var names shared between the supervisor parent and the child processes |
+| `sync` | `sync.Mutex` wrappers with optional trace logging (enabled by the `synctrace` build tag) |
+| `tailscale` | Tailscale status + control-server logic |
+| `timesync` | NTP/time sync |
+| `tzdata` | Timezone data |
+| `usbgadget` | USB gadget driver (keyboard, mouse, mass storage) |
+| `utils` | SSH handling and other small utilities |
+| `websecure` | TLS certificate management |
+
+### Build tags
+
+The default `make build_dev` and `make build_release` use `-tags netgo,timetzdata,nomsgpack`. Adding `-tags synctrace` (via `./dev_deploy.sh -r <IP> --enable-sync-trace`) enables verbose mutex logging via the `internal/sync` wrappers — useful for debugging deadlocks, expensive in normal runs.
+
+---
+
+## Linting Rules to Know Before You Hit the Hook
+
+The `lint-staged` pre-commit hook is strict. Knowing the project rules ahead of time saves a lot of "fix and retry" cycles:
+
+### Go (`.golangci.yml`)
+
+- **`forbidigo`: no `fmt.Print*` or `log.*`** anywhere except `cmd/main.go` and the audit script. Use `internal/logging` instead — `logging.GetSubsystemLogger("name")` returns a zerolog logger.
+- **`gochecknoinits`: no `func init()`**. The exception is `internal/logging/sse.go`. If you have setup code that must run at package load, use `var x = computeX()` instead — runs at the same point and produces the same result.
+- **Formatter**: `goimports`. Editor integration handles this automatically.
+
+### TypeScript (`.oxlintrc.json`)
+
+- **Linter**: `oxlint`, **not** ESLint. Configured rules include `typescript-eslint/restrict-template-expressions` and `typescript-eslint/no-base-to-string` — beware of dropping `unknown` or `Event` straight into a template literal (use `String(e)` or `ev.type`).
+- **Plugins enabled**: `react`, `typescript`, `import`.
+- **Unused vars must be prefixed with `_`** (`argsIgnorePattern: ^_`).
+- **Pre-commit hook** (husky/lint-staged):
+  - `oxlint --fix --deny-warnings` on staged `.ts/.tsx`
+  - `oxfmt` on staged `.ts/.tsx/.js/.jsx/.css/.md`
+  - `i18n:resort` on staged `localization/messages/*.json`
+
+If a hook failure is in code you didn't touch, see if it's tripping on a pre-existing warning the file picked up; the hook lints the whole file, not just your diff.
+
+### PR target
+
+PRs go to **`dev`**, not `main`. The Makefile's `dev_release` target enforces this for releases; PRs that target the wrong branch are usually retargeted on review.
 
 ---
 
