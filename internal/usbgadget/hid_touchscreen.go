@@ -95,10 +95,12 @@ func (u *UsbGadget) touchscreenWriteHidFile(data []byte) error {
 
 	_, err := u.writeWithTimeout(u.touchscreenHidFile, data)
 	if err != nil {
+		u.logWithSuppression("touchscreenWriteHidFile", 100, u.log, err, "failed to write to hidg3")
 		u.touchscreenHidFile.Close()
 		u.touchscreenHidFile = nil
 		return err
 	}
+	u.resetLogSuppressionCounter("touchscreenWriteHidFile")
 	return nil
 }
 
