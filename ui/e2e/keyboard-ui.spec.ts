@@ -16,7 +16,7 @@
  *   JETKVM_URL=http://<kvm-ip> npx playwright test keyboard-ui --project=ui
  */
 import { test, expect, type Page } from "@playwright/test";
-import { callJsonRpc, ensureLocalAuthMode, goToSession } from "./helpers";
+import { ensureLocalAuthMode, goToSession } from "./helpers";
 
 // Standard USB HID scancodes for the modifier keys we exercise.
 const HID_LSHIFT = 0xe1;
@@ -106,23 +106,17 @@ test.describe("virtual keyboard: layout layer switching", () => {
   });
 
   test("AltGr latch produces altgr layer", async () => {
+    // RAlt (HID 0xE6) is the AltGr scancode; every built-in layout's
+    // physical right-alt key carries it, so the keycap is always present.
     await ensureVirtualKeyboardVisible(sharedPage);
 
     const vkb = sharedPage.locator(".vkb");
     await expect(vkb).toHaveAttribute("data-layer", "all", { timeout: 5000 });
 
     const altgr = vkb.locator(`[data-scancode="${HID_RALTGR}"]`).first();
-    if ((await altgr.count()) === 0) {
-      // en-US ANSI doesn't have a dedicated AltGr — fall back to switching to
-      // a layout that does (de-DE) so the test can run.
-      await callJsonRpc(sharedPage, "setKeyboardLayout", { layout: "de-DE" });
-      await expect(vkb).toHaveAttribute("data-layer", "all", { timeout: 5000 });
-    }
-
-    const altgrEffective = vkb.locator(`[data-scancode="${HID_RALTGR}"]`).first();
-    await altgrEffective.click();
+    await altgr.click();
     await expect(vkb).toHaveAttribute("data-layer", "altgr", { timeout: 3000 });
-    await altgrEffective.click();
+    await altgr.click();
     await expect(vkb).toHaveAttribute("data-layer", "all", { timeout: 3000 });
   });
 });
