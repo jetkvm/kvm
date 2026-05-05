@@ -10,7 +10,6 @@
 
 import React, { memo, useCallback } from "react";
 import { TransportKey, KeyLegends } from "./types/schema";
-import { isControlScancode } from "../../keyboardMappings";
 import { m } from "@localizations/messages.js";
 
 // Shared key-alias taxonomy with the Go backend (which embeds the same file
@@ -40,8 +39,21 @@ export interface KeycapProps {
 // ---------------------------------------------------------------------------
 
 export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }: KeycapProps) {
-  const { x, y, w, h, shape, legends, scancode, deadLegends, homing, decal, color, textColor } =
-    transportKey;
+  const {
+    x,
+    y,
+    w,
+    h,
+    shape,
+    legends,
+    scancode,
+    deadLegends,
+    homing,
+    decal,
+    controlLike,
+    color,
+    textColor,
+  } = transportKey;
 
   const widthClass = getWidthClass(w);
   const isCustomWidth = widthClass === "w-custom";
@@ -49,7 +61,6 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
   // A key is a "letter" if its normal legend is a single Unicode letter (any script).
   // Used by CSS to apply CapsLock layer switching (shift legend for letters only).
   const isLetter = legends.normal != null && /^\p{Ll}$/u.test(legends.normal);
-  const isMetaControl = isControlScancode(scancode);
 
   const className = [
     "key",
@@ -59,7 +70,7 @@ export const Keycap = memo(function Keycap({ transportKey, onPress, isPressed }:
     decal && "decal",
     isPressed && "pressed",
     isLetter && "letter",
-    isMetaControl && "meta-control",
+    controlLike && "meta-control",
   ]
     .filter(Boolean)
     .join(" ");

@@ -140,11 +140,35 @@ sync — the JSON field names are the contract.
   // Whether this key is a decal / non-functional label (KLE "d" property)
   "decal": false,
 
+  // Control-like classification — see "Scancode classification" below.
+  "controlLike": false,
+
   // KLE colorway (optional — only present if KLE file specifies per-key colors)
   "color":     "#2d2d2d",
   "textColor": "#e0e0e0"
 }
 ```
+
+#### Scancode classification (`controlLike`)
+
+The Go backend is the single source of truth for whether a scancode is
+"control-like" (modifier, navigation, function key, …) versus
+text-producing (letters, digits, punctuation, the ISO key, printable
+numpad keys). Two helpers in `internal/keyboard/scancode.go`:
+
+- `ScancodeProducesText(sc)` — true for keys that, when pressed, type a
+  character. Excludes Enter, Escape, Backspace, Tab, NumLock, KPEnter
+  even though their HID usage IDs sit inside the printable ranges.
+- `IsControlScancode(sc)` — the inverse plus an explicit list of
+  "looks-like-text-but-treat-as-control" keys (notably Space, which
+  produces a character but should still take the meta-control CSS
+  class on a keycap).
+
+`ParseKLE` evaluates `IsControlScancode(Scancode)` once per key and
+stamps the result onto `TransportKey.controlLike`. The frontend reads
+this field directly and does **not** maintain its own classifier — any
+classification logic must be added on the Go side, where it can be unit
+tested (`TestScancodeClassificationContract` in `keyboard_test.go`).
 
 ### `HIDCombo` (values in `charMap`)
 

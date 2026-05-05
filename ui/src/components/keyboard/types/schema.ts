@@ -160,6 +160,9 @@ export interface TransportKey {
   /** Decal — a label printed on the keyboard, not a physical keycap. */
   decal: boolean;
 
+  /** ControlLike - key classification (Esc, Enter, arrows, Shift…). */
+  controlLike: boolean;
+
   // --- Optional KLE colorway (only present when KLE file specifies colors) ---
   color?: string; // CSS color string, e.g. "#2d2d2d"
   textColor?: string; // CSS color string, e.g. "#e0e0e0"

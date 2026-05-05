@@ -1024,6 +1024,42 @@ func TestIsControlScancodeISOKey(t *testing.T) {
 	}
 }
 
+// IsControlScancode must return true for every scancode the frontend needs
+// to consider control-like for keycap render decisions.
+func TestIsControlScancodeCoversFormerExplicitSet(t *testing.T) {
+	cases := map[string]uint8{
+		"Escape":      hidEscape,
+		"Enter":       hidEnter,
+		"Backspace":   hidBackspace,
+		"Tab":         hidTab,
+		"Space":       hidSpace,
+		"CapsLock":    hidCapsLock,
+		"ScrollLock":  hidScrollLock,
+		"NumLock":     hidNumLock,
+		"PrintScreen": hidPrintScreen,
+		"Pause":       hidPause,
+		"Insert":      hidInsert,
+		"Delete":      hidDelete,
+		"Home":        hidHome,
+		"End":         hidEnd,
+		"PageUp":      hidPageUp,
+		"PageDown":    hidPageDown,
+		"ArrowUp":     hidArrowUp,
+		"ArrowDown":   hidArrowDown,
+		"ArrowLeft":   hidArrowLeft,
+		"ArrowRight":  hidArrowRight,
+		"NumpadEnter": hidKPEnter,
+		"Application": hidApplication,
+	}
+	for name, sc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if !IsControlScancode(sc) {
+				t.Errorf("IsControlScancode(%s/0x%02x) = false, want true", name, sc)
+			}
+		})
+	}
+}
+
 // When the same dead-key character appears on multiple layers (or on
 // multiple physical keys), addDeadKeyCompositions must use one consistent
 // combo for both the composition entries (â) and the standalone replacement

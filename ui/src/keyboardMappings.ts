@@ -264,53 +264,7 @@ export const isModifierScancode = (scancode: number) => scancode >= 0xe0 && scan
 /** Modifier key names from the `modifiers` map (excludes the AltGr alias) */
 export const modifierKeyNames = Object.keys(modifiers).filter(n => n !== "AltGr");
 
-// HID scancodes that are not modifiers but should still be considered "control-like" for the purposes of
-// legend display and AltGr preview behavior. This is a hand-curated list based on keys that typically don't
-// have a "printable" legend, even if they technically could be considered printable keys by the HID spec.
-const explicitControlLikeScancodes = new Set<number>([
-  keys.Escape,
-  keys.Enter,
-  keys.Backspace,
-  keys.Tab,
-  keys.Space,
-  keys.CapsLock,
-  keys.ScrollLock,
-  keys.NumLock,
-  keys.PrintScreen,
-  keys.Pause,
-  keys.Insert,
-  keys.Delete,
-  keys.Home,
-  keys.End,
-  keys.PageUp,
-  keys.PageDown,
-  keys.ArrowUp,
-  keys.ArrowDown,
-  keys.ArrowLeft,
-  keys.ArrowRight,
-  keys.NumpadEnter,
-  keys.Application,
-]);
-
-// Mirrors the backend's ScancodeProducesText.
-const scancodeProducesText = (scancode: number) => {
-  // Letters: A..Z (0x04..0x1D)
-  if (scancode >= 0x04 && scancode <= 0x1d) return true;
-  // Number row: 1..0 (0x1E..0x27)
-  if (scancode >= 0x1e && scancode <= 0x27) return true;
-  // Space and printable punctuation: Space (0x2C), Minus..Slash (0x2D..0x38)
-  if (scancode === 0x2c || (scancode >= 0x2d && scancode <= 0x38)) return true;
-  // ISO key (Non-US `|`)
-  if (scancode === 0x64) return true;
-  // Numpad printable: KPSlash..KPPlus (0x54..0x57), KP1..KPDot (0x59..0x63)
-  if (scancode >= 0x54 && scancode <= 0x57) return true;
-  if (scancode >= 0x59 && scancode <= 0x63) return true;
-  return false;
-};
-
-// Used by the keyboard UI to decide which keys should retain normal legends
-// in AltGr preview modes.
-export const isControlScancode = (scancode: number) =>
-  isModifierScancode(scancode) ||
-  explicitControlLikeScancodes.has(scancode) ||
-  !scancodeProducesText(scancode);
+// Scancode-to-control-like classification is computed in Go and shipped on
+// each TransportKey as `controlLike` — read it from there. See
+// docs/keyboard/TRANSPORT.md and internal/keyboard/scancode.go
+// (IsControlScancode / ScancodeProducesText).

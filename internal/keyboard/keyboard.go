@@ -96,6 +96,7 @@ type TransportKey struct {
 	DeadLegends []string   `json:"deadLegends,omitempty"`
 	Homing      bool       `json:"homing"`
 	Decal       bool       `json:"decal"`
+	ControlLike bool       `json:"controlLike"`
 
 	Color     string `json:"color,omitempty"`
 	TextColor string `json:"textColor,omitempty"`
@@ -448,6 +449,10 @@ func ParseKLE(rawJSON []byte, id string, nameOverride string) (*KeyboardLayout, 
 		}
 		// Infer from position using the selected table
 		k.Scancode = inferScancodeWithTable(k.X, k.Y, k.W, k.H, table)
+	}
+
+	for i := range keys {
+		keys[i].ControlLike = IsControlScancode(keys[i].Scancode)
 	}
 
 	normalizeControlLegendsForDisplay(keys)
