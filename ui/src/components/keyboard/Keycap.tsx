@@ -186,19 +186,19 @@ function ariaLabel(legends: KeyLegends): string {
     parts.push(resolveKeyName(legends.normal));
   }
   if (legends.shift && legends.shift !== legends.normal?.toUpperCase()) {
-    parts.push(`Shift: ${resolveKeyName(legends.shift)}`);
+    parts.push(`${m.keys_modifier_shift()}: ${resolveKeyName(legends.shift)}`);
   }
   if (legends.altgr) {
-    parts.push(`AltGr: ${resolveKeyName(legends.altgr)}`);
+    parts.push(`${m.keys_modifier_altgr()}: ${resolveKeyName(legends.altgr)}`);
   }
   if (legends.shiftAltgr) {
-    parts.push(`Shift+AltGr: ${resolveKeyName(legends.shiftAltgr)}`);
+    parts.push(`${m.keys_modifier_altgr_shift()}: ${resolveKeyName(legends.shiftAltgr)}`);
   }
   if (legends.kana) {
-    parts.push(`Kana: ${resolveKeyName(legends.kana)}`);
+    parts.push(`${m.keys_modifier_kana()}: ${resolveKeyName(legends.kana)}`);
   }
   if (legends.shiftKana) {
-    parts.push(`Shift+Kana: ${resolveKeyName(legends.shiftKana)}`);
+    parts.push(`${m.keys_modifier_kana_shift()}: ${resolveKeyName(legends.shiftKana)}`);
   }
 
   return parts.join(", ") || "key";
