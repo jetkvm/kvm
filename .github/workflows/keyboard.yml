@@ -7,13 +7,19 @@ on:
   push:
     branches: [dev, main]
     paths:
-      - 'internal/keyboard/**'
-      - 'scripts/audit_layouts.go'
-      - 'scripts/validate_layout.go'
-      - '.github/workflows/keyboard.yml'
+      - 'internal/keyboard/layouts/**'        # built-in layout files (KLE JSON)
+      - 'internal/keyboard/testdata/**'       # KLE fixtures used by unit tests
+      - 'internal/keyboard/keyaliases.json'   # special-key taxonomy
+      - 'internal/keyboard/**.go'             # parser, validator, tests, helpers
+      - 'scripts/audit_layouts.go'            # the audit tool itself
+      - 'scripts/validate_layout.go'          # the single-file validator
+      - '.github/workflows/keyboard.yml'      # this workflow
   pull_request:
     paths:
-      - 'internal/keyboard/**'
+      - 'internal/keyboard/layouts/**'
+      - 'internal/keyboard/testdata/**'
+      - 'internal/keyboard/keyaliases.json'
+      - 'internal/keyboard/**.go'
       - 'scripts/audit_layouts.go'
       - 'scripts/validate_layout.go'
       - '.github/workflows/keyboard.yml'
