@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.http.SslError;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.text.InputType;
@@ -14,6 +15,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.autofill.AutofillManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
@@ -94,11 +96,10 @@ public class MainActivity extends Activity {
         webView.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
-                showLoginPanel("Change JetKVM URL or log in again.");
                 return true;
             }
         });
-        webView.setHapticFeedbackEnabled(true);
+        webView.setHapticFeedbackEnabled(false);
 
         enterImmersiveMode();
         showLoginPanel("");
@@ -198,7 +199,7 @@ public class MainActivity extends Activity {
         usernameInput.setText("JetKVM");
         usernameInput.setHint("Username");
         usernameInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        usernameInput.setAutofillHints(View.AUTOFILL_HINT_USERNAME);
+        enableAutofill(usernameInput, View.AUTOFILL_HINT_USERNAME);
         usernameInput.setSelectAllOnFocus(true);
         form.addView(usernameInput, fieldLayoutParams());
 
@@ -206,7 +207,7 @@ public class MainActivity extends Activity {
         passwordInput.setSingleLine(true);
         passwordInput.setHint("Password");
         passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        passwordInput.setAutofillHints(View.AUTOFILL_HINT_PASSWORD);
+        enableAutofill(passwordInput, View.AUTOFILL_HINT_PASSWORD);
         form.addView(passwordInput, fieldLayoutParams());
 
         stayLoggedInInput = new CheckBox(this);
@@ -251,6 +252,13 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void enableAutofill(View view, String hint) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            view.setAutofillHints(hint);
+            view.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -370,7 +378,32 @@ public class MainActivity extends Activity {
         passwordInput.requestFocus();
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) imm.showSoftInput(passwordInput, InputMethodManager.SHOW_IMPLICIT);
+        requestPasswordAutofill();
         enterImmersiveMode();
+    }
+
+    private void requestPasswordAutofill() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || passwordInput == null) return;
+
+        passwordInput.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                AutofillManager autofillManager =
+                    (AutofillManager) getSystemService(AutofillManager.class);
+                if (autofillManager != null) {
+                    autofillManager.cancel();
+                    autofillManager.requestAutofill(passwordInput);
+                }
+            }
+        }, 250);
+    }
+
+    private void commitAutofillSession() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+
+        AutofillManager autofillManager =
+            (AutofillManager) getSystemService(AutofillManager.class);
+        if (autofillManager != null) autofillManager.commit();
     }
 
     private void setBusy(boolean busy) {
@@ -440,6 +473,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
+                            commitAutofillSession();
                             setBusy(false);
                             showController();
                         }
