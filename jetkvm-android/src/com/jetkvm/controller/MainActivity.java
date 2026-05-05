@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
     private static final String KEY_URL = "controllerUrl";
     private static final String KEY_STAY_LOGGED_IN = "stayLoggedIn";
     private static final String DEFAULT_URL = "http://jetkvm.local/?jetkvmAndroid=1";
+    private static final long WAKE_LOCK_TIMEOUT_MS = 60 * 60 * 1000L;
 
     private WebView webView;
     private LinearLayout loginPanel;
@@ -109,7 +110,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         enterImmersiveMode();
-        if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
+        if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
     }
 
     @Override
@@ -213,7 +214,7 @@ public class MainActivity extends Activity {
         stayLoggedInInput = new CheckBox(this);
         stayLoggedInInput.setText("Stay logged in");
         stayLoggedInInput.setTextColor(Color.WHITE);
-        stayLoggedInInput.setChecked(true);
+        stayLoggedInInput.setChecked(prefs.getBoolean(KEY_STAY_LOGGED_IN, true));
         form.addView(stayLoggedInInput, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
