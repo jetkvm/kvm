@@ -221,6 +221,17 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
+                title={m.usb_device_enable_touchscreen_title()}
+                description={m.usb_device_enable_touchscreen_description()}
+              >
+                <Checkbox
+                  checked={usbDeviceConfig.touchscreen}
+                  onChange={onUsbConfigItemChange("touchscreen")}
+                />
+              </SettingsItem>
+            </div>
+            <div className="space-y-4">
+              <SettingsItem
                 title={m.usb_device_enable_mass_storage_title()}
                 description={m.usb_device_enable_mass_storage_description()}
               >

@@ -989,6 +989,8 @@
     "usb_device_enable_relative_mouse_title": "启用相对定位鼠标",
     "usb_device_enable_serial_console_description": "向目标主机公开 USB 串行 (CDC-ACM) 设备",
     "usb_device_enable_serial_console_title": "启用 USB 串行控制台",
+    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
+    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "加载 USB 设备失败：{error}",
     "usb_device_failed_set": "设置 USB 设备失败：{error}",
     "usb_device_keyboard_mouse_and_mass_storage": "键盘、鼠标和大容量存储",

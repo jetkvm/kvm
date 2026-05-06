@@ -989,6 +989,8 @@
     "usb_device_enable_relative_mouse_title": "Включить относительную мышь",
     "usb_device_enable_serial_console_description": "Предоставляет последовательное USB-устройство (CDC-ACM) целевому хосту",
     "usb_device_enable_serial_console_title": "Включить последовательную USB-консоль",
+    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
+    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "Не удалось загрузить USB-устройства: {error}",
     "usb_device_failed_set": "Не удалось установить USB-устройства: {error}",
     "usb_device_keyboard_mouse_and_mass_storage": "Клавиатура, мышь и накопитель",

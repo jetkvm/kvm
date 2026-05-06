@@ -989,6 +989,8 @@
     "usb_device_enable_relative_mouse_title": "Aktivér relativ mus",
     "usb_device_enable_serial_console_description": "Eksponerer en USB-seriel enhed (CDC-ACM) til målværten",
     "usb_device_enable_serial_console_title": "Aktivér USB-seriel konsol",
+    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
+    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "Kunne ikke indlæse USB-enheder: {error}",
     "usb_device_failed_set": "Kunne ikke indstille USB-enheder: {error}",
     "usb_device_keyboard_mouse_and_mass_storage": "Tastatur, mus og masselagring",

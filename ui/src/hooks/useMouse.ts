@@ -208,11 +208,24 @@ export default function useMouse() {
     sendAbsMouseMovement(lastAbsPos.current.x, lastAbsPos.current.y, 0);
   }, [sendAbsMouseMovement]);
 
+  const resetTouchscreenPosition = useCallback(() => {
+    if (rpcHidReady) {
+      reportTouchscreenEvent(lastAbsPos.current.x, lastAbsPos.current.y, false);
+    } else {
+      send("touchscreenReport", {
+        x: lastAbsPos.current.x,
+        y: lastAbsPos.current.y,
+        touching: false,
+      });
+    }
+  }, [reportTouchscreenEvent, rpcHidReady, send]);
+
   return {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
     getTouchscreenMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
+    resetTouchscreenPosition,
   };
 }

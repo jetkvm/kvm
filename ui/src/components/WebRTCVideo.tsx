@@ -80,6 +80,7 @@ export default function WebRTCVideo({
     getTouchscreenMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
+    resetTouchscreenPosition,
   } = useMouse();
   const {
     setClientSize: setVideoClientSize,
@@ -639,8 +640,11 @@ export default function WebRTCVideo({
         );
       } else {
         // Reset the mouse position when the window is blurred or the document is hidden
-        window.addEventListener("blur", resetMousePosition, { signal });
-        document.addEventListener("visibilitychange", resetMousePosition, {
+        const resetInputPosition = isTouchscreenMode
+          ? resetTouchscreenPosition
+          : resetMousePosition;
+        window.addEventListener("blur", resetInputPosition, { signal });
+        document.addEventListener("visibilitychange", resetInputPosition, {
           signal,
         });
       }
@@ -663,6 +667,7 @@ export default function WebRTCVideo({
       touchscreenMoveHandler,
       mouseWheelHandler,
       resetMousePosition,
+      resetTouchscreenPosition,
       settings.mouseMode,
       sendAndroidBack,
     ],
