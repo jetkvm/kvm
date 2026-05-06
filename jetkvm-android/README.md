@@ -2,7 +2,8 @@
 
 Native Android wrapper for using a phone or tablet as a JetKVM controller. This
 is the controller-side companion to the Android support work in this fork; the
-target-side changes live in the main JetKVM backend and web UI, not in this APK.
+target-side input changes live in the main JetKVM backend and web UI, and the
+optional target-side keyguard helper lives in `../jetkvm-companion/`.
 
 The app shows a native login screen first so Android password managers can
 reliably autofill the JetKVM password. After login, it opens the JetKVM web UI

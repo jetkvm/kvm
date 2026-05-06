@@ -15,7 +15,8 @@
 > This fork contains in-progress Android support work for
 > [PR #1441](https://github.com/jetkvm/kvm/pull/1441): USB HID touchscreen
 > target support for Android devices, Android/mobile compact controller UI, and
-> a native Android controller APK.
+> a native Android controller APK, and a lightweight Android target companion
+> APK for trusted keyguard dismissal.
 >
 > Android controller APK release:
 > [JetKVM Android Support 1.4](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.4)
@@ -31,6 +32,9 @@ separate Android workflows:
 - **Android as a controller device**: use another Android phone or tablet as the
   controller for the JetKVM web UI through a compact mobile UI or native wrapper
   APK.
+- **Android target companion mode**: optionally install a small helper app on
+  the target phone to dismiss Android's trusted soft keyguard when USB HID input
+  alone cannot dismiss the external-display lockscreen.
 
 The target-device use case is a stock Android phone connected to JetKVM as the
 remote device. Video still comes from the JetKVM capture path. Input is sent
@@ -53,6 +57,32 @@ events over the video to HID touchscreen coordinates and sends:
 This is intended to address Android target input problems where Android treats
 JetKVM absolute mouse input as a mouse, producing cursor/IME behavior instead of
 normal touch behavior.
+
+### Android Target Keyguard Modes
+
+Android lockscreen behavior is separate from normal app input. On a stock Pixel
+target, JetKVM's USB HID touchscreen is exposed as an external touchscreen tied
+to the JetKVM HDMI display. Android can accept those events while still refusing
+to treat them as a built-in lockscreen dismiss gesture. The companion APK is the
+smallest stock-Android workaround found for that policy boundary.
+
+Suggested modes:
+
+- **No lockscreen**: may work for some users, but some apps are hostile toward
+  disabled lockscreen or insecure-device configurations.
+- **Keyguard on with Extend Unlock**: recommended for stock Android targets.
+  Keep Android keyguard enabled, configure Extend Unlock or another trusted
+  state, install `jetkvm-companion/` on the target phone, and open it once after
+  boot or enable its launch-on-boot setting. The companion uses public Android
+  APIs to prepare a transparent `showWhenLocked` Activity and call
+  `KeyguardManager.requestDismissKeyguard()` when the display wakes.
+- **Keyguard on without Extend Unlock**: no stock/public JetKVM-only solution.
+  A hard locked Android device requires the user credential or third-party
+  automation tools such as Tasker, Shizuku-based automation, Accessibility
+  automation, root, or device-owner/OEM privileges.
+
+The companion does not inject input, capture the screen, use ADB, require root,
+use Accessibility, or depend on Shizuku.
 
 ### Android Controller UI
 
@@ -77,6 +107,19 @@ The wrapper accepts HTTPS URLs and local HTTP JetKVM URLs. Local HTTP is limited
 in the native login flow to localhost, `.local` hostnames, IPv4 private ranges,
 and link-local IPv4 addresses. This keeps raw JetKVM LAN IPs usable while
 rejecting arbitrary public cleartext HTTP URLs before the WebView is opened.
+
+### Native Android Companion APK
+
+The `jetkvm-companion/` directory contains the optional target-side helper for
+trusted keyguard dismissal. It is intended for Android target phones, not the
+Android controller phone. Its launcher Activity provides a small settings UI
+with a launch-on-boot option; the foreground notification is part of Android's
+standard foreground-service reliability model. Build it with:
+
+```bash
+cd /path/to/kvm
+./jetkvm-companion/build.sh release
+```
 
 Latest APK:
 

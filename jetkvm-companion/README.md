@@ -1,0 +1,61 @@
+# JetKVM Companion APK
+
+Small target-side Android helper for JetKVM Android target setups.
+
+JetKVM controls Android targets through USB HID touchscreen and keyboard input.
+On stock Android, that is enough once the phone is usable, but the lockscreen is
+special: Android can keep a trusted soft keyguard on the external JetKVM display
+and refuse to dismiss it from the external USB digitizer. This companion uses
+only public Android APIs to bridge that gap.
+
+The companion does not inject input, capture the screen, use ADB, require root,
+use Accessibility, or depend on Shizuku. It runs a foreground service, listens
+for display off/on events, and keeps a transparent `showWhenLocked` Activity
+available. When the target wakes and Android reports the user is trusted, the
+Activity calls `KeyguardManager.requestDismissKeyguard()`.
+
+Opening the app shows a small settings UI. Use **Arm companion** after install,
+and enable **Launch on boot** if the helper should arm itself after Android
+finishes booting. Android 13 and later may ask for notification permission; that
+permission lets Android keep the companion foreground service visible and
+reliable.
+
+## Modes of Operation
+
+- **No lockscreen**: may work for some users, but some apps are hostile toward
+  disabled lockscreen or insecure-device configurations.
+- **Keyguard on with Extend Unlock**: recommended stock-Android mode for this
+  helper. Keep the normal Android keyguard enabled, configure Extend Unlock or
+  another trusted state, install JetKVM Companion on the target phone, and open
+  it once after boot to arm the foreground service. Enable **Launch on boot** to
+  arm the service automatically after future boots.
+- **Keyguard on without Extend Unlock**: no stock/public JetKVM solution. A hard
+  locked Android device requires the user credential or third-party automation
+  tools such as Tasker, Shizuku-based automation, Accessibility automation, root,
+  or device-owner/OEM privileges.
+
+## Build
+
+```bash
+cd /path/to/kvm
+./jetkvm-companion/build.sh
+```
+
+## Release Build
+
+```bash
+cd /path/to/kvm
+./jetkvm-companion/build.sh release
+```
+
+## Install
+
+```bash
+adb install -r jetkvm-companion/build/JetKVM-Companion-debug.apk
+```
+
+Install the release APK:
+
+```bash
+adb install -r jetkvm-companion/build/JetKVM-Companion-release.apk
+```
