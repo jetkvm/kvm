@@ -38,7 +38,8 @@ const BUTTON_SIZE = 44;
 const EDGE_PADDING = 8;
 const PANEL_WIDTH = 280;
 
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const clamp = (value: number, min: number, max: number) =>
+  max < min ? min : Math.min(Math.max(value, min), max);
 
 const getDefaultPosition = (): Position => ({
   x: Math.max(EDGE_PADDING, window.innerWidth - BUTTON_SIZE - EDGE_PADDING),
@@ -136,18 +137,20 @@ export default function AndroidCompactControls({
   }, [persistPosition, position]);
 
   const panelStyle = useMemo(() => {
+    const width = Math.min(PANEL_WIDTH, window.innerWidth - EDGE_PADDING * 2);
+    const maxHeight = Math.max(BUTTON_SIZE, window.innerHeight - EDGE_PADDING * 2);
     const left = clamp(
-      position.x + BUTTON_SIZE - PANEL_WIDTH,
+      position.x + BUTTON_SIZE - width,
       EDGE_PADDING,
-      window.innerWidth - PANEL_WIDTH - EDGE_PADDING,
+      window.innerWidth - width - EDGE_PADDING,
     );
     const top = clamp(
       position.y + BUTTON_SIZE + 8,
       EDGE_PADDING,
-      window.innerHeight - EDGE_PADDING - 360,
+      window.innerHeight - EDGE_PADDING - maxHeight,
     );
 
-    return { left, top, width: PANEL_WIDTH };
+    return { left, top, width, maxHeight };
   }, [position]);
 
   const openPanel = useCallback(
