@@ -74,8 +74,40 @@ func rpcSetVNCConfig(cfg VNCConfig) error {
 			vncLogger.Error().Err(err).Msg("failed to start VNC server after config change")
 			return err
 		}
+		// Force the encoder to H.264 if a stream is already running
+		// at H.265. Without this, a browser tab that negotiated H.265
+		// before VNC was enabled would keep the pipeline at H.265,
+		// and any VNC client would receive H.265 NALs marked as
+		// OpenH264 (encoding 50, H.264-only) and silently fail to
+		// decode. Cycling the stream briefly interrupts the active
+		// WebRTC session — the user will need to refresh the browser.
+		forceVideoCodecForVNC()
 	}
 	return nil
+}
+
+// forceVideoCodecForVNC makes sure the running capture pipeline emits
+// H.264 once VNC is enabled. If no consumers are running, the codec
+// gets pinned but the pipeline stays stopped — the next acquirer's
+// VideoStart will pick it up.
+func forceVideoCodecForVNC() {
+	curr, err := nativeInstance.VideoGetCodecType()
+	if err != nil {
+		vncLogger.Warn().Err(err).Msg("could not read current video codec; skipping coercion")
+		return
+	}
+	if curr == 0 {
+		return // already H.264
+	}
+	if !videoStreamHasConsumers() {
+		// Pipeline is idle. Just pin the codec; next start picks it up.
+		_ = nativeInstance.VideoSetCodecType(0)
+		return
+	}
+	vncLogger.Warn().Int("from", curr).Msg("cycling capture pipeline to H.264 for VNC; refresh active browser tabs")
+	_ = nativeInstance.VideoStop()
+	_ = nativeInstance.VideoSetCodecType(0)
+	_ = nativeInstance.VideoStart()
 }
 
 // StartVNCServer starts the VNC TCP listener if VNC is enabled.
@@ -221,6 +253,9 @@ func (s *VNCServer) addClient(c *vncConn) (sps, pps []byte) {
 	s.clientsMu.Unlock()
 	if first {
 		acquireVideoStreamWithCodec(vncVideoConsumer, 0) // 0 = H.264
+	}
+	if curr, err := nativeInstance.VideoGetCodecType(); err == nil {
+		c.l.Trace().Int("codec", curr).Msg("video codec at VNC client connect (0=H.264, 1=H.265)")
 	}
 	s.paramsMu.Lock()
 	defer s.paramsMu.Unlock()
