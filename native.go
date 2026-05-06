@@ -39,8 +39,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			lastVideoState = state
 			triggerVideoStateUpdate()
 			requestDisplayUpdate(false, "video_state_changed")
-			if vncServer != nil && state.Width > 0 && state.Height > 0 {
-				vncServer.notifyResolutionChange(uint16(state.Width), uint16(state.Height))
+			if srv := loadVNCServer(); srv != nil && state.Width > 0 && state.Height > 0 {
+				srv.notifyResolutionChange(uint16(state.Width), uint16(state.Height))
 			}
 		},
 		OnIndevEvent: func(event string) {
@@ -77,8 +77,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 					nativeLogger.Warn().Err(err).Msg("error writing sample")
 				}
 			}
-			if vncServer != nil {
-				vncServer.WriteFrame(frame, duration)
+			if srv := loadVNCServer(); srv != nil {
+				srv.WriteFrame(frame, duration)
 			}
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {

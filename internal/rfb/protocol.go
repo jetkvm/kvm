@@ -93,3 +93,18 @@ const (
 	PointerButtonLeftWh uint8 = 1 << 5
 	PointerButtonRightW uint8 = 1 << 6
 )
+
+// PointerMaskToHIDButtons converts an RFB PointerEvent button-mask
+// (RFC 6143 §7.5.5) to a USB HID boot-mouse button byte.
+//
+// RFB layout:  bit 0 = left, bit 1 = MIDDLE, bit 2 = RIGHT
+// USB HID:     bit 0 = left, bit 1 = RIGHT,  bit 2 = MIDDLE
+//
+// Bits 3..6 (RFB wheel pseudo-buttons) are dropped — callers should
+// translate them into wheel reports separately.
+func PointerMaskToHIDButtons(m uint8) uint8 {
+	left := m & PointerButtonLeft   // bit 0, same in both
+	mid := m & PointerButtonMiddle  // RFB bit 1 -> HID bit 2
+	right := m & PointerButtonRight // RFB bit 2 -> HID bit 1
+	return left | (mid << 1) | (right >> 1)
+}

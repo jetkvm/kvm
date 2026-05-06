@@ -333,11 +333,12 @@ func (c *vncConn) handlePointerEvent(m rfb.PointerEventMessage) {
 		_ = rpcWheelReport(-1, 0)
 	}
 
-	// Strip wheel bits from the button mask so they don't end up as
-	// real button presses on the HID side.
-	const wheelMask = rfb.PointerButtonUp | rfb.PointerButtonDown |
-		rfb.PointerButtonLeftWh | rfb.PointerButtonRightW
-	hidButtons := m.ButtonMask & ^wheelMask
+	// Translate RFB's button-mask layout to USB HID's. RFB
+	// (RFC 6143 §7.5.5) is bit 0=left, 1=middle, 2=right; USB HID
+	// boot mouse is bit 0=left, 1=right, 2=middle. Wheel pseudo-bits
+	// (3..6) were already turned into wheel reports above and are
+	// stripped here.
+	hidButtons := rfb.PointerMaskToHIDButtons(m.ButtonMask)
 
 	if err := rpcAbsMouseReport(x, y, hidButtons); err != nil {
 		c.l.Warn().Err(err).Msg("abs mouse report failed")

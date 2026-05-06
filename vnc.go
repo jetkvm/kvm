@@ -4,18 +4,29 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/rfb"
 	"github.com/jetkvm/kvm/internal/sync"
 )
 
-// vncServer is the global VNC server instance, or nil when the
-// server is disabled. Accessed from native.go's frame callback.
+// vncServer holds the global VNC server instance, or nil when the
+// server is disabled. Accessed from native.go's frame callback on
+// every frame, so the read path uses an atomic pointer to avoid the
+// data race that a plain *VNCServer + mutex pair would introduce.
+//
+// vncServerStartMu serialises StartVNCServer / StopVNCServer against
+// each other so a configuration change can't half-create or
+// half-destroy the server; it does NOT guard the pointer itself.
 var (
-	vncServer   *VNCServer
-	vncServerMu sync.Mutex
+	vncServer        atomic.Pointer[VNCServer]
+	vncServerStartMu sync.Mutex
 )
+
+// loadVNCServer is a tiny helper used by callers that just need a
+// snapshot of the current server pointer.
+func loadVNCServer() *VNCServer { return vncServer.Load() }
 
 // VNCConfig is the JSON-RPC view of the VNC configuration.
 type VNCConfig struct {
@@ -113,10 +124,10 @@ func forceVideoCodecForVNC() {
 // StartVNCServer starts the VNC TCP listener if VNC is enabled.
 // Idempotent: a second call while running is a no-op.
 func StartVNCServer() error {
-	vncServerMu.Lock()
-	defer vncServerMu.Unlock()
+	vncServerStartMu.Lock()
+	defer vncServerStartMu.Unlock()
 
-	if vncServer != nil {
+	if vncServer.Load() != nil {
 		return nil
 	}
 	if !config.VncEnabled {
@@ -139,7 +150,7 @@ func StartVNCServer() error {
 		clients: make(map[*vncConn]struct{}),
 		quit:    make(chan struct{}),
 	}
-	vncServer = srv
+	vncServer.Store(srv)
 	vncLogger.Info().Str("address", addr).Msg("VNC server listening")
 
 	go srv.acceptLoop()
@@ -148,10 +159,9 @@ func StartVNCServer() error {
 
 // StopVNCServer shuts down the VNC server if it is running.
 func StopVNCServer() {
-	vncServerMu.Lock()
-	srv := vncServer
-	vncServer = nil
-	vncServerMu.Unlock()
+	vncServerStartMu.Lock()
+	srv := vncServer.Swap(nil)
+	vncServerStartMu.Unlock()
 
 	if srv == nil {
 		return
