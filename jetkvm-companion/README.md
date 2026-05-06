@@ -8,6 +8,17 @@ special: Android can keep a trusted soft keyguard on the external JetKVM display
 and refuse to dismiss it from the external USB digitizer. This companion uses
 only public Android APIs to bridge that gap.
 
+The companion exists because this is an Android multi-display keyguard policy
+boundary, not a JetKVM HID bug. AOSP documents that secondary-display lockscreen
+UI doesn't support unlocking from secondary screens, and its multi-display FAQ
+says the default secondary-display lockscreen isn't interactive and doesn't
+allow unlocking.
+
+References:
+
+- https://source.android.com/docs/core/display/multi_display/lock-screen
+- https://source.android.com/docs/core/display/multi_display/faq
+
 The companion does not inject input, capture the screen, use ADB, require root,
 use Accessibility, or depend on Shizuku. It runs a foreground service, listens
 for display off/on events, and keeps a transparent `showWhenLocked` Activity
@@ -58,4 +69,16 @@ Install the release APK:
 
 ```bash
 adb install -r jetkvm-companion/build/JetKVM-Companion-release.apk
+```
+
+Latest release:
+
+```text
+https://github.com/Batestinha/kvm/releases/tag/jetkvm-companion-v1.0
+```
+
+Latest APK asset:
+
+```text
+JetKVM-Companion-1.0.apk
 ```

@@ -18,8 +18,10 @@
 > a native Android controller APK, and a lightweight Android target companion
 > APK for trusted keyguard dismissal.
 >
-> Android controller APK release:
-> [JetKVM Android Support 1.4](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.4)
+> Android APK releases:
+> [JetKVM Android Controller 1.5](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.5)
+> and
+> [JetKVM Companion 1.0](https://github.com/Batestinha/kvm/releases/tag/jetkvm-companion-v1.0)
 
 ## Android Support Fork
 
@@ -65,6 +67,17 @@ target, JetKVM's USB HID touchscreen is exposed as an external touchscreen tied
 to the JetKVM HDMI display. Android can accept those events while still refusing
 to treat them as a built-in lockscreen dismiss gesture. The companion APK is the
 smallest stock-Android workaround found for that policy boundary.
+
+This is not intended as a general automation layer. It addresses Android's
+documented multi-display keyguard limitation: AOSP says the lockscreen on
+secondary displays remains simple and doesn't support unlocking from secondary
+screens, and the multi-display FAQ says the default secondary-display lockscreen
+isn't interactive and doesn't allow unlocking.
+
+References:
+
+- https://source.android.com/docs/core/display/multi_display/lock-screen
+- https://source.android.com/docs/core/display/multi_display/faq
 
 Suggested modes:
 
@@ -121,12 +134,16 @@ cd /path/to/kvm
 ./jetkvm-companion/build.sh release
 ```
 
-Latest APK:
+Latest Android APK releases:
 
-- Release:
-  [JetKVM Android Support 1.4](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.4)
-- Asset:
-  `JetKVM-android-controller-1.4.apk`
+- Controller release:
+  [JetKVM Android Controller 1.5](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.5)
+- Controller asset:
+  `JetKVM-android-controller-1.5.apk`
+- Companion release:
+  [JetKVM Companion 1.0](https://github.com/Batestinha/kvm/releases/tag/jetkvm-companion-v1.0)
+- Companion asset:
+  `JetKVM-Companion-1.0.apk`
 
 ### Upstream Status
 

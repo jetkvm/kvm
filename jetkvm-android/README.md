@@ -31,13 +31,13 @@ rejecting arbitrary public cleartext HTTP URLs before the WebView is opened.
 Latest release:
 
 ```text
-https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.4
+https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.5
 ```
 
 Latest APK asset:
 
 ```text
-JetKVM-android-controller-1.4.apk
+JetKVM-android-controller-1.5.apk
 ```
 
 Build:
