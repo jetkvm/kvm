@@ -8,6 +8,7 @@ import {
   LuKeyboard,
   LuMaximize,
   LuMenu,
+  LuMonitorUp,
   LuPower,
   LuSettings,
   LuSignal,
@@ -22,6 +23,7 @@ import ExtensionPopover from "@components/popovers/ExtensionPopover";
 import MountPopopover from "@components/popovers/MountPopover";
 import PasteModal from "@components/popovers/PasteModal";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
+import useKeyboard from "@hooks/useKeyboard";
 import { m } from "@localizations/messages.js";
 
 type Panel = "root" | "paste" | "media" | "wol" | "extension";
@@ -109,6 +111,7 @@ export default function AndroidCompactControls({
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
+  const { executeMacro } = useKeyboard();
   const {
     isOcrMode,
     setDisableVideoFocusTrap,
@@ -246,6 +249,11 @@ export default function AndroidCompactControls({
     }
   };
 
+  const turnOnDisplay = useCallback(() => {
+    void executeMacro([{ keys: ["Pause"], modifiers: null, delay: 80 }]);
+    closePanel();
+  }, [closePanel, executeMacro]);
+
   return (
     <>
       <button
@@ -329,6 +337,7 @@ export default function AndroidCompactControls({
                   closePanel();
                 }}
               />
+              <ActionButton icon={LuMonitorUp} label="Turn on display" onClick={turnOnDisplay} />
               <ActionButton
                 icon={LuHardDrive}
                 label={m.action_bar_virtual_media()}
