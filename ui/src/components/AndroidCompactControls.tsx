@@ -9,6 +9,7 @@ import {
   LuMaximize,
   LuMenu,
   LuMonitorUp,
+  LuLogOut,
   LuPower,
   LuSettings,
   LuSignal,
@@ -18,11 +19,19 @@ import {
 
 import { cx } from "@/cva.config";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { useHidStore, useMountMediaStore, useSettingsStore, useUiStore } from "@hooks/stores";
+import {
+  useHidStore,
+  useMountMediaStore,
+  useSettingsStore,
+  useUiStore,
+  useUserStore,
+} from "@hooks/stores";
 import ExtensionPopover from "@components/popovers/ExtensionPopover";
 import MountPopopover from "@components/popovers/MountPopover";
 import PasteModal from "@components/popovers/PasteModal";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
+import { DEVICE_API } from "@/ui.config";
+import api from "@/api";
 import useKeyboard from "@hooks/useKeyboard";
 import { m } from "@localizations/messages.js";
 
@@ -112,6 +121,7 @@ export default function AndroidCompactControls({
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { executeMacro } = useKeyboard();
+  const setUser = useUserStore(state => state.setUser);
   const {
     isOcrMode,
     setDisableVideoFocusTrap,
@@ -254,6 +264,14 @@ export default function AndroidCompactControls({
     closePanel();
   }, [closePanel, executeMacro]);
 
+  const logout = useCallback(async () => {
+    const res = await api.POST(`${DEVICE_API}/auth/logout`);
+    if (!res.ok) return;
+
+    setUser(null);
+    window.location.assign("/");
+  }, [setUser]);
+
   return (
     <>
       <button
@@ -385,6 +403,7 @@ export default function AndroidCompactControls({
                   navigateTo("/settings");
                 }}
               />
+              <ActionButton icon={LuLogOut} label="Log out" onClick={() => void logout()} />
             </div>
           ) : panel === "paste" ? (
             <PasteModal />
