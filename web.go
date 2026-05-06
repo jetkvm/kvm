@@ -156,6 +156,13 @@ func setupRouter() *gin.Engine {
 
 	// Public routes (no authentication required)
 	r.POST("/auth/login-local", handleLogin)
+	r.GET("/login-local", func(c *gin.Context) {
+		if shouldUseAndroidNativeLogin(c) {
+			handleAndroidNativeLogin(c)
+			return
+		}
+		c.FileFromFS("/", http.FS(staticFS))
+	})
 
 	// We use this to determine if the device is setup
 	r.GET("/device/status", handleDeviceStatus)
@@ -226,6 +233,10 @@ func setupRouter() *gin.Engine {
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
 		if c.Request.Method == "GET" && c.NegotiateFormat(gin.MIMEHTML) == gin.MIMEHTML {
+			if shouldUseAndroidNativeLogin(c) && !hasValidLocalAuthCookie(c) {
+				handleAndroidNativeLogin(c)
+				return
+			}
 			c.FileFromFS("/", http.FS(staticFS))
 			return
 		}
@@ -233,6 +244,60 @@ func setupRouter() *gin.Engine {
 	})
 
 	return r
+}
+
+func shouldUseAndroidNativeLogin(c *gin.Context) bool {
+	userAgent := c.GetHeader("User-Agent")
+	if strings.Contains(userAgent, "JetKVMWebView/1") {
+		return true
+	}
+	return c.Query("jetkvmAndroid") == "1"
+}
+
+func hasValidLocalAuthCookie(c *gin.Context) bool {
+	if config.LocalAuthMode == "noPassword" {
+		return true
+	}
+	authToken, err := c.Cookie("authToken")
+	return err == nil && authToken != "" && authToken == config.LocalAuthToken
+}
+
+func handleAndroidNativeLogin(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JetKVM login</title>
+  <style>
+    html, body {
+      background: #050814;
+      color: #e5e7eb;
+      font: 16px system-ui, sans-serif;
+      height: 100%;
+      margin: 0;
+    }
+    body {
+      align-items: center;
+      display: flex;
+      justify-content: center;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div>Open the JetKVM Android login screen.</div>
+  <script>
+    (function () {
+      if (window.JetKVMAndroid && window.JetKVMAndroid.showNativeLogin) {
+        window.JetKVMAndroid.showNativeLogin(window.location.href);
+      }
+    })();
+  </script>
+</body>
+</html>`)
 }
 
 // TODO: support multiple sessions?
