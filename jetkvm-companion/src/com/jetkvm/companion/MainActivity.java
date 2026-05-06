@@ -1,97 +1,45 @@
 package com.jetkvm.companion;
 
 import android.app.Activity;
-import android.app.KeyguardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.Window;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private static final long DISMISS_DELAY_MS = 300;
     private static final int REQUEST_POST_NOTIFICATIONS = 10;
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private KeyguardManager keyguardManager;
     private SharedPreferences prefs;
     private CheckBox launchOnBootInput;
     private TextView statusText;
-    private boolean dismissInFlight;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
-        configureLockscreenWindow();
 
-        keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
         prefs = getSharedPreferences(CompanionService.PREFS, MODE_PRIVATE);
         startForegroundService(new Intent(this, CompanionService.class));
-
-        if (isSettingsLaunch(getIntent())) {
-            setContentView(createSettingsView());
-            updateStatus("Companion service armed.");
-            requestNotificationPermissionIfNeeded();
-        } else {
-            setContentView(createTransparentView());
-            scheduleDismiss("onCreate");
-        }
+        setContentView(createSettingsView());
+        updateArmStatus();
+        requestNotificationPermissionIfNeeded();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (!isSettingsLaunch(getIntent())) {
-            scheduleDismiss("onResume");
-        }
-    }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        if (isSettingsLaunch(intent)) {
-            setContentView(createSettingsView());
-            updateStatus("Companion service armed.");
-        } else {
-            setContentView(createTransparentView());
-            scheduleDismiss("onNewIntent:" + intent.getAction());
-        }
-    }
-
-    private void configureLockscreenWindow() {
-        if (android.os.Build.VERSION.SDK_INT >= 27) {
-            setShowWhenLocked(true);
-            setTurnScreenOn(false);
-        } else {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
-        }
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-    }
-
-    private boolean isSettingsLaunch(Intent intent) {
-        return intent == null || Intent.ACTION_MAIN.equals(intent.getAction());
-    }
-
-    private FrameLayout createTransparentView() {
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.TRANSPARENT);
-        return root;
+        updateArmStatus();
     }
 
     private LinearLayout createSettingsView() {
@@ -139,11 +87,26 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(android.view.View v) {
                 startForegroundService(new Intent(MainActivity.this, CompanionService.class));
-                updateStatus("Companion service armed.");
+                updateArmStatus();
                 requestNotificationPermissionIfNeeded();
             }
         });
         root.addView(armButton, matchWrap());
+
+        Button overlayButton = new Button(this);
+        overlayButton.setText("Grant background launch assist");
+        overlayButton.setAllCaps(false);
+        overlayButton.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                Intent intent = new Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName())
+                );
+                startActivity(intent);
+            }
+        });
+        root.addView(overlayButton, matchWrap());
 
         Button dismissButton = new Button(this);
         dismissButton.setText("Test trusted keyguard dismiss");
@@ -151,7 +114,10 @@ public class MainActivity extends Activity {
         dismissButton.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
             public void onClick(android.view.View v) {
-                scheduleDismiss("manual");
+                Intent intent = new Intent(MainActivity.this, DismissActivity.class);
+                intent.setAction(DismissActivity.ACTION_MANUAL);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+                startActivity(intent);
             }
         });
         root.addView(dismissButton, matchWrap());
@@ -183,62 +149,15 @@ public class MainActivity extends Activity {
         if (statusText != null) statusText.setText(message);
     }
 
+    private void updateArmStatus() {
+        updateStatus(Settings.canDrawOverlays(this)
+            ? "Companion service armed with background launch assist."
+            : "Companion service armed. Grant background launch assist for automatic wake unlock.");
+    }
+
     private void requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT < 33) return;
         if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return;
         requestPermissions(new String[] { android.Manifest.permission.POST_NOTIFICATIONS }, REQUEST_POST_NOTIFICATIONS);
-    }
-
-    private void scheduleDismiss(final String reason) {
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                requestDismiss(reason);
-            }
-        }, DISMISS_DELAY_MS);
-    }
-
-    private void requestDismiss(String reason) {
-        if (keyguardManager == null || dismissInFlight) return;
-
-        boolean keyguardLocked = keyguardManager.isKeyguardLocked();
-        boolean deviceLocked = keyguardManager.isDeviceLocked();
-        Log.i(CompanionService.TAG, reason + " keyguardLocked=" + keyguardLocked + " deviceLocked=" + deviceLocked);
-        updateStatus(reason + ": keyguardLocked=" + keyguardLocked + " deviceLocked=" + deviceLocked);
-
-        if (!keyguardLocked) {
-            if (!isSettingsLaunch(getIntent())) moveTaskToBack(true);
-            return;
-        }
-
-        dismissInFlight = true;
-        keyguardManager.requestDismissKeyguard(this, new KeyguardManager.KeyguardDismissCallback() {
-            @Override
-            public void onDismissError() {
-                dismissInFlight = false;
-                logState("callback onDismissError");
-            }
-
-            @Override
-            public void onDismissSucceeded() {
-                dismissInFlight = false;
-                logState("callback onDismissSucceeded");
-                if (!isSettingsLaunch(getIntent())) moveTaskToBack(true);
-            }
-
-            @Override
-            public void onDismissCancelled() {
-                dismissInFlight = false;
-                logState("callback onDismissCancelled");
-            }
-        });
-    }
-
-    private void logState(String label) {
-        boolean keyguardLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
-        boolean deviceLocked = keyguardManager != null && keyguardManager.isDeviceLocked();
-        String message = label + " keyguardLocked=" + keyguardLocked + " deviceLocked=" + deviceLocked;
-        Log.i(CompanionService.TAG, message);
-        updateStatus(message);
     }
 }
