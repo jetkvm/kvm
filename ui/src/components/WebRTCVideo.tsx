@@ -53,7 +53,7 @@ export default function WebRTCVideo({
 
   // Store hooks
   const settings = useSettingsStore();
-  const { executeMacro, handleKeyPress, resetKeyboardState } = useKeyboard();
+  const { handleKeyPress, resetKeyboardState } = useKeyboard();
 
   const sendPicphoneKeyTap = useCallback(
     (key: number) => {
@@ -66,14 +66,6 @@ export default function WebRTCVideo({
   const sendPicphoneAndroidBack = useCallback(() => {
     sendPicphoneKeyTap(keys.Escape);
   }, [sendPicphoneKeyTap]);
-
-  const sendPicphoneAndroidHome = useCallback(() => {
-    sendPicphoneKeyTap(keys.Home);
-  }, [sendPicphoneKeyTap]);
-
-  const sendPicphoneAndroidRecents = useCallback(() => {
-    void executeMacro([{ keys: ["Tab"], modifiers: ["AltLeft"], delay: 100 }]);
-  }, [executeMacro]);
 
   const {
     getRelMouseMoveHandler,
@@ -775,17 +767,6 @@ export default function WebRTCVideo({
         };
   }, [videoSaturation, videoBrightness, videoContrast]);
 
-  const showPicphoneNavOverlay = useMemo(() => {
-    if (!isPicphoneTouchscreenMode()) return false;
-    if (typeof window === "undefined") return false;
-
-    const setting = window.localStorage.getItem("picphoneNavOverlay");
-    if (setting === "0") return false;
-    if (setting === "1") return true;
-
-    return window.matchMedia("(pointer: coarse)").matches;
-  }, []);
-
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
@@ -853,58 +834,6 @@ export default function WebRTCVideo({
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />
-                      {showPicphoneNavOverlay && (
-                        <div
-                          aria-label="PicPhone nav overlay"
-                          className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur"
-                          onPointerDown={e => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onPointerMove={e => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onPointerUp={e => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
-                            onClick={e => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              sendPicphoneAndroidBack();
-                            }}
-                          >
-                            Back
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
-                            onClick={e => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              sendPicphoneAndroidHome();
-                            }}
-                          >
-                            Home
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-full px-3 py-1.5 hover:bg-white/15 active:bg-white/25"
-                            onClick={e => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              sendPicphoneAndroidRecents();
-                            }}
-                          >
-                            Recents
-                          </button>
-                        </div>
-                      )}
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
