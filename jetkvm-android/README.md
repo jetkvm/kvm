@@ -31,7 +31,7 @@ rejecting arbitrary public cleartext HTTP URLs before the WebView is opened.
 Latest release:
 
 ```text
-https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.5
+https://github.com/Batestinha/jetkvm-android-controller/releases/tag/v1.5
 ```
 
 Latest APK asset:
@@ -39,6 +39,15 @@ Latest APK asset:
 ```text
 JetKVM-android-controller-1.5.apk
 ```
+
+Obtainium source:
+
+```text
+https://github.com/Batestinha/jetkvm-android-controller
+```
+
+This release-only repository is separate from the main JetKVM fork so Obtainium
+can track the controller APK independently from the target companion APK.
 
 Build:
 

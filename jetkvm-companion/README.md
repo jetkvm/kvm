@@ -74,7 +74,7 @@ adb install -r jetkvm-companion/build/JetKVM-Companion-release.apk
 Latest release:
 
 ```text
-https://github.com/Batestinha/kvm/releases/tag/jetkvm-companion-v1.0
+https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.0
 ```
 
 Latest APK asset:
@@ -82,3 +82,12 @@ Latest APK asset:
 ```text
 JetKVM-Companion-1.0.apk
 ```
+
+Obtainium source:
+
+```text
+https://github.com/Batestinha/jetkvm-companion
+```
+
+This release-only repository is separate from the main JetKVM fork so Obtainium
+can track the target companion APK independently from the controller APK.

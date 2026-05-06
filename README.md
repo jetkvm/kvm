@@ -19,9 +19,9 @@
 > APK for trusted keyguard dismissal.
 >
 > Android APK releases:
-> [JetKVM Android Controller 1.5](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.5)
+> [JetKVM Android Controller 1.5](https://github.com/Batestinha/jetkvm-android-controller/releases/tag/v1.5)
 > and
-> [JetKVM Companion 1.0](https://github.com/Batestinha/kvm/releases/tag/jetkvm-companion-v1.0)
+> [JetKVM Companion 1.0](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.0)
 
 ## Android Support Fork
 
@@ -137,13 +137,21 @@ cd /path/to/kvm
 Latest Android APK releases:
 
 - Controller release:
-  [JetKVM Android Controller 1.5](https://github.com/Batestinha/kvm/releases/tag/jetkvm-android-controller-v1.5)
+  [JetKVM Android Controller 1.5](https://github.com/Batestinha/jetkvm-android-controller/releases/tag/v1.5)
 - Controller asset:
   `JetKVM-android-controller-1.5.apk`
+- Controller Obtainium source:
+  `https://github.com/Batestinha/jetkvm-android-controller`
 - Companion release:
-  [JetKVM Companion 1.0](https://github.com/Batestinha/kvm/releases/tag/jetkvm-companion-v1.0)
+  [JetKVM Companion 1.0](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.0)
 - Companion asset:
   `JetKVM-Companion-1.0.apk`
+- Companion Obtainium source:
+  `https://github.com/Batestinha/jetkvm-companion`
+
+The APKs are published through separate release-only repositories so Obtainium
+can track the controller and target companion as independent Android apps, each
+with its own GitHub latest release stream.
 
 ### Upstream Status
 
