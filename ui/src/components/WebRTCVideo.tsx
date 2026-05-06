@@ -671,6 +671,9 @@ export default function WebRTCVideo({
       });
 
       return () => {
+        if (isTouchscreenMode) {
+          resetTouchscreenPosition();
+        }
         releaseCapturedPointers();
         abortController.abort();
       };
