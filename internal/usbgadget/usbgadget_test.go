@@ -42,6 +42,32 @@ func TestDevicesUnmarshalPreservesExplicitTouchscreenFalse(t *testing.T) {
 	}
 }
 
+func TestDevicesUnmarshalPreservesPartialConfig(t *testing.T) {
+	var devices Devices
+
+	if err := json.Unmarshal([]byte(`{
+		"keyboard": true
+	}`), &devices); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if !devices.Keyboard {
+		t.Fatalf("Keyboard = false, want true")
+	}
+	if devices.AbsoluteMouse {
+		t.Fatalf("AbsoluteMouse = true, want false when field is missing")
+	}
+	if devices.RelativeMouse {
+		t.Fatalf("RelativeMouse = true, want false when field is missing")
+	}
+	if devices.Touchscreen {
+		t.Fatalf("Touchscreen = true, want false for partial config")
+	}
+	if devices.MassStorage {
+		t.Fatalf("MassStorage = true, want false when field is missing")
+	}
+}
+
 func TestDevicesEnsureWheelCapablePointer(t *testing.T) {
 	devices := Devices{
 		Touchscreen: true,

@@ -103,7 +103,11 @@ public class MainActivity extends Activity {
         webView.setHapticFeedbackEnabled(false);
 
         enterImmersiveMode();
-        showLoginPanel("");
+        if (prefs.contains(KEY_URL) && prefs.getBoolean(KEY_STAY_LOGGED_IN, true)) {
+            showController();
+        } else {
+            showLoginPanel("");
+        }
     }
 
     @Override

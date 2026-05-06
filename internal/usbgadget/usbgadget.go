@@ -26,14 +26,43 @@ type Devices struct {
 }
 
 func (d *Devices) UnmarshalJSON(data []byte) error {
-	type devicesAlias Devices
-
-	devices := devicesAlias(defaultUsbGadgetDevices)
-	if err := json.Unmarshal(data, &devices); err != nil {
+	var raw struct {
+		AbsoluteMouse *bool `json:"absolute_mouse"`
+		RelativeMouse *bool `json:"relative_mouse"`
+		Keyboard      *bool `json:"keyboard"`
+		Touchscreen   *bool `json:"touchscreen"`
+		MassStorage   *bool `json:"mass_storage"`
+		SerialConsole *bool `json:"serial_console"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	*d = Devices(devices)
+	*d = Devices{}
+	if raw.AbsoluteMouse != nil {
+		d.AbsoluteMouse = *raw.AbsoluteMouse
+	}
+	if raw.RelativeMouse != nil {
+		d.RelativeMouse = *raw.RelativeMouse
+	}
+	if raw.Keyboard != nil {
+		d.Keyboard = *raw.Keyboard
+	}
+	if raw.Touchscreen != nil {
+		d.Touchscreen = *raw.Touchscreen
+	} else {
+		d.Touchscreen = raw.AbsoluteMouse != nil &&
+			raw.RelativeMouse != nil &&
+			raw.Keyboard != nil &&
+			raw.MassStorage != nil &&
+			raw.SerialConsole != nil
+	}
+	if raw.MassStorage != nil {
+		d.MassStorage = *raw.MassStorage
+	}
+	if raw.SerialConsole != nil {
+		d.SerialConsole = *raw.SerialConsole
+	}
 	return nil
 }
 
