@@ -989,8 +989,6 @@
     "usb_device_enable_relative_mouse_title": "啟用相對滑鼠",
     "usb_device_enable_serial_console_description": "向目標主機公開 USB 序列 (CDC-ACM) 裝置",
     "usb_device_enable_serial_console_title": "啟用 USB 序列主控台",
-    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
-    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "載入 USB 裝置失敗：{error}",
     "usb_device_failed_set": "設定 USB 裝置失敗：{error}",
     "usb_device_keyboard_mouse_and_mass_storage": "鍵盤、滑鼠和大量儲存裝置",

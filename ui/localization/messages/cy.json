@@ -976,8 +976,6 @@
     "usb_device_enable_relative_mouse_title": "Galluogi Llygoden Berthynol",
     "usb_device_enable_serial_console_description": "Yn datgelu dyfais cyfresol USB (CDC-ACM) i'r gwesteiwr targed",
     "usb_device_enable_serial_console_title": "Galluogi Consol Cyfresol USB",
-    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
-    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "Methwyd â llwytho dyfeisiau USB: {error}",
     "usb_device_failed_set": "Methwyd â gosod dyfeisiau USB: {error}",
     "usb_device_keyboard_mouse_and_mass_storage": "Bysellfwrdd, Llygoden a Storfa Dorfol",

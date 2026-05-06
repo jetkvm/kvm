@@ -576,11 +576,25 @@ export default function WebRTCVideo({
 
       const abortController = new AbortController();
       const signal = abortController.signal;
+      let releaseCapturedPointers = () => {};
 
       if (isTouchscreenMode) {
         videoElmRefValue.style.touchAction = "none";
         videoElmRefValue.style.userSelect = "none";
         videoElmRefValue.draggable = false;
+        const capturedPointers = new Set<number>();
+
+        const releasePointerCapture = (pointerId: number) => {
+          try {
+            if (videoElmRefValue.hasPointerCapture(pointerId)) {
+              videoElmRefValue.releasePointerCapture(pointerId);
+            }
+          } catch (err) {
+            console.debug("Unable to release pointer capture", err);
+          } finally {
+            capturedPointers.delete(pointerId);
+          }
+        };
 
         const pointerHandler = (e: PointerEvent) => {
           e.preventDefault();
@@ -594,6 +608,7 @@ export default function WebRTCVideo({
           if (e.type === "pointerdown") {
             try {
               videoElmRefValue.setPointerCapture(e.pointerId);
+              capturedPointers.add(e.pointerId);
             } catch (err) {
               console.debug("Unable to capture pointer", err);
             }
@@ -602,14 +617,15 @@ export default function WebRTCVideo({
           mouseHandler(e);
 
           if (e.type === "pointerup" || e.type === "pointercancel") {
-            try {
-              if (videoElmRefValue.hasPointerCapture(e.pointerId)) {
-                videoElmRefValue.releasePointerCapture(e.pointerId);
-              }
-            } catch (err) {
-              console.debug("Unable to release pointer capture", err);
-            }
+            releasePointerCapture(e.pointerId);
           }
+        };
+
+        releaseCapturedPointers = () => {
+          for (const pointerId of capturedPointers) {
+            releasePointerCapture(pointerId);
+          }
+          capturedPointers.clear();
         };
 
         videoElmRefValue.addEventListener("pointerdown", pointerHandler, { signal });
@@ -655,6 +671,7 @@ export default function WebRTCVideo({
       });
 
       return () => {
+        releaseCapturedPointers();
         abortController.abort();
       };
     },
@@ -805,7 +822,7 @@ export default function WebRTCVideo({
                       <OcrOverlay />
                       {showAndroidNavOverlay && (
                         <div
-                          aria-label="JetKVM nav overlay"
+                          aria-label="JetKVM navigation overlay"
                           className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur"
                           onPointerDown={e => {
                             e.preventDefault();

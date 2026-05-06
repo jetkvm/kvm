@@ -919,6 +919,7 @@ func updateUsbRelatedConfig() error {
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	usbDevices.EnsureWheelCapablePointer()
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig()
@@ -941,6 +942,7 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
+	config.UsbDevices.EnsureWheelCapablePointer()
 	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig()
 }

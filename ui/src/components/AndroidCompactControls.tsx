@@ -17,11 +17,7 @@ import {
 
 import { cx } from "@/cva.config";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import {
-  useHidStore,
-  useSettingsStore,
-  useUiStore,
-} from "@hooks/stores";
+import { useHidStore, useSettingsStore, useUiStore } from "@hooks/stores";
 import PasteModal from "@components/popovers/PasteModal";
 import MountPopopover from "@components/popovers/MountPopover";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
@@ -53,7 +49,9 @@ const getStoredPosition = (): Position => {
   if (typeof window === "undefined") return { x: EDGE_PADDING, y: EDGE_PADDING };
 
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null") as Position | null;
+    const parsed = JSON.parse(
+      window.localStorage.getItem(STORAGE_KEY) || "null",
+    ) as Position | null;
     if (parsed && Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) return parsed;
   } catch {
     window.localStorage.removeItem(STORAGE_KEY);
@@ -105,13 +103,8 @@ export default function AndroidCompactControls({
 }) {
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
-  const {
-    setDisableVideoFocusTrap,
-    terminalType,
-    setTerminalType,
-    isOcrMode,
-    setOcrMode,
-  } = useUiStore();
+  const { setDisableVideoFocusTrap, terminalType, setTerminalType, isOcrMode, setOcrMode } =
+    useUiStore();
   const { developerMode } = useSettingsStore();
 
   const [position, setPosition] = useState<Position>(() => clampPosition(getStoredPosition()));
@@ -287,7 +280,7 @@ export default function AndroidCompactControls({
                 active={isOcrMode}
                 onClick={() => {
                   setOcrMode(!isOcrMode);
-                  setOpen(false);
+                  closePanel();
                 }}
               />
               <ActionButton
@@ -324,11 +317,7 @@ export default function AndroidCompactControls({
                   navigateTo("/settings");
                 }}
               />
-              <ActionButton
-                icon={LuLogOut}
-                label={m.log_out()}
-                onClick={() => void logout()}
-              />
+              <ActionButton icon={LuLogOut} label={m.log_out()} onClick={() => void logout()} />
             </div>
           ) : panel === "paste" ? (
             <PasteModal />

@@ -37,6 +37,12 @@ func (d *Devices) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (d *Devices) EnsureWheelCapablePointer() {
+	if d.Touchscreen && !d.AbsoluteMouse && !d.RelativeMouse {
+		d.AbsoluteMouse = true
+	}
+}
+
 // Config is a struct that represents the customizations for a USB gadget.
 // TODO: rename to something else that won't confuse with the USB gadget configuration
 type Config struct {

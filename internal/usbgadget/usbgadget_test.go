@@ -42,6 +42,70 @@ func TestDevicesUnmarshalPreservesExplicitTouchscreenFalse(t *testing.T) {
 	}
 }
 
+func TestDevicesEnsureWheelCapablePointer(t *testing.T) {
+	devices := Devices{
+		Touchscreen: true,
+	}
+
+	devices.EnsureWheelCapablePointer()
+
+	if !devices.AbsoluteMouse {
+		t.Fatalf("AbsoluteMouse = false, want true for touchscreen wheel support")
+	}
+	if devices.RelativeMouse {
+		t.Fatalf("RelativeMouse = true, want false")
+	}
+}
+
+func TestDevicesEnsureWheelCapablePointerKeepsExistingMouse(t *testing.T) {
+	tests := []struct {
+		name    string
+		devices Devices
+		want    Devices
+	}{
+		{
+			name: "absolute mouse",
+			devices: Devices{
+				AbsoluteMouse: true,
+				Touchscreen:   true,
+			},
+			want: Devices{
+				AbsoluteMouse: true,
+				Touchscreen:   true,
+			},
+		},
+		{
+			name: "relative mouse",
+			devices: Devices{
+				RelativeMouse: true,
+				Touchscreen:   true,
+			},
+			want: Devices{
+				RelativeMouse: true,
+				Touchscreen:   true,
+			},
+		},
+		{
+			name: "no touchscreen",
+			devices: Devices{
+				Keyboard: true,
+			},
+			want: Devices{
+				Keyboard: true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.devices.EnsureWheelCapablePointer()
+			if tt.devices != tt.want {
+				t.Fatalf("EnsureWheelCapablePointer() = %+v, want %+v", tt.devices, tt.want)
+			}
+		})
+	}
+}
+
 func TestTouchscreenHidDevicePathFollowsEnabledHidFunctions(t *testing.T) {
 	tests := []struct {
 		name    string

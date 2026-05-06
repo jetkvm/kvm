@@ -989,8 +989,6 @@
     "usb_device_enable_relative_mouse_title": "相対座標マウスを有効化",
     "usb_device_enable_serial_console_description": "ターゲットホストにUSBシリアル (CDC-ACM) デバイスを公開します",
     "usb_device_enable_serial_console_title": "USBシリアルコンソールを有効化",
-    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
-    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "USBデバイスの読み込みに失敗しました: {error}",
     "usb_device_failed_set": "USBデバイスの設定に失敗しました: {error}",
     "usb_device_keyboard_mouse_and_mass_storage": "キーボード、マウス、マスストレージ",

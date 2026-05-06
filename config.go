@@ -274,6 +274,7 @@ func LoadConfig() {
 	if loadedConfig.UsbDevices == nil {
 		loadedConfig.UsbDevices = getDefaultConfig().UsbDevices
 	}
+	loadedConfig.UsbDevices.EnsureWheelCapablePointer()
 
 	if loadedConfig.NetworkConfig == nil {
 		loadedConfig.NetworkConfig = getDefaultConfig().NetworkConfig

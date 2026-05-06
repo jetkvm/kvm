@@ -989,8 +989,6 @@
     "usb_device_enable_relative_mouse_title": "Abilita mouse relativo",
     "usb_device_enable_serial_console_description": "Espone un dispositivo seriale USB (CDC-ACM) all'host di destinazione",
     "usb_device_enable_serial_console_title": "Abilita console seriale USB",
-    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
-    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "Impossibile caricare i dispositivi USB: {error}",
     "usb_device_failed_set": "Impossibile impostare i dispositivi USB: {error}",
     "usb_device_keyboard_mouse_and_mass_storage": "Tastiera, mouse e memoria di massa",

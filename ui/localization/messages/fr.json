@@ -989,8 +989,6 @@
     "usb_device_enable_relative_mouse_title": "Activer la souris relative",
     "usb_device_enable_serial_console_description": "Expose un périphérique série USB (CDC-ACM) vers l'hôte cible",
     "usb_device_enable_serial_console_title": "Activer la console série USB",
-    "usb_device_enable_touchscreen_description": "Expose a direct touchscreen HID device for touch-first targets such as Android",
-    "usb_device_enable_touchscreen_title": "Enable Touchscreen",
     "usb_device_failed_load": "Échec du chargement des périphériques USB : {error}",
     "usb_device_failed_set": "Échec de la configuration des périphériques USB : {error}",
     "usb_device_keyboard_mouse_and_mass_storage": "Clavier, souris et stockage de masse",

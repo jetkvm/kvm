@@ -45,8 +45,8 @@ const getVideoHidCoordinates = (
   const relativeY = (clampedY - offsetY) / effectiveHeight;
 
   return {
-    x: Math.round(relativeX * 32767),
-    y: Math.round(relativeY * 32767),
+    x: Math.floor(relativeX * 32767),
+    y: Math.floor(relativeY * 32767),
   };
 };
 
