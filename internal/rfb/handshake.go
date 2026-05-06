@@ -35,7 +35,7 @@ func (c *Conn) HandshakeServerVersion() (string, error) {
 	if err := c.writeRaw([]byte(ProtocolVersion38)); err != nil {
 		return "", fmt.Errorf("rfb: write server version: %w", err)
 	}
-	if err := c.flushLocked(); err != nil {
+	if err := c.Flush(); err != nil {
 		return "", fmt.Errorf("rfb: flush server version: %w", err)
 	}
 
@@ -71,7 +71,7 @@ func (c *Conn) OfferSecurityTypes(types []SecurityType) (SecurityType, error) {
 			return SecInvalid, err
 		}
 	}
-	if err := c.flushLocked(); err != nil {
+	if err := c.Flush(); err != nil {
 		return SecInvalid, err
 	}
 
@@ -102,7 +102,7 @@ func (c *Conn) SendSecurityFailure(reason string) error {
 	if err := c.writeRaw([]byte(reason)); err != nil {
 		return err
 	}
-	return c.flushLocked()
+	return c.Flush()
 }
 
 // SendSecurityResultOK signals successful authentication.
@@ -110,7 +110,7 @@ func (c *Conn) SendSecurityResultOK() error {
 	if err := c.writeU32(SecResultOK); err != nil {
 		return err
 	}
-	return c.flushLocked()
+	return c.Flush()
 }
 
 // SendSecurityResultFailed signals failed authentication with an
@@ -126,7 +126,7 @@ func (c *Conn) SendSecurityResultFailed(reason string) error {
 	if err := c.writeRaw([]byte(reason)); err != nil {
 		return err
 	}
-	return c.flushLocked()
+	return c.Flush()
 }
 
 // ReadClientInit reads the 1-byte ClientInit (shared-flag).
@@ -157,5 +157,5 @@ func (c *Conn) SendServerInit(init ServerInit) error {
 	if err := c.writeRaw([]byte(init.Name)); err != nil {
 		return err
 	}
-	return c.flushLocked()
+	return c.Flush()
 }

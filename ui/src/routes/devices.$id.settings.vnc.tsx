@@ -150,18 +150,20 @@ export default function SettingsVncRoute() {
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
               {m.vnc_required_client_help()}
             </div>
-
-            <div className="flex items-center gap-x-2 pt-2">
-              <Button
-                size="SM"
-                theme="primary"
-                text={saving ? m.saving() : m.vnc_save_button()}
-                loading={saving}
-                onClick={handleSave}
-              />
-            </div>
           </>
         )}
+
+        {/* Save button is rendered unconditionally so users can also
+            persist the disabled state (unchecking the toggle). */}
+        <div className="flex items-center gap-x-2 pt-2">
+          <Button
+            size="SM"
+            theme="primary"
+            text={saving ? m.saving() : m.vnc_save_button()}
+            loading={saving}
+            onClick={handleSave}
+          />
+        </div>
       </div>
     </div>
   );

@@ -11,9 +11,9 @@ type Rect struct {
 }
 
 // BeginFramebufferUpdate writes the FramebufferUpdate message header
-// (RFC 6143 §7.6.1) for `n` rectangles. Caller MUST hold the write
-// mutex via Conn.LockWrite before calling and follow up with `n`
-// WriteRectHeader+payload pairs and then Conn.Flush+UnlockWrite.
+// (RFC 6143 §7.6.1) for `n` rectangles. The caller must follow up
+// with `n` WriteRectHeader+payload pairs and a final Conn.Flush.
+// The Conn type assumes a single-writer model — see Conn's doc.
 func (c *Conn) BeginFramebufferUpdate(n uint16) error {
 	if err := c.writeByte(byte(ServerMsgFramebufferUpdate)); err != nil {
 		return err

@@ -13,13 +13,11 @@ func TestBeginFramebufferUpdate(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		c.LockWrite()
-		defer c.UnlockWrite()
 		if err := c.BeginFramebufferUpdate(3); err != nil {
 			done <- err
 			return
 		}
-		done <- c.flushLocked()
+		done <- c.Flush()
 	}()
 
 	if err := cliNC.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
@@ -44,10 +42,8 @@ func TestWriteRectHeader(t *testing.T) {
 	c := NewConn(srvNC)
 
 	go func() {
-		c.LockWrite()
-		defer c.UnlockWrite()
 		_ = c.WriteRectHeader(Rect{X: 1, Y: 2, W: 1920, H: 1080, Encoding: EncodingOpenH264})
-		_ = c.flushLocked()
+		_ = c.Flush()
 	}()
 
 	out := make([]byte, 12)
@@ -75,14 +71,12 @@ func TestWriteOpenH264Rect(t *testing.T) {
 
 	nal := []byte{0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1E} // dummy NAL
 	go func() {
-		c.LockWrite()
-		defer c.UnlockWrite()
 		_ = c.WriteOpenH264Rect(
 			Rect{X: 0, Y: 0, W: 1920, H: 1080, Encoding: EncodingOpenH264},
 			OpenH264FlagResetContext,
 			nal,
 		)
-		_ = c.flushLocked()
+		_ = c.Flush()
 	}()
 
 	out := make([]byte, 12+4+4+len(nal))
@@ -117,13 +111,11 @@ func TestWriteRawRect(t *testing.T) {
 
 	pixels := bytes.Repeat([]byte{0xAB}, 4*4*4) // 4x4 32bpp BGRA
 	go func() {
-		c.LockWrite()
-		defer c.UnlockWrite()
 		_ = c.WriteRawRect(
 			Rect{X: 0, Y: 0, W: 4, H: 4, Encoding: EncodingRaw},
 			pixels,
 		)
-		_ = c.flushLocked()
+		_ = c.Flush()
 	}()
 
 	out := make([]byte, 12+len(pixels))
@@ -147,10 +139,8 @@ func TestWriteDesktopSizeRect(t *testing.T) {
 	c := NewConn(srvNC)
 
 	go func() {
-		c.LockWrite()
-		defer c.UnlockWrite()
 		_ = c.WriteDesktopSizeRect(1920, 1080)
-		_ = c.flushLocked()
+		_ = c.Flush()
 	}()
 
 	out := make([]byte, 12)

@@ -26,7 +26,7 @@ func (c *Conn) PerformVNCAuth(password string) error {
 	if err := c.writeRaw(challenge[:]); err != nil {
 		return err
 	}
-	if err := c.flushLocked(); err != nil {
+	if err := c.Flush(); err != nil {
 		return err
 	}
 

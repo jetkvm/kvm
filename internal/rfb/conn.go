@@ -5,23 +5,21 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"sync"
 	"time"
 )
 
 // Conn wraps a net.Conn with framing buffers for the RFB protocol.
 //
-// Reads are not safe to issue from multiple goroutines, but writes are
-// serialized internally. The typical pattern is one goroutine reading
-// client messages and one writing server messages; the read side never
-// writes (except via the dedicated handshake helpers, which run before
-// either goroutine starts).
+// The Conn assumes a single-writer model: at most one goroutine
+// invokes write methods on the same Conn at a time. In typical use
+// the handshake runs sequentially on one goroutine and is then
+// followed by a per-connection dispatcher (also single goroutine)
+// while a separate reader goroutine only calls read methods. Do not
+// share writes between goroutines without external synchronization.
 type Conn struct {
 	nc net.Conn
 	r  *bufio.Reader
 	w  *bufio.Writer
-
-	writeMu sync.Mutex
 }
 
 // NewConn wraps a net.Conn with read/write buffers.
@@ -45,24 +43,8 @@ func (c *Conn) SetReadDeadline(t time.Time) error { return c.nc.SetReadDeadline(
 // SetWriteDeadline forwards to the underlying net.Conn.
 func (c *Conn) SetWriteDeadline(t time.Time) error { return c.nc.SetWriteDeadline(t) }
 
-// LockWrite acquires the write mutex. Callers MUST call UnlockWrite —
-// useful when emitting a multi-call composite message (e.g. a
-// FramebufferUpdate header followed by per-rectangle data).
-func (c *Conn) LockWrite() { c.writeMu.Lock() }
-
-// UnlockWrite releases the write mutex.
-func (c *Conn) UnlockWrite() { c.writeMu.Unlock() }
-
-// Flush flushes the write buffer to the underlying connection. It
-// acquires the write mutex internally.
-func (c *Conn) Flush() error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	return c.w.Flush()
-}
-
-// flushLocked flushes assuming the write mutex is already held.
-func (c *Conn) flushLocked() error { return c.w.Flush() }
+// Flush flushes the write buffer to the underlying connection.
+func (c *Conn) Flush() error { return c.w.Flush() }
 
 // readByte reads one byte.
 func (c *Conn) readByte() (byte, error) { return c.r.ReadByte() }

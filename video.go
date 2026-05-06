@@ -18,23 +18,14 @@ var (
 	videoConsumers   = map[string]struct{}{}
 )
 
-// videoCodecUnchanged signals to acquireVideoStreamWithCodec that the
-// caller does not care which codec the pipeline runs at.
-const videoCodecUnchanged = -1
-
-// acquireVideoStream registers a named consumer of the capture pipeline
-// without changing the codec. See acquireVideoStreamWithCodec.
-func acquireVideoStream(consumer string) {
-	acquireVideoStreamWithCodec(consumer, videoCodecUnchanged)
-}
-
-// acquireVideoStreamWithCodec registers a named consumer and, if it is
-// the first to acquire (i.e. the pipeline is being started fresh), also
-// pins the encoder to the requested codec. VideoSetCodecType MUST be
-// called before VideoStart and is not safe mid-stream, so subsequent
-// acquirers cannot change it.
+// acquireVideoStreamWithCodec registers a named consumer of the
+// capture pipeline. If the pipeline is being started fresh (this is
+// the first consumer), the codec is pinned to `codecType` before
+// VideoStart runs. VideoSetCodecType MUST be called before VideoStart
+// and is not safe mid-stream, so subsequent acquirers cannot change
+// it — coordination between consumers is the caller's responsibility.
 //
-// `codecType` is 0 for H.264, 1 for H.265, or videoCodecUnchanged.
+// `codecType` is 0 for H.264 and 1 for H.265.
 func acquireVideoStreamWithCodec(consumer string, codecType int) {
 	videoConsumersMu.Lock()
 	defer videoConsumersMu.Unlock()
@@ -45,9 +36,7 @@ func acquireVideoStreamWithCodec(consumer string, codecType int) {
 	isFirst := len(videoConsumers) == 0
 	videoConsumers[consumer] = struct{}{}
 	if isFirst {
-		if codecType != videoCodecUnchanged {
-			_ = nativeInstance.VideoSetCodecType(codecType)
-		}
+		_ = nativeInstance.VideoSetCodecType(codecType)
 		_ = nativeInstance.VideoStart()
 		stopVideoSleepModeTicker()
 	}

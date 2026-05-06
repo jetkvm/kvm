@@ -39,9 +39,9 @@ func PlaceholderImageWithMessage(width, height int, lines []string) []byte {
 	}
 
 	const (
-		bgR, bgG, bgB    uint8 = 0x10, 0x18, 0x40 // dark blue
-		fgR, fgG, fgB    uint8 = 0xFF, 0xFF, 0xFF
-		lineSpacingPx          = 18
+		bgR, bgG, bgB uint8 = 0x10, 0x18, 0x40 // dark blue
+		fgR, fgG, fgB uint8 = 0xFF, 0xFF, 0xFF
+		lineSpacingPx       = 18
 	)
 
 	rgba := image.NewRGBA(image.Rect(0, 0, width, height))

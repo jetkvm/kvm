@@ -110,19 +110,19 @@ func (c *Conn) ReadClientMessage() (ClientMessage, error) {
 		if n > maxEncodings {
 			n = maxEncodings
 		}
-		encs := make([]EncodingType, count)
-		for i := uint16(0); i < count; i++ {
+		// Allocate based on the capped count, not the wire value, so
+		// a malicious client can't make us allocate up to 65535*4 bytes.
+		// We still drain the full wire stream below to keep framing
+		// aligned for the next message.
+		encs := make([]EncodingType, n)
+		for i := 0; i < int(count); i++ {
 			v, err := c.readS32()
 			if err != nil {
 				return nil, err
 			}
-			if int(i) < n {
+			if i < n {
 				encs[i] = EncodingType(v)
 			}
-		}
-		// If we capped, drop the trailing slots.
-		if int(count) > n {
-			encs = encs[:n]
 		}
 		return SetEncodingsMessage{Encodings: encs}, nil
 

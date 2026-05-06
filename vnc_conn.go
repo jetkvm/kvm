@@ -237,9 +237,9 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 		return nil
 	}
 
-	c.conn.LockWrite()
-	defer c.conn.UnlockWrite()
-
+	// Single-writer assumption: only this dispatcher goroutine writes
+	// to c.conn after the handshake completes (the read loop never
+	// writes), so no locking is required.
 	if err := c.conn.BeginFramebufferUpdate(rectCount); err != nil {
 		return err
 	}
