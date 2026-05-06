@@ -66,23 +66,35 @@ var relativeMouseCombinedReportDesc = []byte{
 }
 
 func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
+	hidPath := u.relativeMouseHidDevicePath()
 	if u.relMouseHidFile == nil {
 		var err error
-		u.relMouseHidFile, err = os.OpenFile("/dev/hidg2", os.O_RDWR, 0666)
+		u.relMouseHidFile, err = os.OpenFile(hidPath, os.O_RDWR, 0666)
 		if err != nil {
-			return fmt.Errorf("failed to open hidg1: %w", err)
+			return fmt.Errorf("failed to open %s: %w", hidPath, err)
 		}
 	}
 
 	_, err := u.writeWithTimeout(u.relMouseHidFile, data)
 	if err != nil {
-		u.logWithSuppression("relMouseWriteHidFile", 100, u.log, err, "failed to write to hidg2")
+		u.logWithSuppression("relMouseWriteHidFile", 100, u.log, err, "failed to write to %s", hidPath)
 		u.relMouseHidFile.Close()
 		u.relMouseHidFile = nil
 		return err
 	}
 	u.resetLogSuppressionCounter("relMouseWriteHidFile")
 	return nil
+}
+
+func (u *UsbGadget) relativeMouseHidDevicePath() string {
+	hidIndex := 0
+	if u.enabledDevices.Keyboard {
+		hidIndex++
+	}
+	if u.enabledDevices.AbsoluteMouse {
+		hidIndex++
+	}
+	return fmt.Sprintf("/dev/hidg%d", hidIndex)
 }
 
 func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {

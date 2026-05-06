@@ -184,3 +184,104 @@ func TestTouchscreenHidDevicePathFollowsEnabledHidFunctions(t *testing.T) {
 		})
 	}
 }
+
+func TestAbsoluteMouseHidDevicePathFollowsEnabledHidFunctions(t *testing.T) {
+	tests := []struct {
+		name    string
+		devices Devices
+		want    string
+	}{
+		{
+			name: "keyboard and absolute mouse",
+			devices: Devices{
+				Keyboard:      true,
+				AbsoluteMouse: true,
+			},
+			want: "/dev/hidg1",
+		},
+		{
+			name: "absolute mouse without keyboard",
+			devices: Devices{
+				AbsoluteMouse: true,
+			},
+			want: "/dev/hidg0",
+		},
+		{
+			name: "touchscreen does not affect earlier absolute mouse path",
+			devices: Devices{
+				AbsoluteMouse: true,
+				Touchscreen:   true,
+			},
+			want: "/dev/hidg0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := &UsbGadget{enabledDevices: tt.devices}
+
+			if got := u.absoluteMouseHidDevicePath(); got != tt.want {
+				t.Fatalf("absoluteMouseHidDevicePath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRelativeMouseHidDevicePathFollowsEnabledHidFunctions(t *testing.T) {
+	tests := []struct {
+		name    string
+		devices Devices
+		want    string
+	}{
+		{
+			name: "keyboard absolute and relative mouse",
+			devices: Devices{
+				Keyboard:      true,
+				AbsoluteMouse: true,
+				RelativeMouse: true,
+			},
+			want: "/dev/hidg2",
+		},
+		{
+			name: "keyboard and relative mouse",
+			devices: Devices{
+				Keyboard:      true,
+				RelativeMouse: true,
+			},
+			want: "/dev/hidg1",
+		},
+		{
+			name: "absolute and relative mouse",
+			devices: Devices{
+				AbsoluteMouse: true,
+				RelativeMouse: true,
+			},
+			want: "/dev/hidg1",
+		},
+		{
+			name: "relative mouse only",
+			devices: Devices{
+				RelativeMouse: true,
+			},
+			want: "/dev/hidg0",
+		},
+		{
+			name: "touchscreen does not affect earlier relative mouse path",
+			devices: Devices{
+				RelativeMouse: true,
+				Touchscreen:   true,
+			},
+			want: "/dev/hidg0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := &UsbGadget{enabledDevices: tt.devices}
+
+			if got := u.relativeMouseHidDevicePath(); got != tt.want {
+				t.Fatalf("relativeMouseHidDevicePath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

@@ -74,23 +74,32 @@ var absoluteMouseCombinedReportDesc = []byte{
 }
 
 func (u *UsbGadget) absMouseWriteHidFile(data []byte) error {
+	hidPath := u.absoluteMouseHidDevicePath()
 	if u.absMouseHidFile == nil {
 		var err error
-		u.absMouseHidFile, err = os.OpenFile("/dev/hidg1", os.O_RDWR, 0666)
+		u.absMouseHidFile, err = os.OpenFile(hidPath, os.O_RDWR, 0666)
 		if err != nil {
-			return fmt.Errorf("failed to open hidg1: %w", err)
+			return fmt.Errorf("failed to open %s: %w", hidPath, err)
 		}
 	}
 
 	_, err := u.writeWithTimeout(u.absMouseHidFile, data)
 	if err != nil {
-		u.logWithSuppression("absMouseWriteHidFile", 100, u.log, err, "failed to write to hidg1")
+		u.logWithSuppression("absMouseWriteHidFile", 100, u.log, err, "failed to write to %s", hidPath)
 		u.absMouseHidFile.Close()
 		u.absMouseHidFile = nil
 		return err
 	}
 	u.resetLogSuppressionCounter("absMouseWriteHidFile")
 	return nil
+}
+
+func (u *UsbGadget) absoluteMouseHidDevicePath() string {
+	hidIndex := 0
+	if u.enabledDevices.Keyboard {
+		hidIndex++
+	}
+	return fmt.Sprintf("/dev/hidg%d", hidIndex)
 }
 
 func (u *UsbGadget) HasAbsoluteMouse() bool {
