@@ -249,8 +249,8 @@ export default function AndroidCompactControls({
     }
   };
 
-  const turnOnDisplay = useCallback(() => {
-    void executeMacro([{ keys: ["Pause"], modifiers: null, delay: 80 }]);
+  const toggleDisplay = useCallback(() => {
+    void executeMacro([{ keys: ["Power"], modifiers: null, delay: 80 }]);
     closePanel();
   }, [closePanel, executeMacro]);
 
@@ -337,7 +337,11 @@ export default function AndroidCompactControls({
                   closePanel();
                 }}
               />
-              <ActionButton icon={LuMonitorUp} label="Turn on display" onClick={turnOnDisplay} />
+              <ActionButton
+                icon={LuMonitorUp}
+                label="Toggle display on/off"
+                onClick={toggleDisplay}
+              />
               <ActionButton
                 icon={LuHardDrive}
                 label={m.action_bar_virtual_media()}
