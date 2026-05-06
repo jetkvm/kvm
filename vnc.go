@@ -283,7 +283,7 @@ func (s *VNCServer) WriteFrame(frame []byte, duration time.Duration) {
 		return
 	}
 
-	nals := splitAnnexB(frame)
+	nals := rfb.SplitAnnexB(frame)
 	s.cacheParameterSets(nals)
 
 	hasIDR := false

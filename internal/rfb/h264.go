@@ -1,17 +1,16 @@
-package kvm
+package rfb
 
-// splitAnnexB parses an H.264 Annex-B byte stream into its
-// constituent NAL units. Both 4-byte (00 00 00 01) and 3-byte
-// (00 00 01) start codes are recognised. Returned slices reference
-// the input buffer (no copy).
+// SplitAnnexB parses an H.264 Annex-B byte stream into its constituent
+// NAL units. Both 4-byte (00 00 00 01) and 3-byte (00 00 01) start
+// codes are recognised. Returned slices reference the input buffer
+// (no copy).
 //
 // If no start codes are found, the entire frame is treated as a
-// single NAL unit.
+// single NAL unit. Empty input yields an empty result.
 //
-// NB: Mirrors the helper of the same name in pkg #1329's rtsp.go;
-// when that PR lands, the two will be consolidated into a shared
-// utility (see internal plan: "Strategy for jetkvm/kvm#1329").
-func splitAnnexB(frame []byte) [][]byte {
+// Used by the OpenH264 (encoding 50) path to extract SPS/PPS NALs for
+// late-joiner priming and to detect IDR frames.
+func SplitAnnexB(frame []byte) [][]byte {
 	var nalus [][]byte
 	start := -1
 	n := len(frame)
