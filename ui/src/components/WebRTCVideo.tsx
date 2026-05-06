@@ -9,6 +9,7 @@ import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
+import AndroidCompactControls from "@components/AndroidCompactControls";
 
 const isPicphoneDisplayCropMode = () =>
   typeof window !== "undefined" && window.localStorage.getItem("picphoneDisplayCrop") !== "0";
@@ -770,11 +771,19 @@ export default function WebRTCVideo({
   }, [videoSaturation, videoBrightness, videoContrast]);
 
   return (
-    <div className={cx("grid h-full w-full", compactControllerMode ? "grid-rows-[1fr]" : "grid-rows-(--grid-layout)")}>
+    <div
+      className={cx(
+        "grid h-full w-full",
+        compactControllerMode ? "grid-rows-[1fr]" : "grid-rows-(--grid-layout)",
+      )}
+    >
       {!compactControllerMode && (
         <div className="flex min-h-[39.5px] flex-col">
           <div className="flex flex-col">
-            <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <fieldset
+              disabled={peerConnection?.connectionState !== "connected"}
+              className="contents"
+            >
               <Actionbar requestFullscreen={requestFullscreen} />
               <MacroBar />
             </fieldset>
@@ -873,6 +882,7 @@ export default function WebRTCVideo({
           </div>
         </div>
       </div>
+      {compactControllerMode && <AndroidCompactControls requestFullscreen={requestFullscreen} />}
       {!hideStatusBar && !compactControllerMode && (
         <div>
           <InfoBar />
