@@ -45,7 +45,9 @@ The companion intentionally does not use generic external-monitor presence as
 its arming condition. It snapshots Android `InputDevice` metadata at startup and
 after input-device add/remove/change events. The key condition is JetKVM-named
 input devices, currently `JetKVM USB Emulation Device`, with keyboard and either
-touchscreen or pointer sources present.
+touchscreen or pointer sources present. The current Linux gadget VID/PID
+`1d6b:0104` is logged as supporting metadata, but not required, so future
+JetKVM-specific VID/PID changes do not break detection.
 
 ## Modes of Operation
 
@@ -92,13 +94,13 @@ adb install -r jetkvm-companion/build/JetKVM-Companion-release.apk
 Latest release:
 
 ```text
-https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.2
+https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.3
 ```
 
 Latest APK asset:
 
 ```text
-JetKVM-Companion-1.2.apk
+JetKVM-Companion-1.3.apk
 ```
 
 Obtainium source:

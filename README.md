@@ -21,7 +21,7 @@
 > Android APK releases:
 > [JetKVM Android Controller 1.5](https://github.com/Batestinha/jetkvm-android-controller/releases/tag/v1.5)
 > and
-> [JetKVM Companion 1.2](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.2)
+> [JetKVM Companion 1.3](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.3)
 
 ## Android Support Fork
 
@@ -93,6 +93,12 @@ Suggested modes:
   watchdog launch a transparent `showWhenLocked` Activity and call
   `KeyguardManager.requestDismissKeyguard()`. One screen-on event produces one
   bounded dismiss attempt; there is no retry loop.
+
+The JetKVM USB gadget exposes default string descriptors that Android surfaces
+through `InputDevice` metadata: manufacturer `JetKVM` and product/name
+`JetKVM USB Emulation Device`. The companion uses that JetKVM-specific name as
+the required identity signal and treats the current Linux gadget VID/PID
+`1d6b:0104` as supporting metadata, not a hard requirement.
 - **Keyguard on without Extend Unlock**: no stock/public JetKVM-only solution.
   A hard locked Android device requires the user credential or third-party
   automation tools such as Tasker, Shizuku-based automation, Accessibility
@@ -147,9 +153,9 @@ Latest Android APK releases:
 - Controller Obtainium source:
   `https://github.com/Batestinha/jetkvm-android-controller`
 - Companion release:
-  [JetKVM Companion 1.2](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.2)
+  [JetKVM Companion 1.3](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.3)
 - Companion asset:
-  `JetKVM-Companion-1.2.apk`
+  `JetKVM-Companion-1.3.apk`
 - Companion Obtainium source:
   `https://github.com/Batestinha/jetkvm-companion`
 

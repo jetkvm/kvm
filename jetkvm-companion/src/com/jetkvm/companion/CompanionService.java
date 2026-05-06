@@ -31,6 +31,9 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private static final String CHANNEL_ID = "jetkvm-companion";
     private static final int NOTIFICATION_ID = 1001;
     private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
+    private static final String JETKVM_INPUT_NAME_TOKEN = "jetkvm";
+    private static final int LINUX_GADGET_VENDOR_ID = 0x1d6b;
+    private static final int LINUX_GADGET_PRODUCT_ID = 0x0104;
 
     private WindowManager windowManager;
     private InputManager inputManager;
@@ -137,11 +140,18 @@ public class CompanionService extends Service implements InputManager.InputDevic
         int[] ids = InputDevice.getDeviceIds();
         for (int id : ids) {
             InputDevice device = InputDevice.getDevice(id);
-            if (device == null || !isJetKvmInputDevice(device)) {
+            if (device == null) {
                 continue;
             }
 
+            JetKvmInputIdentity identity = JetKvmInputIdentity.from(device);
+            if (!identity.isJetKvm) continue;
+
             snapshot.deviceCount++;
+            if (identity.usesLinuxGadgetIds) {
+                snapshot.linuxGadgetIdCount++;
+            }
+
             int sources = device.getSources();
             if ((sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD) {
                 snapshot.keyboard = true;
@@ -158,25 +168,6 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return snapshot;
     }
 
-    private static boolean isJetKvmInputDevice(InputDevice device) {
-        String name = device.getName();
-        if (name == null || !name.toLowerCase(java.util.Locale.US).contains("jetkvm")) {
-            return false;
-        }
-
-        if (Build.VERSION.SDK_INT >= 19) {
-            int vendorId = device.getVendorId();
-            int productId = device.getProductId();
-            if (vendorId != 0 && productId != 0 && (vendorId != 0x1d6b || productId != 0x0104)) {
-                Log.i(TAG, "ignoring JetKVM-named input with unexpected vid/pid vendor="
-                    + vendorId + " product=" + productId);
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     private void updateJetKvmPeripheralState(String reason) {
         JetKvmPeripheralSnapshot snapshot = getJetKvmPeripheralSnapshot();
         if (snapshot.present != jetkvmPeripheralsPresent) {
@@ -186,6 +177,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                 handler.removeCallbacksAndMessages(null);
             }
             Log.i(TAG, "JetKVM peripheral state changed reason=" + reason + " " + snapshot);
+            updateNotification();
         } else if ("startup".equals(reason) || "startCommand".equals(reason)) {
             Log.i(TAG, "JetKVM peripheral snapshot reason=" + reason + " " + snapshot);
         }
@@ -284,16 +276,62 @@ public class CompanionService extends Service implements InputManager.InputDevic
             .build();
     }
 
+    private void updateNotification() {
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(NOTIFICATION_ID, buildNotification());
+        }
+    }
+
+    private static final class JetKvmInputIdentity {
+        final boolean isJetKvm;
+        final boolean usesLinuxGadgetIds;
+
+        private JetKvmInputIdentity(boolean isJetKvm, boolean usesLinuxGadgetIds) {
+            this.isJetKvm = isJetKvm;
+            this.usesLinuxGadgetIds = usesLinuxGadgetIds;
+        }
+
+        static JetKvmInputIdentity from(InputDevice device) {
+            String name = device.getName();
+            boolean nameMatches = name != null
+                && name.toLowerCase(java.util.Locale.US).contains(JETKVM_INPUT_NAME_TOKEN);
+
+            int vendorId = 0;
+            int productId = 0;
+            if (Build.VERSION.SDK_INT >= 19) {
+                vendorId = device.getVendorId();
+                productId = device.getProductId();
+            }
+
+            boolean linuxGadgetIds = vendorId == LINUX_GADGET_VENDOR_ID
+                && productId == LINUX_GADGET_PRODUCT_ID;
+
+            if (!nameMatches) {
+                return new JetKvmInputIdentity(false, linuxGadgetIds);
+            }
+
+            if (vendorId != 0 && productId != 0 && !linuxGadgetIds) {
+                Log.i(TAG, "JetKVM-named input uses non-default vid/pid vendor="
+                    + vendorId + " product=" + productId);
+            }
+
+            return new JetKvmInputIdentity(true, linuxGadgetIds);
+        }
+    }
+
     static final class JetKvmPeripheralSnapshot {
         boolean keyboard;
         boolean touchscreen;
         boolean pointer;
         boolean present;
         int deviceCount;
+        int linuxGadgetIdCount;
 
         @Override
         public String toString() {
             return "devices=" + deviceCount
+                + " linuxGadgetIds=" + linuxGadgetIdCount
                 + " keyboard=" + keyboard
                 + " touchscreen=" + touchscreen
                 + " pointer=" + pointer

@@ -24,13 +24,20 @@ type gadgetConfigItemWithKey struct {
 
 type orderedGadgetConfigItems []gadgetConfigItemWithKey
 
+const (
+	defaultGadgetVendorID     = "0x1d6b" // The Linux Foundation
+	defaultGadgetProductID    = "0x0104" // Multifunction Composite Gadget
+	defaultGadgetManufacturer = "JetKVM"
+	defaultGadgetProduct      = "JetKVM USB Emulation Device"
+)
+
 var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"base": {
 		order: 0,
 		attrs: gadgetAttributes{
 			"bcdUSB":    "0x0200", // USB 2.0
-			"idVendor":  "0x1d6b", // The Linux Foundation
-			"idProduct": "0x0104", // Multifunction Composite Gadget
+			"idVendor":  defaultGadgetVendorID,
+			"idProduct": defaultGadgetProductID,
 			"bcdDevice": "0x0100", // USB2
 		},
 		configAttrs: gadgetAttributes{
@@ -44,8 +51,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 		configPath: []string{"strings", "0x409"},
 		attrs: gadgetAttributes{
 			"serialnumber": "",
-			"manufacturer": "JetKVM",
-			"product":      "JetKVM USB Emulation Device",
+			"manufacturer": defaultGadgetManufacturer,
+			"product":      defaultGadgetProduct,
 		},
 		configAttrs: gadgetAttributes{
 			"configuration": "Config 1: HID",
