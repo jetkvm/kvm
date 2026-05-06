@@ -16,7 +16,6 @@ interface VNCConfig {
   enabled: boolean;
   port: number;
   password: string;
-  allow_over_wan: boolean;
 }
 
 const DEFAULT_PORT = 5900;
@@ -29,7 +28,6 @@ export default function SettingsVncRoute() {
     enabled: false,
     port: DEFAULT_PORT,
     password: "",
-    allow_over_wan: false,
   });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -145,16 +143,6 @@ export default function SettingsVncRoute() {
                   placeholder={m.vnc_password_placeholder()}
                   value={settings.password}
                   onChange={e => updateField("password", e.target.value)}
-                />
-              </SettingsItem>
-
-              <SettingsItem
-                title={m.vnc_allow_over_wan_title()}
-                description={m.vnc_allow_over_wan_description()}
-              >
-                <Checkbox
-                  checked={settings.allow_over_wan}
-                  onChange={e => updateField("allow_over_wan", e.target.checked)}
                 />
               </SettingsItem>
             </NestedSettingsGroup>

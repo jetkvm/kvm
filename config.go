@@ -131,14 +131,9 @@ type Config struct {
 	// VncPassword is the plaintext VNCAuth password (max 8 characters
 	// used; longer values are truncated). An empty value disables
 	// authentication entirely. VNCAuth transmits responses over plain
-	// TCP and is trivially crackable from a captured handshake — see
-	// VncAllowOverWAN.
+	// TCP and is trivially crackable from a captured handshake; tunnel
+	// via SSH or Tailscale on untrusted networks.
 	VncPassword string `json:"vnc_password"`
-	// VncAllowOverWAN must be set explicitly to allow the VNC server
-	// to bind a non-loopback address. When false (the default), the
-	// server refuses to listen on public/LAN addresses unless
-	// LocalLoopbackOnly is also true. Tunnel via SSH or Tailscale.
-	VncAllowOverWAN bool `json:"vnc_allow_over_wan"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -231,10 +226,9 @@ func getDefaultConfig() Config {
 			EnableActions:     true,
 			DebounceMs:        500,
 		},
-		VncEnabled:      false,
-		VncPort:         5900,
-		VncPassword:     "",
-		VncAllowOverWAN: false,
+		VncEnabled:  false,
+		VncPort:     5900,
+		VncPassword: "",
 	}
 }
 

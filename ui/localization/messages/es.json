@@ -1080,8 +1080,6 @@
     "video_title": "Video",
     "view_details": "Ver detalles",
     "virtual_keyboard_header": "Teclado virtual",
-    "vnc_allow_over_wan_description": "VNCAuth is insecure on untrusted networks. Prefer SSH tunnel or Tailscale.",
-    "vnc_allow_over_wan_title": "Allow non-loopback bind",
     "vnc_description": "Configure the VNC server, an alternative way to access this device from desktop VNC clients.",
     "vnc_enable_description": "When enabled, video is forced to H.264 (H.265 is disabled for browser sessions).",
     "vnc_enable_title": "Enable VNC server",

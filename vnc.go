@@ -19,10 +19,9 @@ var (
 
 // VNCConfig is the JSON-RPC view of the VNC configuration.
 type VNCConfig struct {
-	Enabled      bool   `json:"enabled"`
-	Port         int    `json:"port"`
-	Password     string `json:"password"`
-	AllowOverWAN bool   `json:"allow_over_wan"`
+	Enabled  bool   `json:"enabled"`
+	Port     int    `json:"port"`
+	Password string `json:"password"`
 }
 
 // rpcGetVNCConfig returns the current VNC server configuration. The
@@ -34,10 +33,9 @@ func rpcGetVNCConfig() VNCConfig {
 		masked = "********"
 	}
 	return VNCConfig{
-		Enabled:      config.VncEnabled,
-		Port:         config.VncPort,
-		Password:     masked,
-		AllowOverWAN: config.VncAllowOverWAN,
+		Enabled:  config.VncEnabled,
+		Port:     config.VncPort,
+		Password: masked,
 	}
 }
 
@@ -50,13 +48,12 @@ func rpcSetVNCConfig(cfg VNCConfig) error {
 	}
 
 	prev := struct {
-		enabled      bool
-		port         int
-		password     string
-		allowOverWAN bool
+		enabled  bool
+		port     int
+		password string
 	}{
 		enabled: config.VncEnabled, port: config.VncPort,
-		password: config.VncPassword, allowOverWAN: config.VncAllowOverWAN,
+		password: config.VncPassword,
 	}
 
 	config.VncEnabled = cfg.Enabled
@@ -64,11 +61,10 @@ func rpcSetVNCConfig(cfg VNCConfig) error {
 	if cfg.Password != "********" {
 		config.VncPassword = cfg.Password
 	}
-	config.VncAllowOverWAN = cfg.AllowOverWAN
 
 	if err := SaveConfig(); err != nil {
 		config.VncEnabled, config.VncPort = prev.enabled, prev.port
-		config.VncPassword, config.VncAllowOverWAN = prev.password, prev.allowOverWAN
+		config.VncPassword = prev.password
 		return fmt.Errorf("failed to save vnc config: %w", err)
 	}
 
@@ -138,11 +134,12 @@ func StopVNCServer() {
 	srv.clientsMu.Unlock()
 }
 
-// vncBindAddress returns the address to bind on for VNC, or an error
-// if the configured combination of LocalLoopbackOnly and
-// VncAllowOverWAN forbids it. With LocalLoopbackOnly we always bind
-// loopback. Otherwise VncAllowOverWAN must be set explicitly to
-// permit a public bind.
+// vncBindAddress returns the address to bind on for VNC. Honours
+// LocalLoopbackOnly and the IPv4/IPv6 mode flags from NetworkConfig.
+//
+// VNCAuth is insecure over plain TCP — operators on untrusted
+// networks should tunnel via SSH or Tailscale, or front the device
+// with LocalLoopbackOnly.
 func vncBindAddress(port int) (string, error) {
 	useIPv4 := config.NetworkConfig != nil && config.NetworkConfig.IPv4Mode.String != "disabled"
 	useIPv6 := config.NetworkConfig != nil && config.NetworkConfig.IPv6Mode.String != "disabled"
@@ -157,13 +154,6 @@ func vncBindAddress(port int) (string, error) {
 			return fmt.Sprintf("[::1]:%d", port), nil
 		}
 		return "", errors.New("vnc: no IP family enabled")
-	}
-
-	if !config.VncAllowOverWAN {
-		return "", errors.New(
-			"vnc: refusing to bind a non-loopback address without VncAllowOverWAN — " +
-				"VNCAuth is insecure on untrusted networks; tunnel via SSH or Tailscale, " +
-				"or set vnc_allow_over_wan=true to override")
 	}
 
 	switch {
