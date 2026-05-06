@@ -167,7 +167,7 @@ var (
 		ProductId:    "0x0104", //Multifunction Composite Gadget
 		SerialNumber: "",
 		Manufacturer: "JetKVM",
-		Product:      "USB Emulation Device",
+		Product:      "JetKVM USB Emulation Device",
 	}
 	defaultUsbDevices = usbgadget.Devices{
 		AbsoluteMouse: true,
@@ -269,6 +269,9 @@ func LoadConfig() {
 	// merge the user config with the default config
 	if loadedConfig.UsbConfig == nil {
 		loadedConfig.UsbConfig = getDefaultConfig().UsbConfig
+	}
+	if loadedConfig.UsbConfig.Product == "USB Emulation Device" {
+		loadedConfig.UsbConfig.Product = getDefaultConfig().UsbConfig.Product
 	}
 
 	if loadedConfig.UsbDevices == nil {

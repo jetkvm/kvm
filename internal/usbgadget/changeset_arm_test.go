@@ -16,7 +16,7 @@ var (
 		ProductId:    "0x0104", //Multifunction Composite Gadget
 		SerialNumber: "",
 		Manufacturer: "JetKVM",
-		Product:      "USB Emulation Device",
+		Product:      "JetKVM USB Emulation Device",
 		strictMode:   true,
 	}
 	usbDevices = &Devices{
