@@ -89,7 +89,7 @@ Now edit files in `ui/src/` and see changes live in your browser!
 
 ```bash
 ssh root@192.168.1.100
-tail -f /userdata/jetkvm/last.log
+tail -f /userdata/jetkvm/app.log
 ```
 
 ---
@@ -200,11 +200,11 @@ ssh root@192.168.1.100 ps aux | grep jetkvm
 
 ### View live logs
 
-The file `/userdata/jetkvm/last.log` contains the JetKVM logs. You can view live logs with:
+The file `/userdata/jetkvm/app.log` contains the JetKVM logs. You can view live logs with:
 
 ```bash
 ssh root@192.168.1.100
-tail -f /userdata/jetkvm/last.log
+tail -f /userdata/jetkvm/app.log
 ```
 
 ### Reset everything (if stuck)
@@ -230,7 +230,7 @@ The code and GDB server will be deployed automatically.
 1. Deploy your changes: `./dev_deploy.sh -r <IP>`
 2. Open browser: `http://<IP>`
 3. Test your feature
-4. Check logs: `ssh root@<IP> tail -f /userdata/jetkvm/last.log`
+4. Check logs: `ssh root@<IP> tail -f /userdata/jetkvm/app.log`
 
 ### Automated Testing
 
@@ -425,7 +425,7 @@ export JETKVM_PROXY_URL="ws://<IP>"
 
 ## Need Help?
 
-1. **Check logs first:** `ssh root@<IP> tail -f /userdata/jetkvm/last.log`
+1. **Check logs first:** `ssh root@<IP> tail -f /userdata/jetkvm/app.log`
 2. **Search issues:** [GitHub Issues](https://github.com/jetkvm/kvm/issues)
 3. **Ask on Discord:** [JetKVM Discord](https://jetkvm.com/discord)
 4. **Read docs:** [JetKVM Documentation](https://jetkvm.com/docs)

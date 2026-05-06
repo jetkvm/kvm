@@ -6,7 +6,7 @@ const (
 	ErrorDumpDir      = "/userdata/jetkvm/crashdump" // The error dump directory is the directory where the error dumps are stored
 	ErrorDumpLastFile = "last-crash.log"             // The error dump last file is the last error dump file
 	ErrorDumpTemplate = "jetkvm-%s.log"              // The error dump template is the template for the error dump file
-	AppLogPath        = "/userdata/jetkvm/last.log"  // The application stdout/stderr log file
+	AppLogPath        = "/userdata/jetkvm/app.log"   // The application log file (managed by lumberjack)
 
 	FailsafeReasonVideoMaxRestartAttemptsReached = "failsafe::video.max_restart_attempts_reached"
 )

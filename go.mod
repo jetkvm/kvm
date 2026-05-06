@@ -10,6 +10,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creack/pty v1.1.24
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/erikdubbelboer/gspt v0.0.0-20210805194459-ce36a5128377
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/logger v1.2.6
@@ -41,6 +42,7 @@ require (
 	golang.org/x/sys v0.37.0
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 replace github.com/pojntfx/go-nbd v0.3.2 => github.com/chemhack/go-nbd v0.0.0-20241006125820-59e45f5b1e7b
@@ -54,7 +56,6 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/creack/goselect v0.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/eclipse/paho.mqtt.golang v1.5.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.9 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect

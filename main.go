@@ -56,7 +56,7 @@ func Main() {
 		logger.Warn().Err(err).Msg("failed to get local version")
 	}
 
-	logger.Info().
+	logger.Log().
 		Interface("system_version", systemVersionLocal).
 		Interface("app_version", appVersionLocal).
 		Msg("starting JetKVM")
