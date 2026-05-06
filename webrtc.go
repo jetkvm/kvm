@@ -510,12 +510,16 @@ func onActiveSessionsChanged() {
 
 func onFirstSessionConnected() {
 	notifyFailsafeMode(currentSession)
+	codec := 0
 	if currentSession != nil && currentSession.codecMimeType == webrtc.MimeTypeH265 {
-		_ = nativeInstance.VideoSetCodecType(1)
-	} else {
-		_ = nativeInstance.VideoSetCodecType(0)
+		codec = 1
 	}
-	acquireVideoStream("webrtc")
+	// acquireVideoStreamWithCodec sets the codec only when this is the
+	// first consumer (i.e. it would call VideoStart). If VNC is already
+	// running, the codec it pinned (H.264) stays in effect — this is
+	// the desired behaviour because resolveCodec forces H.264 on the
+	// browser side whenever VNC is enabled.
+	acquireVideoStreamWithCodec("webrtc", codec)
 }
 
 func onLastSessionDisconnected() {

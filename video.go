@@ -18,19 +18,36 @@ var (
 	videoConsumers   = map[string]struct{}{}
 )
 
-// acquireVideoStream registers a named consumer of the capture pipeline.
-// The first acquirer starts the native video stream and pauses the HDMI
-// sleep ticker; subsequent acquirers from different consumers are recorded
-// without touching the underlying stream.
+// videoCodecUnchanged signals to acquireVideoStreamWithCodec that the
+// caller does not care which codec the pipeline runs at.
+const videoCodecUnchanged = -1
+
+// acquireVideoStream registers a named consumer of the capture pipeline
+// without changing the codec. See acquireVideoStreamWithCodec.
 func acquireVideoStream(consumer string) {
+	acquireVideoStreamWithCodec(consumer, videoCodecUnchanged)
+}
+
+// acquireVideoStreamWithCodec registers a named consumer and, if it is
+// the first to acquire (i.e. the pipeline is being started fresh), also
+// pins the encoder to the requested codec. VideoSetCodecType MUST be
+// called before VideoStart and is not safe mid-stream, so subsequent
+// acquirers cannot change it.
+//
+// `codecType` is 0 for H.264, 1 for H.265, or videoCodecUnchanged.
+func acquireVideoStreamWithCodec(consumer string, codecType int) {
 	videoConsumersMu.Lock()
 	defer videoConsumersMu.Unlock()
 
 	if _, exists := videoConsumers[consumer]; exists {
 		return
 	}
+	isFirst := len(videoConsumers) == 0
 	videoConsumers[consumer] = struct{}{}
-	if len(videoConsumers) == 1 {
+	if isFirst {
+		if codecType != videoCodecUnchanged {
+			_ = nativeInstance.VideoSetCodecType(codecType)
+		}
 		_ = nativeInstance.VideoStart()
 		stopVideoSleepModeTicker()
 	}

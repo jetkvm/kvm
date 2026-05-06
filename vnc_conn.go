@@ -103,6 +103,7 @@ func (c *vncConn) readLoop() {
 			c.stateMu.Lock()
 			c.hasOpenH264 = has
 			c.stateMu.Unlock()
+			c.l.Info().Bool("openH264", has).Interface("encodings", m.Encodings).Msg("client encodings")
 			if !has {
 				c.l.Warn().Msg("client did not advertise OpenH264 (encoding 50); falling back to placeholder")
 			}

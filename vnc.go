@@ -207,13 +207,20 @@ func (s *VNCServer) acceptLoop() {
 // addClient registers a new VNC client, acquiring the video stream
 // on the first one. Returns a snapshot of the cached SPS/PPS to seed
 // the client's first rectangle.
+//
+// VNC always pins the encoder to H.264 when it is the first consumer
+// of the pipeline — OpenH264 (encoding 50) carries H.264 only, and
+// the codec setting must be applied before VideoStart. If WebRTC was
+// already running before VNC connected, the codec was pinned by
+// resolveCodec on the WebRTC side (which forces H.264 when VNC is
+// enabled).
 func (s *VNCServer) addClient(c *vncConn) (sps, pps []byte) {
 	s.clientsMu.Lock()
 	first := len(s.clients) == 0
 	s.clients[c] = struct{}{}
 	s.clientsMu.Unlock()
 	if first {
-		acquireVideoStream(vncVideoConsumer)
+		acquireVideoStreamWithCodec(vncVideoConsumer, 0) // 0 = H.264
 	}
 	s.paramsMu.Lock()
 	defer s.paramsMu.Unlock()
@@ -328,6 +335,8 @@ func (s *VNCServer) serveClient(nc net.Conn) {
 	defer func() { _ = nc.Close() }()
 	addr := nc.RemoteAddr().String()
 	l := vncLogger.With().Str("client", addr).Logger()
+	l.Info().Msg("VNC client connected")
+	defer l.Info().Msg("VNC client disconnected")
 
 	rfbConn := rfb.NewConn(nc)
 	if err := nc.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
