@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import {
   LuCable,
@@ -6,6 +6,7 @@ import {
   LuHardDrive,
   LuMaximize,
   LuScanText,
+  LuMonitorUp,
   LuSettings,
   LuSignal,
   LuTerminal,
@@ -33,7 +34,13 @@ import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
 import MountPopopover from "@components/popovers/MountPopover";
 import ExtensionPopover from "@components/popovers/ExtensionPopover";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import useKeyboard from "@hooks/useKeyboard";
 import { m } from "@localizations/messages.js";
+
+type UsbDevices = {
+  serial_console?: boolean;
+  touchscreen?: boolean;
+};
 
 export default function Actionbar({
   requestFullscreen,
@@ -57,14 +64,21 @@ export default function Actionbar({
   const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
   const { send } = useJsonRpc();
+  const { executeMacro } = useKeyboard();
+  const [androidTargetControlsEnabled, setAndroidTargetControlsEnabled] = useState(false);
 
   useEffect(() => {
     send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      const devices = resp.result as { serial_console?: boolean };
+      const devices = resp.result as UsbDevices;
       setUsbSerialConsoleEnabled(devices.serial_console === true);
+      setAndroidTargetControlsEnabled(devices.touchscreen === true);
     });
   }, [send, setUsbSerialConsoleEnabled]);
+
+  const toggleAndroidDisplay = useCallback(() => {
+    void executeMacro([{ keys: ["Power"], modifiers: null, delay: 80 }]);
+  }, [executeMacro]);
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
@@ -321,6 +335,17 @@ export default function Actionbar({
               }}
             />
           </div>
+          {androidTargetControlsEnabled && (
+            <div>
+              <Button
+                size="XS"
+                theme="light"
+                text="Toggle display on/off"
+                LeadingIcon={LuMonitorUp}
+                onClick={toggleAndroidDisplay}
+              />
+            </div>
+          )}
           {!isEmbedMode && (
             <div>
               <Button
