@@ -31,9 +31,11 @@ const initialHdmiErrorGraceMs = 2500;
 export default function WebRTCVideo({
   hasConnectionIssues,
   hideStatusBar,
+  compactControllerMode,
 }: {
   hasConnectionIssues: boolean;
   hideStatusBar?: boolean;
+  compactControllerMode?: boolean;
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
@@ -768,15 +770,17 @@ export default function WebRTCVideo({
   }, [videoSaturation, videoBrightness, videoContrast]);
 
   return (
-    <div className="grid h-full w-full grid-rows-(--grid-layout)">
-      <div className="flex min-h-[39.5px] flex-col">
-        <div className="flex flex-col">
-          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
-            <Actionbar requestFullscreen={requestFullscreen} />
-            <MacroBar />
-          </fieldset>
+    <div className={cx("grid h-full w-full", compactControllerMode ? "grid-rows-[1fr]" : "grid-rows-(--grid-layout)")}>
+      {!compactControllerMode && (
+        <div className="flex min-h-[39.5px] flex-col">
+          <div className="flex flex-col">
+            <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+              <Actionbar requestFullscreen={requestFullscreen} />
+              <MacroBar />
+            </fieldset>
+          </div>
         </div>
-      </div>
+      )}
 
       <div ref={containerRef} className="h-full overflow-hidden">
         <div className="relative h-full">
@@ -794,7 +798,12 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
+                  <div
+                    className={cx(
+                      "relative flex items-center justify-center overflow-hidden",
+                      compactControllerMode ? "m-0 h-full" : "mx-4 my-2",
+                    )}
+                  >
                     <div
                       ref={fullscreenContainerRef}
                       className={cx(
@@ -864,7 +873,7 @@ export default function WebRTCVideo({
           </div>
         </div>
       </div>
-      {!hideStatusBar && (
+      {!hideStatusBar && !compactControllerMode && (
         <div>
           <InfoBar />
         </div>
