@@ -17,10 +17,19 @@ public class DismissActivity extends Activity {
     static final String ACTION_MANUAL = "com.jetkvm.companion.MANUAL_DISMISS";
 
     private static final long DISMISS_DELAY_MS = 300;
+    private static final long FINISH_TIMEOUT_MS = 2500;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private KeyguardManager keyguardManager;
     private boolean dismissInFlight;
+    private boolean dismissScheduled;
+    private final Runnable finishTimeout = new Runnable() {
+        @Override
+        public void run() {
+            logState("finish timeout");
+            finishAndRemoveTask();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,6 +69,8 @@ public class DismissActivity extends Activity {
     }
 
     private void scheduleDismiss(final String reason) {
+        if (dismissScheduled) return;
+        dismissScheduled = true;
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -70,12 +81,14 @@ public class DismissActivity extends Activity {
 
     private void requestDismiss(String reason) {
         if (keyguardManager == null || dismissInFlight) return;
+        handler.postDelayed(finishTimeout, FINISH_TIMEOUT_MS);
 
         boolean keyguardLocked = keyguardManager.isKeyguardLocked();
         boolean deviceLocked = keyguardManager.isDeviceLocked();
         Log.i(CompanionService.TAG, reason + " keyguardLocked=" + keyguardLocked + " deviceLocked=" + deviceLocked);
 
         if (!keyguardLocked) {
+            handler.removeCallbacks(finishTimeout);
             finishAndRemoveTask();
             return;
         }
@@ -85,12 +98,15 @@ public class DismissActivity extends Activity {
             @Override
             public void onDismissError() {
                 dismissInFlight = false;
+                handler.removeCallbacks(finishTimeout);
                 logState("callback onDismissError");
+                finishAndRemoveTask();
             }
 
             @Override
             public void onDismissSucceeded() {
                 dismissInFlight = false;
+                handler.removeCallbacks(finishTimeout);
                 logState("callback onDismissSucceeded");
                 finishAndRemoveTask();
             }
@@ -98,7 +114,9 @@ public class DismissActivity extends Activity {
             @Override
             public void onDismissCancelled() {
                 dismissInFlight = false;
+                handler.removeCallbacks(finishTimeout);
                 logState("callback onDismissCancelled");
+                finishAndRemoveTask();
             }
         });
     }

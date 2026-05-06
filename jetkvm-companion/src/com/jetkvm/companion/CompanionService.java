@@ -10,41 +10,65 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.PixelFormat;
+import android.hardware.input.InputManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.InputDevice;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 
-public class CompanionService extends Service {
+public class CompanionService extends Service implements InputManager.InputDeviceListener {
     static final String TAG = "JetKVMCompanion";
-    static final String ACTION_SCREEN_OFF = "com.jetkvm.companion.SCREEN_OFF";
     static final String ACTION_SCREEN_ON = "com.jetkvm.companion.SCREEN_ON";
     static final String PREFS = "jetkvm_companion";
     static final String KEY_LAUNCH_ON_BOOT = "launch_on_boot";
 
     private static final String CHANNEL_ID = "jetkvm-companion";
     private static final int NOTIFICATION_ID = 1001;
+    private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
 
     private WindowManager windowManager;
+    private InputManager inputManager;
     private View launchAssistOverlay;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean jetkvmPeripheralsPresent;
+    private boolean attemptedForCurrentScreen;
 
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             Log.i(TAG, "screen receiver action=" + action);
+            if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                attemptedForCurrentScreen = false;
+                handler.removeCallbacksAndMessages(null);
+                return;
+            }
             if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                if (!jetkvmPeripheralsPresent) {
+                    Log.i(TAG, "screen-on ignored; JetKVM peripherals not present");
+                    return;
+                }
+                if (attemptedForCurrentScreen) {
+                    Log.i(TAG, "screen-on ignored; dismiss already attempted for this screen cycle");
+                    return;
+                }
+                attemptedForCurrentScreen = true;
                 handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        launchDismissActivity(ACTION_SCREEN_ON);
+                        if (jetkvmPeripheralsPresent) {
+                            launchDismissActivity(ACTION_SCREEN_ON);
+                        } else {
+                            Log.i(TAG, "pending dismiss cancelled; JetKVM peripherals removed");
+                        }
                     }
-                }, 600);
+                }, SCREEN_ON_DISMISS_DELAY_MS);
             }
         }
     };
@@ -55,6 +79,11 @@ public class CompanionService extends Service {
         createChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
         ensureLaunchAssistOverlay();
+        inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
+        if (inputManager != null) {
+            inputManager.registerInputDeviceListener(this, handler);
+        }
+        updateJetKvmPeripheralState("startup");
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_OFF);
@@ -66,6 +95,7 @@ public class CompanionService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         ensureLaunchAssistOverlay();
+        updateJetKvmPeripheralState("startCommand");
         Log.i(TAG, "service onStartCommand");
         return START_STICKY;
     }
@@ -73,6 +103,9 @@ public class CompanionService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        if (inputManager != null) {
+            inputManager.unregisterInputDeviceListener(this);
+        }
         unregisterReceiver(screenReceiver);
         removeLaunchAssistOverlay();
         Log.i(TAG, "service onDestroy");
@@ -82,6 +115,80 @@ public class CompanionService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    @Override
+    public void onInputDeviceAdded(int deviceId) {
+        updateJetKvmPeripheralState("inputAdded:" + deviceId);
+    }
+
+    @Override
+    public void onInputDeviceRemoved(int deviceId) {
+        updateJetKvmPeripheralState("inputRemoved:" + deviceId);
+    }
+
+    @Override
+    public void onInputDeviceChanged(int deviceId) {
+        updateJetKvmPeripheralState("inputChanged:" + deviceId);
+    }
+
+    static JetKvmPeripheralSnapshot getJetKvmPeripheralSnapshot() {
+        JetKvmPeripheralSnapshot snapshot = new JetKvmPeripheralSnapshot();
+        int[] ids = InputDevice.getDeviceIds();
+        for (int id : ids) {
+            InputDevice device = InputDevice.getDevice(id);
+            if (device == null || !isJetKvmInputDevice(device)) {
+                continue;
+            }
+
+            snapshot.deviceCount++;
+            int sources = device.getSources();
+            if ((sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD) {
+                snapshot.keyboard = true;
+            }
+            if ((sources & InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN) {
+                snapshot.touchscreen = true;
+            }
+            if ((sources & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE
+                    || (sources & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE) {
+                snapshot.pointer = true;
+            }
+        }
+        snapshot.present = snapshot.keyboard && (snapshot.touchscreen || snapshot.pointer);
+        return snapshot;
+    }
+
+    private static boolean isJetKvmInputDevice(InputDevice device) {
+        String name = device.getName();
+        if (name == null || !name.toLowerCase(java.util.Locale.US).contains("jetkvm")) {
+            return false;
+        }
+
+        if (Build.VERSION.SDK_INT >= 19) {
+            int vendorId = device.getVendorId();
+            int productId = device.getProductId();
+            if (vendorId != 0 && productId != 0 && (vendorId != 0x1d6b || productId != 0x0104)) {
+                Log.i(TAG, "ignoring JetKVM-named input with unexpected vid/pid vendor="
+                    + vendorId + " product=" + productId);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void updateJetKvmPeripheralState(String reason) {
+        JetKvmPeripheralSnapshot snapshot = getJetKvmPeripheralSnapshot();
+        if (snapshot.present != jetkvmPeripheralsPresent) {
+            jetkvmPeripheralsPresent = snapshot.present;
+            attemptedForCurrentScreen = false;
+            if (!jetkvmPeripheralsPresent) {
+                handler.removeCallbacksAndMessages(null);
+            }
+            Log.i(TAG, "JetKVM peripheral state changed reason=" + reason + " " + snapshot);
+        } else if ("startup".equals(reason) || "startCommand".equals(reason)) {
+            Log.i(TAG, "JetKVM peripheral snapshot reason=" + reason + " " + snapshot);
+        }
     }
 
     private void launchDismissActivity(String action) {
@@ -169,9 +276,28 @@ public class CompanionService extends Service {
         return builder
             .setSmallIcon(getApplicationInfo().icon)
             .setContentTitle("JetKVM Companion")
-            .setContentText("Armed for trusted Android keyguard dismissal")
+            .setContentText(jetkvmPeripheralsPresent
+                ? "JetKVM target peripherals detected"
+                : "Waiting for JetKVM target peripherals")
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build();
+    }
+
+    static final class JetKvmPeripheralSnapshot {
+        boolean keyboard;
+        boolean touchscreen;
+        boolean pointer;
+        boolean present;
+        int deviceCount;
+
+        @Override
+        public String toString() {
+            return "devices=" + deviceCount
+                + " keyboard=" + keyboard
+                + " touchscreen=" + touchscreen
+                + " pointer=" + pointer
+                + " present=" + present;
+        }
     }
 }

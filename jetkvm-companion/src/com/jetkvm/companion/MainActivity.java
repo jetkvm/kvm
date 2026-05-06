@@ -1,6 +1,7 @@
 package com.jetkvm.companion;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -8,6 +9,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.Window;
@@ -29,7 +31,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        prefs = getSharedPreferences(CompanionService.PREFS, MODE_PRIVATE);
+        prefs = getCompanionPreferences();
         startForegroundService(new Intent(this, CompanionService.class));
         setContentView(createSettingsView());
         updateArmStatus();
@@ -108,6 +110,21 @@ public class MainActivity extends Activity {
         });
         root.addView(overlayButton, matchWrap());
 
+        Button batteryButton = new Button(this);
+        batteryButton.setText("Grant unrestricted battery");
+        batteryButton.setAllCaps(false);
+        batteryButton.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                Intent intent = new Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())
+                );
+                startActivity(intent);
+            }
+        });
+        root.addView(batteryButton, matchWrap());
+
         Button dismissButton = new Button(this);
         dismissButton.setText("Test trusted keyguard dismiss");
         dismissButton.setAllCaps(false);
@@ -150,9 +167,30 @@ public class MainActivity extends Activity {
     }
 
     private void updateArmStatus() {
-        updateStatus(Settings.canDrawOverlays(this)
-            ? "Companion service armed with background launch assist."
-            : "Companion service armed. Grant background launch assist for automatic wake unlock.");
+        CompanionService.JetKvmPeripheralSnapshot snapshot = CompanionService.getJetKvmPeripheralSnapshot();
+        String overlayStatus = Settings.canDrawOverlays(this)
+            ? "Background launch assist granted."
+            : "Grant background launch assist for automatic wake unlock.";
+        String batteryStatus = isIgnoringBatteryOptimizations()
+            ? "Battery unrestricted."
+            : "Grant unrestricted battery for boot/watchdog reliability.";
+        updateStatus(overlayStatus + "\n" + batteryStatus + "\nJetKVM peripherals: " + snapshot);
+    }
+
+    private SharedPreferences getCompanionPreferences() {
+        if (Build.VERSION.SDK_INT < 24) {
+            return getSharedPreferences(CompanionService.PREFS, MODE_PRIVATE);
+        }
+
+        Context credentialContext = this;
+        Context deviceContext = createDeviceProtectedStorageContext();
+        deviceContext.moveSharedPreferencesFrom(credentialContext, CompanionService.PREFS);
+        return deviceContext.getSharedPreferences(CompanionService.PREFS, MODE_PRIVATE);
+    }
+
+    private boolean isIgnoringBatteryOptimizations() {
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        return powerManager == null || powerManager.isIgnoringBatteryOptimizations(getPackageName());
     }
 
     private void requestNotificationPermissionIfNeeded() {

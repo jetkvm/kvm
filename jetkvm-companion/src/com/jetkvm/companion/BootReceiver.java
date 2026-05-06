@@ -9,15 +9,22 @@ import android.util.Log;
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
-
-        SharedPreferences prefs = context.getSharedPreferences(CompanionService.PREFS, Context.MODE_PRIVATE);
-        if (!prefs.getBoolean(CompanionService.KEY_LAUNCH_ON_BOOT, false)) {
-            Log.i(CompanionService.TAG, "boot completed; launch on boot disabled");
+        String action = intent.getAction();
+        if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
+                && !Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)) {
             return;
         }
 
-        Log.i(CompanionService.TAG, "boot completed; starting companion service");
+        Context storageContext = android.os.Build.VERSION.SDK_INT >= 24
+            ? context.createDeviceProtectedStorageContext()
+            : context;
+        SharedPreferences prefs = storageContext.getSharedPreferences(CompanionService.PREFS, Context.MODE_PRIVATE);
+        if (!prefs.getBoolean(CompanionService.KEY_LAUNCH_ON_BOOT, false)) {
+            Log.i(CompanionService.TAG, action + "; launch on boot disabled");
+            return;
+        }
+
+        Log.i(CompanionService.TAG, action + "; starting companion service");
         Intent service = new Intent(context, CompanionService.class);
         context.startForegroundService(service);
     }

@@ -21,7 +21,7 @@
 > Android APK releases:
 > [JetKVM Android Controller 1.5](https://github.com/Batestinha/jetkvm-android-controller/releases/tag/v1.5)
 > and
-> [JetKVM Companion 1.1](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.1)
+> [JetKVM Companion 1.2](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.2)
 
 ## Android Support Fork
 
@@ -86,13 +86,13 @@ Suggested modes:
 - **Keyguard on with Extend Unlock**: recommended for stock Android targets.
   Keep Android keyguard enabled, configure Extend Unlock or another trusted
   state, install `jetkvm-companion/` on the target phone, grant its background
-  launch assist permission, and open it once after boot or enable its
-  launch-on-boot setting. The companion uses public Android APIs to prepare a
-  transparent `showWhenLocked` Activity and call
-  `KeyguardManager.requestDismissKeyguard()` when the display wakes. The
-  background launch assist uses Android's overlay permission for a tiny
-  non-touchable overlay so Android allows the dismiss Activity to launch from
-  the foreground service while the app is otherwise in the background.
+  launch assist and unrestricted battery permissions, and open it once after
+  boot or enable its launch-on-boot setting. A primary watchdog detects
+  JetKVM-identifiable input devices exposed to Android. Only while the JetKVM
+  keyboard plus touchscreen or pointer are present does a secondary screen-on
+  watchdog launch a transparent `showWhenLocked` Activity and call
+  `KeyguardManager.requestDismissKeyguard()`. One screen-on event produces one
+  bounded dismiss attempt; there is no retry loop.
 - **Keyguard on without Extend Unlock**: no stock/public JetKVM-only solution.
   A hard locked Android device requires the user credential or third-party
   automation tools such as Tasker, Shizuku-based automation, Accessibility
@@ -147,9 +147,9 @@ Latest Android APK releases:
 - Controller Obtainium source:
   `https://github.com/Batestinha/jetkvm-android-controller`
 - Companion release:
-  [JetKVM Companion 1.1](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.1)
+  [JetKVM Companion 1.2](https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.2)
 - Companion asset:
-  `JetKVM-Companion-1.1.apk`
+  `JetKVM-Companion-1.2.apk`
 - Companion Obtainium source:
   `https://github.com/Batestinha/jetkvm-companion`
 
