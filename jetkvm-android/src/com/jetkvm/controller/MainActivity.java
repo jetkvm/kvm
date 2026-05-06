@@ -17,6 +17,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.autofill.AutofillManager;
+import android.view.autofill.AutofillValue;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
@@ -196,7 +197,12 @@ public class MainActivity extends Activity {
         hostInput.setSelectAllOnFocus(true);
         form.addView(hostInput, fieldLayoutParams());
 
-        passwordInput = new EditText(this);
+        passwordInput = new AutofillAwareEditText(this, new Runnable() {
+            @Override
+            public void run() {
+                collapseKeyboardAfterAutofill();
+            }
+        });
         passwordInput.setSingleLine(true);
         passwordInput.setHint("Password");
         passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -403,6 +409,18 @@ public class MainActivity extends Activity {
                 }
             }
         }, 250);
+    }
+
+    private void collapseKeyboardAfterAutofill() {
+        if (passwordInput == null || loginPanel == null || loginPanel.getVisibility() != View.VISIBLE) return;
+
+        passwordInput.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                passwordInput.clearFocus();
+                hideKeyboard();
+            }
+        }, 150);
     }
 
     private void commitAutofillSession() {
@@ -620,6 +638,21 @@ public class MainActivity extends Activity {
                     MainActivity.this.hideKeyboard();
                 }
             });
+        }
+    }
+
+    private static final class AutofillAwareEditText extends EditText {
+        private final Runnable onAutofilled;
+
+        AutofillAwareEditText(Context context, Runnable onAutofilled) {
+            super(context);
+            this.onAutofilled = onAutofilled;
+        }
+
+        @Override
+        public void autofill(AutofillValue value) {
+            super.autofill(value);
+            if (onAutofilled != null) onAutofilled.run();
         }
     }
 }
