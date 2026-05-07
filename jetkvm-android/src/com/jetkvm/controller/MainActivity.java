@@ -10,7 +10,9 @@ import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -57,6 +59,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private LinearLayout loginPanel;
+    private EditText imeInput;
     private EditText hostInput;
     private EditText passwordInput;
     private CheckBox stayLoggedInInput;
@@ -88,6 +91,9 @@ public class MainActivity extends Activity {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ));
+
+        imeInput = createImeInput();
+        root.addView(imeInput, new FrameLayout.LayoutParams(dp(1), dp(1)));
 
         loginPanel = createLoginPanel();
         root.addView(loginPanel, new FrameLayout.LayoutParams(
@@ -239,6 +245,37 @@ public class MainActivity extends Activity {
         form.addView(progressBar, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         return outer;
+    }
+
+    private EditText createImeInput() {
+        EditText input = new EditText(this);
+        input.setAlpha(0.01f);
+        input.setSingleLine(false);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        input.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        input.addTextChangedListener(new TextWatcher() {
+            private boolean clearing;
+
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+                if (clearing) return;
+
+                String text = editable.toString();
+                if (text.isEmpty()) return;
+
+                clearing = true;
+                editable.clear();
+                clearing = false;
+                dispatchAndroidImeText(text);
+            }
+        });
+        return input;
     }
 
     private LinearLayout.LayoutParams fieldLayoutParams() {
@@ -580,6 +617,24 @@ public class MainActivity extends Activity {
         if (imm != null && tokenView != null) {
             imm.hideSoftInputFromWindow(tokenView.getWindowToken(), 0);
         }
+        if (imeInput != null) imeInput.clearFocus();
+    }
+
+    private void showAndroidIme() {
+        if (imeInput == null) return;
+
+        imeInput.requestFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(imeInput, InputMethodManager.SHOW_IMPLICIT);
+        enterImmersiveMode();
+    }
+
+    private void dispatchAndroidImeText(String text) {
+        if (webView == null || text == null || text.isEmpty()) return;
+
+        String script = "window.dispatchEvent(new CustomEvent('jetkvm-android-ime-text',"
+            + "{detail:{text:\"" + jsonEscape(text) + "\"}}));";
+        webView.evaluateJavascript(script, null);
     }
 
     private void enterImmersiveMode() {
@@ -636,6 +691,16 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     MainActivity.this.hideKeyboard();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void showInputMethod() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    MainActivity.this.showAndroidIme();
                 }
             });
         }

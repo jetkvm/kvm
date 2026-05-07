@@ -6,7 +6,6 @@ import {
   LuCommand,
   LuHardDrive,
   LuKeyboard,
-  LuMaximize,
   LuMenu,
   LuMonitorUp,
   LuLogOut,
@@ -26,13 +25,14 @@ import {
   useUiStore,
   useUserStore,
 } from "@hooks/stores";
+import useKeyboardLayout from "@hooks/useKeyboardLayout";
 import ExtensionPopover from "@components/popovers/ExtensionPopover";
 import MountPopopover from "@components/popovers/MountPopover";
 import PasteModal from "@components/popovers/PasteModal";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
 import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
-import useKeyboard from "@hooks/useKeyboard";
+import useKeyboard, { type MacroStep } from "@hooks/useKeyboard";
 import { m } from "@localizations/messages.js";
 
 type Panel = "root" | "paste" | "media" | "wol" | "extension";
@@ -41,6 +41,14 @@ type Position = {
   x: number;
   y: number;
 };
+
+declare global {
+  interface Window {
+    JetKVMAndroid?: {
+      showInputMethod?: () => void;
+    };
+  }
+}
 
 const STORAGE_KEY = "androidCompactControlPosition";
 const BUTTON_SIZE = 50;
@@ -112,15 +120,12 @@ function ActionButton({
   );
 }
 
-export default function AndroidCompactControls({
-  requestFullscreen,
-}: {
-  requestFullscreen: () => Promise<void>;
-}) {
+export default function AndroidCompactControls() {
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { executeMacro } = useKeyboard();
+  const { selectedKeyboard } = useKeyboardLayout();
   const setUser = useUserStore(state => state.setUser);
   const {
     isOcrMode,
@@ -172,6 +177,60 @@ export default function AndroidCompactControls({
     },
     [setDisableVideoFocusTrap],
   );
+
+  const executeTextInput = useCallback(
+    async (text: string) => {
+      const macroSteps: MacroStep[] = [];
+
+      for (const char of text) {
+        const normalizedChar = char.normalize("NFC");
+        const keyprops = selectedKeyboard.chars[normalizedChar];
+        if (!keyprops?.key) continue;
+
+        if (keyprops.accentKey) {
+          const accentModifiers: string[] = [];
+          if (keyprops.accentKey.shift) accentModifiers.push("ShiftLeft");
+          if (keyprops.accentKey.altRight) accentModifiers.push("AltRight");
+
+          macroSteps.push({
+            keys: [String(keyprops.accentKey.key)],
+            modifiers: accentModifiers.length > 0 ? accentModifiers : null,
+            delay: 20,
+          });
+        }
+
+        const modifiers: string[] = [];
+        if (keyprops.shift) modifiers.push("ShiftLeft");
+        if (keyprops.altRight) modifiers.push("AltRight");
+
+        macroSteps.push({
+          keys: [String(keyprops.key)],
+          modifiers: modifiers.length > 0 ? modifiers : null,
+          delay: 20,
+        });
+
+        if (keyprops.deadKey) {
+          macroSteps.push({ keys: ["Space"], modifiers: null, delay: 20 });
+        }
+      }
+
+      if (macroSteps.length > 0) await executeMacro(macroSteps);
+    },
+    [executeMacro, selectedKeyboard],
+  );
+
+  useEffect(() => {
+    const onAndroidImeText = (event: Event) => {
+      const customEvent = event as CustomEvent<{ text?: string }>;
+      const text = customEvent.detail?.text;
+      if (!text) return;
+
+      void executeTextInput(text);
+    };
+
+    window.addEventListener("jetkvm-android-ime-text", onAndroidImeText);
+    return () => window.removeEventListener("jetkvm-android-ime-text", onAndroidImeText);
+  }, [executeTextInput]);
 
   useEffect(() => {
     const onResize = () => persistPosition(position);
@@ -380,7 +439,15 @@ export default function AndroidCompactControls({
                 icon={LuKeyboard}
                 label={m.action_bar_virtual_keyboard()}
                 active={isVirtualKeyboardEnabled}
-                onClick={() => setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled)}
+                onClick={() => {
+                  if (window.JetKVMAndroid?.showInputMethod) {
+                    window.JetKVMAndroid.showInputMethod();
+                    closePanel();
+                    return;
+                  }
+
+                  setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled);
+                }}
               />
               <ActionButton
                 icon={LuSignal}
@@ -389,11 +456,6 @@ export default function AndroidCompactControls({
                   toggleSidebarView("connection-stats");
                   closePanel();
                 }}
-              />
-              <ActionButton
-                icon={LuMaximize}
-                label={m.action_bar_fullscreen()}
-                onClick={() => void requestFullscreen()}
               />
               <ActionButton
                 icon={LuSettings}
