@@ -8,6 +8,7 @@ import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import InputField from "@components/InputField";
 import { Checkbox } from "@components/Checkbox";
 import { Button } from "@components/Button";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import LoadingSpinner from "@components/LoadingSpinner";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -16,6 +17,7 @@ interface VNCConfig {
   enabled: boolean;
   port: number;
   password: string;
+  keymap: string;
 }
 
 const DEFAULT_PORT = 5900;
@@ -28,6 +30,7 @@ export default function SettingsVncRoute() {
     enabled: false,
     port: DEFAULT_PORT,
     password: "",
+    keymap: "default",
   });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -124,6 +127,19 @@ export default function SettingsVncRoute() {
                   updateField("port", parseInt(e.target.value) || DEFAULT_PORT);
                   if (fieldErrors.port) setFieldErrors(prev => ({ ...prev, port: "" }));
                 }}
+              />
+            </SettingsItem>
+
+            <SettingsItem title={m.vnc_keymap_label()} description={m.vnc_keymap_description()}>
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={settings.keymap || "default"}
+                options={[
+                  { value: "default", label: m.vnc_keymap_default() },
+                  { value: "macos", label: m.vnc_keymap_macos() },
+                ]}
+                onChange={e => updateField("keymap", e.target.value)}
               />
             </SettingsItem>
 

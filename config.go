@@ -134,6 +134,12 @@ type Config struct {
 	// TCP and is trivially crackable from a captured handshake; tunnel
 	// via SSH or Tailscale on untrusted networks.
 	VncPassword string `json:"vnc_password"`
+	// VncKeymap selects per-client keysym overrides for VNC clients
+	// whose keysym mapping doesn't match the X11 convention the
+	// keysym table assumes. Empty / "default" applies no overrides.
+	// "macos" applies the TightVNC-on-macOS quirks (Mode_switch ->
+	// LeftOption, Alt_L -> LeftCmd, Super_L -> RightCmd).
+	VncKeymap string `json:"vnc_keymap"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -229,6 +235,7 @@ func getDefaultConfig() Config {
 		VncEnabled:  false,
 		VncPort:     5900,
 		VncPassword: "",
+		VncKeymap:   "default",
 	}
 }
 

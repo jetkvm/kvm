@@ -33,6 +33,11 @@ type VNCConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Port     int    `json:"port"`
 	Password string `json:"password"`
+	// Keymap selects per-client keysym overrides for clients whose
+	// keysym mapping doesn't match the X11 convention. "default" or
+	// empty applies no overrides; "macos" handles the TightVNC quirks
+	// observed on macOS.
+	Keymap string `json:"keymap"`
 }
 
 // rpcGetVNCConfig returns the current VNC server configuration. The
@@ -47,6 +52,7 @@ func rpcGetVNCConfig() VNCConfig {
 		Enabled:  config.VncEnabled,
 		Port:     config.VncPort,
 		Password: masked,
+		Keymap:   config.VncKeymap,
 	}
 }
 
@@ -57,14 +63,20 @@ func rpcSetVNCConfig(cfg VNCConfig) error {
 	if cfg.Port <= 0 || cfg.Port > 65535 {
 		return errors.New("vnc port must be in 1..65535")
 	}
+	switch cfg.Keymap {
+	case "", "default", "macos":
+	default:
+		return fmt.Errorf("unknown vnc keymap %q (expected \"default\" or \"macos\")", cfg.Keymap)
+	}
 
 	prev := struct {
 		enabled  bool
 		port     int
 		password string
+		keymap   string
 	}{
 		enabled: config.VncEnabled, port: config.VncPort,
-		password: config.VncPassword,
+		password: config.VncPassword, keymap: config.VncKeymap,
 	}
 
 	config.VncEnabled = cfg.Enabled
@@ -72,10 +84,12 @@ func rpcSetVNCConfig(cfg VNCConfig) error {
 	if cfg.Password != "********" {
 		config.VncPassword = cfg.Password
 	}
+	config.VncKeymap = cfg.Keymap
 
 	if err := SaveConfig(); err != nil {
 		config.VncEnabled, config.VncPort = prev.enabled, prev.port
 		config.VncPassword = prev.password
+		config.VncKeymap = prev.keymap
 		return fmt.Errorf("failed to save vnc config: %w", err)
 	}
 

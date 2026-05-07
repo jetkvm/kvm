@@ -295,18 +295,42 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 	return c.conn.Flush()
 }
 
+// macOS-specific keysym overrides for VNC clients running on macOS
+// (notably TightVNC's Java viewer). Such clients translate Cmd /
+// Option to keysyms that don't match the X11 convention the default
+// table assumes, so a Mac user pressing Left Cmd reaches the host as
+// Left Option and Left Option doesn't arrive at all. Activated via
+// `vnc_keymap = "macos"` in the config.
+//
+// Sourced from observed traces of TightVNC on macOS — Apple Screen
+// Sharing, Chicken, and TigerVNC's Mac viewer may use different
+// keysyms; add entries here as more clients are observed.
+var macClientKeysymOverrides = map[uint32]byte{
+	0xff7e: 0xe2, // Mode_switch       -> LeftAlt   (Left Option)
+	0xffe9: 0xe3, // Alt_L             -> LeftSuper (Left Cmd)
+	0xffeb: 0xe7, // Super_L (right!)  -> RightSuper (Right Cmd)
+}
+
 // handleKeyEvent forwards a VNC KeyEvent to the USB HID gadget. The
 // Linux/X11 keysym is translated to a USB HID Usage ID via the table
-// in internal/rfb/keysym.go.
+// in internal/rfb/keysym.go, with optional per-client overrides for
+// quirky clients (see VncKeymap config).
 //
-// macOS VNC clients (including TightVNC's Java viewer, "Chicken",
-// Apple Screen Sharing, etc.) vary in how they map Cmd / Option /
-// Caps_Lock to X11 keysyms. If a key on a macOS client doesn't reach
-// the host as expected, run with JETKVM_LOG_TRACE=vnc and look for
-// the "key event" trace line — it shows the raw keysym the client
-// sent, which is the source of any misbehaviour we'd want to fix.
+// If a key still doesn't reach the host as expected, run with
+// JETKVM_LOG_TRACE=vnc and look at the "key event" trace line — it
+// shows the raw keysym the client sent, which is the source of any
+// misbehaviour we'd want to map.
 func (c *vncConn) handleKeyEvent(m rfb.KeyEventMessage) {
-	hid, ok := rfb.HIDFromKeysym(m.Keysym)
+	var (
+		hid byte
+		ok  bool
+	)
+	if config.VncKeymap == "macos" {
+		hid, ok = macClientKeysymOverrides[m.Keysym]
+	}
+	if !ok {
+		hid, ok = rfb.HIDFromKeysym(m.Keysym)
+	}
 	c.l.Trace().
 		Str("keysym", fmt.Sprintf("0x%04x", m.Keysym)).
 		Bool("down", m.Down).
