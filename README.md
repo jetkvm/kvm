@@ -122,12 +122,14 @@ What it deliberately does not do:
 - It does not treat any external monitor as sufficient proof that JetKVM is
   attached.
 
-The recommended mode is normal Android keyguard with a trusted state such as
-Extend Unlock, the companion foreground service armed, notification permission
-granted where Android requires it, unrestricted battery enabled for reliability,
-and launch-on-boot enabled if the target should recover after reboots. A hard
-locked Android target with no trusted user state still requires the user's
-credential or a privileged automation stack outside this fork's scope.
+The recommended mode is normal Android keyguard with the companion foreground
+service armed, notification permission granted where Android requires it,
+unrestricted battery enabled for reliability, and launch-on-boot enabled if the
+target should recover after reboots. A trusted state such as Extend Unlock can
+make wake recovery automatic. Without a trusted state, the companion can still
+bring up Android's credential bouncer after wake; the user can then enter the
+PIN or password through JetKVM keyboard input or the Android controller's OSK
+bridge.
 
 ## Current Validation State
 

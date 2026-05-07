@@ -54,17 +54,17 @@ JetKVM-specific VID/PID changes do not break detection.
 
 - **No lockscreen**: may work for some users, but some apps are hostile toward
   disabled lockscreen or insecure-device configurations.
-- **Keyguard on with Extend Unlock**: recommended stock-Android mode for this
-  helper. Keep the normal Android keyguard enabled, configure Extend Unlock or
-  another trusted state, install JetKVM Companion on the target phone, and open
-  it once after boot to arm the foreground service. Grant **Background launch
-  assist** for automatic wake-unlock while the app is in the background, and
-  grant **Unrestricted battery** for watchdog reliability. Enable **Launch on
-  boot** to arm the service automatically after future boots.
-- **Keyguard on without Extend Unlock**: no stock/public JetKVM solution. A hard
-  locked Android device requires the user credential or third-party automation
-  tools such as Tasker, Shizuku-based automation, Accessibility automation, root,
-  or device-owner/OEM privileges.
+- **Keyguard on with Extend Unlock**: keep the normal Android keyguard enabled,
+  configure Extend Unlock or another trusted state, install JetKVM Companion on
+  the target phone, and open it once after boot to arm the foreground service.
+  Grant **Background launch assist** for automatic wake-unlock while the app is
+  in the background, and grant **Unrestricted battery** for watchdog
+  reliability. Enable **Launch on boot** to arm the service automatically after
+  future boots.
+- **Keyguard on without Extend Unlock**: keep the normal Android keyguard
+  enabled and use JetKVM's display wake action to wake the target. The companion
+  can bring up Android's credential bouncer, and the user can enter the PIN or
+  password through JetKVM keyboard input or the Android controller's OSK bridge.
 
 ## Build
 
