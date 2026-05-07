@@ -329,6 +329,14 @@ func (s *VNCServer) WriteFrame(frame []byte, duration time.Duration) {
 
 	s.clientsMu.RLock()
 	for c := range s.clients {
+		// If the client is already in resync mode, P-frames are
+		// useless (decoder is broken until next IDR) — skip pushing
+		// them so we don't fill the channel with frames the
+		// dispatcher would just drop anyway, and so TCP backpressure
+		// can drain.
+		if c.waitingForIDR.Load() && !pkt.hasIDR {
+			continue
+		}
 		select {
 		case c.frames <- pkt:
 		default:
@@ -337,8 +345,17 @@ func (s *VNCServer) WriteFrame(frame []byte, duration time.Duration) {
 			// at 60 fps) so the user knows the channel is overloaded
 			// without spamming the log.
 			if n%60 == 1 {
-				c.l.Warn().Uint64("dropped_total", n).Msg("VNC client cannot keep up; dropping H.264 frames (decoder will glitch until next IDR)")
+				c.l.Warn().Uint64("dropped_total", n).Msg("VNC client cannot keep up; dropping H.264 frames until next IDR")
 			}
+			// Trigger resync: stop sending P-frames until the next
+			// IDR arrives, then ship it with the OpenH264 reset
+			// flag and re-prime SPS/PPS. Avoids dragging out the
+			// "broken decoder" period for the rest of the GOP.
+			c.waitingForIDR.Store(true)
+			c.stateMu.Lock()
+			c.needsResetCtx = true
+			c.primed = false
+			c.stateMu.Unlock()
 		}
 	}
 	s.clientsMu.RUnlock()
@@ -467,8 +484,8 @@ func (s *VNCServer) serveClient(nc net.Conn) {
 		width:         width,
 		height:        height,
 		needsResetCtx: true,
-		waitingForIDR: true,
 	}
+	conn.waitingForIDR.Store(true)
 	cachedSPS, cachedPPS := s.addClient(conn)
 	conn.cachedSPS, conn.cachedPPS = cachedSPS, cachedPPS
 	defer s.removeClient(conn)

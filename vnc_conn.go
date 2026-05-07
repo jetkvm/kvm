@@ -62,10 +62,17 @@ type vncConn struct {
 	// transitions into wheel reports.
 	lastButtons uint16
 
-	// waitingForIDR is true until an IDR slice arrives for this
-	// client. Non-IDR frames are dropped during this window so the
-	// decoder isn't fed a P-frame it can't decode.
-	waitingForIDR bool
+	// waitingForIDR signals that the client's H.264 decoder needs an
+	// IDR keyframe to (re)synchronise — set on initial connect and
+	// also flipped back to true by WriteFrame whenever a drop occurs,
+	// so the dispatcher can skip every subsequent P-frame instead of
+	// shoveling broken references at the decoder for the rest of the
+	// GOP. Cleared once the IDR has been emitted with the OpenH264
+	// reset-decoder flag.
+	//
+	// Atomic so WriteFrame can flip it from the producer goroutine
+	// without taking stateMu on the per-client hot path.
+	waitingForIDR atomic.Bool
 }
 
 // markResolutionChanged is called by the producer when the capture
@@ -193,12 +200,10 @@ func (c *vncConn) dispatchLoop() {
 		case <-c.writeQuit:
 			return
 		case pkt := <-c.frames:
-			c.stateMu.Lock()
-			drop := c.waitingForIDR && !pkt.hasIDR
+			drop := c.waitingForIDR.Load() && !pkt.hasIDR
 			if pkt.hasIDR {
-				c.waitingForIDR = false
+				c.waitingForIDR.Store(false)
 			}
-			c.stateMu.Unlock()
 			if drop {
 				c.l.Trace().Int("size", len(pkt.data)).Msg("dropping non-IDR frame while waiting for keyframe")
 				select {
