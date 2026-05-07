@@ -327,6 +327,17 @@ func (c *vncConn) handleKeyEvent(m rfb.KeyEventMessage) {
 // HID mouse report. Wheel events appear as transient presses of
 // buttons 4 (up) and 5 (down); we synthesise wheel reports from the
 // rising edges and mask the wheel bits out of the regular report.
+//
+// Mouse buttons 4 and 5 (the back/forward side buttons on most
+// Logitech-style mice) have no canonical RFB representation: the
+// PointerEvent button-mask is 8 bits, of which RFC 6143 reserves
+// bits 0..2 for primary buttons and 3..6 for wheel emulation. Some
+// clients send the side buttons on bit 7 or via the Extended
+// PointerEvent pseudo-encoding (not implemented here yet); whether
+// they reach the server depends on the client. Run with
+// JETKVM_LOG_TRACE=vnc and look at the "pointer event" trace to see
+// the raw mask the client sent — that tells us which (if any) bit
+// to wire up.
 func (c *vncConn) handlePointerEvent(m rfb.PointerEventMessage) {
 	c.stateMu.Lock()
 	w, h := c.width, c.height
@@ -352,6 +363,12 @@ func (c *vncConn) handlePointerEvent(m rfb.PointerEventMessage) {
 	// (3..6) were already turned into wheel reports above and are
 	// stripped here.
 	hidButtons := rfb.PointerMaskToHIDButtons(m.ButtonMask)
+
+	c.l.Trace().
+		Str("rfb_buttons", fmt.Sprintf("0x%02x", m.ButtonMask)).
+		Uint16("x", m.X).Uint16("y", m.Y).
+		Str("hid_buttons", fmt.Sprintf("0x%02x", hidButtons)).
+		Msg("pointer event")
 
 	if err := rpcAbsMouseReport(x, y, hidButtons); err != nil {
 		c.l.Warn().Err(err).Msg("abs mouse report failed")
