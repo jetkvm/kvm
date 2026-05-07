@@ -72,6 +72,25 @@ const (
 	// https://github.com/TigerVNC/tigervnc/pull/1194 (TigerVNC ≥ 1.13.0,
 	// requires FFmpeg at build time).
 	EncodingOpenH264 EncodingType = 50
+
+	// EncodingExtendedMouseButtons is TigerVNC's pseudo-encoding
+	// -316, which extends the PointerEvent mask from 7 bits (the
+	// classic format reserves the top bit) to 15 bits, enabling
+	// mouse buttons 8+ (Logitech-style back / forward, etc.).
+	//
+	// Negotiation:
+	//  - Client advertises -316 in SetEncodings.
+	//  - Server confirms by sending a fake FramebufferUpdate
+	//    containing one 0x0 rectangle at (0,0) with encoding -316.
+	//  - After confirmation, the client may send PointerEvent in
+	//    one of two formats, distinguished by bit 7 of the byte
+	//    after the message type:
+	//      bit 7 = 0: legacy [mask:U8][x:U16][y:U16]
+	//      bit 7 = 1: extended [marker|lo7:U8][x:U16][y:U16][hi8:U8]
+	//
+	// Buttons 1..15 → RFB mask bits 0..14 (bit 15 reserved). Wheel
+	// emulation occupies bits 3..6 in both formats.
+	EncodingExtendedMouseButtons EncodingType = -316
 )
 
 // OpenH264 flag bits in the rectangle's U32 flags field. Bit 0 resets
@@ -83,28 +102,42 @@ const (
 
 // PointerButton bits in the PointerEvent button-mask. RFB historically
 // expresses scroll-wheel events as transient presses of buttons 4
-// (up), 5 (down), 6 (left) and 7 (right).
+// (up), 5 (down), 6 (left) and 7 (right). Bits 7+ are only available
+// when the Extended Mouse Buttons extension (encoding -316) has been
+// negotiated.
 const (
-	PointerButtonLeft   uint8 = 1 << 0
-	PointerButtonMiddle uint8 = 1 << 1
-	PointerButtonRight  uint8 = 1 << 2
-	PointerButtonUp     uint8 = 1 << 3
-	PointerButtonDown   uint8 = 1 << 4
-	PointerButtonLeftWh uint8 = 1 << 5
-	PointerButtonRightW uint8 = 1 << 6
+	PointerButtonLeft    uint16 = 1 << 0
+	PointerButtonMiddle  uint16 = 1 << 1
+	PointerButtonRight   uint16 = 1 << 2
+	PointerButtonUp      uint16 = 1 << 3
+	PointerButtonDown    uint16 = 1 << 4
+	PointerButtonLeftWh  uint16 = 1 << 5
+	PointerButtonRightW  uint16 = 1 << 6
+	PointerButtonBack    uint16 = 1 << 7 // X button 8, extended
+	PointerButtonForward uint16 = 1 << 8 // X button 9, extended
 )
 
 // PointerMaskToHIDButtons converts an RFB PointerEvent button-mask
-// (RFC 6143 §7.5.5) to a USB HID boot-mouse button byte.
+// (RFC 6143 §7.5.5 + Extended Mouse Buttons extension) to a USB HID
+// boot-mouse button byte.
 //
-// RFB layout:  bit 0 = left, bit 1 = MIDDLE, bit 2 = RIGHT
-// USB HID:     bit 0 = left, bit 1 = RIGHT,  bit 2 = MIDDLE
+// RFB layout:  bit 0=left, 1=MIDDLE, 2=RIGHT, 3..6=wheel,
+//
+//	7=BACK, 8=FORWARD
+//
+// USB HID:     bit 0=left, 1=RIGHT,  2=MIDDLE, 3=BACK, 4=FORWARD
 //
 // Bits 3..6 (RFB wheel pseudo-buttons) are dropped — callers should
 // translate them into wheel reports separately.
-func PointerMaskToHIDButtons(m uint8) uint8 {
+func PointerMaskToHIDButtons(m uint16) uint8 {
 	left := m & PointerButtonLeft   // bit 0, same in both
 	mid := m & PointerButtonMiddle  // RFB bit 1 -> HID bit 2
 	right := m & PointerButtonRight // RFB bit 2 -> HID bit 1
-	return left | (mid << 1) | (right >> 1)
+	back := m & PointerButtonBack   // RFB bit 7 -> HID bit 3
+	fwd := m & PointerButtonForward // RFB bit 8 -> HID bit 4
+	return uint8(left) |
+		uint8(mid<<1) |
+		uint8(right>>1) |
+		uint8(back>>4) |
+		uint8(fwd>>4)
 }

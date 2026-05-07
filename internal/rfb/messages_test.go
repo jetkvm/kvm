@@ -51,6 +51,76 @@ func TestReadPointerEvent(t *testing.T) {
 	}
 }
 
+// Extended Mouse Buttons: when SetExtendedMouseButtons is enabled
+// AND the marker bit (0x80 of the first byte) is set, the parser
+// reads one extra byte and combines it into a 15-bit mask.
+func TestReadPointerEventExtended(t *testing.T) {
+	srvNC, cliNC := pipeConn(t)
+	c := NewConn(srvNC)
+	c.SetExtendedMouseButtons(true)
+
+	go func() {
+		// Extended frame: marker|lo7=0x81 (left + marker), x=10, y=20,
+		// hiBits=0x01 → button 8 (RFB bit 7, back). Final mask =
+		// 0x81 (lo7=0x01 after stripping marker | hi<<7=0x0080) = 0x81.
+		_, _ = cliNC.Write([]byte{
+			5,           // msgType
+			0x80 | 0x01, // marker + left button
+			0x00, 0x0A,  // x = 10
+			0x00, 0x14, // y = 20
+			0x01, // hi byte: bit 0 = button 8 (back)
+		})
+	}()
+
+	msg, err := c.ReadClientMessage()
+	if err != nil {
+		t.Fatalf("ReadClientMessage: %v", err)
+	}
+	pe, ok := msg.(PointerEventMessage)
+	if !ok {
+		t.Fatalf("got %T, want PointerEventMessage", msg)
+	}
+	want := PointerButtonLeft | PointerButtonBack
+	if pe.ButtonMask != want {
+		t.Errorf("ButtonMask: got %#04x, want %#04x", pe.ButtonMask, want)
+	}
+	if pe.X != 10 || pe.Y != 20 {
+		t.Errorf("xy: got (%d,%d)", pe.X, pe.Y)
+	}
+}
+
+// Without SetExtendedMouseButtons(true), bit 7 of the first byte must
+// be ignored — it's reserved in legacy PointerEvent and TigerVNC's
+// writer always clears it. The parser must not consume the extra byte.
+func TestReadPointerEventLegacyIgnoresMarker(t *testing.T) {
+	srvNC, cliNC := pipeConn(t)
+	c := NewConn(srvNC)
+	// extendedMouseButtons stays false.
+
+	go func() {
+		// Legacy 6-byte frame followed immediately by a sentinel byte
+		// the parser must NOT consume.
+		_, _ = cliNC.Write([]byte{5, 0x05, 0, 0, 0, 0, 0xAB})
+	}()
+
+	msg, err := c.ReadClientMessage()
+	if err != nil {
+		t.Fatalf("ReadClientMessage: %v", err)
+	}
+	pe := msg.(PointerEventMessage)
+	if pe.ButtonMask != 0x05 {
+		t.Errorf("ButtonMask: got %#04x", pe.ButtonMask)
+	}
+	// Sentinel byte must still be in the buffer for the next read.
+	b, err := c.readByte()
+	if err != nil {
+		t.Fatalf("readByte: %v", err)
+	}
+	if b != 0xAB {
+		t.Errorf("sentinel: got %#02x; parser over-consumed", b)
+	}
+}
+
 func TestReadFramebufferUpdateRequest(t *testing.T) {
 	srvNC, cliNC := pipeConn(t)
 	c := NewConn(srvNC)

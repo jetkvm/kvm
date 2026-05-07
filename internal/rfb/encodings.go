@@ -89,3 +89,13 @@ func (c *Conn) WriteDesktopSizeRect(width, height uint16) error {
 	r := Rect{X: 0, Y: 0, W: width, H: height, Encoding: EncodingDesktopSize}
 	return c.WriteRectHeader(r)
 }
+
+// WriteExtendedMouseButtonsAnnounceRect emits the fake 0×0 rectangle
+// that confirms server-side support for the Extended Mouse Buttons
+// extension (encoding -316). After writing it, callers should
+// transition the connection's reader to extended mode via
+// SetExtendedMouseButtons(true).
+func (c *Conn) WriteExtendedMouseButtonsAnnounceRect() error {
+	r := Rect{X: 0, Y: 0, W: 0, H: 0, Encoding: EncodingExtendedMouseButtons}
+	return c.WriteRectHeader(r)
+}

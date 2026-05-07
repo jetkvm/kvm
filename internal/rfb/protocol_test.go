@@ -5,7 +5,7 @@ import "testing"
 func TestPointerMaskToHIDButtons(t *testing.T) {
 	cases := []struct {
 		name string
-		in   uint8
+		in   uint16
 		want uint8
 	}{
 		{"none", 0, 0},
@@ -24,11 +24,20 @@ func TestPointerMaskToHIDButtons(t *testing.T) {
 		{"wheel left dropped", PointerButtonLeftWh, 0},
 		{"wheel right dropped", PointerButtonRightW, 0},
 		{"left + wheel up", PointerButtonLeft | PointerButtonUp, 0b0000_0001},
+		// Extended Mouse Buttons: RFB bit 7 = back -> HID bit 3,
+		// RFB bit 8 = forward -> HID bit 4.
+		{"back only (RFB bit 7)", PointerButtonBack, 0b0000_1000},
+		{"forward only (RFB bit 8)", PointerButtonForward, 0b0001_0000},
+		{"left + back", PointerButtonLeft | PointerButtonBack, 0b0000_1001},
+		{"all primary + back + forward",
+			PointerButtonLeft | PointerButtonMiddle | PointerButtonRight |
+				PointerButtonBack | PointerButtonForward,
+			0b0001_1111},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if got := PointerMaskToHIDButtons(c.in); got != c.want {
-				t.Errorf("PointerMaskToHIDButtons(%#02x) = %#02x, want %#02x",
+				t.Errorf("PointerMaskToHIDButtons(%#04x) = %#02x, want %#02x",
 					c.in, got, c.want)
 			}
 		})

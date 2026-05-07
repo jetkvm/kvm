@@ -164,6 +164,35 @@ func TestWriteDesktopSizeRect(t *testing.T) {
 	}
 }
 
+func TestWriteExtendedMouseButtonsAnnounceRect(t *testing.T) {
+	srvNC, cliNC := pipeConn(t)
+	c := NewConn(srvNC)
+
+	go func() {
+		_ = c.WriteExtendedMouseButtonsAnnounceRect()
+		_ = c.Flush()
+	}()
+
+	out := make([]byte, 12)
+	if err := cliNC.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(cliNC, out); err != nil {
+		t.Fatal(err)
+	}
+	// x=0, y=0, w=0, h=0, encoding=-316 (0xFFFFFEC4 in two's complement)
+	want := []byte{
+		0x00, 0x00,
+		0x00, 0x00,
+		0x00, 0x00,
+		0x00, 0x00,
+		0xFF, 0xFF, 0xFE, 0xC4,
+	}
+	if !bytes.Equal(out, want) {
+		t.Errorf("got %v, want %v", out, want)
+	}
+}
+
 func TestWriteRawRectRejectsWrongEncoding(t *testing.T) {
 	srvNC, _ := pipeConn(t)
 	c := NewConn(srvNC)

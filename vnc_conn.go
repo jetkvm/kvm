@@ -43,6 +43,14 @@ type vncConn struct {
 	hasOpenH264     bool // client advertised encoding 50
 	resolutionDirty bool // pending DesktopSize update
 
+	// extMouseButtonsWanted is set when the client advertised
+	// pseudoEncodingExtendedMouseButtons (-316) in SetEncodings;
+	// extMouseButtonsAcknowledged becomes true once we have included
+	// the confirmation rect in a FramebufferUpdate. Both are guarded
+	// by stateMu.
+	extMouseButtonsWanted       bool
+	extMouseButtonsAcknowledged bool
+
 	// cachedSPS / cachedPPS are the parameter-set NALs at connect
 	// time. Sent as the first piece of the first encoding-50 rect so
 	// the decoder is primed before the next IDR.
@@ -52,7 +60,7 @@ type vncConn struct {
 
 	// Last-known mouse button mask, used to translate wheel-button
 	// transitions into wheel reports.
-	lastButtons uint8
+	lastButtons uint16
 
 	// waitingForIDR is true until an IDR slice arrives for this
 	// client. Non-IDR frames are dropped during this window so the
@@ -94,19 +102,35 @@ func (c *vncConn) readLoop() {
 
 		switch m := msg.(type) {
 		case rfb.SetEncodingsMessage:
-			has := false
+			hasH264 := false
+			hasExtMouse := false
 			for _, e := range m.Encodings {
-				if e == rfb.EncodingOpenH264 {
-					has = true
-					break
+				switch e {
+				case rfb.EncodingOpenH264:
+					hasH264 = true
+				case rfb.EncodingExtendedMouseButtons:
+					hasExtMouse = true
 				}
 			}
 			c.stateMu.Lock()
-			c.hasOpenH264 = has
+			c.hasOpenH264 = hasH264
+			c.extMouseButtonsWanted = hasExtMouse
 			c.stateMu.Unlock()
-			c.l.Info().Bool("openH264", has).Interface("encodings", m.Encodings).Msg("client encodings")
-			if !has {
+			c.l.Info().
+				Bool("openH264", hasH264).
+				Bool("extMouseButtons", hasExtMouse).
+				Interface("encodings", m.Encodings).
+				Msg("client encodings")
+			if !hasH264 {
 				c.l.Warn().Msg("client did not advertise OpenH264 (encoding 50); falling back to placeholder")
+			}
+			// Wake the dispatcher so the announce rect for extended
+			// mouse buttons (if any) reaches the client promptly.
+			if hasExtMouse {
+				select {
+				case c.updateNeeded <- struct{}{}:
+				default:
+				}
 			}
 
 		case rfb.SetPixelFormatMessage:
@@ -218,6 +242,7 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 	dirty := c.resolutionDirty
 	resetCtx := c.needsResetCtx
 	hasH264 := c.hasOpenH264
+	announceExtMouse := c.extMouseButtonsWanted && !c.extMouseButtonsAcknowledged
 	c.resolutionDirty = false
 	c.needsResetCtx = false
 	c.stateMu.Unlock()
@@ -226,6 +251,9 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 	// header before any rect bodies.
 	rectCount := uint16(0)
 	if dirty {
+		rectCount++
+	}
+	if announceExtMouse {
 		rectCount++
 	}
 	hasFrame := len(pkt.data) > 0
@@ -249,6 +277,20 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 		if err := c.conn.WriteDesktopSizeRect(w, h); err != nil {
 			return err
 		}
+	}
+
+	if announceExtMouse {
+		if err := c.conn.WriteExtendedMouseButtonsAnnounceRect(); err != nil {
+			return err
+		}
+		// Switch the reader to extended mode AFTER the announce
+		// rect has been queued: any PointerEvent the client sends
+		// next may use the extended format.
+		c.conn.SetExtendedMouseButtons(true)
+		c.stateMu.Lock()
+		c.extMouseButtonsAcknowledged = true
+		c.stateMu.Unlock()
+		c.l.Info().Msg("Extended Mouse Buttons (encoding -316) negotiated")
 	}
 
 	if hasH264 && hasFrame {
@@ -350,16 +392,12 @@ func (c *vncConn) handleKeyEvent(m rfb.KeyEventMessage) {
 // buttons 4 (up) and 5 (down); we synthesise wheel reports from the
 // rising edges and mask the wheel bits out of the regular report.
 //
-// Mouse buttons 4 and 5 (the back/forward side buttons on most
-// Logitech-style mice) have no canonical RFB representation: the
-// PointerEvent button-mask is 8 bits, of which RFC 6143 reserves
-// bits 0..2 for primary buttons and 3..6 for wheel emulation. Some
-// clients send the side buttons on bit 7 or via the Extended
-// PointerEvent pseudo-encoding (not implemented here yet); whether
-// they reach the server depends on the client. Run with
-// JETKVM_LOG_TRACE=vnc and look at the "pointer event" trace to see
-// the raw mask the client sent — that tells us which (if any) bit
-// to wire up.
+// Side-button (back / forward) support depends on whether the
+// client negotiated the Extended Mouse Buttons extension
+// (encoding -316). With it, RFB bit 7 is button 8 (back) and bit 8
+// is button 9 (forward); rfb.PointerMaskToHIDButtons routes those
+// to USB HID button 4 and 5. Without negotiation, the mask only
+// carries 7 bits and the side buttons aren't transmitted.
 func (c *vncConn) handlePointerEvent(m rfb.PointerEventMessage) {
 	c.stateMu.Lock()
 	w, h := c.width, c.height
@@ -387,7 +425,7 @@ func (c *vncConn) handlePointerEvent(m rfb.PointerEventMessage) {
 	hidButtons := rfb.PointerMaskToHIDButtons(m.ButtonMask)
 
 	c.l.Trace().
-		Str("rfb_buttons", fmt.Sprintf("0x%02x", m.ButtonMask)).
+		Str("rfb_buttons", fmt.Sprintf("0x%04x", m.ButtonMask)).
 		Uint16("x", m.X).Uint16("y", m.Y).
 		Str("hid_buttons", fmt.Sprintf("0x%02x", hidButtons)).
 		Msg("pointer event")
@@ -413,6 +451,6 @@ func scaleCoord(src, srcMax, dstMax int) int {
 }
 
 // rising reports whether bit became set on the transition prev → cur.
-func rising(prev, cur, bit uint8) bool {
+func rising(prev, cur, bit uint16) bool {
 	return (prev&bit) == 0 && (cur&bit) != 0
 }

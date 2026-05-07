@@ -48,9 +48,12 @@ func (KeyEventMessage) clientMessage() {}
 
 // PointerEventMessage is a mouse position+button-mask update
 // (RFC 6143 §7.5.5). Wheel events appear as transient presses of
-// buttons 4/5/6/7.
+// buttons 4/5/6/7. When the Extended Mouse Buttons extension
+// (encoding -316) has been negotiated and the client elects to use
+// it, ButtonMask carries up to 15 bits (buttons 1..15); otherwise
+// only the lower 7 bits are populated.
 type PointerEventMessage struct {
-	ButtonMask uint8
+	ButtonMask uint16
 	X, Y       uint16
 }
 
@@ -168,7 +171,7 @@ func (c *Conn) ReadClientMessage() (ClientMessage, error) {
 		return KeyEventMessage{Down: down != 0, Keysym: ks}, nil
 
 	case ClientMsgPointerEvent:
-		mask, err := c.readByte()
+		first, err := c.readByte()
 		if err != nil {
 			return nil, err
 		}
@@ -179,6 +182,19 @@ func (c *Conn) ReadClientMessage() (ClientMessage, error) {
 		y, err := c.readU16()
 		if err != nil {
 			return nil, err
+		}
+		// Extended PointerEvent: bit 7 of `first` is the marker. We
+		// only honour it after SetExtendedMouseButtons(true) — the
+		// classic format reserved bit 7 and TigerVNC's writer always
+		// clears it before sending, so a stray 1 from a non-extended
+		// client is harmless to ignore here.
+		mask := uint16(first & 0x7F)
+		if c.extendedMouseButtons && (first&0x80) != 0 {
+			high, err := c.readByte()
+			if err != nil {
+				return nil, err
+			}
+			mask |= uint16(high) << 7
 		}
 		return PointerEventMessage{ButtonMask: mask, X: x, Y: y}, nil
 

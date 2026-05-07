@@ -20,7 +20,20 @@ type Conn struct {
 	nc net.Conn
 	r  *bufio.Reader
 	w  *bufio.Writer
+
+	// extendedMouseButtons indicates that the Extended Mouse Buttons
+	// extension (encoding -316) has been negotiated. The PointerEvent
+	// reader uses it to pick the legacy (6-byte) or extended (7-byte)
+	// wire format. Set by SetExtendedMouseButtons after the server
+	// has sent the announce rectangle. Single-writer model also
+	// applies to this flag.
+	extendedMouseButtons bool
 }
+
+// SetExtendedMouseButtons enables decoding of the Extended Mouse
+// Buttons extension on the next PointerEvent message. Call once
+// after the announce rectangle has been written to the client.
+func (c *Conn) SetExtendedMouseButtons(enabled bool) { c.extendedMouseButtons = enabled }
 
 // NewConn wraps a net.Conn with read/write buffers.
 func NewConn(nc net.Conn) *Conn {
