@@ -402,13 +402,15 @@ func (s *VNCServer) serveClient(nc net.Conn) {
 	l := vncLogger.With().Str("client", addr).Logger()
 	l.Info().Msg("VNC client connected")
 
-	// Disable Nagle. We send H.264 frames as small composite writes
-	// (FBU header + rect header + length + flags + payload) that the
-	// kernel would otherwise batch with up to 40ms of delay, and any
-	// extra latency between frames shows up as visible scroll
-	// artifacts when the decoder waits past the next frame's PTS.
+	// Disable Nagle and grow the TCP send buffer. H.264 I-frames at
+	// 1080p can run 50–200 KB; a small socket buffer would force the
+	// dispatcher to block while the kernel drains, which surfaces as
+	// visible latency / drops at the application layer. NoDelay also
+	// matters because we send a frame as one bufio.Writer flush,
+	// which we want kicked onto the wire immediately.
 	if tc, ok := nc.(*net.TCPConn); ok {
 		_ = tc.SetNoDelay(true)
+		_ = tc.SetWriteBuffer(4 * 1024 * 1024)
 	}
 
 	rfbConn := rfb.NewConn(nc)

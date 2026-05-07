@@ -35,12 +35,20 @@ type Conn struct {
 // after the announce rectangle has been written to the client.
 func (c *Conn) SetExtendedMouseButtons(enabled bool) { c.extendedMouseButtons = enabled }
 
+// writeBufferSize is the bufio.Writer buffer for outbound bytes.
+// Picked to comfortably hold one typical 1080p H.264 P-frame so a
+// FramebufferUpdate with the rect headers + length/flags + payload
+// goes out in a single Write to the underlying TCP socket — the
+// default 4 KB caused ~12 syscalls per frame and as many TCP segments
+// when NoDelay forced an immediate flush.
+const writeBufferSize = 64 * 1024
+
 // NewConn wraps a net.Conn with read/write buffers.
 func NewConn(nc net.Conn) *Conn {
 	return &Conn{
 		nc: nc,
 		r:  bufio.NewReader(nc),
-		w:  bufio.NewWriter(nc),
+		w:  bufio.NewWriterSize(nc, writeBufferSize),
 	}
 }
 

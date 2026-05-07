@@ -300,23 +300,29 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 		}
 
 		var payload []byte
-		if !c.primed && len(c.cachedSPS) > 0 && len(c.cachedPPS) > 0 {
-			// Prepend cached SPS/PPS so the decoder has parameter
-			// sets before any IDR slice it sees on this connection.
+		if !c.primed && len(c.cachedSPS) > 0 && len(c.cachedPPS) > 0 &&
+			!frameHasParameterSets(pkt.data) {
+			// Encoder didn't emit SPS+PPS with this IDR (some encoders
+			// only send them at stream start). Prepend the cached pair
+			// so the decoder has parameter sets before the IDR slice.
 			payload = make(
 				[]byte,
 				0,
-				len(c.cachedSPS)+len(c.cachedPPS)+len(pkt.data)+12,
+				len(c.cachedSPS)+len(c.cachedPPS)+len(pkt.data)+8,
 			)
 			payload = append(payload, []byte{0, 0, 0, 1}...)
 			payload = append(payload, c.cachedSPS...)
 			payload = append(payload, []byte{0, 0, 0, 1}...)
 			payload = append(payload, c.cachedPPS...)
 			payload = append(payload, pkt.data...)
-			c.primed = true
 		} else {
 			payload = pkt.data
 		}
+		// `primed` flips on the first H.264 rect we ship to this
+		// client regardless of whether we prepended or not — once a
+		// decodable frame has reached the client, the subsequent
+		// stream is self-contained.
+		c.primed = true
 
 		if err := c.conn.WriteOpenH264Rect(
 			rfb.Rect{X: 0, Y: 0, W: w, H: h, Encoding: rfb.EncodingOpenH264},
@@ -453,4 +459,29 @@ func scaleCoord(src, srcMax, dstMax int) int {
 // rising reports whether bit became set on the transition prev → cur.
 func rising(prev, cur, bit uint16) bool {
 	return (prev&bit) == 0 && (cur&bit) != 0
+}
+
+// frameHasParameterSets reports whether an H.264 Annex-B frame
+// already contains SPS (NAL type 7) AND PPS (NAL type 8) NALs. Used
+// by the dispatcher to skip prepending the cached parameter sets
+// when the encoder already includes them with the IDR — which most
+// modern H.264 encoders do, and which would otherwise produce a
+// duplicate SPS/PPS pair on the wire.
+func frameHasParameterSets(frame []byte) bool {
+	hasSPS, hasPPS := false, false
+	for _, nal := range rfb.SplitAnnexB(frame) {
+		if len(nal) == 0 {
+			continue
+		}
+		switch nal[0] & 0x1F {
+		case 7:
+			hasSPS = true
+		case 8:
+			hasPPS = true
+		}
+		if hasSPS && hasPPS {
+			return true
+		}
+	}
+	return false
 }
