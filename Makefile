@@ -19,6 +19,10 @@ BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 DOCKER_BUILD_TAG ?= ghcr.io/jetkvm/buildkit:latest
 SKIP_NATIVE_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
+SKIP_E2E_BUILD ?= 0
+E2E_TEST ?=
+E2E_GREP ?=
+E2E_ARGS ?=
 ENABLE_SYNC_TRACE ?= 0
 
 CMAKE_BUILD_TYPE ?= Release
@@ -86,13 +90,36 @@ OTA_ENV = JETKVM_URL=http://$(DEVICE_IP) \
 	TEST_UPDATE_VERSION=$(1) \
 	NODE_NO_WARNINGS=1
 
+E2E_PLAYWRIGHT_ARGS = $(E2E_TEST) $(if $(E2E_GREP),--grep "$(E2E_GREP)") $(E2E_ARGS)
+
 # E2E tests - normal development lane (core tests + prerelease OTA, no signing key needed)
 test_e2e:
 	@if [ -z "$(DEVICE_IP)" ]; then \
 		echo "Error: DEVICE_IP is required"; \
-		echo "Usage: make test_e2e DEVICE_IP=<ip> [JETKVM_REMOTE_HOST=<host>]"; \
+		echo "Usage: make test_e2e DEVICE_IP=<ip> [SKIP_E2E_BUILD=1] [E2E_TEST=<file[:line]>] [E2E_GREP=<title>] [JETKVM_REMOTE_HOST=<host>]"; \
 		exit 1; \
 	fi
+ifeq ($(SKIP_E2E_BUILD),1)
+	@if [ -z "$(E2E_TEST)$(E2E_GREP)" ]; then \
+		echo "Error: E2E_TEST or E2E_GREP is required when SKIP_E2E_BUILD=1"; \
+		exit 1; \
+	fi
+	@case "$(E2E_TEST)" in \
+		*remote-agent/*|*ra-all.spec.ts*) \
+			if [ -z "$(JETKVM_REMOTE_HOST)" ]; then \
+				echo "Error: JETKVM_REMOTE_HOST is required for remote-agent tests"; \
+				exit 1; \
+			fi; \
+			;; \
+	esac
+	@if [ ! -x ui/node_modules/.bin/playwright ]; then \
+		echo "UI dependencies missing, running npm ci..."; \
+		npm --prefix ui ci; \
+	fi
+	cd ui && JETKVM_URL=http://$(DEVICE_IP) NODE_NO_WARNINGS=1 \
+		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
+		npm run test:e2e -- $(E2E_PLAYWRIGHT_ARGS)
+else
 	$(eval TEST_VERSION := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M))
 	$(MAKE) frontend
 	$(MAKE) check
@@ -102,7 +129,8 @@ test_e2e:
 	cd ui && npx playwright install chromium
 	cd ui && $(call OTA_ENV,$(TEST_VERSION)) \
 		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
-		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
+		npx playwright test $(E2E_PLAYWRIGHT_ARGS) --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
+endif
 
 # Production release validation lane
 test_production_release:
