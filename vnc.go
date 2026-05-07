@@ -318,7 +318,13 @@ func (s *VNCServer) WriteFrame(frame []byte, duration time.Duration) {
 		select {
 		case c.frames <- pkt:
 		default:
-			c.dropped.Add(1)
+			n := c.dropped.Add(1)
+			// One warning per ~60 drops (≈1 s of sustained pressure
+			// at 60 fps) so the user knows the channel is overloaded
+			// without spamming the log.
+			if n%60 == 1 {
+				c.l.Warn().Uint64("dropped_total", n).Msg("VNC client cannot keep up; dropping H.264 frames (decoder will glitch until next IDR)")
+			}
 		}
 	}
 	s.clientsMu.RUnlock()
@@ -381,7 +387,15 @@ func (s *VNCServer) serveClient(nc net.Conn) {
 	addr := nc.RemoteAddr().String()
 	l := vncLogger.With().Str("client", addr).Logger()
 	l.Info().Msg("VNC client connected")
-	defer l.Info().Msg("VNC client disconnected")
+
+	// Disable Nagle. We send H.264 frames as small composite writes
+	// (FBU header + rect header + length + flags + payload) that the
+	// kernel would otherwise batch with up to 40ms of delay, and any
+	// extra latency between frames shows up as visible scroll
+	// artifacts when the decoder waits past the next frame's PTS.
+	if tc, ok := nc.(*net.TCPConn); ok {
+		_ = tc.SetNoDelay(true)
+	}
 
 	rfbConn := rfb.NewConn(nc)
 	if err := nc.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
@@ -423,11 +437,15 @@ func (s *VNCServer) serveClient(nc net.Conn) {
 	}
 
 	conn := &vncConn{
-		server:        s,
-		conn:          rfbConn,
-		netConn:       nc,
-		l:             &l,
-		frames:        make(chan vncFramePacket, 2),
+		server:  s,
+		conn:    rfbConn,
+		netConn: nc,
+		l:       &l,
+		// 8-deep frame buffer: enough to absorb a brief TCP write
+		// stall (≈130 ms at 60 fps) without dropping. Dropping a
+		// single P-frame breaks H.264's prediction chain and shows
+		// up as blocky scroll artifacts until the next IDR.
+		frames:        make(chan vncFramePacket, 8),
 		updateNeeded:  make(chan struct{}, 1),
 		writeQuit:     make(chan struct{}),
 		width:         width,
@@ -438,6 +456,9 @@ func (s *VNCServer) serveClient(nc net.Conn) {
 	cachedSPS, cachedPPS := s.addClient(conn)
 	conn.cachedSPS, conn.cachedPPS = cachedSPS, cachedPPS
 	defer s.removeClient(conn)
+	defer func() {
+		l.Info().Uint64("dropped_frames", conn.dropped.Load()).Msg("VNC client disconnected")
+	}()
 
 	go conn.dispatchLoop()
 	conn.readLoop()
