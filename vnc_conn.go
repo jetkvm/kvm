@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
@@ -299,10 +300,22 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 // handleKeyEvent forwards a VNC KeyEvent to the USB HID gadget. The
 // Linux/X11 keysym is translated to a USB HID Usage ID via the table
 // in internal/rfb/keysym.go.
+//
+// macOS VNC clients (including TightVNC's Java viewer, "Chicken",
+// Apple Screen Sharing, etc.) vary in how they map Cmd / Option /
+// Caps_Lock to X11 keysyms. If a key on a macOS client doesn't reach
+// the host as expected, run with JETKVM_LOG_TRACE=vnc and look for
+// the "key event" trace line — it shows the raw keysym the client
+// sent, which is the source of any misbehaviour we'd want to fix.
 func (c *vncConn) handleKeyEvent(m rfb.KeyEventMessage) {
 	hid, ok := rfb.HIDFromKeysym(m.Keysym)
+	c.l.Trace().
+		Str("keysym", fmt.Sprintf("0x%04x", m.Keysym)).
+		Bool("down", m.Down).
+		Bool("mapped", ok).
+		Uint8("hid", hid).
+		Msg("key event")
 	if !ok {
-		c.l.Debug().Uint32("keysym", m.Keysym).Msg("unmapped keysym, dropping")
 		return
 	}
 	if err := rpcKeypressReport(hid, m.Down); err != nil {
