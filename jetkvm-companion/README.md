@@ -94,13 +94,13 @@ adb install -r jetkvm-companion/build/JetKVM-Companion-release.apk
 Latest release:
 
 ```text
-https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.3
+https://github.com/Batestinha/jetkvm-companion/releases/tag/v1.5
 ```
 
 Latest APK asset:
 
 ```text
-JetKVM-Companion-1.3.apk
+JetKVM-Companion-1.5.apk
 ```
 
 Obtainium source:
