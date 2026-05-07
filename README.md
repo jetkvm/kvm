@@ -41,9 +41,10 @@ baseline. The important baseline properties are:
 - **Relative HID wheel scrolling** - Mouse wheel input is routed through the
   relative HID mouse path when Android exposes one, preserving touchscreen
   alignment while restoring useful wheel behavior.
-- **Android target companion APK** - A small target-side companion helps with
-  Android keyguard behavior and keeps the target integration explicit instead
-  of relying on broad monitor or USB heuristics.
+- **Android target companion APK** - A small target-side helper runs on the
+  Android phone being controlled. It handles the Android keyguard edge cases
+  that USB HID input alone cannot solve, without using root, ADB, Accessibility,
+  Shizuku, or screen capture.
 
 ## How It Works
 
@@ -62,8 +63,9 @@ needed:
    so Autofill and Android keyboard behavior work naturally.
 6. The compact overlay keeps Android-only actions close to the controller view
    without polluting the desktop JetKVM interface.
-7. The companion APK runs on the Android target and handles the pieces Android
-   does not safely expose through USB input alone.
+7. The companion APK runs on the Android target and handles keyguard dismissal
+   only when Android reports a trusted user state and sees JetKVM-identifiable
+   keyboard plus touch/pointer devices.
 
 ## Why This Exists
 
@@ -81,6 +83,51 @@ different enough that the generic desktop assumptions are not enough:
 This fork keeps those Android-specific decisions explicit. The goal is not to
 replace JetKVM's normal UI; it is to add a focused Android target/controller
 path while leaving the vanilla experience recognizable.
+
+## Target Companion
+
+The companion APK is installed on the Android target, not on the controller
+phone. Its job is narrow: make JetKVM-controlled Android targets recover
+cleanly from display wake and soft keyguard states while keeping the trust
+boundary on the target device.
+
+JetKVM can send touchscreen, keyboard, mouse, wheel, and display-toggle input
+over USB HID. That is enough once Android is interactive. The lockscreen is the
+exception. On stock Android, secondary-display keyguard behavior is governed by
+Android multi-display policy, and the external display shown through JetKVM may
+not be allowed to dismiss a trusted keyguard purely from the external USB
+digitizer. That is an Android policy boundary, not a broken touch coordinate
+path.
+
+The companion uses public Android APIs to bridge that boundary:
+
+- It runs a foreground service on the target phone.
+- It watches Android `InputDevice` metadata for JetKVM-identifiable USB input
+  devices.
+- It arms itself only when the JetKVM keyboard and either touchscreen or pointer
+  source are present.
+- When the target wakes and Android says the user is trusted, it launches a
+  transparent `showWhenLocked` activity and calls
+  `KeyguardManager.requestDismissKeyguard()`.
+- It can optionally use Android's overlay permission as a non-touchable launch
+  assist so background wake-unlock remains reliable after the display turns on.
+
+What it deliberately does not do:
+
+- It does not inject input.
+- It does not capture or read the screen.
+- It does not use ADB.
+- It does not require root, Shizuku, Accessibility, device-owner privileges, or
+  OEM-only APIs.
+- It does not treat any external monitor as sufficient proof that JetKVM is
+  attached.
+
+The recommended mode is normal Android keyguard with a trusted state such as
+Extend Unlock, the companion foreground service armed, notification permission
+granted where Android requires it, unrestricted battery enabled for reliability,
+and launch-on-boot enabled if the target should recover after reboots. A hard
+locked Android target with no trusted user state still requires the user's
+credential or a privileged automation stack outside this fork's scope.
 
 ## Current Validation State
 
