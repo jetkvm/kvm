@@ -1,3 +1,148 @@
+# JetKVM Android Support Fork
+
+This fork adds an Android-focused control path to JetKVM. It is built for the
+case where the JetKVM target is an Android device and the operator wants the
+same practical control surface that a physical touchscreen, keyboard, and mouse
+would provide.
+
+The current branch is based on a validated known-good touchscreen and aspect
+baseline. The important baseline properties are:
+
+- Android digitizer input is routed through USB HID touchscreen emulation.
+- Touch coordinates are aligned with the captured video and feel smooth in use.
+- The Android target aspect ratio is preserved for the phone controller view.
+- Desktop JetKVM usability remains available for non-Android workflows.
+
+## What This Fork Adds
+
+- **Android USB touchscreen target support** - JetKVM can expose a direct-touch
+  HID digitizer path for Android targets instead of treating touch as generic
+  mouse input.
+- **Android controller APK** - A native Android wrapper for operating JetKVM
+  from a phone. It supplies the Android-specific login flow, immersive view,
+  native OSK integration, and compact controller defaults.
+- **Compact controller mode** - The phone controller gets a reduced UI without
+  the desktop chrome and button strip. Android-only controls are placed in a
+  draggable floating menu.
+- **Floating control overlay** - The overlay includes target actions such as
+  paste text, virtual media, Wake-on-LAN, virtual keyboard, display toggle,
+  logout, settings, and connection tools while preserving the video surface for
+  touch input.
+- **Native Android login activity** - The controller APK owns the login
+  experience instead of relying on the vanilla web auth page. This keeps
+  password managers and Autofill useful on the controller phone.
+- **Android OSK bridge** - In the controller APK, the compact virtual keyboard
+  action opens Android's own input method and forwards committed text through
+  JetKVM's existing HID keyboard macro path. Desktop browsers still use the
+  regular web virtual keyboard.
+- **Display toggle for Android targets** - The UI can send a harmless HID key
+  event to wake the display, or the Android display power shortcut when
+  available.
+- **Relative HID wheel scrolling** - Mouse wheel input is routed through the
+  relative HID mouse path when Android exposes one, preserving touchscreen
+  alignment while restoring useful wheel behavior.
+- **Android target companion APK** - A small target-side companion helps with
+  Android keyguard behavior and keeps the target integration explicit instead
+  of relying on broad monitor or USB heuristics.
+
+## How It Works
+
+The backend keeps JetKVM's normal video, WebRTC, keyboard, virtual media, and
+device-management paths. Android-specific input is layered on top where it is
+needed:
+
+1. The JetKVM device exposes HID endpoints suitable for an Android target.
+2. Touchscreen events from the viewer are mapped to the captured Android frame
+   and sent through the absolute HID digitizer path.
+3. Wheel events use the relative mouse HID path when present, because Android
+   handles wheel scrolling differently from direct touchscreen gestures.
+4. The Android controller APK identifies itself to the backend by opening the
+   controller URL with Android compact-mode parameters.
+5. The controller APK replaces the web auth page with a native login activity
+   so Autofill and Android keyboard behavior work naturally.
+6. The compact overlay keeps Android-only actions close to the controller view
+   without polluting the desktop JetKVM interface.
+7. The companion APK runs on the Android target and handles the pieces Android
+   does not safely expose through USB input alone.
+
+## Why This Exists
+
+Vanilla JetKVM is designed as a general KVM over IP. Android targets are
+different enough that the generic desktop assumptions are not enough:
+
+- Android distinguishes direct touchscreen input from mouse input.
+- A phone-shaped captured display needs strict aspect handling or touches drift.
+- Android lockscreen behavior has policy boundaries that generic HID input
+  cannot always cross cleanly.
+- A phone controller needs a different UI density from the desktop browser UI.
+- Android users expect Autofill, the native OSK, and immersive full-screen app
+  behavior instead of a desktop-style login form.
+
+This fork keeps those Android-specific decisions explicit. The goal is not to
+replace JetKVM's normal UI; it is to add a focused Android target/controller
+path while leaving the vanilla experience recognizable.
+
+## Current Validation State
+
+The current support branch has been locally validated with:
+
+- Android digitizer touch input.
+- Correct phone-controller aspect and crop behavior.
+- Desktop viewer behavior preserved.
+- Compact overlay actions.
+- Display wake/toggle actions.
+- Native Android login and logout flow.
+- Autofill password entry with OSK collapse handling.
+- Companion app permission UI cleanup.
+- Relative HID mouse wheel scrolling.
+- Controller APK Android OSK text forwarding.
+
+Non-trivial changes to this fork should be built, deployed, and tested on the
+JetKVM device plus the controller/target phones before being committed or
+published.
+
+## Components
+
+- `jetkvm-android/` - Android controller APK.
+- `jetkvm-companion/` - Android target companion APK.
+- `ui/src/components/AndroidCompactControls.tsx` - compact Android controller
+  overlay.
+- Backend HID/RPC changes live in the normal JetKVM backend tree.
+
+## Build Notes
+
+Build the JetKVM backend and device UI:
+
+```bash
+make build_dev
+```
+
+Build the Android controller APK:
+
+```bash
+./jetkvm-android/build.sh release
+```
+
+Build the Android companion APK:
+
+```bash
+./jetkvm-companion/build.sh release
+```
+
+Install APKs with ADB as usual:
+
+```bash
+adb install -r jetkvm-android/build/JetKVM-release.apk
+adb install -r jetkvm-companion/build/JetKVM-Companion-release.apk
+```
+
+## Upstream README
+
+The section below is the vanilla upstream JetKVM README, kept intact for
+project context.
+
+---
+
 <div align="center">
     <img alt="JetKVM logo" src="https://jetkvm.com/logo-blue.png" height="28">
 
