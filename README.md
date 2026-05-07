@@ -63,9 +63,9 @@ needed:
    so Autofill and Android keyboard behavior work naturally.
 6. The compact overlay keeps Android-only actions close to the controller view
    without polluting the desktop JetKVM interface.
-7. The companion APK runs on the Android target and handles keyguard dismissal
-   only when Android reports a trusted user state and sees JetKVM-identifiable
-   keyboard plus touch/pointer devices.
+7. The companion APK runs on the Android target and asks Android to dismiss the
+   keyguard only when JetKVM-identifiable keyboard plus touch/pointer devices
+   are present.
 
 ## Why This Exists
 
@@ -106,9 +106,9 @@ The companion uses public Android APIs to bridge that boundary:
   devices.
 - It arms itself only when the JetKVM keyboard and either touchscreen or pointer
   source are present.
-- When the target wakes and Android says the user is trusted, it launches a
-  transparent `showWhenLocked` activity and calls
-  `KeyguardManager.requestDismissKeyguard()`.
+- When the target wakes, it launches a transparent `showWhenLocked` activity and
+  calls `KeyguardManager.requestDismissKeyguard()`. Android decides whether the
+  keyguard can be dismissed.
 - It can optionally use Android's overlay permission as a non-touchable launch
   assist so background wake-unlock remains reliable after the display turns on.
 

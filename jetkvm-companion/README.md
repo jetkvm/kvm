@@ -21,10 +21,11 @@ References:
 
 The companion does not inject input, capture the screen, use ADB, require root,
 use Accessibility, or depend on Shizuku. It runs a foreground service, listens
-for JetKVM-identifiable Android input devices, and only enables keyguard
+for JetKVM-identifiable Android input devices, and only attempts keyguard
 dismissal while Android sees the JetKVM keyboard plus touchscreen or pointer.
-When the target wakes and Android reports the user is trusted, a transparent
-`showWhenLocked` Activity calls `KeyguardManager.requestDismissKeyguard()`.
+When the target wakes, a transparent `showWhenLocked` Activity calls
+`KeyguardManager.requestDismissKeyguard()`. Android decides whether the keyguard
+can be dismissed.
 
 Opening the app shows a small settings UI. Use **Arm companion** after install,
 grant **Background launch assist**, and enable **Launch on boot** if the helper
