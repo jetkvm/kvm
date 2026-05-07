@@ -276,7 +276,6 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 			payload = pkt.data
 		}
 
-		c.l.Trace().Uint16("w", w).Uint16("h", h).Int("size", len(payload)).Uint32("flags", flags).Bool("primed", c.primed).Msg("emitting OpenH264 rect")
 		if err := c.conn.WriteOpenH264Rect(
 			rfb.Rect{X: 0, Y: 0, W: w, H: h, Encoding: rfb.EncodingOpenH264},
 			flags, payload,
@@ -285,7 +284,6 @@ func (c *vncConn) writeUpdate(pkt vncFramePacket) error {
 		}
 	} else if !hasH264 {
 		pixels := rfb.PlaceholderImage(int(w), int(h))
-		c.l.Trace().Uint16("w", w).Uint16("h", h).Msg("emitting Raw placeholder rect (client did not advertise OpenH264)")
 		if err := c.conn.WriteRawRect(
 			rfb.Rect{X: 0, Y: 0, W: w, H: h, Encoding: rfb.EncodingRaw},
 			pixels,
