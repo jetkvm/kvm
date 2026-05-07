@@ -72,6 +72,7 @@ type UsbGadget struct {
 	absMouseLock       sync.Mutex
 	relMouseHidFile    *os.File
 	relMouseLock       sync.Mutex
+	relMouseButtons    uint8
 	touchscreenHidFile *os.File
 	touchscreenHidLock sync.Mutex
 

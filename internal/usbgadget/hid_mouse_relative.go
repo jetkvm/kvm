@@ -85,6 +85,30 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 	return nil
 }
 
+func (u *UsbGadget) HasRelativeMouse() bool {
+	return u.enabledDevices.RelativeMouse
+}
+
+func relativeMouseReportBytes(mx int8, my int8, buttons uint8) []byte {
+	return []byte{
+		buttons,  // Buttons
+		byte(mx), // X
+		byte(my), // Y
+		0,        // Wheel
+		0,        // AC Pan (Horizontal Scroll)
+	}
+}
+
+func relativeMouseWheelReportBytes(wheelY int8, wheelX int8, buttons uint8) []byte {
+	return []byte{
+		buttons,      // Buttons
+		0,            // X
+		0,            // Y
+		byte(wheelY), // Wheel (signed)
+		byte(wheelX), // AC Pan (signed)
+	}
+}
+
 func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	if !u.enabledDevices.RelativeMouse {
 		return nil
@@ -93,17 +117,12 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	u.relMouseLock.Lock()
 	defer u.relMouseLock.Unlock()
 
-	err := u.relMouseWriteHidFile([]byte{
-		buttons,  // Buttons
-		byte(mx), // X
-		byte(my), // Y
-		0,        // Wheel
-		0,        // AC Pan (Horizontal Scroll)
-	})
+	err := u.relMouseWriteHidFile(relativeMouseReportBytes(mx, my, buttons))
 	if err != nil {
 		return err
 	}
 
+	u.relMouseButtons = buttons
 	u.resetUserInputTime()
 	return nil
 }
@@ -120,13 +139,7 @@ func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
 		return nil
 	}
 
-	err := u.relMouseWriteHidFile([]byte{
-		0,            // Buttons (none)
-		0,            // X
-		0,            // Y
-		byte(wheelY), // Wheel (signed)
-		byte(wheelX), // AC Pan (signed)
-	})
+	err := u.relMouseWriteHidFile(relativeMouseWheelReportBytes(wheelY, wheelX, u.relMouseButtons))
 
 	u.resetUserInputTime()
 	return err
