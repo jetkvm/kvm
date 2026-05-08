@@ -9,7 +9,6 @@ Outputs hex strings ready for the JetKVM `setEDID` JSONRPC.
 """
 
 import math
-import struct
 import sys
 
 # CVT Reduced Blanking v1 constants (VESA CVT 1.0)
@@ -55,12 +54,15 @@ def cvt_rb(h_active, v_active, refresh):
         v_front = 1
 
     h_total = h_active + RB_H_BLANK
-    pclk_hz = v_total * h_total * refresh
-    pclk_khz = (pclk_hz // (CLOCK_STEP_KHZ * 1000)) * CLOCK_STEP_KHZ * 1000
-    if pclk_khz == 0:
-        pclk_khz = pclk_hz  # fallback
+    raw_pclk_hz = v_total * h_total * refresh
+    # Quantize to CLOCK_STEP (250 kHz) per CVT spec.
+    pclk_hz = (raw_pclk_hz // (CLOCK_STEP_KHZ * 1000)) * CLOCK_STEP_KHZ * 1000
+    if pclk_hz == 0:
+        # Refresh rate so low that quantization snapped to zero — fall back
+        # to the raw value.
+        pclk_hz = raw_pclk_hz
 
-    actual_refresh = pclk_khz / (v_total * h_total)
+    actual_refresh = pclk_hz / (v_total * h_total)
 
     return {
         "h_active": h_active,
@@ -73,7 +75,7 @@ def cvt_rb(h_active, v_active, refresh):
         "v_sync": v_sync,
         "h_total": h_total,
         "v_total": v_total,
-        "pclk_hz": pclk_khz,
+        "pclk_hz": pclk_hz,
         "refresh": actual_refresh,
         # CVT-RB always has positive Hsync, negative Vsync
         "hsync_pos": True,

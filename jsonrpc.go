@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -253,36 +254,42 @@ func rpcGetVideoLogStatus() (string, error) {
 	return nativeInstance.VideoLogStatus()
 }
 
+// rpcGetVideoLowLatencyMode reports whether the device is currently advertising
+// the experimental 120 Hz EDID. The state is derived from EdidString rather than
+// stored separately so the toggle and the EDID dropdown can never disagree.
 func rpcGetVideoLowLatencyMode() (bool, error) {
-	return config.VideoLowLatencyMode, nil
+	return strings.EqualFold(config.EdidString, native.LowLatency120HzEDID), nil
 }
 
-// rpcSetVideoLowLatencyMode toggles the experimental 120 Hz EDID. When enabled
-// the device advertises 848x480@120 (preferred) and 1280x720@120 to the source;
-// the source must be manually switched to one of those modes for it to take
-// effect. The toggle is only applied when EdidString currently holds one of the
-// well-known JetKVM defaults — a user-supplied custom EDID is preserved.
+// rpcSetVideoLowLatencyMode toggles the experimental 120 Hz EDID.
+//
+//   - enabled=true: always applies LowLatency120HzEDID (replaces any current
+//     EDID, including a user-supplied custom one — the user is explicitly
+//     opting in).
+//   - enabled=false: reverts to DefaultEDID only when the device is currently
+//     using LowLatency120HzEDID. A user-supplied custom EDID is left
+//     untouched, and disabling while already on default is a no-op.
+//
+// Source PC must be manually switched to a matching mode for the change to
+// take effect.
 func rpcSetVideoLowLatencyMode(enabled bool) error {
-	if config.VideoLowLatencyMode == enabled {
-		return nil
-	}
+	current := config.EdidString
+	usingLowLatency := strings.EqualFold(current, native.LowLatency120HzEDID)
 
 	var newEDID string
 	switch {
-	case enabled && config.EdidString == native.DefaultEDID:
+	case enabled && !usingLowLatency:
 		newEDID = native.LowLatency120HzEDID
-	case !enabled && config.EdidString == native.LowLatency120HzEDID:
+	case !enabled && usingLowLatency:
 		newEDID = native.DefaultEDID
+	default:
+		return nil // already in the desired state, or custom EDID — leave alone
 	}
 
-	if newEDID != "" {
-		if err := nativeInstance.VideoSetEDID(newEDID); err != nil {
-			return err
-		}
-		config.EdidString = newEDID
+	if err := nativeInstance.VideoSetEDID(newEDID); err != nil {
+		return err
 	}
-
-	config.VideoLowLatencyMode = enabled
+	config.EdidString = newEDID
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}

@@ -82,8 +82,10 @@ export default function SettingsVideoRoute() {
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
-  const [lowLatencyMode, setLowLatencyMode] = useState(false);
-  const [lowLatencyLoading, setLowLatencyLoading] = useState(true);
+  // Toggle state is derived from `edid` so the dropdown and toggle can never
+  // disagree. Comparison is case-insensitive because EDID hex round-trips
+  // through string handlers that may normalize case.
+  const lowLatencyMode = edid != null && edid.toLowerCase() === lowLatency120HzEdid.toLowerCase();
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
@@ -109,12 +111,6 @@ export default function SettingsVideoRoute() {
       setCodecPreference(isAvailable ? codec : "auto");
     });
 
-    void send("getVideoLowLatencyMode", {}, (resp: JsonRpcResponse) => {
-      setLowLatencyLoading(false);
-      if ("error" in resp) return;
-      setLowLatencyMode(Boolean(resp.result));
-    });
-
     void send("getEDID", {}, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
@@ -125,13 +121,12 @@ export default function SettingsVideoRoute() {
       }
 
       const receivedEdid = resp.result as string;
-
       const matchingEdid = edids.find(x => x.value.toLowerCase() === receivedEdid.toLowerCase());
 
       if (matchingEdid) {
-        // EDID is stored in uppercase in the UI
-        setEdid(matchingEdid.value.toUpperCase());
-        // Reset custom EDID value
+        // Use the option's exact value so SelectMenuBasic strict-equality
+        // matching keeps the dropdown in sync.
+        setEdid(matchingEdid.value);
         setCustomEdidValue(null);
       } else {
         setEdid("custom");
@@ -174,37 +169,9 @@ export default function SettingsVideoRoute() {
     });
   };
 
-  const handleLowLatencyChange = (enabled: boolean) => {
-    setLowLatencyLoading(true);
-    void send("setVideoLowLatencyMode", { enabled }, (resp: JsonRpcResponse) => {
-      setLowLatencyLoading(false);
-      if ("error" in resp) {
-        notifications.error(
-          m.video_failed_set_low_latency({ error: resp.error.data || m.unknown_error() }),
-        );
-        return;
-      }
-      setLowLatencyMode(enabled);
-      notifications.success(
-        m.video_low_latency_set_success({ state: enabled ? "enabled" : "disabled" }),
-      );
-      // Refresh the EDID dropdown — the toggle may have rewritten EdidString.
-      void send("getEDID", {}, (edidResp: JsonRpcResponse) => {
-        if ("error" in edidResp) return;
-        const receivedEdid = edidResp.result as string;
-        const matchingEdid = edids.find(x => x.value.toLowerCase() === receivedEdid.toLowerCase());
-        if (matchingEdid) {
-          setEdid(matchingEdid.value.toUpperCase());
-          setCustomEdidValue(null);
-        } else {
-          setEdid("custom");
-          setCustomEdidValue(receivedEdid);
-        }
-      });
-    });
-  };
-
-  const handleEDIDChange = (newEdid: string) => {
+  // applyEDID does the JSONRPC call + state update without showing a
+  // notification. Callers compose their own success message.
+  const applyEDID = (newEdid: string, onSuccess: () => void) => {
     setEdidLoading(true);
     void send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
@@ -214,15 +181,30 @@ export default function SettingsVideoRoute() {
         );
         return;
       }
+      setEdid(newEdid);
+      onSuccess();
+    });
+  };
 
+  const handleEDIDChange = (newEdid: string) => {
+    const matched = edids.find(x => x.value.toLowerCase() === newEdid.toLowerCase());
+    applyEDID(newEdid, () => {
       notifications.success(
         m.video_edid_set_success({
-          edid: edids.find(x => x.value === newEdid)?.label ?? "the custom EDID",
+          edid: matched?.label ?? "the custom EDID",
         }),
       );
-      // Update the EDID value in the UI
-      setEdid(newEdid);
     });
+  };
+
+  const handleLowLatencyChange = (enabled: boolean) => {
+    if (enabled) {
+      applyEDID(lowLatency120HzEdid, () => notifications.success(m.video_low_latency_enabled()));
+    } else if (lowLatencyMode) {
+      // Only revert if currently using the low-latency EDID — leaves any
+      // user-supplied custom EDID untouched.
+      applyEDID(defaultEdid, () => notifications.success(m.video_low_latency_disabled()));
+    }
   };
 
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
@@ -348,10 +330,10 @@ export default function SettingsVideoRoute() {
             <SettingsItem
               title={m.video_low_latency_title()}
               description={m.video_low_latency_description()}
-              loading={lowLatencyLoading}
+              loading={edidLoading}
             >
               <Checkbox
-                disabled={lowLatencyLoading}
+                disabled={edidLoading}
                 checked={lowLatencyMode}
                 onChange={e => handleLowLatencyChange(e.target.checked)}
               />
