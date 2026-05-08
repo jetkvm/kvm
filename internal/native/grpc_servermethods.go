@@ -68,12 +68,30 @@ func (s *grpcServer) VideoSetEDID(ctx context.Context, req *pb.VideoSetEDIDReque
 	return &pb.Empty{}, nil
 }
 
+func (s *grpcServer) VideoCacheEDID(ctx context.Context, req *pb.VideoCacheEDIDRequest) (*pb.Empty, error) {
+	if err := s.native.VideoCacheEDID(req.Edid); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
 func (s *grpcServer) VideoGetEDID(ctx context.Context, req *pb.Empty) (*pb.VideoGetEDIDResponse, error) {
 	edid, err := s.native.VideoGetEDID()
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &pb.VideoGetEDIDResponse{Edid: edid}, nil
+}
+
+func (s *grpcServer) VideoSetHotplug(ctx context.Context, req *pb.VideoSetHotplugRequest) (*pb.Empty, error) {
+	if err := s.native.VideoSetHotplug(req.Enabled); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *grpcServer) VideoHotplugSupported(ctx context.Context, req *pb.Empty) (*pb.VideoHotplugSupportedResponse, error) {
+	return &pb.VideoHotplugSupportedResponse{Supported: s.native.VideoHotplugSupported()}, nil
 }
 
 func (s *grpcServer) VideoLogStatus(ctx context.Context, req *pb.Empty) (*pb.VideoLogStatusResponse, error) {

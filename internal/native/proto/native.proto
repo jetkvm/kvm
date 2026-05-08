@@ -18,7 +18,10 @@ service NativeService {
   rpc VideoSetCodecType(VideoSetCodecTypeRequest) returns (Empty);
   rpc VideoGetCodecType(Empty) returns (VideoGetCodecTypeResponse);
   rpc VideoSetEDID(VideoSetEDIDRequest) returns (Empty);
+  rpc VideoCacheEDID(VideoCacheEDIDRequest) returns (Empty);
   rpc VideoGetEDID(Empty) returns (VideoGetEDIDResponse);
+  rpc VideoSetHotplug(VideoSetHotplugRequest) returns (Empty);
+  rpc VideoHotplugSupported(Empty) returns (VideoHotplugSupportedResponse);
   rpc VideoLogStatus(Empty) returns (VideoLogStatusResponse);
   rpc VideoStop(Empty) returns (Empty);
   rpc VideoStart(Empty) returns (Empty);
@@ -104,6 +107,18 @@ message VideoSetEDIDRequest {
 
 message VideoGetEDIDResponse {
   string edid = 1;
+}
+
+message VideoCacheEDIDRequest {
+  string edid = 1;
+}
+
+message VideoSetHotplugRequest {
+  bool enabled = 1;
+}
+
+message VideoHotplugSupportedResponse {
+  bool supported = 1;
 }
 
 message VideoLogStatusResponse {

@@ -25,6 +25,14 @@ int get_edid(uint8_t *edid, size_t max_size);
 int set_edid(uint8_t *edid, size_t size);
 
 /**
+ * @brief Clear the EDID of the display, dropping HPD so the host sees the
+ * cable as physically unplugged. Issues VIDIOC_S_EDID with blocks=0.
+ *
+ * @return int 0 on success, -1 on failure
+ */
+int clear_edid(void);
+
+/**
  * @brief Get the status of the videocontroller, aka v4l2-ctl --log-status.
  * User should free the returned string
  *

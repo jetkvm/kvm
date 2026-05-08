@@ -120,6 +120,8 @@ type Config struct {
 	VideoCodecPreference string               `json:"video_codec_preference"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+
+	DisableVirtualDisplayWhenIdle bool `json:"disable_virtual_display_when_idle"`
 }
 
 // GetUpdateAPIURL returns the update API URL

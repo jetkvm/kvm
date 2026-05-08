@@ -33,8 +33,20 @@ func (e *EmptyNativeInterface) VideoSetEDID(edid string) error {
 	return nil
 }
 
+func (e *EmptyNativeInterface) VideoCacheEDID(edid string) error {
+	return nil
+}
+
 func (e *EmptyNativeInterface) VideoGetEDID() (string, error) {
 	return "", nil
+}
+
+func (e *EmptyNativeInterface) VideoSetHotplug(enabled bool) error {
+	return nil
+}
+
+func (e *EmptyNativeInterface) VideoHotplugSupported() bool {
+	return false
 }
 
 func (e *EmptyNativeInterface) VideoLogStatus() (string, error) {

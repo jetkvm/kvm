@@ -14,11 +14,17 @@ import { UsbInfoSetting } from "@components/UsbInfoSetting";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
+type VirtualDisplayPolicy = { supported: boolean; enabled: boolean };
+
 export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
   const settings = useSettingsStore();
   const { setDisplayRotation } = useSettingsStore();
   const [powerSavingEnabled, setPowerSavingEnabled] = useState(false);
+  const [virtualDisplayPolicy, setVirtualDisplayPolicy] = useState<VirtualDisplayPolicy>({
+    supported: false,
+    enabled: false,
+  });
 
   const handleDisplayRotationChange = (rotation: string) => {
     setDisplayRotation(rotation);
@@ -74,6 +80,26 @@ export default function SettingsHardwareRoute() {
     handleBacklightSettingsChange(settings);
   };
 
+  const handleVirtualDisplayPolicyChange = (enabled: boolean) => {
+    setVirtualDisplayPolicy(prev => ({ ...prev, enabled }));
+    send("setVirtualDisplayPolicy", { enabled }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.hardware_power_saving_disable_virtual_display_failed_error({
+            error: resp.error.data || m.unknown_error(),
+          }),
+        );
+        setVirtualDisplayPolicy(prev => ({ ...prev, enabled: !enabled }));
+        return;
+      }
+      notifications.success(
+        enabled
+          ? m.hardware_power_saving_disable_virtual_display_enabled()
+          : m.hardware_power_saving_disable_virtual_display_disabled(),
+      );
+    });
+  };
+
   const handlePowerSavingChange = (enabled: boolean) => {
     setPowerSavingEnabled(enabled);
     const duration = enabled ? 90 : -1;
@@ -111,6 +137,17 @@ export default function SettingsHardwareRoute() {
       }
       const result = resp.result as { enabled: boolean; duration: number };
       setPowerSavingEnabled(result.duration >= 0);
+    });
+  }, [send]);
+
+  useEffect(() => {
+    send("getVirtualDisplayPolicy", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to get virtual display policy:", resp.error);
+        return;
+      }
+      const result = resp.result as VirtualDisplayPolicy;
+      setVirtualDisplayPolicy(result);
     });
   }, [send]);
 
@@ -232,6 +269,18 @@ export default function SettingsHardwareRoute() {
               onChange={e => handlePowerSavingChange(e.target.checked)}
             />
           </SettingsItem>
+          {virtualDisplayPolicy.supported && (
+            <SettingsItem
+              badge={m.experimental()}
+              title={m.hardware_power_saving_disable_virtual_display_title()}
+              description={m.hardware_power_saving_disable_virtual_display_description()}
+            >
+              <Checkbox
+                checked={virtualDisplayPolicy.enabled}
+                onChange={e => handleVirtualDisplayPolicyChange(e.target.checked)}
+              />
+            </SettingsItem>
+          )}
         </div>
       </FeatureFlag>
 

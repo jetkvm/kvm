@@ -113,6 +113,35 @@ int set_edid(uint8_t *edid, size_t size)
     return 0;
 }
 
+int clear_edid(void)
+{
+    int fd;
+    struct v4l2_edid v4l2_edid;
+
+    fd = open(V4L_SUBDEV, O_RDWR);
+    if (fd < 0)
+    {
+        log_error("Failed to open device");
+        return -1;
+    }
+
+    memset(&v4l2_edid, 0, sizeof(v4l2_edid));
+    v4l2_edid.pad = 0;
+    v4l2_edid.start_block = 0;
+    v4l2_edid.blocks = 0;
+    v4l2_edid.edid = NULL;
+
+    if (ioctl(fd, VIDIOC_S_EDID, &v4l2_edid) < 0)
+    {
+        log_error("Failed to clear EDID");
+        close(fd);
+        return -1;
+    }
+
+    close(fd);
+    return 0;
+}
+
 const char *videoc_log_status()
 {
     int fd;

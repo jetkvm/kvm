@@ -63,7 +63,9 @@ float jetkvm_video_get_quality_factor();
 int jetkvm_video_set_codec_type(int codec_type);
 int jetkvm_video_get_codec_type();
 int jetkvm_video_set_edid(const char *edid_hex);
+int jetkvm_video_cache_edid(const char *edid_hex);
 char *jetkvm_video_get_edid_hex();
+int jetkvm_video_set_hotplug(int enabled);
 char *jetkvm_video_log_status();
 jetkvm_video_state_t *jetkvm_video_get_status();
 

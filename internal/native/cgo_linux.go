@@ -422,7 +422,38 @@ func videoSetEDID(edid string) error {
 
 	edidCStr := C.CString(edid)
 	defer C.free(unsafe.Pointer(edidCStr))
-	C.jetkvm_video_set_edid(edidCStr)
+	ret := C.jetkvm_video_set_edid(edidCStr)
+	if ret != 0 {
+		return fmt.Errorf("failed to set EDID: %d", int(ret))
+	}
+	return nil
+}
+
+func videoCacheEDID(edid string) error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	edidCStr := C.CString(edid)
+	defer C.free(unsafe.Pointer(edidCStr))
+	ret := C.jetkvm_video_cache_edid(edidCStr)
+	if ret != 0 {
+		return fmt.Errorf("failed to cache EDID: %d", int(ret))
+	}
+	return nil
+}
+
+func videoSetHotplug(enabled bool) error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	var arg C.int
+	if enabled {
+		arg = 1
+	}
+	ret := C.jetkvm_video_set_hotplug(arg)
+	if ret != 0 {
+		return fmt.Errorf("failed to set hotplug: %d", int(ret))
+	}
 	return nil
 }
 

@@ -403,13 +403,76 @@ int jetkvm_video_get_codec_type() {
     return video_get_codec_type();
 }
 
+/* Cached EDID bytes for re-applying after a hotplug-driven clear.
+ * Populated on every successful jetkvm_video_set_edid() (or via
+ * jetkvm_video_cache_edid) so that jetkvm_video_set_hotplug(1) can
+ * restore the most recent EDID. The mutex guards access from the cgo
+ * goroutines; callers in Go also serialize via videoLock, but the lock
+ * here keeps the contract self-contained at the C boundary. */
+static pthread_mutex_t cached_edid_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint8_t cached_edid[256];
+static size_t cached_edid_len = 0;
+
+static int cache_edid_locked(const uint8_t *edid, size_t len) {
+    if (len != 128 && len != 256) {
+        log_error("EDID size must be 128 or 256 bytes");
+        errno = EINVAL;
+        return -1;
+    }
+    memcpy(cached_edid, edid, len);
+    cached_edid_len = len;
+    return 0;
+}
+
 int jetkvm_video_set_edid(const char *edid_hex) {
     uint8_t edid[256];
     int edid_len = hex_to_bytes(edid_hex, edid, 256);
     if (edid_len < 0) {
         return -1;
     }
-    return set_edid(edid, edid_len);
+    if ((size_t)edid_len > sizeof(cached_edid)) {
+        log_error("EDID exceeds cache buffer size");
+        return -1;
+    }
+    int ret = set_edid(edid, edid_len);
+    if (ret == 0) {
+        pthread_mutex_lock(&cached_edid_lock);
+        cache_edid_locked(edid, (size_t)edid_len);
+        pthread_mutex_unlock(&cached_edid_lock);
+    }
+    return ret;
+}
+
+int jetkvm_video_cache_edid(const char *edid_hex) {
+    uint8_t edid[256];
+    int edid_len = hex_to_bytes(edid_hex, edid, 256);
+    if (edid_len < 0) {
+        return -1;
+    }
+    pthread_mutex_lock(&cached_edid_lock);
+    int ret = cache_edid_locked(edid, (size_t)edid_len);
+    pthread_mutex_unlock(&cached_edid_lock);
+    return ret;
+}
+
+int jetkvm_video_set_hotplug(int enabled) {
+    if (enabled) {
+        uint8_t edid[256];
+        size_t len;
+        pthread_mutex_lock(&cached_edid_lock);
+        len = cached_edid_len;
+        if (len > 0) {
+            memcpy(edid, cached_edid, len);
+        }
+        pthread_mutex_unlock(&cached_edid_lock);
+
+        if (len == 0) {
+            log_error("cannot enable hotplug: no cached EDID");
+            return -1;
+        }
+        return set_edid(edid, len);
+    }
+    return clear_edid();
 }
 
 char *jetkvm_video_get_edid_hex() {

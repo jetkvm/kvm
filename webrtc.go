@@ -507,6 +507,7 @@ func onFirstSessionConnected() {
 	} else {
 		_ = nativeInstance.VideoSetCodecType(0)
 	}
+	_ = applyVirtualDisplayPolicy("first_session_connected")
 	_ = nativeInstance.VideoStart()
 	stopVideoSleepModeTicker()
 }
@@ -515,5 +516,6 @@ func onLastSessionDisconnected() {
 	// Safety net: ensure all keys are released when the last session disconnects
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 	_ = nativeInstance.VideoStop()
+	_ = applyVirtualDisplayPolicy("last_session_disconnected")
 	startVideoSleepModeTicker()
 }

@@ -133,6 +133,16 @@ func videoSetEDID(edid string) error {
 	return nil
 }
 
+func videoCacheEDID(edid string) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
+func videoSetHotplug(enabled bool) error {
+	panicPlatformNotSupported()
+	return nil
+}
+
 func videoGetStreamingStatus() VideoStreamingStatus {
 	panicPlatformNotSupported()
 	return VideoStreamingStatusInactive

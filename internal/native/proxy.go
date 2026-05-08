@@ -582,10 +582,29 @@ func (p *NativeProxy) VideoSetEDID(edid string) error {
 	})
 }
 
+func (p *NativeProxy) VideoCacheEDID(edid string) error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoCacheEDID(edid)
+	})
+}
+
 func (p *NativeProxy) VideoGetEDID() (string, error) {
 	return nativeProxyClientExec[string](p, func(client *GRPCClient) (string, error) {
 		return client.VideoGetEDID()
 	})
+}
+
+func (p *NativeProxy) VideoSetHotplug(enabled bool) error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoSetHotplug(enabled)
+	})
+}
+
+func (p *NativeProxy) VideoHotplugSupported() bool {
+	result, _ := nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.VideoHotplugSupported(), nil
+	})
+	return result
 }
 
 func (p *NativeProxy) VideoLogStatus() (string, error) {

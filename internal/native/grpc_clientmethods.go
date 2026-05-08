@@ -61,12 +61,30 @@ func (c *GRPCClient) VideoSetEDID(edid string) error {
 	return err
 }
 
+func (c *GRPCClient) VideoCacheEDID(edid string) error {
+	_, err := c.client.VideoCacheEDID(context.Background(), &pb.VideoCacheEDIDRequest{Edid: edid})
+	return err
+}
+
 func (c *GRPCClient) VideoGetEDID() (string, error) {
 	resp, err := c.client.VideoGetEDID(context.Background(), &pb.Empty{})
 	if err != nil {
 		return "", err
 	}
 	return resp.Edid, nil
+}
+
+func (c *GRPCClient) VideoSetHotplug(enabled bool) error {
+	_, err := c.client.VideoSetHotplug(context.Background(), &pb.VideoSetHotplugRequest{Enabled: enabled})
+	return err
+}
+
+func (c *GRPCClient) VideoHotplugSupported() bool {
+	resp, err := c.client.VideoHotplugSupported(context.Background(), &pb.Empty{})
+	if err != nil {
+		return false
+	}
+	return resp.Supported
 }
 
 func (c *GRPCClient) VideoLogStatus() (string, error) {

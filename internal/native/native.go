@@ -24,6 +24,10 @@ type Native struct {
 	onIndevEvent         func(event string)
 	onRpcEvent           func(event string)
 	sleepModeSupported   bool
+	hotplugSupported     bool
+	hotplugStateKnown    bool
+	hotplugStateOn       bool
+	hotplugSignalPending bool
 	videoLock            sync.Mutex
 	screenLock           sync.Mutex
 	extraLock            sync.Mutex
@@ -98,6 +102,7 @@ func NewNative(opts NativeOptions) *Native {
 	}
 
 	sleepModeSupported := isSleepModeSupported()
+	hotplugSupported := isHotplugSupported()
 
 	defaultQualityFactor := opts.DefaultQualityFactor
 	if defaultQualityFactor <= 0 || defaultQualityFactor > 1 {
@@ -117,6 +122,7 @@ func NewNative(opts NativeOptions) *Native {
 		onIndevEvent:         onIndevEvent,
 		onRpcEvent:           onRpcEvent,
 		sleepModeSupported:   sleepModeSupported,
+		hotplugSupported:     hotplugSupported,
 		videoLock:            sync.Mutex{},
 		screenLock:           sync.Mutex{},
 	}

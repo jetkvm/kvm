@@ -45,6 +45,8 @@ const blockedMethodsByReason: Record<string, string[]> = {
     "setDisplayRotation",
     "getVideoSleepMode",
     "setVideoSleepMode",
+    "getVirtualDisplayPolicy",
+    "setVirtualDisplayPolicy",
     "getVideoState",
   ],
 };

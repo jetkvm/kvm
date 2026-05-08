@@ -245,6 +245,11 @@ func rpcSetEDID(edid string) error {
 	// Save EDID to config, allowing it to be restored on reboot.
 	config.EdidString = edid
 	_ = SaveConfig()
+
+	// Re-assert the disable-when-idle policy: VideoSetEDID applies the EDID
+	// (which re-enables HPD), so without this the host PC would briefly see
+	// the monitor pop in when the user changes EDID with no clients connected.
+	_ = applyVirtualDisplayPolicy("edid_changed")
 	return nil
 }
 
@@ -1278,6 +1283,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
+	"getVirtualDisplayPolicy":    {Func: rpcGetVirtualDisplayPolicy},
+	"setVirtualDisplayPolicy":    {Func: rpcSetVirtualDisplayPolicy, Params: []string{"enabled"}},
 	"getDevChannelState":         {Func: rpcGetDevChannelState},
 	"setDevChannelState":         {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":            {Func: rpcGetLocalVersion},

@@ -9,6 +9,10 @@ import (
 
 const sleepModeFile = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode"
 
+// v4lSubdevFile must match V4L_SUBDEV in cgo/edid.c — the Go side stats it to
+// gate isHotplugSupported(), the C side opens it for VIDIOC_S_EDID.
+const v4lSubdevFile = "/dev/v4l-subdev2"
+
 // DefaultEDID is the default EDID for the video stream.
 // CEA-861 extension with HDMI vendor block, audio support, and JetKVM manufacturer ID.
 const DefaultEDID = "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cf"
@@ -27,6 +31,11 @@ type VideoState struct {
 
 func isSleepModeSupported() bool {
 	_, err := os.Stat(sleepModeFile)
+	return err == nil
+}
+
+func isHotplugSupported() bool {
+	_, err := os.Stat(v4lSubdevFile)
 	return err == nil
 }
 
@@ -174,9 +183,69 @@ func (n *Native) VideoSetEDID(edid string) error {
 		edid = DefaultEDID
 	}
 
-	return n.useExtraLock(func() error {
+	err := n.useExtraLock(func() error {
 		return videoSetEDID(edid)
 	})
+	if err == nil {
+		n.hotplugStateKnown = true
+		n.hotplugStateOn = true
+	}
+	return err
+}
+
+// VideoCacheEDID populates the cgo-side EDID cache without applying it to the
+// V4L2 subdev. Used at startup when policy wants the host to see no display:
+// the cache must be primed so a later VideoSetHotplug(true) can restore it.
+func (n *Native) VideoCacheEDID(edid string) error {
+	if !n.hotplugSupported {
+		return nil
+	}
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	if edid == "" {
+		edid = DefaultEDID
+	}
+	return videoCacheEDID(edid)
+}
+
+// VideoSetHotplug toggles HDMI hotplug presence by clearing or re-applying the
+// cached EDID via VIDIOC_S_EDID. When disabled, the host sees the cable as
+// physically unplugged. No-op when the requested state already matches the
+// last applied state, so callers can invoke this on every session transition
+// without paying the V4L2 reapply cost.
+//
+// Unlike VideoSetEDID we do not take useExtraLock: the ioctl is a fast kernel
+// struct update, the host re-detects asynchronously, and the capture chip
+// re-locks on its own when signal returns — blocking the caller for the
+// settle window would just delay onFirstSessionConnected → VideoStart.
+func (n *Native) VideoSetHotplug(enabled bool) error {
+	if !n.hotplugSupported {
+		return nil
+	}
+
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	if n.hotplugStateKnown && n.hotplugStateOn == enabled {
+		return nil
+	}
+
+	if err := videoSetHotplug(enabled); err != nil {
+		return err
+	}
+	n.hotplugStateKnown = true
+	n.hotplugStateOn = enabled
+	if enabled {
+		n.hotplugSignalPending = true
+	}
+	return nil
+}
+
+// VideoHotplugSupported reports whether the v4l2 subdev needed to toggle
+// hotplug presence is available on this device.
+func (n *Native) VideoHotplugSupported() bool {
+	return n.hotplugSupported
 }
 
 // VideoGetEDID gets the EDID for the video stream.
@@ -215,10 +284,18 @@ func (n *Native) VideoStart() error {
 	// disable sleep mode before starting video
 	_ = n.setSleepMode(false)
 
-	// when waking from sleep, the capture chip needs time to re-lock the HDMI
-	// signal before we can start streaming (similar to the delay in useExtraLock)
-	if wasSleeping {
-		n.l.Info().Msg("capture chip was sleeping, waiting for signal re-lock")
+	// when waking from sleep or coming back from a hotplug-disabled state, the
+	// capture chip needs time to re-lock the HDMI signal before we can start
+	// streaming (similar to the delay in useExtraLock). VideoSetHotplug skips
+	// useExtraLock to keep policy reconciliation fast, so the settle window is
+	// paid here instead — only on transitions, never on every VideoStart.
+	hotplugSignalPending := n.hotplugSignalPending
+	n.hotplugSignalPending = false
+	if wasSleeping || hotplugSignalPending {
+		n.l.Info().
+			Bool("was_sleeping", wasSleeping).
+			Bool("hotplug_signal_pending", hotplugSignalPending).
+			Msg("waiting for capture chip signal re-lock")
 		time.Sleep(extraLockTimeout)
 	}
 

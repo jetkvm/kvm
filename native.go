@@ -34,6 +34,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		MaxRestartAttempts:   config.NativeMaxRestart,
 		OnNativeRestart: func() {
 			configureDisplayOnNativeRestart()
+			primeVideoOutput("native_restart")
 		},
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
@@ -97,11 +98,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	if err := nativeInstance.Start(); err != nil {
 		nativeLogger.Fatal().Err(err).Msg("failed to start native proxy")
 	}
-	go func() {
-		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
-			nativeLogger.Warn().Err(err).Msg("error setting EDID")
-		}
-	}()
+	go primeVideoOutput("startup")
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
 		nativeInstance.DoNotUseThisIsForCrashTestingOnly()

@@ -11,7 +11,10 @@ type NativeInterface interface {
 	VideoSetCodecType(codecType int) error
 	VideoGetCodecType() (int, error)
 	VideoSetEDID(edid string) error
+	VideoCacheEDID(edid string) error
 	VideoGetEDID() (string, error)
+	VideoSetHotplug(enabled bool) error
+	VideoHotplugSupported() bool
 	VideoLogStatus() (string, error)
 	VideoStop() error
 	VideoStart() error

@@ -102,6 +102,89 @@ func startVideoSleepModeTicker() {
 	go doVideoSleepModeTicker(videoSleepModeCtx, duration)
 }
 
+type rpcVirtualDisplayPolicyResponse struct {
+	Supported bool `json:"supported"`
+	Enabled   bool `json:"enabled"`
+}
+
+func rpcGetVirtualDisplayPolicy() rpcVirtualDisplayPolicyResponse {
+	return rpcVirtualDisplayPolicyResponse{
+		Supported: nativeInstance.VideoHotplugSupported(),
+		Enabled:   config.DisableVirtualDisplayWhenIdle,
+	}
+}
+
+func rpcSetVirtualDisplayPolicy(enabled bool) error {
+	previous := config.DisableVirtualDisplayWhenIdle
+	config.DisableVirtualDisplayWhenIdle = enabled
+
+	if err := applyVirtualDisplayPolicy("policy_changed"); err != nil {
+		config.DisableVirtualDisplayWhenIdle = previous
+		return fmt.Errorf("failed to apply virtual display policy: %w", err)
+	}
+
+	if err := SaveConfig(); err != nil {
+		config.DisableVirtualDisplayWhenIdle = previous
+		if rollbackErr := applyVirtualDisplayPolicy("policy_rollback"); rollbackErr != nil {
+			nativeLogger.Warn().Err(rollbackErr).Msg("failed to roll back virtual display policy after save error")
+		}
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+// primeVideoOutput configures the EDID and virtual display policy after the
+// native process comes up (initial boot or restart). When the policy says to
+// hide the display while idle, only the EDID cache is primed so a later
+// VideoSetHotplug(true) can restore it; otherwise the EDID is applied
+// directly. Either way, the policy is re-asserted so a restart with no active
+// sessions does not cause a phantom monitor to pop in on the host PC.
+func primeVideoOutput(reason string) {
+	if config.DisableVirtualDisplayWhenIdle && nativeInstance.VideoHotplugSupported() {
+		if err := nativeInstance.VideoCacheEDID(config.EdidString); err != nil {
+			nativeLogger.Warn().Err(err).Str("reason", reason).Msg("error caching EDID")
+		}
+	} else if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
+		nativeLogger.Warn().Err(err).Str("reason", reason).Msg("error setting EDID")
+	}
+	if err := applyVirtualDisplayPolicy(reason); err != nil {
+		nativeLogger.Warn().Err(err).Str("reason", reason).Msg("failed to apply virtual display policy")
+	}
+}
+
+// applyVirtualDisplayPolicy reconciles HDMI hotplug presence with the
+// "Disable virtual display when idle" policy. When the policy is off, hotplug
+// is always enabled. When on, hotplug follows session presence so the host PC
+// sees no virtual monitor while no client is connected.
+//
+// Safe to call on every session transition: VideoSetHotplug short-circuits
+// when the requested state already matches the last applied state.
+func applyVirtualDisplayPolicy(reason string) error {
+	if !nativeInstance.VideoHotplugSupported() {
+		return nil
+	}
+
+	enableHotplug := true
+	if config.DisableVirtualDisplayWhenIdle {
+		enableHotplug = getActiveSessions() > 0
+	}
+
+	nativeLogger.Debug().
+		Str("reason", reason).
+		Bool("enable_hotplug", enableHotplug).
+		Msg("evaluating virtual display policy")
+
+	if err := nativeInstance.VideoSetHotplug(enableHotplug); err != nil {
+		nativeLogger.Warn().
+			Err(err).
+			Str("reason", reason).
+			Bool("enable_hotplug", enableHotplug).
+			Msg("failed to apply virtual display policy")
+		return err
+	}
+	return nil
+}
+
 func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
