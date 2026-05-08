@@ -13,7 +13,16 @@ import (
 	"os"
 )
 
-var serialNumberLimit = new(big.Int).Lsh(big.NewInt(1), 4096)
+// Up to 128 bits, per Go stdlib's generate_cert.go example.
+// RFC 5280 §4.1.2.2 caps serial numbers at 20 octets and Apple's DER
+// parser enforces this; a wider limit produces ~500-byte serials that
+// macOS rejects with "Unknown format in import" before any trust eval.
+var serialNumberLimit = new(big.Int).Lsh(big.NewInt(1), 128)
+
+// maxValidSerialBits is the upper bound (in bits) at which an X.509
+// serial number still fits within RFC 5280's 20-octet cap once
+// ASN.1-encoded. Anything beyond this is rejected by Apple's TLS stack.
+const maxValidSerialBits = 159
 
 func withSecretFile(filename string, f func(*os.File) error) error {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
