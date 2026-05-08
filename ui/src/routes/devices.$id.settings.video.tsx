@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useSettingsStore } from "@hooks/stores";
 import { Button } from "@components/Button";
-import Checkbox from "@components/Checkbox";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsItem } from "@components/SettingsItem";
@@ -16,16 +15,30 @@ import { m } from "@localizations/messages.js";
 
 const defaultEdid =
   "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cf";
-const lowLatency120HzEdid =
-  "00ffffffffffff0028b4020001eeffc03023010480351e780aee91a3544c99260f505400000001010101010101010101010101010101061850a030e01d1030202504122c2100001a773300a050d02b2030200508122c2100001a000000fd0017fa0fff10000a202020202020000000fc004a65744b564d20313230487a0a003f";
 const edids = [
   {
     value: defaultEdid,
     label: m.video_edid_jetkvm_default(),
   },
   {
-    value: lowLatency120HzEdid,
-    label: m.video_edid_jetkvm_120hz(),
+    value:
+      "00ffffffffffff0028b4020001eeffc03023010480351e780aee91a3544c99260f505400000001010101010101010101010101010101773300a050d02b2030200508122c2100001a000000100000000000000000000000000000000000fd0017fa0fff10000a202020202020000000fc004a65744b564d20373230703132005f",
+    label: m.video_edid_jetkvm_720p120(),
+  },
+  {
+    value:
+      "00ffffffffffff0028b4020001eeffc03023010480351e780aee91a3544c99260f505400000001010101010101010101010101010101001900a050d015203020a500122c2100001a000000100000000000000000000000000000000000fd0017fa0fff10000a202020202020000000fc004a65744b564d20373230703630006b",
+    label: m.video_edid_jetkvm_720p60(),
+  },
+  {
+    value:
+      "00ffffffffffff0028b4020001eeffc03023010480351e780aee91a3544c99260f505400000001010101010101010101010101010101061850a030e01d1030202504122c2100001a000000100000000000000000000000000000000000fd0017fa0fff10000a202020202020000000fc004a65744b564d2034383070313200aa",
+    label: m.video_edid_jetkvm_480p120(),
+  },
+  {
+    value:
+      "00ffffffffffff0028b4020001eeffc03023010480351e780aee91a3544c99260f5054000000010101010101010101010101010101019f0b50a030e00e1030203500122c2100001a000000100000000000000000000000000000000000fd0017fa0fff10000a202020202020000000fc004a65744b564d20343830703630001e",
+    label: m.video_edid_jetkvm_480p60(),
   },
   {
     value:
@@ -82,10 +95,6 @@ export default function SettingsVideoRoute() {
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
-  // Toggle state is derived from `edid` so the dropdown and toggle can never
-  // disagree. Comparison is case-insensitive because EDID hex round-trips
-  // through string handlers that may normalize case.
-  const lowLatencyMode = edid != null && edid.toLowerCase() === lowLatency120HzEdid.toLowerCase();
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
@@ -124,8 +133,6 @@ export default function SettingsVideoRoute() {
       const matchingEdid = edids.find(x => x.value.toLowerCase() === receivedEdid.toLowerCase());
 
       if (matchingEdid) {
-        // Use the option's exact value so SelectMenuBasic strict-equality
-        // matching keeps the dropdown in sync.
         setEdid(matchingEdid.value);
         setCustomEdidValue(null);
       } else {
@@ -169,9 +176,8 @@ export default function SettingsVideoRoute() {
     });
   };
 
-  // applyEDID does the JSONRPC call + state update without showing a
-  // notification. Callers compose their own success message.
-  const applyEDID = (newEdid: string, onSuccess: () => void) => {
+  const handleEDIDChange = (newEdid: string) => {
+    const matched = edids.find(x => x.value.toLowerCase() === newEdid.toLowerCase());
     setEdidLoading(true);
     void send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
@@ -182,29 +188,12 @@ export default function SettingsVideoRoute() {
         return;
       }
       setEdid(newEdid);
-      onSuccess();
-    });
-  };
-
-  const handleEDIDChange = (newEdid: string) => {
-    const matched = edids.find(x => x.value.toLowerCase() === newEdid.toLowerCase());
-    applyEDID(newEdid, () => {
       notifications.success(
         m.video_edid_set_success({
           edid: matched?.label ?? "the custom EDID",
         }),
       );
     });
-  };
-
-  const handleLowLatencyChange = (enabled: boolean) => {
-    if (enabled) {
-      applyEDID(lowLatency120HzEdid, () => notifications.success(m.video_low_latency_enabled()));
-    } else if (lowLatencyMode) {
-      // Only revert if currently using the low-latency EDID — leaves any
-      // user-supplied custom EDID untouched.
-      applyEDID(defaultEdid, () => notifications.success(m.video_low_latency_disabled()));
-    }
   };
 
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
@@ -327,22 +316,6 @@ export default function SettingsVideoRoute() {
                 />
               </div>
             </NestedSettingsGroup>
-            <SettingsItem
-              title={m.video_low_latency_title()}
-              description={m.video_low_latency_description()}
-              loading={edidLoading}
-            >
-              <Checkbox
-                disabled={edidLoading}
-                checked={lowLatencyMode}
-                onChange={e => handleLowLatencyChange(e.target.checked)}
-              />
-            </SettingsItem>
-            {lowLatencyMode && (
-              <p className="text-xs text-amber-600 dark:text-amber-500">
-                {m.video_low_latency_warning()}
-              </p>
-            )}
 
             <Fieldset disabled={edidLoading} className="space-y-2">
               <SettingsItem

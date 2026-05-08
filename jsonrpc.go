@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -252,48 +250,6 @@ func rpcSetEDID(edid string) error {
 
 func rpcGetVideoLogStatus() (string, error) {
 	return nativeInstance.VideoLogStatus()
-}
-
-// rpcGetVideoLowLatencyMode reports whether the device is currently advertising
-// the experimental 120 Hz EDID. The state is derived from EdidString rather than
-// stored separately so the toggle and the EDID dropdown can never disagree.
-func rpcGetVideoLowLatencyMode() (bool, error) {
-	return strings.EqualFold(config.EdidString, native.LowLatency120HzEDID), nil
-}
-
-// rpcSetVideoLowLatencyMode toggles the experimental 120 Hz EDID.
-//
-//   - enabled=true: always applies LowLatency120HzEDID (replaces any current
-//     EDID, including a user-supplied custom one — the user is explicitly
-//     opting in).
-//   - enabled=false: reverts to DefaultEDID only when the device is currently
-//     using LowLatency120HzEDID. A user-supplied custom EDID is left
-//     untouched, and disabling while already on default is a no-op.
-//
-// Source PC must be manually switched to a matching mode for the change to
-// take effect.
-func rpcSetVideoLowLatencyMode(enabled bool) error {
-	current := config.EdidString
-	usingLowLatency := strings.EqualFold(current, native.LowLatency120HzEDID)
-
-	var newEDID string
-	switch {
-	case enabled && !usingLowLatency:
-		newEDID = native.LowLatency120HzEDID
-	case !enabled && usingLowLatency:
-		newEDID = native.DefaultEDID
-	default:
-		return nil // already in the desired state, or custom EDID — leave alone
-	}
-
-	if err := nativeInstance.VideoSetEDID(newEDID); err != nil {
-		return err
-	}
-	config.EdidString = newEDID
-	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-	return nil
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
@@ -1322,8 +1278,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
-	"getVideoLowLatencyMode":     {Func: rpcGetVideoLowLatencyMode},
-	"setVideoLowLatencyMode":     {Func: rpcSetVideoLowLatencyMode, Params: []string{"enabled"}},
 	"getDevChannelState":         {Func: rpcGetDevChannelState},
 	"setDevChannelState":         {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":            {Func: rpcGetLocalVersion},
