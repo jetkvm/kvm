@@ -118,6 +118,7 @@ type Config struct {
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	VideoCodecPreference string               `json:"video_codec_preference"`
+	VideoLowLatencyMode  bool                 `json:"video_low_latency_mode"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
 }
@@ -297,6 +298,15 @@ func LoadConfig() {
 	// Migrate old default EDID (Toshiba TSB, no CEA extension) to new JetKVM v1 EDID
 	const oldDefaultEDID = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
 	if loadedConfig.EdidString == "" || loadedConfig.EdidString == oldDefaultEDID {
+		loadedConfig.EdidString = native.DefaultEDID
+	}
+
+	// Reconcile EdidString with VideoLowLatencyMode when no custom EDID was set.
+	// A user with a hand-rolled EdidString keeps it; only the well-known defaults
+	// follow the toggle.
+	if loadedConfig.VideoLowLatencyMode && loadedConfig.EdidString == native.DefaultEDID {
+		loadedConfig.EdidString = native.LowLatency120HzEDID
+	} else if !loadedConfig.VideoLowLatencyMode && loadedConfig.EdidString == native.LowLatency120HzEDID {
 		loadedConfig.EdidString = native.DefaultEDID
 	}
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -250,6 +251,42 @@ func rpcSetEDID(edid string) error {
 
 func rpcGetVideoLogStatus() (string, error) {
 	return nativeInstance.VideoLogStatus()
+}
+
+func rpcGetVideoLowLatencyMode() (bool, error) {
+	return config.VideoLowLatencyMode, nil
+}
+
+// rpcSetVideoLowLatencyMode toggles the experimental 120 Hz EDID. When enabled
+// the device advertises 848x480@120 (preferred) and 1280x720@120 to the source;
+// the source must be manually switched to one of those modes for it to take
+// effect. The toggle is only applied when EdidString currently holds one of the
+// well-known JetKVM defaults — a user-supplied custom EDID is preserved.
+func rpcSetVideoLowLatencyMode(enabled bool) error {
+	if config.VideoLowLatencyMode == enabled {
+		return nil
+	}
+
+	var newEDID string
+	switch {
+	case enabled && config.EdidString == native.DefaultEDID:
+		newEDID = native.LowLatency120HzEDID
+	case !enabled && config.EdidString == native.LowLatency120HzEDID:
+		newEDID = native.DefaultEDID
+	}
+
+	if newEDID != "" {
+		if err := nativeInstance.VideoSetEDID(newEDID); err != nil {
+			return err
+		}
+		config.EdidString = newEDID
+	}
+
+	config.VideoLowLatencyMode = enabled
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
@@ -1278,6 +1315,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
+	"getVideoLowLatencyMode":     {Func: rpcGetVideoLowLatencyMode},
+	"setVideoLowLatencyMode":     {Func: rpcSetVideoLowLatencyMode, Params: []string{"enabled"}},
 	"getDevChannelState":         {Func: rpcGetDevChannelState},
 	"setDevChannelState":         {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":            {Func: rpcGetLocalVersion},

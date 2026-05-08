@@ -13,6 +13,20 @@ const sleepModeFile = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mod
 // CEA-861 extension with HDMI vendor block, audio support, and JetKVM manufacturer ID.
 const DefaultEDID = "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cf"
 
+// LowLatency120HzEDID advertises 848x480@120Hz (preferred) and 1280x720@120Hz.
+// Both DTDs use CVT-RB v1 timings with positive Hsync, negative Vsync. The
+// monitor range descriptor allows 23-250 Hz vertical / 15-255 kHz horizontal
+// so high-refresh modes are within range. EDID 1.4, no CEA extension.
+//
+// Used when VideoLowLatencyMode is enabled and the user has not set a custom
+// EdidString. Halves per-frame latency vs 1080p60 on the source side, at the
+// cost of resolution. The TC358743 capture chip in JetKVM v1 has a hard ~120 Hz
+// vrefresh ceiling, so 144/240 Hz are NOT advertised here.
+//
+// To take effect the source PC must be set to 1280x720@120 or 848x480@120 in
+// its display settings; the EDID alone does not switch the source mode.
+const LowLatency120HzEDID = "00ffffffffffff0028b4020001eeffc03023010480351e780aee91a3544c99260f505400000001010101010101010101010101010101061850a030e01d1030202504122c2100001a773300a050d02b2030200508122c2100001a000000fd0017fa0fff10000a202020202020000000fc004a65744b564d20313230487a0a003f"
+
 var extraLockTimeout = 5 * time.Second
 
 // VideoState is the state of the video stream.

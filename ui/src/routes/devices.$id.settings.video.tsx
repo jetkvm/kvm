@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useSettingsStore } from "@hooks/stores";
 import { Button } from "@components/Button";
+import Checkbox from "@components/Checkbox";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsItem } from "@components/SettingsItem";
@@ -15,10 +16,16 @@ import { m } from "@localizations/messages.js";
 
 const defaultEdid =
   "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cf";
+const lowLatency120HzEdid =
+  "00ffffffffffff0028b4020001eeffc03023010480351e780aee91a3544c99260f505400000001010101010101010101010101010101061850a030e01d1030202504122c2100001a773300a050d02b2030200508122c2100001a000000fd0017fa0fff10000a202020202020000000fc004a65744b564d20313230487a0a003f";
 const edids = [
   {
     value: defaultEdid,
     label: m.video_edid_jetkvm_default(),
+  },
+  {
+    value: lowLatency120HzEdid,
+    label: m.video_edid_jetkvm_120hz(),
   },
   {
     value:
@@ -75,6 +82,8 @@ export default function SettingsVideoRoute() {
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
+  const [lowLatencyMode, setLowLatencyMode] = useState(false);
+  const [lowLatencyLoading, setLowLatencyLoading] = useState(true);
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
@@ -98,6 +107,12 @@ export default function SettingsVideoRoute() {
       const codec = resp.result as string;
       const isAvailable = codecOptions.some(o => o.value === codec);
       setCodecPreference(isAvailable ? codec : "auto");
+    });
+
+    void send("getVideoLowLatencyMode", {}, (resp: JsonRpcResponse) => {
+      setLowLatencyLoading(false);
+      if ("error" in resp) return;
+      setLowLatencyMode(Boolean(resp.result));
     });
 
     void send("getEDID", {}, (resp: JsonRpcResponse) => {
@@ -156,6 +171,36 @@ export default function SettingsVideoRoute() {
       }
       // Full page reload to renegotiate WebRTC with the new codec.
       window.location.reload();
+    });
+  };
+
+  const handleLowLatencyChange = (enabled: boolean) => {
+    setLowLatencyLoading(true);
+    void send("setVideoLowLatencyMode", { enabled }, (resp: JsonRpcResponse) => {
+      setLowLatencyLoading(false);
+      if ("error" in resp) {
+        notifications.error(
+          m.video_failed_set_low_latency({ error: resp.error.data || m.unknown_error() }),
+        );
+        return;
+      }
+      setLowLatencyMode(enabled);
+      notifications.success(
+        m.video_low_latency_set_success({ state: enabled ? "enabled" : "disabled" }),
+      );
+      // Refresh the EDID dropdown — the toggle may have rewritten EdidString.
+      void send("getEDID", {}, (edidResp: JsonRpcResponse) => {
+        if ("error" in edidResp) return;
+        const receivedEdid = edidResp.result as string;
+        const matchingEdid = edids.find(x => x.value.toLowerCase() === receivedEdid.toLowerCase());
+        if (matchingEdid) {
+          setEdid(matchingEdid.value.toUpperCase());
+          setCustomEdidValue(null);
+        } else {
+          setEdid("custom");
+          setCustomEdidValue(receivedEdid);
+        }
+      });
     });
   };
 
@@ -300,6 +345,23 @@ export default function SettingsVideoRoute() {
                 />
               </div>
             </NestedSettingsGroup>
+            <SettingsItem
+              title={m.video_low_latency_title()}
+              description={m.video_low_latency_description()}
+              loading={lowLatencyLoading}
+            >
+              <Checkbox
+                disabled={lowLatencyLoading}
+                checked={lowLatencyMode}
+                onChange={e => handleLowLatencyChange(e.target.checked)}
+              />
+            </SettingsItem>
+            {lowLatencyMode && (
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                {m.video_low_latency_warning()}
+              </p>
+            )}
+
             <Fieldset disabled={edidLoading} className="space-y-2">
               <SettingsItem
                 title={m.video_edid_title()}
