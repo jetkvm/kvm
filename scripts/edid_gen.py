@@ -49,9 +49,16 @@ def cvt_rb(h_active, v_active, refresh):
 
     v_total = v_active + v_blank_lines
     v_sync = _v_sync_for_aspect(h_active, v_active)
-    v_front = v_blank_lines - RB_V_BACK_PORCH - v_sync
-    if v_front < 1:
-        v_front = 1
+    # CVT-RB v1: vertical front porch is fixed at RB_V_FRONT_PORCH (3),
+    # vertical sync is aspect-dependent, vertical back porch absorbs the
+    # remainder of v_blank.
+    v_front = RB_V_FRONT_PORCH
+    v_back = v_blank_lines - v_front - v_sync
+    if v_back < RB_V_BACK_PORCH:
+        # Bump v_blank so back porch meets the spec minimum.
+        v_blank_lines += RB_V_BACK_PORCH - v_back
+        v_back = RB_V_BACK_PORCH
+        v_total = v_active + v_blank_lines
 
     h_total = h_active + RB_H_BLANK
     raw_pclk_hz = v_total * h_total * refresh
