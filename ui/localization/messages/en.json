@@ -1024,7 +1024,6 @@
     "video_edid_dell_idrac": "DELL IDRAC EDID, 1280x1024",
     "video_edid_description": "Adjust the EDID settings for the display",
     "video_edid_file_label": "EDID File",
-    "video_edid_jetkvm_720p": "JetKVM 1280x720 @ 60 / 120 Hz (low latency)",
     "video_edid_jetkvm_default": "JetKVM Default",
     "video_edid_set_success": "EDID set successfully to {edid}",
     "video_edid_title": "EDID",
