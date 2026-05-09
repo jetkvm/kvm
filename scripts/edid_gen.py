@@ -243,12 +243,14 @@ def make_base_block(modes, monitor_name="JetKVM HiHz", vmin=23, vmax=250, hmin=1
     edid[22] = 0x1E
     # Display gamma (2.2)
     edid[23] = 0x78
-    # Feature support: digital, RGB 4:4:4 + YCbCr 4:2:2, preferred timing in DTD1
-    edid[24] = 0x0A
-    # Chromaticity / color characteristics (sRGB-like dummy)
+    # Feature support: digital, YCbCr 4:2:2 + RGB 4:4:4, sRGB color space,
+    # preferred timing in DTD0 (mandatory in EDID 1.4)
+    edid[24] = 0x0E
+    # Chromaticity / color characteristics (sRGB)
     edid[25:35] = b"\xee\x91\xa3\x54\x4c\x99\x26\x0f\x50\x54"
-    # Established timings (none)
-    edid[35] = 0x00
+    # Established timings: bit 5 = 640x480@60 (recommended by EDID spec for
+    # VGA-fallback compatibility). Source still prefers DTD0.
+    edid[35] = 0x20
     edid[36] = 0x00
     edid[37] = 0x00
     # Standard timings (8 of them; all unused = 0x01 0x01)
