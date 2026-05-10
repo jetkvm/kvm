@@ -46,7 +46,7 @@ public class MainActivity extends Activity {
 
         prefs = getCompanionPreferences();
         saveJetKvmUrlFromIntent(getIntent());
-        startForegroundService(new Intent(this, CompanionService.class));
+        startCompanionServiceFromIntent(getIntent());
         setContentView(createSettingsView());
         updateArmStatus();
         requestMissingPermissionsIfNeeded();
@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
                 CompanionService.DEFAULT_JETKVM_URL
             ));
         }
-        startForegroundService(new Intent(this, CompanionService.class));
+        startCompanionServiceFromIntent(intent);
     }
 
     @Override
@@ -214,6 +214,17 @@ public class MainActivity extends Activity {
         value = value.trim();
         if (value.length() == 0) value = CompanionService.DEFAULT_JETKVM_URL;
         prefs.edit().putString(CompanionService.KEY_JETKVM_URL, value).apply();
+    }
+
+    private void startCompanionServiceFromIntent(Intent source) {
+        Intent service = new Intent(this, CompanionService.class);
+        if (source != null && source.hasExtra(EXTRA_JETKVM_URL)) {
+            service.putExtra(
+                CompanionService.EXTRA_JETKVM_URL,
+                source.getStringExtra(EXTRA_JETKVM_URL)
+            );
+        }
+        startForegroundService(service);
     }
 
     private void updateArmStatus() {

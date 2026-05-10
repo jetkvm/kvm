@@ -36,6 +36,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     static final String KEY_LAUNCH_ON_BOOT = "launch_on_boot";
     static final String KEY_JETKVM_URL = "jetkvm_url";
     static final String DEFAULT_JETKVM_URL = "http://jetkvm.local";
+    static final String EXTRA_JETKVM_URL = "jetkvm_url";
 
     private static final String CHANNEL_ID = "jetkvm-companion";
     private static final int NOTIFICATION_ID = 1001;
@@ -120,6 +121,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        saveJetKvmUrlFromIntent(intent);
         ensureLaunchAssistOverlay();
         updateJetKvmPeripheralState("startCommand");
         Log.i(TAG, "service onStartCommand");
@@ -234,6 +236,21 @@ public class CompanionService extends Service implements InputManager.InputDevic
                 postTargetDeclaration(jetkvmUrl, width, height);
             }
         }, "JetKVM-target-report").start();
+    }
+
+    private void saveJetKvmUrlFromIntent(Intent intent) {
+        if (intent == null || !intent.hasExtra(EXTRA_JETKVM_URL)) return;
+
+        String value = intent.getStringExtra(EXTRA_JETKVM_URL);
+        if (value == null) return;
+
+        value = value.trim();
+        if (value.length() == 0) value = DEFAULT_JETKVM_URL;
+        boolean saved = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_JETKVM_URL, value)
+            .commit();
+        Log.i(TAG, "JetKVM URL updated from intent saved=" + saved + " url=" + value);
     }
 
     private void postTargetDeclaration(String baseUrl, int width, int height) {
