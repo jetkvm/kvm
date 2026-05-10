@@ -16,21 +16,31 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.InputDevice;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
 public class CompanionService extends Service implements InputManager.InputDeviceListener {
     static final String TAG = "JetKVMCompanion";
     static final String ACTION_SCREEN_ON = "com.jetkvm.companion.SCREEN_ON";
     static final String PREFS = "jetkvm_companion";
     static final String KEY_LAUNCH_ON_BOOT = "launch_on_boot";
+    static final String KEY_JETKVM_URL = "jetkvm_url";
+    static final String DEFAULT_JETKVM_URL = "http://jetkvm.local";
 
     private static final String CHANNEL_ID = "jetkvm-companion";
     private static final int NOTIFICATION_ID = 1001;
     private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
+    private static final long TARGET_REPORT_INTERVAL_MS = 15000;
     private static final String JETKVM_INPUT_NAME_TOKEN = "jetkvm";
     private static final int LINUX_GADGET_VENDOR_ID = 0x1d6b;
     private static final int LINUX_GADGET_PRODUCT_ID = 0x0104;
@@ -41,6 +51,17 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean jetkvmPeripheralsPresent;
     private boolean attemptedForCurrentScreen;
+    private boolean targetReportScheduled;
+
+    private final Runnable targetReportRunnable = new Runnable() {
+        @Override
+        public void run() {
+            targetReportScheduled = false;
+            if (!jetkvmPeripheralsPresent) return;
+            reportTargetDeclarationAsync();
+            scheduleTargetReport();
+        }
+    };
 
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
@@ -49,6 +70,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
             Log.i(TAG, "screen receiver action=" + action);
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 attemptedForCurrentScreen = false;
+                targetReportScheduled = false;
                 handler.removeCallbacksAndMessages(null);
                 return;
             }
@@ -57,6 +79,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                     Log.i(TAG, "screen-on ignored; JetKVM peripherals not present");
                     return;
                 }
+                scheduleTargetReport();
                 if (attemptedForCurrentScreen) {
                     Log.i(TAG, "screen-on ignored; dismiss already attempted for this screen cycle");
                     return;
@@ -174,12 +197,82 @@ public class CompanionService extends Service implements InputManager.InputDevic
             jetkvmPeripheralsPresent = snapshot.present;
             attemptedForCurrentScreen = false;
             if (!jetkvmPeripheralsPresent) {
+                targetReportScheduled = false;
                 handler.removeCallbacksAndMessages(null);
+            } else {
+                reportTargetDeclarationAsync();
+                scheduleTargetReport();
             }
             Log.i(TAG, "JetKVM peripheral state changed reason=" + reason + " " + snapshot);
             updateNotification();
         } else if ("startup".equals(reason) || "startCommand".equals(reason)) {
             Log.i(TAG, "JetKVM peripheral snapshot reason=" + reason + " " + snapshot);
+            if (jetkvmPeripheralsPresent) {
+                reportTargetDeclarationAsync();
+                scheduleTargetReport();
+            }
+        }
+    }
+
+    private void scheduleTargetReport() {
+        if (targetReportScheduled) return;
+        targetReportScheduled = true;
+        handler.postDelayed(targetReportRunnable, TARGET_REPORT_INTERVAL_MS);
+    }
+
+    private void reportTargetDeclarationAsync() {
+        final String jetkvmUrl = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getString(KEY_JETKVM_URL, DEFAULT_JETKVM_URL);
+        final DisplayMetrics metrics = getResources().getDisplayMetrics();
+        final int width = Math.min(metrics.widthPixels, metrics.heightPixels);
+        final int height = Math.max(metrics.widthPixels, metrics.heightPixels);
+        if (width <= 0 || height <= 0) return;
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                postTargetDeclaration(jetkvmUrl, width, height);
+            }
+        }, "JetKVM-target-report").start();
+    }
+
+    private void postTargetDeclaration(String baseUrl, int width, int height) {
+        HttpURLConnection conn = null;
+        try {
+            String trimmedBaseUrl = baseUrl == null ? "" : baseUrl.trim();
+            if (trimmedBaseUrl.length() == 0) trimmedBaseUrl = DEFAULT_JETKVM_URL;
+            while (trimmedBaseUrl.endsWith("/")) {
+                trimmedBaseUrl = trimmedBaseUrl.substring(0, trimmedBaseUrl.length() - 1);
+            }
+
+            URL url = new URL(trimmedBaseUrl + "/companion/target");
+            String body = String.format(
+                Locale.US,
+                "{\"target_type\":\"android\",\"target_mode\":\"android_mirror\",\"display_width\":%d,\"display_height\":%d,\"display_aspect\":%.8f}",
+                width,
+                height,
+                (double) width / (double) height
+            );
+            byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            conn.setFixedLengthStreamingMode(bodyBytes.length);
+
+            OutputStream out = conn.getOutputStream();
+            out.write(bodyBytes);
+            out.close();
+
+            int status = conn.getResponseCode();
+            Log.i(TAG, "target declaration posted status=" + status + " width=" + width + " height=" + height);
+        } catch (Exception e) {
+            Log.i(TAG, "target declaration failed: " + e.getClass().getSimpleName());
+        } finally {
+            if (conn != null) conn.disconnect();
         }
     }
 

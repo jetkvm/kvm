@@ -18,6 +18,7 @@ import android.view.Window;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -28,6 +29,7 @@ public class MainActivity extends Activity {
 
     private SharedPreferences prefs;
     private CheckBox launchOnBootInput;
+    private EditText jetkvmUrlInput;
     private Button notificationButton;
     private Button overlayButton;
     private Button batteryButton;
@@ -92,6 +94,33 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(launchOnBootInput, matchWrap());
+
+        jetkvmUrlInput = new EditText(this);
+        jetkvmUrlInput.setSingleLine(true);
+        jetkvmUrlInput.setText(prefs.getString(
+            CompanionService.KEY_JETKVM_URL,
+            CompanionService.DEFAULT_JETKVM_URL
+        ));
+        jetkvmUrlInput.setHint("JetKVM URL");
+        jetkvmUrlInput.setTextColor(Color.WHITE);
+        jetkvmUrlInput.setHintTextColor(Color.rgb(148, 163, 184));
+        root.addView(jetkvmUrlInput, matchWrap());
+
+        Button saveJetkvmUrlButton = new Button(this);
+        saveJetkvmUrlButton.setText("Save JetKVM URL");
+        saveJetkvmUrlButton.setAllCaps(false);
+        applyButtonStyle(saveJetkvmUrlButton);
+        saveJetkvmUrlButton.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                String value = jetkvmUrlInput.getText().toString().trim();
+                if (value.length() == 0) value = CompanionService.DEFAULT_JETKVM_URL;
+                prefs.edit().putString(CompanionService.KEY_JETKVM_URL, value).apply();
+                startForegroundService(new Intent(MainActivity.this, CompanionService.class));
+                updateStatus("JetKVM URL saved.");
+            }
+        });
+        root.addView(saveJetkvmUrlButton, matchWrap());
 
         notificationButton = new Button(this);
         notificationButton.setText("Grant permission to post notifications");

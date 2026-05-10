@@ -156,6 +156,7 @@ func setupRouter() *gin.Engine {
 
 	// Public routes (no authentication required)
 	r.POST("/auth/login-local", handleLogin)
+	r.POST("/companion/target", handleCompanionTargetDeclaration)
 	r.GET("/login-local", func(c *gin.Context) {
 		if shouldUseAndroidNativeLogin(c) {
 			handleAndroidNativeLogin(c)
@@ -244,6 +245,38 @@ func setupRouter() *gin.Engine {
 	})
 
 	return r
+}
+
+func handleCompanionTargetDeclaration(c *gin.Context) {
+	var declaration CompanionTargetDeclaration
+	if err := c.ShouldBindJSON(&declaration); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if declaration.TargetType != "android" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported target_type"})
+		return
+	}
+	if declaration.TargetMode == "" {
+		declaration.TargetMode = "android_mirror"
+	}
+	if declaration.TargetMode != "android_mirror" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported target_mode"})
+		return
+	}
+	if declaration.DisplayWidth <= 0 || declaration.DisplayHeight <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "display dimensions are required"})
+		return
+	}
+
+	metadata := setCompanionTargetMetadata(declaration)
+	logger.Info().
+		Int("display_width", metadata.DisplayWidth).
+		Int("display_height", metadata.DisplayHeight).
+		Float64("display_aspect", metadata.DisplayAspect).
+		Msg("companion target declaration received")
+	c.JSON(http.StatusOK, metadata)
 }
 
 func shouldUseAndroidNativeLogin(c *gin.Context) bool {

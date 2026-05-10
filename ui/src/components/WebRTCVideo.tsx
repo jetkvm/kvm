@@ -48,6 +48,7 @@ export default function WebRTCVideo({
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
   const [targetType, setTargetType] = useState<"generic" | "android">("generic");
+  const [targetDisplayAspect, setTargetDisplayAspect] = useState<number | null>(null);
   const isAndroidTarget = targetType === "android";
 
   const { send: sendRpc } = useJsonRpc();
@@ -107,11 +108,31 @@ export default function WebRTCVideo({
   const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
 
   useEffect(() => {
-    send("getTargetType", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      const result = resp.result as { target_type?: string };
-      setTargetType(result.target_type === "android" ? "android" : "generic");
-    });
+    const refreshTargetType = () => {
+      send("getTargetType", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) return;
+        const result = resp.result as {
+          target_type?: string;
+          target_mode?: string;
+          display_aspect?: number;
+          fresh?: boolean;
+        };
+        setTargetType(result.target_type === "android" ? "android" : "generic");
+        setTargetDisplayAspect(
+          result.target_type === "android" &&
+            result.target_mode === "android_mirror" &&
+            result.fresh !== false &&
+            typeof result.display_aspect === "number" &&
+            result.display_aspect > 0
+            ? result.display_aspect
+            : null,
+        );
+      });
+    };
+
+    refreshTargetType();
+    const interval = window.setInterval(refreshTargetType, 5000);
+    return () => window.clearInterval(interval);
   }, [send]);
 
   // Video-related
@@ -833,8 +854,13 @@ export default function WebRTCVideo({
                       ref={fullscreenContainerRef}
                       className={cx(
                         "relative flex h-full items-center justify-center",
-                        isAndroidTarget ? "aspect-[9/20] max-w-full overflow-hidden" : "w-full",
+                        isAndroidTarget ? "max-w-full overflow-hidden" : "w-full",
                       )}
+                      style={
+                        isAndroidTarget
+                          ? { aspectRatio: String(targetDisplayAspect ?? 9 / 20) }
+                          : undefined
+                      }
                     >
                       <video
                         ref={videoElm}

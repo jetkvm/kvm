@@ -57,7 +57,14 @@ type AudioConfig struct {
 }
 
 type TargetTypeSettings struct {
-	TargetType string `json:"target_type"`
+	TargetType        string  `json:"target_type"`
+	TargetMode        string  `json:"target_mode,omitempty"`
+	DisplayWidth      int     `json:"display_width,omitempty"`
+	DisplayHeight     int     `json:"display_height,omitempty"`
+	DisplayAspect     float64 `json:"display_aspect,omitempty"`
+	Source            string  `json:"source,omitempty"`
+	LastSeenUnixMilli int64   `json:"last_seen_unix_milli,omitempty"`
+	Fresh             bool    `json:"fresh"`
 }
 
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
@@ -406,11 +413,17 @@ func rpcSetAudioConfig(params AudioConfig) error {
 }
 
 func rpcGetTargetType() (*TargetTypeSettings, error) {
-	targetType := config.TargetType
-	if targetType == "" {
-		targetType = "generic"
-	}
-	return &TargetTypeSettings{TargetType: targetType}, nil
+	metadata := getEffectiveTargetMetadata()
+	return &TargetTypeSettings{
+		TargetType:        metadata.TargetType,
+		TargetMode:        metadata.TargetMode,
+		DisplayWidth:      metadata.DisplayWidth,
+		DisplayHeight:     metadata.DisplayHeight,
+		DisplayAspect:     metadata.DisplayAspect,
+		Source:            metadata.Source,
+		LastSeenUnixMilli: metadata.LastSeenUnixMilli,
+		Fresh:             metadata.Fresh,
+	}, nil
 }
 
 func rpcSetTargetType(settings TargetTypeSettings) error {
