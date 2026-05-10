@@ -278,41 +278,50 @@ export default function SettingsMouseRoute() {
         <div className="space-y-4">
           <SettingsItem title={m.mouse_modes_title()} description={m.mouse_modes_description()} />
           <div className="grid grid-cols-3 gap-4">
-            {mouseModeOptions.map(option => (
-              <button
-                key={option.mode}
-                className="group block"
-                onClick={() => {
-                  setMouseMode(option.mode);
-                }}
-              >
-                <GridCard>
-                  <div className="group flex w-full items-center gap-x-4 px-4 py-3">
-                    <img
-                      className="w-6 shrink-0 dark:invert"
-                      src={option.icon}
-                      alt={option.alt()}
-                    />
-                    <div className="flex grow items-center justify-between">
-                      <div className="text-left">
-                        <h3 className="text-sm font-semibold text-black dark:text-white">
-                          {option.title()}
-                        </h3>
-                        <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
-                          {option.description()}
-                        </p>
-                      </div>
-                      <CheckCircleIcon
-                        className={cx(
-                          "h-4 w-4 text-blue-700 opacity-0 transition dark:text-blue-500",
-                          { "opacity-100": mouseMode === option.mode },
-                        )}
+            {mouseModeOptions.map(option => {
+              const selected = mouseMode === option.mode;
+              return (
+                <button
+                  key={option.mode}
+                  className={cx(
+                    "group block rounded-lg border text-left transition",
+                    selected
+                      ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600/20 dark:border-blue-500 dark:bg-blue-950/40"
+                      : "border-transparent",
+                  )}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setMouseMode(option.mode);
+                  }}
+                >
+                  <GridCard>
+                    <div className="group flex w-full flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:gap-x-4 sm:px-4">
+                      <img
+                        className="h-6 w-6 shrink-0 dark:invert"
+                        src={option.icon}
+                        alt={option.alt()}
                       />
+                      <div className="flex grow items-start justify-between gap-2 sm:items-center">
+                        <div className="text-left">
+                          <h3 className="text-sm font-semibold text-black dark:text-white">
+                            {option.title()}
+                          </h3>
+                          <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
+                            {option.description()}
+                          </p>
+                        </div>
+                        <CheckCircleIcon
+                          className={cx(
+                            "h-5 w-5 shrink-0 text-blue-700 opacity-0 transition dark:text-blue-500",
+                            { "opacity-100": selected },
+                          )}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </GridCard>
-              </button>
-            ))}
+                  </GridCard>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

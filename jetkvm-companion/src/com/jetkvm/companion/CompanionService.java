@@ -71,8 +71,9 @@ public class CompanionService extends Service implements InputManager.InputDevic
             Log.i(TAG, "screen receiver action=" + action);
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 attemptedForCurrentScreen = false;
-                targetReportScheduled = false;
-                handler.removeCallbacksAndMessages(null);
+                if (jetkvmPeripheralsPresent) {
+                    scheduleTargetReport();
+                }
                 return;
             }
             if (Intent.ACTION_SCREEN_ON.equals(action)) {
