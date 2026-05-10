@@ -26,6 +26,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_POST_NOTIFICATIONS = 10;
     private static final int JETKVM_BACKGROUND = Color.rgb(7, 12, 28);
     private static final int JETKVM_BLUE_700 = Color.rgb(20, 71, 230);
+    private static final String EXTRA_JETKVM_URL = "jetkvm_url";
 
     private SharedPreferences prefs;
     private CheckBox launchOnBootInput;
@@ -44,10 +45,24 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         prefs = getCompanionPreferences();
+        saveJetKvmUrlFromIntent(getIntent());
         startForegroundService(new Intent(this, CompanionService.class));
         setContentView(createSettingsView());
         updateArmStatus();
         requestMissingPermissionsIfNeeded();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        saveJetKvmUrlFromIntent(intent);
+        if (jetkvmUrlInput != null) {
+            jetkvmUrlInput.setText(prefs.getString(
+                CompanionService.KEY_JETKVM_URL,
+                CompanionService.DEFAULT_JETKVM_URL
+            ));
+        }
+        startForegroundService(new Intent(this, CompanionService.class));
     }
 
     @Override
@@ -188,6 +203,17 @@ public class MainActivity extends Activity {
 
     private void updateStatus(String message) {
         if (statusText != null) statusText.setText(message);
+    }
+
+    private void saveJetKvmUrlFromIntent(Intent intent) {
+        if (intent == null || !intent.hasExtra(EXTRA_JETKVM_URL)) return;
+
+        String value = intent.getStringExtra(EXTRA_JETKVM_URL);
+        if (value == null) return;
+
+        value = value.trim();
+        if (value.length() == 0) value = CompanionService.DEFAULT_JETKVM_URL;
+        prefs.edit().putString(CompanionService.KEY_JETKVM_URL, value).apply();
     }
 
     private void updateArmStatus() {
