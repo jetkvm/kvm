@@ -644,6 +644,8 @@
     "mouse_jiggler_title": "Jiggler",
     "mouse_mode_absolute": "Absolutt",
     "mouse_mode_absolute_description": "Mest praktisk",
+    "mouse_mode_digitizer": "Digitizer",
+    "mouse_mode_digitizer_description": "Android friendly",
     "mouse_mode_relative": "Relativ",
     "mouse_mode_relative_description": "Mest kompatibel",
     "mouse_modes_description": "Velg museinndatamodus",

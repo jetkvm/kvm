@@ -133,7 +133,7 @@ export default function InfoBar() {
               </div>
             ) : null}
 
-            {debugMode && mouseMode == "absolute" ? (
+            {debugMode && (mouseMode == "absolute" || mouseMode == "digitizer") ? (
               <div className="flex w-[118px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{m.info_pointer()}</span>
                 <span className="text-xs">

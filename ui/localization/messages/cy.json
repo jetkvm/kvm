@@ -639,6 +639,8 @@
     "mouse_jiggler_title": "Jiggler",
     "mouse_mode_absolute": "Absoliwt",
     "mouse_mode_absolute_description": "Mwyaf cyfleus",
+    "mouse_mode_digitizer": "Digitizer",
+    "mouse_mode_digitizer_description": "Android friendly",
     "mouse_mode_relative": "Perthynol",
     "mouse_mode_relative_description": "Mwyaf cydnaws",
     "mouse_modes_description": "Dewiswch y modd mewnbwn llygoden",

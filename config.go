@@ -108,6 +108,7 @@ type Config struct {
 	EdidString           string               `json:"hdmi_edid_string"`
 	ActiveExtension      string               `json:"active_extension"`
 	DisplayRotation      string               `json:"display_rotation"`
+	TargetType           string               `json:"target_type"`
 	DisplayMaxBrightness int                  `json:"display_max_brightness"`
 	DisplayDimAfterSec   int                  `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int                  `json:"display_off_after_sec"`
@@ -191,6 +192,7 @@ func getDefaultConfig() Config {
 		ActiveExtension:      "",
 		KeyboardMacros:       []KeyboardMacro{},
 		DisplayRotation:      "270",
+		TargetType:           "generic",
 		KeyboardLayout:       "en-US",
 		DisplayMaxBrightness: 64,
 		DisplayDimAfterSec:   120,  // 2 minutes

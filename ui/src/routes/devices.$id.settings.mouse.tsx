@@ -4,8 +4,10 @@ import { CheckCircleIcon } from "@heroicons/react/16/solid";
 import { cx } from "@/cva.config";
 import MouseIcon from "@assets/mouse-icon.svg";
 import PointingFinger from "@assets/pointing-finger.svg";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useJsonRpc } from "@hooks/useJsonRpc";
 import { useSettingsStore } from "@hooks/stores";
+import type { JsonRpcResponse } from "@hooks/useJsonRpc";
+import type { MouseMode } from "@hooks/stores";
 import { GridCard } from "@components/Card";
 import { Checkbox } from "@components/Checkbox";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
@@ -61,6 +63,36 @@ const jigglerOptions = [
 ] as const;
 
 type JigglerValues = (typeof jigglerOptions)[number]["value"] | "custom";
+
+const mouseModeOptions: {
+  mode: MouseMode;
+  title: () => string;
+  description: () => string;
+  icon: string;
+  alt: () => string;
+}[] = [
+  {
+    mode: "absolute",
+    title: m.mouse_mode_absolute,
+    description: m.mouse_mode_absolute_description,
+    icon: PointingFinger,
+    alt: m.mouse_alt_finger,
+  },
+  {
+    mode: "relative",
+    title: m.mouse_mode_relative,
+    description: m.mouse_mode_relative_description,
+    icon: MouseIcon,
+    alt: m.mouse_alt_mouse,
+  },
+  {
+    mode: "digitizer",
+    title: m.mouse_mode_digitizer,
+    description: m.mouse_mode_digitizer_description,
+    icon: PointingFinger,
+    alt: m.mouse_alt_finger,
+  },
+];
 
 export default function SettingsMouseRoute() {
   const {
@@ -245,71 +277,42 @@ export default function SettingsMouseRoute() {
         )}
         <div className="space-y-4">
           <SettingsItem title={m.mouse_modes_title()} description={m.mouse_modes_description()} />
-          <div className="flex items-center gap-4">
-            <button
-              className="group block grow"
-              onClick={() => {
-                setMouseMode("absolute");
-              }}
-            >
-              <GridCard>
-                <div className="group flex w-full items-center gap-x-4 px-4 py-3">
-                  <img
-                    className="w-6 shrink-0 dark:invert"
-                    src={PointingFinger}
-                    alt={m.mouse_alt_finger()}
-                  />
-                  <div className="flex grow items-center justify-between">
-                    <div className="text-left">
-                      <h3 className="text-sm font-semibold text-black dark:text-white">
-                        {m.mouse_mode_absolute()}
-                      </h3>
-                      <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
-                        {m.mouse_mode_absolute_description()}
-                      </p>
-                    </div>
-                    <CheckCircleIcon
-                      className={cx(
-                        "h-4 w-4 text-blue-700 opacity-0 transition dark:text-blue-500",
-                        { "opacity-100": mouseMode === "absolute" },
-                      )}
+          <div className="grid grid-cols-3 gap-4">
+            {mouseModeOptions.map(option => (
+              <button
+                key={option.mode}
+                className="group block"
+                onClick={() => {
+                  setMouseMode(option.mode);
+                }}
+              >
+                <GridCard>
+                  <div className="group flex w-full items-center gap-x-4 px-4 py-3">
+                    <img
+                      className="w-6 shrink-0 dark:invert"
+                      src={option.icon}
+                      alt={option.alt()}
                     />
-                  </div>
-                </div>
-              </GridCard>
-            </button>
-            <button
-              className="group block grow"
-              onClick={() => {
-                setMouseMode("relative");
-              }}
-            >
-              <GridCard>
-                <div className="flex w-full items-center gap-x-4 px-4 py-3">
-                  <img
-                    className="w-6 shrink-0 dark:invert"
-                    src={MouseIcon}
-                    alt={m.mouse_alt_mouse()}
-                  />
-                  <div className="flex grow items-center justify-between">
-                    <div className="text-left">
-                      <h3 className="text-sm font-semibold text-black dark:text-white">
-                        {m.mouse_mode_relative()}
-                      </h3>
-                      <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
-                        {m.mouse_mode_relative_description()}
-                      </p>
+                    <div className="flex grow items-center justify-between">
+                      <div className="text-left">
+                        <h3 className="text-sm font-semibold text-black dark:text-white">
+                          {option.title()}
+                        </h3>
+                        <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
+                          {option.description()}
+                        </p>
+                      </div>
+                      <CheckCircleIcon
+                        className={cx(
+                          "h-4 w-4 text-blue-700 opacity-0 transition dark:text-blue-500",
+                          { "opacity-100": mouseMode === option.mode },
+                        )}
+                      />
                     </div>
-                    <CheckCircleIcon
-                      className={cx(
-                        "h-4 w-4 text-blue-700 opacity-0 transition dark:text-blue-500",
-                        { "opacity-100": mouseMode === "relative" },
-                      )}
-                    />
                   </div>
-                </div>
-              </GridCard>
-            </button>
+                </GridCard>
+              </button>
+            ))}
           </div>
         </div>
       </div>

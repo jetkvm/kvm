@@ -1,12 +1,18 @@
-export const isAndroidController = () =>
-  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+declare global {
+  interface Window {
+    JetKVMAndroid?: unknown;
+  }
+}
+
+export const isAndroidControllerApk = () => {
+  if (typeof window === "undefined") return false;
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get("jetkvmAndroid") === "1" || typeof window.JetKVMAndroid !== "undefined";
+};
 
 export const isAndroidCompactControllerMode = () => {
   if (typeof window === "undefined") return false;
 
-  const setting = window.localStorage.getItem("androidCompactController");
-  if (setting === "0") return false;
-  if (setting === "1") return true;
-
-  return isAndroidController();
+  return isAndroidControllerApk();
 };

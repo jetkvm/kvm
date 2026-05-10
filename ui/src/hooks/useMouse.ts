@@ -6,9 +6,6 @@ import { useMouseStore, useSettingsStore } from "./stores";
 
 const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
 
-export const isPicphoneTouchscreenMode = () =>
-  typeof window !== "undefined" && window.localStorage.getItem("picphoneTouchscreen") !== "0";
-
 export interface AbsMouseMoveHandlerProps {
   videoClientWidth: number;
   videoClientHeight: number;
@@ -125,11 +122,11 @@ export default function useMouse() {
     [mouseMode, sendAbsMouseMovement],
   );
 
-  const getTouchscreenMoveHandler = useCallback(
+  const getDigitizerMoveHandler = useCallback(
     ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
       (e: MouseEvent) => {
         if (!videoClientWidth || !videoClientHeight) return;
-        if (!isPicphoneTouchscreenMode()) return;
+        if (mouseMode !== "digitizer") return;
 
         const videoElementAspectRatio = videoClientWidth / videoClientHeight;
         const videoStreamAspectRatio = videoWidth / videoHeight;
@@ -161,7 +158,7 @@ export default function useMouse() {
         setMousePosition(x, y);
         lastAbsPos.current = { x, y };
       },
-    [send, setMousePosition],
+    [mouseMode, send, setMousePosition],
   );
 
   const getMouseWheelHandler = useCallback(
@@ -196,13 +193,22 @@ export default function useMouse() {
   );
 
   const resetMousePosition = useCallback(() => {
+    if (mouseMode === "digitizer") {
+      send("touchscreenReport", {
+        x: lastAbsPos.current.x,
+        y: lastAbsPos.current.y,
+        touching: false,
+      });
+      return;
+    }
+
     sendAbsMouseMovement(lastAbsPos.current.x, lastAbsPos.current.y, 0);
-  }, [sendAbsMouseMovement]);
+  }, [mouseMode, send, sendAbsMouseMovement]);
 
   return {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
-    getTouchscreenMoveHandler,
+    getDigitizerMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   };

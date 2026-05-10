@@ -56,6 +56,10 @@ type AudioConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
+type TargetTypeSettings struct {
+	TargetType string `json:"target_type"`
+}
+
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
@@ -399,6 +403,27 @@ func rpcSetAudioConfig(params AudioConfig) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
+}
+
+func rpcGetTargetType() (*TargetTypeSettings, error) {
+	targetType := config.TargetType
+	if targetType == "" {
+		targetType = "generic"
+	}
+	return &TargetTypeSettings{TargetType: targetType}, nil
+}
+
+func rpcSetTargetType(settings TargetTypeSettings) error {
+	switch settings.TargetType {
+	case "", "generic":
+		config.TargetType = "generic"
+	case "android":
+		config.TargetType = "android"
+	default:
+		return fmt.Errorf("invalid target type: %s", settings.TargetType)
+	}
+
+	return SaveConfig()
 }
 
 const (
@@ -1410,6 +1435,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getBacklightSettings":       {Func: rpcGetBacklightSettings},
 	"setAudioConfig":             {Func: rpcSetAudioConfig, Params: []string{"params"}},
 	"getAudioConfig":             {Func: rpcGetAudioConfig},
+	"getTargetType":              {Func: rpcGetTargetType},
+	"setTargetType":              {Func: rpcSetTargetType, Params: []string{"settings"}},
 	"getDCPowerState":            {Func: rpcGetDCPowerState},
 	"setDCPowerState":            {Func: rpcSetDCPowerState, Params: []string{"enabled"}},
 	"setDCRestoreState":          {Func: rpcSetDCRestoreState, Params: []string{"state"}},

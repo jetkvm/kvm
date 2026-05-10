@@ -4,15 +4,14 @@ import { useResizeObserver } from "usehooks-ts";
 import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
-import useMouse, { isPicphoneTouchscreenMode } from "@hooks/useMouse";
+import useMouse from "@hooks/useMouse";
+import { useJsonRpc } from "@hooks/useJsonRpc";
+import type { JsonRpcResponse } from "@hooks/useJsonRpc";
 import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import AndroidCompactControls from "@components/AndroidCompactControls";
-
-const isPicphoneDisplayCropMode = () =>
-  typeof window !== "undefined" && window.localStorage.getItem("picphoneDisplayCrop") !== "0";
 
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
@@ -48,6 +47,8 @@ export default function WebRTCVideo({
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
+  const [targetType, setTargetType] = useState<"generic" | "android">("generic");
+  const isAndroidTarget = targetType === "android";
 
   const { send: sendRpc } = useJsonRpc();
 
@@ -57,6 +58,7 @@ export default function WebRTCVideo({
   // Store hooks
   const settings = useSettingsStore();
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
+  const { send } = useJsonRpc();
 
   const sendPicphoneKeyTap = useCallback(
     (key: number) => {
@@ -73,7 +75,7 @@ export default function WebRTCVideo({
   const {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
-    getTouchscreenMoveHandler,
+    getDigitizerMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   } = useMouse();
@@ -103,6 +105,14 @@ export default function WebRTCVideo({
   const rawHdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const [isInitialHdmiErrorGraceActive, setIsInitialHdmiErrorGraceActive] = useState(false);
   const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
+
+  useEffect(() => {
+    send("getTargetType", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const result = resp.result as { target_type?: string };
+      setTargetType(result.target_type === "android" ? "android" : "generic");
+    });
+  }, [send]);
 
   // Video-related
   const handleResize = useCallback(
@@ -320,15 +330,15 @@ export default function WebRTCVideo({
 
   const relMouseMoveHandler = useMemo(() => getRelMouseMoveHandler(), [getRelMouseMoveHandler]);
 
-  const touchscreenMoveHandler = useMemo(
+  const digitizerMoveHandler = useMemo(
     () =>
-      getTouchscreenMoveHandler({
+      getDigitizerMoveHandler({
         videoClientWidth,
         videoClientHeight,
         videoWidth,
         videoHeight,
       }),
-    [getTouchscreenMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
+    [getDigitizerMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
   );
 
   const mouseWheelHandler = useMemo(() => getMouseWheelHandler(), [getMouseWheelHandler]);
@@ -614,9 +624,9 @@ export default function WebRTCVideo({
       if (!videoElmRefValue) return;
 
       const isRelativeMouseMode = settings.mouseMode === "relative";
-      const isTouchscreenMode = isPicphoneTouchscreenMode();
-      const mouseHandler = isTouchscreenMode
-        ? touchscreenMoveHandler
+      const isDigitizerMouseMode = settings.mouseMode === "digitizer";
+      const mouseHandler = isDigitizerMouseMode
+        ? digitizerMoveHandler
         : isRelativeMouseMode
           ? relMouseMoveHandler
           : absMouseMoveHandler;
@@ -624,7 +634,7 @@ export default function WebRTCVideo({
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      if (isTouchscreenMode) {
+      if (isDigitizerMouseMode) {
         videoElmRefValue.style.touchAction = "none";
         videoElmRefValue.style.userSelect = "none";
         videoElmRefValue.draggable = false;
@@ -664,6 +674,9 @@ export default function WebRTCVideo({
         videoElmRefValue.addEventListener("pointerup", pointerHandler, { signal });
         videoElmRefValue.addEventListener("pointercancel", pointerHandler, { signal });
       } else {
+        videoElmRefValue.style.touchAction = "";
+        videoElmRefValue.style.userSelect = "";
+        videoElmRefValue.draggable = true;
         videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
         videoElmRefValue.addEventListener("pointerdown", mouseHandler, {
           signal,
@@ -672,7 +685,7 @@ export default function WebRTCVideo({
       }
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
-        passive: !isTouchscreenMode,
+        passive: !isDigitizerMouseMode,
       });
 
       if (isRelativeMouseMode) {
@@ -709,6 +722,9 @@ export default function WebRTCVideo({
 
       return () => {
         abortController.abort();
+        videoElmRefValue.style.touchAction = "";
+        videoElmRefValue.style.userSelect = "";
+        videoElmRefValue.draggable = true;
       };
     },
     [
@@ -717,7 +733,7 @@ export default function WebRTCVideo({
       requestPointerLock,
       absMouseMoveHandler,
       relMouseMoveHandler,
-      touchscreenMoveHandler,
+      digitizerMoveHandler,
       mouseWheelHandler,
       resetMousePosition,
       settings.mouseMode,
@@ -817,9 +833,7 @@ export default function WebRTCVideo({
                       ref={fullscreenContainerRef}
                       className={cx(
                         "relative flex h-full items-center justify-center",
-                        isPicphoneDisplayCropMode()
-                          ? "aspect-[9/20] max-w-full overflow-hidden"
-                          : "w-full",
+                        isAndroidTarget ? "aspect-[9/20] max-w-full overflow-hidden" : "w-full",
                       )}
                     >
                       <video
@@ -834,7 +848,7 @@ export default function WebRTCVideo({
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          isPicphoneDisplayCropMode()
+                          isAndroidTarget
                             ? "h-full w-auto max-w-none object-fill transition-all duration-1000"
                             : "h-full w-full object-contain transition-all duration-1000",
                           {

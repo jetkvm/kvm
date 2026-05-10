@@ -644,6 +644,8 @@
     "mouse_jiggler_title": "Jiggler",
     "mouse_mode_absolute": "Assoluto",
     "mouse_mode_absolute_description": "Il più conveniente",
+    "mouse_mode_digitizer": "Digitizer",
+    "mouse_mode_digitizer_description": "Android friendly",
     "mouse_mode_relative": "Relativo",
     "mouse_mode_relative_description": "Più compatibile",
     "mouse_modes_description": "Scegli la modalità di input del mouse",
