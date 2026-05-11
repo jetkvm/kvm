@@ -4,29 +4,39 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Presentation;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.ColorDrawable;
+import android.hardware.display.DisplayManager;
 import android.hardware.input.InputManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Display;
 import android.view.InputDevice;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 
 public class CompanionService extends Service implements InputManager.InputDeviceListener {
@@ -35,6 +45,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     static final String PREFS = "jetkvm_companion";
     static final String KEY_LAUNCH_ON_BOOT = "launch_on_boot";
     static final String KEY_JETKVM_URL = "jetkvm_url";
+    static final String KEY_JETKVM_URLS = "jetkvm_urls";
     static final String DEFAULT_JETKVM_URL = "http://jetkvm.local";
     static final String EXTRA_JETKVM_URL = "jetkvm_url";
 
@@ -42,13 +53,24 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private static final int NOTIFICATION_ID = 1001;
     private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
     private static final long TARGET_REPORT_INTERVAL_MS = 15000;
+    private static final long TARGET_PRESENTATION_PULSE_MS = 750;
     private static final String JETKVM_INPUT_NAME_TOKEN = "jetkvm";
+    private static final String JETKVM_DISPLAY_NAME_TOKEN = "jetkvm";
     private static final int LINUX_GADGET_VENDOR_ID = 0x1d6b;
     private static final int LINUX_GADGET_PRODUCT_ID = 0x0104;
 
     private WindowManager windowManager;
+    private DisplayManager displayManager;
     private InputManager inputManager;
     private View launchAssistOverlay;
+    private TargetPresentation targetPresentation;
+    private int targetPresentationDisplayId = -1;
+    private final Runnable dismissTargetPresentationRunnable = new Runnable() {
+        @Override
+        public void run() {
+            dismissTargetPresentation("pulseComplete");
+        }
+    };
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean jetkvmPeripheralsPresent;
     private boolean attemptedForCurrentScreen;
@@ -82,6 +104,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                     return;
                 }
                 scheduleTargetReport();
+                pulseTargetPresentation("screen_on");
                 if (attemptedForCurrentScreen) {
                     Log.i(TAG, "screen-on ignored; dismiss already attempted for this screen cycle");
                     return;
@@ -101,12 +124,43 @@ public class CompanionService extends Service implements InputManager.InputDevic
         }
     };
 
+    private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
+        @Override
+        public void onDisplayAdded(int displayId) {
+            if (jetkvmPeripheralsPresent && isJetKvmExternalDisplay(displayManager.getDisplay(displayId))) {
+                pulseTargetPresentation("displayAdded:" + displayId);
+            } else {
+                Log.i(TAG, "display added ignored " + describeDisplay(displayManager.getDisplay(displayId)));
+            }
+        }
+
+        @Override
+        public void onDisplayChanged(int displayId) {
+            if (jetkvmPeripheralsPresent && isJetKvmExternalDisplay(displayManager.getDisplay(displayId))) {
+                Log.i(TAG, "display changed observed " + describeDisplay(displayManager.getDisplay(displayId)));
+            } else {
+                Log.i(TAG, "display changed ignored " + describeDisplay(displayManager.getDisplay(displayId)));
+            }
+        }
+
+        @Override
+        public void onDisplayRemoved(int displayId) {
+            if (displayId == targetPresentationDisplayId) {
+                dismissTargetPresentation("displayRemoved:" + displayId);
+            }
+        }
+    };
+
     @Override
     public void onCreate() {
         super.onCreate();
         createChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
         ensureLaunchAssistOverlay();
+        displayManager = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+        if (displayManager != null) {
+            displayManager.registerDisplayListener(displayListener, handler);
+        }
         inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
         if (inputManager != null) {
             inputManager.registerInputDeviceListener(this, handler);
@@ -135,7 +189,11 @@ public class CompanionService extends Service implements InputManager.InputDevic
         if (inputManager != null) {
             inputManager.unregisterInputDeviceListener(this);
         }
+        if (displayManager != null) {
+            displayManager.unregisterDisplayListener(displayListener);
+        }
         unregisterReceiver(screenReceiver);
+        dismissTargetPresentation("destroy");
         removeLaunchAssistOverlay();
         Log.i(TAG, "service onDestroy");
         super.onDestroy();
@@ -202,9 +260,11 @@ public class CompanionService extends Service implements InputManager.InputDevic
             if (!jetkvmPeripheralsPresent) {
                 targetReportScheduled = false;
                 handler.removeCallbacksAndMessages(null);
+                dismissTargetPresentation(reason);
             } else {
                 reportTargetDeclarationAsync();
                 scheduleTargetReport();
+                pulseTargetPresentation(reason);
             }
             Log.i(TAG, "JetKVM peripheral state changed reason=" + reason + " " + snapshot);
             updateNotification();
@@ -213,6 +273,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
             if (jetkvmPeripheralsPresent) {
                 reportTargetDeclarationAsync();
                 scheduleTargetReport();
+                pulseTargetPresentation(reason);
             }
         }
     }
@@ -224,8 +285,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     }
 
     private void reportTargetDeclarationAsync() {
-        final String jetkvmUrl = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getString(KEY_JETKVM_URL, DEFAULT_JETKVM_URL);
+        final String[] jetkvmUrls = getConfiguredJetKvmUrls(getCompanionPreferences(this));
         final DisplayMetrics metrics = getResources().getDisplayMetrics();
         final int width = Math.min(metrics.widthPixels, metrics.heightPixels);
         final int height = Math.max(metrics.widthPixels, metrics.heightPixels);
@@ -234,7 +294,9 @@ public class CompanionService extends Service implements InputManager.InputDevic
         new Thread(new Runnable() {
             @Override
             public void run() {
-                postTargetDeclaration(jetkvmUrl, width, height);
+                for (String jetkvmUrl : jetkvmUrls) {
+                    postTargetDeclaration(jetkvmUrl, width, height);
+                }
             }
         }, "JetKVM-target-report").start();
     }
@@ -247,10 +309,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
         value = value.trim();
         if (value.length() == 0) value = DEFAULT_JETKVM_URL;
-        boolean saved = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .edit()
-            .putString(KEY_JETKVM_URL, value)
-            .commit();
+        boolean saved = addJetKvmUrl(getCompanionPreferences(this), value);
         Log.i(TAG, "JetKVM URL updated from intent saved=" + saved + " url=" + value);
     }
 
@@ -286,12 +345,198 @@ public class CompanionService extends Service implements InputManager.InputDevic
             out.close();
 
             int status = conn.getResponseCode();
-            Log.i(TAG, "target declaration posted status=" + status + " width=" + width + " height=" + height);
+            Log.i(TAG, "target declaration posted url=" + trimmedBaseUrl
+                + " status=" + status + " width=" + width + " height=" + height);
         } catch (Exception e) {
-            Log.i(TAG, "target declaration failed: " + e.getClass().getSimpleName());
+            Log.i(TAG, "target declaration failed url=" + baseUrl + ": " + e.getClass().getSimpleName());
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    static SharedPreferences getCompanionPreferences(Context context) {
+        if (Build.VERSION.SDK_INT < 24) {
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        }
+
+        Context deviceContext = context.createDeviceProtectedStorageContext();
+        deviceContext.moveSharedPreferencesFrom(context, PREFS);
+        return deviceContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    static String getConfiguredJetKvmUrlsText(SharedPreferences prefs) {
+        String[] urls = getConfiguredJetKvmUrls(prefs);
+        StringBuilder builder = new StringBuilder();
+        for (String url : urls) {
+            if (builder.length() > 0) builder.append('\n');
+            builder.append(url);
+        }
+        return builder.toString();
+    }
+
+    static boolean saveJetKvmUrlsText(SharedPreferences prefs, String rawText) {
+        String[] urls = parseJetKvmUrls(rawText);
+        StringBuilder builder = new StringBuilder();
+        for (String url : urls) {
+            if (builder.length() > 0) builder.append('\n');
+            builder.append(url);
+        }
+        return prefs.edit()
+            .putString(KEY_JETKVM_URLS, builder.toString())
+            .putString(KEY_JETKVM_URL, urls.length == 0 ? DEFAULT_JETKVM_URL : urls[0])
+            .commit();
+    }
+
+    static boolean addJetKvmUrl(SharedPreferences prefs, String rawUrl) {
+        LinkedHashSet<String> urls = new LinkedHashSet<String>();
+        String[] existingUrls = getConfiguredJetKvmUrls(prefs);
+        for (String existingUrl : existingUrls) {
+            urls.add(existingUrl);
+        }
+        String normalized = normalizeJetKvmUrl(rawUrl);
+        if (normalized.length() > 0) {
+            urls.add(normalized);
+        }
+        return saveJetKvmUrlsText(prefs, joinUrls(urls));
+    }
+
+    static String[] getConfiguredJetKvmUrls(SharedPreferences prefs) {
+        String rawText = prefs.getString(KEY_JETKVM_URLS, null);
+        if (rawText == null || rawText.trim().length() == 0) {
+            rawText = prefs.getString(KEY_JETKVM_URL, DEFAULT_JETKVM_URL);
+        }
+        return parseJetKvmUrls(rawText);
+    }
+
+    private static String[] parseJetKvmUrls(String rawText) {
+        LinkedHashSet<String> normalizedUrls = new LinkedHashSet<String>();
+        String text = rawText == null ? "" : rawText;
+        String[] parts = text.split("[,\\s]+");
+        for (String part : parts) {
+            String normalized = normalizeJetKvmUrl(part);
+            if (normalized.length() > 0) {
+                normalizedUrls.add(normalized);
+            }
+        }
+        if (normalizedUrls.isEmpty()) {
+            normalizedUrls.add(DEFAULT_JETKVM_URL);
+        }
+        return normalizedUrls.toArray(new String[normalizedUrls.size()]);
+    }
+
+    private static String normalizeJetKvmUrl(String rawUrl) {
+        String url = rawUrl == null ? "" : rawUrl.trim();
+        if (url.length() == 0) return "";
+        if (!url.contains("://")) {
+            url = "http://" + url;
+        }
+        while (url.endsWith("/") && url.length() > "http://".length()) {
+            url = url.substring(0, url.length() - 1);
+        }
+        return url;
+    }
+
+    private static String joinUrls(LinkedHashSet<String> urls) {
+        StringBuilder builder = new StringBuilder();
+        for (String url : urls) {
+            if (builder.length() > 0) builder.append('\n');
+            builder.append(url);
+        }
+        return builder.toString();
+    }
+
+    private void pulseTargetPresentation(String reason) {
+        Display display = findJetKvmPresentationDisplay(reason);
+        if (display == null) {
+            dismissTargetPresentation("noJetKvmDisplay:" + reason);
+            return;
+        }
+
+        int displayId = display.getDisplayId();
+        dismissTargetPresentation("replace:" + reason);
+        try {
+            targetPresentation = new TargetPresentation(this, display);
+            targetPresentation.show();
+            targetPresentationDisplayId = displayId;
+            handler.removeCallbacks(dismissTargetPresentationRunnable);
+            handler.postDelayed(dismissTargetPresentationRunnable, TARGET_PRESENTATION_PULSE_MS);
+            Log.i(TAG, "target presentation pulse shown reason=" + reason
+                + " durationMs=" + TARGET_PRESENTATION_PULSE_MS + " " + describeDisplay(display));
+        } catch (WindowManager.InvalidDisplayException e) {
+            targetPresentation = null;
+            targetPresentationDisplayId = -1;
+            Log.i(TAG, "target presentation invalid display reason=" + reason);
+        } catch (RuntimeException e) {
+            targetPresentation = null;
+            targetPresentationDisplayId = -1;
+            Log.i(TAG, "target presentation failed reason=" + reason + ": " + e.getClass().getSimpleName());
+        }
+    }
+
+    private Display findJetKvmPresentationDisplay(String reason) {
+        if (displayManager == null) return null;
+
+        Display[] presentationDisplays = displayManager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
+        for (Display display : presentationDisplays) {
+            if (isJetKvmExternalDisplay(display)) {
+                return display;
+            }
+        }
+
+        Display[] displays = displayManager.getDisplays();
+        for (Display display : displays) {
+            if (isJetKvmExternalDisplay(display)) {
+                return display;
+            }
+        }
+        logExternalDisplays("no JetKVM display for presentation reason=" + reason);
+        return null;
+    }
+
+    private boolean isJetKvmExternalDisplay(Display display) {
+        if (display == null || display.getDisplayId() == Display.DEFAULT_DISPLAY) {
+            return false;
+        }
+
+        String name = display.getName();
+        if (name == null) return false;
+        return name.toLowerCase(Locale.US).contains(JETKVM_DISPLAY_NAME_TOKEN);
+    }
+
+    private void logExternalDisplays(String reason) {
+        if (displayManager == null) return;
+        Display[] displays = displayManager.getDisplays();
+        StringBuilder builder = new StringBuilder(reason);
+        boolean foundExternal = false;
+        for (Display display : displays) {
+            if (display != null && display.getDisplayId() != Display.DEFAULT_DISPLAY) {
+                foundExternal = true;
+                builder.append(" candidate=").append(describeDisplay(display));
+            }
+        }
+        if (!foundExternal) {
+            builder.append("; no external displays reported");
+        }
+        Log.i(TAG, builder.toString());
+    }
+
+    private String describeDisplay(Display display) {
+        if (display == null) return "display=null";
+        return "displayId=" + display.getDisplayId() + " name=\"" + display.getName() + "\"";
+    }
+
+    private void dismissTargetPresentation(String reason) {
+        handler.removeCallbacks(dismissTargetPresentationRunnable);
+        if (targetPresentation == null) return;
+        try {
+            targetPresentation.dismiss();
+            Log.i(TAG, "target presentation dismissed reason=" + reason);
+        } catch (RuntimeException e) {
+            Log.i(TAG, "target presentation dismiss failed reason=" + reason
+                + ": " + e.getClass().getSimpleName());
+        }
+        targetPresentation = null;
+        targetPresentationDisplayId = -1;
     }
 
     private void launchDismissActivity(String action) {
@@ -391,6 +636,49 @@ public class CompanionService extends Service implements InputManager.InputDevic
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager != null) {
             manager.notify(NOTIFICATION_ID, buildNotification());
+        }
+    }
+
+    private static final class TargetPresentation extends Presentation {
+        TargetPresentation(Context context, Display display) {
+            super(context, display);
+        }
+
+        @Override
+        protected void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+            View anchor = new View(getContext());
+            anchor.setAlpha(0.01f);
+            anchor.setKeepScreenOn(true);
+            FrameLayout root = new FrameLayout(getContext());
+            root.setBackgroundColor(Color.TRANSPARENT);
+            root.setKeepScreenOn(true);
+            root.addView(anchor, new FrameLayout.LayoutParams(1, 1));
+            setContentView(root);
+
+            Window window = getWindow();
+            if (window != null) {
+                window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                WindowManager.LayoutParams attrs = window.getAttributes();
+                attrs.dimAmount = 0f;
+                attrs.gravity = Gravity.TOP | Gravity.START;
+                attrs.x = 0;
+                attrs.y = 0;
+                window.setAttributes(attrs);
+            }
+        }
+
+        @Override
+        protected void onStart() {
+            super.onStart();
+            Window window = getWindow();
+            if (window != null) {
+                window.setLayout(1, 1);
+            }
         }
     }
 

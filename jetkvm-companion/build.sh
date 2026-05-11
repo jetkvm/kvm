@@ -14,7 +14,7 @@ ALIGNED="$OUT/JetKVM-Companion-aligned.apk"
 case "$MODE" in
   debug)
     SIGNED="$OUT/JetKVM-Companion-debug.apk"
-    KEYSTORE="${KEYSTORE:-$ROOT/jetkvm-companion-debug.keystore}"
+    KEYSTORE="${KEYSTORE:-${JETKVM_COMPANION_DEBUG_KEYSTORE:-$HOME/.local/share/jetkvm-companion/jetkvm-companion-debug.keystore}}"
     KEY_ALIAS="${KEY_ALIAS:-jetkvm-companion}"
     KEY_DNAME="${KEY_DNAME:-CN=JetKVM Companion Debug,O=JetKVM}"
     ;;
@@ -76,6 +76,7 @@ javac -source 8 -target 8 \
 
 "$ZIPALIGN" -f 4 "$UNSIGNED" "$ALIGNED"
 
+mkdir -p "$(dirname "$KEYSTORE")"
 if [ ! -f "$KEYSTORE" ]; then
   keytool -genkeypair \
     -keystore "$KEYSTORE" \

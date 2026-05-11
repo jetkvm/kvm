@@ -2,7 +2,6 @@ package com.jetkvm.companion;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -13,6 +12,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.Window;
 import android.widget.Button;
@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
 
     private SharedPreferences prefs;
     private CheckBox launchOnBootInput;
-    private EditText jetkvmUrlInput;
+    private EditText jetkvmUrlsInput;
     private Button notificationButton;
     private Button overlayButton;
     private Button batteryButton;
@@ -56,11 +56,8 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         saveJetKvmUrlFromIntent(intent);
-        if (jetkvmUrlInput != null) {
-            jetkvmUrlInput.setText(prefs.getString(
-                CompanionService.KEY_JETKVM_URL,
-                CompanionService.DEFAULT_JETKVM_URL
-            ));
+        if (jetkvmUrlsInput != null) {
+            jetkvmUrlsInput.setText(CompanionService.getConfiguredJetKvmUrlsText(prefs));
         }
         startCompanionServiceFromIntent(intent);
     }
@@ -89,7 +86,7 @@ public class MainActivity extends Activity {
         root.addView(title, matchWrap());
 
         TextView description = new TextView(this);
-        description.setText("Target-side helper for trusted Android keyguard dismissal.");
+        description.setText("Target-side helper for JetKVM Android metadata, keyguard, and display handling.");
         description.setTextColor(Color.rgb(203, 213, 225));
         description.setTextSize(15);
         description.setGravity(Gravity.CENTER);
@@ -110,29 +107,35 @@ public class MainActivity extends Activity {
         });
         root.addView(launchOnBootInput, matchWrap());
 
-        jetkvmUrlInput = new EditText(this);
-        jetkvmUrlInput.setSingleLine(true);
-        jetkvmUrlInput.setText(prefs.getString(
-            CompanionService.KEY_JETKVM_URL,
-            CompanionService.DEFAULT_JETKVM_URL
-        ));
-        jetkvmUrlInput.setHint("JetKVM URL");
-        jetkvmUrlInput.setTextColor(Color.WHITE);
-        jetkvmUrlInput.setHintTextColor(Color.rgb(148, 163, 184));
-        root.addView(jetkvmUrlInput, matchWrap());
+        TextView jetkvmUrlsLabel = new TextView(this);
+        jetkvmUrlsLabel.setText("JetKVM endpoints");
+        jetkvmUrlsLabel.setTextColor(Color.WHITE);
+        jetkvmUrlsLabel.setTextSize(16);
+        root.addView(jetkvmUrlsLabel, tightWrap());
+
+        jetkvmUrlsInput = new EditText(this);
+        jetkvmUrlsInput.setSingleLine(false);
+        jetkvmUrlsInput.setMinLines(3);
+        jetkvmUrlsInput.setGravity(Gravity.TOP | Gravity.START);
+        jetkvmUrlsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        jetkvmUrlsInput.setText(CompanionService.getConfiguredJetKvmUrlsText(prefs));
+        jetkvmUrlsInput.setHint("192.168.8.229\nhttp://jetkvm.local");
+        jetkvmUrlsInput.setTextColor(Color.WHITE);
+        jetkvmUrlsInput.setHintTextColor(Color.rgb(148, 163, 184));
+        root.addView(jetkvmUrlsInput, matchWrap());
 
         Button saveJetkvmUrlButton = new Button(this);
-        saveJetkvmUrlButton.setText("Save JetKVM URL");
+        saveJetkvmUrlButton.setText("Save JetKVM endpoints");
         saveJetkvmUrlButton.setAllCaps(false);
         applyButtonStyle(saveJetkvmUrlButton);
         saveJetkvmUrlButton.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
             public void onClick(android.view.View v) {
-                String value = jetkvmUrlInput.getText().toString().trim();
-                if (value.length() == 0) value = CompanionService.DEFAULT_JETKVM_URL;
-                prefs.edit().putString(CompanionService.KEY_JETKVM_URL, value).apply();
+                String value = jetkvmUrlsInput.getText().toString();
+                CompanionService.saveJetKvmUrlsText(prefs, value);
+                jetkvmUrlsInput.setText(CompanionService.getConfiguredJetKvmUrlsText(prefs));
                 startForegroundService(new Intent(MainActivity.this, CompanionService.class));
-                updateStatus("JetKVM URL saved.");
+                updateStatus("JetKVM endpoints saved.");
             }
         });
         root.addView(saveJetkvmUrlButton, matchWrap());
@@ -192,6 +195,15 @@ public class MainActivity extends Activity {
         return params;
     }
 
+    private LinearLayout.LayoutParams tightWrap() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, 0, 0, dp(4));
+        return params;
+    }
+
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
@@ -213,7 +225,7 @@ public class MainActivity extends Activity {
 
         value = value.trim();
         if (value.length() == 0) value = CompanionService.DEFAULT_JETKVM_URL;
-        prefs.edit().putString(CompanionService.KEY_JETKVM_URL, value).apply();
+        CompanionService.addJetKvmUrl(prefs, value);
     }
 
     private void startCompanionServiceFromIntent(Intent source) {
@@ -319,14 +331,7 @@ public class MainActivity extends Activity {
     }
 
     private SharedPreferences getCompanionPreferences() {
-        if (Build.VERSION.SDK_INT < 24) {
-            return getSharedPreferences(CompanionService.PREFS, MODE_PRIVATE);
-        }
-
-        Context credentialContext = this;
-        Context deviceContext = createDeviceProtectedStorageContext();
-        deviceContext.moveSharedPreferencesFrom(credentialContext, CompanionService.PREFS);
-        return deviceContext.getSharedPreferences(CompanionService.PREFS, MODE_PRIVATE);
+        return CompanionService.getCompanionPreferences(this);
     }
 
     private boolean isIgnoringBatteryOptimizations() {

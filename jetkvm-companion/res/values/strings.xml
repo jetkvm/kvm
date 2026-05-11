@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">JetKVM Companion</string>
-    <string name="app_description">Target-side helper for dismissing trusted Android keyguard in JetKVM setups.</string>
-    <string name="foreground_service_subtype">Keeps a transparent keyguard-dismiss Activity ready for trusted Android target devices.</string>
+    <string name="app_description">Target-side Android helper for JetKVM metadata, keyguard, and display handling.</string>
+    <string name="foreground_service_subtype">Maintains JetKVM target metadata, keyguard assistance, and external display handling.</string>
     <string name="notification_permission_rationale">Notification permission lets Android keep the foreground companion service visible and reliable.</string>
 </resources>
