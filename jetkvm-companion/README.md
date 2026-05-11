@@ -50,6 +50,14 @@ touchscreen or pointer sources present. The current Linux gadget VID/PID
 `1d6b:0104` is logged as supporting metadata, but not required, so future
 JetKVM-specific VID/PID changes do not break detection.
 
+## Integration Note
+
+After more real-world testing, cherry-pick companion commit `803988f`
+(`Improve Android companion target support`) into the main JetKVM Android
+support branch. That commit contains the multi-endpoint settings UI, target
+metadata reporting updates, stable debug signing path, and the one-shot JetKVM
+presentation pulse used to wake the external display without owning it.
+
 ## Modes of Operation
 
 - **No lockscreen**: may work for some users, but some apps are hostile toward
