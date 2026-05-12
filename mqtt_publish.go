@@ -590,6 +590,24 @@ func (m *MQTTManager) publishScreenshot() {
 		mqttLogger.Debug().Msg("skipping screenshot: video not ready")
 		return
 	}
+
+	// If the capture chip is in HDMI sleep mode, wake it and wait for the
+	// HDMI signal to re-lock before attempting capture. The sleep mode ticker
+	// is restarted afterward so the chip returns to sleep after its normal
+	// idle timeout.
+	sleeping, _ := nativeInstance.VideoGetSleepMode()
+	if sleeping {
+		mqttLogger.Info().Msg("waking capture chip from sleep mode for screenshot")
+		if err := nativeInstance.VideoSetSleepMode(false); err != nil {
+			mqttLogger.Warn().Err(err).Msg("failed to wake capture chip for screenshot")
+			return
+		}
+		// Allow the HDMI capture chip time to re-lock the signal.
+		// This mirrors the delay used in VideoStart() for the same reason.
+		time.Sleep(5 * time.Second)
+		defer startVideoSleepModeTicker()
+	}
+
 	data, err := nativeInstance.VideoCaptureJPEG()
 	if err != nil {
 		mqttLogger.Warn().Err(err).Msg("failed to capture JPEG for MQTT screenshot")
