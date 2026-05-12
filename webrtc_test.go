@@ -27,7 +27,7 @@ func (n *recordingNative) VideoStart() error {
 	return nil
 }
 
-func TestStartNativeVideoForSessionSetsCodecBeforeStart(t *testing.T) {
+func TestAcquireVideoStreamForSessionSetsCodecBeforeStart(t *testing.T) {
 	tests := []struct {
 		name  string
 		codec string
@@ -47,14 +47,20 @@ func TestStartNativeVideoForSessionSetsCodecBeforeStart(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if videoStreamHasConsumers() {
+				t.Fatal("capture pipeline already has consumers, cannot observe the 0→1 transition")
+			}
+
 			originalNative := nativeInstance
 			recorder := &recordingNative{}
 			nativeInstance = recorder
+			session := &Session{id: tt.name, codecMimeType: tt.codec}
 			t.Cleanup(func() {
+				releaseVideoStream(session.videoConsumerKey())
 				nativeInstance = originalNative
 			})
 
-			startNativeVideoForSession(&Session{codecMimeType: tt.codec})
+			acquireVideoStreamForSession(session)
 
 			if !reflect.DeepEqual(recorder.calls, tt.want) {
 				t.Fatalf("native calls = %v, want %v", recorder.calls, tt.want)

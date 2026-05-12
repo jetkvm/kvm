@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
@@ -25,6 +26,11 @@ import (
 )
 
 type Session struct {
+	// id is a stable per-session identifier used as the suffix of the
+	// "webrtc:<id>" consumer key for the video stream refcount in video.go.
+	// Generated in newSession; never reused.
+	id string
+
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
 	AudioTrack               *webrtc.TrackLocalStaticSample
@@ -46,6 +52,13 @@ type Session struct {
 	closeOnce          sync.Once
 
 	codecMimeType string
+}
+
+// videoConsumerKey is the key this session holds in the video stream
+// refcount (see video.go). Acquired when ICE reaches Connected, released
+// on Closed; pauseVideo / resumeVideo toggle it for this session only.
+func (s *Session) videoConsumerKey() string {
+	return "webrtc:" + s.id
 }
 
 var (
@@ -519,6 +532,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	}
 
 	session := &Session{
+		id:             uuid.New().String(),
 		peerConnection: peerConnection,
 		done:           make(chan struct{}),
 		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
@@ -612,9 +626,14 @@ func newSession(config SessionConfig) (*Session, error) {
 				isConnected = true
 				onActiveSessionsChanged()
 				if incrActiveSessions() == 1 {
-					onFirstSessionConnected(session)
+					onFirstSessionConnected()
 				}
 				onSessionConnected(session)
+				// Per-session slot in the video stream refcount; the
+				// 0→1 transition (first consumer overall) starts the
+				// encoder, so the first frame after a fresh acquire
+				// is an IDR.
+				acquireVideoStreamForSession(session)
 				if mqttManager != nil {
 					mqttManager.publishSessionsState()
 				}
@@ -652,6 +671,10 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 			if isConnected {
 				isConnected = false
+				// Drop our slot in the video stream refcount. Idempotent —
+				// if pauseVideo already released it the call is a no-op.
+				// On the N→0 transition the encoder is stopped.
+				releaseVideoStream(session.videoConsumerKey())
 				onActiveSessionsChanged()
 				if decrActiveSessions() == 0 {
 					scopedLogger.Info().Msg("last session disconnected, stopping video stream")
@@ -671,10 +694,8 @@ func onActiveSessionsChanged() {
 	requestDisplayUpdate(false, "active_sessions_changed")
 }
 
-// onFirstSessionConnected runs once on the 0→1 active-session edge. Video
-// capture is a shared pipeline; starting it again on a handoff connect (count
-// 1→2) would issue redundant native start calls and re-run the sleep-mode
-// re-lock wait while video is already streaming.
+// sessionVideoCodecType maps a session's negotiated mime type onto the native
+// encoder's codec id.
 func sessionVideoCodecType(session *Session) int {
 	if session.codecMimeType == webrtc.MimeTypeH265 {
 		return 1
@@ -682,15 +703,25 @@ func sessionVideoCodecType(session *Session) int {
 	return 0
 }
 
-func startNativeVideoForSession(session *Session) {
-	_ = nativeInstance.VideoSetCodecType(sessionVideoCodecType(session))
-	_ = nativeInstance.VideoStart()
+// acquireVideoStreamForSession claims this session's slot in the video stream
+// refcount (see video.go). If it is the only consumer the encoder restarts on
+// this session's codec, so a resume after a pause — or a fresh connect after
+// another session set a different codec — always produces frames the session
+// can decode.
+func acquireVideoStreamForSession(session *Session) {
+	acquireVideoStream(session.videoConsumerKey(), sessionVideoCodecType(session))
 }
 
-func onFirstSessionConnected(session *Session) {
-	stopVideoSleepModeTicker()
+// onFirstSessionConnected runs once on the 0→1 active-session edge. Video
+// capture is a shared pipeline; starting it again on a handoff connect (count
+// 1→2) would issue redundant native start calls and re-run the sleep-mode
+// re-lock wait while video is already streaming.
+//
+// VideoStart / sleep-ticker stop are owned by the video stream refcount
+// (acquireVideoStream in video.go); we only handle the global lifecycle
+// concerns that aren't a refcount transition here.
+func onFirstSessionConnected() {
 	_ = setHostDisplayAdvertised(true, "first_session_connected", false)
-	startNativeVideoForSession(session)
 }
 
 // onSessionConnected runs per session when ICE reaches Connected. Uses the
@@ -704,12 +735,15 @@ func onSessionConnected(session *Session) {
 	}
 }
 
+// onLastSessionDisconnected runs on the N→0 active-session edge.
+//
+// VideoStop and the sleep ticker are owned by releaseVideoStream (called from
+// each session's ICE Closed transition), so they are deliberately absent here.
+// Audio is likewise not stopped: the closing session already released its own
+// capture via stopAudioIfOwner, and a replacement may have connected since the
+// zero-session decision.
 func onLastSessionDisconnected() {
 	// Safety net: ensure all keys are released when the last session disconnects
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
-	// The closing session already released its own audio capture. A replacement
-	// may have connected since the zero-session decision, so do not stop its audio.
-	_ = nativeInstance.VideoStop()
 	_ = applyHostDisplayAdvertisement("last_session_disconnected")
-	startVideoSleepModeTicker()
 }
