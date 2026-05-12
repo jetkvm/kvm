@@ -6,6 +6,13 @@
 > Bug reports, focused review, and help with Android target/controller edge
 > cases are welcome.
 
+> [!IMPORTANT]
+> On the local JetKVM test machine, `/userdata/jetkvm/bin/jetkvm_app` should
+> always be the artifact built from the latest commit on
+> `batestinha/jetkvm-android-support`. Upstream stock JetKVM builds are not the
+> local baseline for this fork. Experimental/debug builds may be deployed
+> separately, but the default app should remain pegged to this branch.
+
 This fork adds an Android-focused control path to JetKVM. It is built for the
 case where the JetKVM target is an Android device and the operator wants the
 same practical control surface that a physical touchscreen, keyboard, and mouse
