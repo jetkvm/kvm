@@ -592,9 +592,7 @@ func (m *MQTTManager) publishScreenshot() {
 	}
 
 	// If the capture chip is in HDMI sleep mode, wake it and wait for the
-	// HDMI signal to re-lock before attempting capture. The sleep mode ticker
-	// is restarted afterward so the chip returns to sleep after its normal
-	// idle timeout.
+	// HDMI signal to re-lock before attempting capture.
 	sleeping, _ := nativeInstance.VideoGetSleepMode()
 	if sleeping {
 		mqttLogger.Info().Msg("waking capture chip from sleep mode for screenshot")
@@ -605,8 +603,14 @@ func (m *MQTTManager) publishScreenshot() {
 		// Allow the HDMI capture chip time to re-lock the signal.
 		// This mirrors the delay used in VideoStart() for the same reason.
 		time.Sleep(5 * time.Second)
-		defer startVideoSleepModeTicker()
 	}
+
+	// Always restart the sleep mode ticker after a capture attempt so that
+	// repeated button presses reset the idle countdown. This means the chip
+	// will not sleep until the full idle timeout has elapsed since the last
+	// capture, which is the expected behaviour when the user is actively
+	// requesting screenshots.
+	defer startVideoSleepModeTicker()
 
 	data, err := nativeInstance.VideoCaptureJPEG()
 	if err != nil {
