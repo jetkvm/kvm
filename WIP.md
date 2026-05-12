@@ -40,3 +40,27 @@
   - After the README-only artifact-policy commit, GitHub CI had Go/UI lint
     passing while build and Bugbot were still in progress when work stopped.
 
+## 2026-05-12 Follow-Up
+
+- The local JetKVM default app was found running the stock/upstream binary
+  again. Evidence:
+  - `/userdata/jetkvm/bin/jetkvm_app` had SHA-256
+    `ae9616fa9cf5877e2b5ca9d78b628308c990d7952354b72af284e9d74a39e1d3`.
+  - That hash matched prior known wrong/default stock backups.
+  - The companion `/companion/target` endpoint returned `404`.
+- Restored the Android-support default app from the on-device artifact:
+  `/userdata/jetkvm/bin/jetkvm_app.android-support-09d0900`.
+- Added `scripts/local_jetkvm_baseline_guard.sh` for installation as
+  `/userdata/init.d/S20jetkvm-baseline-guard`. The guard rejects
+  non-`jetkvm-android-support` default/update binaries, quarantines them, and
+  restores `/userdata/jetkvm/bin/jetkvm_app.android-support-current`.
+- The same guard also forces `/userdata/kvm_config.json` auto-update settings
+  off on boot: `auto_update_enabled=false` and `include_pre_release=false`.
+- The guard quarantines `/userdata/jetkvm/update_system.tar` as
+  `system-ota-disabled` so a leftover system OTA payload cannot be applied
+  accidentally on the local test device.
+- Tightened `scripts/dev_deploy.sh` so `--install` refuses to promote a default
+  app unless it is built from `jetkvm-android-support` and contains the
+  `jetkvm-android-support` build marker. Debug deploys are unaffected.
+- Installed the guard on the JetKVM and verified it blocks a known stock
+  `jetkvm_app.update` artifact while preserving the Android-support default.

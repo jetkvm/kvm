@@ -82,6 +82,8 @@ INSTALL_APP=false
 BUILD_IN_DOCKER=true
 DOCKER_BUILD_DEBUG=false
 DOCKER_BUILD_TAG=ghcr.io/jetkvm/buildkit:latest
+LOCAL_BASELINE_BRANCH="jetkvm-android-support"
+LOCAL_BASELINE_MARKER="jetkvm-android-support"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -285,6 +287,21 @@ then
     SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
     SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
+
+	CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+	if [ "${JETKVM_ALLOW_NON_BASELINE_INSTALL:-0}" != "1" ]; then
+		if [ "${CURRENT_BRANCH}" != "${LOCAL_BASELINE_BRANCH}" ]; then
+			msg_err "Refusing to install default app from branch ${CURRENT_BRANCH}."
+			msg_err "Local JetKVM default installs must come from ${LOCAL_BASELINE_BRANCH}."
+			msg_err "Use debug deploy without -i, or set JETKVM_ALLOW_NON_BASELINE_INSTALL=1 intentionally."
+			exit 1
+		fi
+		if ! strings bin/jetkvm_app | grep -q "${LOCAL_BASELINE_MARKER}"; then
+			msg_err "Refusing to install default app: bin/jetkvm_app lacks ${LOCAL_BASELINE_MARKER} marker."
+			msg_err "This prevents upstream stock binaries from replacing the local Android-support baseline."
+			exit 1
+		fi
+	fi
 
 	# Copy the binary to the remote host as if we were the OTA updater.
 	sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
