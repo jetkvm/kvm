@@ -13,7 +13,55 @@ var (
 	lastVideoState       native.VideoState
 	videoSleepModeCtx    context.Context
 	videoSleepModeCancel context.CancelFunc
+
+	videoConsumersMu sync.Mutex
+	videoConsumers   = map[string]struct{}{}
 )
+
+// acquireVideoStream registers a named consumer of the capture pipeline.
+// The first acquirer starts the native video stream and pauses the HDMI
+// sleep ticker; subsequent acquirers from different consumers are recorded
+// without touching the underlying stream. Idempotent per consumer key —
+// re-acquiring an already-held key is a no-op.
+func acquireVideoStream(consumer string) {
+	videoConsumersMu.Lock()
+	defer videoConsumersMu.Unlock()
+
+	if _, exists := videoConsumers[consumer]; exists {
+		return
+	}
+	videoConsumers[consumer] = struct{}{}
+	if len(videoConsumers) == 1 {
+		_ = nativeInstance.VideoStart()
+		stopVideoSleepModeTicker()
+	}
+}
+
+// releaseVideoStream unregisters a consumer. When the last consumer is
+// released, the native video stream is stopped and the HDMI sleep ticker
+// is restarted. Idempotent — releasing an unknown key is a no-op.
+func releaseVideoStream(consumer string) {
+	videoConsumersMu.Lock()
+	defer videoConsumersMu.Unlock()
+
+	if _, exists := videoConsumers[consumer]; !exists {
+		return
+	}
+	delete(videoConsumers, consumer)
+	if len(videoConsumers) == 0 {
+		_ = nativeInstance.VideoStop()
+		startVideoSleepModeTicker()
+	}
+}
+
+// videoStreamHasConsumers reports whether any consumer currently holds the
+// capture pipeline open. The HDMI sleep ticker uses this to decide whether
+// it is safe to put the capture chip to sleep.
+func videoStreamHasConsumers() bool {
+	videoConsumersMu.Lock()
+	defer videoConsumersMu.Unlock()
+	return len(videoConsumers) > 0
+}
 
 const (
 	defaultVideoSleepModeDuration = 1 * time.Minute
@@ -184,8 +232,8 @@ func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {
 	for {
 		select {
 		case <-timer.C:
-			if getActiveSessions() > 0 {
-				nativeLogger.Warn().Msg("not going to enter HDMI sleep mode because there are active sessions")
+			if videoStreamHasConsumers() {
+				nativeLogger.Warn().Msg("not going to enter HDMI sleep mode because the capture pipeline has consumers")
 				continue
 			}
 

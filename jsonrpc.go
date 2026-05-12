@@ -128,6 +128,22 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	scopedLogger.Trace().Msg("Received RPC request")
 	t := time.Now()
 
+	// pauseVideo / resumeVideo are session-bound notifications: they
+	// toggle this session's slot in the video stream refcount (see
+	// video.go). Handled inline because the generic dispatcher doesn't
+	// pass *Session, and acting on currentSession instead of the
+	// receiving session would let a stale data channel mis-target the
+	// active one during the 1s handover overlap. Both helpers are
+	// idempotent so rapid pause/resume bursts are safe.
+	switch request.Method {
+	case "pauseVideo":
+		releaseVideoStream(session.videoConsumerKey())
+		return
+	case "resumeVideo":
+		acquireVideoStream(session.videoConsumerKey())
+		return
+	}
+
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
