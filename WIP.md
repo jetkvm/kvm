@@ -64,3 +64,20 @@
   `jetkvm-android-support` build marker. Debug deploys are unaffected.
 - Installed the guard on the JetKVM and verified it blocks a known stock
   `jetkvm_app.update` artifact while preserving the Android-support default.
+
+## 2026-05-12 Companion Pulse Fix
+
+- Fixed the companion so opening the settings UI no longer triggers the
+  external-display presentation pulse. Service lifecycle starts now still send
+  target metadata to JetKVM, but do not pulse the JetKVM display.
+- Kept presentation pulses for real display-wake cases such as Android
+  `SCREEN_ON`, JetKVM display add events, and non-lifecycle JetKVM peripheral
+  changes.
+- Added an explicit transparent presentation theme. The pulse presentation was
+  already drawn transparent and 1x1, but using a transparent theme avoids the
+  default presentation window background before content is attached. If Android
+  clears the secondary display while creating a presentation, a residual blink
+  may still be platform behavior.
+- Installed the patched debug companion on the Pixel 8 and verified logs:
+  `startup`/`startCommand` target reports occur without
+  `target presentation pulse shown`.

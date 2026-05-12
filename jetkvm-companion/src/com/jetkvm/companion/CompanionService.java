@@ -264,7 +264,9 @@ public class CompanionService extends Service implements InputManager.InputDevic
             } else {
                 reportTargetDeclarationAsync();
                 scheduleTargetReport();
-                pulseTargetPresentation(reason);
+                if (!isServiceLifecycleReason(reason)) {
+                    pulseTargetPresentation(reason);
+                }
             }
             Log.i(TAG, "JetKVM peripheral state changed reason=" + reason + " " + snapshot);
             updateNotification();
@@ -273,9 +275,12 @@ public class CompanionService extends Service implements InputManager.InputDevic
             if (jetkvmPeripheralsPresent) {
                 reportTargetDeclarationAsync();
                 scheduleTargetReport();
-                pulseTargetPresentation(reason);
             }
         }
+    }
+
+    private boolean isServiceLifecycleReason(String reason) {
+        return "startup".equals(reason) || "startCommand".equals(reason);
     }
 
     private void scheduleTargetReport() {
@@ -641,7 +646,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
     private static final class TargetPresentation extends Presentation {
         TargetPresentation(Context context, Display display) {
-            super(context, display);
+            super(context, display, R.style.TransparentPresentation);
         }
 
         @Override
