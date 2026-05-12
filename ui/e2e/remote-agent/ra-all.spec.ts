@@ -2726,7 +2726,7 @@ test.describe("Remote Host Agent", () => {
       appVersion: string;
       systemVersion: string;
     };
-    if (!semverGte(localVersion.systemVersion, "0.2.9")) {
+    if (!semverGte(localVersion.systemVersion, "0.2.8")) {
       test.skip(true, `S3 wake requires system >= 0.2.8 (got ${localVersion.systemVersion})`);
       return;
     }
@@ -2834,7 +2834,7 @@ test.describe("Remote Host Agent", () => {
       appVersion: string;
       systemVersion: string;
     };
-    if (!semverGte(localVersion.systemVersion, "0.2.9")) {
+    if (!semverGte(localVersion.systemVersion, "0.2.8")) {
       test.skip(true, `S3 wake requires system >= 0.2.8 (got ${localVersion.systemVersion})`);
       return;
     }
