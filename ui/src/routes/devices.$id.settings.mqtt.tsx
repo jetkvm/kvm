@@ -12,6 +12,7 @@ import { Button } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages";
+import { GridCard } from "@components/Card";
 
 interface MQTTSettings {
   enabled: boolean;
@@ -458,6 +459,27 @@ export default function SettingsMqttRoute() {
                   }
                 />
               </SettingsItem>
+              {settings.screenshot_interval_sec > 0 && (
+                <GridCard>
+                  <div className="flex items-center gap-x-3 px-4 py-3">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-500"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <p className="text-xs text-amber-700 dark:text-amber-500">
+                      {m.mqtt_screenshot_interval_sleep_warning()}
+                    </p>
+                  </div>
+                </GridCard>
+              )}
             </NestedSettingsGroup>
 
             {/* --- Advanced (only when ATX extension is active) --- */}

@@ -421,9 +421,12 @@ bool get_streaming_stopped()
     return stopped;
 }
 
-// do_jpeg_capture – called from the streaming loop when jpeg_requested is set.
-// Creates VENC JPEG_CHANNEL, encodes one frame, stores result, signals waiter.
-static void do_jpeg_capture(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint32_t height)
+// do_jpeg_encode_frame – synchronous JPEG encode of a single video frame.
+// Creates and destroys JPEG_CHANNEL internally. Returns 0 on success;
+// on success *out_buf is a malloc'd JPEG buffer (caller must free).
+// Does NOT touch jpeg_mutex/jpeg_cond – safe to call from any context.
+static int do_jpeg_encode_frame(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint32_t height,
+                                uint8_t **out_buf, size_t *out_len)
 {
     int ret;
 
@@ -442,8 +445,8 @@ static void do_jpeg_capture(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint32_t 
 
     ret = RK_MPI_VENC_CreateChn(JPEG_CHANNEL, &attr);
     if (ret != RK_SUCCESS) {
-        log_error("JPEG capture: RK_MPI_VENC_CreateChn failed: %d", ret);
-        goto signal_error;
+        log_error("JPEG encode: RK_MPI_VENC_CreateChn failed: %d", ret);
+        return ret;
     }
 
     VENC_RECV_PIC_PARAM_S recv;
@@ -451,27 +454,26 @@ static void do_jpeg_capture(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint32_t 
     recv.s32RecvPicNum = 1;
     ret = RK_MPI_VENC_StartRecvFrame(JPEG_CHANNEL, &recv);
     if (ret != RK_SUCCESS) {
-        log_error("JPEG capture: RK_MPI_VENC_StartRecvFrame failed: %d", ret);
+        log_error("JPEG encode: RK_MPI_VENC_StartRecvFrame failed: %d", ret);
         RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
-        goto signal_error;
+        return ret;
     }
 
     ret = RK_MPI_VENC_SendFrame(JPEG_CHANNEL, frame, 2000);
     if (ret != RK_SUCCESS) {
-        log_error("JPEG capture: RK_MPI_VENC_SendFrame failed: %d", ret);
+        log_error("JPEG encode: RK_MPI_VENC_SendFrame failed: %d", ret);
         RK_MPI_VENC_StopRecvFrame(JPEG_CHANNEL);
         RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
-        goto signal_error;
+        return ret;
     }
 
     VENC_STREAM_S stream;
     stream.pstPack = malloc(sizeof(VENC_PACK_S));
     if (!stream.pstPack) {
-        log_error("JPEG capture: malloc failed");
+        log_error("JPEG encode: malloc failed");
         RK_MPI_VENC_StopRecvFrame(JPEG_CHANNEL);
         RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
-        ret = -ENOMEM;
-        goto signal_error;
+        return -ENOMEM;
     }
 
     ret = RK_MPI_VENC_GetStream(JPEG_CHANNEL, &stream, 2000);
@@ -481,46 +483,227 @@ static void do_jpeg_capture(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint32_t 
         uint8_t *buf = malloc(len);
         if (buf) {
             memcpy(buf, data, len);
-            pthread_mutex_lock(&jpeg_mutex);
-            jpeg_buf     = buf;
-            jpeg_buf_len = len;
-            jpeg_result  = 0;
-            jpeg_done    = true;
-            jpeg_requested = false;
-            pthread_cond_signal(&jpeg_cond);
-            pthread_mutex_unlock(&jpeg_mutex);
+            *out_buf = buf;
+            *out_len = len;
+            ret = 0;
         } else {
-            log_error("JPEG capture: malloc for output failed");
+            log_error("JPEG encode: malloc for output failed");
             ret = -ENOMEM;
         }
         RK_MPI_VENC_ReleaseStream(JPEG_CHANNEL, &stream);
     } else {
-        log_error("JPEG capture: RK_MPI_VENC_GetStream failed: %d", ret);
+        log_error("JPEG encode: RK_MPI_VENC_GetStream failed: %d", ret);
     }
     free(stream.pstPack);
     RK_MPI_VENC_StopRecvFrame(JPEG_CHANNEL);
     RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
+    return ret;
+}
 
-    if (ret != 0 && !(ret == RK_SUCCESS && jpeg_done)) {
-        goto signal_error;
-    }
-    return;
+// do_jpeg_capture – called from the streaming loop when jpeg_requested is set.
+// Encodes one frame and signals the video_capture_jpeg() waiter.
+static void do_jpeg_capture(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint32_t height)
+{
+    uint8_t *buf = NULL;
+    size_t   len = 0;
+    int ret = do_jpeg_encode_frame(frame, width, height, &buf, &len);
 
-signal_error:
     pthread_mutex_lock(&jpeg_mutex);
-    jpeg_result    = (ret != 0) ? ret : -1;
+    if (ret == 0 && buf != NULL) {
+        jpeg_buf     = buf;
+        jpeg_buf_len = len;
+        jpeg_result  = 0;
+    } else {
+        jpeg_result = (ret != 0) ? ret : -1;
+        free(buf);
+    }
     jpeg_done      = true;
     jpeg_requested = false;
     pthread_cond_signal(&jpeg_cond);
     pthread_mutex_unlock(&jpeg_mutex);
 }
 
+// video_capture_jpeg_standalone – captures a JPEG without an active streaming loop.
+// Opens the V4L2 device independently, grabs one frame (skipping one stale buffer),
+// encodes it as JPEG, and tears everything down cleanly.
+static int video_capture_jpeg_standalone(uint8_t **out_buf, size_t *out_len)
+{
+    uint32_t width  = detected_width;
+    uint32_t height = detected_height;
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    int ret = -1;
+
+    int fd = open(VIDEO_DEV, O_RDWR);
+    if (fd < 0) {
+        log_error("JPEG standalone: failed to open %s: %s", VIDEO_DEV, strerror(errno));
+        return -errno;
+    }
+
+    struct v4l2_format fmt;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type                   = type;
+    fmt.fmt.pix_mp.width       = width;
+    fmt.fmt.pix_mp.height      = height;
+    fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_YUYV;
+    fmt.fmt.pix_mp.field       = V4L2_FIELD_ANY;
+    if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
+        log_error("JPEG standalone: VIDIOC_S_FMT failed: %s", strerror(errno));
+        close(fd);
+        return -errno;
+    }
+
+    struct v4l2_requestbuffers req;
+    memset(&req, 0, sizeof(req));
+    req.count  = input_buffer_count;
+    req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    req.memory = V4L2_MEMORY_DMABUF;
+    if (ioctl(fd, VIDIOC_REQBUFS, &req) < 0) {
+        log_error("JPEG standalone: VIDIOC_REQBUFS failed: %s", strerror(errno));
+        close(fd);
+        return -errno;
+    }
+
+    struct buffer bufs[3];
+    memset(bufs, 0, sizeof(bufs));
+    int bufs_allocated = 0;
+
+    for (int i = 0; i < input_buffer_count; i++) {
+        struct v4l2_plane *plane = &bufs[i].plane_buffer;
+        memset(plane, 0, sizeof(*plane));
+
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type     = type;
+        buf.memory   = V4L2_MEMORY_DMABUF;
+        buf.m.planes = plane;
+        buf.length   = 1;
+        buf.index    = i;
+        if (ioctl(fd, VIDIOC_QUERYBUF, &buf) < 0) {
+            log_error("JPEG standalone: VIDIOC_QUERYBUF failed: %s", strerror(errno));
+            goto cleanup;
+        }
+
+        MB_BLK blk = RK_MPI_MB_GetMB(memPool, plane->length, RK_TRUE);
+        if (blk == NULL) {
+            log_error("JPEG standalone: RK_MPI_MB_GetMB failed");
+            ret = -ENOMEM;
+            goto cleanup;
+        }
+        bufs[i].mb_blk = blk;
+        bufs_allocated++;
+        plane->m.fd = RK_MPI_MB_Handle2Fd(blk);
+    }
+
+    for (int i = 0; i < input_buffer_count; i++) {
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type     = type;
+        buf.memory   = V4L2_MEMORY_DMABUF;
+        buf.length   = 1;
+        buf.index    = i;
+        buf.m.planes = &bufs[i].plane_buffer;
+        if (ioctl(fd, VIDIOC_QBUF, &buf) < 0) {
+            log_error("JPEG standalone: VIDIOC_QBUF failed: %s", strerror(errno));
+            goto cleanup;
+        }
+    }
+
+    if (ioctl(fd, VIDIOC_STREAMON, &type) < 0) {
+        log_error("JPEG standalone: VIDIOC_STREAMON failed: %s", strerror(errno));
+        goto cleanup;
+    }
+
+    {
+        struct v4l2_plane tmp_plane;
+        struct v4l2_buffer dqbuf;
+
+        for (int f = 0; f < 2; f++) {
+            fd_set fds;
+            struct timeval tv;
+            FD_ZERO(&fds);
+            FD_SET(fd, &fds);
+            tv.tv_sec  = 2;
+            tv.tv_usec = 0;
+            int r = select(fd + 1, &fds, NULL, NULL, &tv);
+            if (r <= 0) {
+                log_error("JPEG standalone: select timeout/error on frame %d", f);
+                ret = -ETIMEDOUT;
+                break;
+            }
+
+            memset(&dqbuf, 0, sizeof(dqbuf));
+            memset(&tmp_plane, 0, sizeof(tmp_plane));
+            dqbuf.type     = type;
+            dqbuf.memory   = V4L2_MEMORY_DMABUF;
+            dqbuf.m.planes = &tmp_plane;
+            dqbuf.length   = 1;
+            if (ioctl(fd, VIDIOC_DQBUF, &dqbuf) < 0) {
+                log_error("JPEG standalone: VIDIOC_DQBUF failed: %s", strerror(errno));
+                ret = -errno;
+                break;
+            }
+
+            if (f == 0) {
+                // Discard the first frame to flush any stale buffer, then re-queue.
+                if (ioctl(fd, VIDIOC_QBUF, &dqbuf) < 0) {
+                    log_error("JPEG standalone: VIDIOC_QBUF (warmup) failed: %s", strerror(errno));
+                    ret = -errno;
+                    break;
+                }
+                continue;
+            }
+
+            // f == 1: encode this frame as JPEG.
+            MB_BLK blk = RK_MPI_MMZ_Fd2Handle(tmp_plane.m.fd);
+            VIDEO_FRAME_INFO_S stFrame;
+            memset(&stFrame, 0, sizeof(stFrame));
+            stFrame.stVFrame.pMbBlk         = blk;
+            stFrame.stVFrame.u32Width       = width;
+            stFrame.stVFrame.u32Height      = height;
+            stFrame.stVFrame.u32VirWidth    = RK_ALIGN_16(width);
+            stFrame.stVFrame.u32VirHeight   = RK_ALIGN_16(height);
+            stFrame.stVFrame.u32TimeRef     = f;
+            stFrame.stVFrame.u64PTS         = get_us();
+            stFrame.stVFrame.enPixelFormat  = RK_FMT_YUV422_YUYV;
+            stFrame.stVFrame.enCompressMode = COMPRESS_MODE_NONE;
+
+            ret = do_jpeg_encode_frame(&stFrame, width, height, out_buf, out_len);
+
+            // Re-queue the buffer before tearing down.
+            ioctl(fd, VIDIOC_QBUF, &dqbuf);
+        }
+    }
+
+    ioctl(fd, VIDIOC_STREAMOFF, &type);
+
+cleanup:
+    {
+        struct v4l2_requestbuffers req_free;
+        memset(&req_free, 0, sizeof(req_free));
+        req_free.count  = 0;
+        req_free.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        req_free.memory = V4L2_MEMORY_DMABUF;
+        ioctl(fd, VIDIOC_REQBUFS, &req_free);
+    }
+
+    for (int i = 0; i < bufs_allocated; i++) {
+        if (bufs[i].mb_blk != NULL)
+            RK_MPI_MB_ReleaseMB(bufs[i].mb_blk);
+    }
+
+    close(fd);
+    return ret;
+}
+
 int video_capture_jpeg(uint8_t **out_buf, size_t *out_len)
 {
     if (!detected_signal)
         return -ENODEV;
+
+    // When no WebRTC client is streaming, run a self-contained V4L2 capture
+    // so that MQTT screenshot publishing works without an active connection.
     if (!get_streaming_flag())
-        return -ENODATA;
+        return video_capture_jpeg_standalone(out_buf, out_len);
 
     pthread_mutex_lock(&jpeg_mutex);
 

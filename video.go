@@ -116,6 +116,11 @@ func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {
 				continue
 			}
 
+			if config.MqttConfig != nil && config.MqttConfig.ScreenshotIntervalSec > 0 {
+				nativeLogger.Info().Msg("not going to enter HDMI sleep mode because MQTT screenshot publishing is active")
+				continue
+			}
+
 			nativeLogger.Trace().Msg("entering HDMI sleep mode")
 			_ = nativeInstance.VideoSetSleepMode(true)
 		case <-ctx.Done():
