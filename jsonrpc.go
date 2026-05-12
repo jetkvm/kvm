@@ -99,6 +99,12 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 }
 
+// onRPCMessage parses a single RPC message off the per-session pump and
+// dispatches it. Runs synchronously on the pump goroutine; handlers
+// flagged Synchronous keep running there (so dequeue order is preserved
+// for ordering-sensitive RPCs like pauseVideo / resumeVideo), everything
+// else is dispatched in a fresh goroutine so a slow handler can't
+// head-of-line block the queue.
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
@@ -119,14 +125,6 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		writeJSONRPCResponse(errorResponse, session)
 		return
 	}
-
-	scopedLogger := jsonRpcLogger.With().
-		Str("method", request.Method).
-		Interface("params", request.Params).
-		Interface("id", request.ID).Logger()
-
-	scopedLogger.Trace().Msg("Received RPC request")
-	t := time.Now()
 
 	// pauseVideo / resumeVideo are session-bound notifications: they
 	// toggle this session's slot in the video stream refcount (see
@@ -158,7 +156,26 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params)
+	if handler.Synchronous {
+		invokeRPCHandler(request, handler, session)
+	} else {
+		go invokeRPCHandler(request, handler, session)
+	}
+}
+
+// invokeRPCHandler runs a single RPC handler and writes its response back
+// to the session. Called either inline on the pump (Synchronous handlers)
+// or from a per-message goroutine (the default).
+func invokeRPCHandler(request JSONRPCRequest, handler RPCHandler, session *Session) {
+	scopedLogger := jsonRpcLogger.With().
+		Str("method", request.Method).
+		Interface("params", request.Params).
+		Interface("id", request.ID).Logger()
+
+	scopedLogger.Trace().Msg("Received RPC request")
+	t := time.Now()
+
+	result, err := callRPCHandler(scopedLogger, handler, session, request.Params)
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -540,10 +557,25 @@ type RPCHandler struct {
 	Func           any
 	Params         []string
 	OptionalParams []string
+
+	// TakesSession: the handler's first parameter is *Session and the
+	// dispatcher injects the receiving session into it. Used by
+	// session-bound RPCs (e.g. pauseVideo / resumeVideo) that must act
+	// on the session whose data channel delivered the message, not on
+	// the global currentSession.
+	TakesSession bool
+
+	// Synchronous: the handler runs inline on the per-session rpcQueue
+	// pump goroutine rather than in a fresh per-message goroutine. Use
+	// for ordering-sensitive handlers — pause/resume toggle a shared
+	// global refcount and the Go scheduler can otherwise reorder a
+	// tight pause→resume pair. Slow or blocking handlers MUST stay
+	// async (the default).
+	Synchronous bool
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
-func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (result any, err error) {
+func callRPCHandler(logger zerolog.Logger, handler RPCHandler, session *Session, params map[string]any) (result any, err error) {
 	// Use defer to recover from a panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -557,11 +589,11 @@ func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string
 	}()
 
 	// Call the handler
-	result, err = riskyCallRPCHandler(logger, handler, params)
+	result, err = riskyCallRPCHandler(logger, handler, session, params)
 	return result, err // do not combine these two lines into one, as it breaks the above defer function's setting of err
 }
 
-func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (any, error) {
+func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, session *Session, params map[string]any) (any, error) {
 	handlerValue := reflect.ValueOf(handler.Func)
 	handlerType := handlerValue.Type()
 
@@ -572,8 +604,12 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	numParams := handlerType.NumIn()
 	allParamNames := append(handler.Params, handler.OptionalParams...) //nolint:gocritic
 
-	if len(allParamNames) != numParams {
-		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(allParamNames))
+	expectedSlots := len(allParamNames)
+	if handler.TakesSession {
+		expectedSlots++
+	}
+	if expectedSlots != numParams {
+		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, expectedSlots)
 		logger.Error().Strs("paramNames", allParamNames).Err(err).Msg("Cannot call RPC handler")
 		return nil, err
 	}
@@ -584,14 +620,21 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	}
 
 	args := make([]reflect.Value, numParams)
+	// Reflective params start after the injected *Session slot, if any.
+	argOffset := 0
+	if handler.TakesSession {
+		args[0] = reflect.ValueOf(session)
+		argOffset = 1
+	}
 
-	for i := range numParams {
-		paramType := handlerType.In(i)
+	for i := range len(allParamNames) {
+		paramType := handlerType.In(i + argOffset)
 		paramName := allParamNames[i]
 		paramValue, ok := params[paramName]
+		argIdx := i + argOffset
 		if !ok {
 			if optionalSet[paramName] {
-				args[i] = reflect.Zero(paramType)
+				args[argIdx] = reflect.Zero(paramType)
 				continue
 			}
 			err := fmt.Errorf("missing parameter: %s", paramName)
@@ -625,7 +668,7 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 						newSlice.Index(j).Set(elemValue.Convert(paramType.Elem()))
 					}
 				}
-				args[i] = newSlice
+				args[argIdx] = newSlice
 			} else if paramType.Kind() == reflect.Struct && convertedValue.Kind() == reflect.Map {
 				jsonData, err := json.Marshal(convertedValue.Interface())
 				if err != nil {
@@ -636,12 +679,12 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 				if err := json.Unmarshal(jsonData, newStruct); err != nil {
 					return nil, fmt.Errorf("failed to unmarshal JSON into struct: %v for parameter %s", err, paramName)
 				}
-				args[i] = reflect.ValueOf(newStruct).Elem()
+				args[argIdx] = reflect.ValueOf(newStruct).Elem()
 			} else {
 				return nil, fmt.Errorf("invalid parameter type for: %s, type: %s", paramName, paramType.Kind())
 			}
 		} else {
-			args[i] = convertedValue.Convert(paramType)
+			args[argIdx] = convertedValue.Convert(paramType)
 		}
 	}
 

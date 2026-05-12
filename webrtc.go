@@ -532,6 +532,10 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	rpcQueue := session.rpcQueue
 	go func() {
+		// onRPCMessage runs synchronously on this pump goroutine so
+		// handlers flagged Synchronous (pause/resume) keep their
+		// dequeue order. The dispatcher spawns its own goroutine for
+		// every async handler internally.
 		for {
 			select {
 			case <-session.done:
@@ -543,8 +547,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			case <-session.done:
 				return
 			case msg := <-rpcQueue:
-				// TODO: only use goroutine if the task is asynchronous
-				go onRPCMessage(msg, session)
+				onRPCMessage(msg, session)
 			}
 		}
 	}()
