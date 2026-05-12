@@ -116,6 +116,55 @@ double calculate_bitrate(float bitrate_factor, int width, int height)
     return bitrate;
 }
 
+static bool is_hd_video(RK_U32 height)
+{
+    return height > 576;
+}
+
+static COLOR_GAMUT_E color_gamut_for_height(RK_U32 height)
+{
+    return is_hd_video(height) ? COLOR_GAMUT_BT709 : COLOR_GAMUT_BT601;
+}
+
+static void set_v4l2_yuv_colorimetry(struct v4l2_pix_format_mplane *pix, RK_U32 height)
+{
+    if (is_hd_video(height))
+    {
+        pix->colorspace = V4L2_COLORSPACE_REC709;
+        pix->ycbcr_enc = V4L2_YCBCR_ENC_709;
+    }
+    else
+    {
+        pix->colorspace = V4L2_COLORSPACE_SMPTE170M;
+        pix->ycbcr_enc = V4L2_YCBCR_ENC_601;
+    }
+
+    pix->quantization = V4L2_QUANTIZATION_LIM_RANGE;
+    pix->xfer_func = V4L2_XFER_FUNC_709;
+}
+
+static void configure_vui_video_signal(VENC_VUI_VIDEO_SIGNAL_S *video_signal, RK_U32 height)
+{
+    memset(video_signal, 0, sizeof(VENC_VUI_VIDEO_SIGNAL_S));
+    video_signal->video_signal_type_present_flag = 1;
+    video_signal->video_format = 5; // unspecified
+    video_signal->video_full_range_flag = 0; // YUV video levels: black=16, white=235
+    video_signal->colour_description_present_flag = 1;
+
+    if (is_hd_video(height))
+    {
+        video_signal->colour_primaries = 1; // BT.709
+        video_signal->transfer_characteristics = 1; // BT.709
+        video_signal->matrix_coefficients = 1; // BT.709
+    }
+    else
+    {
+        video_signal->colour_primaries = 6; // SMPTE 170M
+        video_signal->transfer_characteristics = 6; // SMPTE 170M
+        video_signal->matrix_coefficients = 6; // SMPTE 170M
+    }
+}
+
 static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 max_bitrate, RK_U32 width, RK_U32 height)
 {
     memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
@@ -155,6 +204,50 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
     stAttr->stVencAttr.enMirror = MIRROR_NONE;
 }
 
+static void venc_configure_limited_range_vui(RK_U32 height)
+{
+    int32_t ret;
+
+    if (codec_type == 1)
+    {
+        VENC_H265_VUI_S stH265Vui;
+        memset(&stH265Vui, 0, sizeof(VENC_H265_VUI_S));
+        ret = RK_MPI_VENC_GetH265Vui(VENC_CHANNEL, &stH265Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_GetH265Vui failed: %#x", ret);
+            return;
+        }
+        configure_vui_video_signal(&stH265Vui.stVuiVideoSignal, height);
+        ret = RK_MPI_VENC_SetH265Vui(VENC_CHANNEL, &stH265Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_SetH265Vui failed: %#x", ret);
+            return;
+        }
+    }
+    else
+    {
+        VENC_H264_VUI_S stH264Vui;
+        memset(&stH264Vui, 0, sizeof(VENC_H264_VUI_S));
+        ret = RK_MPI_VENC_GetH264Vui(VENC_CHANNEL, &stH264Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_GetH264Vui failed: %#x", ret);
+            return;
+        }
+        configure_vui_video_signal(&stH264Vui.stVuiVideoSignal, height);
+        ret = RK_MPI_VENC_SetH264Vui(VENC_CHANNEL, &stH264Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_SetH264Vui failed: %#x", ret);
+            return;
+        }
+    }
+
+    log_info("configured VENC VUI as limited-range %s", is_hd_video(height) ? "BT.709" : "BT.601");
+}
+
 pthread_t *venc_read_thread = NULL;
 volatile bool venc_running = false;
 static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height)
@@ -169,6 +262,8 @@ static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, i
         RK_LOGE("error RK_MPI_VENC_CreateChn, %d", ret);
         return ret;
     }
+
+    venc_configure_limited_range_vui(height);
 
     VENC_RECV_PIC_PARAM_S stRecvParam;
     memset(&stRecvParam, 0, sizeof(VENC_RECV_PIC_PARAM_S));
@@ -451,6 +546,7 @@ void *run_video_stream(void *arg)
         fmt.fmt.pix_mp.height = height;
         fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_YUYV;
         fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
+        set_v4l2_yuv_colorimetry(&fmt.fmt.pix_mp, height);
 
         if (ioctl(video_dev_fd, VIDIOC_S_FMT, &fmt) < 0)
         {
@@ -459,6 +555,9 @@ void *run_video_stream(void *arg)
             close(video_dev_fd);
             continue;
         }
+        log_info("capture colorimetry: colorspace=%u ycbcr_enc=%u quantization=%u xfer=%u",
+                 fmt.fmt.pix_mp.colorspace, fmt.fmt.pix_mp.ycbcr_enc,
+                 fmt.fmt.pix_mp.quantization, fmt.fmt.pix_mp.xfer_func);
 
         struct v4l2_buffer buf;
 
@@ -565,8 +664,17 @@ void *run_video_stream(void *arg)
         int r;
         uint32_t num = 0;
         VIDEO_FRAME_INFO_S stFrame;
-
-
+        memset(&stFrame, 0, sizeof(VIDEO_FRAME_INFO_S));
+        stFrame.stVFrame.u32Width = width;
+        stFrame.stVFrame.u32Height = height;
+        stFrame.stVFrame.u32VirWidth = RK_ALIGN_16(width);
+        stFrame.stVFrame.u32VirHeight = RK_ALIGN_16(height);
+        stFrame.stVFrame.enField = VIDEO_FIELD_FRAME;
+        stFrame.stVFrame.enPixelFormat = RK_FMT_YUV422_YUYV;
+        stFrame.stVFrame.enVideoFormat = VIDEO_FORMAT_LINEAR;
+        stFrame.stVFrame.enCompressMode = COMPRESS_MODE_NONE;
+        stFrame.stVFrame.enDynamicRange = DYNAMIC_RANGE_SDR8;
+        stFrame.stVFrame.enColorGamut = color_gamut_for_height(height);
 
         while (streaming_flag)
         {
@@ -602,20 +710,11 @@ void *run_video_stream(void *arg)
                 break;
             }
             log_trace("got frame, bytesused = %d", tmp_plane.bytesused);
-            memset(&stFrame, 0, sizeof(VIDEO_FRAME_INFO_S));
-            MB_BLK blk = RK_NULL;
-            blk = RK_MPI_MMZ_Fd2Handle(tmp_plane.m.fd);
+            MB_BLK blk = RK_MPI_MMZ_Fd2Handle(tmp_plane.m.fd);
             assert(blk != RK_NULL);
             stFrame.stVFrame.pMbBlk = blk;
-            stFrame.stVFrame.u32Width = width;
-            stFrame.stVFrame.u32Height = height;
-            stFrame.stVFrame.u32VirWidth = RK_ALIGN_16(width);
-            stFrame.stVFrame.u32VirHeight = RK_ALIGN_16(height);
-            stFrame.stVFrame.u32TimeRef = num; // frame number
+            stFrame.stVFrame.u32TimeRef = num;
             stFrame.stVFrame.u64PTS = get_us();
-            stFrame.stVFrame.enPixelFormat = RK_FMT_YUV422_YUYV;
-            stFrame.stVFrame.u32FrameFlag |= 0;
-            stFrame.stVFrame.enCompressMode = COMPRESS_MODE_NONE;
             bool retried = false;
         retry_send_frame:
             if (RK_MPI_VENC_SendFrame(VENC_CHANNEL, &stFrame, 2000) != RK_SUCCESS)
