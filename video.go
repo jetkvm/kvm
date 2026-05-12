@@ -157,6 +157,22 @@ func updateHostDisplayAdvertisement(reason string, force bool) error {
 	return setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, force)
 }
 
+// rpcPauseVideo releases this session's slot in the video stream
+// refcount. Registered with TakesSession + Synchronous so it acts on
+// the receiving session and can't be reordered relative to a
+// resumeVideo from the same source.
+func rpcPauseVideo(s *Session) error {
+	releaseVideoStream(s.videoConsumerKey())
+	return nil
+}
+
+// rpcResumeVideo re-acquires this session's slot. See rpcPauseVideo for
+// the dispatcher flags this relies on.
+func rpcResumeVideo(s *Session) error {
+	acquireVideoStream(s.videoConsumerKey())
+	return nil
+}
+
 type rpcVideoSleepModeResponse struct {
 	Supported bool `json:"supported"`
 	Enabled   bool `json:"enabled"`

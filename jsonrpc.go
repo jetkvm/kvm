@@ -126,22 +126,6 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	// pauseVideo / resumeVideo are session-bound notifications: they
-	// toggle this session's slot in the video stream refcount (see
-	// video.go). Handled inline because the generic dispatcher doesn't
-	// pass *Session, and acting on currentSession instead of the
-	// receiving session would let a stale data channel mis-target the
-	// active one during the 1s handover overlap. Both helpers are
-	// idempotent so rapid pause/resume bursts are safe.
-	switch request.Method {
-	case "pauseVideo":
-		releaseVideoStream(session.videoConsumerKey())
-		return
-	case "resumeVideo":
-		acquireVideoStream(session.videoConsumerKey())
-		return
-	}
-
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -1406,6 +1390,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
 	"wakeHost":                   {Func: rpcWakeHost},
 	"getVideoState":              {Func: rpcGetVideoState},
+	"pauseVideo":                 {Func: rpcPauseVideo, TakesSession: true, Synchronous: true},
+	"resumeVideo":                {Func: rpcResumeVideo, TakesSession: true, Synchronous: true},
 	"getUSBState":                {Func: rpcGetUSBState},
 	"unmountImage":               {Func: rpcUnmountImage},
 	"rpcMountBuiltInImage":       {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
