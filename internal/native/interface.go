@@ -35,4 +35,5 @@ type NativeInterface interface {
 	SwitchToScreenIf(screenName string, shouldSwitch []string)
 	SwitchToScreenIfDifferent(screenName string)
 	DoNotUseThisIsForCrashTestingOnly()
+	VideoCaptureJPEG() ([]byte, error)
 }

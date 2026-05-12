@@ -233,3 +233,11 @@ func (n *Native) VideoGetStreamingStatus() VideoStreamingStatus {
 
 	return videoGetStreamingStatus()
 }
+
+// VideoCaptureJPEG captures a single JPEG frame from the live video stream.
+func (n *Native) VideoCaptureJPEG() ([]byte, error) {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	return videoCaptureJPEG()
+}

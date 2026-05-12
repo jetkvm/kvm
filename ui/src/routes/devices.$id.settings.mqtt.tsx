@@ -23,6 +23,7 @@ interface MQTTSettings {
   use_tls: boolean;
   tls_insecure: boolean;
   enable_ha_discovery: boolean;
+  screenshot_interval_sec: number;
   enable_actions: boolean;
   debounce_ms: number;
 }
@@ -73,6 +74,7 @@ export default function SettingsMqttRoute() {
     use_tls: false,
     tls_insecure: false,
     enable_ha_discovery: true,
+    screenshot_interval_sec: 0,
     enable_actions: true,
     debounce_ms: 500,
   });
@@ -441,6 +443,21 @@ export default function SettingsMqttRoute() {
                   />
                 </NestedSettingsGroup>
               )}
+
+              <SettingsItem
+                title={m.mqtt_screenshot_interval_title()}
+                description={m.mqtt_screenshot_interval_description()}
+              >
+                <InputField
+                  size="SM"
+                  type="number"
+                  placeholder="0"
+                  value={settings.screenshot_interval_sec.toString()}
+                  onChange={e =>
+                    updateField("screenshot_interval_sec", parseInt(e.target.value) || 0)
+                  }
+                />
+              </SettingsItem>
             </NestedSettingsGroup>
 
             {/* --- Advanced (only when ATX extension is active) --- */}

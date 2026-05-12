@@ -38,12 +38,22 @@
 
 int sub_dev_fd = -1;
 #define VENC_CHANNEL 0
+#define JPEG_CHANNEL 1
 MB_POOL memPool = MB_INVALID_POOLID;
 
 bool sleep_mode_available = false;
 bool should_exit = false;
 float quality_factor = 1.0f;
 int codec_type = 0;
+
+// --- JPEG snapshot state ---
+static pthread_mutex_t jpeg_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  jpeg_cond  = PTHREAD_COND_INITIALIZER;
+static volatile bool jpeg_requested = false;
+static bool          jpeg_done      = false;
+static int           jpeg_result    = 0;
+static uint8_t      *jpeg_buf       = NULL;
+static size_t        jpeg_buf_len   = 0;
 
 static void *venc_read_stream(void *arg);
 
@@ -411,6 +421,143 @@ bool get_streaming_stopped()
     return stopped;
 }
 
+// do_jpeg_capture – called from the streaming loop when jpeg_requested is set.
+// Creates VENC JPEG_CHANNEL, encodes one frame, stores result, signals waiter.
+static void do_jpeg_capture(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint32_t height)
+{
+    int ret;
+
+    VENC_CHN_ATTR_S attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.stRcAttr.enRcMode                    = VENC_RC_MODE_MJPEGFIXQP;
+    attr.stRcAttr.stMjpegFixQp.u32Qfactor     = 90;
+    attr.stVencAttr.enType                    = RK_VIDEO_ID_MJPEG;
+    attr.stVencAttr.enPixelFormat             = RK_FMT_YUV422_YUYV;
+    attr.stVencAttr.u32PicWidth               = width;
+    attr.stVencAttr.u32PicHeight              = height;
+    attr.stVencAttr.u32VirWidth               = RK_ALIGN_16(width);
+    attr.stVencAttr.u32VirHeight              = RK_ALIGN_16(height);
+    attr.stVencAttr.u32StreamBufCnt           = 2;
+    attr.stVencAttr.u32BufSize                = width * height * 2;
+
+    ret = RK_MPI_VENC_CreateChn(JPEG_CHANNEL, &attr);
+    if (ret != RK_SUCCESS) {
+        log_error("JPEG capture: RK_MPI_VENC_CreateChn failed: %d", ret);
+        goto signal_error;
+    }
+
+    VENC_RECV_PIC_PARAM_S recv;
+    memset(&recv, 0, sizeof(recv));
+    recv.s32RecvPicNum = 1;
+    ret = RK_MPI_VENC_StartRecvFrame(JPEG_CHANNEL, &recv);
+    if (ret != RK_SUCCESS) {
+        log_error("JPEG capture: RK_MPI_VENC_StartRecvFrame failed: %d", ret);
+        RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
+        goto signal_error;
+    }
+
+    ret = RK_MPI_VENC_SendFrame(JPEG_CHANNEL, frame, 2000);
+    if (ret != RK_SUCCESS) {
+        log_error("JPEG capture: RK_MPI_VENC_SendFrame failed: %d", ret);
+        RK_MPI_VENC_StopRecvFrame(JPEG_CHANNEL);
+        RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
+        goto signal_error;
+    }
+
+    VENC_STREAM_S stream;
+    stream.pstPack = malloc(sizeof(VENC_PACK_S));
+    if (!stream.pstPack) {
+        log_error("JPEG capture: malloc failed");
+        RK_MPI_VENC_StopRecvFrame(JPEG_CHANNEL);
+        RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
+        ret = -ENOMEM;
+        goto signal_error;
+    }
+
+    ret = RK_MPI_VENC_GetStream(JPEG_CHANNEL, &stream, 2000);
+    if (ret == RK_SUCCESS) {
+        void   *data = RK_MPI_MB_Handle2VirAddr(stream.pstPack->pMbBlk);
+        size_t  len  = stream.pstPack->u32Len;
+        uint8_t *buf = malloc(len);
+        if (buf) {
+            memcpy(buf, data, len);
+            pthread_mutex_lock(&jpeg_mutex);
+            jpeg_buf     = buf;
+            jpeg_buf_len = len;
+            jpeg_result  = 0;
+            jpeg_done    = true;
+            jpeg_requested = false;
+            pthread_cond_signal(&jpeg_cond);
+            pthread_mutex_unlock(&jpeg_mutex);
+        } else {
+            log_error("JPEG capture: malloc for output failed");
+            ret = -ENOMEM;
+        }
+        RK_MPI_VENC_ReleaseStream(JPEG_CHANNEL, &stream);
+    } else {
+        log_error("JPEG capture: RK_MPI_VENC_GetStream failed: %d", ret);
+    }
+    free(stream.pstPack);
+    RK_MPI_VENC_StopRecvFrame(JPEG_CHANNEL);
+    RK_MPI_VENC_DestroyChn(JPEG_CHANNEL);
+
+    if (ret != 0 && !(ret == RK_SUCCESS && jpeg_done)) {
+        goto signal_error;
+    }
+    return;
+
+signal_error:
+    pthread_mutex_lock(&jpeg_mutex);
+    jpeg_result    = (ret != 0) ? ret : -1;
+    jpeg_done      = true;
+    jpeg_requested = false;
+    pthread_cond_signal(&jpeg_cond);
+    pthread_mutex_unlock(&jpeg_mutex);
+}
+
+int video_capture_jpeg(uint8_t **out_buf, size_t *out_len)
+{
+    if (!detected_signal)
+        return -ENODEV;
+    if (!get_streaming_flag())
+        return -ENODATA;
+
+    pthread_mutex_lock(&jpeg_mutex);
+
+    if (jpeg_requested) {
+        pthread_mutex_unlock(&jpeg_mutex);
+        return -EBUSY;
+    }
+
+    jpeg_requested = true;
+    jpeg_done      = false;
+    jpeg_result    = 0;
+    jpeg_buf       = NULL;
+    jpeg_buf_len   = 0;
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5;
+
+    while (!jpeg_done) {
+        int err = pthread_cond_timedwait(&jpeg_cond, &jpeg_mutex, &ts);
+        if (err == ETIMEDOUT) {
+            jpeg_requested = false;
+            pthread_mutex_unlock(&jpeg_mutex);
+            return -ETIMEDOUT;
+        }
+    }
+
+    int result = jpeg_result;
+    if (result == 0) {
+        *out_buf = jpeg_buf;
+        *out_len = jpeg_buf_len;
+        jpeg_buf = NULL;
+    }
+    pthread_mutex_unlock(&jpeg_mutex);
+    return result;
+}
+
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
 {
     FILE *file = fopen(filename, "wb");
@@ -634,6 +781,11 @@ void *run_video_stream(void *arg)
             }
 
             num++;
+
+            // Capture JPEG if requested (before returning the V4L2 buffer)
+            if (jpeg_requested) {
+                do_jpeg_capture(&stFrame, width, height);
+            }
 
             if (ioctl(video_dev_fd, VIDIOC_QBUF, &buf) < 0)
                 log_error("failure VIDIOC_QBUF: %s", strerror(errno));

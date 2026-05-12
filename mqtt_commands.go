@@ -20,6 +20,7 @@ func (m *MQTTManager) subscribeCommands() {
 		m.topic("reboot", "set"):          m.handleRebootCommand,
 		m.topic("update", "install"):      m.handleUpdateInstallCommand,
 		m.topic("virtual_media", "set"):   m.handleVirtualMediaCommand,
+		m.topic("screenshot", "set"):      m.handleScreenshotCommand,
 	}
 
 	for topic, handler := range commands {
@@ -222,4 +223,18 @@ func (m *MQTTManager) handleVirtualMediaCommand(client mqtt.Client, msg mqtt.Mes
 
 	// Publish updated state immediately
 	m.publishVirtualMediaState()
+}
+
+func (m *MQTTManager) handleScreenshotCommand(client mqtt.Client, msg mqtt.Message) {
+	if !m.actionsAllowed() {
+		mqttLogger.Warn().Msg("screenshot command rejected: actions are disabled")
+		return
+	}
+	payload := strings.TrimSpace(string(msg.Payload()))
+	if strings.ToUpper(payload) != "CAPTURE" {
+		mqttLogger.Warn().Str("payload", payload).Msg("unknown screenshot command")
+		return
+	}
+	mqttLogger.Info().Msg("received screenshot capture command")
+	go m.publishScreenshot()
 }

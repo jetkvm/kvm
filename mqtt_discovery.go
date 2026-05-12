@@ -53,6 +53,10 @@ type haDiscoveryPayload struct {
 	LatestVersionTemplate string `json:"latest_version_template,omitempty"`
 	PayloadInstall        string `json:"payload_install,omitempty"`
 	ReleaseURL            string `json:"release_url,omitempty"`
+
+	// Image-specific
+	ImageTopic  string `json:"image_topic,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
 }
 
 func (m *MQTTManager) haDeviceInfo() *haDevice {
@@ -412,6 +416,35 @@ func (m *MQTTManager) publishHADiscovery() {
 		m.removeDiscovery("button", "reboot")
 	}
 
+	// Screenshot Image: always published (disabled by default to avoid large retained payloads).
+	m.publishDiscovery("image", "screenshot", haDiscoveryPayload{
+		Name:              "Screenshot",
+		UniqueID:          fmt.Sprintf("jetkvm_%s_screenshot", m.deviceID),
+		ImageTopic:        m.topic("screenshot", "image"),
+		ContentType:       "image/jpeg",
+		EnabledByDefault:  boolPtr(false),
+		Icon:              "mdi:monitor-screenshot",
+		AvailabilityTopic: availTopic,
+		AvailTemplate:     availTemplate,
+		Device:            device,
+	})
+
+	// Screenshot Capture Button: only when actions enabled.
+	if actionsEnabled {
+		m.publishDiscovery("button", "screenshot", haDiscoveryPayload{
+			Name:              "Capture Screenshot",
+			UniqueID:          fmt.Sprintf("jetkvm_%s_screenshot_button", m.deviceID),
+			CommandTopic:      m.topic("screenshot", "set"),
+			PayloadPress:      "CAPTURE",
+			Icon:              "mdi:camera",
+			AvailabilityTopic: availTopic,
+			AvailTemplate:     availTemplate,
+			Device:            device,
+		})
+	} else {
+		m.removeDiscovery("button", "screenshot")
+	}
+
 	// Firmware Update: always published, but command_topic only when actions enabled.
 	// NOTE: Do NOT use value_template/latest_version_template here — HA needs to parse
 	// the full JSON directly to recognize in_progress and update_percentage fields.
@@ -691,6 +724,9 @@ func (m *MQTTManager) removeAllDiscovery() {
 	m.removeDiscovery("binary_sensor", "jiggler")
 	m.removeDiscovery("button", "reboot")
 	m.removeDiscovery("update", "firmware")
+	// Screenshot entities
+	m.removeDiscovery("image", "screenshot")
+	m.removeDiscovery("button", "screenshot")
 
 	// Extension-specific entities (both switch and binary_sensor variants)
 	m.removeATXDiscovery()

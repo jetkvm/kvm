@@ -684,6 +684,8 @@
     "mqtt_save_button": "Save & Reconnect",
     "mqtt_saved_error": "Failed to save MQTT settings: {error}",
     "mqtt_saved_success": "MQTT settings saved. Reconnecting to broker…",
+    "mqtt_screenshot_interval_description": "Publish a JPEG screenshot to MQTT every N seconds (0 = disabled). When Remote Control is enabled, a capture button is also available in Home Assistant.",
+    "mqtt_screenshot_interval_title": "Screenshot Interval",
     "mqtt_section_advanced": "Advanced",
     "mqtt_section_advanced_description": "Fine-tune MQTT behavior and permissions",
     "mqtt_section_auth": "Authentication",

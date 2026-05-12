@@ -431,3 +431,20 @@ func videoSetEDID(edid string) error {
 func crash() {
 	C.jetkvm_crash()
 }
+
+func videoCaptureJPEG() ([]byte, error) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	var outBuf *C.uint8_t
+	var outLen C.size_t
+
+	ret := C.jetkvm_video_capture_jpeg(&outBuf, &outLen)
+	if ret != 0 {
+		return nil, fmt.Errorf("video_capture_jpeg failed with code %d", int(ret))
+	}
+	defer C.free(unsafe.Pointer(outBuf))
+
+	buf := C.GoBytes(unsafe.Pointer(outBuf), C.int(outLen))
+	return buf, nil
+}

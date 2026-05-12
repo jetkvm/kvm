@@ -579,3 +579,21 @@ func (m *MQTTManager) startPeriodicStatusUpdates(interval time.Duration) {
 		}
 	}()
 }
+
+// publishScreenshot captures a single JPEG frame from the video stream and
+// publishes it to the screenshot image topic.
+func (m *MQTTManager) publishScreenshot() {
+	if nativeInstance == nil {
+		return
+	}
+	if !lastVideoState.Ready {
+		mqttLogger.Debug().Msg("skipping screenshot: video not ready")
+		return
+	}
+	data, err := nativeInstance.VideoCaptureJPEG()
+	if err != nil {
+		mqttLogger.Warn().Err(err).Msg("failed to capture JPEG for MQTT screenshot")
+		return
+	}
+	m.publishBinary(m.topic("screenshot", "image"), data, false)
+}
