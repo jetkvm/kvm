@@ -1,5 +1,11 @@
 # JetKVM Android Support Fork
 
+> [!NOTE]
+> This Android support fork is work in progress. The current branch is usable
+> for local testing, but it is still being refined through real device testing.
+> Bug reports, focused review, and help with Android target/controller edge
+> cases are welcome.
+
 This fork adds an Android-focused control path to JetKVM. It is built for the
 case where the JetKVM target is an Android device and the operator wants the
 same practical control surface that a physical touchscreen, keyboard, and mouse
