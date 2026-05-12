@@ -21,6 +21,10 @@ export default async function globalTeardown() {
 
     const logs: Record<string, string> = {
       "device-last.log": "cat /userdata/jetkvm/last.log",
+      // Rotated by restartAppViaSSH — preserves the failing session's output
+      // when a later test restarts the app before teardown captures logs.
+      // sshExec(_, true) returns "" if the file is missing, so no shell guard needed.
+      "device-prev.log": "cat /userdata/jetkvm/last.log.prev",
       "device-config.json": "cat /userdata/kvm_config.json",
       "device-dmesg.txt": "dmesg | tail -200",
     };

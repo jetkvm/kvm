@@ -429,6 +429,24 @@ test.afterAll(async () => {
   if (sharedPage) await sharedPage.close();
 });
 
+// Snapshot /userdata/jetkvm/last.log into the failing test's output dir before
+// any subsequent test reboots the device (RkLunch's `> last.log` at boot wipes
+// the log, and /oem is read-only so we can't change that). This makes the
+// capture race-free regardless of what later tests do.
+// Empty fixture destructure is required by Playwright; `_` would fail the
+// runtime "destructuring pattern" check.
+// oxlint-disable-next-line no-empty-pattern
+test.afterEach(async ({}, testInfo) => {
+  if (!agent) return;
+  if (testInfo.status === testInfo.expectedStatus) return;
+  const log = await sshExec("cat /userdata/jetkvm/last.log", true);
+  try {
+    await testInfo.attach("device-last.log", { body: log, contentType: "text/plain" });
+  } catch {
+    // attach can throw if the worker is already tearing down; sshExec(_, true) won't.
+  }
+});
+
 test.describe("Remote Host Agent", () => {
   // ═══════════════════════════════════════════
   // KEYBOARD: TOGGLE KEYS + LED ROUND-TRIP
@@ -2055,8 +2073,9 @@ test.describe("Remote Host Agent", () => {
     const postMountEvents = await waitForKeyboardReady(agent!, sharedPage);
     expect(postMountEvents.length, "keyboard should work after disk mount").toBeGreaterThan(0);
 
-    // Unmount
-    await callJsonRpc(sharedPage, "unmountImage");
+    // Unmount — Disk-mode unmount can hit the EBUSY rebind path plus NBD
+    // disconnect drain, which routinely runs past the default 10s RPC timeout.
+    await callJsonRpc(sharedPage, "unmountImage", {}, 30_000);
     const stateEnd = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
     expect(stateEnd).toBeNull();
 

@@ -750,8 +750,12 @@ export async function restoreSSHDevState(state: SSHDevState): Promise<void> {
 export async function restartAppViaSSH(): Promise<void> {
   await sshExec("killall jetkvm_app", true);
   await new Promise(r => setTimeout(r, 500));
+  // Rotate last.log into last.log.prev before respawning so a later teardown
+  // can still recover the previous session's output if a subsequent restart
+  // truncates the live log. Combined into one SSH call to save a round-trip.
   await sshExec(
-    "setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib /userdata/jetkvm/bin/jetkvm_app > /userdata/jetkvm/last.log 2>&1 &",
+    "[ -s /userdata/jetkvm/last.log ] && mv /userdata/jetkvm/last.log /userdata/jetkvm/last.log.prev; " +
+      "setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib /userdata/jetkvm/bin/jetkvm_app > /userdata/jetkvm/last.log 2>&1 &",
     true,
   );
   await new Promise(r => setTimeout(r, 1000));
