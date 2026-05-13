@@ -1,7 +1,9 @@
 package websecure
 
 import (
+	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"path"
@@ -78,6 +80,67 @@ func (s *CertStore) LoadCertificates() {
 
 		if strings.HasSuffix(file.Name(), ".crt") {
 			s.loadCertificate(strings.TrimSuffix(file.Name(), ".crt"))
+		}
+	}
+
+	s.migrateOversizedCAIfNeeded()
+}
+
+// migrateOversizedCAIfNeeded drops the self-signed CA — and any leaf
+// certificates issued by it — when the CA's serial number is wider
+// than RFC 5280 §4.1.2.2 allows (20 octets). Apple's DER parser
+// rejects such certificates with "Unknown format in import" before
+// any trust evaluation runs, so without this migration every device
+// that already baked an oversized CA would keep failing on
+// macOS/iOS/tvOS clients forever. User-supplied custom certificates
+// have a different issuer and are left untouched.
+func (s *CertStore) migrateOversizedCAIfNeeded() {
+	s.certLock.Lock()
+	defer s.certLock.Unlock()
+
+	ca := s.certificates[selfSignerCAMagicName]
+	if ca == nil || len(ca.Certificate) == 0 {
+		return
+	}
+
+	caCert, err := x509.ParseCertificate(ca.Certificate[0])
+	if err != nil {
+		s.log.Warn().Err(err).Msg("Failed to parse stored CA certificate during migration check")
+		return
+	}
+
+	if caCert.SerialNumber.BitLen() <= maxValidSerialBits {
+		return
+	}
+
+	s.log.Warn().
+		Int("serial_bits", caCert.SerialNumber.BitLen()).
+		Msg("Stored self-signed CA has an oversized serial number; regenerating CA and any leaves it issued")
+
+	toRemove := []string{selfSignerCAMagicName}
+	for hostname, cert := range s.certificates {
+		if hostname == selfSignerCAMagicName || len(cert.Certificate) == 0 {
+			continue
+		}
+		leaf, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			continue
+		}
+		if !bytes.Equal(leaf.RawIssuer, caCert.RawSubject) {
+			continue
+		}
+		toRemove = append(toRemove, hostname)
+	}
+
+	for _, hostname := range toRemove {
+		delete(s.certificates, hostname)
+		keyFile := path.Join(s.storePath, hostname+".key")
+		crtFile := path.Join(s.storePath, hostname+".crt")
+		if err := os.Remove(keyFile); err != nil && !os.IsNotExist(err) {
+			s.log.Warn().Err(err).Str("file", keyFile).Msg("Failed to remove stale key file")
+		}
+		if err := os.Remove(crtFile); err != nil && !os.IsNotExist(err) {
+			s.log.Warn().Err(err).Str("file", crtFile).Msg("Failed to remove stale certificate file")
 		}
 	}
 }
