@@ -50,13 +50,13 @@ adb install -r jetkvm-android/build/JetKVM-release.apk
 Latest release:
 
 ```text
-https://github.com/Batestinha/jetkvm-android-controller/releases/tag/v1.10
+https://github.com/Batestinha/jetkvm-android-controller/releases/tag/v1.11
 ```
 
 Latest APK asset:
 
 ```text
-JetKVM-Android-Controller-1.10.apk
+JetKVM-Android-Controller-1.11.apk
 ```
 
 Obtainium source:
