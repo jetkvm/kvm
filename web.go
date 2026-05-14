@@ -4,7 +4,13 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/sha256"
+	"crypto/subtle"
+	"crypto/x509"
 	"embed"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -99,6 +106,7 @@ const (
 )
 
 const companionPairRequestTTL = 5 * time.Minute
+const companionSignatureMaxSkew = 60 * time.Second
 
 type companionPairRequest struct {
 	ID              string
@@ -108,16 +116,19 @@ type companionPairRequest struct {
 	RequestedAt     time.Time
 	Status          string
 	OTP             string
-	Token           string
+	CompanionID     string
+	CompanionPubKey string
 	RejectionReason string
 }
 
 type companionPairRequestBody struct {
-	OTP string `json:"otp"`
+	OTP                string `json:"otp"`
+	CompanionPublicKey string `json:"companion_public_key"`
 }
 
 type companionPairApproveBody struct {
-	OTP string `json:"otp"`
+	OTP                string `json:"otp"`
+	CompanionPublicKey string `json:"companion_public_key"`
 }
 
 type companionPairInitiateBody struct {
@@ -127,6 +138,8 @@ type companionPairInitiateBody struct {
 var (
 	companionPairingLock    stdsync.Mutex
 	companionPairingRequest *companionPairRequest
+	companionNonceLock      stdsync.Mutex
+	companionNonces         = map[string]map[string]time.Time{}
 )
 
 func setupRouter() *gin.Engine {
@@ -289,13 +302,18 @@ func setupRouter() *gin.Engine {
 }
 
 func handleCompanionTargetDeclaration(c *gin.Context) {
-	if !hasValidCompanionToken(c) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "companion is not paired"})
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if !hasValidCompanionSignature(c, bodyBytes) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid companion signature"})
 		return
 	}
 
 	var declaration CompanionTargetDeclaration
-	if err := c.ShouldBindJSON(&declaration); err != nil {
+	if err := json.Unmarshal(bodyBytes, &declaration); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
@@ -342,12 +360,6 @@ func handleCompanionTargetDeclaration(c *gin.Context) {
 }
 
 func handleCompanionPair(c *gin.Context) {
-	presentedToken := c.GetHeader("X-JetKVM-Companion-Token")
-	if presentedToken != "" && isKnownCompanionToken(presentedToken) {
-		c.JSON(http.StatusOK, companionPairingResponseWithToken(presentedToken))
-		return
-	}
-
 	var body companionPairRequestBody
 	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pairing request"})
@@ -357,8 +369,12 @@ func handleCompanionPair(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "valid 6 digit otp is required"})
 		return
 	}
+	if !isValidCompanionPublicKey(body.CompanionPublicKey) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion public key is required"})
+		return
+	}
 
-	request := getOrCreateCompanionPairingRequest(c, body.OTP)
+	request := getOrCreateCompanionPairingRequest(c, body.OTP, body.CompanionPublicKey)
 	showCompanionPairingPrompt(request)
 	c.JSON(http.StatusAccepted, companionPairingPendingResponse(request))
 }
@@ -402,7 +418,7 @@ func handleCompanionPairStatus(c *gin.Context) {
 		return
 	}
 	if request.Status == "paired" {
-		c.JSON(http.StatusOK, companionPairingResponseWithToken(request.Token))
+		c.JSON(http.StatusOK, companionPairingResponseWithCompanion(request.CompanionID))
 		return
 	}
 	c.JSON(http.StatusOK, companionPairingPendingResponse(request))
@@ -441,9 +457,12 @@ func handleCompanionPairClaim(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "otp does not match"})
 		return
 	}
+	if !isValidCompanionPublicKey(body.CompanionPublicKey) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion public key is required"})
+		return
+	}
 
-	token := uuid.NewString()
-	addCompanionPairingToken(token)
+	companionID := addCompanionAuthorization(body.CompanionPublicKey)
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save companion pairing"})
 		return
@@ -451,9 +470,10 @@ func handleCompanionPairClaim(c *gin.Context) {
 
 	companionPairingLock.Lock()
 	request.Status = "paired"
-	request.Token = token
+	request.CompanionID = companionID
+	request.CompanionPubKey = body.CompanionPublicKey
 	companionPairingLock.Unlock()
-	c.JSON(http.StatusOK, companionPairingResponseWithToken(token))
+	c.JSON(http.StatusOK, companionPairingResponseWithCompanion(companionID))
 }
 
 func handleCompanionPairApprove(c *gin.Context) {
@@ -476,9 +496,12 @@ func handleCompanionPairApprove(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "otp does not match"})
 		return
 	}
+	if !isValidCompanionPublicKey(request.CompanionPubKey) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion public key is required"})
+		return
+	}
 
-	token := uuid.NewString()
-	addCompanionPairingToken(token)
+	companionID := addCompanionAuthorization(request.CompanionPubKey)
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save companion pairing"})
 		return
@@ -486,14 +509,14 @@ func handleCompanionPairApprove(c *gin.Context) {
 
 	companionPairingLock.Lock()
 	request.Status = "paired"
-	request.Token = token
+	request.CompanionID = companionID
 	companionPairingLock.Unlock()
 
 	logger.Info().
 		Str("remote_addr", request.RemoteAddr).
 		Str("request_id", request.ID).
 		Msg("companion pairing approved")
-	c.JSON(http.StatusOK, companionPairingResponseWithToken(token))
+	c.JSON(http.StatusOK, companionPairingResponseWithCompanion(companionID))
 }
 
 func handleCompanionPairReject(c *gin.Context) {
@@ -516,11 +539,17 @@ func handleCompanionPairReject(c *gin.Context) {
 }
 
 func handleCompanionUnpair(c *gin.Context) {
-	if !hasValidCompanionToken(c) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "companion is not paired"})
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	removeCompanionPairingToken(c.GetHeader("X-JetKVM-Companion-Token"))
+	companionID, ok := companionIDFromSignedRequest(c, bodyBytes)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid companion signature"})
+		return
+	}
+	removeCompanionAuthorization(companionID)
 	_ = SaveConfig()
 	clearCompanionTargetMetadata()
 	c.JSON(http.StatusOK, gin.H{"paired": false})
@@ -531,21 +560,17 @@ func handleCompanionUnpairAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"paired": false})
 }
 
-func hasValidCompanionToken(c *gin.Context) bool {
-	token := c.GetHeader("X-JetKVM-Companion-Token")
-	return token != "" && isKnownCompanionToken(token)
-}
-
 func companionPairingResponse() gin.H {
-	tokens := companionPairingTokens()
-	token := ""
-	if len(tokens) > 0 {
-		token = tokens[0]
+	companions := companionAuthorizations()
+	companionID := ""
+	for id := range companions {
+		companionID = id
+		break
 	}
-	return companionPairingResponseWithToken(token)
+	return companionPairingResponseWithCompanion(companionID)
 }
 
-func companionPairingResponseWithToken(token string) gin.H {
+func companionPairingResponseWithCompanion(companionID string) gin.H {
 	deviceID := GetDeviceID()
 	shortID := strings.ToLower(deviceID)
 	if len(shortID) > 8 {
@@ -562,7 +587,7 @@ func companionPairingResponseWithToken(token string) gin.H {
 	return gin.H{
 		"paired":                true,
 		"status":                "paired",
-		"token":                 token,
+		"companion_id":          companionID,
 		"jetkvm_device_id":      deviceID,
 		"jetkvm_identity_token": shortID,
 		"jetkvm_usb_product":    usbProduct,
@@ -590,25 +615,27 @@ func companionPairingPendingResponse(request *companionPairRequest) gin.H {
 	return response
 }
 
-func getOrCreateCompanionPairingRequest(c *gin.Context, otp string) *companionPairRequest {
+func getOrCreateCompanionPairingRequest(c *gin.Context, otp string, companionPublicKey string) *companionPairRequest {
 	companionPairingLock.Lock()
 	defer companionPairingLock.Unlock()
 
 	now := time.Now()
 	if companionPairingRequest != nil &&
 		companionPairingRequest.Status == "pending" &&
-		now.Sub(companionPairingRequest.RequestedAt) <= companionPairRequestTTL {
+		now.Sub(companionPairingRequest.RequestedAt) <= companionPairRequestTTL &&
+		companionPairingRequest.CompanionPubKey == companionPublicKey {
 		return companionPairingRequest
 	}
 
 	companionPairingRequest = &companionPairRequest{
-		ID:          uuid.NewString(),
-		Direction:   "companion",
-		RemoteAddr:  c.ClientIP(),
-		UserAgent:   c.GetHeader("User-Agent"),
-		RequestedAt: now,
-		Status:      "pending",
-		OTP:         otp,
+		ID:              uuid.NewString(),
+		Direction:       "companion",
+		RemoteAddr:      c.ClientIP(),
+		UserAgent:       c.GetHeader("User-Agent"),
+		RequestedAt:     now,
+		Status:          "pending",
+		OTP:             otp,
+		CompanionPubKey: companionPublicKey,
 	}
 	return companionPairingRequest
 }
@@ -673,6 +700,7 @@ func showCompanionPairingPrompt(request *companionPairRequest) {
 func clearCompanionPairing() {
 	config.CompanionPairing.Token = ""
 	config.CompanionPairing.Tokens = nil
+	config.CompanionPairing.Companions = nil
 	_ = SaveConfig()
 	clearCompanionTargetMetadata()
 	companionPairingLock.Lock()
@@ -698,50 +726,44 @@ func companionPairingTokens() []string {
 	return tokens
 }
 
-func isKnownCompanionToken(token string) bool {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return false
-	}
-	for _, knownToken := range companionPairingTokens() {
-		if token == knownToken {
-			return true
+func companionAuthorizations() map[string]CompanionAuthorization {
+	result := map[string]CompanionAuthorization{}
+	for id, authorization := range config.CompanionPairing.Companions {
+		id = strings.TrimSpace(id)
+		publicKey := strings.TrimSpace(authorization.PublicKey)
+		if id != "" && publicKey != "" {
+			result[id] = CompanionAuthorization{PublicKey: publicKey}
 		}
 	}
-	return false
+	return result
 }
 
-func addCompanionPairingToken(token string) {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return
+func addCompanionAuthorization(publicKey string) string {
+	publicKey = strings.TrimSpace(publicKey)
+	if config.CompanionPairing.Companions == nil {
+		config.CompanionPairing.Companions = map[string]CompanionAuthorization{}
 	}
-	tokens := companionPairingTokens()
-	for _, knownToken := range tokens {
-		if token == knownToken {
-			config.CompanionPairing.Tokens = tokens
-			config.CompanionPairing.Token = ""
-			return
+	for id, authorization := range config.CompanionPairing.Companions {
+		if authorization.PublicKey == publicKey {
+			return id
 		}
 	}
-	config.CompanionPairing.Tokens = append(tokens, token)
+	companionID := uuid.NewString()
+	config.CompanionPairing.Companions[companionID] = CompanionAuthorization{PublicKey: publicKey}
 	config.CompanionPairing.Token = ""
+	config.CompanionPairing.Tokens = nil
+	return companionID
 }
 
-func removeCompanionPairingToken(token string) {
-	token = strings.TrimSpace(token)
-	if token == "" {
+func removeCompanionAuthorization(companionID string) {
+	companionID = strings.TrimSpace(companionID)
+	if companionID == "" || config.CompanionPairing.Companions == nil {
 		return
 	}
-	tokens := companionPairingTokens()
-	filtered := make([]string, 0, len(tokens))
-	for _, knownToken := range tokens {
-		if knownToken != token {
-			filtered = append(filtered, knownToken)
-		}
+	delete(config.CompanionPairing.Companions, companionID)
+	if len(config.CompanionPairing.Companions) == 0 {
+		config.CompanionPairing.Companions = nil
 	}
-	config.CompanionPairing.Tokens = filtered
-	config.CompanionPairing.Token = ""
 }
 
 func normalizeCompanionURL(rawURL string) string {
@@ -752,30 +774,189 @@ func normalizeCompanionURL(rawURL string) string {
 	if !strings.Contains(trimmed, "://") {
 		trimmed = "http://" + trimmed
 	}
+	parsed, err := neturl.Parse(trimmed)
+	if err == nil && parsed.Host != "" && parsed.Port() == "" {
+		parsed.Host = net.JoinHostPort(parsed.Hostname(), "8787")
+		trimmed = parsed.String()
+	}
 	return strings.TrimRight(trimmed, "/")
 }
 
+func companionIDFromSignedRequest(c *gin.Context, body []byte) (string, bool) {
+	companionID := strings.TrimSpace(c.GetHeader("X-JetKVM-Companion-ID"))
+	if companionID == "" {
+		return "", false
+	}
+	authorization, ok := companionAuthorizations()[companionID]
+	if !ok || authorization.PublicKey == "" {
+		return "", false
+	}
+
+	timestamp := strings.TrimSpace(c.GetHeader("X-JetKVM-Timestamp"))
+	nonce := strings.TrimSpace(c.GetHeader("X-JetKVM-Nonce"))
+	signatureText := strings.TrimSpace(c.GetHeader("X-JetKVM-Signature"))
+	if timestamp == "" || nonce == "" || signatureText == "" {
+		return "", false
+	}
+
+	requestTime, err := time.Parse(time.RFC3339Nano, timestamp)
+	if err != nil {
+		return "", false
+	}
+	now := time.Now()
+	if requestTime.Before(now.Add(-companionSignatureMaxSkew)) || requestTime.After(now.Add(companionSignatureMaxSkew)) {
+		return "", false
+	}
+	if hasCompanionNonce(companionID, nonce) {
+		return "", false
+	}
+
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(authorization.PublicKey)
+	if err != nil {
+		return "", false
+	}
+	publicKey, err := x509.ParsePKIXPublicKey(publicKeyBytes)
+	if err != nil {
+		return "", false
+	}
+	ecdsaPublicKey, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return "", false
+	}
+	signature, err := base64.StdEncoding.DecodeString(signatureText)
+	if err != nil {
+		return "", false
+	}
+	bodyHashBytes := sha256.Sum256(body)
+	bodyHash := hex.EncodeToString(bodyHashBytes[:])
+	canonical := strings.Join([]string{
+		c.Request.Method,
+		c.Request.URL.Path,
+		timestamp,
+		nonce,
+		bodyHash,
+	}, "\n")
+	digest := sha256.Sum256([]byte(canonical))
+	if !ecdsa.VerifyASN1(ecdsaPublicKey, digest[:], signature) {
+		return "", false
+	}
+	if !rememberCompanionNonce(companionID, nonce, now.Add(companionSignatureMaxSkew)) {
+		return "", false
+	}
+	return companionID, true
+}
+
+func hasValidCompanionSignature(c *gin.Context, body []byte) bool {
+	_, ok := companionIDFromSignedRequest(c, body)
+	return ok
+}
+
+func hasCompanionNonce(companionID string, nonce string) bool {
+	if len(nonce) < 16 || len(nonce) > 128 {
+		return true
+	}
+	companionNonceLock.Lock()
+	defer companionNonceLock.Unlock()
+	pruneCompanionNoncesLocked(time.Now())
+
+	for knownNonce := range companionNonces[companionID] {
+		if subtle.ConstantTimeCompare([]byte(knownNonce), []byte(nonce)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func rememberCompanionNonce(companionID string, nonce string, expiresAt time.Time) bool {
+	companionNonceLock.Lock()
+	defer companionNonceLock.Unlock()
+	pruneCompanionNoncesLocked(time.Now())
+
+	if companionNonces[companionID] == nil {
+		companionNonces[companionID] = map[string]time.Time{}
+	}
+	for knownNonce := range companionNonces[companionID] {
+		if subtle.ConstantTimeCompare([]byte(knownNonce), []byte(nonce)) == 1 {
+			return false
+		}
+	}
+	companionNonces[companionID][nonce] = expiresAt
+	return true
+}
+
+func pruneCompanionNoncesLocked(now time.Time) {
+	for id, nonces := range companionNonces {
+		for knownNonce, expiry := range nonces {
+			if !expiry.After(now) {
+				delete(nonces, knownNonce)
+			}
+		}
+		if len(nonces) == 0 {
+			delete(companionNonces, id)
+		}
+	}
+}
+
+func isValidCompanionPublicKey(publicKey string) bool {
+	publicKey = strings.TrimSpace(publicKey)
+	if publicKey == "" {
+		return false
+	}
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKey)
+	if err != nil {
+		return false
+	}
+	parsed, err := x509.ParsePKIXPublicKey(publicKeyBytes)
+	if err != nil {
+		return false
+	}
+	_, ok := parsed.(*ecdsa.PublicKey)
+	return ok
+}
+
 func notifyCompanionPairRequest(companionURL string, jetkvmURL string, requestID string) error {
-	body := strings.NewReader(fmt.Sprintf(
+	bodyText := fmt.Sprintf(
 		`{"jetkvm_url":%q,"request_id":%q}`,
 		jetkvmURL,
 		requestID,
-	))
-	req, err := http.NewRequest(http.MethodPost, companionURL+"/pair/request", body)
-	if err != nil {
-		return err
+	)
+	client := &http.Client{Timeout: 10 * time.Second}
+	var lastErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		req, err := http.NewRequest(http.MethodPost, companionURL+"/pair/request", strings.NewReader(bodyText))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			logger.Warn().
+				Err(err).
+				Str("companion_url", companionURL).
+				Int("attempt", attempt).
+				Msg("failed to notify companion pairing request")
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return nil
+			}
+			lastErr = fmt.Errorf("companion returned HTTP %d", resp.StatusCode)
+			logger.Warn().
+				Int("status", resp.StatusCode).
+				Str("companion_url", companionURL).
+				Int("attempt", attempt).
+				Msg("companion pairing request notification rejected")
+		}
+		if attempt < 5 {
+			time.Sleep(time.Duration(attempt*attempt) * time.Second)
+		}
 	}
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
+	if lastErr != nil {
+		return lastErr
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("companion returned HTTP %d", resp.StatusCode)
-	}
-	return nil
+	return fmt.Errorf("companion notification failed")
 }
 
 func isValidCompanionOTP(otp string) bool {

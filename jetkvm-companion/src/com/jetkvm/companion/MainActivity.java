@@ -31,7 +31,10 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
+import java.security.spec.ECGenParameterSpec;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_POST_NOTIFICATIONS = 10;
@@ -477,7 +480,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         if (result.success) {
-                            CompanionService.savePairing(prefs, baseUrl, result.token, result.identityToken);
+                            CompanionService.savePairing(prefs, baseUrl, result.companionId, result.privateKey, result.identityToken);
                             refreshPairingControls();
                             startForegroundService(new Intent(MainActivity.this, CompanionService.class));
                             updateStatus("Paired " + baseUrl + ".");
@@ -493,6 +496,7 @@ public class MainActivity extends Activity {
     private PairResult requestPairing(String baseUrl, String otp) {
         HttpURLConnection conn = null;
         try {
+            PairingKeys keys = generatePairingKeys();
             String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
             URL url = new URL(trimmedBaseUrl + "/companion/pair");
             conn = (HttpURLConnection) url.openConnection();
@@ -501,14 +505,14 @@ public class MainActivity extends Activity {
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-            byte[] requestBody = ("{\"otp\":\"" + otp + "\"}").getBytes(StandardCharsets.UTF_8);
+            byte[] requestBody = ("{\"otp\":\"" + otp + "\",\"companion_public_key\":\"" + keys.publicKey + "\"}").getBytes(StandardCharsets.UTF_8);
             conn.setFixedLengthStreamingMode(requestBody.length);
             conn.getOutputStream().write(requestBody);
 
             int status = conn.getResponseCode();
             String response = readAll(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
             if (status == 200) {
-                return parsePairingResponse(response);
+                return parsePairingResponse(response, keys.privateKey);
             }
             if (status != 202) {
                 return PairResult.error("HTTP " + status);
@@ -518,7 +522,7 @@ public class MainActivity extends Activity {
             if (requestId.length() == 0) {
                 return PairResult.error("missing request id");
             }
-            return pollPairingStatus(trimmedBaseUrl, requestId);
+            return pollPairingStatus(trimmedBaseUrl, requestId, keys.privateKey);
         } catch (Exception e) {
             return PairResult.error(e.getClass().getSimpleName());
         } finally {
@@ -536,7 +540,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         if (result.success) {
-                            CompanionService.savePairing(prefs, baseUrl, result.token, result.identityToken);
+                            CompanionService.savePairing(prefs, baseUrl, result.companionId, result.privateKey, result.identityToken);
                             pendingPairUrl = "";
                             pendingPairRequestId = "";
                             refreshPairingControls();
@@ -554,6 +558,7 @@ public class MainActivity extends Activity {
     private PairResult claimPairing(String baseUrl, String requestId, String otp) {
         HttpURLConnection conn = null;
         try {
+            PairingKeys keys = generatePairingKeys();
             String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
             URL url = new URL(trimmedBaseUrl + "/companion/pair/" + requestId + "/claim");
             conn = (HttpURLConnection) url.openConnection();
@@ -562,13 +567,13 @@ public class MainActivity extends Activity {
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-            byte[] requestBody = ("{\"otp\":\"" + otp.trim() + "\"}").getBytes(StandardCharsets.UTF_8);
+            byte[] requestBody = ("{\"otp\":\"" + otp.trim() + "\",\"companion_public_key\":\"" + keys.publicKey + "\"}").getBytes(StandardCharsets.UTF_8);
             conn.setFixedLengthStreamingMode(requestBody.length);
             conn.getOutputStream().write(requestBody);
             int status = conn.getResponseCode();
             String response = readAll(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
             if (status == 200) {
-                return parsePairingResponse(response);
+                return parsePairingResponse(response, keys.privateKey);
             }
             return PairResult.error("HTTP " + status);
         } catch (Exception e) {
@@ -605,15 +610,17 @@ public class MainActivity extends Activity {
         HttpURLConnection conn = null;
         try {
             String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
-            String token = CompanionService.getPairingToken(prefs, trimmedBaseUrl);
+            CompanionService.CompanionPairing pairing = CompanionService.getPairing(prefs, trimmedBaseUrl);
+            if (pairing == null) return true;
+            byte[] requestBody = new byte[0];
             URL url = new URL(trimmedBaseUrl + "/companion/unpair");
             conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setRequestProperty("X-JetKVM-Companion-Token", token);
-            conn.setFixedLengthStreamingMode(0);
+            CompanionService.applyCompanionSignatureHeaders(conn, "POST", "/companion/unpair", requestBody, pairing);
+            conn.setFixedLengthStreamingMode(requestBody.length);
             int status = conn.getResponseCode();
             return status == 200 || status == 401 || status == 404;
         } catch (Exception e) {
@@ -623,7 +630,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private PairResult pollPairingStatus(String baseUrl, String requestId) {
+    private PairResult pollPairingStatus(String baseUrl, String requestId, String privateKey) {
         for (int i = 0; i < 60; i++) {
             HttpURLConnection conn = null;
             try {
@@ -636,7 +643,7 @@ public class MainActivity extends Activity {
                 int status = conn.getResponseCode();
                 String response = readAll(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
                 if (status == 200 && "paired".equals(extractJsonString(response, "status"))) {
-                    return parsePairingResponse(response);
+                    return parsePairingResponse(response, privateKey);
                 }
                 if (status == 200 && "rejected".equals(extractJsonString(response, "status"))) {
                     return PairResult.error("rejected on JetKVM");
@@ -650,13 +657,13 @@ public class MainActivity extends Activity {
         return PairResult.error("approval timed out");
     }
 
-    private PairResult parsePairingResponse(String response) {
-        String token = extractJsonString(response, "token");
+    private PairResult parsePairingResponse(String response, String privateKey) {
+        String companionId = extractJsonString(response, "companion_id");
         String identityToken = extractJsonString(response, "jetkvm_identity_token");
-        if (token.length() == 0 || identityToken.length() == 0) {
-            return PairResult.error("missing token or identity");
+        if (companionId.length() == 0 || privateKey.length() == 0 || identityToken.length() == 0) {
+            return PairResult.error("missing companion id, key, or identity");
         }
-        return PairResult.success(token, identityToken);
+        return PairResult.success(companionId, privateKey, identityToken);
     }
 
     private static String generatePairingOtp() {
@@ -701,25 +708,46 @@ public class MainActivity extends Activity {
         return json.substring(startQuote + 1, endQuote);
     }
 
+    private static PairingKeys generatePairingKeys() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp256r1"), new SecureRandom());
+        KeyPair keyPair = generator.generateKeyPair();
+        String publicKey = android.util.Base64.encodeToString(keyPair.getPublic().getEncoded(), android.util.Base64.NO_WRAP);
+        String privateKey = android.util.Base64.encodeToString(keyPair.getPrivate().getEncoded(), android.util.Base64.NO_WRAP);
+        return new PairingKeys(publicKey, privateKey);
+    }
+
+    private static final class PairingKeys {
+        final String publicKey;
+        final String privateKey;
+
+        PairingKeys(String publicKey, String privateKey) {
+            this.publicKey = publicKey;
+            this.privateKey = privateKey;
+        }
+    }
+
     private static final class PairResult {
         final boolean success;
-        final String token;
+        final String companionId;
+        final String privateKey;
         final String identityToken;
         final String message;
 
-        private PairResult(boolean success, String token, String identityToken, String message) {
+        private PairResult(boolean success, String companionId, String privateKey, String identityToken, String message) {
             this.success = success;
-            this.token = token;
+            this.companionId = companionId;
+            this.privateKey = privateKey;
             this.identityToken = identityToken;
             this.message = message;
         }
 
-        static PairResult success(String token, String identityToken) {
-            return new PairResult(true, token, identityToken, "");
+        static PairResult success(String companionId, String privateKey, String identityToken) {
+            return new PairResult(true, companionId, privateKey, identityToken, "");
         }
 
         static PairResult error(String message) {
-            return new PairResult(false, "", "", message);
+            return new PairResult(false, "", "", "", message);
         }
     }
 

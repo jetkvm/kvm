@@ -31,8 +31,13 @@ type WakeOnLanDevice struct {
 }
 
 type CompanionPairingConfig struct {
-	Token  string   `json:"token,omitempty"`
-	Tokens []string `json:"tokens,omitempty"`
+	Token      string                            `json:"token,omitempty"`
+	Tokens     []string                          `json:"tokens,omitempty"`
+	Companions map[string]CompanionAuthorization `json:"companions,omitempty"`
+}
+
+type CompanionAuthorization struct {
+	PublicKey string `json:"public_key"`
 }
 
 // Constants for keyboard macro limits

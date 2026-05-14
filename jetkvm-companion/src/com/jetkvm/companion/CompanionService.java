@@ -40,8 +40,15 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.MessageDigest;
+import java.security.PrivateKey;
+import java.security.SecureRandom;
+import java.security.Signature;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.UUID;
 
 public class CompanionService extends Service implements InputManager.InputDeviceListener {
     static final String TAG = "JetKVMCompanion";
@@ -390,12 +397,12 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
             URL url = new URL(trimmedBaseUrl + "/companion/target");
             SharedPreferences prefs = getCompanionPreferences(this);
-            String companionToken = getPairingToken(prefs, trimmedBaseUrl);
-            if (companionToken.length() == 0) {
+            CompanionPairing pairing = getPairing(prefs, trimmedBaseUrl);
+            if (pairing == null) {
                 Log.i(TAG, "target declaration skipped unpaired url=" + trimmedBaseUrl);
                 return;
             }
-            String identityToken = getPairingIdentityToken(prefs, trimmedBaseUrl);
+            String identityToken = pairing.identityToken;
             if (identityToken.length() == 0) {
                 Log.i(TAG, "target declaration skipped missing identity url=" + trimmedBaseUrl);
                 return;
@@ -427,7 +434,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            conn.setRequestProperty("X-JetKVM-Companion-Token", companionToken);
+            applyCompanionSignatureHeaders(conn, "POST", "/companion/target", bodyBytes, pairing);
             conn.setFixedLengthStreamingMode(bodyBytes.length);
 
             OutputStream out = conn.getOutputStream();
@@ -526,9 +533,9 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return pairings;
     }
 
-    static String getPairingToken(SharedPreferences prefs, String rawUrl) {
+    static String getPairingCompanionId(SharedPreferences prefs, String rawUrl) {
         CompanionPairing pairing = getPairing(prefs, rawUrl);
-        return pairing == null ? "" : pairing.token;
+        return pairing == null ? "" : pairing.companionId;
     }
 
     static String getPairingIdentityToken(SharedPreferences prefs, String rawUrl) {
@@ -564,9 +571,10 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return null;
     }
 
-    static boolean savePairing(SharedPreferences prefs, String rawUrl, String token, String identityToken) {
+    static boolean savePairing(SharedPreferences prefs, String rawUrl, String companionId, String privateKey, String identityToken) {
         String normalizedUrl = normalizeJetKvmUrl(rawUrl);
-        if (normalizedUrl.length() == 0 || token == null || token.trim().length() == 0) {
+        if (normalizedUrl.length() == 0 || companionId == null || companionId.trim().length() == 0 ||
+                privateKey == null || privateKey.trim().length() == 0) {
             return false;
         }
 
@@ -581,7 +589,8 @@ public class CompanionService extends Service implements InputManager.InputDevic
         }
         lines.add(new CompanionPairing(
             normalizedUrl,
-            token.trim(),
+            companionId.trim(),
+            privateKey.trim(),
             identityToken == null ? "" : identityToken.trim().toLowerCase(Locale.US)
         ).toLine());
         return prefs.edit().putString(KEY_JETKVM_PAIRINGS, joinUrls(lines)).commit();
@@ -640,30 +649,63 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return builder.toString();
     }
 
+    static void applyCompanionSignatureHeaders(HttpURLConnection conn, String method, String path, byte[] bodyBytes, CompanionPairing pairing) throws Exception {
+        String timestamp = java.time.Instant.now().toString();
+        String nonce = UUID.randomUUID().toString() + "-" + Long.toHexString(new SecureRandom().nextLong());
+        String bodyHash = hex(MessageDigest.getInstance("SHA-256").digest(bodyBytes));
+        String canonical = method + "\n" + path + "\n" + timestamp + "\n" + nonce + "\n" + bodyHash;
+
+        byte[] privateKeyBytes = android.util.Base64.decode(pairing.privateKey, android.util.Base64.NO_WRAP);
+        PrivateKey privateKey = KeyFactory.getInstance("EC").generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+        Signature signer = Signature.getInstance("SHA256withECDSA");
+        signer.initSign(privateKey);
+        signer.update(canonical.getBytes(StandardCharsets.UTF_8));
+        String signature = android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP);
+
+        conn.setRequestProperty("X-JetKVM-Companion-ID", pairing.companionId);
+        conn.setRequestProperty("X-JetKVM-Timestamp", timestamp);
+        conn.setRequestProperty("X-JetKVM-Nonce", nonce);
+        conn.setRequestProperty("X-JetKVM-Signature", signature);
+    }
+
+    private static String hex(byte[] bytes) {
+        char[] out = new char[bytes.length * 2];
+        char[] table = "0123456789abcdef".toCharArray();
+        for (int i = 0; i < bytes.length; i++) {
+            int value = bytes[i] & 0xff;
+            out[i * 2] = table[value >>> 4];
+            out[i * 2 + 1] = table[value & 0x0f];
+        }
+        return new String(out);
+    }
+
     static final class CompanionPairing {
         final String url;
-        final String token;
+        final String companionId;
+        final String privateKey;
         final String identityToken;
 
-        CompanionPairing(String url, String token, String identityToken) {
+        CompanionPairing(String url, String companionId, String privateKey, String identityToken) {
             this.url = url;
-            this.token = token;
+            this.companionId = companionId;
+            this.privateKey = privateKey;
             this.identityToken = identityToken;
         }
 
         static CompanionPairing fromLine(String line) {
             if (line == null) return null;
             String[] parts = line.split("\\|", -1);
-            if (parts.length < 2) return null;
+            if (parts.length < 4) return null;
             String url = normalizeJetKvmUrl(parts[0]);
-            String token = parts[1].trim();
-            String identityToken = parts.length >= 3 ? parts[2].trim().toLowerCase(Locale.US) : "";
-            if (url.length() == 0 || token.length() == 0) return null;
-            return new CompanionPairing(url, token, identityToken);
+            String companionId = parts[1].trim();
+            String privateKey = parts[2].trim();
+            String identityToken = parts[3].trim().toLowerCase(Locale.US);
+            if (url.length() == 0 || companionId.length() == 0 || privateKey.length() == 0) return null;
+            return new CompanionPairing(url, companionId, privateKey, identityToken);
         }
 
         String toLine() {
-            return url + "|" + token + "|" + identityToken;
+            return url + "|" + companionId + "|" + privateKey + "|" + identityToken;
         }
     }
 
