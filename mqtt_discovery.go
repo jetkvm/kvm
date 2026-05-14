@@ -429,8 +429,8 @@ func (m *MQTTManager) publishHADiscovery() {
 		Device:            device,
 	})
 
-	// Screenshot Capture Button: only when actions enabled.
-	if actionsEnabled {
+	// Screenshot Capture Button: published when publish_screenshot_button is enabled.
+	if config.MqttConfig != nil && config.MqttConfig.PublishScreenshotButton {
 		m.publishDiscovery("button", "screenshot", haDiscoveryPayload{
 			Name:              "Capture Screenshot",
 			UniqueID:          fmt.Sprintf("jetkvm_%s_screenshot_button", m.deviceID),

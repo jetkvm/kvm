@@ -528,7 +528,7 @@ static int do_jpeg_encode_frame(VIDEO_FRAME_INFO_S *frame, uint32_t width, uint3
     VENC_CHN_ATTR_S attr;
     memset(&attr, 0, sizeof(attr));
     attr.stRcAttr.enRcMode                    = VENC_RC_MODE_MJPEGFIXQP;
-    attr.stRcAttr.stMjpegFixQp.u32Qfactor     = 90;
+    attr.stRcAttr.stMjpegFixQp.u32Qfactor     = 85;
     attr.stVencAttr.enType                    = RK_VIDEO_ID_MJPEG;
     attr.stVencAttr.enPixelFormat             = RK_FMT_YUV422_YUYV;
     attr.stVencAttr.u32PicWidth               = width;

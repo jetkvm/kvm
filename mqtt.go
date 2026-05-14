@@ -21,18 +21,20 @@ var mqttLogger = logging.GetSubsystemLogger("mqtt")
 const publishTimeout = 5 * time.Second
 
 type MQTTConfig struct {
-	Enabled             bool   `json:"enabled"`
-	Broker              string `json:"broker"`
-	Port                int    `json:"port"`
-	Username            string `json:"username"`
-	Password            string `json:"password"`
-	BaseTopic           string `json:"base_topic"`
-	UseTLS              bool   `json:"use_tls"`
-	TLSInsecure         bool   `json:"tls_insecure"`
-	EnableHADiscovery   bool   `json:"enable_ha_discovery"`
-	EnableActions       bool   `json:"enable_actions"`
-	DebounceMs          int    `json:"debounce_ms"`
-	ScreenshotIntervalSec int   `json:"screenshot_interval_sec"`
+	Enabled                 bool   `json:"enabled"`
+	Broker                  string `json:"broker"`
+	Port                    int    `json:"port"`
+	Username                string `json:"username"`
+	Password                string `json:"password"`
+	BaseTopic               string `json:"base_topic"`
+	UseTLS                  bool   `json:"use_tls"`
+	TLSInsecure             bool   `json:"tls_insecure"`
+	EnableHADiscovery       bool   `json:"enable_ha_discovery"`
+	EnableActions           bool   `json:"enable_actions"`
+	DebounceMs              int    `json:"debounce_ms"`
+	PublishScreenshot       bool   `json:"publish_screenshot"`
+	ScreenshotIntervalSec   int    `json:"screenshot_interval_sec"`
+	PublishScreenshotButton bool   `json:"publish_screenshot_button"`
 }
 
 var mqttManager *MQTTManager
@@ -215,7 +217,7 @@ func (m *MQTTManager) onConnect(client mqtt.Client) {
 	m.publishExtendedStates()
 
 	// Start periodic screenshot publishing if configured
-	if config.MqttConfig != nil && config.MqttConfig.ScreenshotIntervalSec > 0 {
+	if config.MqttConfig != nil && config.MqttConfig.PublishScreenshot && config.MqttConfig.ScreenshotIntervalSec >= 10 {
 		m.startScreenshotTicker()
 	}
 }
@@ -289,10 +291,11 @@ func (m *MQTTManager) publishBinary(topic string, payload []byte, retained bool)
 }
 
 // startScreenshotTicker starts a background goroutine that periodically
-// captures and publishes a JPEG screenshot if ScreenshotIntervalSec > 0.
+// captures and publishes a JPEG screenshot if PublishScreenshot is enabled
+// and ScreenshotIntervalSec is at least 10.
 func (m *MQTTManager) startScreenshotTicker() {
 	interval := config.MqttConfig.ScreenshotIntervalSec
-	if interval <= 0 {
+	if !config.MqttConfig.PublishScreenshot || interval < 10 {
 		return
 	}
 	go func() {

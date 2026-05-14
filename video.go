@@ -116,7 +116,7 @@ func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {
 				continue
 			}
 
-			if config.MqttConfig != nil && config.MqttConfig.ScreenshotIntervalSec > 0 {
+			if config.MqttConfig != nil && config.MqttConfig.PublishScreenshot && config.MqttConfig.ScreenshotIntervalSec >= 10 {
 				nativeLogger.Info().Msg("not going to enter HDMI sleep mode because MQTT screenshot publishing is active")
 				continue
 			}

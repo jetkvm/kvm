@@ -205,12 +205,14 @@ func getDefaultConfig() Config {
 		VideoQualityFactor:   1.0,
 		VideoCodecPreference: "auto",
 		MqttConfig: &MQTTConfig{
-			Enabled:           false,
-			Port:              1883,
-			BaseTopic:         "jetkvm",
-			EnableHADiscovery: false,
-			EnableActions:     true,
-			DebounceMs:        500,
+			Enabled:                 false,
+			Port:                    1883,
+			BaseTopic:               "jetkvm",
+			EnableHADiscovery:       false,
+			EnableActions:           true,
+			DebounceMs:              500,
+			PublishScreenshot:       false,
+			PublishScreenshotButton: false,
 		},
 	}
 }

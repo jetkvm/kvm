@@ -226,8 +226,8 @@ func (m *MQTTManager) handleVirtualMediaCommand(client mqtt.Client, msg mqtt.Mes
 }
 
 func (m *MQTTManager) handleScreenshotCommand(client mqtt.Client, msg mqtt.Message) {
-	if !m.actionsAllowed() {
-		mqttLogger.Warn().Msg("screenshot command rejected: actions are disabled")
+	if config.MqttConfig == nil || !config.MqttConfig.PublishScreenshotButton {
+		mqttLogger.Warn().Msg("screenshot command rejected: screenshot button is disabled")
 		return
 	}
 	payload := strings.TrimSpace(string(msg.Payload()))

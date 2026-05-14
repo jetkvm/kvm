@@ -24,7 +24,9 @@ interface MQTTSettings {
   use_tls: boolean;
   tls_insecure: boolean;
   enable_ha_discovery: boolean;
+  publish_screenshot: boolean;
   screenshot_interval_sec: number;
+  publish_screenshot_button: boolean;
   enable_actions: boolean;
   debounce_ms: number;
 }
@@ -75,7 +77,9 @@ export default function SettingsMqttRoute() {
     use_tls: false,
     tls_insecure: false,
     enable_ha_discovery: true,
-    screenshot_interval_sec: 0,
+    publish_screenshot: false,
+    screenshot_interval_sec: 60,
+    publish_screenshot_button: false,
     enable_actions: true,
     debounce_ms: 500,
   });
@@ -148,6 +152,11 @@ export default function SettingsMqttRoute() {
     const errs: Record<string, string> = {};
     if (settings.enabled && !settings.broker.trim()) {
       errs.broker = m.mqtt_error_broker_required();
+    }
+    if (settings.publish_screenshot) {
+      if (settings.screenshot_interval_sec < 10 || settings.screenshot_interval_sec > 3600) {
+        errs.screenshot_interval_sec = m.mqtt_screenshot_interval_range_error();
+      }
     }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
@@ -444,42 +453,79 @@ export default function SettingsMqttRoute() {
                   />
                 </NestedSettingsGroup>
               )}
+            </NestedSettingsGroup>
 
+            {/* --- Screenshot --- */}
+            <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+            <SettingsSectionHeader
+              title={m.mqtt_section_screenshot()}
+              description={m.mqtt_section_screenshot_description()}
+            />
+            <NestedSettingsGroup>
               <SettingsItem
-                title={m.mqtt_screenshot_interval_title()}
-                description={m.mqtt_screenshot_interval_description()}
+                title={m.mqtt_publish_screenshot_title()}
+                description={m.mqtt_publish_screenshot_description()}
               >
-                <InputField
-                  size="SM"
-                  type="number"
-                  placeholder="0"
-                  value={settings.screenshot_interval_sec.toString()}
-                  onChange={e =>
-                    updateField("screenshot_interval_sec", parseInt(e.target.value) || 0)
-                  }
+                <Checkbox
+                  checked={settings.publish_screenshot}
+                  onChange={e => updateField("publish_screenshot", e.target.checked)}
                 />
               </SettingsItem>
-              {settings.screenshot_interval_sec > 0 && (
-                <GridCard>
-                  <div className="flex items-center gap-x-3 px-4 py-3">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-500"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <p className="text-xs text-amber-700 dark:text-amber-500">
-                      {m.mqtt_screenshot_interval_sleep_warning()}
-                    </p>
-                  </div>
-                </GridCard>
+
+              {settings.publish_screenshot && (
+                <NestedSettingsGroup>
+                  <SettingsItem
+                    title={m.mqtt_screenshot_interval_title()}
+                    description={m.mqtt_screenshot_interval_description()}
+                  >
+                    <InputField
+                      size="SM"
+                      type="number"
+                      placeholder="60"
+                      min={10}
+                      max={3600}
+                      value={settings.screenshot_interval_sec.toString()}
+                      error={fieldErrors.screenshot_interval_sec}
+                      onChange={e => {
+                        updateField("screenshot_interval_sec", parseInt(e.target.value) || 60);
+                        if (fieldErrors.screenshot_interval_sec)
+                          setFieldErrors(prev => ({ ...prev, screenshot_interval_sec: "" }));
+                      }}
+                    />
+                  </SettingsItem>
+                  {settings.screenshot_interval_sec > 0 && (
+                    <GridCard>
+                      <div className="flex items-center gap-x-3 px-4 py-3">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-500"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        <p className="text-xs text-amber-700 dark:text-amber-500">
+                          {m.mqtt_screenshot_interval_sleep_warning()}
+                        </p>
+                      </div>
+                    </GridCard>
+                  )}
+                </NestedSettingsGroup>
               )}
+
+              <SettingsItem
+                title={m.mqtt_publish_screenshot_button_title()}
+                description={m.mqtt_publish_screenshot_button_description()}
+              >
+                <Checkbox
+                  checked={settings.publish_screenshot_button}
+                  onChange={e => updateField("publish_screenshot_button", e.target.checked)}
+                />
+              </SettingsItem>
             </NestedSettingsGroup>
 
             {/* --- Advanced (only when ATX extension is active) --- */}
