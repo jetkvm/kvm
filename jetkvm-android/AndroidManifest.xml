@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.jetkvm.controller"
-    android:versionCode="10"
-    android:versionName="1.10">
+    android:versionCode="11"
+    android:versionName="1.11">
     <uses-sdk
         android:minSdkVersion="24"
         android:targetSdkVersion="36" />
