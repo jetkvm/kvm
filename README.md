@@ -76,9 +76,9 @@ needed:
    so Autofill and Android keyboard behavior work naturally.
 6. The compact overlay keeps Android-only actions close to the controller view
    without polluting the desktop JetKVM interface.
-7. The companion APK runs on the Android target and asks Android to dismiss the
-   keyguard only when JetKVM-identifiable keyboard plus touch/pointer devices
-   are present.
+7. The companion APK pairs with trusted JetKVM devices, watches Android's own
+   view of the paired JetKVM USB/display identity, and grants the backend a
+   short Android target lease only while that physical evidence is present.
 
 ## Why This Exists
 
@@ -101,8 +101,8 @@ path while leaving the vanilla experience recognizable.
 
 The companion APK is installed on the Android target, not on the controller
 phone. Its job is narrow: make JetKVM-controlled Android targets recover
-cleanly from display wake and soft keyguard states while keeping the trust
-boundary on the target device.
+cleanly from display wake and soft keyguard states while keeping the trust and
+presence boundary on the target device.
 
 JetKVM can send touchscreen, keyboard, mouse, wheel, and display-toggle input
 over USB HID. That is enough once Android is interactive. The lockscreen is the
@@ -112,16 +112,35 @@ not be allowed to dismiss a trusted keyguard purely from the external USB
 digitizer. That is an Android policy boundary, not a broken touch coordinate
 path.
 
-The companion uses public Android APIs to bridge that boundary:
+The companion uses public Android APIs and an authenticated pairing flow to
+bridge that boundary:
 
-- It runs a foreground service on the target phone.
-- It watches Android `InputDevice` metadata for JetKVM-identifiable USB input
-  devices.
-- It arms itself only when the JetKVM keyboard and either touchscreen or pointer
-  source are present.
+- Pairing establishes trust between the Android companion and one or more
+  JetKVM endpoints. The backend rejects companion target declarations unless
+  they authenticate with a paired companion token.
+- Each JetKVM exposes a stable per-device identity through the USB gadget
+  serial/product strings and through the default EDID monitor name/serial. On
+  Android this appears in input devices such as `JetKVM USB Emulation Device
+  <short id>` and in the external display name as `JKVM <short id>`.
+- The companion stores the paired JetKVM endpoint, paired token, and expected
+  JetKVM identity.
+- Its foreground service reflects state: before pairing it waits for a device
+  to be paired, after pairing it waits for matching peripherals, and once
+  physical evidence is present it monitors display-on events.
+- Presence is OR-based. Matching keyboard, digitizer/touchscreen, mouse/pointer,
+  or monitor evidence is enough to activate the companion path.
+- While matching evidence remains visible to Android, the companion refreshes an
+  authenticated Android target lease to the paired JetKVM. The lease reports the
+  JetKVM identity, Android target type, preferred digitizer mode, display
+  dimensions/aspect, and the evidence list. Disconnection is reported
+  immediately when evidence disappears; lease expiry is the backend fallback for
+  companion crashes or network loss.
 - When the target wakes, it launches a transparent `showWhenLocked` activity and
   calls `KeyguardManager.requestDismissKeyguard()`. Android decides whether the
   keyguard can be dismissed.
+- Around display-on events, the companion briefly creates a transparent 1x1
+  `Presentation` on the JetKVM external display to keep that display path awake
+  without dimming or presenting UI.
 - It can optionally use Android's overlay permission as a non-touchable launch
   assist so background wake-unlock remains reliable after the display turns on.
 
@@ -132,17 +151,17 @@ What it deliberately does not do:
 - It does not use ADB.
 - It does not require root, Shizuku, Accessibility, device-owner privileges, or
   OEM-only APIs.
-- It does not treat any external monitor as sufficient proof that JetKVM is
-  attached.
+- It does not accept generic USB or generic display metadata as proof. Evidence
+  must match the paired JetKVM identity before Android mode is granted.
 
 The recommended mode is normal Android keyguard with the companion foreground
-service armed, notification permission granted where Android requires it,
-unrestricted battery enabled for reliability, and launch-on-boot enabled if the
-target should recover after reboots. A trusted state such as Extend Unlock can
-make wake recovery automatic. Without a trusted state, the companion can still
-bring up Android's credential bouncer after wake; the user can then enter the
-PIN or password through JetKVM keyboard input or the Android controller's OSK
-bridge.
+service installed, notification permission granted where Android requires it,
+unrestricted battery enabled for reliability, at least one JetKVM paired, and
+launch-on-boot enabled if the target should recover after reboots. A trusted
+state such as Extend Unlock can make wake recovery automatic. Without a trusted
+state, the companion can still bring up Android's credential bouncer after wake;
+the user can then enter the PIN or password through JetKVM keyboard input or the
+Android controller's OSK bridge.
 
 ## Current Validation State
 
@@ -158,6 +177,10 @@ The current support branch has been locally validated with:
 - Companion app permission UI cleanup.
 - Relative HID mouse wheel scrolling.
 - Controller APK Android OSK text forwarding.
+- Authenticated companion pairing and Android lease renewal.
+- JetKVM identity binding through USB gadget strings and EDID display identity.
+- Companion activation from matching keyboard, digitizer, mouse, or monitor
+  evidence.
 
 Non-trivial changes to this fork should be built, deployed, and tested on the
 JetKVM device plus the controller/target phones before being committed or
