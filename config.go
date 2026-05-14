@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,6 +28,11 @@ type WakeOnLanDevice struct {
 	Name        string `json:"name"`
 	MacAddress  string `json:"macAddress"`
 	BroadcastIP string `json:"broadcastIP,omitempty"`
+}
+
+type CompanionPairingConfig struct {
+	Token  string   `json:"token,omitempty"`
+	Tokens []string `json:"tokens,omitempty"`
 }
 
 // Constants for keyboard macro limits
@@ -88,42 +94,43 @@ func (m *KeyboardMacro) Validate() error {
 }
 
 type Config struct {
-	CloudURL             string               `json:"cloud_url"`
-	UpdateAPIURL         string               `json:"update_api_url"`
-	CloudAppURL          string               `json:"cloud_app_url"`
-	CloudToken           string               `json:"cloud_token"`
-	TailscaleControlURL  string               `json:"tailscale_control_url,omitempty"`
-	GoogleIdentity       string               `json:"google_identity"`
-	JigglerEnabled       bool                 `json:"jiggler_enabled"`
-	JigglerConfig        *JigglerConfig       `json:"jiggler_config"`
-	AutoUpdateEnabled    bool                 `json:"auto_update_enabled"`
-	IncludePreRelease    bool                 `json:"include_pre_release"`
-	HashedPassword       string               `json:"hashed_password"`
-	LocalAuthToken       string               `json:"local_auth_token"`
-	LocalAuthMode        string               `json:"localAuthMode"` //TODO: fix it with migration
-	LocalLoopbackOnly    bool                 `json:"local_loopback_only"`
-	WakeOnLanDevices     []WakeOnLanDevice    `json:"wake_on_lan_devices"`
-	KeyboardMacros       []KeyboardMacro      `json:"keyboard_macros"`
-	KeyboardLayout       string               `json:"keyboard_layout"`
-	EdidString           string               `json:"hdmi_edid_string"`
-	ActiveExtension      string               `json:"active_extension"`
-	DisplayRotation      string               `json:"display_rotation"`
-	TargetType           string               `json:"target_type"`
-	DisplayMaxBrightness int                  `json:"display_max_brightness"`
-	DisplayDimAfterSec   int                  `json:"display_dim_after_sec"`
-	DisplayOffAfterSec   int                  `json:"display_off_after_sec"`
-	TLSMode              string               `json:"tls_mode"` // options: "self-signed", "user-defined", ""
-	UsbConfig            *usbgadget.Config    `json:"usb_config"`
-	UsbDevices           *usbgadget.Devices   `json:"usb_devices"`
-	NetworkConfig        *types.NetworkConfig `json:"network_config"`
-	DefaultLogLevel      string               `json:"default_log_level"`
-	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
-	VideoQualityFactor   float64              `json:"video_quality_factor"`
-	VideoCodecPreference string               `json:"video_codec_preference"`
-	HideDisplayWhenIdle  bool                 `json:"host_display_disable_when_idle"`
-	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
-	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
-	AudioEnabled         bool                 `json:"audio_enabled"`
+	CloudURL             string                 `json:"cloud_url"`
+	UpdateAPIURL         string                 `json:"update_api_url"`
+	CloudAppURL          string                 `json:"cloud_app_url"`
+	CloudToken           string                 `json:"cloud_token"`
+	TailscaleControlURL  string                 `json:"tailscale_control_url,omitempty"`
+	GoogleIdentity       string                 `json:"google_identity"`
+	JigglerEnabled       bool                   `json:"jiggler_enabled"`
+	JigglerConfig        *JigglerConfig         `json:"jiggler_config"`
+	AutoUpdateEnabled    bool                   `json:"auto_update_enabled"`
+	IncludePreRelease    bool                   `json:"include_pre_release"`
+	HashedPassword       string                 `json:"hashed_password"`
+	LocalAuthToken       string                 `json:"local_auth_token"`
+	CompanionPairing     CompanionPairingConfig `json:"companion_pairing"`
+	LocalAuthMode        string                 `json:"localAuthMode"` //TODO: fix it with migration
+	LocalLoopbackOnly    bool                   `json:"local_loopback_only"`
+	WakeOnLanDevices     []WakeOnLanDevice      `json:"wake_on_lan_devices"`
+	KeyboardMacros       []KeyboardMacro        `json:"keyboard_macros"`
+	KeyboardLayout       string                 `json:"keyboard_layout"`
+	EdidString           string                 `json:"hdmi_edid_string"`
+	ActiveExtension      string                 `json:"active_extension"`
+	DisplayRotation      string                 `json:"display_rotation"`
+	TargetType           string                 `json:"target_type"`
+	DisplayMaxBrightness int                    `json:"display_max_brightness"`
+	DisplayDimAfterSec   int                    `json:"display_dim_after_sec"`
+	DisplayOffAfterSec   int                    `json:"display_off_after_sec"`
+	TLSMode              string                 `json:"tls_mode"` // options: "self-signed", "user-defined", ""
+	UsbConfig            *usbgadget.Config      `json:"usb_config"`
+	UsbDevices           *usbgadget.Devices     `json:"usb_devices"`
+	NetworkConfig        *types.NetworkConfig   `json:"network_config"`
+	DefaultLogLevel      string                 `json:"default_log_level"`
+	VideoSleepAfterSec   int                    `json:"video_sleep_after_sec"`
+	VideoQualityFactor   float64                `json:"video_quality_factor"`
+	VideoCodecPreference string                 `json:"video_codec_preference"`
+	HideDisplayWhenIdle  bool                   `json:"host_display_disable_when_idle"`
+	NativeMaxRestart     uint                   `json:"native_max_restart_attempts"`
+	MqttConfig           *MQTTConfig            `json:"mqtt_config"`
+	AudioEnabled         bool                   `json:"audio_enabled"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -183,8 +190,83 @@ var (
 	}
 )
 
+func applyUsbIdentityDefaults(c *Config) {
+	if c == nil || c.UsbConfig == nil {
+		return
+	}
+
+	deviceID := strings.ToLower(strings.TrimSpace(GetDeviceID()))
+	if deviceID == "" || deviceID == "unknown_device_id" {
+		return
+	}
+
+	if strings.TrimSpace(c.UsbConfig.SerialNumber) == "" {
+		c.UsbConfig.SerialNumber = deviceID
+	}
+
+	shortID := deviceID
+	if len(shortID) > 8 {
+		shortID = shortID[:8]
+	}
+
+	product := strings.TrimSpace(c.UsbConfig.Product)
+	if product == "" || product == defaultUsbConfig.Product || product == "JetKVM USB Emulation Device" {
+		c.UsbConfig.Product = fmt.Sprintf("%s %s", defaultUsbConfig.Product, shortID)
+	}
+}
+
+func getDeviceDefaultEDID() string {
+	deviceID := strings.ToLower(strings.TrimSpace(GetDeviceID()))
+	if deviceID == "" || deviceID == "unknown_device_id" {
+		return native.DefaultEDID
+	}
+
+	shortID := deviceID
+	if len(shortID) > 8 {
+		shortID = shortID[:8]
+	}
+
+	edid, err := hex.DecodeString(native.DefaultEDID)
+	if err != nil || len(edid) < 128 {
+		return native.DefaultEDID
+	}
+
+	if serial, err := strconv.ParseUint(shortID, 16, 32); err == nil && len(edid) >= 16 {
+		edid[12] = byte(serial)
+		edid[13] = byte(serial >> 8)
+		edid[14] = byte(serial >> 16)
+		edid[15] = byte(serial >> 24)
+	}
+
+	const descriptorLength = 18
+	name := "JKVM " + shortID
+	nameBytes := []byte(name)
+	if len(nameBytes) > 13 {
+		nameBytes = nameBytes[:13]
+	}
+	for i := 54; i+descriptorLength <= len(edid) && i < 126; i += descriptorLength {
+		if edid[i] == 0x00 && edid[i+1] == 0x00 && edid[i+2] == 0x00 && edid[i+3] == 0xfc && edid[i+4] == 0x00 {
+			for j := 0; j < 13; j++ {
+				edid[i+5+j] = 0x20
+			}
+			copy(edid[i+5:i+18], nameBytes)
+			break
+		}
+	}
+
+	for block := 0; block+127 < len(edid); block += 128 {
+		sum := 0
+		for i := 0; i < 127; i++ {
+			sum += int(edid[block+i])
+		}
+		edid[block+127] = byte((256 - (sum % 256)) % 256)
+	}
+
+	return hex.EncodeToString(edid)
+}
+
 func getDefaultConfig() Config {
-	return Config{
+	c := Config{
 		CloudURL:             DefaultAPIURL,
 		UpdateAPIURL:         DefaultAPIURL,
 		CloudAppURL:          "https://app.jetkvm.com",
@@ -220,6 +302,8 @@ func getDefaultConfig() Config {
 			DebounceMs:        500,
 		},
 	}
+	applyUsbIdentityDefaults(&c)
+	return c
 }
 
 var (
@@ -305,6 +389,7 @@ func LoadConfig() {
 	if loadedConfig.MqttConfig == nil {
 		loadedConfig.MqttConfig = getDefaultConfig().MqttConfig
 	}
+	applyUsbIdentityDefaults(&loadedConfig)
 
 	// fixup old keyboard layout value
 	if loadedConfig.KeyboardLayout == "en_US" {
@@ -314,7 +399,7 @@ func LoadConfig() {
 	// Until rolling logs land, do not persist verbose levels across reboots.
 	loadedConfig.DefaultLogLevel = "WARN"
 
-	// Migrate prior JetKVM defaults to the current native.DefaultEDID:
+	// Migrate prior JetKVM defaults to the current device-specific default EDID:
 	//   - Toshiba TSB chip default (pre-JetKVM-v1 EDID, no CEA extension)
 	//   - JetKVM v1 EDID without the 1280x720@120 DTD (the previous default that
 	//     advertised only 1080p60 + 720p60 in the base block)
@@ -323,11 +408,14 @@ func LoadConfig() {
 	const tsbDefaultEDID = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
 	const jkvV1NoHighRefresh = "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cf"
 	const jkvV1CtaOnly120 = "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000773300a050d02b2030203500122c2100001a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001c"
+	const jetKVM720pDefaultEDID = "00ffffffffffff0028b402000100000030230103801009780a0dc9a05747982712484c00010101010101010101010101010101010101011d007251d01e206e285500a05a0000001e000000fd00323c1e4b08000a202020202020000000fc004a65744b564d20373230700a20000000ff0044454255473732300a2020202000a9"
 	if loadedConfig.EdidString == "" ||
 		strings.EqualFold(loadedConfig.EdidString, tsbDefaultEDID) ||
 		strings.EqualFold(loadedConfig.EdidString, jkvV1NoHighRefresh) ||
-		strings.EqualFold(loadedConfig.EdidString, jkvV1CtaOnly120) {
-		loadedConfig.EdidString = native.DefaultEDID
+		strings.EqualFold(loadedConfig.EdidString, jkvV1CtaOnly120) ||
+		strings.EqualFold(loadedConfig.EdidString, native.DefaultEDID) ||
+		strings.EqualFold(loadedConfig.EdidString, jetKVM720pDefaultEDID) {
+		loadedConfig.EdidString = getDeviceDefaultEDID()
 	}
 
 	config = &loadedConfig

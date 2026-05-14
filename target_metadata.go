@@ -8,22 +8,28 @@ import (
 const companionTargetTTL = 45 * time.Second
 
 type TargetMetadata struct {
-	TargetType        string  `json:"target_type"`
-	TargetMode        string  `json:"target_mode,omitempty"`
-	DisplayWidth      int     `json:"display_width,omitempty"`
-	DisplayHeight     int     `json:"display_height,omitempty"`
-	DisplayAspect     float64 `json:"display_aspect,omitempty"`
-	Source            string  `json:"source,omitempty"`
-	LastSeenUnixMilli int64   `json:"last_seen_unix_milli,omitempty"`
-	Fresh             bool    `json:"fresh"`
+	TargetType            string   `json:"target_type"`
+	PreferredMouseMode    string   `json:"preferred_mouse_mode,omitempty"`
+	DisplayWidth          int      `json:"display_width,omitempty"`
+	DisplayHeight         int      `json:"display_height,omitempty"`
+	DisplayAspect         float64  `json:"display_aspect,omitempty"`
+	Evidence              []string `json:"evidence,omitempty"`
+	Source                string   `json:"source,omitempty"`
+	LastSeenUnixMilli     int64    `json:"last_seen_unix_milli,omitempty"`
+	LeaseExpiresUnixMilli int64    `json:"lease_expires_unix_milli,omitempty"`
+	Fresh                 bool     `json:"fresh"`
 }
 
 type CompanionTargetDeclaration struct {
-	TargetType    string  `json:"target_type"`
-	TargetMode    string  `json:"target_mode"`
-	DisplayWidth  int     `json:"display_width"`
-	DisplayHeight int     `json:"display_height"`
-	DisplayAspect float64 `json:"display_aspect"`
+	State              string   `json:"state"`
+	JetKVMUSBIdentity  string   `json:"jetkvm_usb_identity"`
+	TargetType         string   `json:"target_type"`
+	PreferredMouseMode string   `json:"preferred_mouse_mode"`
+	DisplayWidth       int      `json:"display_width"`
+	DisplayHeight      int      `json:"display_height"`
+	DisplayAspect      float64  `json:"display_aspect"`
+	Evidence           []string `json:"evidence"`
+	LeaseMs            int64    `json:"lease_ms"`
 }
 
 var (
@@ -32,23 +38,46 @@ var (
 )
 
 func setCompanionTargetMetadata(declaration CompanionTargetDeclaration) TargetMetadata {
+	now := time.Now()
+	if declaration.State == "disconnected" {
+		targetMetadataLock.Lock()
+		defer targetMetadataLock.Unlock()
+
+		companionTarget = TargetMetadata{
+			TargetType:        "android",
+			Source:            "companion",
+			LastSeenUnixMilli: now.UnixMilli(),
+			Fresh:             false,
+		}
+		return companionTarget
+	}
+
 	aspect := declaration.DisplayAspect
 	if aspect <= 0 && declaration.DisplayWidth > 0 && declaration.DisplayHeight > 0 {
 		aspect = float64(declaration.DisplayWidth) / float64(declaration.DisplayHeight)
+	}
+	lease := time.Duration(declaration.LeaseMs) * time.Millisecond
+	if lease <= 0 {
+		lease = companionTargetTTL
+	}
+	if lease > companionTargetTTL {
+		lease = companionTargetTTL
 	}
 
 	targetMetadataLock.Lock()
 	defer targetMetadataLock.Unlock()
 
 	companionTarget = TargetMetadata{
-		TargetType:        declaration.TargetType,
-		TargetMode:        declaration.TargetMode,
-		DisplayWidth:      declaration.DisplayWidth,
-		DisplayHeight:     declaration.DisplayHeight,
-		DisplayAspect:     aspect,
-		Source:            "companion",
-		LastSeenUnixMilli: time.Now().UnixMilli(),
-		Fresh:             true,
+		TargetType:            declaration.TargetType,
+		PreferredMouseMode:    declaration.PreferredMouseMode,
+		DisplayWidth:          declaration.DisplayWidth,
+		DisplayHeight:         declaration.DisplayHeight,
+		DisplayAspect:         aspect,
+		Evidence:              append([]string(nil), declaration.Evidence...),
+		Source:                "companion",
+		LastSeenUnixMilli:     now.UnixMilli(),
+		LeaseExpiresUnixMilli: now.Add(lease).UnixMilli(),
+		Fresh:                 true,
 	}
 	return companionTarget
 }
@@ -58,7 +87,7 @@ func getEffectiveTargetMetadata() TargetMetadata {
 	companion := companionTarget
 	targetMetadataLock.Unlock()
 
-	if companion.TargetType != "" && time.Since(time.UnixMilli(companion.LastSeenUnixMilli)) <= companionTargetTTL {
+	if companion.TargetType != "" && companion.LeaseExpiresUnixMilli > time.Now().UnixMilli() {
 		companion.Fresh = true
 		return companion
 	}
@@ -72,4 +101,10 @@ func getEffectiveTargetMetadata() TargetMetadata {
 		Source:     "config",
 		Fresh:      true,
 	}
+}
+
+func clearCompanionTargetMetadata() {
+	targetMetadataLock.Lock()
+	defer targetMetadataLock.Unlock()
+	companionTarget = TargetMetadata{}
 }

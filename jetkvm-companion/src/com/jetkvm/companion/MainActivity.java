@@ -22,19 +22,32 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+
 public class MainActivity extends Activity {
     private static final int REQUEST_POST_NOTIFICATIONS = 10;
     private static final int JETKVM_BACKGROUND = Color.rgb(7, 12, 28);
     private static final int JETKVM_BLUE_700 = Color.rgb(20, 71, 230);
     private static final String EXTRA_JETKVM_URL = "jetkvm_url";
+    private static final String EXTRA_PAIR_REQUEST_ID = "pair_request_id";
+    private static final SecureRandom PAIRING_RANDOM = new SecureRandom();
 
     private SharedPreferences prefs;
     private CheckBox launchOnBootInput;
     private EditText jetkvmUrlsInput;
+    private LinearLayout pairingsList;
     private Button notificationButton;
     private Button overlayButton;
     private Button batteryButton;
     private TextView statusText;
+    private String pendingPairUrl = "";
+    private String pendingPairRequestId = "";
     private boolean requestedNotificationThisLaunch;
     private boolean requestedOverlayThisLaunch;
     private boolean requestedBatteryThisLaunch;
@@ -46,6 +59,7 @@ public class MainActivity extends Activity {
 
         prefs = getCompanionPreferences();
         saveJetKvmUrlFromIntent(getIntent());
+        savePairRequestFromIntent(getIntent());
         startCompanionServiceFromIntent(getIntent());
         setContentView(createSettingsView());
         updateArmStatus();
@@ -56,9 +70,11 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         saveJetKvmUrlFromIntent(intent);
+        savePairRequestFromIntent(intent);
         if (jetkvmUrlsInput != null) {
-            jetkvmUrlsInput.setText(CompanionService.getConfiguredJetKvmUrlsText(prefs));
+            jetkvmUrlsInput.setText("");
         }
+        refreshPairingControls();
         startCompanionServiceFromIntent(intent);
     }
 
@@ -108,37 +124,41 @@ public class MainActivity extends Activity {
         root.addView(launchOnBootInput, matchWrap());
 
         TextView jetkvmUrlsLabel = new TextView(this);
-        jetkvmUrlsLabel.setText("JetKVM endpoints");
+        jetkvmUrlsLabel.setText("JetKVM endpoint");
         jetkvmUrlsLabel.setTextColor(Color.WHITE);
         jetkvmUrlsLabel.setTextSize(16);
         root.addView(jetkvmUrlsLabel, tightWrap());
 
         jetkvmUrlsInput = new EditText(this);
-        jetkvmUrlsInput.setSingleLine(false);
-        jetkvmUrlsInput.setMinLines(3);
-        jetkvmUrlsInput.setGravity(Gravity.TOP | Gravity.START);
-        jetkvmUrlsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        jetkvmUrlsInput.setText(CompanionService.getConfiguredJetKvmUrlsText(prefs));
-        jetkvmUrlsInput.setHint("192.168.8.229\nhttp://jetkvm.local");
+        jetkvmUrlsInput.setSingleLine(true);
+        jetkvmUrlsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        jetkvmUrlsInput.setText("");
+        jetkvmUrlsInput.setHint("192.168.8.229 or http://jetkvm.local");
         jetkvmUrlsInput.setTextColor(Color.WHITE);
         jetkvmUrlsInput.setHintTextColor(Color.rgb(148, 163, 184));
         root.addView(jetkvmUrlsInput, matchWrap());
 
-        Button saveJetkvmUrlButton = new Button(this);
-        saveJetkvmUrlButton.setText("Save JetKVM endpoints");
-        saveJetkvmUrlButton.setAllCaps(false);
-        applyButtonStyle(saveJetkvmUrlButton);
-        saveJetkvmUrlButton.setOnClickListener(new android.view.View.OnClickListener() {
+        Button pairJetkvmButton = new Button(this);
+        pairJetkvmButton.setText("Pair");
+        pairJetkvmButton.setAllCaps(false);
+        applyButtonStyle(pairJetkvmButton);
+        pairJetkvmButton.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
             public void onClick(android.view.View v) {
                 String value = jetkvmUrlsInput.getText().toString();
-                CompanionService.saveJetKvmUrlsText(prefs, value);
-                jetkvmUrlsInput.setText(CompanionService.getConfiguredJetKvmUrlsText(prefs));
-                startForegroundService(new Intent(MainActivity.this, CompanionService.class));
-                updateStatus("JetKVM endpoints saved.");
+                if (value.trim().length() == 0) {
+                    updateStatus("Enter a JetKVM endpoint to pair.");
+                    return;
+                }
+                pairJetKvmEndpoint(value);
             }
         });
-        root.addView(saveJetkvmUrlButton, matchWrap());
+        root.addView(pairJetkvmButton, matchWrap());
+
+        pairingsList = new LinearLayout(this);
+        pairingsList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(pairingsList, matchWrap());
+        refreshPairingControls();
 
         notificationButton = new Button(this);
         notificationButton.setText("Grant permission to post notifications");
@@ -228,6 +248,16 @@ public class MainActivity extends Activity {
         CompanionService.addJetKvmUrl(prefs, value);
     }
 
+    private void savePairRequestFromIntent(Intent intent) {
+        if (intent == null || !intent.hasExtra(EXTRA_PAIR_REQUEST_ID)) return;
+        String requestId = intent.getStringExtra(EXTRA_PAIR_REQUEST_ID);
+        String url = intent.getStringExtra(EXTRA_JETKVM_URL);
+        if (requestId == null || url == null) return;
+        pendingPairRequestId = requestId;
+        pendingPairUrl = normalizeJetKvmUrl(url);
+        updateStatus("Pairing request from " + pendingPairUrl + ".");
+    }
+
     private void startCompanionServiceFromIntent(Intent source) {
         Intent service = new Intent(this, CompanionService.class);
         if (source != null && source.hasExtra(EXTRA_JETKVM_URL)) {
@@ -266,6 +296,346 @@ public class MainActivity extends Activity {
             : "Unrestricted battery not granted";
         updateStatus(notificationStatus + "\n" + overlayStatus + "\n" + batteryStatus
             + "\nJetKVM peripherals: " + snapshot);
+    }
+
+    private void refreshPairingControls() {
+        if (pairingsList == null) return;
+        pairingsList.removeAllViews();
+
+        if (pendingPairUrl.length() > 0 && pendingPairRequestId.length() > 0) {
+            addIncomingPairingControls();
+        }
+        CompanionService.CompanionPairing[] pairings = CompanionService.getSavedPairings(prefs);
+        if (pairings.length == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("No paired JetKVM endpoints.");
+            empty.setTextColor(Color.rgb(148, 163, 184));
+            empty.setTextSize(13);
+            pairingsList.addView(empty, tightWrap());
+        }
+        for (final CompanionService.CompanionPairing pairing : pairings) {
+            final String url = pairing.url;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(0, 0, 0, dp(8));
+
+            TextView label = new TextView(this);
+            label.setText(url);
+            label.setTextColor(Color.WHITE);
+            label.setTextSize(14);
+            row.addView(label, tightWrap());
+
+            TextView state = new TextView(this);
+            state.setTextSize(13);
+            state.setTextColor(Color.rgb(34, 197, 94));
+            state.setText("Paired");
+            row.addView(state, tightWrap());
+
+            Button unpairButton = new Button(this);
+            unpairButton.setText("Unpair");
+            unpairButton.setAllCaps(false);
+            applyButtonStyle(unpairButton);
+            unpairButton.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override
+                public void onClick(android.view.View v) {
+                    unpairJetKvmEndpoint(url);
+                }
+            });
+            row.addView(unpairButton, tightWrap());
+
+            pairingsList.addView(row, matchWrap());
+        }
+    }
+
+    private void addIncomingPairingControls() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(0, 0, 0, dp(12));
+
+        TextView label = new TextView(this);
+        label.setText("Pairing request from " + pendingPairUrl);
+        label.setTextColor(Color.WHITE);
+        label.setTextSize(14);
+        row.addView(label, tightWrap());
+
+        final EditText otpInput = new EditText(this);
+        otpInput.setSingleLine(true);
+        otpInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        otpInput.setHint("6 digit code shown in JetKVM web UI");
+        otpInput.setTextColor(Color.WHITE);
+        otpInput.setHintTextColor(Color.rgb(148, 163, 184));
+        row.addView(otpInput, matchWrap());
+
+        Button acceptButton = new Button(this);
+        acceptButton.setText("Pair");
+        acceptButton.setAllCaps(false);
+        applyButtonStyle(acceptButton);
+        acceptButton.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                completeJetKvmInitiatedPairing(pendingPairUrl, pendingPairRequestId, otpInput.getText().toString());
+            }
+        });
+        row.addView(acceptButton, tightWrap());
+
+        pairingsList.addView(row, matchWrap());
+    }
+
+    private void pairJetKvmEndpoint(final String baseUrl) {
+        final String otp = generatePairingOtp();
+        updateStatus("Pairing " + baseUrl + ". Type " + otp + " in the JetKVM web UI.");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final PairResult result = requestPairing(baseUrl, otp);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (result.success) {
+                            CompanionService.savePairing(prefs, baseUrl, result.token, result.identityToken);
+                            jetkvmUrlsInput.setText("");
+                            refreshPairingControls();
+                            startForegroundService(new Intent(MainActivity.this, CompanionService.class));
+                            updateStatus("Paired " + baseUrl + ".");
+                        } else {
+                            updateStatus("Pairing failed for " + baseUrl + ": " + result.message);
+                        }
+                    }
+                });
+            }
+        }, "JetKVM-pair").start();
+    }
+
+    private PairResult requestPairing(String baseUrl, String otp) {
+        HttpURLConnection conn = null;
+        try {
+            String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
+            URL url = new URL(trimmedBaseUrl + "/companion/pair");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            byte[] requestBody = ("{\"otp\":\"" + otp + "\"}").getBytes(StandardCharsets.UTF_8);
+            conn.setFixedLengthStreamingMode(requestBody.length);
+            conn.getOutputStream().write(requestBody);
+
+            int status = conn.getResponseCode();
+            String response = readAll(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
+            if (status == 200) {
+                return parsePairingResponse(response);
+            }
+            if (status != 202) {
+                return PairResult.error("HTTP " + status);
+            }
+
+            String requestId = extractJsonString(response, "request_id");
+            if (requestId.length() == 0) {
+                return PairResult.error("missing request id");
+            }
+            return pollPairingStatus(trimmedBaseUrl, requestId);
+        } catch (Exception e) {
+            return PairResult.error(e.getClass().getSimpleName());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void completeJetKvmInitiatedPairing(final String baseUrl, final String requestId, final String otp) {
+        updateStatus("Completing pairing with " + baseUrl + ".");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final PairResult result = claimPairing(baseUrl, requestId, otp);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (result.success) {
+                            CompanionService.savePairing(prefs, baseUrl, result.token, result.identityToken);
+                            pendingPairUrl = "";
+                            pendingPairRequestId = "";
+                            refreshPairingControls();
+                            startForegroundService(new Intent(MainActivity.this, CompanionService.class));
+                            updateStatus("Paired " + baseUrl + ".");
+                        } else {
+                            updateStatus("Pairing failed for " + baseUrl + ": " + result.message);
+                        }
+                    }
+                });
+            }
+        }, "JetKVM-pair-claim").start();
+    }
+
+    private PairResult claimPairing(String baseUrl, String requestId, String otp) {
+        HttpURLConnection conn = null;
+        try {
+            String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
+            URL url = new URL(trimmedBaseUrl + "/companion/pair/" + requestId + "/claim");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            byte[] requestBody = ("{\"otp\":\"" + otp.trim() + "\"}").getBytes(StandardCharsets.UTF_8);
+            conn.setFixedLengthStreamingMode(requestBody.length);
+            conn.getOutputStream().write(requestBody);
+            int status = conn.getResponseCode();
+            String response = readAll(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
+            if (status == 200) {
+                return parsePairingResponse(response);
+            }
+            return PairResult.error("HTTP " + status);
+        } catch (Exception e) {
+            return PairResult.error(e.getClass().getSimpleName());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void unpairJetKvmEndpoint(final String baseUrl) {
+        updateStatus("Unpairing " + baseUrl + ".");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean ok = requestUnpair(baseUrl);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (ok) {
+                            CompanionService.removePairing(prefs, baseUrl);
+                            refreshPairingControls();
+                            startForegroundService(new Intent(MainActivity.this, CompanionService.class));
+                            updateStatus("Unpaired " + baseUrl + ".");
+                        } else {
+                            updateStatus("Unpair failed for " + baseUrl + ".");
+                        }
+                    }
+                });
+            }
+        }, "JetKVM-unpair").start();
+    }
+
+    private boolean requestUnpair(String baseUrl) {
+        HttpURLConnection conn = null;
+        try {
+            String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
+            String token = CompanionService.getPairingToken(prefs, trimmedBaseUrl);
+            URL url = new URL(trimmedBaseUrl + "/companion/unpair");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("X-JetKVM-Companion-Token", token);
+            conn.setFixedLengthStreamingMode(0);
+            return conn.getResponseCode() == 200;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private PairResult pollPairingStatus(String baseUrl, String requestId) {
+        for (int i = 0; i < 60; i++) {
+            HttpURLConnection conn = null;
+            try {
+                Thread.sleep(2000);
+                URL url = new URL(baseUrl + "/companion/pair/" + requestId);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(3000);
+                conn.setReadTimeout(3000);
+                conn.setRequestMethod("GET");
+                int status = conn.getResponseCode();
+                String response = readAll(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
+                if (status == 200 && "paired".equals(extractJsonString(response, "status"))) {
+                    return parsePairingResponse(response);
+                }
+                if (status == 200 && "rejected".equals(extractJsonString(response, "status"))) {
+                    return PairResult.error("rejected on JetKVM");
+                }
+            } catch (Exception e) {
+                return PairResult.error(e.getClass().getSimpleName());
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }
+        return PairResult.error("approval timed out");
+    }
+
+    private PairResult parsePairingResponse(String response) {
+        String token = extractJsonString(response, "token");
+        String identityToken = extractJsonString(response, "jetkvm_identity_token");
+        if (token.length() == 0 || identityToken.length() == 0) {
+            return PairResult.error("missing token or identity");
+        }
+        return PairResult.success(token, identityToken);
+    }
+
+    private static String generatePairingOtp() {
+        return String.format("%06d", PAIRING_RANDOM.nextInt(1000000));
+    }
+
+    private static String normalizeJetKvmUrl(String rawUrl) {
+        String url = rawUrl == null ? "" : rawUrl.trim();
+        if (url.length() == 0) return CompanionService.DEFAULT_JETKVM_URL;
+        if (!url.contains("://")) {
+            url = "http://" + url;
+        }
+        while (url.endsWith("/") && url.length() > "http://".length()) {
+            url = url.substring(0, url.length() - 1);
+        }
+        return url;
+    }
+
+    private static String readAll(InputStream input) throws java.io.IOException {
+        if (input == null) return "";
+        BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        StringBuilder builder = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            builder.append(line);
+        }
+        reader.close();
+        return builder.toString();
+    }
+
+    private static String extractJsonString(String json, String key) {
+        if (json == null || key == null) return "";
+        String needle = "\"" + key + "\"";
+        int keyIndex = json.indexOf(needle);
+        if (keyIndex < 0) return "";
+        int colonIndex = json.indexOf(':', keyIndex + needle.length());
+        if (colonIndex < 0) return "";
+        int startQuote = json.indexOf('"', colonIndex + 1);
+        if (startQuote < 0) return "";
+        int endQuote = json.indexOf('"', startQuote + 1);
+        if (endQuote < 0) return "";
+        return json.substring(startQuote + 1, endQuote);
+    }
+
+    private static final class PairResult {
+        final boolean success;
+        final String token;
+        final String identityToken;
+        final String message;
+
+        private PairResult(boolean success, String token, String identityToken, String message) {
+            this.success = success;
+            this.token = token;
+            this.identityToken = identityToken;
+            this.message = message;
+        }
+
+        static PairResult success(String token, String identityToken) {
+            return new PairResult(true, token, identityToken, "");
+        }
+
+        static PairResult error(String message) {
+            return new PairResult(false, "", "", message);
+        }
     }
 
     private void requestMissingPermissionsIfNeeded() {

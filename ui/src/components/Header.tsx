@@ -12,6 +12,7 @@ import Container from "@components/Container";
 import { LinkButton } from "@components/Button";
 import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
 import USBStateStatus from "@components/USBStateStatus";
+import CompanionRequestCenter from "@components/CompanionRequestCenter";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { isOnDevice } from "@/main";
@@ -100,6 +101,7 @@ export default function DashboardNavbar({
                 )}
                 {isLoggedIn ? (
                   <>
+                    {isOnDevice && <CompanionRequestCenter />}
                     <hr className="h-5 w-px self-center border-none bg-slate-800/20 dark:bg-slate-300/20" />
                     <div className="relative inline-block text-left">
                       <Menu>

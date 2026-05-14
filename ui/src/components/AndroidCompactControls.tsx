@@ -3,6 +3,7 @@ import type { ComponentType, PointerEvent as ReactPointerEvent } from "react";
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import {
   LuCable,
+  LuBell,
   LuCommand,
   LuHardDrive,
   LuKeyboard,
@@ -30,6 +31,7 @@ import ExtensionPopover from "@components/popovers/ExtensionPopover";
 import MountPopopover from "@components/popovers/MountPopover";
 import PasteModal from "@components/popovers/PasteModal";
 import WakeOnLanModal from "@components/popovers/WakeOnLan/Index";
+import CompanionRequestCenter from "@components/CompanionRequestCenter";
 import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import useKeyboard, { type MacroStep } from "@hooks/useKeyboard";
@@ -139,6 +141,7 @@ export default function AndroidCompactControls() {
 
   const [position, setPosition] = useState<Position>(() => getStoredPosition());
   const [open, setOpen] = useState(false);
+  const [requestCenterOpen, setRequestCenterOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>("root");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -465,6 +468,14 @@ export default function AndroidCompactControls() {
                   navigateTo("/settings");
                 }}
               />
+              <ActionButton
+                icon={LuBell}
+                label="Requests"
+                onClick={() => {
+                  closePanel();
+                  setRequestCenterOpen(true);
+                }}
+              />
               <ActionButton icon={LuLogOut} label="Log out" onClick={() => void logout()} />
             </div>
           ) : panel === "paste" ? (
@@ -478,6 +489,12 @@ export default function AndroidCompactControls() {
           )}
         </div>
       )}
+      <CompanionRequestCenter
+        compact
+        forceOpen={requestCenterOpen}
+        hideTrigger
+        onClose={() => setRequestCenterOpen(false)}
+      />
     </>
   );
 }

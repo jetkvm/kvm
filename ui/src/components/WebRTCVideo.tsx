@@ -49,6 +49,7 @@ export default function WebRTCVideo({
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
   const [targetType, setTargetType] = useState<"generic" | "android">("generic");
   const [targetDisplayAspect, setTargetDisplayAspect] = useState<number | null>(null);
+  const androidPreferredMouseModeApplied = useRef(false);
   const isAndroidTarget = targetType === "android";
 
   const { send: sendRpc } = useJsonRpc();
@@ -58,6 +59,7 @@ export default function WebRTCVideo({
 
   // Store hooks
   const settings = useSettingsStore();
+  const setMouseMode = settings.setMouseMode;
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
   const { send } = useJsonRpc();
 
@@ -113,27 +115,34 @@ export default function WebRTCVideo({
         if ("error" in resp) return;
         const result = resp.result as {
           target_type?: string;
-          target_mode?: string;
+          preferred_mouse_mode?: string;
           display_aspect?: number;
           fresh?: boolean;
         };
-        setTargetType(result.target_type === "android" ? "android" : "generic");
+        const isFreshAndroid = result.target_type === "android" && result.fresh !== false;
+        setTargetType(isFreshAndroid ? "android" : "generic");
         setTargetDisplayAspect(
-          result.target_type === "android" &&
-            result.target_mode === "android_mirror" &&
-            result.fresh !== false &&
-            typeof result.display_aspect === "number" &&
-            result.display_aspect > 0
+          isFreshAndroid && typeof result.display_aspect === "number" && result.display_aspect > 0
             ? result.display_aspect
             : null,
         );
+        if (
+          isFreshAndroid &&
+          result.preferred_mouse_mode === "digitizer" &&
+          !androidPreferredMouseModeApplied.current
+        ) {
+          setMouseMode("digitizer");
+          androidPreferredMouseModeApplied.current = true;
+        } else if (!isFreshAndroid) {
+          androidPreferredMouseModeApplied.current = false;
+        }
       });
     };
 
     refreshTargetType();
     const interval = window.setInterval(refreshTargetType, 5000);
     return () => window.clearInterval(interval);
-  }, [send]);
+  }, [send, setMouseMode]);
 
   // Video-related
   const handleResize = useCallback(
@@ -390,9 +399,16 @@ export default function WebRTCVideo({
     return code;
   }
 
+  function isEditableEventTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    return !!target.closest("input, textarea, select, [contenteditable='true']");
+  }
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      if (isEditableEventTarget(e.target)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -467,6 +483,7 @@ export default function WebRTCVideo({
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      if (isEditableEventTarget(e.target)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
