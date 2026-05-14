@@ -240,7 +240,7 @@ export class KeyboardMacroReportMessage extends RpcMessage {
       // Ensure the keys are within the KEYS_LENGTH range
       const keys = step.keys;
       if (keys.length > this.KEYS_LENGTH) {
-        throw new Error(`Keys ${keys} is not within the hidKeyBufferSize range`);
+        throw new Error(`Keys ${keys.join(",")} is not within the hidKeyBufferSize range`);
       } else if (keys.length < this.KEYS_LENGTH) {
         keys.push(...Array(this.KEYS_LENGTH - keys.length).fill(0));
       }
@@ -397,6 +397,25 @@ export class KeypressKeepAliveMessage extends RpcMessage {
 
   marshal(): Uint8Array {
     return new Uint8Array([this.messageType]);
+  }
+}
+
+export class WheelReportMessage extends RpcMessage {
+  deltaY: number;
+  deltaX: number;
+
+  constructor(deltaY: number, deltaX: number) {
+    super(HID_RPC_MESSAGE_TYPES.WheelReport);
+    this.deltaY = deltaY;
+    this.deltaX = deltaX;
+  }
+
+  marshal(): Uint8Array {
+    return new Uint8Array([
+      this.messageType,
+      fromInt8ToUint8(this.deltaY),
+      fromInt8ToUint8(this.deltaX),
+    ]);
   }
 }
 
