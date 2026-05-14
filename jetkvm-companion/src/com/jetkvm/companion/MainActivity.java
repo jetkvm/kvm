@@ -12,7 +12,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.Window;
 import android.widget.Button;
@@ -20,6 +22,7 @@ import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.BufferedReader;
@@ -41,6 +44,8 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private CheckBox launchOnBootInput;
     private EditText jetkvmUrlsInput;
+    private Button pairJetkvmButton;
+    private TextView pairJetkvmState;
     private LinearLayout pairingsList;
     private Button notificationButton;
     private Button overlayButton;
@@ -85,14 +90,22 @@ public class MainActivity extends Activity {
         requestMissingPermissionsIfNeeded();
     }
 
-    private LinearLayout createSettingsView() {
+    private android.view.View createSettingsView() {
         int padding = dp(24);
+
+        ScrollView scroller = new ScrollView(this);
+        scroller.setFillViewport(false);
+        scroller.setBackgroundColor(JETKVM_BACKGROUND);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(padding, padding, padding, padding);
+        root.setPadding(padding, dp(44), padding, padding);
         root.setBackgroundColor(JETKVM_BACKGROUND);
+        scroller.addView(root, new ScrollView.LayoutParams(
+            ScrollView.LayoutParams.MATCH_PARENT,
+            ScrollView.LayoutParams.WRAP_CONTENT
+        ));
 
         TextView title = new TextView(this);
         title.setText("JetKVM Companion");
@@ -136,9 +149,27 @@ public class MainActivity extends Activity {
         jetkvmUrlsInput.setHint("192.168.8.229 or http://jetkvm.local");
         jetkvmUrlsInput.setTextColor(Color.WHITE);
         jetkvmUrlsInput.setHintTextColor(Color.rgb(148, 163, 184));
+        jetkvmUrlsInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                updatePairButtonState();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
         root.addView(jetkvmUrlsInput, matchWrap());
 
-        Button pairJetkvmButton = new Button(this);
+        LinearLayout pairActionRow = new LinearLayout(this);
+        pairActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        pairActionRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        pairJetkvmButton = new Button(this);
         pairJetkvmButton.setText("Pair");
         pairJetkvmButton.setAllCaps(false);
         applyButtonStyle(pairJetkvmButton);
@@ -153,12 +184,24 @@ public class MainActivity extends Activity {
                 pairJetKvmEndpoint(value);
             }
         });
-        root.addView(pairJetkvmButton, matchWrap());
+        pairActionRow.addView(pairJetkvmButton, buttonWrap());
+
+        pairJetkvmState = new TextView(this);
+        pairJetkvmState.setText("Paired");
+        pairJetkvmState.setTextColor(Color.rgb(34, 197, 94));
+        pairJetkvmState.setTextSize(14);
+        pairJetkvmState.setPadding(dp(12), 0, 0, 0);
+        pairActionRow.addView(pairJetkvmState, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        root.addView(pairActionRow, matchWrap());
 
         pairingsList = new LinearLayout(this);
         pairingsList.setOrientation(LinearLayout.VERTICAL);
         root.addView(pairingsList, matchWrap());
         refreshPairingControls();
+        updatePairButtonState();
 
         notificationButton = new Button(this);
         notificationButton.setText("Grant permission to post notifications");
@@ -203,7 +246,7 @@ public class MainActivity extends Activity {
         statusText.setPadding(0, dp(16), 0, 0);
         root.addView(statusText, matchWrap());
 
-        return root;
+        return scroller;
     }
 
     private LinearLayout.LayoutParams matchWrap() {
@@ -224,6 +267,15 @@ public class MainActivity extends Activity {
         return params;
     }
 
+    private LinearLayout.LayoutParams buttonWrap() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, 0, 0, 0);
+        return params;
+    }
+
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
@@ -233,8 +285,30 @@ public class MainActivity extends Activity {
         button.setBackgroundTintList(ColorStateList.valueOf(JETKVM_BLUE_700));
     }
 
+    private void applyDisabledButtonStyle(Button button) {
+        button.setTextColor(Color.rgb(203, 213, 225));
+        button.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(51, 65, 85)));
+    }
+
     private void updateStatus(String message) {
         if (statusText != null) statusText.setText(message);
+    }
+
+    private void updatePairButtonState() {
+        if (pairJetkvmButton == null || pairJetkvmState == null || jetkvmUrlsInput == null) {
+            return;
+        }
+        String entered = jetkvmUrlsInput.getText().toString().trim();
+        boolean hasValue = entered.length() > 0;
+        boolean paired = hasValue && CompanionService.getPairing(prefs, entered) != null;
+        pairJetkvmButton.setEnabled(hasValue && !paired);
+        if (paired) {
+            applyDisabledButtonStyle(pairJetkvmButton);
+            pairJetkvmState.setVisibility(android.view.View.VISIBLE);
+        } else {
+            applyButtonStyle(pairJetkvmButton);
+            pairJetkvmState.setVisibility(android.view.View.GONE);
+        }
     }
 
     private void saveJetKvmUrlFromIntent(Intent intent) {
@@ -316,35 +390,46 @@ public class MainActivity extends Activity {
         for (final CompanionService.CompanionPairing pairing : pairings) {
             final String url = pairing.url;
             LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(0, 0, 0, dp(8));
-
-            TextView label = new TextView(this);
-            label.setText(url);
-            label.setTextColor(Color.WHITE);
-            label.setTextSize(14);
-            row.addView(label, tightWrap());
-
-            TextView state = new TextView(this);
-            state.setTextSize(13);
-            state.setTextColor(Color.rgb(34, 197, 94));
-            state.setText("Paired");
-            row.addView(state, tightWrap());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(4), 0, dp(4));
 
             Button unpairButton = new Button(this);
             unpairButton.setText("Unpair");
             unpairButton.setAllCaps(false);
             applyButtonStyle(unpairButton);
+            unpairButton.setTextSize(12);
+            unpairButton.setMinHeight(0);
+            unpairButton.setMinimumHeight(0);
+            unpairButton.setPadding(dp(10), 0, dp(10), 0);
             unpairButton.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override
                 public void onClick(android.view.View v) {
                     unpairJetKvmEndpoint(url);
                 }
             });
-            row.addView(unpairButton, tightWrap());
+            row.addView(unpairButton, buttonWrap());
+
+            TextView label = new TextView(this);
+            label.setText(url);
+            label.setTextColor(Color.WHITE);
+            label.setTextSize(14);
+            label.setPadding(dp(12), 0, dp(8), 0);
+            row.addView(label, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+            ));
+
+            TextView state = new TextView(this);
+            state.setTextSize(13);
+            state.setTextColor(Color.rgb(34, 197, 94));
+            state.setText("Paired");
+            row.addView(state, buttonWrap());
 
             pairingsList.addView(row, matchWrap());
         }
+        updatePairButtonState();
     }
 
     private void addIncomingPairingControls() {
@@ -393,7 +478,6 @@ public class MainActivity extends Activity {
                     public void run() {
                         if (result.success) {
                             CompanionService.savePairing(prefs, baseUrl, result.token, result.identityToken);
-                            jetkvmUrlsInput.setText("");
                             refreshPairingControls();
                             startForegroundService(new Intent(MainActivity.this, CompanionService.class));
                             updateStatus("Paired " + baseUrl + ".");
