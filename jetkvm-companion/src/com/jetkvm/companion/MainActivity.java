@@ -614,7 +614,8 @@ public class MainActivity extends Activity {
             conn.setDoOutput(true);
             conn.setRequestProperty("X-JetKVM-Companion-Token", token);
             conn.setFixedLengthStreamingMode(0);
-            return conn.getResponseCode() == 200;
+            int status = conn.getResponseCode();
+            return status == 200 || status == 401 || status == 404;
         } catch (Exception e) {
             return false;
         } finally {
