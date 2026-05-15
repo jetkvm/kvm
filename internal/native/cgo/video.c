@@ -344,14 +344,14 @@ struct buffer
     MB_BLK mb_blk;
 };
 
-const int input_buffer_count = 3;
+#define INPUT_BUFFER_COUNT 3
 
 static int32_t buf_init()
 {
     MB_POOL_CONFIG_S stMbPoolCfg;
     memset(&stMbPoolCfg, 0, sizeof(MB_POOL_CONFIG_S));
     stMbPoolCfg.u64MBSize = 1920 * 1080 * 3; // max resolution
-    stMbPoolCfg.u32MBCnt = input_buffer_count;
+    stMbPoolCfg.u32MBCnt = INPUT_BUFFER_COUNT;
     stMbPoolCfg.enAllocType = MB_ALLOC_TYPE_DMA;
     stMbPoolCfg.bPreAlloc = RK_TRUE;
     memPool = RK_MPI_MB_CreatePool(&stMbPoolCfg);
@@ -665,7 +665,7 @@ static int video_capture_jpeg_standalone(uint8_t **out_buf, size_t *out_len)
 
     struct v4l2_requestbuffers req;
     memset(&req, 0, sizeof(req));
-    req.count  = input_buffer_count;
+    req.count  = INPUT_BUFFER_COUNT;
     req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     req.memory = V4L2_MEMORY_DMABUF;
     if (ioctl(fd, VIDIOC_REQBUFS, &req) < 0) {
@@ -674,11 +674,11 @@ static int video_capture_jpeg_standalone(uint8_t **out_buf, size_t *out_len)
         return -errno;
     }
 
-    struct buffer bufs[3];
+    struct buffer bufs[INPUT_BUFFER_COUNT];
     memset(bufs, 0, sizeof(bufs));
     int bufs_allocated = 0;
 
-    for (int i = 0; i < input_buffer_count; i++) {
+    for (int i = 0; i < INPUT_BUFFER_COUNT; i++) {
         struct v4l2_plane *plane = &bufs[i].plane_buffer;
         memset(plane, 0, sizeof(*plane));
 
@@ -705,7 +705,7 @@ static int video_capture_jpeg_standalone(uint8_t **out_buf, size_t *out_len)
         plane->m.fd = RK_MPI_MB_Handle2Fd(blk);
     }
 
-    for (int i = 0; i < input_buffer_count; i++) {
+    for (int i = 0; i < INPUT_BUFFER_COUNT; i++) {
         struct v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));
         buf.type     = type;
@@ -909,7 +909,7 @@ void *run_video_stream(void *arg)
         struct v4l2_buffer buf;
 
         struct v4l2_requestbuffers req;
-        req.count = input_buffer_count;
+        req.count = INPUT_BUFFER_COUNT;
         req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
         req.memory = V4L2_MEMORY_DMABUF;
 
@@ -921,10 +921,10 @@ void *run_video_stream(void *arg)
         }
         log_info("VIDIOC_REQBUFS successful");
 
-        struct buffer buffers[3] = {};
+        struct buffer buffers[INPUT_BUFFER_COUNT] = {};
         log_info("allocated buffers");
 
-        for (int i = 0; i < input_buffer_count; i++)
+        for (int i = 0; i < INPUT_BUFFER_COUNT; i++)
         {
             struct v4l2_plane *planes_buffer = &buffers[i].plane_buffer;
             memset(planes_buffer, 0, sizeof(struct v4l2_plane));
@@ -970,7 +970,7 @@ void *run_video_stream(void *arg)
             planes_buffer->m.fd = buf_fd;
         }
 
-        for (int i = 0; i < input_buffer_count; ++i)
+        for (int i = 0; i < INPUT_BUFFER_COUNT; ++i)
         {
             struct v4l2_buffer buf;
             memset(&buf, 0, sizeof(buf));
@@ -1110,7 +1110,7 @@ void *run_video_stream(void *arg)
 
         venc_stop();
 
-        for (int i = 0; i < input_buffer_count; i++)
+        for (int i = 0; i < INPUT_BUFFER_COUNT; i++)
         {
             if (buffers[i].mb_blk != NULL)
             {
