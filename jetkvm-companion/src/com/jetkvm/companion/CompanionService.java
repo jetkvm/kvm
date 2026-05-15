@@ -68,7 +68,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private static final int PAIRING_LISTEN_PORT = 8787;
     private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
     private static final long TARGET_REPORT_INTERVAL_MS = 15000;
-    private static final long TARGET_LEASE_MS = 45000;
+    private static final long TARGET_LEASE_MS = 120000;
     private static final long TARGET_PRESENTATION_PULSE_MS = 750;
     private static final String JETKVM_INPUT_NAME_TOKEN = "jetkvm";
     private static final String JETKVM_DISPLAY_NAME_TOKEN = "jetkvm";
@@ -95,6 +95,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private boolean hasPairedJetKvmEndpoints;
     private boolean attemptedForCurrentScreen;
     private boolean targetReportScheduled;
+    private volatile long targetDeclarationConfirmedUntilMs;
     private JetKvmPeripheralSnapshot currentSnapshot = new JetKvmPeripheralSnapshot();
 
     private final Runnable targetReportRunnable = new Runnable() {
@@ -309,6 +310,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
         if (snapshot.present != jetkvmPeripheralsPresent) {
             jetkvmPeripheralsPresent = snapshot.present;
             attemptedForCurrentScreen = false;
+            targetDeclarationConfirmedUntilMs = 0;
             if (!jetkvmPeripheralsPresent) {
                 targetReportScheduled = false;
                 handler.removeCallbacks(targetReportRunnable);
@@ -442,13 +444,35 @@ public class CompanionService extends Service implements InputManager.InputDevic
             out.close();
 
             int status = conn.getResponseCode();
+            updateTargetDeclarationConfirmation(connected, status);
             Log.i(TAG, "target declaration posted url=" + trimmedBaseUrl
                 + " status=" + status + " connected=" + connected + " width=" + width + " height=" + height);
         } catch (Exception e) {
+            updateTargetDeclarationConfirmation(connected, 0);
             Log.i(TAG, "target declaration failed url=" + baseUrl + ": " + e.getClass().getSimpleName());
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    private void updateTargetDeclarationConfirmation(boolean connected, int status) {
+        long now = System.currentTimeMillis();
+        boolean confirmed = connected && status >= 200 && status < 300;
+        if (confirmed) {
+            targetDeclarationConfirmedUntilMs = now + TARGET_LEASE_MS;
+        } else if (!connected || now >= targetDeclarationConfirmedUntilMs) {
+            targetDeclarationConfirmedUntilMs = 0;
+        }
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                updateNotification();
+            }
+        });
+    }
+
+    private boolean isTargetDeclarationConfirmed() {
+        return targetDeclarationConfirmedUntilMs > System.currentTimeMillis();
     }
 
     static SharedPreferences getCompanionPreferences(Context context) {
@@ -901,11 +925,16 @@ public class CompanionService extends Service implements InputManager.InputDevic
         Notification.Builder builder = android.os.Build.VERSION.SDK_INT >= 26
             ? new Notification.Builder(this, CHANNEL_ID)
             : new Notification.Builder(this);
-        String body = jetkvmPeripheralsPresent
-            ? "Monitoring display-on events"
-            : (hasPairedJetKvmEndpoints
-                ? "Waiting for peripherals..."
-                : "Waiting for a device to be paired...");
+        String body;
+        if (!hasPairedJetKvmEndpoints) {
+            body = "Waiting for a device to be paired...";
+        } else if (!jetkvmPeripheralsPresent) {
+            body = "Waiting for peripherals...";
+        } else if (!isTargetDeclarationConfirmed()) {
+            body = "Waiting for backend confirmation...";
+        } else {
+            body = "Monitoring display-on events";
+        }
         builder
             .setSmallIcon(getApplicationInfo().icon)
             .setContentTitle("JetKVM Companion")

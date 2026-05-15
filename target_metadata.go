@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const companionTargetTTL = 45 * time.Second
+const companionTargetTTL = 2 * time.Minute
 
 type TargetMetadata struct {
 	TargetType            string   `json:"target_type"`

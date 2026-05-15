@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.hardware.display.DisplayManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -347,7 +348,11 @@ public class MainActivity extends Activity {
     }
 
     private void updateArmStatus() {
-        CompanionService.JetKvmPeripheralSnapshot snapshot = CompanionService.getJetKvmPeripheralSnapshot();
+        DisplayManager displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+        CompanionService.JetKvmPeripheralSnapshot snapshot = CompanionService.getJetKvmPeripheralSnapshot(
+            displayManager,
+            CompanionService.getPairedJetKvmIdentityTokens(prefs)
+        );
         boolean notificationGranted = hasNotificationPermission();
         boolean overlayGranted = Settings.canDrawOverlays(this);
         boolean batteryGranted = isIgnoringBatteryOptimizations();
