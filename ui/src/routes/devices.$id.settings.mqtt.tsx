@@ -341,7 +341,10 @@ export default function SettingsMqttRoute() {
                   type="number"
                   placeholder={defaultPortForTLS(settings.use_tls).toString()}
                   value={settings.port.toString()}
-                  onChange={e => updateField("port", parseInt(e.target.value) || DEFAULT_PORT)}
+                  onChange={e => {
+                    const parsed = parseInt(e.target.value, 10);
+                    updateField("port", isNaN(parsed) ? DEFAULT_PORT : parsed);
+                  }}
                 />
               </NestedSettingsGroup>
             )}
@@ -487,7 +490,8 @@ export default function SettingsMqttRoute() {
                       value={settings.screenshot_interval_sec.toString()}
                       error={fieldErrors.screenshot_interval_sec}
                       onChange={e => {
-                        updateField("screenshot_interval_sec", parseInt(e.target.value) || 60);
+                        const parsed = parseInt(e.target.value, 10);
+                        updateField("screenshot_interval_sec", isNaN(parsed) ? 60 : parsed);
                         if (fieldErrors.screenshot_interval_sec)
                           setFieldErrors(prev => ({ ...prev, screenshot_interval_sec: "" }));
                       }}
@@ -546,7 +550,10 @@ export default function SettingsMqttRoute() {
                       type="number"
                       placeholder="500"
                       value={settings.debounce_ms.toString()}
-                      onChange={e => updateField("debounce_ms", parseInt(e.target.value) || 0)}
+                      onChange={e => {
+                        const parsed = parseInt(e.target.value, 10);
+                        updateField("debounce_ms", isNaN(parsed) ? 0 : parsed);
+                      }}
                     />
                   </SettingsItem>
                 </NestedSettingsGroup>
