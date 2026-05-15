@@ -65,6 +65,10 @@ type MQTTManager struct {
 	// Cached update state to avoid calling getUpdateStatus on every tick.
 	lastUpdateCheck   time.Time
 	lastUpdatePayload *mqttUpdateState
+
+	// screenshotRunning is set when the screenshot ticker goroutine is active.
+	// Prevents spawning duplicate publishers on MQTT reconnects.
+	screenshotRunning atomic.Bool
 }
 
 type mqttStatusPayload struct {
@@ -293,12 +297,18 @@ func (m *MQTTManager) publishBinary(topic string, payload []byte, retained bool)
 // startScreenshotTicker starts a background goroutine that periodically
 // captures and publishes a JPEG screenshot if PublishScreenshot is enabled
 // and ScreenshotIntervalSec is at least 10.
+// Safe to call on every reconnect: returns immediately if a ticker is already running.
 func (m *MQTTManager) startScreenshotTicker() {
 	interval := config.MqttConfig.ScreenshotIntervalSec
 	if !config.MqttConfig.PublishScreenshot || interval < 10 {
 		return
 	}
+	// Swap true; if it was already true a goroutine is still running — skip.
+	if m.screenshotRunning.Swap(true) {
+		return
+	}
 	go func() {
+		defer m.screenshotRunning.Store(false)
 		ticker := time.NewTicker(time.Duration(interval) * time.Second)
 		defer ticker.Stop()
 		for {
