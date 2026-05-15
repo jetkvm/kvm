@@ -1081,9 +1081,16 @@ void *run_video_stream(void *arg)
 
             num++;
 
-            // Capture JPEG if requested (before returning the V4L2 buffer)
-            if (jpeg_requested) {
-                do_jpeg_capture(&stFrame, width, height);
+            // Capture JPEG if requested (before returning the V4L2 buffer).
+            // Read jpeg_requested under the mutex to avoid a data race with
+            // video_capture_jpeg() which writes it from another thread.
+            {
+                pthread_mutex_lock(&jpeg_mutex);
+                bool do_capture = jpeg_requested;
+                pthread_mutex_unlock(&jpeg_mutex);
+                if (do_capture) {
+                    do_jpeg_capture(&stFrame, width, height);
+                }
             }
 
             if (ioctl(video_dev_fd, VIDIOC_QBUF, &buf) < 0)
