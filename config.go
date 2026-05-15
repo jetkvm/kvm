@@ -212,6 +212,7 @@ func getDefaultConfig() Config {
 			EnableActions:           true,
 			DebounceMs:              500,
 			PublishScreenshot:       false,
+			ScreenshotIntervalSec:   60,
 			PublishScreenshotButton: false,
 		},
 	}
