@@ -175,12 +175,17 @@ static void configure_vui_video_signal(VENC_VUI_VIDEO_SIGNAL_S *video_signal, RK
     }
 }
 
-static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 max_bitrate, RK_U32 width, RK_U32 height)
+static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 max_bitrate, RK_U32 width, RK_U32 height, RK_U32 fps)
 {
     memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
 
     RK_U32 min_bitrate = bitrate / 2;
     if (min_bitrate < 2) min_bitrate = 2;
+
+    // GOP scales with framerate so IDR cadence stays ~0.5s regardless of source
+    // refresh — keeps WebRTC recovery latency bounded at 60 Hz and 120 Hz alike.
+    RK_U32 gop = fps > 0 ? fps / 2 : 30;
+    if (gop < 1) gop = 1;
 
     if (codec_type == 1) {
         // H.265 (HEVC)
@@ -188,8 +193,12 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
         stAttr->stRcAttr.stH265Vbr.u32BitRate = bitrate;
         stAttr->stRcAttr.stH265Vbr.u32MaxBitRate = max_bitrate;
         stAttr->stRcAttr.stH265Vbr.u32MinBitRate = min_bitrate;
-        stAttr->stRcAttr.stH265Vbr.u32Gop = 30;
+        stAttr->stRcAttr.stH265Vbr.u32Gop = gop;
         stAttr->stRcAttr.stH265Vbr.u32StatTime = 2;
+        stAttr->stRcAttr.stH265Vbr.u32SrcFrameRateNum = fps;
+        stAttr->stRcAttr.stH265Vbr.u32SrcFrameRateDen = 1;
+        stAttr->stRcAttr.stH265Vbr.fr32DstFrameRateNum = fps;
+        stAttr->stRcAttr.stH265Vbr.fr32DstFrameRateDen = 1;
         stAttr->stVencAttr.enType = RK_VIDEO_ID_HEVC;
         stAttr->stVencAttr.u32Profile = H265E_PROFILE_MAIN;
     } else {
@@ -198,8 +207,12 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
         stAttr->stRcAttr.stH264Vbr.u32BitRate = bitrate;
         stAttr->stRcAttr.stH264Vbr.u32MaxBitRate = max_bitrate;
         stAttr->stRcAttr.stH264Vbr.u32MinBitRate = min_bitrate;
-        stAttr->stRcAttr.stH264Vbr.u32Gop = 30;
+        stAttr->stRcAttr.stH264Vbr.u32Gop = gop;
         stAttr->stRcAttr.stH264Vbr.u32StatTime = 2;
+        stAttr->stRcAttr.stH264Vbr.u32SrcFrameRateNum = fps;
+        stAttr->stRcAttr.stH264Vbr.u32SrcFrameRateDen = 1;
+        stAttr->stRcAttr.stH264Vbr.fr32DstFrameRateNum = fps;
+        stAttr->stRcAttr.stH264Vbr.fr32DstFrameRateDen = 1;
         stAttr->stVencAttr.enType = RK_VIDEO_ID_AVC;
         stAttr->stVencAttr.u32Profile = H264E_PROFILE_HIGH;
     }
@@ -260,11 +273,11 @@ static void venc_configure_limited_range_vui(RK_U32 height)
 
 pthread_t *venc_read_thread = NULL;
 volatile bool venc_running = false;
-static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height)
+static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height, int32_t fps)
 {
     int32_t ret;
     VENC_CHN_ATTR_S stAttr;
-    populate_venc_attr(&stAttr, bitrate, max_bitrate, width, height);
+    populate_venc_attr(&stAttr, bitrate, max_bitrate, width, height, fps);
 
     ret = RK_MPI_VENC_CreateChn(VENC_CHANNEL, &stAttr);
     if (ret < 0)
@@ -471,6 +484,9 @@ static void *venc_read_stream(void *arg)
 }
 
 uint32_t detected_width, detected_height;
+// detected_fps is the rounded source vrefresh from the latest dv-timings query.
+// 60 is a safe default until the first SOURCE_CHANGE event fires.
+uint32_t detected_fps = 60;
 bool detected_signal = false, streaming_flag = false;
 
 bool streaming_stopped = true;
@@ -869,6 +885,7 @@ void *run_video_stream(void *arg)
 
         uint32_t width = detected_width;
         uint32_t height = detected_height;
+        uint32_t fps = detected_fps;
         struct v4l2_format fmt;
         memset(&fmt, 0, sizeof(struct v4l2_format));
         fmt.type = type;
@@ -982,7 +999,7 @@ void *run_video_stream(void *arg)
 
         // Set VENC parameters
         int32_t bitrate = calculate_bitrate(quality_factor, width, height);
-        RK_S32 ret = venc_start(bitrate, bitrate * 3 / 2, width, height);
+        RK_S32 ret = venc_start(bitrate, bitrate * 3 / 2, width, height, fps);
         if (ret != RK_SUCCESS)
         {
             log_error("Set VENC parameters failed with %#x", ret);
@@ -1295,10 +1312,19 @@ void *run_detect_format(void *arg)
                                          dv_timings.bt.hbackporch));
             log_info("Frames per second: %.2f fps", frames_per_second);
 
-            bool should_restart = dv_timings.bt.width != detected_width || dv_timings.bt.height != detected_height || !detected_signal;
+            // Round to nearest integer for the encoder rate control. CVT-RB
+            // sources land a touch under (e.g. 119.91); rounding keeps the
+            // encoder sized for the nominal rate.
+            uint32_t fps_int = (uint32_t)(frames_per_second + 0.5);
+            if (fps_int < 1) fps_int = 1;
+            // Tolerate ±1 fps wobble between SOURCE_CHANGE events without
+            // tearing down the pipeline.
+            bool fps_changed = fps_int > detected_fps + 1 || fps_int + 1 < detected_fps;
+            bool should_restart = dv_timings.bt.width != detected_width || dv_timings.bt.height != detected_height || fps_changed || !detected_signal;
 
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
+            detected_fps = fps_int;
             detected_signal = true;
             video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
 

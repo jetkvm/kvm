@@ -13,8 +13,11 @@ import notifications from "@/notifications";
 import { isLinuxDesktop } from "@/utils";
 import { m } from "@localizations/messages.js";
 
+// JetKVM v1 default EDID. Base block DTDs: 1920x1080@60 (DTD0, preferred),
+// 1280x720@120 (DTD1). 1280x720@60 still advertised via Standard Timings.
+// Source switches refresh via OS display settings — no need to swap EDIDs.
 const defaultEdid =
-  "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cf";
+  "00FFFFFFFFFFFF0028B4010001EEFFC0302301038047287856EE91A3544C99260F5054000000D1C081C0318001010101010101010101023A801871382D40582C4500C48E2100001E773300A050D02B2030203500122C2100001A000000FD00174C0F5111000A202020202020000000FC004A65744B564D2076310A20202001D5020322D1431004012309070783010000E200CFE40D100401E305000065030C001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000CF";
 const edids = [
   {
     value: defaultEdid,
@@ -110,13 +113,10 @@ export default function SettingsVideoRoute() {
       }
 
       const receivedEdid = resp.result as string;
-
       const matchingEdid = edids.find(x => x.value.toLowerCase() === receivedEdid.toLowerCase());
 
       if (matchingEdid) {
-        // EDID is stored in uppercase in the UI
-        setEdid(matchingEdid.value.toUpperCase());
-        // Reset custom EDID value
+        setEdid(matchingEdid.value);
         setCustomEdidValue(null);
       } else {
         setEdid("custom");
@@ -160,6 +160,7 @@ export default function SettingsVideoRoute() {
   };
 
   const handleEDIDChange = (newEdid: string) => {
+    const matched = edids.find(x => x.value.toLowerCase() === newEdid.toLowerCase());
     setEdidLoading(true);
     void send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
@@ -169,14 +170,12 @@ export default function SettingsVideoRoute() {
         );
         return;
       }
-
+      setEdid(newEdid);
       notifications.success(
         m.video_edid_set_success({
-          edid: edids.find(x => x.value === newEdid)?.label ?? "the custom EDID",
+          edid: matched?.label ?? "the custom EDID",
         }),
       );
-      // Update the EDID value in the UI
-      setEdid(newEdid);
     });
   };
 
@@ -300,6 +299,7 @@ export default function SettingsVideoRoute() {
                 />
               </div>
             </NestedSettingsGroup>
+
             <Fieldset disabled={edidLoading} className="space-y-2">
               <SettingsItem
                 title={m.video_edid_title()}
