@@ -36,10 +36,11 @@ type Session struct {
 	lastKeepAliveArrivalTime time.Time  // Track when last keep-alive packet arrived
 	lastTimerResetTime       time.Time  // Track when auto-release timer was last reset
 	keepAliveJitterLock      sync.Mutex // Protect jitter compensation timing state
-	hidQueueLock             sync.Mutex
 	hidQueue                 []chan hidQueueMessage
 
 	keysDownStateQueue chan usbgadget.KeysDownState
+	done               chan struct{}
+	closeOnce          sync.Once
 
 	codecMimeType string
 }
@@ -212,19 +213,48 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 }
 
 func (s *Session) initQueues() {
-	s.hidQueueLock.Lock()
-	defer s.hidQueueLock.Unlock()
-
 	s.hidQueue = make([]chan hidQueueMessage, 0)
 	for i := 0; i < 4; i++ {
-		q := make(chan hidQueueMessage, 256)
-		s.hidQueue = append(s.hidQueue, q)
+		s.hidQueue = append(s.hidQueue, make(chan hidQueueMessage, 256))
 	}
 }
 
-func (s *Session) handleQueues(index int) {
-	for msg := range s.hidQueue[index] {
-		onHidMessage(msg, s)
+func (s *Session) handleHidQueue(queue <-chan hidQueueMessage) {
+	for {
+		select {
+		case <-s.done:
+			return
+		default:
+		}
+
+		select {
+		case <-s.done:
+			return
+		case msg := <-queue:
+			onHidMessage(msg, s)
+		}
+	}
+}
+
+func (s *Session) enqueueHidMessage(queueIndex int, msg hidQueueMessage) bool {
+	if s == nil || s.isClosed() {
+		return false
+	}
+
+	if queueIndex >= len(s.hidQueue) || queueIndex < 0 {
+		return false
+	}
+
+	queue := s.hidQueue[queueIndex]
+	if queue == nil {
+		return false
+	}
+
+	select {
+	case queue <- msg:
+		return true
+	case <-s.done:
+		return false
 	}
 }
 
@@ -232,18 +262,34 @@ const keysDownStateQueueSize = 64
 
 func (s *Session) initKeysDownStateQueue() {
 	// serialise outbound key state reports so unreliable links can't stall input handling
-	s.keysDownStateQueue = make(chan usbgadget.KeysDownState, keysDownStateQueueSize)
-	go s.handleKeysDownStateQueue()
+	queue := make(chan usbgadget.KeysDownState, keysDownStateQueueSize)
+	s.keysDownStateQueue = queue
+	go s.handleKeysDownStateQueue(queue)
 }
 
-func (s *Session) handleKeysDownStateQueue() {
-	for state := range s.keysDownStateQueue {
-		s.reportHidRPCKeysDownState(state)
+func (s *Session) handleKeysDownStateQueue(queue <-chan usbgadget.KeysDownState) {
+	for {
+		select {
+		case <-s.done:
+			return
+		default:
+		}
+
+		select {
+		case <-s.done:
+			return
+		case state := <-queue:
+			s.reportHidRPCKeysDownState(state)
+		}
 	}
 }
 
 func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
-	if s == nil || s.keysDownStateQueue == nil {
+	if s == nil || s.isClosed() {
+		return
+	}
+
+	if s.keysDownStateQueue == nil {
 		return
 	}
 
@@ -252,6 +298,34 @@ func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
 	default:
 		hidRPCLogger.Warn().Msg("dropping keys down state update; queue full")
 	}
+}
+
+func (s *Session) enqueueRPCMessage(msg webrtc.DataChannelMessage) bool {
+	if s == nil || s.rpcQueue == nil || s.isClosed() {
+		return false
+	}
+
+	select {
+	case s.rpcQueue <- msg:
+		return true
+	case <-s.done:
+		return false
+	}
+}
+
+func (s *Session) isClosed() bool {
+	select {
+	case <-s.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Session) close() {
+	s.closeOnce.Do(func() {
+		close(s.done)
+	})
 }
 
 func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {
@@ -284,13 +358,10 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 			queueIndex = 3
 		}
 
-		queue := session.hidQueue[queueIndex]
-		if queue != nil {
-			queue <- hidQueueMessage{
-				DataChannelMessage: msg,
-				channel:            channel,
-			}
-		} else {
+		if ok := session.enqueueHidMessage(queueIndex, hidQueueMessage{
+			DataChannelMessage: msg,
+			channel:            channel,
+		}); !ok {
 			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
 			return
 		}
@@ -354,20 +425,35 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	session := &Session{peerConnection: peerConnection}
-	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
+	session := &Session{
+		peerConnection: peerConnection,
+		done:           make(chan struct{}),
+		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
+	}
 	session.initQueues()
 	session.initKeysDownStateQueue()
 
+	rpcQueue := session.rpcQueue
 	go func() {
-		for msg := range session.rpcQueue {
-			// TODO: only use goroutine if the task is asynchronous
-			go onRPCMessage(msg, session)
+		for {
+			select {
+			case <-session.done:
+				return
+			default:
+			}
+
+			select {
+			case <-session.done:
+				return
+			case msg := <-rpcQueue:
+				// TODO: only use goroutine if the task is asynchronous
+				go onRPCMessage(msg, session)
+			}
 		}
 	}()
 
-	for i := 0; i < len(session.hidQueue); i++ {
-		go session.handleQueues(i)
+	for _, queue := range session.hidQueue {
+		go session.handleHidQueue(queue)
 	}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
@@ -392,7 +478,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
 				// Enqueue to ensure ordered processing
-				session.rpcQueue <- msg
+				session.enqueueRPCMessage(msg)
 			})
 			// Wait for channel to be open before sending initial state
 			d.OnOpen(func() {
@@ -459,20 +545,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 				currentSession = nil
 			}
-			// Stop RPC processor
-			if session.rpcQueue != nil {
-				close(session.rpcQueue)
-				session.rpcQueue = nil
-			}
-
-			// Stop HID RPC processor
-			for i := 0; i < len(session.hidQueue); i++ {
-				close(session.hidQueue[i])
-				session.hidQueue[i] = nil
-			}
-
-			close(session.keysDownStateQueue)
-			session.keysDownStateQueue = nil
+			session.close()
 
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {
