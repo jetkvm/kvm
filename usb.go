@@ -30,6 +30,8 @@ func effectiveAudioEnabled() bool {
 // initUsbGadget initializes the USB gadget.
 // call it only after the config is loaded.
 func initUsbGadget() {
+	config.UsbConfig.NcmHostMAC, config.UsbConfig.NcmDevMAC = deriveNcmMACs(GetDeviceID())
+
 	gadget = usbgadget.NewUsbGadget(
 		"jetkvm",
 		effectiveUsbDevices(),

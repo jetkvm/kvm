@@ -65,6 +65,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"mass_storage_lun0": massStorageLun0Config,
 	// serial console (CDC-ACM)
 	"serial_console": serialConsoleConfig,
+	// CDC-NCM (Ethernet over USB)
+	"ncm": ncmConfig,
 }
 
 func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
@@ -83,6 +85,8 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.SerialConsole
 	case "audio":
 		return u.enabledDevices.Audio
+	case "ncm":
+		return u.enabledDevices.Ncm
 	default:
 		return true
 	}
@@ -100,6 +104,13 @@ func (u *UsbGadget) loadGadgetConfig() {
 	u.configMap["base_info"].attrs["serialnumber"] = u.customConfig.SerialNumber
 	u.configMap["base_info"].attrs["manufacturer"] = u.customConfig.Manufacturer
 	u.configMap["base_info"].attrs["product"] = u.customConfig.Product
+
+	if u.customConfig.NcmHostMAC != "" {
+		u.configMap["ncm"].attrs["host_addr"] = u.customConfig.NcmHostMAC
+	}
+	if u.customConfig.NcmDevMAC != "" {
+		u.configMap["ncm"].attrs["dev_addr"] = u.customConfig.NcmDevMAC
+	}
 }
 
 func (u *UsbGadget) SetGadgetConfig(config *Config) {
@@ -210,7 +221,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 }
 
 func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
-	return u.WithTransaction(func() error {
+	if err := u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
 		u.tx.CreateConfigPath()
 		u.tx.WriteGadgetConfig()
@@ -218,5 +229,16 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 			u.tx.RebindUsb(true)
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	if u.enabledDevices.Ncm {
+		if err := u.bringUpNcmInterface(); err != nil {
+			u.log.Warn().Err(err).Msg("failed to bring up NCM interface")
+		}
+	} else {
+		u.tearDownNcmInterface()
+	}
+	return nil
 }

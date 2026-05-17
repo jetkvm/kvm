@@ -27,6 +27,7 @@ export interface UsbDeviceConfig {
   mass_storage: boolean;
   serial_console: boolean;
   audio: boolean;
+  ncm: boolean;
 }
 
 const defaultUsbDeviceConfig: UsbDeviceConfig = {
@@ -36,6 +37,7 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   mass_storage: true,
   serial_console: false,
   audio: true,
+  ncm: false,
 };
 
 const usbPresets = [
@@ -49,6 +51,7 @@ const usbPresets = [
       mass_storage: true,
       serial_console: false,
       audio: true,
+      ncm: false,
     },
   },
   {
@@ -61,6 +64,7 @@ const usbPresets = [
       mass_storage: false,
       serial_console: false,
       audio: false,
+      ncm: false,
     },
   },
   {
@@ -253,6 +257,14 @@ export function UsbDeviceSetting() {
                   checked={usbDeviceConfig.serial_console}
                   onChange={onUsbConfigItemChange("serial_console")}
                 />
+              </SettingsItem>
+            </div>
+            <div className="space-y-4">
+              <SettingsItem
+                title="Enable Ethernet over USB (CDC-NCM)"
+                description="Exposes a USB Ethernet (CDC-NCM) device to the target host"
+              >
+                <Checkbox checked={usbDeviceConfig.ncm} onChange={onUsbConfigItemChange("ncm")} />
               </SettingsItem>
             </div>
           </div>
