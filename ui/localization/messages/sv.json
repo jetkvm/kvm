@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "Aktivera tangentbord",
     "usb_device_enable_mass_storage_description": "Ibland kan det behöva inaktiveras för att förhindra problem med vissa enheter.",
     "usb_device_enable_mass_storage_title": "Aktivera USB-masslagring",
+    "usb_device_enable_ncm_description": "Exponerar en USB Ethernet-enhet (CDC-NCM) till målvärden",
+    "usb_device_enable_ncm_title": "Aktivera Ethernet över USB (CDC-NCM)",
     "usb_device_enable_relative_mouse_description": "Aktivera relativ mus",
     "usb_device_enable_relative_mouse_title": "Aktivera relativ mus",
     "usb_device_enable_serial_console_description": "Exponerar en USB-seriell enhet (CDC-ACM) till målvärden",

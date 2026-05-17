@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "Enable Keyboard",
     "usb_device_enable_mass_storage_description": "Sometimes it might need to be disabled to prevent issues with certain devices",
     "usb_device_enable_mass_storage_title": "Enable USB Mass Storage",
+    "usb_device_enable_ncm_description": "Exposes a USB Ethernet (CDC-NCM) device to the target host",
+    "usb_device_enable_ncm_title": "Enable Ethernet over USB (CDC-NCM)",
     "usb_device_enable_relative_mouse_description": "Enable Relative Mouse",
     "usb_device_enable_relative_mouse_title": "Enable Relative Mouse",
     "usb_device_enable_serial_console_description": "Exposes a USB serial (CDC-ACM) device to the target host",

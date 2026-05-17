@@ -1017,6 +1017,8 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		if !enabled {
 			config.AudioEnabled = false
 		}
+	case "ncm":
+		config.UsbDevices.Ncm = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}

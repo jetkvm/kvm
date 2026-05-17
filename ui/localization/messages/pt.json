@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "Ativar Teclado",
     "usb_device_enable_mass_storage_description": "Às vezes pode ser necessário desativar para evitar problemas com certos dispositivos",
     "usb_device_enable_mass_storage_title": "Ativar Armazenamento em Massa USB",
+    "usb_device_enable_ncm_description": "Expõe um dispositivo Ethernet USB (CDC-NCM) ao anfitrião de destino",
+    "usb_device_enable_ncm_title": "Ativar Ethernet por USB (CDC-NCM)",
     "usb_device_enable_relative_mouse_description": "Ativar Mouse Relativo",
     "usb_device_enable_relative_mouse_title": "Ativar Mouse Relativo",
     "usb_device_enable_serial_console_description": "Expõe um dispositivo série USB (CDC-ACM) ao anfitrião de destino",

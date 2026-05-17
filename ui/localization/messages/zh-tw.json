@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "啟用鍵盤",
     "usb_device_enable_mass_storage_description": "有時可能需要停用它以防止特定裝置的問題",
     "usb_device_enable_mass_storage_title": "啟用 USB 大量儲存裝置",
+    "usb_device_enable_ncm_description": "向目標主機公開 USB 乙太網路 (CDC-NCM) 裝置",
+    "usb_device_enable_ncm_title": "啟用 USB 乙太網路 (CDC-NCM)",
     "usb_device_enable_relative_mouse_description": "啟用相對滑鼠",
     "usb_device_enable_relative_mouse_title": "啟用相對滑鼠",
     "usb_device_enable_serial_console_description": "向目標主機公開 USB 序列 (CDC-ACM) 裝置",

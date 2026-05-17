@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "Aktiver tastatur",
     "usb_device_enable_mass_storage_description": "Noen ganger må det kanskje deaktiveres for å forhindre problemer med visse enheter.",
     "usb_device_enable_mass_storage_title": "Aktiver USB-masselagring",
+    "usb_device_enable_ncm_description": "Eksponerer en USB Ethernet-enhet (CDC-NCM) til målverten",
+    "usb_device_enable_ncm_title": "Aktiver Ethernet over USB (CDC-NCM)",
     "usb_device_enable_relative_mouse_description": "Aktiver relativ mus",
     "usb_device_enable_relative_mouse_title": "Aktiver relativ mus",
     "usb_device_enable_serial_console_description": "Eksponerer en USB-seriell enhet (CDC-ACM) til målverten",

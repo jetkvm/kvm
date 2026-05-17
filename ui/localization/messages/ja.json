@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "キーボードを有効化",
     "usb_device_enable_mass_storage_description": "特定のデバイスでの問題を防ぐために無効にする必要がある場合があります",
     "usb_device_enable_mass_storage_title": "USBマスストレージを有効化",
+    "usb_device_enable_ncm_description": "ターゲットホストにUSB Ethernet (CDC-NCM) デバイスを公開します",
+    "usb_device_enable_ncm_title": "USB経由のEthernet (CDC-NCM) を有効化",
     "usb_device_enable_relative_mouse_description": "相対座標マウスを有効にする",
     "usb_device_enable_relative_mouse_title": "相対座標マウスを有効化",
     "usb_device_enable_serial_console_description": "ターゲットホストにUSBシリアル (CDC-ACM) デバイスを公開します",

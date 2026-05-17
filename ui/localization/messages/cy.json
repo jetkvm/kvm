@@ -984,6 +984,8 @@
     "usb_device_enable_keyboard_title": "Galluogi Bysellfwrdd",
     "usb_device_enable_mass_storage_description": "Weithiau efallai y bydd angen ei analluogi i osgoi problemau gyda rhai dyfeisiau",
     "usb_device_enable_mass_storage_title": "Galluogi Storfa Dorfol USB",
+    "usb_device_enable_ncm_description": "Yn datgelu dyfais Ethernet USB (CDC-NCM) i'r gwesteiwr targed",
+    "usb_device_enable_ncm_title": "Galluogi Ethernet dros USB (CDC-NCM)",
     "usb_device_enable_relative_mouse_description": "Galluogi Llygoden Berthynol",
     "usb_device_enable_relative_mouse_title": "Galluogi Llygoden Berthynol",
     "usb_device_enable_serial_console_description": "Yn datgelu dyfais cyfresol USB (CDC-ACM) i'r gwesteiwr targed",

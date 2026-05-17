@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "Tastatur aktivieren",
     "usb_device_enable_mass_storage_description": "Manchmal muss es möglicherweise deaktiviert werden, um Probleme mit bestimmten Geräten zu vermeiden",
     "usb_device_enable_mass_storage_title": "USB-Massenspeicher aktivieren",
+    "usb_device_enable_ncm_description": "Stellt ein USB-Ethernet-Gerät (CDC-NCM) für den Zielhost bereit",
+    "usb_device_enable_ncm_title": "Ethernet über USB (CDC-NCM) aktivieren",
     "usb_device_enable_relative_mouse_description": "Relative Maus aktivieren",
     "usb_device_enable_relative_mouse_title": "Relative Maus aktivieren",
     "usb_device_enable_serial_console_description": "Stellt ein serielles USB-Gerät (CDC-ACM) für den Zielhost bereit",

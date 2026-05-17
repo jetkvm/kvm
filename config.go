@@ -1,9 +1,11 @@
 package kvm
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -180,6 +182,20 @@ var (
 		Audio:         true,
 	}
 )
+
+// deriveNcmMACs derives two stable, locally-administered unicast MAC addresses
+// from the device ID for the CDC-NCM function's host_addr and dev_addr.
+// On dev builds GetDeviceID() may return "unknown_device_id"; the derivation
+// still produces deterministic values, just shared across all such units.
+func deriveNcmMACs(deviceID string) (hostMAC, devMAC string) {
+	h := sha256.Sum256([]byte(deviceID))
+	host := net.HardwareAddr(append([]byte(nil), h[0:6]...))
+	dev := net.HardwareAddr(append([]byte(nil), h[6:12]...))
+	// locally-administered (bit 1 set), unicast (bit 0 cleared) on the first octet.
+	host[0] = (host[0] | 0x02) &^ 0x01
+	dev[0] = (dev[0] | 0x02) &^ 0x01
+	return host.String(), dev.String()
+}
 
 func getDefaultConfig() Config {
 	return Config{

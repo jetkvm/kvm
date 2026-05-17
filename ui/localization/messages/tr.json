@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "Klavyeyi Etkinleştir",
     "usb_device_enable_mass_storage_description": "Bazı cihazlarla ilgili sorunları önlemek için bazen devre dışı bırakılması gerekebilir",
     "usb_device_enable_mass_storage_title": "USB Depolamayı Etkinleştir",
+    "usb_device_enable_ncm_description": "Hedef ana bilgisayara bir USB Ethernet (CDC-NCM) cihazı sunar",
+    "usb_device_enable_ncm_title": "USB Üzerinden Ethernet'i (CDC-NCM) Etkinleştir",
     "usb_device_enable_relative_mouse_description": "Göreceli Fareyi Etkinleştir",
     "usb_device_enable_relative_mouse_title": "Göreceli Fareyi Etkinleştir",
     "usb_device_enable_serial_console_description": "Hedef ana bilgisayara bir USB seri (CDC-ACM) cihazı sunar",

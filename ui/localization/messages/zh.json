@@ -997,6 +997,8 @@
     "usb_device_enable_keyboard_title": "启用键盘",
     "usb_device_enable_mass_storage_description": "有时可能需要禁用此项以解决特定设备的兼容性问题。",
     "usb_device_enable_mass_storage_title": "启用 USB 大容量存储",
+    "usb_device_enable_ncm_description": "向目标主机公开 USB 以太网 (CDC-NCM) 设备",
+    "usb_device_enable_ncm_title": "启用 USB 以太网 (CDC-NCM)",
     "usb_device_enable_relative_mouse_description": "启用相对定位鼠标。",
     "usb_device_enable_relative_mouse_title": "启用相对定位鼠标",
     "usb_device_enable_serial_console_description": "向目标主机公开 USB 串行 (CDC-ACM) 设备",
