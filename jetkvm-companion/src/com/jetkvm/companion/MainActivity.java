@@ -29,8 +29,11 @@ import android.widget.TextView;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.ConnectException;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -529,7 +532,7 @@ public class MainActivity extends Activity {
             }
             return pollPairingStatus(trimmedBaseUrl, requestId, keys.privateKey);
         } catch (Exception e) {
-            return PairResult.error(e.getClass().getSimpleName());
+            return PairResult.error(describeNetworkFailure(e));
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -582,7 +585,7 @@ public class MainActivity extends Activity {
             }
             return PairResult.error("HTTP " + status);
         } catch (Exception e) {
-            return PairResult.error(e.getClass().getSimpleName());
+            return PairResult.error(describeNetworkFailure(e));
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -593,17 +596,17 @@ public class MainActivity extends Activity {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                final boolean ok = requestUnpair(baseUrl);
+                final UnpairResult result = requestUnpair(baseUrl);
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        if (ok) {
-                            CompanionService.removePairing(prefs, baseUrl);
-                            refreshPairingControls();
-                            startForegroundService(new Intent(MainActivity.this, CompanionService.class));
+                        CompanionService.removePairing(prefs, baseUrl);
+                        refreshPairingControls();
+                        startForegroundService(new Intent(MainActivity.this, CompanionService.class));
+                        if (result.backendUpdated) {
                             updateStatus("Unpaired " + baseUrl + ".");
                         } else {
-                            updateStatus("Unpair failed for " + baseUrl + ".");
+                            updateStatus("Removed local pairing for " + baseUrl + ". JetKVM cleanup skipped: " + result.message + ".");
                         }
                     }
                 });
@@ -611,12 +614,12 @@ public class MainActivity extends Activity {
         }, "JetKVM-unpair").start();
     }
 
-    private boolean requestUnpair(String baseUrl) {
+    private UnpairResult requestUnpair(String baseUrl) {
         HttpURLConnection conn = null;
         try {
             String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
             CompanionService.CompanionPairing pairing = CompanionService.getPairing(prefs, trimmedBaseUrl);
-            if (pairing == null) return true;
+            if (pairing == null) return UnpairResult.backendUpdated();
             byte[] requestBody = new byte[0];
             URL url = new URL(trimmedBaseUrl + "/companion/unpair");
             conn = (HttpURLConnection) url.openConnection();
@@ -627,12 +630,29 @@ public class MainActivity extends Activity {
             CompanionService.applyCompanionSignatureHeaders(conn, "POST", "/companion/unpair", requestBody, pairing);
             conn.setFixedLengthStreamingMode(requestBody.length);
             int status = conn.getResponseCode();
-            return status == 200 || status == 401 || status == 404;
+            if (status == 200 || status == 401 || status == 404) {
+                return UnpairResult.backendUpdated();
+            }
+            return UnpairResult.localOnly("HTTP " + status);
         } catch (Exception e) {
-            return false;
+            return UnpairResult.localOnly(describeNetworkFailure(e));
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    private static String describeNetworkFailure(Exception e) {
+        if (e instanceof SocketTimeoutException) {
+            return "endpoint timed out";
+        }
+        if (e instanceof ConnectException || e instanceof UnknownHostException) {
+            return "endpoint unreachable";
+        }
+        String message = e.getMessage();
+        if (message != null && message.trim().length() > 0) {
+            return e.getClass().getSimpleName() + ": " + message;
+        }
+        return e.getClass().getSimpleName();
     }
 
     private PairResult pollPairingStatus(String baseUrl, String requestId, String privateKey) {
@@ -654,7 +674,7 @@ public class MainActivity extends Activity {
                     return PairResult.error("rejected on JetKVM");
                 }
             } catch (Exception e) {
-                return PairResult.error(e.getClass().getSimpleName());
+                return PairResult.error(describeNetworkFailure(e));
             } finally {
                 if (conn != null) conn.disconnect();
             }
@@ -753,6 +773,24 @@ public class MainActivity extends Activity {
 
         static PairResult error(String message) {
             return new PairResult(false, "", "", "", message);
+        }
+    }
+
+    private static final class UnpairResult {
+        final boolean backendUpdated;
+        final String message;
+
+        private UnpairResult(boolean backendUpdated, String message) {
+            this.backendUpdated = backendUpdated;
+            this.message = message;
+        }
+
+        static UnpairResult backendUpdated() {
+            return new UnpairResult(true, "");
+        }
+
+        static UnpairResult localOnly(String message) {
+            return new UnpairResult(false, message);
         }
     }
 
