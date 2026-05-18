@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Prøver at oprette forbindelse igen…",
     "video_overlay_troubleshooting_guide": "Fejlfindingsvejledning",
     "video_overlay_try_again": "Prøv igen",
+    "video_overlay_try_wake": "Prøv at vække",
+    "video_overlay_trying_wake": "Prøver at vække…",
     "video_pointer_lock_disabled": "Markørlås deaktiveret",
     "video_pointer_lock_enabled": "Markørlås aktiveret — tryk på Escape for at låse op",
     "video_quality_high": "Høj",

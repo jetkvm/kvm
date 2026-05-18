@@ -62,6 +62,8 @@ type UsbGadget struct {
 
 	keyboardHidFile *os.File
 	keyboardLock    sync.Mutex
+	wakeHidFile     *os.File
+	wakeHidLock     sync.Mutex
 	absMouseHidFile *os.File
 	absMouseLock    sync.Mutex
 	relMouseHidFile *os.File
@@ -130,6 +132,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		customConfig:         *config,
 		configLock:           sync.Mutex{},
 		keyboardLock:         sync.Mutex{},
+		wakeHidLock:          sync.Mutex{},
 		absMouseLock:         sync.Mutex{},
 		relMouseLock:         sync.Mutex{},
 		txLock:               sync.Mutex{},
@@ -178,6 +181,10 @@ func (u *UsbGadget) Close() error {
 		u.keyboardHidFile.Close()
 		u.keyboardHidFile = nil
 	}
+	if u.wakeHidFile != nil {
+		u.wakeHidFile.Close()
+		u.wakeHidFile = nil
+	}
 	if u.absMouseHidFile != nil {
 		u.absMouseHidFile.Close()
 		u.absMouseHidFile = nil
@@ -197,6 +204,10 @@ func (u *UsbGadget) ResetHIDFiles() {
 	u.keyboardLock.Lock()
 	u.closeKeyboardHidFileLocked()
 	unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile reset")
+
+	u.wakeHidLock.Lock()
+	u.closeWakeHidFileLocked()
+	unlockWithLog(&u.wakeHidLock, u.log, "wakeHidFile reset")
 
 	u.absMouseLock.Lock()
 	if u.absMouseHidFile != nil {

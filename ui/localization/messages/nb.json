@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Prøver tilkobling på nytt …",
     "video_overlay_troubleshooting_guide": "Feilsøkingsveiledning",
     "video_overlay_try_again": "Prøv igjen",
+    "video_overlay_try_wake": "Prøv å vekke",
+    "video_overlay_trying_wake": "Prøver å vekke…",
     "video_pointer_lock_disabled": "Pekerlås deaktivert",
     "video_pointer_lock_enabled": "Pekerlås aktivert – trykk Escape for å låse opp",
     "video_quality_high": "Høy",

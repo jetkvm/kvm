@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Nuovo tentativo di connessione…",
     "video_overlay_troubleshooting_guide": "Guida alla risoluzione dei problemi",
     "video_overlay_try_again": "Riprova",
+    "video_overlay_try_wake": "Prova a riattivare",
+    "video_overlay_trying_wake": "Riattivazione…",
     "video_pointer_lock_disabled": "Blocco puntatore disabilitato",
     "video_pointer_lock_enabled": "Blocco puntatore abilitato: premi Esc per sbloccarlo",
     "video_quality_high": "Alto",

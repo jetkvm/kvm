@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "接続を再試行中…",
     "video_overlay_troubleshooting_guide": "トラブルシューティングガイド",
     "video_overlay_try_again": "再試行",
+    "video_overlay_try_wake": "スリープ解除を試行",
+    "video_overlay_trying_wake": "スリープ解除を試行中…",
     "video_pointer_lock_disabled": "ポインターロック無効",
     "video_pointer_lock_enabled": "ポインターロック有効 — Escapeで解除",
     "video_quality_high": "高",

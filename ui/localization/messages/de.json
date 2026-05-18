@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Verbindung wird erneut versucht …",
     "video_overlay_troubleshooting_guide": "Handbuch zur Fehlerbehebung",
     "video_overlay_try_again": "Versuchen Sie es erneut",
+    "video_overlay_try_wake": "Aufwecken versuchen",
+    "video_overlay_trying_wake": "Aufwecken…",
     "video_pointer_lock_disabled": "Zeigersperre deaktiviert",
     "video_pointer_lock_enabled": "Zeigersperre aktiviert – drücken Sie Escape, um die Sperre aufzuheben",
     "video_quality_high": "Hoch",

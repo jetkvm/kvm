@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Retrying connection…",
     "video_overlay_troubleshooting_guide": "Troubleshooting Guide",
     "video_overlay_try_again": "Try again",
+    "video_overlay_try_wake": "Try to wake",
+    "video_overlay_trying_wake": "Trying to wake…",
     "video_pointer_lock_disabled": "Pointer lock disabled",
     "video_pointer_lock_enabled": "Pointer lock enabled — press Escape to unlock",
     "video_quality_high": "High",

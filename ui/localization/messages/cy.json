@@ -1050,6 +1050,8 @@
     "video_overlay_retrying_connection": "Yn ailgeisio cysylltiad…",
     "video_overlay_troubleshooting_guide": "Canllaw Datrys Problemau",
     "video_overlay_try_again": "Rhowch gynnig arall",
+    "video_overlay_try_wake": "Ceisio deffro",
+    "video_overlay_trying_wake": "Yn ceisio deffro…",
     "video_pointer_lock_disabled": "Clo pwyntydd wedi'i analluogi",
     "video_pointer_lock_enabled": "Clo pwyntydd wedi'i alluogi — pwyswch Escape i ddatgloi",
     "video_quality_high": "Uchel",

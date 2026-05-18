@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Försöker ansluta igen…",
     "video_overlay_troubleshooting_guide": "Felsökningsguide",
     "video_overlay_try_again": "Försök igen",
+    "video_overlay_try_wake": "Försök väcka",
+    "video_overlay_trying_wake": "Försöker väcka…",
     "video_pointer_lock_disabled": "Pekarlås inaktiverat",
     "video_pointer_lock_enabled": "Pekarlås aktiverat — tryck på Escape för att låsa upp",
     "video_quality_high": "Hög",

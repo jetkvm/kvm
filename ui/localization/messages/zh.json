@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "正在尝试重新连接...",
     "video_overlay_troubleshooting_guide": "故障排查指南",
     "video_overlay_try_again": "重试",
+    "video_overlay_try_wake": "尝试唤醒",
+    "video_overlay_trying_wake": "正在尝试唤醒…",
     "video_pointer_lock_disabled": "指针锁定已禁用",
     "video_pointer_lock_enabled": "指针锁定已启用 - 按 Esc 键解除锁定",
     "video_quality_high": "高",

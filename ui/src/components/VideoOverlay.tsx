@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { LuPlay } from "react-icons/lu";
+import { LuPlay, LuPower } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
 
 import { m } from "@localizations/messages.js";
@@ -10,6 +10,7 @@ import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
 import { useRTCStore, PostRebootAction } from "@/hooks/stores";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 import { isOnDevice } from "@/main";
@@ -219,8 +220,39 @@ interface HDMIErrorOverlayProps {
 }
 
 export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
+  const { send } = useJsonRpc();
+  const [wakeAttemptPending, setWakeAttemptPending] = useState(false);
+  const wakeAttemptTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNoSignal = hdmiState === "no_signal";
   const isOtherError = hdmiState === "no_lock" || hdmiState === "out_of_range";
+  const canWakeHost = isNoSignal;
+
+  useEffect(() => {
+    return () => {
+      if (wakeAttemptTimeoutRef.current) {
+        clearTimeout(wakeAttemptTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleWakeHost = useCallback(() => {
+    if (wakeAttemptPending) return;
+
+    setWakeAttemptPending(true);
+    if (wakeAttemptTimeoutRef.current) {
+      clearTimeout(wakeAttemptTimeoutRef.current);
+    }
+    wakeAttemptTimeoutRef.current = setTimeout(() => {
+      setWakeAttemptPending(false);
+      wakeAttemptTimeoutRef.current = null;
+    }, 2500);
+
+    void send("wakeHost", {}, resp => {
+      if ("error" in resp) {
+        console.error("Failed to wake host", resp.error);
+      }
+    });
+  }, [send, wakeAttemptPending]);
 
   return (
     <>
@@ -249,7 +281,21 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                         <li>{m.video_overlay_no_hdmi_adapter_compat()}</li>
                       </ul>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-x-2">
+                      {canWakeHost && (
+                        <Button
+                          onClick={handleWakeHost}
+                          loading={wakeAttemptPending}
+                          LeadingIcon={LuPower}
+                          text={
+                            wakeAttemptPending
+                              ? m.video_overlay_trying_wake()
+                              : m.video_overlay_try_wake()
+                          }
+                          size="SM"
+                          theme="primary"
+                        />
+                      )}
                       <LinkButton
                         to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"

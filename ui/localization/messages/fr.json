@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Nouvelle tentative de connexion…",
     "video_overlay_troubleshooting_guide": "Guide de dépannage",
     "video_overlay_try_again": "Essayer à nouveau",
+    "video_overlay_try_wake": "Essayer de réveiller",
+    "video_overlay_trying_wake": "Tentative de réveil…",
     "video_pointer_lock_disabled": "Verrouillage du pointeur désactivé",
     "video_pointer_lock_enabled": "Verrouillage du pointeur activé — appuyez sur Échap pour déverrouiller",
     "video_quality_high": "Haut",

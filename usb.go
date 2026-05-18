@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -82,6 +83,33 @@ func rpcWheelReport(wheelY int8, wheelX int8) error {
 		}
 		return gadget.RelMouseWheelReport(wheelY, wheelX)
 	})
+}
+
+func rpcWakeHost() error {
+	if gadget == nil {
+		return fmt.Errorf("USB gadget is not initialized")
+	}
+
+	state := gadget.GetUsbState()
+	if state == usbgadget.USBStateNotAttached || state == usbgadget.USBStateUnknown {
+		return nil
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := gadget.WakeReport(true); err != nil && !usbgadget.IsHIDTemporarilyUnavailableError(err) {
+			return err
+		}
+
+		time.Sleep(50 * time.Millisecond)
+
+		if err := gadget.WakeReport(false); err != nil && !usbgadget.IsHIDTemporarilyUnavailableError(err) {
+			return err
+		}
+
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	return nil
 }
 
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {

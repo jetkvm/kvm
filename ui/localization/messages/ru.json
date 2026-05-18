@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Повторная попытка подключения…",
     "video_overlay_troubleshooting_guide": "Руководство по устранению неполадок",
     "video_overlay_try_again": "Попробовать снова",
+    "video_overlay_try_wake": "Попробовать разбудить",
+    "video_overlay_trying_wake": "Пробуем разбудить…",
     "video_pointer_lock_disabled": "Блокировка указателя отключена",
     "video_pointer_lock_enabled": "Блокировка указателя включена — нажмите Escape, чтобы разблокировать",
     "video_quality_high": "Высокое",

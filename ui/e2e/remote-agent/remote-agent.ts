@@ -241,12 +241,18 @@ export class RemoteAgent {
   }
 
   /** Check if the agent is running. */
-  async health(): Promise<boolean> {
+  async health(timeoutMs = 2000): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await this.get<{ status: string }>("/health");
-      return res.status === "ok";
+      const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
+      if (!res.ok) return false;
+      const body = (await res.json()) as { status: string };
+      return body.status === "ok";
     } catch {
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

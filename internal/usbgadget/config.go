@@ -53,6 +53,7 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	},
 	// keyboard HID
 	"keyboard": keyboardConfig,
+	"wake_hid": wakeHIDConfig,
 	// mouse HID
 	"absolute_mouse": absoluteMouseConfig,
 	// relative mouse HID

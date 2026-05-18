@@ -23,9 +23,37 @@ var keyboardConfig = gadgetConfigItem{
 		"subclass":        "1",
 		"report_length":   "8",
 		"no_out_endpoint": "0",
-		"wakeup_on_write": "1",
+		"wakeup_on_write": "0",
 	},
 	reportDesc: keyboardReportDesc,
+}
+
+var wakeHIDConfig = gadgetConfigItem{
+	order:      1003,
+	device:     "hid.usb3",
+	path:       []string{"functions", "hid.usb3"},
+	configPath: []string{"hid.usb3"},
+	attrs: gadgetAttributes{
+		"protocol":        "0",
+		"subclass":        "0",
+		"report_length":   "1",
+		"no_out_endpoint": "1",
+		"wakeup_on_write": "1",
+	},
+	reportDesc: wakeReportDesc,
+}
+
+var wakeReportDesc = []byte{
+	0x06, 0x00, 0xff, // USAGE_PAGE (Vendor Defined 0xff00)
+	0x09, 0x01, // USAGE (1)
+	0xa1, 0x01, // COLLECTION (Application)
+	0x15, 0x00, //   LOGICAL_MINIMUM (0)
+	0x26, 0xff, 0x00, //   LOGICAL_MAXIMUM (255)
+	0x75, 0x08, //   REPORT_SIZE (8)
+	0x95, 0x01, //   REPORT_COUNT (1)
+	0x09, 0x01, //   USAGE (1)
+	0x81, 0x02, //   INPUT (Data,Var,Abs)
+	0xc0, // END_COLLECTION
 }
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
@@ -312,6 +340,13 @@ func (u *UsbGadget) closeKeyboardHidFileLocked() {
 	}
 }
 
+func (u *UsbGadget) closeWakeHidFileLocked() {
+	if u.wakeHidFile != nil {
+		u.wakeHidFile.Close()
+		u.wakeHidFile = nil
+	}
+}
+
 func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 	if forceReopen {
 		u.closeKeyboardHidFileLocked()
@@ -330,6 +365,22 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 	u.keyboardStateCancel = cancel
 	u.listenKeyboardEvents(ctx, file)
 
+	return nil
+}
+
+func (u *UsbGadget) openWakeHidFileLocked(forceReopen bool) error {
+	if forceReopen {
+		u.closeWakeHidFileLocked()
+	} else if u.wakeHidFile != nil {
+		return nil
+	}
+
+	file, err := openWithTimeout("/dev/hidg3", os.O_WRONLY, 0666, 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to open hidg3: %w", err)
+	}
+
+	u.wakeHidFile = file
 	return nil
 }
 
@@ -408,6 +459,24 @@ func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error
 	return nil
 }
 
+func (u *UsbGadget) wakeWriteHidFile(report byte) error {
+	u.wakeHidLock.Lock()
+	defer unlockWithLog(&u.wakeHidLock, u.log, "wakeHidFile wrote")
+
+	if err := u.openWakeHidFileLocked(false); err != nil {
+		return err
+	}
+
+	_, err := u.writeWithTimeout(u.wakeHidFile, []byte{report})
+	if err != nil {
+		u.logWithSuppression("wakeWriteHidFile", 100, u.log, err, "failed to write to hidg3")
+		u.closeWakeHidFileLocked()
+		return err
+	}
+	u.resetLogSuppressionCounter("wakeWriteHidFile")
+	return nil
+}
+
 func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 	// if we just reported an error roll over, we should clear the keys
 	if keys[0] == hidErrorRollOver {
@@ -457,6 +526,14 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	keyboardMutex.Unlock()
 
 	return err
+}
+
+func (u *UsbGadget) WakeReport(active bool) error {
+	var report byte
+	if active {
+		report = 1
+	}
+	return u.wakeWriteHidFile(report)
 }
 
 const (

@@ -1063,6 +1063,8 @@
     "video_overlay_retrying_connection": "Tentando conexão novamente…",
     "video_overlay_troubleshooting_guide": "Guia de Solução de Problemas",
     "video_overlay_try_again": "Tentar novamente",
+    "video_overlay_try_wake": "Tentar despertar",
+    "video_overlay_trying_wake": "A tentar despertar…",
     "video_pointer_lock_disabled": "Bloqueio de ponteiro desativado",
     "video_pointer_lock_enabled": "Bloqueio de ponteiro ativado — pressione Escape para desbloquear",
     "video_quality_high": "Alta",
