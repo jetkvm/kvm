@@ -281,7 +281,6 @@ export default function KvmIdRoute() {
   const isSettingRemoteAnswerPending = useRef(false);
   const makingOffer = useRef(false);
   const reconnectAttemptsRef = useRef(2000);
-  const remoteMediaStreamRef = useRef<MediaStream>(new MediaStream());
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
   const reconnectInterval = (attempt: number) => {
@@ -460,7 +459,6 @@ export default function KvmIdRoute() {
     console.debug("[setupPeerConnection] Setting up peer connection");
     setConnectionFailed(false);
     setLoadingMessage(m.connecting_to_device());
-    remoteMediaStreamRef.current = new MediaStream();
 
     let pc: RTCPeerConnection;
     try {
@@ -540,11 +538,9 @@ export default function KvmIdRoute() {
     };
 
     pc.ontrack = function (event) {
-      const stream = remoteMediaStreamRef.current;
-      if (!stream.getTracks().some(track => track.id === event.track.id)) {
-        stream.addTrack(event.track);
-      }
-      setMediaStream(new MediaStream(stream.getTracks()));
+      // Backend tracks share stream ID "kvm", so pion delivers both video and
+      // audio in the same MediaStream — assigning it on either event is enough.
+      setMediaStream(event.streams[0]);
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));

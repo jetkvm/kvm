@@ -132,6 +132,30 @@ type SessionConfig struct {
 	MDNSMode   string
 }
 
+// negotiateAudioCodec returns the audio MIME type to use, or "" if the browser
+// offer advertises no supported audio codec.
+func negotiateAudioCodec(offerSDP string) string {
+	upper := strings.ToUpper(offerSDP)
+	switch {
+	case strings.Contains(upper, "G722/8000"):
+		return webrtc.MimeTypeG722
+	case strings.Contains(upper, "PCMU/8000"):
+		return webrtc.MimeTypePCMU
+	}
+	return ""
+}
+
+// drainRTCP reads and discards RTCP packets from a sender. Required for NACK
+// handling on outgoing tracks; the sender stops on connection close.
+func drainRTCP(sender *webrtc.RTPSender) {
+	buf := make([]byte, 1500)
+	for {
+		if _, _, err := sender.Read(buf); err != nil {
+			return
+		}
+	}
+}
+
 // resolveCodec picks the video codec based on user preference and browser support.
 // Always validates against the browser's SDP offer to prevent negotiation failure.
 func resolveCodec(offerSDP string) string {
@@ -152,17 +176,6 @@ func resolveCodec(offerSDP string) string {
 		}
 		return webrtc.MimeTypeH264
 	}
-}
-
-func resolveAudioCodec(offerSDP string) (webrtc.RTPCodecCapability, bool) {
-	upperOffer := strings.ToUpper(offerSDP)
-	if strings.Contains(upperOffer, "G722/8000") {
-		return webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeG722, ClockRate: 8000}, true
-	}
-	if strings.Contains(upperOffer, "PCMU/8000") {
-		return webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU, ClockRate: 8000}, true
-	}
-	return webrtc.RTPCodecCapability{}, false
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -190,38 +203,22 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 		return "", err
 	}
 
-	// Read incoming RTCP packets (required for NACK handling).
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-				return
-			}
-		}
-	}()
+	go drainRTCP(rtpSender)
 
-	if audioCodec, ok := resolveAudioCodec(offer.SDP); ok {
-		s.AudioTrack, err = webrtc.NewTrackLocalStaticSample(audioCodec, "audio", "kvm")
+	if audioMime := negotiateAudioCodec(offer.SDP); audioMime != "" {
+		s.AudioTrack, err = webrtc.NewTrackLocalStaticSample(
+			webrtc.RTPCodecCapability{MimeType: audioMime, ClockRate: 8000}, "audio", "kvm")
 		if err != nil {
 			return "", err
 		}
-		webrtcLogger.Info().Str("codec", audioCodec.MimeType).Msg("audio track enabled")
-
-		audioRTPSender, err := s.peerConnection.AddTrack(s.AudioTrack)
+		audioSender, err := s.peerConnection.AddTrack(s.AudioTrack)
 		if err != nil {
 			return "", err
 		}
-
-		go func() {
-			rtcpBuf := make([]byte, 1500)
-			for {
-				if _, _, rtcpErr := audioRTPSender.Read(rtcpBuf); rtcpErr != nil {
-					return
-				}
-			}
-		}()
+		webrtcLogger.Info().Str("codec", audioMime).Msg("audio track enabled")
+		go drainRTCP(audioSender)
 	} else {
-		webrtcLogger.Warn().Msg("browser offer does not include supported audio codec; audio track disabled")
+		webrtcLogger.Warn().Msg("browser offer has no supported audio codec; audio disabled")
 	}
 
 	// Set the remote SessionDescription
@@ -624,7 +621,12 @@ func onCurrentSessionConnected(session *Session) {
 		_ = nativeInstance.VideoSetCodecType(0)
 	}
 	_ = nativeInstance.VideoStart()
-	startSessionAudio(session)
+
+	var audioTrack *webrtc.TrackLocalStaticSample
+	if session != nil {
+		audioTrack = session.AudioTrack
+	}
+	startAudio(audioTrack)
 }
 
 func onLastSessionDisconnected() {
@@ -633,12 +635,4 @@ func onLastSessionDisconnected() {
 	stopAudio()
 	_ = nativeInstance.VideoStop()
 	startVideoSleepModeTicker()
-}
-
-func startSessionAudio(session *Session) {
-	if session == nil || session.AudioTrack == nil {
-		stopAudio()
-		return
-	}
-	startAudio(session.AudioTrack)
 }

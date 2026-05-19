@@ -30,8 +30,8 @@ export default function WebRTCVideo({
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
+  const audioElm = useRef<HTMLAudioElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
-  const audioElementsRef = useRef<HTMLAudioElement[]>([]);
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
@@ -440,60 +440,33 @@ export default function WebRTCVideo({
   );
 
   useEffect(
-    function updateVideoStreamOnNewTrack() {
-      if (!peerConnection) return;
-      const abortController = new AbortController();
-      const signal = abortController.signal;
-
-      peerConnection.addEventListener(
-        "track",
-        (e: RTCTrackEvent) => {
-          if (e.track.kind === "video") {
-            addStreamToVideoElm(e.streams[0]);
-            return;
-          }
-
-          if (e.track.kind === "audio") {
-            const audioElm = document.createElement("audio");
-            audioElm.srcObject = new MediaStream([e.track]);
-            audioElm.style.display = "none";
-            document.body.appendChild(audioElm);
-            audioElementsRef.current.push(audioElm);
-
-            audioElm
-              .play()
-              .then(() => {
-                setAudioAutoplayBlocked(false);
-              })
-              .catch(() => {
-                console.debug("[Audio] Autoplay blocked, will be started by user interaction");
-                setAudioAutoplayBlocked(true);
-              });
-          }
-        },
-        { signal },
-      );
-
-      return () => {
-        abortController.abort();
-        audioElementsRef.current.forEach(audioElm => {
-          audioElm.srcObject = null;
-          audioElm.remove();
-        });
-        audioElementsRef.current = [];
-        setAudioAutoplayBlocked(false);
-      };
-    },
-    [addStreamToVideoElm, peerConnection],
-  );
-
-  useEffect(
     function updateVideoStream() {
       if (!mediaStream) return;
-      // We set the as early as possible
       addStreamToVideoElm(mediaStream);
     },
     [addStreamToVideoElm, mediaStream],
+  );
+
+  useEffect(
+    function updateAudioStream() {
+      const elm = audioElm.current;
+      if (!elm || !mediaStream) return;
+
+      elm.srcObject = mediaStream;
+      elm
+        .play()
+        .then(() => setAudioAutoplayBlocked(false))
+        .catch(() => {
+          console.debug("[Audio] Autoplay blocked; waiting for user interaction");
+          setAudioAutoplayBlocked(true);
+        });
+
+      return () => {
+        elm.srcObject = null;
+        setAudioAutoplayBlocked(false);
+      };
+    },
+    [mediaStream],
   );
 
   // Setup Keyboard Events
@@ -693,6 +666,7 @@ export default function WebRTCVideo({
                           "animate-slideUpFade": isPlaying,
                         })}
                       />
+                      <audio ref={audioElm} autoPlay playsInline hidden />
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
@@ -706,14 +680,10 @@ export default function WebRTCVideo({
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
                                 videoElm.current?.play();
-                                audioElementsRef.current.forEach(audioElm => {
-                                  audioElm
-                                    .play()
-                                    .then(() => {
-                                      setAudioAutoplayBlocked(false);
-                                    })
-                                    .catch(() => undefined);
-                                });
+                                audioElm.current
+                                  ?.play()
+                                  .then(() => setAudioAutoplayBlocked(false))
+                                  .catch(() => undefined);
                               }}
                             />
                           </div>

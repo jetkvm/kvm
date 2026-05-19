@@ -30,21 +30,6 @@ func (c Codec) String() string {
 	}
 }
 
-type Reader interface {
-	ReadEncoded(codec Codec) ([]byte, error)
-	Close() error
-}
-
-type unavailableCapture struct {
-	err error
-}
-
-func (c *unavailableCapture) ReadEncoded(Codec) ([]byte, error) {
-	return nil, c.err
-}
-
-func (c *unavailableCapture) Close() error {
-	return nil
-}
-
+// ErrNoAudioData is returned when the underlying capture device is idle.
+// The caller should retry; it is not a fatal error.
 var ErrNoAudioData = io.ErrNoProgress
