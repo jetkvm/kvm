@@ -552,11 +552,9 @@ func newSession(config SessionConfig) (*Session, error) {
 				isConnected = true
 				onActiveSessionsChanged()
 				if incrActiveSessions() == 1 {
-					onFirstSessionConnected()
+					stopVideoSleepModeTicker()
 				}
-				if session == currentSession {
-					onCurrentSessionConnected(session)
-				}
+				onSessionConnected(session)
 				if mqttManager != nil {
 					mqttManager.publishSessionsState()
 				}
@@ -609,24 +607,19 @@ func onActiveSessionsChanged() {
 	requestDisplayUpdate(false, "active_sessions_changed")
 }
 
-func onFirstSessionConnected() {
-	stopVideoSleepModeTicker()
-}
-
-func onCurrentSessionConnected(session *Session) {
+// onSessionConnected runs per session when ICE reaches Connected. Uses the
+// session parameter directly rather than the currentSession global — that
+// global is assigned by the caller AFTER ExchangeOffer returns, and ICE
+// connected can fire before then, racing the assignment.
+func onSessionConnected(session *Session) {
 	notifyFailsafeMode(session)
-	if session != nil && session.codecMimeType == webrtc.MimeTypeH265 {
+	if session.codecMimeType == webrtc.MimeTypeH265 {
 		_ = nativeInstance.VideoSetCodecType(1)
 	} else {
 		_ = nativeInstance.VideoSetCodecType(0)
 	}
 	_ = nativeInstance.VideoStart()
-
-	var audioTrack *webrtc.TrackLocalStaticSample
-	if session != nil {
-		audioTrack = session.AudioTrack
-	}
-	startAudio(audioTrack)
+	startAudio(session.AudioTrack)
 }
 
 func onLastSessionDisconnected() {
