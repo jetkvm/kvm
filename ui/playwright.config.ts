@@ -31,6 +31,11 @@ export default defineConfig({
       testDir: "./e2e/remote-agent",
       testMatch: "ra-all.spec.ts",
     },
+    {
+      name: "remote-agent-audio",
+      testDir: "./e2e/remote-agent",
+      testMatch: "ra-audio.spec.ts",
+    },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
     {
       name: "ota-prerelease-unsigned",

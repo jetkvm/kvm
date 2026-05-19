@@ -31,8 +31,10 @@ export default function WebRTCVideo({
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const audioElementsRef = useRef<HTMLAudioElement[]>([]);
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
 
@@ -446,13 +448,40 @@ export default function WebRTCVideo({
       peerConnection.addEventListener(
         "track",
         (e: RTCTrackEvent) => {
-          addStreamToVideoElm(e.streams[0]);
+          if (e.track.kind === "video") {
+            addStreamToVideoElm(e.streams[0]);
+            return;
+          }
+
+          if (e.track.kind === "audio") {
+            const audioElm = document.createElement("audio");
+            audioElm.srcObject = new MediaStream([e.track]);
+            audioElm.style.display = "none";
+            document.body.appendChild(audioElm);
+            audioElementsRef.current.push(audioElm);
+
+            audioElm
+              .play()
+              .then(() => {
+                setAudioAutoplayBlocked(false);
+              })
+              .catch(() => {
+                console.debug("[Audio] Autoplay blocked, will be started by user interaction");
+                setAudioAutoplayBlocked(true);
+              });
+          }
         },
         { signal },
       );
 
       return () => {
         abortController.abort();
+        audioElementsRef.current.forEach(audioElm => {
+          audioElm.srcObject = null;
+          audioElm.remove();
+        });
+        audioElementsRef.current = [];
+        setAudioAutoplayBlocked(false);
       };
     },
     [addStreamToVideoElm, peerConnection],
@@ -568,11 +597,18 @@ export default function WebRTCVideo({
 
   const hasNoAutoPlayPermissions = useMemo(() => {
     if (peerConnection?.connectionState !== "connected") return false;
-    if (isPlaying) return false;
+    if (isPlaying && !audioAutoplayBlocked) return false;
     if (hdmiError) return false;
     if (videoHeight === 0 || videoWidth === 0) return false;
     return true;
-  }, [hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
+  }, [
+    audioAutoplayBlocked,
+    hdmiError,
+    isPlaying,
+    peerConnection?.connectionState,
+    videoHeight,
+    videoWidth,
+  ]);
 
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
@@ -606,13 +642,8 @@ export default function WebRTCVideo({
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
-          <fieldset
-            disabled={peerConnection?.connectionState !== "connected"}
-            className="contents"
-          >
-            <Actionbar
-              requestFullscreen={requestFullscreen}
-            />
+          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <Actionbar requestFullscreen={requestFullscreen} />
             <MacroBar />
           </fieldset>
         </div>
@@ -634,9 +665,7 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div
-                    className="relative mx-4 my-2 flex items-center justify-center overflow-hidden"
-                  >
+                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}
                       className="relative flex h-full w-full items-center justify-center"
@@ -652,20 +681,17 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx(
-                          "h-full w-full object-contain transition-all duration-1000",
-                          {
-                            "cursor-none": settings.isCursorHidden,
-                            "pointer-events-none": isOcrMode,
-                            "opacity-0!":
-                              isVideoLoading ||
-                              hdmiError ||
-                              hasConnectionIssues ||
-                              peerConnectionState !== "connected",
-                            "opacity-60!": showPointerLockBar,
-                            "animate-slideUpFade": isPlaying,
-                          },
-                        )}
+                        className={cx("h-full w-full object-contain transition-all duration-1000", {
+                          "cursor-none": settings.isCursorHidden,
+                          "pointer-events-none": isOcrMode,
+                          "opacity-0!":
+                            isVideoLoading ||
+                            hdmiError ||
+                            hasConnectionIssues ||
+                            peerConnectionState !== "connected",
+                          "opacity-60!": showPointerLockBar,
+                          "animate-slideUpFade": isPlaying,
+                        })}
                       />
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
@@ -680,6 +706,14 @@ export default function WebRTCVideo({
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
                                 videoElm.current?.play();
+                                audioElementsRef.current.forEach(audioElm => {
+                                  audioElm
+                                    .play()
+                                    .then(() => {
+                                      setAudioAutoplayBlocked(false);
+                                    })
+                                    .catch(() => undefined);
+                                });
                               }}
                             />
                           </div>

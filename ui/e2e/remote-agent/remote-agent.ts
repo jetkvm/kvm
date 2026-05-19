@@ -5,6 +5,7 @@
  */
 
 import { execSync } from "child_process";
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -54,6 +55,16 @@ export interface DisplayInfo {
   status: "connected" | "disconnected";
   resolution?: string;
   modes?: string[];
+}
+
+export interface AudioDeviceInfo {
+  card: number;
+  device: number;
+  name: string;
+  pcm: string;
+  description?: string;
+  usb_id?: string;
+  is_jetkvm: boolean;
 }
 
 // Linux evdev key codes (matching input-event-codes.h)
@@ -298,6 +309,18 @@ export class RemoteAgent {
     return this.get<DisplayInfo[]>("/display");
   }
 
+  async getAudioDevices(): Promise<AudioDeviceInfo[]> {
+    return this.get<AudioDeviceInfo[]>("/audio/devices");
+  }
+
+  async startAudioTone(): Promise<AudioDeviceInfo> {
+    return this.get<AudioDeviceInfo>("/audio/start-tone");
+  }
+
+  async stopAudioTone(): Promise<void> {
+    await this.get("/audio/stop-tone");
+  }
+
   // ── High-level verification helpers ──
 
   /**
@@ -529,11 +552,20 @@ export class RemoteAgent {
       });
     }
 
-    // Skip deploy only when the binary hasn't changed and the agent is already running
-    if (!needsBuild && (await this.health())) return;
-
     const sshOpts =
       "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=5 -o ServerAliveCountMax=3";
+    const binaryHash = crypto.createHash("sha256").update(fs.readFileSync(binary)).digest("hex");
+    let remoteHash = "";
+    try {
+      remoteHash = execSync(
+        `ssh ${sshOpts} ${target} 'cat /tmp/remote-agent.sha256 2>/dev/null || true'`,
+        { encoding: "utf8" },
+      ).trim();
+    } catch {
+      /* deploy below */
+    }
+
+    if (!needsBuild && remoteHash === binaryHash && (await this.health())) return;
 
     console.log(`[remote-agent] Deploying to ${target}...`);
     // Kill the running agent first — Linux prevents overwriting a running binary
@@ -547,6 +579,7 @@ export class RemoteAgent {
       `ssh ${sshOpts} ${target} 'PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
       { stdio: "inherit" },
     );
+    execSync(`ssh ${sshOpts} ${target} 'printf %s ${binaryHash} > /tmp/remote-agent.sha256'`);
 
     await sleep(1500);
 

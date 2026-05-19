@@ -61,6 +61,7 @@ export interface KvmTestHooks extends TestHooksInternal {
   isWebRTCConnected: () => boolean;
   isHidRpcReady: () => boolean;
   isVideoStreamActive: () => boolean;
+  isAudioStreamActive: () => boolean;
   getInboundVideoStats: () => Promise<{
     bytesReceived: number;
     timestamp: number;
@@ -72,6 +73,15 @@ export interface KvmTestHooks extends TestHooksInternal {
     totalDecodeTime: number;
     freezeCount: number;
     totalFreezesDuration: number;
+    codecMimeType: string;
+  } | null>;
+  getInboundAudioStats: () => Promise<{
+    bytesReceived: number;
+    packetsReceived: number;
+    timestamp: number;
+    audioLevel: number;
+    totalAudioEnergy: number;
+    totalSamplesDuration: number;
     codecMimeType: string;
   } | null>;
 }
@@ -277,6 +287,13 @@ export function initTestHooks(): void {
       return videoTracks.length > 0 && videoTracks[0].readyState === "live";
     },
 
+    isAudioStreamActive: () => {
+      const stream = hooks._getMediaStream?.();
+      if (!stream) return false;
+      const audioTracks = stream.getAudioTracks();
+      return audioTracks.length > 0 && audioTracks[0].readyState === "live";
+    },
+
     getInboundVideoStats: async () => {
       const pc = hooks._getPeerConnection?.();
       if (!pc) return null;
@@ -314,6 +331,43 @@ export function initTestHooks(): void {
         }
       });
       // Resolve codecId to mimeType
+      if (result && codecId) {
+        const codecReport = stats.get(codecId);
+        if (codecReport && codecReport.mimeType) {
+          result.codecMimeType = codecReport.mimeType;
+        }
+      }
+      return result;
+    },
+
+    getInboundAudioStats: async () => {
+      const pc = hooks._getPeerConnection?.();
+      if (!pc) return null;
+      const stats = await pc.getStats();
+      let result: {
+        bytesReceived: number;
+        packetsReceived: number;
+        timestamp: number;
+        audioLevel: number;
+        totalAudioEnergy: number;
+        totalSamplesDuration: number;
+        codecMimeType: string;
+      } | null = null;
+      let codecId: string | null = null;
+      stats.forEach(report => {
+        if (report.type === "inbound-rtp" && report.kind === "audio") {
+          codecId = report.codecId ?? null;
+          result = {
+            bytesReceived: report.bytesReceived ?? 0,
+            packetsReceived: report.packetsReceived ?? 0,
+            timestamp: report.timestamp,
+            audioLevel: report.audioLevel ?? 0,
+            totalAudioEnergy: report.totalAudioEnergy ?? 0,
+            totalSamplesDuration: report.totalSamplesDuration ?? 0,
+            codecMimeType: "",
+          };
+        }
+      });
       if (result && codecId) {
         const codecReport = stats.get(codecId);
         if (codecReport && codecReport.mimeType) {

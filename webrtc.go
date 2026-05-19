@@ -25,6 +25,7 @@ import (
 type Session struct {
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
+	AudioTrack               *webrtc.TrackLocalStaticSample
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
@@ -153,6 +154,17 @@ func resolveCodec(offerSDP string) string {
 	}
 }
 
+func resolveAudioCodec(offerSDP string) (webrtc.RTPCodecCapability, bool) {
+	upperOffer := strings.ToUpper(offerSDP)
+	if strings.Contains(upperOffer, "G722/8000") {
+		return webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeG722, ClockRate: 8000}, true
+	}
+	if strings.Contains(upperOffer, "PCMU/8000") {
+		return webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU, ClockRate: 8000}, true
+	}
+	return webrtc.RTPCodecCapability{}, false
+}
+
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	b, err := base64.StdEncoding.DecodeString(offerStr)
 	if err != nil {
@@ -187,6 +199,30 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 			}
 		}
 	}()
+
+	if audioCodec, ok := resolveAudioCodec(offer.SDP); ok {
+		s.AudioTrack, err = webrtc.NewTrackLocalStaticSample(audioCodec, "audio", "kvm")
+		if err != nil {
+			return "", err
+		}
+		webrtcLogger.Info().Str("codec", audioCodec.MimeType).Msg("audio track enabled")
+
+		audioRTPSender, err := s.peerConnection.AddTrack(s.AudioTrack)
+		if err != nil {
+			return "", err
+		}
+
+		go func() {
+			rtcpBuf := make([]byte, 1500)
+			for {
+				if _, _, rtcpErr := audioRTPSender.Read(rtcpBuf); rtcpErr != nil {
+					return
+				}
+			}
+		}()
+	} else {
+		webrtcLogger.Warn().Msg("browser offer does not include supported audio codec; audio track disabled")
+	}
 
 	// Set the remote SessionDescription
 	if err = s.peerConnection.SetRemoteDescription(offer); err != nil {
@@ -521,6 +557,9 @@ func newSession(config SessionConfig) (*Session, error) {
 				if incrActiveSessions() == 1 {
 					onFirstSessionConnected()
 				}
+				if session == currentSession {
+					onCurrentSessionConnected(session)
+				}
 				if mqttManager != nil {
 					mqttManager.publishSessionsState()
 				}
@@ -574,19 +613,32 @@ func onActiveSessionsChanged() {
 }
 
 func onFirstSessionConnected() {
-	notifyFailsafeMode(currentSession)
-	if currentSession != nil && currentSession.codecMimeType == webrtc.MimeTypeH265 {
+	stopVideoSleepModeTicker()
+}
+
+func onCurrentSessionConnected(session *Session) {
+	notifyFailsafeMode(session)
+	if session != nil && session.codecMimeType == webrtc.MimeTypeH265 {
 		_ = nativeInstance.VideoSetCodecType(1)
 	} else {
 		_ = nativeInstance.VideoSetCodecType(0)
 	}
 	_ = nativeInstance.VideoStart()
-	stopVideoSleepModeTicker()
+	startSessionAudio(session)
 }
 
 func onLastSessionDisconnected() {
 	// Safety net: ensure all keys are released when the last session disconnects
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
+	stopAudio()
 	_ = nativeInstance.VideoStop()
 	startVideoSleepModeTicker()
+}
+
+func startSessionAudio(session *Session) {
+	if session == nil || session.AudioTrack == nil {
+		stopAudio()
+		return
+	}
+	startAudio(session.AudioTrack)
 }

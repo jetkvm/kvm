@@ -57,6 +57,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"absolute_mouse": absoluteMouseConfig,
 	// relative mouse HID
 	"relative_mouse": relativeMouseConfig,
+	// USB audio sink
+	"audio": audioConfig,
 	// mass storage
 	"mass_storage_base": massStorageBaseConfig,
 	"mass_storage_lun0": massStorageLun0Config,
