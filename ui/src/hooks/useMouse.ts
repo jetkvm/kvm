@@ -35,13 +35,15 @@ export default function useMouse() {
       // if (x === 0 && y === 0 && buttons === 0) return;
       const dx = calcDelta(x);
       const dy = calcDelta(y);
+      // Keep L/R/M/X1/X2; drop pen-eraser and any future high bits.
+      const b = buttons & 0x1f;
       if (rpcHidReady) {
-        reportRelMouseEvent(dx, dy, buttons);
+        reportRelMouseEvent(dx, dy, b);
       } else {
         // kept for backward compatibility
-        send("relMouseReport", { dx, dy, buttons });
+        send("relMouseReport", { dx, dy, buttons: b });
       }
-      setMouseMove({ x, y, buttons });
+      setMouseMove({ x, y, buttons: b });
     },
     [send, reportRelMouseEvent, setMouseMove, mouseMode, rpcHidReady],
   );
@@ -60,11 +62,13 @@ export default function useMouse() {
   const sendAbsMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
       if (mouseMode !== "absolute") return;
+      // Keep L/R/M/X1/X2; drop pen-eraser and any future high bits.
+      const b = buttons & 0x1f;
       if (rpcHidReady) {
-        reportAbsMouseEvent(x, y, buttons);
+        reportAbsMouseEvent(x, y, b);
       } else {
         // kept for backward compatibility
-        send("absMouseReport", { x, y, buttons });
+        send("absMouseReport", { x, y, buttons: b });
       }
       // We set that for the debug info bar
       setMousePosition(x, y);

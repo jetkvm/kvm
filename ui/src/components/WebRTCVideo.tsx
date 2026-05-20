@@ -548,6 +548,15 @@ export default function WebRTCVideo({
       const preventContextMenu = (e: MouseEvent) => e.preventDefault();
       videoElmRefValue.addEventListener("contextmenu", preventContextMenu, { signal });
 
+      // Suppress browser Back/Forward navigation on X1/X2 mouse buttons so
+      // those presses are forwarded to the remote target instead.
+      const preventXButtonNav = (e: MouseEvent) => {
+        if (e.button === 3 || e.button === 4) e.preventDefault();
+      };
+      videoElmRefValue.addEventListener("mousedown", preventXButtonNav, { signal });
+      videoElmRefValue.addEventListener("mouseup", preventXButtonNav, { signal });
+      videoElmRefValue.addEventListener("auxclick", preventXButtonNav, { signal });
+
       return () => {
         abortController.abort();
       };
@@ -606,13 +615,8 @@ export default function WebRTCVideo({
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
-          <fieldset
-            disabled={peerConnection?.connectionState !== "connected"}
-            className="contents"
-          >
-            <Actionbar
-              requestFullscreen={requestFullscreen}
-            />
+          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <Actionbar requestFullscreen={requestFullscreen} />
             <MacroBar />
           </fieldset>
         </div>
@@ -634,9 +638,7 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div
-                    className="relative mx-4 my-2 flex items-center justify-center overflow-hidden"
-                  >
+                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}
                       className="relative flex h-full w-full items-center justify-center"
@@ -652,20 +654,17 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx(
-                          "h-full w-full object-contain transition-all duration-1000",
-                          {
-                            "cursor-none": settings.isCursorHidden,
-                            "pointer-events-none": isOcrMode,
-                            "opacity-0!":
-                              isVideoLoading ||
-                              hdmiError ||
-                              hasConnectionIssues ||
-                              peerConnectionState !== "connected",
-                            "opacity-60!": showPointerLockBar,
-                            "animate-slideUpFade": isPlaying,
-                          },
-                        )}
+                        className={cx("h-full w-full object-contain transition-all duration-1000", {
+                          "cursor-none": settings.isCursorHidden,
+                          "pointer-events-none": isOcrMode,
+                          "opacity-0!":
+                            isVideoLoading ||
+                            hdmiError ||
+                            hasConnectionIssues ||
+                            peerConnectionState !== "connected",
+                          "opacity-60!": showPointerLockBar,
+                          "animate-slideUpFade": isPlaying,
+                        })}
                       />
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
