@@ -538,18 +538,19 @@ export default function KvmIdRoute() {
     };
 
     pc.ontrack = function (event) {
-      // Backend tracks share stream ID "kvm", so when event.streams[0] is
-      // present (the common case) both video and audio land on the same
-      // MediaStream. Fall back to assembling a stream from the bare track —
-      // some negotiations land without a=msid, and event.streams[] is empty.
-      if (event.streams[0]) {
-        setMediaStream(event.streams[0]);
-        return;
+      // Assemble a single canonical MediaStream from every incoming track.
+      // We don't trust event.streams[0]: when the answer SDP omits a=msid
+      // for a track (pion does this for audio in some configurations),
+      // Firefox hands us a fresh synthetic stream that would overwrite the
+      // canonical one and strip tracks already attached to it.
+      let stream = useRTCStore.getState().mediaStream;
+      if (!stream) {
+        stream = new MediaStream();
+        setMediaStream(stream);
       }
-      const existing = useRTCStore.getState().mediaStream;
-      const stream = existing ?? new MediaStream();
-      stream.addTrack(event.track);
-      if (!existing) setMediaStream(stream);
+      if (!stream.getTracks().some(t => t.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
