@@ -4,6 +4,7 @@ import { Checkbox } from "@components/Checkbox";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useRTCStore } from "@hooks/stores";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
@@ -32,9 +33,11 @@ export default function SettingsAudioRoute() {
           setEnabled(previous);
           return;
         }
-        // Re-negotiate the WebRTC session so the audio track is added or
-        // removed immediately (and the browser surfaces its autoplay-
-        // permission prompt on enable).
+        // Close the WebRTC connection before reloading. Firefox's soft
+        // reload doesn't always tear it down, which leaves the new page in
+        // a half-renegotiated state (tracks land on receivers but never
+        // attach to a MediaStream). Closing first guarantees a clean start.
+        useRTCStore.getState().peerConnection?.close();
         window.location.reload();
       });
     },
