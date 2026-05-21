@@ -104,25 +104,6 @@ test_e2e:
 		$(if $(JETKVM_REMOTE_HOST),JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST)) \
 		npx playwright test --project=ui --project=remote-agent --project=ota-prerelease-unsigned --project=ota-upgrade-from-stable --project=ota-upgrade-to-signed
 
-test_audio_e2e:
-	@if [ -z "$(DEVICE_IP)" ]; then \
-		echo "Error: DEVICE_IP is required"; \
-		echo "Usage: make test_audio_e2e DEVICE_IP=<ip> JETKVM_REMOTE_HOST=<host>"; \
-		exit 1; \
-	fi
-	@if [ -z "$(JETKVM_REMOTE_HOST)" ]; then \
-		echo "Error: JETKVM_REMOTE_HOST is required"; \
-		echo "Usage: make test_audio_e2e DEVICE_IP=<ip> JETKVM_REMOTE_HOST=<host>"; \
-		exit 1; \
-	fi
-	$(MAKE) frontend
-	$(MAKE) build_dev SKIP_UI_BUILD=1 SKIP_NATIVE_IF_EXISTS=1
-	cd ui && JETKVM_URL=http://$(DEVICE_IP) \
-		BASELINE_BINARY_PATH=$(abspath bin/jetkvm_app) \
-		JETKVM_REMOTE_HOST=$(JETKVM_REMOTE_HOST) \
-		NODE_NO_WARNINGS=1 \
-		npx playwright test --project=remote-agent-audio $(if $(AUDIO_E2E_GREP),--grep "$(AUDIO_E2E_GREP)")
-
 # Production release validation lane
 test_production_release:
 	@if [ -z "$(SIGNING_KEY_FPR)" ]; then \
