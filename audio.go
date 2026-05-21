@@ -49,6 +49,12 @@ func stopAudioLocked() {
 	audioStopped = nil
 }
 
+// reopenThreshold is the number of consecutive non-idle read errors that
+// triggers a close+reopen of the ALSA handle. The C-side already recovers
+// EPIPE/ESTRPIPE; errors that surface here (EBADFD, ENODEV, …) usually mean
+// the handle is dead — typically a USB gadget rebuild or host reattach.
+const reopenThreshold = 5
+
 func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, stopped chan<- struct{}) {
 	defer close(stopped)
 
@@ -57,18 +63,17 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 		codec = audio.CodecG722
 	}
 
-	device := alsaCaptureDevice()
-	capture, err := audio.OpenALSACapture(device)
+	capture, err := openCaptureWithBackoff(ctx)
 	if err != nil {
-		audioLogger.Error().Err(err).Str("device", device).Msg("audio capture unavailable")
 		return
 	}
-	defer capture.Close()
+	defer func() { capture.Close() }()
 
-	audioLogger.Info().Str("device", device).Str("codec", codec.String()).Msg("audio capture started")
+	audioLogger.Info().Str("codec", codec.String()).Msg("audio capture started")
 	defer audioLogger.Info().Msg("audio capture stopped")
 
 	sample := media.Sample{Duration: 20 * time.Millisecond}
+	consecutiveErrors := 0
 
 	for {
 		select {
@@ -82,10 +87,23 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 			if errors.Is(err, audio.ErrNoAudioData) {
 				continue
 			}
-			audioLogger.Warn().Err(err).Msg("audio capture read failed")
+			consecutiveErrors++
+			audioLogger.Warn().Err(err).Int("errs", consecutiveErrors).Msg("audio capture read failed")
+			if consecutiveErrors >= reopenThreshold {
+				capture.Close()
+				next, err := openCaptureWithBackoff(ctx)
+				if err != nil {
+					return
+				}
+				capture = next
+				consecutiveErrors = 0
+				continue
+			}
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
+
+		consecutiveErrors = 0
 		if len(payload) == 0 {
 			continue
 		}
@@ -94,6 +112,31 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 		if err := track.WriteSample(sample); err != nil {
 			audioLogger.Warn().Err(err).Msg("audio sample write failed")
 			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
+// openCaptureWithBackoff opens the ALSA capture device, retrying with
+// exponential backoff (capped at 2 s) until success or ctx cancellation.
+// Re-resolves the card on every attempt so a USB re-enumeration that hands
+// the gadget a new card number is picked up automatically.
+func openCaptureWithBackoff(ctx context.Context) (*audio.ALSACapture, error) {
+	backoff := 100 * time.Millisecond
+	for {
+		device := alsaCaptureDevice()
+		capture, err := audio.OpenALSACapture(device)
+		if err == nil {
+			audioLogger.Info().Str("device", device).Msg("audio capture opened")
+			return capture, nil
+		}
+		audioLogger.Warn().Err(err).Str("device", device).Dur("retry_in", backoff).Msg("audio capture open failed")
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff *= 2; backoff > 2*time.Second {
+			backoff = 2 * time.Second
 		}
 	}
 }
