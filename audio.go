@@ -21,16 +21,10 @@ var (
 	audioMu      sync.Mutex
 )
 
-// startAudio stops any running capture and, if track is non-nil, starts a new
-// capture writing to it. Calling with nil simply stops the current capture.
 func startAudio(track *webrtc.TrackLocalStaticSample) {
 	audioMu.Lock()
 	defer audioMu.Unlock()
 	stopAudioLocked()
-
-	if track == nil {
-		return
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	audioCancel = cancel
@@ -58,9 +52,12 @@ func stopAudioLocked() {
 func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, stopped chan<- struct{}) {
 	defer close(stopped)
 
-	device := alsaCaptureDevice()
-	codec := audioCodecForTrack(track)
+	codec := audio.CodecPCMU
+	if strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeG722) {
+		codec = audio.CodecG722
+	}
 
+	device := alsaCaptureDevice()
 	capture, err := audio.OpenALSACapture(device)
 	if err != nil {
 		audioLogger.Error().Err(err).Str("device", device).Msg("audio capture unavailable")
@@ -72,7 +69,6 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 	defer audioLogger.Info().Msg("audio capture stopped")
 
 	sample := media.Sample{Duration: 20 * time.Millisecond}
-	idleReads := 0
 
 	for {
 		select {
@@ -84,17 +80,12 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 		payload, err := capture.ReadEncoded(codec)
 		if err != nil {
 			if errors.Is(err, audio.ErrNoAudioData) {
-				if idleReads++; idleReads%500 == 0 {
-					audioLogger.Debug().Int("reads", idleReads).Msg("audio capture idle")
-				}
 				continue
 			}
 			audioLogger.Warn().Err(err).Msg("audio capture read failed")
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-
-		idleReads = 0
 		if len(payload) == 0 {
 			continue
 		}
@@ -107,15 +98,7 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 	}
 }
 
-func audioCodecForTrack(track *webrtc.TrackLocalStaticSample) audio.Codec {
-	if strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeG722) {
-		return audio.CodecG722
-	}
-	return audio.CodecPCMU
-}
-
-// alsaCaptureDevice returns the ALSA device string for the UAC1 gadget card.
-// Falls back to hw:1,0 if the sysfs lookup fails (typically only during early boot).
+// alsaCaptureDevice returns the ALSA device for the UAC1 gadget card.
 func alsaCaptureDevice() string {
 	if card, ok := findALSACard("UAC1Gadget"); ok {
 		return "hw:" + strconv.Itoa(card) + ",0"

@@ -1,6 +1,6 @@
 package audio
 
-import "io"
+import "errors"
 
 const (
 	CaptureSampleRate    = 48000
@@ -30,6 +30,6 @@ func (c Codec) String() string {
 	}
 }
 
-// ErrNoAudioData is returned when the underlying capture device is idle.
-// The caller should retry; it is not a fatal error.
-var ErrNoAudioData = io.ErrNoProgress
+// ErrNoAudioData is returned when the capture device produced no frames this
+// poll cycle. The caller should retry; it is not a fatal error.
+var ErrNoAudioData = errors.New("audio capture idle")

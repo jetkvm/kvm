@@ -447,6 +447,10 @@ export default function WebRTCVideo({
     [addStreamToVideoElm, mediaStream],
   );
 
+  // Audio plays through a separate <audio> element because the <video> is
+  // muted (kept muted so video autoplay isn't blocked when no user gesture
+  // has been recorded). If browser blocks audio autoplay, the autoplay
+  // overlay surfaces a click target.
   useEffect(
     function updateAudioStream() {
       const elm = audioElm.current;
@@ -456,10 +460,7 @@ export default function WebRTCVideo({
       elm
         .play()
         .then(() => setAudioAutoplayBlocked(false))
-        .catch(() => {
-          console.debug("[Audio] Autoplay blocked; waiting for user interaction");
-          setAudioAutoplayBlocked(true);
-        });
+        .catch(() => setAudioAutoplayBlocked(true));
 
       return () => {
         elm.srcObject = null;

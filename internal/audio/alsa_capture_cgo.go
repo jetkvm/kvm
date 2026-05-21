@@ -306,7 +306,7 @@ func OpenALSACapture(device string) (*ALSACapture, error) {
 		C.int(len(errBuf)),
 	)
 	if handle == nil {
-		return nil, fmt.Errorf("%s", cString(errBuf))
+		return nil, fmt.Errorf("%s", C.GoString((*C.char)(unsafe.Pointer(&errBuf[0]))))
 	}
 
 	capture := &ALSACapture{
@@ -321,7 +321,7 @@ func OpenALSACapture(device string) (*ALSACapture, error) {
 }
 
 func (c *ALSACapture) ReadEncoded(codec Codec) ([]byte, error) {
-	if _, err := c.readPCM(); err != nil {
+	if err := c.readPCM(); err != nil {
 		return nil, err
 	}
 
@@ -335,84 +335,55 @@ func (c *ALSACapture) ReadEncoded(codec Codec) ([]byte, error) {
 	}
 }
 
-func (c *ALSACapture) readPCM() (int, error) {
-	buffer := c.readBuffer()
+// readPCM fills c.pcm16 with exactly CaptureFrameSize stereo frames from ALSA.
+// Returns ErrNoAudioData on a short or empty read so the caller emits no frame
+// for this cycle (the encoders depend on the full buffer being valid).
+func (c *ALSACapture) readPCM() error {
 	rc := C.jk_alsa_capture_read(
 		(*C.jk_alsa_capture)(c.handle),
-		buffer,
+		unsafe.Pointer(&c.pcm16[0]),
 		C.ulong(CaptureFrameSize),
 	)
 	if rc < 0 {
-		return 0, fmt.Errorf("snd_pcm_readi: %d", int(rc))
+		return fmt.Errorf("snd_pcm_readi: %d", int(rc))
 	}
-	if rc == 0 {
-		return 0, ErrNoAudioData
+	if int(rc) < CaptureFrameSize {
+		return ErrNoAudioData
 	}
-
-	frames := int(rc)
-	if frames > CaptureFrameSize {
-		frames = CaptureFrameSize
-	}
-	c.zeroFrom(frames * CaptureChannels)
-
-	return frames, nil
+	return nil
 }
 
+// encodePCMU downsamples 48 kHz stereo to 8 kHz mono (6 stereo pairs → 1
+// sample) and mu-law encodes each. Sum across all source samples before the
+// single divide keeps every LSB of precision.
 func (c *ALSACapture) encodePCMU() []byte {
+	const pairsPerSample = 6
 	for i := 0; i < PCMUFrameSize; i++ {
-		base := i * 6 * CaptureChannels
+		base := i * pairsPerSample * CaptureChannels
 		var sum int32
-		for j := 0; j < 6; j++ {
-			idx := base + j*CaptureChannels
-			left := c.sampleS16(idx)
-			right := c.sampleS16(idx + 1)
-			sum += (left + right) / 2
+		for j := 0; j < pairsPerSample*CaptureChannels; j++ {
+			sum += int32(c.pcm16[base+j])
 		}
-		c.pcmu[i] = LinearToPCMU(int16(sum / 6))
+		c.pcmu[i] = LinearToPCMU(int16(sum / (pairsPerSample * CaptureChannels)))
 	}
-
 	return c.pcmu
 }
 
+// encodeG722 downsamples 48 kHz stereo to 16 kHz mono (3 stereo pairs → 1
+// sample) then runs the G.722 encoder.
 func (c *ALSACapture) encodeG722() []byte {
+	const pairsPerSample = 3
 	for i := 0; i < G722InputFrameSize; i++ {
-		base := i * 3 * CaptureChannels
+		base := i * pairsPerSample * CaptureChannels
 		var sum int32
-		for j := 0; j < 3; j++ {
-			idx := base + j*CaptureChannels
-			left := c.sampleS16(idx)
-			right := c.sampleS16(idx + 1)
-			sum += (left + right) / 2
+		for j := 0; j < pairsPerSample*CaptureChannels; j++ {
+			sum += int32(c.pcm16[base+j])
 		}
-		c.mono16k[i] = clampS16(sum / 3)
+		c.mono16k[i] = int16(sum / (pairsPerSample * CaptureChannels))
 	}
 
 	n := c.g722Encoder.Encode(c.g722, c.mono16k)
 	return c.g722[:n]
-}
-
-func (c *ALSACapture) readBuffer() unsafe.Pointer {
-	return unsafe.Pointer(&c.pcm16[0])
-}
-
-func (c *ALSACapture) zeroFrom(start int) {
-	for i := start; i < len(c.pcm16); i++ {
-		c.pcm16[i] = 0
-	}
-}
-
-func (c *ALSACapture) sampleS16(idx int) int32 {
-	return int32(c.pcm16[idx])
-}
-
-func clampS16(sample int32) int16 {
-	if sample > 32767 {
-		return 32767
-	}
-	if sample < -32768 {
-		return -32768
-	}
-	return int16(sample)
 }
 
 func (c *ALSACapture) Close() error {
@@ -421,13 +392,4 @@ func (c *ALSACapture) Close() error {
 		c.handle = nil
 	}
 	return nil
-}
-
-func cString(buf []byte) string {
-	for i, b := range buf {
-		if b == 0 {
-			return string(buf[:i])
-		}
-	}
-	return string(buf)
 }

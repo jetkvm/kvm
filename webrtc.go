@@ -653,7 +653,9 @@ func onSessionConnected(session *Session) {
 		_ = nativeInstance.VideoSetCodecType(0)
 	}
 	_ = nativeInstance.VideoStart()
-	startAudio(session.AudioTrack)
+	if session.AudioTrack != nil {
+		startAudio(session.AudioTrack)
+	}
 }
 
 func onLastSessionDisconnected() {
