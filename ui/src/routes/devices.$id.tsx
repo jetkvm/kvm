@@ -538,9 +538,18 @@ export default function KvmIdRoute() {
     };
 
     pc.ontrack = function (event) {
-      // Backend tracks share stream ID "kvm", so pion delivers both video and
-      // audio in the same MediaStream — assigning it on either event is enough.
-      setMediaStream(event.streams[0]);
+      // Backend tracks share stream ID "kvm", so when event.streams[0] is
+      // present (the common case) both video and audio land on the same
+      // MediaStream. Fall back to assembling a stream from the bare track —
+      // some negotiations land without a=msid, and event.streams[] is empty.
+      if (event.streams[0]) {
+        setMediaStream(event.streams[0]);
+        return;
+      }
+      const existing = useRTCStore.getState().mediaStream;
+      const stream = existing ?? new MediaStream();
+      stream.addTrack(event.track);
+      if (!existing) setMediaStream(stream);
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
