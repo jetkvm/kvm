@@ -32,9 +32,10 @@ export default function SettingsAudioRoute() {
           setEnabled(previous);
           return;
         }
-        // Re-negotiate the WebRTC session so the audio track is added (and
-        // the browser surfaces its autoplay-permission prompt) immediately.
-        if (next) window.location.reload();
+        // Re-negotiate the WebRTC session so the audio track is added or
+        // removed immediately (and the browser surfaces its autoplay-
+        // permission prompt on enable).
+        window.location.reload();
       });
     },
     [enabled, send],
