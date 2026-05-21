@@ -62,6 +62,16 @@ export async function waitForVideoStream(page: Page, timeout = 30000): Promise<v
     .toBe(true);
 }
 
+export async function waitForAudioStream(page: Page, timeout = 10000): Promise<void> {
+  await expect
+    .poll(async () => page.evaluate(() => window.__kvmTestHooks?.isAudioStreamActive()), {
+      message: "Waiting for audio stream to be active",
+      timeout,
+      intervals: [250, 500],
+    })
+    .toBe(true);
+}
+
 export async function wakeDisplay(page: Page, taps = 3, delayMs = 100): Promise<void> {
   for (let i = 0; i < taps; i++) {
     await tapKey(page, HID_KEY.SPACE);
@@ -929,6 +939,25 @@ export function getDeviceHost(): string {
     throw new Error("JETKVM_URL environment variable is not set");
   }
   return new URL(url).hostname;
+}
+
+/**
+ * Ensure the device is set up with no-password local auth via the HTTP setup API.
+ * No-op if already set up. Used by e2e bootstrap.
+ */
+export async function ensureNoPasswordViaAPI(): Promise<void> {
+  const host = getDeviceHost();
+  const status = await fetch(`http://${host}/device/status`).then(
+    r => r.json() as Promise<{ isSetup: boolean }>,
+  );
+  if (status.isSetup) return;
+
+  const res = await fetch(`http://${host}/device/setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ localAuthMode: "noPassword" }),
+  });
+  if (!res.ok) throw new Error(`Setup POST failed: ${res.status}`);
 }
 
 export async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> {

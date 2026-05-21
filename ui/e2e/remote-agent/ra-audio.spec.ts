@@ -1,23 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { getDeviceHost, waitForWebRTCReady } from "../helpers";
+import { ensureNoPasswordViaAPI, waitForAudioStream, waitForWebRTCReady } from "../helpers";
 import { createRemoteAgent } from "./remote-agent";
 
 const agent = createRemoteAgent();
-
-async function ensureNoPasswordViaAPI() {
-  const host = getDeviceHost();
-  const status = await fetch(`http://${host}/device/status`).then(
-    r => r.json() as Promise<{ isSetup: boolean }>,
-  );
-  if (status.isSetup) return;
-
-  const res = await fetch(`http://${host}/device/setup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ localAuthMode: "noPassword" }),
-  });
-  if (!res.ok) throw new Error(`Setup POST failed: ${res.status}`);
-}
 
 test.beforeAll(async () => {
   test.skip(!agent, "JETKVM_REMOTE_HOST not set");
@@ -39,14 +24,7 @@ test("audio works end-to-end", async ({ page }) => {
 
   await page.goto("/", { waitUntil: "networkidle" });
   await waitForWebRTCReady(page);
-
-  await expect
-    .poll(() => page.evaluate(() => window.__kvmTestHooks?.isAudioStreamActive()), {
-      message: "browser audio track did not become live",
-      timeout: 10_000,
-      intervals: [250, 500],
-    })
-    .toBe(true);
+  await waitForAudioStream(page);
 
   const before = (await page.evaluate(() => window.__kvmTestHooks?.getInboundAudioStats())) ?? {
     bytesReceived: 0,

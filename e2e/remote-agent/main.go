@@ -556,22 +556,18 @@ func (a *Agent) startAudioTone() (AudioDeviceInfo, error) {
 	a.stopAudioToneLocked()
 
 	var device AudioDeviceInfo
-	if override := strings.TrimSpace(os.Getenv("JETKVM_AUDIO_DEVICE")); override != "" {
-		device = AudioDeviceInfo{Card: -1, Device: -1, Name: "override", PCM: override, IsJetKVM: true}
-	} else {
-		for _, d := range listAudioDevices() {
-			if d.IsJetKVM {
-				device = d
-				break
-			}
-		}
-		if !device.IsJetKVM {
-			return AudioDeviceInfo{}, os.ErrNotExist
+	for _, d := range listAudioDevices() {
+		if d.IsJetKVM {
+			device = d
+			break
 		}
 	}
+	if !device.IsJetKVM {
+		return AudioDeviceInfo{}, os.ErrNotExist
+	}
 
-	// 997 Hz / 48 kHz stereo sine; -p 20000 sets period so tone runs ~indefinitely
-	// (long enough for the spec's 12s deadline) without re-arming.
+	// -p 20000 / -b 80000 keeps speaker-test running long enough for the spec's
+	// 12 s deadline without re-arming. 997 Hz at 48 kHz stereo.
 	cmd := exec.Command("speaker-test", "-D", device.PCM, "-t", "sine", "-f", "997", "-r", "48000", "-c", "2", "-p", "20000", "-b", "80000")
 	if err := cmd.Start(); err != nil {
 		return device, err
