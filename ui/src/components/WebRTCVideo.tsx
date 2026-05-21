@@ -6,6 +6,7 @@ import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
@@ -35,8 +36,11 @@ export default function WebRTCVideo({
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
+
+  const { send: sendRpc } = useJsonRpc();
 
   const isPointerLockPossible =
     window.location.protocol === "https:" || window.location.hostname === "localhost";
@@ -447,14 +451,29 @@ export default function WebRTCVideo({
     [addStreamToVideoElm, mediaStream],
   );
 
+  // Fetch the device's audio-enabled state once the RPC channel is ready.
+  // We only attach the <audio> element below when it's true — otherwise
+  // Firefox prompts for audio autoplay permission on a silent stream that
+  // would never actually play any sound.
+  useEffect(
+    function fetchAudioConfig() {
+      if (peerConnection?.connectionState !== "connected") return;
+      sendRpc("getAudioConfig", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) return;
+        setAudioEnabled((resp.result as { enabled: boolean }).enabled);
+      });
+    },
+    [peerConnection?.connectionState, sendRpc],
+  );
+
   // Audio plays through a separate <audio> element because the <video> is
   // muted (kept muted so video autoplay isn't blocked when no user gesture
-  // has been recorded). If browser blocks audio autoplay, the autoplay
+  // has been recorded). If the browser blocks audio autoplay, the autoplay
   // overlay surfaces a click target.
   useEffect(
     function updateAudioStream() {
       const elm = audioElm.current;
-      if (!elm || !mediaStream) return;
+      if (!elm || !mediaStream || !audioEnabled) return;
 
       elm.srcObject = mediaStream;
       elm
@@ -467,7 +486,7 @@ export default function WebRTCVideo({
         setAudioAutoplayBlocked(false);
       };
     },
-    [mediaStream],
+    [mediaStream, audioEnabled],
   );
 
   // Setup Keyboard Events
@@ -667,7 +686,7 @@ export default function WebRTCVideo({
                           "animate-slideUpFade": isPlaying,
                         })}
                       />
-                      <audio ref={audioElm} autoPlay playsInline hidden />
+                      {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
