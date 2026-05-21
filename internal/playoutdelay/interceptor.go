@@ -24,29 +24,19 @@ import (
 	"github.com/pion/rtp"
 )
 
-// URI is the standard WebRTC playout-delay extension identifier. Registering
-// this URI with the MediaEngine causes pion to negotiate it via SDP; the
-// receiver (Chrome) honours it without any browser-side configuration.
 const URI = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
 
-// Factory creates playout-delay interceptors. Register it on a
-// pion interceptor.Registry alongside the default interceptors.
+// Factory creates playout-delay interceptors with the given min/max bounds
+// in 10 ms units. JetKVM uses min=max=0 — no buffering beyond decoder needs.
 type Factory struct {
-	// MinDelay10ms is the minimum playout delay in 10 ms units.
-	// 0 means "no minimum buffering".
 	MinDelay10ms uint16
-	// MaxDelay10ms is the maximum playout delay in 10 ms units.
-	// 0 means "no buffering allowed beyond the decoder requirement".
 	MaxDelay10ms uint16
 }
 
-// NewFactory builds a Factory that pins both bounds at zero, which is what
-// every JetKVM call site wants — interactive latency, no jitter masking.
 func NewFactory() *Factory {
 	return &Factory{MinDelay10ms: 0, MaxDelay10ms: 0}
 }
 
-// NewInterceptor satisfies interceptor.Factory.
 func (f *Factory) NewInterceptor(_ string) (interceptor.Interceptor, error) {
 	return &playoutDelayInterceptor{
 		minDelay10ms: f.MinDelay10ms,
@@ -60,9 +50,6 @@ type playoutDelayInterceptor struct {
 	maxDelay10ms uint16
 }
 
-// BindLocalStream wires the playout-delay extension onto every outgoing RTP
-// packet for this stream. The extension ID is whatever pion negotiated for
-// the URI in SDP — we look it up once and reuse it per packet.
 func (i *playoutDelayInterceptor) BindLocalStream(
 	info *interceptor.StreamInfo,
 	writer interceptor.RTPWriter,
@@ -75,8 +62,6 @@ func (i *playoutDelayInterceptor) BindLocalStream(
 		}
 	}
 	if extID == 0 {
-		// Extension wasn't negotiated for this stream (e.g. the browser
-		// didn't include it in the SDP answer). Nothing to do.
 		return writer
 	}
 
@@ -93,13 +78,7 @@ func (i *playoutDelayInterceptor) BindLocalStream(
 	})
 }
 
-// encode packs the 3-byte playout-delay extension body:
-//
-//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//	|       MIN delay       |       MAX delay       |
-//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//
-// 12 bits each, big-endian.
+// encode packs the 3-byte body: 12 bits MIN, 12 bits MAX, big-endian.
 func encode(minDelay10ms, maxDelay10ms uint16) []byte {
 	min12 := minDelay10ms & 0x0FFF
 	max12 := maxDelay10ms & 0x0FFF
