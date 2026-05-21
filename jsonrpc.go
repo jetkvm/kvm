@@ -52,6 +52,10 @@ type BacklightSettings struct {
 	OffAfter      int `json:"off_after"`
 }
 
+type AudioConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
@@ -325,6 +329,21 @@ func rpcGetBacklightSettings() (*BacklightSettings, error) {
 		DimAfter:      int(config.DisplayDimAfterSec),
 		OffAfter:      int(config.DisplayOffAfterSec),
 	}, nil
+}
+
+func rpcGetAudioConfig() (*AudioConfig, error) {
+	return &AudioConfig{Enabled: config.AudioEnabled}, nil
+}
+
+func rpcSetAudioConfig(params AudioConfig) error {
+	if config.AudioEnabled == params.Enabled {
+		return nil
+	}
+	config.AudioEnabled = params.Enabled
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
 }
 
 const (
@@ -1314,6 +1333,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getDisplayRotation":         {Func: rpcGetDisplayRotation},
 	"setBacklightSettings":       {Func: rpcSetBacklightSettings, Params: []string{"params"}},
 	"getBacklightSettings":       {Func: rpcGetBacklightSettings},
+	"setAudioConfig":             {Func: rpcSetAudioConfig, Params: []string{"params"}},
+	"getAudioConfig":             {Func: rpcGetAudioConfig},
 	"getDCPowerState":            {Func: rpcGetDCPowerState},
 	"setDCPowerState":            {Func: rpcSetDCPowerState, Params: []string{"enabled"}},
 	"setDCRestoreState":          {Func: rpcSetDCRestoreState, Params: []string{"state"}},

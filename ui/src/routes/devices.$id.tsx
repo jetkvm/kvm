@@ -544,6 +544,8 @@ export default function KvmIdRoute() {
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
+    // Always offer audio; the backend gates it on device config and leaves
+    // the m-line inactive when disabled.
     pc.addTransceiver("audio", { direction: "recvonly" });
 
     const rpcDataChannel = pc.createDataChannel("rpc");

@@ -147,6 +147,34 @@ func negotiateAudioCodec(offerSDP string) string {
 	return ""
 }
 
+// attachAudioTrack adds an outgoing audio track when the device config has
+// audio enabled AND the browser advertised a codec we support. No-op
+// otherwise; the SDP answer just leaves the audio m-line inactive.
+func (s *Session) attachAudioTrack(offerSDP string) error {
+	if !config.AudioEnabled {
+		webrtcLogger.Debug().Msg("audio disabled by device config")
+		return nil
+	}
+	audioMime := negotiateAudioCodec(offerSDP)
+	if audioMime == "" {
+		webrtcLogger.Warn().Msg("browser offer has no supported audio codec; audio disabled")
+		return nil
+	}
+	track, err := webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: audioMime, ClockRate: 8000}, "audio", "kvm")
+	if err != nil {
+		return err
+	}
+	sender, err := s.peerConnection.AddTrack(track)
+	if err != nil {
+		return err
+	}
+	s.AudioTrack = track
+	webrtcLogger.Info().Str("codec", audioMime).Msg("audio track enabled")
+	go drainRTCP(sender)
+	return nil
+}
+
 // drainRTCP reads and discards RTCP packets from a sender. Required for NACK
 // handling on outgoing tracks; the sender stops on connection close.
 func drainRTCP(sender *webrtc.RTPSender) {
@@ -207,20 +235,8 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 
 	go drainRTCP(rtpSender)
 
-	if audioMime := negotiateAudioCodec(offer.SDP); audioMime != "" {
-		s.AudioTrack, err = webrtc.NewTrackLocalStaticSample(
-			webrtc.RTPCodecCapability{MimeType: audioMime, ClockRate: 8000}, "audio", "kvm")
-		if err != nil {
-			return "", err
-		}
-		audioSender, err := s.peerConnection.AddTrack(s.AudioTrack)
-		if err != nil {
-			return "", err
-		}
-		webrtcLogger.Info().Str("codec", audioMime).Msg("audio track enabled")
-		go drainRTCP(audioSender)
-	} else {
-		webrtcLogger.Warn().Msg("browser offer has no supported audio codec; audio disabled")
+	if err := s.attachAudioTrack(offer.SDP); err != nil {
+		return "", err
 	}
 
 	// Set the remote SessionDescription
