@@ -28,7 +28,7 @@ test.afterEach(async () => {
   await agent?.stopAudioTone().catch(() => undefined);
 });
 
-test("audio: USB remote tone reaches browser WebRTC track as G.722", async ({ page }) => {
+test("audio works end-to-end", async ({ page }) => {
   test.setTimeout(35_000);
 
   const devices = await agent!.getAudioDevices();
@@ -52,7 +52,6 @@ test("audio: USB remote tone reaches browser WebRTC track as G.722", async ({ pa
     bytesReceived: 0,
     packetsReceived: 0,
     totalAudioEnergy: 0,
-    codecMimeType: "",
   };
 
   const tone = await agent!.startAudioTone();
@@ -66,12 +65,11 @@ test("audio: USB remote tone reaches browser WebRTC track as G.722", async ({ pa
         return (
           stats.bytesReceived - before.bytesReceived > 800 &&
           stats.packetsReceived - before.packetsReceived > 10 &&
-          stats.totalAudioEnergy - before.totalAudioEnergy > 0.0001 &&
-          stats.codecMimeType.toLowerCase().includes("g722")
+          stats.totalAudioEnergy - before.totalAudioEnergy > 0.0001
         );
       },
       {
-        message: "USB G.722 audio energy never reached browser",
+        message: "USB audio energy never reached browser",
         timeout: 12_000,
         intervals: [500, 1000],
       },

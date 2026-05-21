@@ -11,6 +11,7 @@ import (
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/playoutdelay"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
 	"github.com/pion/ice/v4"
+	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -449,7 +451,39 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	}
 
-	api := webrtc.NewAPI(webrtc.WithSettingEngine(webrtcSettingEngine))
+	mediaEngine := &webrtc.MediaEngine{}
+	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to register default codecs")
+		return nil, err
+	}
+	// Negotiate the playout-delay RTP header extension on both audio and
+	// video. The interceptor below stamps min=max=0 on every outgoing
+	// packet so Chrome's receive-side jitter buffer can't ratchet upward.
+	// Audio is registered too because Chrome's AV-sync layer pulls video
+	// up to whatever the audio jitter buffer is — pinning video alone
+	// isn't enough when the USB UAC1 capture path has any inherent
+	// latency.
+	for _, kind := range []webrtc.RTPCodecType{webrtc.RTPCodecTypeVideo, webrtc.RTPCodecTypeAudio} {
+		if err := mediaEngine.RegisterHeaderExtension(
+			webrtc.RTPHeaderExtensionCapability{URI: playoutdelay.URI},
+			kind,
+		); err != nil {
+			scopedLogger.Warn().Err(err).Msg("Failed to register playout-delay header extension")
+			return nil, err
+		}
+	}
+	interceptorRegistry := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, interceptorRegistry); err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to register default interceptors")
+		return nil, err
+	}
+	interceptorRegistry.Add(playoutdelay.NewFactory())
+
+	api := webrtc.NewAPI(
+		webrtc.WithSettingEngine(webrtcSettingEngine),
+		webrtc.WithMediaEngine(mediaEngine),
+		webrtc.WithInterceptorRegistry(interceptorRegistry),
+	)
 	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{iceServer},
 	})
