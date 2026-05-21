@@ -30,7 +30,11 @@ export default function SettingsAudioRoute() {
         if ("error" in resp) {
           notifications.error(resp.error.data || m.unknown_error());
           setEnabled(previous);
+          return;
         }
+        // Re-negotiate the WebRTC session so the audio track is added (and
+        // the browser surfaces its autoplay-permission prompt) immediately.
+        if (next) window.location.reload();
       });
     },
     [enabled, send],
