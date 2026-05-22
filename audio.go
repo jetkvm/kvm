@@ -18,6 +18,7 @@ import (
 var (
 	audioCancel  context.CancelFunc
 	audioStopped chan struct{}
+	audioTrack   *webrtc.TrackLocalStaticSample
 	audioMu      sync.Mutex
 )
 
@@ -29,6 +30,7 @@ func startAudio(track *webrtc.TrackLocalStaticSample) {
 	ctx, cancel := context.WithCancel(context.Background())
 	audioCancel = cancel
 	audioStopped = make(chan struct{})
+	audioTrack = track
 
 	go runAudioCapture(ctx, track, audioStopped)
 }
@@ -36,6 +38,18 @@ func startAudio(track *webrtc.TrackLocalStaticSample) {
 func stopAudio() {
 	audioMu.Lock()
 	defer audioMu.Unlock()
+	stopAudioLocked()
+}
+
+// stopAudioIfOwner stops the audio capture only if it is currently bound to
+// track. Used on session teardown so capture doesn't keep writing samples to
+// a track whose peer connection has closed.
+func stopAudioIfOwner(track *webrtc.TrackLocalStaticSample) {
+	audioMu.Lock()
+	defer audioMu.Unlock()
+	if audioTrack != track {
+		return
+	}
 	stopAudioLocked()
 }
 
@@ -47,6 +61,7 @@ func stopAudioLocked() {
 	<-audioStopped
 	audioCancel = nil
 	audioStopped = nil
+	audioTrack = nil
 }
 
 // reopenThreshold is the number of consecutive non-idle read errors that

@@ -460,6 +460,11 @@ export default function KvmIdRoute() {
     setConnectionFailed(false);
     setLoadingMessage(m.connecting_to_device());
 
+    // Drop any MediaStream left over from a previous PC. Its tracks are
+    // ended once the old PC closes; reusing the stream would leave dead
+    // tracks ahead of the live ones and break <video>/<audio> playback.
+    setMediaStream(null);
+
     let pc: RTCPeerConnection;
     try {
       console.debug("[setupPeerConnection] Creating peer connection");

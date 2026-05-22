@@ -631,6 +631,13 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 			session.close()
 
+			// If this session owned audio capture, release it. Otherwise the
+			// goroutine would keep writing samples to a now-dead track,
+			// spamming WriteSample errors, until the last session disconnects.
+			if session.AudioTrack != nil {
+				stopAudioIfOwner(session.AudioTrack)
+			}
+
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {
 					scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")

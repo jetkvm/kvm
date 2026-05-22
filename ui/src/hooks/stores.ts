@@ -154,7 +154,7 @@ export interface RTCState {
   setTransceiver: (transceiver: RTCRtpTransceiver) => void;
 
   mediaStream: MediaStream | null;
-  setMediaStream: (stream: MediaStream) => void;
+  setMediaStream: (stream: MediaStream | null) => void;
 
   videoStreamStats: RTCInboundRtpStreamStats | null;
   appendVideoStreamStats: (stats: RTCInboundRtpStreamStats) => void;
