@@ -100,6 +100,13 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 		payload, err := capture.ReadEncoded(codec)
 		if err != nil {
 			if errors.Is(err, audio.ErrNoAudioData) {
+				// Partial period or idle ALSA — back off ~half a frame so we
+				// don't spin while the buffer fills.
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(10 * time.Millisecond):
+				}
 				continue
 			}
 			consecutiveErrors++
