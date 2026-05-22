@@ -33,7 +33,7 @@ export default function WebRTCVideo({
   const videoElm = useRef<HTMLVideoElement>(null);
   const audioElm = useRef<HTMLAudioElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
-  const { mediaStream, peerConnectionState } = useRTCStore();
+  const { mediaStream, mediaStreamTrackVersion, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -486,7 +486,7 @@ export default function WebRTCVideo({
         setAudioAutoplayBlocked(false);
       };
     },
-    [mediaStream, audioEnabled],
+    [mediaStream, mediaStreamTrackVersion, audioEnabled],
   );
 
   // Setup Keyboard Events

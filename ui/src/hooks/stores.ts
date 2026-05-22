@@ -155,6 +155,10 @@ export interface RTCState {
 
   mediaStream: MediaStream | null;
   setMediaStream: (stream: MediaStream | null) => void;
+  // MediaStream.addTrack() does not fire `addtrack`, so consumers that
+  // need to react to a track joining the canonical stream watch this bump.
+  mediaStreamTrackVersion: number;
+  bumpMediaStreamTrackVersion: () => void;
 
   videoStreamStats: RTCInboundRtpStreamStats | null;
   appendVideoStreamStats: (stats: RTCInboundRtpStreamStats) => void;
@@ -216,7 +220,10 @@ export const useRTCStore = create<RTCState>(set => ({
   setPeerConnectionState: state => set({ peerConnectionState: state }),
 
   mediaStream: null,
-  setMediaStream: stream => set({ mediaStream: stream }),
+  setMediaStream: stream => set({ mediaStream: stream, mediaStreamTrackVersion: 0 }),
+  mediaStreamTrackVersion: 0,
+  bumpMediaStreamTrackVersion: () =>
+    set(s => ({ mediaStreamTrackVersion: s.mediaStreamTrackVersion + 1 })),
 
   videoStreamStats: null,
   appendVideoStreamStats: stats => set({ videoStreamStats: stats }),

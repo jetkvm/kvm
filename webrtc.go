@@ -602,7 +602,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				isConnected = true
 				onActiveSessionsChanged()
 				if incrActiveSessions() == 1 {
-					stopVideoSleepModeTicker()
+					onFirstSessionConnected()
 				}
 				onSessionConnected(session)
 				if mqttManager != nil {
@@ -631,12 +631,9 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 			session.close()
 
-			// If this session owned audio capture, release it. Otherwise the
-			// goroutine would keep writing samples to a now-dead track,
-			// spamming WriteSample errors, until the last session disconnects.
-			if session.AudioTrack != nil {
-				stopAudioIfOwner(session.AudioTrack)
-			}
+			// Release audio capture if this session owned it; otherwise the
+			// goroutine would keep writing samples to a now-dead track.
+			stopAudioIfOwner(session.AudioTrack)
 
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {
@@ -664,6 +661,15 @@ func onActiveSessionsChanged() {
 	requestDisplayUpdate(false, "active_sessions_changed")
 }
 
+// onFirstSessionConnected runs once on the 0→1 active-session edge. Video
+// capture is a shared pipeline; starting it again on a handoff connect (count
+// 1→2) would issue redundant native start calls and re-run the sleep-mode
+// re-lock wait while video is already streaming.
+func onFirstSessionConnected() {
+	stopVideoSleepModeTicker()
+	_ = nativeInstance.VideoStart()
+}
+
 // onSessionConnected runs per session when ICE reaches Connected. Uses the
 // session parameter directly rather than the currentSession global — that
 // global is assigned by the caller AFTER ExchangeOffer returns, and ICE
@@ -675,7 +681,6 @@ func onSessionConnected(session *Session) {
 	} else {
 		_ = nativeInstance.VideoSetCodecType(0)
 	}
-	_ = nativeInstance.VideoStart()
 	if session.AudioTrack != nil {
 		startAudio(session.AudioTrack)
 	}

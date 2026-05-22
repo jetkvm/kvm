@@ -173,6 +173,7 @@ export default function KvmIdRoute() {
     peerConnectionState,
     setPeerConnectionState,
     setMediaStream,
+    bumpMediaStreamTrackVersion,
     setRpcDataChannel,
     isTurnServerInUse,
     setTurnServerInUse,
@@ -460,9 +461,8 @@ export default function KvmIdRoute() {
     setConnectionFailed(false);
     setLoadingMessage(m.connecting_to_device());
 
-    // Drop any MediaStream left over from a previous PC. Its tracks are
-    // ended once the old PC closes; reusing the stream would leave dead
-    // tracks ahead of the live ones and break <video>/<audio> playback.
+    // Drop the previous PC's MediaStream — its tracks are ended and
+    // would sit ahead of the new live tracks, breaking playback.
     setMediaStream(null);
 
     let pc: RTCPeerConnection;
@@ -555,6 +555,7 @@ export default function KvmIdRoute() {
       }
       if (!stream.getTracks().some(t => t.id === event.track.id)) {
         stream.addTrack(event.track);
+        bumpMediaStreamTrackVersion();
       }
     };
 
@@ -629,6 +630,7 @@ export default function KvmIdRoute() {
     legacyHTTPSignaling,
     sendWebRTCSignal,
     setMediaStream,
+    bumpMediaStreamTrackVersion,
     setPeerConnection,
     setPeerConnectionState,
     setRpcDataChannel,
