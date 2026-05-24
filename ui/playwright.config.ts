@@ -30,6 +30,11 @@ export default defineConfig({
       name: "remote-agent",
       testDir: "./e2e/remote-agent",
       testMatch: /ra-.*\.spec\.ts/,
+      use: {
+        launchOptions: {
+          args: ["--autoplay-policy=no-user-gesture-required"],
+        },
+      },
     },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
     {

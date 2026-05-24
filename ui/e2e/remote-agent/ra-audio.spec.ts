@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import {
   callJsonRpc,
   ensureNoPasswordViaAPI,
@@ -9,13 +9,52 @@ import { createRemoteAgent } from "./remote-agent";
 
 const agent = createRemoteAgent();
 
+const MICROPHONE_ENABLED_STORAGE_KEY = "jetkvm.microphone.enabled";
+
 test.beforeAll(async () => {
   test.skip(!agent, "JETKVM_REMOTE_HOST not set");
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 });
 
-test.afterEach(async () => {
+async function useSineWaveMicrophone(page: Page) {
+  await page.addInitScript(() => {
+    const mediaDevices = (navigator.mediaDevices ?? {}) as MediaDevices;
+    const contexts: AudioContext[] = [];
+
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: mediaDevices });
+    Object.defineProperty(mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async () => {
+        const AudioContextCtor =
+          window.AudioContext ??
+          (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextCtor) throw new Error("AudioContext is not available");
+
+        const context = new AudioContextCtor({ sampleRate: 48000 });
+        const destination = context.createMediaStreamDestination();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+
+        oscillator.frequency.value = 997;
+        gain.gain.value = 0.25;
+        oscillator.connect(gain).connect(destination);
+        oscillator.start();
+        await context.resume().catch(() => undefined);
+        contexts.push(context);
+        return destination.stream;
+      },
+    });
+  });
+}
+
+test.afterEach(async ({ page }) => {
   await agent?.stopAudioTone().catch(() => undefined);
+  await page
+    .evaluate(
+      enabledKey => window.localStorage.removeItem(enabledKey),
+      MICROPHONE_ENABLED_STORAGE_KEY,
+    )
+    .catch(() => undefined);
 });
 
 test("audio works end-to-end", async ({ page }) => {
@@ -73,5 +112,47 @@ test("audio works end-to-end", async ({ page }) => {
     await callJsonRpc(page, "setAudioConfig", { params: { enabled: false } }).catch(
       () => undefined,
     );
+  }
+});
+
+test("microphone works end-to-end", async ({ page }) => {
+  test.setTimeout(60_000);
+  await useSineWaveMicrophone(page);
+
+  await page.goto("/", { waitUntil: "networkidle" });
+  await waitForWebRTCReady(page);
+  await callJsonRpc(page, "setAudioConfig", {
+    params: { enabled: true, microphone_enabled: true },
+  });
+
+  try {
+    await page.evaluate(
+      enabledKey => window.localStorage.setItem(enabledKey, "true"),
+      MICROPHONE_ENABLED_STORAGE_KEY,
+    );
+
+    await page.reload({ waitUntil: "networkidle" });
+    await waitForWebRTCReady(page);
+
+    const captureDevices = await agent!.getAudioCaptureDevices();
+    expect(
+      captureDevices.some(d => d.is_jetkvm),
+      `No JetKVM USB ALSA capture device on remote host: ${JSON.stringify(captureDevices)}`,
+    ).toBe(true);
+
+    await page.waitForTimeout(1500);
+    const capture = await agent!.captureMicrophoneAudio();
+    expect(
+      capture.device.is_jetkvm,
+      `selected non-JetKVM capture device: ${JSON.stringify(capture)}`,
+    ).toBe(true);
+    expect(capture.samples).toBeGreaterThan(200_000);
+    expect(capture.peak).toBeGreaterThan(1000);
+    expect(capture.rms).toBeGreaterThan(150);
+    expect(capture.zero_crossings).toBeGreaterThan(500);
+  } finally {
+    await callJsonRpc(page, "setAudioConfig", {
+      params: { enabled: false, microphone_enabled: false },
+    }).catch(() => undefined);
   }
 });

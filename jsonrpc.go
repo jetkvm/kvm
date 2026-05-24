@@ -53,7 +53,8 @@ type BacklightSettings struct {
 }
 
 type AudioConfig struct {
-	Enabled bool `json:"enabled"`
+	Enabled           bool `json:"enabled"`
+	MicrophoneEnabled bool `json:"microphone_enabled"`
 }
 
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
@@ -332,14 +333,18 @@ func rpcGetBacklightSettings() (*BacklightSettings, error) {
 }
 
 func rpcGetAudioConfig() (*AudioConfig, error) {
-	return &AudioConfig{Enabled: config.AudioEnabled}, nil
+	return &AudioConfig{
+		Enabled:           config.AudioEnabled,
+		MicrophoneEnabled: config.MicrophoneEnabled,
+	}, nil
 }
 
 func rpcSetAudioConfig(params AudioConfig) error {
-	if config.AudioEnabled == params.Enabled {
+	if config.AudioEnabled == params.Enabled && config.MicrophoneEnabled == params.MicrophoneEnabled {
 		return nil
 	}
 	config.AudioEnabled = params.Enabled
+	config.MicrophoneEnabled = params.MicrophoneEnabled
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}

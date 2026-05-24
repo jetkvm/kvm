@@ -9,6 +9,8 @@ var audioConfig = gadgetConfigItem{
 		"c_chmask": "0x3",
 		"c_srate":  "48000",
 		"c_ssize":  "2",
-		"p_chmask": "0",
+		"p_chmask": "0x3",
+		"p_srate":  "48000",
+		"p_ssize":  "2",
 	},
 }

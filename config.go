@@ -121,6 +121,7 @@ type Config struct {
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
 	AudioEnabled         bool                 `json:"audio_enabled"`
+	MicrophoneEnabled    bool                 `json:"microphone_enabled"`
 }
 
 // GetUpdateAPIURL returns the update API URL

@@ -4,11 +4,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -407,6 +409,18 @@ type AudioDeviceInfo struct {
 	IsJetKVM    bool   `json:"is_jetkvm"`
 }
 
+// AudioCaptureResult summarizes microphone audio captured from the JetKVM USB
+// capture device on the remote host.
+type AudioCaptureResult struct {
+	Device        AudioDeviceInfo `json:"device"`
+	SampleRate    int             `json:"sample_rate"`
+	Channels      int             `json:"channels"`
+	Samples       int             `json:"samples"`
+	Peak          int             `json:"peak"`
+	RMS           float64         `json:"rms"`
+	ZeroCrossings int             `json:"zero_crossings"`
+}
+
 // listInputDevices returns all input devices, with JetKVM ones flagged.
 func listInputDevices() []InputDeviceInfo {
 	var devices []InputDeviceInfo
@@ -507,7 +521,7 @@ func getDisplayInfo() []DisplayInfo {
 	return displays
 }
 
-var aplayDeviceRE = regexp.MustCompile(`^card ([0-9]+): ([^ ]+) \[(.*)\], device ([0-9]+): .*\[(.*)\]`)
+var alsaDeviceRE = regexp.MustCompile(`^card ([0-9]+): ([^ ]+) \[(.*)\], device ([0-9]+): .*\[(.*)\]`)
 
 func isJetKVMUSBAudioDevice(d AudioDeviceInfo) bool {
 	if strings.EqualFold(strings.TrimSpace(d.USBID), "1d6b:0104") {
@@ -516,15 +530,15 @@ func isJetKVMUSBAudioDevice(d AudioDeviceInfo) bool {
 	return strings.Contains(strings.ToLower(d.Name+" "+d.Description), "jetkvm usb emulation device")
 }
 
-func listAudioDevices() []AudioDeviceInfo {
-	out, err := exec.Command("aplay", "-l").Output()
+func listALSADevices(command string) []AudioDeviceInfo {
+	out, err := exec.Command(command, "-l").Output()
 	if err != nil {
 		return nil
 	}
 
 	var devices []AudioDeviceInfo
 	for _, line := range strings.Split(string(out), "\n") {
-		m := aplayDeviceRE.FindStringSubmatch(strings.TrimSpace(line))
+		m := alsaDeviceRE.FindStringSubmatch(strings.TrimSpace(line))
 		if m == nil {
 			continue
 		}
@@ -547,6 +561,14 @@ func listAudioDevices() []AudioDeviceInfo {
 		devices = append(devices, d)
 	}
 	return devices
+}
+
+func listAudioDevices() []AudioDeviceInfo {
+	return listALSADevices("aplay")
+}
+
+func listAudioCaptureDevices() []AudioDeviceInfo {
+	return listALSADevices("arecord")
 }
 
 func (a *Agent) startAudioTone() (AudioDeviceInfo, error) {
@@ -590,6 +612,73 @@ func (a *Agent) stopAudioToneLocked() {
 	_ = a.audioToneCmd.Process.Kill()
 	_ = a.audioToneCmd.Wait()
 	a.audioToneCmd = nil
+}
+
+func captureMicrophoneAudio() (AudioCaptureResult, error) {
+	var device AudioDeviceInfo
+	for _, d := range listAudioCaptureDevices() {
+		if d.IsJetKVM {
+			device = d
+			break
+		}
+	}
+	if !device.IsJetKVM {
+		return AudioCaptureResult{}, os.ErrNotExist
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(
+		ctx,
+		"arecord",
+		"-D", device.PCM,
+		"-f", "S16_LE",
+		"-r", "48000",
+		"-c", "2",
+		"-d", "3",
+		"-t", "raw",
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	raw, err := cmd.Output()
+	if ctx.Err() != nil {
+		return AudioCaptureResult{}, ctx.Err()
+	}
+	if err != nil {
+		return AudioCaptureResult{}, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	result := analyzePCM16(raw)
+	result.Device = device
+	result.SampleRate = 48000
+	result.Channels = 2
+	return result, nil
+}
+
+func analyzePCM16(data []byte) AudioCaptureResult {
+	samples := len(data) / 2
+	result := AudioCaptureResult{Samples: samples}
+	if samples == 0 {
+		return result
+	}
+
+	var sumSquares float64
+	var previous int16
+	for i := 0; i < samples; i++ {
+		sample := int16(binary.LittleEndian.Uint16(data[i*2:]))
+		abs := int(math.Abs(float64(sample)))
+		if abs > result.Peak {
+			result.Peak = abs
+		}
+		if i > 0 && ((previous < 0 && sample >= 0) || (previous >= 0 && sample < 0)) {
+			result.ZeroCrossings++
+		}
+		previous = sample
+		sumSquares += float64(sample) * float64(sample)
+	}
+	result.RMS = math.Sqrt(sumSquares / float64(samples))
+	return result
 }
 
 // listMounts returns current mount points, filtered to interesting ones.
@@ -725,6 +814,11 @@ func main() {
 		json.NewEncoder(w).Encode(listAudioDevices())
 	})
 
+	mux.HandleFunc("/audio/capture-devices", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(listAudioCaptureDevices())
+	})
+
 	mux.HandleFunc("/audio/start-tone", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		device, err := agent.startAudioTone()
@@ -734,6 +828,17 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(device)
+	})
+
+	mux.HandleFunc("/audio/capture-microphone", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		result, err := captureMicrophoneAudio()
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(result)
 	})
 
 	mux.HandleFunc("/audio/stop-tone", func(w http.ResponseWriter, r *http.Request) {

@@ -67,6 +67,16 @@ export interface AudioDeviceInfo {
   is_jetkvm: boolean;
 }
 
+export interface AudioCaptureResult {
+  device: AudioDeviceInfo;
+  sample_rate: number;
+  channels: number;
+  samples: number;
+  peak: number;
+  rms: number;
+  zero_crossings: number;
+}
+
 // Linux evdev key codes (matching input-event-codes.h)
 export const KEY = {
   ESC: 1,
@@ -319,12 +329,20 @@ export class RemoteAgent {
     return this.get<AudioDeviceInfo[]>("/audio/devices");
   }
 
+  async getAudioCaptureDevices(): Promise<AudioDeviceInfo[]> {
+    return this.get<AudioDeviceInfo[]>("/audio/capture-devices");
+  }
+
   async startAudioTone(): Promise<AudioDeviceInfo> {
     return this.get<AudioDeviceInfo>("/audio/start-tone");
   }
 
   async stopAudioTone(): Promise<void> {
     await this.get("/audio/stop-tone");
+  }
+
+  async captureMicrophoneAudio(): Promise<AudioCaptureResult> {
+    return this.get<AudioCaptureResult>("/audio/capture-microphone");
   }
 
   // ── High-level verification helpers ──

@@ -132,6 +132,39 @@ function stripH265FromVideoTransceivers(pc: RTCPeerConnection) {
   }
 }
 
+const MICROPHONE_ENABLED_STORAGE_KEY = "jetkvm.microphone.enabled";
+
+function isMicrophoneEnabledForSession() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(MICROPHONE_ENABLED_STORAGE_KEY) === "true";
+}
+
+function preferPCMUForAudioTransceiver(transceiver: RTCRtpTransceiver) {
+  try {
+    const caps = RTCRtpSender.getCapabilities?.("audio");
+    if (!caps) return;
+    const pcmu = caps.codecs.filter(c => c.mimeType.toLowerCase() === "audio/pcmu");
+    if (pcmu.length === 0) return;
+    transceiver.setCodecPreferences(pcmu);
+  } catch (e) {
+    console.warn("[setupPeerConnection] audio setCodecPreferences failed", e);
+  }
+}
+
+async function createClientMicrophoneSource(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("getUserMedia is not available");
+  }
+
+  return navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+  });
+}
+
 export default function KvmIdRoute() {
   const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
@@ -191,6 +224,12 @@ export default function KvmIdRoute() {
   const isLegacySignalingEnabled = useRef(false);
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [displayHostname, setDisplayHostname] = useState<string | null>(null);
+  const clientMicrophoneStreamRef = useRef<MediaStream | null>(null);
+
+  const stopClientMicrophone = useCallback(() => {
+    clientMicrophoneStreamRef.current?.getTracks().forEach(track => track.stop());
+    clientMicrophoneStreamRef.current = null;
+  }, []);
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
@@ -207,9 +246,10 @@ export default function KvmIdRoute() {
       connectionFailedRef.current = true;
 
       peerConnection?.close();
+      stopClientMicrophone();
       signalingAttempts.current = 0;
     },
-    [peerConnection, setPeerConnectionState],
+    [peerConnection, setPeerConnectionState, stopClientMicrophone],
   );
 
   // We need to track connectionFailed in a ref to avoid stale closure issues
@@ -464,6 +504,7 @@ export default function KvmIdRoute() {
     // Drop the previous PC's MediaStream — its tracks are ended and
     // would sit ahead of the new live tracks, breaking playback.
     setMediaStream(null);
+    stopClientMicrophone();
 
     let pc: RTCPeerConnection;
     try {
@@ -489,6 +530,9 @@ export default function KvmIdRoute() {
     pc.onconnectionstatechange = () => {
       console.debug("[setupPeerConnection] Connection state changed", pc.connectionState);
       setPeerConnectionState(pc.connectionState);
+      if (pc.connectionState === "closed" || pc.connectionState === "failed") {
+        stopClientMicrophone();
+      }
     };
 
     pc.onnegotiationneeded = async () => {
@@ -559,10 +603,35 @@ export default function KvmIdRoute() {
       }
     };
 
+    let microphoneStream: MediaStream | null = null;
+    if (isMicrophoneEnabledForSession()) {
+      try {
+        microphoneStream = await createClientMicrophoneSource();
+        clientMicrophoneStreamRef.current = microphoneStream;
+      } catch (e) {
+        console.warn("[setupPeerConnection] Failed to enable microphone", e);
+        window.localStorage.removeItem(MICROPHONE_ENABLED_STORAGE_KEY);
+      }
+    }
+
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
-    // Always offer audio; the backend gates it on device config and leaves
-    // the m-line inactive when disabled.
-    pc.addTransceiver("audio", { direction: "recvonly" });
+    if (microphoneStream) {
+      const [microphoneTrack] = microphoneStream.getAudioTracks();
+      if (microphoneTrack) {
+        const microphoneTransceiver = pc.addTransceiver(microphoneTrack, {
+          direction: "sendrecv",
+          streams: [microphoneStream],
+        });
+        preferPCMUForAudioTransceiver(microphoneTransceiver);
+      } else {
+        stopClientMicrophone();
+        pc.addTransceiver("audio", { direction: "recvonly" });
+      }
+    } else {
+      // Always offer receive-side audio; the backend gates it on device config
+      // and leaves the m-line inactive when disabled.
+      pc.addTransceiver("audio", { direction: "recvonly" });
+    }
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onclose = () => {
@@ -630,6 +699,7 @@ export default function KvmIdRoute() {
     legacyHTTPSignaling,
     sendWebRTCSignal,
     setMediaStream,
+    stopClientMicrophone,
     bumpMediaStreamTrackVersion,
     setPeerConnection,
     setPeerConnectionState,
@@ -657,6 +727,12 @@ export default function KvmIdRoute() {
       peerConnection?.close();
     };
   }, [peerConnection]);
+
+  useEffect(() => {
+    return () => {
+      stopClientMicrophone();
+    };
+  }, [stopClientMicrophone]);
 
   // For some reason, we have to have this unmount separate from the cleanup effect above
   useEffect(() => {

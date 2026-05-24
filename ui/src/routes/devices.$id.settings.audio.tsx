@@ -10,28 +10,42 @@ import { m } from "@localizations/messages.js";
 
 interface AudioConfig {
   enabled: boolean;
+  microphone_enabled: boolean;
 }
+
+const MICROPHONE_ENABLED_STORAGE_KEY = "jetkvm.microphone.enabled";
 
 export default function SettingsAudioRoute() {
   const { send } = useJsonRpc();
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [audioConfig, setAudioConfig] = useState<AudioConfig | null>(null);
 
   useEffect(() => {
     send("getAudioConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
-      setEnabled((resp.result as AudioConfig).enabled);
+      const result = resp.result as AudioConfig;
+      setAudioConfig({
+        enabled: result.enabled,
+        microphone_enabled: result.microphone_enabled ?? false,
+      });
     });
   }, [send]);
 
   const handleChange = useCallback(
-    (next: boolean) => {
-      const previous = enabled;
-      setEnabled(next);
-      send("setAudioConfig", { params: { enabled: next } }, (resp: JsonRpcResponse) => {
+    (next: Partial<AudioConfig>) => {
+      if (!audioConfig) return;
+      const previous = audioConfig;
+      const updated = { ...audioConfig, ...next };
+      setAudioConfig(updated);
+      send("setAudioConfig", { params: updated }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(resp.error.data || m.unknown_error());
-          setEnabled(previous);
+          setAudioConfig(previous);
           return;
+        }
+        if (updated.microphone_enabled) {
+          window.localStorage.setItem(MICROPHONE_ENABLED_STORAGE_KEY, "true");
+        } else {
+          window.localStorage.removeItem(MICROPHONE_ENABLED_STORAGE_KEY);
         }
         // Close the WebRTC connection before reloading. Firefox's soft
         // reload doesn't always tear it down, which leaves the new page in
@@ -41,7 +55,7 @@ export default function SettingsAudioRoute() {
         window.location.reload();
       });
     },
-    [enabled, send],
+    [audioConfig, send],
   );
 
   return (
@@ -53,9 +67,20 @@ export default function SettingsAudioRoute() {
         description={m.audio_enable_description()}
       >
         <Checkbox
-          checked={enabled ?? false}
-          disabled={enabled === null}
-          onChange={e => handleChange(e.target.checked)}
+          checked={audioConfig?.enabled ?? false}
+          disabled={audioConfig === null}
+          onChange={e => handleChange({ enabled: e.target.checked })}
+        />
+      </SettingsItem>
+      <SettingsItem
+        title="Enable Microphone"
+        badge="Experimental"
+        description="Send this browser microphone to the host as a JetKVM USB microphone."
+      >
+        <Checkbox
+          checked={audioConfig?.microphone_enabled ?? false}
+          disabled={audioConfig === null}
+          onChange={e => handleChange({ microphone_enabled: e.target.checked })}
         />
       </SettingsItem>
     </div>

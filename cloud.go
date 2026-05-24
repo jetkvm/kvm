@@ -456,12 +456,13 @@ func handleSessionRequest(
 	}
 
 	session, err := newSession(SessionConfig{
-		ws:         c,
-		IsCloud:    isCloudConnection,
-		LocalIP:    req.IP,
-		ICEServers: req.ICEServers,
-		Logger:     scopedLogger,
-		MDNSMode:   config.NetworkConfig.MDNSMode.String,
+		ws:                c,
+		IsCloud:           isCloudConnection,
+		LocalIP:           req.IP,
+		ICEServers:        req.ICEServers,
+		Logger:            scopedLogger,
+		MDNSMode:          config.NetworkConfig.MDNSMode.String,
+		MicrophoneEnabled: config.MicrophoneEnabled,
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})

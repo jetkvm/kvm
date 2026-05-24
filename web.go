@@ -246,7 +246,10 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession(SessionConfig{MDNSMode: config.NetworkConfig.MDNSMode.String})
+	session, err := newSession(SessionConfig{
+		MDNSMode:          config.NetworkConfig.MDNSMode.String,
+		MicrophoneEnabled: config.MicrophoneEnabled,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
