@@ -422,7 +422,10 @@ func videoSetEDID(edid string) error {
 
 	edidCStr := C.CString(edid)
 	defer C.free(unsafe.Pointer(edidCStr))
-	C.jetkvm_video_set_edid(edidCStr)
+	ret := C.jetkvm_video_set_edid(edidCStr)
+	if ret != 0 {
+		return fmt.Errorf("failed to set EDID: %d", ret)
+	}
 	return nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/native"
+	"github.com/jetkvm/kvm/internal/sync"
 )
 
 var (
@@ -34,6 +35,55 @@ func triggerVideoStateUpdate() {
 func rpcGetVideoState() (native.VideoState, error) {
 	notifyFailsafeMode(currentSession)
 	return lastVideoState, nil
+}
+
+var (
+	hostDisplayAdvertiseLock = sync.Mutex{}
+	hostDisplayAdvertised    bool
+)
+
+func configuredVideoEDID() string {
+	if config.EdidString == "" || isInternalDisabledEDID(config.EdidString) {
+		return native.DefaultEDID
+	}
+	return config.EdidString
+}
+
+func isInternalDisabledEDID(edid string) bool {
+	return edid == native.DisabledEDID
+}
+
+func isHostDisplayAdvertised() bool {
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+	return hostDisplayAdvertised
+}
+
+func setHostDisplayAdvertised(enabled bool, reason string, force bool) error {
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+
+	if !force && enabled == hostDisplayAdvertised {
+		return nil
+	}
+
+	edid := native.DisabledEDID
+	if enabled {
+		edid = configuredVideoEDID()
+	}
+
+	if err := nativeInstance.VideoSetEDID(edid); err != nil {
+		nativeLogger.Warn().Err(err).Bool("advertised", enabled).Str("reason", reason).Msg("failed to update host display advertisement")
+		return err
+	}
+
+	hostDisplayAdvertised = enabled
+	nativeLogger.Info().Bool("advertised", enabled).Str("reason", reason).Msg("host display advertisement updated")
+	return nil
+}
+
+func applyHostDisplayAdvertisement(reason string) {
+	_ = setHostDisplayAdvertised(getActiveSessions() > 0, reason, true)
 }
 
 type rpcVideoSleepModeResponse struct {

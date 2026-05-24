@@ -78,7 +78,7 @@ int set_edid(uint8_t *edid, size_t size)
         return -1;
     }
 
-    if (size != 128 && size != 256)
+    if (size != 0 && size != 128 && size != 256)
     {
         errno = EINVAL;
         return -1;
@@ -94,7 +94,10 @@ int set_edid(uint8_t *edid, size_t size)
         return -1;
     }
 
-    fix_edid_checksum(edid, size);
+    if (size > 0)
+    {
+        fix_edid_checksum(edid, size);
+    }
 
     memset(&v4l2_edid, 0, sizeof(v4l2_edid));
     v4l2_edid.pad = 0;

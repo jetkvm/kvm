@@ -17,6 +17,9 @@ const sleepModeFile = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mod
 // live in the base block to be picked up by GeForce display settings.
 const DefaultEDID = "00FFFFFFFFFFFF0028B4010001EEFFC0302301038047287856EE91A3544C99260F5054000000D1C081C0318001010101010101010101023A801871382D40582C4500C48E2100001E773300A050D02B2030203500122C2100001A000000FD00174C0F5111000A202020202020000000FC004A65744B564D2076310A20202001D5020322D1431004012309070783010000E200CFE40D100401E305000065030C001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000CF"
 
+// DisabledEDID is an internal sentinel that disables EDID and pulls HDMI HPD low.
+const DisabledEDID = "__JETKVM_DISABLED_EDID__"
+
 var extraLockTimeout = 5 * time.Second
 
 // VideoState is the state of the video stream.
@@ -174,13 +177,21 @@ func (n *Native) VideoSetEDID(edid string) error {
 	n.videoLock.Lock()
 	defer n.videoLock.Unlock()
 
-	if edid == "" {
+	disableEDID := edid == DisabledEDID
+	if disableEDID {
+		edid = ""
+	} else if edid == "" {
 		edid = DefaultEDID
 	}
 
-	return n.useExtraLock(func() error {
+	setEDID := func() error {
 		return videoSetEDID(edid)
-	})
+	}
+	if disableEDID || videoGetStreamingStatus() == VideoStreamingStatusInactive {
+		return setEDID()
+	}
+
+	return n.useExtraLock(setEDID)
 }
 
 // VideoGetEDID gets the EDID for the video stream.

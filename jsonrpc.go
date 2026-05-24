@@ -228,6 +228,10 @@ func rpcSetAutoUpdateState(enabled bool) (bool, error) {
 }
 
 func rpcGetEDID() (string, error) {
+	if !isHostDisplayAdvertised() {
+		return configuredVideoEDID(), nil
+	}
+
 	resp, err := nativeInstance.VideoGetEDID()
 	if err != nil {
 		return "", err
@@ -236,19 +240,30 @@ func rpcGetEDID() (string, error) {
 }
 
 func rpcSetEDID(edid string) error {
+	if isInternalDisabledEDID(edid) {
+		return fmt.Errorf("invalid EDID")
+	}
+
 	if edid == "" {
 		logger.Info().Msg("Restoring EDID to default")
 	} else {
 		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}
-	err := nativeInstance.VideoSetEDID(edid)
-	if err != nil {
+
+	previousEDID := config.EdidString
+	config.EdidString = edid
+
+	if err := setHostDisplayAdvertised(getActiveSessions() > 0, "set_edid", true); err != nil {
+		config.EdidString = previousEDID
 		return err
 	}
 
 	// Save EDID to config, allowing it to be restored on reboot.
-	config.EdidString = edid
-	_ = SaveConfig()
+	if err := SaveConfig(); err != nil {
+		config.EdidString = previousEDID
+		_ = setHostDisplayAdvertised(getActiveSessions() > 0, "set_edid_rollback", true)
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 	return nil
 }
 

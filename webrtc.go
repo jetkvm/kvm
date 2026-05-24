@@ -667,6 +667,7 @@ func onActiveSessionsChanged() {
 // re-lock wait while video is already streaming.
 func onFirstSessionConnected() {
 	stopVideoSleepModeTicker()
+	_ = setHostDisplayAdvertised(true, "first_session_connected", true)
 	_ = nativeInstance.VideoStart()
 }
 
@@ -691,5 +692,6 @@ func onLastSessionDisconnected() {
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 	stopAudio()
 	_ = nativeInstance.VideoStop()
+	_ = setHostDisplayAdvertised(false, "last_session_disconnected", true)
 	startVideoSleepModeTicker()
 }

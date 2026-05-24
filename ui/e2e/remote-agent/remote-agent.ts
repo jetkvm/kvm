@@ -57,6 +57,13 @@ export interface DisplayInfo {
   modes?: string[];
 }
 
+export function connectedDisplayConnectors(displays: DisplayInfo[]): string[] {
+  return displays
+    .filter(d => d.status === "connected")
+    .map(d => d.connector)
+    .sort();
+}
+
 export interface AudioDeviceInfo {
   card: number;
   device: number;
@@ -523,6 +530,25 @@ export class RemoteAgent {
       await sleep(500);
     }
     throw new Error(`Timed out waiting for resolution ${expected} (${timeoutMs}ms)`);
+  }
+
+  async waitForDisplays(
+    predicate: (displays: DisplayInfo[]) => boolean,
+    timeoutMs = 15000,
+    description = "display state",
+  ): Promise<DisplayInfo[]> {
+    const deadline = Date.now() + timeoutMs;
+    let lastDisplays: DisplayInfo[] = [];
+
+    while (Date.now() < deadline) {
+      lastDisplays = await this.getDisplays();
+      if (predicate(lastDisplays)) return lastDisplays;
+      await sleep(500);
+    }
+
+    throw new Error(
+      `Timed out waiting for ${description} (${timeoutMs}ms). Last displays: ${JSON.stringify(lastDisplays)}`,
+    );
   }
 
   /**
