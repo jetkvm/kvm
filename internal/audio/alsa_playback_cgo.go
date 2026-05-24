@@ -292,6 +292,10 @@ const (
 	PlaybackSampleRate = 48000
 	PlaybackChannels   = 2
 	PlaybackFrameSize  = 960
+	// Browser microphone capture levels are conservative, and PCMU is
+	// narrowband. Boost before presenting the stream as a USB microphone so
+	// the host receives a usable level without depending on host-side gain.
+	MicrophonePlaybackGain = 6
 )
 
 type ALSAPlayback struct {
@@ -332,7 +336,7 @@ func (p *ALSAPlayback) WritePCMU(payload []byte) error {
 
 	out := 0
 	for _, encoded := range payload {
-		sample := PCMUToLinear(encoded)
+		sample := ApplyPCM16Gain(PCMUToLinear(encoded), MicrophonePlaybackGain)
 		for i := 0; i < outputFramesPerInputSample; i++ {
 			pcm16[out] = sample
 			pcm16[out+1] = sample

@@ -412,13 +412,16 @@ type AudioDeviceInfo struct {
 // AudioCaptureResult summarizes microphone audio captured from the JetKVM USB
 // capture device on the remote host.
 type AudioCaptureResult struct {
-	Device        AudioDeviceInfo `json:"device"`
-	SampleRate    int             `json:"sample_rate"`
-	Channels      int             `json:"channels"`
-	Samples       int             `json:"samples"`
-	Peak          int             `json:"peak"`
-	RMS           float64         `json:"rms"`
-	ZeroCrossings int             `json:"zero_crossings"`
+	Device          AudioDeviceInfo `json:"device"`
+	SampleRate      int             `json:"sample_rate"`
+	Channels        int             `json:"channels"`
+	Samples         int             `json:"samples"`
+	Peak            int             `json:"peak"`
+	RMS             float64         `json:"rms"`
+	RMSDBFS         float64         `json:"rms_dbfs"`
+	ToneFrequencyHz float64         `json:"tone_frequency_hz"`
+	ToneRatio       float64         `json:"tone_ratio"`
+	ZeroCrossings   int             `json:"zero_crossings"`
 }
 
 // listInputDevices returns all input devices, with JetKVM ones flagged.
@@ -651,15 +654,20 @@ func captureMicrophoneAudio() (AudioCaptureResult, error) {
 
 	result := analyzePCM16(raw)
 	result.Device = device
-	result.SampleRate = 48000
-	result.Channels = 2
 	return result, nil
 }
 
 func analyzePCM16(data []byte) AudioCaptureResult {
+	const (
+		sampleRate = 48000
+		channels   = 2
+		toneHz     = 997.0
+	)
+
 	samples := len(data) / 2
-	result := AudioCaptureResult{Samples: samples}
+	result := AudioCaptureResult{Samples: samples, SampleRate: sampleRate, Channels: channels, ToneFrequencyHz: toneHz}
 	if samples == 0 {
+		result.RMSDBFS = -120
 		return result
 	}
 
@@ -678,7 +686,41 @@ func analyzePCM16(data []byte) AudioCaptureResult {
 		sumSquares += float64(sample) * float64(sample)
 	}
 	result.RMS = math.Sqrt(sumSquares / float64(samples))
+	if result.RMS > 0 {
+		result.RMSDBFS = 20 * math.Log10(result.RMS/32768.0)
+	} else {
+		result.RMSDBFS = -120
+	}
+	result.ToneRatio = tonePowerRatioPCM16(data, sampleRate, channels, toneHz)
 	return result
+}
+
+func tonePowerRatioPCM16(data []byte, sampleRate int, channels int, frequencyHz float64) float64 {
+	frames := len(data) / (2 * channels)
+	if frames == 0 {
+		return 0
+	}
+
+	var signalPower float64
+	var sinSum float64
+	var cosSum float64
+	for frame := 0; frame < frames; frame++ {
+		base := frame * channels * 2
+		var sum int
+		for channel := 0; channel < channels; channel++ {
+			offset := base + channel*2
+			sum += int(int16(binary.LittleEndian.Uint16(data[offset:])))
+		}
+		sample := float64(sum) / float64(channels)
+		angle := 2 * math.Pi * frequencyHz * float64(frame) / float64(sampleRate)
+		sinSum += sample * math.Sin(angle)
+		cosSum += sample * math.Cos(angle)
+		signalPower += sample * sample
+	}
+	if signalPower == 0 {
+		return 0
+	}
+	return 2 * (sinSum*sinSum + cosSum*cosSum) / (float64(frames) * signalPower)
 }
 
 // listMounts returns current mount points, filtered to interesting ones.

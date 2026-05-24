@@ -43,3 +43,18 @@ func PCMUToLinear(sample byte) int16 {
 	}
 	return int16(pcm - pcmuBias)
 }
+
+// ApplyPCM16Gain multiplies a PCM sample and saturates at int16 bounds.
+func ApplyPCM16Gain(sample int16, gain int) int16 {
+	if gain <= 1 {
+		return sample
+	}
+	scaled := int(sample) * gain
+	if scaled > 32767 {
+		return 32767
+	}
+	if scaled < -32768 {
+		return -32768
+	}
+	return int16(scaled)
+}

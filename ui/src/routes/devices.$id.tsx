@@ -158,9 +158,9 @@ async function createClientMicrophoneSource(): Promise<MediaStream> {
 
   return navigator.mediaDevices.getUserMedia({
     audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
+      echoCancellation: { ideal: false },
+      noiseSuppression: { ideal: false },
+      autoGainControl: { ideal: true },
     },
   });
 }

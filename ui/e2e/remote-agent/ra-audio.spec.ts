@@ -36,7 +36,7 @@ async function useSineWaveMicrophone(page: Page) {
         const gain = context.createGain();
 
         oscillator.frequency.value = 997;
-        gain.gain.value = 0.25;
+        gain.gain.value = 0.03;
         oscillator.connect(gain).connect(destination);
         oscillator.start();
         await context.resume().catch(() => undefined);
@@ -134,11 +134,13 @@ test("microphone works end-to-end", async ({ page }) => {
     await page.reload({ waitUntil: "networkidle" });
     await waitForWebRTCReady(page);
 
-    const captureDevices = await agent!.getAudioCaptureDevices();
-    expect(
-      captureDevices.some(d => d.is_jetkvm),
-      `No JetKVM USB ALSA capture device on remote host: ${JSON.stringify(captureDevices)}`,
-    ).toBe(true);
+    await expect
+      .poll(async () => (await agent!.getAudioCaptureDevices()).some(d => d.is_jetkvm), {
+        message: "Waiting for JetKVM USB ALSA capture device",
+        timeout: 10_000,
+        intervals: [250, 500, 1000],
+      })
+      .toBe(true);
 
     await page.waitForTimeout(1500);
     const capture = await agent!.captureMicrophoneAudio();
@@ -147,9 +149,12 @@ test("microphone works end-to-end", async ({ page }) => {
       `selected non-JetKVM capture device: ${JSON.stringify(capture)}`,
     ).toBe(true);
     expect(capture.samples).toBeGreaterThan(200_000);
-    expect(capture.peak).toBeGreaterThan(1000);
-    expect(capture.rms).toBeGreaterThan(150);
-    expect(capture.zero_crossings).toBeGreaterThan(500);
+    expect(capture.peak).toBeGreaterThan(3500);
+    expect(capture.rms).toBeGreaterThan(1500);
+    expect(capture.rms_dbfs).toBeGreaterThan(-27);
+    expect(capture.tone_ratio).toBeGreaterThan(0.45);
+    expect(capture.zero_crossings).toBeGreaterThan(4500);
+    expect(capture.zero_crossings).toBeLessThan(7500);
   } finally {
     await callJsonRpc(page, "setAudioConfig", {
       params: { enabled: false, microphone_enabled: false },

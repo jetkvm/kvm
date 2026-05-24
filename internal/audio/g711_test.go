@@ -22,3 +22,26 @@ func TestPCMURoundTripApproximation(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyPCM16Gain(t *testing.T) {
+	tests := []struct {
+		name   string
+		sample int16
+		gain   int
+		want   int16
+	}{
+		{name: "positive", sample: 1000, gain: 6, want: 6000},
+		{name: "negative", sample: -1000, gain: 6, want: -6000},
+		{name: "positive clip", sample: 12000, gain: 6, want: 32767},
+		{name: "negative clip", sample: -12000, gain: 6, want: -32768},
+		{name: "unity for invalid gain", sample: 1234, gain: 0, want: 1234},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ApplyPCM16Gain(tt.sample, tt.gain); got != tt.want {
+				t.Fatalf("ApplyPCM16Gain(%d, %d) = %d, want %d", tt.sample, tt.gain, got, tt.want)
+			}
+		})
+	}
+}

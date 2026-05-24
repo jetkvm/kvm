@@ -74,6 +74,9 @@ export interface AudioCaptureResult {
   samples: number;
   peak: number;
   rms: number;
+  rms_dbfs: number;
+  tone_frequency_hz: number;
+  tone_ratio: number;
   zero_crossings: number;
 }
 
