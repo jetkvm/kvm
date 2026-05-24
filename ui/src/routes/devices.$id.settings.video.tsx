@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useSettingsStore } from "@hooks/stores";
 import { Button } from "@components/Button";
+import { Checkbox } from "@components/Checkbox";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsItem } from "@components/SettingsItem";
@@ -75,6 +76,8 @@ export default function SettingsVideoRoute() {
   const [streamQuality, setStreamQuality] = useState("1");
   const [streamQualityLoading, setStreamQualityLoading] = useState(true);
   const [codecPreference, setCodecPreference] = useState("auto");
+  const [disableHostDisplayWhenIdle, setDisableHostDisplayWhenIdle] = useState(false);
+  const [disableHostDisplayWhenIdleLoading, setDisableHostDisplayWhenIdleLoading] = useState(true);
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
@@ -101,6 +104,13 @@ export default function SettingsVideoRoute() {
       const codec = resp.result as string;
       const isAvailable = codecOptions.some(o => o.value === codec);
       setCodecPreference(isAvailable ? codec : "auto");
+    });
+
+    void send("getHostDisplayIdleMode", {}, (resp: JsonRpcResponse) => {
+      setDisableHostDisplayWhenIdleLoading(false);
+      if ("error" in resp) return;
+      const result = resp.result as { enabled: boolean };
+      setDisableHostDisplayWhenIdle(result.enabled);
     });
 
     void send("getEDID", {}, (resp: JsonRpcResponse) => {
@@ -156,6 +166,26 @@ export default function SettingsVideoRoute() {
       }
       // Full page reload to renegotiate WebRTC with the new codec.
       window.location.reload();
+    });
+  };
+
+  const handleDisableHostDisplayWhenIdleChange = (enabled: boolean) => {
+    const previous = disableHostDisplayWhenIdle;
+    setDisableHostDisplayWhenIdle(enabled);
+    setDisableHostDisplayWhenIdleLoading(true);
+    void send("setHostDisplayIdleMode", { enabled }, (resp: JsonRpcResponse) => {
+      setDisableHostDisplayWhenIdleLoading(false);
+      if ("error" in resp) {
+        setDisableHostDisplayWhenIdle(previous);
+        notifications.error(
+          m.video_idle_display_failed({ error: resp.error.data || m.unknown_error() }),
+        );
+        return;
+      }
+
+      notifications.success(
+        enabled ? m.video_idle_display_enabled() : m.video_idle_display_disabled(),
+      );
     });
   };
 
@@ -231,6 +261,18 @@ export default function SettingsVideoRoute() {
                 value={codecPreference}
                 options={codecOptions}
                 onChange={e => handleCodecChange(e.target.value)}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.video_idle_display_title()}
+              description={m.video_idle_display_description()}
+              loading={disableHostDisplayWhenIdleLoading}
+            >
+              <Checkbox
+                checked={disableHostDisplayWhenIdle}
+                disabled={disableHostDisplayWhenIdleLoading}
+                onChange={e => handleDisableHostDisplayWhenIdleChange(e.target.checked)}
               />
             </SettingsItem>
 

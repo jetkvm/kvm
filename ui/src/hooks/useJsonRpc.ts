@@ -41,6 +41,8 @@ const blockedMethodsByReason: Record<string, string[]> = {
     "setVideoCodecPreference",
     "getEDID",
     "setEDID",
+    "getHostDisplayIdleMode",
+    "setHostDisplayIdleMode",
     "getVideoLogStatus",
     "setDisplayRotation",
     "getVideoSleepMode",

@@ -253,7 +253,7 @@ func rpcSetEDID(edid string) error {
 	previousEDID := config.EdidString
 	config.EdidString = edid
 
-	if err := setHostDisplayAdvertised(getActiveSessions() > 0, "set_edid", true); err != nil {
+	if err := setHostDisplayAdvertised(shouldAdvertiseHostDisplay(), "set_edid", true); err != nil {
 		config.EdidString = previousEDID
 		return err
 	}
@@ -261,9 +261,38 @@ func rpcSetEDID(edid string) error {
 	// Save EDID to config, allowing it to be restored on reboot.
 	if err := SaveConfig(); err != nil {
 		config.EdidString = previousEDID
-		_ = setHostDisplayAdvertised(getActiveSessions() > 0, "set_edid_rollback", true)
+		_ = setHostDisplayAdvertised(shouldAdvertiseHostDisplay(), "set_edid_rollback", true)
 		return fmt.Errorf("failed to save config: %w", err)
 	}
+	return nil
+}
+
+type rpcHostDisplayIdleModeResponse struct {
+	Enabled bool `json:"enabled"`
+}
+
+func rpcGetHostDisplayIdleMode() rpcHostDisplayIdleModeResponse {
+	return rpcHostDisplayIdleModeResponse{Enabled: config.HideDisplayWhenIdle}
+}
+
+func rpcSetHostDisplayIdleMode(enabled bool) error {
+	previous := config.HideDisplayWhenIdle
+	if previous == enabled {
+		return nil
+	}
+
+	config.HideDisplayWhenIdle = enabled
+	if err := applyHostDisplayAdvertisement("set_host_display_disable_when_idle"); err != nil {
+		config.HideDisplayWhenIdle = previous
+		return err
+	}
+
+	if err := SaveConfig(); err != nil {
+		config.HideDisplayWhenIdle = previous
+		_ = applyHostDisplayAdvertisement("set_host_display_disable_when_idle_rollback")
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
 	return nil
 }
 
@@ -1310,6 +1339,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAutoUpdateState":         {Func: rpcSetAutoUpdateState, Params: []string{"enabled"}},
 	"getEDID":                    {Func: rpcGetEDID},
 	"setEDID":                    {Func: rpcSetEDID, Params: []string{"edid"}},
+	"getHostDisplayIdleMode":     {Func: rpcGetHostDisplayIdleMode},
+	"setHostDisplayIdleMode":     {Func: rpcSetHostDisplayIdleMode, Params: []string{"enabled"}},
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},

@@ -692,6 +692,6 @@ func onLastSessionDisconnected() {
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 	stopAudio()
 	_ = nativeInstance.VideoStop()
-	_ = setHostDisplayAdvertised(false, "last_session_disconnected", true)
+	_ = applyHostDisplayAdvertisement("last_session_disconnected")
 	startVideoSleepModeTicker()
 }
