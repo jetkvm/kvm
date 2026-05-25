@@ -59,7 +59,7 @@ func isHostDisplayAdvertised() bool {
 	return hostDisplayAdvertised
 }
 
-func shouldAdvertiseHostDisplay() bool {
+func shouldAdvertiseHostDisplayLocked() bool {
 	return !config.HideDisplayWhenIdle || getActiveSessions() > 0
 }
 
@@ -67,6 +67,10 @@ func setHostDisplayAdvertised(enabled bool, reason string, force bool) error {
 	hostDisplayAdvertiseLock.Lock()
 	defer hostDisplayAdvertiseLock.Unlock()
 
+	return setHostDisplayAdvertisedLocked(enabled, reason, force)
+}
+
+func setHostDisplayAdvertisedLocked(enabled bool, reason string, force bool) error {
 	if !force && enabled == hostDisplayAdvertised {
 		return nil
 	}
@@ -87,7 +91,10 @@ func setHostDisplayAdvertised(enabled bool, reason string, force bool) error {
 }
 
 func applyHostDisplayAdvertisement(reason string) error {
-	return setHostDisplayAdvertised(shouldAdvertiseHostDisplay(), reason, true)
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+
+	return setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
 }
 
 type rpcVideoSleepModeResponse struct {
