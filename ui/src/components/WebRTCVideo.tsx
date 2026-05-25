@@ -118,6 +118,10 @@ export default function WebRTCVideo({
     if (videoElm.current) updateVideoSizeStore(videoElm.current);
   }, [updateVideoSizeStore]);
 
+  // Restoring EDID for idle display hiding cycles HDMI hotplug on the bridge.
+  // The host can report no_signal/no_lock while it re-enumerates the display,
+  // so keep the startup UI in the loading state before showing a persistent
+  // HDMI error.
   useEffect(() => {
     if (peerConnectionState !== "connected" || isPlaying) {
       setIsInitialHdmiErrorGraceActive(false);
