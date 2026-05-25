@@ -458,6 +458,43 @@ async function waitForUdcState(expected: string, timeoutMs: number): Promise<voi
   );
 }
 
+function isJsonRpcTimeout(err: unknown, method: string): boolean {
+  return err instanceof Error && err.message.includes(`RPC timeout for ${method}`);
+}
+
+async function sendUsbReconfigRpc(
+  method: "setUsbDevices" | "setUsbConfig",
+  params: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await callJsonRpc(sharedPage, method, params);
+  } catch (err) {
+    if (!isJsonRpcTimeout(err, method)) throw err;
+  }
+}
+
+async function setUsbDevicesAndWait(
+  devices: typeof USB_DEVICES_DEFAULT,
+  expectedTypes: string[],
+  timeoutMs = 45_000,
+) {
+  // A gadget rebind can finish after the browser-side JSON-RPC test hook times
+  // out, especially after virtual-media EBUSY cleanup has left the host xHCI
+  // stack re-enumerating. Treat that timeout as command accepted, then poll the
+  // host-visible input devices for the state that actually matters.
+  await sendUsbReconfigRpc("setUsbDevices", { devices });
+  return agent!.waitForInputDevices(expectedTypes, timeoutMs);
+}
+
+async function setUsbConfigAndWait(
+  usbConfig: typeof USB_DEFAULT_CONFIG,
+  expectedId: string,
+  timeoutMs = 45_000,
+) {
+  await sendUsbReconfigRpc("setUsbConfig", { usbConfig });
+  return agent!.waitForUSBDevice(d => d.id === expectedId, true, timeoutMs);
+}
+
 // Pre-built key list for batched keyboard scan test
 const ALL_SCAN_KEYS = (() => {
   const keys: { hid: number; linux: number; label: string }[] = [];
@@ -1798,7 +1835,14 @@ test.describe("Remote Host Agent", () => {
   // ═══════════════════════════════════════════
 
   test("mouse: movement, corners, rapid input, and position values", async () => {
-    await sendAbsMouseMove(sharedPage, 0, 0);
+    // A previous test can leave the host pointer at the center. Wait until at
+    // least one priming move is visible before clearing events; otherwise the
+    // first asserted center move can be a no-op and produce no Linux input event.
+    await agent!.expectMouseMove(async () => {
+      await sendAbsMouseMove(sharedPage, 0, 0);
+      await sendAbsMouseMove(sharedPage, 32767, 32767);
+      await sendAbsMouseMove(sharedPage, 0, 0);
+    }, 5000);
     await agent!.clearAllEvents();
 
     // Center movement
@@ -2055,8 +2099,11 @@ test.describe("Remote Host Agent", () => {
       expect(hWheel.length, "Horizontal wheel in relative-only mode").toBeGreaterThan(0);
       expect(hWheel[0].value).not.toBe(0);
     } finally {
-      await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_DEFAULT });
-      await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
+      await setUsbDevicesAndWait(
+        USB_DEVICES_DEFAULT,
+        ["keyboard", "absolute_mouse", "relative_mouse"],
+        10_000,
+      );
     }
   });
 
@@ -2404,32 +2451,28 @@ test.describe("Remote Host Agent", () => {
     expect(types).toContain("relative_mouse");
     expect(devices.length).toBe(3);
 
-    // Switch to keyboard_only — verify mice are removed
-    await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_KEYBOARD_ONLY });
-
-    const afterDevices = await agent!.waitForInputDevices(["keyboard"], 10000);
+    const afterDevices = await setUsbDevicesAndWait(USB_DEVICES_KEYBOARD_ONLY, ["keyboard"]);
     const afterTypes = afterDevices.map(d => d.type);
     expect(afterTypes).toContain("keyboard");
     expect(afterTypes).not.toContain("absolute_mouse");
     expect(afterTypes).not.toContain("relative_mouse");
 
     // Restore default devices
-    await callJsonRpc(sharedPage, "setUsbDevices", { devices: USB_DEVICES_DEFAULT });
-    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 10000);
+    await setUsbDevicesAndWait(USB_DEVICES_DEFAULT, [
+      "keyboard",
+      "absolute_mouse",
+      "relative_mouse",
+    ]);
 
     // Switch USB descriptor to Logitech — verify host sees new VID/PID
-    await callJsonRpc(sharedPage, "setUsbConfig", { usbConfig: USB_LOGITECH_CONFIG });
-
-    const logitechDevices = await agent!.waitForUSBDevice(d => d.id === ID_LOGITECH, true, 8000);
+    const logitechDevices = await setUsbConfigAndWait(USB_LOGITECH_CONFIG, ID_LOGITECH);
     expect(logitechDevices.length).toBeGreaterThan(0);
     expect(logitechDevices[0].name).toContain("Logitech");
 
     // Restore default descriptor
     const deviceId = (await callJsonRpc(sharedPage, "getDeviceID")) as string;
     const defaultConfig = { ...USB_DEFAULT_CONFIG, serial_number: deviceId || "" };
-    callJsonRpc(sharedPage, "setUsbConfig", { usbConfig: defaultConfig }).catch(() => {
-      /* ignore */
-    });
+    await setUsbConfigAndWait(defaultConfig, ID_DEFAULT);
   });
 
   // ═══════════════════════════════════════════
