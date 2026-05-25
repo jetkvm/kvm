@@ -667,7 +667,7 @@ func onActiveSessionsChanged() {
 // re-lock wait while video is already streaming.
 func onFirstSessionConnected() {
 	stopVideoSleepModeTicker()
-	_ = setHostDisplayAdvertised(true, "first_session_connected", true)
+	_ = setHostDisplayAdvertised(true, "first_session_connected", false)
 	_ = nativeInstance.VideoStart()
 }
 

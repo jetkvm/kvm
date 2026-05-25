@@ -90,11 +90,23 @@ func setHostDisplayAdvertisedLocked(enabled bool, reason string, force bool) err
 	return nil
 }
 
+// applyHostDisplayAdvertisement reconciles the advertised state without rewriting
+// EDID when the host display is already in the desired state.
 func applyHostDisplayAdvertisement(reason string) error {
+	return updateHostDisplayAdvertisement(reason, false)
+}
+
+// reapplyHostDisplayAdvertisement rewrites EDID even if the advertised
+// boolean is unchanged; use it when native state or configured EDID changed.
+func reapplyHostDisplayAdvertisement(reason string) error {
+	return updateHostDisplayAdvertisement(reason, true)
+}
+
+func updateHostDisplayAdvertisement(reason string, force bool) error {
 	hostDisplayAdvertiseLock.Lock()
 	defer hostDisplayAdvertiseLock.Unlock()
 
-	return setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
+	return setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, force)
 }
 
 type rpcVideoSleepModeResponse struct {

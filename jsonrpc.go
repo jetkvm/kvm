@@ -253,7 +253,7 @@ func rpcSetEDID(edid string) error {
 	previousEDID := config.EdidString
 	config.EdidString = edid
 
-	if err := applyHostDisplayAdvertisement("set_edid"); err != nil {
+	if err := reapplyHostDisplayAdvertisement("set_edid"); err != nil {
 		config.EdidString = previousEDID
 		return err
 	}
@@ -261,7 +261,7 @@ func rpcSetEDID(edid string) error {
 	// Save EDID to config, allowing it to be restored on reboot.
 	if err := SaveConfig(); err != nil {
 		config.EdidString = previousEDID
-		_ = applyHostDisplayAdvertisement("set_edid_rollback")
+		_ = reapplyHostDisplayAdvertisement("set_edid_rollback")
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
