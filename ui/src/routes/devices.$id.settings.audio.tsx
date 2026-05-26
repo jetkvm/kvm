@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-
+import { LinkButton } from "@components/Button";
 import { Checkbox } from "@components/Checkbox";
+import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
@@ -12,14 +13,28 @@ interface AudioConfig {
   enabled: boolean;
 }
 
+interface UsbDeviceConfig {
+  audio?: boolean;
+}
+
 export default function SettingsAudioRoute() {
   const { send } = useJsonRpc();
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [usbAudioEnabled, setUsbAudioEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     send("getAudioConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       setEnabled((resp.result as AudioConfig).enabled);
+    });
+
+    send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error(resp.error);
+        setUsbAudioEnabled(true);
+        return;
+      }
+      setUsbAudioEnabled((resp.result as UsbDeviceConfig).audio !== false);
     });
   }, [send]);
 
@@ -44,20 +59,41 @@ export default function SettingsAudioRoute() {
     [enabled, send],
   );
 
+  const audioBlockedByUsb = usbAudioEnabled === false;
+
   return (
     <div className="space-y-4">
       <SettingsPageHeader title={m.audio_title()} description={m.audio_page_description()} />
-      <SettingsItem
-        title={m.audio_enable_title()}
-        badge="Experimental"
-        description={m.audio_enable_description()}
-      >
-        <Checkbox
-          checked={enabled ?? false}
-          disabled={enabled === null}
-          onChange={e => handleChange(e.target.checked)}
-        />
-      </SettingsItem>
+      <div className="space-y-3">
+        <SettingsItem
+          title={m.audio_enable_title()}
+          badge="Experimental"
+          description={m.audio_enable_description()}
+        >
+          <Checkbox
+            checked={enabled ?? false}
+            disabled={enabled === null || usbAudioEnabled === null || audioBlockedByUsb}
+            aria-describedby={audioBlockedByUsb ? "audio-usb-disabled-hint" : undefined}
+            onChange={e => handleChange(e.target.checked)}
+          />
+        </SettingsItem>
+        {audioBlockedByUsb && (
+          <GridCard>
+            <div
+              id="audio-usb-disabled-hint"
+              className="flex items-center justify-between gap-x-4 p-4"
+            >
+              <div>{m.audio_usb_device_disabled_hint()}</div>
+              <LinkButton
+                to="../hardware"
+                size="XS"
+                theme="light"
+                text={m.audio_usb_device_disabled_link()}
+              />
+            </div>
+          </GridCard>
+        )}
+      </div>
     </div>
   );
 }

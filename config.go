@@ -3,6 +3,7 @@ package kvm
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -176,7 +177,7 @@ var (
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
-		Audio:         false,
+		Audio:         true,
 	}
 )
 
@@ -261,8 +262,15 @@ func LoadConfig() {
 	defer file.Close()
 
 	// load and merge the default config with the user config
+	rawConfig, err := io.ReadAll(file)
+	if err != nil {
+		logger.Warn().Err(err).Msg("config file reading failed")
+		configSuccess.Set(0.0)
+		return
+	}
+
 	loadedConfig := defaultConfig
-	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
+	if err := json.Unmarshal(rawConfig, &loadedConfig); err != nil {
 		logger.Warn().Err(err).Msg("config file JSON parsing failed")
 		configSuccess.Set(0.0)
 		return
@@ -275,6 +283,8 @@ func LoadConfig() {
 
 	if loadedConfig.UsbDevices == nil {
 		loadedConfig.UsbDevices = getDefaultConfig().UsbDevices
+	} else if !usbDevicesConfigHasAudio(rawConfig) {
+		loadedConfig.UsbDevices.Audio = defaultUsbDevices.Audio
 	}
 
 	if loadedConfig.NetworkConfig == nil {
@@ -321,6 +331,19 @@ func LoadConfig() {
 	configSuccessTime.SetToCurrentTime()
 
 	logger.Info().Str("path", configPath).Msg("config loaded")
+}
+
+func usbDevicesConfigHasAudio(rawConfig []byte) bool {
+	var payload struct {
+		UsbDevices map[string]json.RawMessage `json:"usb_devices"`
+	}
+
+	if err := json.Unmarshal(rawConfig, &payload); err != nil || payload.UsbDevices == nil {
+		return true
+	}
+
+	_, ok := payload.UsbDevices["audio"]
+	return ok
 }
 
 func SaveConfig() error {
