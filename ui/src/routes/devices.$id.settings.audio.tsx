@@ -8,6 +8,7 @@ import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useRTCStore } from "@hooks/stores";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+import { LuInfo } from "react-icons/lu";
 
 interface AudioConfig {
   enabled: boolean;
@@ -81,9 +82,14 @@ export default function SettingsAudioRoute() {
           <GridCard>
             <div
               id="audio-usb-disabled-hint"
-              className="flex items-center justify-between gap-x-4 p-4"
+              className="flex items-center justify-between gap-x-4 p-2 px-3"
             >
-              <div>{m.audio_usb_device_disabled_hint()}</div>
+              <div className="flex items-center gap-x-2">
+                <LuInfo className="h-4 w-4 shrink-0" />
+                <div className="text-sm text-black dark:text-white">
+                  {m.audio_usb_device_disabled_hint()}
+                </div>
+              </div>
               <LinkButton
                 to="../hardware"
                 size="XS"
