@@ -31,12 +31,21 @@ func (u *UsbGadget) bringUpNcmInterface() error {
 	if err := netlink.LinkSetUp(link); err != nil {
 		return fmt.Errorf("link up %s: %w", ncmInterfaceName, err)
 	}
+
+	// Install the host-isolation firewall before returning success. Fail closed:
+	// if the firewall can't be installed, usb0 must not be exposed.
+	if err := u.applyNcmFirewall(); err != nil {
+		// Roll back the link so we don't leak an unfiltered interface.
+		_ = netlink.LinkSetDown(link)
+		return fmt.Errorf("apply NCM firewall: %w", err)
+	}
 	return nil
 }
 
-// tearDownNcmInterface brings usb0 down before the gadget rebind drops the
-// netdev. Silent no-op if the interface is already gone.
+// tearDownNcmInterface removes the firewall and brings usb0 down before the
+// gadget rebind drops the netdev. Both steps are best-effort.
 func (u *UsbGadget) tearDownNcmInterface() {
+	u.removeNcmFirewall()
 	link, err := netlink.LinkByName(ncmInterfaceName)
 	if err != nil {
 		return
