@@ -1741,6 +1741,9 @@ test.describe("Remote Host Agent", () => {
     await freshPage.goto("/", { waitUntil: "networkidle" });
     await waitForWebRTCReady(freshPage);
 
+    const readyEvents = await waitForKeyboardReady(agent!, freshPage, 15000);
+    expect(readyEvents.length, "keyboard should work before disconnect test").toBeGreaterThan(0);
+
     await agent!.clearKeyboardEvents();
 
     await sendKeypress(freshPage, 0xe1, true);
