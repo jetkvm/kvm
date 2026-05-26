@@ -384,6 +384,14 @@ func rpcSetAudioConfig(params AudioConfig) error {
 		return nil
 	}
 	config.AudioEnabled = params.Enabled
+	syncAudioUsbDeviceState()
+	if !params.Enabled {
+		stopAudio()
+	}
+	if gadget != nil {
+		gadget.SetGadgetDevices(config.UsbDevices)
+		return updateUsbRelatedConfig()
+	}
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
@@ -982,6 +990,7 @@ func updateUsbRelatedConfig() error {
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	usbDevices.Audio = config.AudioEnabled
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig()
@@ -999,8 +1008,14 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.MassStorage = enabled
 	case "serialConsole":
 		config.UsbDevices.SerialConsole = enabled
+	case "audio":
+		config.AudioEnabled = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
+	}
+	syncAudioUsbDeviceState()
+	if !config.AudioEnabled {
+		stopAudio()
 	}
 	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig()

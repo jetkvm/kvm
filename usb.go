@@ -10,9 +10,18 @@ import (
 
 var gadget *usbgadget.UsbGadget
 
+func syncAudioUsbDeviceState() {
+	if config == nil || config.UsbDevices == nil {
+		return
+	}
+
+	config.UsbDevices.Audio = config.AudioEnabled
+}
+
 // initUsbGadget initializes the USB gadget.
 // call it only after the config is loaded.
 func initUsbGadget() {
+	syncAudioUsbDeviceState()
 	gadget = usbgadget.NewUsbGadget(
 		"jetkvm",
 		config.UsbDevices,

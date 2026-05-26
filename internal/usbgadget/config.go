@@ -81,6 +81,8 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.MassStorage
 	case "serial_console":
 		return u.enabledDevices.SerialConsole
+	case "audio":
+		return u.enabledDevices.Audio
 	default:
 		return true
 	}

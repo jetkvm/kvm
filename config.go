@@ -176,6 +176,7 @@ var (
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
+		Audio:         false,
 	}
 )
 
