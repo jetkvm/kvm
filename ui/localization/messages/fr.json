@@ -1003,6 +1003,7 @@
     "usb_device_enable_relative_mouse_title": "Activer la souris relative",
     "usb_device_enable_serial_console_description": "Expose un périphérique série USB (CDC-ACM) vers l'hôte cible",
     "usb_device_enable_serial_console_title": "Activer la console série USB",
+    "usb_device_endpoint_budget_warning": "Cette combinaison dépasse les endpoints USB disponibles de l'appareil. Les fonctions au-delà de la limite peuvent cesser de fonctionner sans erreur — Ethernet sur USB (CDC-NCM) en particulier apparaîtra connecté mais ne fera pas passer de trafic. Désactivez une fonction (par ex. la souris relative) pour libérer un endpoint.",
     "usb_device_failed_load": "Échec du chargement des périphériques USB : {error}",
     "usb_device_failed_set": "Échec de la configuration des périphériques USB : {error}",
     "usb_device_keyboard_mouse_mass_storage_and_audio": "Clavier, souris, stockage de masse et audio",

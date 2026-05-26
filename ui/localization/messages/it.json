@@ -1003,6 +1003,7 @@
     "usb_device_enable_relative_mouse_title": "Abilita mouse relativo",
     "usb_device_enable_serial_console_description": "Espone un dispositivo seriale USB (CDC-ACM) all'host di destinazione",
     "usb_device_enable_serial_console_title": "Abilita console seriale USB",
+    "usb_device_endpoint_budget_warning": "Questa combinazione supera gli endpoint USB disponibili del dispositivo. Le funzioni oltre il limite possono smettere di funzionare senza segnalazioni — in particolare Ethernet su USB (CDC-NCM) risulterà connesso ma non farà passare traffico. Disabilita una funzione (ad es. il mouse relativo) per liberare un endpoint.",
     "usb_device_failed_load": "Impossibile caricare i dispositivi USB: {error}",
     "usb_device_failed_set": "Impossibile impostare i dispositivi USB: {error}",
     "usb_device_keyboard_mouse_mass_storage_and_audio": "Tastiera, mouse, archiviazione di massa e audio",

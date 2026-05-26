@@ -1003,6 +1003,7 @@
     "usb_device_enable_relative_mouse_title": "Включить относительную мышь",
     "usb_device_enable_serial_console_description": "Предоставляет последовательное USB-устройство (CDC-ACM) целевому хосту",
     "usb_device_enable_serial_console_title": "Включить последовательную USB-консоль",
+    "usb_device_endpoint_budget_warning": "Эта комбинация превышает доступное количество конечных точек USB на устройстве. Функции сверх лимита могут молча перестать работать — в частности, Ethernet через USB (CDC-NCM) будет выглядеть подключённым, но не будет передавать трафик. Отключите какую-либо функцию (например, относительную мышь), чтобы освободить конечную точку.",
     "usb_device_failed_load": "Не удалось загрузить USB-устройства: {error}",
     "usb_device_failed_set": "Не удалось установить USB-устройства: {error}",
     "usb_device_keyboard_mouse_mass_storage_and_audio": "Клавиатура, мышь, накопитель и аудио",

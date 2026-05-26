@@ -1003,6 +1003,7 @@
     "usb_device_enable_relative_mouse_title": "Göreceli Fareyi Etkinleştir",
     "usb_device_enable_serial_console_description": "Hedef ana bilgisayara bir USB seri (CDC-ACM) cihazı sunar",
     "usb_device_enable_serial_console_title": "USB Seri Konsolunu Etkinleştir",
+    "usb_device_endpoint_budget_warning": "Bu kombinasyon cihazın kullanılabilir USB uç noktası sayısını aşıyor. Sınırın ötesindeki işlevler sessizce çalışmayabilir — özellikle USB üzerinden Ethernet (CDC-NCM) bağlı görünür ancak trafik geçirmez. Bir uç noktası boşaltmak için bir işlevi (ör. Göreceli Fare) devre dışı bırakın.",
     "usb_device_failed_load": "USB cihazları yüklenemedi: {error}",
     "usb_device_failed_set": "USB cihazları ayarlanamadı: {error}",
     "usb_device_keyboard_mouse_mass_storage_and_audio": "Klavye, Fare, Depolama ve Ses",

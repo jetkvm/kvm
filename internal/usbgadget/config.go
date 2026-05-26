@@ -70,23 +70,30 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 }
 
 func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
+	return isGadgetConfigItemEnabledForDevices(itemKey, &u.enabledDevices)
+}
+
+// isGadgetConfigItemEnabledForDevices reports whether a gadget config item is
+// enabled for an arbitrary Devices selection. Items without an explicit case
+// (base, base_info, wake_hid, audio, ...) are always enabled.
+func isGadgetConfigItemEnabledForDevices(itemKey string, devices *Devices) bool {
 	switch itemKey {
 	case "absolute_mouse":
-		return u.enabledDevices.AbsoluteMouse
+		return devices.AbsoluteMouse
 	case "relative_mouse":
-		return u.enabledDevices.RelativeMouse
+		return devices.RelativeMouse
 	case "keyboard":
-		return u.enabledDevices.Keyboard
+		return devices.Keyboard
 	case "mass_storage_base":
-		return u.enabledDevices.MassStorage
+		return devices.MassStorage
 	case "mass_storage_lun0":
-		return u.enabledDevices.MassStorage
+		return devices.MassStorage
 	case "serial_console":
-		return u.enabledDevices.SerialConsole
+		return devices.SerialConsole
 	case "audio":
-		return u.enabledDevices.Audio
+		return devices.Audio
 	case "ncm":
-		return u.enabledDevices.Ncm
+		return devices.Ncm
 	default:
 		return true
 	}

@@ -1003,6 +1003,7 @@
     "usb_device_enable_relative_mouse_title": "相対座標マウスを有効化",
     "usb_device_enable_serial_console_description": "ターゲットホストにUSBシリアル (CDC-ACM) デバイスを公開します",
     "usb_device_enable_serial_console_title": "USBシリアルコンソールを有効化",
+    "usb_device_endpoint_budget_warning": "この組み合わせはデバイスで利用可能なUSBエンドポイント数を超えています。上限を超えた機能はエラーを出さずに動作しないことがあります。特にUSB経由のEthernet (CDC-NCM) は接続済みに見えてもトラフィックが流れません。いずれかの機能 (相対座標マウスなど) を無効にしてエンドポイントを解放してください。",
     "usb_device_failed_load": "USBデバイスの読み込みに失敗しました: {error}",
     "usb_device_failed_set": "USBデバイスの設定に失敗しました: {error}",
     "usb_device_keyboard_mouse_mass_storage_and_audio": "キーボード、マウス、マスストレージ、オーディオ",
