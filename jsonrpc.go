@@ -336,11 +336,15 @@ func rpcGetAudioConfig() (*AudioConfig, error) {
 }
 
 func rpcSetAudioConfig(params AudioConfig) error {
-	if config.AudioEnabled == params.Enabled {
+	return setAudioConfigEnabled(params.Enabled, SaveConfig)
+}
+
+func setAudioConfigEnabled(enabled bool, save func() error) error {
+	if config.AudioEnabled == enabled {
 		return nil
 	}
-	config.AudioEnabled = params.Enabled
-	if err := SaveConfig(); err != nil {
+	config.AudioEnabled = enabled
+	if err := save(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
@@ -662,9 +666,12 @@ func rpcSetUsbEmulationState(enabled bool) error {
 
 	if enabled {
 		return gadget.BindUDC()
-	} else {
-		return gadget.UnbindUDC()
 	}
+
+	if err := gadget.UnbindUDC(); err != nil {
+		return err
+	}
+	return setAudioConfigEnabled(false, SaveConfig)
 }
 
 func rpcGetUsbConfig() (usbgadget.Config, error) {
