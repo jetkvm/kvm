@@ -287,6 +287,10 @@ func LoadConfig() {
 		loadedConfig.UsbDevices.Audio = defaultUsbDevices.Audio
 	}
 
+	if !loadedConfig.UsbDevices.Audio {
+		loadedConfig.AudioEnabled = false
+	}
+
 	if loadedConfig.NetworkConfig == nil {
 		loadedConfig.NetworkConfig = getDefaultConfig().NetworkConfig
 	}

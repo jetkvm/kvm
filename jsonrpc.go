@@ -989,6 +989,9 @@ func updateUsbRelatedConfig() error {
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	if !usbDevices.Audio {
+		config.AudioEnabled = false
+	}
 	config.UsbDevices = &usbDevices
 	if !effectiveAudioEnabled() {
 		stopAudio()
@@ -1011,6 +1014,9 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.SerialConsole = enabled
 	case "audio":
 		config.UsbDevices.Audio = enabled
+		if !enabled {
+			config.AudioEnabled = false
+		}
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
