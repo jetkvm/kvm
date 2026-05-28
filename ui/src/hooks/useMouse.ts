@@ -25,7 +25,8 @@ export default function useMouse() {
 
   // RPC hooks
   const { send } = useJsonRpc();
-  const { reportAbsMouseEvent, reportRelMouseEvent, rpcHidReady } = useHidRpc();
+  const { reportAbsMouseEvent, reportRelMouseEvent, reportTouchscreenEvent, rpcHidReady } =
+    useHidRpc();
   // Mouse-related
 
   const sendRelMouseMovement = useCallback(
@@ -154,11 +155,15 @@ export default function useMouse() {
         const y = Math.round(relativeY * 32767);
         const touching = e.buttons !== 0;
 
-        send("touchscreenReport", { x, y, touching });
+        if (rpcHidReady) {
+          reportTouchscreenEvent(x, y, touching);
+        } else {
+          send("touchscreenReport", { x, y, touching });
+        }
         setMousePosition(x, y);
         lastAbsPos.current = { x, y };
       },
-    [mouseMode, send, setMousePosition],
+    [mouseMode, reportTouchscreenEvent, rpcHidReady, send, setMousePosition],
   );
 
   const getMouseWheelHandler = useCallback(
@@ -194,16 +199,20 @@ export default function useMouse() {
 
   const resetMousePosition = useCallback(() => {
     if (mouseMode === "digitizer") {
-      send("touchscreenReport", {
-        x: lastAbsPos.current.x,
-        y: lastAbsPos.current.y,
-        touching: false,
-      });
+      if (rpcHidReady) {
+        reportTouchscreenEvent(lastAbsPos.current.x, lastAbsPos.current.y, false);
+      } else {
+        send("touchscreenReport", {
+          x: lastAbsPos.current.x,
+          y: lastAbsPos.current.y,
+          touching: false,
+        });
+      }
       return;
     }
 
     sendAbsMouseMovement(lastAbsPos.current.x, lastAbsPos.current.y, 0);
-  }, [mouseMode, send, sendAbsMouseMovement]);
+  }, [mouseMode, reportTouchscreenEvent, rpcHidReady, send, sendAbsMouseMovement]);
 
   return {
     getRelMouseMoveHandler,

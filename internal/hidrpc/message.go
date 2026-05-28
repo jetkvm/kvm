@@ -148,6 +148,13 @@ type PointerReport struct {
 	Button uint8
 }
 
+// TouchscreenReport is an absolute single-contact digitizer state.
+type TouchscreenReport struct {
+	X        int
+	Y        int
+	Touching bool
+}
+
 func toInt(b []byte) int {
 	return int(b[0])<<24 + int(b[1])<<16 + int(b[2])<<8 + int(b[3])<<0
 }
@@ -166,6 +173,23 @@ func (m *Message) PointerReport() (PointerReport, error) {
 		X:      toInt(m.d[0:4]),
 		Y:      toInt(m.d[4:8]),
 		Button: uint8(m.d[8]),
+	}, nil
+}
+
+// TouchscreenReport returns the touchscreen report from the message.
+func (m *Message) TouchscreenReport() (TouchscreenReport, error) {
+	if m.t != TypeTouchscreenReport {
+		return TouchscreenReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	if len(m.d) != 9 {
+		return TouchscreenReport{}, fmt.Errorf("invalid message length: %d", len(m.d))
+	}
+
+	return TouchscreenReport{
+		X:        toInt(m.d[0:4]),
+		Y:        toInt(m.d[4:8]),
+		Touching: m.d[8] != 0,
 	}, nil
 }
 

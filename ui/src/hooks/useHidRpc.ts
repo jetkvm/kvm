@@ -15,6 +15,7 @@ import {
   MouseReportMessage,
   PointerReportMessage,
   RpcMessage,
+  TouchscreenReportMessage,
   unmarshalHidRpcMessage,
 } from "./hidRpc";
 
@@ -248,6 +249,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   );
 
   const lastAbsButtons = useRef(0);
+  const lastTouching = useRef(false);
 
   const reportAbsMouseEvent = useCallback(
     (x: number, y: number, buttons: number) => {
@@ -269,6 +271,18 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   const reportRelMouseEvent = useCallback(
     (dx: number, dy: number, buttons: number) => {
       sendMessage(new MouseReportMessage(dx, dy, buttons));
+    },
+    [sendMessage],
+  );
+
+  const reportTouchscreenEvent = useCallback(
+    (x: number, y: number, touching: boolean) => {
+      const touchingChanged = touching !== lastTouching.current;
+      lastTouching.current = touching;
+
+      sendMessage(new TouchscreenReportMessage(x, y, touching), {
+        useUnreliableChannel: !touchingChanged,
+      });
     },
     [sendMessage],
   );
@@ -331,6 +345,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     reportKeypressEvent,
     reportAbsMouseEvent,
     reportRelMouseEvent,
+    reportTouchscreenEvent,
     reportKeyboardMacroEvent,
     cancelOngoingKeyboardMacro,
     reportKeypressKeepAlive,

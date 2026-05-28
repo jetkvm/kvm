@@ -47,6 +47,13 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			return
 		}
 		rpcErr = rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
+	case hidrpc.TypeTouchscreenReport:
+		touchscreenReport, err := message.TouchscreenReport()
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to get touchscreen report")
+			return
+		}
+		rpcErr = rpcTouchscreenReport(touchscreenReport.X, touchscreenReport.Y, touchscreenReport.Touching)
 	case hidrpc.TypeMouseReport:
 		mouseReport, err := message.MouseReport()
 		if err != nil {
