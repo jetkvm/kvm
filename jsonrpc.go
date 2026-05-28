@@ -380,10 +380,14 @@ func rpcGetAudioConfig() (*AudioConfig, error) {
 }
 
 func rpcSetAudioConfig(params AudioConfig) error {
-	if config.AudioEnabled == params.Enabled {
+	enabled := params.Enabled
+	if enabled && (config.UsbDevices == nil || !config.UsbDevices.Audio) {
+		enabled = false
+	}
+	if config.AudioEnabled == enabled {
 		return nil
 	}
-	config.AudioEnabled = params.Enabled
+	config.AudioEnabled = enabled
 	if !effectiveAudioEnabled() {
 		stopAudio()
 	}

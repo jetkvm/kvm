@@ -147,11 +147,11 @@ func negotiateAudioCodec(offerSDP string) string {
 	return ""
 }
 
-// attachAudioTrack adds an outgoing audio track when the device config has
-// audio enabled AND the browser advertised a codec we support. No-op
+// attachAudioTrack adds an outgoing audio track when audio is enabled, the USB
+// gadget allows audio, and the browser advertised a codec we support. No-op
 // otherwise; the SDP answer just leaves the audio m-line inactive.
 func (s *Session) attachAudioTrack(offerSDP string) error {
-	if !config.AudioEnabled {
+	if !effectiveAudioEnabled() {
 		webrtcLogger.Debug().Msg("audio disabled by device config")
 		return nil
 	}
