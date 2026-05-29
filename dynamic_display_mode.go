@@ -33,7 +33,9 @@ var dynamicDisplayModeState = struct {
 
 func applyDisplayModeForTarget(metadata TargetMetadata) {
 	if metadata.TargetType != "android" || !metadata.Fresh || metadata.DisplayWidth <= 0 || metadata.DisplayHeight <= 0 {
-		applyDefaultEDIDFallback("companion target inactive")
+		if metadata.TargetType == "android" && metadata.Source == "companion" {
+			applyDefaultEDIDFallback("companion target inactive", true)
+		}
 		return
 	}
 
@@ -45,7 +47,7 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 			Int("display_width", metadata.DisplayWidth).
 			Int("display_height", metadata.DisplayHeight).
 			Msg("failed to build companion display EDID, restoring default EDID")
-		applyDefaultEDIDFallback("dynamic EDID build failed")
+		applyDefaultEDIDFallback("dynamic EDID build failed", true)
 		return
 	}
 
@@ -106,7 +108,7 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 	}
 }
 
-func applyDefaultEDIDFallback(reason string) {
+func applyDefaultEDIDFallback(reason string, reenumerate bool) {
 	defaultEDID := getDeviceDefaultEDID()
 
 	dynamicDisplayModeState.Lock()
@@ -124,7 +126,7 @@ func applyDefaultEDIDFallback(reason string) {
 		return
 	}
 
-	reenumerationRequired := hadDynamicMode || config.EdidString != defaultEDID
+	reenumerationRequired := reenumerate && (hadDynamicMode || config.EdidString != defaultEDID)
 	if config.EdidString != defaultEDID {
 		config.EdidString = defaultEDID
 		if err := SaveConfig(); err != nil {
