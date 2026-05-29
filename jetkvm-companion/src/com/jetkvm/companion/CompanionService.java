@@ -95,6 +95,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private boolean hasPairedJetKvmEndpoints;
     private boolean attemptedForCurrentScreen;
     private boolean targetReportScheduled;
+    private String activeTargetIdentityToken = "";
     private volatile long targetDeclarationConfirmedUntilMs;
     private JetKvmPeripheralSnapshot currentSnapshot = new JetKvmPeripheralSnapshot();
 
@@ -265,6 +266,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
             JetKvmInputIdentity identity = JetKvmInputIdentity.from(device, expectedIdentityTokens);
             if (!identity.isJetKvm) continue;
+            if (!snapshot.acceptIdentityToken(identity.identityToken)) continue;
 
             snapshot.deviceCount++;
             if (identity.usesLinuxGadgetIds) {
@@ -286,7 +288,8 @@ public class CompanionService extends Service implements InputManager.InputDevic
         if (displayManager != null) {
             Display[] displays = displayManager.getDisplays();
             for (Display display : displays) {
-                if (isJetKvmExternalDisplayStatic(display, expectedIdentityTokens)) {
+                String identityToken = getJetKvmExternalDisplayIdentityToken(display, expectedIdentityTokens);
+                if (identityToken != null && snapshot.acceptIdentityToken(identityToken)) {
                     snapshot.monitor = true;
                     snapshot.displayCount++;
                 }
@@ -305,18 +308,27 @@ public class CompanionService extends Service implements InputManager.InputDevic
             displayManager,
             getPairedJetKvmIdentityTokens(prefs)
         );
-        snapshot.present = snapshot.present && hasPairedEndpoints;
+        snapshot.present = snapshot.present && hasPairedEndpoints && snapshot.connectedIdentityToken.length() > 0;
+        String previousTargetIdentityToken = activeTargetIdentityToken;
+        boolean targetIdentityChanged = snapshot.present &&
+            !snapshot.connectedIdentityToken.equals(previousTargetIdentityToken);
         currentSnapshot = snapshot;
-        if (snapshot.present != jetkvmPeripheralsPresent) {
+        if (snapshot.present != jetkvmPeripheralsPresent || targetIdentityChanged) {
             jetkvmPeripheralsPresent = snapshot.present;
             attemptedForCurrentScreen = false;
             targetDeclarationConfirmedUntilMs = 0;
             if (!jetkvmPeripheralsPresent) {
                 targetReportScheduled = false;
                 handler.removeCallbacks(targetReportRunnable);
-                reportTargetDisconnectAsync();
+                reportTargetDisconnectAsync(previousTargetIdentityToken);
+                activeTargetIdentityToken = "";
                 dismissTargetPresentation(reason);
             } else {
+                activeTargetIdentityToken = snapshot.connectedIdentityToken;
+                if (previousTargetIdentityToken.length() > 0
+                        && !previousTargetIdentityToken.equals(activeTargetIdentityToken)) {
+                    reportTargetDisconnectAsync(previousTargetIdentityToken);
+                }
                 reportTargetDeclarationAsync();
                 scheduleTargetReport();
                 if (!isServiceLifecycleReason(reason)) {
@@ -347,12 +359,15 @@ public class CompanionService extends Service implements InputManager.InputDevic
     }
 
     private void reportTargetDeclarationAsync() {
-        final String[] jetkvmUrls = getPairedJetKvmUrls(getCompanionPreferences(this));
-        final DisplayMetrics metrics = getResources().getDisplayMetrics();
         final JetKvmPeripheralSnapshot snapshot = currentSnapshot;
+        final String[] jetkvmUrls = getPairedJetKvmUrlsForIdentityToken(
+            getCompanionPreferences(this),
+            snapshot.connectedIdentityToken
+        );
+        final DisplayMetrics metrics = getResources().getDisplayMetrics();
         final int width = Math.min(metrics.widthPixels, metrics.heightPixels);
         final int height = Math.max(metrics.widthPixels, metrics.heightPixels);
-        if (width <= 0 || height <= 0) return;
+        if (width <= 0 || height <= 0 || jetkvmUrls.length == 0) return;
 
         new Thread(new Runnable() {
             @Override
@@ -364,8 +379,10 @@ public class CompanionService extends Service implements InputManager.InputDevic
         }, "JetKVM-target-report").start();
     }
 
-    private void reportTargetDisconnectAsync() {
-        final String[] jetkvmUrls = getPairedJetKvmUrls(getCompanionPreferences(this));
+    private void reportTargetDisconnectAsync(String identityToken) {
+        final String[] jetkvmUrls = getPairedJetKvmUrlsForIdentityToken(getCompanionPreferences(this), identityToken);
+        if (jetkvmUrls.length == 0) return;
+
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -538,6 +555,22 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return pairedUrls.toArray(new String[pairedUrls.size()]);
     }
 
+    static String[] getPairedJetKvmUrlsForIdentityToken(SharedPreferences prefs, String identityToken) {
+        String normalizedIdentityToken = normalizeIdentityToken(identityToken);
+        LinkedHashSet<String> pairedUrls = new LinkedHashSet<String>();
+        if (normalizedIdentityToken.length() == 0) {
+            return pairedUrls.toArray(new String[pairedUrls.size()]);
+        }
+
+        CompanionPairing[] pairings = getSavedPairings(prefs);
+        for (CompanionPairing pairing : pairings) {
+            if (normalizedIdentityToken.equals(normalizeIdentityToken(pairing.identityToken))) {
+                pairedUrls.add(pairing.url);
+            }
+        }
+        return pairedUrls.toArray(new String[pairedUrls.size()]);
+    }
+
     static CompanionPairing[] getSavedPairings(SharedPreferences prefs) {
         LinkedHashSet<String> lines = new LinkedHashSet<String>();
         String rawText = prefs.getString(KEY_JETKVM_PAIRINGS, "");
@@ -574,7 +607,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
         for (String line : lines) {
             CompanionPairing pairing = CompanionPairing.fromLine(line);
             if (pairing != null && pairing.identityToken.length() > 0) {
-                tokens.add(pairing.identityToken.toLowerCase(Locale.US));
+                tokens.add(normalizeIdentityToken(pairing.identityToken));
             }
         }
         return tokens.toArray(new String[tokens.size()]);
@@ -615,7 +648,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
             normalizedUrl,
             companionId.trim(),
             privateKey.trim(),
-            identityToken == null ? "" : identityToken.trim().toLowerCase(Locale.US)
+            normalizeIdentityToken(identityToken)
         ).toLine());
         return prefs.edit().putString(KEY_JETKVM_PAIRINGS, joinUrls(lines)).commit();
     }
@@ -662,6 +695,10 @@ public class CompanionService extends Service implements InputManager.InputDevic
             url = url.substring(0, url.length() - 1);
         }
         return url;
+    }
+
+    private static String normalizeIdentityToken(String identityToken) {
+        return identityToken == null ? "" : identityToken.trim().toLowerCase(Locale.US);
     }
 
     private static String joinUrls(LinkedHashSet<String> urls) {
@@ -793,18 +830,22 @@ public class CompanionService extends Service implements InputManager.InputDevic
     }
 
     private static boolean isJetKvmExternalDisplayStatic(Display display, String[] expectedIdentityTokens) {
+        return getJetKvmExternalDisplayIdentityToken(display, expectedIdentityTokens) != null;
+    }
+
+    private static String getJetKvmExternalDisplayIdentityToken(Display display, String[] expectedIdentityTokens) {
         if (display == null || display.getDisplayId() == Display.DEFAULT_DISPLAY) {
-            return false;
+            return null;
         }
 
         String name = display.getName();
-        if (name == null) return false;
+        if (name == null) return null;
         String normalizedName = name.toLowerCase(Locale.US);
         if (!normalizedName.contains(JETKVM_DISPLAY_NAME_TOKEN)
                 && !normalizedName.contains(JETKVM_SHORT_DISPLAY_NAME_TOKEN)) {
-            return false;
+            return null;
         }
-        return identityMatches(normalizedName, expectedIdentityTokens);
+        return matchingIdentityToken(normalizedName, expectedIdentityTokens);
     }
 
     private void logExternalDisplays(String reason) {
@@ -1124,17 +1165,21 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private static final class JetKvmInputIdentity {
         final boolean isJetKvm;
         final boolean usesLinuxGadgetIds;
+        final String identityToken;
 
-        private JetKvmInputIdentity(boolean isJetKvm, boolean usesLinuxGadgetIds) {
+        private JetKvmInputIdentity(boolean isJetKvm, boolean usesLinuxGadgetIds, String identityToken) {
             this.isJetKvm = isJetKvm;
             this.usesLinuxGadgetIds = usesLinuxGadgetIds;
+            this.identityToken = identityToken;
         }
 
         static JetKvmInputIdentity from(InputDevice device, String[] expectedIdentityTokens) {
             String name = device.getName();
             String normalizedName = name == null ? "" : name.toLowerCase(java.util.Locale.US);
-            boolean nameMatches = normalizedName.contains(JETKVM_INPUT_NAME_TOKEN)
-                && identityMatches(normalizedName, expectedIdentityTokens);
+            String identityToken = normalizedName.contains(JETKVM_INPUT_NAME_TOKEN)
+                ? matchingIdentityToken(normalizedName, expectedIdentityTokens)
+                : null;
+            boolean nameMatches = identityToken != null;
 
             int vendorId = 0;
             int productId = 0;
@@ -1147,7 +1192,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                 && productId == LINUX_GADGET_PRODUCT_ID;
 
             if (!nameMatches) {
-                return new JetKvmInputIdentity(false, linuxGadgetIds);
+                return new JetKvmInputIdentity(false, linuxGadgetIds, "");
             }
 
             if (vendorId != 0 && productId != 0 && !linuxGadgetIds) {
@@ -1155,23 +1200,23 @@ public class CompanionService extends Service implements InputManager.InputDevic
                     + vendorId + " product=" + productId);
             }
 
-            return new JetKvmInputIdentity(true, linuxGadgetIds);
+            return new JetKvmInputIdentity(true, linuxGadgetIds, identityToken);
         }
     }
 
-    private static boolean identityMatches(String text, String[] expectedIdentityTokens) {
+    private static String matchingIdentityToken(String text, String[] expectedIdentityTokens) {
         if (expectedIdentityTokens == null || expectedIdentityTokens.length == 0) {
-            return true;
+            return "";
         }
-        if (text == null) return false;
+        if (text == null) return null;
         String normalizedText = text.toLowerCase(Locale.US);
         for (String token : expectedIdentityTokens) {
-            if (token != null && token.trim().length() > 0
-                    && normalizedText.contains(token.trim().toLowerCase(Locale.US))) {
-                return true;
+            String normalizedToken = normalizeIdentityToken(token);
+            if (normalizedToken.length() > 0 && normalizedText.contains(normalizedToken)) {
+                return normalizedToken;
             }
         }
-        return false;
+        return null;
     }
 
     static final class JetKvmPeripheralSnapshot {
@@ -1183,6 +1228,17 @@ public class CompanionService extends Service implements InputManager.InputDevic
         int deviceCount;
         int linuxGadgetIdCount;
         int displayCount;
+        String connectedIdentityToken = "";
+
+        boolean acceptIdentityToken(String identityToken) {
+            String normalizedIdentityToken = normalizeIdentityToken(identityToken);
+            if (normalizedIdentityToken.length() == 0) return connectedIdentityToken.length() == 0;
+            if (connectedIdentityToken.length() == 0) {
+                connectedIdentityToken = normalizedIdentityToken;
+                return true;
+            }
+            return connectedIdentityToken.equals(normalizedIdentityToken);
+        }
 
         String toJsonEvidence() {
             StringBuilder builder = new StringBuilder();
@@ -1208,6 +1264,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                 + " touchscreen=" + touchscreen
                 + " pointer=" + pointer
                 + " monitor=" + monitor
+                + " identityToken=" + connectedIdentityToken
                 + " present=" + present;
         }
     }
