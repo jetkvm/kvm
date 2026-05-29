@@ -153,7 +153,7 @@ public class MainActivity extends Activity {
         jetkvmUrlsInput.setSingleLine(true);
         jetkvmUrlsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         jetkvmUrlsInput.setText("");
-        jetkvmUrlsInput.setHint("192.168.8.229 or http://jetkvm.local");
+        jetkvmUrlsInput.setHint("JetKVM IP or http://jetkvm.local");
         jetkvmUrlsInput.setTextColor(Color.WHITE);
         jetkvmUrlsInput.setHintTextColor(Color.rgb(148, 163, 184));
         jetkvmUrlsInput.addTextChangedListener(new TextWatcher() {

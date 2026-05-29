@@ -243,7 +243,7 @@ export default function CompanionRequestCenter({
               <div className="text-sm font-semibold text-slate-900 dark:text-white">Pair phone</div>
               <input
                 className="mt-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-600 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                placeholder="Phone IP, e.g. 192.168.8.120:8787"
+                placeholder="Phone IP, e.g. <phone-ip>:8787"
                 value={companionUrl}
                 onChange={event => setCompanionUrl(event.target.value)}
               />

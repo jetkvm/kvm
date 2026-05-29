@@ -9,7 +9,6 @@ import (
 )
 
 const dynamicDisplayRefreshHz = 60
-const dynamicDisplayEDIDTemplate = "00ffffffffffff0028b401000100000001220103802213780aee95a3544c99260f505400000001010101010101010101010101010101662156aa51002030468f350058c21000001e000000fc004a65744b564d20313336367837000000fd00384c1e530a00202020202020200000001000202020202020202020202020202000d0"
 
 type DisplayMode struct {
 	Width     int    `json:"width"`
@@ -172,12 +171,12 @@ func buildDynamicDisplayEDID(mode DisplayMode) (string, error) {
 		refreshHz = dynamicDisplayRefreshHz
 	}
 
-	defaultEDID, err := hex.DecodeString(dynamicDisplayEDIDTemplate)
+	defaultEDID, err := hex.DecodeString(getDeviceDefaultEDID())
 	if err != nil {
-		return "", fmt.Errorf("decode dynamic display EDID template: %w", err)
+		return "", fmt.Errorf("decode device default EDID: %w", err)
 	}
 	if len(defaultEDID) < 128 {
-		return "", fmt.Errorf("unexpected dynamic display EDID template length %d", len(defaultEDID))
+		return "", fmt.Errorf("unexpected device default EDID length %d", len(defaultEDID))
 	}
 
 	dtd, err := buildDetailedTimingDescriptor(mode.Width, mode.Height, refreshHz)
@@ -209,8 +208,8 @@ func buildDisplayEDID(defaultEDID, preferredDTD []byte, width, height int) []byt
 	}
 	copy(edid[54:72], preferredDTD)
 	copy(edid[72:90], displayRangeDescriptor(preferredDTD))
-	copy(edid[90:108], monitorNameDescriptor(defaultEDID[90:108]))
-	copy(edid[108:126], monitorSerialDescriptor(defaultEDID[108:126]))
+	copy(edid[90:108], monitorNameDescriptor(findEDIDTextDescriptor(defaultEDID, 0xfc)))
+	copy(edid[108:126], monitorSerialDescriptor(findEDIDTextDescriptor(defaultEDID, 0xff)))
 	edid[126] = 0
 
 	return edid
@@ -298,7 +297,7 @@ func monitorSerialDescriptor(defaultDescriptor []byte) []byte {
 		copy(out, defaultDescriptor)
 		return out
 	}
-	return textDescriptor(0xff, "17cfd124")
+	return textDescriptor(0xff, "JetKVM")
 }
 
 func textDescriptor(tag byte, text string) []byte {
@@ -307,13 +306,25 @@ func textDescriptor(tag byte, text string) []byte {
 		0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 		0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 	}
-	for i := 0; i < len(text) && i < 12; i++ {
+	for i := 0; i < len(text) && i < 13; i++ {
 		out[5+i] = text[i]
 	}
 	if len(text) < 13 {
 		out[5+len(text)] = 0x0a
 	}
 	return out
+}
+
+func findEDIDTextDescriptor(edid []byte, tag byte) []byte {
+	const descriptorLength = 18
+	for i := 54; i+descriptorLength <= len(edid) && i < 126; i += descriptorLength {
+		if edid[i] == 0x00 && edid[i+1] == 0x00 && edid[i+2] == 0x00 && edid[i+3] == tag && edid[i+4] == 0x00 {
+			out := make([]byte, descriptorLength)
+			copy(out, edid[i:i+descriptorLength])
+			return out
+		}
+	}
+	return nil
 }
 
 func imageSizeMM(width, height int) (int, int) {
