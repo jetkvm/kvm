@@ -22,6 +22,7 @@ type MDNS struct {
 
 	localNames    []string
 	listenOptions *MDNSListenOptions
+	service       *MDNSService
 }
 
 type MDNSListenOptions struct {
@@ -29,10 +30,40 @@ type MDNSListenOptions struct {
 	IPv6 bool
 }
 
+// TXTEntry is a single DNS-SD TXT record key/value pair. Build entries
+// with the re-exported NewTXT* constructors below.
+type TXTEntry = pion_mdns.TXTEntry
+
+// Re-exported TXT entry constructors (see pion/mdns for semantics), so
+// callers can build typed TXT records without importing pion directly.
+var (
+	NewTXTString = pion_mdns.NewTXTString
+	NewTXTBinary = pion_mdns.NewTXTBinary
+	NewTXTFlag   = pion_mdns.NewTXTFlag
+)
+
+// MDNSService describes a DNS-SD service to advertise alongside the
+// A/AAAA records, so Bonjour browsers (NWBrowser, dns-sd,
+// avahi-browse) can discover the device.
+type MDNSService struct {
+	// Type is the DNS-SD service type, e.g. "_jetkvm._tcp".
+	Type string
+	// Instance is the user-visible instance name. If empty, the first
+	// local name is used.
+	Instance string
+	// Port is the TCP/UDP port the service listens on.
+	Port int
+	// TXT is the list of TXT record entries to advertise.
+	TXT []TXTEntry
+}
+
 type MDNSOptions struct {
 	Logger        *zerolog.Logger
 	LocalNames    []string
 	ListenOptions *MDNSListenOptions
+	// Service, if non-nil, is published as a DNS-SD service whose SRV
+	// record points at the first local name.
+	Service *MDNSService
 }
 
 const (
@@ -57,6 +88,7 @@ func NewMDNS(opts *MDNSOptions) (*MDNS, error) {
 		lock:          sync.Mutex{},
 		localNames:    opts.LocalNames,
 		listenOptions: opts.ListenOptions,
+		service:       opts.Service,
 	}, nil
 }
 
@@ -131,7 +163,12 @@ func (m *MDNS) start(allowRestart bool) error {
 		}
 	}
 
-	mDNSConn, err := pion_mdns.Server(p4, p6, &pion_mdns.Config{LocalNames: newLocalNames})
+	opts := []pion_mdns.ServerOption{pion_mdns.WithLocalNames(newLocalNames...)}
+	if svc := buildServiceInstance(m.service, newLocalNames); svc != nil {
+		opts = append(opts, pion_mdns.WithService(*svc))
+	}
+
+	mDNSConn, err := pion_mdns.NewServer(p4, p6, opts...)
 
 	if err != nil {
 		scopeLogger.Warn().Err(err).Msg("failed to start mDNS server")
@@ -142,6 +179,27 @@ func (m *MDNS) start(allowRestart bool) error {
 	scopeLogger.Info().Msg("mDNS server started")
 
 	return nil
+}
+
+// buildServiceInstance converts the configured MDNSService into a pion
+// ServiceInstance, defaulting the instance name to the first local name.
+// Returns nil when there is no service to advertise.
+func buildServiceInstance(service *MDNSService, localNames []string) *pion_mdns.ServiceInstance {
+	if service == nil || service.Type == "" || service.Port <= 0 {
+		return nil
+	}
+
+	instance := service.Instance
+	if instance == "" && len(localNames) > 0 {
+		instance = strings.TrimSuffix(localNames[0], ".local")
+	}
+
+	return &pion_mdns.ServiceInstance{
+		Instance: instance,
+		Service:  service.Type,
+		Port:     uint16(service.Port),
+		Text:     service.TXT,
+	}
 }
 
 // Start starts the mDNS server
@@ -190,6 +248,17 @@ func (m *MDNS) setListenOptions(listenOptions *MDNSListenOptions) {
 	m.listenOptions = listenOptions
 }
 
+func (m *MDNS) setService(service *MDNSService) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if reflect.DeepEqual(m.service, service) {
+		return
+	}
+
+	m.service = service
+}
+
 // SetLocalNames sets the local names and restarts the mDNS server
 func (m *MDNS) SetLocalNames(localNames []string) error {
 	m.setLocalNames(localNames)
@@ -202,9 +271,10 @@ func (m *MDNS) SetListenOptions(listenOptions *MDNSListenOptions) error {
 	return m.Restart()
 }
 
-// SetOptions sets the local names and listen options and restarts the mDNS server
+// SetOptions sets the local names, listen options, and service and restarts the mDNS server
 func (m *MDNS) SetOptions(options *MDNSOptions) error {
 	m.setLocalNames(options.LocalNames)
 	m.setListenOptions(options.ListenOptions)
+	m.setService(options.Service)
 	return m.Restart()
 }

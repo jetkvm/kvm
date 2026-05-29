@@ -914,6 +914,10 @@ func handleSetup(c *gin.Context) {
 		return
 	}
 
+	// Refresh the mDNS advertisement so the `setup` TXT record flips
+	// to true now that the device is provisioned.
+	restartMdns()
+
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
 }
 
