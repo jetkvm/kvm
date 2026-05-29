@@ -64,10 +64,7 @@ func setCompanionTargetMetadata(declaration CompanionTargetDeclaration) TargetMe
 		lease = companionTargetTTL
 	}
 
-	targetMetadataLock.Lock()
-	defer targetMetadataLock.Unlock()
-
-	companionTarget = TargetMetadata{
+	metadata := TargetMetadata{
 		TargetType:            declaration.TargetType,
 		PreferredMouseMode:    declaration.PreferredMouseMode,
 		DisplayWidth:          declaration.DisplayWidth,
@@ -79,7 +76,13 @@ func setCompanionTargetMetadata(declaration CompanionTargetDeclaration) TargetMe
 		LeaseExpiresUnixMilli: now.Add(lease).UnixMilli(),
 		Fresh:                 true,
 	}
-	return companionTarget
+
+	targetMetadataLock.Lock()
+	companionTarget = metadata
+	targetMetadataLock.Unlock()
+
+	scheduleCompanionTargetExpiryCheck(metadata.LeaseExpiresUnixMilli)
+	return metadata
 }
 
 func getEffectiveTargetMetadata() TargetMetadata {
@@ -107,4 +110,31 @@ func clearCompanionTargetMetadata() {
 	targetMetadataLock.Lock()
 	defer targetMetadataLock.Unlock()
 	companionTarget = TargetMetadata{}
+}
+
+func scheduleCompanionTargetExpiryCheck(leaseExpiresUnixMilli int64) {
+	if leaseExpiresUnixMilli <= 0 {
+		return
+	}
+
+	delay := time.Until(time.UnixMilli(leaseExpiresUnixMilli))
+	if delay < 0 {
+		delay = 0
+	}
+
+	go func() {
+		time.Sleep(delay + time.Second)
+
+		targetMetadataLock.Lock()
+		expired := companionTarget.LeaseExpiresUnixMilli == leaseExpiresUnixMilli &&
+			leaseExpiresUnixMilli <= time.Now().UnixMilli()
+		targetMetadataLock.Unlock()
+
+		if expired {
+			logger.Warn().
+				Int64("lease_expires_unix_milli", leaseExpiresUnixMilli).
+				Msg("companion target lease expired")
+			applyDisplayModeForTarget(getEffectiveTargetMetadata())
+		}
+	}()
 }
