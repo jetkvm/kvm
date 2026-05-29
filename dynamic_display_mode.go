@@ -77,6 +77,24 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 		return
 	}
 
+	if config.EdidString != edid {
+		config.EdidString = edid
+		if err := SaveConfig(); err != nil {
+			logger.Warn().
+				Err(err).
+				Int("width", mode.Width).
+				Int("height", mode.Height).
+				Int("refresh_hz", mode.RefreshHz).
+				Msg("failed to persist companion-derived EDID display mode")
+		} else {
+			logger.Warn().
+				Int("width", mode.Width).
+				Int("height", mode.Height).
+				Int("refresh_hz", mode.RefreshHz).
+				Msg("persisted companion-derived EDID display mode")
+		}
+	}
+
 	dynamicDisplayModeState.Lock()
 	dynamicDisplayModeState.mode = &mode
 	dynamicDisplayModeState.edid = edid
