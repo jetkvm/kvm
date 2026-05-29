@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/native"
 )
@@ -76,10 +77,33 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 		return
 	}
 
+	reenumerationRequired := config.EdidString != edid
+	if reenumerationRequired {
+		config.EdidString = edid
+		if err := SaveConfig(); err != nil {
+			logger.Warn().
+				Err(err).
+				Int("width", mode.Width).
+				Int("height", mode.Height).
+				Int("refresh_hz", mode.RefreshHz).
+				Msg("failed to persist companion-derived EDID display mode")
+			return
+		}
+		logger.Warn().
+			Int("width", mode.Width).
+			Int("height", mode.Height).
+			Int("refresh_hz", mode.RefreshHz).
+			Msg("persisted companion-derived EDID display mode")
+	}
+
 	dynamicDisplayModeState.Lock()
 	dynamicDisplayModeState.mode = &mode
 	dynamicDisplayModeState.edid = edid
 	dynamicDisplayModeState.Unlock()
+
+	if reenumerationRequired {
+		requestDisplayModeReenumeration("companion display mode applied")
+	}
 }
 
 func applyDefaultEDIDFallback(reason string) {
@@ -100,12 +124,27 @@ func applyDefaultEDIDFallback(reason string) {
 		return
 	}
 
+	reenumerationRequired := hadDynamicMode || config.EdidString != defaultEDID
 	if config.EdidString != defaultEDID {
 		config.EdidString = defaultEDID
 		if err := SaveConfig(); err != nil {
 			logger.Warn().Err(err).Msg("failed to persist default EDID fallback")
+			return
 		}
 	}
+
+	if reenumerationRequired {
+		requestDisplayModeReenumeration("default EDID restored")
+	}
+}
+
+func requestDisplayModeReenumeration(reason string) {
+	logger.Warn().Str("reason", reason).Msg("rebooting JetKVM to force HDMI re-enumeration")
+	go func() {
+		if err := hwReboot(true, nil, 3*time.Second); err != nil {
+			logger.Warn().Err(err).Str("reason", reason).Msg("failed to reboot JetKVM for HDMI re-enumeration")
+		}
+	}()
 }
 
 func selectCompanionDisplayMode(metadata TargetMetadata) DisplayMode {
