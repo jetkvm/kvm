@@ -348,6 +348,7 @@ func handleCompanionTargetDeclaration(c *gin.Context) {
 	}
 
 	metadata := setCompanionTargetMetadata(declaration)
+	go applyDisplayModeForTarget(metadata)
 	logger.Info().
 		Str("state", declaration.State).
 		Strs("evidence", metadata.Evidence).

@@ -29,7 +29,14 @@ func triggerVideoStateUpdate() {
 		mqttManager.publishVideoState()
 	}
 
-	nativeLogger.Info().Interface("state", lastVideoState).Msg("video state updated")
+	nativeLogger.Info().
+		Bool("ready", lastVideoState.Ready).
+		Str("streaming", lastVideoState.Streaming.String()).
+		Str("error", lastVideoState.Error).
+		Int("width", lastVideoState.Width).
+		Int("height", lastVideoState.Height).
+		Float64("fps", lastVideoState.FramePerSecond).
+		Msg("actual HDMI input mode updated")
 }
 
 func rpcGetVideoState() (native.VideoState, error) {

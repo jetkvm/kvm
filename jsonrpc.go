@@ -251,6 +251,10 @@ func rpcGetEDID() (string, error) {
 	return resp, nil
 }
 
+func rpcGetDisplayModeStatus() (DisplayModeStatus, error) {
+	return getDisplayModeStatus(), nil
+}
+
 func rpcSetEDID(edid string) error {
 	if isInternalDisabledEDID(edid) {
 		return fmt.Errorf("invalid EDID")
@@ -271,6 +275,10 @@ func rpcSetEDID(edid string) error {
 		config.EdidString = previousEDID
 		return err
 	}
+	dynamicDisplayModeState.Lock()
+	dynamicDisplayModeState.mode = nil
+	dynamicDisplayModeState.edid = ""
+	dynamicDisplayModeState.Unlock()
 
 	// Save EDID to config, allowing it to be restored on reboot.
 	if err := SaveConfig(); err != nil {
@@ -1411,6 +1419,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setEDID":                    {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getHostDisplayIdleMode":     {Func: rpcGetHostDisplayIdleMode},
 	"setHostDisplayIdleMode":     {Func: rpcSetHostDisplayIdleMode, Params: []string{"enabled"}},
+	"getDisplayModeStatus":       {Func: rpcGetDisplayModeStatus},
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},

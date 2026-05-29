@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	maxFrameSize                   = 1920 * 1080 / 2
+	maxVideoFramePacketSize        = 16 * 1024 * 1024
 	defaultMaxRestartAttempts uint = 5
 )
 
@@ -265,7 +265,7 @@ func (p *NativeProxy) toProcessCommand() (*cmdWrapper, error) {
 func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	defer conn.Close()
 
-	inboundPacket := make([]byte, maxFrameSize)
+	inboundPacket := make([]byte, maxVideoFramePacketSize)
 	var frameSizeBuffer [4]byte
 	lastFrame := time.Now()
 
@@ -280,8 +280,8 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 		}
 
 		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
-		if frameSize == 0 || frameSize > maxFrameSize {
-			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
+		if frameSize == 0 || frameSize > maxVideoFramePacketSize {
+			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxVideoFramePacketSize).
 				Msg("received invalid frame size")
 			break
 		}

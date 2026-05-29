@@ -35,6 +35,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		OnNativeRestart: func() {
 			configureDisplayOnNativeRestart()
 			_ = reapplyHostDisplayAdvertisement("native_restarted")
+			go applyDisplayModeForTarget(getEffectiveTargetMetadata())
 		},
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
@@ -100,6 +101,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	}
 	go func() {
 		_ = reapplyHostDisplayAdvertisement("native_started")
+		applyDisplayModeForTarget(getEffectiveTargetMetadata())
 	}()
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
