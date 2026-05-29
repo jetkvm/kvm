@@ -32,7 +32,7 @@ var dynamicDisplayModeState = struct {
 
 func applyDisplayModeForTarget(metadata TargetMetadata) {
 	if metadata.TargetType != "android" || !metadata.Fresh || metadata.DisplayWidth <= 0 || metadata.DisplayHeight <= 0 {
-		applyConfiguredEDIDFallback("companion target inactive")
+		applyDefaultEDIDFallback("companion target inactive")
 		return
 	}
 
@@ -43,8 +43,8 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 			Err(err).
 			Int("display_width", metadata.DisplayWidth).
 			Int("display_height", metadata.DisplayHeight).
-			Msg("failed to build companion display EDID, keeping configured EDID")
-		applyConfiguredEDIDFallback("dynamic EDID build failed")
+			Msg("failed to build companion display EDID, restoring default EDID")
+		applyDefaultEDIDFallback("dynamic EDID build failed")
 		return
 	}
 
@@ -76,48 +76,35 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 		return
 	}
 
-	if config.EdidString != edid {
-		config.EdidString = edid
-		if err := SaveConfig(); err != nil {
-			logger.Warn().
-				Err(err).
-				Int("width", mode.Width).
-				Int("height", mode.Height).
-				Int("refresh_hz", mode.RefreshHz).
-				Msg("failed to persist companion-derived EDID display mode")
-		} else {
-			logger.Warn().
-				Int("width", mode.Width).
-				Int("height", mode.Height).
-				Int("refresh_hz", mode.RefreshHz).
-				Msg("persisted companion-derived EDID display mode")
-		}
-	}
-
 	dynamicDisplayModeState.Lock()
 	dynamicDisplayModeState.mode = &mode
 	dynamicDisplayModeState.edid = edid
 	dynamicDisplayModeState.Unlock()
 }
 
-func applyConfiguredEDIDFallback(reason string) {
+func applyDefaultEDIDFallback(reason string) {
+	defaultEDID := getDeviceDefaultEDID()
+
 	dynamicDisplayModeState.Lock()
 	hadDynamicMode := dynamicDisplayModeState.edid != ""
 	dynamicDisplayModeState.mode = nil
 	dynamicDisplayModeState.edid = ""
 	dynamicDisplayModeState.Unlock()
 
-	if !hadDynamicMode {
+	logger.Warn().
+		Bool("had_dynamic_mode", hadDynamicMode).
+		Str("reason", reason).
+		Msg("restoring default EDID fallback")
+	if err := nativeInstance.VideoSetEDID(defaultEDID); err != nil {
+		logger.Warn().Err(err).Msg("failed to restore default EDID fallback")
 		return
 	}
 
-	edid := config.EdidString
-	if edid == "" {
-		edid = getDeviceDefaultEDID()
-	}
-	logger.Warn().Str("reason", reason).Msg("restoring configured EDID fallback")
-	if err := nativeInstance.VideoSetEDID(edid); err != nil {
-		logger.Warn().Err(err).Msg("failed to restore configured EDID fallback")
+	if config.EdidString != defaultEDID {
+		config.EdidString = defaultEDID
+		if err := SaveConfig(); err != nil {
+			logger.Warn().Err(err).Msg("failed to persist default EDID fallback")
+		}
 	}
 }
 
