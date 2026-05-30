@@ -233,6 +233,7 @@ func (u *UsbGadget) ResetHIDFiles() {
 		u.relMouseHidFile.Close()
 		u.relMouseHidFile = nil
 	}
+	u.relMouseButtons = 0
 	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
 
 	u.touchscreenHidLock.Lock()

@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
     private static final String KEY_STAY_LOGGED_IN = "stayLoggedIn";
     private static final String DEFAULT_HOST = "jetkvm.local";
     private static final int JETKVM_BLUE_700 = Color.rgb(20, 71, 230);
+    private static final long WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L;
 
     private WebView webView;
     private LinearLayout loginPanel;
@@ -118,7 +119,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         enterImmersiveMode();
-        if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
+        if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
     }
 
     @Override

@@ -255,6 +255,9 @@ func getDeviceDefaultEDID() string {
 				edid[i+5+j] = 0x20
 			}
 			copy(edid[i+5:i+18], nameBytes)
+			if len(nameBytes) < 13 {
+				edid[i+5+len(nameBytes)] = 0x0a
+			}
 			break
 		}
 	}

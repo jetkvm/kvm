@@ -98,10 +98,6 @@ func (u *UsbGadget) touchscreenWriteHidFile(data []byte) error {
 	return nil
 }
 
-func (u *UsbGadget) HasTouchscreen() bool {
-	return u.enabledDevices.Touchscreen
-}
-
 func (u *UsbGadget) TouchscreenReport(x int, y int, touching bool) error {
 	if !u.enabledDevices.Touchscreen {
 		return nil
