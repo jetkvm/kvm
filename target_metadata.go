@@ -24,15 +24,20 @@ type TargetMetadata struct {
 }
 
 type CompanionTargetDeclaration struct {
-	State              string   `json:"state"`
-	JetKVMUSBIdentity  string   `json:"jetkvm_usb_identity"`
-	TargetType         string   `json:"target_type"`
-	PreferredMouseMode string   `json:"preferred_mouse_mode"`
-	DisplayWidth       int      `json:"display_width"`
-	DisplayHeight      int      `json:"display_height"`
-	DisplayAspect      float64  `json:"display_aspect"`
-	Evidence           []string `json:"evidence"`
-	LeaseMs            int64    `json:"lease_ms"`
+	State                            string   `json:"state"`
+	JetKVMUSBIdentity                string   `json:"jetkvm_usb_identity"`
+	TargetType                       string   `json:"target_type"`
+	PreferredMouseMode               string   `json:"preferred_mouse_mode"`
+	DisplayWidth                     int      `json:"display_width"`
+	DisplayHeight                    int      `json:"display_height"`
+	DisplayAspect                    float64  `json:"display_aspect"`
+	Evidence                         []string `json:"evidence"`
+	LeaseMs                          int64    `json:"lease_ms"`
+	NotificationPermissionGranted    bool     `json:"notification_permission_granted"`
+	DisplayOverAppsPermissionGranted bool     `json:"display_over_apps_permission_granted"`
+	BatteryUnrestrictedGranted       bool     `json:"battery_unrestricted_granted"`
+	PairedJetKVMURLs                 []string `json:"paired_jetkvm_urls"`
+	VisibleIPs                       []string `json:"visible_ips"`
 }
 
 var (

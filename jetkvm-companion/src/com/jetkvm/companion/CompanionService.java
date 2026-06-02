@@ -21,7 +21,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
@@ -32,6 +35,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.InputStream;
@@ -39,19 +43,35 @@ import java.io.OutputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.UUID;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLServerSocketFactory;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import javax.security.auth.x500.X500Principal;
+import java.security.cert.X509Certificate;
 
 public class CompanionService extends Service implements InputManager.InputDeviceListener {
     static final String TAG = "JetKVMCompanion";
@@ -61,7 +81,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     static final String KEY_JETKVM_URL = "jetkvm_url";
     static final String KEY_JETKVM_URLS = "jetkvm_urls";
     static final String KEY_JETKVM_PAIRINGS = "jetkvm_pairings";
-    static final String DEFAULT_JETKVM_URL = "http://jetkvm.local";
+    static final String DEFAULT_JETKVM_URL = "https://jetkvm.local";
     static final String EXTRA_JETKVM_URL = "jetkvm_url";
     static final String EXTRA_PAIR_REQUEST_ID = "pair_request_id";
 
@@ -70,6 +90,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private static final int PAIRING_NOTIFICATION_ID = 1002;
     private static final int NOTIFICATION_RESPAWN_BASE_ID = 1100;
     private static final int PAIRING_LISTEN_PORT = 8787;
+    private static final String PAIRING_TLS_KEY_ALIAS = "jetkvm-companion-pairing-listener";
     private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
     private static final long TARGET_REPORT_INTERVAL_MS = 15000;
     private static final long TARGET_LEASE_MS = 120000;
@@ -436,28 +457,26 @@ public class CompanionService extends Service implements InputManager.InputDevic
                 Log.i(TAG, "target declaration skipped missing identity url=" + trimmedBaseUrl);
                 return;
             }
-            String body;
+            JSONObject payload = new JSONObject();
+            payload.put("state", connected ? "connected" : "disconnected");
+            payload.put("jetkvm_usb_identity", identityToken);
+            payload.put("target_type", "android");
+            payload.put("notification_permission_granted", hasNotificationPermission());
+            payload.put("display_over_apps_permission_granted", Settings.canDrawOverlays(this));
+            payload.put("battery_unrestricted_granted", isIgnoringBatteryOptimizations());
+            payload.put("paired_jetkvm_urls", new JSONArray(getPairedJetKvmUrls(prefs)));
+            payload.put("visible_ips", new JSONArray(getVisibleLocalIPs()));
             if (connected) {
-                body = String.format(
-                    Locale.US,
-                    "{\"state\":\"connected\",\"jetkvm_usb_identity\":\"%s\",\"target_type\":\"android\",\"preferred_mouse_mode\":\"digitizer\",\"display_width\":%d,\"display_height\":%d,\"display_aspect\":%.8f,\"lease_ms\":%d,\"evidence\":[%s]}",
-                    identityToken,
-                    width,
-                    height,
-                    (double) width / (double) height,
-                    TARGET_LEASE_MS,
-                    snapshot.toJsonEvidence()
-                );
-            } else {
-                body = String.format(
-                    Locale.US,
-                    "{\"state\":\"disconnected\",\"jetkvm_usb_identity\":\"%s\",\"target_type\":\"android\"}",
-                    identityToken
-                );
+                payload.put("preferred_mouse_mode", "digitizer");
+                payload.put("display_width", width);
+                payload.put("display_height", height);
+                payload.put("display_aspect", (double) width / (double) height);
+                payload.put("lease_ms", TARGET_LEASE_MS);
+                payload.put("evidence", snapshot.toJsonEvidenceArray());
             }
-            byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+            byte[] bodyBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
 
-            conn = (HttpURLConnection) url.openConnection();
+            conn = openTrustedConnection(url);
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             conn.setRequestMethod("POST");
@@ -479,6 +498,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                     JSONObject response = new JSONObject(responseBody);
                     hdmiReconnectRequired = response.optBoolean("hdmi_reconnect_required", false);
                     companionNotice = response.optString("companion_notice", "");
+                    processRequestedActions(response.optJSONArray("requested_actions"));
                 }
             }
             updateTargetDeclarationConfirmation(connected, status, hdmiReconnectRequired, companionNotice);
@@ -528,6 +548,18 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
     private boolean isTargetDeclarationConfirmed() {
         return targetDeclarationConfirmedUntilMs > System.currentTimeMillis();
+    }
+
+    private void processRequestedActions(JSONArray actions) {
+        if (actions == null || actions.length() == 0) return;
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtra(MainActivity.EXTRA_PERMISSION_ACTIONS, actions.toString());
+        try {
+            startActivity(intent);
+        } catch (RuntimeException e) {
+            Log.i(TAG, "permission action launch failed: " + e.getClass().getSimpleName());
+        }
     }
 
     static SharedPreferences getCompanionPreferences(Context context) {
@@ -727,12 +759,86 @@ public class CompanionService extends Service implements InputManager.InputDevic
         String url = rawUrl == null ? "" : rawUrl.trim();
         if (url.length() == 0) return "";
         if (!url.contains("://")) {
-            url = "http://" + url;
+            url = "https://" + url;
         }
-        while (url.endsWith("/") && url.length() > "http://".length()) {
+        if (!url.toLowerCase(Locale.US).startsWith("https://")) {
+            return "";
+        }
+        while (url.endsWith("/") && url.length() > "https://".length()) {
             url = url.substring(0, url.length() - 1);
         }
         return url;
+    }
+
+    static String[] getVisibleLocalIPs() {
+        LinkedHashSet<String> ips = new LinkedHashSet<String>();
+        try {
+            java.util.Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces != null && interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                if (!iface.isUp() || iface.isLoopback()) continue;
+                java.util.Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (address.isLoopbackAddress() || address.isLinkLocalAddress()) continue;
+                    String host = address.getHostAddress();
+                    if (host == null || host.length() == 0) continue;
+                    int scope = host.indexOf('%');
+                    if (scope >= 0) host = host.substring(0, scope);
+                    ips.add(host);
+                }
+            }
+        } catch (Exception e) {
+            Log.i(TAG, "visible IP enumeration failed: " + e.getClass().getSimpleName());
+        }
+        return ips.toArray(new String[ips.size()]);
+    }
+
+    static HttpURLConnection openTrustedConnection(URL url) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        if (conn instanceof HttpsURLConnection) {
+            HttpsURLConnection https = (HttpsURLConnection) conn;
+            https.setSSLSocketFactory(trustAllSslContext().getSocketFactory());
+            https.setHostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true;
+                }
+            });
+        }
+        return conn;
+    }
+
+    private static SSLContext trustAllSslContext() throws Exception {
+        TrustManager[] trustManagers = new TrustManager[] {
+            new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            }
+        };
+        SSLContext context = SSLContext.getInstance("TLS");
+        context.init(null, trustManagers, new SecureRandom());
+        return context;
+    }
+
+    private boolean hasNotificationPermission() {
+        return Build.VERSION.SDK_INT < 33
+            || checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean isIgnoringBatteryOptimizations() {
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        return powerManager == null || powerManager.isIgnoringBatteryOptimizations(getPackageName());
     }
 
     private static String normalizeIdentityToken(String identityToken) {
@@ -1063,7 +1169,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
             @Override
             public void run() {
                 try {
-                    pairingServerSocket = new ServerSocket(PAIRING_LISTEN_PORT);
+                    pairingServerSocket = createPairingTLSServerSocket();
                     while (!Thread.currentThread().isInterrupted()) {
                         handlePairingRequestSocket(pairingServerSocket.accept());
                     }
@@ -1087,6 +1193,40 @@ public class CompanionService extends Service implements InputManager.InputDevic
             }
             pairingServerSocket = null;
         }
+    }
+
+    private ServerSocket createPairingTLSServerSocket() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        if (!keyStore.containsAlias(PAIRING_TLS_KEY_ALIAS)) {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_RSA,
+                "AndroidKeyStore"
+            );
+            generator.initialize(new KeyGenParameterSpec.Builder(
+                PAIRING_TLS_KEY_ALIAS,
+                KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_DECRYPT
+            )
+                .setKeySize(2048)
+                .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
+                .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
+                .setCertificateSubject(new X500Principal("CN=JetKVM Companion"))
+                .setCertificateSerialNumber(BigInteger.ONE)
+                .setCertificateNotBefore(new Date(System.currentTimeMillis() - 86400000L))
+                .setCertificateNotAfter(new Date(System.currentTimeMillis() + 315360000000L))
+                .build());
+            generator.generateKeyPair();
+        }
+
+        KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm()
+        );
+        keyManagerFactory.init(keyStore, null);
+        SSLContext context = SSLContext.getInstance("TLS");
+        context.init(keyManagerFactory.getKeyManagers(), null, new SecureRandom());
+        SSLServerSocketFactory factory = context.getServerSocketFactory();
+        return factory.createServerSocket(PAIRING_LISTEN_PORT);
     }
 
     private void handlePairingRequestSocket(Socket socket) {
@@ -1311,10 +1451,23 @@ public class CompanionService extends Service implements InputManager.InputDevic
             return builder.toString();
         }
 
+        JSONArray toJsonEvidenceArray() {
+            JSONArray evidence = new JSONArray();
+            appendEvidence(evidence, keyboard, "keyboard");
+            appendEvidence(evidence, touchscreen, "digitizer");
+            appendEvidence(evidence, pointer, "mouse");
+            appendEvidence(evidence, monitor, "monitor");
+            return evidence;
+        }
+
         private static void appendEvidence(StringBuilder builder, boolean enabled, String value) {
             if (!enabled) return;
             if (builder.length() > 0) builder.append(',');
             builder.append('"').append(value).append('"');
+        }
+
+        private static void appendEvidence(JSONArray evidence, boolean enabled, String value) {
+            if (enabled) evidence.put(value);
         }
 
         @Override

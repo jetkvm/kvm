@@ -43,13 +43,16 @@ import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
 import java.security.spec.ECGenParameterSpec;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import org.json.JSONArray;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_POST_NOTIFICATIONS = 10;
     private static final long PAIRING_OTP_TTL_MS = 120000;
     private static final int JETKVM_BACKGROUND = Color.rgb(7, 12, 28);
     private static final int JETKVM_BLUE_700 = Color.rgb(20, 71, 230);
+    static final String EXTRA_PERMISSION_ACTIONS = "permission_actions";
     private static final String EXTRA_JETKVM_URL = "jetkvm_url";
     private static final String EXTRA_PAIR_REQUEST_ID = "pair_request_id";
     private static final SecureRandom PAIRING_RANDOM = new SecureRandom();
@@ -60,6 +63,7 @@ public class MainActivity extends Activity {
     private Button pairJetkvmButton;
     private TextView pairJetkvmState;
     private LinearLayout pairingsList;
+    private LinearLayout visibleIpsList;
     private Button notificationButton;
     private Button overlayButton;
     private Button batteryButton;
@@ -85,6 +89,7 @@ public class MainActivity extends Activity {
         savePairRequestFromIntent(getIntent());
         startCompanionServiceFromIntent(getIntent());
         setContentView(createSettingsView());
+        handlePermissionActionsFromIntent(getIntent());
         updateArmStatus();
         refreshPairingReachability();
         requestMissingPermissionsIfNeeded();
@@ -98,6 +103,7 @@ public class MainActivity extends Activity {
         if (jetkvmUrlsInput != null) {
             jetkvmUrlsInput.setText("");
         }
+        handlePermissionActionsFromIntent(intent);
         refreshPairingControls();
         startCompanionServiceFromIntent(intent);
     }
@@ -211,7 +217,7 @@ public class MainActivity extends Activity {
         jetkvmUrlsInput.setSingleLine(true);
         jetkvmUrlsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         jetkvmUrlsInput.setText("");
-        jetkvmUrlsInput.setHint("JetKVM IP or http://jetkvm.local");
+        jetkvmUrlsInput.setHint("JetKVM IP or https://jetkvm.local");
         jetkvmUrlsInput.setTextColor(Color.WHITE);
         jetkvmUrlsInput.setHintTextColor(Color.rgb(148, 163, 184));
         jetkvmUrlsInput.addTextChangedListener(new TextWatcher() {
@@ -262,6 +268,40 @@ public class MainActivity extends Activity {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ));
         root.addView(pairActionRow, matchWrap());
+
+        LinearLayout visibleIpsHeader = new LinearLayout(this);
+        visibleIpsHeader.setOrientation(LinearLayout.HORIZONTAL);
+        visibleIpsHeader.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView visibleIpsLabel = new TextView(this);
+        visibleIpsLabel.setText("Visible LAN/VPN IPs");
+        visibleIpsLabel.setTextColor(Color.WHITE);
+        visibleIpsLabel.setTextSize(16);
+        visibleIpsLabel.setTextIsSelectable(true);
+        visibleIpsHeader.addView(visibleIpsLabel, new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1
+        ));
+
+        Button refreshVisibleIpsButton = new Button(this);
+        refreshVisibleIpsButton.setText("Refresh");
+        refreshVisibleIpsButton.setAllCaps(false);
+        refreshVisibleIpsButton.setTextSize(12);
+        applyButtonStyle(refreshVisibleIpsButton);
+        refreshVisibleIpsButton.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                refreshVisibleIps();
+            }
+        });
+        visibleIpsHeader.addView(refreshVisibleIpsButton, buttonWrap());
+        root.addView(visibleIpsHeader, matchWrap());
+
+        visibleIpsList = new LinearLayout(this);
+        visibleIpsList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(visibleIpsList, matchWrap());
+        refreshVisibleIps();
 
         pairingsList = new LinearLayout(this);
         pairingsList.setOrientation(LinearLayout.VERTICAL);
@@ -411,6 +451,27 @@ public class MainActivity extends Activity {
         startForegroundService(service);
     }
 
+    private void handlePermissionActionsFromIntent(Intent intent) {
+        if (intent == null || !intent.hasExtra(EXTRA_PERMISSION_ACTIONS)) return;
+        String rawActions = intent.getStringExtra(EXTRA_PERMISSION_ACTIONS);
+        if (rawActions == null || rawActions.length() == 0) return;
+        try {
+            JSONArray actions = new JSONArray(rawActions);
+            for (int i = 0; i < actions.length(); i++) {
+                String action = actions.optString(i, "");
+                if ("request_notification_permission".equals(action)) {
+                    requestNotificationPermission();
+                } else if ("request_display_over_apps_permission".equals(action)) {
+                    requestOverlayPermission();
+                } else if ("request_unrestricted_battery_permission".equals(action)) {
+                    requestBatteryOptimizationExemption();
+                }
+            }
+        } catch (Exception e) {
+            updateStatus("Permission request ignored: " + e.getClass().getSimpleName());
+        }
+    }
+
     private void updateArmStatus() {
         DisplayManager displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
         CompanionService.JetKvmPeripheralSnapshot snapshot = CompanionService.getJetKvmPeripheralSnapshot(
@@ -506,6 +567,78 @@ public class MainActivity extends Activity {
             pairingsList.addView(row, matchWrap());
         }
         updatePairButtonState();
+        refreshVisibleIps();
+    }
+
+    private void refreshVisibleIps() {
+        if (visibleIpsList == null) return;
+        visibleIpsList.removeAllViews();
+
+        String[] ips = CompanionService.getVisibleLocalIPs();
+        LinkedHashSet<String> pairedHosts = new LinkedHashSet<String>();
+        for (CompanionService.CompanionPairing pairing : CompanionService.getSavedPairings(prefs)) {
+            String host = hostFromUrl(pairing.url);
+            if (host.length() > 0) pairedHosts.add(host);
+        }
+
+        int visibleCount = 0;
+        for (final String ip : ips) {
+            if (pairedHosts.contains(ip)) continue;
+            visibleCount++;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(2), 0, dp(2));
+
+            TextView label = new TextView(this);
+            label.setText(ip);
+            label.setTextColor(Color.rgb(203, 213, 225));
+            label.setTextSize(14);
+            label.setTextIsSelectable(true);
+            row.addView(label, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+            ));
+
+            Button pairButton = new Button(this);
+            pairButton.setText("Pair");
+            pairButton.setAllCaps(false);
+            pairButton.setTextSize(12);
+            pairButton.setMinHeight(0);
+            pairButton.setMinimumHeight(0);
+            pairButton.setPadding(dp(10), 0, dp(10), 0);
+            applyButtonStyle(pairButton);
+            pairButton.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override
+                public void onClick(android.view.View v) {
+                    String endpoint = "https://" + ip;
+                    jetkvmUrlsInput.setText(endpoint);
+                    pairJetKvmEndpoint(endpoint);
+                }
+            });
+            row.addView(pairButton, buttonWrap());
+
+            visibleIpsList.addView(row, tightWrap());
+        }
+
+        if (visibleCount == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("No unpaired LAN/VPN IPs visible.");
+            empty.setTextColor(Color.rgb(148, 163, 184));
+            empty.setTextSize(13);
+            empty.setTextIsSelectable(true);
+            visibleIpsList.addView(empty, tightWrap());
+        }
+    }
+
+    private static String hostFromUrl(String rawUrl) {
+        try {
+            URL url = new URL(normalizeJetKvmUrl(rawUrl));
+            return url.getHost();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private void addIncomingPairingControls() {
@@ -577,7 +710,7 @@ public class MainActivity extends Activity {
             PairingKeys keys = generatePairingKeys();
             String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
             URL url = new URL(trimmedBaseUrl + "/companion/pair");
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CompanionService.openTrustedConnection(url);
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             conn.setRequestMethod("POST");
@@ -640,7 +773,7 @@ public class MainActivity extends Activity {
             PairingKeys keys = generatePairingKeys();
             String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
             URL url = new URL(trimmedBaseUrl + "/companion/pair/" + requestId + "/claim");
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CompanionService.openTrustedConnection(url);
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             conn.setRequestMethod("POST");
@@ -694,7 +827,7 @@ public class MainActivity extends Activity {
             if (pairing == null) return UnpairResult.backendUpdated();
             byte[] requestBody = new byte[0];
             URL url = new URL(trimmedBaseUrl + "/companion/unpair");
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CompanionService.openTrustedConnection(url);
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             conn.setRequestMethod("POST");
@@ -733,7 +866,7 @@ public class MainActivity extends Activity {
             try {
                 Thread.sleep(2000);
                 URL url = new URL(baseUrl + "/companion/pair/" + requestId);
-                conn = (HttpURLConnection) url.openConnection();
+                conn = CompanionService.openTrustedConnection(url);
                 conn.setConnectTimeout(3000);
                 conn.setReadTimeout(3000);
                 conn.setRequestMethod("GET");
@@ -786,7 +919,7 @@ public class MainActivity extends Activity {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(normalizeJetKvmUrl(baseUrl) + "/companion/pair/requests");
-            conn = (HttpURLConnection) url.openConnection();
+            conn = CompanionService.openTrustedConnection(url);
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(2000);
             conn.setRequestMethod("GET");
@@ -876,9 +1009,12 @@ public class MainActivity extends Activity {
         String url = rawUrl == null ? "" : rawUrl.trim();
         if (url.length() == 0) return CompanionService.DEFAULT_JETKVM_URL;
         if (!url.contains("://")) {
-            url = "http://" + url;
+            url = "https://" + url;
         }
-        while (url.endsWith("/") && url.length() > "http://".length()) {
+        if (!url.toLowerCase(java.util.Locale.US).startsWith("https://")) {
+            return "";
+        }
+        while (url.endsWith("/") && url.length() > "https://".length()) {
             url = url.substring(0, url.length() - 1);
         }
         return url;

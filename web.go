@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/subtle"
+	"crypto/tls"
 	"crypto/x509"
 	"embed"
 	"encoding/base64"
@@ -135,11 +136,43 @@ type companionPairInitiateBody struct {
 	CompanionURL string `json:"companion_url"`
 }
 
+type companionPermissionActionBody struct {
+	Permission string `json:"permission"`
+}
+
+type companionIPEntry struct {
+	IP        string `json:"ip"`
+	Source    string `json:"source,omitempty"`
+	Interface string `json:"interface,omitempty"`
+}
+
+type companionStatusSnapshot struct {
+	CompanionID                      string          `json:"companion_id"`
+	RemoteAddr                       string          `json:"remote_addr,omitempty"`
+	LastSeenUnixMilli                int64           `json:"last_seen_unix_milli,omitempty"`
+	NotificationPermissionGranted    bool            `json:"notification_permission_granted"`
+	DisplayOverAppsPermissionGranted bool            `json:"display_over_apps_permission_granted"`
+	BatteryUnrestrictedGranted       bool            `json:"battery_unrestricted_granted"`
+	PairedJetKVMURLs                 []string        `json:"paired_jetkvm_urls,omitempty"`
+	VisibleIPs                       []string        `json:"visible_ips,omitempty"`
+	JetKVMUSBIdentity                string          `json:"jetkvm_usb_identity,omitempty"`
+	TargetType                       string          `json:"target_type,omitempty"`
+	PreferredMouseMode               string          `json:"preferred_mouse_mode,omitempty"`
+	DisplayWidth                     int             `json:"display_width,omitempty"`
+	DisplayHeight                    int             `json:"display_height,omitempty"`
+	Evidence                         []string        `json:"evidence,omitempty"`
+	Peripherals                      map[string]bool `json:"peripherals,omitempty"`
+	PendingActions                   []string        `json:"pending_actions,omitempty"`
+}
+
 var (
 	companionPairingLock    stdsync.Mutex
 	companionPairingRequest *companionPairRequest
 	companionNonceLock      stdsync.Mutex
 	companionNonces         = map[string]map[string]time.Time{}
+	companionStatusLock     stdsync.Mutex
+	companionStatuses       = map[string]companionStatusSnapshot{}
+	companionPendingActions = map[string]map[string]bool{}
 )
 
 func setupRouter() *gin.Engine {
@@ -280,6 +313,8 @@ func setupRouter() *gin.Engine {
 		protected.POST("/companion/pair/initiate", handleCompanionPairInitiate)
 		protected.POST("/companion/pair/:id/approve", handleCompanionPairApprove)
 		protected.POST("/companion/pair/:id/reject", handleCompanionPairReject)
+		protected.GET("/companion/status", handleCompanionStatus)
+		protected.POST("/companion/:id/request-permission", handleCompanionPermissionRequest)
 		protected.POST("/companion/unpair-admin", handleCompanionUnpairAdmin)
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
@@ -307,7 +342,8 @@ func handleCompanionTargetDeclaration(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	if !hasValidCompanionSignature(c, bodyBytes) {
+	companionID, ok := companionIDFromSignedRequest(c, bodyBytes)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid companion signature"})
 		return
 	}
@@ -350,7 +386,10 @@ func handleCompanionTargetDeclaration(c *gin.Context) {
 	metadata := setCompanionTargetMetadata(declaration)
 	applyDisplayModeForTarget(metadata)
 	metadata = withDisplayReconnectStatus(metadata)
+	rememberCompanionStatus(companionID, c.ClientIP(), declaration)
+	pendingActions := takeCompanionPendingActions(companionID)
 	logger.Info().
+		Str("companion_id", companionID).
 		Str("state", declaration.State).
 		Strs("evidence", metadata.Evidence).
 		Str("preferred_mouse_mode", metadata.PreferredMouseMode).
@@ -359,7 +398,23 @@ func handleCompanionTargetDeclaration(c *gin.Context) {
 		Float64("display_aspect", metadata.DisplayAspect).
 		Bool("hdmi_reconnect_required", metadata.HDMIReconnectRequired).
 		Msg("companion target declaration received")
-	c.JSON(http.StatusOK, metadata)
+	response := gin.H{
+		"target_type":              metadata.TargetType,
+		"preferred_mouse_mode":     metadata.PreferredMouseMode,
+		"display_width":            metadata.DisplayWidth,
+		"display_height":           metadata.DisplayHeight,
+		"display_aspect":           metadata.DisplayAspect,
+		"evidence":                 metadata.Evidence,
+		"source":                   metadata.Source,
+		"last_seen_unix_milli":     metadata.LastSeenUnixMilli,
+		"lease_expires_unix_milli": metadata.LeaseExpiresUnixMilli,
+		"hdmi_reconnect_required":  metadata.HDMIReconnectRequired,
+		"fallback_display_mode":    metadata.FallbackDisplayMode,
+		"companion_notice":         metadata.CompanionNotice,
+		"fresh":                    metadata.Fresh,
+		"requested_actions":        pendingActions,
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func handleCompanionPair(c *gin.Context) {
@@ -395,7 +450,7 @@ func handleCompanionPairInitiate(c *gin.Context) {
 	}
 
 	request := createJetKVMInitiatedCompanionPairingRequest(companionURL)
-	jetkvmURL := "http://" + c.Request.Host
+	jetkvmURL := "https://" + c.Request.Host
 	if err := notifyCompanionPairRequest(companionURL, jetkvmURL, request.ID); err != nil {
 		companionPairingLock.Lock()
 		request.Status = "rejected"
@@ -434,6 +489,38 @@ func handleCompanionPairRequests(c *gin.Context) {
 		requests = append(requests, companionPairingPendingResponse(request))
 	}
 	c.JSON(http.StatusOK, gin.H{"requests": requests})
+}
+
+func handleCompanionStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"companions":  getCompanionStatusSnapshots(),
+		"visible_ips": getVisibleLocalIPEntries(),
+	})
+}
+
+func handleCompanionPermissionRequest(c *gin.Context) {
+	companionID := strings.TrimSpace(c.Param("id"))
+	if companionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "companion id is required"})
+		return
+	}
+	if _, ok := companionAuthorizations()[companionID]; !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "companion not paired"})
+		return
+	}
+
+	var body companionPermissionActionBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "permission is required"})
+		return
+	}
+	action := companionPermissionAction(body.Permission)
+	if action == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported permission"})
+		return
+	}
+	queueCompanionPendingAction(companionID, action)
+	c.JSON(http.StatusAccepted, gin.H{"queued": true, "action": action})
 }
 
 func handleCompanionPairClaim(c *gin.Context) {
@@ -553,6 +640,7 @@ func handleCompanionUnpair(c *gin.Context) {
 		return
 	}
 	removeCompanionAuthorization(companionID)
+	forgetCompanionStatus(companionID)
 	_ = SaveConfig()
 	clearCompanionTargetMetadata()
 	c.JSON(http.StatusOK, gin.H{"paired": false})
@@ -706,6 +794,7 @@ func clearCompanionPairing() {
 	config.CompanionPairing.Companions = nil
 	_ = SaveConfig()
 	clearCompanionTargetMetadata()
+	clearCompanionStatuses()
 	companionPairingLock.Lock()
 	companionPairingRequest = nil
 	companionPairingLock.Unlock()
@@ -769,16 +858,186 @@ func removeCompanionAuthorization(companionID string) {
 	}
 }
 
+func rememberCompanionStatus(companionID string, remoteAddr string, declaration CompanionTargetDeclaration) {
+	companionID = strings.TrimSpace(companionID)
+	if companionID == "" {
+		return
+	}
+	peripherals := map[string]bool{}
+	for _, evidence := range declaration.Evidence {
+		switch strings.ToLower(strings.TrimSpace(evidence)) {
+		case "keyboard", "digitizer", "mouse", "monitor":
+			peripherals[strings.ToLower(strings.TrimSpace(evidence))] = true
+		}
+	}
+	status := companionStatusSnapshot{
+		CompanionID:                      companionID,
+		RemoteAddr:                       remoteAddr,
+		LastSeenUnixMilli:                time.Now().UnixMilli(),
+		NotificationPermissionGranted:    declaration.NotificationPermissionGranted,
+		DisplayOverAppsPermissionGranted: declaration.DisplayOverAppsPermissionGranted,
+		BatteryUnrestrictedGranted:       declaration.BatteryUnrestrictedGranted,
+		PairedJetKVMURLs:                 cleanStringList(declaration.PairedJetKVMURLs),
+		VisibleIPs:                       cleanStringList(declaration.VisibleIPs),
+		JetKVMUSBIdentity:                strings.TrimSpace(declaration.JetKVMUSBIdentity),
+		TargetType:                       strings.TrimSpace(declaration.TargetType),
+		PreferredMouseMode:               strings.TrimSpace(declaration.PreferredMouseMode),
+		DisplayWidth:                     declaration.DisplayWidth,
+		DisplayHeight:                    declaration.DisplayHeight,
+		Evidence:                         cleanStringList(declaration.Evidence),
+		Peripherals:                      peripherals,
+	}
+
+	companionStatusLock.Lock()
+	companionStatuses[companionID] = status
+	companionStatusLock.Unlock()
+}
+
+func getCompanionStatusSnapshots() []companionStatusSnapshot {
+	authorizations := companionAuthorizations()
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	snapshots := make([]companionStatusSnapshot, 0, len(authorizations))
+	for companionID := range authorizations {
+		status := companionStatuses[companionID]
+		status.CompanionID = companionID
+		if status.Peripherals == nil {
+			status.Peripherals = map[string]bool{}
+		}
+		status.PendingActions = pendingCompanionActionsLocked(companionID)
+		snapshots = append(snapshots, status)
+	}
+	return snapshots
+}
+
+func queueCompanionPendingAction(companionID string, action string) {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	if companionPendingActions[companionID] == nil {
+		companionPendingActions[companionID] = map[string]bool{}
+	}
+	companionPendingActions[companionID][action] = true
+}
+
+func takeCompanionPendingActions(companionID string) []string {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	actions := pendingCompanionActionsLocked(companionID)
+	delete(companionPendingActions, companionID)
+	return actions
+}
+
+func pendingCompanionActionsLocked(companionID string) []string {
+	pending := companionPendingActions[companionID]
+	actions := make([]string, 0, len(pending))
+	for action := range pending {
+		actions = append(actions, action)
+	}
+	slices.Sort(actions)
+	return actions
+}
+
+func forgetCompanionStatus(companionID string) {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	delete(companionStatuses, companionID)
+	delete(companionPendingActions, companionID)
+}
+
+func clearCompanionStatuses() {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	companionStatuses = map[string]companionStatusSnapshot{}
+	companionPendingActions = map[string]map[string]bool{}
+}
+
+func companionPermissionAction(permission string) string {
+	switch strings.ToLower(strings.TrimSpace(permission)) {
+	case "notification", "notifications":
+		return "request_notification_permission"
+	case "overlay", "display_over_apps", "display-over-apps":
+		return "request_display_over_apps_permission"
+	case "battery", "unrestricted_battery", "unrestricted-battery":
+		return "request_unrestricted_battery_permission"
+	default:
+		return ""
+	}
+}
+
+func getVisibleLocalIPEntries() []companionIPEntry {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	entries := []companionIPEntry{}
+	seen := map[string]bool{}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ip := ipFromAddr(addr)
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			text := ip.String()
+			if seen[text] {
+				continue
+			}
+			seen[text] = true
+			entries = append(entries, companionIPEntry{IP: text, Source: "backend", Interface: iface.Name})
+		}
+	}
+	return entries
+}
+
+func ipFromAddr(addr net.Addr) net.IP {
+	switch v := addr.(type) {
+	case *net.IPNet:
+		return v.IP
+	case *net.IPAddr:
+		return v.IP
+	default:
+		return nil
+	}
+}
+
+func cleanStringList(values []string) []string {
+	cleaned := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		cleaned = append(cleaned, value)
+	}
+	return cleaned
+}
+
 func normalizeCompanionURL(rawURL string) string {
 	trimmed := strings.TrimSpace(rawURL)
 	if trimmed == "" {
 		return ""
 	}
 	if !strings.Contains(trimmed, "://") {
-		trimmed = "http://" + trimmed
+		trimmed = "https://" + trimmed
 	}
 	parsed, err := neturl.Parse(trimmed)
-	if err == nil && parsed.Host != "" && parsed.Port() == "" {
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return ""
+	}
+	if parsed.Port() == "" {
 		parsed.Host = net.JoinHostPort(parsed.Hostname(), "8787")
 		trimmed = parsed.String()
 	}
@@ -918,12 +1177,24 @@ func isValidCompanionPublicKey(publicKey string) bool {
 }
 
 func notifyCompanionPairRequest(companionURL string, jetkvmURL string, requestID string) error {
+	parsed, err := neturl.Parse(companionURL)
+	if err != nil || parsed.Scheme != "https" {
+		return fmt.Errorf("companion pairing notification requires https")
+	}
+	if parsedJetKVMURL, err := neturl.Parse(jetkvmURL); err != nil || parsedJetKVMURL.Scheme != "https" {
+		return fmt.Errorf("JetKVM pairing URL requires https")
+	}
 	bodyText := fmt.Sprintf(
 		`{"jetkvm_url":%q,"request_id":%q}`,
 		jetkvmURL,
 		requestID,
 	)
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 	var lastErr error
 	for attempt := 1; attempt <= 5; attempt++ {
 		req, err := http.NewRequest(http.MethodPost, companionURL+"/pair/request", strings.NewReader(bodyText))
