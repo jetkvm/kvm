@@ -814,6 +814,7 @@ func clearCompanionPairing() {
 	config.CompanionPairing.Token = ""
 	config.CompanionPairing.Tokens = nil
 	config.CompanionPairing.Companions = nil
+	restoreDefaultEDIDIfAndroidModeIsUnleased("all companions unpaired", true)
 	_ = SaveConfig()
 	clearCompanionStatuses()
 	companionPairingLock.Lock()
@@ -876,6 +877,7 @@ func removeCompanionAuthorization(companionID string) {
 	delete(config.CompanionPairing.Companions, companionID)
 	if len(config.CompanionPairing.Companions) == 0 {
 		config.CompanionPairing.Companions = nil
+		restoreDefaultEDIDIfAndroidModeIsUnleased("last companion unpaired", true)
 	}
 }
 

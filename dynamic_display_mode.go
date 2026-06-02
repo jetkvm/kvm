@@ -3,6 +3,7 @@ package kvm
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/jetkvm/kvm/internal/native"
@@ -40,6 +41,9 @@ var dynamicDisplayModeState = struct {
 
 func applyDisplayModeForTarget(metadata TargetMetadata) {
 	if metadata.TargetType != "android" || !metadata.Fresh || metadata.DisplayWidth <= 0 || metadata.DisplayHeight <= 0 {
+		if metadata.TargetType == "android" && metadata.Source == "companion" {
+			applyDefaultEDIDFallback("companion target inactive", true)
+		}
 		return
 	}
 
@@ -170,6 +174,39 @@ func selectCompanionDisplayMode(metadata TargetMetadata) DisplayMode {
 		RefreshHz: dynamicDisplayRefreshHz,
 		Source:    source,
 	}
+}
+
+func restoreDefaultEDIDIfAndroidModeIsUnleased(reason string, reenumerate bool) bool {
+	paired := len(companionAuthorizations()) > 0
+	freshLease := hasFreshCompanionLease()
+	if paired && freshLease {
+		return false
+	}
+	clearCompanionTargetMetadata()
+	if !isCompanionGeneratedEDID(config.EdidString) {
+		return false
+	}
+
+	applyDefaultEDIDFallback(reason, reenumerate)
+	return true
+}
+
+func isCompanionGeneratedEDID(edidHex string) bool {
+	edid, err := hex.DecodeString(strings.TrimSpace(edidHex))
+	if err != nil || len(edid) != 128 || edid[126] != 0 {
+		return false
+	}
+	for i := 35; i <= 37; i++ {
+		if edid[i] != 0 {
+			return false
+		}
+	}
+	for i := 38; i <= 53; i++ {
+		if edid[i] != 0x01 {
+			return false
+		}
+	}
+	return true
 }
 
 func getDisplayModeStatus() DisplayModeStatus {

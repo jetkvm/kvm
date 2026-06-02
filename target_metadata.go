@@ -114,6 +114,16 @@ func getEffectiveTargetMetadata() TargetMetadata {
 	}
 }
 
+func hasFreshCompanionLease() bool {
+	targetMetadataLock.Lock()
+	companion := companionTarget
+	targetMetadataLock.Unlock()
+
+	return companion.TargetType == "android" &&
+		companion.Source == "companion" &&
+		companion.LeaseExpiresUnixMilli > time.Now().UnixMilli()
+}
+
 func clearCompanionTargetMetadata() {
 	targetMetadataLock.Lock()
 	defer targetMetadataLock.Unlock()
@@ -143,6 +153,7 @@ func scheduleCompanionTargetExpiryCheck(leaseExpiresUnixMilli int64) {
 				Int64("lease_expires_unix_milli", leaseExpiresUnixMilli).
 				Msg("companion target lease expired")
 			expireCompanionTargetMetadata(leaseExpiresUnixMilli)
+			applyDefaultEDIDFallback("companion target lease expired", true)
 		}
 	}()
 }
