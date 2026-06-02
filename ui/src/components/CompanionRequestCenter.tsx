@@ -200,6 +200,9 @@ export default function CompanionRequestCenter({
   );
 
   const unpair = useCallback(async () => {
+    if (!window.confirm("Unpair all Android companions from this JetKVM?")) {
+      return;
+    }
     const resp = await api.POST(`${DEVICE_API}/companion/unpair-admin`, {});
     if (!resp.ok) {
       notifications.error("Failed to unpair companion.");
