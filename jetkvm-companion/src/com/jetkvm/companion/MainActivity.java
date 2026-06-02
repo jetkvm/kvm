@@ -304,7 +304,7 @@ public class MainActivity extends Activity {
         root.addView(pairingsList, matchWrap());
         refreshPairingControls();
 
-        LinearLayout visibleIpsHeader = addCollapsibleHeaderRow(root, "Visible LAN/VPN IPs", KEY_VISIBLE_IPS_COLLAPSED, new Runnable() {
+        LinearLayout visibleIpsHeader = addCollapsibleHeaderRow(root, "This device LAN/VPN IPs", KEY_VISIBLE_IPS_COLLAPSED, new Runnable() {
             @Override
             public void run() {
                 updateVisibleIpsVisibility();
@@ -671,15 +671,8 @@ public class MainActivity extends Activity {
         visibleIpsList.removeAllViews();
 
         String[] ips = CompanionService.getVisibleLocalIPs();
-        LinkedHashSet<String> pairedHosts = new LinkedHashSet<String>();
-        for (CompanionService.CompanionPairing pairing : CompanionService.getSavedPairings(prefs)) {
-            String host = hostFromUrl(pairing.url);
-            if (host.length() > 0) pairedHosts.add(host);
-        }
-
         int visibleCount = 0;
         for (final String ip : ips) {
-            if (pairedHosts.contains(ip)) continue;
             visibleCount++;
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
@@ -696,31 +689,12 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 1
             ));
-
-            Button pairButton = new Button(this);
-            pairButton.setText("Pair");
-            pairButton.setAllCaps(false);
-            pairButton.setTextSize(12);
-            pairButton.setMinHeight(0);
-            pairButton.setMinimumHeight(0);
-            pairButton.setPadding(dp(10), 0, dp(10), 0);
-            applyButtonStyle(pairButton);
-            pairButton.setOnClickListener(new android.view.View.OnClickListener() {
-                @Override
-                public void onClick(android.view.View v) {
-                    String endpoint = "https://" + ip;
-                    jetkvmUrlsInput.setText(endpoint);
-                    pairJetKvmEndpoint(endpoint);
-                }
-            });
-            row.addView(pairButton, buttonWrap());
-
             visibleIpsList.addView(row, tightWrap());
         }
 
         if (visibleCount == 0) {
             TextView empty = new TextView(this);
-            empty.setText("No unpaired LAN/VPN IPs visible.");
+            empty.setText("No LAN/VPN IPs visible.");
             empty.setTextColor(Color.rgb(148, 163, 184));
             empty.setTextSize(13);
             empty.setTextIsSelectable(true);

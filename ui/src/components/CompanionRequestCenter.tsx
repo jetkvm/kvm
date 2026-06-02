@@ -258,28 +258,13 @@ export default function CompanionRequestCenter({
     const seen = new Set<string>();
     const candidates: VisibleIP[] = [];
     for (const entry of visibleIps) {
+      if (entry.source === "backend") continue;
       if (!entry.ip || seen.has(entry.ip) || pairedHosts.has(entry.ip)) continue;
       seen.add(entry.ip);
       candidates.push(entry);
     }
-    for (const companion of companions) {
-      const companionEntries =
-        companion.visible_ip_entries ||
-        (companion.visible_ips || []).map(ip => ({
-          ip,
-          source: "paired_device",
-        }));
-      for (const entry of companionEntries) {
-        if (!entry.ip || seen.has(entry.ip) || pairedHosts.has(entry.ip)) continue;
-        seen.add(entry.ip);
-        candidates.push({
-          ...entry,
-          source: entry.source || "paired_device",
-        });
-      }
-    }
     return candidates.sort((a, b) => candidateIPSortKey(a).localeCompare(candidateIPSortKey(b)));
-  }, [companions, pairedHosts, visibleIps]);
+  }, [pairedHosts, visibleIps]);
 
   const count = requests.length;
   const isOpen = forceOpen ?? open;
@@ -463,12 +448,12 @@ export default function CompanionRequestCenter({
             </Section>
 
             <Section
-              title="Visible LAN/VPN IPs"
+              title="Pairable LAN/VPN IPs"
               collapsed={visibleIpsCollapsed}
               onToggle={() => setVisibleIpsCollapsed(!visibleIpsCollapsed)}
             >
               {candidateIps.length === 0 ? (
-                <Muted>No unpaired IPs visible.</Muted>
+                <Muted>No unpaired companion IPs visible.</Muted>
               ) : (
                 <div className="space-y-1">
                   {candidateIps.map(entry => (
