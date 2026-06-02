@@ -143,6 +143,7 @@ public class MainActivity extends Activity {
         title.setTextColor(Color.WHITE);
         title.setTextSize(26);
         title.setGravity(Gravity.CENTER);
+        title.setTextIsSelectable(true);
         root.addView(title, matchWrap());
 
         TextView description = new TextView(this);
@@ -151,6 +152,7 @@ public class MainActivity extends Activity {
         description.setTextSize(15);
         description.setGravity(Gravity.CENTER);
         description.setPadding(0, dp(8), 0, dp(18));
+        description.setTextIsSelectable(true);
         root.addView(description, matchWrap());
 
         pairingOtpPanel = new LinearLayout(this);
@@ -164,6 +166,7 @@ public class MainActivity extends Activity {
         pairingOtpLabel.setTextColor(Color.rgb(203, 213, 225));
         pairingOtpLabel.setTextSize(14);
         pairingOtpLabel.setGravity(Gravity.CENTER);
+        pairingOtpLabel.setTextIsSelectable(true);
         pairingOtpPanel.addView(pairingOtpLabel, tightWrap());
 
         pairingOtpCode = new TextView(this);
@@ -171,12 +174,14 @@ public class MainActivity extends Activity {
         pairingOtpCode.setTextSize(42);
         pairingOtpCode.setGravity(Gravity.CENTER);
         pairingOtpCode.setLetterSpacing(0.08f);
+        pairingOtpCode.setTextIsSelectable(true);
         pairingOtpPanel.addView(pairingOtpCode, tightWrap());
 
         pairingOtpCountdown = new TextView(this);
         pairingOtpCountdown.setTextColor(Color.rgb(148, 163, 184));
         pairingOtpCountdown.setTextSize(15);
         pairingOtpCountdown.setGravity(Gravity.CENTER);
+        pairingOtpCountdown.setTextIsSelectable(true);
         pairingOtpPanel.addView(pairingOtpCountdown, tightWrap());
 
         root.addView(pairingOtpPanel, matchWrap());
@@ -199,6 +204,7 @@ public class MainActivity extends Activity {
         jetkvmUrlsLabel.setText("JetKVM endpoint");
         jetkvmUrlsLabel.setTextColor(Color.WHITE);
         jetkvmUrlsLabel.setTextSize(16);
+        jetkvmUrlsLabel.setTextIsSelectable(true);
         root.addView(jetkvmUrlsLabel, tightWrap());
 
         jetkvmUrlsInput = new EditText(this);
@@ -250,6 +256,7 @@ public class MainActivity extends Activity {
         pairJetkvmState.setTextColor(Color.rgb(34, 197, 94));
         pairJetkvmState.setTextSize(14);
         pairJetkvmState.setPadding(dp(12), 0, 0, 0);
+        pairJetkvmState.setTextIsSelectable(true);
         pairActionRow.addView(pairJetkvmState, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -303,6 +310,7 @@ public class MainActivity extends Activity {
         statusText.setTextSize(14);
         statusText.setGravity(Gravity.CENTER);
         statusText.setPadding(0, dp(16), 0, 0);
+        statusText.setTextIsSelectable(true);
         root.addView(statusText, matchWrap());
 
         return scroller;
@@ -449,6 +457,7 @@ public class MainActivity extends Activity {
             empty.setText("No paired JetKVM endpoints.");
             empty.setTextColor(Color.rgb(148, 163, 184));
             empty.setTextSize(13);
+            empty.setTextIsSelectable(true);
             pairingsList.addView(empty, tightWrap());
         }
         for (final CompanionService.CompanionPairing pairing : pairings) {
@@ -481,6 +490,7 @@ public class MainActivity extends Activity {
             label.setSingleLine(false);
             label.setMaxLines(2);
             label.setPadding(dp(12), 0, dp(8), 0);
+            label.setTextIsSelectable(true);
             row.addView(label, new LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -489,6 +499,7 @@ public class MainActivity extends Activity {
 
             TextView state = new TextView(this);
             state.setTextSize(13);
+            state.setTextIsSelectable(true);
             applyReachabilityStateText(state, pairingReachability.get(normalizeJetKvmUrl(url)));
             row.addView(state, buttonWrap());
 
@@ -506,6 +517,7 @@ public class MainActivity extends Activity {
         label.setText("Pairing request from " + pendingPairUrl);
         label.setTextColor(Color.WHITE);
         label.setTextSize(14);
+        label.setTextIsSelectable(true);
         row.addView(label, tightWrap());
 
         final EditText otpInput = new EditText(this);
