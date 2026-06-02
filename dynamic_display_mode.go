@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/jetkvm/kvm/internal/native"
 )
@@ -104,7 +103,7 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 	dynamicDisplayModeState.Unlock()
 
 	if reenumerationRequired {
-		requestDisplayModeReenumeration("companion display mode applied")
+		logger.Warn().Msg("companion display EDID changed; physical HDMI reconnect required for Android to use it")
 	}
 }
 
@@ -136,17 +135,8 @@ func applyDefaultEDIDFallback(reason string, reenumerate bool) {
 	}
 
 	if reenumerationRequired {
-		requestDisplayModeReenumeration("default EDID restored")
+		logger.Warn().Msg("default EDID restored; physical HDMI reconnect required for Android to use it")
 	}
-}
-
-func requestDisplayModeReenumeration(reason string) {
-	logger.Warn().Str("reason", reason).Msg("rebooting JetKVM to force HDMI re-enumeration")
-	go func() {
-		if err := hwReboot(true, nil, 3*time.Second); err != nil {
-			logger.Warn().Err(err).Str("reason", reason).Msg("failed to reboot JetKVM for HDMI re-enumeration")
-		}
-	}()
 }
 
 func selectCompanionDisplayMode(metadata TargetMetadata) DisplayMode {
