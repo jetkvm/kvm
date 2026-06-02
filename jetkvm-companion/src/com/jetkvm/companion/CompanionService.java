@@ -68,6 +68,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private static final String CHANNEL_ID = "jetkvm-companion";
     private static final int NOTIFICATION_ID = 1001;
     private static final int PAIRING_NOTIFICATION_ID = 1002;
+    private static final int NOTIFICATION_RESPAWN_BASE_ID = 1100;
     private static final int PAIRING_LISTEN_PORT = 8787;
     private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
     private static final long TARGET_REPORT_INTERVAL_MS = 15000;
@@ -102,6 +103,9 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private volatile long targetDeclarationConfirmedUntilMs;
     private volatile boolean targetDeclarationHDMIReconnectRequired;
     private volatile String targetDeclarationCompanionNotice = "";
+    private int activeNotificationId = NOTIFICATION_ID;
+    private int nextNotificationRespawnId = NOTIFICATION_RESPAWN_BASE_ID;
+    private String activeNotificationBody = "";
     private JetKvmPeripheralSnapshot currentSnapshot = new JetKvmPeripheralSnapshot();
 
     private final Runnable targetReportRunnable = new Runnable() {
@@ -186,7 +190,8 @@ public class CompanionService extends Service implements InputManager.InputDevic
     public void onCreate() {
         super.onCreate();
         createChannel();
-        startForeground(NOTIFICATION_ID, buildNotification());
+        activeNotificationBody = buildNotificationBody();
+        startForeground(activeNotificationId, buildNotification(activeNotificationBody));
         ensureLaunchAssistOverlay();
         displayManager = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
         if (displayManager != null) {
@@ -988,7 +993,25 @@ public class CompanionService extends Service implements InputManager.InputDevic
         manager.createNotificationChannel(channel);
     }
 
-    private Notification buildNotification() {
+    private String buildNotificationBody() {
+        if (!hasPairedJetKvmEndpoints) {
+            return "Waiting for a device to be paired...";
+        }
+        if (!jetkvmPeripheralsPresent) {
+            return "Waiting for peripherals...";
+        }
+        if (!isTargetDeclarationConfirmed()) {
+            return "Waiting for backend confirmation...";
+        }
+        if (targetDeclarationHDMIReconnectRequired) {
+            return targetDeclarationCompanionNotice.length() > 0
+                ? targetDeclarationCompanionNotice
+                : "Using 1920x1080 crop mode. Disconnect and reconnect HDMI to apply the new display size.";
+        }
+        return "Monitoring display-on events";
+    }
+
+    private Notification buildNotification(String body) {
         Intent intent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(
             this,
@@ -999,26 +1022,13 @@ public class CompanionService extends Service implements InputManager.InputDevic
         Notification.Builder builder = android.os.Build.VERSION.SDK_INT >= 26
             ? new Notification.Builder(this, CHANNEL_ID)
             : new Notification.Builder(this);
-        String body;
-        if (!hasPairedJetKvmEndpoints) {
-            body = "Waiting for a device to be paired...";
-        } else if (!jetkvmPeripheralsPresent) {
-            body = "Waiting for peripherals...";
-        } else if (!isTargetDeclarationConfirmed()) {
-            body = "Waiting for backend confirmation...";
-        } else if (targetDeclarationHDMIReconnectRequired) {
-            body = targetDeclarationCompanionNotice.length() > 0
-                ? targetDeclarationCompanionNotice
-                : "Using 1920x1080 crop mode. Disconnect and reconnect HDMI to apply the new display size.";
-        } else {
-            body = "Monitoring display-on events";
-        }
         builder
             .setSmallIcon(getApplicationInfo().icon)
             .setContentTitle("JetKVM Companion")
             .setContentText(body)
             .setStyle(new Notification.BigTextStyle().bigText(body))
             .setContentIntent(pendingIntent)
+            .setOnlyAlertOnce(false)
             .setOngoing(true);
         if (!hasPairedJetKvmEndpoints) {
             builder.addAction(getApplicationInfo().icon, "Pair", pendingIntent);
@@ -1028,8 +1038,22 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
     private void updateNotification() {
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager != null) {
-            manager.notify(NOTIFICATION_ID, buildNotification());
+        if (manager == null) {
+            return;
+        }
+
+        String body = buildNotificationBody();
+        Notification notification = buildNotification(body);
+        if (!body.equals(activeNotificationBody)) {
+            int previousNotificationId = activeNotificationId;
+            activeNotificationId = nextNotificationRespawnId++;
+            activeNotificationBody = body;
+            startForeground(activeNotificationId, notification);
+            if (previousNotificationId != activeNotificationId) {
+                manager.cancel(previousNotificationId);
+            }
+        } else {
+            manager.notify(activeNotificationId, notification);
         }
     }
 

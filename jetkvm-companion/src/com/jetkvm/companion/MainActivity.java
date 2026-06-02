@@ -11,13 +11,16 @@ import android.hardware.display.DisplayManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
+import android.view.View;
 import android.view.Window;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
@@ -39,9 +42,12 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
 import java.security.spec.ECGenParameterSpec;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_POST_NOTIFICATIONS = 10;
+    private static final long PAIRING_OTP_TTL_MS = 120000;
     private static final int JETKVM_BACKGROUND = Color.rgb(7, 12, 28);
     private static final int JETKVM_BLUE_700 = Color.rgb(20, 71, 230);
     private static final String EXTRA_JETKVM_URL = "jetkvm_url";
@@ -58,8 +64,13 @@ public class MainActivity extends Activity {
     private Button overlayButton;
     private Button batteryButton;
     private TextView statusText;
+    private LinearLayout pairingOtpPanel;
+    private TextView pairingOtpCode;
+    private TextView pairingOtpCountdown;
     private String pendingPairUrl = "";
     private String pendingPairRequestId = "";
+    private CountDownTimer pairingOtpTimer;
+    private final Map<String, Boolean> pairingReachability = new HashMap<>();
     private boolean requestedNotificationThisLaunch;
     private boolean requestedOverlayThisLaunch;
     private boolean requestedBatteryThisLaunch;
@@ -75,6 +86,7 @@ public class MainActivity extends Activity {
         startCompanionServiceFromIntent(getIntent());
         setContentView(createSettingsView());
         updateArmStatus();
+        refreshPairingReachability();
         requestMissingPermissionsIfNeeded();
     }
 
@@ -94,15 +106,27 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         updateArmStatus();
+        refreshPairingReachability();
         requestMissingPermissionsIfNeeded();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (pairingOtpTimer != null) {
+            pairingOtpTimer.cancel();
+            pairingOtpTimer = null;
+        }
+        super.onDestroy();
     }
 
     private android.view.View createSettingsView() {
         int padding = dp(24);
 
         ScrollView scroller = new ScrollView(this);
-        scroller.setFillViewport(false);
+        scroller.setFillViewport(true);
         scroller.setBackgroundColor(JETKVM_BACKGROUND);
+        scroller.setClipToPadding(false);
+        scroller.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -128,6 +152,34 @@ public class MainActivity extends Activity {
         description.setGravity(Gravity.CENTER);
         description.setPadding(0, dp(8), 0, dp(18));
         root.addView(description, matchWrap());
+
+        pairingOtpPanel = new LinearLayout(this);
+        pairingOtpPanel.setOrientation(LinearLayout.VERTICAL);
+        pairingOtpPanel.setGravity(Gravity.CENTER_HORIZONTAL);
+        pairingOtpPanel.setPadding(0, 0, 0, dp(10));
+        pairingOtpPanel.setVisibility(View.GONE);
+
+        TextView pairingOtpLabel = new TextView(this);
+        pairingOtpLabel.setText("Pairing code");
+        pairingOtpLabel.setTextColor(Color.rgb(203, 213, 225));
+        pairingOtpLabel.setTextSize(14);
+        pairingOtpLabel.setGravity(Gravity.CENTER);
+        pairingOtpPanel.addView(pairingOtpLabel, tightWrap());
+
+        pairingOtpCode = new TextView(this);
+        pairingOtpCode.setTextColor(Color.WHITE);
+        pairingOtpCode.setTextSize(42);
+        pairingOtpCode.setGravity(Gravity.CENTER);
+        pairingOtpCode.setLetterSpacing(0.08f);
+        pairingOtpPanel.addView(pairingOtpCode, tightWrap());
+
+        pairingOtpCountdown = new TextView(this);
+        pairingOtpCountdown.setTextColor(Color.rgb(148, 163, 184));
+        pairingOtpCountdown.setTextSize(15);
+        pairingOtpCountdown.setGravity(Gravity.CENTER);
+        pairingOtpPanel.addView(pairingOtpCountdown, tightWrap());
+
+        root.addView(pairingOtpPanel, matchWrap());
 
         launchOnBootInput = new CheckBox(this);
         launchOnBootInput.setText("Launch on boot");
@@ -311,6 +363,7 @@ public class MainActivity extends Activity {
         pairJetkvmButton.setEnabled(hasValue && !paired);
         if (paired) {
             applyDisabledButtonStyle(pairJetkvmButton);
+            applyReachabilityStateText(pairJetkvmState, pairingReachability.get(normalizeJetKvmUrl(entered)));
             pairJetkvmState.setVisibility(android.view.View.VISIBLE);
         } else {
             applyButtonStyle(pairJetkvmButton);
@@ -425,6 +478,8 @@ public class MainActivity extends Activity {
             label.setText(url);
             label.setTextColor(Color.WHITE);
             label.setTextSize(14);
+            label.setSingleLine(false);
+            label.setMaxLines(2);
             label.setPadding(dp(12), 0, dp(8), 0);
             row.addView(label, new LinearLayout.LayoutParams(
                 0,
@@ -434,8 +489,7 @@ public class MainActivity extends Activity {
 
             TextView state = new TextView(this);
             state.setTextSize(13);
-            state.setTextColor(Color.rgb(34, 197, 94));
-            state.setText("Paired");
+            applyReachabilityStateText(state, pairingReachability.get(normalizeJetKvmUrl(url)));
             row.addView(state, buttonWrap());
 
             pairingsList.addView(row, matchWrap());
@@ -479,6 +533,7 @@ public class MainActivity extends Activity {
 
     private void pairJetKvmEndpoint(final String baseUrl) {
         final String otp = generatePairingOtp();
+        showPairingOtp(otp);
         updateStatus("Pairing " + baseUrl + ". Type " + otp + " in the JetKVM web UI.");
         new Thread(new Runnable() {
             @Override
@@ -489,10 +544,13 @@ public class MainActivity extends Activity {
                     public void run() {
                         if (result.success) {
                             CompanionService.savePairing(prefs, baseUrl, result.companionId, result.privateKey, result.identityToken);
+                            hidePairingOtp();
                             refreshPairingControls();
+                            refreshPairingReachability();
                             startForegroundService(new Intent(MainActivity.this, CompanionService.class));
                             updateStatus("Paired " + baseUrl + ".");
                         } else {
+                            hidePairingOtp();
                             updateStatus("Pairing failed for " + baseUrl + ": " + result.message);
                         }
                     }
@@ -552,6 +610,7 @@ public class MainActivity extends Activity {
                             pendingPairUrl = "";
                             pendingPairRequestId = "";
                             refreshPairingControls();
+                            refreshPairingReachability();
                             startForegroundService(new Intent(MainActivity.this, CompanionService.class));
                             updateStatus("Paired " + baseUrl + ".");
                         } else {
@@ -601,6 +660,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         CompanionService.removePairing(prefs, baseUrl);
+                        pairingReachability.remove(normalizeJetKvmUrl(baseUrl));
                         refreshPairingControls();
                         startForegroundService(new Intent(MainActivity.this, CompanionService.class));
                         if (result.backendUpdated) {
@@ -680,6 +740,111 @@ public class MainActivity extends Activity {
             }
         }
         return PairResult.error("approval timed out");
+    }
+
+    private void refreshPairingReachability() {
+        final CompanionService.CompanionPairing[] pairings = CompanionService.getSavedPairings(prefs);
+        if (pairings.length == 0) {
+            pairingReachability.clear();
+            refreshPairingControls();
+            return;
+        }
+
+        for (CompanionService.CompanionPairing pairing : pairings) {
+            final String url = normalizeJetKvmUrl(pairing.url);
+            pairingReachability.put(url, null);
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    final boolean reachable = isJetKvmEndpointReachable(url);
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            pairingReachability.put(url, reachable);
+                            refreshPairingControls();
+                        }
+                    });
+                }
+            }, "JetKVM-reachability").start();
+        }
+        refreshPairingControls();
+    }
+
+    private static boolean isJetKvmEndpointReachable(String baseUrl) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(normalizeJetKvmUrl(baseUrl) + "/companion/pair/requests");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+            conn.setRequestMethod("GET");
+            conn.getResponseCode();
+            return true;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void applyReachabilityStateText(TextView state, Boolean reachable) {
+        if (reachable == null) {
+            state.setTextColor(Color.rgb(148, 163, 184));
+            state.setText("Checking");
+        } else if (reachable) {
+            state.setTextColor(Color.rgb(34, 197, 94));
+            state.setText("Paired");
+        } else {
+            state.setTextColor(Color.rgb(239, 68, 68));
+            state.setText("Unreachable");
+        }
+    }
+
+    private void showPairingOtp(final String otp) {
+        if (pairingOtpTimer != null) {
+            pairingOtpTimer.cancel();
+            pairingOtpTimer = null;
+        }
+        if (pairingOtpPanel == null || pairingOtpCode == null || pairingOtpCountdown == null) {
+            return;
+        }
+        pairingOtpCode.setText(otp);
+        pairingOtpPanel.setVisibility(View.VISIBLE);
+        updatePairingOtpCountdown(PAIRING_OTP_TTL_MS);
+        pairingOtpTimer = new CountDownTimer(PAIRING_OTP_TTL_MS, 1000) {
+            @Override
+            public void onTick(long millisUntilFinished) {
+                updatePairingOtpCountdown(millisUntilFinished);
+            }
+
+            @Override
+            public void onFinish() {
+                hidePairingOtp();
+                updateStatus("Pairing code expired.");
+            }
+        };
+        pairingOtpTimer.start();
+    }
+
+    private void updatePairingOtpCountdown(long millisRemaining) {
+        if (pairingOtpCountdown == null) {
+            return;
+        }
+        long secondsRemaining = Math.max(0, (millisRemaining + 999) / 1000);
+        pairingOtpCountdown.setText("Expires in " + secondsRemaining + " seconds");
+    }
+
+    private void hidePairingOtp() {
+        if (pairingOtpTimer != null) {
+            pairingOtpTimer.cancel();
+            pairingOtpTimer = null;
+        }
+        if (pairingOtpPanel != null) {
+            pairingOtpPanel.setVisibility(View.GONE);
+        }
+        if (pairingOtpCode != null) {
+            pairingOtpCode.setText("");
+        }
     }
 
     private PairResult parsePairingResponse(String response, String privateKey) {
