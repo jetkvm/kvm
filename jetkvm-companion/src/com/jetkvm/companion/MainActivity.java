@@ -503,12 +503,15 @@ public class MainActivity extends Activity {
 
         if (notificationButton != null) {
             notificationButton.setText("Grant permission to post notifications");
+            notificationButton.setVisibility(notificationGranted ? View.GONE : View.VISIBLE);
         }
         if (overlayButton != null) {
             overlayButton.setText("Grant permission to display over other apps");
+            overlayButton.setVisibility(overlayGranted ? View.GONE : View.VISIBLE);
         }
         if (batteryButton != null) {
             batteryButton.setText("Grant unrestricted battery usage");
+            batteryButton.setVisibility(batteryGranted ? View.GONE : View.VISIBLE);
         }
 
         String notificationStatus = notificationGranted

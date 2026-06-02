@@ -59,6 +59,21 @@ const permissionLabels: Record<string, string> = {
   battery: "Unrestricted battery",
 };
 
+const permissionDescriptors = [
+  {
+    key: "notifications",
+    granted: (companion: CompanionStatus) => !!companion.notification_permission_granted,
+  },
+  {
+    key: "overlay",
+    granted: (companion: CompanionStatus) => !!companion.display_over_apps_permission_granted,
+  },
+  {
+    key: "battery",
+    granted: (companion: CompanionStatus) => !!companion.battery_unrestricted_granted,
+  },
+] as const;
+
 export default function CompanionRequestCenter({
   compact = false,
   forceOpen,
@@ -246,7 +261,7 @@ export default function CompanionRequestCenter({
         candidates.push({ ip, source: "companion" });
       }
     }
-    return candidates;
+    return candidates.sort((a, b) => candidateIPSortKey(a).localeCompare(candidateIPSortKey(b)));
   }, [companions, pairedHosts, visibleIps]);
 
   const count = requests.length;
@@ -404,18 +419,20 @@ export default function CompanionRequestCenter({
                       </div>
                       {companion.has_report && (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {(["notifications", "overlay", "battery"] as const).map(permission => (
-                            <button
-                              key={permission}
-                              type="button"
-                              className="rounded-md bg-blue-700 px-2 py-1 text-xs font-medium text-white hover:bg-blue-800"
-                              onClick={() =>
-                                void requestPermission(companion.companion_id, permission)
-                              }
-                            >
-                              Request {permissionLabels[permission]}
-                            </button>
-                          ))}
+                          {permissionDescriptors
+                            .filter(permission => !permission.granted(companion))
+                            .map(permission => (
+                              <button
+                                key={permission.key}
+                                type="button"
+                                className="rounded-md bg-blue-700 px-2 py-1 text-xs font-medium text-white hover:bg-blue-800"
+                                onClick={() =>
+                                  void requestPermission(companion.companion_id, permission.key)
+                                }
+                              >
+                                Request {permissionLabels[permission.key]}
+                              </button>
+                            ))}
                         </div>
                       )}
                     </div>
@@ -575,4 +592,8 @@ function Detail({ label, value }: { label: string; value: string }) {
       <span className="min-w-0 break-all text-slate-700 dark:text-slate-200">{value}</span>
     </div>
   );
+}
+
+function candidateIPSortKey(entry: VisibleIP) {
+  return `${entry.hostname || ""} ${entry.ip || ""} ${entry.source || ""} ${entry.interface || ""}`.toLowerCase();
 }

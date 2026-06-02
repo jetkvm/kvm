@@ -937,7 +937,33 @@ func getCompanionStatusSnapshots() []companionStatusSnapshot {
 		status.PendingActions = pendingCompanionActionsLocked(companionID)
 		snapshots = append(snapshots, status)
 	}
+	slices.SortFunc(snapshots, func(a, b companionStatusSnapshot) int {
+		aKey := companionSortKey(a)
+		bKey := companionSortKey(b)
+		if aKey < bKey {
+			return -1
+		}
+		if aKey > bKey {
+			return 1
+		}
+		return 0
+	})
 	return snapshots
+}
+
+func companionSortKey(status companionStatusSnapshot) string {
+	for _, value := range []string{
+		status.RemoteHostname,
+		status.RemoteAddr,
+		status.JetKVMUSBIdentity,
+		status.CompanionID,
+	} {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func queueCompanionPendingAction(companionID string, action string) {
@@ -1031,6 +1057,17 @@ func getVisibleLocalIPEntries() []companionIPEntry {
 			})
 		}
 	}
+	slices.SortFunc(entries, func(a, b companionIPEntry) int {
+		aKey := strings.ToLower(strings.TrimSpace(a.Hostname + " " + a.IP + " " + a.Interface))
+		bKey := strings.ToLower(strings.TrimSpace(b.Hostname + " " + b.IP + " " + b.Interface))
+		if aKey < bKey {
+			return -1
+		}
+		if aKey > bKey {
+			return 1
+		}
+		return 0
+	})
 	return entries
 }
 
