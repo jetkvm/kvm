@@ -455,6 +455,15 @@ export default function CompanionRequestCenter({
               collapsed={visibleIpsCollapsed}
               onToggle={() => setVisibleIpsCollapsed(!visibleIpsCollapsed)}
             >
+              <div className="mb-2 flex justify-end">
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  onClick={() => void refresh()}
+                >
+                  Refresh
+                </button>
+              </div>
               {candidateIps.length === 0 ? (
                 <Muted>No unpaired companion IPs visible.</Muted>
               ) : (
@@ -593,16 +602,16 @@ function Section({
       {collapsible ? (
         <button
           type="button"
-          className="mb-2 flex w-full items-center gap-1 text-left text-sm font-semibold text-slate-900 dark:text-white"
+          className="mb-2 flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-900 dark:text-white"
           onClick={onToggle}
           aria-expanded={!collapsed}
         >
+          <span>{title}</span>
           {collapsed ? (
             <LuChevronRight className="h-4 w-4 shrink-0" />
           ) : (
             <LuChevronDown className="h-4 w-4 shrink-0" />
           )}
-          <span>{title}</span>
         </button>
       ) : (
         <div className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">{title}</div>

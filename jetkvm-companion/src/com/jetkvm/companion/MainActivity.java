@@ -2,6 +2,7 @@ package com.jetkvm.companion;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -69,6 +70,7 @@ public class MainActivity extends Activity {
     private LinearLayout visibleIpsList;
     private Button pairingsToggleButton;
     private Button visibleIpsToggleButton;
+    private Button refreshVisibleIpsButton;
     private Button notificationButton;
     private Button overlayButton;
     private Button batteryButton;
@@ -304,25 +306,12 @@ public class MainActivity extends Activity {
         root.addView(pairingsList, matchWrap());
         refreshPairingControls();
 
-        LinearLayout visibleIpsHeader = addCollapsibleHeaderRow(root, "This device LAN/VPN IPs", KEY_VISIBLE_IPS_COLLAPSED, new Runnable() {
+        addCollapsibleHeaderRow(root, "This device LAN/VPN IPs", KEY_VISIBLE_IPS_COLLAPSED, new Runnable() {
             @Override
             public void run() {
                 updateVisibleIpsVisibility();
             }
         });
-
-        Button refreshVisibleIpsButton = new Button(this);
-        refreshVisibleIpsButton.setText("Refresh");
-        refreshVisibleIpsButton.setAllCaps(false);
-        refreshVisibleIpsButton.setTextSize(12);
-        applyButtonStyle(refreshVisibleIpsButton);
-        refreshVisibleIpsButton.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override
-            public void onClick(android.view.View v) {
-                refreshVisibleIps();
-            }
-        });
-        visibleIpsHeader.addView(refreshVisibleIpsButton, buttonWrap());
 
         visibleIpsList = new LinearLayout(this);
         visibleIpsList.setOrientation(LinearLayout.VERTICAL);
@@ -418,6 +407,11 @@ public class MainActivity extends Activity {
         button.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(51, 65, 85)));
     }
 
+    private void applyDisclosureButtonStyle(Button button) {
+        button.setTextColor(Color.rgb(203, 213, 225));
+        button.setBackgroundTintList(ColorStateList.valueOf(JETKVM_BACKGROUND));
+    }
+
     private Button addCollapsibleHeader(LinearLayout root, String title, final String key, final Runnable onToggle) {
         LinearLayout row = addCollapsibleHeaderRow(root, title, key, onToggle);
         Object tag = row.getTag();
@@ -445,8 +439,10 @@ public class MainActivity extends Activity {
         toggleButton.setTextSize(12);
         toggleButton.setMinHeight(0);
         toggleButton.setMinimumHeight(0);
-        toggleButton.setPadding(dp(10), 0, dp(10), 0);
-        applyButtonStyle(toggleButton);
+        toggleButton.setMinWidth(0);
+        toggleButton.setMinimumWidth(0);
+        toggleButton.setPadding(dp(8), 0, dp(8), 0);
+        applyDisclosureButtonStyle(toggleButton);
         updateCollapsibleButtonText(toggleButton, key);
         toggleButton.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
@@ -472,7 +468,7 @@ public class MainActivity extends Activity {
 
     private void updateCollapsibleButtonText(Button button, String key) {
         if (button == null) return;
-        button.setText(isSectionCollapsed(key) ? "Show" : "Hide");
+        button.setText(isSectionCollapsed(key) ? ">" : "v");
     }
 
     private void updatePairingsVisibility() {
@@ -669,6 +665,22 @@ public class MainActivity extends Activity {
     private void refreshVisibleIps() {
         if (visibleIpsList == null) return;
         visibleIpsList.removeAllViews();
+
+        refreshVisibleIpsButton = new Button(this);
+        refreshVisibleIpsButton.setText("Refresh");
+        refreshVisibleIpsButton.setAllCaps(false);
+        refreshVisibleIpsButton.setTextSize(12);
+        refreshVisibleIpsButton.setMinHeight(0);
+        refreshVisibleIpsButton.setMinimumHeight(0);
+        refreshVisibleIpsButton.setPadding(dp(10), 0, dp(10), 0);
+        applyButtonStyle(refreshVisibleIpsButton);
+        refreshVisibleIpsButton.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                refreshVisibleIps();
+            }
+        });
+        visibleIpsList.addView(refreshVisibleIpsButton, tightWrap());
 
         String[] ips = CompanionService.getVisibleLocalIPs();
         int visibleCount = 0;
@@ -1221,14 +1233,36 @@ public class MainActivity extends Activity {
     }
 
     private void requestBatteryOptimizationExemption() {
-        Intent intent = new Intent(
-            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-            Uri.parse("package:" + getPackageName())
-        );
+        Intent detailIntent = new Intent("android.settings.VIEW_ADVANCED_POWER_USAGE_DETAIL");
+        detailIntent.setComponent(new ComponentName(
+            "com.android.settings",
+            "com.android.settings.fuelgauge.AdvancedPowerUsageDetailActivity"
+        ));
+        detailIntent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+        if (startSettingsActivity(detailIntent)) {
+            updateStatus("Open Battery usage and set JetKVM Companion to Unrestricted.");
+            return;
+        }
+
+        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+        intent.setData(Uri.parse("package:" + getPackageName()));
+        if (startSettingsActivity(intent)) {
+            updateStatus("Allow JetKVM Companion to run unrestricted in the background.");
+            return;
+        }
+
+        openAppSettings();
+        updateStatus("Open Battery, then select Unrestricted for JetKVM Companion.");
+    }
+
+    private boolean startSettingsActivity(Intent intent) {
         try {
             startActivity(intent);
+            return true;
         } catch (ActivityNotFoundException e) {
-            openAppSettings();
+            return false;
+        } catch (SecurityException e) {
+            return false;
         }
     }
 
