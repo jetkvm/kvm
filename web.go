@@ -148,24 +148,25 @@ type companionIPEntry struct {
 }
 
 type companionStatusSnapshot struct {
-	CompanionID                      string          `json:"companion_id"`
-	RemoteAddr                       string          `json:"remote_addr,omitempty"`
-	RemoteHostname                   string          `json:"remote_hostname,omitempty"`
-	HasReport                        bool            `json:"has_report"`
-	LastSeenUnixMilli                int64           `json:"last_seen_unix_milli,omitempty"`
-	NotificationPermissionGranted    bool            `json:"notification_permission_granted"`
-	DisplayOverAppsPermissionGranted bool            `json:"display_over_apps_permission_granted"`
-	BatteryUnrestrictedGranted       bool            `json:"battery_unrestricted_granted"`
-	PairedJetKVMURLs                 []string        `json:"paired_jetkvm_urls,omitempty"`
-	VisibleIPs                       []string        `json:"visible_ips,omitempty"`
-	JetKVMUSBIdentity                string          `json:"jetkvm_usb_identity,omitempty"`
-	TargetType                       string          `json:"target_type,omitempty"`
-	PreferredMouseMode               string          `json:"preferred_mouse_mode,omitempty"`
-	DisplayWidth                     int             `json:"display_width,omitempty"`
-	DisplayHeight                    int             `json:"display_height,omitempty"`
-	Evidence                         []string        `json:"evidence,omitempty"`
-	Peripherals                      map[string]bool `json:"peripherals,omitempty"`
-	PendingActions                   []string        `json:"pending_actions,omitempty"`
+	CompanionID                      string             `json:"companion_id"`
+	RemoteAddr                       string             `json:"remote_addr,omitempty"`
+	RemoteHostname                   string             `json:"remote_hostname,omitempty"`
+	HasReport                        bool               `json:"has_report"`
+	LastSeenUnixMilli                int64              `json:"last_seen_unix_milli,omitempty"`
+	NotificationPermissionGranted    bool               `json:"notification_permission_granted"`
+	DisplayOverAppsPermissionGranted bool               `json:"display_over_apps_permission_granted"`
+	BatteryUnrestrictedGranted       bool               `json:"battery_unrestricted_granted"`
+	PairedJetKVMURLs                 []string           `json:"paired_jetkvm_urls,omitempty"`
+	VisibleIPs                       []string           `json:"visible_ips,omitempty"`
+	VisibleIPEntries                 []companionIPEntry `json:"visible_ip_entries,omitempty"`
+	JetKVMUSBIdentity                string             `json:"jetkvm_usb_identity,omitempty"`
+	TargetType                       string             `json:"target_type,omitempty"`
+	PreferredMouseMode               string             `json:"preferred_mouse_mode,omitempty"`
+	DisplayWidth                     int                `json:"display_width,omitempty"`
+	DisplayHeight                    int                `json:"display_height,omitempty"`
+	Evidence                         []string           `json:"evidence,omitempty"`
+	Peripherals                      map[string]bool    `json:"peripherals,omitempty"`
+	PendingActions                   []string           `json:"pending_actions,omitempty"`
 }
 
 var (
@@ -904,6 +905,7 @@ func rememberCompanionStatus(companionID string, remoteAddr string, declaration 
 		BatteryUnrestrictedGranted:       declaration.BatteryUnrestrictedGranted,
 		PairedJetKVMURLs:                 cleanStringList(declaration.PairedJetKVMURLs),
 		VisibleIPs:                       cleanStringList(declaration.VisibleIPs),
+		VisibleIPEntries:                 companionVisibleIPEntries(declaration.VisibleIPs),
 		JetKVMUSBIdentity:                strings.TrimSpace(declaration.JetKVMUSBIdentity),
 		TargetType:                       strings.TrimSpace(declaration.TargetType),
 		PreferredMouseMode:               strings.TrimSpace(declaration.PreferredMouseMode),
@@ -916,6 +918,19 @@ func rememberCompanionStatus(companionID string, remoteAddr string, declaration 
 	companionStatusLock.Lock()
 	companionStatuses[companionID] = status
 	companionStatusLock.Unlock()
+}
+
+func companionVisibleIPEntries(ips []string) []companionIPEntry {
+	cleaned := cleanStringList(ips)
+	entries := make([]companionIPEntry, 0, len(cleaned))
+	for _, ip := range cleaned {
+		entries = append(entries, companionIPEntry{
+			IP:       ip,
+			Hostname: resolveHostname(ip),
+			Source:   "paired_device",
+		})
+	}
+	return entries
 }
 
 func getCompanionStatusSnapshots() []companionStatusSnapshot {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { LuBell, LuRefreshCw, LuX } from "react-icons/lu";
+import { LuBell, LuChevronDown, LuChevronRight, LuRefreshCw, LuX } from "react-icons/lu";
 
 import api from "@/api";
 import { DEVICE_API } from "@/ui.config";
@@ -27,6 +27,7 @@ type CompanionStatus = {
   battery_unrestricted_granted?: boolean;
   paired_jetkvm_urls?: string[];
   visible_ips?: string[];
+  visible_ip_entries?: VisibleIP[];
   jetkvm_usb_identity?: string;
   target_type?: string;
   preferred_mouse_mode?: string;
@@ -74,6 +75,9 @@ const permissionDescriptors = [
   },
 ] as const;
 
+const PAIRED_SECTION_STORAGE_KEY = "jetkvm.companion.pairedCollapsed";
+const VISIBLE_IPS_SECTION_STORAGE_KEY = "jetkvm.companion.visibleIpsCollapsed";
+
 export default function CompanionRequestCenter({
   compact = false,
   forceOpen,
@@ -92,6 +96,10 @@ export default function CompanionRequestCenter({
   const [requests, setRequests] = useState<CompanionPairRequest[]>([]);
   const [companions, setCompanions] = useState<CompanionStatus[]>([]);
   const [visibleIps, setVisibleIps] = useState<VisibleIP[]>([]);
+  const [pairedCollapsed, setPairedCollapsed] = usePersistentCollapsed(PAIRED_SECTION_STORAGE_KEY);
+  const [visibleIpsCollapsed, setVisibleIpsCollapsed] = usePersistentCollapsed(
+    VISIBLE_IPS_SECTION_STORAGE_KEY,
+  );
   const [otpById, setOtpById] = useState<Record<string, string>>({});
   const [companionUrl, setCompanionUrl] = useState("");
   const [initiatedOtp, setInitiatedOtp] = useState("");
@@ -255,10 +263,19 @@ export default function CompanionRequestCenter({
       candidates.push(entry);
     }
     for (const companion of companions) {
-      for (const ip of companion.visible_ips || []) {
-        if (!ip || seen.has(ip) || pairedHosts.has(ip)) continue;
-        seen.add(ip);
-        candidates.push({ ip, source: "companion" });
+      const companionEntries =
+        companion.visible_ip_entries ||
+        (companion.visible_ips || []).map(ip => ({
+          ip,
+          source: "paired_device",
+        }));
+      for (const entry of companionEntries) {
+        if (!entry.ip || seen.has(entry.ip) || pairedHosts.has(entry.ip)) continue;
+        seen.add(entry.ip);
+        candidates.push({
+          ...entry,
+          source: entry.source || "paired_device",
+        });
       }
     }
     return candidates.sort((a, b) => candidateIPSortKey(a).localeCompare(candidateIPSortKey(b)));
@@ -337,7 +354,11 @@ export default function CompanionRequestCenter({
               </div>
             </div>
 
-            <Section title="Paired companions">
+            <Section
+              title="Paired companions"
+              collapsed={pairedCollapsed}
+              onToggle={() => setPairedCollapsed(!pairedCollapsed)}
+            >
               {companions.length === 0 ? (
                 <Muted>No paired companions.</Muted>
               ) : (
@@ -441,7 +462,11 @@ export default function CompanionRequestCenter({
               )}
             </Section>
 
-            <Section title="Visible LAN/VPN IPs">
+            <Section
+              title="Visible LAN/VPN IPs"
+              collapsed={visibleIpsCollapsed}
+              onToggle={() => setVisibleIpsCollapsed(!visibleIpsCollapsed)}
+            >
               {candidateIps.length === 0 ? (
                 <Muted>No unpaired IPs visible.</Muted>
               ) : (
@@ -461,7 +486,9 @@ export default function CompanionRequestCenter({
                           </div>
                         )}
                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {[entry.source, entry.interface].filter(Boolean).join(" / ") || "visible"}
+                          {[sourceLabel(entry.source), entry.interface]
+                            .filter(Boolean)
+                            .join(" / ") || "visible"}
                         </div>
                       </div>
                       <button
@@ -561,11 +588,38 @@ export default function CompanionRequestCenter({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  children,
+  collapsed,
+  onToggle,
+}: {
+  title: string;
+  children: ReactNode;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
+  const collapsible = collapsed !== undefined && !!onToggle;
   return (
     <div className="mt-3 border-t border-slate-800/10 pt-3 first:mt-0 first:border-t-0 first:pt-0 dark:border-slate-300/20">
-      <div className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">{title}</div>
-      {children}
+      {collapsible ? (
+        <button
+          type="button"
+          className="mb-2 flex w-full items-center gap-1 text-left text-sm font-semibold text-slate-900 dark:text-white"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? (
+            <LuChevronRight className="h-4 w-4 shrink-0" />
+          ) : (
+            <LuChevronDown className="h-4 w-4 shrink-0" />
+          )}
+          <span>{title}</span>
+        </button>
+      ) : (
+        <div className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">{title}</div>
+      )}
+      {!collapsed && children}
     </div>
   );
 }
@@ -596,4 +650,29 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function candidateIPSortKey(entry: VisibleIP) {
   return `${entry.hostname || ""} ${entry.ip || ""} ${entry.source || ""} ${entry.interface || ""}`.toLowerCase();
+}
+
+function sourceLabel(source?: string) {
+  if (source === "backend") return "JetKVM";
+  if (source === "paired_device") return "Visible from paired device";
+  return source || "";
+}
+
+function usePersistentCollapsed(key: string) {
+  const [collapsed, setCollapsedState] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(key) !== "expanded";
+  });
+
+  const setCollapsed = useCallback(
+    (next: boolean) => {
+      setCollapsedState(next);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(key, next ? "collapsed" : "expanded");
+      }
+    },
+    [key],
+  );
+
+  return [collapsed, setCollapsed] as const;
 }

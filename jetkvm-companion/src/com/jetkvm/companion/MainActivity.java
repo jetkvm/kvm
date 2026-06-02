@@ -56,6 +56,8 @@ public class MainActivity extends Activity {
     static final String EXTRA_PERMISSION_ACTIONS = "permission_actions";
     private static final String EXTRA_JETKVM_URL = "jetkvm_url";
     private static final String EXTRA_PAIR_REQUEST_ID = "pair_request_id";
+    private static final String KEY_PAIRINGS_COLLAPSED = "ui_pairings_collapsed";
+    private static final String KEY_VISIBLE_IPS_COLLAPSED = "ui_visible_ips_collapsed";
     private static final SecureRandom PAIRING_RANDOM = new SecureRandom();
 
     private SharedPreferences prefs;
@@ -65,6 +67,8 @@ public class MainActivity extends Activity {
     private TextView pairJetkvmState;
     private LinearLayout pairingsList;
     private LinearLayout visibleIpsList;
+    private Button pairingsToggleButton;
+    private Button visibleIpsToggleButton;
     private Button notificationButton;
     private Button overlayButton;
     private Button batteryButton;
@@ -288,20 +292,24 @@ public class MainActivity extends Activity {
         ));
         root.addView(pairActionRow, matchWrap());
 
-        LinearLayout visibleIpsHeader = new LinearLayout(this);
-        visibleIpsHeader.setOrientation(LinearLayout.HORIZONTAL);
-        visibleIpsHeader.setGravity(Gravity.CENTER_VERTICAL);
+        pairingsToggleButton = addCollapsibleHeader(root, "Paired JetKVM endpoints", KEY_PAIRINGS_COLLAPSED, new Runnable() {
+            @Override
+            public void run() {
+                updatePairingsVisibility();
+            }
+        });
 
-        TextView visibleIpsLabel = new TextView(this);
-        visibleIpsLabel.setText("Visible LAN/VPN IPs");
-        visibleIpsLabel.setTextColor(Color.WHITE);
-        visibleIpsLabel.setTextSize(16);
-        visibleIpsLabel.setTextIsSelectable(true);
-        visibleIpsHeader.addView(visibleIpsLabel, new LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1
-        ));
+        pairingsList = new LinearLayout(this);
+        pairingsList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(pairingsList, matchWrap());
+        refreshPairingControls();
+
+        LinearLayout visibleIpsHeader = addCollapsibleHeaderRow(root, "Visible LAN/VPN IPs", KEY_VISIBLE_IPS_COLLAPSED, new Runnable() {
+            @Override
+            public void run() {
+                updateVisibleIpsVisibility();
+            }
+        });
 
         Button refreshVisibleIpsButton = new Button(this);
         refreshVisibleIpsButton.setText("Refresh");
@@ -315,17 +323,11 @@ public class MainActivity extends Activity {
             }
         });
         visibleIpsHeader.addView(refreshVisibleIpsButton, buttonWrap());
-        root.addView(visibleIpsHeader, matchWrap());
 
         visibleIpsList = new LinearLayout(this);
         visibleIpsList.setOrientation(LinearLayout.VERTICAL);
         root.addView(visibleIpsList, matchWrap());
         refreshVisibleIps();
-
-        pairingsList = new LinearLayout(this);
-        pairingsList.setOrientation(LinearLayout.VERTICAL);
-        root.addView(pairingsList, matchWrap());
-        refreshPairingControls();
         updatePairButtonState();
 
         notificationButton = new Button(this);
@@ -414,6 +416,77 @@ public class MainActivity extends Activity {
     private void applyDisabledButtonStyle(Button button) {
         button.setTextColor(Color.rgb(203, 213, 225));
         button.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(51, 65, 85)));
+    }
+
+    private Button addCollapsibleHeader(LinearLayout root, String title, final String key, final Runnable onToggle) {
+        LinearLayout row = addCollapsibleHeaderRow(root, title, key, onToggle);
+        Object tag = row.getTag();
+        return tag instanceof Button ? (Button) tag : null;
+    }
+
+    private LinearLayout addCollapsibleHeaderRow(LinearLayout root, String title, final String key, final Runnable onToggle) {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView label = new TextView(this);
+        label.setText(title);
+        label.setTextColor(Color.WHITE);
+        label.setTextSize(16);
+        label.setTextIsSelectable(true);
+        header.addView(label, new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1
+        ));
+
+        final Button toggleButton = new Button(this);
+        toggleButton.setAllCaps(false);
+        toggleButton.setTextSize(12);
+        toggleButton.setMinHeight(0);
+        toggleButton.setMinimumHeight(0);
+        toggleButton.setPadding(dp(10), 0, dp(10), 0);
+        applyButtonStyle(toggleButton);
+        updateCollapsibleButtonText(toggleButton, key);
+        toggleButton.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                boolean nextCollapsed = !isSectionCollapsed(key);
+                prefs.edit().putBoolean(key, nextCollapsed).apply();
+                updateCollapsibleButtonText(toggleButton, key);
+                if (onToggle != null) onToggle.run();
+            }
+        });
+        header.addView(toggleButton, buttonWrap());
+        header.setTag(toggleButton);
+        if (KEY_VISIBLE_IPS_COLLAPSED.equals(key)) {
+            visibleIpsToggleButton = toggleButton;
+        }
+        root.addView(header, matchWrap());
+        return header;
+    }
+
+    private boolean isSectionCollapsed(String key) {
+        return prefs.getBoolean(key, true);
+    }
+
+    private void updateCollapsibleButtonText(Button button, String key) {
+        if (button == null) return;
+        button.setText(isSectionCollapsed(key) ? "Show" : "Hide");
+    }
+
+    private void updatePairingsVisibility() {
+        if (pairingsList != null) {
+            pairingsList.setVisibility(isSectionCollapsed(KEY_PAIRINGS_COLLAPSED) ? View.GONE : View.VISIBLE);
+        }
+        updateCollapsibleButtonText(pairingsToggleButton, KEY_PAIRINGS_COLLAPSED);
+    }
+
+    private void updateVisibleIpsVisibility() {
+        if (visibleIpsList != null) {
+            visibleIpsList.setVisibility(isSectionCollapsed(KEY_VISIBLE_IPS_COLLAPSED) ? View.GONE : View.VISIBLE);
+        }
+        updateCollapsibleButtonText(visibleIpsToggleButton, KEY_VISIBLE_IPS_COLLAPSED);
     }
 
     private void updateStatus(String message) {
@@ -590,6 +663,7 @@ public class MainActivity extends Activity {
         }
         updatePairButtonState();
         refreshVisibleIps();
+        updatePairingsVisibility();
     }
 
     private void refreshVisibleIps() {
@@ -652,6 +726,7 @@ public class MainActivity extends Activity {
             empty.setTextIsSelectable(true);
             visibleIpsList.addView(empty, tightWrap());
         }
+        updateVisibleIpsVisibility();
     }
 
     private static String hostFromUrl(String rawUrl) {
