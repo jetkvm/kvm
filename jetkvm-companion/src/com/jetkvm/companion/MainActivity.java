@@ -20,6 +20,7 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -127,6 +128,9 @@ public class MainActivity extends Activity {
 
     private android.view.View createSettingsView() {
         int padding = dp(24);
+        final int horizontalPadding = padding;
+        final int topPadding = dp(44);
+        final int bottomPadding = padding;
 
         ScrollView scroller = new ScrollView(this);
         scroller.setFillViewport(true);
@@ -137,8 +141,23 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(padding, dp(44), padding, padding);
+        root.setPadding(horizontalPadding, topPadding, horizontalPadding, bottomPadding);
         root.setBackgroundColor(JETKVM_BACKGROUND);
+        if (Build.VERSION.SDK_INT >= 20) {
+            root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+                @Override
+                public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                    v.setPadding(
+                        horizontalPadding,
+                        topPadding + insets.getSystemWindowInsetTop(),
+                        horizontalPadding,
+                        bottomPadding + insets.getSystemWindowInsetBottom()
+                    );
+                    return insets;
+                }
+            });
+            root.requestApplyInsets();
+        }
         scroller.addView(root, new ScrollView.LayoutParams(
             ScrollView.LayoutParams.MATCH_PARENT,
             ScrollView.LayoutParams.WRAP_CONTENT

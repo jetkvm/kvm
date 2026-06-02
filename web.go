@@ -142,6 +142,7 @@ type companionPermissionActionBody struct {
 
 type companionIPEntry struct {
 	IP        string `json:"ip"`
+	Hostname  string `json:"hostname,omitempty"`
 	Source    string `json:"source,omitempty"`
 	Interface string `json:"interface,omitempty"`
 }
@@ -149,6 +150,8 @@ type companionIPEntry struct {
 type companionStatusSnapshot struct {
 	CompanionID                      string          `json:"companion_id"`
 	RemoteAddr                       string          `json:"remote_addr,omitempty"`
+	RemoteHostname                   string          `json:"remote_hostname,omitempty"`
+	HasReport                        bool            `json:"has_report"`
 	LastSeenUnixMilli                int64           `json:"last_seen_unix_milli,omitempty"`
 	NotificationPermissionGranted    bool            `json:"notification_permission_granted"`
 	DisplayOverAppsPermissionGranted bool            `json:"display_over_apps_permission_granted"`
@@ -315,6 +318,7 @@ func setupRouter() *gin.Engine {
 		protected.POST("/companion/pair/:id/reject", handleCompanionPairReject)
 		protected.GET("/companion/status", handleCompanionStatus)
 		protected.POST("/companion/:id/request-permission", handleCompanionPermissionRequest)
+		protected.POST("/companion/:id/unpair-admin", handleCompanionUnpairOneAdmin)
 		protected.POST("/companion/unpair-admin", handleCompanionUnpairAdmin)
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
@@ -521,6 +525,25 @@ func handleCompanionPermissionRequest(c *gin.Context) {
 	}
 	queueCompanionPendingAction(companionID, action)
 	c.JSON(http.StatusAccepted, gin.H{"queued": true, "action": action})
+}
+
+func handleCompanionUnpairOneAdmin(c *gin.Context) {
+	companionID := strings.TrimSpace(c.Param("id"))
+	if companionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "companion id is required"})
+		return
+	}
+	if _, ok := companionAuthorizations()[companionID]; !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "companion not paired"})
+		return
+	}
+	removeCompanionAuthorization(companionID)
+	forgetCompanionStatus(companionID)
+	if len(companionAuthorizations()) == 0 {
+		clearCompanionTargetMetadata()
+	}
+	_ = SaveConfig()
+	c.JSON(http.StatusOK, gin.H{"paired": len(companionAuthorizations()) > 0})
 }
 
 func handleCompanionPairClaim(c *gin.Context) {
@@ -873,6 +896,8 @@ func rememberCompanionStatus(companionID string, remoteAddr string, declaration 
 	status := companionStatusSnapshot{
 		CompanionID:                      companionID,
 		RemoteAddr:                       remoteAddr,
+		RemoteHostname:                   hostnameForAddress(remoteAddr),
+		HasReport:                        true,
 		LastSeenUnixMilli:                time.Now().UnixMilli(),
 		NotificationPermissionGranted:    declaration.NotificationPermissionGranted,
 		DisplayOverAppsPermissionGranted: declaration.DisplayOverAppsPermissionGranted,
@@ -902,6 +927,10 @@ func getCompanionStatusSnapshots() []companionStatusSnapshot {
 	for companionID := range authorizations {
 		status := companionStatuses[companionID]
 		status.CompanionID = companionID
+		status.HasReport = status.LastSeenUnixMilli > 0
+		if status.RemoteHostname == "" && status.RemoteAddr != "" {
+			status.RemoteHostname = hostnameForAddress(status.RemoteAddr)
+		}
 		if status.Peripherals == nil {
 			status.Peripherals = map[string]bool{}
 		}
@@ -994,10 +1023,41 @@ func getVisibleLocalIPEntries() []companionIPEntry {
 				continue
 			}
 			seen[text] = true
-			entries = append(entries, companionIPEntry{IP: text, Source: "backend", Interface: iface.Name})
+			entries = append(entries, companionIPEntry{
+				IP:        text,
+				Hostname:  resolveHostname(text),
+				Source:    "backend",
+				Interface: iface.Name,
+			})
 		}
 	}
 	return entries
+}
+
+func hostnameForAddress(address string) string {
+	host := strings.TrimSpace(address)
+	if host == "" {
+		return ""
+	}
+	if splitHost, _, err := net.SplitHostPort(host); err == nil {
+		host = splitHost
+	}
+	return resolveHostname(host)
+}
+
+func resolveHostname(ipOrHost string) string {
+	ipOrHost = strings.TrimSpace(ipOrHost)
+	if ipOrHost == "" || net.ParseIP(ipOrHost) == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	names, err := net.DefaultResolver.LookupAddr(ctx, ipOrHost)
+	if err != nil || len(names) == 0 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimSpace(names[0]), ".")
 }
 
 func ipFromAddr(addr net.Addr) net.IP {

@@ -19,6 +19,8 @@ type CompanionPairRequest = {
 type CompanionStatus = {
   companion_id: string;
   remote_addr?: string;
+  remote_hostname?: string;
+  has_report?: boolean;
   last_seen_unix_milli?: number;
   notification_permission_granted?: boolean;
   display_over_apps_permission_granted?: boolean;
@@ -37,6 +39,7 @@ type CompanionStatus = {
 
 type VisibleIP = {
   ip: string;
+  hostname?: string;
   source?: string;
   interface?: string;
 };
@@ -184,6 +187,19 @@ export default function CompanionRequestCenter({
     void refresh();
   }, [refresh]);
 
+  const unpairCompanion = useCallback(
+    async (companionID: string) => {
+      const resp = await api.POST(`${DEVICE_API}/companion/${companionID}/unpair-admin`, {});
+      if (!resp.ok) {
+        notifications.error("Failed to unpair companion.");
+        return;
+      }
+      notifications.success("Companion unpaired.");
+      void refresh();
+    },
+    [refresh],
+  );
+
   const requestPermission = useCallback(
     async (companionID: string, permission: string) => {
       const resp = await api.POST(`${DEVICE_API}/companion/${companionID}/request-permission`, {
@@ -316,22 +332,51 @@ export default function CompanionRequestCenter({
                       key={companion.companion_id}
                       className="rounded-md border border-slate-800/10 p-2 dark:border-slate-300/20"
                     >
-                      <div className="text-sm font-medium break-all text-slate-900 dark:text-white">
-                        {companion.remote_addr || companion.companion_id}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium break-all text-slate-900 dark:text-white">
+                            {companion.remote_hostname ||
+                              companion.remote_addr ||
+                              companion.companion_id}
+                          </div>
+                          {companion.remote_hostname && companion.remote_addr && (
+                            <div className="text-xs break-all text-slate-500 dark:text-slate-400">
+                              {companion.remote_addr}
+                            </div>
+                          )}
+                          {!companion.has_report && (
+                            <div className="text-xs font-medium text-amber-600 dark:text-amber-300">
+                              Waiting for signed status report
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          onClick={() => void unpairCompanion(companion.companion_id)}
+                        >
+                          Unpair
+                        </button>
                       </div>
                       <div className="mt-1 grid grid-cols-1 gap-1 text-xs text-slate-600 dark:text-slate-300">
-                        <StatusRow
-                          label="Notifications"
-                          ok={!!companion.notification_permission_granted}
-                        />
-                        <StatusRow
-                          label="Display over apps"
-                          ok={!!companion.display_over_apps_permission_granted}
-                        />
-                        <StatusRow
-                          label="Unrestricted battery"
-                          ok={!!companion.battery_unrestricted_granted}
-                        />
+                        {companion.has_report ? (
+                          <>
+                            <StatusRow
+                              label="Notifications"
+                              ok={!!companion.notification_permission_granted}
+                            />
+                            <StatusRow
+                              label="Display over apps"
+                              ok={!!companion.display_over_apps_permission_granted}
+                            />
+                            <StatusRow
+                              label="Unrestricted battery"
+                              ok={!!companion.battery_unrestricted_granted}
+                            />
+                          </>
+                        ) : (
+                          <Detail label="Permissions" value="Unknown" />
+                        )}
                         <Detail
                           label="Identity"
                           value={companion.jetkvm_usb_identity || "Unknown"}
@@ -357,20 +402,22 @@ export default function CompanionRequestCenter({
                           value={(companion.visible_ips || []).join(", ") || "None"}
                         />
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {(["notifications", "overlay", "battery"] as const).map(permission => (
-                          <button
-                            key={permission}
-                            type="button"
-                            className="rounded-md bg-blue-700 px-2 py-1 text-xs font-medium text-white hover:bg-blue-800"
-                            onClick={() =>
-                              void requestPermission(companion.companion_id, permission)
-                            }
-                          >
-                            Request {permissionLabels[permission]}
-                          </button>
-                        ))}
-                      </div>
+                      {companion.has_report && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(["notifications", "overlay", "battery"] as const).map(permission => (
+                            <button
+                              key={permission}
+                              type="button"
+                              className="rounded-md bg-blue-700 px-2 py-1 text-xs font-medium text-white hover:bg-blue-800"
+                              onClick={() =>
+                                void requestPermission(companion.companion_id, permission)
+                              }
+                            >
+                              Request {permissionLabels[permission]}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -388,7 +435,14 @@ export default function CompanionRequestCenter({
                       className="flex items-center gap-2 text-sm"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="break-all text-slate-900 dark:text-white">{entry.ip}</div>
+                        <div className="break-all text-slate-900 dark:text-white">
+                          {entry.hostname || entry.ip}
+                        </div>
+                        {entry.hostname && (
+                          <div className="text-xs break-all text-slate-500 dark:text-slate-400">
+                            {entry.ip}
+                          </div>
+                        )}
                         <div className="text-xs text-slate-500 dark:text-slate-400">
                           {[entry.source, entry.interface].filter(Boolean).join(" / ") || "visible"}
                         </div>
