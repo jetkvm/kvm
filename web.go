@@ -538,6 +538,7 @@ func handleCompanionUnpairOneAdmin(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "companion not paired"})
 		return
 	}
+	notifyCompanionAdminUnpair(companionID)
 	removeCompanionAuthorization(companionID)
 	forgetCompanionStatus(companionID)
 	_ = SaveConfig()
@@ -667,6 +668,7 @@ func handleCompanionUnpair(c *gin.Context) {
 }
 
 func handleCompanionUnpairAdmin(c *gin.Context) {
+	notifyAllCompanionsAdminUnpair()
 	clearCompanionPairing()
 	c.JSON(http.StatusOK, gin.H{"paired": false})
 }
@@ -959,6 +961,108 @@ func getCompanionStatusSnapshots() []companionStatusSnapshot {
 		return 0
 	})
 	return snapshots
+}
+
+func notifyAllCompanionsAdminUnpair() {
+	for companionID := range companionAuthorizations() {
+		notifyCompanionAdminUnpair(companionID)
+	}
+}
+
+func notifyCompanionAdminUnpair(companionID string) {
+	status := companionStatusForID(companionID)
+	targets := companionUnpairNotifyTargets(status)
+	if len(targets) == 0 {
+		return
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"jetkvm_urls": companionUnpairNotifyURLs(status),
+	})
+	if err != nil {
+		logger.Warn().Err(err).Str("companion_id", companionID).Msg("failed to encode companion admin unpair notification")
+		return
+	}
+	for _, target := range targets {
+		if err := postCompanionUnpairNotification(target, body); err != nil {
+			logger.Warn().
+				Err(err).
+				Str("companion_id", companionID).
+				Str("target", target).
+				Msg("failed to notify companion about admin unpair")
+		}
+	}
+}
+
+func companionStatusForID(companionID string) companionStatusSnapshot {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+	return companionStatuses[companionID]
+}
+
+func companionUnpairNotifyTargets(status companionStatusSnapshot) []string {
+	hosts := []string{}
+	if host, _, err := net.SplitHostPort(strings.TrimSpace(status.RemoteAddr)); err == nil {
+		hosts = append(hosts, host)
+	} else if status.RemoteAddr != "" {
+		hosts = append(hosts, strings.TrimSpace(status.RemoteAddr))
+	}
+	hosts = append(hosts, status.VisibleIPs...)
+	for _, entry := range status.VisibleIPEntries {
+		hosts = append(hosts, entry.IP)
+	}
+
+	targets := []string{}
+	seen := map[string]bool{}
+	for _, host := range hosts {
+		host = strings.TrimSpace(host)
+		if host == "" || seen[host] {
+			continue
+		}
+		seen[host] = true
+		targets = append(targets, "https://"+net.JoinHostPort(host, "8787")+"/pair/unpair")
+	}
+	return targets
+}
+
+func companionUnpairNotifyURLs(status companionStatusSnapshot) []string {
+	urls := []string{"https://jetkvm.local"}
+	urls = append(urls, status.PairedJetKVMURLs...)
+
+	seen := map[string]bool{}
+	cleaned := []string{}
+	for _, rawURL := range urls {
+		url := strings.TrimSpace(rawURL)
+		if url == "" || seen[url] {
+			continue
+		}
+		seen[url] = true
+		cleaned = append(cleaned, url)
+	}
+	return cleaned
+}
+
+func postCompanionUnpairNotification(target string, body []byte) error {
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	req, err := http.NewRequest(http.MethodPost, target, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func companionSortKey(status companionStatusSnapshot) string {

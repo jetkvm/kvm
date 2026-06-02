@@ -500,6 +500,8 @@ public class CompanionService extends Service implements InputManager.InputDevic
                     companionNotice = response.optString("companion_notice", "");
                     processRequestedActions(response.optJSONArray("requested_actions"));
                 }
+            } else if (status == 401 || status == 404) {
+                removeRejectedPairing(trimmedBaseUrl, status);
             }
             updateTargetDeclarationConfirmation(connected, status, hdmiReconnectRequired, companionNotice);
             Log.i(TAG, "target declaration posted url=" + trimmedBaseUrl
@@ -511,6 +513,21 @@ public class CompanionService extends Service implements InputManager.InputDevic
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    private void removeRejectedPairing(final String baseUrl, int status) {
+        SharedPreferences prefs = getCompanionPreferences(this);
+        if (!removePairing(prefs, baseUrl)) {
+            return;
+        }
+        Log.i(TAG, "removed local pairing rejected by JetKVM url=" + baseUrl + " status=" + status);
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                updateJetKvmPeripheralState("pairingRejected:" + baseUrl);
+                updateNotification();
+            }
+        });
     }
 
     private static String readResponseBody(HttpURLConnection conn) throws Exception {
@@ -1252,13 +1269,15 @@ public class CompanionService extends Service implements InputManager.InputDevic
             String body = new String(chars, 0, read);
             String jetkvmUrl = extractJsonString(body, "jetkvm_url");
             String requestId = extractJsonString(body, "request_id");
-            boolean ok = requestLine != null
+            if (requestLine != null
                 && requestLine.startsWith("POST /pair/request ")
                 && jetkvmUrl.length() > 0
-                && requestId.length() > 0;
-            if (ok) {
+                && requestId.length() > 0) {
                 showPairingRequestNotification(jetkvmUrl, requestId);
                 writePairingServerResponse(socket, 202, "{\"status\":\"pending\"}");
+            } else if (requestLine != null && requestLine.startsWith("POST /pair/unpair ")) {
+                int removed = removePairingsFromAdminUnpair(body);
+                writePairingServerResponse(socket, 200, "{\"removed\":" + removed + "}");
             } else {
                 writePairingServerResponse(socket, 400, "{\"error\":\"invalid pairing request\"}");
             }
@@ -1272,9 +1291,42 @@ public class CompanionService extends Service implements InputManager.InputDevic
         }
     }
 
+    private int removePairingsFromAdminUnpair(String body) {
+        int removed = 0;
+        try {
+            SharedPreferences prefs = getCompanionPreferences(this);
+            JSONObject payload = new JSONObject(body == null ? "{}" : body);
+            JSONArray urls = payload.optJSONArray("jetkvm_urls");
+            if (urls == null) {
+                urls = new JSONArray();
+                String url = payload.optString("jetkvm_url", "");
+                if (url.length() > 0) urls.put(url);
+            }
+            for (int i = 0; i < urls.length(); i++) {
+                String rawUrl = urls.optString(i, "");
+                if (rawUrl.length() > 0 && removePairing(prefs, rawUrl)) {
+                    removed++;
+                }
+            }
+            if (removed > 0) {
+                Log.i(TAG, "removed local pairings from backend admin unpair count=" + removed);
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        updateJetKvmPeripheralState("backendAdminUnpair");
+                        updateNotification();
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "admin unpair cleanup failed: " + e.getClass().getSimpleName());
+        }
+        return removed;
+    }
+
     private void writePairingServerResponse(Socket socket, int status, String body) throws java.io.IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        String reason = status == 202 ? "Accepted" : "Bad Request";
+        String reason = status == 202 ? "Accepted" : status == 200 ? "OK" : "Bad Request";
         OutputStream out = socket.getOutputStream();
         out.write(("HTTP/1.1 " + status + " " + reason + "\r\nContent-Type: application/json\r\nContent-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         out.write(bytes);
