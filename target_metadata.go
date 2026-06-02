@@ -142,7 +142,18 @@ func scheduleCompanionTargetExpiryCheck(leaseExpiresUnixMilli int64) {
 			logger.Warn().
 				Int64("lease_expires_unix_milli", leaseExpiresUnixMilli).
 				Msg("companion target lease expired")
-			applyDefaultEDIDFallback("companion target lease expired", true)
+			expireCompanionTargetMetadata(leaseExpiresUnixMilli)
 		}
 	}()
+}
+
+func expireCompanionTargetMetadata(leaseExpiresUnixMilli int64) {
+	targetMetadataLock.Lock()
+	defer targetMetadataLock.Unlock()
+
+	if companionTarget.LeaseExpiresUnixMilli != leaseExpiresUnixMilli {
+		return
+	}
+	companionTarget.Fresh = false
+	companionTarget.LeaseExpiresUnixMilli = 0
 }

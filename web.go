@@ -540,9 +540,6 @@ func handleCompanionUnpairOneAdmin(c *gin.Context) {
 	}
 	removeCompanionAuthorization(companionID)
 	forgetCompanionStatus(companionID)
-	if len(companionAuthorizations()) == 0 {
-		clearCompanionTargetMetadata()
-	}
 	_ = SaveConfig()
 	c.JSON(http.StatusOK, gin.H{"paired": len(companionAuthorizations()) > 0})
 }
@@ -666,7 +663,6 @@ func handleCompanionUnpair(c *gin.Context) {
 	removeCompanionAuthorization(companionID)
 	forgetCompanionStatus(companionID)
 	_ = SaveConfig()
-	clearCompanionTargetMetadata()
 	c.JSON(http.StatusOK, gin.H{"paired": false})
 }
 
@@ -817,7 +813,6 @@ func clearCompanionPairing() {
 	config.CompanionPairing.Tokens = nil
 	config.CompanionPairing.Companions = nil
 	_ = SaveConfig()
-	clearCompanionTargetMetadata()
 	clearCompanionStatuses()
 	companionPairingLock.Lock()
 	companionPairingRequest = nil

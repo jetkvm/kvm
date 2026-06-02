@@ -40,9 +40,6 @@ var dynamicDisplayModeState = struct {
 
 func applyDisplayModeForTarget(metadata TargetMetadata) {
 	if metadata.TargetType != "android" || !metadata.Fresh || metadata.DisplayWidth <= 0 || metadata.DisplayHeight <= 0 {
-		if metadata.TargetType == "android" && metadata.Source == "companion" {
-			applyDefaultEDIDFallback("companion target inactive", true)
-		}
 		return
 	}
 
