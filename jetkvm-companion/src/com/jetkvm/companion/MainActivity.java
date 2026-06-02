@@ -436,12 +436,12 @@ public class MainActivity extends Activity {
 
         final Button toggleButton = new Button(this);
         toggleButton.setAllCaps(false);
-        toggleButton.setTextSize(12);
+        toggleButton.setTextSize(22);
         toggleButton.setMinHeight(0);
         toggleButton.setMinimumHeight(0);
         toggleButton.setMinWidth(0);
         toggleButton.setMinimumWidth(0);
-        toggleButton.setPadding(dp(8), 0, dp(8), 0);
+        toggleButton.setPadding(dp(10), 0, dp(10), 0);
         applyDisclosureButtonStyle(toggleButton);
         updateCollapsibleButtonText(toggleButton, key);
         toggleButton.setOnClickListener(new android.view.View.OnClickListener() {
@@ -680,7 +680,11 @@ public class MainActivity extends Activity {
                 refreshVisibleIps();
             }
         });
-        visibleIpsList.addView(refreshVisibleIpsButton, tightWrap());
+        LinearLayout refreshRow = new LinearLayout(this);
+        refreshRow.setOrientation(LinearLayout.HORIZONTAL);
+        refreshRow.setGravity(Gravity.LEFT);
+        refreshRow.addView(refreshVisibleIpsButton, buttonWrap());
+        visibleIpsList.addView(refreshRow, tightWrap());
 
         String[] ips = CompanionService.getVisibleLocalIPs();
         int visibleCount = 0;
