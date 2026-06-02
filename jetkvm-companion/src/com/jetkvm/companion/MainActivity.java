@@ -412,6 +412,16 @@ public class MainActivity extends Activity {
         button.setBackgroundTintList(ColorStateList.valueOf(JETKVM_BACKGROUND));
     }
 
+    private void applyCompactActionButtonStyle(Button button) {
+        applyButtonStyle(button);
+        button.setTextSize(12);
+        button.setMinHeight(dp(32));
+        button.setMinimumHeight(dp(32));
+        button.setMinWidth(dp(72));
+        button.setMinimumWidth(dp(72));
+        button.setPadding(dp(12), 0, dp(12), 0);
+    }
+
     private Button addCollapsibleHeader(LinearLayout root, String title, final String key, final Runnable onToggle) {
         LinearLayout row = addCollapsibleHeaderRow(root, title, key, onToggle);
         Object tag = row.getTag();
@@ -436,7 +446,7 @@ public class MainActivity extends Activity {
 
         final Button toggleButton = new Button(this);
         toggleButton.setAllCaps(false);
-        toggleButton.setTextSize(22);
+        toggleButton.setTextSize(28);
         toggleButton.setMinHeight(0);
         toggleButton.setMinimumHeight(0);
         toggleButton.setMinWidth(0);
@@ -468,7 +478,7 @@ public class MainActivity extends Activity {
 
     private void updateCollapsibleButtonText(Button button, String key) {
         if (button == null) return;
-        button.setText(isSectionCollapsed(key) ? ">" : "v");
+        button.setText(isSectionCollapsed(key) ? "›" : "⌄");
     }
 
     private void updatePairingsVisibility() {
@@ -622,11 +632,7 @@ public class MainActivity extends Activity {
             Button unpairButton = new Button(this);
             unpairButton.setText("Unpair");
             unpairButton.setAllCaps(false);
-            applyButtonStyle(unpairButton);
-            unpairButton.setTextSize(12);
-            unpairButton.setMinHeight(0);
-            unpairButton.setMinimumHeight(0);
-            unpairButton.setPadding(dp(10), 0, dp(10), 0);
+            applyCompactActionButtonStyle(unpairButton);
             unpairButton.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override
                 public void onClick(android.view.View v) {
@@ -669,11 +675,7 @@ public class MainActivity extends Activity {
         refreshVisibleIpsButton = new Button(this);
         refreshVisibleIpsButton.setText("Refresh");
         refreshVisibleIpsButton.setAllCaps(false);
-        refreshVisibleIpsButton.setTextSize(12);
-        refreshVisibleIpsButton.setMinHeight(0);
-        refreshVisibleIpsButton.setMinimumHeight(0);
-        refreshVisibleIpsButton.setPadding(dp(10), 0, dp(10), 0);
-        applyButtonStyle(refreshVisibleIpsButton);
+        applyCompactActionButtonStyle(refreshVisibleIpsButton);
         refreshVisibleIpsButton.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
             public void onClick(android.view.View v) {
@@ -751,7 +753,7 @@ public class MainActivity extends Activity {
         Button acceptButton = new Button(this);
         acceptButton.setText("Pair");
         acceptButton.setAllCaps(false);
-        applyButtonStyle(acceptButton);
+        applyCompactActionButtonStyle(acceptButton);
         acceptButton.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
             public void onClick(android.view.View v) {
