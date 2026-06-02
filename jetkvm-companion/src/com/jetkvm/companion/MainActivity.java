@@ -675,7 +675,7 @@ public class MainActivity extends Activity {
         refreshVisibleIpsButton = new Button(this);
         refreshVisibleIpsButton.setText("Refresh");
         refreshVisibleIpsButton.setAllCaps(false);
-        applyCompactActionButtonStyle(refreshVisibleIpsButton);
+        applyButtonStyle(refreshVisibleIpsButton);
         refreshVisibleIpsButton.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
             public void onClick(android.view.View v) {
@@ -697,11 +697,26 @@ public class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(0, dp(2), 0, dp(2));
 
+            Button pairButton = new Button(this);
+            pairButton.setText("Pair");
+            pairButton.setAllCaps(false);
+            applyCompactActionButtonStyle(pairButton);
+            pairButton.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override
+                public void onClick(android.view.View v) {
+                    String endpoint = normalizeJetKvmUrl(ip);
+                    jetkvmUrlsInput.setText(endpoint);
+                    pairJetKvmEndpoint(endpoint);
+                }
+            });
+            row.addView(pairButton, buttonWrap());
+
             TextView label = new TextView(this);
             label.setText(ip);
             label.setTextColor(Color.rgb(203, 213, 225));
             label.setTextSize(14);
             label.setTextIsSelectable(true);
+            label.setPadding(dp(12), 0, 0, 0);
             row.addView(label, new LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
