@@ -348,7 +348,8 @@ func handleCompanionTargetDeclaration(c *gin.Context) {
 	}
 
 	metadata := setCompanionTargetMetadata(declaration)
-	go applyDisplayModeForTarget(metadata)
+	applyDisplayModeForTarget(metadata)
+	metadata = withDisplayReconnectStatus(metadata)
 	logger.Info().
 		Str("state", declaration.State).
 		Strs("evidence", metadata.Evidence).
@@ -356,6 +357,7 @@ func handleCompanionTargetDeclaration(c *gin.Context) {
 		Int("display_width", metadata.DisplayWidth).
 		Int("display_height", metadata.DisplayHeight).
 		Float64("display_aspect", metadata.DisplayAspect).
+		Bool("hdmi_reconnect_required", metadata.HDMIReconnectRequired).
 		Msg("companion target declaration received")
 	c.JSON(http.StatusOK, metadata)
 }

@@ -47,7 +47,12 @@ export default function WebRTCVideo({
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
+  const [targetType, setTargetType] = useState<"generic" | "android">("generic");
+  const [targetDisplayAspect, setTargetDisplayAspect] = useState<number | null>(null);
+  const [hdmiReconnectRequired, setHdmiReconnectRequired] = useState(false);
   const androidPreferredMouseModeApplied = useRef(false);
+  const isAndroidTarget = targetType === "android";
+  const androidCropFallbackMode = isAndroidTarget && hdmiReconnectRequired;
 
   const { send: sendRpc } = useJsonRpc();
 
@@ -113,9 +118,18 @@ export default function WebRTCVideo({
         const result = resp.result as {
           target_type?: string;
           preferred_mouse_mode?: string;
+          display_aspect?: number;
+          hdmi_reconnect_required?: boolean;
           fresh?: boolean;
         };
         const isFreshAndroid = result.target_type === "android" && result.fresh !== false;
+        setTargetType(isFreshAndroid ? "android" : "generic");
+        setTargetDisplayAspect(
+          isFreshAndroid && typeof result.display_aspect === "number" && result.display_aspect > 0
+            ? result.display_aspect
+            : null,
+        );
+        setHdmiReconnectRequired(isFreshAndroid && result.hdmi_reconnect_required === true);
         if (
           isFreshAndroid &&
           result.preferred_mouse_mode === "digitizer" &&
@@ -125,6 +139,7 @@ export default function WebRTCVideo({
           androidPreferredMouseModeApplied.current = true;
         } else if (!isFreshAndroid) {
           androidPreferredMouseModeApplied.current = false;
+          setHdmiReconnectRequired(false);
         }
       });
     };
@@ -859,7 +874,15 @@ export default function WebRTCVideo({
                   >
                     <div
                       ref={fullscreenContainerRef}
-                      className="relative flex h-full w-full items-center justify-center"
+                      className={cx(
+                        "relative flex h-full items-center justify-center",
+                        androidCropFallbackMode ? "max-w-full overflow-hidden" : "w-full",
+                      )}
+                      style={
+                        androidCropFallbackMode
+                          ? { aspectRatio: String(targetDisplayAspect ?? 9 / 20) }
+                          : undefined
+                      }
                     >
                       <video
                         ref={videoElm}
@@ -872,17 +895,22 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx("h-full w-full object-contain transition-all duration-1000", {
-                          "cursor-none": settings.isCursorHidden,
-                          "pointer-events-none": isOcrMode,
-                          "opacity-0!":
-                            isVideoLoading ||
-                            hdmiError ||
-                            hasConnectionIssues ||
-                            peerConnectionState !== "connected",
-                          "opacity-60!": showPointerLockBar,
-                          "animate-slideUpFade": isPlaying,
-                        })}
+                        className={cx(
+                          androidCropFallbackMode
+                            ? "h-full w-auto max-w-none object-fill transition-all duration-1000"
+                            : "h-full w-full object-contain transition-all duration-1000",
+                          {
+                            "cursor-none": settings.isCursorHidden,
+                            "pointer-events-none": isOcrMode,
+                            "opacity-0!":
+                              isVideoLoading ||
+                              hdmiError ||
+                              hasConnectionIssues ||
+                              peerConnectionState !== "connected",
+                            "opacity-60!": showPointerLockBar,
+                            "animate-slideUpFade": isPlaying,
+                          },
+                        )}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />

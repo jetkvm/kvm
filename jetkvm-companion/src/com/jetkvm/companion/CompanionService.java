@@ -32,6 +32,9 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
+import org.json.JSONObject;
+
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -97,6 +100,8 @@ public class CompanionService extends Service implements InputManager.InputDevic
     private boolean targetReportScheduled;
     private String activeTargetIdentityToken = "";
     private volatile long targetDeclarationConfirmedUntilMs;
+    private volatile boolean targetDeclarationHDMIReconnectRequired;
+    private volatile String targetDeclarationCompanionNotice = "";
     private JetKvmPeripheralSnapshot currentSnapshot = new JetKvmPeripheralSnapshot();
 
     private final Runnable targetReportRunnable = new Runnable() {
@@ -461,24 +466,52 @@ public class CompanionService extends Service implements InputManager.InputDevic
             out.close();
 
             int status = conn.getResponseCode();
-            updateTargetDeclarationConfirmation(connected, status);
+            boolean hdmiReconnectRequired = false;
+            String companionNotice = "";
+            if (status >= 200 && status < 300) {
+                String responseBody = readResponseBody(conn);
+                if (responseBody.length() > 0) {
+                    JSONObject response = new JSONObject(responseBody);
+                    hdmiReconnectRequired = response.optBoolean("hdmi_reconnect_required", false);
+                    companionNotice = response.optString("companion_notice", "");
+                }
+            }
+            updateTargetDeclarationConfirmation(connected, status, hdmiReconnectRequired, companionNotice);
             Log.i(TAG, "target declaration posted url=" + trimmedBaseUrl
-                + " status=" + status + " connected=" + connected + " width=" + width + " height=" + height);
+                + " status=" + status + " connected=" + connected + " width=" + width + " height=" + height
+                + " hdmiReconnectRequired=" + hdmiReconnectRequired);
         } catch (Exception e) {
-            updateTargetDeclarationConfirmation(connected, 0);
+            updateTargetDeclarationConfirmation(connected, 0, false, "");
             Log.i(TAG, "target declaration failed url=" + baseUrl + ": " + e.getClass().getSimpleName());
         } finally {
             if (conn != null) conn.disconnect();
         }
     }
 
-    private void updateTargetDeclarationConfirmation(boolean connected, int status) {
+    private static String readResponseBody(HttpURLConnection conn) throws Exception {
+        InputStream stream = conn.getInputStream();
+        if (stream == null) return "";
+        BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+        StringBuilder body = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            body.append(line);
+        }
+        reader.close();
+        return body.toString();
+    }
+
+    private void updateTargetDeclarationConfirmation(boolean connected, int status, boolean hdmiReconnectRequired, String companionNotice) {
         long now = System.currentTimeMillis();
         boolean confirmed = connected && status >= 200 && status < 300;
         if (confirmed) {
             targetDeclarationConfirmedUntilMs = now + TARGET_LEASE_MS;
+            targetDeclarationHDMIReconnectRequired = hdmiReconnectRequired;
+            targetDeclarationCompanionNotice = companionNotice == null ? "" : companionNotice;
         } else if (!connected || now >= targetDeclarationConfirmedUntilMs) {
             targetDeclarationConfirmedUntilMs = 0;
+            targetDeclarationHDMIReconnectRequired = false;
+            targetDeclarationCompanionNotice = "";
         }
         handler.post(new Runnable() {
             @Override
@@ -973,6 +1006,10 @@ public class CompanionService extends Service implements InputManager.InputDevic
             body = "Waiting for peripherals...";
         } else if (!isTargetDeclarationConfirmed()) {
             body = "Waiting for backend confirmation...";
+        } else if (targetDeclarationHDMIReconnectRequired) {
+            body = targetDeclarationCompanionNotice.length() > 0
+                ? targetDeclarationCompanionNotice
+                : "Using 1920x1080 crop mode. Disconnect and reconnect HDMI to apply the new display size.";
         } else {
             body = "Monitoring display-on events";
         }
@@ -980,6 +1017,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
             .setSmallIcon(getApplicationInfo().icon)
             .setContentTitle("JetKVM Companion")
             .setContentText(body)
+            .setStyle(new Notification.BigTextStyle().bigText(body))
             .setContentIntent(pendingIntent)
             .setOngoing(true);
         if (!hasPairedJetKvmEndpoints) {

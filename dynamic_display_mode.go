@@ -9,6 +9,10 @@ import (
 )
 
 const dynamicDisplayRefreshHz = 60
+const fallbackCropDisplayWidth = 1920
+const fallbackCropDisplayHeight = 1080
+
+const hdmiReconnectNotice = "Using 1920x1080 crop mode. Disconnect and reconnect HDMI to apply the new display size."
 
 type DisplayMode struct {
 	Width     int    `json:"width"`
@@ -22,12 +26,16 @@ type DisplayModeStatus struct {
 	AdvertisedMode        *DisplayMode      `json:"advertised_edid_mode,omitempty"`
 	ActualInputMode       native.VideoState `json:"actual_hdmi_input_mode"`
 	ActiveVideoStreamMode native.VideoState `json:"active_webrtc_video_stream"`
+	HDMIReconnectRequired bool              `json:"hdmi_reconnect_required"`
+	FallbackDisplayMode   *DisplayMode      `json:"fallback_display_mode,omitempty"`
+	CompanionNotice       string            `json:"companion_notice,omitempty"`
 }
 
 var dynamicDisplayModeState = struct {
 	sync.Mutex
-	mode *DisplayMode
-	edid string
+	mode                  *DisplayMode
+	edid                  string
+	hdmiReconnectRequired bool
 }{}
 
 func applyDisplayModeForTarget(metadata TargetMetadata) {
@@ -52,6 +60,11 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 
 	dynamicDisplayModeState.Lock()
 	alreadyApplied := dynamicDisplayModeState.edid == edid
+	if alreadyApplied {
+		modeCopy := mode
+		dynamicDisplayModeState.mode = &modeCopy
+		dynamicDisplayModeState.hdmiReconnectRequired = !actualInputMatchesDisplayMode(mode)
+	}
 	dynamicDisplayModeState.Unlock()
 	if alreadyApplied {
 		return
@@ -100,6 +113,7 @@ func applyDisplayModeForTarget(metadata TargetMetadata) {
 	dynamicDisplayModeState.Lock()
 	dynamicDisplayModeState.mode = &mode
 	dynamicDisplayModeState.edid = edid
+	dynamicDisplayModeState.hdmiReconnectRequired = !actualInputMatchesDisplayMode(mode)
 	dynamicDisplayModeState.Unlock()
 
 	if reenumerationRequired {
@@ -114,6 +128,7 @@ func applyDefaultEDIDFallback(reason string, reenumerate bool) {
 	hadDynamicMode := dynamicDisplayModeState.edid != ""
 	dynamicDisplayModeState.mode = nil
 	dynamicDisplayModeState.edid = ""
+	dynamicDisplayModeState.hdmiReconnectRequired = false
 	dynamicDisplayModeState.Unlock()
 
 	logger.Warn().
@@ -167,14 +182,50 @@ func getDisplayModeStatus() DisplayModeStatus {
 		modeCopy := *dynamicDisplayModeState.mode
 		mode = &modeCopy
 	}
+	hdmiReconnectRequired := dynamicDisplayModeState.hdmiReconnectRequired
 	dynamicDisplayModeState.Unlock()
+	hdmiReconnectRequired = hdmiReconnectRequired && mode != nil && !actualInputMatchesDisplayMode(*mode)
 
 	return DisplayModeStatus{
 		CompanionTarget:       getEffectiveTargetMetadata(),
 		AdvertisedMode:        mode,
 		ActualInputMode:       lastVideoState,
 		ActiveVideoStreamMode: lastVideoState,
+		HDMIReconnectRequired: hdmiReconnectRequired,
+		FallbackDisplayMode:   fallbackDisplayMode(hdmiReconnectRequired),
+		CompanionNotice:       companionNotice(hdmiReconnectRequired),
 	}
+}
+
+func withDisplayReconnectStatus(metadata TargetMetadata) TargetMetadata {
+	status := getDisplayModeStatus()
+	metadata.HDMIReconnectRequired = status.HDMIReconnectRequired
+	metadata.FallbackDisplayMode = status.FallbackDisplayMode
+	metadata.CompanionNotice = status.CompanionNotice
+	return metadata
+}
+
+func actualInputMatchesDisplayMode(mode DisplayMode) bool {
+	return lastVideoState.Width == mode.Width && lastVideoState.Height == mode.Height
+}
+
+func fallbackDisplayMode(enabled bool) *DisplayMode {
+	if !enabled {
+		return nil
+	}
+	return &DisplayMode{
+		Width:     fallbackCropDisplayWidth,
+		Height:    fallbackCropDisplayHeight,
+		RefreshHz: dynamicDisplayRefreshHz,
+		Source:    "hdmi-reconnect-crop-fallback",
+	}
+}
+
+func companionNotice(enabled bool) string {
+	if !enabled {
+		return ""
+	}
+	return hdmiReconnectNotice
 }
 
 func buildDynamicDisplayEDID(mode DisplayMode) (string, error) {

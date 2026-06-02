@@ -8,16 +8,19 @@ import (
 const companionTargetTTL = 2 * time.Minute
 
 type TargetMetadata struct {
-	TargetType            string   `json:"target_type"`
-	PreferredMouseMode    string   `json:"preferred_mouse_mode,omitempty"`
-	DisplayWidth          int      `json:"display_width,omitempty"`
-	DisplayHeight         int      `json:"display_height,omitempty"`
-	DisplayAspect         float64  `json:"display_aspect,omitempty"`
-	Evidence              []string `json:"evidence,omitempty"`
-	Source                string   `json:"source,omitempty"`
-	LastSeenUnixMilli     int64    `json:"last_seen_unix_milli,omitempty"`
-	LeaseExpiresUnixMilli int64    `json:"lease_expires_unix_milli,omitempty"`
-	Fresh                 bool     `json:"fresh"`
+	TargetType            string       `json:"target_type"`
+	PreferredMouseMode    string       `json:"preferred_mouse_mode,omitempty"`
+	DisplayWidth          int          `json:"display_width,omitempty"`
+	DisplayHeight         int          `json:"display_height,omitempty"`
+	DisplayAspect         float64      `json:"display_aspect,omitempty"`
+	Evidence              []string     `json:"evidence,omitempty"`
+	Source                string       `json:"source,omitempty"`
+	LastSeenUnixMilli     int64        `json:"last_seen_unix_milli,omitempty"`
+	LeaseExpiresUnixMilli int64        `json:"lease_expires_unix_milli,omitempty"`
+	HDMIReconnectRequired bool         `json:"hdmi_reconnect_required,omitempty"`
+	FallbackDisplayMode   *DisplayMode `json:"fallback_display_mode,omitempty"`
+	CompanionNotice       string       `json:"companion_notice,omitempty"`
+	Fresh                 bool         `json:"fresh"`
 }
 
 type CompanionTargetDeclaration struct {

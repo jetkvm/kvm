@@ -57,15 +57,18 @@ type AudioConfig struct {
 }
 
 type TargetTypeSettings struct {
-	TargetType         string   `json:"target_type"`
-	PreferredMouseMode string   `json:"preferred_mouse_mode,omitempty"`
-	DisplayWidth       int      `json:"display_width,omitempty"`
-	DisplayHeight      int      `json:"display_height,omitempty"`
-	DisplayAspect      float64  `json:"display_aspect,omitempty"`
-	Evidence           []string `json:"evidence,omitempty"`
-	Source             string   `json:"source,omitempty"`
-	LastSeenUnixMilli  int64    `json:"last_seen_unix_milli,omitempty"`
-	Fresh              bool     `json:"fresh"`
+	TargetType            string       `json:"target_type"`
+	PreferredMouseMode    string       `json:"preferred_mouse_mode,omitempty"`
+	DisplayWidth          int          `json:"display_width,omitempty"`
+	DisplayHeight         int          `json:"display_height,omitempty"`
+	DisplayAspect         float64      `json:"display_aspect,omitempty"`
+	Evidence              []string     `json:"evidence,omitempty"`
+	Source                string       `json:"source,omitempty"`
+	LastSeenUnixMilli     int64        `json:"last_seen_unix_milli,omitempty"`
+	HDMIReconnectRequired bool         `json:"hdmi_reconnect_required,omitempty"`
+	FallbackDisplayMode   *DisplayMode `json:"fallback_display_mode,omitempty"`
+	CompanionNotice       string       `json:"companion_notice,omitempty"`
+	Fresh                 bool         `json:"fresh"`
 }
 
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
@@ -278,6 +281,7 @@ func rpcSetEDID(edid string) error {
 	dynamicDisplayModeState.Lock()
 	dynamicDisplayModeState.mode = nil
 	dynamicDisplayModeState.edid = ""
+	dynamicDisplayModeState.hdmiReconnectRequired = false
 	dynamicDisplayModeState.Unlock()
 
 	// Save EDID to config, allowing it to be restored on reboot.
@@ -424,17 +428,20 @@ func rpcSetAudioConfig(params AudioConfig) error {
 }
 
 func rpcGetTargetType() (*TargetTypeSettings, error) {
-	metadata := getEffectiveTargetMetadata()
+	metadata := withDisplayReconnectStatus(getEffectiveTargetMetadata())
 	return &TargetTypeSettings{
-		TargetType:         metadata.TargetType,
-		PreferredMouseMode: metadata.PreferredMouseMode,
-		DisplayWidth:       metadata.DisplayWidth,
-		DisplayHeight:      metadata.DisplayHeight,
-		DisplayAspect:      metadata.DisplayAspect,
-		Evidence:           metadata.Evidence,
-		Source:             metadata.Source,
-		LastSeenUnixMilli:  metadata.LastSeenUnixMilli,
-		Fresh:              metadata.Fresh,
+		TargetType:            metadata.TargetType,
+		PreferredMouseMode:    metadata.PreferredMouseMode,
+		DisplayWidth:          metadata.DisplayWidth,
+		DisplayHeight:         metadata.DisplayHeight,
+		DisplayAspect:         metadata.DisplayAspect,
+		Evidence:              metadata.Evidence,
+		Source:                metadata.Source,
+		LastSeenUnixMilli:     metadata.LastSeenUnixMilli,
+		HDMIReconnectRequired: metadata.HDMIReconnectRequired,
+		FallbackDisplayMode:   metadata.FallbackDisplayMode,
+		CompanionNotice:       metadata.CompanionNotice,
+		Fresh:                 metadata.Fresh,
 	}, nil
 }
 
