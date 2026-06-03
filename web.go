@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -106,7 +108,7 @@ const (
 	authTokenMaxAge = 7 * 24 * 60 * 60 // 1 week
 )
 
-const companionPairRequestTTL = 5 * time.Minute
+const companionPairRequestTTL = 120 * time.Second
 const companionSignatureMaxSkew = 60 * time.Second
 
 type companionPairRequest struct {
@@ -125,6 +127,7 @@ type companionPairRequest struct {
 type companionPairRequestBody struct {
 	OTP                string `json:"otp"`
 	CompanionPublicKey string `json:"companion_public_key"`
+	ClaimJetKVM        bool   `json:"claim_jetkvm,omitempty"`
 }
 
 type companionPairApproveBody struct {
@@ -239,6 +242,7 @@ func setupRouter() *gin.Engine {
 	// Public routes (no authentication required)
 	r.POST("/auth/login-local", handleLogin)
 	r.POST("/companion/pair", handleCompanionPair)
+	r.GET("/companion/pair/jetkvm-pending", handleCompanionJetKVMPairPending)
 	r.GET("/companion/pair/:id", handleCompanionPairStatus)
 	r.POST("/companion/pair/:id/claim", handleCompanionPairClaim)
 	r.POST("/companion/target", handleCompanionTargetDeclaration)
@@ -437,6 +441,16 @@ func handleCompanionPair(c *gin.Context) {
 		return
 	}
 
+	if body.ClaimJetKVM {
+		status, response := claimJetKVMInitiatedCompanionPairing(c, body.OTP, body.CompanionPublicKey)
+		c.JSON(status, response)
+		return
+	}
+	if companionOTPBelongsToDifferentRemote(c, body.OTP, body.CompanionPublicKey) {
+		c.JSON(http.StatusConflict, gin.H{"error": "otp belongs to an active pairing request from a different companion address"})
+		return
+	}
+
 	request := getOrCreateCompanionPairingRequest(c, body.OTP, body.CompanionPublicKey)
 	showCompanionPairingPrompt(request)
 	c.JSON(http.StatusAccepted, companionPairingPendingResponse(request))
@@ -444,26 +458,30 @@ func handleCompanionPair(c *gin.Context) {
 
 func handleCompanionPairInitiate(c *gin.Context) {
 	var body companionPairInitiateBody
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "companion url is required"})
+	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pairing request"})
 		return
 	}
 	companionURL := normalizeCompanionURL(body.CompanionURL)
 	if companionURL == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "companion url is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion url is required"})
 		return
 	}
 
 	request := createJetKVMInitiatedCompanionPairingRequest(companionURL)
 	jetkvmURL := "https://" + c.Request.Host
-	if err := notifyCompanionPairRequest(companionURL, jetkvmURL, request.ID); err != nil {
+	if err := signalCompanionPairRequest(companionURL, jetkvmURL, request.ID); err != nil {
 		companionPairingLock.Lock()
 		request.Status = "rejected"
-		request.RejectionReason = "failed to notify companion: " + err.Error()
+		request.RejectionReason = "failed to signal companion: " + err.Error()
 		companionPairingLock.Unlock()
 		c.JSON(http.StatusBadGateway, gin.H{"error": request.RejectionReason})
 		return
 	}
+	logger.Info().
+		Str("companion_url", companionURL).
+		Str("request_id", request.ID).
+		Msg("JetKVM-initiated companion pairing code generated")
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"paired":        false,
@@ -491,9 +509,26 @@ func handleCompanionPairRequests(c *gin.Context) {
 	request := getCurrentCompanionPairingRequest()
 	requests := []gin.H{}
 	if request != nil && request.Status == "pending" {
-		requests = append(requests, companionPairingPendingResponse(request))
+		requests = append(requests, companionPairingAdminPendingResponse(request))
 	}
 	c.JSON(http.StatusOK, gin.H{"requests": requests})
+}
+
+func handleCompanionJetKVMPairPending(c *gin.Context) {
+	request := getCurrentCompanionPairingRequest()
+	if request == nil ||
+		request.Direction != "jetkvm" ||
+		request.Status != "pending" ||
+		!requestClientMatchesCompanionURL(c, request.RemoteAddr) {
+		c.JSON(http.StatusOK, gin.H{"pending": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"pending":     true,
+		"request_id":  request.ID,
+		"remote_addr": request.RemoteAddr,
+		"created_at":  request.RequestedAt.UnixMilli(),
+	})
 }
 
 func handleCompanionStatus(c *gin.Context) {
@@ -567,6 +602,10 @@ func handleCompanionPairClaim(c *gin.Context) {
 	}
 	if body.OTP != request.OTP {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "otp does not match"})
+		return
+	}
+	if !requestClientMatchesCompanionURL(c, request.RemoteAddr) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "pairing request is bound to a different companion address"})
 		return
 	}
 	if !isValidCompanionPublicKey(body.CompanionPublicKey) {
@@ -728,12 +767,91 @@ func companionPairingPendingResponse(request *companionPairRequest) gin.H {
 	return response
 }
 
+func companionPairingAdminPendingResponse(request *companionPairRequest) gin.H {
+	response := companionPairingPendingResponse(request)
+	status, _ := response["status"].(string)
+	if request.Direction == "jetkvm" && status == "pending" && request.OTP != "" {
+		response["otp"] = request.OTP
+	}
+	return response
+}
+
+func companionOTPBelongsToDifferentRemote(c *gin.Context, otp string, companionPublicKey string) bool {
+	companionPairingLock.Lock()
+	defer companionPairingLock.Unlock()
+
+	request := companionPairingRequest
+	if request == nil || request.Direction != "companion" || request.Status != "pending" || request.OTP != otp {
+		return false
+	}
+	return request.RemoteAddr != c.ClientIP() || request.CompanionPubKey != companionPublicKey
+}
+
+func requestClientMatchesCompanionURL(c *gin.Context, companionURL string) bool {
+	parsed, err := neturl.Parse(companionURL)
+	if err != nil || parsed.Hostname() == "" {
+		return false
+	}
+	clientIP := net.ParseIP(c.ClientIP())
+	if clientIP == nil {
+		return false
+	}
+	expectedHost := parsed.Hostname()
+	if expectedIP := net.ParseIP(expectedHost); expectedIP != nil {
+		return expectedIP.Equal(clientIP)
+	}
+	expectedIPs, err := net.LookupIP(expectedHost)
+	if err != nil {
+		return false
+	}
+	for _, expectedIP := range expectedIPs {
+		if expectedIP.Equal(clientIP) {
+			return true
+		}
+	}
+	return false
+}
+
+func claimJetKVMInitiatedCompanionPairing(c *gin.Context, otp string, companionPublicKey string) (int, gin.H) {
+	request := getCurrentCompanionPairingRequest()
+	if request == nil || request.Direction != "jetkvm" {
+		return http.StatusNotFound, gin.H{"error": "JetKVM pairing request not found"}
+	}
+	if request.Status != "pending" {
+		return http.StatusConflict, gin.H{"error": "JetKVM pairing request is not pending"}
+	}
+	if request.OTP != otp {
+		return http.StatusUnauthorized, gin.H{"error": "otp does not match active JetKVM pairing request"}
+	}
+	if !requestClientMatchesCompanionURL(c, request.RemoteAddr) {
+		return http.StatusUnauthorized, gin.H{"error": "pairing request is bound to a different companion address"}
+	}
+
+	companionID := addCompanionAuthorization(companionPublicKey)
+	if err := SaveConfig(); err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "failed to save companion pairing"}
+	}
+
+	companionPairingLock.Lock()
+	request.Status = "paired"
+	request.CompanionID = companionID
+	request.CompanionPubKey = companionPublicKey
+	companionPairingLock.Unlock()
+
+	logger.Info().
+		Str("remote_addr", request.RemoteAddr).
+		Str("request_id", request.ID).
+		Msg("JetKVM-initiated companion pairing claimed")
+	return http.StatusOK, companionPairingResponseWithCompanion(companionID)
+}
+
 func getOrCreateCompanionPairingRequest(c *gin.Context, otp string, companionPublicKey string) *companionPairRequest {
 	companionPairingLock.Lock()
 	defer companionPairingLock.Unlock()
 
 	now := time.Now()
 	if companionPairingRequest != nil &&
+		companionPairingRequest.Direction == "companion" &&
 		companionPairingRequest.Status == "pending" &&
 		now.Sub(companionPairingRequest.RequestedAt) <= companionPairRequestTTL &&
 		companionPairingRequest.CompanionPubKey == companionPublicKey {
@@ -764,9 +882,17 @@ func createJetKVMInitiatedCompanionPairingRequest(companionURL string) *companio
 		UserAgent:   "JetKVM",
 		RequestedAt: time.Now(),
 		Status:      "pending",
-		OTP:         fmt.Sprintf("%06d", time.Now().UnixNano()%1000000),
+		OTP:         generateCompanionPairingOTP(),
 	}
 	return companionPairingRequest
+}
+
+func generateCompanionPairingOTP() string {
+	value, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
+	}
+	return fmt.Sprintf("%06d", value.Int64())
 }
 
 func getCurrentCompanionPairingRequest() *companionPairRequest {
@@ -991,7 +1117,7 @@ func notifyCompanionAdminUnpair(companionID string) {
 				Err(err).
 				Str("companion_id", companionID).
 				Str("target", target).
-				Msg("failed to notify companion about admin unpair")
+				Msg("failed to signal companion about admin unpair")
 		}
 	}
 }
@@ -1062,7 +1188,7 @@ func postCompanionUnpairNotification(target string, body []byte) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -1389,10 +1515,10 @@ func isValidCompanionPublicKey(publicKey string) bool {
 	return ok
 }
 
-func notifyCompanionPairRequest(companionURL string, jetkvmURL string, requestID string) error {
+func signalCompanionPairRequest(companionURL string, jetkvmURL string, requestID string) error {
 	parsed, err := neturl.Parse(companionURL)
 	if err != nil || parsed.Scheme != "https" {
-		return fmt.Errorf("companion pairing notification requires https")
+		return fmt.Errorf("companion pairing signal requires https")
 	}
 	if parsedJetKVMURL, err := neturl.Parse(jetkvmURL); err != nil || parsedJetKVMURL.Scheme != "https" {
 		return fmt.Errorf("JetKVM pairing URL requires https")
@@ -1423,18 +1549,18 @@ func notifyCompanionPairRequest(companionURL string, jetkvmURL string, requestID
 				Err(err).
 				Str("companion_url", companionURL).
 				Int("attempt", attempt).
-				Msg("failed to notify companion pairing request")
+				Msg("failed to signal companion pairing request")
 		} else {
 			defer resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				return nil
 			}
-			lastErr = fmt.Errorf("companion returned HTTP %d", resp.StatusCode)
+			lastErr = fmt.Errorf("companion returned status %d", resp.StatusCode)
 			logger.Warn().
 				Int("status", resp.StatusCode).
 				Str("companion_url", companionURL).
 				Int("attempt", attempt).
-				Msg("companion pairing request notification rejected")
+				Msg("companion pairing request signal rejected")
 		}
 		if attempt < 5 {
 			time.Sleep(time.Duration(attempt*attempt) * time.Second)
@@ -1443,7 +1569,7 @@ func notifyCompanionPairRequest(companionURL string, jetkvmURL string, requestID
 	if lastErr != nil {
 		return lastErr
 	}
-	return fmt.Errorf("companion notification failed")
+	return fmt.Errorf("companion signal failed")
 }
 
 func isValidCompanionOTP(otp string) bool {

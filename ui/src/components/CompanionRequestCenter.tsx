@@ -12,6 +12,10 @@ import { useUiStore } from "@hooks/stores";
 type CompanionPairRequest = {
   request_id: string;
   remote_addr: string;
+  direction?: "companion" | "jetkvm";
+  status?: string;
+  otp?: string;
+  error?: string;
   user_agent?: string;
   created_at?: number;
 };
@@ -77,6 +81,7 @@ const permissionDescriptors = [
 
 const PAIRED_SECTION_STORAGE_KEY = "jetkvm.companion.pairedCollapsed";
 const VISIBLE_IPS_SECTION_STORAGE_KEY = "jetkvm.companion.visibleIpsCollapsed";
+const PAIRING_CODE_TTL_MS = 120_000;
 
 export default function CompanionRequestCenter({
   compact = false,
@@ -103,6 +108,8 @@ export default function CompanionRequestCenter({
   const [otpById, setOtpById] = useState<Record<string, string>>({});
   const [companionUrl, setCompanionUrl] = useState("");
   const [initiatedOtp, setInitiatedOtp] = useState("");
+  const [initiatedAt, setInitiatedAt] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
 
   const refresh = useCallback(async () => {
@@ -130,6 +137,11 @@ export default function CompanionRequestCenter({
     const id = window.setInterval(() => void refresh(), 3000);
     return () => window.clearInterval(id);
   }, [refresh]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!(forceOpen ?? open)) return;
@@ -172,6 +184,10 @@ export default function CompanionRequestCenter({
     async (request: CompanionPairRequest) => {
       await api.POST(`${DEVICE_API}/companion/pair/${request.request_id}/reject`, {});
       notifications.success("Companion pairing rejected.");
+      if (request.direction === "jetkvm") {
+        setInitiatedOtp("");
+        setInitiatedAt(0);
+      }
       void refresh();
     },
     [refresh],
@@ -188,12 +204,20 @@ export default function CompanionRequestCenter({
         companion_url: url,
       });
       if (!resp.ok) {
-        notifications.error("Failed to notify companion over HTTPS.");
+        let message = "Failed to start companion pairing.";
+        try {
+          const body = (await resp.json()) as { error?: string };
+          if (body.error) message = body.error;
+        } catch {
+          // Keep the generic error.
+        }
+        notifications.error(message);
         return;
       }
       const body = (await resp.json()) as { otp?: string };
       setInitiatedOtp(body.otp || "");
-      notifications.success("Pairing request sent.");
+      setInitiatedAt(Date.now());
+      notifications.success("Pairing code generated.");
       void refresh();
     },
     [companionUrl, refresh],
@@ -210,6 +234,7 @@ export default function CompanionRequestCenter({
     }
     notifications.success("Companion unpaired.");
     setInitiatedOtp("");
+    setInitiatedAt(0);
     void refresh();
   }, [refresh]);
 
@@ -269,7 +294,24 @@ export default function CompanionRequestCenter({
     return candidates.sort((a, b) => candidateIPSortKey(a).localeCompare(candidateIPSortKey(b)));
   }, [pairedHosts, visibleIps]);
 
-  const count = requests.length;
+  const companionRequests = useMemo(
+    () => requests.filter(request => request.direction !== "jetkvm"),
+    [requests],
+  );
+  const jetkvmRequests = useMemo(
+    () => requests.filter(request => request.direction === "jetkvm"),
+    [requests],
+  );
+  const activeJetkvmRequests = useMemo(
+    () => jetkvmRequests.filter(request => pairRequestRemainingMs(request, nowMs) > 0),
+    [jetkvmRequests, nowMs],
+  );
+  const initiatedRemainingMs = initiatedAt
+    ? Math.max(0, initiatedAt + PAIRING_CODE_TTL_MS - nowMs)
+    : 0;
+  const showInitiatedFallback =
+    activeJetkvmRequests.length === 0 && !!initiatedOtp && initiatedRemainingMs > 0;
+  const count = companionRequests.length;
   const isOpen = forceOpen ?? open;
 
   useEffect(() => {
@@ -501,12 +543,75 @@ export default function CompanionRequestCenter({
               )}
             </Section>
 
-            <Section title="Pairing requests">
-              {requests.length === 0 ? (
-                <Muted>No pending requests.</Muted>
+            <Section title="JetKVM pairing code">
+              {activeJetkvmRequests.length === 0 && !showInitiatedFallback ? (
+                <Muted>No code generated.</Muted>
               ) : (
                 <div className="space-y-3">
-                  {requests.map(request => (
+                  {activeJetkvmRequests.map(request => (
+                    <div
+                      key={request.request_id}
+                      className="rounded-md border border-slate-800/10 p-2 dark:border-slate-300/20"
+                    >
+                      <div className="text-sm font-medium text-slate-900 dark:text-white">
+                        Enter this code on the Android companion.
+                      </div>
+                      <div className="mt-2 cursor-copy rounded-md bg-slate-100 px-3 py-2 text-center font-mono text-3xl font-semibold tracking-widest text-slate-900 select-text dark:bg-slate-900 dark:text-white">
+                        {request.otp || initiatedOtp}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Open the companion app at {request.remote_addr}, enter this code, then tap
+                        Pair.
+                      </div>
+                      <div className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        Expires in {formatSeconds(pairRequestRemainingMs(request, nowMs))}.
+                      </div>
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          className="rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          onClick={() => void reject(request)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {showInitiatedFallback && (
+                    <div className="rounded-md border border-slate-800/10 p-2 dark:border-slate-300/20">
+                      <div className="text-sm font-medium text-slate-900 dark:text-white">
+                        Enter this code on the Android companion.
+                      </div>
+                      <div className="mt-2 cursor-copy rounded-md bg-slate-100 px-3 py-2 text-center font-mono text-3xl font-semibold tracking-widest text-slate-900 select-text dark:bg-slate-900 dark:text-white">
+                        {initiatedOtp}
+                      </div>
+                      <div className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        Expires in {formatSeconds(initiatedRemainingMs)}.
+                      </div>
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          className="rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          onClick={() => {
+                            setInitiatedOtp("");
+                            setInitiatedAt(0);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Section>
+
+            <Section title="Companion pairing requests">
+              {companionRequests.length === 0 ? (
+                <Muted>No companion-generated requests.</Muted>
+              ) : (
+                <div className="space-y-3">
+                  {companionRequests.map(request => (
                     <div
                       key={request.request_id}
                       className="rounded-md border border-slate-800/10 p-2 dark:border-slate-300/20"
@@ -518,7 +623,7 @@ export default function CompanionRequestCenter({
                         className="mt-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-600 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                         inputMode="numeric"
                         maxLength={6}
-                        placeholder="6 digit code"
+                        placeholder="6 digit code shown on companion"
                         value={otpById[request.request_id] || ""}
                         onChange={event =>
                           setOtpById(current => ({
@@ -549,18 +654,13 @@ export default function CompanionRequestCenter({
               )}
             </Section>
 
-            <Section title="Pair companion">
+            <Section title="Start pairing from JetKVM">
               <input
                 className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-600 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                placeholder="https://<phone-ip>:8787"
+                placeholder="Companion address, e.g. 192.168.8.233"
                 value={companionUrl}
                 onChange={event => setCompanionUrl(event.target.value)}
               />
-              {initiatedOtp && (
-                <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  Code shown to phone: <span className="font-semibold">{initiatedOtp}</span>
-                </div>
-              )}
               <div className="mt-2 flex justify-end gap-2">
                 <button
                   type="button"
@@ -574,7 +674,7 @@ export default function CompanionRequestCenter({
                   className="rounded-md bg-blue-700 px-2 py-1 text-sm font-medium text-white hover:bg-blue-800"
                   onClick={() => void initiate()}
                 >
-                  Send
+                  Generate code
                 </button>
               </div>
             </Section>
@@ -653,6 +753,16 @@ function sourceLabel(source?: string) {
   if (source === "backend") return "JetKVM";
   if (source === "paired_device") return "Visible from paired device";
   return source || "";
+}
+
+function pairRequestRemainingMs(request: CompanionPairRequest, nowMs: number) {
+  if (!request.created_at) return PAIRING_CODE_TTL_MS;
+  return Math.max(0, request.created_at + PAIRING_CODE_TTL_MS - nowMs);
+}
+
+function formatSeconds(ms: number) {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
 }
 
 function usePersistentCollapsed(key: string) {

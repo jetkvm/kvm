@@ -23,8 +23,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
@@ -38,17 +36,16 @@ import android.widget.FrameLayout;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.KeyPairGenerator;
@@ -58,7 +55,6 @@ import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.UUID;
@@ -66,11 +62,12 @@ import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLServerSocketFactory;
 import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-import javax.security.auth.x500.X500Principal;
 import java.security.cert.X509Certificate;
 
 public class CompanionService extends Service implements InputManager.InputDeviceListener {
@@ -81,16 +78,19 @@ public class CompanionService extends Service implements InputManager.InputDevic
     static final String KEY_JETKVM_URL = "jetkvm_url";
     static final String KEY_JETKVM_URLS = "jetkvm_urls";
     static final String KEY_JETKVM_PAIRINGS = "jetkvm_pairings";
+    static final String KEY_PENDING_PAIR_URL = "pending_pair_url";
+    static final String KEY_PENDING_PAIR_CREATED_AT = "pending_pair_created_at";
     static final String DEFAULT_JETKVM_URL = "https://jetkvm.local";
     static final String EXTRA_JETKVM_URL = "jetkvm_url";
-    static final String EXTRA_PAIR_REQUEST_ID = "pair_request_id";
+    static final String ACTION_PAIR_REQUEST_UPDATED = "com.jetkvm.companion.PAIR_REQUEST_UPDATED";
 
     private static final String CHANNEL_ID = "jetkvm-companion";
     private static final int NOTIFICATION_ID = 1001;
-    private static final int PAIRING_NOTIFICATION_ID = 1002;
     private static final int NOTIFICATION_RESPAWN_BASE_ID = 1100;
     private static final int PAIRING_LISTEN_PORT = 8787;
-    private static final String PAIRING_TLS_KEY_ALIAS = "jetkvm-companion-pairing-listener";
+    private static final char[] PAIRING_TLS_KEYSTORE_PASSWORD = "jetkvm-pairing".toCharArray();
+    private static final String PAIRING_TLS_PKCS12_BASE64 =
+        "MIIErQIBAzCCBGMGCSqGSIb3DQEHAaCCBFQEggRQMIIETDCCAsoGCSqGSIb3DQEHBqCCArswggK3AgEAMIICsAYJKoZIhvcNAQcBMF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBAwxVAx3n9iprRMGxOVTnRcAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQ5v0SWOS0Y9RgSUC9zVIDmICCAkD4oroylTCG9IGFbvvNQo8oL+ZktHuHmsK0ympLsKaiba0kqnyUDVHPIQCPkbqpzLvbVxK2v3XvqOW6uIDnO6WuGQ4SgJIHwtjKEfYE2nwRXzJAxG3K3W4rJcMojAOaH693FOFIJzAHGhfvBJJA91vzcoPbg54/8JQw2p9fxTUbUC3Oear/9uQV5zXO0gkA76YWakuLStdXE1V/DkHCq900J3OTla1d4FlIIc/6T30j4JmnLFBfsC42miNMYH9si6YiaqPk7kR4AAyzSGHLdT7nEUqLQYbFTodDGrpRON3uQdqoF2DV7jo/m7uoLkh/cqKyzLp6gBDP5PUemdvVV4NARUkVN+6k4y5nJdjERPUByu9sXvsVDXvlwtRpchcLTPA4Lu7csdusCJheyuXtU6AjkhkQ1bZodjhLwmYhUK9TWZy1Fc+0/xptp54aS0BT1zMZlNlN0h7QU1f7qfCK56IO8ElUh69yfx5n2we41/uZyJEMCgZAWhbSFhLe1LjPYjHjOipw2xkJpm6Q4jN6gANxacQQ86MK1TqP1bzArbBTMKKu/X2uLvd9GTVnZvPnqafMlzw8iEcnaKnRG2J3EmTL6VgEPIPNYwajbjV5ClVJd7OtoXx5NU2CyWRbwcc3wehQuJdLEfaHunPfv06zmCJ20p2bhOZmTRMFDJpnEM6SpVXxmpFObjJQ40jziuxFGR7O1LrNIYr+NdDUL0wL3eJeCiw26oi3+H3f3GfOGEkbyN1Uz31CPPxJpHT5eCfe2xkwggF6BgkqhkiG9w0BBwGgggFrBIIBZzCCAWMwggFfBgsqhkiG9w0BDAoBAqCB9zCB9DBfBgkqhkiG9w0BBQ0wUjAxBgkqhkiG9w0BBQwwJAQQnjQKS2/2mS7/VtWfmlHqHgICCAAwDAYIKoZIhvcNAgkFADAdBglghkgBZQMEASoEEFyZrGeNQzflyuU01xMpV7gEgZCrgV4LouyEmAWy0YBYmPmyA+TqOXViN93lcBaJ/3VkWjhp6RIiaSx6PNCt7Gm2LXOjMBQ7U6atpRD7QBjSn+EfJv7CKxVXm6Q+kzk7yrx/cyUuP35vchCJM5x+2V1yUQ3kGJzUjNEwaUelHd4WTOwhrCwFU5nXvDyu28IniGD/rYuH5eTzcgrlX8hrke/seCcxVjAjBgkqhkiG9w0BCRUxFgQUnipi/wwZbTQzZhlNJ18M5wfnnz8wLwYJKoZIhvcNAQkUMSIeIABwAGEAaQByAGkAbgBnAC0AbABpAHMAdABlAG4AZQByMEEwMTANBglghkgBZQMEAgEFAAQgbIjNG8GU9ctDrstkzRq+YyFrBF/IZ3gjpVi75eIMoVgECKUudDl7lnsAAgIIAA==";
     private static final long SCREEN_ON_DISMISS_DELAY_MS = 600;
     private static final long TARGET_REPORT_INTERVAL_MS = 15000;
     private static final long TARGET_LEASE_MS = 120000;
@@ -437,13 +437,10 @@ public class CompanionService extends Service implements InputManager.InputDevic
     }
 
     private void postTargetDeclaration(String baseUrl, boolean connected, int width, int height, JetKvmPeripheralSnapshot snapshot) {
-        HttpURLConnection conn = null;
+        HttpsURLConnection conn = null;
         try {
-            String trimmedBaseUrl = baseUrl == null ? "" : baseUrl.trim();
+            String trimmedBaseUrl = normalizeJetKvmUrl(baseUrl);
             if (trimmedBaseUrl.length() == 0) trimmedBaseUrl = DEFAULT_JETKVM_URL;
-            while (trimmedBaseUrl.endsWith("/")) {
-                trimmedBaseUrl = trimmedBaseUrl.substring(0, trimmedBaseUrl.length() - 1);
-            }
 
             URL url = new URL(trimmedBaseUrl + "/companion/target");
             SharedPreferences prefs = getCompanionPreferences(this);
@@ -530,7 +527,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
         });
     }
 
-    private static String readResponseBody(HttpURLConnection conn) throws Exception {
+    private static String readResponseBody(HttpsURLConnection conn) throws Exception {
         InputStream stream = conn.getInputStream();
         if (stream == null) return "";
         BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
@@ -811,18 +808,18 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return ips.toArray(new String[ips.size()]);
     }
 
-    static HttpURLConnection openTrustedConnection(URL url) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        if (conn instanceof HttpsURLConnection) {
-            HttpsURLConnection https = (HttpsURLConnection) conn;
-            https.setSSLSocketFactory(trustAllSslContext().getSocketFactory());
-            https.setHostnameVerifier(new HostnameVerifier() {
-                @Override
-                public boolean verify(String hostname, SSLSession session) {
-                    return true;
-                }
-            });
+    static HttpsURLConnection openTrustedConnection(URL url) throws Exception {
+        if (!"https".equalsIgnoreCase(url.getProtocol())) {
+            throw new IllegalArgumentException("JetKVM communication requires HTTPS");
         }
+        HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+        conn.setSSLSocketFactory(trustAllSslContext().getSocketFactory());
+        conn.setHostnameVerifier(new HostnameVerifier() {
+            @Override
+            public boolean verify(String hostname, SSLSession session) {
+                return true;
+            }
+        });
         return conn;
     }
 
@@ -871,7 +868,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return builder.toString();
     }
 
-    static void applyCompanionSignatureHeaders(HttpURLConnection conn, String method, String path, byte[] bodyBytes, CompanionPairing pairing) throws Exception {
+    static void applyCompanionSignatureHeaders(HttpsURLConnection conn, String method, String path, byte[] bodyBytes, CompanionPairing pairing) throws Exception {
         String timestamp = java.time.Instant.now().toString();
         String nonce = UUID.randomUUID().toString() + "-" + Long.toHexString(new SecureRandom().nextLong());
         String bodyHash = hex(MessageDigest.getInstance("SHA-256").digest(bodyBytes));
@@ -1191,7 +1188,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                         handlePairingRequestSocket(pairingServerSocket.accept());
                     }
                 } catch (Exception e) {
-                    Log.w(TAG, "pairing request listener stopped: " + e.getClass().getSimpleName());
+                    Log.w(TAG, "pairing request listener stopped", e);
                 }
             }
         }, "JetKVM-pair-listener");
@@ -1213,41 +1210,31 @@ public class CompanionService extends Service implements InputManager.InputDevic
     }
 
     private ServerSocket createPairingTLSServerSocket() throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
-        keyStore.load(null);
-        if (!keyStore.containsAlias(PAIRING_TLS_KEY_ALIAS)) {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance(
-                KeyProperties.KEY_ALGORITHM_RSA,
-                "AndroidKeyStore"
-            );
-            generator.initialize(new KeyGenParameterSpec.Builder(
-                PAIRING_TLS_KEY_ALIAS,
-                KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_DECRYPT
-            )
-                .setKeySize(2048)
-                .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
-                .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
-                .setCertificateSubject(new X500Principal("CN=JetKVM Companion"))
-                .setCertificateSerialNumber(BigInteger.ONE)
-                .setCertificateNotBefore(new Date(System.currentTimeMillis() - 86400000L))
-                .setCertificateNotAfter(new Date(System.currentTimeMillis() + 315360000000L))
-                .build());
-            generator.generateKeyPair();
-        }
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        byte[] keyStoreBytes = android.util.Base64.decode(PAIRING_TLS_PKCS12_BASE64, android.util.Base64.DEFAULT);
+        keyStore.load(new ByteArrayInputStream(keyStoreBytes), PAIRING_TLS_KEYSTORE_PASSWORD);
 
         KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(
             KeyManagerFactory.getDefaultAlgorithm()
         );
-        keyManagerFactory.init(keyStore, null);
+        keyManagerFactory.init(keyStore, PAIRING_TLS_KEYSTORE_PASSWORD);
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(keyManagerFactory.getKeyManagers(), null, new SecureRandom());
         SSLServerSocketFactory factory = context.getServerSocketFactory();
-        return factory.createServerSocket(PAIRING_LISTEN_PORT);
+        SSLServerSocket socket = (SSLServerSocket) factory.createServerSocket(PAIRING_LISTEN_PORT);
+        socket.setUseClientMode(false);
+        socket.setNeedClientAuth(false);
+        socket.setEnabledProtocols(new String[] { "TLSv1.3", "TLSv1.2" });
+        return socket;
     }
 
     private void handlePairingRequestSocket(Socket socket) {
         try {
+            if (socket instanceof SSLSocket) {
+                SSLSocket sslSocket = (SSLSocket) socket;
+                sslSocket.setUseClientMode(false);
+                sslSocket.startHandshake();
+            }
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             String requestLine = reader.readLine();
             int contentLength = 0;
@@ -1268,12 +1255,13 @@ public class CompanionService extends Service implements InputManager.InputDevic
 
             String body = new String(chars, 0, read);
             String jetkvmUrl = extractJsonString(body, "jetkvm_url");
+            String normalizedJetKvmUrl = normalizeJetKvmUrl(jetkvmUrl);
             String requestId = extractJsonString(body, "request_id");
             if (requestLine != null
                 && requestLine.startsWith("POST /pair/request ")
-                && jetkvmUrl.length() > 0
+                && normalizedJetKvmUrl.length() > 0
                 && requestId.length() > 0) {
-                showPairingRequestNotification(jetkvmUrl, requestId);
+                savePendingPairRequest(normalizedJetKvmUrl);
                 writePairingServerResponse(socket, 202, "{\"status\":\"pending\"}");
             } else if (requestLine != null && requestLine.startsWith("POST /pair/unpair ")) {
                 int removed = removePairingsFromAdminUnpair(body);
@@ -1282,7 +1270,7 @@ public class CompanionService extends Service implements InputManager.InputDevic
                 writePairingServerResponse(socket, 400, "{\"error\":\"invalid pairing request\"}");
             }
         } catch (Exception e) {
-            Log.w(TAG, "pairing request failed: " + e.getClass().getSimpleName());
+            Log.w(TAG, "pairing request failed", e);
         } finally {
             try {
                 socket.close();
@@ -1324,6 +1312,17 @@ public class CompanionService extends Service implements InputManager.InputDevic
         return removed;
     }
 
+    private void savePendingPairRequest(String jetkvmUrl) {
+        SharedPreferences prefs = getCompanionPreferences(this);
+        prefs.edit()
+            .putString(KEY_PENDING_PAIR_URL, jetkvmUrl)
+            .putLong(KEY_PENDING_PAIR_CREATED_AT, System.currentTimeMillis())
+            .apply();
+        Intent intent = new Intent(ACTION_PAIR_REQUEST_UPDATED);
+        intent.setPackage(getPackageName());
+        sendBroadcast(intent);
+    }
+
     private void writePairingServerResponse(Socket socket, int status, String body) throws java.io.IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         String reason = status == 202 ? "Accepted" : status == 200 ? "OK" : "Bad Request";
@@ -1331,32 +1330,6 @@ public class CompanionService extends Service implements InputManager.InputDevic
         out.write(("HTTP/1.1 " + status + " " + reason + "\r\nContent-Type: application/json\r\nContent-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         out.write(bytes);
         out.flush();
-    }
-
-    private void showPairingRequestNotification(String jetkvmUrl, String requestId) {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.putExtra(EXTRA_JETKVM_URL, jetkvmUrl);
-        intent.putExtra(EXTRA_PAIR_REQUEST_ID, requestId);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-            this,
-            PAIRING_NOTIFICATION_ID,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-        Notification.Builder builder = android.os.Build.VERSION.SDK_INT >= 26
-            ? new Notification.Builder(this, CHANNEL_ID)
-            : new Notification.Builder(this);
-        Notification notification = builder
-            .setSmallIcon(getApplicationInfo().icon)
-            .setContentTitle("JetKVM pairing request")
-            .setContentText("Open companion to pair with " + jetkvmUrl)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build();
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager != null) {
-            manager.notify(PAIRING_NOTIFICATION_ID, notification);
-        }
     }
 
     private static String extractJsonString(String json, String key) {
@@ -1535,4 +1508,5 @@ public class CompanionService extends Service implements InputManager.InputDevic
                 + " present=" + present;
         }
     }
+
 }
