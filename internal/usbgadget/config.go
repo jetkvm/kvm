@@ -77,6 +77,8 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.RelativeMouse
 	case "keyboard":
 		return u.enabledDevices.Keyboard
+	case "wake_hid":
+		return !u.enabledDevices.Touchscreen
 	case "touchscreen":
 		return u.enabledDevices.Touchscreen
 	case "mass_storage_base":

@@ -529,6 +529,10 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 }
 
 func (u *UsbGadget) WakeReport(active bool) error {
+	if u.enabledDevices.Touchscreen {
+		return u.TouchscreenReport(0, 0, false)
+	}
+
 	var report byte
 	if active {
 		report = 1
