@@ -8,7 +8,6 @@ import useMouse from "@hooks/useMouse";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import type { JsonRpcResponse } from "@hooks/useJsonRpc";
 import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import AndroidCompactControls from "@components/AndroidCompactControls";
