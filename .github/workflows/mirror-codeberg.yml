@@ -1,0 +1,45 @@
+name: Mirror to Codeberg
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "**"
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-codeberg
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH
+        env:
+          CODEBERG_MIRROR_SSH_KEY: ${{ secrets.CODEBERG_MIRROR_SSH_KEY }}
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$CODEBERG_MIRROR_SSH_KEY" > ~/.ssh/codeberg_mirror
+          chmod 600 ~/.ssh/codeberg_mirror
+          ssh-keyscan -t ed25519 codeberg.org >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host codeberg.org
+            HostName codeberg.org
+            User git
+            IdentityFile ~/.ssh/codeberg_mirror
+            IdentitiesOnly yes
+          EOF
+
+      - name: Mirror all refs
+        run: |
+          set -eu
+          git remote add codeberg ssh://git@codeberg.org/steadying/kvm.git
+          git push --mirror codeberg
