@@ -448,17 +448,6 @@ func fixEDIDChecksums(edid []byte) {
 	}
 }
 
-func roundUp(value, multiple int) int {
-	if multiple <= 0 || value == 0 {
-		return value
-	}
-	remainder := value % multiple
-	if remainder == 0 {
-		return value
-	}
-	return value + multiple - remainder
-}
-
 func roundToMultiple(value, multiple int) int {
 	if multiple <= 0 {
 		return value

@@ -712,16 +712,6 @@ func handleCompanionUnpairAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"paired": false})
 }
 
-func companionPairingResponse() gin.H {
-	companions := companionAuthorizations()
-	companionID := ""
-	for id := range companions {
-		companionID = id
-		break
-	}
-	return companionPairingResponseWithCompanion(companionID)
-}
-
 func companionPairingResponseWithCompanion(companionID string) gin.H {
 	deviceID := GetDeviceID()
 	shortID := strings.ToLower(deviceID)
@@ -946,24 +936,6 @@ func clearCompanionPairing() {
 	companionPairingLock.Lock()
 	companionPairingRequest = nil
 	companionPairingLock.Unlock()
-}
-
-func companionPairingTokens() []string {
-	tokens := make([]string, 0, len(config.CompanionPairing.Tokens)+1)
-	seen := map[string]bool{}
-	for _, token := range config.CompanionPairing.Tokens {
-		token = strings.TrimSpace(token)
-		if token == "" || seen[token] {
-			continue
-		}
-		tokens = append(tokens, token)
-		seen[token] = true
-	}
-	legacyToken := strings.TrimSpace(config.CompanionPairing.Token)
-	if legacyToken != "" && !seen[legacyToken] {
-		tokens = append(tokens, legacyToken)
-	}
-	return tokens
 }
 
 func companionAuthorizations() map[string]CompanionAuthorization {
@@ -1445,11 +1417,6 @@ func companionIDFromSignedRequest(c *gin.Context, body []byte) (string, bool) {
 		return "", false
 	}
 	return companionID, true
-}
-
-func hasValidCompanionSignature(c *gin.Context, body []byte) bool {
-	_, ok := companionIDFromSignedRequest(c, body)
-	return ok
 }
 
 func hasCompanionNonce(companionID string, nonce string) bool {
