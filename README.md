@@ -49,3 +49,6 @@ The backend is written in Go and is responsible for the KVM device management, t
 ## Frontend
 
 The frontend is written in React and TypeScript and is served by the KVM device. It has three build targets: `device`, `development` and `production`. Development is used for development of the cloud version on your local machine, device is used for building the frontend for the KVM device and production is used for building the frontend for the cloud.
+
+whatever
+
