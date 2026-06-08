@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Разрешить MQTT-клиентам запускать управление питанием, перезагрузку и другие действия",
     "mqtt_remote_control_title": "Удалённое управление",
     "mqtt_save_button": "Сохранить и переподключить",
+    "mqtt_save_disconnect_button": "Сохранить и отключиться",
+    "mqtt_saved_disconnect": "Настройки MQTT сохранены. Отключение от брокера…",
     "mqtt_saved_error": "Не удалось сохранить настройки MQTT: {error}",
     "mqtt_saved_success": "Настройки MQTT сохранены. Переподключение к брокеру…",
     "mqtt_section_advanced": "Дополнительно",

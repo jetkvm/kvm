@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Tillad MQTT-klienter at udløse strømstyring, genstart og andre handlinger",
     "mqtt_remote_control_title": "Fjernstyring",
     "mqtt_save_button": "Gem og genforbind",
+    "mqtt_save_disconnect_button": "Gem og afbryd forbindelsen",
+    "mqtt_saved_disconnect": "MQTT-indstillinger gemt. Afbryder forbindelse til broker…",
     "mqtt_saved_error": "Kunne ikke gemme MQTT-indstillinger: {error}",
     "mqtt_saved_success": "MQTT-indstillinger gemt. Genopretter forbindelse til broker…",
     "mqtt_section_advanced": "Avanceret",

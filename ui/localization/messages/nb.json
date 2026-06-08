@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Tillat MQTT-klienter å utløse strømstyring, omstart og andre handlinger",
     "mqtt_remote_control_title": "Fjernstyring",
     "mqtt_save_button": "Lagre og koble til på nytt",
+    "mqtt_save_disconnect_button": "Lagre og koble fra",
+    "mqtt_saved_disconnect": "MQTT-innstillinger lagret. Kobler fra megleren …",
     "mqtt_saved_error": "Kunne ikke lagre MQTT-innstillinger: {error}",
     "mqtt_saved_success": "MQTT-innstillinger lagret. Kobler til broker…",
     "mqtt_section_advanced": "Avansert",

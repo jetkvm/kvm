@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Permitir que clientes MQTT activen control de energía, reinicio y otras acciones",
     "mqtt_remote_control_title": "Control remoto",
     "mqtt_save_button": "Guardar y reconectar",
+    "mqtt_save_disconnect_button": "Guardar y desconectar",
+    "mqtt_saved_disconnect": "Configuración MQTT guardada. Desconectando del broker…",
     "mqtt_saved_error": "Error al guardar la configuración de MQTT: {error}",
     "mqtt_saved_success": "Configuración de MQTT guardada. Reconectando al broker…",
     "mqtt_section_advanced": "Avanzado",

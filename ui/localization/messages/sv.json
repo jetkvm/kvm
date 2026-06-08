@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Tillåt MQTT-klienter att utföra strömstyrning, omstart och andra åtgärder",
     "mqtt_remote_control_title": "Fjärrstyrning",
     "mqtt_save_button": "Spara och återanslut",
+    "mqtt_save_disconnect_button": "Spara och koppla från",
+    "mqtt_saved_disconnect": "MQTT-inställningar sparade. Kopplar från brokern…",
     "mqtt_saved_error": "Kunde inte spara MQTT-inställningar: {error}",
     "mqtt_saved_success": "MQTT-inställningar sparade. Återansluter till broker…",
     "mqtt_section_advanced": "Avancerat",

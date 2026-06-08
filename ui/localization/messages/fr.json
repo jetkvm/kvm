@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Autoriser les clients MQTT à déclencher le contrôle d'alimentation, le redémarrage et d'autres actions",
     "mqtt_remote_control_title": "Contrôle à distance",
     "mqtt_save_button": "Enregistrer et reconnecter",
+    "mqtt_save_disconnect_button": "Sauvegarder et déconnecter",
+    "mqtt_saved_disconnect": "Paramètres MQTT enregistrés. Déconnexion du broker…",
     "mqtt_saved_error": "Échec de l'enregistrement des paramètres MQTT : {error}",
     "mqtt_saved_success": "Paramètres MQTT enregistrés. Reconnexion au broker…",
     "mqtt_section_advanced": "Avancé",

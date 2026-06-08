@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "MQTTクライアントから電源制御、再起動、その他のアクションをトリガーできるようにします",
     "mqtt_remote_control_title": "リモートコントロール",
     "mqtt_save_button": "保存して再接続",
+    "mqtt_save_disconnect_button": "保存して切断",
+    "mqtt_saved_disconnect": "MQTT設定が保存されました。ブローカーから切断します…",
     "mqtt_saved_error": "MQTT設定の保存に失敗しました: {error}",
     "mqtt_saved_success": "MQTT設定を保存しました。ブローカーに再接続中…",
     "mqtt_section_advanced": "詳細設定",

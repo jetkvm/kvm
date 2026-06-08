@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "MQTT-Clients erlauben, Stromsteuerung, Neustart und andere Aktionen auszulösen",
     "mqtt_remote_control_title": "Fernsteuerung",
     "mqtt_save_button": "Speichern & Verbinden",
+    "mqtt_save_disconnect_button": "Speichern &amp; Trennen",
+    "mqtt_saved_disconnect": "MQTT-Einstellungen gespeichert. Verbindung zum Broker wird getrennt…",
     "mqtt_saved_error": "MQTT-Einstellungen konnten nicht gespeichert werden: {error}",
     "mqtt_saved_success": "MQTT-Einstellungen gespeichert. Verbindung zum Broker wird hergestellt…",
     "mqtt_section_advanced": "Erweitert",

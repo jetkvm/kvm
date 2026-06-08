@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "允许 MQTT 客户端触发电源控制、重启等操作",
     "mqtt_remote_control_title": "远程控制",
     "mqtt_save_button": "保存并重新连接",
+    "mqtt_save_disconnect_button": "保存并断开连接",
+    "mqtt_saved_disconnect": "MQTT 设置已保存。正在断开与代理的连接……",
     "mqtt_saved_error": "保存 MQTT 设置失败：{error}",
     "mqtt_saved_success": "MQTT 设置已保存，正在重新连接 Broker…",
     "mqtt_section_advanced": "高级",

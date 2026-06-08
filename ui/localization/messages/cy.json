@@ -683,6 +683,8 @@
     "mqtt_remote_control_description": "Caniatáu i gleientiaid MQTT sbarduno rheolaeth pŵer, ailgychwyn, a gweithredoedd eraill",
     "mqtt_remote_control_title": "Rheolaeth o Bell",
     "mqtt_save_button": "Cadw ac Ailgysylltu",
+    "mqtt_save_disconnect_button": "Cadw a Datgysylltu",
+    "mqtt_saved_disconnect": "Gosodiadau MQTT wedi'u cadw. Yn datgysylltu o'r brocer…",
     "mqtt_saved_error": "Methwyd â chadw gosodiadau MQTT: {error}",
     "mqtt_saved_success": "Gosodiadau MQTT wedi'u cadw. Yn ailgysylltu â'r brocer…",
     "mqtt_section_advanced": "Uwch",

@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Consenti ai client MQTT di attivare il controllo alimentazione, il riavvio e altre azioni",
     "mqtt_remote_control_title": "Controllo remoto",
     "mqtt_save_button": "Salva e riconnetti",
+    "mqtt_save_disconnect_button": "Salva e disconnetti",
+    "mqtt_saved_disconnect": "Impostazioni MQTT salvate. Disconnessione dal broker in corso…",
     "mqtt_saved_error": "Impossibile salvare le impostazioni MQTT: {error}",
     "mqtt_saved_success": "Impostazioni MQTT salvate. Riconnessione al broker…",
     "mqtt_section_advanced": "Avanzate",

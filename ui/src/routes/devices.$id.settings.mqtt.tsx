@@ -163,7 +163,7 @@ export default function SettingsMqttRoute() {
           );
           return;
         }
-        notifications.success(m.mqtt_saved_success());
+        notifications.success(m.mqtt_saved_disconnect());
         setConnectionState("disconnected");
       });
       return;
@@ -253,6 +253,7 @@ export default function SettingsMqttRoute() {
   const saveButtonText = () => {
     if (savePhase === "testing") return m.mqtt_testing();
     if (savePhase === "saving") return m.saving();
+    if (settings.enabled === false) return m.mqtt_save_disconnect_button();
     return m.mqtt_save_button();
   };
 
@@ -483,6 +484,18 @@ export default function SettingsMqttRoute() {
                 text={testing ? m.mqtt_testing() : m.mqtt_test_button()}
                 loading={testing}
                 onClick={handleTestConnection}
+              />
+            </div>
+          </>
+        ) || (
+          <>
+            <div className="flex items-center gap-x-2 pt-2">
+              <Button
+                size="SM"
+                theme="primary"
+                text={saveButtonText()}
+                loading={savePhase !== "idle"}
+                onClick={handleSave}
               />
             </div>
           </>

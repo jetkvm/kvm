@@ -688,6 +688,8 @@
     "mqtt_remote_control_description": "Allow MQTT clients to trigger power control, reboot, and other actions",
     "mqtt_remote_control_title": "Remote Control",
     "mqtt_save_button": "Save & Reconnect",
+    "mqtt_save_disconnect_button": "Save & Disconnect",
+    "mqtt_saved_disconnect": "MQTT settings saved. Disconnecting from broker…",
     "mqtt_saved_error": "Failed to save MQTT settings: {error}",
     "mqtt_saved_success": "MQTT settings saved. Reconnecting to broker…",
     "mqtt_section_advanced": "Advanced",
