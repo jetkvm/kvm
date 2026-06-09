@@ -195,7 +195,7 @@ export default function PasteModal() {
                           e.stopPropagation();
                           if ((e.key === "Enter" || e.keyCode === 13) && (e.metaKey || e.ctrlKey)) {
                             e.preventDefault();
-                            void onConfirmPaste();
+                            void onConfirmPasteAndClose();
                           } else if (e.key === "Escape" || e.keyCode === 27) {
                             e.preventDefault();
                             onCancelPasteMode();
