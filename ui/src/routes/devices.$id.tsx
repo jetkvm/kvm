@@ -1126,7 +1126,7 @@ export default function KvmIdRoute() {
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
-          if (e.key === "Escape") navigateTo("/");
+          if (e.key === "Escape" || e.keyCode === 27) navigateTo("/");
         }}
       >
         <Modal open={outlet !== null} onClose={onModalClose}>

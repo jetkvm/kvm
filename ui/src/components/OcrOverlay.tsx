@@ -224,7 +224,7 @@ function OcrOverlayContent() {
     if (status === "processing" || status === "result") return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" || e.keyCode === 27) {
         e.preventDefault();
         e.stopPropagation();
         setOcrMode(false);

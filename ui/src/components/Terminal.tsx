@@ -163,7 +163,7 @@ function Terminal({
     // Setup escape key handler
     const onKeyHandler = instance.onKey(e => {
       const { domEvent } = e;
-      if (domEvent.key === "Escape") {
+      if (domEvent.key === "Escape" || domEvent.keyCode === 27) {
         setTerminalType("none");
         setDisableVideoFocusTrap(false);
         domEvent.preventDefault();

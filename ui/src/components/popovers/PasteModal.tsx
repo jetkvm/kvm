@@ -193,10 +193,10 @@ export default function PasteModal() {
                         maxLength={pasteMaxLength}
                         onKeyDown={e => {
                           e.stopPropagation();
-                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          if ((e.key === "Enter" || e.keyCode === 13) && (e.metaKey || e.ctrlKey)) {
                             e.preventDefault();
                             void onConfirmPaste();
-                          } else if (e.key === "Escape") {
+                          } else if (e.key === "Escape" || e.keyCode === 27) {
                             e.preventDefault();
                             onCancelPasteMode();
                           }
