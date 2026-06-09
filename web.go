@@ -101,6 +101,13 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
+	// The device is reached directly, not behind a reverse proxy, so don't
+	// trust any X-Forwarded-For/X-Real-IP headers. Without this, gin trusts
+	// all proxies by default and c.ClientIP() returns a client-controlled
+	// value, letting a caller spoof their IP to evade the login rate limiter.
+	if err := r.SetTrustedProxies(nil); err != nil {
+		logger.Fatal().Err(err).Msg("failed to disable trusted proxies")
+	}
 	r.Use(gin_logger.SetLogger(
 		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
 			return *ginLogger
