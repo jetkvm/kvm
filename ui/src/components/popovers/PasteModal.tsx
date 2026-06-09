@@ -127,6 +127,11 @@ export default function PasteModal() {
     }
   }, [selectedKeyboard, executeMacro, delay, textValue]);
 
+  const onConfirmPasteAndClose = useCallback(async () => {
+    void onConfirmPaste();
+    close();
+  }, [onConfirmPaste, close]);
+
   useEffect(() => {
     TextAreaRef.current?.focus();
   }, [hideText]);
@@ -268,10 +273,17 @@ export default function PasteModal() {
           />
           <Button
             size="SM"
-            theme="primary"
+            theme="blank"
             text={m.paste_modal_confirm_paste()}
             disabled={isPasteInProgress}
             onClick={onConfirmPaste}
+          />
+          <Button
+            size="SM"
+            theme="primary"
+            text={m.paste_modal_confirm_paste_and_close()}
+            disabled={isPasteInProgress}
+            onClick={onConfirmPasteAndClose}
             LeadingIcon={LuCornerDownLeft}
           />
         </div>
