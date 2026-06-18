@@ -376,7 +376,7 @@ func rpcGetBacklightSettings() (*BacklightSettings, error) {
 }
 
 func rpcGetAudioConfig() (*AudioConfig, error) {
-	return &AudioConfig{Enabled: config.AudioEnabled}, nil
+	return &AudioConfig{Enabled: effectiveAudioEnabled()}, nil
 }
 
 func rpcSetAudioConfig(params AudioConfig) error {
@@ -390,10 +390,6 @@ func rpcSetAudioConfig(params AudioConfig) error {
 	config.AudioEnabled = enabled
 	if !effectiveAudioEnabled() {
 		stopAudio()
-	}
-	if gadget != nil {
-		gadget.SetGadgetDevices(effectiveUsbDevices())
-		return updateUsbRelatedConfig()
 	}
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
