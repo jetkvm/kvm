@@ -1175,6 +1175,25 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	return nil
 }
 
+func rpcGetLocalTailscaleOnly() (bool, error) {
+	return config.LocalTailscaleOnly, nil
+}
+
+func rpcSetLocalTailscaleOnly(enabled bool) error {
+	// Check if the setting is actually changing
+	if config.LocalTailscaleOnly == enabled {
+		return nil
+	}
+
+	// Update the setting
+	config.LocalTailscaleOnly = enabled
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
 var validLogLevels = map[string]bool{
 	"TRACE": true,
 	"DEBUG": true,
@@ -1431,6 +1450,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardMacros":          {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":       {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":       {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
+	"getLocalTailscaleOnly":      {Func: rpcGetLocalTailscaleOnly},
+	"setLocalTailscaleOnly":      {Func: rpcSetLocalTailscaleOnly, Params: []string{"enabled"}},
 	"getDefaultLogLevel":         {Func: rpcGetDefaultLogLevel},
 	"setDefaultLogLevel":         {Func: rpcSetDefaultLogLevel, Params: []string{"level"}},
 	"emitTestLog":                {Func: rpcEmitTestLog, Params: []string{"level"}},

@@ -102,6 +102,7 @@ type Config struct {
 	LocalAuthToken       string               `json:"local_auth_token"`
 	LocalAuthMode        string               `json:"localAuthMode"` //TODO: fix it with migration
 	LocalLoopbackOnly    bool                 `json:"local_loopback_only"`
+	LocalTailscaleOnly   bool                 `json:"local_tailscale_only"`
 	WakeOnLanDevices     []WakeOnLanDevice    `json:"wake_on_lan_devices"`
 	KeyboardMacros       []KeyboardMacro      `json:"keyboard_macros"`
 	KeyboardLayout       string               `json:"keyboard_layout"`

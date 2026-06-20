@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/tailscale"
 	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,9 +61,10 @@ type ChangePasswordRequest struct {
 }
 
 type LocalDevice struct {
-	AuthMode     *string `json:"authMode"`
-	DeviceID     string  `json:"deviceId"`
-	LoopbackOnly bool    `json:"loopbackOnly"`
+	AuthMode       *string `json:"authMode"`
+	DeviceID       string  `json:"deviceId"`
+	LoopbackOnly   bool    `json:"loopbackOnly"`
+	TailscaleOnly  bool    `json:"tailscaleOnly"`
 }
 
 type DeviceStatus struct {
@@ -630,6 +632,27 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 
 func getBindAddress(listenPort int) string {
 	// Determine the binding address based on the config
+
+	// Tailscale-only mode takes highest priority: bind to the device's tailscale IP
+	if config.LocalTailscaleOnly {
+		status, err := tailscale.GetStatus(config.TailscaleControlURL, func(err error) {
+			tailscaleLogger.Warn().Err(err).Msg("failed to get tailscale status for bind address")
+		})
+		if err == nil && status != nil && status.Running && status.Self != nil && len(status.Self.TailscaleIPs) > 0 {
+			// Prefer IPv4, fall back to IPv6
+			for _, ip := range status.Self.TailscaleIPs {
+				if !strings.Contains(ip, ":") {
+					return fmt.Sprintf("%s:%d", ip, listenPort)
+				}
+			}
+			// No IPv4 found, use first IP (likely IPv6)
+			return fmt.Sprintf("[%s]:%d", status.Self.TailscaleIPs[0], listenPort)
+		}
+		// Tailscale status unavailable, fall back safely to loopback
+		logger.Warn().Msg("Tailscale-only mode enabled but tailscale status unavailable, falling back to localhost")
+		return fmt.Sprintf("127.0.0.1:%d", listenPort)
+	}
+
 	var bindAddress string
 	useIPv4 := config.NetworkConfig.IPv4Mode.String != "disabled"
 	useIPv6 := config.NetworkConfig.IPv6Mode.String != "disabled"
@@ -660,7 +683,7 @@ func RunWebServer() {
 	// Determine the binding address based on the config
 	bindAddress := getBindAddress(80) // default port
 
-	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
+	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Bool("tailscaleOnly", config.LocalTailscaleOnly).Msg("Starting web server")
 	if err := r.Run(bindAddress); err != nil {
 		panic(err)
 	}
@@ -668,9 +691,10 @@ func RunWebServer() {
 
 func handleDevice(c *gin.Context) {
 	response := LocalDevice{
-		AuthMode:     &config.LocalAuthMode,
-		DeviceID:     GetDeviceID(),
-		LoopbackOnly: config.LocalLoopbackOnly,
+		AuthMode:      &config.LocalAuthMode,
+		DeviceID:      GetDeviceID(),
+		LoopbackOnly:  config.LocalLoopbackOnly,
+		TailscaleOnly: config.LocalTailscaleOnly,
 	}
 
 	c.JSON(http.StatusOK, response)
