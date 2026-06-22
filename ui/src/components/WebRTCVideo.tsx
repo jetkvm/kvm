@@ -546,6 +546,30 @@ export default function WebRTCVideo({
     [keyDownHandler, keyUpHandler, resetKeyboardState],
   );
 
+  // Pause/resume the server-side video feed when the tab is hidden so we
+  // don't burn WAN bandwidth decoding-then-discarding frames the user
+  // can't see. The encoder is restarted on resume so the first frame is
+  // an IDR and decode is artifact-free.
+  useEffect(
+    function pauseVideoOnTabHidden() {
+      const sync = () => {
+        sendRpc(document.hidden ? "pauseVideo" : "resumeVideo", {});
+      };
+
+      // Sync once on mount in case the tab is already hidden when we
+      // (re)connect, then track every visibility change.
+      sync();
+
+      const abortController = new AbortController();
+      document.addEventListener("visibilitychange", sync, {
+        signal: abortController.signal,
+      });
+
+      return () => abortController.abort();
+    },
+    [sendRpc],
+  );
+
   // Setup Video Event Listeners
   useEffect(
     function setupVideoEventListeners() {
