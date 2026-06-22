@@ -16,7 +16,6 @@ func effectiveUsbDevices() *usbgadget.Devices {
 	}
 
 	devices := *config.UsbDevices
-	devices.Audio = config.AudioEnabled && config.UsbDevices.Audio
 	return &devices
 }
 

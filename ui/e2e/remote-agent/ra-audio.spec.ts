@@ -8,6 +8,7 @@ import {
 import { createRemoteAgent, type AudioDeviceInfo } from "./remote-agent";
 
 const agent = createRemoteAgent();
+const USB_ENUMERATION_SETTLE_MS = 3_000;
 
 test.beforeAll(async () => {
   test.skip(!agent, "JETKVM_REMOTE_HOST not set");
@@ -18,12 +19,57 @@ test.afterEach(async () => {
   await agent?.stopAudioTone().catch(() => undefined);
 });
 
+async function waitForJetKvmAudioDevice(context: string, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  let devices: AudioDeviceInfo[] = [];
+
+  while (Date.now() < deadline) {
+    devices = await agent!.getAudioDevices();
+    const jetkvmDevice = devices.find(d => d.is_jetkvm);
+    if (jetkvmDevice) return jetkvmDevice;
+    await new Promise(r => setTimeout(r, 1_000));
+  }
+
+  throw new Error(
+    `No JetKVM USB ALSA playback device on remote host ${context}: ${JSON.stringify(devices)}`,
+  );
+}
+
+test("USB audio device remains attached when streaming audio is toggled", async ({ page }) => {
+  test.setTimeout(45_000);
+
+  await page.goto("/", { waitUntil: "networkidle" });
+  await waitForWebRTCReady(page);
+
+  try {
+    await callJsonRpc(page, "setAudioConfig", { params: { enabled: false } });
+    await page.waitForTimeout(USB_ENUMERATION_SETTLE_MS);
+    await waitForJetKvmAudioDevice("with streaming disabled");
+
+    await callJsonRpc(page, "setAudioConfig", { params: { enabled: true } });
+    await page.waitForTimeout(USB_ENUMERATION_SETTLE_MS);
+    await waitForJetKvmAudioDevice("after enabling streaming");
+
+    await callJsonRpc(page, "setAudioConfig", { params: { enabled: false } });
+    await page.waitForTimeout(USB_ENUMERATION_SETTLE_MS);
+    await waitForJetKvmAudioDevice("after disabling streaming");
+  } finally {
+    await callJsonRpc(page, "setAudioConfig", { params: { enabled: false } }).catch(
+      () => undefined,
+    );
+  }
+});
+
 test("audio works end-to-end", async ({ page }) => {
   test.setTimeout(60_000);
 
-  // Audio is opt-in via device config (Settings → Audio → Enable Audio).
-  // First connect with audio off, flip the setting via RPC, then reload so
-  // the new SDP exchange picks up the freshly-enabled track.
+  await waitForJetKvmAudioDevice("before enabling streaming");
+
+  // Audio streaming is opt-in via device config (Settings -> Audio -> Enable
+  // Audio). The USB audio device class is controlled separately by Settings ->
+  // Hardware, so enabling streaming should not force host USB re-enumeration.
+  // Connect with audio off, flip the setting via RPC, then reload so the new
+  // SDP exchange picks up the freshly-enabled track.
   await page.goto("/", { waitUntil: "networkidle" });
   await waitForWebRTCReady(page);
   await callJsonRpc(page, "setAudioConfig", { params: { enabled: true } });
@@ -32,21 +78,6 @@ test("audio works end-to-end", async ({ page }) => {
     await page.reload({ waitUntil: "networkidle" });
     await waitForWebRTCReady(page);
     await waitForAudioStream(page);
-
-    // The UAC gadget is only presented to the host while audio is enabled,
-    // so the capability check must run after setAudioConfig — and the host
-    // needs a few seconds to enumerate the new USB function.
-    let devices: AudioDeviceInfo[] = [];
-    const enumerateDeadline = Date.now() + 15_000;
-    while (Date.now() < enumerateDeadline) {
-      devices = await agent!.getAudioDevices();
-      if (devices.some(d => d.is_jetkvm)) break;
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    test.skip(
-      !devices.some(d => d.is_jetkvm),
-      `No JetKVM USB ALSA playback device on remote host: ${JSON.stringify(devices)}`,
-    );
 
     const before = (await page.evaluate(() => window.__kvmTestHooks?.getInboundAudioStats())) ?? {
       bytesReceived: 0,

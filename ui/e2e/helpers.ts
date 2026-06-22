@@ -715,9 +715,15 @@ export const SSH_OPTS = [
 const SSH_MAX_RETRIES = 3;
 const SSH_RETRY_BASE_DELAY_MS = 2000;
 const SSH_COMMAND_TIMEOUT_MS = 15000;
+const REMOTE_APP_PATH = "/userdata/jetkvm/bin/jetkvm_app";
+const REMOTE_DEBUG_APP_PATH = "/userdata/jetkvm/bin/jetkvm_app_debug";
 
 function escapeForSingleQuotedShell(cmd: string): string {
   return cmd.replace(/'/g, "'\\''");
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${escapeForSingleQuotedShell(value)}'`;
 }
 
 export async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
@@ -787,15 +793,30 @@ export async function restoreSSHDevState(state: SSHDevState): Promise<void> {
   }
 }
 
+async function getRestartAppPathViaSSH(): Promise<string> {
+  const configuredPath = process.env.E2E_REMOTE_APP_PATH;
+  if (configuredPath) return configuredPath;
+
+  const runningDebug = await sshExec(
+    `for exe in /proc/[0-9]*/exe; do ` +
+      `target=$(readlink "$exe" 2>/dev/null || true); ` +
+      `case "$target" in */jetkvm_app_debug) echo 1; exit 0;; esac; ` +
+      `done`,
+    true,
+  );
+  return runningDebug.trim() === "1" ? REMOTE_DEBUG_APP_PATH : REMOTE_APP_PATH;
+}
+
 export async function restartAppViaSSH(): Promise<void> {
-  await sshExec("killall jetkvm_app", true);
+  const appPath = await getRestartAppPathViaSSH();
+  await sshExec("killall jetkvm_app jetkvm_app_debug", true);
   await new Promise(r => setTimeout(r, 500));
   // Rotate last.log into last.log.prev before respawning so a later teardown
   // can still recover the previous session's output if a subsequent restart
   // truncates the live log. Combined into one SSH call to save a round-trip.
   await sshExec(
     "[ -s /userdata/jetkvm/last.log ] && mv /userdata/jetkvm/last.log /userdata/jetkvm/last.log.prev; " +
-      "setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib /userdata/jetkvm/bin/jetkvm_app > /userdata/jetkvm/last.log 2>&1 &",
+      `setsid env LD_LIBRARY_PATH=/oem/usr/lib:/oem/lib ${shellSingleQuote(appPath)} > /userdata/jetkvm/last.log 2>&1 &`,
     true,
   );
   await new Promise(r => setTimeout(r, 1000));
