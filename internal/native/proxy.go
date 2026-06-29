@@ -459,7 +459,7 @@ func (p *NativeProxy) restartProcess() error {
 	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
 
 	if p.restarts >= p.options.MaxRestartAttempts {
-		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonVideoMaxRestartAttemptsReached)
+		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonNativeMaxRestartAttemptsReached)
 		return fmt.Errorf("max restart attempts reached")
 	}
 

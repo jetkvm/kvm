@@ -38,10 +38,9 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
 
   const getReasonCopy = () => {
     switch (reason) {
-      case "video":
+      case "native":
         return {
-          message:
-            "We've detected an issue with the video capture process. Your device is still running and accessible, but video streaming is temporarily unavailable.",
+          message: "Native stack disabled after repeated failures.",
         };
       default:
         return {
@@ -60,7 +59,7 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
     try {
       // Open GitHub issue
       const issueBody = `## Issue Description
-The \`${reason}\` process encountered an error and failsafe mode was activated.
+The \`${reason}\` stack encountered repeated failures and failsafe mode was activated.
 
 **Reason:** \`${reason}\`
 **Timestamp:** ${new Date().toISOString()}

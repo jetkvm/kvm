@@ -36,7 +36,7 @@ let requestCounter = 0;
 
 // Map of blocked RPC methods by failsafe reason
 const blockedMethodsByReason: Record<string, string[]> = {
-  video: [
+  native: [
     "setStreamQualityFactor",
     "setVideoCodecPreference",
     "getEDID",

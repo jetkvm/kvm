@@ -1094,7 +1094,7 @@ export default function KvmIdRoute() {
           )}
 
           <div className="relative flex h-full w-full overflow-hidden">
-            {isFailsafeMode && failsafeReason === "video" ? null : (
+            {isFailsafeMode && failsafeReason === "native" ? null : (
               <WebRTCVideo
                 hasConnectionIssues={!!ConnectionStatusElement}
                 hideStatusBar={hideStatusBar}
