@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -195,13 +197,105 @@ func getMassStorageCDROMEnabled() (bool, error) {
 }
 
 type VirtualMediaUrlInfo struct {
-	Usable bool
-	Reason string //only populated if Usable is false
-	Size   int64
+	Usable bool   `json:"usable"`
+	Reason string `json:"reason,omitempty"`
+	Size   int64  `json:"size"`
 }
 
-func rpcCheckMountUrl(url string) (*VirtualMediaUrlInfo, error) {
-	return nil, errors.New("not implemented")
+func rpcCheckMountUrl(rawURL string) (*VirtualMediaUrlInfo, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	parsedURL, err := neturl.Parse(rawURL)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "Enter a valid HTTP or HTTPS image URL.",
+		}, nil
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "Only HTTP and HTTPS image URLs can be mounted.",
+		}, nil
+	}
+
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check url: %w", err)
+	}
+	req.Header.Set("Range", "bytes=0-0")
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		logger.Warn().Err(err).Str("url", rawURL).Msg("failed to check virtual media url")
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "The URL is not available. Check the image URL and try again.",
+		}, nil
+	}
+	if err := resp.Body.Close(); err != nil {
+		logger.Warn().Err(err).Str("url", rawURL).Msg("failed to close virtual media url check response")
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		status := fmt.Sprintf("HTTP %d", resp.StatusCode)
+		if statusText := http.StatusText(resp.StatusCode); statusText != "" {
+			status += " " + statusText
+		}
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: fmt.Sprintf("The URL is not available (%s). Check the image URL and try again.", status),
+		}, nil
+	}
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "The URL is available, but the server does not support byte-range requests.",
+		}, nil
+	}
+
+	contentRange := strings.TrimSpace(resp.Header.Get("Content-Range"))
+	if strings.HasSuffix(contentRange, "/*") {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "The URL is available, but the server did not report the image size.",
+		}, nil
+	}
+
+	rangeFields := strings.Fields(contentRange)
+	if len(rangeFields) != 2 || strings.ToLower(rangeFields[0]) != "bytes" {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "The URL is available, but the server returned an unreadable range response.",
+		}, nil
+	}
+
+	rangeParts := strings.Split(rangeFields[1], "/")
+	if len(rangeParts) != 2 || rangeParts[1] == "*" {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "The URL is available, but the server returned an unreadable range response.",
+		}, nil
+	}
+
+	size, err := strconv.ParseInt(rangeParts[1], 10, 64)
+	if err != nil {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "The URL is available, but the server returned an unreadable range response.",
+		}, nil
+	}
+	if size <= 0 {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "The URL points to an empty file.",
+		}, nil
+	}
+
+	return &VirtualMediaUrlInfo{
+		Usable: true,
+		Size:   size,
+	}, nil
 }
 
 type VirtualMediaSource string
@@ -332,17 +426,30 @@ func setInitialVirtualMediaState() error {
 }
 
 func prepareHTTPMount(url string, mode VirtualMediaMode) error {
+	url = strings.TrimSpace(url)
+
+	virtualMediaStateMutex.RLock()
+	alreadyMounted := currentVirtualMediaState != nil
+	virtualMediaStateMutex.RUnlock()
+	if alreadyMounted {
+		return fmt.Errorf("another virtual media is already mounted")
+	}
+
+	urlInfo, err := rpcCheckMountUrl(url)
+	if err != nil {
+		return err
+	}
+	if !urlInfo.Usable {
+		return errors.New(urlInfo.Reason)
+	}
+
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
 	if currentVirtualMediaState != nil {
 		return fmt.Errorf("another virtual media is already mounted")
 	}
 	httpRangeReader = httpreadat.New(url)
-	n, err := httpRangeReader.Size()
-	if err != nil {
-		return fmt.Errorf("failed to use http url: %w", err)
-	}
-	logger.Info().Str("url", url).Int64("size", n).Msg("using remote url")
+	logger.Info().Str("url", url).Int64("size", urlInfo.Size).Msg("using remote url")
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
 		return fmt.Errorf("failed to set mass storage mode: %w", err)
@@ -352,7 +459,7 @@ func prepareHTTPMount(url string, mode VirtualMediaMode) error {
 		Source: HTTP,
 		Mode:   mode,
 		URL:    url,
-		Size:   n,
+		Size:   urlInfo.Size,
 	}
 	return nil
 }

@@ -35,6 +35,7 @@ import {
   type RemoteAgent,
   type MouseEvent as RAMouseEvent,
   type KeyboardEvent as RAKeyboardEvent,
+  type MountInfo,
 } from "./remote-agent";
 
 /** Run a command on the remote host (the machine whose display is captured by the KVM). */
@@ -154,6 +155,10 @@ function remoteHostSupportsS3(): { supported: boolean; reason?: string } {
   }
 
   return { supported: true };
+}
+
+function mountKey(mount: MountInfo): string {
+  return `${mount.device}|${mount.mount_point}`;
 }
 
 function enableRemoteHostUSBWake(options: { includeRootHub?: boolean } = {}): void {
@@ -2325,6 +2330,9 @@ test.describe("Remote Host Agent", () => {
   // VIRTUAL MEDIA
   // ═══════════════════════════════════════════
 
+  const MISSING_IMAGE_URL = "https://deb.debian.org/debian/jetkvm-missing-image.iso";
+  const MISSING_IMAGE_ERROR = /The URL is not available/;
+
   test("virtual-media: mount ISO from URL and verify, then unmount", async () => {
     test.setTimeout(60_000);
 
@@ -2360,6 +2368,59 @@ test.describe("Remote Host Agent", () => {
 
     const finalDevices = await agent!.getUSBDevices();
     expect(finalDevices.length).toBeGreaterThan(0);
+  });
+
+  test("virtual-media: unavailable URL is rejected without mounting", async () => {
+    test.setTimeout(30_000);
+
+    try {
+      await callJsonRpc(sharedPage, "unmountImage");
+    } catch {
+      /* ok if nothing mounted */
+    }
+
+    const stateBefore = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
+    expect(stateBefore).toBeNull();
+
+    const baselineMounts = new Set((await agent!.getMounts()).map(mountKey));
+
+    await expect(
+      callJsonRpc(sharedPage, "mountWithHTTP", { url: MISSING_IMAGE_URL, mode: "CDROM" }),
+    ).rejects.toThrow(MISSING_IMAGE_ERROR);
+
+    const stateAfter = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
+    expect(stateAfter).toBeNull();
+
+    await agent!.waitForMount(mount => !baselineMounts.has(mountKey(mount)), false, 5_000);
+  });
+
+  test("virtual-media: URL mount form shows unavailable image error", async () => {
+    test.setTimeout(30_000);
+
+    try {
+      await callJsonRpc(sharedPage, "unmountImage");
+    } catch {
+      /* ok if nothing mounted */
+    }
+
+    const baselineMounts = new Set((await agent!.getMounts()).map(mountKey));
+
+    await sharedPage.getByRole("button", { name: "Virtual Media" }).click();
+    await sharedPage.getByRole("button", { name: "Add New Media" }).click();
+    await sharedPage.getByRole("button", { name: "Continue" }).click();
+    await sharedPage.getByPlaceholder("https://example.com/image.iso").fill(MISSING_IMAGE_URL);
+    await sharedPage.getByRole("button", { name: "Mount URL" }).click();
+
+    await expect(sharedPage.getByRole("heading", { name: "Mount Error" })).toBeVisible();
+    await expect(sharedPage.getByText(MISSING_IMAGE_ERROR)).toBeVisible();
+
+    const stateAfter = (await callJsonRpc(sharedPage, "getVirtualMediaState")) as null | object;
+    expect(stateAfter).toBeNull();
+
+    await agent!.waitForMount(mount => !baselineMounts.has(mountKey(mount)), false, 5_000);
+
+    await sharedPage.getByRole("button", { name: "Close" }).click();
+    await ensureRpcReady(sharedPage);
   });
 
   test("virtual-media: mount ISO as Disk mode preserves keyboard (#560)", async () => {
