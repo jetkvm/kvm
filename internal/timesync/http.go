@@ -99,8 +99,8 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				metricHttpTotalCancelCount.Inc()
 				results <- nil
 			} else {
-				scopedLogger.Warn().
-					Str("error", err.Error()).
+				scopedLogger.Debug().
+					Err(err).
 					Int("status", status).
 					Msg("failed to query HTTP server")
 				results <- nil
