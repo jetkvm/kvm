@@ -512,10 +512,17 @@ func getDisplayInfo() []DisplayInfo {
 var aplayDeviceRE = regexp.MustCompile(`^card ([0-9]+): ([^ ]+) \[(.*)\], device ([0-9]+): .*\[(.*)\]`)
 
 func isJetKVMUSBAudioDevice(d AudioDeviceInfo) bool {
-	if strings.EqualFold(strings.TrimSpace(d.USBID), "1d6b:0104") {
+	usbID := strings.ToLower(strings.TrimSpace(d.USBID))
+	if usbID == "1d6b:0104" {
 		return true
 	}
-	return strings.Contains(strings.ToLower(d.Name+" "+d.Description), "jetkvm usb emulation device")
+
+	deviceText := strings.ToLower(d.Name + " " + d.Description)
+	if usbID == "0573:1573" && strings.Contains(deviceText, "usb audio and hid") {
+		return true
+	}
+
+	return strings.Contains(deviceText, "jetkvm usb emulation device")
 }
 
 func listAudioDevices() []AudioDeviceInfo {

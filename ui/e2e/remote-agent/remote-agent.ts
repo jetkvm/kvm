@@ -578,7 +578,7 @@ export class RemoteAgent {
 
     if (needsBuild) {
       console.log("[remote-agent] Building remote-agent binary...");
-      execSync("GOOS=linux GOARCH=amd64 go build -o remote-agent .", {
+      execSync("GOOS=linux GOARCH=amd64 go build -buildvcs=false -o remote-agent .", {
         cwd: agentDir,
         stdio: "inherit",
       });
