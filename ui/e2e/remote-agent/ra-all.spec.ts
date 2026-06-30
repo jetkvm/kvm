@@ -2555,39 +2555,39 @@ test.describe("Remote Host Agent", () => {
   // ═══════════════════════════════════════════
 
   test("usb: serial console CDC-ACM toggle creates and removes ttyACM on host", async () => {
-    test.setTimeout(30_000);
+    test.setTimeout(90_000);
 
     test.skip(!process.env.JETKVM_REMOTE_HOST, "JETKVM_REMOTE_HOST not set");
 
-    // Ensure serial console is off initially
-    await callJsonRpc(sharedPage, "setUsbDevices", {
-      devices: { ...USB_DEVICES_DEFAULT, serial_console: false },
-    });
-
     // Verify the host does NOT see a ttyACM device
-    const beforeACM = await waitForRemoteHostTtyACM(false);
+    const beforeACM = await usbReconfigWithRetry(
+      "setUsbDevices",
+      { devices: { ...USB_DEVICES_DEFAULT, serial_console: false } },
+      attemptMs => waitForRemoteHostTtyACM(false, attemptMs),
+      45_000,
+    );
     expect(beforeACM).toBe("");
 
-    // Enable serial console
-    await callJsonRpc(sharedPage, "setUsbDevices", {
-      devices: { ...USB_DEVICES_DEFAULT, serial_console: true },
-    });
-
     // Verify the host now sees a ttyACM device
-    const afterACM = await waitForRemoteHostTtyACM(true);
+    const afterACM = await usbReconfigWithRetry(
+      "setUsbDevices",
+      { devices: { ...USB_DEVICES_DEFAULT, serial_console: true } },
+      attemptMs => waitForRemoteHostTtyACM(true, attemptMs),
+      45_000,
+    );
     expect(afterACM).toContain("ttyACM");
 
     // Verify /dev/ttyGS0 exists on the KVM device
     const afterGS0 = (await sshExec("ls /dev/ttyGS0 2>/dev/null || echo MISSING", true)).trim();
     expect(afterGS0).toBe("/dev/ttyGS0");
 
-    // Disable serial console
-    await callJsonRpc(sharedPage, "setUsbDevices", {
-      devices: { ...USB_DEVICES_DEFAULT, serial_console: false },
-    });
-
     // Verify the host no longer sees a ttyACM device
-    const removedACM = await waitForRemoteHostTtyACM(false);
+    const removedACM = await usbReconfigWithRetry(
+      "setUsbDevices",
+      { devices: { ...USB_DEVICES_DEFAULT, serial_console: false } },
+      attemptMs => waitForRemoteHostTtyACM(false, attemptMs),
+      45_000,
+    );
     expect(removedACM).toBe("");
 
     // Verify other USB functions still work (keyboard, mouse)

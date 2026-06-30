@@ -602,7 +602,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				isConnected = true
 				onActiveSessionsChanged()
 				if incrActiveSessions() == 1 {
-					onFirstSessionConnected()
+					onFirstSessionConnected(session)
 				}
 				onSessionConnected(session)
 				if mqttManager != nil {
@@ -665,10 +665,22 @@ func onActiveSessionsChanged() {
 // capture is a shared pipeline; starting it again on a handoff connect (count
 // 1→2) would issue redundant native start calls and re-run the sleep-mode
 // re-lock wait while video is already streaming.
-func onFirstSessionConnected() {
+func sessionVideoCodecType(session *Session) int {
+	if session.codecMimeType == webrtc.MimeTypeH265 {
+		return 1
+	}
+	return 0
+}
+
+func startNativeVideoForSession(session *Session) {
+	_ = nativeInstance.VideoSetCodecType(sessionVideoCodecType(session))
+	_ = nativeInstance.VideoStart()
+}
+
+func onFirstSessionConnected(session *Session) {
 	stopVideoSleepModeTicker()
 	_ = setHostDisplayAdvertised(true, "first_session_connected", false)
-	_ = nativeInstance.VideoStart()
+	startNativeVideoForSession(session)
 }
 
 // onSessionConnected runs per session when ICE reaches Connected. Uses the
@@ -677,11 +689,6 @@ func onFirstSessionConnected() {
 // connected can fire before then, racing the assignment.
 func onSessionConnected(session *Session) {
 	notifyFailsafeMode(session)
-	if session.codecMimeType == webrtc.MimeTypeH265 {
-		_ = nativeInstance.VideoSetCodecType(1)
-	} else {
-		_ = nativeInstance.VideoSetCodecType(0)
-	}
 	if session.AudioTrack != nil {
 		startAudio(session.AudioTrack)
 	}
