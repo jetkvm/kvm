@@ -36,7 +36,7 @@ export default function SettingsRoute() {
     ref: scrollContainerRef as React.RefObject<HTMLDivElement>,
   });
   const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
-  const isVideoDisabled = isFailsafeMode && failsafeReason === "video";
+  const isNativeDisabled = isFailsafeMode && failsafeReason === "native";
 
   // Handle scroll position to show/hide gradients
   const handleScroll = () => {
@@ -158,14 +158,14 @@ export default function SettingsRoute() {
                 </FeatureFlag>
                 <div
                   className={cx("shrink-0", {
-                    "cursor-not-allowed opacity-50": isVideoDisabled,
+                    "cursor-not-allowed opacity-50": isNativeDisabled,
                   })}
                 >
                   <NavLink
                     to="video"
                     className={({ isActive }) =>
                       cx(isActive ? "active" : "", {
-                        "pointer-events-none": isVideoDisabled,
+                        "pointer-events-none": isNativeDisabled,
                       })
                     }
                   >
@@ -185,14 +185,14 @@ export default function SettingsRoute() {
                 </div>
                 <div
                   className={cx("shrink-0", {
-                    "cursor-not-allowed opacity-50": isVideoDisabled,
+                    "cursor-not-allowed opacity-50": isNativeDisabled,
                   })}
                 >
                   <NavLink
                     to="hardware"
                     className={({ isActive }) =>
                       cx(isActive ? "active" : "", {
-                        "pointer-events-none": isVideoDisabled,
+                        "pointer-events-none": isNativeDisabled,
                       })
                     }
                   >

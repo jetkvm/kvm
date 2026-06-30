@@ -3,9 +3,8 @@ package kvm
 import (
 	"io"
 	"os"
-	"strings"
 
-	"github.com/jetkvm/kvm/internal/supervisor"
+	"github.com/jetkvm/kvm/internal/failsafe"
 	"github.com/jetkvm/kvm/internal/sync"
 )
 
@@ -79,18 +78,14 @@ func checkFailsafeReason() {
 		failsafeCrashLog = content
 		_ = os.Remove(lastCrashPath)
 
-		// TODO: read the goroutine stack trace and check which goroutine is panicking
+		reason, activate := failsafe.ClassifyCrashLog(failsafeCrashLog)
+		if !activate {
+			l.Info().Str("reason", reason).Msg("last crash log does not activate failsafe mode")
+			return
+		}
+
 		failsafeModeActive = true
-		if strings.Contains(failsafeCrashLog, supervisor.FailsafeReasonVideoMaxRestartAttemptsReached) {
-			failsafeModeReason = "video"
-			return
-		}
-		if strings.Contains(failsafeCrashLog, "runtime.cgocall") {
-			failsafeModeReason = "video"
-			return
-		} else {
-			failsafeModeReason = "unknown"
-		}
+		failsafeModeReason = reason
 	})
 }
 
