@@ -18,7 +18,7 @@ import {
   PointerLockBar,
 } from "@components/VideoOverlay";
 import OcrOverlay from "@components/OcrOverlay";
-import { keys } from "@/keyboardMappings";
+import { keys, isModifierScancode } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
@@ -377,7 +377,7 @@ export default function WebRTCVideo({
       // event, so we need to clear the keys after a short delay
       // https://bugs.chromium.org/p/chromium/issues/detail?id=28089
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1299553
-      if (e.metaKey && hidKey < 0xe0) {
+      if (e.metaKey && !isModifierScancode(hidKey)) {
         setTimeout(() => {
           console.debug(`Forcing the meta key release of associated key: ${hidKey}`);
           handleKeyPress(hidKey, false);
@@ -389,10 +389,13 @@ export default function WebRTCVideo({
       if (!isKeyboardLockActive && hidKey === keys.MetaLeft) {
         // If the left meta key was just pressed and we're not keyboard locked
         // we'll never see the keyup event because the browser is going to lose
-        // focus so set a deferred keyup after a short delay
+        // focus so set a deferred keyup after a short delay.
+        // Only synthesize the release if focus was actually lost.
         setTimeout(() => {
-          console.debug(`Forcing the left meta key release`);
-          handleKeyPress(hidKey, false);
+          if (document.visibilityState !== "visible" || !document.hasFocus()) {
+            console.debug(`Forcing the left meta key release after focus loss`);
+            handleKeyPress(hidKey, false);
+          }
         }, 100);
       }
     },
@@ -533,11 +536,17 @@ export default function WebRTCVideo({
       const abortController = new AbortController();
       const signal = abortController.signal;
 
+      const onVisibilityChange = () => {
+        if (document.visibilityState === "hidden") {
+          resetKeyboardState();
+        }
+      };
+
       document.addEventListener("keydown", keyDownHandler, { signal });
       document.addEventListener("keyup", keyUpHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
-      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
+      document.addEventListener("visibilitychange", onVisibilityChange, { signal });
 
       return () => {
         abortController.abort();

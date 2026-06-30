@@ -31,6 +31,18 @@ export default defineConfig({
       testDir: "./e2e/remote-agent",
       testMatch: /ra-.*\.spec\.ts/,
     },
+    {
+      name: "keyboard-paste",
+      testDir: "./e2e/remote-agent",
+      testMatch: /keyboard-paste\.spec\.ts/,
+      dependencies: ["remote-agent"],
+    },
+    {
+      name: "keyboard-macros",
+      testDir: "./e2e/remote-agent",
+      testMatch: /keyboard-macros\.spec\.ts/,
+      dependencies: ["remote-agent"],
+    },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
     {
       name: "ota-prerelease-unsigned",

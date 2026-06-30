@@ -38,6 +38,12 @@ APT_PACKAGES=(
   zstd
   python3-venv
   python3-kconfiglib
+  ripgrep
+  ca-certificates
+  curl
+  gnupg
+  nodejs
+  npm
 )
 
 if [ "${ARCH}" = "amd64" ]; then
@@ -61,3 +67,20 @@ wget -O buildkit.tar.zst "${BUILDKIT_URL}" && \
     rm buildkit.tar.zst
 popd
 rm -rf "${BUILDKIT_TMPDIR}"
+
+# Playwright Chromium system libraries (libnspr4, libnss3, libgbm, X11/xcb, etc.)
+# Needed for `make test_e2e` / `npx playwright test` to launch the bundled headless shell.
+sudo env "PATH=$PATH" npm exec --yes playwright@latest install-deps chromium
+
+# Docker CLI
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  trixie stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update && \
+  sudo apt-get install -y docker-ce-cli && \
+  sudo rm -rf /var/lib/apt/lists/*

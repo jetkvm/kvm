@@ -52,6 +52,7 @@
     }
   },
   "include": [
-    "src"
+    "src",
+    "../internal/keyboard/keyaliases.json"
   ]
 }

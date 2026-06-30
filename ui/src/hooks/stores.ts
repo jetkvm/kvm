@@ -392,6 +392,9 @@ export interface SettingsState {
   showPressedKeys: boolean;
   setShowPressedKeys: (show: boolean) => void;
 
+  modifierLatching: boolean;
+  setModifierLatching: (value: boolean) => void;
+
   // Video enhancement settings
   videoSaturation: number;
   setVideoSaturation: (value: number) => void;
@@ -446,6 +449,9 @@ export const useSettingsStore = create(
 
       showPressedKeys: true,
       setShowPressedKeys: (show: boolean) => set({ showPressedKeys: show }),
+
+      modifierLatching: true,
+      setModifierLatching: (value: boolean) => set({ modifierLatching: value }),
 
       // Video enhancement settings with default values (1.0 = normal)
       videoSaturation: 1.0,

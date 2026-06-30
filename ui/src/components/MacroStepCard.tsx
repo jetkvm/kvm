@@ -7,7 +7,6 @@ import Card from "@components/Card";
 import FieldLabel from "@components/FieldLabel";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { MAX_KEYS_PER_STEP, DEFAULT_DELAY } from "@/constants/macros";
-import { KeyboardLayout } from "@/keyboardLayouts";
 import { keys, modifiers } from "@/keyboardMappings";
 import { m } from "@localizations/messages.js";
 
@@ -70,7 +69,7 @@ interface MacroStepCardProps {
   onModifierChange: (modifiers: string[]) => void;
   onDelayChange: (delay: number) => void;
   isLastStep: boolean;
-  keyboard: KeyboardLayout;
+  keyDisplayMap: Record<string, string>;
 }
 
 const ensureArray = <T,>(arr: T[] | null | undefined): T[] => {
@@ -93,10 +92,8 @@ export function MacroStepCard({
   onModifierChange,
   onDelayChange,
   isLastStep,
-  keyboard,
+  keyDisplayMap,
 }: Readonly<MacroStepCardProps>) {
-  const { keyDisplayMap } = keyboard;
-
   const keyOptions = useMemo(
     () =>
       Object.keys(keys)

@@ -8,12 +8,20 @@ import {
   restartAppViaSSH,
   saveSSHDevState,
   restoreSSHDevState,
+  backupOriginalConfigIfNeeded,
   SSH_OPTS,
 } from "./helpers";
 
 const execAsync = promisify(exec);
 
 export default async function globalSetup() {
+  // Save the user's pre-test config before anything else touches it.
+  try {
+    await backupOriginalConfigIfNeeded();
+  } catch (err) {
+    console.error("[global-setup] Could not back up original config: ", err);
+  }
+
   const binaryPath = process.env.BASELINE_BINARY_PATH;
   if (!binaryPath) {
     console.log("[global-setup] BASELINE_BINARY_PATH not set, skipping deployment.");

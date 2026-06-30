@@ -106,6 +106,8 @@ tail -f /userdata/jetkvm/last.log
 ├── internal/                 # Internal Go packages
 │   ├── confparser/           # Configuration file implementation
 │   ├── hidrpc/               # HIDRPC implementation for HID devices (keyboard, mouse, etc.)
+│   ├── keyboard/             # KLE keyboard layout parser, built-in layouts, RPC handlers
+│   │   └── layouts/          # Built-in KLE JSON files (ANSI/ISO/JIS)
 │   ├── logging/              # Logging implementation
 │   ├── mdns/                 # mDNS implementation
 │   ├── native/               # CGO / Native code glue layer (on-device hardware)
@@ -134,7 +136,6 @@ tail -f /userdata/jetkvm/last.log
         ├── assets/           # UI in-page images
         ├── components/       # UI components
         ├── hooks/            # Hooks (stores, RPC handling, virtual devices)
-        ├── keyboardLayouts/  # Keyboard layout definitions
         ├── paraglide/        #  (localization compiled messages output)
         ├── providers/        # Feature flags
         └── routes/           # Pages (login, settings, etc.)
@@ -142,11 +143,84 @@ tail -f /userdata/jetkvm/last.log
 
 **Key files for beginners:**
 
-- `web.go` - Add new API endpoints here
-- `config.go` - Add new settings here
+- `jsonrpc.go` - JSON-RPC method registry. Most "I need the frontend to call something new on the device" changes go here.
+- `web.go` - HTTP/REST + WebSocket endpoints (Gin). WebRTC signalling lives in `webrtc.go`.
+- `config.go` - Add new settings here. Stored as `/userdata/kvm_config.json` on the device.
 - `tailscale.go` - Tailscale status and control-server logic
 - `ui/src/routes/` - Add new pages here
 - `ui/src/components/` - Add new UI components here
+
+---
+
+## Architecture Pointers
+
+A few things you'd otherwise have to grep for:
+
+### The binary runs as one of three processes
+
+`cmd/main.go` is the entry point for *every* JetKVM process. The same binary takes on a different role depending on environment variables:
+
+1. **Supervisor** (default invocation): forks the same binary as a child, restarts it on crash, captures dumps to `supervisor.ErrorDumpDir`. The first `jetkvm_app` you start is always the supervisor.
+2. **Main app** (`EnvChildID` matches the built version): runs `kvm.Main()` — the WebRTC, HTTP, JSON-RPC, USB, etc. Most code in the repo runs in this mode.
+3. **Native subprocess** (`subcomponent=native` flag, or `EnvSubcomponent` env var): runs `native.RunNativeProcess()`. The CGO-heavy HDMI capture and LVGL touchscreen process is isolated here so a native crash doesn't kill the main app.
+
+When debugging a crash, `/userdata/jetkvm/last.log` may contain output from any of the three. The supervisor crash dumps live alongside.
+
+### Internal package purposes
+
+A short tour of what's in `internal/`:
+
+| Package | Purpose |
+|---|---|
+| `confparser` | Configuration file parser shared between subsystems |
+| `diagnostics` | System diagnostics dump used on supervisor crash |
+| `hidrpc` | Binary HID protocol bridge between the main app and the native subprocess |
+| `keyboard` | KLE keyboard layout parser + built-in layouts (`go:embed` from `layouts/`); user uploads stored at `/userdata/kvm_layouts/` on the device. See [docs/keyboard/](docs/keyboard/) for the full design and contributor guide. |
+| `logging` | zerolog-based structured logging with subsystem scopes |
+| `mdns` | mDNS service announcement |
+| `native` | CGO bridge to the C native library (HDMI, touchscreen via LVGL). The `cgo/ui` symlink targets `../eez/src/ui` (EEZ Studio output). |
+| `network` / `nmlite` (in `pkg/`) | Network configuration |
+| `ota` | Over-the-air updates with GPG signature verification |
+| `supervisor` | Constants and env-var names shared between the supervisor parent and the child processes |
+| `sync` | `sync.Mutex` wrappers with optional trace logging (enabled by the `synctrace` build tag) |
+| `tailscale` | Tailscale status + control-server logic |
+| `timesync` | NTP/time sync |
+| `tzdata` | Timezone data |
+| `usbgadget` | USB gadget driver (keyboard, mouse, mass storage) |
+| `utils` | SSH handling and other small utilities |
+| `websecure` | TLS certificate management |
+
+### Build tags
+
+The default `make build_dev` and `make build_release` use `-tags netgo,timetzdata,nomsgpack`. Adding `-tags synctrace` (via `./dev_deploy.sh -r <IP> --enable-sync-trace`) enables verbose mutex logging via the `internal/sync` wrappers — useful for debugging deadlocks, expensive in normal runs.
+
+---
+
+## Linting Rules to Know Before You Hit the Hook
+
+The `lint-staged` pre-commit hook is strict. Knowing the project rules ahead of time saves a lot of "fix and retry" cycles:
+
+### Go (`.golangci.yml`)
+
+- **`forbidigo`: no `fmt.Print*` or `log.*`** anywhere except `cmd/main.go` and the audit script. Use `internal/logging` instead — `logging.GetSubsystemLogger("name")` returns a zerolog logger.
+- **`gochecknoinits`: no `func init()`**. The exception is `internal/logging/sse.go`. If you have setup code that must run at package load, use `var x = computeX()` instead — runs at the same point and produces the same result.
+- **Formatter**: `goimports`. Editor integration handles this automatically.
+
+### TypeScript (`.oxlintrc.json`)
+
+- **Linter**: `oxlint`, **not** ESLint. Configured rules include `typescript-eslint/restrict-template-expressions` and `typescript-eslint/no-base-to-string` — beware of dropping `unknown` or `Event` straight into a template literal (use `String(e)` or `ev.type`).
+- **Plugins enabled**: `react`, `typescript`, `import`.
+- **Unused vars must be prefixed with `_`** (`argsIgnorePattern: ^_`).
+- **Pre-commit hook** (husky/lint-staged):
+  - `oxlint --fix --deny-warnings` on staged `.ts/.tsx`
+  - `oxfmt` on staged `.ts/.tsx/.js/.jsx/.css/.md`
+  - `i18n:resort` on staged `localization/messages/*.json`
+
+If a hook failure is in code you didn't touch, see if it's tripping on a pre-existing warning the file picked up; the hook lints the whole file, not just your diff.
+
+### PR target
+
+PRs go to **`dev`**, not `main`. The Makefile's `dev_release` target enforces this for releases; PRs that target the wrong branch are usually retargeted on review.
 
 ---
 
@@ -589,6 +663,40 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
 - Run `npm run i18n:audit` to do all the above checks.
 - Using [inlang CLI](https://inlang.com/m/2qj2w8pu/app-inlang-cli) to support the npm commands.
 - You can install the [Sherlock VS Code extension](https://marketplace.visualstudio.com/items?itemName=inlang.vs-code-extension) in your devcontainer.
+
+### Keyboard Layouts
+
+The virtual keyboard and paste-text system are driven by [KLE](https://keyboard-layout-editor.com) JSON files parsed on the Go backend. Built-in layouts live in `internal/keyboard/layouts/` and are embedded into the binary via `go:embed`.
+
+#### How it works
+
+1. Each `.kle.json` file describes a physical keyboard layout (key positions, sizes, legends per layer)
+2. The Go parser (`internal/keyboard/keyboard.go`) processes KLE JSON into a `KeyboardLayout` struct:
+   - Infers USB HID scancodes from key positions
+   - Builds a `charMap` mapping characters to scancode + modifier combinations
+   - Auto-generates uppercase shift legends for single-letter keys (e.g. `q` → `Q`, `ö` → `Ö`)
+   - Builds dead key compositions automatically using Unicode NFC normalization (e.g. `^` + `a` → `â`)
+3. The frontend receives the processed layout via JSON-RPC and uses it for rendering, paste, and macro display
+
+#### Adding a new built-in layout
+
+1. Create a KLE JSON file at `internal/keyboard/layouts/<locale>.kle.json` (e.g. `ko_KR.kle.json`)
+   - IDs use hyphens (`ko-KR`) to match the format stored in device configs
+   - Get a baseline layout `.KLE.json` file:
+     - Copy any existing layout file
+     - Use [keyboard-layout-editor.com](https://www.keyboard-layout-editor.com) to design the layout, then export the JSON.
+     - Download the KLE json for any keyboard at [https://kbdlayout.info](https://kbdlayout.info)
+   - Key legends use `\n` to separate layers: `"shift\nnormal\naltgr\nshift+altgr"`
+   - Use Unicode symbols for special keys: `⌫` (Backspace), `↵` (Enter), `⇥` (Tab), `⇪` (Caps Lock), `↑↓←→` (arrows)
+2. Run the tests to validate: `go test ./internal/keyboard/...`
+   - `TestAllBuiltinLayoutsParse` verifies every registered layout loads and parses
+   - `TestAllLayoutFilesRegistered` verifies every file in `layouts/` is registered
+
+#### User-uploaded layouts
+
+Users can also upload custom KLE JSON files via the settings UI or the HTTP endpoint (`POST /keyboard/upload`). These are stored on the device at `/userdata/kvm_layouts/` and appear alongside built-in layouts in the settings dropdown.
+
+For more details on the KLE format and transport schema, see [docs/keyboard/DESIGN.md](docs/keyboard/DESIGN.md) and [docs/keyboard/TRANSPORT.md](docs/keyboard/TRANSPORT.md).
 
 ---
 

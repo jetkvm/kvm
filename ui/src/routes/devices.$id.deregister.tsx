@@ -23,7 +23,9 @@ interface LoaderData {
 }
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
-  const { deviceId } = Object.fromEntries(await request.formData());
+  const formData = await request.formData();
+  const rawDeviceId = formData.get("deviceId");
+  const deviceId = typeof rawDeviceId === "string" ? rawDeviceId : "";
 
   try {
     const res = await fetch(`${CLOUD_API}/devices/${deviceId}`, {

@@ -1,93 +1,282 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { AnimatePresence, motion } from "framer-motion";
-import { KeyboardReact as Keyboard } from "react-simple-keyboard";
 import { LuKeyboard } from "react-icons/lu";
 
-import "react-simple-keyboard/build/css/index.css";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import { cx } from "@/cva.config";
-import { useHidStore, useUiStore } from "@hooks/stores";
+import { useHidStore, useSettingsStore, useUiStore } from "@hooks/stores";
 import useKeyboard from "@hooks/useKeyboard";
-import useKeyboardLayout from "@hooks/useKeyboardLayout";
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
-import { decodeModifiers, keys, latchingKeys, modifiers } from "@/keyboardMappings";
+import { useJsonRpc, JsonRpcResponse } from "@hooks/useJsonRpc";
+import { VirtualKeyboard as KleKeyboard } from "@components/keyboard/VirtualKeyboard";
+import { QuickActions } from "@components/QuickActions";
+import type { KeyboardLayout } from "@components/keyboard/types/schema";
+import { isModifierScancode, hidKeyToModifierMask } from "@/keyboardMappings";
 import { m } from "@localizations/messages.js";
+
+import "@components/keyboard/virtual-keyboard.css";
 
 export const DetachIcon = ({ className }: { className?: string }) => {
   return <img src={DetachIconRaw} alt="Detach Icon" className={className} />;
 };
 
+// Reverse map: modifier bit → HID scancode (for decoding keysDownState.modifier)
+const modifierBitToScancode: [number, number][] = Object.entries(hidKeyToModifierMask).map(
+  ([sc, bit]) => [bit as number, Number(sc)],
+);
+
+type ResizeDirection =
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
+const DETACHED_MIN_WIDTH = 600;
+const DETACHED_MAX_WIDTH = 1800;
+
 function KeyboardWrapper() {
   const keyboardRef = useRef<HTMLDivElement>(null);
   const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } = useUiStore();
-  const { keyboardLedState, keysDownState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
+  const { keysDownState, keyboardLedState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
     useHidStore();
-  const { handleKeyPress, executeMacro } = useKeyboard();
-  const { selectedKeyboard } = useKeyboardLayout();
+  const { handleKeyPress, pressLatchedModifier, releaseLatchedModifier, executeMacro } =
+    useKeyboard();
+  const { keyboardLayout, modifierLatching } = useSettingsStore();
+  const { send } = useJsonRpc();
 
+  // KLE layout fetched from backend
+  const [kleLayout, setKleLayout] = useState<KeyboardLayout | null>(null);
+
+  // Dragging state for detached mode
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [newPosition, setNewPosition] = useState({ x: 0, y: 0 });
+  const [detachedWidth, setDetachedWidth] = useState<number | null>(null);
+  const resizeDirectionRef = useRef<ResizeDirection | null>(null);
+  const resizeStartRef = useRef({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    pointerX: 0,
+    pointerY: 0,
+  });
 
-  const keyDisplayMap = useMemo(() => {
-    return selectedKeyboard.keyDisplayMap;
-  }, [selectedKeyboard]);
+  // Track which modifiers the virtual keyboard has latched.
+  // This provides immediate visual feedback without waiting
+  // for the HID round-trip via keysDownState.
+  const [latchedModifiers, setLatchedModifiers] = useState<Set<number>>(new Set());
+  const latchedModifiersRef = useRef(latchedModifiers);
+  latchedModifiersRef.current = latchedModifiers;
 
-  const virtualKeyboard = useMemo(() => {
-    return selectedKeyboard.virtualKeyboard;
-  }, [selectedKeyboard]);
+  // ---------------------------------------------------------------------------
+  // Fetch KLE layout from backend when keyboard layout changes
+  // ---------------------------------------------------------------------------
 
-  const { isShiftActive } = useMemo(() => {
-    return decodeModifiers(keysDownState.modifier);
-  }, [keysDownState]);
+  useEffect(() => {
+    if (!keyboardLayout) return;
 
-  const isCapsLockActive = useMemo(() => {
-    return keyboardLedState.caps_lock;
-  }, [keyboardLedState]);
-
-  const mainLayoutName = useMemo(() => {
-    // if you have the CapsLock "latched", then the shift state is inverted
-    const effectiveShift = isCapsLockActive ? false === isShiftActive : isShiftActive;
-    return effectiveShift ? "shift" : "default";
-  }, [isCapsLockActive, isShiftActive]);
-
-  const keyNamesForDownKeys = useMemo(() => {
-    const activeModifierMask = keysDownState.modifier || 0;
-    const modifierNames = Object.entries(modifiers)
-      .filter(([_, mask]) => (activeModifierMask & mask) !== 0)
-      .map(([name, _]) => name);
-
-    const keysDown = keysDownState.keys || [];
-    const keyNames = Object.entries(keys)
-      .filter(([_, value]) => keysDown.includes(value))
-      .map(([name, _]) => name);
-
-    return [...modifierNames, ...keyNames, " "]; // we have to have at least one space to avoid keyboard whining
-  }, [keysDownState]);
-
-  const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!keyboardRef.current) return;
-    if (e instanceof TouchEvent && e.touches.length > 1) return;
-    setIsDragging(true);
-
-    const clientX = e instanceof TouchEvent ? e.touches[0].clientX : e.clientX;
-    const clientY = e instanceof TouchEvent ? e.touches[0].clientY : e.clientY;
-
-    const rect = keyboardRef.current.getBoundingClientRect();
-    setPosition({
-      x: clientX - rect.left,
-      y: clientY - rect.top,
+    void send("getKeyboardLayoutData", { id: keyboardLayout }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        setKleLayout(null);
+        return;
+      }
+      setKleLayout(resp.result as KeyboardLayout);
     });
-  }, []);
+  }, [send, keyboardLayout]);
 
-  const onDrag = useCallback(
+  // ---------------------------------------------------------------------------
+  // Pressed scancodes — derived entirely from keysDownState (single source of truth)
+  // ---------------------------------------------------------------------------
+
+  const pressedScancodes = useMemo(() => {
+    const set = new Set<number>();
+
+    // Non-modifier keys from the HID key buffer
+    if (keysDownState.keys) {
+      for (const k of keysDownState.keys) {
+        if (k !== 0) set.add(k);
+      }
+    }
+
+    // Decode modifier byte into individual scancodes
+    if (keysDownState.modifier) {
+      for (const [bit, scancode] of modifierBitToScancode) {
+        if (keysDownState.modifier & bit) {
+          set.add(scancode);
+        }
+      }
+    }
+
+    // Merge optimistic latch state for immediate visual feedback
+    for (const sc of latchedModifiers) {
+      set.add(sc);
+    }
+
+    return set;
+  }, [keysDownState, latchedModifiers]);
+
+  // ---------------------------------------------------------------------------
+  // Key send handler — bridges the KLE keyboard to the HID layer
+  // ---------------------------------------------------------------------------
+
+  const onKeySend = useCallback(
+    (scancode: number) => {
+      if (scancode === 0) return;
+
+      // Regular key (or non-latching modifier): press then release.
+      if (!modifierLatching || !isModifierScancode(scancode)) {
+        void handleKeyPress(scancode, true);
+        setTimeout(() => void handleKeyPress(scancode, false), 50);
+        return;
+      }
+
+      // Latch mode: click to toggle on/off.
+      // Read from ref so this stays stable across latch toggles
+      const wasLatched = latchedModifiersRef.current.has(scancode);
+      setLatchedModifiers(current => {
+        const next = new Set(current);
+        if (wasLatched) {
+          next.delete(scancode);
+        } else {
+          next.add(scancode);
+        }
+        return next;
+      });
+
+      if (wasLatched) {
+        releaseLatchedModifier(scancode);
+      } else {
+        pressLatchedModifier(scancode);
+      }
+    },
+    [handleKeyPress, modifierLatching, pressLatchedModifier, releaseLatchedModifier],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Drag handling (for detached/floating mode)
+  // ---------------------------------------------------------------------------
+
+  const getClientPoint = (e: MouseEvent | TouchEvent) => {
+    if (e instanceof TouchEvent) {
+      if (e.touches.length === 0) return null;
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+  };
+
+  const startDrag = useCallback(
     (e: MouseEvent | TouchEvent) => {
       if (!keyboardRef.current) return;
+      if (isResizing) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-resize-handle="true"]')) return;
+      if (e instanceof TouchEvent && e.touches.length > 1) return;
+      setIsDragging(true);
+
+      const point = getClientPoint(e);
+      if (!point) return;
+
+      const rect = keyboardRef.current.getBoundingClientRect();
+      setPosition({
+        x: point.x - rect.left,
+        y: point.y - rect.top,
+      });
+    },
+    [isResizing],
+  );
+
+  const startResize = useCallback(
+    (direction: ResizeDirection, e: MouseEvent | TouchEvent) => {
+      if (!keyboardRef.current) return;
+      if (e instanceof TouchEvent && e.touches.length > 1) return;
+
+      const point = getClientPoint(e);
+      if (!point) return;
+
+      const rect = keyboardRef.current.getBoundingClientRect();
+      resizeDirectionRef.current = direction;
+      resizeStartRef.current = {
+        x: newPosition.x,
+        y: newPosition.y,
+        width: rect.width,
+        height: rect.height,
+        pointerX: point.x,
+        pointerY: point.y,
+      };
+      setIsResizing(true);
+      setIsDragging(false);
+    },
+    [newPosition.x, newPosition.y],
+  );
+
+  const onPointerMove = useCallback(
+    (e: MouseEvent | TouchEvent) => {
+      if (!keyboardRef.current) return;
+      const point = getClientPoint(e);
+      if (!point) return;
+
+      if (isResizing && resizeDirectionRef.current) {
+        const start = resizeStartRef.current;
+        const dir = resizeDirectionRef.current;
+
+        const dx = point.x - start.pointerX;
+        const dy = point.y - start.pointerY;
+
+        const hasLeft = dir.includes("left");
+        const hasRight = dir.includes("right");
+        const hasTop = dir.includes("top");
+        const hasBottom = dir.includes("bottom");
+
+        const aspect = start.height > 0 ? start.width / start.height : 1;
+        const fromX = (hasLeft ? -dx : 0) + (hasRight ? dx : 0);
+        const fromY = ((hasTop ? -dy : 0) + (hasBottom ? dy : 0)) * aspect;
+
+        let deltaW = fromX;
+        if ((hasLeft || hasRight) && (hasTop || hasBottom)) {
+          deltaW = (fromX + fromY) / 2;
+        } else if (hasTop || hasBottom) {
+          deltaW = fromY;
+        }
+
+        const nextWidth = Math.max(
+          DETACHED_MIN_WIDTH,
+          Math.min(DETACHED_MAX_WIDTH, start.width + deltaW),
+        );
+        const scale = nextWidth / start.width;
+        const nextHeight = start.height * scale;
+
+        let nextX = start.x;
+        let nextY = start.y;
+
+        if (hasLeft) {
+          nextX = start.x + (start.width - nextWidth);
+        }
+        if (hasTop) {
+          nextY = start.y + (start.height - nextHeight);
+        }
+
+        const maxX = window.innerWidth - nextWidth;
+        const maxY = window.innerHeight - nextHeight;
+
+        setDetachedWidth(nextWidth);
+        setNewPosition({
+          x: Math.min(Math.max(nextX, 0), Math.max(maxX, 0)),
+          y: Math.min(Math.max(nextY, 0), Math.max(maxY, 0)),
+        });
+        return;
+      }
+
       if (isDragging) {
-        const clientX = e instanceof TouchEvent ? e.touches[0].clientX : e.clientX;
-        const clientY = e instanceof TouchEvent ? e.touches[0].clientY : e.clientY;
+        const clientX = point.x;
+        const clientY = point.y;
 
         const newX = clientX - position.x;
         const newY = clientY - position.y;
@@ -102,15 +291,43 @@ function KeyboardWrapper() {
         });
       }
     },
-    [isDragging, position.x, position.y],
+    [isDragging, isResizing, position.x, position.y],
   );
 
   const endDrag = useCallback(() => {
     setIsDragging(false);
+    setIsResizing(false);
+    resizeDirectionRef.current = null;
   }, []);
 
+  const onResizeHandleMouseDown = useCallback(
+    (direction: ResizeDirection) => (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startResize(direction, e.nativeEvent);
+    },
+    [startResize],
+  );
+
+  const onResizeHandleTouchStart = useCallback(
+    (direction: ResizeDirection) => (e: React.TouchEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startResize(direction, e.nativeEvent);
+    },
+    [startResize],
+  );
+
   useEffect(() => {
-    // Is the keyboard detached or attached?
+    if (!isAttachedVirtualKeyboardVisible && keyboardRef.current && detachedWidth == null) {
+      const rect = keyboardRef.current.getBoundingClientRect();
+      if (rect.width > 0) {
+        setDetachedWidth(Math.max(DETACHED_MIN_WIDTH, Math.min(DETACHED_MAX_WIDTH, rect.width)));
+      }
+    }
+  }, [isAttachedVirtualKeyboardVisible, detachedWidth]);
+
+  useEffect(() => {
     if (isAttachedVirtualKeyboardVisible) return;
 
     const handle = keyboardRef.current;
@@ -122,8 +339,8 @@ function KeyboardWrapper() {
     document.addEventListener("mouseup", endDrag);
     document.addEventListener("touchend", endDrag);
 
-    document.addEventListener("mousemove", onDrag);
-    document.addEventListener("touchmove", onDrag);
+    document.addEventListener("mousemove", onPointerMove);
+    document.addEventListener("touchmove", onPointerMove);
 
     return () => {
       if (handle) {
@@ -134,67 +351,14 @@ function KeyboardWrapper() {
       document.removeEventListener("mouseup", endDrag);
       document.removeEventListener("touchend", endDrag);
 
-      document.removeEventListener("mousemove", onDrag);
-      document.removeEventListener("touchmove", onDrag);
+      document.removeEventListener("mousemove", onPointerMove);
+      document.removeEventListener("touchmove", onPointerMove);
     };
-  }, [isAttachedVirtualKeyboardVisible, endDrag, onDrag, startDrag]);
+  }, [isAttachedVirtualKeyboardVisible, endDrag, onPointerMove, startDrag]);
 
-  const onKeyUp = useCallback(async (_: string, e: MouseEvent | undefined) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-  }, []);
-
-  const onKeyDown = useCallback(
-    async (key: string, e: MouseEvent | undefined) => {
-      e?.preventDefault();
-      e?.stopPropagation();
-
-      // handle the fake key-macros we have defined for common combinations
-      if (key === "CtrlAltDelete") {
-        await executeMacro([
-          { keys: ["Delete"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 },
-        ]);
-        return;
-      }
-
-      if (key === "AltMetaEscape") {
-        await executeMacro([{ keys: ["Escape"], modifiers: ["AltLeft", "MetaLeft"], delay: 100 }]);
-        return;
-      }
-
-      if (key === "CtrlAltBackspace") {
-        await executeMacro([
-          { keys: ["Backspace"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 },
-        ]);
-        return;
-      }
-
-      // if they press any of the latching keys, we send a keypress down event and the release it automatically (on timer)
-      if (latchingKeys.includes(key)) {
-        console.debug(`Latching key pressed: ${key} sending down and delayed up pair`);
-        void handleKeyPress(keys[key], true);
-        setTimeout(() => void handleKeyPress(keys[key], false), 100);
-        return;
-      }
-
-      // if they press any of the dynamic keys, we send a keypress down event but we don't release it until they click it again
-      if (Object.keys(modifiers).includes(key)) {
-        const currentlyDown = keyNamesForDownKeys.includes(key);
-        console.debug(
-          `Dynamic key pressed: ${key} was currently down: ${currentlyDown}, toggling state`,
-        );
-        void handleKeyPress(keys[key], !currentlyDown);
-        return;
-      }
-
-      // otherwise, just treat it as a down+up pair
-      const cleanKey = key.replace(/[()]/g, "");
-      console.debug(`Regular key pressed: ${cleanKey} sending down and up pair`);
-      void handleKeyPress(keys[cleanKey], true);
-      setTimeout(() => void handleKeyPress(keys[cleanKey], false), 50);
-    },
-    [executeMacro, handleKeyPress, keyNamesForDownKeys],
-  );
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div
@@ -217,13 +381,16 @@ function KeyboardWrapper() {
             <div
               className={cx(
                 !isAttachedVirtualKeyboardVisible
-                  ? "fixed top-0 left-0 z-10 select-none"
-                  : "relative",
+                  ? "fixed top-0 left-0 z-10 max-w-[1800px] min-w-[600px] select-none"
+                  : "mx-auto max-w-[1200px] min-w-[600px]",
               )}
               ref={keyboardRef}
               style={{
                 ...(!isAttachedVirtualKeyboardVisible
-                  ? { transform: `translate(${newPosition.x}px, ${newPosition.y}px)` }
+                  ? {
+                      transform: `translate(${newPosition.x}px, ${newPosition.y}px)`,
+                      width: detachedWidth ? `${detachedWidth}px` : undefined,
+                    }
                   : {}),
               }}
             >
@@ -233,13 +400,14 @@ function KeyboardWrapper() {
                   "keyboard-detached": !isAttachedVirtualKeyboardVisible,
                 })}
               >
-                <div className="flex items-center justify-center border-b border-b-slate-800/30 bg-white px-2 py-4 dark:border-b-slate-300/20 dark:bg-slate-800">
-                  <div className="absolute left-2 flex items-center gap-x-2">
+                <div className="flex items-center justify-between border-b border-b-slate-800/30 bg-white px-2 py-3 dark:border-b-slate-300/20 dark:bg-slate-800">
+                  <div className="flex items-center gap-x-2">
                     {isAttachedVirtualKeyboardVisible ? (
                       <Button
                         size="XS"
                         theme="light"
                         text={m.detach()}
+                        data-testid="virtual-keyboard-detach"
                         onClick={() => setAttachedVirtualKeyboardVisibility(false)}
                       />
                     ) : (
@@ -247,97 +415,116 @@ function KeyboardWrapper() {
                         size="XS"
                         theme="light"
                         text={m.attach()}
+                        data-testid="virtual-keyboard-attach"
                         onClick={() => setAttachedVirtualKeyboardVisibility(true)}
                       />
                     )}
+                    <h2 className="font-sans text-sm leading-none font-medium text-slate-700 select-none dark:text-slate-300">
+                      {m.virtual_keyboard_header()}
+                    </h2>
                   </div>
-                  <h2 className="self-center font-sans text-sm leading-none font-medium text-slate-700 select-none dark:text-slate-300">
-                    {m.virtual_keyboard_header()}
-                  </h2>
-                  <div className="absolute right-2 flex items-center gap-x-2">
+                  <div className="flex items-center gap-x-2">
                     <div className="hidden items-center gap-x-2 md:flex">
+                      <QuickActions onExecuteMacro={executeMacro} />
+                      <div className="h-5 w-px bg-slate-800/20 dark:bg-slate-200/20" />
                       <LinkButton
                         size="XS"
                         to="settings/keyboard"
                         theme="light"
-                        text={selectedKeyboard.name}
+                        text={kleLayout?.name ?? keyboardLayout ?? "Keyboard"}
                         LeadingIcon={LuKeyboard}
                       />
-                      <div className="h-[20px] w-px bg-slate-800/20 dark:bg-slate-200/20" />
+                      <div className="h-5 w-px bg-slate-800/20 dark:bg-slate-200/20" />
                     </div>
 
                     <Button
                       size="XS"
                       theme="light"
                       text={m.hide()}
+                      data-testid="virtual-keyboard-hide"
                       LeadingIcon={ChevronDownIcon}
                       onClick={() => setVirtualKeyboardEnabled(false)}
                     />
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex flex-col bg-blue-50/80 md:flex-row dark:bg-slate-700">
-                    <Keyboard
-                      baseClass="simple-keyboard-main"
-                      layoutName={mainLayoutName}
-                      onKeyPress={onKeyDown}
-                      onKeyReleased={onKeyUp}
-                      buttonTheme={[
-                        {
-                          class: "combination-key",
-                          buttons: "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
-                        },
-                        {
-                          class: "down-key",
-                          buttons: keyNamesForDownKeys.join(" "),
-                        },
-                      ]}
-                      display={keyDisplayMap}
-                      layout={virtualKeyboard.main}
-                      disableButtonHold={true}
-                      enableLayoutCandidates={false}
-                      preventMouseDownDefault={true}
-                      preventMouseUpDefault={true}
-                      stopMouseDownPropagation={true}
-                      stopMouseUpPropagation={true}
+                <div className="bg-blue-50/80 dark:bg-slate-700">
+                  {kleLayout ? (
+                    <KleKeyboard
+                      keyboard={kleLayout}
+                      isMetaActive={false}
+                      onKeySend={onKeySend}
+                      pressedScancodes={pressedScancodes}
+                      kanaLedOn={keyboardLedState.kana}
+                      vkbClassName={[
+                        keyboardLedState.caps_lock && "caps-lock-on",
+                        keyboardLedState.num_lock && "num-lock-on",
+                        keyboardLedState.scroll_lock && "scroll-lock-on",
+                        keyboardLedState.kana && "kana-on",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                     />
-
-                    <div className="controlArrows">
-                      <Keyboard
-                        baseClass="simple-keyboard-control"
-                        theme="simple-keyboard hg-theme-default hg-layout-default"
-                        layoutName="default"
-                        onKeyPress={onKeyDown}
-                        onKeyReleased={onKeyUp}
-                        display={keyDisplayMap}
-                        layout={virtualKeyboard.control}
-                        disableButtonHold={true}
-                        enableLayoutCandidates={false}
-                        preventMouseDownDefault={true}
-                        preventMouseUpDefault={true}
-                        stopMouseDownPropagation={true}
-                        stopMouseUpPropagation={true}
-                      />
-                      <Keyboard
-                        baseClass="simple-keyboard-arrows"
-                        theme="simple-keyboard hg-theme-default hg-layout-default"
-                        onKeyPress={onKeyDown}
-                        onKeyReleased={onKeyUp}
-                        display={keyDisplayMap}
-                        layout={virtualKeyboard.arrows}
-                        disableButtonHold={true}
-                        enableLayoutCandidates={false}
-                        preventMouseDownDefault={true}
-                        preventMouseUpDefault={true}
-                        stopMouseDownPropagation={true}
-                        stopMouseUpPropagation={true}
-                      />
+                  ) : (
+                    <div className="flex items-center justify-center p-8 text-sm text-slate-500 dark:text-slate-400">
+                      {m.virtual_keyboard_header()}
                     </div>
-                    {/* TODO add optional number pad */}
-                  </div>
+                  )}
                 </div>
               </Card>
+
+              {!isAttachedVirtualKeyboardVisible && (
+                <>
+                  <div
+                    className="absolute top-0 bottom-0 -left-1 z-20 w-2 cursor-ew-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("left")}
+                    onTouchStart={onResizeHandleTouchStart("left")}
+                  />
+                  <div
+                    className="absolute top-0 -right-1 bottom-0 z-20 w-2 cursor-ew-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("right")}
+                    onTouchStart={onResizeHandleTouchStart("right")}
+                  />
+                  <div
+                    className="absolute -top-1 right-0 left-0 z-20 h-2 cursor-ns-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("top")}
+                    onTouchStart={onResizeHandleTouchStart("top")}
+                  />
+                  <div
+                    className="absolute right-0 -bottom-1 left-0 z-20 h-2 cursor-ns-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("bottom")}
+                    onTouchStart={onResizeHandleTouchStart("bottom")}
+                  />
+                  <div
+                    className="absolute -top-1 -left-1 z-30 h-3 w-3 cursor-nwse-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("top-left")}
+                    onTouchStart={onResizeHandleTouchStart("top-left")}
+                  />
+                  <div
+                    className="absolute -top-1 -right-1 z-30 h-3 w-3 cursor-nesw-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("top-right")}
+                    onTouchStart={onResizeHandleTouchStart("top-right")}
+                  />
+                  <div
+                    className="absolute -bottom-1 -left-1 z-30 h-3 w-3 cursor-nesw-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("bottom-left")}
+                    onTouchStart={onResizeHandleTouchStart("bottom-left")}
+                  />
+                  <div
+                    className="absolute -right-1 -bottom-1 z-30 h-3 w-3 cursor-nwse-resize"
+                    data-resize-handle="true"
+                    onMouseDown={onResizeHandleMouseDown("bottom-right")}
+                    onTouchStart={onResizeHandleTouchStart("bottom-right")}
+                  />
+                </>
+              )}
             </div>
           </motion.div>
         )}

@@ -162,7 +162,9 @@ export default function DhcpLeaseCard({
                   </span>
                   &nbsp;
                   <span className="text-sm font-medium">
-                    <LifeTimeLabel lifetime={`${networkState?.dhcp_lease?.lease_expiry}`} />
+                    <LifeTimeLabel
+                      lifetime={networkState?.dhcp_lease?.lease_expiry?.toISOString() ?? ""}
+                    />
                   </span>
                 </div>
               )}

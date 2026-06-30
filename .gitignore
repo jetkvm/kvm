@@ -18,3 +18,20 @@ ui/reports
 
 # compiled remote-agent test binary
 e2e/remote-agent/remote-agent
+
+# compiled keyboard-layouts test binary
+audit-layouts
+
+# build artifacts
+build/.cmake/
+build/_deps/
+build/CMakeFiles/
+build/CMakeCache.txt
+ui/tsconfig.node.tsbuildinfo
+
+# devcontainer lock file
+.devcontainer/docker/devcontainer-lock.json
+
+ui/localization/jetKVM.UI.inlang/cache/
+ui/localization/jetKVM.UI.inlang/README.md
+ui/localization/jetKVM.UI.inlang/.meta.json

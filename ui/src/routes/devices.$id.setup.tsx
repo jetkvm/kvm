@@ -34,10 +34,19 @@ const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
 };
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
-  // Handle form submission
-  const { name, id, returnTo } = Object.fromEntries(await request.formData());
+  // Handle form submission. FormData entries are FormDataEntryValue (string|File);
+  // these three are always strings, but narrow explicitly so url interpolation
+  // can't accidentally stringify a File.
+  const formData = await request.formData();
+  const stringField = (k: string): string => {
+    const v = formData.get(k);
+    return typeof v === "string" ? v : "";
+  };
+  const name = stringField("name");
+  const id = stringField("id");
+  const returnTo = stringField("returnTo");
 
-  if (!name || name === "") {
+  if (!name) {
     return { message: m.register_device_no_name() };
   }
 
@@ -45,7 +54,7 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     const res = await api.PUT(`${CLOUD_API}/devices/${id}`, { name });
 
     if (res.ok) {
-      return redirect(returnTo?.toString() ?? `/devices/${id}`);
+      return redirect(returnTo || `/devices/${id}`);
     } else {
       return { error: m.register_device_error({ error: res.statusText }) };
     }

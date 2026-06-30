@@ -240,7 +240,7 @@ export class KeyboardMacroReportMessage extends RpcMessage {
       // Ensure the keys are within the KEYS_LENGTH range
       const keys = step.keys;
       if (keys.length > this.KEYS_LENGTH) {
-        throw new Error(`Keys ${keys} is not within the hidKeyBufferSize range`);
+        throw new Error(`Keys [${keys.join(", ")}] is not within the hidKeyBufferSize range`);
       } else if (keys.length < this.KEYS_LENGTH) {
         keys.push(...Array(this.KEYS_LENGTH - keys.length).fill(0));
       }

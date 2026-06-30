@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LuPlus } from "react-icons/lu";
 
-import { KeySequence } from "@hooks/stores";
-import useKeyboardLayout from "@hooks/useKeyboardLayout";
+import { KeySequence, useSettingsStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import type { KeyboardLayout } from "@components/keyboard/types/schema";
+import { buildKeyDisplayMap } from "@/keyDisplayNames";
 import { Button } from "@components/Button";
 import FieldLabel from "@components/FieldLabel";
 import Fieldset from "@components/Fieldset";
@@ -10,6 +12,8 @@ import { InputFieldWithLabel, FieldError } from "@components/InputField";
 import { MacroStepCard } from "@components/MacroStepCard";
 import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
 import { m } from "@localizations/messages.js";
+
+import "@components/keyboard/virtual-keyboard.css";
 
 interface ValidationErrors {
   name?: string;
@@ -40,7 +44,20 @@ export function MacroForm({
   const [keyQueries, setKeyQueries] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { selectedKeyboard } = useKeyboardLayout();
+
+  const { send } = useJsonRpc();
+  const { keyboardLayout } = useSettingsStore();
+  const [kleLayout, setKleLayout] = useState<KeyboardLayout | null>(null);
+
+  useEffect(() => {
+    if (!keyboardLayout) return;
+    void send("getKeyboardLayoutData", { id: keyboardLayout }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setKleLayout(resp.result as KeyboardLayout);
+    });
+  }, [send, keyboardLayout]);
+
+  const keyDisplayMap = useMemo(() => buildKeyDisplayMap(kleLayout), [kleLayout]);
 
   const showTemporaryError = (message: string) => {
     setErrorMessage(message);
@@ -232,13 +249,13 @@ export function MacroForm({
                 onModifierChange={modifiers => handleModifierChange(stepIndex, modifiers)}
                 onDelayChange={delay => handleDelayChange(stepIndex, delay)}
                 isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
-                keyboard={selectedKeyboard}
+                keyDisplayMap={keyDisplayMap}
               />
             ))}
           </div>
         </Fieldset>
 
-        <div className="mt-4">
+        <div className="mt-4 flex gap-2">
           <Button
             size="MD"
             theme="light"
