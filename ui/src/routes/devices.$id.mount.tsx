@@ -70,7 +70,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
     setMountInProgress(true);
     send("mountWithHTTP", { url, mode }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) triggerError(resp.error.message);
+      if ("error" in resp) {
+        triggerError(typeof resp.error.data === "string" ? resp.error.data : resp.error.message);
+        setMountInProgress(false);
+        return;
+      }
 
       clearMountMediaState();
       syncRemoteVirtualMediaState()
@@ -335,8 +339,9 @@ function UrlView({
       icon: UbuntuIcon,
     },
     {
-      name: "Debian 13 Trixie",
-      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso",
+      name: "Debian 13 Trixie Netinst",
+      // Debian netinst filenames are point-release pinned in /current/.
+      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso",
       icon: DebianIcon,
     },
     {
