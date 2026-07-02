@@ -142,6 +142,11 @@ var (
 
 	usbEmulationDesired = true
 	lastUSBRecoveryTry  time.Time
+	// lastHidWriteRecoveryTry rate-limits write-timeout escalations separately:
+	// lastUSBRecoveryTry is cleared on every loop iteration while the gadget is
+	// attached, which would defeat rate limiting for a recovery that only runs
+	// in the attached state.
+	lastHidWriteRecoveryTry time.Time
 )
 
 func usbReadyForHidReports() bool {
@@ -196,32 +201,7 @@ func attemptUSBRecovery(state string) string {
 	// The next write/open must use the newly recreated device nodes.
 	gadget.ResetHIDFiles()
 
-	// After rebind, the kernel recreates /dev/hidg* but the character
-	// devices take several seconds to become usable (ENXIO until the
-	// function driver attaches). Retry the keyboard HID file open with
-	// increasing delays up to ~20 seconds total.
-	delays := []time.Duration{
-		1 * time.Second,
-		1 * time.Second,
-		2 * time.Second,
-		2 * time.Second,
-		3 * time.Second,
-		3 * time.Second,
-		4 * time.Second,
-		4 * time.Second,
-	}
-	tryReopenKeyboard := func(openDelays []time.Duration, reason string) bool {
-		for _, delay := range openDelays {
-			time.Sleep(delay)
-			if err := gadget.ReopenKeyboardHidFile(); err == nil {
-				usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened successfully after USB recovery")
-				return true
-			}
-		}
-		return false
-	}
-
-	if tryReopenKeyboard(delays, "udc_rebind") {
+	if tryReopenKeyboard("udc_rebind") {
 		return gadget.GetUsbState()
 	}
 
@@ -233,7 +213,111 @@ func attemptUSBRecovery(state string) string {
 	}
 	gadget.ResetHIDFiles()
 
-	if !tryReopenKeyboard(delays, "gadget_reconfigure") {
+	if !tryReopenKeyboard("gadget_reconfigure") {
+		usbLogger.Warn().Msg("keyboard HID file not ready after full USB recovery retry window")
+	}
+
+	return gadget.GetUsbState()
+}
+
+// usbRecoveryReopenDelays spaces out attempts to reopen /dev/hidg0 after a
+// rebind or reconfigure: the kernel recreates the chardevs but they take
+// several seconds to become usable (ENXIO until the function driver attaches).
+// Roughly 20 seconds total.
+var usbRecoveryReopenDelays = []time.Duration{
+	1 * time.Second,
+	1 * time.Second,
+	2 * time.Second,
+	2 * time.Second,
+	3 * time.Second,
+	3 * time.Second,
+	4 * time.Second,
+	4 * time.Second,
+}
+
+// keyboardProbeFailureLimit bails out of the reopen ladder early once the
+// keyboard chardev has repeatedly reopened but failed the write probe: the
+// broken post-rebind state does not heal by waiting, only by escalating.
+const keyboardProbeFailureLimit = 3
+
+func tryReopenKeyboard(reason string) bool {
+	probeFailures := 0
+	for _, delay := range usbRecoveryReopenDelays {
+		time.Sleep(delay)
+		if err := gadget.ReopenKeyboardHidFile(); err != nil {
+			continue
+		}
+
+		// Reopening is not proof of health: the #1512 broken state is a
+		// chardev that opens fine while every write times out. While the host
+		// is actively polling ("configured"), verify with a no-op report.
+		if gadget.GetUsbState() != usbgadget.USBStateConfigured {
+			// Host not polling yet (still enumerating, suspended, or off) — a
+			// write probe would stall regardless of gadget health. Accept the
+			// reopen; the runtime write-timeout streak remains as backstop.
+			usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened successfully after USB recovery")
+			return true
+		}
+
+		if err := gadget.VerifyKeyboardWritable(); err != nil {
+			probeFailures++
+			usbLogger.Warn().Err(err).Str("reason", reason).Int("probe_failures", probeFailures).
+				Msg("keyboard HID file reopened but not writable")
+			if probeFailures >= keyboardProbeFailureLimit {
+				return false
+			}
+			continue
+		}
+
+		usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened and verified writable after USB recovery")
+		return true
+	}
+	return false
+}
+
+// attemptHidWriteRecovery escalates to a full gadget reconfigure when keyboard
+// HID writes keep timing out even though the UDC reports "configured". This is
+// the aftermath of a UDC rebind that left the HID function broken: the chardev
+// reopens fine, so the rebind recovery path declares success, but every write
+// times out and is silently dropped (issue #1512). A plain rebind has already
+// proven insufficient at this point, so go straight to the reconfigure that
+// manual identifier cycling would otherwise trigger.
+func attemptHidWriteRecovery(state string) string {
+	if state != usbgadget.USBStateConfigured {
+		// Write timeouts outside "configured" (e.g. host suspend) are expected;
+		// don't let them accumulate into a spurious reconfigure right after the
+		// state returns to "configured".
+		gadget.ClearHidWriteTimeoutStreaks()
+		return state
+	}
+
+	now := time.Now()
+
+	usbStateLock.Lock()
+	desired := usbEmulationDesired
+	lastAttempt := lastHidWriteRecoveryTry
+	usbStateLock.Unlock()
+
+	timeouts := gadget.KeyboardWriteTimeoutStreak()
+	if !usbgadget.ShouldEscalateHidWriteRecovery(state, desired, timeouts, lastAttempt, now) {
+		return state
+	}
+
+	usbStateLock.Lock()
+	lastHidWriteRecoveryTry = now
+	usbStateLock.Unlock()
+
+	usbLogger.Warn().
+		Int("consecutive_timeouts", timeouts).
+		Msg("keyboard HID writes are timing out while USB is configured; attempting full USB gadget reconfigure")
+
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")
+		return gadget.GetUsbState()
+	}
+	gadget.ResetHIDFiles()
+
+	if !tryReopenKeyboard("hid_write_timeout_reconfigure") {
 		usbLogger.Warn().Msg("keyboard HID file not ready after full USB recovery retry window")
 	}
 
@@ -254,6 +338,8 @@ func checkUSBState() {
 	newState := gadget.GetUsbState()
 	if newState == usbgadget.USBStateNotAttached {
 		newState = attemptUSBRecovery(newState)
+	} else {
+		newState = attemptHidWriteRecovery(newState)
 	}
 
 	usbStateLock.Lock()

@@ -20,3 +20,34 @@ func ShouldAttemptUSBRecovery(state string, desired bool, lastAttempt time.Time,
 
 	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= USBRecoveryRetryInterval
 }
+
+// USBStateConfigured is the UDC sysfs state when the host has configured the gadget.
+const USBStateConfigured = "configured"
+
+// HidWriteTimeoutEscalationThreshold is the number of consecutive keyboard HID
+// write timeouts, while the gadget reports "configured", after which recovery
+// escalates to a full gadget reconfigure.
+const HidWriteTimeoutEscalationThreshold = 3
+
+// HidWriteRecoveryRetryInterval is the minimum interval between write-timeout
+// escalations. A full reconfigure forces the host to re-enumerate the gadget,
+// so repeated attempts are spaced well apart.
+const HidWriteRecoveryRetryInterval = 30 * time.Second
+
+// ShouldEscalateHidWriteRecovery reports whether keyboard HID write timeouts
+// should trigger a full USB gadget reconfigure. A UDC rebind can leave
+// /dev/hidg0 openable but non-functional: writes time out while the UDC still
+// reports "configured". Only a full gadget reconfigure recovers from that
+// state. Write timeouts in any other UDC state (e.g. "suspended" while the
+// host sleeps) are expected and must not trigger recovery.
+func ShouldEscalateHidWriteRecovery(state string, desired bool, consecutiveTimeouts int, lastAttempt time.Time, now time.Time) bool {
+	if state != USBStateConfigured || !desired {
+		return false
+	}
+
+	if consecutiveTimeouts < HidWriteTimeoutEscalationThreshold {
+		return false
+	}
+
+	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= HidWriteRecoveryRetryInterval
+}

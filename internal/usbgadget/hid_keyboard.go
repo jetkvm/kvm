@@ -675,3 +675,56 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 
 	return err
 }
+
+// KeyboardWriteTimeoutStreak returns the number of consecutive write timeouts
+// on the currently open keyboard HID file. Returns 0 when the file is closed.
+func (u *UsbGadget) KeyboardWriteTimeoutStreak() int {
+	u.keyboardLock.Lock()
+	file := u.keyboardHidFile
+	u.keyboardLock.Unlock()
+
+	if file == nil {
+		return 0
+	}
+
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	return u.hidWriteTimeoutStreaks[file.Name()]
+}
+
+// VerifyKeyboardWritable proves the keyboard HID function actually accepts
+// reports, not merely that the chardev opens — the #1512 broken state is a
+// /dev/hidg0 that opens fine while every write times out. It re-sends the
+// current keys-down state, which is a no-op for the host, and, unlike the
+// regular report path, returns a write timeout instead of swallowing it.
+// Only meaningful while the UDC state is "configured"; in any other state
+// the host is not polling the endpoint and a stalled write proves nothing.
+func (u *UsbGadget) VerifyKeyboardWritable() error {
+	keyboardMutex.Lock()
+	defer keyboardMutex.Unlock()
+
+	if err := u.openKeyboardHidFile(); err != nil {
+		return err
+	}
+
+	file := u.keyboardHidFile
+	if file == nil {
+		return fmt.Errorf("keyboard HID file is not open")
+	}
+
+	state := u.GetKeysDownState()
+	keys := make([]byte, hidKeyBufferSize)
+	copy(keys, state.Keys)
+	report := append([]byte{state.Modifier, 0x00}, keys...)
+
+	if err := file.SetWriteDeadline(time.Now().Add(hidProbeWriteTimeout)); err != nil {
+		return err
+	}
+	if _, err := file.Write(report); err != nil {
+		return fmt.Errorf("keyboard HID probe write failed: %w", err)
+	}
+
+	u.resetHidWriteTimeoutStreak(file.Name())
+	return nil
+}

@@ -119,6 +119,7 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 
 	n, err = file.Write(data)
 	if err == nil {
+		u.resetHidWriteTimeoutStreak(file.Name())
 		return
 	}
 
@@ -129,6 +130,11 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 		Msg("write failed")
 
 	if errors.Is(err, os.ErrDeadlineExceeded) {
+		// The timeout is swallowed so a suspended host doesn't surface errors
+		// on every report, but it is counted: consecutive timeouts while the
+		// gadget is "configured" mean the HID function is broken and recovery
+		// must escalate (see ShouldEscalateHidWriteRecovery).
+		u.recordHidWriteTimeout(file.Name())
 		u.logWithSuppression(
 			fmt.Sprintf("writeWithTimeout_%s", file.Name()),
 			1000,
@@ -141,6 +147,38 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 	}
 
 	return
+}
+
+func (u *UsbGadget) recordHidWriteTimeout(name string) {
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	if u.hidWriteTimeoutStreaks == nil {
+		u.hidWriteTimeoutStreaks = make(map[string]int)
+	}
+	u.hidWriteTimeoutStreaks[name]++
+}
+
+func (u *UsbGadget) resetHidWriteTimeoutStreak(name string) {
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	delete(u.hidWriteTimeoutStreaks, name)
+}
+
+func (u *UsbGadget) clearHidWriteTimeoutStreaks() {
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	clear(u.hidWriteTimeoutStreaks)
+}
+
+// ClearHidWriteTimeoutStreaks resets all per-file write timeout streaks.
+// Called while the gadget is not in the "configured" state, where write
+// timeouts are expected (e.g. host suspend) and must not accumulate into a
+// spurious recovery once the state returns to "configured".
+func (u *UsbGadget) ClearHidWriteTimeoutStreaks() {
+	u.clearHidWriteTimeoutStreaks()
 }
 
 func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...any) {

@@ -99,6 +99,12 @@ type UsbGadget struct {
 
 	logSuppressionCounter map[string]int
 	logSuppressionLock    sync.Mutex
+
+	// hidWriteTimeoutStreaks counts consecutive write timeouts per HID device
+	// file; a successful write resets the streak. Used to detect a gadget left
+	// non-functional after a UDC rebind (writes time out while "configured").
+	hidWriteTimeoutStreaks map[string]int
+	hidWriteStreakLock     sync.Mutex
 }
 
 const configFSPath = "/sys/kernel/config"
@@ -224,4 +230,8 @@ func (u *UsbGadget) ResetHIDFiles() {
 		u.relMouseHidFile = nil
 	}
 	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
+
+	// The new gadget instance starts with a clean slate; stale streaks must
+	// not immediately re-trigger write-timeout recovery.
+	u.clearHidWriteTimeoutStreaks()
 }
