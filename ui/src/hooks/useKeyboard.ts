@@ -16,6 +16,7 @@ import {
 import { useHidRpc } from "@/hooks/useHidRpc";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
+import { KeyboardLayout } from "@/keyboardLayouts";
 import { sleep } from "@/utils";
 
 const MACRO_RESET_KEYBOARD_STATE = {
@@ -28,9 +29,56 @@ export interface MacroStep {
   keys: string[] | null;
   modifiers: string[] | null;
   delay: number;
+  text?: string;
 }
 
 export type MacroSteps = MacroStep[];
+
+/**
+ * Converts a text string into a sequence of MacroSteps using the given keyboard layout.
+ * Each character is normalized to NFC, looked up in the layout's chars map,
+ * and converted into the appropriate key presses (including accent keys and dead keys).
+ */
+export function textToMacroSteps(text: string, keyboard: KeyboardLayout, delay: number): MacroStep[] {
+  const steps: MacroStep[] = [];
+
+  for (const char of text) {
+    const normalizedChar = char.normalize("NFC");
+    const keyprops = keyboard.chars[normalizedChar];
+    if (!keyprops) continue;
+
+    const { key, shift, altRight, deadKey, accentKey } = keyprops;
+    if (!key) continue;
+
+    if (accentKey) {
+      const accentModifiers: string[] = [];
+      if (accentKey.shift) accentModifiers.push("ShiftLeft");
+      if (accentKey.altRight) accentModifiers.push("AltRight");
+
+      steps.push({
+        keys: [String(accentKey.key)],
+        modifiers: accentModifiers.length > 0 ? accentModifiers : null,
+        delay,
+      });
+    }
+
+    const charModifiers: string[] = [];
+    if (shift) charModifiers.push("ShiftLeft");
+    if (altRight) charModifiers.push("AltRight");
+
+    steps.push({
+      keys: [String(key)],
+      modifiers: charModifiers.length > 0 ? charModifiers : null,
+      delay,
+    });
+
+    if (deadKey) {
+      steps.push({ keys: ["Space"], modifiers: null, delay });
+    }
+  }
+
+  return steps;
+}
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
@@ -386,14 +434,32 @@ export default function useKeyboard() {
     [sendKeystrokeLegacy, resetKeyboardState, setAbortController],
   );
 
-  const executeMacro = useCallback(
-    async (steps: MacroSteps) => {
-      if (rpcHidReady) {
-        return executeMacroRemote(steps);
+  const expandTextSteps = useCallback(
+    (steps: MacroSteps, keyboard?: KeyboardLayout): MacroSteps => {
+      if (!keyboard) return steps;
+
+      const expanded: MacroSteps = [];
+      for (const step of steps) {
+        if (step.text !== undefined && step.text.length > 0) {
+          expanded.push(...textToMacroSteps(step.text, keyboard, step.delay));
+        } else {
+          expanded.push(step);
+        }
       }
-      return executeMacroClientSide(steps);
+      return expanded;
     },
-    [rpcHidReady, executeMacroRemote, executeMacroClientSide],
+    [],
+  );
+
+  const executeMacro = useCallback(
+    async (steps: MacroSteps, keyboard?: KeyboardLayout) => {
+      const expandedSteps = expandTextSteps(steps, keyboard);
+      if (rpcHidReady) {
+        return executeMacroRemote(expandedSteps);
+      }
+      return executeMacroClientSide(expandedSteps);
+    },
+    [rpcHidReady, executeMacroRemote, executeMacroClientSide, expandTextSteps],
   );
 
   const cancelExecuteMacro = useCallback(async () => {
