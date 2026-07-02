@@ -66,7 +66,7 @@ export function ConfirmDialog({
   const { icon: Icon, iconClass, buttonTheme } = variantConfig[variant];
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") {
+    if (e.key === "Escape" || e.keyCode === 27) {
       e.stopPropagation();
       onClose();
     }

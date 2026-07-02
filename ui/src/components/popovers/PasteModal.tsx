@@ -127,6 +127,11 @@ export default function PasteModal() {
     }
   }, [selectedKeyboard, executeMacro, delay, textValue]);
 
+  const onConfirmPasteAndClose = useCallback(async () => {
+    void onConfirmPaste();
+    close();
+  }, [onConfirmPaste, close]);
+
   useEffect(() => {
     TextAreaRef.current?.focus();
   }, [hideText]);
@@ -188,10 +193,10 @@ export default function PasteModal() {
                         maxLength={pasteMaxLength}
                         onKeyDown={e => {
                           e.stopPropagation();
-                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          if ((e.key === "Enter" || e.keyCode === 13) && (e.metaKey || e.ctrlKey)) {
                             e.preventDefault();
-                            void onConfirmPaste();
-                          } else if (e.key === "Escape") {
+                            void onConfirmPasteAndClose();
+                          } else if (e.key === "Escape" || e.keyCode === 27) {
                             e.preventDefault();
                             onCancelPasteMode();
                           }
@@ -268,10 +273,17 @@ export default function PasteModal() {
           />
           <Button
             size="SM"
-            theme="primary"
+            theme="blank"
             text={m.paste_modal_confirm_paste()}
             disabled={isPasteInProgress}
             onClick={onConfirmPaste}
+          />
+          <Button
+            size="SM"
+            theme="primary"
+            text={m.paste_modal_confirm_paste_and_close()}
+            disabled={isPasteInProgress}
+            onClick={onConfirmPasteAndClose}
             LeadingIcon={LuCornerDownLeft}
           />
         </div>

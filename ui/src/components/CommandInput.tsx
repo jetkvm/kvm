@@ -231,7 +231,7 @@ export function CommandInput({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const isMeta = e.ctrlKey || e.metaKey;
 
-    if (e.key === "Enter" && !e.shiftKey && !isMeta) {
+    if ((e.key === "Enter" || e.keyCode === 13) && !e.shiftKey && !isMeta) {
       e.preventDefault();
       if (!cmd) return;
       onSend(cmd);
@@ -258,7 +258,7 @@ export function CommandInput({
       setSel(0);
       return;
     }
-    if (e.key === "Escape" && revOpen) {
+    if ((e.key === "Escape" || e.keyCode === 27) && revOpen) {
       e.preventDefault();
       setRevOpen(false);
       return;
@@ -304,9 +304,9 @@ export function CommandInput({
                 } else if (e.key === "ArrowUp") {
                   e.preventDefault();
                   setSel(i => (i - 1 + results.length) % Math.max(1, results.length));
-                } else if (e.key === "Enter") {
+                } else if (e.key === "Enter" || e.keyCode === 13) {
                   // ...
-                } else if (e.key === "Escape") {
+                } else if (e.key === "Escape" || e.keyCode === 27) {
                   // ...
                 }
               }}

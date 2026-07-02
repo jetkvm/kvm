@@ -63,13 +63,13 @@ export default function AddDeviceForm({
           maxLength={17}
           onKeyDown={e => {
             if (isMacAddressValid || isDeviceNameValid) {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              if ((e.key === "Enter" || e.keyCode === 13) && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 const deviceName = nameInputRef.current?.value || "";
                 const macAddress = macInputRef.current?.value || "";
                 const broadcastIP = broadcastMode === "custom" ? customBroadcastIP : undefined;
                 onAddDevice(deviceName, macAddress, broadcastIP);
-              } else if (e.key === "Escape") {
+              } else if (e.key === "Escape" || e.keyCode === 27) {
                 e.preventDefault();
                 setShowAddForm(false);
               }
