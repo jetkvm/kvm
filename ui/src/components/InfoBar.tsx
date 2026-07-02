@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   useHidStore,
@@ -9,9 +9,11 @@ import {
   VideoState,
 } from "@hooks/stores";
 import { useHidRpc } from "@hooks/useHidRpc";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { keys, modifiers } from "@/keyboardMappings";
 import { cx } from "@/cva.config";
 import { m } from "@localizations/messages.js";
+import { Button } from "@components/Button";
 
 export default function InfoBar() {
   const { keysDownState } = useHidStore();
@@ -31,6 +33,18 @@ export default function InfoBar() {
   const { keyboardLedState, usbState } = useHidStore();
   const { isTurnServerInUse, peerConnection, peerConnectionState } = useRTCStore();
   const { hdmiState } = useVideoStore();
+
+  const { send } = useJsonRpc();
+
+  const sendLockKey = useCallback(
+    (keyCode: number) => {
+      send("keypressReport", { key: keyCode, press: true });
+      setTimeout(() => {
+        send("keypressReport", { key: keyCode, press: false });
+      }, 20);
+    },
+    [send],
+  );
 
   const [videoCodec, setVideoCodec] = useState<string | null>(null);
   const [videoBitrate, setVideoBitrate] = useState<string | null>(null);
@@ -211,27 +225,21 @@ export default function InfoBar() {
             </div>
           )}
 
-          <div
-            className={cx(
-              "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState.caps_lock
-                ? "text-black dark:text-white"
-                : "text-slate-800/20 dark:text-slate-300/20",
-            )}
-          >
-            {m.info_caps_lock()}
-          </div>
+          <Button
+            size="XS"
+            theme={keyboardLedState.caps_lock ? "primary" : "light"}
+            text={m.info_caps_lock()}
+            onClick={() => sendLockKey(keys.CapsLock)}
+            data-testid="caps-lock-toggle"
+          />
 
-          <div
-            className={cx(
-              "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState.num_lock
-                ? "text-black dark:text-white"
-                : "text-slate-800/20 dark:text-slate-300/20",
-            )}
-          >
-            {m.info_num_lock()}
-          </div>
+          <Button
+            size="XS"
+            theme={keyboardLedState.num_lock ? "primary" : "light"}
+            text={m.info_num_lock()}
+            onClick={() => sendLockKey(keys.NumLock)}
+            data-testid="num-lock-toggle"
+          />
 
           <div
             className={cx(
