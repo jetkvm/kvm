@@ -1149,6 +1149,11 @@ func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 		return nil, err
 	}
 
+	// Keep the Home Assistant macro buttons in sync with the stored macros
+	if mqttManager != nil {
+		mqttManager.republishHADiscovery()
+	}
+
 	return nil, nil
 }
 
@@ -1230,6 +1235,14 @@ func rpcEmitTestLog(level string) error {
 var (
 	keyboardMacroCancel context.CancelFunc
 	keyboardMacroLock   sync.Mutex
+
+	// keyboardMacroRun serializes macro execution. Executions share
+	// keyboardMacroCancel and drive the same global HID gadget, so they must
+	// not overlap. Historically the only caller was the single WebRTC
+	// session's HID queue (inherently serial); MQTT keyboard commands add
+	// concurrent callers, so a new execution now cancels the running one and
+	// waits for it to unwind before starting, instead of interleaving reports.
+	keyboardMacroRun sync.Mutex
 )
 
 // cancelKeyboardMacro cancels any ongoing keyboard macro execution
@@ -1252,7 +1265,12 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 }
 
 func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
+	// Cancel any running macro, then wait for it to actually finish before
+	// starting this one — see keyboardMacroRun. cancelKeyboardMacro makes the
+	// in-flight macro return promptly at its next step, so this rarely blocks.
 	cancelKeyboardMacro()
+	keyboardMacroRun.Lock()
+	defer keyboardMacroRun.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	setKeyboardMacroCancel(cancel)
