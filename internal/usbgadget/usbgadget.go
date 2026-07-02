@@ -22,6 +22,7 @@ type Devices struct {
 	MassStorage   bool `json:"mass_storage"`
 	SerialConsole bool `json:"serial_console"`
 	Audio         bool `json:"audio"`
+	Ncm           bool `json:"ncm"`
 }
 
 // Config is a struct that represents the customizations for a USB gadget.
@@ -32,6 +33,10 @@ type Config struct {
 	SerialNumber string `json:"serial_number"`
 	Manufacturer string `json:"manufacturer"`
 	Product      string `json:"product"`
+
+	// Derived at boot from the device serial; not persisted.
+	NcmHostMAC string `json:"-"`
+	NcmDevMAC  string `json:"-"`
 
 	strictMode bool // when it's enabled, all warnings will be converted to errors
 	isEmpty    bool

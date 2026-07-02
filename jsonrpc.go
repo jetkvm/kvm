@@ -975,6 +975,20 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
 
+// UsbEndpointReport tells the UI whether a given device selection would exceed
+// the controller's USB endpoint budget (IN or OUT). Over-budget combinations
+// leave a function silently non-functional — notably CDC-NCM, which needs two
+// IN endpoints, comes up RX-only with a dead TX path.
+type UsbEndpointReport struct {
+	ExceedsBudget bool `json:"exceedsBudget"`
+}
+
+func rpcGetUsbEndpointReport(devices usbgadget.Devices) (UsbEndpointReport, error) {
+	return UsbEndpointReport{
+		ExceedsBudget: usbgadget.ExceedsEndpointBudget(&devices),
+	}, nil
+}
+
 func updateUsbRelatedConfig() error {
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
@@ -1017,6 +1031,8 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		if !enabled {
 			config.AudioEnabled = false
 		}
+	case "ncm":
+		config.UsbDevices.Ncm = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
@@ -1418,6 +1434,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"deleteSerialCommandHistory": {Func: rpcDeleteSerialCommandHistory},
 	"setTerminalPaused":          {Func: rpcSetTerminalPaused, Params: []string{"terminalPaused"}},
 	"getUsbDevices":              {Func: rpcGetUsbDevices},
+	"getUsbEndpointReport":       {Func: rpcGetUsbEndpointReport, Params: []string{"devices"}},
 	"setUsbDevices":              {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":          {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
 	"setCloudUrl":                {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},

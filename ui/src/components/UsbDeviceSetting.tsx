@@ -27,6 +27,7 @@ export interface UsbDeviceConfig {
   mass_storage: boolean;
   serial_console: boolean;
   audio: boolean;
+  ncm: boolean;
 }
 
 const defaultUsbDeviceConfig: UsbDeviceConfig = {
@@ -36,6 +37,7 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   mass_storage: true,
   serial_console: false,
   audio: true,
+  ncm: false,
 };
 
 const usbPresets = [
@@ -49,6 +51,7 @@ const usbPresets = [
       mass_storage: true,
       serial_console: false,
       audio: true,
+      ncm: false,
     },
   },
   {
@@ -61,6 +64,7 @@ const usbPresets = [
       mass_storage: false,
       serial_console: false,
       audio: false,
+      ncm: false,
     },
   },
   {
@@ -76,6 +80,7 @@ export function UsbDeviceSetting() {
 
   const [usbDeviceConfig, setUsbDeviceConfig] = useState<UsbDeviceConfig>(defaultUsbDeviceConfig);
   const [selectedPreset, setSelectedPreset] = useState<string>("default");
+  const [overBudget, setOverBudget] = useState(false);
 
   const syncUsbDeviceConfig = useCallback(() => {
     send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
@@ -160,6 +165,17 @@ export function UsbDeviceSetting() {
   useEffect(() => {
     syncUsbDeviceConfig();
   }, [syncUsbDeviceConfig]);
+
+  // Check whether the currently-selected function set fits the controller's USB
+  // endpoint budget. The dwc3 controller has a limited number of IN/OUT
+  // endpoints; an over-budget combination can leave a function (notably
+  // CDC-NCM) silently non-functional.
+  useEffect(() => {
+    send("getUsbEndpointReport", { devices: usbDeviceConfig }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setOverBudget((resp.result as { exceedsBudget: boolean }).exceedsBudget);
+    });
+  }, [send, usbDeviceConfig]);
 
   return (
     <Fieldset disabled={loading} className="space-y-4">
@@ -255,7 +271,23 @@ export function UsbDeviceSetting() {
                 />
               </SettingsItem>
             </div>
+            <div className="space-y-4">
+              <SettingsItem
+                title="Enable Ethernet over USB (CDC-NCM)"
+                description="Exposes a USB Ethernet (CDC-NCM) device to the target host"
+              >
+                <Checkbox checked={usbDeviceConfig.ncm} onChange={onUsbConfigItemChange("ncm")} />
+              </SettingsItem>
+            </div>
           </div>
+          {overBudget && (
+            <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-900/20 dark:text-amber-200">
+              This combination exceeds the device&apos;s available USB endpoints. Functions beyond
+              the limit may silently fail to work &mdash; Ethernet over USB (CDC-NCM) in particular
+              will appear connected but won&apos;t pass traffic. Disable a function (e.g. Relative
+              Mouse) to free an endpoint.
+            </div>
+          )}
           <div className="mt-6 flex gap-x-2">
             <Button
               size="SM"
