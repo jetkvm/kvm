@@ -4,19 +4,30 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"crypto/tls"
+	"crypto/x509"
 	"embed"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/pprof"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	stdsync "sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -97,6 +108,80 @@ const (
 	authTokenMaxAge = 7 * 24 * 60 * 60 // 1 week
 )
 
+const companionPairRequestTTL = 120 * time.Second
+const companionSignatureMaxSkew = 60 * time.Second
+
+type companionPairRequest struct {
+	ID              string
+	Direction       string
+	RemoteAddr      string
+	UserAgent       string
+	RequestedAt     time.Time
+	Status          string
+	OTP             string
+	CompanionID     string
+	CompanionPubKey string
+	RejectionReason string
+}
+
+type companionPairRequestBody struct {
+	OTP                string `json:"otp"`
+	CompanionPublicKey string `json:"companion_public_key"`
+	ClaimJetKVM        bool   `json:"claim_jetkvm,omitempty"`
+}
+
+type companionPairApproveBody struct {
+	OTP                string `json:"otp"`
+	CompanionPublicKey string `json:"companion_public_key"`
+}
+
+type companionPairInitiateBody struct {
+	CompanionURL string `json:"companion_url"`
+}
+
+type companionPermissionActionBody struct {
+	Permission string `json:"permission"`
+}
+
+type companionIPEntry struct {
+	IP        string `json:"ip"`
+	Hostname  string `json:"hostname,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Interface string `json:"interface,omitempty"`
+}
+
+type companionStatusSnapshot struct {
+	CompanionID                      string             `json:"companion_id"`
+	RemoteAddr                       string             `json:"remote_addr,omitempty"`
+	RemoteHostname                   string             `json:"remote_hostname,omitempty"`
+	HasReport                        bool               `json:"has_report"`
+	LastSeenUnixMilli                int64              `json:"last_seen_unix_milli,omitempty"`
+	NotificationPermissionGranted    bool               `json:"notification_permission_granted"`
+	DisplayOverAppsPermissionGranted bool               `json:"display_over_apps_permission_granted"`
+	BatteryUnrestrictedGranted       bool               `json:"battery_unrestricted_granted"`
+	PairedJetKVMURLs                 []string           `json:"paired_jetkvm_urls,omitempty"`
+	VisibleIPs                       []string           `json:"visible_ips,omitempty"`
+	VisibleIPEntries                 []companionIPEntry `json:"visible_ip_entries,omitempty"`
+	JetKVMUSBIdentity                string             `json:"jetkvm_usb_identity,omitempty"`
+	TargetType                       string             `json:"target_type,omitempty"`
+	PreferredMouseMode               string             `json:"preferred_mouse_mode,omitempty"`
+	DisplayWidth                     int                `json:"display_width,omitempty"`
+	DisplayHeight                    int                `json:"display_height,omitempty"`
+	Evidence                         []string           `json:"evidence,omitempty"`
+	Peripherals                      map[string]bool    `json:"peripherals,omitempty"`
+	PendingActions                   []string           `json:"pending_actions,omitempty"`
+}
+
+var (
+	companionPairingLock    stdsync.Mutex
+	companionPairingRequest *companionPairRequest
+	companionNonceLock      stdsync.Mutex
+	companionNonces         = map[string]map[string]time.Time{}
+	companionStatusLock     stdsync.Mutex
+	companionStatuses       = map[string]companionStatusSnapshot{}
+	companionPendingActions = map[string]map[string]bool{}
+)
+
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
@@ -163,6 +248,19 @@ func setupRouter() *gin.Engine {
 
 	// Public routes (no authentication required)
 	r.POST("/auth/login-local", handleLogin)
+	r.POST("/companion/pair", handleCompanionPair)
+	r.GET("/companion/pair/jetkvm-pending", handleCompanionJetKVMPairPending)
+	r.GET("/companion/pair/:id", handleCompanionPairStatus)
+	r.POST("/companion/pair/:id/claim", handleCompanionPairClaim)
+	r.POST("/companion/target", handleCompanionTargetDeclaration)
+	r.POST("/companion/unpair", handleCompanionUnpair)
+	r.GET("/login-local", func(c *gin.Context) {
+		if shouldUseAndroidNativeLogin(c) {
+			handleAndroidNativeLogin(c)
+			return
+		}
+		c.FileFromFS("/", http.FS(staticFS))
+	})
 
 	// We use this to determine if the device is setup
 	r.GET("/device/status", handleDeviceStatus)
@@ -226,6 +324,14 @@ func setupRouter() *gin.Engine {
 		protected.POST("/storage/upload", handleUploadHttp)
 
 		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
+		protected.GET("/companion/pair/requests", handleCompanionPairRequests)
+		protected.POST("/companion/pair/initiate", handleCompanionPairInitiate)
+		protected.POST("/companion/pair/:id/approve", handleCompanionPairApprove)
+		protected.POST("/companion/pair/:id/reject", handleCompanionPairReject)
+		protected.GET("/companion/status", handleCompanionStatus)
+		protected.POST("/companion/:id/request-permission", handleCompanionPermissionRequest)
+		protected.POST("/companion/:id/unpair-admin", handleCompanionUnpairOneAdmin)
+		protected.POST("/companion/unpair-admin", handleCompanionUnpairAdmin)
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}
@@ -233,6 +339,10 @@ func setupRouter() *gin.Engine {
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
 		if c.Request.Method == "GET" && c.NegotiateFormat(gin.MIMEHTML) == gin.MIMEHTML {
+			if shouldUseAndroidNativeLogin(c) && !hasValidLocalAuthCookie(c) {
+				handleAndroidNativeLogin(c)
+				return
+			}
 			c.FileFromFS("/", http.FS(staticFS))
 			return
 		}
@@ -240,6 +350,1282 @@ func setupRouter() *gin.Engine {
 	})
 
 	return r
+}
+
+func handleCompanionTargetDeclaration(c *gin.Context) {
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	companionID, ok := companionIDFromSignedRequest(c, bodyBytes)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid companion signature"})
+		return
+	}
+
+	var declaration CompanionTargetDeclaration
+	if err := json.Unmarshal(bodyBytes, &declaration); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if declaration.TargetType != "android" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported target_type"})
+		return
+	}
+	if declaration.State == "" {
+		declaration.State = "connected"
+	}
+	if declaration.State != "connected" && declaration.State != "disconnected" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported state"})
+		return
+	}
+	if !isValidJetKVMUSBIdentity(declaration.JetKVMUSBIdentity) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "jetkvm_usb_identity does not match this JetKVM"})
+		return
+	}
+	if declaration.PreferredMouseMode != "" && declaration.PreferredMouseMode != "digitizer" &&
+		declaration.PreferredMouseMode != "absolute" && declaration.PreferredMouseMode != "relative" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported preferred_mouse_mode"})
+		return
+	}
+	if declaration.State == "connected" && len(declaration.Evidence) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "connection evidence is required"})
+		return
+	}
+	if declaration.State == "connected" && (declaration.DisplayWidth <= 0 || declaration.DisplayHeight <= 0) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "display dimensions are required"})
+		return
+	}
+
+	metadata := setCompanionTargetMetadata(declaration)
+	applyDisplayModeForTarget(metadata)
+	metadata = withDisplayReconnectStatus(metadata)
+	rememberCompanionStatus(companionID, c.ClientIP(), declaration)
+	pendingActions := takeCompanionPendingActions(companionID)
+	logger.Info().
+		Str("companion_id", companionID).
+		Str("state", declaration.State).
+		Strs("evidence", metadata.Evidence).
+		Str("preferred_mouse_mode", metadata.PreferredMouseMode).
+		Int("display_width", metadata.DisplayWidth).
+		Int("display_height", metadata.DisplayHeight).
+		Float64("display_aspect", metadata.DisplayAspect).
+		Bool("hdmi_reconnect_required", metadata.HDMIReconnectRequired).
+		Msg("companion target declaration received")
+	response := gin.H{
+		"target_type":              metadata.TargetType,
+		"preferred_mouse_mode":     metadata.PreferredMouseMode,
+		"display_width":            metadata.DisplayWidth,
+		"display_height":           metadata.DisplayHeight,
+		"display_aspect":           metadata.DisplayAspect,
+		"evidence":                 metadata.Evidence,
+		"source":                   metadata.Source,
+		"last_seen_unix_milli":     metadata.LastSeenUnixMilli,
+		"lease_expires_unix_milli": metadata.LeaseExpiresUnixMilli,
+		"hdmi_reconnect_required":  metadata.HDMIReconnectRequired,
+		"fallback_display_mode":    metadata.FallbackDisplayMode,
+		"companion_notice":         metadata.CompanionNotice,
+		"fresh":                    metadata.Fresh,
+		"requested_actions":        pendingActions,
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+func handleCompanionPair(c *gin.Context) {
+	var body companionPairRequestBody
+	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pairing request"})
+		return
+	}
+	if !isValidCompanionOTP(body.OTP) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid 6 digit otp is required"})
+		return
+	}
+	if !isValidCompanionPublicKey(body.CompanionPublicKey) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion public key is required"})
+		return
+	}
+
+	if body.ClaimJetKVM {
+		status, response := claimJetKVMInitiatedCompanionPairing(c, body.OTP, body.CompanionPublicKey)
+		c.JSON(status, response)
+		return
+	}
+	if companionOTPBelongsToDifferentRemote(c, body.OTP, body.CompanionPublicKey) {
+		c.JSON(http.StatusConflict, gin.H{"error": "otp belongs to an active pairing request from a different companion address"})
+		return
+	}
+
+	request := getOrCreateCompanionPairingRequest(c, body.OTP, body.CompanionPublicKey)
+	showCompanionPairingPrompt(request)
+	c.JSON(http.StatusAccepted, companionPairingPendingResponse(request))
+}
+
+func handleCompanionPairInitiate(c *gin.Context) {
+	var body companionPairInitiateBody
+	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pairing request"})
+		return
+	}
+	companionURL := normalizeCompanionURL(body.CompanionURL)
+	if companionURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion url is required"})
+		return
+	}
+
+	request := createJetKVMInitiatedCompanionPairingRequest(companionURL)
+	jetkvmURL := "https://" + c.Request.Host
+	if err := signalCompanionPairRequest(companionURL, jetkvmURL, request.ID); err != nil {
+		companionPairingLock.Lock()
+		request.Status = "rejected"
+		request.RejectionReason = "failed to signal companion: " + err.Error()
+		companionPairingLock.Unlock()
+		c.JSON(http.StatusBadGateway, gin.H{"error": request.RejectionReason})
+		return
+	}
+	logger.Info().
+		Str("companion_url", companionURL).
+		Str("request_id", request.ID).
+		Msg("JetKVM-initiated companion pairing code generated")
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"paired":        false,
+		"status":        "pending",
+		"request_id":    request.ID,
+		"companion_url": companionURL,
+		"otp":           request.OTP,
+	})
+}
+
+func handleCompanionPairStatus(c *gin.Context) {
+	request := getCompanionPairingRequest(c.Param("id"))
+	if request == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pairing request not found"})
+		return
+	}
+	if request.Status == "paired" {
+		c.JSON(http.StatusOK, companionPairingResponseWithCompanion(request.CompanionID))
+		return
+	}
+	c.JSON(http.StatusOK, companionPairingPendingResponse(request))
+}
+
+func handleCompanionPairRequests(c *gin.Context) {
+	request := getCurrentCompanionPairingRequest()
+	requests := []gin.H{}
+	if request != nil && request.Status == "pending" {
+		requests = append(requests, companionPairingAdminPendingResponse(request))
+	}
+	c.JSON(http.StatusOK, gin.H{"requests": requests})
+}
+
+func handleCompanionJetKVMPairPending(c *gin.Context) {
+	request := getCurrentCompanionPairingRequest()
+	if request == nil ||
+		request.Direction != "jetkvm" ||
+		request.Status != "pending" ||
+		!requestClientMatchesCompanionURL(c, request.RemoteAddr) {
+		c.JSON(http.StatusOK, gin.H{"pending": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"pending":     true,
+		"request_id":  request.ID,
+		"remote_addr": request.RemoteAddr,
+		"created_at":  request.RequestedAt.UnixMilli(),
+	})
+}
+
+func handleCompanionStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"companions":  getCompanionStatusSnapshots(),
+		"visible_ips": getVisibleLocalIPEntries(),
+	})
+}
+
+func handleCompanionPermissionRequest(c *gin.Context) {
+	companionID := strings.TrimSpace(c.Param("id"))
+	if companionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "companion id is required"})
+		return
+	}
+	if _, ok := companionAuthorizations()[companionID]; !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "companion not paired"})
+		return
+	}
+
+	var body companionPermissionActionBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "permission is required"})
+		return
+	}
+	action := companionPermissionAction(body.Permission)
+	if action == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported permission"})
+		return
+	}
+	queueCompanionPendingAction(companionID, action)
+	c.JSON(http.StatusAccepted, gin.H{"queued": true, "action": action})
+}
+
+func handleCompanionUnpairOneAdmin(c *gin.Context) {
+	companionID := strings.TrimSpace(c.Param("id"))
+	if companionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "companion id is required"})
+		return
+	}
+	if _, ok := companionAuthorizations()[companionID]; !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "companion not paired"})
+		return
+	}
+	notifyCompanionAdminUnpair(companionID)
+	removeCompanionAuthorization(companionID)
+	forgetCompanionStatus(companionID)
+	_ = SaveConfig()
+	c.JSON(http.StatusOK, gin.H{"paired": len(companionAuthorizations()) > 0})
+}
+
+func handleCompanionPairClaim(c *gin.Context) {
+	request := getCompanionPairingRequest(c.Param("id"))
+	if request == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pairing request not found"})
+		return
+	}
+	if request.Status != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "pairing request is not pending"})
+		return
+	}
+	if request.Direction != "jetkvm" {
+		c.JSON(http.StatusConflict, gin.H{"error": "pairing request must be approved in JetKVM web UI"})
+		return
+	}
+
+	var body companionPairApproveBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "otp is required"})
+		return
+	}
+	if body.OTP != request.OTP {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "otp does not match"})
+		return
+	}
+	if !requestClientMatchesCompanionURL(c, request.RemoteAddr) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "pairing request is bound to a different companion address"})
+		return
+	}
+	if !isValidCompanionPublicKey(body.CompanionPublicKey) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion public key is required"})
+		return
+	}
+
+	companionID := addCompanionAuthorization(body.CompanionPublicKey)
+	if err := SaveConfig(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save companion pairing"})
+		return
+	}
+
+	companionPairingLock.Lock()
+	request.Status = "paired"
+	request.CompanionID = companionID
+	request.CompanionPubKey = body.CompanionPublicKey
+	companionPairingLock.Unlock()
+	c.JSON(http.StatusOK, companionPairingResponseWithCompanion(companionID))
+}
+
+func handleCompanionPairApprove(c *gin.Context) {
+	request := getCompanionPairingRequest(c.Param("id"))
+	if request == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pairing request not found"})
+		return
+	}
+	if request.Status != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "pairing request is not pending"})
+		return
+	}
+
+	var body companionPairApproveBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "otp is required"})
+		return
+	}
+	if body.OTP != request.OTP {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "otp does not match"})
+		return
+	}
+	if !isValidCompanionPublicKey(request.CompanionPubKey) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid companion public key is required"})
+		return
+	}
+
+	companionID := addCompanionAuthorization(request.CompanionPubKey)
+	if err := SaveConfig(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save companion pairing"})
+		return
+	}
+
+	companionPairingLock.Lock()
+	request.Status = "paired"
+	request.CompanionID = companionID
+	companionPairingLock.Unlock()
+
+	logger.Info().
+		Str("remote_addr", request.RemoteAddr).
+		Str("request_id", request.ID).
+		Msg("companion pairing approved")
+	c.JSON(http.StatusOK, companionPairingResponseWithCompanion(companionID))
+}
+
+func handleCompanionPairReject(c *gin.Context) {
+	request := getCompanionPairingRequest(c.Param("id"))
+	if request == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pairing request not found"})
+		return
+	}
+
+	companionPairingLock.Lock()
+	request.Status = "rejected"
+	request.RejectionReason = "rejected on JetKVM"
+	companionPairingLock.Unlock()
+
+	logger.Info().
+		Str("remote_addr", request.RemoteAddr).
+		Str("request_id", request.ID).
+		Msg("companion pairing rejected")
+	c.JSON(http.StatusOK, companionPairingPendingResponse(request))
+}
+
+func handleCompanionUnpair(c *gin.Context) {
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	companionID, ok := companionIDFromSignedRequest(c, bodyBytes)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid companion signature"})
+		return
+	}
+	removeCompanionAuthorization(companionID)
+	forgetCompanionStatus(companionID)
+	_ = SaveConfig()
+	c.JSON(http.StatusOK, gin.H{"paired": false})
+}
+
+func handleCompanionUnpairAdmin(c *gin.Context) {
+	notifyAllCompanionsAdminUnpair()
+	clearCompanionPairing()
+	c.JSON(http.StatusOK, gin.H{"paired": false})
+}
+
+func companionPairingResponseWithCompanion(companionID string) gin.H {
+	deviceID := GetDeviceID()
+	shortID := strings.ToLower(deviceID)
+	if len(shortID) > 8 {
+		shortID = shortID[:8]
+	}
+
+	usbProduct := ""
+	usbSerial := ""
+	if config.UsbConfig != nil {
+		usbProduct = config.UsbConfig.Product
+		usbSerial = config.UsbConfig.SerialNumber
+	}
+
+	return gin.H{
+		"paired":                true,
+		"status":                "paired",
+		"companion_id":          companionID,
+		"jetkvm_device_id":      deviceID,
+		"jetkvm_identity_token": shortID,
+		"jetkvm_usb_product":    usbProduct,
+		"jetkvm_usb_serial":     usbSerial,
+	}
+}
+
+func companionPairingPendingResponse(request *companionPairRequest) gin.H {
+	status := request.Status
+	if status == "" {
+		status = "pending"
+	}
+	response := gin.H{
+		"paired":      false,
+		"status":      status,
+		"request_id":  request.ID,
+		"direction":   request.Direction,
+		"remote_addr": request.RemoteAddr,
+		"user_agent":  request.UserAgent,
+		"created_at":  request.RequestedAt.UnixMilli(),
+	}
+	if request.RejectionReason != "" {
+		response["error"] = request.RejectionReason
+	}
+	return response
+}
+
+func companionPairingAdminPendingResponse(request *companionPairRequest) gin.H {
+	response := companionPairingPendingResponse(request)
+	status, _ := response["status"].(string)
+	if request.Direction == "jetkvm" && status == "pending" && request.OTP != "" {
+		response["otp"] = request.OTP
+	}
+	return response
+}
+
+func companionOTPBelongsToDifferentRemote(c *gin.Context, otp string, companionPublicKey string) bool {
+	companionPairingLock.Lock()
+	defer companionPairingLock.Unlock()
+
+	request := companionPairingRequest
+	if request == nil || request.Direction != "companion" || request.Status != "pending" || request.OTP != otp {
+		return false
+	}
+	return request.RemoteAddr != c.ClientIP() || request.CompanionPubKey != companionPublicKey
+}
+
+func requestClientMatchesCompanionURL(c *gin.Context, companionURL string) bool {
+	parsed, err := neturl.Parse(companionURL)
+	if err != nil || parsed.Hostname() == "" {
+		return false
+	}
+	clientIP := net.ParseIP(c.ClientIP())
+	if clientIP == nil {
+		return false
+	}
+	expectedHost := parsed.Hostname()
+	if expectedIP := net.ParseIP(expectedHost); expectedIP != nil {
+		return expectedIP.Equal(clientIP)
+	}
+	expectedIPs, err := net.LookupIP(expectedHost)
+	if err != nil {
+		return false
+	}
+	for _, expectedIP := range expectedIPs {
+		if expectedIP.Equal(clientIP) {
+			return true
+		}
+	}
+	return false
+}
+
+func claimJetKVMInitiatedCompanionPairing(c *gin.Context, otp string, companionPublicKey string) (int, gin.H) {
+	request := getCurrentCompanionPairingRequest()
+	if request == nil || request.Direction != "jetkvm" {
+		return http.StatusNotFound, gin.H{"error": "JetKVM pairing request not found"}
+	}
+	if request.Status != "pending" {
+		return http.StatusConflict, gin.H{"error": "JetKVM pairing request is not pending"}
+	}
+	if request.OTP != otp {
+		return http.StatusUnauthorized, gin.H{"error": "otp does not match active JetKVM pairing request"}
+	}
+	if !requestClientMatchesCompanionURL(c, request.RemoteAddr) {
+		return http.StatusUnauthorized, gin.H{"error": "pairing request is bound to a different companion address"}
+	}
+
+	companionID := addCompanionAuthorization(companionPublicKey)
+	if err := SaveConfig(); err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "failed to save companion pairing"}
+	}
+
+	companionPairingLock.Lock()
+	request.Status = "paired"
+	request.CompanionID = companionID
+	request.CompanionPubKey = companionPublicKey
+	companionPairingLock.Unlock()
+
+	logger.Info().
+		Str("remote_addr", request.RemoteAddr).
+		Str("request_id", request.ID).
+		Msg("JetKVM-initiated companion pairing claimed")
+	return http.StatusOK, companionPairingResponseWithCompanion(companionID)
+}
+
+func getOrCreateCompanionPairingRequest(c *gin.Context, otp string, companionPublicKey string) *companionPairRequest {
+	companionPairingLock.Lock()
+	defer companionPairingLock.Unlock()
+
+	now := time.Now()
+	if companionPairingRequest != nil &&
+		companionPairingRequest.Direction == "companion" &&
+		companionPairingRequest.Status == "pending" &&
+		now.Sub(companionPairingRequest.RequestedAt) <= companionPairRequestTTL &&
+		companionPairingRequest.CompanionPubKey == companionPublicKey {
+		return companionPairingRequest
+	}
+
+	companionPairingRequest = &companionPairRequest{
+		ID:              uuid.NewString(),
+		Direction:       "companion",
+		RemoteAddr:      c.ClientIP(),
+		UserAgent:       c.GetHeader("User-Agent"),
+		RequestedAt:     now,
+		Status:          "pending",
+		OTP:             otp,
+		CompanionPubKey: companionPublicKey,
+	}
+	return companionPairingRequest
+}
+
+func createJetKVMInitiatedCompanionPairingRequest(companionURL string) *companionPairRequest {
+	companionPairingLock.Lock()
+	defer companionPairingLock.Unlock()
+
+	companionPairingRequest = &companionPairRequest{
+		ID:          uuid.NewString(),
+		Direction:   "jetkvm",
+		RemoteAddr:  companionURL,
+		UserAgent:   "JetKVM",
+		RequestedAt: time.Now(),
+		Status:      "pending",
+		OTP:         generateCompanionPairingOTP(),
+	}
+	return companionPairingRequest
+}
+
+func generateCompanionPairingOTP() string {
+	value, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
+	}
+	return fmt.Sprintf("%06d", value.Int64())
+}
+
+func getCurrentCompanionPairingRequest() *companionPairRequest {
+	companionPairingLock.Lock()
+	defer companionPairingLock.Unlock()
+
+	if companionPairingRequest == nil {
+		return nil
+	}
+	if companionPairingRequest.Status == "pending" &&
+		time.Since(companionPairingRequest.RequestedAt) > companionPairRequestTTL {
+		companionPairingRequest.Status = "expired"
+		companionPairingRequest.RejectionReason = "pairing request expired"
+	}
+	return companionPairingRequest
+}
+
+func getCompanionPairingRequest(id string) *companionPairRequest {
+	companionPairingLock.Lock()
+	defer companionPairingLock.Unlock()
+
+	if companionPairingRequest == nil || companionPairingRequest.ID != id {
+		return nil
+	}
+	if companionPairingRequest.Status == "pending" &&
+		time.Since(companionPairingRequest.RequestedAt) > companionPairRequestTTL {
+		companionPairingRequest.Status = "expired"
+		companionPairingRequest.RejectionReason = "pairing request expired"
+	}
+	return companionPairingRequest
+}
+
+func showCompanionPairingPrompt(request *companionPairRequest) {
+	logger.Info().
+		Str("remote_addr", request.RemoteAddr).
+		Str("request_id", request.ID).
+		Msg("companion pairing pending approval")
+	if nativeInstance != nil {
+		nativeInstance.UpdateLabelAndChangeVisibility("cloud_status_label", "Companion pair request")
+		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv4_addr", request.RemoteAddr)
+	}
+}
+
+func clearCompanionPairing() {
+	config.CompanionPairing.Token = ""
+	config.CompanionPairing.Tokens = nil
+	config.CompanionPairing.Companions = nil
+	restoreDefaultEDIDIfAndroidModeIsUnleased("all companions unpaired", true)
+	_ = SaveConfig()
+	clearCompanionStatuses()
+	companionPairingLock.Lock()
+	companionPairingRequest = nil
+	companionPairingLock.Unlock()
+}
+
+func companionAuthorizations() map[string]CompanionAuthorization {
+	result := map[string]CompanionAuthorization{}
+	for id, authorization := range config.CompanionPairing.Companions {
+		id = strings.TrimSpace(id)
+		publicKey := strings.TrimSpace(authorization.PublicKey)
+		if id != "" && publicKey != "" {
+			result[id] = CompanionAuthorization{PublicKey: publicKey}
+		}
+	}
+	return result
+}
+
+func addCompanionAuthorization(publicKey string) string {
+	publicKey = strings.TrimSpace(publicKey)
+	if config.CompanionPairing.Companions == nil {
+		config.CompanionPairing.Companions = map[string]CompanionAuthorization{}
+	}
+	for id, authorization := range config.CompanionPairing.Companions {
+		if authorization.PublicKey == publicKey {
+			return id
+		}
+	}
+	companionID := uuid.NewString()
+	config.CompanionPairing.Companions[companionID] = CompanionAuthorization{PublicKey: publicKey}
+	config.CompanionPairing.Token = ""
+	config.CompanionPairing.Tokens = nil
+	return companionID
+}
+
+func removeCompanionAuthorization(companionID string) {
+	companionID = strings.TrimSpace(companionID)
+	if companionID == "" || config.CompanionPairing.Companions == nil {
+		return
+	}
+	delete(config.CompanionPairing.Companions, companionID)
+	if len(config.CompanionPairing.Companions) == 0 {
+		config.CompanionPairing.Companions = nil
+		restoreDefaultEDIDIfAndroidModeIsUnleased("last companion unpaired", true)
+	}
+}
+
+func rememberCompanionStatus(companionID string, remoteAddr string, declaration CompanionTargetDeclaration) {
+	companionID = strings.TrimSpace(companionID)
+	if companionID == "" {
+		return
+	}
+	peripherals := map[string]bool{}
+	for _, evidence := range declaration.Evidence {
+		switch strings.ToLower(strings.TrimSpace(evidence)) {
+		case "keyboard", "digitizer", "mouse", "monitor":
+			peripherals[strings.ToLower(strings.TrimSpace(evidence))] = true
+		}
+	}
+	status := companionStatusSnapshot{
+		CompanionID:                      companionID,
+		RemoteAddr:                       remoteAddr,
+		RemoteHostname:                   hostnameForAddress(remoteAddr),
+		HasReport:                        true,
+		LastSeenUnixMilli:                time.Now().UnixMilli(),
+		NotificationPermissionGranted:    declaration.NotificationPermissionGranted,
+		DisplayOverAppsPermissionGranted: declaration.DisplayOverAppsPermissionGranted,
+		BatteryUnrestrictedGranted:       declaration.BatteryUnrestrictedGranted,
+		PairedJetKVMURLs:                 cleanStringList(declaration.PairedJetKVMURLs),
+		VisibleIPs:                       cleanStringList(declaration.VisibleIPs),
+		VisibleIPEntries:                 companionVisibleIPEntries(declaration.VisibleIPs),
+		JetKVMUSBIdentity:                strings.TrimSpace(declaration.JetKVMUSBIdentity),
+		TargetType:                       strings.TrimSpace(declaration.TargetType),
+		PreferredMouseMode:               strings.TrimSpace(declaration.PreferredMouseMode),
+		DisplayWidth:                     declaration.DisplayWidth,
+		DisplayHeight:                    declaration.DisplayHeight,
+		Evidence:                         cleanStringList(declaration.Evidence),
+		Peripherals:                      peripherals,
+	}
+
+	companionStatusLock.Lock()
+	companionStatuses[companionID] = status
+	companionStatusLock.Unlock()
+}
+
+func companionVisibleIPEntries(ips []string) []companionIPEntry {
+	cleaned := cleanStringList(ips)
+	entries := make([]companionIPEntry, 0, len(cleaned))
+	for _, ip := range cleaned {
+		entries = append(entries, companionIPEntry{
+			IP:       ip,
+			Hostname: resolveHostname(ip),
+			Source:   "paired_device",
+		})
+	}
+	return entries
+}
+
+func getCompanionStatusSnapshots() []companionStatusSnapshot {
+	authorizations := companionAuthorizations()
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	snapshots := make([]companionStatusSnapshot, 0, len(authorizations))
+	for companionID := range authorizations {
+		status := companionStatuses[companionID]
+		status.CompanionID = companionID
+		status.HasReport = status.LastSeenUnixMilli > 0
+		if status.RemoteHostname == "" && status.RemoteAddr != "" {
+			status.RemoteHostname = hostnameForAddress(status.RemoteAddr)
+		}
+		if status.Peripherals == nil {
+			status.Peripherals = map[string]bool{}
+		}
+		status.PendingActions = pendingCompanionActionsLocked(companionID)
+		snapshots = append(snapshots, status)
+	}
+	slices.SortFunc(snapshots, func(a, b companionStatusSnapshot) int {
+		aKey := companionSortKey(a)
+		bKey := companionSortKey(b)
+		if aKey < bKey {
+			return -1
+		}
+		if aKey > bKey {
+			return 1
+		}
+		return 0
+	})
+	return snapshots
+}
+
+func notifyAllCompanionsAdminUnpair() {
+	for companionID := range companionAuthorizations() {
+		notifyCompanionAdminUnpair(companionID)
+	}
+}
+
+func notifyCompanionAdminUnpair(companionID string) {
+	status := companionStatusForID(companionID)
+	targets := companionUnpairNotifyTargets(status)
+	if len(targets) == 0 {
+		return
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"jetkvm_urls": companionUnpairNotifyURLs(status),
+	})
+	if err != nil {
+		logger.Warn().Err(err).Str("companion_id", companionID).Msg("failed to encode companion admin unpair notification")
+		return
+	}
+	for _, target := range targets {
+		if err := postCompanionUnpairNotification(target, body); err != nil {
+			logger.Warn().
+				Err(err).
+				Str("companion_id", companionID).
+				Str("target", target).
+				Msg("failed to signal companion about admin unpair")
+		}
+	}
+}
+
+func companionStatusForID(companionID string) companionStatusSnapshot {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+	return companionStatuses[companionID]
+}
+
+func companionUnpairNotifyTargets(status companionStatusSnapshot) []string {
+	hosts := []string{}
+	if host, _, err := net.SplitHostPort(strings.TrimSpace(status.RemoteAddr)); err == nil {
+		hosts = append(hosts, host)
+	} else if status.RemoteAddr != "" {
+		hosts = append(hosts, strings.TrimSpace(status.RemoteAddr))
+	}
+	hosts = append(hosts, status.VisibleIPs...)
+	for _, entry := range status.VisibleIPEntries {
+		hosts = append(hosts, entry.IP)
+	}
+
+	targets := []string{}
+	seen := map[string]bool{}
+	for _, host := range hosts {
+		host = strings.TrimSpace(host)
+		if host == "" || seen[host] {
+			continue
+		}
+		seen[host] = true
+		targets = append(targets, "https://"+net.JoinHostPort(host, "8787")+"/pair/unpair")
+	}
+	return targets
+}
+
+func companionUnpairNotifyURLs(status companionStatusSnapshot) []string {
+	urls := []string{"https://jetkvm.local"}
+	urls = append(urls, status.PairedJetKVMURLs...)
+
+	seen := map[string]bool{}
+	cleaned := []string{}
+	for _, rawURL := range urls {
+		url := strings.TrimSpace(rawURL)
+		if url == "" || seen[url] {
+			continue
+		}
+		seen[url] = true
+		cleaned = append(cleaned, url)
+	}
+	return cleaned
+}
+
+func postCompanionUnpairNotification(target string, body []byte) error {
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	req, err := http.NewRequest(http.MethodPost, target, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func companionSortKey(status companionStatusSnapshot) string {
+	for _, value := range []string{
+		status.RemoteHostname,
+		status.RemoteAddr,
+		status.JetKVMUSBIdentity,
+		status.CompanionID,
+	} {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func queueCompanionPendingAction(companionID string, action string) {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	if companionPendingActions[companionID] == nil {
+		companionPendingActions[companionID] = map[string]bool{}
+	}
+	companionPendingActions[companionID][action] = true
+}
+
+func takeCompanionPendingActions(companionID string) []string {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	actions := pendingCompanionActionsLocked(companionID)
+	delete(companionPendingActions, companionID)
+	return actions
+}
+
+func pendingCompanionActionsLocked(companionID string) []string {
+	pending := companionPendingActions[companionID]
+	actions := make([]string, 0, len(pending))
+	for action := range pending {
+		actions = append(actions, action)
+	}
+	slices.Sort(actions)
+	return actions
+}
+
+func forgetCompanionStatus(companionID string) {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	delete(companionStatuses, companionID)
+	delete(companionPendingActions, companionID)
+}
+
+func clearCompanionStatuses() {
+	companionStatusLock.Lock()
+	defer companionStatusLock.Unlock()
+
+	companionStatuses = map[string]companionStatusSnapshot{}
+	companionPendingActions = map[string]map[string]bool{}
+}
+
+func companionPermissionAction(permission string) string {
+	switch strings.ToLower(strings.TrimSpace(permission)) {
+	case "notification", "notifications":
+		return "request_notification_permission"
+	case "overlay", "display_over_apps", "display-over-apps":
+		return "request_display_over_apps_permission"
+	case "battery", "unrestricted_battery", "unrestricted-battery":
+		return "request_unrestricted_battery_permission"
+	default:
+		return ""
+	}
+}
+
+func getVisibleLocalIPEntries() []companionIPEntry {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	entries := []companionIPEntry{}
+	seen := map[string]bool{}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ip := ipFromAddr(addr)
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			text := ip.String()
+			if seen[text] {
+				continue
+			}
+			seen[text] = true
+			entries = append(entries, companionIPEntry{
+				IP:        text,
+				Hostname:  resolveHostname(text),
+				Source:    "backend",
+				Interface: iface.Name,
+			})
+		}
+	}
+	slices.SortFunc(entries, func(a, b companionIPEntry) int {
+		aKey := strings.ToLower(strings.TrimSpace(a.Hostname + " " + a.IP + " " + a.Interface))
+		bKey := strings.ToLower(strings.TrimSpace(b.Hostname + " " + b.IP + " " + b.Interface))
+		if aKey < bKey {
+			return -1
+		}
+		if aKey > bKey {
+			return 1
+		}
+		return 0
+	})
+	return entries
+}
+
+func hostnameForAddress(address string) string {
+	host := strings.TrimSpace(address)
+	if host == "" {
+		return ""
+	}
+	if splitHost, _, err := net.SplitHostPort(host); err == nil {
+		host = splitHost
+	}
+	return resolveHostname(host)
+}
+
+func resolveHostname(ipOrHost string) string {
+	ipOrHost = strings.TrimSpace(ipOrHost)
+	if ipOrHost == "" || net.ParseIP(ipOrHost) == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	names, err := net.DefaultResolver.LookupAddr(ctx, ipOrHost)
+	if err != nil || len(names) == 0 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimSpace(names[0]), ".")
+}
+
+func ipFromAddr(addr net.Addr) net.IP {
+	switch v := addr.(type) {
+	case *net.IPNet:
+		return v.IP
+	case *net.IPAddr:
+		return v.IP
+	default:
+		return nil
+	}
+}
+
+func cleanStringList(values []string) []string {
+	cleaned := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		cleaned = append(cleaned, value)
+	}
+	return cleaned
+}
+
+func normalizeCompanionURL(rawURL string) string {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return ""
+	}
+	if !strings.Contains(trimmed, "://") {
+		trimmed = "https://" + trimmed
+	}
+	parsed, err := neturl.Parse(trimmed)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return ""
+	}
+	if parsed.Port() == "" {
+		parsed.Host = net.JoinHostPort(parsed.Hostname(), "8787")
+		trimmed = parsed.String()
+	}
+	return strings.TrimRight(trimmed, "/")
+}
+
+func companionIDFromSignedRequest(c *gin.Context, body []byte) (string, bool) {
+	companionID := strings.TrimSpace(c.GetHeader("X-JetKVM-Companion-ID"))
+	if companionID == "" {
+		return "", false
+	}
+	authorization, ok := companionAuthorizations()[companionID]
+	if !ok || authorization.PublicKey == "" {
+		return "", false
+	}
+
+	timestamp := strings.TrimSpace(c.GetHeader("X-JetKVM-Timestamp"))
+	nonce := strings.TrimSpace(c.GetHeader("X-JetKVM-Nonce"))
+	signatureText := strings.TrimSpace(c.GetHeader("X-JetKVM-Signature"))
+	if timestamp == "" || nonce == "" || signatureText == "" {
+		return "", false
+	}
+
+	requestTime, err := time.Parse(time.RFC3339Nano, timestamp)
+	if err != nil {
+		return "", false
+	}
+	now := time.Now()
+	if requestTime.Before(now.Add(-companionSignatureMaxSkew)) || requestTime.After(now.Add(companionSignatureMaxSkew)) {
+		return "", false
+	}
+	if hasCompanionNonce(companionID, nonce) {
+		return "", false
+	}
+
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(authorization.PublicKey)
+	if err != nil {
+		return "", false
+	}
+	publicKey, err := x509.ParsePKIXPublicKey(publicKeyBytes)
+	if err != nil {
+		return "", false
+	}
+	ecdsaPublicKey, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return "", false
+	}
+	signature, err := base64.StdEncoding.DecodeString(signatureText)
+	if err != nil {
+		return "", false
+	}
+	bodyHashBytes := sha256.Sum256(body)
+	bodyHash := hex.EncodeToString(bodyHashBytes[:])
+	canonical := strings.Join([]string{
+		c.Request.Method,
+		c.Request.URL.Path,
+		timestamp,
+		nonce,
+		bodyHash,
+	}, "\n")
+	digest := sha256.Sum256([]byte(canonical))
+	if !ecdsa.VerifyASN1(ecdsaPublicKey, digest[:], signature) {
+		return "", false
+	}
+	if !rememberCompanionNonce(companionID, nonce, now.Add(companionSignatureMaxSkew)) {
+		return "", false
+	}
+	return companionID, true
+}
+
+func hasCompanionNonce(companionID string, nonce string) bool {
+	if len(nonce) < 16 || len(nonce) > 128 {
+		return true
+	}
+	companionNonceLock.Lock()
+	defer companionNonceLock.Unlock()
+	pruneCompanionNoncesLocked(time.Now())
+
+	for knownNonce := range companionNonces[companionID] {
+		if subtle.ConstantTimeCompare([]byte(knownNonce), []byte(nonce)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func rememberCompanionNonce(companionID string, nonce string, expiresAt time.Time) bool {
+	companionNonceLock.Lock()
+	defer companionNonceLock.Unlock()
+	pruneCompanionNoncesLocked(time.Now())
+
+	if companionNonces[companionID] == nil {
+		companionNonces[companionID] = map[string]time.Time{}
+	}
+	for knownNonce := range companionNonces[companionID] {
+		if subtle.ConstantTimeCompare([]byte(knownNonce), []byte(nonce)) == 1 {
+			return false
+		}
+	}
+	companionNonces[companionID][nonce] = expiresAt
+	return true
+}
+
+func pruneCompanionNoncesLocked(now time.Time) {
+	for id, nonces := range companionNonces {
+		for knownNonce, expiry := range nonces {
+			if !expiry.After(now) {
+				delete(nonces, knownNonce)
+			}
+		}
+		if len(nonces) == 0 {
+			delete(companionNonces, id)
+		}
+	}
+}
+
+func isValidCompanionPublicKey(publicKey string) bool {
+	publicKey = strings.TrimSpace(publicKey)
+	if publicKey == "" {
+		return false
+	}
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKey)
+	if err != nil {
+		return false
+	}
+	parsed, err := x509.ParsePKIXPublicKey(publicKeyBytes)
+	if err != nil {
+		return false
+	}
+	_, ok := parsed.(*ecdsa.PublicKey)
+	return ok
+}
+
+func signalCompanionPairRequest(companionURL string, jetkvmURL string, requestID string) error {
+	parsed, err := neturl.Parse(companionURL)
+	if err != nil || parsed.Scheme != "https" {
+		return fmt.Errorf("companion pairing signal requires https")
+	}
+	if parsedJetKVMURL, err := neturl.Parse(jetkvmURL); err != nil || parsedJetKVMURL.Scheme != "https" {
+		return fmt.Errorf("JetKVM pairing URL requires https")
+	}
+	bodyText := fmt.Sprintf(
+		`{"jetkvm_url":%q,"request_id":%q}`,
+		jetkvmURL,
+		requestID,
+	)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	var lastErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		req, err := http.NewRequest(http.MethodPost, companionURL+"/pair/request", strings.NewReader(bodyText))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			logger.Warn().
+				Err(err).
+				Str("companion_url", companionURL).
+				Int("attempt", attempt).
+				Msg("failed to signal companion pairing request")
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return nil
+			}
+			lastErr = fmt.Errorf("companion returned status %d", resp.StatusCode)
+			logger.Warn().
+				Int("status", resp.StatusCode).
+				Str("companion_url", companionURL).
+				Int("attempt", attempt).
+				Msg("companion pairing request signal rejected")
+		}
+		if attempt < 5 {
+			time.Sleep(time.Duration(attempt*attempt) * time.Second)
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("companion signal failed")
+}
+
+func isValidCompanionOTP(otp string) bool {
+	if len(otp) != 6 {
+		return false
+	}
+	for _, r := range otp {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidJetKVMUSBIdentity(identity string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(identity))
+	if normalized == "" {
+		return false
+	}
+	deviceID := strings.ToLower(GetDeviceID())
+	if normalized == deviceID {
+		return true
+	}
+	shortID := deviceID
+	if len(shortID) > 8 {
+		shortID = shortID[:8]
+	}
+	return normalized == shortID
+}
+
+func shouldUseAndroidNativeLogin(c *gin.Context) bool {
+	userAgent := c.GetHeader("User-Agent")
+	if strings.Contains(userAgent, "JetKVMWebView/1") {
+		return true
+	}
+	return c.Query("jetkvmAndroid") == "1"
+}
+
+func hasValidLocalAuthCookie(c *gin.Context) bool {
+	if config.LocalAuthMode == "noPassword" {
+		return true
+	}
+	authToken, err := c.Cookie("authToken")
+	return err == nil && authToken != "" && authToken == config.LocalAuthToken
+}
+
+func handleAndroidNativeLogin(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JetKVM login</title>
+  <style>
+    html, body {
+      background: #050814;
+      color: #e5e7eb;
+      font: 16px system-ui, sans-serif;
+      height: 100%;
+      margin: 0;
+    }
+    body {
+      align-items: center;
+      display: flex;
+      justify-content: center;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div>Open the JetKVM Android login screen.</div>
+  <script>
+    (function () {
+      if (window.JetKVMAndroid && window.JetKVMAndroid.showNativeLogin) {
+        window.JetKVMAndroid.showNativeLogin(window.location.href);
+      }
+    })();
+  </script>
+</body>
+</html>`)
 }
 
 // TODO: support multiple sessions?

@@ -152,12 +152,29 @@ func (tx *UsbGadgetTransaction) WriteGadgetConfig() {
 	deps := make([]string, 0)
 	deps = append(deps, tx.kvmGadgetPath)
 
+	enabledConfigPaths := map[string]struct{}{}
+	for _, val := range tx.orderedConfigItems {
+		if !tx.isGadgetConfigItemEnabled(val.key) {
+			continue
+		}
+		if val.item.configPath == nil || val.item.configAttrs != nil {
+			continue
+		}
+		enabledConfigPaths[joinPath(tx.configC1Path, val.item.configPath)] = struct{}{}
+	}
+
 	for _, val := range tx.orderedConfigItems {
 		key := val.key
 		item := val.item
 
 		// check if the item is enabled in the config
 		if !tx.isGadgetConfigItemEnabled(key) {
+			if item.configPath != nil && item.configAttrs == nil {
+				configPath := joinPath(tx.configC1Path, item.configPath)
+				if _, sharedWithEnabledItem := enabledConfigPaths[configPath]; sharedWithEnabledItem {
+					continue
+				}
+			}
 			tx.DisableGadgetItemConfig(item)
 			continue
 		}

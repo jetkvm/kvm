@@ -644,6 +644,8 @@
     "mouse_jiggler_title": "鼠标防休眠",
     "mouse_mode_absolute": "绝对模式",
     "mouse_mode_absolute_description": "最方便，推荐使用",
+    "mouse_mode_digitizer": "Digitizer",
+    "mouse_mode_digitizer_description": "Android friendly",
     "mouse_mode_relative": "相对模式",
     "mouse_mode_relative_description": "兼容性最好",
     "mouse_modes_description": "选择鼠标的输入模式。",

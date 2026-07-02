@@ -56,6 +56,21 @@ type AudioConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
+type TargetTypeSettings struct {
+	TargetType            string       `json:"target_type"`
+	PreferredMouseMode    string       `json:"preferred_mouse_mode,omitempty"`
+	DisplayWidth          int          `json:"display_width,omitempty"`
+	DisplayHeight         int          `json:"display_height,omitempty"`
+	DisplayAspect         float64      `json:"display_aspect,omitempty"`
+	Evidence              []string     `json:"evidence,omitempty"`
+	Source                string       `json:"source,omitempty"`
+	LastSeenUnixMilli     int64        `json:"last_seen_unix_milli,omitempty"`
+	HDMIReconnectRequired bool         `json:"hdmi_reconnect_required,omitempty"`
+	FallbackDisplayMode   *DisplayMode `json:"fallback_display_mode,omitempty"`
+	CompanionNotice       string       `json:"companion_notice,omitempty"`
+	Fresh                 bool         `json:"fresh"`
+}
+
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
@@ -239,24 +254,35 @@ func rpcGetEDID() (string, error) {
 	return resp, nil
 }
 
+func rpcGetDisplayModeStatus() (DisplayModeStatus, error) {
+	return getDisplayModeStatus(), nil
+}
+
 func rpcSetEDID(edid string) error {
 	if isInternalDisabledEDID(edid) {
 		return fmt.Errorf("invalid EDID")
 	}
 
+	edidToApply := edid
 	if edid == "" {
 		logger.Info().Msg("Restoring EDID to default")
+		edidToApply = getDeviceDefaultEDID()
 	} else {
 		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}
 
 	previousEDID := config.EdidString
-	config.EdidString = edid
+	config.EdidString = edidToApply
 
 	if err := reapplyHostDisplayAdvertisement("set_edid"); err != nil {
 		config.EdidString = previousEDID
 		return err
 	}
+	dynamicDisplayModeState.Lock()
+	dynamicDisplayModeState.mode = nil
+	dynamicDisplayModeState.edid = ""
+	dynamicDisplayModeState.hdmiReconnectRequired = false
+	dynamicDisplayModeState.Unlock()
 
 	// Save EDID to config, allowing it to be restored on reboot.
 	if err := SaveConfig(); err != nil {
@@ -395,6 +421,37 @@ func rpcSetAudioConfig(params AudioConfig) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
+}
+
+func rpcGetTargetType() (*TargetTypeSettings, error) {
+	metadata := withDisplayReconnectStatus(getEffectiveTargetMetadata())
+	return &TargetTypeSettings{
+		TargetType:            metadata.TargetType,
+		PreferredMouseMode:    metadata.PreferredMouseMode,
+		DisplayWidth:          metadata.DisplayWidth,
+		DisplayHeight:         metadata.DisplayHeight,
+		DisplayAspect:         metadata.DisplayAspect,
+		Evidence:              metadata.Evidence,
+		Source:                metadata.Source,
+		LastSeenUnixMilli:     metadata.LastSeenUnixMilli,
+		HDMIReconnectRequired: metadata.HDMIReconnectRequired,
+		FallbackDisplayMode:   metadata.FallbackDisplayMode,
+		CompanionNotice:       metadata.CompanionNotice,
+		Fresh:                 metadata.Fresh,
+	}, nil
+}
+
+func rpcSetTargetType(settings TargetTypeSettings) error {
+	switch settings.TargetType {
+	case "", "generic":
+		config.TargetType = "generic"
+	case "android":
+		config.TargetType = "android"
+	default:
+		return fmt.Errorf("invalid target type: %s", settings.TargetType)
+	}
+
+	return SaveConfig()
 }
 
 const (
@@ -1008,6 +1065,8 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.RelativeMouse = enabled
 	case "keyboard":
 		config.UsbDevices.Keyboard = enabled
+	case "touchscreen":
+		config.UsbDevices.Touchscreen = enabled
 	case "massStorage":
 		config.UsbDevices.MassStorage = enabled
 	case "serialConsole":
@@ -1340,6 +1399,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
+	"touchscreenReport":          {Func: rpcTouchscreenReport, Params: []string{"x", "y", "touching"}},
 	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
 	"wakeHost":                   {Func: rpcWakeHost},
 	"getVideoState":              {Func: rpcGetVideoState},
@@ -1362,6 +1422,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setEDID":                    {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getHostDisplayIdleMode":     {Func: rpcGetHostDisplayIdleMode},
 	"setHostDisplayIdleMode":     {Func: rpcSetHostDisplayIdleMode, Params: []string{"enabled"}},
+	"getDisplayModeStatus":       {Func: rpcGetDisplayModeStatus},
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
@@ -1403,6 +1464,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getBacklightSettings":       {Func: rpcGetBacklightSettings},
 	"setAudioConfig":             {Func: rpcSetAudioConfig, Params: []string{"params"}},
 	"getAudioConfig":             {Func: rpcGetAudioConfig},
+	"getTargetType":              {Func: rpcGetTargetType},
+	"setTargetType":              {Func: rpcSetTargetType, Params: []string{"settings"}},
 	"getDCPowerState":            {Func: rpcGetDCPowerState},
 	"setDCPowerState":            {Func: rpcSetDCPowerState, Params: []string{"enabled"}},
 	"setDCRestoreState":          {Func: rpcSetDCRestoreState, Params: []string{"state"}},

@@ -360,12 +360,14 @@ export interface BacklightSettings {
   off_after: number;
 }
 
+export type MouseMode = "absolute" | "relative" | "digitizer";
+
 export interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
 
-  mouseMode: string;
-  setMouseMode: (mode: string) => void;
+  mouseMode: MouseMode;
+  setMouseMode: (mode: MouseMode) => void;
 
   debugMode: boolean;
   setDebugMode: (enabled: boolean) => void;
@@ -416,7 +418,7 @@ export const useSettingsStore = create(
       setCursorVisibility: (enabled: boolean) => set({ isCursorHidden: enabled }),
 
       mouseMode: "absolute",
-      setMouseMode: (mode: string) => set({ mouseMode: mode }),
+      setMouseMode: (mode: MouseMode) => set({ mouseMode: mode }),
 
       debugMode: import.meta.env.DEV,
       setDebugMode: (enabled: boolean) => set({ debugMode: enabled }),

@@ -644,6 +644,8 @@
     "mouse_jiggler_title": "マウスジグラー",
     "mouse_mode_absolute": "絶対座標",
     "mouse_mode_absolute_description": "最も便利",
+    "mouse_mode_digitizer": "Digitizer",
+    "mouse_mode_digitizer_description": "Android friendly",
     "mouse_mode_relative": "相対座標",
     "mouse_mode_relative_description": "最も互換性が高い",
     "mouse_modes_description": "マウス入力モードを選択してください",

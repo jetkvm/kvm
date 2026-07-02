@@ -5,10 +5,13 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
+import { useJsonRpc } from "@hooks/useJsonRpc";
+import type { JsonRpcResponse } from "@hooks/useJsonRpc";
 import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
+import AndroidCompactControls from "@components/AndroidCompactControls";
+
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
@@ -27,9 +30,11 @@ const initialHdmiErrorGraceMs = 2500;
 export default function WebRTCVideo({
   hasConnectionIssues,
   hideStatusBar,
+  compactControllerMode,
 }: {
   hasConnectionIssues: boolean;
   hideStatusBar?: boolean;
+  compactControllerMode?: boolean;
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
@@ -41,6 +46,12 @@ export default function WebRTCVideo({
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
+  const [targetType, setTargetType] = useState<"generic" | "android">("generic");
+  const [targetDisplayAspect, setTargetDisplayAspect] = useState<number | null>(null);
+  const [hdmiReconnectRequired, setHdmiReconnectRequired] = useState(false);
+  const androidPreferredMouseModeApplied = useRef(false);
+  const isAndroidTarget = targetType === "android";
+  const androidCropFallbackMode = isAndroidTarget && hdmiReconnectRequired;
 
   const { send: sendRpc } = useJsonRpc();
 
@@ -49,10 +60,26 @@ export default function WebRTCVideo({
 
   // Store hooks
   const settings = useSettingsStore();
+  const setMouseMode = settings.setMouseMode;
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
+  const { send } = useJsonRpc();
+
+  const sendPicphoneKeyTap = useCallback(
+    (key: number) => {
+      void handleKeyPress(key, true);
+      window.setTimeout(() => void handleKeyPress(key, false), 80);
+    },
+    [handleKeyPress],
+  );
+
+  const sendPicphoneAndroidBack = useCallback(() => {
+    sendPicphoneKeyTap(keys.Escape);
+  }, [sendPicphoneKeyTap]);
+
   const {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
+    getDigitizerMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   } = useMouse();
@@ -82,6 +109,44 @@ export default function WebRTCVideo({
   const rawHdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const [isInitialHdmiErrorGraceActive, setIsInitialHdmiErrorGraceActive] = useState(false);
   const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
+
+  useEffect(() => {
+    const refreshTargetType = () => {
+      send("getTargetType", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) return;
+        const result = resp.result as {
+          target_type?: string;
+          preferred_mouse_mode?: string;
+          display_aspect?: number;
+          hdmi_reconnect_required?: boolean;
+          fresh?: boolean;
+        };
+        const isFreshAndroid = result.target_type === "android" && result.fresh !== false;
+        setTargetType(isFreshAndroid ? "android" : "generic");
+        setTargetDisplayAspect(
+          isFreshAndroid && typeof result.display_aspect === "number" && result.display_aspect > 0
+            ? result.display_aspect
+            : null,
+        );
+        setHdmiReconnectRequired(isFreshAndroid && result.hdmi_reconnect_required === true);
+        if (
+          isFreshAndroid &&
+          result.preferred_mouse_mode === "digitizer" &&
+          !androidPreferredMouseModeApplied.current
+        ) {
+          setMouseMode("digitizer");
+          androidPreferredMouseModeApplied.current = true;
+        } else if (!isFreshAndroid) {
+          androidPreferredMouseModeApplied.current = false;
+          setHdmiReconnectRequired(false);
+        }
+      });
+    };
+
+    refreshTargetType();
+    const interval = window.setInterval(refreshTargetType, 5000);
+    return () => window.clearInterval(interval);
+  }, [send, setMouseMode]);
 
   // Video-related
   const handleResize = useCallback(
@@ -249,7 +314,9 @@ export default function WebRTCVideo({
     const abortController = new AbortController();
     const signal = abortController.signal;
 
-    document.addEventListener("pointerlockchange", handlePointerLockChange, { signal });
+    document.addEventListener("pointerlockchange", handlePointerLockChange, {
+      signal,
+    });
 
     return () => {
       abortController.abort();
@@ -297,6 +364,17 @@ export default function WebRTCVideo({
 
   const relMouseMoveHandler = useMemo(() => getRelMouseMoveHandler(), [getRelMouseMoveHandler]);
 
+  const digitizerMoveHandler = useMemo(
+    () =>
+      getDigitizerMoveHandler({
+        videoClientWidth,
+        videoClientHeight,
+        videoWidth,
+        videoHeight,
+      }),
+    [getDigitizerMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
+  );
+
   const mouseWheelHandler = useMemo(() => getMouseWheelHandler(), [getMouseWheelHandler]);
 
   function getAdjustedKeyCode(e: KeyboardEvent) {
@@ -325,9 +403,16 @@ export default function WebRTCVideo({
     return code;
   }
 
+  function isEditableEventTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    return !!target.closest("input, textarea, select, [contenteditable='true']");
+  }
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      if (isEditableEventTarget(e.target)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -402,6 +487,7 @@ export default function WebRTCVideo({
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      if (isEditableEventTarget(e.target)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -537,7 +623,9 @@ export default function WebRTCVideo({
       document.addEventListener("keyup", keyUpHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
-      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
+      document.addEventListener("visibilitychange", resetKeyboardState, {
+        signal,
+      });
 
       return () => {
         abortController.abort();
@@ -556,7 +644,9 @@ export default function WebRTCVideo({
       const signal = abortController.signal;
 
       // To prevent the video from being paused when the user presses a space in fullscreen mode
-      videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
+      videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, {
+        signal,
+      });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
 
       // We need to know when the video is playing to update state and video size
@@ -576,17 +666,68 @@ export default function WebRTCVideo({
       if (!videoElmRefValue) return;
 
       const isRelativeMouseMode = settings.mouseMode === "relative";
-      const mouseHandler = isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler;
+      const isDigitizerMouseMode = settings.mouseMode === "digitizer";
+      const mouseHandler = isDigitizerMouseMode
+        ? digitizerMoveHandler
+        : isRelativeMouseMode
+          ? relMouseMoveHandler
+          : absMouseMoveHandler;
 
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", mouseHandler, { signal });
-      videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
+      if (isDigitizerMouseMode) {
+        videoElmRefValue.style.touchAction = "none";
+        videoElmRefValue.style.userSelect = "none";
+        videoElmRefValue.draggable = false;
+
+        const pointerHandler = (e: PointerEvent) => {
+          e.preventDefault();
+
+          if (e.type === "pointerdown" && e.button === 2) {
+            e.stopPropagation();
+            sendPicphoneAndroidBack();
+            return;
+          }
+
+          if (e.type === "pointerdown") {
+            try {
+              videoElmRefValue.setPointerCapture(e.pointerId);
+            } catch (err) {
+              console.debug("Unable to capture pointer", err);
+            }
+          }
+
+          mouseHandler(e);
+
+          if (e.type === "pointerup" || e.type === "pointercancel") {
+            try {
+              if (videoElmRefValue.hasPointerCapture(e.pointerId)) {
+                videoElmRefValue.releasePointerCapture(e.pointerId);
+              }
+            } catch (err) {
+              console.debug("Unable to release pointer capture", err);
+            }
+          }
+        };
+
+        videoElmRefValue.addEventListener("pointerdown", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointermove", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointerup", pointerHandler, { signal });
+        videoElmRefValue.addEventListener("pointercancel", pointerHandler, { signal });
+      } else {
+        videoElmRefValue.style.touchAction = "";
+        videoElmRefValue.style.userSelect = "";
+        videoElmRefValue.draggable = true;
+        videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
+        videoElmRefValue.addEventListener("pointerdown", mouseHandler, {
+          signal,
+        });
+        videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
+      }
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
-        passive: true,
+        passive: !isDigitizerMouseMode,
       });
 
       if (isRelativeMouseMode) {
@@ -602,11 +743,15 @@ export default function WebRTCVideo({
       } else {
         // Reset the mouse position when the window is blurred or the document is hidden
         window.addEventListener("blur", resetMousePosition, { signal });
-        document.addEventListener("visibilitychange", resetMousePosition, { signal });
+        document.addEventListener("visibilitychange", resetMousePosition, {
+          signal,
+        });
       }
 
       const preventContextMenu = (e: MouseEvent) => e.preventDefault();
-      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, { signal });
+      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, {
+        signal,
+      });
 
       // Suppress browser Back/Forward navigation on X1/X2 mouse buttons so
       // those presses are forwarded to the remote target instead.
@@ -619,6 +764,9 @@ export default function WebRTCVideo({
 
       return () => {
         abortController.abort();
+        videoElmRefValue.style.touchAction = "";
+        videoElmRefValue.style.userSelect = "";
+        videoElmRefValue.draggable = true;
       };
     },
     [
@@ -627,9 +775,11 @@ export default function WebRTCVideo({
       requestPointerLock,
       absMouseMoveHandler,
       relMouseMoveHandler,
+      digitizerMoveHandler,
       mouseWheelHandler,
       resetMousePosition,
       settings.mouseMode,
+      sendPicphoneAndroidBack,
     ],
   );
 
@@ -679,15 +829,25 @@ export default function WebRTCVideo({
   }, [videoSaturation, videoBrightness, videoContrast]);
 
   return (
-    <div className="grid h-full w-full grid-rows-(--grid-layout)">
-      <div className="flex min-h-[39.5px] flex-col">
-        <div className="flex flex-col">
-          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
-            <Actionbar requestFullscreen={requestFullscreen} />
-            <MacroBar />
-          </fieldset>
+    <div
+      className={cx(
+        "grid h-full w-full",
+        compactControllerMode ? "grid-rows-[1fr]" : "grid-rows-(--grid-layout)",
+      )}
+    >
+      {!compactControllerMode && (
+        <div className="flex min-h-[39.5px] flex-col">
+          <div className="flex flex-col">
+            <fieldset
+              disabled={peerConnection?.connectionState !== "connected"}
+              className="contents"
+            >
+              <Actionbar requestFullscreen={requestFullscreen} />
+              <MacroBar />
+            </fieldset>
+          </div>
         </div>
-      </div>
+      )}
 
       <div ref={containerRef} className="h-full overflow-hidden">
         <div className="relative h-full">
@@ -705,10 +865,23 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
+                  <div
+                    className={cx(
+                      "relative flex items-center justify-center overflow-hidden",
+                      compactControllerMode ? "m-0 h-full" : "mx-4 my-2",
+                    )}
+                  >
                     <div
                       ref={fullscreenContainerRef}
-                      className="relative flex h-full w-full items-center justify-center"
+                      className={cx(
+                        "relative flex h-full items-center justify-center",
+                        androidCropFallbackMode ? "max-w-full overflow-hidden" : "w-full",
+                      )}
+                      style={
+                        androidCropFallbackMode
+                          ? { aspectRatio: String(targetDisplayAspect ?? 9 / 20) }
+                          : undefined
+                      }
                     >
                       <video
                         ref={videoElm}
@@ -721,17 +894,22 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx("h-full w-full object-contain transition-all duration-1000", {
-                          "cursor-none": settings.isCursorHidden,
-                          "pointer-events-none": isOcrMode,
-                          "opacity-0!":
-                            isVideoLoading ||
-                            hdmiError ||
-                            hasConnectionIssues ||
-                            peerConnectionState !== "connected",
-                          "opacity-60!": showPointerLockBar,
-                          "animate-slideUpFade": isPlaying,
-                        })}
+                        className={cx(
+                          androidCropFallbackMode
+                            ? "h-full w-auto max-w-none object-fill transition-all duration-1000"
+                            : "h-full w-full object-contain transition-all duration-1000",
+                          {
+                            "cursor-none": settings.isCursorHidden,
+                            "pointer-events-none": isOcrMode,
+                            "opacity-0!":
+                              isVideoLoading ||
+                              hdmiError ||
+                              hasConnectionIssues ||
+                              peerConnectionState !== "connected",
+                            "opacity-60!": showPointerLockBar,
+                            "animate-slideUpFade": isPlaying,
+                          },
+                        )}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />
@@ -765,7 +943,8 @@ export default function WebRTCVideo({
           </div>
         </div>
       </div>
-      {!hideStatusBar && (
+      {compactControllerMode && <AndroidCompactControls />}
+      {!hideStatusBar && !compactControllerMode && (
         <div>
           <InfoBar />
         </div>

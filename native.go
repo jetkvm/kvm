@@ -35,6 +35,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		OnNativeRestart: func() {
 			configureDisplayOnNativeRestart()
 			_ = reapplyHostDisplayAdvertisement("native_restarted")
+			go applyDisplayModeForTarget(getEffectiveTargetMetadata())
 		},
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
@@ -99,7 +100,10 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		nativeLogger.Fatal().Err(err).Msg("failed to start native proxy")
 	}
 	go func() {
-		_ = reapplyHostDisplayAdvertisement("native_started")
+		if !restoreDefaultEDIDIfAndroidModeIsUnleased("android display mode unleased at startup", true) {
+			_ = reapplyHostDisplayAdvertisement("native_started")
+		}
+		applyDisplayModeForTarget(getEffectiveTargetMetadata())
 	}()
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {

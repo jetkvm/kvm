@@ -13,6 +13,53 @@ export interface AbsMouseMoveHandlerProps {
   videoHeight: number;
 }
 
+function getVideoRelativePosition(
+  e: MouseEvent,
+  videoClientWidth: number,
+  videoClientHeight: number,
+  videoWidth: number,
+  videoHeight: number,
+) {
+  const target = e.currentTarget;
+  if (!(target instanceof HTMLElement)) return null;
+
+  const rect = target.getBoundingClientRect();
+  const elementWidth = rect.width || videoClientWidth;
+  const elementHeight = rect.height || videoClientHeight;
+  if (!elementWidth || !elementHeight) return null;
+
+  const streamWidth = videoWidth || elementWidth;
+  const streamHeight = videoHeight || elementHeight;
+  if (!streamWidth || !streamHeight) return null;
+
+  const elementAspectRatio = elementWidth / elementHeight;
+  const streamAspectRatio = streamWidth / streamHeight;
+
+  let effectiveWidth = elementWidth;
+  let effectiveHeight = elementHeight;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (elementAspectRatio > streamAspectRatio) {
+    effectiveWidth = elementHeight * streamAspectRatio;
+    offsetX = (elementWidth - effectiveWidth) / 2;
+  } else if (elementAspectRatio < streamAspectRatio) {
+    effectiveHeight = elementWidth / streamAspectRatio;
+    offsetY = (elementHeight - effectiveHeight) / 2;
+  }
+
+  const pointerX = e.clientX - rect.left;
+  const pointerY = e.clientY - rect.top;
+
+  const clampedX = Math.min(Math.max(offsetX, pointerX), offsetX + effectiveWidth);
+  const clampedY = Math.min(Math.max(offsetY, pointerY), offsetY + effectiveHeight);
+
+  return {
+    x: (clampedX - offsetX) / effectiveWidth,
+    y: (clampedY - offsetY) / effectiveHeight,
+  };
+}
+
 export default function useMouse() {
   // states
   const { setMousePosition, setMouseMove } = useMouseStore();
@@ -25,7 +72,8 @@ export default function useMouse() {
 
   // RPC hooks
   const { send } = useJsonRpc();
-  const { reportAbsMouseEvent, reportRelMouseEvent, rpcHidReady } = useHidRpc();
+  const { reportAbsMouseEvent, reportRelMouseEvent, reportTouchscreenEvent, rpcHidReady } =
+    useHidRpc();
   // Mouse-related
 
   const sendRelMouseMovement = useCallback(
@@ -83,43 +131,54 @@ export default function useMouse() {
         if (!videoClientWidth || !videoClientHeight) return;
         if (mouseMode !== "absolute") return;
 
-        // Get the aspect ratios of the video element and the video stream
-        const videoElementAspectRatio = videoClientWidth / videoClientHeight;
-        const videoStreamAspectRatio = videoWidth / videoHeight;
-
-        // Calculate the effective video display area
-        let effectiveWidth = videoClientWidth;
-        let effectiveHeight = videoClientHeight;
-        let offsetX = 0;
-        let offsetY = 0;
-
-        if (videoElementAspectRatio > videoStreamAspectRatio) {
-          // Pillarboxing: black bars on the left and right
-          effectiveWidth = videoClientHeight * videoStreamAspectRatio;
-          offsetX = (videoClientWidth - effectiveWidth) / 2;
-        } else if (videoElementAspectRatio < videoStreamAspectRatio) {
-          // Letterboxing: black bars on the top and bottom
-          effectiveHeight = videoClientWidth / videoStreamAspectRatio;
-          offsetY = (videoClientHeight - effectiveHeight) / 2;
-        }
-
-        // Clamp mouse position within the effective video boundaries
-        const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
-        const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
-
-        // Map clamped mouse position to the video stream's coordinate system
-        const relativeX = (clampedX - offsetX) / effectiveWidth;
-        const relativeY = (clampedY - offsetY) / effectiveHeight;
+        const position = getVideoRelativePosition(
+          e,
+          videoClientWidth,
+          videoClientHeight,
+          videoWidth,
+          videoHeight,
+        );
+        if (!position) return;
 
         // Convert to HID absolute coordinate system (0-32767 range)
-        const x = Math.round(relativeX * 32767);
-        const y = Math.round(relativeY * 32767);
+        const x = Math.round(position.x * 32767);
+        const y = Math.round(position.y * 32767);
 
         // Send mouse movement
         const { buttons } = e;
         sendAbsMouseMovement(x, y, buttons);
       },
     [mouseMode, sendAbsMouseMovement],
+  );
+
+  const getDigitizerMoveHandler = useCallback(
+    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
+      (e: MouseEvent) => {
+        if (!videoClientWidth || !videoClientHeight) return;
+        if (mouseMode !== "digitizer") return;
+
+        const position = getVideoRelativePosition(
+          e,
+          videoClientWidth,
+          videoClientHeight,
+          videoWidth,
+          videoHeight,
+        );
+        if (!position) return;
+
+        const x = Math.round(position.x * 32767);
+        const y = Math.round(position.y * 32767);
+        const touching = e.buttons !== 0;
+
+        if (rpcHidReady) {
+          reportTouchscreenEvent(x, y, touching);
+        } else {
+          send("touchscreenReport", { x, y, touching });
+        }
+        setMousePosition(x, y);
+        lastAbsPos.current = { x, y };
+      },
+    [mouseMode, reportTouchscreenEvent, rpcHidReady, send, setMousePosition],
   );
 
   const getMouseWheelHandler = useCallback(
@@ -154,12 +213,26 @@ export default function useMouse() {
   );
 
   const resetMousePosition = useCallback(() => {
+    if (mouseMode === "digitizer") {
+      if (rpcHidReady) {
+        reportTouchscreenEvent(lastAbsPos.current.x, lastAbsPos.current.y, false);
+      } else {
+        send("touchscreenReport", {
+          x: lastAbsPos.current.x,
+          y: lastAbsPos.current.y,
+          touching: false,
+        });
+      }
+      return;
+    }
+
     sendAbsMouseMovement(lastAbsPos.current.x, lastAbsPos.current.y, 0);
-  }, [sendAbsMouseMovement]);
+  }, [mouseMode, reportTouchscreenEvent, rpcHidReady, send, sendAbsMouseMovement]);
 
   return {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
+    getDigitizerMoveHandler,
     getMouseWheelHandler,
     resetMousePosition,
   };

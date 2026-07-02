@@ -39,7 +39,8 @@ jobs:
       - name: Build application
         run: ./scripts/ci_helper.sh make build_dev
       - name: Run tests
-        run: go test ./... -json > testreport.json
+        run: go test ./... -json | tee testreport.json
       - uses: becheran/go-testreport@v0.3.2
+        if: always()
         with:
           input: testreport.json
