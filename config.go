@@ -123,6 +123,9 @@ type Config struct {
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
 	AudioEnabled         bool                 `json:"audio_enabled"`
+	// AbsMouseMapping remaps absolute mouse coordinates onto the captured
+	// screen's rectangle within a multi-monitor desktop (nil = disabled).
+	AbsMouseMapping *AbsMouseMappingConfig `json:"abs_mouse_mapping,omitempty"`
 }
 
 // GetUpdateAPIURL returns the update API URL

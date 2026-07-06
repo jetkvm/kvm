@@ -13,6 +13,11 @@ import { SettingsItem } from "@components/SettingsItem";
 import SettingsNestedSection from "@components/SettingsNestedSection";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { JigglerSetting } from "@components/JigglerSetting";
+import {
+  AbsMouseMapping,
+  defaultAbsMouseMapping,
+  MouseMappingSetting,
+} from "@components/MouseMappingSetting";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
@@ -76,6 +81,7 @@ export default function SettingsMouseRoute() {
 
   const [selectedJigglerOption, setSelectedJigglerOption] = useState<JigglerValues | null>(null);
   const [currentJigglerConfig, setCurrentJigglerConfig] = useState<JigglerConfig | null>(null);
+  const [mouseMapping, setMouseMapping] = useState<AbsMouseMapping>(defaultAbsMouseMapping);
 
   const scrollThrottlingOptions = [
     { value: "0", label: m.mouse_scroll_off() },
@@ -116,6 +122,32 @@ export default function SettingsMouseRoute() {
   useEffect(() => {
     syncJigglerSettings();
   }, [syncJigglerSettings]);
+
+  const syncMouseMapping = useCallback(() => {
+    send("getAbsMouseMapping", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setMouseMapping(resp.result as AbsMouseMapping);
+    });
+  }, [send]);
+
+  useEffect(() => {
+    syncMouseMapping();
+  }, [syncMouseMapping]);
+
+  const saveMouseMapping = useCallback(
+    (mapping: AbsMouseMapping) => {
+      send("setAbsMouseMapping", { mapping }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          return notifications.error(
+            m.mouse_multimonitor_error({ error: resp.error.data || m.unknown_error() }),
+          );
+        }
+        notifications.success(m.mouse_multimonitor_updated());
+        syncMouseMapping();
+      });
+    },
+    [send, syncMouseMapping],
+  );
 
   const saveJigglerConfig = useCallback(
     (jigglerConfig: JigglerConfig) => {
@@ -241,6 +273,31 @@ export default function SettingsMouseRoute() {
               onSave={saveJigglerConfig}
               defaultJigglerState={currentJigglerConfig || undefined}
             />
+          </SettingsNestedSection>
+        )}
+
+        <SettingsItem
+          title={m.mouse_multimonitor_title()}
+          description={m.mouse_multimonitor_description()}
+        >
+          <Checkbox
+            checked={mouseMapping.enabled}
+            onChange={e => {
+              const enabled = e.target.checked;
+              if (!enabled) {
+                // Disabling is always valid; persist immediately.
+                saveMouseMapping({ ...mouseMapping, enabled: false });
+              } else {
+                // Show the form; the user saves explicitly with valid values.
+                setMouseMapping({ ...mouseMapping, enabled: true });
+              }
+            }}
+          />
+        </SettingsItem>
+
+        {mouseMapping.enabled && (
+          <SettingsNestedSection>
+            <MouseMappingSetting mapping={mouseMapping} onSave={saveMouseMapping} />
           </SettingsNestedSection>
         )}
         <div className="space-y-4">

@@ -227,6 +227,9 @@ func setupRouter() *gin.Engine {
 
 		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
 
+		protected.GET("/mouse-mapping", handleGetMouseMapping)
+		protected.POST("/mouse-mapping", handleSetMouseMapping)
+
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}
 
