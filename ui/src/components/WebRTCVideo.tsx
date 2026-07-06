@@ -280,6 +280,9 @@ export default function WebRTCVideo({
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
   }, [releaseKeyboardLock]);
 
   const absMouseMoveHandler = useMemo(
@@ -606,6 +609,20 @@ export default function WebRTCVideo({
         // Release buttons if a touch interaction is canceled by the system
         // (e.g. iPadOS edge gestures), so buttons don't get stuck down.
         videoElmRefValue.addEventListener("pointercancel", resetMousePosition, { signal });
+        // Capture the pointer while a button is held so the release still
+        // reaches us when it happens outside the video element (touch
+        // pointers are implicitly captured; this covers mouse/pen).
+        videoElmRefValue.addEventListener(
+          "pointerdown",
+          (e: PointerEvent) => {
+            try {
+              videoElmRefValue.setPointerCapture(e.pointerId);
+            } catch {
+              // ignore: capture is best-effort (e.g. pointer already gone)
+            }
+          },
+          { signal },
+        );
       }
 
       const preventContextMenu = (e: MouseEvent) => e.preventDefault();

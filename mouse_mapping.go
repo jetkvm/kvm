@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +26,10 @@ type AbsMouseMappingConfig struct {
 	ScreenHeight int  `json:"screen_height"`
 }
 
+// maxMappingDimension bounds all mapping values: far beyond any real desktop,
+// small enough that int64 sums cannot overflow and float64 keeps precision.
+const maxMappingDimension = 1 << 20
+
 func (m *AbsMouseMappingConfig) validate() error {
 	if !m.Enabled {
 		return nil
@@ -37,6 +42,11 @@ func (m *AbsMouseMappingConfig) validate() error {
 	}
 	if m.ScreenX < 0 || m.ScreenY < 0 {
 		return fmt.Errorf("screen position must not be negative")
+	}
+	if m.TotalWidth > maxMappingDimension || m.TotalHeight > maxMappingDimension ||
+		m.ScreenX > maxMappingDimension || m.ScreenY > maxMappingDimension ||
+		m.ScreenWidth > maxMappingDimension || m.ScreenHeight > maxMappingDimension {
+		return fmt.Errorf("mapping values must not exceed %d", maxMappingDimension)
 	}
 	// int64 arithmetic so absurd values can't wrap 32-bit int on arm builds
 	if int64(m.ScreenX)+int64(m.ScreenWidth) > int64(m.TotalWidth) ||
@@ -57,10 +67,28 @@ func clampAbsCoord(v float64) int {
 	return i
 }
 
+// absMouseMappingLock guards the config.AbsMouseMapping pointer. The setter
+// always installs a freshly-validated struct and never mutates in place, so
+// readers only need a consistent pointer snapshot.
+var absMouseMappingLock sync.RWMutex
+
+// absMouseMappingUpdateMu serializes whole set operations (swap + save +
+// rollback) so a failing update cannot roll back over a newer successful one.
+var absMouseMappingUpdateMu sync.Mutex
+
+func currentAbsMouseMapping() *AbsMouseMappingConfig {
+	absMouseMappingLock.RLock()
+	defer absMouseMappingLock.RUnlock()
+	if config == nil {
+		return nil
+	}
+	return config.AbsMouseMapping
+}
+
 // applyAbsMouseMapping remaps x/y (0..32767 relative to the captured screen)
 // into 0..32767 relative to the target's full desktop bounding box.
 func applyAbsMouseMapping(x int, y int) (int, int) {
-	m := config.AbsMouseMapping
+	m := currentAbsMouseMapping()
 	if m == nil || !m.Enabled {
 		return x, y
 	}
@@ -73,18 +101,33 @@ func applyAbsMouseMapping(x int, y int) (int, int) {
 }
 
 func rpcGetAbsMouseMapping() (AbsMouseMappingConfig, error) {
-	if config.AbsMouseMapping == nil {
+	m := currentAbsMouseMapping()
+	if m == nil {
 		return AbsMouseMappingConfig{}, nil
 	}
-	return *config.AbsMouseMapping, nil
+	return *m, nil
 }
 
 func rpcSetAbsMouseMapping(mapping AbsMouseMappingConfig) error {
 	if err := mapping.validate(); err != nil {
 		return err
 	}
+	absMouseMappingUpdateMu.Lock()
+	defer absMouseMappingUpdateMu.Unlock()
+	absMouseMappingLock.Lock()
+	if config == nil {
+		absMouseMappingLock.Unlock()
+		return fmt.Errorf("config not loaded")
+	}
+	previous := config.AbsMouseMapping
 	config.AbsMouseMapping = &mapping
+	absMouseMappingLock.Unlock()
 	if err := SaveConfig(); err != nil {
+		// Keep in-memory state consistent with what the caller was told:
+		// the update failed, so restore the previous mapping.
+		absMouseMappingLock.Lock()
+		config.AbsMouseMapping = previous
+		absMouseMappingLock.Unlock()
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	logger.Info().
@@ -102,8 +145,12 @@ func rpcSetAbsMouseMapping(mapping AbsMouseMappingConfig) error {
 // HTTP endpoints (authenticated) so host-side automation can keep the mapping
 // in sync with display layout changes without a WebRTC session.
 func handleGetMouseMapping(c *gin.Context) {
-	mapping, _ := rpcGetAbsMouseMapping()
-	c.JSON(http.StatusOK, mapping)
+	m := currentAbsMouseMapping()
+	if m == nil {
+		c.JSON(http.StatusOK, AbsMouseMappingConfig{})
+		return
+	}
+	c.JSON(http.StatusOK, *m)
 }
 
 func handleSetMouseMapping(c *gin.Context) {
@@ -112,8 +159,13 @@ func handleSetMouseMapping(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := rpcSetAbsMouseMapping(mapping); err != nil {
+	// Client errors (invalid mapping) are 400; persistence failures are 500.
+	if err := mapping.validate(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := rpcSetAbsMouseMapping(mapping); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})

@@ -45,7 +45,12 @@ export function MouseMappingSetting({
       value={state[key]}
       type="number"
       min={String(min)}
-      onChange={e => setState({ ...state, [key]: Number(e.target.value) })}
+      onChange={e => {
+        // Guard the controlled input against NaN (empty/partial input -> 0,
+        // which the device-side validation rejects with a clear error).
+        const n = Number(e.target.value);
+        setState({ ...state, [key]: Number.isFinite(n) ? Math.trunc(n) : 0 });
+      }}
     />
   );
 
