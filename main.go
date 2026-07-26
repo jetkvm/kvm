@@ -114,6 +114,7 @@ func Main() {
 		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
 	initJiggler()
+	initPowerScheduler()
 
 	// Initialize MQTT
 	initMQTT()
