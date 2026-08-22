@@ -49,6 +49,8 @@ int codec_type = 0;
 static void *venc_read_stream(void *arg);
 static int32_t venc_jpeg_start(int32_t width, int32_t height);
 static void venc_jpeg_stop(void);
+bool get_streaming_flag();
+bool get_streaming_stopped();
 
 RK_U64 get_us()
 {
