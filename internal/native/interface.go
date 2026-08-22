@@ -13,6 +13,7 @@ type NativeInterface interface {
 	VideoSetEDID(edid string) error
 	VideoGetEDID() (string, error)
 	VideoLogStatus() (string, error)
+	VideoGetSnapshot() ([]byte, error)
 	VideoStop() error
 	VideoStart() error
 	GetLVGLVersion() (string, error)

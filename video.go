@@ -2,8 +2,12 @@ package kvm
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/sync"
@@ -35,6 +39,22 @@ func triggerVideoStateUpdate() {
 func rpcGetVideoState() (native.VideoState, error) {
 	notifyFailsafeMode(currentSession)
 	return lastVideoState, nil
+}
+
+// handleSnapshot returns a single JPEG-encoded frame of the current video
+// feed. Video only streams while a WebRTC session is connected, so this
+// responds 503 if there's nothing to snapshot.
+func handleSnapshot(c *gin.Context) {
+	jpeg, err := nativeInstance.VideoGetSnapshot()
+	if err != nil {
+		if errors.Is(err, native.ErrVideoNotStreaming) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "video stream is not active"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "image/jpeg", jpeg)
 }
 
 var (

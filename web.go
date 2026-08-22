@@ -228,6 +228,7 @@ func setupRouter() *gin.Engine {
 		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
+		protected.GET("/snapshot", handleSnapshot)
 	}
 
 	// Catch-all route for SPA
