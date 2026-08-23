@@ -49,6 +49,38 @@ func newTestGadgetWithKeyboard(w *os.File) *UsbGadget {
 	}
 }
 
+func TestWriteHIDReportRejectsEveryNonConfiguredUSBState(t *testing.T) {
+	for _, state := range []string{
+		USBStateUnknown,
+		USBStateNotAttached,
+		"suspended",
+	} {
+		t.Run(state, func(t *testing.T) {
+			called := false
+			err := WriteHIDReport(state, func() error {
+				called = true
+				return nil
+			})
+			if err == nil {
+				t.Fatal("WriteHIDReport returned success while USB was not configured")
+			}
+			if called {
+				t.Fatal("WriteHIDReport attempted a write while USB was not configured")
+			}
+		})
+	}
+}
+
+func TestWriteHIDReportReturnsWriteResult(t *testing.T) {
+	want := errors.New("HID write failed")
+	if err := WriteHIDReport(USBStateConfigured, func() error { return want }); !errors.Is(err, want) {
+		t.Fatalf("WriteHIDReport error = %v, want %v", err, want)
+	}
+	if err := WriteHIDReport(USBStateConfigured, func() error { return nil }); err != nil {
+		t.Fatalf("WriteHIDReport successful write returned error: %v", err)
+	}
+}
+
 func TestHIDReportsReturnFirstWriteTimeout(t *testing.T) {
 	tests := []struct {
 		name   string

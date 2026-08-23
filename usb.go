@@ -68,10 +68,10 @@ func initUsbGadget() {
 // accepted it. Callers must receive an error for every report that was not
 // written so they never mistake a dropped input event for success.
 func rpcHidReport(fn func() error) error {
-	if !usbReadyForHidReports() {
-		return fmt.Errorf("USB is not configured for HID reports")
-	}
-	return fn()
+	usbStateLock.Lock()
+	state := usbState
+	usbStateLock.Unlock()
+	return usbgadget.WriteHIDReport(state, fn)
 }
 
 func rpcKeyboardReport(modifier byte, keys []byte) error {
@@ -146,13 +146,6 @@ var (
 	// in the attached state.
 	lastHidWriteRecoveryTry time.Time
 )
-
-func usbReadyForHidReports() bool {
-	usbStateLock.Lock()
-	state := usbState
-	usbStateLock.Unlock()
-	return state == usbgadget.USBStateConfigured
-}
 
 func rpcGetUSBState() (state string) {
 	return gadget.GetUsbState()
