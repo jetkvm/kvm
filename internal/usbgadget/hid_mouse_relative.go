@@ -87,7 +87,7 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 
 func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	if !u.enabledDevices.RelativeMouse {
-		return nil
+		return fmt.Errorf("relative mouse is disabled")
 	}
 
 	u.relMouseLock.Lock()
@@ -110,7 +110,7 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 
 func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
 	if !u.enabledDevices.RelativeMouse {
-		return nil
+		return fmt.Errorf("relative mouse is disabled")
 	}
 
 	u.relMouseLock.Lock()

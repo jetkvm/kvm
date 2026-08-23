@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -119,6 +120,9 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 
 	n, err = file.Write(data)
 	if err == nil {
+		if n != len(data) {
+			return n, io.ErrShortWrite
+		}
 		u.resetHidWriteTimeoutStreak(file.Name())
 		return
 	}
@@ -130,10 +134,8 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 		Msg("write failed")
 
 	if errors.Is(err, os.ErrDeadlineExceeded) {
-		// The timeout is swallowed so a suspended host doesn't surface errors
-		// on every report, but it is counted: consecutive timeouts while the
-		// gadget is "configured" mean the HID function is broken and recovery
-		// must escalate (see ShouldEscalateHidWriteRecovery).
+		// Count timeouts for asynchronous recovery, but preserve the error so
+		// the RPC for this specific dropped report cannot return success.
 		u.recordHidWriteTimeout(file.Name())
 		u.logWithSuppression(
 			fmt.Sprintf("writeWithTimeout_%s", file.Name()),
@@ -143,7 +145,6 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 			"write timed out: %s",
 			file.Name(),
 		)
-		err = nil
 	}
 
 	return

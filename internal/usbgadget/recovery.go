@@ -24,7 +24,7 @@ func ShouldAttemptUSBRecovery(state string, desired bool, lastAttempt time.Time,
 // USBStateConfigured is the UDC sysfs state when the host has configured the gadget.
 const USBStateConfigured = "configured"
 
-// HidWriteTimeoutEscalationThreshold is the number of consecutive keyboard HID
+// HidWriteTimeoutEscalationThreshold is the number of consecutive HID
 // write timeouts, while the gadget reports "configured", after which recovery
 // escalates to a full gadget reconfigure.
 const HidWriteTimeoutEscalationThreshold = 3
@@ -34,7 +34,7 @@ const HidWriteTimeoutEscalationThreshold = 3
 // so repeated attempts are spaced well apart.
 const HidWriteRecoveryRetryInterval = 30 * time.Second
 
-// ShouldEscalateHidWriteRecovery reports whether keyboard HID write timeouts
+// ShouldEscalateHidWriteRecovery reports whether HID write timeouts
 // should trigger a full USB gadget reconfigure. A UDC rebind can leave
 // /dev/hidg0 openable but non-functional: writes time out while the UDC still
 // reports "configured". Only a full gadget reconfigure recovers from that

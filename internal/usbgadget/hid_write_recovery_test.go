@@ -1,6 +1,9 @@
 package usbgadget
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -46,6 +49,195 @@ func newTestGadgetWithKeyboard(w *os.File) *UsbGadget {
 	}
 }
 
+func TestHIDReportsReturnFirstWriteTimeout(t *testing.T) {
+	tests := []struct {
+		name   string
+		report func(*UsbGadget) error
+		setHID func(*UsbGadget, *os.File)
+	}{
+		{
+			name:   "keyboard",
+			report: func(u *UsbGadget) error { return u.KeyboardReport(0, []byte{4}) },
+			setHID: func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
+		},
+		{
+			name:   "keypress",
+			report: func(u *UsbGadget) error { return u.KeypressReport(4, true) },
+			setHID: func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
+		},
+		{
+			name:   "absolute mouse",
+			report: func(u *UsbGadget) error { return u.AbsMouseReport(1, 2, 0) },
+			setHID: func(u *UsbGadget, file *os.File) { u.absMouseHidFile = file },
+		},
+		{
+			name:   "relative mouse",
+			report: func(u *UsbGadget) error { return u.RelMouseReport(1, 2, 0) },
+			setHID: func(u *UsbGadget, file *os.File) { u.relMouseHidFile = file },
+		},
+		{
+			name:   "absolute mouse wheel",
+			report: func(u *UsbGadget) error { return u.AbsMouseWheelReport(1, -1) },
+			setHID: func(u *UsbGadget, file *os.File) { u.absMouseHidFile = file },
+		},
+		{
+			name:   "relative mouse wheel",
+			report: func(u *UsbGadget) error { return u.RelMouseWheelReport(1, -1) },
+			setHID: func(u *UsbGadget, file *os.File) { u.relMouseHidFile = file },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+
+			logger := zerolog.Nop()
+			u := &UsbGadget{
+				log:                   &logger,
+				logSuppressionCounter: make(map[string]int),
+				keysDownState:         KeysDownState{Keys: make([]byte, hidKeyBufferSize)},
+				enabledDevices: Devices{
+					Keyboard:      true,
+					AbsoluteMouse: true,
+					RelativeMouse: true,
+				},
+			}
+			tt.setHID(u, w)
+			fillPipeBuffer(t, w)
+
+			if err := tt.report(u); !errors.Is(err, os.ErrDeadlineExceeded) {
+				t.Fatalf("first stalled report error = %v, want deadline exceeded", err)
+			}
+		})
+	}
+}
+
+func TestAcknowledgedHIDReportsAreWritten(t *testing.T) {
+	tests := []struct {
+		name   string
+		report func(*UsbGadget) error
+		setHID func(*UsbGadget, *os.File)
+		want   []byte
+	}{
+		{
+			name:   "keyboard",
+			report: func(u *UsbGadget) error { return u.KeyboardReport(0, []byte{4}) },
+			setHID: func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
+			want:   []byte{0, 0, 4, 0, 0, 0, 0, 0},
+		},
+		{
+			name: "keypress",
+			report: func(u *UsbGadget) error {
+				err := u.KeypressReport(4, true)
+				u.cancelAutoRelease(4)
+				return err
+			},
+			setHID: func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
+			want:   []byte{0, 0, 4, 0, 0, 0, 0, 0},
+		},
+		{
+			name:   "absolute mouse",
+			report: func(u *UsbGadget) error { return u.AbsMouseReport(1, 2, 0) },
+			setHID: func(u *UsbGadget, file *os.File) { u.absMouseHidFile = file },
+			want:   []byte{1, 0, 1, 0, 2, 0},
+		},
+		{
+			name:   "relative mouse",
+			report: func(u *UsbGadget) error { return u.RelMouseReport(1, 2, 0) },
+			setHID: func(u *UsbGadget, file *os.File) { u.relMouseHidFile = file },
+			want:   []byte{0, 1, 2, 0, 0},
+		},
+		{
+			name:   "absolute mouse wheel",
+			report: func(u *UsbGadget) error { return u.AbsMouseWheelReport(1, -1) },
+			setHID: func(u *UsbGadget, file *os.File) { u.absMouseHidFile = file },
+			want:   []byte{2, 1, 255},
+		},
+		{
+			name:   "relative mouse wheel",
+			report: func(u *UsbGadget) error { return u.RelMouseWheelReport(1, -1) },
+			setHID: func(u *UsbGadget, file *os.File) { u.relMouseHidFile = file },
+			want:   []byte{0, 0, 0, 1, 255},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			defer w.Close()
+
+			logger := zerolog.Nop()
+			u := &UsbGadget{
+				log:                   &logger,
+				logSuppressionCounter: make(map[string]int),
+				keysDownState:         KeysDownState{Keys: make([]byte, hidKeyBufferSize)},
+				kbdAutoReleaseTimers:  make(map[byte]*time.Timer),
+				enabledDevices: Devices{
+					Keyboard:      true,
+					AbsoluteMouse: true,
+					RelativeMouse: true,
+				},
+			}
+			tt.setHID(u, w)
+
+			if err := tt.report(u); err != nil {
+				t.Fatalf("report returned error: %v", err)
+			}
+			got := make([]byte, len(tt.want))
+			if _, err := io.ReadFull(r, got); err != nil {
+				t.Fatalf("read acknowledged report: %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Fatalf("written report = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFailedKeyboardReportDoesNotAdvanceDeliveredState(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	u := newTestGadgetWithKeyboard(w)
+	u.keysDownState = KeysDownState{Keys: make([]byte, hidKeyBufferSize)}
+	fillPipeBuffer(t, w)
+
+	if err := u.KeyboardReport(0, []byte{4}); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("KeyboardReport error = %v, want deadline exceeded", err)
+	}
+	state := u.GetKeysDownState()
+	if state.Modifier != 0 || !bytes.Equal(state.Keys, make([]byte, hidKeyBufferSize)) {
+		t.Fatalf("keys-down state advanced after failed report: %+v", state)
+	}
+}
+
+func TestDisabledMouseEndpointsReturnError(t *testing.T) {
+	u := &UsbGadget{}
+	for name, report := range map[string]func() error{
+		"absolute mouse":       func() error { return u.AbsMouseReport(1, 2, 0) },
+		"relative mouse":       func() error { return u.RelMouseReport(1, 2, 0) },
+		"absolute mouse wheel": func() error { return u.AbsMouseWheelReport(1, 0) },
+		"relative mouse wheel": func() error { return u.RelMouseWheelReport(1, 0) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := report(); err == nil {
+				t.Fatal("disabled endpoint returned success")
+			}
+		})
+	}
+}
+
 func TestKeyboardWriteTimeoutStreak(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -58,22 +250,22 @@ func TestKeyboardWriteTimeoutStreak(t *testing.T) {
 
 	report := make([]byte, hidKeyBufferSize)
 	for i := 1; i <= HidWriteTimeoutEscalationThreshold; i++ {
-		// Timed-out writes are deliberately swallowed (host-suspend tolerance),
-		// but each one must be counted so recovery can escalate.
-		if err := u.keyboardWriteHidFileLocked(0, report); err != nil {
-			t.Fatalf("write %d: expected timeout to be swallowed, got %v", i, err)
+		// Every timed-out write is returned to its caller and counted so
+		// asynchronous recovery can also escalate.
+		if _, err := u.writeWithTimeout(w, report); !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("write %d: error = %v, want deadline exceeded", i, err)
 		}
-		if got := u.KeyboardWriteTimeoutStreak(); got != i {
+		if got := u.HIDWriteTimeoutStreak(); got != i {
 			t.Fatalf("after %d timed-out writes, streak = %d, want %d", i, got, i)
 		}
 	}
 
 	// A successful write means the endpoint is healthy again: streak resets.
 	drainPipe(t, r)
-	if err := u.keyboardWriteHidFileLocked(0, report); err != nil {
+	if _, err := u.writeWithTimeout(w, report); err != nil {
 		t.Fatalf("write after drain: %v", err)
 	}
-	if got := u.KeyboardWriteTimeoutStreak(); got != 0 {
+	if got := u.HIDWriteTimeoutStreak(); got != 0 {
 		t.Fatalf("streak after successful write = %d, want 0", got)
 	}
 }
@@ -89,8 +281,8 @@ func TestResetHIDFilesClearsWriteTimeoutStreaks(t *testing.T) {
 	fillPipeBuffer(t, w)
 
 	report := make([]byte, hidKeyBufferSize)
-	if err := u.keyboardWriteHidFileLocked(0, report); err != nil {
-		t.Fatalf("write: %v", err)
+	if err := u.keyboardWriteHidFileLocked(0, report); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("write error = %v, want deadline exceeded", err)
 	}
 
 	// Recovery closes and reopens the HID files; stale streaks must not
@@ -99,7 +291,7 @@ func TestResetHIDFilesClearsWriteTimeoutStreaks(t *testing.T) {
 	if got := len(u.hidWriteTimeoutStreaks); got != 0 {
 		t.Fatalf("streak map has %d entries after ResetHIDFiles, want 0", got)
 	}
-	if got := u.KeyboardWriteTimeoutStreak(); got != 0 {
+	if got := u.HIDWriteTimeoutStreak(); got != 0 {
 		t.Fatalf("streak after ResetHIDFiles = %d, want 0", got)
 	}
 }
@@ -188,8 +380,7 @@ func TestVerifyKeyboardWritable(t *testing.T) {
 
 	u := newTestGadgetWithKeyboard(w)
 
-	// Stalled endpoint: the probe must surface the timeout, not swallow it
-	// like the regular report path does.
+	// Stalled endpoint: the probe must surface the timeout.
 	fillPipeBuffer(t, w)
 	if err := u.VerifyKeyboardWritable(); err == nil {
 		t.Fatal("expected probe to fail while writes stall")

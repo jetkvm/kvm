@@ -522,7 +522,9 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
 	}
-	u.UpdateKeysDown(modifier, keys)
+	if err == nil {
+		u.UpdateKeysDown(modifier, keys)
+	}
 	keyboardMutex.Unlock()
 
 	return err
@@ -647,7 +649,10 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 	}
 
 	err := u.keyboardWriteHidFileLocked(modifier, keys)
-	newState := u.UpdateKeysDown(modifier, keys)
+	newState := state
+	if err == nil {
+		newState = u.UpdateKeysDown(modifier, keys)
+	}
 	keyboardMutex.Unlock()
 
 	return newState, err
@@ -657,6 +662,10 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 	state, err := u.keypressReport(key, press)
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("key", key).Bool("press", press).Msg("failed to report key")
+	}
+
+	if err != nil {
+		return err
 	}
 
 	isRolledOver := state.Keys[0] == hidErrorRollOver
@@ -676,28 +685,27 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 	return err
 }
 
-// KeyboardWriteTimeoutStreak returns the number of consecutive write timeouts
-// on the currently open keyboard HID file. Returns 0 when the file is closed.
-func (u *UsbGadget) KeyboardWriteTimeoutStreak() int {
-	u.keyboardLock.Lock()
-	file := u.keyboardHidFile
-	u.keyboardLock.Unlock()
-
-	if file == nil {
-		return 0
-	}
-
+// HIDWriteTimeoutStreak returns the largest consecutive timeout streak among
+// all HID endpoints. Failed writes close their file handle, so recovery must
+// consult the retained per-path counters rather than only currently open files.
+func (u *UsbGadget) HIDWriteTimeoutStreak() int {
 	u.hidWriteStreakLock.Lock()
 	defer u.hidWriteStreakLock.Unlock()
 
-	return u.hidWriteTimeoutStreaks[file.Name()]
+	maxStreak := 0
+	for _, streak := range u.hidWriteTimeoutStreaks {
+		if streak > maxStreak {
+			maxStreak = streak
+		}
+	}
+	return maxStreak
 }
 
 // VerifyKeyboardWritable proves the keyboard HID function actually accepts
 // reports, not merely that the chardev opens — the #1512 broken state is a
 // /dev/hidg0 that opens fine while every write times out. It re-sends the
-// current keys-down state, which is a no-op for the host, and, unlike the
-// regular report path, returns a write timeout instead of swallowing it.
+// current successfully delivered keys-down state, which is a no-op for the
+// host, and returns any write timeout.
 // Only meaningful while the UDC state is "configured"; in any other state
 // the host is not polling the endpoint and a stalled write proves nothing.
 func (u *UsbGadget) VerifyKeyboardWritable() error {
