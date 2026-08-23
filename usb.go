@@ -64,16 +64,14 @@ func initUsbGadget() {
 	}
 }
 
-// rpcHidReport wraps a HID gadget call with the common guard (skip if USB not
-// ready) and error suppression (swallow transient HID errors during rebind).
+// rpcHidReport only acknowledges a report after the configured USB gadget has
+// accepted it. Callers must receive an error for every report that was not
+// written so they never mistake a dropped input event for success.
 func rpcHidReport(fn func() error) error {
-	if !usbReadyForHidReports() {
-		return nil
-	}
-	if err := fn(); err != nil && !usbgadget.IsHIDTemporarilyUnavailableError(err) {
-		return err
-	}
-	return nil
+	usbStateLock.Lock()
+	state := usbState
+	usbStateLock.Unlock()
+	return usbgadget.WriteHIDReport(state, fn)
 }
 
 func rpcKeyboardReport(modifier byte, keys []byte) error {
@@ -148,13 +146,6 @@ var (
 	// in the attached state.
 	lastHidWriteRecoveryTry time.Time
 )
-
-func usbReadyForHidReports() bool {
-	usbStateLock.Lock()
-	state := usbState
-	usbStateLock.Unlock()
-	return state != usbgadget.USBStateNotAttached && state != usbgadget.USBStateUnknown
-}
 
 func rpcGetUSBState() (state string) {
 	return gadget.GetUsbState()
@@ -275,13 +266,11 @@ func tryReopenKeyboard(reason string) bool {
 	return false
 }
 
-// attemptHidWriteRecovery escalates to a full gadget reconfigure when keyboard
-// HID writes keep timing out even though the UDC reports "configured". This is
-// the aftermath of a UDC rebind that left the HID function broken: the chardev
-// reopens fine, so the rebind recovery path declares success, but every write
-// times out and is silently dropped (issue #1512). A plain rebind has already
-// proven insufficient at this point, so go straight to the reconfigure that
-// manual identifier cycling would otherwise trigger.
+// attemptHidWriteRecovery escalates to a full gadget reconfigure when any HID
+// endpoint keeps timing out even though the UDC reports "configured". This is
+// the aftermath of a UDC rebind that left a HID function broken: the chardev
+// reopens fine, but writes keep timing out (issue #1512). A plain rebind has
+// already proven insufficient, so go straight to the full reconfigure.
 func attemptHidWriteRecovery(state string) string {
 	if state != usbgadget.USBStateConfigured {
 		// Write timeouts outside "configured" (e.g. host suspend) are expected;
@@ -298,7 +287,7 @@ func attemptHidWriteRecovery(state string) string {
 	lastAttempt := lastHidWriteRecoveryTry
 	usbStateLock.Unlock()
 
-	timeouts := gadget.KeyboardWriteTimeoutStreak()
+	timeouts := gadget.HIDWriteTimeoutStreak()
 	if !usbgadget.ShouldEscalateHidWriteRecovery(state, desired, timeouts, lastAttempt, now) {
 		return state
 	}
@@ -309,7 +298,7 @@ func attemptHidWriteRecovery(state string) string {
 
 	usbLogger.Warn().
 		Int("consecutive_timeouts", timeouts).
-		Msg("keyboard HID writes are timing out while USB is configured; attempting full USB gadget reconfigure")
+		Msg("HID writes are timing out while USB is configured; attempting full USB gadget reconfigure")
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")

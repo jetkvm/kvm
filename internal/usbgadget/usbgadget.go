@@ -101,8 +101,8 @@ type UsbGadget struct {
 	logSuppressionLock    sync.Mutex
 
 	// hidWriteTimeoutStreaks counts consecutive write timeouts per HID device
-	// file; a successful write resets the streak. Used to detect a gadget left
-	// non-functional after a UDC rebind (writes time out while "configured").
+	// path; a successful write resets the streak. Retaining the path after a
+	// failed handle is closed lets recovery observe every HID endpoint.
 	hidWriteTimeoutStreaks map[string]int
 	hidWriteStreakLock     sync.Mutex
 }

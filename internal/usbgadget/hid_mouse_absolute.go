@@ -99,7 +99,7 @@ func (u *UsbGadget) HasAbsoluteMouse() bool {
 
 func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	if !u.enabledDevices.AbsoluteMouse {
-		return nil
+		return fmt.Errorf("absolute mouse is disabled")
 	}
 
 	u.absMouseLock.Lock()
@@ -123,7 +123,7 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 
 func (u *UsbGadget) AbsMouseWheelReport(wheelY int8, wheelX int8) error {
 	if !u.enabledDevices.AbsoluteMouse {
-		return nil
+		return fmt.Errorf("absolute mouse is disabled")
 	}
 
 	u.absMouseLock.Lock()
