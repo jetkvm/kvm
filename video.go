@@ -86,7 +86,12 @@ func captureScreenshot() ([]byte, error) {
 		if err == nil {
 			return jpegBytes, nil
 		}
-		if !errors.Is(err, native.ErrVideoNotStreaming) || !time.Now().Before(deadline) {
+		// Retry on any error while the deadline allows, not just
+		// ErrVideoNotStreaming: the native side also returns transient
+		// per-attempt errors (encoder timeout, no frame yet) while capture
+		// is still spinning up or between frames, which should be retried
+		// against the next captured frame rather than failing immediately.
+		if !time.Now().Before(deadline) {
 			return nil, err
 		}
 		time.Sleep(screenshotSnapshotRetryWait)

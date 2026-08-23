@@ -451,21 +451,20 @@ static void complete_snapshot_request(uint8_t *buf, size_t len, int result)
     pthread_mutex_unlock(&snapshot_mutex);
 }
 
-// Runs on the video capture thread. pFrame is the just-captured raw frame
-// that was already handed to VENC_CHANNEL; reusing it here avoids capturing
-// a second frame off V4L2 just for the snapshot.
+// Runs on the video capture thread, so it must stay fast: it blocks
+// VIDIOC_QBUF on the primary V4L2 capture loop (only input_buffer_count
+// buffers deep) for as long as it takes. A single failed attempt here just
+// means this frame's snapshot is skipped — the Go-side caller retries
+// against the next captured frame rather than this function retrying
+// in-place and doubling the stall.
+//
+// pFrame is the just-captured raw frame that was already handed to
+// VENC_CHANNEL; reusing it here avoids capturing a second frame off V4L2
+// just for the snapshot.
 static void handle_snapshot_request(VIDEO_FRAME_INFO_S *pFrame)
 {
-    bool retried = false;
-retry_send_jpeg_frame:
-    if (RK_MPI_VENC_SendFrame(VENC_CHANNEL_JPEG, pFrame, 2000) != RK_SUCCESS)
+    if (RK_MPI_VENC_SendFrame(VENC_CHANNEL_JPEG, pFrame, 150) != RK_SUCCESS)
     {
-        if (!retried)
-        {
-            retried = true;
-            usleep(1000llu);
-            goto retry_send_jpeg_frame;
-        }
         log_error("snapshot: RK_MPI_VENC_SendFrame(JPEG) failed");
         complete_snapshot_request(NULL, 0, VIDEO_SNAPSHOT_ERR_ENCODE);
         return;
@@ -480,7 +479,7 @@ retry_send_jpeg_frame:
         return;
     }
 
-    int32_t ret = RK_MPI_VENC_GetStream(VENC_CHANNEL_JPEG, &stJpegStream, 200);
+    int32_t ret = RK_MPI_VENC_GetStream(VENC_CHANNEL_JPEG, &stJpegStream, 150);
     if (ret != RK_SUCCESS)
     {
         log_error("snapshot: RK_MPI_VENC_GetStream(JPEG) failed %#x", ret);
@@ -529,9 +528,14 @@ int video_get_snapshot(uint8_t **out_buf, size_t *out_len)
     snapshot_len = 0;
     snapshot_result = 0;
 
+    // This function is called under the Go side's cgoLock (a single global
+    // mutex shared by every native call, including UI ticks), so the wait
+    // here directly stalls unrelated native operations for its duration.
+    // Kept short; the Go-side caller (captureScreenshot) retries across
+    // several calls rather than this one call waiting longer.
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_nsec += 500000000L; // 500ms deadline: one frame period plus JPEG encode headroom
+    ts.tv_nsec += 300000000L; // 300ms: one frame period plus JPEG encode headroom
     if (ts.tv_nsec >= 1000000000L)
     {
         ts.tv_sec += 1;
