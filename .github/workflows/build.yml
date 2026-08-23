@@ -39,7 +39,12 @@ jobs:
       - name: Build application
         run: ./scripts/ci_helper.sh make build_dev
       - name: Run tests
-        run: go test ./... -json > testreport.json
+        run: |
+          # [DEBUG-hid-ack] Preserve the redirected report when tests fail.
+          go test ./... -json > testreport.json || {
+            cat testreport.json
+            exit 1
+          }
       - uses: becheran/go-testreport@v0.3.2
         with:
           input: testreport.json
