@@ -508,6 +508,10 @@ func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 }
 
 func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
+	if !u.enabledDevices.Keyboard {
+		return fmt.Errorf("keyboard is disabled")
+	}
+
 	defer u.resetUserInputTime()
 
 	if len(keys) > hidKeyBufferSize {
@@ -659,6 +663,10 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 }
 
 func (u *UsbGadget) KeypressReport(key byte, press bool) error {
+	if !u.enabledDevices.Keyboard {
+		return fmt.Errorf("keyboard is disabled")
+	}
+
 	state, err := u.keypressReport(key, press)
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("key", key).Bool("press", press).Msg("failed to report key")
@@ -683,22 +691,6 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 	}
 
 	return err
-}
-
-// HIDWriteTimeoutStreak returns the largest consecutive timeout streak among
-// all HID endpoints. Failed writes close their file handle, so recovery must
-// consult the retained per-path counters rather than only currently open files.
-func (u *UsbGadget) HIDWriteTimeoutStreak() int {
-	u.hidWriteStreakLock.Lock()
-	defer u.hidWriteStreakLock.Unlock()
-
-	maxStreak := 0
-	for _, streak := range u.hidWriteTimeoutStreaks {
-		if streak > maxStreak {
-			maxStreak = streak
-		}
-	}
-	return maxStreak
 }
 
 // VerifyKeyboardWritable proves the keyboard HID function actually accepts

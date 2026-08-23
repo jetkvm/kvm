@@ -46,6 +46,7 @@ func newTestGadgetWithKeyboard(w *os.File) *UsbGadget {
 		log:                   &logger,
 		logSuppressionCounter: make(map[string]int),
 		keyboardHidFile:       w,
+		enabledDevices:        Devices{Keyboard: true},
 	}
 }
 
@@ -81,80 +82,16 @@ func TestWriteHIDReportReturnsWriteResult(t *testing.T) {
 	}
 }
 
-func TestHIDReportsReturnFirstWriteTimeout(t *testing.T) {
-	tests := []struct {
-		name   string
-		report func(*UsbGadget) error
-		setHID func(*UsbGadget, *os.File)
-	}{
-		{
-			name:   "keyboard",
-			report: func(u *UsbGadget) error { return u.KeyboardReport(0, []byte{4}) },
-			setHID: func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
-		},
-		{
-			name:   "keypress",
-			report: func(u *UsbGadget) error { return u.KeypressReport(4, true) },
-			setHID: func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
-		},
-		{
-			name:   "absolute mouse",
-			report: func(u *UsbGadget) error { return u.AbsMouseReport(1, 2, 0) },
-			setHID: func(u *UsbGadget, file *os.File) { u.absMouseHidFile = file },
-		},
-		{
-			name:   "relative mouse",
-			report: func(u *UsbGadget) error { return u.RelMouseReport(1, 2, 0) },
-			setHID: func(u *UsbGadget, file *os.File) { u.relMouseHidFile = file },
-		},
-		{
-			name:   "absolute mouse wheel",
-			report: func(u *UsbGadget) error { return u.AbsMouseWheelReport(1, -1) },
-			setHID: func(u *UsbGadget, file *os.File) { u.absMouseHidFile = file },
-		},
-		{
-			name:   "relative mouse wheel",
-			report: func(u *UsbGadget) error { return u.RelMouseWheelReport(1, -1) },
-			setHID: func(u *UsbGadget, file *os.File) { u.relMouseHidFile = file },
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r, w, err := os.Pipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer r.Close()
-
-			logger := zerolog.Nop()
-			u := &UsbGadget{
-				log:                   &logger,
-				logSuppressionCounter: make(map[string]int),
-				keysDownState:         KeysDownState{Keys: make([]byte, hidKeyBufferSize)},
-				enabledDevices: Devices{
-					Keyboard:      true,
-					AbsoluteMouse: true,
-					RelativeMouse: true,
-				},
-			}
-			tt.setHID(u, w)
-			fillPipeBuffer(t, w)
-
-			if err := tt.report(u); !errors.Is(err, os.ErrDeadlineExceeded) {
-				t.Fatalf("first stalled report error = %v, want deadline exceeded", err)
-			}
-		})
-	}
+type hidReportTestCase struct {
+	name    string
+	report  func(*UsbGadget) error
+	setHID  func(*UsbGadget, *os.File)
+	cleanup func(*UsbGadget)
+	want    []byte
 }
 
-func TestAcknowledgedHIDReportsAreWritten(t *testing.T) {
-	tests := []struct {
-		name   string
-		report func(*UsbGadget) error
-		setHID func(*UsbGadget, *os.File)
-		want   []byte
-	}{
+func hidReportTestCases() []hidReportTestCase {
+	return []hidReportTestCase{
 		{
 			name:   "keyboard",
 			report: func(u *UsbGadget) error { return u.KeyboardReport(0, []byte{4}) },
@@ -162,14 +99,11 @@ func TestAcknowledgedHIDReportsAreWritten(t *testing.T) {
 			want:   []byte{0, 0, 4, 0, 0, 0, 0, 0},
 		},
 		{
-			name: "keypress",
-			report: func(u *UsbGadget) error {
-				err := u.KeypressReport(4, true)
-				u.cancelAutoRelease(4)
-				return err
-			},
-			setHID: func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
-			want:   []byte{0, 0, 4, 0, 0, 0, 0, 0},
+			name:    "keypress",
+			report:  func(u *UsbGadget) error { return u.KeypressReport(4, true) },
+			setHID:  func(u *UsbGadget, file *os.File) { u.keyboardHidFile = file },
+			cleanup: func(u *UsbGadget) { u.cancelAutoRelease(4) },
+			want:    []byte{0, 0, 4, 0, 0, 0, 0, 0},
 		},
 		{
 			name:   "absolute mouse",
@@ -196,8 +130,45 @@ func TestAcknowledgedHIDReportsAreWritten(t *testing.T) {
 			want:   []byte{0, 0, 0, 1, 255},
 		},
 	}
+}
 
-	for _, tt := range tests {
+func newHIDReportTestGadget() *UsbGadget {
+	logger := zerolog.Nop()
+	return &UsbGadget{
+		log:                   &logger,
+		logSuppressionCounter: make(map[string]int),
+		keysDownState:         KeysDownState{Keys: make([]byte, hidKeyBufferSize)},
+		kbdAutoReleaseTimers:  make(map[byte]*time.Timer),
+		enabledDevices: Devices{
+			Keyboard:      true,
+			AbsoluteMouse: true,
+			RelativeMouse: true,
+		},
+	}
+}
+
+func TestHIDReportsReturnFirstWriteTimeout(t *testing.T) {
+	for _, tt := range hidReportTestCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+
+			u := newHIDReportTestGadget()
+			tt.setHID(u, w)
+			fillPipeBuffer(t, w)
+
+			if err := tt.report(u); !errors.Is(err, os.ErrDeadlineExceeded) {
+				t.Fatalf("first stalled report error = %v, want deadline exceeded", err)
+			}
+		})
+	}
+}
+
+func TestAcknowledgedHIDReportsAreWritten(t *testing.T) {
+	for _, tt := range hidReportTestCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			r, w, err := os.Pipe()
 			if err != nil {
@@ -206,22 +177,14 @@ func TestAcknowledgedHIDReportsAreWritten(t *testing.T) {
 			defer r.Close()
 			defer w.Close()
 
-			logger := zerolog.Nop()
-			u := &UsbGadget{
-				log:                   &logger,
-				logSuppressionCounter: make(map[string]int),
-				keysDownState:         KeysDownState{Keys: make([]byte, hidKeyBufferSize)},
-				kbdAutoReleaseTimers:  make(map[byte]*time.Timer),
-				enabledDevices: Devices{
-					Keyboard:      true,
-					AbsoluteMouse: true,
-					RelativeMouse: true,
-				},
-			}
+			u := newHIDReportTestGadget()
 			tt.setHID(u, w)
 
 			if err := tt.report(u); err != nil {
 				t.Fatalf("report returned error: %v", err)
+			}
+			if tt.cleanup != nil {
+				tt.cleanup(u)
 			}
 			got := make([]byte, len(tt.want))
 			if _, err := io.ReadFull(r, got); err != nil {
@@ -254,9 +217,11 @@ func TestFailedKeyboardReportDoesNotAdvanceDeliveredState(t *testing.T) {
 	}
 }
 
-func TestDisabledMouseEndpointsReturnError(t *testing.T) {
+func TestDisabledHIDEndpointsReturnError(t *testing.T) {
 	u := &UsbGadget{}
 	for name, report := range map[string]func() error{
+		"keyboard":             func() error { return u.KeyboardReport(0, []byte{4}) },
+		"keypress":             func() error { return u.KeypressReport(4, true) },
 		"absolute mouse":       func() error { return u.AbsMouseReport(1, 2, 0) },
 		"relative mouse":       func() error { return u.RelMouseReport(1, 2, 0) },
 		"absolute mouse wheel": func() error { return u.AbsMouseWheelReport(1, 0) },
