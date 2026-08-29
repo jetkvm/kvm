@@ -1,5 +1,11 @@
 package usbgadget
 
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
 var massStorageBaseConfig = gadgetConfigItem{
 	order:      3000,
 	device:     "mass_storage.usb0",
@@ -23,4 +29,27 @@ var massStorageLun0Config = gadgetConfigItem{
 		// Vendor (8 chars), product (16 chars)
 		"inquiry_string": "JetKVM  Virtual Media",
 	},
+}
+
+func (u *UsbGadget) SetMassStorageBackingFile(imagePath string) error {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+
+	item, ok := u.configMap["mass_storage_lun0"]
+	if !ok {
+		return fmt.Errorf("mass storage LUN config not found")
+	}
+	if _, ok := item.attrs["file"]; !ok {
+		return fmt.Errorf("mass storage backing file config not found")
+	}
+
+	backingFilePath := filepath.Join(u.kvmGadgetPath, filepath.Join(item.path...), "file")
+	if err := os.WriteFile(backingFilePath, []byte(imagePath), 0644); err != nil {
+		return fmt.Errorf("failed to set mass storage backing file: %w", err)
+	}
+
+	item.attrs["file"] = imagePath
+	u.configMap["mass_storage_lun0"] = item
+
+	return nil
 }
