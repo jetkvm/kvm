@@ -24,35 +24,6 @@ import (
 	"github.com/psanford/httpreadat"
 )
 
-func writeFile(path string, data string) error {
-	return os.WriteFile(path, []byte(data), 0644)
-}
-
-func getMassStorageImage() (string, error) {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return "", fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-
-	imagePath, err := os.ReadFile(path.Join(massStorageFunctionPath, "file"))
-	if err != nil {
-		return "", fmt.Errorf("failed to get mass storage image path: %w", err)
-	}
-	return strings.TrimSpace(string(imagePath)), nil
-}
-
-func setMassStorageImage(imagePath string) error {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-
-	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
-		return fmt.Errorf("failed to set image path: %w", err)
-	}
-	return nil
-}
-
 // rebindAndRecoverHID performs a corrective USB rebind with recovery poller
 // suppression, resets HID file handles, waits for the kernel to re-attach the
 // HID function driver, and reopens the keyboard chardev.
@@ -113,15 +84,15 @@ func setMassStorageMode(cdrom bool) error {
 }
 
 func mountImage(imagePath string) error {
-	err := setMassStorageImage("")
+	err := gadget.SetMassStorageImage("")
 	if err != nil {
 		return fmt.Errorf("remove mass storage image error: %w", err)
 	}
-	err = setMassStorageImage(imagePath)
+	err = gadget.SetMassStorageImage(imagePath)
 	if err != nil {
 		return fmt.Errorf("set mass storage image error: %w", err)
 	}
-	err = setMassStorageImage(imagePath)
+	err = gadget.SetMassStorageImage(imagePath)
 	if err != nil {
 		return fmt.Errorf("set Mass Storage Image Error: %w", err)
 	}
@@ -333,20 +304,16 @@ func unmountImageLocked() error {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
 
-	err := setMassStorageImage("\n")
+	err := gadget.SetMassStorageImage("\n")
 	if err != nil {
 		if !errors.Is(err, syscall.EBUSY) {
 			return fmt.Errorf("failed to unmount image: %w", err)
 		}
 
-		logger.Warn().Err(err).Msg("unmount failed with EBUSY, rebinding USB gadget to force-eject")
+		logger.Warn().Err(err).Msg("unmount failed with EBUSY, force-ejecting via soft disconnect")
 
-		if rebindErr := rebindAndRecoverHID("ebusy-unmount"); rebindErr != nil {
-			return fmt.Errorf("failed to unmount image: %w, %w", err, rebindErr)
-		}
-
-		if retryErr := setMassStorageImage("\n"); retryErr != nil {
-			return fmt.Errorf("failed to unmount image after gadget rebind: %w", retryErr)
+		if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
+			return fmt.Errorf("failed to unmount image: %w, %w", err, ejectErr)
 		}
 	}
 
@@ -377,7 +344,7 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 		return nil, fmt.Errorf("failed to get mass storage cdrom enabled: %w", err)
 	}
 
-	diskPath, err := getMassStorageImage()
+	diskPath, err := gadget.GetMassStorageImage()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mass storage image: %w", err)
 	}
@@ -479,7 +446,7 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 	logger.Debug().Msg("nbd device started")
 	//TODO: replace by polling on block device having right size
 	time.Sleep(1 * time.Second)
-	err = setMassStorageImage("/dev/nbd0")
+	err = gadget.SetMassStorageImage("/dev/nbd0")
 	if err != nil {
 		return err
 	}
@@ -507,7 +474,7 @@ func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 		return fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
 
-	err = setMassStorageImage(fullPath)
+	err = gadget.SetMassStorageImage(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to set mass storage image: %w", err)
 	}

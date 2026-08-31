@@ -187,6 +187,8 @@ func (u *UsbGadget) Init() error {
 
 	u.udc = udcs[0]
 
+	u.syncMassStorageImageFromKernel()
+
 	err := u.configureUsbGadget(true)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
