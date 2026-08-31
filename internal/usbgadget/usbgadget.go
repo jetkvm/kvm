@@ -100,6 +100,9 @@ type UsbGadget struct {
 
 	logSuppressionCounter map[string]int
 	logSuppressionLock    sync.Mutex
+
+	hidWriteTimeoutStreaks map[string]int
+	hidWriteStreakLock     sync.Mutex
 }
 
 const configFSPath = "/sys/kernel/config"
@@ -235,4 +238,6 @@ func (u *UsbGadget) ResetHIDFiles() {
 		u.relMouseHidFile = nil
 	}
 	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
+
+	u.clearHidWriteTimeoutStreaks()
 }

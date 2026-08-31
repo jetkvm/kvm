@@ -24,3 +24,21 @@ func ShouldAttemptUSBRecovery(state string, desired bool, lastAttempt time.Time,
 
 	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= USBRecoveryRetryInterval
 }
+
+const USBStateConfigured = "configured"
+
+const HidWriteTimeoutEscalationThreshold = 3
+
+const HidWriteRecoveryRetryInterval = 30 * time.Second
+
+func ShouldEscalateHidWriteRecovery(state string, desired bool, consecutiveTimeouts int, lastAttempt time.Time, now time.Time) bool {
+	if state != USBStateConfigured || !desired {
+		return false
+	}
+
+	if consecutiveTimeouts < HidWriteTimeoutEscalationThreshold {
+		return false
+	}
+
+	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= HidWriteRecoveryRetryInterval
+}

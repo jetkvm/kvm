@@ -144,11 +144,12 @@ var (
 	usbState     = usbgadget.USBStateUnknown
 	usbStateLock sync.Mutex
 
-	usbEmulationDesired   = true
-	lastUSBRecoveryTry    time.Time
-	lastHostOK            bool
-	sessionlessSoftCycles int
-	correctiveRebinds     int
+	usbEmulationDesired     = true
+	lastUSBRecoveryTry      time.Time
+	lastHidWriteRecoveryTry time.Time
+	lastHostOK              bool
+	sessionlessSoftCycles   int
+	correctiveRebinds       int
 )
 
 func usbReadyForHidReports() bool {
@@ -260,16 +261,82 @@ var usbRecoveryReopenDelays = []time.Duration{
 	3 * time.Second, 3 * time.Second, 4 * time.Second, 4 * time.Second,
 }
 
+const keyboardProbeFailureLimit = 3
+
 func tryReopenKeyboard(reason string) bool {
+	probeFailures := 0
 	for _, delay := range usbRecoveryReopenDelays {
 		setUSBRecoveryTimer(time.Now())
 		time.Sleep(delay)
-		if err := gadget.ReopenKeyboardHidFile(); err == nil {
+		if err := gadget.ReopenKeyboardHidFile(); err != nil {
+			continue
+		}
+		if gadget.GetUsbState() != usbgadget.USBStateConfigured {
 			usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened successfully after USB recovery")
 			return true
 		}
+		if err := gadget.VerifyKeyboardWritable(); err != nil {
+			probeFailures++
+			usbLogger.Warn().Err(err).Str("reason", reason).Int("probe_failures", probeFailures).
+				Msg("keyboard HID file reopened but not writable")
+			if probeFailures >= keyboardProbeFailureLimit {
+				return false
+			}
+			continue
+		}
+		usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened and verified writable after USB recovery")
+		return true
 	}
 	return false
+}
+
+func attemptHidWriteRecovery(state string) string {
+	if state != usbgadget.USBStateConfigured {
+		gadget.ClearHidWriteTimeoutStreaks()
+		return state
+	}
+
+	now := time.Now()
+
+	usbStateLock.Lock()
+	desired := usbEmulationDesired
+	lastAttempt := lastHidWriteRecoveryTry
+	usbStateLock.Unlock()
+
+	timeouts := gadget.KeyboardWriteTimeoutStreak()
+	if !usbgadget.ShouldEscalateHidWriteRecovery(state, desired, timeouts, lastAttempt, now) {
+		return state
+	}
+
+	usbStateLock.Lock()
+	lastHidWriteRecoveryTry = now
+	usbStateLock.Unlock()
+
+	usbLogger.Warn().
+		Int("consecutive_timeouts", timeouts).
+		Msg("keyboard HID writes are timing out while USB is configured; reconnecting gadget")
+
+	setUSBRecoveryTimer(time.Now())
+	if err := gadget.SoftReconnect(); err == nil {
+		gadget.ResetHIDFiles()
+		if tryReopenKeyboard("hid_write_timeout_soft_reconnect") {
+			return gadget.GetUsbState()
+		}
+	}
+
+	usbLogger.Warn().Msg("keyboard HID writes still failing after soft reconnect; attempting full USB gadget reconfigure")
+
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")
+		return gadget.GetUsbState()
+	}
+	gadget.ResetHIDFiles()
+
+	if !tryReopenKeyboard("hid_write_timeout_reconfigure") {
+		usbLogger.Warn().Msg("keyboard HID file not ready after full USB recovery retry window")
+	}
+
+	return gadget.GetUsbState()
 }
 
 func triggerUSBStateUpdate() {
@@ -286,6 +353,8 @@ func checkUSBState() {
 	newState := gadget.GetUsbState()
 	if newState == usbgadget.USBStateNotAttached {
 		newState = attemptUSBRecovery(newState)
+	} else {
+		newState = attemptHidWriteRecovery(newState)
 	}
 
 	usbStateLock.Lock()
