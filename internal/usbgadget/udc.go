@@ -55,6 +55,32 @@ func rebindUsb(udc string, ignoreUnbindError bool) error {
 	return nil
 }
 
+func softConnectPath(udc string) string {
+	return path.Join(udcClassPath, udc, "soft_connect")
+}
+
+func softDisconnect(udc string) error {
+	err := os.WriteFile(softConnectPath(udc), []byte("disconnect"), 0644)
+	if err == nil {
+		time.Sleep(100 * time.Millisecond)
+	}
+	return err
+}
+
+func softConnect(udc string) error {
+	return os.WriteFile(softConnectPath(udc), []byte("connect"), 0644)
+}
+
+func (u *UsbGadget) SoftReconnect() error {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+
+	if err := softDisconnect(u.udc); err != nil {
+		return err
+	}
+	return softConnect(u.udc)
+}
+
 func isHidgChardevHealthy() bool {
 	f, err := os.OpenFile(hidgDevicePath, os.O_RDWR, 0)
 	if err != nil {
@@ -79,7 +105,7 @@ func (u *UsbGadget) RebindUsb(ignoreUnbindError bool) error {
 
 // GetUsbState returns the current state of the USB gadget
 func (u *UsbGadget) GetUsbState() (state string) {
-	stateFile := path.Join("/sys/class/udc", u.udc, "state")
+	stateFile := path.Join(udcClassPath, u.udc, "state")
 	stateBytes, err := os.ReadFile(stateFile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -103,6 +129,14 @@ func (u *UsbGadget) IsUDCBound() (bool, error) {
 		return false, fmt.Errorf("error checking USB emulation state: %w", err)
 	}
 	return true, nil
+}
+
+func (u *UsbGadget) IsGadgetAttachedToUDC() bool {
+	content, err := os.ReadFile(path.Join(u.kvmGadgetPath, "UDC"))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(content)) != ""
 }
 
 // BindUDC binds the gadget to the UDC.
