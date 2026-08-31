@@ -94,7 +94,14 @@ func isHidgChardevHealthy() bool {
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
 	u.log.Info().Str("udc", u.udc).Msg("rebinding USB gadget to UDC")
-	return rebindUsb(u.udc, ignoreUnbindError)
+	if err := rebindUsb(u.udc, ignoreUnbindError); err != nil {
+		return err
+	}
+	time.Sleep(100 * time.Millisecond)
+	if !u.IsGadgetAttachedToUDC() {
+		return os.WriteFile(path.Join(u.kvmGadgetPath, "UDC"), []byte(u.udc), 0644)
+	}
+	return nil
 }
 
 // RebindUsb rebinds the USB gadget to the UDC.
