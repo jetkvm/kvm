@@ -38,8 +38,8 @@ func initUsbGadget() {
 
 	setUSBRecoveryTimer(time.Now())
 
-	if present, known := gadget.IsVbusPresent(); known {
-		lastVbusOK = present
+	if present, known := gadget.IsUsbHostPresent(); known {
+		lastHostOK = present
 	}
 
 	go func() {
@@ -146,7 +146,7 @@ var (
 
 	usbEmulationDesired   = true
 	lastUSBRecoveryTry    time.Time
-	lastVbusOK            bool
+	lastHostOK            bool
 	sessionlessSoftCycles int
 	correctiveRebinds     int
 )
@@ -194,14 +194,14 @@ func attemptUSBRecovery(state string) string {
 	gadgetAttached := gadget.IsGadgetAttachedToUDC()
 
 	if udcBound && gadgetAttached {
-		vbusPresent, vbusKnown := gadget.IsVbusPresent()
-		vbusOK := vbusKnown && vbusPresent
+		hostPresent, hostKnown := gadget.IsUsbHostPresent()
+		hostOK := hostKnown && hostPresent
 
 		usbStateLock.Lock()
-		vbusRose := vbusOK && !lastVbusOK
-		lastVbusOK = vbusOK
+		hostAppeared := hostOK && !lastHostOK
+		lastHostOK = hostOK
 		sessionlessSoftCycles++
-		escalate := vbusOK && (sessionlessSoftCycles == 6 || sessionlessSoftCycles%60 == 0)
+		escalate := hostOK && (sessionlessSoftCycles == 6 || sessionlessSoftCycles%60 == 0)
 		usbStateLock.Unlock()
 
 		if escalate {
@@ -210,10 +210,10 @@ func attemptUSBRecovery(state string) string {
 				Msg("host present but no session after repeated soft reconnects; escalating to UDC rebind")
 		}
 
-		if !vbusRose && !escalate {
+		if !hostAppeared && !escalate {
 			usbLogger.Debug().
-				Bool("vbus_present", vbusPresent).
-				Bool("vbus_known", vbusKnown).
+				Bool("host_present", hostPresent).
+				Bool("host_known", hostKnown).
 				Msg("no USB host session; soft-reconnecting gadget")
 			if err := gadget.SoftReconnect(); err == nil {
 				return gadget.GetUsbState()

@@ -3,12 +3,13 @@ package usbgadget
 import (
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
 var extconClassPath = "/sys/class/extcon"
 
-func (u *UsbGadget) IsVbusPresent() (present bool, known bool) {
+func (u *UsbGadget) IsUsbHostPresent() (present bool, known bool) {
 	statePath := findUsbPhyExtconStatePath()
 	if statePath == "" {
 		return false, false
@@ -19,10 +20,34 @@ func (u *UsbGadget) IsVbusPresent() (present bool, known bool) {
 		return false, false
 	}
 
-	for line := range strings.SplitSeq(string(state), "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "USB="); ok {
-			return v == "1", true
+	return extconHostState(string(state))
+}
+
+func extconHostState(payload string) (hostPresent bool, known bool) {
+	var sawHostCable, sawNonDataCable bool
+	for line := range strings.SplitSeq(payload, "\n") {
+		key, val, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
 		}
+		enabled, err := strconv.Atoi(strings.TrimSpace(val))
+		if err != nil {
+			continue
+		}
+		switch key {
+		case "USB-HOST", "SDP", "CDP":
+			sawHostCable = true
+			if enabled != 0 {
+				return true, true
+			}
+		case "DCP", "SLOW-CHARGER", "USB_VBUS_EN":
+			if enabled != 0 {
+				sawNonDataCable = true
+			}
+		}
+	}
+	if sawHostCable || sawNonDataCable {
+		return false, true
 	}
 	return false, false
 }
