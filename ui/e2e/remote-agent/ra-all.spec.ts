@@ -9,9 +9,12 @@
 import { execSync } from "child_process";
 import { test, expect, type Page } from "@playwright/test";
 import {
+  DWC3_PATH,
   HID_KEY,
   SSH_OPTS,
+  UDC_NAME,
   callJsonRpc,
+  waitForUdcState,
   getKeysDownState,
   pauseKeepAlive,
   sendKeypress,
@@ -30,9 +33,9 @@ import {
 import {
   createRemoteAgent,
   connectedDisplayConnectors,
+  waitForKeyboardReady,
   KEY,
   HID_TO_LINUX,
-  type RemoteAgent,
   type MouseEvent as RAMouseEvent,
   type KeyboardEvent as RAKeyboardEvent,
   type MountInfo,
@@ -101,35 +104,6 @@ async function waitForRemoteHostTtyACM(
       ? `ttyACM device did not appear on remote host within ${timeoutMs}ms`
       : `ttyACM device did not disappear from remote host within ${timeoutMs}ms`,
   );
-}
-
-/**
- * Retry keyboard round-trip (send Space, verify host received it) until success
- * or timeout. Used after USB rebinds where the HID channel needs time to stabilize.
- */
-async function waitForKeyboardReady(
-  ra: RemoteAgent,
-  page: Page,
-  timeoutMs = 30000,
-  perTryMs = 3000,
-): Promise<RAKeyboardEvent[]> {
-  const deadline = Date.now() + timeoutMs;
-  let events: RAKeyboardEvent[] = [];
-  while (Date.now() < deadline) {
-    try {
-      events = await ra.expectKeyPress(
-        KEY.SPACE,
-        async () => {
-          await tapKey(page, HID_KEY.SPACE);
-        },
-        perTryMs,
-      );
-      return events;
-    } catch {
-      /* HID not ready yet */
-    }
-  }
-  return events;
 }
 
 /** Toggle DPMS on the remote host via GNOME ScreenSaver D-Bus API. */
@@ -435,34 +409,6 @@ const USB_DEVICES_REL_MOUSE_ONLY = {
 
 const ID_DEFAULT = "1d6b:0104";
 const ID_LOGITECH = "046d:c52b";
-
-// ── UDC recovery constants ──
-
-const UDC_NAME = "ffb00000.usb";
-const DWC3_PATH = "/sys/bus/platform/drivers/dwc3";
-const UDC_STATE_PATH = `/sys/class/udc/${UDC_NAME}/state`;
-
-async function readUdcState(): Promise<string> {
-  try {
-    const result = (await sshExec(`cat ${UDC_STATE_PATH} 2>/dev/null`, true)).trim();
-    return result || "not attached";
-  } catch {
-    return "not attached";
-  }
-}
-
-async function waitForUdcState(expected: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let lastSeen = "";
-  while (Date.now() < deadline) {
-    lastSeen = await readUdcState();
-    if (lastSeen === expected) return;
-    await new Promise(resolve => setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Timed out waiting for UDC state "${expected}" within ${timeoutMs}ms (last seen: "${lastSeen}")`,
-  );
-}
 
 function isJsonRpcTimeout(err: unknown, method: string): boolean {
   return err instanceof Error && err.message.includes(`RPC timeout for ${method}`);

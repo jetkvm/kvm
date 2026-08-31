@@ -766,6 +766,32 @@ export async function resetConfigViaSSH(): Promise<void> {
   await sshExec("sync");
 }
 
+export const UDC_NAME = "ffb00000.usb";
+export const DWC3_PATH = "/sys/bus/platform/drivers/dwc3";
+export const UDC_STATE_PATH = `/sys/class/udc/${UDC_NAME}/state`;
+
+async function readUdcState(): Promise<string> {
+  try {
+    const result = (await sshExec(`cat ${UDC_STATE_PATH} 2>/dev/null`, true)).trim();
+    return result || "not attached";
+  } catch {
+    return "not attached";
+  }
+}
+
+export async function waitForUdcState(expected: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastSeen = "";
+  while (Date.now() < deadline) {
+    lastSeen = await readUdcState();
+    if (lastSeen === expected) return;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for UDC state "${expected}" within ${timeoutMs}ms (last seen: "${lastSeen}")`,
+  );
+}
+
 export interface SSHDevState {
   sshKey: string;
   devModeEnabled: boolean;
