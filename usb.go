@@ -185,6 +185,13 @@ func attemptUSBRecovery(state string) string {
 		return state
 	}
 
+	// No host connected: bouncing the gadget cannot help and leaks dentries on
+	// the RV1106 vendor kernel (#1540). Recover only when a host is present.
+	if gadget == nil || !gadget.HostPresent() {
+		usbLogger.Trace().Msg("USB gadget not attached and no host present; skipping recovery")
+		return state
+	}
+
 	usbLogger.Warn().Msg("USB gadget is detached while USB emulation should be enabled; rebinding USB gadget")
 
 	if err := gadget.RebindUsb(true); err != nil {
@@ -222,6 +229,16 @@ func attemptUSBRecovery(state string) string {
 	}
 
 	if tryReopenKeyboard(delays, "udc_rebind") {
+		return gadget.GetUsbState()
+	}
+
+	// Escalate to a full configfs reconfigure only while a host is attached (
+	// the UDC has left "not attached"); in a no-host idle state it cannot
+	// succeed and only leaks configfs dentries. With a host present and a wedged
+	// HID chardev (#1366) it is the strongest repair.
+	currentState := gadget.GetUsbState()
+	if currentState == usbgadget.USBStateNotAttached || currentState == usbgadget.USBStateUnknown {
+		usbLogger.Warn().Msg("keyboard HID file not ready after UDC rebind; no host attached, keeping gadget bound")
 		return gadget.GetUsbState()
 	}
 

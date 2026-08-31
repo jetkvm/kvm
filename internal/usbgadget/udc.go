@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -90,6 +91,61 @@ func (u *UsbGadget) GetUsbState() (state string) {
 		return "unknown"
 	}
 	return strings.TrimSpace(string(stateBytes))
+}
+
+// HostPresent reports whether a USB data host is physically connected to the
+// port, based on the USB PHY extcon cable state. The UDC state reads
+// "not attached" both when no host is plugged in (the supported idle state,
+// #1540) and when a host is present but failed to enumerate (e.g. powered via
+// the ATX/DC extension, #128); only the extcon cable state tells them apart.
+func (u *UsbGadget) HostPresent() bool {
+	stateBytes, err := os.ReadFile("/sys/class/extcon/extcon0/state")
+	if err == nil {
+		if hostPresent, known := extconHostState(string(stateBytes)); known {
+			return hostPresent
+		}
+	}
+
+	// No usable extcon state: any link state other than "not attached" implies
+	// a host.
+	state := u.GetUsbState()
+	return state != USBStateNotAttached && state != USBStateUnknown
+}
+
+// extconHostState classifies an extcon `state` payload as host-present/absent.
+// known is false when the payload had no recognizable cable state (empty, or a
+// kernel that names cables differently), so the caller can fall back to the UDC
+// state instead of wrongly concluding "no host".
+func extconHostState(payload string) (hostPresent bool, known bool) {
+	var sawHostCable, sawNonDataCable bool
+	for _, line := range strings.Split(payload, "\n") {
+		key, val, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		enabled, err := strconv.Atoi(strings.TrimSpace(val))
+		if err != nil {
+			continue
+		}
+		switch key {
+		case "USB-HOST", "SDP", "CDP":
+			sawHostCable = true
+			if enabled != 0 {
+				return true, true
+			}
+		case "DCP", "SLOW-CHARGER", "USB_VBUS_EN":
+			if enabled != 0 {
+				sawNonDataCable = true
+			}
+		}
+	}
+	// Recognizable cable state present: a host-capable line set to 0 or a
+	// charger-only line means no data host.
+	if sawHostCable || sawNonDataCable {
+		return false, true
+	}
+	// No recognizable cable state at all -> unknown.
+	return false, false
 }
 
 // IsUDCBound checks if the UDC state is bound.
