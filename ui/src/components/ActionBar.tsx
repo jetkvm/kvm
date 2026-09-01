@@ -34,6 +34,7 @@ import MountPopopover from "@components/popovers/MountPopover";
 import ExtensionPopover from "@components/popovers/ExtensionPopover";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { m } from "@localizations/messages.js";
+import ATXLeds from "./ATXLeds";
 
 export default function Actionbar({
   requestFullscreen,
@@ -272,6 +273,7 @@ export default function Actionbar({
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          <ATXLeds />
           <Popover>
             <PopoverButton as={Fragment}>
               <Button
