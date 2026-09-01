@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { LuPower, LuHardDrive } from "react-icons/lu";
+
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 
 interface ATXState {
   power: boolean;
@@ -14,33 +15,45 @@ export default function ATXLeds() {
   });
 
   const { send } = useJsonRpc(resp => {
-    setState(resp.params as ATXState);
+    const params = resp?.params;
+
+    if (params && typeof params.power === "boolean" && typeof params.hdd === "boolean") {
+      setState(params as ATXState);
+    }
   });
 
   useEffect(() => {
     send("getATXState", {}, resp => {
-      if (!("error" in resp)) {
+      if (
+        !("error" in resp) &&
+        resp.result &&
+        typeof (resp.result as any).power === "boolean" &&
+        typeof (resp.result as any).hdd === "boolean"
+      ) {
         setState(resp.result as ATXState);
       }
     });
   }, [send]);
 
+  const power = state?.power ?? false;
+  const hdd = state?.hdd ?? false;
+
   return (
     <div className="flex items-center gap-3">
       <div
-        className={`flex items-center gap-1 ${state.power ? "text-green-600" : "text-slate-300"}`}
-        title={`Power: ${state.power ? "On" : "Off"}`}
+        className={`flex items-center gap-1 ${power ? "text-green-600" : "text-slate-300"}`}
+        title={`Power: ${power ? "On" : "Off"}`}
       >
         <LuPower size={16} />
         <span className="text-xs font-medium">Power</span>
       </div>
 
       <div
-        className={`flex items-center gap-1 ${state.hdd ? "text-blue-400" : "text-slate-300"}`}
-        title={`HDD: ${state.hdd ? "Active" : "Idle"}`}
+        className={`flex items-center gap-1 ${hdd ? "text-blue-400" : "text-slate-300"}`}
+        title={`HDD: ${hdd ? "Active" : "Idle"}`}
       >
         <LuHardDrive size={16} />
-        <span className="text-xs font-medium">Disk </span>
+        <span className="text-xs font-medium">Disk</span>
       </div>
     </div>
   );

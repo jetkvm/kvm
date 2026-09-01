@@ -52,8 +52,8 @@ func updateDisplayUsbState() {
 
 func updateDisplay() {
 	if networkManager != nil {
-		nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkManager.IPv4String())
-		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkManager.IPv6String())
+		nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkManager.FQDN())
+		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkManager.IPv4String())
 		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
 	}
 

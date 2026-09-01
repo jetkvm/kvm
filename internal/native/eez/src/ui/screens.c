@@ -315,12 +315,16 @@ void create_screen_home_screen() {
                         lv_obj_t *parent_obj = obj;
                         {
                             // HomeInfoIPv4Addr
+                            // Bouncing if too long (FQDN)
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.home_info_ipv4_addr = obj;
                             lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_obj_set_width(obj, 220);
+                            lv_obj_set_height(obj, LV_SIZE_CONTENT);
+                            lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL);
                             add_style_label_font_bold30(obj);
                             lv_label_set_text(obj, "169.254.169.254");
+
                         }
                         {
                             // HomeInfoIPv6Addr
