@@ -80,7 +80,7 @@ export async function ensureRpcReady(
         await page.waitForTimeout(1000);
       }
       await waitForWebRTCReady(page, Math.min(15000, Math.max(5000, deadline - Date.now())));
-      await callJsonRpc(page, "getDeviceID", {}, 5000);
+      await rawJsonRpc(page, "getDeviceID", {}, 5000);
       return;
     } catch (err) {
       lastError = err;
@@ -1070,10 +1070,10 @@ export async function rebootDeviceViaSSH(waitForReady = true): Promise<void> {
   }
 }
 
-export async function callJsonRpc(
+async function rawJsonRpc(
   page: Page,
   method: string,
-  params: Record<string, unknown> = {},
+  params: Record<string, unknown>,
   timeoutMs?: number,
 ): Promise<unknown> {
   return page.evaluate(
@@ -1097,6 +1097,25 @@ export async function callJsonRpc(
     },
     { method, params, timeoutMs },
   );
+}
+
+const RPC_CHANNEL_DROPPED =
+  /RPC data channel not available|Test hooks not available|Execution context was destroyed/;
+
+export async function callJsonRpc(
+  page: Page,
+  method: string,
+  params: Record<string, unknown> = {},
+  timeoutMs?: number,
+): Promise<unknown> {
+  try {
+    return await rawJsonRpc(page, method, params, timeoutMs);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!RPC_CHANNEL_DROPPED.test(msg)) throw err;
+    await ensureRpcReady(page, { timeoutMs: 20000 });
+    return rawJsonRpc(page, method, params, timeoutMs);
+  }
 }
 
 // ── OTA: Mock Update Server ──
