@@ -30,7 +30,7 @@ func getUdcs() []string {
 const hidgDevicePath = "/dev/hidg0"
 
 func rebindUsb(udc string, ignoreUnbindError bool) error {
-	softDisconnect(udc)
+	_ = softDisconnect(udc)
 
 	err := os.WriteFile(path.Join(dwc3Path, "unbind"), []byte(udc), 0644)
 	if err != nil && !ignoreUnbindError {
@@ -159,7 +159,7 @@ func (u *UsbGadget) BindUDC() error {
 
 // UnbindUDC unbinds the gadget from the UDC.
 func (u *UsbGadget) UnbindUDC() error {
-	softDisconnect(u.udc)
+	_ = softDisconnect(u.udc)
 	err := os.WriteFile(path.Join(dwc3Path, "unbind"), []byte(u.udc), 0644)
 	if err != nil {
 		return fmt.Errorf("error unbinding UDC: %w", err)
