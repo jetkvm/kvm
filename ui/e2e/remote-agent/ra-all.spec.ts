@@ -391,6 +391,7 @@ const USB_DEVICES_DEFAULT = {
   absolute_mouse: true,
   relative_mouse: true,
   mass_storage: true,
+  audio: true,
 };
 
 const USB_DEVICES_KEYBOARD_ONLY = {
