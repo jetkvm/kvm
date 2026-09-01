@@ -4,6 +4,7 @@ package usbgadget
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path"
 	"time"
@@ -99,6 +100,9 @@ type UsbGadget struct {
 
 	logSuppressionCounter map[string]int
 	logSuppressionLock    sync.Mutex
+
+	hidWriteTimeoutStreaks map[string]int
+	hidWriteStreakLock     sync.Mutex
 }
 
 const configFSPath = "/sys/kernel/config"
@@ -130,7 +134,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		name:                 name,
 		kvmGadgetPath:        path.Join(gadgetPath, name),
 		configC1Path:         path.Join(gadgetPath, name, "configs/c.1"),
-		configMap:            configMap,
+		configMap:            deepCopyConfigMap(configMap),
 		customConfig:         *config,
 		configLock:           sync.Mutex{},
 		keyboardLock:         sync.Mutex{},
@@ -159,6 +163,16 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 	}
 
 	return g
+}
+
+func deepCopyConfigMap(configMap map[string]gadgetConfigItem) map[string]gadgetConfigItem {
+	copied := make(map[string]gadgetConfigItem, len(configMap))
+	for key, item := range configMap {
+		item.attrs = maps.Clone(item.attrs)
+		item.configAttrs = maps.Clone(item.configAttrs)
+		copied[key] = item
+	}
+	return copied
 }
 
 // Close cleans up resources used by the USB gadget
@@ -224,4 +238,6 @@ func (u *UsbGadget) ResetHIDFiles() {
 		u.relMouseHidFile = nil
 	}
 	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
+
+	u.clearHidWriteTimeoutStreaks()
 }

@@ -518,10 +518,6 @@ func isJetKVMUSBAudioDevice(d AudioDeviceInfo) bool {
 	}
 
 	deviceText := strings.ToLower(d.Name + " " + d.Description)
-	if usbID == "0573:1573" && strings.Contains(deviceText, "usb audio and hid") {
-		return true
-	}
-
 	return strings.Contains(deviceText, "jetkvm usb emulation device")
 }
 
