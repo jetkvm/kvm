@@ -187,6 +187,8 @@ func (u *UsbGadget) Init() error {
 
 	u.udc = udcs[0]
 
+	u.syncMassStorageImageFromKernel()
+
 	err := u.configureUsbGadget(true)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
@@ -210,7 +212,11 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 }
 
 func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
-	return u.WithTransaction(func() error {
+	if resetUsb {
+		_ = softDisconnect(u.udc)
+	}
+
+	err := u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
 		u.tx.CreateConfigPath()
 		u.tx.WriteGadgetConfig()
@@ -219,4 +225,8 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 		}
 		return nil
 	})
+	if err != nil && resetUsb {
+		_ = softConnect(u.udc)
+	}
+	return err
 }

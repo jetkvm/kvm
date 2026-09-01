@@ -30,6 +30,8 @@ func getUdcs() []string {
 const hidgDevicePath = "/dev/hidg0"
 
 func rebindUsb(udc string, ignoreUnbindError bool) error {
+	_ = softDisconnect(udc)
+
 	err := os.WriteFile(path.Join(dwc3Path, "unbind"), []byte(udc), 0644)
 	if err != nil && !ignoreUnbindError {
 		return err
@@ -55,6 +57,32 @@ func rebindUsb(udc string, ignoreUnbindError bool) error {
 	return nil
 }
 
+func softConnectPath(udc string) string {
+	return path.Join(udcClassPath, udc, "soft_connect")
+}
+
+func softDisconnect(udc string) error {
+	err := os.WriteFile(softConnectPath(udc), []byte("disconnect"), 0644)
+	if err == nil {
+		time.Sleep(100 * time.Millisecond)
+	}
+	return err
+}
+
+func softConnect(udc string) error {
+	return os.WriteFile(softConnectPath(udc), []byte("connect"), 0644)
+}
+
+func (u *UsbGadget) SoftReconnect() error {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+
+	if err := softDisconnect(u.udc); err != nil {
+		return err
+	}
+	return softConnect(u.udc)
+}
+
 func isHidgChardevHealthy() bool {
 	f, err := os.OpenFile(hidgDevicePath, os.O_RDWR, 0)
 	if err != nil {
@@ -66,7 +94,14 @@ func isHidgChardevHealthy() bool {
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
 	u.log.Info().Str("udc", u.udc).Msg("rebinding USB gadget to UDC")
-	return rebindUsb(u.udc, ignoreUnbindError)
+	if err := rebindUsb(u.udc, ignoreUnbindError); err != nil {
+		return err
+	}
+	time.Sleep(100 * time.Millisecond)
+	if !u.IsGadgetAttachedToUDC() {
+		return os.WriteFile(path.Join(u.kvmGadgetPath, "UDC"), []byte(u.udc), 0644)
+	}
+	return nil
 }
 
 // RebindUsb rebinds the USB gadget to the UDC.
@@ -79,7 +114,7 @@ func (u *UsbGadget) RebindUsb(ignoreUnbindError bool) error {
 
 // GetUsbState returns the current state of the USB gadget
 func (u *UsbGadget) GetUsbState() (state string) {
-	stateFile := path.Join("/sys/class/udc", u.udc, "state")
+	stateFile := path.Join(udcClassPath, u.udc, "state")
 	stateBytes, err := os.ReadFile(stateFile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -105,6 +140,14 @@ func (u *UsbGadget) IsUDCBound() (bool, error) {
 	return true, nil
 }
 
+func (u *UsbGadget) IsGadgetAttachedToUDC() bool {
+	content, err := os.ReadFile(path.Join(u.kvmGadgetPath, "UDC"))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(content)) != ""
+}
+
 // BindUDC binds the gadget to the UDC.
 func (u *UsbGadget) BindUDC() error {
 	err := os.WriteFile(path.Join(dwc3Path, "bind"), []byte(u.udc), 0644)
@@ -116,6 +159,7 @@ func (u *UsbGadget) BindUDC() error {
 
 // UnbindUDC unbinds the gadget from the UDC.
 func (u *UsbGadget) UnbindUDC() error {
+	_ = softDisconnect(u.udc)
 	err := os.WriteFile(path.Join(dwc3Path, "unbind"), []byte(u.udc), 0644)
 	if err != nil {
 		return fmt.Errorf("error unbinding UDC: %w", err)

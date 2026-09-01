@@ -9,6 +9,8 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import type { Page } from "@playwright/test";
+import { HID_KEY, tapKey } from "../helpers";
 
 export interface KeyboardEvent {
   time_ms: number;
@@ -644,4 +646,27 @@ export function createRemoteAgent(): RemoteAgent | null {
   const host = raw.includes("@") ? raw.split("@").pop()! : raw;
   const port = parseInt(process.env.JETKVM_REMOTE_PORT || "9182", 10);
   return new RemoteAgent(host, port);
+}
+
+export async function waitForKeyboardReady(
+  ra: RemoteAgent,
+  page: Page,
+  timeoutMs = 30000,
+  perTryMs = 3000,
+): Promise<KeyboardEvent[]> {
+  const deadline = Date.now() + timeoutMs;
+  let events: KeyboardEvent[] = [];
+  while (Date.now() < deadline) {
+    try {
+      events = await ra.expectKeyPress(
+        KEY.SPACE,
+        async () => {
+          await tapKey(page, HID_KEY.SPACE);
+        },
+        perTryMs,
+      );
+      return events;
+    } catch {}
+  }
+  return events;
 }
