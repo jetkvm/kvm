@@ -18,6 +18,16 @@ const KICK_SETTLE_MS = 15_000;
 const OBSERVE_MS = 60_000;
 const SAMPLE_INTERVAL_MS = 5_000;
 const MAX_STEADY_DENTRY_GROWTH = 40;
+const DENTRIES_PER_REBIND = 16;
+const MAX_WINDOW_REBINDS = 3;
+
+async function deviceRebindCount(): Promise<number> {
+  const out = await sshExec(
+    'grep -c "rebinding USB gadget" /userdata/jetkvm/last.log 2>/dev/null || echo 0',
+    true,
+  );
+  return parseInt(out, 10) || 0;
+}
 
 test.describe.configure({ mode: "serial" });
 
@@ -93,6 +103,8 @@ test("idle sessionless gadget neither leaks nor rebind-loops, and recovers when 
   let sampleCount = 0;
   let midpoint = 0;
   let final = 0;
+  let midpointRebinds = 0;
+  let finalRebinds = 0;
   try {
     writePortDisable(1);
     await sshExec(`echo ${UDC_NAME} > ${DWC3_PATH}/unbind 2>/dev/null`, true);
@@ -106,11 +118,13 @@ test("idle sessionless gadget neither leaks nor rebind-loops, and recovers when 
       if (i === Math.floor(sampleCount / 2) - 1) {
         await sshExec("sync; echo 3 > /proc/sys/vm/drop_caches", true);
         midpoint = parseInt(await sshExec("cut -f1 /proc/sys/fs/dentry-state"), 10);
+        midpointRebinds = await deviceRebindCount();
       }
     }
 
     await sshExec("sync; echo 3 > /proc/sys/vm/drop_caches", true);
     final = parseInt(await sshExec("cut -f1 /proc/sys/fs/dentry-state"), 10);
+    finalRebinds = await deviceRebindCount();
   } finally {
     writePortDisable(0);
   }
@@ -128,8 +142,16 @@ test("idle sessionless gadget neither leaks nor rebind-loops, and recovers when 
     `host port hold did not stick (${sessionless}/${sampleCount} sessionless samples); this host re-enables the port on gadget reconnect`,
   );
 
+  const windowRebinds = Math.max(0, finalRebinds - midpointRebinds);
+  expect(
+    windowRebinds,
+    `device rebound ${windowRebinds} times in 30s of steady idle; the recovery loop is hammering again`,
+  ).toBeLessThanOrEqual(MAX_WINDOW_REBINDS);
+
   expect(
     final - midpoint,
-    `dentries grew by ${final - midpoint} in steady state while idle without a host; the recovery loop is leaking again`,
-  ).toBeLessThanOrEqual(MAX_STEADY_DENTRY_GROWTH);
+    `dentries grew by ${final - midpoint} in steady state (${windowRebinds} rebinds, allowance ${
+      MAX_STEADY_DENTRY_GROWTH + DENTRIES_PER_REBIND * windowRebinds
+    }); the recovery loop is leaking again`,
+  ).toBeLessThanOrEqual(MAX_STEADY_DENTRY_GROWTH + DENTRIES_PER_REBIND * windowRebinds);
 });
