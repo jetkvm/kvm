@@ -11,6 +11,10 @@ const (
 // USBRecoveryRetryInterval is the minimum interval between USB recovery attempts.
 const USBRecoveryRetryInterval = 5 * time.Second
 
+func IsUSBStateAttached(state string) bool {
+	return state != USBStateNotAttached && state != USBStateUnknown
+}
+
 // ShouldAttemptUSBRecovery returns true if a USB gadget recovery should be attempted,
 // based on the current USB state, whether emulation is desired, and rate limiting.
 func ShouldAttemptUSBRecovery(state string, desired bool, lastAttempt time.Time, now time.Time) bool {
@@ -19,4 +23,22 @@ func ShouldAttemptUSBRecovery(state string, desired bool, lastAttempt time.Time,
 	}
 
 	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= USBRecoveryRetryInterval
+}
+
+const USBStateConfigured = "configured"
+
+const HidWriteTimeoutEscalationThreshold = 3
+
+const HidWriteRecoveryRetryInterval = 30 * time.Second
+
+func ShouldEscalateHidWriteRecovery(state string, desired bool, consecutiveTimeouts int, lastAttempt time.Time, now time.Time) bool {
+	if state != USBStateConfigured || !desired {
+		return false
+	}
+
+	if consecutiveTimeouts < HidWriteTimeoutEscalationThreshold {
+		return false
+	}
+
+	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= HidWriteRecoveryRetryInterval
 }

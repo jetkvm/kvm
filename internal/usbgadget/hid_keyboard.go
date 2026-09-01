@@ -675,3 +675,49 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 
 	return err
 }
+
+func (u *UsbGadget) KeyboardWriteTimeoutStreak() int {
+	u.keyboardLock.Lock()
+	file := u.keyboardHidFile
+	u.keyboardLock.Unlock()
+
+	if file == nil {
+		return 0
+	}
+
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	return u.hidWriteTimeoutStreaks[file.Name()]
+}
+
+func (u *UsbGadget) VerifyKeyboardWritable() error {
+	keyboardMutex.Lock()
+	defer keyboardMutex.Unlock()
+
+	if err := u.openKeyboardHidFile(); err != nil {
+		return err
+	}
+
+	u.keyboardLock.Lock()
+	file := u.keyboardHidFile
+	u.keyboardLock.Unlock()
+	if file == nil {
+		return fmt.Errorf("keyboard HID file is not open")
+	}
+
+	state := u.GetKeysDownState()
+	keys := make([]byte, hidKeyBufferSize)
+	copy(keys, state.Keys)
+	report := append([]byte{state.Modifier, 0x00}, keys...)
+
+	if err := file.SetWriteDeadline(time.Now().Add(hidProbeWriteTimeout)); err != nil {
+		return err
+	}
+	if _, err := file.Write(report); err != nil {
+		return fmt.Errorf("keyboard HID probe write failed: %w", err)
+	}
+
+	u.resetHidWriteTimeoutStreak(file.Name())
+	return nil
+}
