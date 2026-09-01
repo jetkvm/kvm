@@ -33,7 +33,7 @@ func rebindAndRecoverHID(context string) error {
 		return fmt.Errorf("%s: corrective USB rebind failed: %w", context, err)
 	}
 	gadget.ResetHIDFiles()
-	if !tryReopenKeyboard(context) {
+	if !tryReopenKeyboard(context, false) {
 		usbLogger.Warn().Msgf("keyboard HID file not ready after %s rebind", context)
 	}
 	setUSBRecoveryTimer(time.Now())
