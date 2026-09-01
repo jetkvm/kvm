@@ -223,16 +223,8 @@ frontend:
 		find ../static/ -type f \
 			\( -name '*.js' \
 			-o -name '*.css' \
-			-o -name '*.html' \
-			-o -name '*.ico' \
-			-o -name '*.png' \
-			-o -name '*.jpg' \
-			-o -name '*.jpeg' \
-			-o -name '*.gif' \
 			-o -name '*.svg' \
-			-o -name '*.webp' \
-			-o -name '*.woff2' \
-			\) -exec sh -c 'gzip -9 -kfv {}' \; ;\
+			\) -exec sh -c 'gzip -9 -fv {}' \; ;\
 	fi
 
 git_check_dev:
