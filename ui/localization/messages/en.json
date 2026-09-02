@@ -155,6 +155,7 @@
     "appearance_theme_system": "System",
     "appearance_title": "Appearance",
     "attach": "Attach",
+    "atx_power_control_board_not_responding": "No response from the ATX extension board. Check the RJ-12 cable and board power.",
     "atx_power_control_get_state_error": "Failed to get ATX power state: {error}",
     "atx_power_control_hdd_led": "HDD LED",
     "atx_power_control_hold_hint": "Hold for 3s to force off",
