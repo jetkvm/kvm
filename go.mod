@@ -22,7 +22,7 @@ require (
 	github.com/mdlayher/ndp v1.1.0
 	github.com/pion/ice/v4 v4.1.0
 	github.com/pion/logging v0.2.4
-	github.com/pion/mdns/v2 v2.1.0
+	github.com/pion/mdns/v2 v2.1.1-0.20260609144526-3724545d31eb
 	github.com/pion/webrtc/v4 v4.2.1
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/prometheus/client_golang v1.23.2
@@ -38,7 +38,7 @@ require (
 	go.bug.st/serial v1.6.4
 	golang.org/x/crypto v0.43.0
 	golang.org/x/net v0.46.0
-	golang.org/x/sys v0.37.0
+	golang.org/x/sys v0.41.0
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
 )
