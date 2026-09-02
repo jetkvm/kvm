@@ -5,7 +5,7 @@ import { cx } from "cva";
 
 import LogoBlueIcon from "@assets/logo-blue.png";
 import LogoWhiteIcon from "@assets/logo-white.svg";
-import DeviceImage from "@assets/jetkvm-device-still.png";
+import DeviceImage from "@assets/jetkvm-device-still.webp";
 import LogoMark from "@assets/logo-mark.png";
 import Container from "@components/Container";
 import GridBackground from "@components/GridBackground";

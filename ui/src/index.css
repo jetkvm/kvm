@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./assets/fonts/fonts.css";
 
 @config "../tailwind.config.js";
 
@@ -29,8 +30,7 @@
   --animate-enter: enter 0.2s ease-out;
   --animate-leave: leave 0.15s ease-in forwards;
   --animate-fadeInScale: fadeInScale 1s ease-out forwards;
-  --animate-fadeInScaleFloat:
-    fadeInScaleFloat 1s ease-out forwards, float 3s ease-in-out infinite;
+  --animate-fadeInScaleFloat: fadeInScaleFloat 1s ease-out forwards, float 3s ease-in-out infinite;
   --animate-fadeIn: fadeIn 1s ease-out forwards;
   --animate-slideUpFade: slideUpFade 1s ease-out forwards;
 
@@ -109,7 +109,7 @@
       transform: translateY(0);
     }
   }
-  
+
   @keyframes fadeInStill {
     0% {
       opacity: 0;
@@ -174,11 +174,7 @@ body {
 }
 
 .grid-card {
-  background-image: linear-gradient(
-    to top right,
-    var(--grid-color-start),
-    var(--grid-color-end)
-  );
+  background-image: linear-gradient(to top right, var(--grid-color-start), var(--grid-color-end));
   transition:
     --grid-color-start 300ms cubic-bezier(0.4, 0, 0.2, 1),
     --grid-color-end 300ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -327,7 +323,7 @@ video::-webkit-media-controls {
 
 .hg-theme-default .hg-row .down-key {
   background: rgb(28, 28, 28);
-  @apply text-white! font-bold!;
+  @apply font-bold! text-white!;
 }
 
 .hg-theme-default .hg-row .hg-button-container,
@@ -368,7 +364,7 @@ video::-webkit-media-controls {
 .diagonal-stripes {
   background: repeating-linear-gradient(
     135deg,
-    rgba(255, 0, 0, 0.1) 0 12px, /* red-50 with 20% opacity */
-    transparent 12px 24px
+    rgba(255, 0, 0, 0.1) 0 12px,
+    /* red-50 with 20% opacity */ transparent 12px 24px
   );
 }
