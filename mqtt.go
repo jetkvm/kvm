@@ -21,17 +21,20 @@ var mqttLogger = logging.GetSubsystemLogger("mqtt")
 const publishTimeout = 5 * time.Second
 
 type MQTTConfig struct {
-	Enabled           bool   `json:"enabled"`
-	Broker            string `json:"broker"`
-	Port              int    `json:"port"`
-	Username          string `json:"username"`
-	Password          string `json:"password"`
-	BaseTopic         string `json:"base_topic"`
-	UseTLS            bool   `json:"use_tls"`
-	TLSInsecure       bool   `json:"tls_insecure"`
-	EnableHADiscovery bool   `json:"enable_ha_discovery"`
-	EnableActions     bool   `json:"enable_actions"`
-	DebounceMs        int    `json:"debounce_ms"`
+	Enabled                 bool   `json:"enabled"`
+	Broker                  string `json:"broker"`
+	Port                    int    `json:"port"`
+	Username                string `json:"username"`
+	Password                string `json:"password"`
+	BaseTopic               string `json:"base_topic"`
+	UseTLS                  bool   `json:"use_tls"`
+	TLSInsecure             bool   `json:"tls_insecure"`
+	EnableHADiscovery       bool   `json:"enable_ha_discovery"`
+	EnableActions           bool   `json:"enable_actions"`
+	DebounceMs              int    `json:"debounce_ms"`
+	PublishScreenshot       bool   `json:"publish_screenshot"`
+	ScreenshotIntervalSec   int    `json:"screenshot_interval_sec"`
+	PublishScreenshotButton bool   `json:"publish_screenshot_button"`
 }
 
 var mqttManager *MQTTManager
@@ -62,6 +65,10 @@ type MQTTManager struct {
 	// Cached update state to avoid calling getUpdateStatus on every tick.
 	lastUpdateCheck   time.Time
 	lastUpdatePayload *mqttUpdateState
+
+	// screenshotRunning is set when the screenshot ticker goroutine is active.
+	// Prevents spawning duplicate publishers on MQTT reconnects.
+	screenshotRunning atomic.Bool
 }
 
 type mqttStatusPayload struct {
@@ -212,6 +219,11 @@ func (m *MQTTManager) onConnect(client mqtt.Client) {
 		m.publishDCState(getDCState())
 	}
 	m.publishExtendedStates()
+
+	// Start periodic screenshot publishing if configured
+	if config.MqttConfig != nil && config.MqttConfig.PublishScreenshot && config.MqttConfig.ScreenshotIntervalSec >= 10 {
+		m.startScreenshotTicker()
+	}
 }
 
 func (m *MQTTManager) onConnectionLost(client mqtt.Client, err error) {
@@ -268,6 +280,46 @@ func (m *MQTTManager) publishString(topic string, payload string, retained bool)
 	if token.Error() != nil {
 		mqttLogger.Error().Err(token.Error()).Str("topic", topic).Msg("failed to publish MQTT message")
 	}
+}
+
+// publishBinary publishes a raw binary payload.
+func (m *MQTTManager) publishBinary(topic string, payload []byte, retained bool) {
+	token := m.client.Publish(topic, 1, retained, payload)
+	if !token.WaitTimeout(publishTimeout) {
+		mqttLogger.Warn().Str("topic", topic).Msg("MQTT publish timed out")
+		return
+	}
+	if token.Error() != nil {
+		mqttLogger.Error().Err(token.Error()).Str("topic", topic).Msg("failed to publish MQTT message")
+	}
+}
+
+// startScreenshotTicker starts a background goroutine that periodically
+// captures and publishes a JPEG screenshot if PublishScreenshot is enabled
+// and ScreenshotIntervalSec is at least 10.
+// Safe to call on every reconnect: returns immediately if a ticker is already running.
+func (m *MQTTManager) startScreenshotTicker() {
+	interval := config.MqttConfig.ScreenshotIntervalSec
+	if !config.MqttConfig.PublishScreenshot || interval < 10 {
+		return
+	}
+	// Swap true; if it was already true a goroutine is still running — skip.
+	if m.screenshotRunning.Swap(true) {
+		return
+	}
+	go func() {
+		defer m.screenshotRunning.Store(false)
+		ticker := time.NewTicker(time.Duration(interval) * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				m.publishScreenshot()
+			case <-m.done:
+				return
+			}
+		}
+	}()
 }
 
 // actionsAllowed checks if MQTT actions are enabled in the config.
