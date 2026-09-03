@@ -32,6 +32,9 @@ export default function SettingsAdvancedRoute() {
   const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
   const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);
   const [localLoopbackOnly, setLocalLoopbackOnly] = useState(false);
+  const [showTailscaleWarning, setShowTailscaleWarning] = useState(false);
+  const [localTailscaleOnly, setLocalTailscaleOnly] = useState(false);
+  const [tailscaleInstalled, setTailscaleInstalled] = useState(false);
   const [updateTarget, setUpdateTarget] = useState<string>("app");
   const [appVersion, setAppVersion] = useState<string>("");
   const [systemVersion, setSystemVersion] = useState<string>("");
@@ -66,6 +69,17 @@ export default function SettingsAdvancedRoute() {
     send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setLocalLoopbackOnly(resp.result as boolean);
+    });
+
+    send("getLocalTailscaleOnly", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setLocalTailscaleOnly(resp.result as boolean);
+    });
+
+    send("getTailscaleStatus", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const status = resp.result as { installed: boolean; running: boolean };
+      setTailscaleInstalled(status.installed && status.running);
     });
 
     send("getDefaultLogLevel", {}, (resp: JsonRpcResponse) => {
@@ -196,6 +210,44 @@ export default function SettingsAdvancedRoute() {
     applyLoopbackOnlyMode(true);
     setShowLoopbackWarning(false);
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
+
+  const applyTailscaleOnlyMode = useCallback(
+    (enabled: boolean) => {
+      send("setLocalTailscaleOnly", { enabled }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(
+            enabled
+              ? m.advanced_error_tailscale_enable({ error: resp.error.data || m.unknown_error() })
+              : m.advanced_error_tailscale_disable({ error: resp.error.data || m.unknown_error() }),
+          );
+          return;
+        }
+        setLocalTailscaleOnly(enabled);
+        if (enabled) {
+          notifications.success(m.advanced_success_tailscale_enabled());
+        } else {
+          notifications.success(m.advanced_success_tailscale_disabled());
+        }
+      });
+    },
+    [send, setLocalTailscaleOnly],
+  );
+
+  const handleTailscaleOnlyModeChange = useCallback(
+    (enabled: boolean) => {
+      if (enabled) {
+        setShowTailscaleWarning(true);
+      } else {
+        applyTailscaleOnlyMode(false);
+      }
+    },
+    [applyTailscaleOnlyMode, setShowTailscaleWarning],
+  );
+
+  const confirmTailscaleModeEnable = useCallback(() => {
+    applyTailscaleOnlyMode(true);
+    setShowTailscaleWarning(false);
+  }, [applyTailscaleOnlyMode, setShowTailscaleWarning]);
 
   const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
     notifications.error(
@@ -446,6 +498,18 @@ export default function SettingsAdvancedRoute() {
           />
         </SettingsItem>
 
+        {tailscaleInstalled && (
+          <SettingsItem
+            title={m.advanced_tailscale_only_title()}
+            description={m.advanced_tailscale_only_description()}
+          >
+            <Checkbox
+              checked={localTailscaleOnly}
+              onChange={e => handleTailscaleOnlyModeChange(e.target.checked)}
+            />
+          </SettingsItem>
+        )}
+
         <SettingsItem
           title={m.advanced_troubleshooting_mode_title()}
           description={m.advanced_troubleshooting_mode_description()}
@@ -568,6 +632,27 @@ export default function SettingsAdvancedRoute() {
         variant="warning"
         confirmText={m.advanced_loopback_warning_confirm()}
         onConfirm={confirmLoopbackModeEnable}
+      />
+
+      <ConfirmDialog
+        open={showTailscaleWarning}
+        onClose={() => {
+          setShowTailscaleWarning(false);
+        }}
+        title={m.advanced_tailscale_warning_title()}
+        description={
+          <>
+            <p>{m.advanced_tailscale_warning_description()}</p>
+            <p>{m.advanced_tailscale_warning_before()}</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
+              <li>{m.advanced_tailscale_warning_ssh()}</li>
+              <li>{m.advanced_tailscale_warning_cloud()}</li>
+            </ul>
+          </>
+        }
+        variant="warning"
+        confirmText={m.advanced_tailscale_warning_confirm()}
+        onConfirm={confirmTailscaleModeEnable}
       />
     </div>
   );
