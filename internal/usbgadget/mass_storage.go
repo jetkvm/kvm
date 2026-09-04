@@ -13,7 +13,11 @@ var massStorageBaseConfig = gadgetConfigItem{
 	path:       []string{"functions", "mass_storage.usb0"},
 	configPath: []string{"mass_storage.usb0"},
 	attrs: gadgetAttributes{
-		"stall": "1",
+		// Never halt the bulk endpoints. Every halt call in f_mass_storage is
+		// gated by this flag, and on this dwc3 the halt races the function's
+		// disable path on disconnect and oopses in the kernel (#1360). With
+		// stalls off the function pads with a zero-length packet instead.
+		"stall": "0",
 	},
 }
 
