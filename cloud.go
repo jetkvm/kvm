@@ -23,10 +23,34 @@ import (
 )
 
 type CloudRegisterRequest struct {
-	Token      string `json:"token"`
-	CloudAPI   string `json:"cloudApi"`
-	OidcGoogle string `json:"oidcGoogle"`
-	ClientId   string `json:"clientId"`
+	Token        string `json:"token"`
+	CloudAPI     string `json:"cloudApi"`
+	OIDCToken    string `json:"oidcToken"`
+	OIDCClientID string `json:"oidcClientId"`
+	OIDCIssuer   string `json:"oidcIssuer"`
+	OidcGoogle   string `json:"oidcGoogle"`
+	ClientId     string `json:"clientId"`
+}
+
+func (r CloudRegisterRequest) oidcToken() string {
+	if r.OIDCToken != "" {
+		return r.OIDCToken
+	}
+	return r.OidcGoogle
+}
+
+func (r CloudRegisterRequest) oidcClientID() string {
+	if r.OIDCClientID != "" {
+		return r.OIDCClientID
+	}
+	return r.ClientId
+}
+
+func (r CloudRegisterRequest) oidcIssuer() string {
+	if r.OIDCIssuer != "" {
+		return r.OIDCIssuer
+	}
+	return "https://accounts.google.com"
 }
 
 const (
@@ -257,7 +281,7 @@ func handleCloudRegister(c *gin.Context) {
 
 	config.CloudToken = tokenResp.SecretToken
 
-	provider, err := oidc.NewProvider(c, "https://accounts.google.com")
+	provider, err := oidc.NewProvider(c, req.oidcIssuer())
 	if err != nil {
 		cloudLogger.Error().Err(err).Msg("failed to initialize OIDC provider")
 		c.JSON(500, gin.H{"error": "Failed to initialize OIDC provider"})
@@ -265,18 +289,33 @@ func handleCloudRegister(c *gin.Context) {
 	}
 
 	oidcConfig := &oidc.Config{
-		ClientID: req.ClientId,
+		ClientID: req.oidcClientID(),
 	}
 
 	verifier := provider.Verifier(oidcConfig)
-	idToken, err := verifier.Verify(c, req.OidcGoogle)
+	idToken, err := verifier.Verify(c, req.oidcToken())
 	if err != nil {
 		cloudLogger.Warn().Err(err).Msg("OIDC token verification failed")
 		c.JSON(400, gin.H{"error": "Invalid OIDC token"})
 		return
 	}
 
-	config.GoogleIdentity = idToken.Audience[0] + ":" + idToken.Subject
+	oidcIdentity, err := oidcIdentity(idToken)
+	if err != nil {
+		cloudLogger.Warn().Err(err).Msg("OIDC token is missing required identity claims")
+		c.JSON(400, gin.H{"error": "Invalid OIDC token"})
+		return
+	}
+	legacyIdentity, err := legacyOIDCIdentity(idToken)
+	if err != nil {
+		cloudLogger.Warn().Err(err).Msg("OIDC token is missing required identity claims")
+		c.JSON(400, gin.H{"error": "Invalid OIDC token"})
+		return
+	}
+
+	config.OIDCIssuer = req.oidcIssuer()
+	config.OIDCIdentity = oidcIdentity
+	config.GoogleIdentity = legacyIdentity
 
 	// Save the updated configuration
 	if err := SaveConfig(); err != nil {
@@ -399,7 +438,11 @@ func runWebsocketClient() error {
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
 	oidcCtx, cancelOIDC := context.WithTimeout(ctx, CloudOidcRequestTimeout)
 	defer cancelOIDC()
-	provider, err := oidc.NewProvider(oidcCtx, "https://accounts.google.com")
+	issuer := config.OIDCIssuer
+	if issuer == "" {
+		issuer = "https://accounts.google.com"
+	}
+	provider, err := oidc.NewProvider(oidcCtx, issuer)
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{
 			"error": fmt.Sprintf("failed to initialize OIDC provider: %v", err),
@@ -413,18 +456,43 @@ func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessi
 	}
 
 	verifier := provider.Verifier(oidcConfig)
-	idToken, err := verifier.Verify(oidcCtx, req.OidcGoogle)
+	idToken, err := verifier.Verify(oidcCtx, req.oidcToken())
 	if err != nil {
 		return err
 	}
 
-	googleIdentity := idToken.Audience[0] + ":" + idToken.Subject
-	if config.GoogleIdentity != googleIdentity {
-		_ = wsjson.Write(context.Background(), c, gin.H{"error": "google identity mismatch"})
-		return fmt.Errorf("google identity mismatch")
+	expectedIdentity := config.OIDCIdentity
+	actualIdentity, err := oidcIdentity(idToken)
+	if err != nil {
+		return err
+	}
+	if expectedIdentity == "" {
+		expectedIdentity = config.GoogleIdentity
+		actualIdentity, err = legacyOIDCIdentity(idToken)
+		if err != nil {
+			return err
+		}
+	}
+	if expectedIdentity != actualIdentity {
+		_ = wsjson.Write(context.Background(), c, gin.H{"error": "OIDC identity mismatch"})
+		return fmt.Errorf("OIDC identity mismatch")
 	}
 
 	return nil
+}
+
+func oidcIdentity(idToken *oidc.IDToken) (string, error) {
+	if idToken.Issuer == "" || idToken.Subject == "" || len(idToken.Audience) == 0 {
+		return "", fmt.Errorf("OIDC token is missing issuer, subject, or audience")
+	}
+	return idToken.Issuer + ":" + idToken.Audience[0] + ":" + idToken.Subject, nil
+}
+
+func legacyOIDCIdentity(idToken *oidc.IDToken) (string, error) {
+	if idToken.Subject == "" || len(idToken.Audience) == 0 {
+		return "", fmt.Errorf("OIDC token is missing subject or audience")
+	}
+	return idToken.Audience[0] + ":" + idToken.Subject, nil
 }
 
 func handleSessionRequest(
@@ -565,6 +633,8 @@ func rpcDeregisterDevice() error {
 	// (e.g., wrong cloud token, already deregistered). Regardless of the reason, we can safely remove it.
 	if resp.StatusCode == http.StatusNotFound || (resp.StatusCode >= 200 && resp.StatusCode < 300) {
 		config.CloudToken = ""
+		config.OIDCIssuer = ""
+		config.OIDCIdentity = ""
 		config.GoogleIdentity = ""
 
 		if err := SaveConfig(); err != nil {
