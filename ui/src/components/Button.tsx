@@ -161,6 +161,7 @@ type ButtonPropsType = Pick<
   | "onMouseLeave"
   | "onMouseDown"
   | "onMouseUp"
+  | "aria-label"
   | "data-testid"
 > &
   React.ComponentProps<typeof ButtonContent> & {
@@ -190,6 +191,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
         onMouseLeave={props?.onMouseLeave}
         name={props.name}
         value={props.value}
+        aria-label={props["aria-label"]}
         data-testid={props["data-testid"]}
       >
         <ButtonContent
