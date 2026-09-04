@@ -94,6 +94,10 @@ func isHidgChardevHealthy() bool {
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
 	u.log.Info().Str("udc", u.udc).Msg("rebinding USB gadget to UDC")
+	// f_hid re-initialises the same cdev on every bind. Descriptors left open
+	// from the previous bind would drop the fresh refcount to zero when they
+	// are finally closed, and every open after that fails with ENXIO.
+	u.ResetHIDFiles()
 	if err := rebindUsb(u.udc, ignoreUnbindError); err != nil {
 		return err
 	}

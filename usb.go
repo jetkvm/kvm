@@ -269,6 +269,7 @@ func tryReopenKeyboard(reason string, requireWritable bool) bool {
 		setUSBRecoveryTimer(time.Now())
 		time.Sleep(delay)
 		if err := gadget.ReopenKeyboardHidFile(); err != nil {
+			usbLogger.Debug().Err(err).Str("reason", reason).Msg("keyboard HID file reopen failed")
 			continue
 		}
 		if gadget.GetUsbState() != usbgadget.USBStateConfigured {
