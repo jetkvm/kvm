@@ -666,6 +666,10 @@ export default function KvmIdRoute() {
       setSidebarView(null);
       setPeerConnection(null);
       setRpcDataChannel(null);
+      setRpcHidChannel(null);
+      setRpcHidUnreliableChannel(null);
+      setRpcHidUnreliableNonOrderedChannel(null);
+      setRpcHidProtocolVersion(null);
       setTerminalChannel(null);
     };
   }, [
@@ -674,6 +678,10 @@ export default function KvmIdRoute() {
     setPeerConnection,
     setSidebarView,
     setRpcDataChannel,
+    setRpcHidChannel,
+    setRpcHidUnreliableChannel,
+    setRpcHidUnreliableNonOrderedChannel,
+    setRpcHidProtocolVersion,
     setTerminalChannel,
   ]);
 

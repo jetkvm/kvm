@@ -139,13 +139,13 @@ export interface RTCState {
   setRpcHidProtocolVersion: (version: number | null) => void;
 
   rpcHidChannel: RTCDataChannel | null;
-  setRpcHidChannel: (channel: RTCDataChannel) => void;
+  setRpcHidChannel: (channel: RTCDataChannel | null) => void;
 
   rpcHidUnreliableChannel: RTCDataChannel | null;
-  setRpcHidUnreliableChannel: (channel: RTCDataChannel) => void;
+  setRpcHidUnreliableChannel: (channel: RTCDataChannel | null) => void;
 
   rpcHidUnreliableNonOrderedChannel: RTCDataChannel | null;
-  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel) => void;
+  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel | null) => void;
 
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;
