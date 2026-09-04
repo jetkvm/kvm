@@ -514,11 +514,9 @@ function DeviceFileView({
 
   const percentageUsed = useMemo(() => {
     if (!storageSpace) return 0;
-    return Number(
-      ((storageSpace.bytesUsed / (storageSpace.bytesUsed + storageSpace.bytesFree)) * 100).toFixed(
-        1,
-      ),
-    );
+    const total = storageSpace.bytesUsed + storageSpace.bytesFree;
+    if (total === 0) return 0;
+    return Number(((storageSpace.bytesUsed / total) * 100).toFixed(1));
   }, [storageSpace]);
 
   const bytesUsed = useMemo(() => {
