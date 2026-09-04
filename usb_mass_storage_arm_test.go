@@ -14,18 +14,19 @@ import (
 func TestMountedMassStorageImageSurvivesGadgetReconfiguration(t *testing.T) {
 	const gadgetPath = "/sys/kernel/config/usb_gadget/jetkvm"
 	backingFilePath := filepath.Join(gadgetPath, "functions", "mass_storage.usb0", "lun.0", "file")
-	originalBackingFile, err := os.ReadFile(backingFilePath)
-	if err != nil {
-		t.Fatalf("read original mass storage backing file: %v", err)
-	}
 
 	originalGadget := gadget
 	var testGadget *usbgadget.UsbGadget
+	var originalBackingFile []byte
 	var imagePath string
 	t.Cleanup(func() {
 		if testGadget != nil {
 			gadget = testGadget
-			if err := setMassStorageImage(string(originalBackingFile)); err != nil {
+			restoredBackingFile := string(originalBackingFile)
+			if strings.TrimSpace(restoredBackingFile) == "" {
+				restoredBackingFile = "\n"
+			}
+			if err := setMassStorageImage(restoredBackingFile); err != nil {
 				t.Errorf("restore mass storage backing file: %v", err)
 			}
 			if err := testGadget.Close(); err != nil {
@@ -66,6 +67,10 @@ func TestMountedMassStorageImageSurvivesGadgetReconfiguration(t *testing.T) {
 		t.Fatal("initialize USB gadget")
 	}
 	gadget = testGadget
+	originalBackingFile, err := os.ReadFile(backingFilePath)
+	if err != nil {
+		t.Fatalf("read original mass storage backing file: %v", err)
+	}
 
 	image, err := os.CreateTemp("", "jetkvm-mass-storage-*.img")
 	if err != nil {
