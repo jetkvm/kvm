@@ -53,7 +53,6 @@ import {
   PeerConnectionDisconnectedOverlay,
   RebootingOverlay,
 } from "@components/VideoOverlay";
-import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
@@ -1045,7 +1044,7 @@ export default function KvmIdRoute() {
   ]);
 
   return (
-    <FeatureFlagProvider appVersion={appVersion}>
+    <>
       <title>{displayHostname ? `${displayHostname} - JetKVM` : "JetKVM"}</title>
       {!isEmbedMode && !outlet && otaState.updating && (
         <AnimatePresence>
@@ -1146,7 +1145,7 @@ export default function KvmIdRoute() {
       {cdcACMConsole && (
         <Terminal type="cdcacm" dataChannel={cdcACMConsole} title="USB Serial Console" />
       )}
-    </FeatureFlagProvider>
+    </>
   );
 }
 
