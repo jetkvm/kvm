@@ -189,7 +189,9 @@ func (u *UsbGadget) Init() error {
 
 	u.syncMassStorageImageFromKernel()
 
-	err := u.configureUsbGadget(true)
+	// A restarted process inherits the previous instance's gadget. Leave it
+	// alone when it already matches, instead of dropping the host session.
+	err := u.configureUsbGadget(true, false)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
 	}
@@ -203,7 +205,9 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	u.loadGadgetConfig()
 
-	err := u.configureUsbGadget(true)
+	// Callers ask for this on config changes and as the recovery fallback,
+	// so always rebind here even if the configfs tree looks untouched.
+	err := u.configureUsbGadget(true, true)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
@@ -211,7 +215,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 	return nil
 }
 
-func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
+func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) error {
 	disconnected := false
 	err := u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
@@ -221,17 +225,19 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 			return nil
 		}
 
-		pending, err := u.tx.HasPendingChanges()
-		if err != nil {
-			return err
-		}
-		if !pending && u.isGadgetLive() {
-			// The configfs tree already matches and the gadget is bound and
-			// attached. Leave the host session alone: every disconnect races
-			// the mass storage function's kernel thread (#1360), so only pay
-			// for it when the configuration actually changes.
-			u.log.Info().Msg("USB gadget already configured and attached, skipping rebind")
-			return nil
+		if !forceRebind {
+			pending, err := u.tx.HasPendingChanges()
+			if err != nil {
+				return err
+			}
+			if !pending && u.isGadgetLive() {
+				// The configfs tree already matches and the gadget is bound and
+				// attached. Leave the host session alone: every disconnect races
+				// the mass storage function's kernel thread (#1360), so only pay
+				// for it when the configuration actually changes.
+				u.log.Info().Msg("USB gadget already configured and attached, skipping rebind")
+				return nil
+			}
 		}
 
 		// Quiesce the host session before the controller teardown so function
