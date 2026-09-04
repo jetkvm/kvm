@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import pkg from "react-use-websocket";
 
 import { CLOUD_API } from "@/ui.config";
-import api from "@/api";
 import { isOnDevice } from "@/main";
 import { useRTCStore, useUiStore } from "@hooks/stores";
 import { m } from "@localizations/messages.js";
@@ -44,9 +42,9 @@ const reconnectInterval = (attempt: number) => {
 /**
  * JetKVM's stock signaling: the browser is the offerer and talks to the
  * device (directly, or relayed by the cloud) over a WebSocket at
- * `/webrtc/signaling/client`. Devices that predate the WebSocket flow answer
- * the `device-metadata` message without a version, in which case the offer
- * is posted over HTTP once ICE gathering completes.
+ * `/webrtc/signaling/client`. The device announces itself with a
+ * `device-metadata` message, after which the browser sends its offer and
+ * trickles ICE candidates over the same socket.
  */
 export const useWebSocketSignaling: SignalingHook = ({
   deviceId,
@@ -61,9 +59,7 @@ export const useWebSocketSignaling: SignalingHook = ({
     setMediaStream,
   } = useRTCStore();
   const setRebootState = useUiStore(state => state.setRebootState);
-  const navigate = useNavigate();
 
-  const isLegacySignalingEnabled = useRef(false);
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
 
@@ -78,7 +74,6 @@ export const useWebSocketSignaling: SignalingHook = ({
       connectionFailedRef.current = true;
 
       peerConnection?.close();
-      signalingAttempts.current = 0;
     },
     [peerConnection, setPeerConnectionState],
   );
@@ -97,7 +92,6 @@ export const useWebSocketSignaling: SignalingHook = ({
     connectionFailedRef.current = connectionFailed;
   }, [connectionFailed]);
 
-  const signalingAttempts = useRef(0);
   const setRemoteSessionDescription = useCallback(
     async function setRemoteSessionDescription(
       pc: RTCPeerConnection,
@@ -155,7 +149,7 @@ export const useWebSocketSignaling: SignalingHook = ({
   const reconnectAttemptsRef = useRef(2000);
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
-  const { sendMessage, getWebSocket } = useWebSocket(
+  const { sendMessage } = useWebSocket(
     isOnDevice
       ? `${wsProtocol}//${window.location.host}/webrtc/signaling/client`
       : `${CLOUD_API.replace("http", "ws")}/webrtc/signaling/client?id=${deviceId}`,
@@ -171,7 +165,7 @@ export const useWebSocketSignaling: SignalingHook = ({
 
       shouldReconnect(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] shouldReconnect", event);
-        return !isLegacySignalingEnabled.current;
+        return true;
       },
 
       onClose(event: WebSocketEventMap["close"]) {
@@ -202,37 +196,15 @@ export const useWebSocketSignaling: SignalingHook = ({
         const message = event;
         if (message.data === "pong") return;
 
-        /*
-          Currently the signaling process is as follows:
-            After open, the other side will send a `device-metadata` message with the device version
-            If the device version is not set, we can assume the device is using the legacy signaling
-            Otherwise, we can assume the device is using the new signaling
-
-            If the device is using the legacy signaling, we close the websocket connection
-            and use the legacy HTTPSignaling function to get the remote session description
-
-            If the device is using the new signaling, we don't need to do anything special, but continue to use the websocket connection
-            to chat with the other peer about the connection
-        */
-
+        // After open, the other side sends a `device-metadata` message once the
+        // device is reachable. That is our cue to create the peer and offer;
+        // the answer and ICE candidates then arrive over the same socket.
         const parsedMessage = JSON.parse(message.data);
 
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
           console.debug("[Websocket] Received device-metadata message");
           console.debug("[Websocket] Device version", deviceVersion);
-          // If the device version is not set, we can assume the device is using the legacy signaling
-          if (!deviceVersion) {
-            console.log("[Websocket] Device is using legacy signaling");
-
-            // Now we don't need the websocket connection anymore, as we've established that we need to use the legacy signaling
-            // which does everything over HTTP(at least from the perspective of the client)
-            isLegacySignalingEnabled.current = true;
-            getWebSocket()?.close();
-          } else {
-            console.log("[Websocket] Device is using new signaling");
-            isLegacySignalingEnabled.current = false;
-          }
 
           setupPeerConnection();
         }
@@ -286,44 +258,6 @@ export const useWebSocketSignaling: SignalingHook = ({
     [sendMessage],
   );
 
-  const legacyHTTPSignaling = useCallback(
-    async (pc: RTCPeerConnection) => {
-      const sd = btoa(JSON.stringify(pc.localDescription));
-
-      // Legacy mode == UI in cloud with updated code connecting to older device version.
-      // In device mode, old devices wont serve this JS, and on newer devices legacy mode wont be enabled
-      const sessionUrl = `${CLOUD_API}/webrtc/session`;
-
-      console.log("Trying to get remote session description");
-      setLoadingMessage(
-        m.getting_remote_session_description({
-          attempt: signalingAttempts.current + 1,
-        }),
-      );
-      const res = await api.POST(sessionUrl, {
-        sd,
-        // When on device, we don't need to specify the device id, as it's already known
-        ...(isOnDevice ? {} : { id: deviceId }),
-      });
-
-      const json = await res.json();
-      if (res.status === 401) return navigate(isOnDevice ? "/login-local" : "/login");
-      if (!res.ok) {
-        console.error("Error getting SDP", { status: res.status, json });
-        cleanupAndStopReconnecting();
-        return;
-      }
-
-      console.debug("Successfully got Remote Session Description. Setting.");
-      setLoadingMessage(m.setting_remote_session_description());
-
-      const decodedSd = atob(json.sd);
-      const parsedSd = JSON.parse(decodedSd);
-      setRemoteSessionDescription(pc, new RTCSessionDescription(parsedSd));
-    },
-    [cleanupAndStopReconnecting, deviceId, navigate, setRemoteSessionDescription],
-  );
-
   const setupPeerConnection = useCallback(async () => {
     console.debug("[setupPeerConnection] Setting up peer connection");
     setConnectionFailed(false);
@@ -370,12 +304,7 @@ export const useWebSocketSignaling: SignalingHook = ({
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         const sd = btoa(JSON.stringify(pc.localDescription));
-        const isNewSignalingEnabled = isLegacySignalingEnabled.current === false;
-        if (isNewSignalingEnabled) {
-          sendWebRTCSignal("offer", { sd: sd });
-        } else {
-          console.log("Legacy signaling. Waiting for ICE Gathering to complete...");
-        }
+        sendWebRTCSignal("offer", { sd: sd });
       } catch (e) {
         console.error(
           `[setupPeerConnection] Error creating offer: ${String(e)}`,
@@ -398,11 +327,6 @@ export const useWebSocketSignaling: SignalingHook = ({
       if (pc.iceGatheringState === "complete") {
         console.debug("ICE Gathering completed");
         setLoadingMessage(m.ice_gathering_completed());
-
-        if (isLegacySignalingEnabled.current) {
-          // We can now start the https/ws connection to get the remote session description from the KVM device
-          legacyHTTPSignaling(pc);
-        }
       } else if (pc.iceGatheringState === "gathering") {
         console.debug("ICE Gathering Started");
         setLoadingMessage(m.gathering_ice_candidates());
@@ -415,7 +339,6 @@ export const useWebSocketSignaling: SignalingHook = ({
   }, [
     cleanupAndStopReconnecting,
     iceServers,
-    legacyHTTPSignaling,
     onPeerConnection,
     sendWebRTCSignal,
     setMediaStream,
