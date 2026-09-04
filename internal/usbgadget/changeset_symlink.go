@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 
 	"github.com/rs/zerolog"
 )
@@ -48,11 +49,23 @@ func checkIfSymlinksInOrder(fc *FileChange, logger *zerolog.Logger) (FileState, 
 		return FileStateUnknown, fmt.Errorf("file is not a directory")
 	}
 
-	files, err := os.ReadDir(fc.Path)
-	symlinks := make([]symlink, 0)
+	// The gadget binds functions in symlink creation order, which is what
+	// the host sees as the interface order. configfs returns directory
+	// entries newest first (fs/configfs/dir.c keeps s_children as a LIFO
+	// list), so read the raw directory order and reverse it. os.ReadDir
+	// sorts by name and would hide the creation order.
+	dir, err := os.Open(fc.Path)
+	if err != nil {
+		return FileStateUnknown, fmt.Errorf("failed to open directory")
+	}
+	files, err := dir.ReadDir(-1)
+	dir.Close()
 	if err != nil {
 		return FileStateUnknown, fmt.Errorf("failed to read directory")
 	}
+	slices.Reverse(files)
+
+	symlinks := make([]symlink, 0)
 
 	for _, file := range files {
 		if file.Type()&os.ModeSymlink != os.ModeSymlink {
