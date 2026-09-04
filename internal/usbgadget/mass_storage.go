@@ -8,7 +8,7 @@ import (
 )
 
 var massStorageBaseConfig = gadgetConfigItem{
-	order:      3000,
+	order:      900,
 	device:     "mass_storage.usb0",
 	path:       []string{"functions", "mass_storage.usb0"},
 	configPath: []string{"mass_storage.usb0"},
@@ -95,7 +95,7 @@ func (u *UsbGadget) syncMassStorageImageFromKernel() {
 }
 
 var massStorageLun0Config = gadgetConfigItem{
-	order: 3001,
+	order: 901,
 	path:  []string{"functions", "mass_storage.usb0", "lun.0"},
 	attrs: gadgetAttributes{
 		"cdrom":     "1",
