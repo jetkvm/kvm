@@ -240,8 +240,11 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) error {
 			}
 		}
 
-		// Quiesce the host session before the controller teardown so function
-		// drivers shut their endpoints down against a live controller.
+		// Close HID descriptors before the unbind for the same reason as in
+		// rebindUsb, then quiesce the host session before the controller
+		// teardown so function drivers shut their endpoints down against a
+		// live controller.
+		u.ResetHIDFiles()
 		_ = softDisconnect(u.udc)
 		disconnected = true
 		u.tx.RebindUsb(true)
