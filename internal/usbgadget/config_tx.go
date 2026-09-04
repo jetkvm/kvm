@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/rs/zerolog"
+	"github.com/sourcegraph/tf-dag/dag"
 )
 
 // no os package should occur in this file
@@ -96,6 +98,29 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 		ExpectedState: FileStateAbsent,
 		Description:   description,
 	})
+}
+
+// HasPendingChanges resolves the staged changes, including the symlink
+// reorder that Commit appends, without applying anything, and reports whether
+// any of them would touch the configfs tree.
+func (tx *UsbGadgetTransaction) HasPendingChanges() (bool, error) {
+	staged := slices.Clone(tx.c.Changes)
+	if tx.reorderSymlinkChanges != nil {
+		finalize := *tx.reorderSymlinkChanges
+		finalize.Component = "gadget-finalize"
+		staged = append(staged, FileChange{RequestedFileChange: finalize})
+	}
+	r := ChangeSetResolver{changeset: &ChangeSet{Changes: staged}, g: &dag.AcyclicGraph{}, l: tx.log}
+	resolved, err := r.GetChanges()
+	if err != nil {
+		return false, err
+	}
+	for _, change := range resolved {
+		if change.Action() != FileChangeResolvedActionDoNothing {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (tx *UsbGadgetTransaction) Commit() error {

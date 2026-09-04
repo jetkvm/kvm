@@ -212,21 +212,44 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 }
 
 func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
-	if resetUsb {
-		_ = softDisconnect(u.udc)
-	}
-
+	disconnected := false
 	err := u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
 		u.tx.CreateConfigPath()
 		u.tx.WriteGadgetConfig()
-		if resetUsb {
-			u.tx.RebindUsb(true)
+		if !resetUsb {
+			return nil
 		}
+
+		pending, err := u.tx.HasPendingChanges()
+		if err != nil {
+			return err
+		}
+		if !pending && u.isGadgetLive() {
+			// The configfs tree already matches and the gadget is bound and
+			// attached. Leave the host session alone: every disconnect races
+			// the mass storage function's kernel thread (#1360), so only pay
+			// for it when the configuration actually changes.
+			u.log.Info().Msg("USB gadget already configured and attached, skipping rebind")
+			return nil
+		}
+
+		// Quiesce the host session before the controller teardown so function
+		// drivers shut their endpoints down against a live controller.
+		_ = softDisconnect(u.udc)
+		disconnected = true
+		u.tx.RebindUsb(true)
 		return nil
 	})
-	if err != nil && resetUsb {
+	if err != nil && disconnected {
 		_ = softConnect(u.udc)
 	}
 	return err
+}
+
+// isGadgetLive reports whether the UDC driver is bound and the gadget is
+// attached to it, i.e. the host can see the device as currently configured.
+func (u *UsbGadget) isGadgetLive() bool {
+	bound, err := u.IsUDCBound()
+	return err == nil && bound && u.IsGadgetAttachedToUDC()
 }
