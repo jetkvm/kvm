@@ -931,22 +931,22 @@ export default function KvmIdRoute() {
   // Serial console - still created via useEffect for now
   const [serialConsole, setSerialConsole] = useState<RTCDataChannel | null>(null);
 
+  // One channel per peer connection: a channel from a previous peer is dead
+  // after a reconnect, so it is closed and replaced rather than kept.
   useEffect(() => {
-    if (!peerConnection) return;
-    if (!serialConsole) {
-      setSerialConsole(peerConnection.createDataChannel("serial"));
-    }
-  }, [peerConnection, serialConsole]);
+    const channel = peerConnection ? peerConnection.createDataChannel("serial") : null;
+    setSerialConsole(channel);
+    return () => channel?.close();
+  }, [peerConnection]);
 
   // CDC-ACM console data channel
   const [cdcACMConsole, setCdcACMConsole] = useState<RTCDataChannel | null>(null);
 
   useEffect(() => {
-    if (!peerConnection) return;
-    if (!cdcACMConsole) {
-      setCdcACMConsole(peerConnection.createDataChannel("cdcacm"));
-    }
-  }, [peerConnection, cdcACMConsole]);
+    const channel = peerConnection ? peerConnection.createDataChannel("cdcacm") : null;
+    setCdcACMConsole(channel);
+    return () => channel?.close();
+  }, [peerConnection]);
 
   // Register E2E test hooks
   useEffect(() => {
