@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import {
   HID_KEY,
   SSH_OPTS,
+  callJsonRpc,
   ensureNoPasswordViaAPI,
   ensureRpcReady,
   getLedState,
@@ -40,7 +41,7 @@ function remoteHostExec(cmd: string, timeoutMs = 15_000): string {
 // The host assigns a new device number on every enumeration. An unchanged
 // number across the restart proves the gadget was adopted, so whatever the
 // host observed afterwards came from the new process, not from a re-plug.
-function gadgetDeviceNumber(): number {
+function findGadgetDeviceNumber(): number | null {
   const out = remoteHostExec(
     "for d in /sys/bus/usb/devices/*-*/; do " +
       '[ -f "$d/manufacturer" ] || continue; ' +
@@ -49,8 +50,30 @@ function gadgetDeviceNumber(): number {
       "done",
   ).trim();
   const devnum = parseInt(out, 10);
-  expect(devnum, "gadget not found on the remote host").toBeGreaterThan(0);
-  return devnum;
+  return devnum > 0 ? devnum : null;
+}
+
+function gadgetDeviceNumber(): number {
+  const devnum = findGadgetDeviceNumber();
+  expect(devnum, "gadget not found on the remote host").not.toBeNull();
+  return devnum!;
+}
+
+async function waitForReenumeration(previous: number, timeout: number): Promise<number> {
+  await expect
+    .poll(
+      () => {
+        const devnum = findGadgetDeviceNumber();
+        return devnum !== null && devnum !== previous;
+      },
+      {
+        message: "host should enumerate the gadget again",
+        timeout,
+        intervals: [1000],
+      },
+    )
+    .toBe(true);
+  return gadgetDeviceNumber();
 }
 
 async function reconnect(): Promise<void> {
@@ -111,7 +134,10 @@ test("app restart releases keys the previous process left held", async () => {
           events.some(ev => ev.code === KEY.SPACE && ev.type === "key_release")
         );
       },
-      { message: "new process should release both keys on the host", timeout: 15_000 },
+      {
+        message: "new process should release both keys on the host",
+        timeout: 15_000,
+      },
     )
     .toBe(true);
 
@@ -175,7 +201,10 @@ test("app restart releases an absolute mouse button once", async () => {
     .poll(
       async () =>
         (await agent!.getMouseEvents()).some(ev => ev.type === "mouse_button" && ev.value === 0),
-      { message: "new process should release the button on the host", timeout: 15_000 },
+      {
+        message: "new process should release the button on the host",
+        timeout: 15_000,
+      },
     )
     .toBe(true);
   expect(gadgetDeviceNumber(), "gadget must not re-enumerate on app restart").toBe(before);
@@ -190,6 +219,64 @@ test("app restart releases an absolute mouse button once", async () => {
   await new Promise(r => setTimeout(r, 3_000));
   expect(await agent!.getMouseEvents(), "second restart must not replay the release").toEqual([]);
   expect(gadgetDeviceNumber(), "gadget must not re-enumerate on app restart").toBe(before);
+
+  await reconnect();
+});
+
+test("a gadget the previous process left soft-disconnected is rebound", async () => {
+  test.setTimeout(90_000);
+
+  const before = gadgetDeviceNumber();
+
+  // The app soft-disconnects before it rebinds. A process that dies in
+  // between leaves the UDC bound and the gadget attached, which is all the
+  // adoption check used to look at, while the host sees nothing.
+  await restartAppViaSSH({
+    beforeStart: "echo disconnect > /sys/class/udc/$(ls /sys/class/udc | head -n1)/soft_connect",
+  });
+
+  await waitForReenumeration(before, 20_000);
+  await reconnect();
+  await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30_000);
+  expect(
+    (await waitForKeyboardReady(agent!, page, 30_000)).length,
+    "keyboard must work after the rebind",
+  ).toBeGreaterThan(0);
+});
+
+test("a forced rebind drops the inherited absolute mouse press", async () => {
+  test.setTimeout(120_000);
+
+  const press = { x: 24576, y: 24576 };
+
+  await agent!.clearMouseEvents();
+  await sendAbsMouseMove(page, press.x, press.y, 1);
+  await expect
+    .poll(
+      async () =>
+        (await agent!.getMouseEvents()).some(ev => ev.type === "mouse_button" && ev.value === 1),
+      { message: "host should see the button pressed", timeout: 5_000 },
+    )
+    .toBe(true);
+
+  // A config write always rebinds: the host re-enumerates and releases the
+  // button itself, so the recorded press is stale from here on.
+  const before = gadgetDeviceNumber();
+  const devices = await callJsonRpc(page, "getUsbDevices");
+  await callJsonRpc(page, "setUsbDevices", { devices });
+  const after = await waitForReenumeration(before, 30_000);
+  await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30_000);
+
+  // The restart adopts the gadget. The fresh host device sits at (0, 0), so
+  // a replayed release at the press position would show up as a move.
+  await agent!.clearMouseEvents();
+  await restartAppViaSSH();
+  await new Promise(r => setTimeout(r, 3_000));
+  expect(
+    await agent!.getMouseEvents(),
+    "restart must not replay a release from before the rebind",
+  ).toEqual([]);
+  expect(gadgetDeviceNumber(), "gadget must not re-enumerate on app restart").toBe(after);
 
   await reconnect();
 });
