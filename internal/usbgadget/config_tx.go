@@ -24,6 +24,8 @@ type UsbGadgetTransaction struct {
 	isGadgetConfigItemEnabled func(key string) bool
 
 	reorderSymlinkChanges *RequestedFileChange
+	// disabledFunctionKeys are the symlink removals the UDC write waits on.
+	disabledFunctionKeys []string
 }
 
 func (u *UsbGadget) newUsbGadgetTransaction(lock bool) error {
@@ -99,7 +101,11 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 }
 
 func (tx *UsbGadgetTransaction) Commit() error {
-	tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	// With every USB device class disabled there is no function to link and
+	// no reorder change was staged.
+	if tx.reorderSymlinkChanges != nil {
+		tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	}
 
 	err := tx.c.Apply()
 	if err != nil {
@@ -189,7 +195,8 @@ func (tx *UsbGadgetTransaction) DisableGadgetItemConfig(item gadgetConfigItem) {
 	}
 
 	configPath := joinPath(tx.configC1Path, item.configPath)
-	_ = tx.removeFile("gadget", configPath, "remove symlink: disable gadget config")
+	key := tx.removeFile("gadget", configPath, "remove symlink: disable gadget config")
+	tx.disabledFunctionKeys = append(tx.disabledFunctionKeys, key)
 }
 
 func (tx *UsbGadgetTransaction) writeGadgetItemConfig(item gadgetConfigItem, deps []string) []string {
@@ -317,6 +324,15 @@ func (tx *UsbGadgetTransaction) addReorderSymlinkChange(path string, target stri
 }
 
 func (tx *UsbGadgetTransaction) WriteUDC() {
+	// Rebinding with a disabled function still linked enumerates it on the
+	// host, and unlinking it afterwards makes configfs unbind the gadget
+	// again, so the removals come first. With every function disabled
+	// nothing stages the reorder change, so only wait on it when it exists.
+	deps := append([]string(nil), tx.disabledFunctionKeys...)
+	if tx.reorderSymlinkChanges != nil {
+		deps = append(deps, "reorder-symlinks")
+	}
+
 	// bound the gadget to a UDC (USB Device Controller)
 	path := path.Join(tx.kvmGadgetPath, "UDC")
 	tx.addFileChange("udc", RequestedFileChange{
@@ -324,7 +340,7 @@ func (tx *UsbGadgetTransaction) WriteUDC() {
 		Path:            path,
 		ExpectedState:   FileStateFileContentMatch,
 		ExpectedContent: []byte(tx.udc),
-		DependsOn:       []string{"reorder-symlinks"},
+		DependsOn:       deps,
 		Description:     "write UDC",
 	})
 }
