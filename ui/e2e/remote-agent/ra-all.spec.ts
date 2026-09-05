@@ -2673,6 +2673,15 @@ test.describe("Remote Host Agent", () => {
       /* no reader running */
     }
     const ttyAfter = await waitForRemoteHostTtyACM(true);
+    // Same ModemManager probe wait as above; returns at once when the port
+    // did not re-enumerate.
+    await expect
+      .poll(() => remoteHostExec(`sudo lsof -t ${ttyAfter} 2>/dev/null || true`).trim(), {
+        message: `waiting for ${ttyAfter} to be free of host processes`,
+        timeout: 30_000,
+        intervals: [1000],
+      })
+      .toBe("");
     remoteHostExec(`sudo stty -F ${ttyAfter} 9600 raw -echo`);
     remoteHostExec(`sudo bash -c 'nohup cat ${ttyAfter} > /tmp/cdcacm_rx.txt 2>/dev/null &'`);
 
@@ -2688,7 +2697,7 @@ test.describe("Remote Host Agent", () => {
 
     // Test receiving data: send from remote host to ttyACM
     const replyString = `reply_${Date.now()}`;
-    remoteHostExec(`sudo bash -c 'echo ${replyString} > ${ttyACM}'`);
+    remoteHostExec(`sudo bash -c 'echo ${replyString} > ${ttyAfter}'`);
     await new Promise(r => setTimeout(r, 2000));
 
     // Take a screenshot for visual review
