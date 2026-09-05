@@ -157,6 +157,7 @@ func (u *UsbGadget) updateKeyboardState(state byte) {
 	}
 	u.log.Trace().Uint8("old", u.keyboardState).Uint8("new", state).Msg("keyboardState updated")
 	u.keyboardState = state
+	updateHidHandover(func(h *hidHandover) { h.KeyboardLeds = state })
 
 	if u.onKeyboardStateChange != nil {
 		(*u.onKeyboardStateChange)(getKeyboardState(state))
