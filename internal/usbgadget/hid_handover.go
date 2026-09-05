@@ -58,6 +58,16 @@ func loadHidHandover() (hidHandover, bool) {
 	return readHidHandover()
 }
 
+// resetHidHandover runs after a rebind. The host re-enumerated, which
+// released every input and makes it resend its LED state, so nothing from
+// before the rebind applies to the next adoption.
+func (u *UsbGadget) resetHidHandover() {
+	u.absMouseLock.Lock()
+	u.absMousePressed = false
+	u.absMouseLock.Unlock()
+	updateHidHandover(func(h *hidHandover) { *h = hidHandover{} })
+}
+
 // adoptLiveGadget runs when Init kept the previous instance's gadget bound.
 // The host saw no disconnect, so it still holds whatever inputs the previous
 // process left pressed, and it will not resend its LED state.

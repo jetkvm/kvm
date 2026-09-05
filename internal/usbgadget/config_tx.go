@@ -117,9 +117,16 @@ func (tx *UsbGadgetTransaction) HasPendingChanges() (bool, error) {
 		return false, err
 	}
 	for _, change := range resolved {
-		if change.Action() != FileChangeResolvedActionDoNothing {
-			return true, nil
+		action := change.Action()
+		if action == FileChangeResolvedActionDoNothing {
+			continue
 		}
+		// An optional attribute the kernel does not expose cannot be
+		// created; Commit ignores that failure, so it is not a change.
+		if change.IgnoreErrors && action == FileChangeResolvedActionCreateFile {
+			continue
+		}
+		return true, nil
 	}
 	return false, nil
 }
