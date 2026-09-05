@@ -609,12 +609,14 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 	filePath := path.Join(imagesFolder, sanitizedFilename)
 	uploadPath := filePath + ".incomplete"
 
+	// Held from the exists check through the open: finishUpload renames
+	// under the same lock, so the partial file cannot change in between.
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+
 	if _, err := os.Stat(filePath); err == nil {
 		return nil, fmt.Errorf("file already exists: %s", sanitizedFilename)
 	}
-
-	pendingUploadsMutex.Lock()
-	defer pendingUploadsMutex.Unlock()
 
 	// A retry after a cancel must not race the transfer it replaces. A data
 	// channel closes gracefully and still delivers what it had buffered, so
@@ -699,6 +701,33 @@ func expireUnclaimedUpload(uploadId string) {
 	logger.Warn().Str("uploadId", uploadId).Msg("upload transport never arrived, releasing the upload")
 }
 
+// finishUpload closes the upload and, when every byte arrived, renames the
+// file into place. It runs under the map lock so that a start for the same
+// file cannot measure the partial file while the rename is in flight, and
+// a superseded upload never renames over its replacement.
+func finishUpload(uploadId string, p pendingUpload, written int64) {
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+
+	p.File.Close()
+	if _, live := pendingUploads[uploadId]; !live {
+		logger.Info().Str("uploadId", uploadId).Msg("upload was superseded, leaving the file to its replacement")
+		return
+	}
+	delete(pendingUploads, uploadId)
+
+	if written != p.Size {
+		logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
+		return
+	}
+	newName := strings.TrimSuffix(p.File.Name(), ".incomplete")
+	if err := os.Rename(p.File.Name(), newName); err != nil {
+		logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
+	} else {
+		logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
+	}
+}
+
 func (p pendingUpload) write(data []byte) (int, error) {
 	p.writeLock.Lock()
 	defer p.writeLock.Unlock()
@@ -719,23 +748,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		return
 	}
 	totalBytesWritten := pendingUpload.AlreadyUploadedBytes
-	defer func() {
-		pendingUpload.File.Close()
-		if totalBytesWritten == pendingUpload.Size {
-			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
-			err := os.Rename(pendingUpload.File.Name(), newName)
-			if err != nil {
-				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
-			} else {
-				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
-			}
-		} else {
-			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
-		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
-	}()
+	defer func() { finishUpload(uploadId, pendingUpload, totalBytesWritten) }()
 	uploadComplete := make(chan struct{})
 	var finishOnce sync.Once
 	finish := func() { finishOnce.Do(func() { close(uploadComplete) }) }
@@ -789,23 +802,7 @@ func handleUploadHttp(c *gin.Context) {
 	}
 
 	totalBytesWritten := pendingUpload.AlreadyUploadedBytes
-	defer func() {
-		pendingUpload.File.Close()
-		if totalBytesWritten == pendingUpload.Size {
-			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
-			err := os.Rename(pendingUpload.File.Name(), newName)
-			if err != nil {
-				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
-			} else {
-				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
-			}
-		} else {
-			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
-		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
-	}()
+	defer func() { finishUpload(uploadId, pendingUpload, totalBytesWritten) }()
 
 	reader := c.Request.Body
 	buffer := make([]byte, 32*1024)
