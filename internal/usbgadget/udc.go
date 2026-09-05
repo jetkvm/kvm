@@ -117,6 +117,8 @@ func (u *UsbGadget) SoftReconnect() error {
 	if err := softDisconnect(u.udc); err != nil {
 		return err
 	}
+	// The host re-enumerates on reconnect, the same as after a rebind.
+	u.resetHidHandover()
 	return softConnect(u.udc)
 }
 

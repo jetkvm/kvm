@@ -63,6 +63,8 @@ func (u *UsbGadget) SetMassStorageImage(imagePath string) error {
 
 func (u *UsbGadget) forceEjectLocked() error {
 	if softDisconnect(u.udc) == nil {
+		// The host re-enumerates on reconnect, the same as after a rebind.
+		u.resetHidHandover()
 		defer func() {
 			_ = softConnect(u.udc)
 		}()
