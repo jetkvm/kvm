@@ -117,6 +117,13 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 		return err
 	}
 
+	if pressed := buttons != 0; pressed != u.absMousePressed {
+		u.absMousePressed = pressed
+		updateHidHandover(func(h *hidHandover) {
+			h.AbsPressed, h.AbsX, h.AbsY = pressed, x, y
+		})
+	}
+
 	u.resetUserInputTime()
 	return nil
 }

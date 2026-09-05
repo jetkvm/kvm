@@ -191,9 +191,16 @@ func (u *UsbGadget) Init() error {
 
 	// A restarted process inherits the previous instance's gadget. Leave it
 	// alone when it already matches, instead of dropping the host session.
-	err := u.configureUsbGadget(true, false)
+	adopted, err := u.configureUsbGadget(true, false)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
+	}
+	if adopted {
+		u.adoptLiveGadget()
+	} else {
+		// The host re-enumerated, which released every input and will resend
+		// its LED state, so nothing from the previous instance applies.
+		updateHidHandover(func(h *hidHandover) { *h = hidHandover{} })
 	}
 
 	return nil
@@ -207,7 +214,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	// Callers ask for this on config changes and as the recovery fallback,
 	// so always rebind here even if the configfs tree looks untouched.
-	err := u.configureUsbGadget(true, true)
+	_, err := u.configureUsbGadget(true, true)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
@@ -215,8 +222,11 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 	return nil
 }
 
-func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) error {
+// configureUsbGadget reports whether it left an already matching, attached
+// gadget bound instead of rebinding it.
+func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, error) {
 	disconnected := false
+	adopted := false
 	err := u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
 		u.tx.CreateConfigPath()
@@ -236,6 +246,7 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) error {
 				// the mass storage function's kernel thread (#1360), so only pay
 				// for it when the configuration actually changes.
 				u.log.Info().Msg("USB gadget already configured and attached, skipping rebind")
+				adopted = true
 				return nil
 			}
 		}
@@ -253,7 +264,7 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) error {
 	if err != nil && disconnected {
 		_ = softConnect(u.udc)
 	}
-	return err
+	return adopted && err == nil, err
 }
 
 // isGadgetLive reports whether the UDC driver is bound and the gadget is
