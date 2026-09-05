@@ -2606,9 +2606,9 @@ test.describe("Remote Host Agent", () => {
   // USB SERIAL CONSOLE UI
   // ═══════════════════════════════════════════
 
-  test("usb: USB Serial Console terminal sends and receives data via ttyGS0", async () => {
+  test("usb: USB Serial Console terminal sends and receives data via ttyGS0, also after a reconnect", async () => {
     // Budget for the ModemManager-probe wait plus typed-string retries.
-    test.setTimeout(120_000);
+    test.setTimeout(150_000);
 
     test.skip(!process.env.JETKVM_REMOTE_HOST, "JETKVM_REMOTE_HOST not set");
 
@@ -2658,6 +2658,33 @@ test.describe("Remote Host Agent", () => {
       const received = remoteHostExec("sudo cat /tmp/cdcacm_rx.txt 2>/dev/null || true").trim();
       expect(received).toContain(sentString);
     }).toPass({ timeout: 20_000 });
+
+    // An app restart drops the peer connection and the UI sets up a new one
+    // without a reload. The console must follow it: a data channel left over
+    // from the old connection is dead and the typed string never arrives.
+    await restartAppViaSSH();
+    await waitForWebRTCReady(sharedPage);
+
+    // The host may have re-enumerated the gadget, so point a fresh reader at
+    // the port. Kill the old one first or two readers split the data.
+    try {
+      remoteHostExec("sudo pkill -f 'cat /dev/ttyAC[M]'");
+    } catch {
+      /* no reader running */
+    }
+    const ttyAfter = await waitForRemoteHostTtyACM(true);
+    remoteHostExec(`sudo stty -F ${ttyAfter} 9600 raw -echo`);
+    remoteHostExec(`sudo bash -c 'nohup cat ${ttyAfter} > /tmp/cdcacm_rx.txt 2>/dev/null &'`);
+
+    await sharedPage.keyboard.press("Escape");
+    await cdcButton.click();
+    await expect(async () => {
+      const sentString = `e2e_reconnect_${Date.now()}`;
+      await sharedPage.keyboard.type(sentString, { delay: 50 });
+      await new Promise(r => setTimeout(r, 1000));
+      const received = remoteHostExec("sudo cat /tmp/cdcacm_rx.txt 2>/dev/null || true").trim();
+      expect(received).toContain(sentString);
+    }).toPass({ timeout: 30_000 });
 
     // Test receiving data: send from remote host to ttyACM
     const replyString = `reply_${Date.now()}`;
