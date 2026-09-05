@@ -31,6 +31,9 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 			d.Close()
 			return
 		}
+		// Reap the shell when it exits, whether on its own or from the kill
+		// in OnClose. Without this every closed session leaves a zombie.
+		go func() { _ = cmd.Wait() }()
 
 		go func() {
 			buf := make([]byte, 1024)
