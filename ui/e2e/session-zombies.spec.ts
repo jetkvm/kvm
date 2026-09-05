@@ -28,6 +28,15 @@ test("closed sessions leave no zombie shells behind", async ({ browser }) => {
     const page = await browser.newPage();
     await page.goto("/", { waitUntil: "networkidle" });
     await waitForWebRTCReady(page);
+    // The terminal channel opens on its own after the HID channel, and the
+    // device spawns the shell only once it does. Closing earlier would leave
+    // nothing to reap and pass without the fix.
+    await expect
+      .poll(() => page.evaluate(() => window.__kvmTestHooks?.isTerminalReady() ?? false), {
+        message: "terminal channel should open",
+        timeout: 15_000,
+      })
+      .toBe(true);
     await page.close();
   }
 
