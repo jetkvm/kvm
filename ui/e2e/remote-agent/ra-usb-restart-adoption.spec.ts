@@ -7,6 +7,7 @@ import {
   ensureRpcReady,
   getLedState,
   restartAppViaSSH,
+  sendAbsMouseMove,
   sendKeypress,
   tapKey,
   waitForLedState,
@@ -149,4 +150,46 @@ test("app restart keeps the host's keyboard LED state", async () => {
     await tapKey(page, HID_KEY.CAPS_LOCK);
     await waitForLedState(page, "caps_lock", initial!.caps_lock).catch(() => {});
   }
+});
+
+test("app restart releases an absolute mouse button once", async () => {
+  test.setTimeout(120_000);
+
+  const press = { x: 16384, y: 16384 };
+  const away = { x: 8192, y: 8192 };
+
+  await agent!.clearMouseEvents();
+  await sendAbsMouseMove(page, press.x, press.y, 1);
+  await expect
+    .poll(
+      async () =>
+        (await agent!.getMouseEvents()).some(ev => ev.type === "mouse_button" && ev.value === 1),
+      { message: "host should see the button pressed", timeout: 5_000 },
+    )
+    .toBe(true);
+
+  const before = gadgetDeviceNumber();
+  await restartAppViaSSH();
+
+  await expect
+    .poll(
+      async () =>
+        (await agent!.getMouseEvents()).some(ev => ev.type === "mouse_button" && ev.value === 0),
+      { message: "new process should release the button on the host", timeout: 15_000 },
+    )
+    .toBe(true);
+  expect(gadgetDeviceNumber(), "gadget must not re-enumerate on app restart").toBe(before);
+
+  // Park the cursor elsewhere. A release replayed at the press position on
+  // the next restart would show up on the host as a move back to it.
+  await reconnect();
+  await agent!.expectMouseMove(() => sendAbsMouseMove(page, away.x, away.y));
+  await agent!.clearMouseEvents();
+
+  await restartAppViaSSH();
+  await new Promise(r => setTimeout(r, 3_000));
+  expect(await agent!.getMouseEvents(), "second restart must not replay the release").toEqual([]);
+  expect(gadgetDeviceNumber(), "gadget must not re-enumerate on app restart").toBe(before);
+
+  await reconnect();
 });
