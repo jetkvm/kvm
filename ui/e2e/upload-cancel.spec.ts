@@ -14,13 +14,16 @@ const FILE_SIZE = 16 * 1024 * 1024;
 const REMOTE = `/userdata/jetkvm/images/${FILE_NAME}`;
 const THROTTLED_UPLOAD_BYTES_PER_SEC = 2 * 1024 * 1024;
 
+// A failed read throws instead of reading as an empty file, so an SSH
+// hiccup cannot pass as a stopped upload.
 async function remoteSize(): Promise<number> {
   // The device has no stat binary.
   const out = await sshExec(
     `f=${REMOTE}.incomplete; [ -f "$f" ] || f=${REMOTE}; [ -f "$f" ] && wc -c < "$f" || echo 0`,
-    true,
   );
-  return parseInt(out.trim(), 10) || 0;
+  const size = parseInt(out.trim(), 10);
+  if (Number.isNaN(size)) throw new Error(`unexpected size output: ${JSON.stringify(out)}`);
+  return size;
 }
 
 async function openUploadView(page: Page): Promise<void> {
@@ -73,6 +76,7 @@ test.describe("Upload cancel and resume", () => {
     await page.waitForTimeout(1_000);
     const afterCancel = await remoteSize();
     await page.waitForTimeout(1_500);
+    expect(afterCancel, "partial file must exist after Cancel").toBeGreaterThan(0);
     expect(await remoteSize(), "upload kept streaming after Cancel").toBe(afterCancel);
     expect(afterCancel, "cancelled upload must not complete").toBeLessThan(FILE_SIZE);
 

@@ -679,12 +679,17 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		pendingUploadsMutex.Unlock()
 	}()
 	uploadComplete := make(chan struct{})
+	var finishOnce sync.Once
+	finish := func() { finishOnce.Do(func() { close(uploadComplete) }) }
+	// A client that cancels closes the channel. Without this the handler
+	// blocked forever, keeping the file open and the pending entry alive.
+	d.OnClose(finish)
 	lastProgressTime := time.Now()
 	d.OnMessage(func(msg webrtc.DataChannelMessage) {
 		bytesWritten, err := pendingUpload.File.Write(msg.Data)
 		if err != nil {
 			logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
-			close(uploadComplete)
+			finish()
 			return
 		}
 		totalBytesWritten += int64(bytesWritten)
@@ -692,7 +697,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		sendProgress := time.Since(lastProgressTime) >= 200*time.Millisecond
 		if totalBytesWritten >= pendingUpload.Size {
 			sendProgress = true
-			close(uploadComplete)
+			finish()
 		}
 
 		if sendProgress {
