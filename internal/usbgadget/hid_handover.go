@@ -62,9 +62,11 @@ func loadHidHandover() (hidHandover, bool) {
 // released every input and makes it resend its LED state, so nothing from
 // before the rebind applies to the next adoption.
 func (u *UsbGadget) resetHidHandover() {
+	// Hold the mouse lock through the write, or a press reported in between
+	// would be persisted and then overwritten.
 	u.absMouseLock.Lock()
+	defer u.absMouseLock.Unlock()
 	u.absMousePressed = false
-	u.absMouseLock.Unlock()
 	updateHidHandover(func(h *hidHandover) { *h = hidHandover{} })
 }
 
