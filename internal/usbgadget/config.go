@@ -189,9 +189,14 @@ func (u *UsbGadget) Init() error {
 
 	u.syncMassStorageImageFromKernel()
 
-	err := u.configureUsbGadget(true)
+	// A restarted process inherits the previous instance's gadget. Leave it
+	// alone when it already matches, instead of dropping the host session.
+	adopted, err := u.configureUsbGadget(true, false)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
+	}
+	if adopted {
+		u.adoptLiveGadget()
 	}
 
 	return nil
@@ -203,7 +208,9 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	u.loadGadgetConfig()
 
-	err := u.configureUsbGadget(true)
+	// Callers ask for this on config changes and as the recovery fallback,
+	// so always rebind here even if the configfs tree looks untouched.
+	_, err := u.configureUsbGadget(true, true)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
@@ -211,22 +218,60 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 	return nil
 }
 
-func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
-	if resetUsb {
-		_ = softDisconnect(u.udc)
-	}
-
+// configureUsbGadget reports whether it left an already matching, attached
+// gadget bound instead of rebinding it.
+func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, error) {
+	disconnected := false
+	adopted := false
 	err := u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
 		u.tx.CreateConfigPath()
 		u.tx.WriteGadgetConfig()
-		if resetUsb {
-			u.tx.RebindUsb(true)
+		if !resetUsb {
+			return nil
 		}
+
+		if !forceRebind {
+			pending, err := u.tx.HasPendingChanges()
+			if err != nil {
+				return err
+			}
+			if !pending && u.isGadgetLive() {
+				// The configfs tree already matches and the gadget is bound and
+				// attached. Leave the host session alone: every disconnect races
+				// the mass storage function's kernel thread (#1360), so only pay
+				// for it when the configuration actually changes.
+				u.log.Info().Msg("USB gadget already configured and attached, skipping rebind")
+				adopted = true
+				return nil
+			}
+		}
+
+		// Close HID descriptors before the unbind for the same reason as in
+		// rebindUsb, then quiesce the host session before the controller
+		// teardown so function drivers shut their endpoints down against a
+		// live controller.
+		u.ResetHIDFiles()
+		_ = softDisconnect(u.udc)
+		disconnected = true
+		u.tx.RebindUsb(true)
 		return nil
 	})
-	if err != nil && resetUsb {
+	if err != nil && disconnected {
 		_ = softConnect(u.udc)
 	}
-	return err
+	if err == nil && disconnected {
+		u.resetHidHandover()
+	}
+	return adopted && err == nil, err
+}
+
+// isGadgetLive reports whether the host can see the device as currently
+// configured: the UDC driver is bound, the gadget is attached to it and the
+// pull-up is on. The last check matters for a process that died between its
+// soft disconnect and the rebind: the first two still hold, but the host
+// sees nothing until something reconnects.
+func (u *UsbGadget) isGadgetLive() bool {
+	bound, err := u.IsUDCBound()
+	return err == nil && bound && u.IsGadgetAttachedToUDC() && isPullupEnabled(u.udc)
 }

@@ -6,7 +6,7 @@ var audioConfig = gadgetConfigItem{
 	path:       []string{"functions", "uac1.usb0"},
 	configPath: []string{"uac1.usb0"},
 	attrs: gadgetAttributes{
-		"c_chmask": "0x3",
+		"c_chmask": "3",
 		"c_srate":  "48000",
 		"c_ssize":  "2",
 		"p_chmask": "0",

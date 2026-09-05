@@ -152,6 +152,11 @@ func (u *UsbGadget) updateKeyboardState(state byte) {
 		return
 	}
 
+	// Persist every report, unchanged ones included: a rebind resets the
+	// handover, and the host's report after re-enumeration usually repeats
+	// the state the process already holds.
+	updateHidHandover(func(h *hidHandover) { h.KeyboardLeds = state })
+
 	if u.keyboardState == state {
 		return
 	}

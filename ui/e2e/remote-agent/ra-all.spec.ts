@@ -28,6 +28,7 @@ import {
   getLedState,
   waitForLedState,
   restartAppViaSSH,
+  rebootDeviceViaSSH,
   semverGte,
 } from "../helpers";
 import {
