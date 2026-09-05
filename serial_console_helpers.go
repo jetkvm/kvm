@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -224,9 +225,13 @@ type consoleEvent struct {
 }
 
 type ConsoleBroker struct {
-	sink Sink
-	in   chan consoleEvent
-	done chan struct{}
+	// sinkLock makes a conditional clear atomic with a replacement: the old
+	// channel's OnClose and the new channel's OnOpen run on their own
+	// goroutines.
+	sinkLock sync.Mutex
+	sink     Sink
+	in       chan consoleEvent
+	done     chan struct{}
 
 	// pause control
 	terminalPaused bool
@@ -272,9 +277,23 @@ func NewConsoleBroker(s Sink, norm NormalizationOptions) *ConsoleBroker {
 	}
 }
 
-func (b *ConsoleBroker) Start()                                   { go b.loop() }
-func (b *ConsoleBroker) Close()                                   { close(b.done) }
-func (b *ConsoleBroker) SetSink(s Sink)                           { b.sink = s }
+func (b *ConsoleBroker) Start() { go b.loop() }
+func (b *ConsoleBroker) Close() { close(b.done) }
+func (b *ConsoleBroker) SetSink(s Sink) {
+	b.sinkLock.Lock()
+	defer b.sinkLock.Unlock()
+	b.sink = s
+}
+
+// ClearSink detaches s, and leaves the sink alone when another one has
+// replaced it since.
+func (b *ConsoleBroker) ClearSink(s Sink) {
+	b.sinkLock.Lock()
+	defer b.sinkLock.Unlock()
+	if b.sink == s {
+		b.sink = nil
+	}
+}
 func (b *ConsoleBroker) SetNormOptions(norm NormalizationOptions) { b.norm = norm }
 func (b *ConsoleBroker) SetTerminalPaused(v bool) {
 	if b == nil {
