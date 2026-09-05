@@ -4,16 +4,20 @@ import { ensureNoPasswordViaAPI, sshExec, waitForWebRTCReady } from "./helpers";
 // Every WebRTC session opens a terminal data channel, and the device spawns a
 // shell for it. A closed session has to reap that shell (#1578).
 
+// The scan ends with a sentinel so a failed or truncated SSH call cannot
+// read as "no zombies". Errors propagate instead of being ignored.
 async function zombieChildrenOfApp(): Promise<string[]> {
   const out = await sshExec(
     "for p in /proc/[0-9]*; do " +
       'set -- $(awk "{print \\$2, \\$3, \\$4}" $p/stat 2>/dev/null); ' +
       '[ "$2" = Z ] || continue; ' +
       'grep -q jetkvm_app /proc/$3/comm 2>/dev/null && echo "$(basename $p) $1"; ' +
-      "done",
-    true,
+      "done; echo scan-done",
   );
-  return out.trim().split("\n").filter(Boolean);
+  const lines = out.trim().split("\n").filter(Boolean);
+  if (lines.pop() !== "scan-done")
+    throw new Error(`zombie scan did not complete: ${JSON.stringify(out)}`);
+  return lines;
 }
 
 test("closed sessions leave no zombie shells behind", async ({ browser }) => {
