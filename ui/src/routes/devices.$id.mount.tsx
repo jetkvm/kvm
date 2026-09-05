@@ -786,6 +786,8 @@ function DeviceFileView({
   );
 }
 
+const START_STORAGE_UPLOAD_TIMEOUT_MS = 30_000;
+
 function UploadFileView({
   onBack,
   onCancelUpload,
@@ -804,35 +806,52 @@ function UploadFileView({
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { send } = useJsonRpc();
-  const rtcDataChannelRef = useRef<RTCDataChannel | null>(null);
 
-  useEffect(() => {
-    const ref = rtcDataChannelRef.current;
-    return () => {
-      console.log("unmounting");
-      if (ref) {
-        ref.onopen = null;
-        ref.onerror = null;
-        ref.onmessage = null;
-        ref.onclose = null;
-        ref.close();
-      }
-    };
+  // One controller per upload attempt. Aborting it stops the transport the
+  // attempt is using and makes its late callbacks return early, so
+  // cancelling, picking another file or leaving the view cannot leave a
+  // transfer running or write into stale state.
+  const attemptRef = useRef<AbortController | null>(null);
+
+  const abortUpload = useCallback(() => {
+    attemptRef.current?.abort();
+    attemptRef.current = null;
   }, []);
 
-  function handleWebRTCUpload(file: File, alreadyUploadedBytes: number, dataChannel: string) {
+  useEffect(() => abortUpload, [abortUpload]);
+
+  function failUpload(error: string) {
+    abortUpload();
+    setUploadError(error);
+    setUploadState("idle");
+    setUploadSpeed(null);
+  }
+
+  function handleWebRTCUpload(
+    file: File,
+    alreadyUploadedBytes: number,
+    dataChannel: string,
+    signal: AbortSignal,
+  ) {
     const rtcDataChannel = useRTCStore.getState().peerConnection?.createDataChannel(dataChannel);
 
     if (!rtcDataChannel) {
       console.error("Failed to create data channel for file upload");
       notifications.error(m.mount_upload_failed_datachannel());
-      setUploadState("idle");
+      failUpload(m.mount_upload_failed_datachannel());
       console.log("Upload state set to 'idle'");
 
       return;
     }
 
-    rtcDataChannelRef.current = rtcDataChannel;
+    signal.addEventListener("abort", () => {
+      rtcDataChannel.onopen = null;
+      rtcDataChannel.onerror = null;
+      rtcDataChannel.onmessage = null;
+      rtcDataChannel.onclose = null;
+      rtcDataChannel.onbufferedamountlow = null;
+      rtcDataChannel.close();
+    });
 
     const lowWaterMark = 256 * 1024;
     const highWaterMark = 1 * 1024 * 1024;
@@ -882,6 +901,7 @@ function UploadFileView({
 
       let offset = alreadyUploadedBytes;
       const sendNextChunk = () => {
+        if (signal.aborted) return;
         if (offset >= file.size) {
           rtcDataChannel.close();
           setUploadState("success");
@@ -892,7 +912,14 @@ function UploadFileView({
 
         const chunk = file.slice(offset, offset + chunkSize);
         chunk.arrayBuffer().then(buffer => {
-          rtcDataChannel.send(buffer);
+          if (signal.aborted) return;
+          try {
+            rtcDataChannel.send(buffer);
+          } catch (error) {
+            console.error("RTC Data channel send failed:", error);
+            failUpload(m.mount_upload_failed_rtc({ error: String(error) }));
+            return;
+          }
 
           if (rtcDataChannel.bufferedAmount >= highWaterMark) {
             pauseSending = true;
@@ -915,16 +942,22 @@ function UploadFileView({
     rtcDataChannel.onerror = error => {
       console.error("RTC Data channel error:", error);
       notifications.error(m.mount_upload_failed_rtc({ error: error }));
-      setUploadState("idle");
+      failUpload(m.mount_upload_failed_rtc({ error: error }));
       console.log("Upload state set to 'idle'");
     };
   }
 
-  async function handleHttpUpload(file: File, alreadyUploadedBytes: number, dataChannel: string) {
-    const uploadUrl = `${DEVICE_API}/storage/upload?uploadId=${dataChannel}`;
+  function handleHttpUpload(
+    file: File,
+    alreadyUploadedBytes: number,
+    uploadId: string,
+    signal: AbortSignal,
+  ) {
+    const uploadUrl = `${DEVICE_API}/storage/upload?uploadId=${encodeURIComponent(uploadId)}`;
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", uploadUrl, true);
+    signal.addEventListener("abort", () => xhr.abort());
 
     let lastUploadedBytes = alreadyUploadedBytes;
     let lastUpdateTime = Date.now();
@@ -965,15 +998,13 @@ function UploadFileView({
         setUploadState("success");
       } else {
         console.error("Upload error:", xhr.statusText);
-        setUploadError(xhr.statusText);
-        setUploadState("idle");
+        failUpload(xhr.statusText);
       }
     };
 
     xhr.onerror = () => {
       console.error("XHR error:", xhr.statusText);
-      setUploadError(xhr.statusText);
-      setUploadState("idle");
+      failUpload(xhr.statusText);
     };
 
     // Prepare the data to send
@@ -996,6 +1027,12 @@ function UploadFileView({
         return;
       }
 
+      // A previous attempt, if any, is abandoned here.
+      abortUpload();
+      const attempt = new AbortController();
+      attemptRef.current = attempt;
+      const { signal } = attempt;
+
       setFileError(null);
       console.log(`File selected: ${file.name}, size: ${file.size} bytes`);
       setUploadedFileName(file.name);
@@ -1003,32 +1040,50 @@ function UploadFileView({
       setUploadState("uploading");
       console.log("Upload state set to 'uploading'");
 
+      const startTimeout = window.setTimeout(() => {
+        if (signal.aborted) return;
+        failUpload("Timed out waiting to start the storage upload");
+      }, START_STORAGE_UPLOAD_TIMEOUT_MS);
+
       send(
         "startStorageFileUpload",
         { filename: file.name, size: file.size },
         (resp: JsonRpcResponse) => {
+          if (signal.aborted) return;
+          window.clearTimeout(startTimeout);
           console.log("startStorageFileUpload response:", resp);
           if ("error" in resp) {
             console.error("Upload error:", resp.error.message);
-            setUploadError(resp.error.data || resp.error.message);
-            setUploadState("idle");
+            failUpload(resp.error.data || resp.error.message);
             console.log("Upload state set to 'idle'");
             return;
           }
 
-          const { alreadyUploadedBytes, dataChannel } = resp.result as {
-            alreadyUploadedBytes: number;
-            dataChannel: string;
+          const { alreadyUploadedBytes, dataChannel } = (resp.result ?? {}) as {
+            alreadyUploadedBytes?: unknown;
+            dataChannel?: unknown;
           };
+          if (
+            typeof alreadyUploadedBytes !== "number" ||
+            !Number.isSafeInteger(alreadyUploadedBytes) ||
+            alreadyUploadedBytes < 0 ||
+            alreadyUploadedBytes > file.size ||
+            typeof dataChannel !== "string" ||
+            dataChannel.length === 0
+          ) {
+            console.error("Invalid startStorageFileUpload response:", resp.result);
+            failUpload("Invalid response from device");
+            return;
+          }
 
           console.log(
             `Already uploaded bytes: ${alreadyUploadedBytes}, Data channel: ${dataChannel}`,
           );
 
           if (isOnDevice) {
-            handleHttpUpload(file, alreadyUploadedBytes, dataChannel);
+            handleHttpUpload(file, alreadyUploadedBytes, dataChannel, signal);
           } else {
-            handleWebRTCUpload(file, alreadyUploadedBytes, dataChannel);
+            handleWebRTCUpload(file, alreadyUploadedBytes, dataChannel, signal);
           }
         },
       );
@@ -1186,6 +1241,7 @@ function UploadFileView({
               theme="light"
               text={m.mount_button_cancel_upload()}
               onClick={() => {
+                abortUpload();
                 onCancelUpload();
                 setUploadState("idle");
                 setUploadProgress(0);
