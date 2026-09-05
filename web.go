@@ -214,6 +214,11 @@ func setupRouter() *gin.Engine {
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}
 
+	// Screenshot endpoints: for headless/API consumers (CI, HIL rigs), not the
+	// browser UI, so they use apiAuthMiddleware rather than cookie auth.
+	r.GET("/screenshot.jpg", apiAuthMiddleware(), handleScreenshotJPEG)
+	r.GET("/screenshot.png", apiAuthMiddleware(), handleScreenshotPNG)
+
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
 		if c.Request.Method == "GET" && c.NegotiateFormat(gin.MIMEHTML) == gin.MIMEHTML {
@@ -567,6 +572,42 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 
 		err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password))
 		if err != nil {
+			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// apiAuthMiddleware gates endpoints meant for both headless/programmatic
+// access (CI, HIL test rigs) and the browser UI. In noPassword mode it lets
+// requests through with no credentials, same trusted-network assumption as
+// the cookie-protected routes. In password mode it accepts either the same
+// session cookie protectedMiddleware checks (so an already-logged-in tab can
+// just load the URL directly) or HTTP Basic Auth against the device
+// password with the username ignored (so a script can just
+// `curl -u api:<password>`).
+func apiAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		if authToken, err := c.Cookie("authToken"); err == nil && authToken != "" && authToken == config.LocalAuthToken {
+			c.Next()
+			return
+		}
+
+		_, password, ok := c.Request.BasicAuth()
+		if !ok {
+			c.Header("WWW-Authenticate", "Basic realm=\"JetKVM\"")
+			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Basic auth is required")
+			return
+		}
+
+		if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password)); err != nil {
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}

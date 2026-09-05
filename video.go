@@ -1,9 +1,16 @@
 package kvm
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"image/jpeg"
+	"image/png"
+	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/sync"
@@ -35,6 +42,105 @@ func triggerVideoStateUpdate() {
 func rpcGetVideoState() (native.VideoState, error) {
 	notifyFailsafeMode(currentSession)
 	return lastVideoState, nil
+}
+
+const (
+	screenshotAutoStartTimeout  = 10 * time.Second
+	screenshotSnapshotRetryWait = 300 * time.Millisecond
+)
+
+var (
+	screenshotInFlightMu sync.Mutex
+	screenshotInFlight   int
+)
+
+// captureScreenshot returns a JPEG snapshot, starting video capture on
+// demand if nothing is currently streaming (e.g. no browser session is
+// open) and stopping it again afterward, unless a real WebRTC session or
+// another concurrent screenshot request still needs it running.
+// VideoStart is idempotent (a no-op if a session already has capture
+// running), so it's always safe to call here.
+func captureScreenshot() ([]byte, error) {
+	screenshotInFlightMu.Lock()
+	screenshotInFlight++
+	screenshotInFlightMu.Unlock()
+	defer func() {
+		screenshotInFlightMu.Lock()
+		screenshotInFlight--
+		screenshotInFlightMu.Unlock()
+	}()
+
+	deadline := time.Now().Add(screenshotAutoStartTimeout)
+	_ = nativeInstance.VideoStart()
+	defer func() {
+		screenshotInFlightMu.Lock()
+		soleRequester := screenshotInFlight <= 1
+		screenshotInFlightMu.Unlock()
+		if soleRequester && getActiveSessions() == 0 {
+			_ = nativeInstance.VideoStop()
+		}
+	}()
+
+	for {
+		jpegBytes, err := nativeInstance.VideoGetSnapshot()
+		if err == nil {
+			return jpegBytes, nil
+		}
+		// Retry on any error while the deadline allows, not just
+		// ErrVideoNotStreaming: the native side also returns transient
+		// per-attempt errors (encoder timeout, no frame yet) while capture
+		// is still spinning up or between frames, which should be retried
+		// against the next captured frame rather than failing immediately.
+		if !time.Now().Before(deadline) {
+			return nil, err
+		}
+		time.Sleep(screenshotSnapshotRetryWait)
+	}
+}
+
+// handleScreenshotJPEG returns a single JPEG-encoded frame of the current
+// video feed, straight from the native capture. Starts video capture on
+// demand if nothing is currently streaming.
+func handleScreenshotJPEG(c *gin.Context) {
+	jpegBytes, err := captureScreenshot()
+	if err != nil {
+		writeScreenshotError(c, err)
+		return
+	}
+	c.Data(http.StatusOK, "image/jpeg", jpegBytes)
+}
+
+// handleScreenshotPNG returns the same frame as handleScreenshotJPEG,
+// re-encoded as PNG. The capture hardware only produces JPEG, so this costs
+// a decode+re-encode on the device CPU; fine for an occasional snapshot.
+func handleScreenshotPNG(c *gin.Context) {
+	jpegBytes, err := captureScreenshot()
+	if err != nil {
+		writeScreenshotError(c, err)
+		return
+	}
+
+	img, err := jpeg.Decode(bytes.NewReader(jpegBytes))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decode captured frame"})
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode PNG"})
+		return
+	}
+
+	c.Data(http.StatusOK, "image/png", buf.Bytes())
+}
+
+func writeScreenshotError(c *gin.Context, err error) {
+	if errors.Is(err, native.ErrVideoNotStreaming) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no video signal detected (timed out starting capture)"})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 }
 
 var (
