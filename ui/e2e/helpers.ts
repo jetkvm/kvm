@@ -566,7 +566,9 @@ export async function loginLocal(
   const errorLocator = page.locator(".text-red-500, .text-red-600").first();
   const outcome = await Promise.race([
     page
-      .waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 })
+      .waitForURL(url => !url.toString().includes("/login"), {
+        timeout: 5000,
+      })
       .then(() => "navigated" as const),
     errorLocator.waitFor({ state: "visible", timeout: 5000 }).then(() => "error" as const),
   ]).catch(() => "timeout" as const);
@@ -630,7 +632,9 @@ export async function enablePasswordFromSettings(
   await passwordInput.fill(password);
   await confirmPasswordInput.fill(confirmPassword ?? password);
 
-  const secureButton = page.getByRole("button", { name: /Secure|Set Password/i });
+  const secureButton = page.getByRole("button", {
+    name: /Secure|Set Password/i,
+  });
   await secureButton.click();
 
   if (expectSuccess) {
@@ -690,7 +694,9 @@ export async function disablePasswordFromSettings(
   await expect(passwordInput).toBeVisible({ timeout: 5000 });
   await passwordInput.fill(currentPassword);
 
-  const confirmDisableButton = page.getByRole("button", { name: /Disable.*Protection/i });
+  const confirmDisableButton = page.getByRole("button", {
+    name: /Disable.*Protection/i,
+  });
   await confirmDisableButton.click();
 
   if (expectSuccess) {
@@ -734,7 +740,9 @@ export async function sshExec(cmd: string, ignoreErrors = false): Promise<string
 
   for (let attempt = 1; attempt <= SSH_MAX_RETRIES; attempt++) {
     try {
-      const { stdout } = await execAsync(sshCmd, { timeout: SSH_COMMAND_TIMEOUT_MS });
+      const { stdout } = await execAsync(sshCmd, {
+        timeout: SSH_COMMAND_TIMEOUT_MS,
+      });
       return stdout;
     } catch (error) {
       if (ignoreErrors) return "";
@@ -834,10 +842,13 @@ async function getRestartAppPathViaSSH(): Promise<string> {
   return runningDebug.trim() === "1" ? REMOTE_DEBUG_APP_PATH : REMOTE_APP_PATH;
 }
 
-export async function restartAppViaSSH(): Promise<void> {
+export async function restartAppViaSSH(opts: { beforeStart?: string } = {}): Promise<void> {
   const appPath = await getRestartAppPathViaSSH();
   await sshExec("killall jetkvm_app jetkvm_app_debug", true);
   await new Promise(r => setTimeout(r, 500));
+  // Runs on the device while no app is up, for tests that stage the state a
+  // crashed process would leave behind.
+  if (opts.beforeStart) await sshExec(opts.beforeStart);
   // Rotate last.log into last.log.prev before respawning so a later teardown
   // can still recover the previous session's output if a subsequent restart
   // truncates the live log. Combined into one SSH call to save a round-trip.
