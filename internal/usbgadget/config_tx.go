@@ -62,14 +62,15 @@ func (u *UsbGadget) WithTransaction(fn func() error) error {
 		u.log.Error().Err(err).Msg("failed to create transaction")
 		return err
 	}
+	// Clear the transaction on every exit, or a callback error would leave
+	// it behind and every later WithTransaction would fail to start one.
+	defer func() { u.tx = nil }()
+
 	if err := fn(); err != nil {
 		u.log.Error().Err(err).Msg("transaction failed")
 		return err
 	}
-	result := u.tx.Commit()
-	u.tx = nil
-
-	return result
+	return u.tx.Commit()
 }
 
 func (tx *UsbGadgetTransaction) addFileChange(component string, change RequestedFileChange) string {

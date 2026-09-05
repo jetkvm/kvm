@@ -74,6 +74,14 @@ func (u *UsbGadget) adoptLiveGadget() {
 		u.log.Warn().Err(err).Msg("failed to release inherited relative mouse buttons")
 	}
 	if ok && h.AbsPressed {
+		// Seed the press state so the release below is a real edge and clears
+		// the handover entry; otherwise the next adoption would replay it.
+		// The position is where the button went down: a drag in progress at
+		// the restart snaps back there, which keeps the hot path free of a
+		// file write per mouse move.
+		u.absMouseLock.Lock()
+		u.absMousePressed = true
+		u.absMouseLock.Unlock()
 		if err := u.AbsMouseReport(h.AbsX, h.AbsY, 0); err != nil {
 			u.log.Warn().Err(err).Msg("failed to release inherited absolute mouse buttons")
 		}
