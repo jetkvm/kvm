@@ -613,6 +613,24 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 		return nil, fmt.Errorf("file already exists: %s", sanitizedFilename)
 	}
 
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+
+	// A retry after a cancel must not race the transfer it replaces. A data
+	// channel closes gracefully and still delivers what it had buffered, so
+	// the old handler could keep appending while the new one measures the
+	// partial file and appends too. Closing the old file ends that transfer.
+	for id, p := range pendingUploads {
+		if p.File.Name() != uploadPath {
+			continue
+		}
+		p.writeLock.Lock()
+		p.File.Close()
+		p.writeLock.Unlock()
+		delete(pendingUploads, id)
+		logger.Info().Str("uploadId", id).Msg("upload superseded by a new start for the same file")
+	}
+
 	var alreadyUploadedBytes int64 = 0
 	if stat, err := os.Stat(uploadPath); err == nil {
 		alreadyUploadedBytes = stat.Size()
@@ -623,13 +641,13 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file for upload: %v", err)
 	}
-	pendingUploadsMutex.Lock()
 	pendingUploads[uploadId] = pendingUpload{
 		File:                 file,
 		Size:                 size,
 		AlreadyUploadedBytes: alreadyUploadedBytes,
+		writeLock:            &sync.Mutex{},
 	}
-	pendingUploadsMutex.Unlock()
+	time.AfterFunc(uploadClaimTimeout, func() { expireUnclaimedUpload(uploadId) })
 	return &StorageFileUpload{
 		AlreadyUploadedBytes: alreadyUploadedBytes,
 		DataChannel:          uploadId,
@@ -640,10 +658,52 @@ type pendingUpload struct {
 	File                 *os.File
 	Size                 int64
 	AlreadyUploadedBytes int64
+	// writeLock serialises the transport's writes with a supersede from
+	// rpcStartStorageFileUpload, so nothing lands after the replacement
+	// measured the partial file.
+	writeLock *sync.Mutex
+	claimed   bool
 }
+
+// uploadClaimTimeout bounds how long a started upload waits for its
+// transport. The UI gives up on the start call after 30 s; an abort in that
+// window used to leave the file open and the entry in the map until reboot.
+const uploadClaimTimeout = 60 * time.Second
 
 var pendingUploads = make(map[string]pendingUpload)
 var pendingUploadsMutex sync.Mutex
+
+// claimPendingUpload hands the upload to its transport.
+func claimPendingUpload(uploadId string) (pendingUpload, bool) {
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+	p, ok := pendingUploads[uploadId]
+	if !ok {
+		return pendingUpload{}, false
+	}
+	p.claimed = true
+	pendingUploads[uploadId] = p
+	return p, true
+}
+
+// expireUnclaimedUpload releases an upload whose transport never arrived.
+func expireUnclaimedUpload(uploadId string) {
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+	p, ok := pendingUploads[uploadId]
+	if !ok || p.claimed {
+		return
+	}
+	p.File.Close()
+	delete(pendingUploads, uploadId)
+	logger.Warn().Str("uploadId", uploadId).Msg("upload transport never arrived, releasing the upload")
+}
+
+func (p pendingUpload) write(data []byte) (int, error) {
+	p.writeLock.Lock()
+	defer p.writeLock.Unlock()
+	return p.File.Write(data)
+}
 
 type UploadProgress struct {
 	Size                 int64
@@ -653,9 +713,7 @@ type UploadProgress struct {
 func handleUploadChannel(d *webrtc.DataChannel) {
 	defer d.Close()
 	uploadId := d.Label()
-	pendingUploadsMutex.Lock()
-	pendingUpload, ok := pendingUploads[uploadId]
-	pendingUploadsMutex.Unlock()
+	pendingUpload, ok := claimPendingUpload(uploadId)
 	if !ok {
 		logger.Warn().Str("uploadId", uploadId).Msg("upload channel opened for unknown upload")
 		return
@@ -686,7 +744,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 	d.OnClose(finish)
 	lastProgressTime := time.Now()
 	d.OnMessage(func(msg webrtc.DataChannelMessage) {
-		bytesWritten, err := pendingUpload.File.Write(msg.Data)
+		bytesWritten, err := pendingUpload.write(msg.Data)
 		if err != nil {
 			logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
 			finish()
@@ -724,9 +782,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 
 func handleUploadHttp(c *gin.Context) {
 	uploadId := c.Query("uploadId")
-	pendingUploadsMutex.Lock()
-	pendingUpload, ok := pendingUploads[uploadId]
-	pendingUploadsMutex.Unlock()
+	pendingUpload, ok := claimPendingUpload(uploadId)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Upload not found"})
 		return
@@ -762,7 +818,7 @@ func handleUploadHttp(c *gin.Context) {
 		}
 
 		if n > 0 {
-			bytesWritten, err := pendingUpload.File.Write(buffer[:n])
+			bytesWritten, err := pendingUpload.write(buffer[:n])
 			if err != nil {
 				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write upload data"})
