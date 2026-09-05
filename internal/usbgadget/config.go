@@ -197,10 +197,6 @@ func (u *UsbGadget) Init() error {
 	}
 	if adopted {
 		u.adoptLiveGadget()
-	} else {
-		// The host re-enumerated, which released every input and will resend
-		// its LED state, so nothing from the previous instance applies.
-		updateHidHandover(func(h *hidHandover) { *h = hidHandover{} })
 	}
 
 	return nil
@@ -264,12 +260,18 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, e
 	if err != nil && disconnected {
 		_ = softConnect(u.udc)
 	}
+	if err == nil && disconnected {
+		u.resetHidHandover()
+	}
 	return adopted && err == nil, err
 }
 
-// isGadgetLive reports whether the UDC driver is bound and the gadget is
-// attached to it, i.e. the host can see the device as currently configured.
+// isGadgetLive reports whether the host can see the device as currently
+// configured: the UDC driver is bound, the gadget is attached to it and the
+// pull-up is on. The last check matters for a process that died between its
+// soft disconnect and the rebind: the first two still hold, but the host
+// sees nothing until something reconnects.
 func (u *UsbGadget) isGadgetLive() bool {
 	bound, err := u.IsUDCBound()
-	return err == nil && bound && u.IsGadgetAttachedToUDC()
+	return err == nil && bound && u.IsGadgetAttachedToUDC() && isPullupEnabled(u.udc)
 }
