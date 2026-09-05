@@ -290,11 +290,89 @@ const MIN_VIDEO_DIMENSION = 100;
 const MOUSE_DISTANCE_THRESHOLD = 10;
 const MOUSE_VERIFY_RETRIES = 3;
 const MOUSE_SETTLE_MS = 150;
+// A HID move shows up in the video after a variable delay: encoder, network,
+// jitter buffer and decoder all add to it, and right after a reboot it can be
+// well above the settle time. Poll for the expected change instead of
+// sampling once at a fixed delay.
+const MOUSE_CHANGE_TIMEOUT_MS = 2000;
+const MOUSE_POLL_MS = 50;
+
+interface VideoRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+async function captureRegion(page: Page, region: VideoRegion): Promise<number[]> {
+  const fp = await captureVideoRegionFingerprint(
+    page,
+    region.x,
+    region.y,
+    region.width,
+    region.height,
+  );
+  expect(fp, "failed to capture video region").not.toBeNull();
+  return fp!;
+}
+
+// Capture the region once two consecutive samples match, so the baseline is
+// not a frame still catching up with the previous move.
+async function captureStableRegion(
+  page: Page,
+  region: VideoRegion,
+  timeoutMs: number,
+): Promise<number[]> {
+  const deadline = Date.now() + timeoutMs;
+  let previous = await captureRegion(page, region);
+  for (;;) {
+    await page.waitForTimeout(MOUSE_POLL_MS * 2);
+    const current = await captureRegion(page, region);
+    if (fingerprintDistance(previous, current) === 0 || Date.now() >= deadline) return current;
+    previous = current;
+  }
+}
+
+// Poll the region until its distance from `reference` satisfies `done`, or
+// the timeout passes. Returns the last distance either way.
+async function waitForRegionDistance(
+  page: Page,
+  region: VideoRegion,
+  reference: number[],
+  done: (distance: number) => boolean,
+  timeoutMs: number,
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const distance = fingerprintDistance(reference, await captureRegion(page, region));
+    if (done(distance) || Date.now() >= deadline) return distance;
+    await page.waitForTimeout(MOUSE_POLL_MS);
+  }
+}
+
+// A live track and known dimensions do not mean the browser is decoding yet.
+// Right after a reboot the first frames can take a while, and a check that
+// samples the video before then compares identical black frames.
+export async function waitForDecodedFrames(page: Page, timeout = 15000): Promise<void> {
+  const framesDecoded = () =>
+    page.evaluate(
+      async () => (await window.__kvmTestHooks?.getInboundVideoStats())?.framesDecoded ?? 0,
+    );
+  const start = await framesDecoded();
+  await expect
+    .poll(async () => (await framesDecoded()) > start, {
+      message: "Waiting for the browser to decode video frames",
+      timeout,
+      intervals: [200, 300, 500],
+    })
+    .toBe(true);
+}
 
 export interface MouseBidirCheckOptions {
   retries?: number;
   threshold?: number;
   settleMs?: number;
+  changeTimeoutMs?: number;
   testHidX?: number;
   testHidY?: number;
 }
@@ -312,6 +390,7 @@ export async function runMouseBidirectionalCheck(
     retries = MOUSE_VERIFY_RETRIES,
     threshold = MOUSE_DISTANCE_THRESHOLD,
     settleMs = MOUSE_SETTLE_MS,
+    changeTimeoutMs = MOUSE_CHANGE_TIMEOUT_MS,
   } = options;
 
   // Wait for video dimensions to be available (with polling)
@@ -321,10 +400,14 @@ export async function runMouseBidirectionalCheck(
   const testHidY = options.testHidY ?? Math.floor(HID_MAX * 0.7);
   const testPixel = hidToPixelCoords(testHidX, testHidY, videoWidth, videoHeight);
 
-  const regionX = Math.max(0, testPixel.x - CAPTURE_REGION_SIZE / 2);
-  const regionY = Math.max(0, testPixel.y - CAPTURE_REGION_SIZE / 2);
-  const regionWidth = Math.min(CAPTURE_REGION_SIZE, videoWidth - regionX);
-  const regionHeight = Math.min(CAPTURE_REGION_SIZE, videoHeight - regionY);
+  const region: VideoRegion = {
+    x: Math.max(0, testPixel.x - CAPTURE_REGION_SIZE / 2),
+    y: Math.max(0, testPixel.y - CAPTURE_REGION_SIZE / 2),
+    width: 0,
+    height: 0,
+  };
+  region.width = Math.min(CAPTURE_REGION_SIZE, videoWidth - region.x);
+  region.height = Math.min(CAPTURE_REGION_SIZE, videoHeight - region.y);
 
   let lastDistArrive = -1;
   let lastDistRestore = -1;
@@ -332,39 +415,26 @@ export async function runMouseBidirectionalCheck(
   for (let attempt = 1; attempt <= retries; attempt++) {
     await sendAbsMouseMove(page, 0, 0);
     await page.waitForTimeout(settleMs);
-    const fpA = await captureVideoRegionFingerprint(
-      page,
-      regionX,
-      regionY,
-      regionWidth,
-      regionHeight,
-    );
-    expect(fpA, `Failed to capture fingerprint A on attempt ${attempt}`).not.toBeNull();
+    const fpA = await captureStableRegion(page, region, changeTimeoutMs);
 
     await sendAbsMouseMove(page, testHidX, testHidY);
-    await page.waitForTimeout(settleMs);
-    const fpB = await captureVideoRegionFingerprint(
+    const distArrive = await waitForRegionDistance(
       page,
-      regionX,
-      regionY,
-      regionWidth,
-      regionHeight,
+      region,
+      fpA,
+      distance => distance > threshold,
+      changeTimeoutMs,
     );
-    expect(fpB, `Failed to capture fingerprint B on attempt ${attempt}`).not.toBeNull();
 
     await sendAbsMouseMove(page, 0, 0);
-    await page.waitForTimeout(settleMs);
-    const fpA2 = await captureVideoRegionFingerprint(
+    const distRestore = await waitForRegionDistance(
       page,
-      regionX,
-      regionY,
-      regionWidth,
-      regionHeight,
+      region,
+      fpA,
+      distance => distance < distArrive / 2,
+      changeTimeoutMs,
     );
-    expect(fpA2, `Failed to capture fingerprint A2 on attempt ${attempt}`).not.toBeNull();
 
-    const distArrive = fingerprintDistance(fpA!, fpB!);
-    const distRestore = fingerprintDistance(fpA!, fpA2!);
     lastDistArrive = distArrive;
     lastDistRestore = distRestore;
 
@@ -404,6 +474,7 @@ export async function verifyHidAndVideo(page: Page): Promise<void> {
   await wakeDisplay(page);
   await waitForVideoStream(page, 10000);
   await waitForVideoDimensions(page);
+  await waitForDecodedFrames(page);
   await runMouseBidirectionalCheck(page);
   await verifyKeyboardWorks(page);
 }
