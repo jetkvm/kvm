@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { test, expect, type Page } from "@playwright/test";
-import { ensureNoPasswordViaAPI, ensureRpcReady, sshExec } from "./helpers";
+import { callJsonRpc, ensureNoPasswordViaAPI, ensureRpcReady, sshExec } from "./helpers";
 
 // Cancelling an upload has to stop the request that is streaming the file,
 // not just reset the view. The device keeps the partial file for a resume,
@@ -88,4 +88,52 @@ test.describe("Upload cancel and resume", () => {
     const remote = (await sshExec(`sha256sum ${REMOTE} | cut -d" " -f1`, true)).trim();
     expect(remote, "resumed upload must be byte-identical").toBe(sha256);
   });
+});
+
+// A cancelled data channel closes gracefully and can still deliver buffered
+// chunks after the user has retried. The device ends the old transfer when a
+// new one starts for the same file, so only one writer is ever appending.
+test("a second start for the same file supersedes the first", async ({ page }) => {
+  test.setTimeout(60_000);
+
+  const name = "e2e-upload-supersede.img";
+  const remote = `/userdata/jetkvm/images/${name}`;
+  const data = randomBytes(1024 * 1024);
+  const cleanup = () => sshExec(`rm -f ${remote} ${remote}.incomplete`, true);
+
+  await ensureNoPasswordViaAPI();
+  await cleanup();
+  try {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await ensureRpcReady(page);
+
+    const start = async () =>
+      (await callJsonRpc(page, "startStorageFileUpload", {
+        filename: name,
+        size: data.length,
+      })) as { dataChannel: string };
+    const first = await start();
+    const second = await start();
+
+    // Data for the first upload is rejected rather than appended beside the
+    // second transfer's bytes.
+    const stale = await page.request.post(
+      `/storage/upload?uploadId=${encodeURIComponent(first.dataChannel)}`,
+      { data: data.subarray(0, 4096) },
+    );
+    expect(stale.status(), "superseded upload must be rejected").toBe(404);
+
+    const ok = await page.request.post(
+      `/storage/upload?uploadId=${encodeURIComponent(second.dataChannel)}`,
+      { data },
+    );
+    expect(ok.ok(), "second upload must complete").toBe(true);
+
+    const remoteHash = (await sshExec(`sha256sum ${remote} | cut -d" " -f1`)).trim();
+    expect(remoteHash, "image must be byte-identical").toBe(
+      createHash("sha256").update(data).digest("hex"),
+    );
+  } finally {
+    await cleanup();
+  }
 });
