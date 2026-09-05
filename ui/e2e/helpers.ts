@@ -12,6 +12,7 @@ import type { Page } from "@playwright/test";
 const execAsync = promisify(exec);
 
 export const HID_KEY = {
+  LEFT_SHIFT: 0xe1, // 225
   SPACE: 0x2c, // 44
   CAPS_LOCK: 0x39, // 57
   NUM_LOCK: 0x53, // 83
