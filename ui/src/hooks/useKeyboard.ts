@@ -24,6 +24,25 @@ const MACRO_RESET_KEYBOARD_STATE = {
   delay: 0,
 };
 
+// A keyboard macro is sent to the device in chunks of this many wire steps.
+// One report per paste would grow past the data channel's message size limit
+// (64 KiB, about 3600 characters at 9 bytes per step and two steps per
+// character), and a cancel could only take effect once the whole macro had
+// been queued. Even, so a chunk never splits a press from its release.
+const MACRO_CHUNK_STEPS = 128;
+
+// Extra time a chunk may take beyond the sum of its step delays before the
+// next chunk is sent anyway. Covers devices that do not report macro state.
+const MACRO_CHUNK_GRACE_MS = 2000;
+
+// The device runs one macro at a time and every mounted useKeyboard receives
+// its state messages, so the chunk handshake is module state, not per hook.
+// macroChunkDone is called by the device's "macro finished" message while a
+// chunk is awaited. macroChunksRemaining is set while later chunks are still to
+// be sent, so no hook instance clears "paste in progress" in between.
+let macroChunkDone: (() => void) | null = null;
+let macroChunksRemaining = false;
+
 export interface MacroStep {
   keys: string[] | null;
   modifiers: string[] | null;
@@ -74,10 +93,14 @@ export default function useKeyboard() {
       case KeyboardLedStateMessage:
         setKeyboardLedState((message as KeyboardLedStateMessage).keyboardLedState);
         break;
-      case KeyboardMacroStateMessage:
-        if (!(message as KeyboardMacroStateMessage).isPaste) break;
-        setPasteModeEnabled((message as KeyboardMacroStateMessage).state);
+      case KeyboardMacroStateMessage: {
+        const { state, isPaste } = message as KeyboardMacroStateMessage;
+        if (!state) macroChunkDone?.();
+        if (!isPaste) break;
+        if (!state && macroChunksRemaining) break;
+        setPasteModeEnabled(state);
         break;
+      }
       default:
         break;
     }
@@ -328,9 +351,48 @@ export default function useKeyboard() {
         }
       }
 
-      sendKeyboardMacroEventHidRpc(macro);
+      const ac = new AbortController();
+      setAbortController(ac);
+
+      try {
+        for (let i = 0; i < macro.length; i += MACRO_CHUNK_STEPS) {
+          // A cancel already reset the keyboard on the device; just stop.
+          if (ac.signal.aborted) return;
+
+          const chunk = macro.slice(i, i + MACRO_CHUNK_STEPS);
+          macroChunksRemaining = i + MACRO_CHUNK_STEPS < macro.length;
+
+          // The device cancels a running macro when the next one arrives, so
+          // wait for it to report this chunk finished before sending the next.
+          const chunkMs = chunk.reduce((sum, step) => sum + step.delay, 0);
+          const finished = new Promise<void>(resolve => {
+            const cleanup = () => {
+              clearTimeout(timer);
+              ac.signal.removeEventListener("abort", onAbort);
+              macroChunkDone = null;
+            };
+            const done = () => {
+              cleanup();
+              resolve();
+            };
+            const onAbort = () => {
+              cleanup();
+              resolve();
+            };
+            const timer = setTimeout(done, chunkMs + MACRO_CHUNK_GRACE_MS);
+            ac.signal.addEventListener("abort", onAbort);
+            macroChunkDone = done;
+          });
+
+          sendKeyboardMacroEventHidRpc(chunk);
+          await finished;
+        }
+      } finally {
+        macroChunksRemaining = false;
+        if (abortController.current === ac) setAbortController(null);
+      }
     },
-    [sendKeyboardMacroEventHidRpc],
+    [sendKeyboardMacroEventHidRpc, setAbortController],
   );
 
   const executeMacroClientSide = useCallback(
