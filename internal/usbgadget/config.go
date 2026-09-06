@@ -260,7 +260,8 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, e
 	if err != nil && disconnected {
 		_ = softConnect(u.udc)
 	}
-	if err == nil && disconnected {
+	// Either the rebind or the reconnect above re-enumerated the host.
+	if disconnected {
 		u.resetHidHandover()
 	}
 	return adopted && err == nil, err
