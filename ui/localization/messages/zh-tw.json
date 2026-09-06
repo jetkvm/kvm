@@ -155,6 +155,7 @@
     "appearance_theme_system": "系統",
     "appearance_title": "外觀",
     "attach": "放至下方",
+    "atx_power_control_board_not_responding": "ATX 擴充板沒有回應。請檢查 RJ-12 線材與擴充板的電源。",
     "atx_power_control_get_state_error": "取得 ATX 電源狀態失敗：{error}",
     "atx_power_control_hdd_led": "HDD 指示燈",
     "atx_power_control_hold_hint": "按住 3 秒強制關機",

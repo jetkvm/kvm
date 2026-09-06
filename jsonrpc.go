@@ -880,12 +880,16 @@ func rpcSetATXPowerAction(action string) error {
 type ATXState struct {
 	Power bool `json:"power"`
 	HDD   bool `json:"hdd"`
+	// Responsive reports whether the ATX extension board has sent a status
+	// line recently, so the UI can flag an unpowered or disconnected board.
+	Responsive bool `json:"responsive"`
 }
 
 func rpcGetATXState() (ATXState, error) {
 	state := ATXState{
-		Power: ledPWRState.Load(),
-		HDD:   ledHDDState.Load(),
+		Power:      ledPWRState.Load(),
+		HDD:        ledHDDState.Load(),
+		Responsive: atxBoardResponsive(),
 	}
 	return state, nil
 }

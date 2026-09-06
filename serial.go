@@ -23,6 +23,7 @@ var consoleBroker *ConsoleBroker
 
 func mountATXControl() error {
 	_ = port.SetMode(defaultMode)
+	atxLastLineTime.Store(0)
 	go runATXControl()
 
 	return nil
@@ -38,7 +39,23 @@ var (
 	ledPWRState atomic.Bool
 	btnRSTState bool
 	btnPWRState bool
+
+	// atxLastLineTime holds the unix time (in seconds) of the last status
+	// line received from the ATX extension board. Zero means no line has
+	// been received since the extension was mounted.
+	atxLastLineTime atomic.Int64
 )
+
+// atxResponsiveTimeout is how long after the last received status line the
+// ATX extension board is still considered responsive.
+const atxResponsiveTimeout = 10 * time.Second
+
+// atxBoardResponsive reports whether the ATX extension board has sent a
+// status line within atxResponsiveTimeout.
+func atxBoardResponsive() bool {
+	lastLine := atxLastLineTime.Load()
+	return lastLine != 0 && time.Since(time.Unix(lastLine, 0)) < atxResponsiveTimeout
+}
 
 func runATXControl() {
 	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
@@ -50,6 +67,9 @@ func runATXControl() {
 			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
 			return
 		}
+
+		// The board is talking to us, even if the line turns out invalid.
+		atxLastLineTime.Store(time.Now().Unix())
 
 		// Each line should be 4 binary digits + newline
 		if len(line) != 5 {
@@ -64,8 +84,9 @@ func runATXControl() {
 		newBtnPWRState := line[3] == '1'
 
 		atxState := ATXState{
-			Power: newLedPWRState,
-			HDD:   newLedHDDState,
+			Power:      newLedPWRState,
+			HDD:        newLedHDDState,
+			Responsive: true, // a status line was just received
 		}
 
 		if currentSession != nil {
