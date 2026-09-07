@@ -168,39 +168,57 @@ func newAgent() *Agent {
 	}
 }
 
+type monitorEntry struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 // monitorAllDevices continuously discovers and monitors JetKVM input devices.
 // When devices disappear (e.g., USB gadget reconfiguration), it re-discovers and reconnects.
 func (a *Agent) monitorAllDevices() {
-	monitored := make(map[string]context.CancelFunc) // path -> cancel
+	monitored := make(map[string]*monitorEntry)
 
 	for {
-		devices := discoverJetKVMDevices()
-
-		// Start monitoring new devices
-		for path, name := range devices {
-			if _, exists := monitored[path]; exists {
-				continue
-			}
-			ctx, cancel := context.WithCancel(context.Background())
-			monitored[path] = cancel
-			go func(p, n string) {
-				a.monitorDevice(ctx, p, n)
-				// When monitorDevice returns, remove from tracked set
-				a.monitorMu.Lock()
-				delete(monitored, p)
-				a.monitorMu.Unlock()
-			}(path, name)
-		}
-
-		// Clean up stale entries (devices that disappeared)
-		for path, cancel := range monitored {
-			if _, exists := devices[path]; !exists {
-				cancel()
-				delete(monitored, path)
-			}
-		}
-
+		a.reconcileMonitors(monitored, discoverJetKVMDevices(), a.monitorDevice)
 		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// reconcileMonitors serializes registry changes; run performs device I/O outside the lock.
+func (a *Agent) reconcileMonitors(monitored map[string]*monitorEntry, devices map[string]string, run func(context.Context, string, string)) {
+	var cancels []context.CancelFunc
+	a.monitorMu.Lock()
+	for path, entry := range monitored {
+		if _, exists := devices[path]; !exists {
+			delete(monitored, path)
+			cancels = append(cancels, entry.cancel)
+		}
+	}
+	for path, name := range devices {
+		if _, exists := monitored[path]; exists {
+			continue
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		entry := &monitorEntry{cancel: cancel, done: make(chan struct{})}
+		monitored[path] = entry
+		go func(ctx context.Context, p, n string, entry *monitorEntry) {
+			defer func() {
+				// Also stop the close-on-cancel helper when the reader exits on its own.
+				entry.cancel()
+				a.monitorMu.Lock()
+				// A previous reader may finish after this path has been replaced.
+				if monitored[p] == entry {
+					delete(monitored, p)
+				}
+				a.monitorMu.Unlock()
+				close(entry.done)
+			}()
+			run(ctx, p, n)
+		}(ctx, path, name, entry)
+	}
+	a.monitorMu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
 	}
 }
 
