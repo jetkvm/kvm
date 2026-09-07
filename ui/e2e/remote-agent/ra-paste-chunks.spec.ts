@@ -52,7 +52,7 @@ async function typedText(): Promise<string> {
 
 async function openPasteModal(): Promise<void> {
   await page.getByRole("button", { name: "Paste text" }).click();
-  await expect(page.locator("textarea")).toBeVisible();
+  await expect(page.locator('textarea[rows="4"]')).toBeVisible();
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -76,7 +76,13 @@ test.beforeAll(async ({ browser }) => {
   await page.goto("/", { waitUntil: "networkidle" });
   await waitForWebRTCReady(page);
   await ensureRpcReady(page);
-  await agent!.waitForInputDevices(["keyboard"], 30_000);
+  // Terminal channels settle focus shortly after the initial connection.
+  await page.waitForTimeout(1_000);
+  await expect
+    .poll(async () => (await agent!.getJetKVMInputDevices()).some(d => d.type === "keyboard"), {
+      timeout: 30_000,
+    })
+    .toBe(true);
 });
 
 test.afterAll(async () => {
@@ -88,7 +94,7 @@ test("a paste longer than one chunk lands on the host in full and in order", asy
   await agent!.clearKeyboardEvents();
 
   await openPasteModal();
-  await page.locator("textarea").fill(TEXT);
+  await page.locator('textarea[rows="4"]').fill(TEXT, { timeout: 5_000 });
   const confirm = page.getByRole("button", { name: "Confirm Paste" });
   await confirm.click();
 
@@ -112,20 +118,25 @@ test("a paste longer than one chunk lands on the host in full and in order", asy
     MAX_MACRO_MESSAGE_BYTES,
   );
 
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Paste text" }).click();
+  await expect(page.locator('textarea[rows="4"]')).toHaveCount(0);
 });
 
-test("cancelling a paste stops within one chunk and releases the keyboard", async () => {
+test("cancelling after reopening the paste popover stops and releases the keyboard", async () => {
   test.setTimeout(60_000);
   await agent!.clearKeyboardEvents();
 
   await openPasteModal();
-  await page.locator("textarea").fill(TEXT);
+  await page.locator('textarea[rows="4"]').fill(TEXT, { timeout: 5_000 });
   await page.getByRole("button", { name: "Confirm Paste" }).click();
 
   await expect
     .poll(async () => (await typedText()).length, { timeout: 15_000, intervals: [200] })
     .toBeGreaterThanOrEqual(20);
+
+  await page.getByRole("button", { name: "Paste text" }).click();
+  await expect(page.locator('textarea[rows="4"]')).toHaveCount(0);
+  await openPasteModal();
 
   await page
     .getByRole("button", { name: /^cancel$/i })
@@ -143,4 +154,42 @@ test("cancelling a paste stops within one chunk and releases the keyboard", asyn
 
   const keysDown = (await callJsonRpc(page, "getKeyDownState")) as { keys: number[] };
   expect(keysDown.keys.filter(k => k !== 0)).toEqual([]);
+  await expect(page.locator('textarea[rows="4"]')).toHaveCount(0);
+});
+
+test("a toolbar macro cannot be interrupted by chunks from a previous paste", async () => {
+  test.setTimeout(60_000);
+  const saved = (await callJsonRpc(page, "getKeyboardMacros")) as object[];
+  const replacement = {
+    id: "e2e_test_replacement",
+    name: "E2E Replacement B",
+    sortOrder: 0,
+    steps: Array.from({ length: 10 }, () => ({ keys: ["KeyB"], modifiers: [], delay: 50 })),
+  };
+  try {
+    await callJsonRpc(page, "setKeyboardMacros", { params: { macros: [...saved, replacement] } });
+    await page.reload({ waitUntil: "networkidle" });
+    await waitForWebRTCReady(page);
+    await ensureRpcReady(page);
+    await page.waitForTimeout(1_000);
+    await agent!.clearKeyboardEvents();
+    await openPasteModal();
+    await page.locator('textarea[rows="4"]').fill("a".repeat(200));
+    await page.getByRole("button", { name: "Confirm Paste" }).click();
+    await expect.poll(typedText, { timeout: 10_000 }).toMatch(/^a{10,199}$/);
+
+    // Closing the popover leaves the paste running. A different hook instance
+    // in the toolbar must cancel it before starting the replacement macro.
+    await page.getByRole("button", { name: "Paste text" }).click();
+    await expect(page.locator('textarea[rows="4"]')).toHaveCount(0);
+    await page.getByRole("button", { name: replacement.name, exact: true }).click();
+    await expect.poll(typedText, { timeout: 15_000 }).toMatch(/^a{10,199}b{10}$/);
+    const completed = await typedText();
+    await page.waitForTimeout(5_000);
+    expect(await typedText()).toBe(completed);
+    const keysDown = (await callJsonRpc(page, "getKeyDownState")) as { keys: number[] };
+    expect(keysDown.keys.filter(k => k !== 0)).toEqual([]);
+  } finally {
+    await callJsonRpc(page, "setKeyboardMacros", { params: { macros: saved } });
+  }
 });

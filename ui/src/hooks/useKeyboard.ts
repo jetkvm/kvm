@@ -32,16 +32,13 @@ const MACRO_RESET_KEYBOARD_STATE = {
 const MACRO_CHUNK_STEPS = 128;
 
 // Extra time a chunk may take beyond the sum of its step delays before the
-// next chunk is sent anyway. Covers devices that do not report macro state.
+// operation is stopped. A missing acknowledgement must not truncate a chunk.
 const MACRO_CHUNK_GRACE_MS = 2000;
 
-// The device runs one macro at a time and every mounted useKeyboard receives
-// its state messages, so the chunk handshake is module state, not per hook.
-// macroChunkDone is called by the device's "macro finished" message while a
-// chunk is awaited. macroChunksRemaining is set while later chunks are still to
-// be sent, so no hook instance clears "paste in progress" in between.
-let macroChunkDone: (() => void) | null = null;
-let macroChunksRemaining = false;
+// All hook instances share the device's single macro runner, including after
+// a paste popover unmounts. Replacements wait for the previous chunk to stop.
+let remoteMacro: { controller: AbortController; done: Promise<void> } | null = null;
+let macroChunk: { channel: RTCDataChannel; onState: (running: boolean) => void } | null = null;
 
 export interface MacroStep {
   keys: string[] | null;
@@ -53,7 +50,7 @@ export type MacroSteps = MacroStep[];
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
-  const { rpcDataChannel } = useRTCStore();
+  const { rpcDataChannel, rpcHidChannel } = useRTCStore();
   const { keysDownState, setKeysDownState, setKeyboardLedState, setPasteModeEnabled } =
     useHidStore();
 
@@ -95,9 +92,9 @@ export default function useKeyboard() {
         break;
       case KeyboardMacroStateMessage: {
         const { state, isPaste } = message as KeyboardMacroStateMessage;
-        if (!state) macroChunkDone?.();
+        if (macroChunk?.channel === rpcHidChannel) macroChunk.onState(state);
         if (!isPaste) break;
-        if (!state && macroChunksRemaining) break;
+        if (!state && remoteMacro) break;
         setPasteModeEnabled(state);
         break;
       }
@@ -351,48 +348,88 @@ export default function useKeyboard() {
         }
       }
 
+      if (!rpcHidChannel || rpcHidChannel.readyState !== "open" || !macro.length) return;
+      const channel = rpcHidChannel;
+      const previous = remoteMacro;
       const ac = new AbortController();
-      setAbortController(ac);
+      let release!: () => void;
+      const run = {
+        controller: ac,
+        done: new Promise<void>(resolve => {
+          release = resolve;
+        }),
+      };
+      remoteMacro = run;
+      previous?.controller.abort();
 
+      const onClose = () => ac.abort();
+      channel.addEventListener("close", onClose);
       try {
+        await previous?.done;
         for (let i = 0; i < macro.length; i += MACRO_CHUNK_STEPS) {
-          // A cancel already reset the keyboard on the device; just stop.
-          if (ac.signal.aborted) return;
+          if (ac.signal.aborted || channel.readyState !== "open") return;
 
           const chunk = macro.slice(i, i + MACRO_CHUNK_STEPS);
-          macroChunksRemaining = i + MACRO_CHUNK_STEPS < macro.length;
-
-          // The device cancels a running macro when the next one arrives, so
-          // wait for it to report this chunk finished before sending the next.
           const chunkMs = chunk.reduce((sum, step) => sum + step.delay, 0);
-          const finished = new Promise<void>(resolve => {
-            const cleanup = () => {
+          await new Promise<void>((resolve, reject) => {
+            let started = false;
+            const waiter = {
+              channel,
+              onState: (running: boolean) => {
+                if (running && !started) {
+                  started = true;
+                  if (ac.signal.aborted) cancelOngoingKeyboardMacroHidRpc();
+                } else if (!running && started) {
+                  finish();
+                }
+              },
+            };
+            const finish = (error?: Error) => {
               clearTimeout(timer);
               ac.signal.removeEventListener("abort", onAbort);
-              macroChunkDone = null;
+              channel.removeEventListener("close", onChannelClose);
+              if (macroChunk === waiter) macroChunk = null;
+              if (error) reject(error);
+              else resolve();
             };
-            const done = () => {
-              cleanup();
-              resolve();
-            };
+            const onChannelClose = () => finish();
+            // Wait for the finish acknowledgement even after cancellation,
+            // so it cannot acknowledge a replacement's first chunk.
             const onAbort = () => {
-              cleanup();
-              resolve();
+              if (channel.readyState !== "open") finish();
+              else if (started) cancelOngoingKeyboardMacroHidRpc();
             };
-            const timer = setTimeout(done, chunkMs + MACRO_CHUNK_GRACE_MS);
+            const timer = setTimeout(() => {
+              // A missing finish cannot safely hand ownership to another
+              // macro on this channel. Reconnection provides a fresh one.
+              finish(new Error("Timed out waiting for keyboard macro completion"));
+              channel.close();
+            }, chunkMs + MACRO_CHUNK_GRACE_MS);
             ac.signal.addEventListener("abort", onAbort);
-            macroChunkDone = done;
+            channel.addEventListener("close", onChannelClose);
+            macroChunk = waiter;
+            try {
+              sendKeyboardMacroEventHidRpc(chunk);
+            } catch (error) {
+              finish(error instanceof Error ? error : new Error(String(error)));
+            }
           });
-
-          sendKeyboardMacroEventHidRpc(chunk);
-          await finished;
         }
       } finally {
-        macroChunksRemaining = false;
-        if (abortController.current === ac) setAbortController(null);
+        channel.removeEventListener("close", onClose);
+        release();
+        if (remoteMacro === run) {
+          remoteMacro = null;
+          setPasteModeEnabled(false);
+        }
       }
     },
-    [sendKeyboardMacroEventHidRpc, setAbortController],
+    [
+      rpcHidChannel,
+      sendKeyboardMacroEventHidRpc,
+      cancelOngoingKeyboardMacroHidRpc,
+      setPasteModeEnabled,
+    ],
   );
 
   const executeMacroClientSide = useCallback(
@@ -459,6 +496,10 @@ export default function useKeyboard() {
   );
 
   const cancelExecuteMacro = useCallback(async () => {
+    if (remoteMacro) {
+      remoteMacro.controller.abort();
+      return;
+    }
     if (abortController.current) {
       abortController.current.abort();
     }
