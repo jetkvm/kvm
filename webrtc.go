@@ -402,6 +402,16 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 
 		l.Trace().Msg("received data in HID RPC message handler")
 
+		// Cancel before admitting the next message on this ordered channel.
+		// A separate worker can process a late cancel after the old macro has
+		// finished and its replacement has started, canceling the replacement.
+		if hidrpc.MessageType(msg.Data[0]) == hidrpc.TypeCancelKeyboardMacroReport {
+			if !session.isClosed() {
+				rpcCancelKeyboardMacro()
+			}
+			return
+		}
+
 		// Enqueue to ensure ordered processing
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
 		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
