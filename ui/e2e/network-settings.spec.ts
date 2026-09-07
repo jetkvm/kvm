@@ -1,9 +1,26 @@
 import { isIPv4 } from "node:net";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { callJsonRpc, ensureNoPasswordViaAPI, ensureRpcReady } from "./helpers";
 import type { NetworkSettings, NetworkState } from "../src/hooks/stores";
 
 let original: NetworkSettings | undefined;
+
+async function openNetworkSettings(page: Page, settings: NetworkSettings) {
+  await ensureRpcReady(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("link", { name: "Network", exact: true }).click();
+  // Both cards replace the skeleton only after async form defaults finish loading.
+  if (settings.ipv4_mode === "static") {
+    await expect(page.locator('[name="ipv4_static.address"]')).toHaveValue(
+      settings.ipv4_static!.address,
+      { timeout: 20_000 },
+    );
+  } else {
+    await expect(
+      page.getByRole("heading", { name: "DHCP Lease Information", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
+  }
+}
 
 test.afterAll(async ({ browser }) => {
   test.setTimeout(180_000);
@@ -27,12 +44,11 @@ test("static IPv4 accepts empty gateway and DNS and preserves a saved hostname",
   const address = new URL(process.env.JETKVM_URL!).hostname;
   test.skip(!isIPv4(address), "Network reconfiguration requires an IPv4 JETKVM_URL");
   await ensureNoPasswordViaAPI();
-  await page.goto("/settings/network", { waitUntil: "networkidle" });
-  await ensureRpcReady(page);
-  await page.goto("/settings/network", { waitUntil: "networkidle" });
+  await ensureRpcReady(page, { navigateFirst: true });
+  original = (await callJsonRpc(page, "getNetworkSettings")) as NetworkSettings;
+  await openNetworkSettings(page, original);
   // Let terminal channel initialization finish before focusing form controls.
   await page.waitForTimeout(1_000);
-  original = (await callJsonRpc(page, "getNetworkSettings")) as NetworkSettings;
   const state = (await callJsonRpc(page, "getNetworkState")) as NetworkState;
   const netmask = state.dhcp_lease?.netmask || original.ipv4_static?.netmask;
   expect(netmask, "need the connected subnet mask to preserve device access").toBeTruthy();
@@ -57,7 +73,7 @@ test("static IPv4 accepts empty gateway and DNS and preserves a saved hostname",
   });
   expect(saved.ipv4_static?.gateway ?? "").toBe("");
   expect(saved.ipv4_static?.dns ?? []).toEqual([]);
-  await page.goto("/settings/network", { waitUntil: "networkidle" });
+  await openNetworkSettings(page, saved);
   await expect(page.locator('[name="hostname"]')).toHaveValue("jetkvm-e2e-network");
   await expect(page.locator('[name="ipv4_static.gateway"]')).toHaveValue("");
   await expect
