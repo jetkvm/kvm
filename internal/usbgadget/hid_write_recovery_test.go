@@ -12,6 +12,17 @@ import (
 )
 
 func TestHIDWriteSurvivesBriefBackpressure(t *testing.T) {
+	const maxAttempts = 5
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if tryHIDWriteWithBriefBackpressure(t, attempt) {
+			return
+		}
+	}
+	t.Fatalf("no valid backpressure timing window in %d attempts", maxAttempts)
+}
+
+func tryHIDWriteWithBriefBackpressure(t *testing.T, attempt int) bool {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -19,23 +30,57 @@ func TestHIDWriteSurvivesBriefBackpressure(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 	fillPipeBuffer(t, w)
+	if err := r.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
 	// The previous report can remain pending while the host or the device
 	// is briefly descheduled. The next report must wait, not disappear.
-	drained := make(chan error, 1)
+	type drainResult struct {
+		started, finished time.Time
+		err               error
+	}
+	start := make(chan struct{})
+	drained := make(chan drainResult, 1)
 	go func() {
+		<-start
 		time.Sleep(25 * time.Millisecond)
+		started := time.Now()
 		_, err := io.CopyN(io.Discard, r, 4096)
-		drained <- err
+		drained <- drainResult{started, time.Now(), err}
 	}()
 	report := []byte{2, 0, 6, 0, 0, 0, 0, 0}
-	n, err := newTestGadgetWithKeyboard(w).writeWithTimeout(w, report)
-	if drainErr := <-drained; drainErr != nil {
-		t.Fatal(drainErr)
+	u := newTestGadgetWithKeyboard(w)
+	started := time.Now()
+	close(start)
+	n, err := u.writeWithTimeout(w, report)
+	finished := time.Now()
+	drain := <-drained
+	if os.IsTimeout(drain.err) {
+		t.Logf("attempt %d: pipe setup/drain missed its deadline", attempt)
+		return false
+	}
+	if drain.err != nil {
+		t.Fatal(drain.err)
+	}
+	// The drain must occur after the old 10 ms deadline, with headroom before
+	// the new 100 ms deadline. Oversleeping the intended window is a fixture
+	// scheduling failure, not evidence that a report was dropped.
+	if drain.started.Sub(started) < 20*time.Millisecond || drain.finished.Sub(started) > 75*time.Millisecond {
+		t.Logf("attempt %d: invalid drain window [%v, %v]", attempt, drain.started.Sub(started), drain.finished.Sub(started))
+		return false
+	}
+	if n == len(report) && err == nil && (finished.Before(drain.started) || finished.Sub(started) > hidWriteTimeout) {
+		// An early success did not encounter backpressure. A success outside
+		// the write budget may have started late after the caller was paused;
+		// do not let that make the old 10 ms implementation appear to pass.
+		t.Logf("attempt %d: invalid successful write duration %v", attempt, finished.Sub(started))
+		return false
 	}
 	if err != nil || n != len(report) {
 		t.Fatalf("report lost during brief backpressure: wrote %d/%d bytes, error %v", n, len(report), err)
 	}
+	return true
 }
 
 func TestWriteTimeoutLoggingResumesAfterSuccessfulWrite(t *testing.T) {
