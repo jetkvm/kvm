@@ -14,37 +14,10 @@ import notifications from "@/notifications";
 import { isLinuxDesktop } from "@/utils";
 import { m } from "@localizations/messages.js";
 
-// JetKVM v1 default EDID. Base block DTDs: 1920x1080@60 (DTD0, preferred),
-// 1280x720@120 (DTD1). 1280x720@60 still advertised via Standard Timings.
-// Source switches refresh via OS display settings — no need to swap EDIDs.
-const defaultEdid =
-  "00FFFFFFFFFFFF0028B4010001EEFFC0302301038047287856EE91A3544C99260F5054000000D1C081C0318001010101010101010101023A801871382D40582C4500C48E2100001E773300A050D02B2030203500122C2100001A000000FD00174C0F5111000A202020202020000000FC004A65744B564D2076310A20202001D5020322D1431004012309070783010000E200CFE40D100401E305000065030C001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000CF";
-const edids = [
-  {
-    value: defaultEdid,
-    label: m.video_edid_jetkvm_default(),
-  },
-  {
-    value:
-      "00FFFFFFFFFFFF00047265058A3F6101101E0104A53420783FC125A8554EA0260D5054BFEF80714F8140818081C081008B009500B300283C80A070B023403020360006442100001A000000FD00304C575716010A202020202020000000FC0042323436574C0A202020202020000000FF0054384E4545303033383532320A01F802031CF14F90020304050607011112131415161F2309070783010000011D8018711C1620582C250006442100009E011D007251D01E206E28550006442100001E8C0AD08A20E02D10103E9600064421000018C344806E70B028401720A80406442100001E00000000000000000000000000000000000000000000000000000096",
-    label: m.video_edid_acer_b246wl(),
-  },
-  {
-    value:
-      "00FFFFFFFFFFFF0006B3872401010101021F010380342078EA6DB5A7564EA0250D5054BF6F00714F8180814081C0A9409500B300D1C0283C80A070B023403020360006442100001A000000FD00314B1E5F19000A202020202020000000FC00504132343851560A2020202020000000FF004D314C4D51533035323135370A014D02032AF14B900504030201111213141F230907078301000065030C001000681A00000101314BE6E2006A023A801871382D40582C450006442100001ECD5F80B072B0374088D0360006442100001C011D007251D01E206E28550006442100001E8C0AD08A20E02D10103E960006442100001800000000000000000000000000DC",
-    label: m.video_edid_asus_pa248qv(),
-  },
-  {
-    value:
-      "00FFFFFFFFFFFF0010AC132045393639201E0103803C22782ACD25A3574B9F270D5054A54B00714F8180A9C0D1C00101010101010101023A801871382D40582C450056502100001E000000FF00335335475132330A2020202020000000FC0044454C4C204432373231480A20000000FD00384C1E5311000A202020202020018102031AB14F90050403020716010611121513141F65030C001000023A801871382D40582C450056502100001E011D8018711C1620582C250056502100009E011D007251D01E206E28550056502100001E8C0AD08A20E02D10103E960056502100001800000000000000000000000000000000000000000000000000000000004F",
-    label: m.video_edid_dell_d2721h(),
-  },
-  {
-    value:
-      "00FFFFFFFFFFFF0010AC0100020000000111010380221BFF0A00000000000000000000ADCE0781800101010101010101010101010101000000FF0030303030303030303030303030000000FF0030303030303030303030303030000000FD00384C1F530B000A000000000000000000FC0044454C4C2049445241430A2020000A",
-    label: m.video_edid_dell_idrac(),
-  },
-];
+interface EDIDPreset {
+  name: string;
+  edid: string;
+}
 
 const streamQualityOptions = [
   { value: "1", label: m.video_quality_high() },
@@ -81,6 +54,9 @@ export default function SettingsVideoRoute() {
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
+  // The device owns the preset list, so the UI has no copy of it.
+  const [edidPresets, setEdidPresets] = useState<EDIDPreset[]>([]);
+  const [deviceEdid, setDeviceEdid] = useState<string | null>(null);
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
@@ -113,6 +89,11 @@ export default function SettingsVideoRoute() {
       setDisableHostDisplayWhenIdle(result.enabled);
     });
 
+    void send("getEDIDPresets", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setEdidPresets(resp.result as EDIDPreset[]);
+    });
+
     void send("getEDID", {}, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
@@ -121,17 +102,7 @@ export default function SettingsVideoRoute() {
         );
         return;
       }
-
-      const receivedEdid = resp.result as string;
-      const matchingEdid = edids.find(x => x.value.toLowerCase() === receivedEdid.toLowerCase());
-
-      if (matchingEdid) {
-        setEdid(matchingEdid.value);
-        setCustomEdidValue(null);
-      } else {
-        setEdid("custom");
-        setCustomEdidValue(receivedEdid);
-      }
+      setDeviceEdid(resp.result as string);
     });
   }, [send]);
 
@@ -189,8 +160,26 @@ export default function SettingsVideoRoute() {
     });
   };
 
+  const findPreset = useCallback(
+    (value: string) => edidPresets.find(p => p.edid.toLowerCase() === value.toLowerCase()),
+    [edidPresets],
+  );
+
+  // The current EDID is a preset when the device lists it, custom otherwise.
+  useEffect(() => {
+    if (deviceEdid === null) return;
+    const preset = findPreset(deviceEdid);
+    if (preset) {
+      setEdid(preset.edid);
+      setCustomEdidValue(null);
+    } else {
+      setEdid("custom");
+      setCustomEdidValue(deviceEdid);
+    }
+  }, [deviceEdid, findPreset]);
+
   const handleEDIDChange = (newEdid: string) => {
-    const matched = edids.find(x => x.value.toLowerCase() === newEdid.toLowerCase());
+    const matched = findPreset(newEdid);
     setEdidLoading(true);
     void send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
@@ -203,7 +192,7 @@ export default function SettingsVideoRoute() {
       setEdid(newEdid);
       notifications.success(
         m.video_edid_set_success({
-          edid: matched?.label ?? "the custom EDID",
+          edid: matched?.name ?? "the custom EDID",
         }),
       );
     });
@@ -362,7 +351,10 @@ export default function SettingsVideoRoute() {
                       handleEDIDChange(e.target.value);
                     }
                   }}
-                  options={[...edids, { value: "custom", label: m.video_edid_custom() }]}
+                  options={[
+                    ...edidPresets.map(p => ({ value: p.edid, label: p.name })),
+                    { value: "custom", label: m.video_edid_custom() },
+                  ]}
                 />
               </SettingsItem>
               {customEdidValue !== null && (
