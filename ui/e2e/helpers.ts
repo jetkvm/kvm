@@ -825,6 +825,23 @@ export async function skipWithoutDeviceShell(): Promise<void> {
   test.skip(!(await deviceShellAvailable()), "needs shell access to the device");
 }
 
+// A method the device does not implement answers "Method not found". Tests
+// for that feature skip on it instead of failing: the suite also runs against
+// older firmware during upgrade testing, and a missing method is a version
+// fact, not a regression. Probe with a getter; the call is made for real.
+export async function rpcAvailable(page: Page, method: string): Promise<boolean> {
+  try {
+    await callJsonRpc(page, method, {});
+    return true;
+  } catch (error) {
+    return !/method not found/i.test(String(error));
+  }
+}
+
+export async function skipWithoutRpc(page: Page, method: string, feature: string): Promise<void> {
+  test.skip(!(await rpcAvailable(page, method)), `device has no ${feature} (${method})`);
+}
+
 export async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
   if (!(await deviceShellAvailable())) {
     if (ignoreErrors) return "";

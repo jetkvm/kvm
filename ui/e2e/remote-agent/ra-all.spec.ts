@@ -29,6 +29,7 @@ import {
   waitForLedState,
   restartAppViaSSH,
   skipWithoutDeviceShell,
+  skipWithoutRpc,
   rebootDeviceViaSSH,
   semverGte,
 } from "../helpers";
@@ -2818,6 +2819,7 @@ test.describe("Remote Host Agent", () => {
 
   test("https: TLS round-trip via RPC @tls", async ({ browser }) => {
     test.setTimeout(60_000);
+    await skipWithoutRpc(sharedPage, "getTLSState", "TLS");
 
     const host = getDeviceHost();
     const httpsUrl = `https://${host}:443`;
