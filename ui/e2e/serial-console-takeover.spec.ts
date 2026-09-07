@@ -3,7 +3,7 @@ import {
   callJsonRpc,
   ensureNoPasswordViaAPI,
   ensureRpcReady,
-  sshExec,
+  rpcAvailable,
   waitForWebRTCReady,
 } from "./helpers";
 
@@ -58,8 +58,6 @@ async function expectEcho(page: Page, tag: string): Promise<void> {
     .toBe(true);
 }
 
-const SERIAL_SETTINGS_PATH = "/userdata/serialSettings.json";
-
 // The device's built-in defaults; getSerialSettings errors until a settings
 // file exists.
 const DEFAULT_SERIAL_SETTINGS = {
@@ -79,7 +77,7 @@ const DEFAULT_SERIAL_SETTINGS = {
 };
 
 test.describe("serial console sink across a session takeover", () => {
-  let hadSettingsFile = false;
+  let settingsChanged = false;
   let settings: Record<string, unknown> = DEFAULT_SERIAL_SETTINGS;
 
   async function withPage(browser: Browser, fn: (page: Page) => Promise<void>): Promise<void> {
@@ -95,24 +93,29 @@ test.describe("serial console sink across a session takeover", () => {
 
   test.beforeAll(async ({ browser }) => {
     await ensureNoPasswordViaAPI();
-    hadSettingsFile =
-      (await sshExec(`[ -f ${SERIAL_SETTINGS_PATH} ] && echo yes || echo no`)).trim() === "yes";
     await withPage(browser, async page => {
-      if (hadSettingsFile) {
+      test.skip(
+        !(await rpcAvailable(page, "getSerialSettings")),
+        "device has no serial console (getSerialSettings)",
+      );
+      try {
         settings = (await callJsonRpc(page, "getSerialSettings")) as Record<string, unknown>;
+      } catch {
+        // No settings file yet: the device runs on its defaults.
       }
       await callJsonRpc(page, "setSerialSettings", { settings: { ...settings, enableEcho: true } });
+      settingsChanged = true;
     });
   });
 
   test.afterAll(async ({ browser }) => {
+    if (!settingsChanged) return;
     await withPage(browser, async page => {
       await callJsonRpc(page, "setSerialSettings", { settings });
     });
-    if (!hadSettingsFile) await sshExec(`rm -f ${SERIAL_SETTINGS_PATH}`, true);
   });
 
-  test("the new session keeps its serial sink when the replaced session's channel closes", async ({
+  test("the new session keeps its serial sink when the replaced session's channel closes @serial", async ({
     browser,
   }) => {
     test.setTimeout(60_000);

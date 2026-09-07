@@ -13,6 +13,7 @@ import {
   tapKey,
   waitForLedState,
   waitForWebRTCReady,
+  skipWithoutDeviceShell,
 } from "../helpers";
 import { KEY, createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
 
@@ -23,6 +24,10 @@ import { KEY, createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
 // state, which the host only sends again after an enumeration.
 
 const agent = createRemoteAgent();
+
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
 
 test.describe.configure({ mode: "serial" });
 
@@ -95,7 +100,7 @@ test.afterAll(async () => {
   if (page) await page.close();
 });
 
-test("app restart releases keys the previous process left held", async () => {
+test("app restart releases keys the previous process left held @ssh", async () => {
   test.setTimeout(90_000);
 
   expect(
@@ -146,7 +151,7 @@ test("app restart releases keys the previous process left held", async () => {
   await reconnect();
 });
 
-test("app restart keeps the host's keyboard LED state", async () => {
+test("app restart keeps the host's keyboard LED state @ssh", async () => {
   test.setTimeout(90_000);
 
   expect(
@@ -178,7 +183,7 @@ test("app restart keeps the host's keyboard LED state", async () => {
   }
 });
 
-test("app restart releases an absolute mouse button once", async () => {
+test("app restart releases an absolute mouse button once @ssh", async () => {
   test.setTimeout(120_000);
 
   const press = { x: 16384, y: 16384 };
@@ -223,7 +228,7 @@ test("app restart releases an absolute mouse button once", async () => {
   await reconnect();
 });
 
-test("a gadget the previous process left soft-disconnected is rebound", async () => {
+test("a gadget the previous process left soft-disconnected is rebound @ssh", async () => {
   test.setTimeout(90_000);
 
   const before = gadgetDeviceNumber();
@@ -244,7 +249,7 @@ test("a gadget the previous process left soft-disconnected is rebound", async ()
   ).toBeGreaterThan(0);
 });
 
-test("a forced rebind drops the inherited absolute mouse press", async () => {
+test("a forced rebind drops the inherited absolute mouse press @ssh", async () => {
   test.setTimeout(120_000);
 
   const press = { x: 24576, y: 24576 };

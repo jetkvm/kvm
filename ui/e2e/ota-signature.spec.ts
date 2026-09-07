@@ -57,12 +57,12 @@ test.describe("OTA Signature Verification", () => {
     await rebootDeviceViaSSH();
   });
 
-  test("unsigned stable update fails with GPG signature error", async ({ page }) => {
+  test("unsigned stable update fails with GPG signature error @ota", async ({ page }) => {
     await triggerUpdate(page);
     await expect(page.getByText(/requires GPG signature/i)).toBeVisible({ timeout: 30000 });
   });
 
-  test("wrong-key signature fails with GPG verification error", async ({ page }) => {
+  test("wrong-key signature fails with GPG verification error @ota", async ({ page }) => {
     await withTempSignature(mockServer, crypto.randomBytes(256), async () => {
       await triggerUpdate(page);
       await expect(page.getByText(/GPG signature verification failed/i)).toBeVisible({
@@ -71,7 +71,7 @@ test.describe("OTA Signature Verification", () => {
     });
   });
 
-  test("empty signature file is rejected", async ({ page }) => {
+  test("empty signature file is rejected @ota", async ({ page }) => {
     await withTempSignature(mockServer, Buffer.alloc(0), async () => {
       await triggerUpdate(page);
       await expect(page.getByText(/signature file is empty/i)).toBeVisible({
@@ -80,7 +80,7 @@ test.describe("OTA Signature Verification", () => {
     });
   });
 
-  test("signed stable update succeeds", async ({ page }) => {
+  test("signed stable update succeeds @ota", async ({ page }) => {
     mockServer.enableSignature(env.signaturePath!);
 
     await page.goto("/settings/general/update");

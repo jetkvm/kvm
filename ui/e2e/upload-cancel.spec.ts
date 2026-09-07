@@ -3,7 +3,13 @@ import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { test, expect, type Page } from "@playwright/test";
-import { callJsonRpc, ensureNoPasswordViaAPI, ensureRpcReady, sshExec } from "./helpers";
+import {
+  callJsonRpc,
+  ensureNoPasswordViaAPI,
+  ensureRpcReady,
+  deviceShellAvailable,
+  sshExec,
+} from "./helpers";
 
 // Cancelling an upload has to stop the request that is streaming the file,
 // not just reset the view. The device keeps the partial file for a resume,
@@ -11,19 +17,55 @@ import { callJsonRpc, ensureNoPasswordViaAPI, ensureRpcReady, sshExec } from "./
 
 const FILE_NAME = "e2e-upload-cancel.img";
 const FILE_SIZE = 16 * 1024 * 1024;
-const REMOTE = `/userdata/jetkvm/images/${FILE_NAME}`;
 const THROTTLED_UPLOAD_BYTES_PER_SEC = 2 * 1024 * 1024;
 
-// A failed read throws instead of reading as an empty file, so an SSH
-// hiccup cannot pass as a stopped upload.
-async function remoteSize(): Promise<number> {
-  // The device has no stat binary.
-  const out = await sshExec(
-    `f=${REMOTE}.incomplete; [ -f "$f" ] || f=${REMOTE}; [ -f "$f" ] && wc -c < "$f" || echo 0`,
-  );
-  const size = parseInt(out.trim(), 10);
-  if (Number.isNaN(size)) throw new Error(`unexpected size output: ${JSON.stringify(out)}`);
-  return size;
+interface StorageFile {
+  filename: string;
+  size: number;
+}
+
+async function listImages(page: Page): Promise<StorageFile[]> {
+  const result = (await callJsonRpc(page, "listStorageFiles")) as { files: StorageFile[] };
+  return result.files;
+}
+
+// The partial file is listed under its .incomplete name until the upload
+// completes. A failed call throws, so an RPC hiccup cannot pass as a stopped
+// upload.
+async function remoteSize(page: Page, name: string): Promise<number> {
+  const files = await listImages(page);
+  const file =
+    files.find(f => f.filename === `${name}.incomplete`) ?? files.find(f => f.filename === name);
+  return file?.size ?? 0;
+}
+
+async function deleteImage(page: Page, name: string): Promise<void> {
+  for (const filename of [name, `${name}.incomplete`]) {
+    try {
+      await callJsonRpc(page, "deleteStorageFile", { filename });
+    } catch {
+      // not present
+    }
+  }
+}
+
+// Byte-for-byte verification needs a shell on the device; without one the
+// check is the final size, which still catches a truncated or doubled resume.
+async function expectImageMatches(page: Page, name: string, sha256: string, size: number) {
+  if (await deviceShellAvailable()) {
+    const remote = (
+      await sshExec(`sha256sum /userdata/jetkvm/images/${name} | cut -d" " -f1`)
+    ).trim();
+    expect(remote, "image must be byte-identical").toBe(sha256);
+    return;
+  }
+  const files = await listImages(page);
+  expect(files.find(f => f.filename === name)?.size, "image must have the full size").toBe(size);
+}
+
+async function openRpcPage(page: Page): Promise<void> {
+  await page.goto("/", { waitUntil: "networkidle" });
+  await ensureRpcReady(page);
 }
 
 async function openUploadView(page: Page): Promise<void> {
@@ -39,17 +81,23 @@ test.describe("Upload cancel and resume", () => {
   let localPath = "";
   let sha256 = "";
 
-  test.beforeAll(async () => {
+  test.beforeAll(async ({ browser }) => {
     await ensureNoPasswordViaAPI();
     const data = randomBytes(FILE_SIZE);
     localPath = join(mkdtempSync(join(tmpdir(), "jetkvm-e2e-")), FILE_NAME);
     writeFileSync(localPath, data);
     sha256 = createHash("sha256").update(data).digest("hex");
-    await sshExec(`rm -f ${REMOTE} ${REMOTE}.incomplete`, true);
+    const page = await browser.newPage();
+    await openRpcPage(page);
+    await deleteImage(page, FILE_NAME);
+    await page.close();
   });
 
-  test.afterAll(async () => {
-    await sshExec(`rm -f ${REMOTE} ${REMOTE}.incomplete`, true);
+  test.afterAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    await openRpcPage(page);
+    await deleteImage(page, FILE_NAME);
+    await page.close();
   });
 
   test("cancelling an upload stops the transfer, and a retry resumes it", async ({ page }) => {
@@ -68,16 +116,17 @@ test.describe("Upload cancel and resume", () => {
 
     await openUploadView(page);
     await page.locator('input[type="file"]').setInputFiles(localPath);
-    await expect.poll(remoteSize, { timeout: 20_000 }).toBeGreaterThan(FILE_SIZE / 8);
+    const size = () => remoteSize(page, FILE_NAME);
+    await expect.poll(size, { timeout: 20_000 }).toBeGreaterThan(FILE_SIZE / 8);
 
     await page.getByRole("button", { name: "Cancel Upload" }).click();
 
     // Before the fix the request kept streaming after Cancel.
     await page.waitForTimeout(1_000);
-    const afterCancel = await remoteSize();
+    const afterCancel = await size();
     await page.waitForTimeout(1_500);
     expect(afterCancel, "partial file must exist after Cancel").toBeGreaterThan(0);
-    expect(await remoteSize(), "upload kept streaming after Cancel").toBe(afterCancel);
+    expect(await size(), "upload kept streaming after Cancel").toBe(afterCancel);
     expect(afterCancel, "cancelled upload must not complete").toBeLessThan(FILE_SIZE);
 
     await throttle(-1);
@@ -85,8 +134,7 @@ test.describe("Upload cancel and resume", () => {
     await page.locator('input[type="file"]').setInputFiles(localPath);
     await expect(page.getByText("Upload successful")).toBeVisible({ timeout: 40_000 });
 
-    const remote = (await sshExec(`sha256sum ${REMOTE} | cut -d" " -f1`, true)).trim();
-    expect(remote, "resumed upload must be byte-identical").toBe(sha256);
+    await expectImageMatches(page, FILE_NAME, sha256, FILE_SIZE);
   });
 });
 
@@ -97,16 +145,13 @@ test("a second start for the same file supersedes the first", async ({ page }) =
   test.setTimeout(60_000);
 
   const name = "e2e-upload-supersede.img";
-  const remote = `/userdata/jetkvm/images/${name}`;
   const data = randomBytes(1024 * 1024);
-  const cleanup = () => sshExec(`rm -f ${remote} ${remote}.incomplete`, true);
+  const cleanup = () => deleteImage(page, name);
 
   await ensureNoPasswordViaAPI();
+  await openRpcPage(page);
   await cleanup();
   try {
-    await page.goto("/", { waitUntil: "networkidle" });
-    await ensureRpcReady(page);
-
     const start = async () =>
       (await callJsonRpc(page, "startStorageFileUpload", {
         filename: name,
@@ -129,9 +174,11 @@ test("a second start for the same file supersedes the first", async ({ page }) =
     );
     expect(ok.ok(), "second upload must complete").toBe(true);
 
-    const remoteHash = (await sshExec(`sha256sum ${remote} | cut -d" " -f1`)).trim();
-    expect(remoteHash, "image must be byte-identical").toBe(
+    await expectImageMatches(
+      page,
+      name,
       createHash("sha256").update(data).digest("hex"),
+      data.length,
     );
   } finally {
     await cleanup();

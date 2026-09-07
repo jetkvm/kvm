@@ -1,5 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { ensureNoPasswordViaAPI, sshExec, waitForWebRTCReady } from "./helpers";
+import {
+  ensureNoPasswordViaAPI,
+  sshExec,
+  waitForWebRTCReady,
+  skipWithoutDeviceShell,
+} from "./helpers";
 
 // Every WebRTC session opens a terminal data channel, and the device spawns a
 // shell for it. A closed session has to reap that shell (#1578).
@@ -20,7 +25,11 @@ async function zombieChildrenOfApp(): Promise<string[]> {
   return lines;
 }
 
-test("closed sessions leave no zombie shells behind", async ({ browser }) => {
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
+
+test("closed sessions leave no zombie shells behind @ssh", async ({ browser }) => {
   test.setTimeout(90_000);
   await ensureNoPasswordViaAPI();
 
