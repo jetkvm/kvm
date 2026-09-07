@@ -196,6 +196,10 @@ export default function SettingsNetworkRoute() {
         settings.ipv4_static.address = parts[0];
       }
 
+      if (settings.ipv4_static) {
+        settings.ipv4_static.dns = settings.ipv4_static.dns.filter(Boolean);
+      }
+
       send("setNetworkSettings", { settings }, async resp => {
         if ("error" in resp) {
           notifications.error(

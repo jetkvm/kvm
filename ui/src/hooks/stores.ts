@@ -775,7 +775,7 @@ export interface DhcpLease {
   _swap_server?: string;
   boot_size?: string;
   root_path?: string;
-  lease?: string;
+  lease?: number; // Go time.Duration, in nanoseconds
   lease_expiry?: Date;
   dhcp_type?: string;
   server_id?: string;
