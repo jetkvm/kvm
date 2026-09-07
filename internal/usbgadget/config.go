@@ -221,6 +221,18 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 // configureUsbGadget reports whether it left an already matching, attached
 // gadget bound instead of rebinding it.
 func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, error) {
+	var adopted bool
+	// Recovery can fall back here after a public rebind fails. Keep the entire
+	// transaction behind the same drain gate, including its controller writes.
+	err := u.withHIDRebind(func() error {
+		var err error
+		adopted, err = u.configureUsbGadgetLocked(resetUsb, forceRebind)
+		return err
+	})
+	return adopted, err
+}
+
+func (u *UsbGadget) configureUsbGadgetLocked(resetUsb bool, forceRebind bool) (bool, error) {
 	disconnected := false
 	adopted := false
 	err := u.WithTransaction(func() error {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -255,5 +256,97 @@ func TestHIDRebindDrainsAdmittedWriter(t *testing.T) {
 	want := append([]byte{2, 0}, keys...)
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("admitted report lost before descriptor cleanup: got %v, error %v", got, err)
+	}
+}
+
+func TestHIDRebindTimeoutReleasesLocksAndAllowsRetry(t *testing.T) {
+	u := newTestGadgetWithKeyboard(nil)
+	file := hidTestSocket(t)
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	release := func() { resumeOnce.Do(func() { close(resume) }) }
+	defer release()
+	u.hidOpenFile = func(string, int, os.FileMode) (*os.File, error) {
+		<-resume
+		return file, nil
+	}
+	u.hidLifecycle.RLock()
+	_, err := u.openWithTimeout("test-hid", os.O_RDWR, 0, time.Millisecond)
+	u.hidLifecycle.RUnlock()
+	if err == nil {
+		t.Fatal("expected the open to time out")
+	}
+	u.hidOpens.mu.Lock()
+	drained := u.hidOpens.drained
+	u.hidOpens.mu.Unlock()
+
+	// If the configuration fallback bypasses the drain gate, an existing
+	// transaction makes it fail before it can perform any filesystem/device IO.
+	u.tx = &UsbGadgetTransaction{}
+	for _, attempt := range []struct {
+		name string
+		run  func() error
+	}{
+		{"public rebind", func() error {
+			return u.rebindUsbWith(func() error {
+				t.Error("rebind ran with an outstanding old-generation open")
+				return nil
+			})
+		}},
+		{"configuration fallback", func() error {
+			u.configLock.Lock()
+			defer u.configLock.Unlock()
+			_, err := u.configureUsbGadget(true, true)
+			return err
+		}},
+	} {
+		result := make(chan error, 1)
+		go func() { result <- attempt.run() }()
+		select {
+		case err := <-result:
+			if err == nil || !strings.Contains(err.Error(), "HID opens did not drain") {
+				t.Fatalf("%s: expected explicit drain timeout, got %v", attempt.name, err)
+			}
+		case <-time.After(hidOpenDrainTimeout + 2*time.Second):
+			t.Fatalf("%s did not return within the drain deadline", attempt.name)
+		}
+		if !u.configLock.TryLock() {
+			t.Fatal("configuration lock retained after timeout")
+		}
+		u.configLock.Unlock()
+		if !u.hidLifecycle.TryLock() {
+			t.Fatal("lifecycle lock retained after timeout")
+		}
+		u.hidLifecycle.Unlock()
+		u.hidOpens.mu.Lock()
+		sameDrain := u.hidOpens.drained == drained && u.hidOpens.pending == 1
+		u.hidOpens.mu.Unlock()
+		if !sameDrain {
+			t.Fatal("recovery attempt discarded outstanding-open tracking")
+		}
+	}
+	u.tx = nil
+
+	release()
+	waitHIDTest(t, drained)
+	if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("late descriptor was not closed before drain completed: %v", err)
+	}
+	rebound := false
+	if err := u.rebindUsbWith(func() error { rebound = true; return nil }); err != nil || !rebound {
+		t.Fatalf("recovery after late-open cleanup: ran=%v, error=%v", rebound, err)
+	}
+
+	// A later failed open must also release its admission and allow recovery.
+	openErr := errors.New("test open failed")
+	u.hidOpenFile = func(string, int, os.FileMode) (*os.File, error) { return nil, openErr }
+	u.hidLifecycle.RLock()
+	_, err = u.openWithTimeout("test-hid", os.O_RDWR, 0, time.Second)
+	u.hidLifecycle.RUnlock()
+	if !errors.Is(err, openErr) {
+		t.Fatalf("later open: got %v, want %v", err, openErr)
+	}
+	if err := u.rebindUsbWith(func() error { return nil }); err != nil {
+		t.Fatalf("recovery after failed open: %v", err)
 	}
 }

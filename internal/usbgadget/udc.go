@@ -154,7 +154,7 @@ func (u *UsbGadget) RebindUsb(ignoreUnbindError bool) error {
 }
 
 // rebindUsbWith excludes descriptor admission for the entire public rebind.
-// Configuration transactions have their own sequencing and do not use this path.
+// Configuration transactions use withHIDRebind while already holding configLock.
 func (u *UsbGadget) rebindUsbWith(rebind func() error) error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
@@ -168,7 +168,9 @@ func (u *UsbGadget) withHIDRebind(rebind func() error) error {
 	defer u.hidLifecycle.Unlock()
 	// An open may outlive its caller's timeout. It must return and close its
 	// old-generation descriptor before the controller can be rebound.
-	u.hidOpens.Wait()
+	if err := u.hidOpens.wait(hidOpenDrainTimeout); err != nil {
+		return err
+	}
 
 	return rebind()
 }

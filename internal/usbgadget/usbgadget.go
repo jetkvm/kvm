@@ -68,7 +68,7 @@ type UsbGadget struct {
 	// lifecycle read locks or hold one across the blocking LED Read. Rebind
 	// takes no keyboardMutex, so admitted keyboard work can finish first.
 	hidLifecycle sync.RWMutex
-	hidOpens     sync.WaitGroup
+	hidOpens     hidOpenTracker
 	// nil uses os.OpenFile; overridden by lifecycle tests without device access.
 	hidOpenFile func(string, int, os.FileMode) (*os.File, error)
 

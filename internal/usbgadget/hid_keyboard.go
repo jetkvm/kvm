@@ -396,8 +396,8 @@ func (u *UsbGadget) openWithTimeout(name string, flag int, perm os.FileMode, tim
 	}
 	ch := make(chan result, 1)
 	// Caller holds hidLifecycle.RLock, so rebind cannot start waiting until
-	// this Add is complete. Ownership lasts through late-result cleanup.
-	u.hidOpens.Add(1)
+	// admission is recorded. Ownership lasts through late-result cleanup.
+	u.hidOpens.begin()
 	go func() {
 		f, err := u.openHIDFile(name, flag, perm)
 		ch <- result{f, err}
@@ -405,13 +405,13 @@ func (u *UsbGadget) openWithTimeout(name string, flag int, perm os.FileMode, tim
 
 	select {
 	case r := <-ch:
-		u.hidOpens.Done()
+		u.hidOpens.end()
 		return r.file, r.err
 	case <-time.After(timeout):
 		// Drain the channel in the background to close the leaked fd if the
 		// open eventually succeeds.
 		go func() {
-			defer u.hidOpens.Done()
+			defer u.hidOpens.end()
 			if r := <-ch; r.file != nil {
 				r.file.Close()
 			}
