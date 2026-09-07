@@ -5,6 +5,9 @@ import { agent, mountKey, registerSharedSession, remoteHostExec } from "./shared
 
 test.describe.configure({ mode: "serial" });
 
+const MISSING_IMAGE_URL = "https://deb.debian.org/debian/jetkvm-missing-image.iso";
+const MISSING_IMAGE_ERROR = /The URL is not available/;
+
 let sharedPage: Page;
 registerSharedSession(page => (sharedPage = page));
 

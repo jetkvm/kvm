@@ -12,6 +12,12 @@ import { agent, registerSharedSession, remoteHostSetDPMS } from "./shared";
 
 test.describe.configure({ mode: "serial" });
 
+// 1366x768 at 60 Hz, with an 85.5 MHz pixel clock.
+const EDID_1366x768 =
+  "00ffffffffffff0028b401000100000001220103802213780aee95a3544c99260f50540000000101010101010101010101010101010166" +
+  "2156aa51002030468f350058c21000001e000000fc004a65744b564d20313336367837000000fd00384c1e530a00202020202020200000" +
+  "0010002020202020202020202020202000d0";
+
 let sharedPage: Page;
 registerSharedSession(page => (sharedPage = page));
 
