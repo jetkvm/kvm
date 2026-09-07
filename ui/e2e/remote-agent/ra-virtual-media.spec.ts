@@ -184,8 +184,8 @@ test.describe("Remote Host Agent: virtual media", () => {
 
     // Find the JetKVM CDROM block device on the remote host.
     // lsblk is the most portable way to find USB-attached SCSI optical drives.
-    // Match on the transport type (usb) and device type (rom).
-    const findBlockDevCmd = `lsblk -Snrpo NAME,TRAN,TYPE 2>/dev/null | awk '$2=="usb" && $3=="rom" {print $1; exit}'`;
+    // Match the vendor as well so another USB optical drive cannot satisfy the test.
+    const findBlockDevCmd = `lsblk -Snpo NAME,TRAN,TYPE,VENDOR 2>/dev/null | awk '$2=="usb" && $3=="rom" && $4=="JetKVM" {print $1; exit}'`;
 
     let blockDev = "";
     const devDeadline = Date.now() + 45000;
@@ -235,6 +235,14 @@ test.describe("Remote Host Agent: virtual media", () => {
         postEvents.length,
         "keyboard should work after EBUSY unmount fallback",
       ).toBeGreaterThan(0);
+
+      // HID recovery alone can hide a stuck first SCSI INQUIRY after eject.
+      await expect
+        .poll(() => remoteHostExec(findBlockDevCmd).trim(), {
+          timeout: 15_000,
+          message: "mass storage must enumerate again after forced unmount",
+        })
+        .not.toBe("");
     } finally {
       // Clean up: unlock the medium (may already be gone after the USB rebind)
       try {

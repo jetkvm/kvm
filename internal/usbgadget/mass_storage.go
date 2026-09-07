@@ -2,9 +2,11 @@ package usbgadget
 
 import (
 	"cmp"
+	"errors"
 	"os"
 	"path"
 	"strings"
+	"syscall"
 )
 
 var massStorageBaseConfig = gadgetConfigItem{
@@ -62,14 +64,21 @@ func (u *UsbGadget) SetMassStorageImage(imagePath string) error {
 }
 
 func (u *UsbGadget) forceEjectLocked() error {
-	if softDisconnect(u.udc) == nil {
-		// The host re-enumerates on reconnect, the same as after a rebind.
-		u.resetHidHandover()
-		defer func() {
-			_ = softConnect(u.udc)
-		}()
+	if err := u.setMassStorageImageLocked("\n"); !errors.Is(err, syscall.EBUSY) {
+		return err
 	}
-	return u.setMassStorageImageLocked("\n")
+
+	// A soft reconnect can leave the first SCSI INQUIRY stuck. Detach the
+	// controller to release the host's medium lock, clear the image while
+	// detached, then restore every USB function even if clearing fails.
+	return u.withHIDRebind(func() error {
+		u.ResetHIDFiles()
+		if err := u.UnbindUDC(); err != nil {
+			return errors.Join(err, u.rebindUsb(true))
+		}
+		err := u.setMassStorageImageLocked("\n")
+		return errors.Join(err, u.rebindUsb(true))
+	})
 }
 
 func (u *UsbGadget) ForceEjectMassStorageImage() error {

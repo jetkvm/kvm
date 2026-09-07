@@ -359,7 +359,7 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	file, err := openWithTimeout("/dev/hidg0", os.O_RDWR, 0666, 3*time.Second)
+	file, err := u.openWithTimeout("/dev/hidg0", os.O_RDWR, 0666, 3*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to open hidg0: %w", err)
 	}
@@ -380,7 +380,7 @@ func (u *UsbGadget) openWakeHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	file, err := openWithTimeout("/dev/hidg3", os.O_WRONLY, 0666, 3*time.Second)
+	file, err := u.openWithTimeout("/dev/hidg3", os.O_WRONLY, 0666, 3*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to open hidg3: %w", err)
 	}
@@ -389,24 +389,29 @@ func (u *UsbGadget) openWakeHidFileLocked(forceReopen bool) error {
 	return nil
 }
 
-func openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Duration) (*os.File, error) {
+func (u *UsbGadget) openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Duration) (*os.File, error) {
 	type result struct {
 		file *os.File
 		err  error
 	}
 	ch := make(chan result, 1)
+	// Caller holds hidLifecycle.RLock, so rebind cannot start waiting until
+	// admission is recorded. Ownership lasts through late-result cleanup.
+	u.hidOpens.begin()
 	go func() {
-		f, err := os.OpenFile(name, flag, perm)
+		f, err := u.openHIDFile(name, flag, perm)
 		ch <- result{f, err}
 	}()
 
 	select {
 	case r := <-ch:
+		u.hidOpens.end()
 		return r.file, r.err
 	case <-time.After(timeout):
 		// Drain the channel in the background to close the leaked fd if the
 		// open eventually succeeds.
 		go func() {
+			defer u.hidOpens.end()
 			if r := <-ch; r.file != nil {
 				r.file.Close()
 			}
@@ -416,6 +421,9 @@ func openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Durat
 }
 
 func (u *UsbGadget) openKeyboardHidFile() error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
 	u.keyboardLock.Lock()
 	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile opened")
 
@@ -423,6 +431,9 @@ func (u *UsbGadget) openKeyboardHidFile() error {
 }
 
 func (u *UsbGadget) reopenKeyboardHidFile() error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
 	u.keyboardLock.Lock()
 	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile reopened")
 
@@ -448,16 +459,19 @@ var keyboardMutex sync.Mutex
 // keyboardWriteHidFileLocked writes a keyboard HID report to the device.
 // Caller MUST hold keyboardMutex.
 func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error {
-	if err := u.openKeyboardHidFile(); err != nil {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+	u.keyboardLock.Lock()
+	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile wrote")
+
+	if err := u.openKeyboardHidFileLocked(false); err != nil {
 		return err
 	}
 
 	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
-		u.keyboardLock.Lock()
 		u.closeKeyboardHidFileLocked()
-		unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile closed after write error")
 		return err
 	}
 	u.resetLogSuppressionCounter("keyboardWriteHidFile")
@@ -465,6 +479,9 @@ func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error
 }
 
 func (u *UsbGadget) wakeWriteHidFile(report byte) error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
 	u.wakeHidLock.Lock()
 	defer unlockWithLog(&u.wakeHidLock, u.log, "wakeHidFile wrote")
 
@@ -699,14 +716,16 @@ func (u *UsbGadget) KeyboardWriteTimeoutStreak() int {
 func (u *UsbGadget) VerifyKeyboardWritable() error {
 	keyboardMutex.Lock()
 	defer keyboardMutex.Unlock()
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+	u.keyboardLock.Lock()
+	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile probed")
 
-	if err := u.openKeyboardHidFile(); err != nil {
+	if err := u.openKeyboardHidFileLocked(false); err != nil {
 		return err
 	}
 
-	u.keyboardLock.Lock()
 	file := u.keyboardHidFile
-	u.keyboardLock.Unlock()
 	if file == nil {
 		return fmt.Errorf("keyboard HID file is not open")
 	}

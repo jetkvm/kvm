@@ -150,10 +150,29 @@ func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
 
 // RebindUsb rebinds the USB gadget to the UDC.
 func (u *UsbGadget) RebindUsb(ignoreUnbindError bool) error {
+	return u.rebindUsbWith(func() error { return u.rebindUsb(ignoreUnbindError) })
+}
+
+// rebindUsbWith excludes descriptor admission for the entire public rebind.
+// Configuration transactions use withHIDRebind while already holding configLock.
+func (u *UsbGadget) rebindUsbWith(rebind func() error) error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
-	return u.rebindUsb(ignoreUnbindError)
+	return u.withHIDRebind(rebind)
+}
+
+// withHIDRebind requires configLock and excludes HID access during a rebind.
+func (u *UsbGadget) withHIDRebind(rebind func() error) error {
+	u.hidLifecycle.Lock()
+	defer u.hidLifecycle.Unlock()
+	// An open may outlive its caller's timeout. It must return and close its
+	// old-generation descriptor before the controller can be rebound.
+	if err := u.hidOpens.wait(hidOpenDrainTimeout); err != nil {
+		return err
+	}
+
+	return rebind()
 }
 
 // GetUsbState returns the current state of the USB gadget
