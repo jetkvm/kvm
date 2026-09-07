@@ -3,6 +3,7 @@ package usbgadget
 import (
 	"fmt"
 	"os"
+	"time"
 )
 
 var relativeMouseConfig = gadgetConfigItem{
@@ -68,7 +69,7 @@ var relativeMouseCombinedReportDesc = []byte{
 func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 	if u.relMouseHidFile == nil {
 		var err error
-		u.relMouseHidFile, err = u.openHIDFile("/dev/hidg2", os.O_RDWR, 0666)
+		u.relMouseHidFile, err = u.openWithTimeout("/dev/hidg2", os.O_RDWR, 0666, 3*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to open hidg1: %w", err)
 		}

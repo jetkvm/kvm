@@ -350,3 +350,56 @@ func TestHIDRebindTimeoutReleasesLocksAndAllowsRetry(t *testing.T) {
 		t.Fatalf("recovery after failed open: %v", err)
 	}
 }
+
+func TestMouseOpenTimeoutReleasesLifecycleAndTracksLateDescriptor(t *testing.T) {
+	for name, report := range map[string]func(*UsbGadget) error{
+		"absolute": func(u *UsbGadget) error { return u.AbsMouseReport(1, 1, 0) },
+		"relative": func(u *UsbGadget) error { return u.RelMouseReport(1, 1, 0) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			u := newTestGadgetWithKeyboard(nil)
+			u.enabledDevices = defaultUsbGadgetDevices
+			file := hidTestSocket(t)
+			resume := make(chan struct{})
+			var once sync.Once
+			release := func() { once.Do(func() { close(resume) }) }
+			defer release()
+			u.hidOpenFile = func(string, int, os.FileMode) (*os.File, error) {
+				<-resume
+				return file, nil
+			}
+			result := make(chan error, 1)
+			go func() { result <- report(u) }()
+			select {
+			case err := <-result:
+				if err == nil || !strings.Contains(err.Error(), "timed out") {
+					t.Fatalf("mouse report did not return its open timeout: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				release()
+				<-result
+				u.ResetHIDFiles()
+				t.Fatal("blocked mouse open retained the lifecycle read lock")
+			}
+			if !u.hidLifecycle.TryLock() {
+				t.Fatal("mouse timeout retained the lifecycle lock")
+			}
+			u.hidLifecycle.Unlock()
+			u.hidOpens.mu.Lock()
+			pending, drained := u.hidOpens.pending, u.hidOpens.drained
+			u.hidOpens.mu.Unlock()
+			if pending != 1 {
+				t.Fatalf("late mouse open is not tracked: pending=%d", pending)
+			}
+			release()
+			waitHIDTest(t, drained)
+			if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
+				t.Fatalf("late mouse descriptor was not closed: %v", err)
+			}
+			rebound := false
+			if err := u.rebindUsbWith(func() error { rebound = true; return nil }); err != nil || !rebound {
+				t.Fatalf("rebind after mouse cleanup: ran=%v, error=%v", rebound, err)
+			}
+		})
+	}
+}
