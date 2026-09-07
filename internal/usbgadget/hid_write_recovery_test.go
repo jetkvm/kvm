@@ -2,6 +2,7 @@ package usbgadget
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -9,6 +10,33 @@ import (
 
 	"github.com/rs/zerolog"
 )
+
+func TestHIDWriteSurvivesBriefBackpressure(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	fillPipeBuffer(t, w)
+
+	// The previous report can remain pending while the host or the device
+	// is briefly descheduled. The next report must wait, not disappear.
+	drained := make(chan error, 1)
+	go func() {
+		time.Sleep(25 * time.Millisecond)
+		_, err := io.CopyN(io.Discard, r, 4096)
+		drained <- err
+	}()
+	report := []byte{2, 0, 6, 0, 0, 0, 0, 0}
+	n, err := newTestGadgetWithKeyboard(w).writeWithTimeout(w, report)
+	if drainErr := <-drained; drainErr != nil {
+		t.Fatal(drainErr)
+	}
+	if err != nil || n != len(report) {
+		t.Fatalf("report lost during brief backpressure: wrote %d/%d bytes, error %v", n, len(report), err)
+	}
+}
 
 func TestWriteTimeoutLoggingResumesAfterSuccessfulWrite(t *testing.T) {
 	r, w, err := os.Pipe()
