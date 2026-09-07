@@ -697,7 +697,8 @@ func onSessionConnected(session *Session) {
 func onLastSessionDisconnected() {
 	// Safety net: ensure all keys are released when the last session disconnects
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
-	stopAudio()
+	// The closing session already released its own audio capture. A replacement
+	// may have connected since the zero-session decision, so do not stop its audio.
 	_ = nativeInstance.VideoStop()
 	_ = applyHostDisplayAdvertisement("last_session_disconnected")
 	startVideoSleepModeTicker()
