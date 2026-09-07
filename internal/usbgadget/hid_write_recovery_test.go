@@ -1,12 +1,120 @@
 package usbgadget
 
 import (
+	"bytes"
+	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 )
+
+func TestHIDWriteSurvivesBriefBackpressure(t *testing.T) {
+	const maxAttempts = 5
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if tryHIDWriteWithBriefBackpressure(t, attempt) {
+			return
+		}
+	}
+	t.Fatalf("no valid backpressure timing window in %d attempts", maxAttempts)
+}
+
+func tryHIDWriteWithBriefBackpressure(t *testing.T, attempt int) bool {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	fillPipeBuffer(t, w)
+	if err := r.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	// The previous report can remain pending while the host or the device
+	// is briefly descheduled. The next report must wait, not disappear.
+	type drainResult struct {
+		started, finished time.Time
+		err               error
+	}
+	start := make(chan struct{})
+	drained := make(chan drainResult, 1)
+	go func() {
+		<-start
+		time.Sleep(25 * time.Millisecond)
+		started := time.Now()
+		_, err := io.CopyN(io.Discard, r, 4096)
+		drained <- drainResult{started, time.Now(), err}
+	}()
+	report := []byte{2, 0, 6, 0, 0, 0, 0, 0}
+	u := newTestGadgetWithKeyboard(w)
+	started := time.Now()
+	close(start)
+	n, err := u.writeWithTimeout(w, report)
+	finished := time.Now()
+	drain := <-drained
+	if os.IsTimeout(drain.err) {
+		t.Logf("attempt %d: pipe setup/drain missed its deadline", attempt)
+		return false
+	}
+	if drain.err != nil {
+		t.Fatal(drain.err)
+	}
+	// The drain must occur after the old 10 ms deadline, with headroom before
+	// the new 100 ms deadline. Oversleeping the intended window is a fixture
+	// scheduling failure, not evidence that a report was dropped.
+	if drain.started.Sub(started) < 20*time.Millisecond || drain.finished.Sub(started) > 75*time.Millisecond {
+		t.Logf("attempt %d: invalid drain window [%v, %v]", attempt, drain.started.Sub(started), drain.finished.Sub(started))
+		return false
+	}
+	if n == len(report) && err == nil && (finished.Before(drain.started) || finished.Sub(started) > hidWriteTimeout) {
+		// An early success did not encounter backpressure. A success outside
+		// the write budget may have started late after the caller was paused;
+		// do not let that make the old 10 ms implementation appear to pass.
+		t.Logf("attempt %d: invalid successful write duration %v", attempt, finished.Sub(started))
+		return false
+	}
+	if err != nil || n != len(report) {
+		t.Fatalf("report lost during brief backpressure: wrote %d/%d bytes, error %v", n, len(report), err)
+	}
+	return true
+}
+
+func TestWriteTimeoutLoggingResumesAfterSuccessfulWrite(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	var logs bytes.Buffer
+	logger := zerolog.New(&logs)
+	u := newTestGadgetWithKeyboard(w)
+	u.log = &logger
+	report := make([]byte, hidKeyBufferSize)
+
+	// Consecutive timeouts produce one error, but a new timeout after a
+	// successful write must be visible even if it is an isolated failure.
+	for episode := 1; episode <= 2; episode++ {
+		fillPipeBuffer(t, w)
+		for range 2 {
+			if err := u.keyboardWriteHidFileLocked(0, report); err != nil {
+				t.Fatalf("timed-out write: %v", err)
+			}
+		}
+		if got := strings.Count(logs.String(), "write timed out:"); got != episode {
+			t.Fatalf("after episode %d: got %d timeout logs, want %d", episode, got, episode)
+		}
+		drainPipe(t, r)
+		if err := u.keyboardWriteHidFileLocked(0, report); err != nil {
+			t.Fatalf("successful write: %v", err)
+		}
+	}
+}
 
 func fillPipeBuffer(t *testing.T, w *os.File) {
 	t.Helper()
