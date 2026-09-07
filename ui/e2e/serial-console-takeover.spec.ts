@@ -79,11 +79,8 @@ const DEFAULT_SERIAL_SETTINGS = {
   buttons: [],
 };
 
-test.beforeEach(async () => {
-  await skipWithoutDeviceShell();
-});
-
 test.describe("serial console sink across a session takeover", () => {
+  let settingsChanged = false;
   let hadSettingsFile = false;
   let settings: Record<string, unknown> = DEFAULT_SERIAL_SETTINGS;
 
@@ -99,6 +96,7 @@ test.describe("serial console sink across a session takeover", () => {
   }
 
   test.beforeAll(async ({ browser }) => {
+    await skipWithoutDeviceShell();
     await ensureNoPasswordViaAPI();
     hadSettingsFile =
       (await sshExec(`[ -f ${SERIAL_SETTINGS_PATH} ] && echo yes || echo no`)).trim() === "yes";
@@ -107,10 +105,12 @@ test.describe("serial console sink across a session takeover", () => {
         settings = (await callJsonRpc(page, "getSerialSettings")) as Record<string, unknown>;
       }
       await callJsonRpc(page, "setSerialSettings", { settings: { ...settings, enableEcho: true } });
+      settingsChanged = true;
     });
   });
 
   test.afterAll(async ({ browser }) => {
+    if (!settingsChanged) return;
     await withPage(browser, async page => {
       await callJsonRpc(page, "setSerialSettings", { settings });
     });
