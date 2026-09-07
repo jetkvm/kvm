@@ -77,6 +77,8 @@ export default function SettingsVideoRoute() {
   const [streamQualityLoading, setStreamQualityLoading] = useState(true);
   const [codecPreference, setCodecPreference] = useState("auto");
   const [supportedCodecs, setSupportedCodecs] = useState<string[] | null>(null);
+  const [codecLoadFailed, setCodecLoadFailed] = useState(false);
+  const [codecLoadAttempt, setCodecLoadAttempt] = useState(0);
   const codecOptions = allCodecOptions
     .filter(
       option =>
@@ -108,13 +110,31 @@ export default function SettingsVideoRoute() {
   } = useSettingsStore();
 
   useEffect(() => {
+    let active = true;
+    setSupportedCodecs(null);
+    setCodecLoadFailed(false);
+    const timeout = window.setTimeout(() => setCodecLoadFailed(true), 10000);
     void send("getSupportedVideoCodecs", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      if (Array.isArray(resp.result) && resp.result.every(codec => typeof codec === "string")) {
-        setSupportedCodecs(resp.result as string[]);
+      if (!active) return;
+      window.clearTimeout(timeout);
+      if (
+        "error" in resp ||
+        !Array.isArray(resp.result) ||
+        !resp.result.every(codec => typeof codec === "string")
+      ) {
+        setCodecLoadFailed(true);
+        return;
       }
+      setCodecLoadFailed(false);
+      setSupportedCodecs(resp.result as string[]);
     });
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [send, codecLoadAttempt]);
 
+  useEffect(() => {
     void send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {
       setStreamQualityLoading(false);
       if ("error" in resp) return;
@@ -276,7 +296,11 @@ export default function SettingsVideoRoute() {
               />
             </SettingsItem>
 
-            <SettingsItem title={m.video_codec_title()} description={m.video_codec_description()}>
+            <SettingsItem
+              title={m.video_codec_title()}
+              description={m.video_codec_description()}
+              loading={supportedCodecs === null && !codecLoadFailed}
+            >
               <SelectMenuBasic
                 size="SM"
                 label=""
@@ -285,6 +309,15 @@ export default function SettingsVideoRoute() {
                 disabled={supportedCodecs === null}
                 onChange={e => handleCodecChange(e.target.value)}
               />
+              {codecLoadFailed && (
+                <Button
+                  data-testid="video-codec-retry"
+                  size="SM"
+                  theme="light"
+                  text={m.retry()}
+                  onClick={() => setCodecLoadAttempt(attempt => attempt + 1)}
+                />
+              )}
             </SettingsItem>
 
             <SettingsItem
