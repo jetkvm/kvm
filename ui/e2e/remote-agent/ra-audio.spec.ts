@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
   callJsonRpc,
+  skipWithoutRpc,
   ensureNoPasswordViaAPI,
   waitForAudioStream,
   waitForWebRTCReady,
@@ -42,6 +43,7 @@ test("USB audio device remains attached when streaming audio is toggled @audio",
 
   await page.goto("/", { waitUntil: "networkidle" });
   await waitForWebRTCReady(page);
+  await skipWithoutRpc(page, "getAudioConfig", "audio");
 
   try {
     await callJsonRpc(page, "setAudioConfig", { params: { enabled: false } });
@@ -65,6 +67,10 @@ test("USB audio device remains attached when streaming audio is toggled @audio",
 test("audio works end-to-end @audio", async ({ page }) => {
   test.setTimeout(60_000);
 
+  await page.goto("/", { waitUntil: "networkidle" });
+  await waitForWebRTCReady(page);
+  await skipWithoutRpc(page, "getAudioConfig", "audio");
+
   await waitForJetKvmAudioDevice("before enabling streaming");
 
   // Audio streaming is opt-in via device config (Settings -> Audio -> Enable
@@ -72,8 +78,6 @@ test("audio works end-to-end @audio", async ({ page }) => {
   // Hardware, so enabling streaming should not force host USB re-enumeration.
   // Connect with audio off, flip the setting via RPC, then reload so the new
   // SDP exchange picks up the freshly-enabled track.
-  await page.goto("/", { waitUntil: "networkidle" });
-  await waitForWebRTCReady(page);
   await callJsonRpc(page, "setAudioConfig", { params: { enabled: true } });
 
   try {

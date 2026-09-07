@@ -1,5 +1,11 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { callJsonRpc, ensureNoPasswordViaAPI, ensureRpcReady, waitForWebRTCReady } from "./helpers";
+import {
+  callJsonRpc,
+  ensureNoPasswordViaAPI,
+  ensureRpcReady,
+  rpcAvailable,
+  waitForWebRTCReady,
+} from "./helpers";
 
 // Every session opens a serial data channel and the device makes it the
 // console broker's sink. On a takeover the device closes the replaced peer
@@ -88,6 +94,10 @@ test.describe("serial console sink across a session takeover", () => {
   test.beforeAll(async ({ browser }) => {
     await ensureNoPasswordViaAPI();
     await withPage(browser, async page => {
+      test.skip(
+        !(await rpcAvailable(page, "getSerialSettings")),
+        "device has no serial console (getSerialSettings)",
+      );
       try {
         settings = (await callJsonRpc(page, "getSerialSettings")) as Record<string, unknown>;
       } catch {
