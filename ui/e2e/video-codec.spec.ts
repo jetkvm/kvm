@@ -175,3 +175,45 @@ test.describe("Video codec negotiation", () => {
     }
   });
 });
+
+test("codec settings use device capabilities and retain an unavailable saved preference", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto("/");
+  await ensureLocalAuthMode(page, { mode: "noPassword" });
+  await waitForWebRTCReady(page);
+  const supported = await callJsonRpc(page, "getSupportedVideoCodecs");
+  expect(supported).toEqual(["h264", "h265"]);
+  const original = await callJsonRpc(page, "getVideoCodecPreference");
+  try {
+    await callJsonRpc(page, "setVideoCodecPreference", { codec: "h265" });
+    await page.goto("/settings/video", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(page);
+    const select = page.locator("select").filter({ has: page.locator('option[value="auto"]') });
+    await expect(select).toHaveValue("h265");
+    await expect(select.locator('option[value="h265"]')).toHaveJSProperty("disabled", true);
+    await expect(select.locator('option[value="h264"]')).toHaveJSProperty("disabled", false);
+    await expect(select).toBeEnabled();
+    await Promise.all([page.waitForEvent("load"), select.selectOption("h264")]);
+    await page.waitForLoadState("networkidle");
+    await waitForWebRTCReady(page);
+    expect(await callJsonRpc(page, "getVideoCodecPreference")).toBe("h264");
+    await page.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(page);
+    await wakeDisplay(page);
+    await waitForVideoStream(page);
+    expect((await getActiveCodec(page)).toLowerCase()).toContain("h264");
+    await assertBytesFlowing(page);
+    const frames = (await page.evaluate(() => window.__kvmTestHooks?.getInboundVideoStats()))!
+      .framesDecoded;
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.__kvmTestHooks?.getInboundVideoStats()))?.framesDecoded,
+      )
+      .toBeGreaterThan(frames);
+  } finally {
+    await callJsonRpc(page, "setVideoCodecPreference", { codec: original });
+  }
+});
