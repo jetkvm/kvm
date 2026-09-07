@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import {
   ensureLocalAuthMode,
+  dismissSessionTakeoverDialog,
   waitForWebRTCReady,
   waitForVideoStream,
   wakeDisplay,
@@ -182,6 +183,7 @@ test("codec settings use device capabilities and retain an unavailable saved pre
   test.setTimeout(90_000);
   await page.goto("/");
   await ensureLocalAuthMode(page, { mode: "noPassword" });
+  await dismissSessionTakeoverDialog(page);
   await waitForWebRTCReady(page);
   const supported = await callJsonRpc(page, "getSupportedVideoCodecs");
   expect(supported).toEqual(["h264", "h265"]);
@@ -189,6 +191,7 @@ test("codec settings use device capabilities and retain an unavailable saved pre
   try {
     await callJsonRpc(page, "setVideoCodecPreference", { codec: "h265" });
     await page.goto("/settings/video", { waitUntil: "networkidle" });
+    await dismissSessionTakeoverDialog(page);
     await waitForWebRTCReady(page);
     const select = page.locator("select").filter({ has: page.locator('option[value="auto"]') });
     await expect(select).toHaveValue("h265");
@@ -197,9 +200,11 @@ test("codec settings use device capabilities and retain an unavailable saved pre
     await expect(select).toBeEnabled();
     await Promise.all([page.waitForEvent("load"), select.selectOption("h264")]);
     await page.waitForLoadState("networkidle");
+    await dismissSessionTakeoverDialog(page);
     await waitForWebRTCReady(page);
     expect(await callJsonRpc(page, "getVideoCodecPreference")).toBe("h264");
     await page.goto("/", { waitUntil: "networkidle" });
+    await dismissSessionTakeoverDialog(page);
     await waitForWebRTCReady(page);
     await wakeDisplay(page);
     await waitForVideoStream(page);
