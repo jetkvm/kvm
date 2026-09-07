@@ -18,7 +18,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20250901182336-dc5ae18bd79f
-	github.com/insomniacslk/dhcp v0.0.0-20250919081422-f80a1952f48e
+	github.com/insomniacslk/dhcp v0.0.0-20260719225207-c76316d4aa82
 	github.com/mdlayher/ndp v1.1.0
 	github.com/pion/ice/v4 v4.1.0
 	github.com/pion/logging v0.2.4
