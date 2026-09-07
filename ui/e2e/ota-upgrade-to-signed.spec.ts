@@ -80,7 +80,7 @@ test.describe("OTA Upgrade to Signed Release", () => {
     await rebootDeviceViaSSH();
   });
 
-  test("current build accepts signed update", async ({ page }) => {
+  test("current build accepts signed update @ota", async ({ page }) => {
     await test.step("Verify device is running the dev build", async () => {
       await page.goto("/settings/general/update");
       await page.waitForLoadState("networkidle");

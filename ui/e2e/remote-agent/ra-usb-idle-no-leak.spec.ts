@@ -9,6 +9,7 @@ import {
   ensureRpcReady,
   sshExec,
   waitForUdcState,
+  skipWithoutDeviceShell,
 } from "../helpers";
 import { createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
 
@@ -28,6 +29,10 @@ async function deviceRebindCount(): Promise<number> {
   );
   return parseInt(out, 10) || 0;
 }
+
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
 
 test.describe.configure({ mode: "serial" });
 
@@ -88,7 +93,7 @@ test.afterAll(async () => {
   if (page) await page.close();
 });
 
-test("idle sessionless gadget neither leaks nor rebind-loops, and recovers when the host returns (#1540, #128)", async () => {
+test("idle sessionless gadget neither leaks nor rebind-loops, and recovers when the host returns (#1540, #128) @ssh", async () => {
   test.setTimeout(300_000);
 
   expect(

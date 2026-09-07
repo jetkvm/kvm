@@ -35,7 +35,9 @@ async function waitForJetKvmAudioDevice(context: string, timeoutMs = 15_000) {
   );
 }
 
-test("USB audio device remains attached when streaming audio is toggled", async ({ page }) => {
+test("USB audio device remains attached when streaming audio is toggled @audio", async ({
+  page,
+}) => {
   test.setTimeout(45_000);
 
   await page.goto("/", { waitUntil: "networkidle" });
@@ -60,7 +62,7 @@ test("USB audio device remains attached when streaming audio is toggled", async 
   }
 });
 
-test("audio works end-to-end", async ({ page }) => {
+test("audio works end-to-end @audio", async ({ page }) => {
   test.setTimeout(60_000);
 
   await waitForJetKvmAudioDevice("before enabling streaming");

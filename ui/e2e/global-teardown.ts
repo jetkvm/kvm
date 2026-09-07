@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import {
+  deviceShellAvailable,
   sshExec,
   resetConfigViaSSH,
   restartAppViaSSH,
@@ -9,6 +10,11 @@ import {
 } from "./helpers";
 
 export default async function globalTeardown() {
+  if (!(await deviceShellAvailable())) {
+    console.log("[global-teardown] No device shell; skipping log capture and reset.");
+    return;
+  }
+
   const resultsDir = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),
     "../test-results",
