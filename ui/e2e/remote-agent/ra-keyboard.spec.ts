@@ -571,13 +571,45 @@ test.describe("Remote Host Agent: keyboard", () => {
     });
 
     await sendKeypress(sharedPage, 0xe1, false);
+    let events: RAKeyboardEvent[] = [];
+    let previousSnapshot = "";
+    let quietSince = performance.now();
     await expect(async () => {
-      const events = await agent!.getKeyboardEvents();
-      const shiftReleases = events.filter(
-        ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
-      );
-      expect(shiftReleases.length, "Shift should have exactly 1 release").toBe(1);
+      events = await agent!.getKeyboardEvents();
+      const snapshot = JSON.stringify(events);
+      if (snapshot !== previousSnapshot) {
+        previousSnapshot = snapshot;
+        quietSince = performance.now();
+      }
+      // Observe completion and a quiet interval before checking exact counts:
+      // a transient single release must not hide a later duplicate. Only read
+      // during polling; resending input would conceal dropped reports.
+      expect(events.at(-1)).toMatchObject({ code: KEY.LEFT_SHIFT, type: "key_release" });
+      expect(
+        performance.now() - quietSince,
+        "host keyboard events should settle",
+      ).toBeGreaterThanOrEqual(500);
     }).toPass({ timeout: 5000, intervals: [50] });
+
+    const letters = [KEY.A, KEY.B, KEY.C, KEY.D, KEY.E, KEY.F, KEY.G, KEY.H, KEY.I, KEY.J];
+    const expected: Pick<RAKeyboardEvent, "code" | "type">[] = [
+      { code: KEY.LEFT_SHIFT, type: "key_press" },
+    ];
+    for (let i = 0; i < 20; i++) {
+      expected.push(
+        { code: letters[i % letters.length], type: "key_press" },
+        { code: letters[i % letters.length], type: "key_release" },
+      );
+    }
+    expected.push({ code: KEY.LEFT_SHIFT, type: "key_release" });
+    expect(
+      events.map(({ code, type }) => ({ code, type })),
+      "complete host key sequence",
+    ).toEqual(expected);
+    expect(
+      events.at(-1)!.time_ms,
+      "Shift release must follow the final letter release",
+    ).toBeGreaterThan(events.at(-2)!.time_ms);
   });
 
   test("keepalive: multiple simultaneous modifiers + key", async () => {
