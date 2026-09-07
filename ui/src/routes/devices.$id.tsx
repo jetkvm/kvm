@@ -401,7 +401,9 @@ export default function KvmIdRoute() {
 
     if (resp.method === "networkState") {
       console.debug("Setting network state", resp.params);
-      setNetworkState(resp.params as NetworkState);
+      const state = resp.params as NetworkState;
+      setNetworkState(state);
+      if (state.hostname) setDisplayHostname(state.hostname);
     }
 
     if (resp.method === "keyboardLedState") {

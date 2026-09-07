@@ -43,7 +43,7 @@ export default function StaticIpv4Card() {
   };
 
   const validateIsIPOrCIDR4 = (value: string) => {
-    if (!validator.isIP(value) && !validator.isIPRange(value, 4))
+    if (!validator.isIP(value, 4) && !validator.isIPRange(value, 4))
       return m.network_ipv4_invalid_cidr();
     return true;
   };
@@ -93,7 +93,7 @@ export default function StaticIpv4Card() {
             size="SM"
             placeholder="192.168.1.1"
             {...register("ipv4_static.gateway", {
-              validate: (value: string | undefined) => ipv4Validation(value ?? ""),
+              validate: (value: string | undefined) => !value || ipv4Validation(value),
             })}
             error={formState.errors.ipv4_static?.gateway?.message}
           />
@@ -111,7 +111,7 @@ export default function StaticIpv4Card() {
                         size="SM"
                         placeholder="1.1.1.1"
                         {...register(`ipv4_static.dns.${index}`, {
-                          validate: (value: string | undefined) => ipv4Validation(value ?? ""),
+                          validate: (value: string | undefined) => !value || ipv4Validation(value),
                         })}
                         error={formState.errors.ipv4_static?.dns?.[index]?.message}
                       />
