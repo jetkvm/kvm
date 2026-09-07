@@ -40,7 +40,7 @@ const h265Supported = (() => {
   return caps?.codecs.some(c => c.mimeType === "video/H265") ?? false;
 })();
 
-const codecOptions = h265Supported
+const browserCodecOptions = h265Supported
   ? allCodecOptions
   : allCodecOptions.filter(o => o.value !== "h265");
 
@@ -49,6 +49,23 @@ export default function SettingsVideoRoute() {
   const [streamQuality, setStreamQuality] = useState("1");
   const [streamQualityLoading, setStreamQualityLoading] = useState(true);
   const [codecPreference, setCodecPreference] = useState("auto");
+  const [supportedCodecs, setSupportedCodecs] = useState<string[] | null>(null);
+  const [codecLoadFailed, setCodecLoadFailed] = useState(false);
+  const [codecLoadAttempt, setCodecLoadAttempt] = useState(0);
+  const codecOptions = allCodecOptions
+    .filter(
+      option =>
+        option.value === codecPreference ||
+        (browserCodecOptions.includes(option) &&
+          (option.value === "auto" || supportedCodecs?.includes(option.value))),
+    )
+    .map(option => ({
+      ...option,
+      disabled:
+        option.value !== "auto" &&
+        (!browserCodecOptions.includes(option) || !supportedCodecs?.includes(option.value)),
+    }));
+
   const [disableHostDisplayWhenIdle, setDisableHostDisplayWhenIdle] = useState(false);
   const [disableHostDisplayWhenIdleLoading, setDisableHostDisplayWhenIdleLoading] = useState(true);
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
@@ -68,6 +85,31 @@ export default function SettingsVideoRoute() {
   } = useSettingsStore();
 
   useEffect(() => {
+    let active = true;
+    setSupportedCodecs(null);
+    setCodecLoadFailed(false);
+    const timeout = window.setTimeout(() => setCodecLoadFailed(true), 10000);
+    void send("getSupportedVideoCodecs", {}, (resp: JsonRpcResponse) => {
+      if (!active) return;
+      window.clearTimeout(timeout);
+      if (
+        "error" in resp ||
+        !Array.isArray(resp.result) ||
+        !resp.result.every(codec => typeof codec === "string")
+      ) {
+        setCodecLoadFailed(true);
+        return;
+      }
+      setCodecLoadFailed(false);
+      setSupportedCodecs(resp.result as string[]);
+    });
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [send, codecLoadAttempt]);
+
+  useEffect(() => {
     void send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {
       setStreamQualityLoading(false);
       if ("error" in resp) return;
@@ -77,7 +119,7 @@ export default function SettingsVideoRoute() {
     void send("getVideoCodecPreference", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const codec = resp.result as string;
-      const isAvailable = codecOptions.some(o => o.value === codec);
+      const isAvailable = allCodecOptions.some(o => o.value === codec);
       setCodecPreference(isAvailable ? codec : "auto");
     });
 
@@ -244,14 +286,28 @@ export default function SettingsVideoRoute() {
               />
             </SettingsItem>
 
-            <SettingsItem title={m.video_codec_title()} description={m.video_codec_description()}>
+            <SettingsItem
+              title={m.video_codec_title()}
+              description={m.video_codec_description()}
+              loading={supportedCodecs === null && !codecLoadFailed}
+            >
               <SelectMenuBasic
                 size="SM"
                 label=""
                 value={codecPreference}
                 options={codecOptions}
+                disabled={supportedCodecs === null}
                 onChange={e => handleCodecChange(e.target.value)}
               />
+              {codecLoadFailed && (
+                <Button
+                  data-testid="video-codec-retry"
+                  size="SM"
+                  theme="light"
+                  text={m.retry()}
+                  onClick={() => setCodecLoadAttempt(attempt => attempt + 1)}
+                />
+              )}
             </SettingsItem>
 
             <SettingsItem

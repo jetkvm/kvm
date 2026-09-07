@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import {
   ensureLocalAuthMode,
+  ensureRpcReady,
   waitForWebRTCReady,
   waitForVideoStream,
   wakeDisplay,
@@ -174,4 +175,46 @@ test.describe("Video codec negotiation", () => {
       await callJsonRpc(page, "setVideoCodecPreference", { codec: originalCodec || "auto" });
     }
   });
+});
+
+test("codec settings use device capabilities and retain an unavailable saved preference", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto("/");
+  await ensureLocalAuthMode(page, { mode: "noPassword" });
+  await ensureRpcReady(page);
+  const supported = await callJsonRpc(page, "getSupportedVideoCodecs");
+  expect(supported).toEqual(["h264", "h265"]);
+  const original = await callJsonRpc(page, "getVideoCodecPreference");
+  try {
+    await callJsonRpc(page, "setVideoCodecPreference", { codec: "h265" });
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("link", { name: "Video", exact: true }).click();
+    const select = page.locator("select").filter({ has: page.locator('option[value="auto"]') });
+    await expect(select).toHaveValue("h265");
+    await expect(select.locator('option[value="h265"]')).toHaveJSProperty("disabled", true);
+    await expect(select.locator('option[value="h264"]')).toHaveJSProperty("disabled", false);
+    await expect(select).toBeEnabled();
+    await Promise.all([page.waitForEvent("load"), select.selectOption("h264")]);
+    await page.waitForLoadState("networkidle");
+    await ensureRpcReady(page);
+    expect(await callJsonRpc(page, "getVideoCodecPreference")).toBe("h264");
+    await page.goto("/", { waitUntil: "networkidle" });
+    await ensureRpcReady(page);
+    await wakeDisplay(page);
+    await waitForVideoStream(page);
+    expect((await getActiveCodec(page)).toLowerCase()).toContain("h264");
+    await assertBytesFlowing(page);
+    const frames = (await page.evaluate(() => window.__kvmTestHooks?.getInboundVideoStats()))!
+      .framesDecoded;
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.__kvmTestHooks?.getInboundVideoStats()))?.framesDecoded,
+      )
+      .toBeGreaterThan(frames);
+  } finally {
+    await callJsonRpc(page, "setVideoCodecPreference", { codec: original });
+  }
 });
