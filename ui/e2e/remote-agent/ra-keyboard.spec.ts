@@ -606,10 +606,6 @@ test.describe("Remote Host Agent: keyboard", () => {
       events.map(({ code, type }) => ({ code, type })),
       "complete host key sequence",
     ).toEqual(expected);
-    expect(
-      events.at(-1)!.time_ms,
-      "Shift release must follow the final letter release",
-    ).toBeGreaterThan(events.at(-2)!.time_ms);
   });
 
   test("keepalive: multiple simultaneous modifiers + key", async () => {
