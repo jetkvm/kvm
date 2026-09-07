@@ -159,6 +159,11 @@ func (u *UsbGadget) rebindUsbWith(rebind func() error) error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
+	return u.withHIDRebind(rebind)
+}
+
+// withHIDRebind requires configLock and excludes HID access during a rebind.
+func (u *UsbGadget) withHIDRebind(rebind func() error) error {
 	u.hidLifecycle.Lock()
 	defer u.hidLifecycle.Unlock()
 	// An open may outlive its caller's timeout. It must return and close its

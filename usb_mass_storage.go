@@ -309,8 +309,10 @@ func unmountImageLocked() error {
 			return fmt.Errorf("failed to unmount image: %w", err)
 		}
 
-		logger.Warn().Err(err).Msg("unmount failed with EBUSY, force-ejecting via soft disconnect")
+		logger.Warn().Err(err).Msg("unmount failed with EBUSY, force-ejecting via controller rebind")
 
+		setUSBRecoveryTimer(time.Now())
+		defer func() { setUSBRecoveryTimer(time.Now()) }()
 		if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
 			return fmt.Errorf("failed to unmount image: %w, %w", err, ejectErr)
 		}
