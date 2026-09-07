@@ -13,11 +13,22 @@ import {
 } from "../helpers";
 import { waitForKeyboardReady, KEY, type KeyboardEvent as RAKeyboardEvent } from "./remote-agent";
 import { ALL_SCAN_KEYS, agent, registerSharedSession } from "./shared";
+import { captureKeyboard } from "./keyboard-capture";
 
 test.describe.configure({ mode: "serial" });
 
 let sharedPage: Page;
 registerSharedSession(page => (sharedPage = page));
+
+let finishCapture: Awaited<ReturnType<typeof captureKeyboard>> | undefined;
+test.beforeEach(async () => {
+  finishCapture = undefined;
+  if (agent) finishCapture = await captureKeyboard(sharedPage, agent);
+});
+// oxlint-disable-next-line no-empty-pattern
+test.afterEach(async ({}, testInfo) => {
+  await finishCapture?.(testInfo);
+});
 
 test.describe("Remote Host Agent: keyboard", () => {
   // ═══════════════════════════════════════════
@@ -936,6 +947,7 @@ test.describe("Remote Host Agent: keyboard", () => {
     test.setTimeout(30_000);
 
     const freshPage = await browser.newPage();
+    await finishCapture?.watchPage(freshPage);
     await freshPage.goto("/", { waitUntil: "networkidle" });
     await waitForWebRTCReady(freshPage);
 
@@ -1007,6 +1019,7 @@ test.describe("Remote Host Agent: keyboard", () => {
       )
       .toBe(true);
 
+    await finishCapture?.stopPage(freshPage);
     await freshPage.close();
 
     await sharedPage.goto("/", { waitUntil: "networkidle" });
@@ -1034,6 +1047,7 @@ test.describe("Remote Host Agent: keyboard", () => {
     test.setTimeout(30_000);
 
     const oldPage = await browser.newPage();
+    await finishCapture?.watchPage(oldPage);
     let replacementPage: Page | null = null;
 
     try {
@@ -1061,6 +1075,7 @@ test.describe("Remote Host Agent: keyboard", () => {
         .toBe(true);
 
       replacementPage = await browser.newPage();
+      await finishCapture?.watchPage(replacementPage);
       await replacementPage.goto("/", { waitUntil: "networkidle" });
       await ensureRpcReady(replacementPage);
 
@@ -1099,8 +1114,10 @@ test.describe("Remote Host Agent: keyboard", () => {
         await callJsonRpc(replacementPage, "keypressReport", { key: 0xe1, press: false }).catch(
           () => {},
         );
+        await finishCapture?.stopPage(replacementPage);
         await replacementPage.close().catch(() => {});
       }
+      await finishCapture?.stopPage(oldPage);
       await oldPage.close().catch(() => {});
 
       await sharedPage.goto("/", { waitUntil: "networkidle" });
