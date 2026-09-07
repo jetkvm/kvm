@@ -207,3 +207,20 @@ func TestReconcileMonitorsConcurrentDiscoveryAndExit(t *testing.T) {
 		}
 	}
 }
+
+func TestPipeWireSinkNameUsesSelectedCardAndStableName(t *testing.T) {
+	data := []byte(`[
+		{"id": 40, "info": {"props": {"media.class": "Audio/Sink", "api.alsa.pcm.card": 1, "node.name": "other-usb-audio"}}},
+		{"id": 69, "info": {"props": {"media.class": "Audio/Source", "api.alsa.pcm.card": 2, "node.name": "capture"}}},
+		{"id": 70, "info": {"props": {"media.class": "Audio/Sink", "api.alsa.pcm.card": 2, "node.name": "alsa_output.usb-JetKVM", "object.serial": 54229}}}
+	]`)
+	if got := pipeWireSinkName(data, 2); got != "alsa_output.usb-JetKVM" {
+		t.Fatalf("target = %q, want the selected card's stable node name", got)
+	}
+	if got := pipeWireSinkName(data, 3); got != "" {
+		t.Fatalf("absent card target = %q, want no target", got)
+	}
+	if got := pipeWireSinkName([]byte("invalid JSON"), 2); got != "" {
+		t.Fatalf("invalid dump target = %q, want no target", got)
+	}
+}

@@ -598,12 +598,12 @@ func (a *Agent) startAudioTone() (AudioDeviceInfo, error) {
 	deadline := time.Now().Add(8 * time.Second)
 	for attempt := 1; ; attempt++ {
 		var cmd *exec.Cmd
-		if sinkID := findPipeWireSinkID(); sinkID != "" {
+		if sinkName := findPipeWireSinkName(device.Card); sinkName != "" {
 			wav, err := ensureToneWAV()
 			if err != nil {
 				return device, err
 			}
-			cmd = exec.Command("pw-play", "--target", sinkID, wav)
+			cmd = exec.Command("pw-play", "--target", sinkName, wav)
 			cmd.Env = pipewireEnv()
 		} else {
 			// -p 20000 / -b 80000 keeps speaker-test running long enough for the
@@ -641,35 +641,34 @@ func pipewireEnv() []string {
 	return append(os.Environ(), fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", os.Getuid()))
 }
 
-var wpctlSinkRE = regexp.MustCompile(`(\d+)\.\s+(.*)`)
-
-// findPipeWireSinkID returns the PipeWire node ID of the sink backing the
-// JetKVM gadget, or "" when PipeWire isn't running or hasn't created it yet.
-func findPipeWireSinkID() string {
-	cmd := exec.Command("wpctl", "status")
+// findPipeWireSinkName returns the playback node for the selected ALSA card.
+// pw-play accepts node.name or object.serial, not the reusable IDs from wpctl.
+func findPipeWireSinkName(card int) string {
+	cmd := exec.Command("pw-dump")
 	cmd.Env = pipewireEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
-	inSinks := false
-	for _, line := range strings.Split(string(out), "\n") {
-		switch {
-		case strings.Contains(line, "Sinks:"):
-			inSinks = true
-		case strings.Contains(line, "Sink endpoints:") || strings.Contains(line, "Sources:"):
-			inSinks = false
-		case inSinks:
-			// PipeWire names the sink from the USB-ID database: 1d6b:0104 is
-			// "Multifunction Composite Gadget", not anything JetKVM-branded.
-			lower := strings.ToLower(line)
-			if !strings.Contains(lower, "jetkvm") && !strings.Contains(lower, "emulation") &&
-				!strings.Contains(lower, "multifunction composite gadget") {
-				continue
-			}
-			if m := wpctlSinkRE.FindStringSubmatch(line); m != nil {
-				return m[1]
-			}
+	return pipeWireSinkName(out, card)
+}
+
+func pipeWireSinkName(data []byte, card int) string {
+	var objects []struct {
+		Info struct {
+			Props map[string]any `json:"props"`
+		} `json:"info"`
+	}
+	if json.Unmarshal(data, &objects) != nil {
+		return ""
+	}
+	for _, object := range objects {
+		props := object.Info.Props
+		if props["media.class"] != "Audio/Sink" || fmt.Sprint(props["api.alsa.pcm.card"]) != strconv.Itoa(card) {
+			continue
+		}
+		if name, ok := props["node.name"].(string); ok && name != "" {
+			return name
 		}
 	}
 	return ""
