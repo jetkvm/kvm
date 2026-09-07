@@ -56,7 +56,6 @@ export default function SettingsVideoRoute() {
   const [edidLoading, setEdidLoading] = useState(true);
   // The device owns the preset list, so the UI has no copy of it.
   const [edidPresets, setEdidPresets] = useState<EDIDPreset[]>([]);
-  const [deviceEdid, setDeviceEdid] = useState<string | null>(null);
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
@@ -88,22 +87,41 @@ export default function SettingsVideoRoute() {
       const result = resp.result as { enabled: boolean };
       setDisableHostDisplayWhenIdle(result.enabled);
     });
+  }, [send]);
 
+  useEffect(() => {
+    let active = true;
+    setEdidLoading(true);
+    // Classify the current value only after the device's preset list arrives.
     void send("getEDIDPresets", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setEdidPresets(resp.result as EDIDPreset[]);
-    });
-
-    void send("getEDID", {}, (resp: JsonRpcResponse) => {
-      setEdidLoading(false);
+      if (!active) return;
       if ("error" in resp) {
+        setEdidLoading(false);
         notifications.error(
           m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }),
         );
         return;
       }
-      setDeviceEdid(resp.result as string);
+      const presets = resp.result as EDIDPreset[];
+      setEdidPresets(presets);
+      void send("getEDID", {}, (resp: JsonRpcResponse) => {
+        if (!active) return;
+        setEdidLoading(false);
+        if ("error" in resp) {
+          notifications.error(
+            m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }),
+          );
+          return;
+        }
+        const value = resp.result as string;
+        const preset = presets.find(p => p.edid.toLowerCase() === value.toLowerCase());
+        setEdid(preset?.edid ?? "custom");
+        setCustomEdidValue(preset ? null : value);
+      });
     });
+    return () => {
+      active = false;
+    };
   }, [send]);
 
   const handleStreamQualityChange = (factor: string) => {
@@ -160,26 +178,8 @@ export default function SettingsVideoRoute() {
     });
   };
 
-  const findPreset = useCallback(
-    (value: string) => edidPresets.find(p => p.edid.toLowerCase() === value.toLowerCase()),
-    [edidPresets],
-  );
-
-  // The current EDID is a preset when the device lists it, custom otherwise.
-  useEffect(() => {
-    if (deviceEdid === null) return;
-    const preset = findPreset(deviceEdid);
-    if (preset) {
-      setEdid(preset.edid);
-      setCustomEdidValue(null);
-    } else {
-      setEdid("custom");
-      setCustomEdidValue(deviceEdid);
-    }
-  }, [deviceEdid, findPreset]);
-
   const handleEDIDChange = (newEdid: string) => {
-    const matched = findPreset(newEdid);
+    const matched = edidPresets.find(p => p.edid.toLowerCase() === newEdid.toLowerCase());
     setEdidLoading(true);
     void send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
@@ -189,7 +189,8 @@ export default function SettingsVideoRoute() {
         );
         return;
       }
-      setEdid(newEdid);
+      setEdid(matched?.edid ?? "custom");
+      setCustomEdidValue(matched ? null : newEdid);
       notifications.success(
         m.video_edid_set_success({
           edid: matched?.name ?? "the custom EDID",
@@ -341,13 +342,13 @@ export default function SettingsVideoRoute() {
                   size="SM"
                   label=""
                   fullWidth
-                  value={customEdidValue ? "custom" : edid || ""}
+                  disabled={edidLoading || edid === null}
+                  value={edid || ""}
                   onChange={e => {
                     if (e.target.value === "custom") {
                       setEdid("custom");
                       setCustomEdidValue("");
                     } else {
-                      setCustomEdidValue(null);
                       handleEDIDChange(e.target.value);
                     }
                   }}
@@ -368,6 +369,7 @@ export default function SettingsVideoRoute() {
                     placeholder="00F..."
                     rows={3}
                     value={customEdidValue}
+                    disabled={edidLoading}
                     onChange={e => setCustomEdidValue(e.target.value)}
                   />
                   <div className="flex justify-start gap-x-2">
@@ -383,10 +385,8 @@ export default function SettingsVideoRoute() {
                       theme="light"
                       text={m.video_restore_to_default()}
                       loading={edidLoading}
-                      onClick={() => {
-                        setCustomEdidValue(null);
-                        handleEDIDChange(defaultEdid);
-                      }}
+                      disabled={!edidPresets.length}
+                      onClick={() => handleEDIDChange(edidPresets[0].edid)}
                     />
                   </div>
                 </>

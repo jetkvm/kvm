@@ -29,9 +29,8 @@ test("video settings lists the device's EDID presets and applies one", async ({ 
 
     const select = page.locator("select").filter({ hasText: "Custom" }).first();
     await expect(select).toBeVisible();
-    const optionLabels = await select.locator("option").allTextContents();
-    for (const preset of presets) expect(optionLabels).toContain(preset.name);
-    expect(optionLabels).toContain("Custom");
+    await expect(select).toBeEnabled();
+    await expect(select.locator("option")).toHaveText([...presets.map(p => p.name), "Custom"]);
 
     const target = presets.find(p => p.edid.toLowerCase() !== original.toLowerCase())!;
     await select.selectOption({ label: target.name });
@@ -42,6 +41,23 @@ test("video settings lists the device's EDID presets and applies one", async ({ 
       })
       .toBe(target.edid.toLowerCase());
     await expect(select).toHaveValue(target.edid);
+
+    await select.selectOption("custom");
+    await page.getByPlaceholder("00F...").fill("invalid EDID");
+    await page.getByRole("button", { name: "Set Custom EDID", exact: true }).click();
+    await expect(page.getByText(/Failed to set EDID/)).toBeVisible();
+    expect(((await callJsonRpc(page, "getEDID")) as string).toLowerCase()).toBe(
+      target.edid.toLowerCase(),
+    );
+    await expect(page.getByPlaceholder("00F...")).toHaveValue("invalid EDID");
+    await expect(select).toHaveValue("custom");
+
+    await page.getByRole("button", { name: "Restore to default", exact: true }).click();
+    await expect(select).toHaveValue(presets[0].edid, { timeout: 20_000 });
+    await expect(page.getByPlaceholder("00F...")).toHaveCount(0);
+    expect(((await callJsonRpc(page, "getEDID")) as string).toLowerCase()).toBe(
+      presets[0].edid.toLowerCase(),
+    );
   } finally {
     await callJsonRpc(page, "setEDID", { edid: original });
   }
