@@ -4,9 +4,9 @@ import { ensureLocalAuthMode, logout, triggerRateLimit } from "./helpers";
 
 const TEST_PASSWORD = "TestPassword123";
 
-// This file is prefixed with "zz-" so it runs last in alphabetical order.
-// Running last means we skip the afterAll reboot that would otherwise be
-// needed to clear in-memory rate-limit state for subsequent test files.
+// Runs in its own project after "ui" (see playwright.config.ts): the
+// in-memory rate-limit state it leaves behind must not affect other files,
+// and a reboot to clear it would cost more than the ordering.
 test.describe("Login Rate Limiting", () => {
   test.setTimeout(180000);
 

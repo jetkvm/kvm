@@ -3,7 +3,13 @@ import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { test, expect, type Page } from "@playwright/test";
-import { callJsonRpc, ensureNoPasswordViaAPI, ensureRpcReady, sshExec } from "./helpers";
+import {
+  callJsonRpc,
+  ensureNoPasswordViaAPI,
+  ensureRpcReady,
+  sshExec,
+  skipWithoutDeviceShell,
+} from "./helpers";
 
 // Cancelling an upload has to stop the request that is streaming the file,
 // not just reset the view. The device keeps the partial file for a resume,
@@ -35,6 +41,10 @@ async function openUploadView(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^upload (a )?new image$/i }).click();
 }
 
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
+
 test.describe("Upload cancel and resume", () => {
   let localPath = "";
   let sha256 = "";
@@ -52,7 +62,7 @@ test.describe("Upload cancel and resume", () => {
     await sshExec(`rm -f ${REMOTE} ${REMOTE}.incomplete`, true);
   });
 
-  test("cancelling an upload stops the transfer, and a retry resumes it", async ({ page }) => {
+  test("cancelling an upload stops the transfer, and a retry resumes it @ssh", async ({ page }) => {
     test.setTimeout(90_000);
 
     // Throttle the upload so Cancel lands while the request is streaming.
@@ -93,7 +103,7 @@ test.describe("Upload cancel and resume", () => {
 // A cancelled data channel closes gracefully and can still deliver buffered
 // chunks after the user has retried. The device ends the old transfer when a
 // new one starts for the same file, so only one writer is ever appending.
-test("a second start for the same file supersedes the first", async ({ page }) => {
+test("a second start for the same file supersedes the first @ssh", async ({ page }) => {
   test.setTimeout(60_000);
 
   const name = "e2e-upload-supersede.img";

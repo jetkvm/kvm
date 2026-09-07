@@ -5,6 +5,7 @@ import {
   ensureRpcReady,
   sshExec,
   waitForWebRTCReady,
+  skipWithoutDeviceShell,
 } from "./helpers";
 
 // Every session opens a serial data channel and the device makes it the
@@ -78,6 +79,10 @@ const DEFAULT_SERIAL_SETTINGS = {
   buttons: [],
 };
 
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
+
 test.describe("serial console sink across a session takeover", () => {
   let hadSettingsFile = false;
   let settings: Record<string, unknown> = DEFAULT_SERIAL_SETTINGS;
@@ -112,7 +117,7 @@ test.describe("serial console sink across a session takeover", () => {
     if (!hadSettingsFile) await sshExec(`rm -f ${SERIAL_SETTINGS_PATH}`, true);
   });
 
-  test("the new session keeps its serial sink when the replaced session's channel closes", async ({
+  test("the new session keeps its serial sink when the replaced session's channel closes @ssh @serial", async ({
     browser,
   }) => {
     test.setTimeout(60_000);

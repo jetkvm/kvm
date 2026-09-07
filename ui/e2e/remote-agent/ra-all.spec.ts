@@ -28,6 +28,7 @@ import {
   getLedState,
   waitForLedState,
   restartAppViaSSH,
+  skipWithoutDeviceShell,
   rebootDeviceViaSSH,
   semverGte,
 } from "../helpers";
@@ -2563,7 +2564,8 @@ test.describe("Remote Host Agent", () => {
   // USB SERIAL CONSOLE (CDC-ACM)
   // ═══════════════════════════════════════════
 
-  test("usb: serial console CDC-ACM toggle creates and removes ttyACM on host", async () => {
+  test("usb: serial console CDC-ACM toggle creates and removes ttyACM on host @ssh @serial", async () => {
+    await skipWithoutDeviceShell();
     test.setTimeout(90_000);
 
     test.skip(!process.env.JETKVM_REMOTE_HOST, "JETKVM_REMOTE_HOST not set");
@@ -2607,7 +2609,8 @@ test.describe("Remote Host Agent", () => {
   // USB SERIAL CONSOLE UI
   // ═══════════════════════════════════════════
 
-  test("usb: USB Serial Console terminal sends and receives data via ttyGS0, also after a reconnect", async () => {
+  test("usb: USB Serial Console terminal sends and receives data via ttyGS0, also after a reconnect @ssh @serial", async () => {
+    await skipWithoutDeviceShell();
     // Budget for the ModemManager-probe wait plus typed-string retries.
     test.setTimeout(150_000);
 
@@ -2738,7 +2741,8 @@ test.describe("Remote Host Agent", () => {
   // USB RECOVERY
   // ═══════════════════════════════════════════
 
-  test("usb-recovery: auto-recovers USB gadget after UDC unbind", async () => {
+  test("usb-recovery: auto-recovers USB gadget after UDC unbind @ssh", async () => {
+    await skipWithoutDeviceShell();
     test.setTimeout(90_000);
 
     await waitForUdcState("configured", 10_000);
@@ -2812,7 +2816,7 @@ test.describe("Remote Host Agent", () => {
   // HTTPS VIA RPC
   // ═══════════════════════════════════════════
 
-  test("https: TLS round-trip via RPC", async ({ browser }) => {
+  test("https: TLS round-trip via RPC @tls", async ({ browser }) => {
     test.setTimeout(60_000);
 
     const host = getDeviceHost();
@@ -2869,7 +2873,8 @@ test.describe("Remote Host Agent", () => {
   // HDMI SLEEP MODE
   // ═══════════════════════════════════════════
 
-  test("hdmi-sleep: activates when no session and deactivates on reconnect", async () => {
+  test("hdmi-sleep: activates when no session and deactivates on reconnect @ssh", async () => {
+    await skipWithoutDeviceShell();
     const SLEEP_MODE_SYSFS = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode";
 
     const before = (await callJsonRpc(sharedPage, "getVideoSleepMode")) as {
@@ -3022,7 +3027,8 @@ test.describe("Remote Host Agent", () => {
   // HDMI SLEEP WAKE: SIGNAL RE-DETECTION AFTER DPMS OFF→ON
   // ═══════════════════════════════════════════
 
-  test("hdmi-sleep-wake: re-detects signal after DPMS off→on with chip asleep", async () => {
+  test("hdmi-sleep-wake: re-detects signal after DPMS off→on with chip asleep @ssh", async () => {
+    await skipWithoutDeviceShell();
     test.setTimeout(120_000);
 
     const SLEEP_MODE_SYSFS = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode";

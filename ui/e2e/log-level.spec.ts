@@ -8,6 +8,7 @@ import {
   reconnectAfterReboot,
   rebootDeviceViaSSH,
   sshExec,
+  skipWithoutDeviceShell,
 } from "./helpers";
 
 const DEVICE_LAST_LOG_PATH = "/userdata/jetkvm/last.log";
@@ -39,10 +40,16 @@ async function emitTestLog(
   await callJsonRpc(page, "emitTestLog", { level });
 }
 
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
+
 test.describe("Log level filtering", () => {
   test.setTimeout(45_000);
 
-  test("live changes filter TRACE/DEBUG/INFO/WARN/ERROR logs without restart", async ({ page }) => {
+  test("live changes filter TRACE/DEBUG/INFO/WARN/ERROR logs without restart @ssh", async ({
+    page,
+  }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
     await ensureLocalAuthMode(page, { mode: "noPassword" });
@@ -85,7 +92,7 @@ test.describe("Log level filtering", () => {
     }
   });
 
-  test("reverts INFO to WARN after reboot", async ({ page }) => {
+  test("reverts INFO to WARN after reboot @ssh", async ({ page }) => {
     test.setTimeout(90_000);
 
     await page.goto("/");

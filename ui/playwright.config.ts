@@ -20,7 +20,12 @@ export default defineConfig({
   projects: [
     {
       name: "ui",
-      testIgnore: [/ota-.*/, /remote-agent\/.*/, /video-codec.*/],
+      testIgnore: [/ota-.*/, /remote-agent\/.*/, /video-codec.*/, /login-rate-limit.*/],
+    },
+    {
+      name: "login-rate-limit",
+      testMatch: /login-rate-limit\.spec\.ts/,
+      dependencies: ["ui"],
     },
     {
       name: "video-codec",

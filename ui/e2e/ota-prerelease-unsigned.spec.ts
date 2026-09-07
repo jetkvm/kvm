@@ -48,7 +48,7 @@ test.describe("OTA Prerelease Unsigned", () => {
     await rebootDeviceViaSSH();
   });
 
-  test("unsigned prerelease update succeeds", async ({ page }) => {
+  test("unsigned prerelease update succeeds @ota", async ({ page }) => {
     await page.goto("/settings/general/update");
     await page.waitForLoadState("networkidle");
 

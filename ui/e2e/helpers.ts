@@ -6,7 +6,7 @@ import * as os from "os";
 import * as path from "path";
 import { exec, execSync } from "child_process";
 import { promisify } from "util";
-import { expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 const execAsync = promisify(exec);
@@ -804,7 +804,32 @@ function shellSingleQuote(value: string): string {
   return `'${escapeForSingleQuotedShell(value)}'`;
 }
 
+// Shell access to the device is optional: a unit with developer mode off has
+// no SSH. Set JETKVM_DEVICE_SSH=0 to declare that up front; otherwise one probe
+// per worker decides. Tests that need the shell skip instead of failing.
+let deviceShellProbe: Promise<boolean> | null = null;
+
+export function deviceShellAvailable(): Promise<boolean> {
+  if (process.env.JETKVM_DEVICE_SSH === "0") return Promise.resolve(false);
+  deviceShellProbe ??= execAsync(
+    `ssh ${SSH_OPTS} -o ConnectTimeout=5 root@${getDeviceHost()} true`,
+    { timeout: 15000 },
+  ).then(
+    () => true,
+    () => false,
+  );
+  return deviceShellProbe;
+}
+
+export async function skipWithoutDeviceShell(): Promise<void> {
+  test.skip(!(await deviceShellAvailable()), "needs shell access to the device");
+}
+
 export async function sshExec(cmd: string, ignoreErrors = false): Promise<string> {
+  if (!(await deviceShellAvailable())) {
+    if (ignoreErrors) return "";
+    throw new Error("device shell not available; set JETKVM_DEVICE_SSH=1 or check ssh access");
+  }
   const host = getDeviceHost();
   const escapedCmd = escapeForSingleQuotedShell(cmd);
   const sshCmd = `ssh ${SSH_OPTS} root@${host} '${escapedCmd}'`;
