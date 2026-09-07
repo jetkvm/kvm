@@ -1,12 +1,47 @@
 package usbgadget
 
 import (
+	"bytes"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 )
+
+func TestWriteTimeoutLoggingResumesAfterSuccessfulWrite(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	var logs bytes.Buffer
+	logger := zerolog.New(&logs)
+	u := newTestGadgetWithKeyboard(w)
+	u.log = &logger
+	report := make([]byte, hidKeyBufferSize)
+
+	// Consecutive timeouts produce one error, but a new timeout after a
+	// successful write must be visible even if it is an isolated failure.
+	for episode := 1; episode <= 2; episode++ {
+		fillPipeBuffer(t, w)
+		for range 2 {
+			if err := u.keyboardWriteHidFileLocked(0, report); err != nil {
+				t.Fatalf("timed-out write: %v", err)
+			}
+		}
+		if got := strings.Count(logs.String(), "write timed out:"); got != episode {
+			t.Fatalf("after episode %d: got %d timeout logs, want %d", episode, got, episode)
+		}
+		drainPipe(t, r)
+		if err := u.keyboardWriteHidFileLocked(0, report); err != nil {
+			t.Fatalf("successful write: %v", err)
+		}
+	}
+}
 
 func fillPipeBuffer(t *testing.T, w *os.File) {
 	t.Helper()
