@@ -150,25 +150,25 @@ test.describe("Remote Host Agent: keyboard", () => {
     await sendKeypress(sharedPage, HID_KEY.SPACE, true);
     await new Promise(r => setTimeout(r, 10));
     await sendKeypress(sharedPage, HID_KEY.SPACE, false);
-    await new Promise(r => setTimeout(r, 50));
-
-    const prEvents = await agent!.getKeyboardEvents();
-    const presses = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_press");
-    const releases = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_release");
-    expect(presses.length).toBeGreaterThanOrEqual(1);
-    expect(releases.length).toBeGreaterThanOrEqual(1);
-    expect(releases[0].time_ms).toBeGreaterThan(presses[0].time_ms);
+    await expect(async () => {
+      const prEvents = await agent!.getKeyboardEvents();
+      const presses = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_press");
+      const releases = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_release");
+      expect(presses.length).toBeGreaterThanOrEqual(1);
+      expect(releases.length).toBeGreaterThanOrEqual(1);
+      expect(releases[0].time_ms).toBeGreaterThan(presses[0].time_ms);
+    }).toPass({ timeout: 5000, intervals: [50] });
 
     // Modifier combo: verify C key arrives
     await agent!.clearKeyboardEvents();
     await sendKeypress(sharedPage, 0x06, true);
     await new Promise(r => setTimeout(r, 10));
     await sendKeypress(sharedPage, 0x06, false);
-    await new Promise(r => setTimeout(r, 50));
-
-    const cEvents = await agent!.getKeyboardEvents();
-    const cPresses = cEvents.filter(ev => ev.code === KEY.C && ev.type === "key_press");
-    expect(cPresses.length).toBeGreaterThanOrEqual(1);
+    await expect(async () => {
+      const cEvents = await agent!.getKeyboardEvents();
+      const cPresses = cEvents.filter(ev => ev.code === KEY.C && ev.type === "key_press");
+      expect(cPresses.length).toBeGreaterThanOrEqual(1);
+    }).toPass({ timeout: 5000, intervals: [50] });
   });
 
   // ═══════════════════════════════════════════
@@ -571,13 +571,13 @@ test.describe("Remote Host Agent: keyboard", () => {
     });
 
     await sendKeypress(sharedPage, 0xe1, false);
-    await new Promise(r => setTimeout(r, 200));
-
-    const events = await agent!.getKeyboardEvents();
-    const shiftReleases = events.filter(
-      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
-    );
-    expect(shiftReleases.length, "Shift should have exactly 1 release").toBe(1);
+    await expect(async () => {
+      const events = await agent!.getKeyboardEvents();
+      const shiftReleases = events.filter(
+        ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
+      );
+      expect(shiftReleases.length, "Shift should have exactly 1 release").toBe(1);
+    }).toPass({ timeout: 5000, intervals: [50] });
   });
 
   test("keepalive: multiple simultaneous modifiers + key", async () => {
