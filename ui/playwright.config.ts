@@ -35,6 +35,15 @@ export default defineConfig({
       name: "remote-agent",
       testDir: "./e2e/remote-agent",
       testMatch: /ra-.*\.spec\.ts/,
+      testIgnore: /ra-factory-reset\.spec\.ts/,
+    },
+    // Reboots the device into the setup flow, so it runs after everything
+    // else that shares the remote host.
+    {
+      name: "remote-agent-factory-reset",
+      testDir: "./e2e/remote-agent",
+      testMatch: /ra-factory-reset\.spec\.ts/,
+      dependencies: ["remote-agent"],
     },
     { name: "ota-signed", testMatch: /ota-signature\.spec\.ts/, dependencies: ["remote-agent"] },
     {
