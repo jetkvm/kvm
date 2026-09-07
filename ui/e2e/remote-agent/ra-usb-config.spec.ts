@@ -175,6 +175,12 @@ test.describe("Remote Host Agent: USB gadget", () => {
     await cdcButton.click();
     await new Promise(r => setTimeout(r, 1000));
 
+    const cdcPanel = sharedPage
+      .getByRole("heading", { name: "USB Serial Console", exact: true })
+      .locator("../..");
+    const cdcInput = cdcPanel.locator("textarea.xterm-helper-textarea");
+    await expect(cdcInput).toBeFocused();
+
     // Configure the remote serial port and start a background reader
     remoteHostExec(`sudo stty -F ${ttyACM} 9600 raw -echo`);
     remoteHostExec(`sudo bash -c 'nohup cat ${ttyACM} > /tmp/cdcacm_rx.txt 2>/dev/null &'`);
@@ -216,8 +222,11 @@ test.describe("Remote Host Agent: USB gadget", () => {
     remoteHostExec(`sudo stty -F ${ttyAfter} 9600 raw -echo`);
     remoteHostExec(`sudo bash -c 'nohup cat ${ttyAfter} > /tmp/cdcacm_rx.txt 2>/dev/null &'`);
 
-    await sharedPage.keyboard.press("Escape");
-    await cdcButton.click();
+    // Keep the terminal open across reconnect and wait for its input to regain
+    // focus, so the typed string reaches the console instead of the host HID.
+    await expect(sharedPage.getByRole("button", { name: "Use Here", exact: true })).toBeHidden();
+    await cdcInput.focus();
+    await expect(cdcInput).toBeFocused();
     await expect(async () => {
       const sentString = `e2e_reconnect_${Date.now()}`;
       await sharedPage.keyboard.type(sentString, { delay: 50 });
@@ -247,7 +256,7 @@ test.describe("Remote Host Agent: USB gadget", () => {
     }
 
     // Close the terminal
-    await sharedPage.keyboard.press("Escape");
+    await cdcPanel.getByRole("button", { name: "Hide", exact: true }).click();
     await new Promise(r => setTimeout(r, 500));
 
     // Disable serial console to clean up

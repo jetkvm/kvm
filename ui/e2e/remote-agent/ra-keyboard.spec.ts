@@ -13,11 +13,22 @@ import {
 } from "../helpers";
 import { waitForKeyboardReady, KEY, type KeyboardEvent as RAKeyboardEvent } from "./remote-agent";
 import { ALL_SCAN_KEYS, agent, registerSharedSession } from "./shared";
+import { captureKeyboard } from "./keyboard-capture";
 
 test.describe.configure({ mode: "serial" });
 
 let sharedPage: Page;
 registerSharedSession(page => (sharedPage = page));
+
+let finishCapture: Awaited<ReturnType<typeof captureKeyboard>> | undefined;
+test.beforeEach(async () => {
+  finishCapture = undefined;
+  if (agent) finishCapture = await captureKeyboard(sharedPage, agent);
+});
+// oxlint-disable-next-line no-empty-pattern
+test.afterEach(async ({}, testInfo) => {
+  await finishCapture?.(testInfo);
+});
 
 test.describe("Remote Host Agent: keyboard", () => {
   // ═══════════════════════════════════════════
@@ -139,25 +150,25 @@ test.describe("Remote Host Agent: keyboard", () => {
     await sendKeypress(sharedPage, HID_KEY.SPACE, true);
     await new Promise(r => setTimeout(r, 10));
     await sendKeypress(sharedPage, HID_KEY.SPACE, false);
-    await new Promise(r => setTimeout(r, 50));
-
-    const prEvents = await agent!.getKeyboardEvents();
-    const presses = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_press");
-    const releases = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_release");
-    expect(presses.length).toBeGreaterThanOrEqual(1);
-    expect(releases.length).toBeGreaterThanOrEqual(1);
-    expect(releases[0].time_ms).toBeGreaterThan(presses[0].time_ms);
+    await expect(async () => {
+      const prEvents = await agent!.getKeyboardEvents();
+      const presses = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_press");
+      const releases = prEvents.filter(ev => ev.code === KEY.SPACE && ev.type === "key_release");
+      expect(presses.length).toBeGreaterThanOrEqual(1);
+      expect(releases.length).toBeGreaterThanOrEqual(1);
+      expect(releases[0].time_ms).toBeGreaterThan(presses[0].time_ms);
+    }).toPass({ timeout: 5000, intervals: [50] });
 
     // Modifier combo: verify C key arrives
     await agent!.clearKeyboardEvents();
     await sendKeypress(sharedPage, 0x06, true);
     await new Promise(r => setTimeout(r, 10));
     await sendKeypress(sharedPage, 0x06, false);
-    await new Promise(r => setTimeout(r, 50));
-
-    const cEvents = await agent!.getKeyboardEvents();
-    const cPresses = cEvents.filter(ev => ev.code === KEY.C && ev.type === "key_press");
-    expect(cPresses.length).toBeGreaterThanOrEqual(1);
+    await expect(async () => {
+      const cEvents = await agent!.getKeyboardEvents();
+      const cPresses = cEvents.filter(ev => ev.code === KEY.C && ev.type === "key_press");
+      expect(cPresses.length).toBeGreaterThanOrEqual(1);
+    }).toPass({ timeout: 5000, intervals: [50] });
   });
 
   // ═══════════════════════════════════════════
@@ -560,13 +571,41 @@ test.describe("Remote Host Agent: keyboard", () => {
     });
 
     await sendKeypress(sharedPage, 0xe1, false);
-    await new Promise(r => setTimeout(r, 200));
+    let events: RAKeyboardEvent[] = [];
+    let previousSnapshot = "";
+    let quietSince = performance.now();
+    await expect(async () => {
+      events = await agent!.getKeyboardEvents();
+      const snapshot = JSON.stringify(events);
+      if (snapshot !== previousSnapshot) {
+        previousSnapshot = snapshot;
+        quietSince = performance.now();
+      }
+      // Observe completion and a quiet interval before checking exact counts:
+      // a transient single release must not hide a later duplicate. Only read
+      // during polling; resending input would conceal dropped reports.
+      expect(events.at(-1)).toMatchObject({ code: KEY.LEFT_SHIFT, type: "key_release" });
+      expect(
+        performance.now() - quietSince,
+        "host keyboard events should settle",
+      ).toBeGreaterThanOrEqual(500);
+    }).toPass({ timeout: 5000, intervals: [50] });
 
-    const events = await agent!.getKeyboardEvents();
-    const shiftReleases = events.filter(
-      ev => ev.code === KEY.LEFT_SHIFT && ev.type === "key_release",
-    );
-    expect(shiftReleases.length, "Shift should have exactly 1 release").toBe(1);
+    const letters = [KEY.A, KEY.B, KEY.C, KEY.D, KEY.E, KEY.F, KEY.G, KEY.H, KEY.I, KEY.J];
+    const expected: Pick<RAKeyboardEvent, "code" | "type">[] = [
+      { code: KEY.LEFT_SHIFT, type: "key_press" },
+    ];
+    for (let i = 0; i < 20; i++) {
+      expected.push(
+        { code: letters[i % letters.length], type: "key_press" },
+        { code: letters[i % letters.length], type: "key_release" },
+      );
+    }
+    expected.push({ code: KEY.LEFT_SHIFT, type: "key_release" });
+    expect(
+      events.map(({ code, type }) => ({ code, type })),
+      "complete host key sequence",
+    ).toEqual(expected);
   });
 
   test("keepalive: multiple simultaneous modifiers + key", async () => {
@@ -936,6 +975,7 @@ test.describe("Remote Host Agent: keyboard", () => {
     test.setTimeout(30_000);
 
     const freshPage = await browser.newPage();
+    await finishCapture?.watchPage(freshPage);
     await freshPage.goto("/", { waitUntil: "networkidle" });
     await waitForWebRTCReady(freshPage);
 
@@ -1007,6 +1047,7 @@ test.describe("Remote Host Agent: keyboard", () => {
       )
       .toBe(true);
 
+    await finishCapture?.stopPage(freshPage);
     await freshPage.close();
 
     await sharedPage.goto("/", { waitUntil: "networkidle" });
@@ -1034,6 +1075,7 @@ test.describe("Remote Host Agent: keyboard", () => {
     test.setTimeout(30_000);
 
     const oldPage = await browser.newPage();
+    await finishCapture?.watchPage(oldPage);
     let replacementPage: Page | null = null;
 
     try {
@@ -1061,6 +1103,7 @@ test.describe("Remote Host Agent: keyboard", () => {
         .toBe(true);
 
       replacementPage = await browser.newPage();
+      await finishCapture?.watchPage(replacementPage);
       await replacementPage.goto("/", { waitUntil: "networkidle" });
       await ensureRpcReady(replacementPage);
 
@@ -1099,8 +1142,10 @@ test.describe("Remote Host Agent: keyboard", () => {
         await callJsonRpc(replacementPage, "keypressReport", { key: 0xe1, press: false }).catch(
           () => {},
         );
+        await finishCapture?.stopPage(replacementPage);
         await replacementPage.close().catch(() => {});
       }
+      await finishCapture?.stopPage(oldPage);
       await oldPage.close().catch(() => {});
 
       await sharedPage.goto("/", { waitUntil: "networkidle" });
