@@ -57,8 +57,7 @@ export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
 
   // rrecalculate remaining time every 30 seconds
   useEffect(() => {
-    // schedule immediate initial update
-    setInterval(() => setRemaining(dayjs(lifetime).fromNow()), 0);
+    setRemaining(dayjs(lifetime).fromNow());
 
     const interval = setInterval(() => {
       setRemaining(dayjs(lifetime).fromNow());
