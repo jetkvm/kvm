@@ -40,3 +40,12 @@ Static checks:
 # From the repository root
 python3 -m unittest discover -s e2e/remote-agent -p 'test_*.py'
 ```
+
+The custom-NTP case runs a temporary UDP responder on `JETKVM_REMOTE_HOST` and
+checks that the device queries it before and after reboot. The host name must
+resolve from the device, or use its IPv4 address. Python 3, noninteractive sudo
+and a free UDP port 123 are required on that host. The responder accepts requests
+only from the configured device IP and exits when its owning SSH connection
+closes, with a five-minute maximum lifetime. Public fallback is disabled during
+this case, and original network settings are restored in cleanup. No device SSH
+or Prometheus metrics are required.
