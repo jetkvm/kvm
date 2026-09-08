@@ -695,6 +695,7 @@ export interface UsbConfigState {
   serial_number: string;
   manufacturer: string;
   product: string;
+  configuration: string;
 }
 
 export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
