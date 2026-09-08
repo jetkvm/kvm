@@ -34,8 +34,10 @@ function installBrowserCapture() {
     );
   const watched = new WeakSet<RTCDataChannel>();
   const send = RTCDataChannel.prototype.send;
-  RTCDataChannel.prototype.send = function (data: Parameters<typeof send>[0]) {
-    if (!this.label.startsWith("hidrpc")) return send.call(this, data);
+  RTCDataChannel.prototype.send = function (
+    data: string | Blob | ArrayBuffer | ArrayBufferView<ArrayBuffer>,
+  ) {
+    if (!this.label.startsWith("hidrpc")) return send.call(this, data as never);
     if (!watched.has(this)) {
       watched.add(this);
       this.addEventListener("message", event => {
@@ -49,7 +51,7 @@ function installBrowserCapture() {
     const value = bytes(data as ArrayBufferView);
     const keyboard = [0x01, 0x02, 0x05, 0x07, 0x08, 0x09].includes(value[0]);
     try {
-      const result = send.call(this, data);
+      const result = send.call(this, data as never);
       if (keyboard) record("send", { channel: this.label, bytes: value });
       return result;
     } catch (error) {

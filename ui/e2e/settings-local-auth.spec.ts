@@ -7,14 +7,17 @@ import {
   changePasswordFromSettings,
   disablePasswordFromSettings,
   loginLocal,
+  waitForLocalAuthPage,
 } from "./helpers";
 
 const TEST_PASSWORD = "TestPassword123";
 const NEW_PASSWORD = "NewPassword456";
+let originalPassword: string | undefined;
+let capturedAuth = false;
 
 async function loginAndOpenSettings(page: Page, password: string) {
   await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  await waitForLocalAuthPage(page);
   if (page.url().includes("/login")) {
     await loginLocal(page, password);
   }
@@ -29,10 +32,37 @@ test.describe("Settings Local Auth Tests", () => {
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
     try {
+      const device = await page.request.get("/device");
+      if (device.status() === 401) {
+        originalPassword = process.env.JETKVM_PASSWORD;
+        if (!originalPassword)
+          throw new Error(
+            "Set JETKVM_PASSWORD to preserve the existing password during auth tests",
+          );
+      } else {
+        expect(device.ok()).toBe(true);
+        expect((await device.json()).authMode).toBe("noPassword");
+      }
+      capturedAuth = true;
       await ensureLocalAuthMode(page, { mode: "noPassword" });
     } finally {
       await page.close();
       await context.close();
+    }
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (!capturedAuth) return;
+    const page = await browser.newPage({ baseURL: process.env.JETKVM_URL });
+    try {
+      await ensureLocalAuthMode(
+        page,
+        originalPassword
+          ? { mode: "password", password: originalPassword }
+          : { mode: "noPassword" },
+      );
+    } finally {
+      await page.close();
     }
   });
 
