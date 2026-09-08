@@ -9,15 +9,19 @@ import {
   logout,
 } from "./helpers";
 
+import { registerResetCleanup } from "./helpers/reset";
+
+registerResetCleanup();
+
 const TEST_PASSWORD = "TestPassword123";
 
-test.describe("Welcome Password Flow Tests", () => {
+test.describe("Welcome Password Flow Tests", { tag: "@destructive" }, () => {
   test.setTimeout(180000);
   test.describe.configure({ mode: "serial" });
 
-  // Validation runs first: SSH-resets into welcome mode, submits invalid
+  // Validation runs first: RPC-resets into welcome mode, submits invalid
   // password, device stays in onboarding. The next test reuses that state
-  // and skips a full SSH reset + reboot cycle (~15-20s saved).
+  // and skips a full RPC reset + reboot cycle (~15-20s saved).
 
   test("password minimum length validation during welcome", async ({ page }) => {
     await resetDeviceToWelcome(page);
