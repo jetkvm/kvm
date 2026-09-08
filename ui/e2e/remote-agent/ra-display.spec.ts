@@ -119,40 +119,51 @@ test.describe("Remote Host Agent: display", () => {
     expect(resolution).toMatch(/^\d+x\d+$/);
 
     const currentEdid = (await callJsonRpc(sharedPage, "getEDID")) as string;
-    const targetEdid = currentEdid === "1920x1080" ? "1280x720" : "1920x1080";
+    const presets = (await callJsonRpc(sharedPage, "getEDIDPresets")) as {
+      name: string;
+      edid: string;
+    }[];
+    const target = presets.find(
+      p =>
+        p.edid.toLowerCase() !== currentEdid.toLowerCase() && /(?:1280x720|1920x1080)/.test(p.name),
+    );
+    expect(target, "need a supported alternate preset").toBeDefined();
+    const targetEdid = target!.edid;
+    const expectedResolution = target!.name.match(/(?:1280x720|1920x1080)/)![0];
 
-    // setEDID may drop the WebSocket/WebRTC connection on some devices,
-    // so tolerate RPC timeouts and reconnect afterwards. The remote agent
-    // may also briefly become unreachable during display re-negotiation.
-    await callJsonRpc(sharedPage, "setEDID", { edid: targetEdid }, 30000).catch(() => {});
-    await new Promise(r => setTimeout(r, 5000));
-    await sharedPage.goto("/", { waitUntil: "networkidle" });
-    await ensureRpcReady(sharedPage);
+    try {
+      // setEDID may drop the WebSocket/WebRTC connection on some devices,
+      // so tolerate RPC timeouts and reconnect afterwards. The remote agent
+      // may also briefly become unreachable during display re-negotiation.
+      await callJsonRpc(sharedPage, "setEDID", { edid: targetEdid }, 30000).catch(() => {});
+      await new Promise(r => setTimeout(r, 5000));
+      await sharedPage.goto("/", { waitUntil: "networkidle" });
+      await ensureRpcReady(sharedPage);
 
-    // Wait for the remote agent to recover and report a resolution.
-    // The agent may be briefly unreachable during display re-negotiation.
-    let newRes: string | null = null;
-    const resDeadline = Date.now() + 15_000;
-    while (Date.now() < resDeadline) {
-      try {
-        newRes = await agent!.getResolution();
-        if (newRes && /^\d+x\d+$/.test(newRes)) break;
-      } catch {
-        /* agent not ready yet */
+      // Wait for the remote agent to recover and report a resolution.
+      // The agent may be briefly unreachable during display re-negotiation.
+      let newRes: string | null = null;
+      const resDeadline = Date.now() + 15_000;
+      while (Date.now() < resDeadline) {
+        try {
+          newRes = await agent!.getResolution();
+          if (newRes === expectedResolution) break;
+        } catch {
+          /* agent not ready yet */
+        }
+        await new Promise(r => setTimeout(r, 1000));
       }
-      await new Promise(r => setTimeout(r, 1000));
+      expect(newRes).not.toBeNull();
+      expect(newRes).toBe(expectedResolution);
+    } finally {
+      // Restore original EDID. This triggers USB disconnect/reconnect.
+      await callJsonRpc(sharedPage, "setEDID", { edid: currentEdid }, 30000).catch(() => {});
+      await new Promise(r => setTimeout(r, 5000));
+
+      await sharedPage.goto("/", { waitUntil: "networkidle" });
+      await ensureRpcReady(sharedPage);
+      await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
     }
-    expect(newRes).not.toBeNull();
-    expect(newRes).toMatch(/^\d+x\d+$/);
-
-    // Restore original EDID. This triggers USB disconnect/reconnect.
-    await callJsonRpc(sharedPage, "setEDID", { edid: currentEdid }, 30000).catch(() => {});
-    await new Promise(r => setTimeout(r, 5000));
-
-    await sharedPage.goto("/", { waitUntil: "networkidle" });
-    await ensureRpcReady(sharedPage);
-    await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 15000);
-
     // Verify keyboard works after EDID changes
     const kbEvents = await waitForKeyboardReady(agent!, sharedPage);
     expect(kbEvents.length, "keyboard should work after EDID restore").toBeGreaterThan(0);
@@ -202,7 +213,7 @@ test.describe("Remote Host Agent: display", () => {
     await callJsonRpc(sharedPage, "setVideoSleepMode", { duration: originalDuration });
   });
 
-  test("video: non-aligned resolution 1366x768 produces video frames", async () => {
+  test("video: non-aligned resolution 1366x768 produces video frames @custom-edid", async () => {
     test.setTimeout(60_000);
 
     const originalEdid = (await callJsonRpc(sharedPage, "getEDID")) as string;

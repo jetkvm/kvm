@@ -1,3 +1,4 @@
+import { expectHostImageHash } from "./helpers/storage-readback";
 import { createHash, randomBytes } from "crypto";
 import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
@@ -49,8 +50,7 @@ async function deleteImage(page: Page, name: string): Promise<void> {
   }
 }
 
-// Byte-for-byte verification needs a shell on the device; without one the
-// check is the final size, which still catches a truncated or doubled resume.
+// Verify bytes either on the device or by reading its USB medium on the host.
 async function expectImageMatches(page: Page, name: string, sha256: string, size: number) {
   if (await deviceShellAvailable()) {
     const remote = (
@@ -59,8 +59,7 @@ async function expectImageMatches(page: Page, name: string, sha256: string, size
     expect(remote, "image must be byte-identical").toBe(sha256);
     return;
   }
-  const files = await listImages(page);
-  expect(files.find(f => f.filename === name)?.size, "image must have the full size").toBe(size);
+  await expectHostImageHash(page, name, size, sha256);
 }
 
 async function openRpcPage(page: Page): Promise<void> {
@@ -117,7 +116,13 @@ test.describe("Upload cancel and resume", () => {
     await openUploadView(page);
     await page.locator('input[type="file"]').setInputFiles(localPath);
     const size = () => remoteSize(page, FILE_NAME);
-    await expect.poll(size, { timeout: 20_000 }).toBeGreaterThan(FILE_SIZE / 8);
+    // Open-file metadata need not reflect streamed bytes until the writer
+    // closes. Cancel while the browser shows an in-flight upload instead.
+    const progress = page.getByRole("heading", { name: /^Uploading / })
+      .locator("..").locator('div[style*="width:"]');
+    await expect.poll(async () => progress.evaluate(element =>
+      Number.parseFloat((element as HTMLElement).style.width)),
+    { timeout: 20_000 }).toBeGreaterThan(25);
 
     await page.getByRole("button", { name: "Cancel Upload" }).click();
 
@@ -159,6 +164,8 @@ test("a second start for the same file supersedes the first", async ({ page }) =
       })) as { dataChannel: string };
     const first = await start();
     const second = await start();
+    expect(second.dataChannel, "a new start must invalidate the previous upload ID")
+      .not.toBe(first.dataChannel);
 
     // Data for the first upload is rejected rather than appended beside the
     // second transfer's bytes.

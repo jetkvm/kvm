@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type { KeyboardLedState } from "./hid";
-import type { VideoStreamDimensions } from "./video";
+import type {} from "../../src/test/testHooks.types";
 
 export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<void> {
   await expect
@@ -17,8 +16,14 @@ export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<v
             webrtc: hooks.isWebRTCConnected(),
             hid: hooks.isHidRpcReady(),
           };
+        }).catch(error => {
+          // A redirect/reload can replace the document between poll attempts.
+          // Keep waiting for readiness in the new document; closed pages and
+          // other evaluation failures must still fail the test.
+          if (String(error).includes("Execution context was destroyed")) return null;
+          throw error;
         });
-        return status.hooks && status.webrtc && status.hid;
+        return !!status && status.hooks && status.webrtc && status.hid;
       },
       {
         message: "Waiting for WebRTC connection and HID RPC to be ready",
@@ -139,18 +144,34 @@ export function getDeviceHost(): string {
 
 /**
  * Ensure the device is set up with no-password local auth via the HTTP setup API.
- * No-op if already set up. Used by e2e bootstrap.
+ * No-op if already set up without a password. Used by e2e bootstrap.
  */
 export async function ensureNoPasswordViaAPI(): Promise<void> {
-  const host = getDeviceHost();
-  const status = await fetch(`http://${host}/device/status`).then(
-    r => r.json() as Promise<{ isSetup: boolean }>,
-  );
-  if (status.isSetup) return;
+  const origin = new URL(process.env.JETKVM_URL!).origin;
+  const response = await fetch(`${origin}/device/status`);
+  if (!response.ok) throw new Error(`Setup status failed: ${response.status}`);
+  const status = (await response.json()) as {
+    isSetup: boolean;
+    factoryResetPending?: boolean;
+    factoryResetError?: string;
+  };
+  if (status.factoryResetPending)
+    throw new Error(
+      `Factory reset is pending: ${status.factoryResetError ?? "wait for completion"}`,
+    );
+  if (status.isSetup) {
+    const probe = await fetch(new URL("/device", process.env.JETKVM_URL!));
+    if (probe.status === 401)
+      throw new Error(
+        "This host suite requires no-password mode. Disable protection with the current password before running it; no SSH reset is attempted.",
+      );
+    if (!probe.ok) throw new Error(`Device probe failed: ${probe.status}`);
+    return;
+  }
 
-  const res = await fetch(`http://${host}/device/setup`, {
+  const res = await fetch(`${origin}/device/setup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: origin },
     body: JSON.stringify({ localAuthMode: "noPassword" }),
   });
   if (!res.ok) throw new Error(`Setup POST failed: ${res.status}`);
@@ -221,40 +242,5 @@ export async function callJsonRpc(
     if (!RPC_CHANNEL_DROPPED.test(msg)) throw err;
     await ensureRpcReady(page, { timeoutMs: 20000 });
     return rawJsonRpc(page, method, params, timeoutMs);
-  }
-}
-
-declare global {
-  interface Window {
-    __kvmTestHooks?: {
-      getKeyboardLedState: () => KeyboardLedState | null;
-      getKeysDownState: () => { modifier: number; keys: number[] } | null;
-      sendKeypress: (key: number, press: boolean) => void;
-      sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
-      sendJsonRpc: (
-        method: string,
-        params: Record<string, unknown>,
-        callback: (resp: { error?: { message: string; data?: string }; result?: unknown }) => void,
-      ) => void;
-      captureVideoRegion: (
-        x: number,
-        y: number,
-        width: number,
-        height: number,
-      ) => Promise<string | null>;
-      captureVideoRegionFingerprint: (
-        x: number,
-        y: number,
-        width: number,
-        height: number,
-        gridSize?: number,
-      ) => number[] | null;
-      getVideoStreamDimensions: () => VideoStreamDimensions | null;
-      isWebRTCConnected: () => boolean;
-      isHidRpcReady: () => boolean;
-      isVideoStreamActive: () => boolean;
-      sendTerminalCommand: (command: string) => boolean;
-      isTerminalReady: () => boolean;
-    };
   }
 }
