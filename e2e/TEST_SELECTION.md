@@ -40,3 +40,15 @@ Static checks:
 # From the repository root
 python3 -m unittest discover -s e2e/remote-agent -p 'test_*.py'
 ```
+
+Welcome and factory-reset tests use the public reset RPC and setup API, and
+carry `@destructive`. Run them on a disposable, DHCP-addressable test device:
+reset erases uploaded files and uncaptured settings. A mounted stored image is
+rejected before resetting because its bytes cannot be restored. Captured USB,
+network, display, macros and supported access/developer settings are restored.
+These tests do not preserve cloud credentials or arbitrary uploaded data.
+
+The login rate-limit test retains an authenticated cleanup session while a
+separate browser context submits incorrect passwords. Cleanup disables the test
+password through that retained session and reboots through RPC to clear the
+in-memory limiter. It does not wait for or shorten the production lockout.

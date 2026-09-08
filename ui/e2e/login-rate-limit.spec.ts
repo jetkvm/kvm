@@ -1,21 +1,71 @@
-import { test, expect } from "@playwright/test";
-
-import { ensureLocalAuthMode, logout, triggerRateLimit } from "./helpers";
+import { test, expect, type BrowserContext } from "@playwright/test";
+import {
+  callJsonRpc,
+  ensureNoPasswordViaAPI,
+  ensureLocalAuthMode,
+  ensureRpcReady,
+  reconnectAfterReboot,
+} from "./helpers";
 
 const TEST_PASSWORD = "TestPassword123";
+let passwordEnabled = false;
+let loginContext: BrowserContext | undefined;
 
-// Runs in its own project after "ui" (see playwright.config.ts): the
-// in-memory rate-limit state it leaves behind must not affect other files,
-// and a reboot to clear it would cost more than the ordering.
-test.describe("Login Rate Limiting", () => {
-  test.setTimeout(180000);
+test("rate limiting after multiple failed login attempts", async ({ page, browser }) => {
+  test.setTimeout(180_000);
+  await ensureNoPasswordViaAPI();
+  passwordEnabled = true;
+  await ensureLocalAuthMode(page, { mode: "password", password: TEST_PASSWORD });
 
-  test("rate limiting after multiple failed login attempts", async ({ page }) => {
-    await ensureLocalAuthMode(page, { mode: "password", password: TEST_PASSWORD });
-    await logout(page);
-    await page.goto("/login-local");
+  // Keep this authenticated session for cleanup. Failed logins happen in an
+  // independent cookie jar and must not require logging out the cleanup owner.
+  loginContext = await browser.newContext({ baseURL: process.env.JETKVM_URL });
+  const login = await loginContext.newPage();
+  login.setDefaultTimeout(10_000);
+  await login.goto("/login-local");
+  let limited = false;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await login.locator('input[name="password"]').fill("wrongpassword123");
+    const reply = login.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/auth/login-local" &&
+        response.request().method() === "POST",
+    );
+    await login.getByRole("button", { name: /^Log in$/i }).click();
+    const response = await reply;
+    if (response.status() === 429) {
+      limited = true;
+      break;
+    }
+    expect(response.status()).toBe(401);
+  }
+  expect(limited, "failed logins must produce HTTP 429").toBe(true);
+  await expect(login.locator(".text-red-500, .text-red-600").first()).toContainText(
+    /too many|try again/i,
+  );
+});
 
-    const wasRateLimited = await triggerRateLimit(page);
-    expect(wasRateLimited, "Rate limiting should trigger after failed attempts").toBe(true);
-  });
+test.afterEach(async ({ page, request }) => {
+  test.setTimeout(150_000);
+  try {
+    await loginContext?.close();
+  } finally {
+    loginContext = undefined;
+    if (passwordEnabled && !(await request.get("/device")).ok()) {
+      const origin = new URL(process.env.JETKVM_URL!).origin;
+      const response = await page.request.delete("/auth/local-password", {
+        headers: { Origin: origin },
+        data: { password: TEST_PASSWORD },
+      });
+      expect(response.ok(), "restore no-password auth using the retained session").toBe(true);
+      await ensureNoPasswordViaAPI();
+      await ensureRpcReady(page, { navigateFirst: true });
+      // Lockouts can last minutes. Reboot clears the in-memory limiter without
+      // changing its policy or relying on device shell access.
+      await callJsonRpc(page, "reboot", { force: true });
+      await reconnectAfterReboot(page);
+      await ensureNoPasswordViaAPI();
+    }
+    passwordEnabled = false;
+  }
 });

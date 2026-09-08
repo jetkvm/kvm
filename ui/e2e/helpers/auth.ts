@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { deviceShellAvailable, resetConfigViaSSH, restartAppViaSSH, sshExec } from "./ssh";
+import { callJsonRpc, ensureRpcReady } from "./device";
 
 const ANIMATION_DELAY = 150;
 
@@ -22,7 +23,7 @@ async function requireAuthRecoveryShell(): Promise<void> {
 }
 
 /**
- * Reset the device to onboarding/welcome state via SSH.
+ * Reset the device to onboarding/welcome state through the public RPC.
  * Prefer ensureLocalAuthMode() unless testing the welcome flow itself.
  */
 export async function resetDeviceToWelcome(page: Page): Promise<void> {
@@ -38,8 +39,29 @@ export async function resetDeviceToWelcome(page: Page): Promise<void> {
     return;
   }
 
-  await resetConfigViaSSH();
-  await restartAppViaSSH();
+  if (currentUrl.includes("/login")) {
+    const password = process.env.JETKVM_PASSWORD || "TestPassword123";
+    await loginLocal(page, password);
+  }
+  await ensureRpcReady(page);
+  await callJsonRpc(page, "factoryReset");
+  // The post-reset state proves completion even if a fast reboot is missed.
+  await expect
+    .poll(
+      async () => {
+        try {
+          const response = await page.request.get("/device/status", { timeout: 2000 });
+          if (!response.ok()) return false;
+          const status = await response.json();
+          return status.isSetup === false && !status.factoryResetPending;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 120_000, intervals: [1000] },
+    )
+    .toBe(true);
+  await page.context().clearCookies();
   await page.goto("/");
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(ANIMATION_DELAY);
