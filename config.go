@@ -93,6 +93,8 @@ type Config struct {
 	CloudAppURL          string               `json:"cloud_app_url"`
 	CloudToken           string               `json:"cloud_token"`
 	TailscaleControlURL  string               `json:"tailscale_control_url,omitempty"`
+	OIDCIssuer           string               `json:"oidc_issuer,omitempty"`
+	OIDCIdentity         string               `json:"oidc_identity,omitempty"`
 	GoogleIdentity       string               `json:"google_identity"`
 	JigglerEnabled       bool                 `json:"jiggler_enabled"`
 	JigglerConfig        *JigglerConfig       `json:"jiggler_config"`
@@ -154,7 +156,7 @@ func (c *Config) SetDisplayRotation(rotation string) error {
 	return nil
 }
 
-const configPath = "/userdata/kvm_config.json"
+var configPath = "/userdata/kvm_config.json"
 
 // it's a temporary solution to avoid sharing the same pointer
 // we should migrate to a proper config solution in the future
