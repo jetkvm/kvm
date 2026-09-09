@@ -139,13 +139,13 @@ export interface RTCState {
   setRpcHidProtocolVersion: (version: number | null) => void;
 
   rpcHidChannel: RTCDataChannel | null;
-  setRpcHidChannel: (channel: RTCDataChannel) => void;
+  setRpcHidChannel: (channel: RTCDataChannel | null) => void;
 
   rpcHidUnreliableChannel: RTCDataChannel | null;
-  setRpcHidUnreliableChannel: (channel: RTCDataChannel) => void;
+  setRpcHidUnreliableChannel: (channel: RTCDataChannel | null) => void;
 
   rpcHidUnreliableNonOrderedChannel: RTCDataChannel | null;
-  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel) => void;
+  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel | null) => void;
 
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;
@@ -775,7 +775,7 @@ export interface DhcpLease {
   _swap_server?: string;
   boot_size?: string;
   root_path?: string;
-  lease?: string;
+  lease?: number; // Go time.Duration, in nanoseconds
   lease_expiry?: Date;
   dhcp_type?: string;
   server_id?: string;

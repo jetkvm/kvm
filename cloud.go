@@ -327,6 +327,7 @@ func runWebsocketClient() error {
 	header := http.Header{}
 	header.Set("X-Device-ID", GetDeviceID())
 	header.Set("X-App-Version", builtAppVersion)
+	header.Set("X-Device-SKU", GetDeviceSKU())
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 

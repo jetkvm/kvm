@@ -44,10 +44,13 @@ func (scm *StaticConfigManager) ToIPv4Static(config *types.IPv4StaticConfig) (*t
 	}
 	scm.logger.Info().Str("ipNet", ipNet.String()).Interface("ipc", config).Msg("parsed IPv4 address and netmask")
 
-	// Parse gateway
-	gateway := net.ParseIP(config.Gateway.String)
-	if gateway == nil {
-		return nil, fmt.Errorf("invalid gateway: %s", config.Gateway.String)
+	// A local subnet does not require a default gateway.
+	var gateway net.IP
+	if config.Gateway.String != "" {
+		gateway = net.ParseIP(config.Gateway.String)
+		if gateway == nil || gateway.To4() == nil {
+			return nil, fmt.Errorf("invalid gateway: %s", config.Gateway.String)
+		}
 	}
 
 	// Parse DNS servers

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { callJsonRpc, waitForWebRTCReady } from "./helpers";
+import { callJsonRpc, rpcAvailable, waitForWebRTCReady } from "./helpers";
 import type { Page } from "@playwright/test";
 
 interface NetworkSettings {
@@ -49,6 +49,10 @@ test.describe("Custom NTP time sync", () => {
     try {
       await page.goto("/");
       await waitForWebRTCReady(page);
+      test.skip(
+        !(await rpcAvailable(page, "getNetworkSettings")),
+        "device has no network settings (getNetworkSettings)",
+      );
       originalSettings = (await callJsonRpc(page, "getNetworkSettings")) as NetworkSettings;
     } finally {
       await page.close();
@@ -57,6 +61,7 @@ test.describe("Custom NTP time sync", () => {
   });
 
   test.afterAll(async ({ browser }) => {
+    if (!originalSettings) return;
     const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
     const page = await context.newPage();
     try {
@@ -102,7 +107,7 @@ test.describe("Custom NTP time sync", () => {
     return baseline;
   }
 
-  test("custom NTP server is queried after settings change", async ({ page }) => {
+  test("custom NTP server is queried after settings change @network", async ({ page }) => {
     await page.goto("/");
     await waitForWebRTCReady(page);
 
@@ -119,7 +124,7 @@ test.describe("Custom NTP time sync", () => {
     expect((await getNtpMetrics(page)).status).toBe(1);
   });
 
-  test("invalid NTP server falls back to defaults", async ({ page }) => {
+  test("invalid NTP server falls back to defaults @network", async ({ page }) => {
     await page.goto("/");
     await waitForWebRTCReady(page);
 

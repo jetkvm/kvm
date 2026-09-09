@@ -120,6 +120,7 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 	n, err = file.Write(data)
 	if err == nil {
 		u.resetHidWriteTimeoutStreak(file.Name())
+		u.resetLogSuppressionCounter(fmt.Sprintf("writeWithTimeout_%s", file.Name()))
 		return
 	}
 
@@ -198,9 +199,7 @@ func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
 	u.logSuppressionLock.Lock()
 	defer u.logSuppressionLock.Unlock()
 
-	if _, ok := u.logSuppressionCounter[counterName]; !ok {
-		u.logSuppressionCounter[counterName] = 0
-	}
+	delete(u.logSuppressionCounter, counterName)
 }
 
 func unlockWithLog(lock *sync.Mutex, logger *zerolog.Logger, msg string, args ...any) {

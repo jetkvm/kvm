@@ -87,7 +87,14 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
       // Store the callback if it exists
       if (callback) callbackStore.set(payload.id, callback);
 
-      rpcDataChannel.send(JSON.stringify(payload));
+      // The channel can close between the readyState check and the send.
+      // Drop the callback so it cannot wait forever for a reply.
+      try {
+        rpcDataChannel.send(JSON.stringify(payload));
+      } catch (error) {
+        callbackStore.delete(payload.id);
+        console.error(`Failed to send RPC method "${method}"`, error);
+      }
     },
     [rpcDataChannel, isFailsafeMode, reason],
   );
@@ -110,8 +117,9 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
 
       const callback = callbackStore.get(payload.id);
       if (callback) {
-        callback(payload);
+        // Delete first so a throwing callback cannot leave its entry behind.
         callbackStore.delete(payload.id);
+        callback(payload);
       }
     };
 

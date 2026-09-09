@@ -248,8 +248,8 @@ export class RemoteAgent {
     this.baseUrl = `http://${host}:${port}`;
   }
 
-  private async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`);
+  private async get<T>(path: string, signal?: AbortSignal): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, { signal });
     if (!res.ok) throw new Error(`Remote agent ${path}: ${res.status}`);
     return res.json() as Promise<T>;
   }
@@ -278,8 +278,8 @@ export class RemoteAgent {
 
   // ── Event APIs ──
 
-  async getKeyboardEvents(): Promise<KeyboardEvent[]> {
-    return this.get<KeyboardEvent[]>("/events/keyboard");
+  async getKeyboardEvents(signal?: AbortSignal): Promise<KeyboardEvent[]> {
+    return this.get<KeyboardEvent[]>("/events/keyboard", signal);
   }
 
   async getMouseEvents(): Promise<MouseEvent[]> {
@@ -560,7 +560,8 @@ export class RemoteAgent {
   async ensureDeployed(sshTarget?: string): Promise<void> {
     const host = this.baseUrl.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
     const port = parseInt(this.baseUrl.replace(/.*:/, ""), 10);
-    const target = sshTarget ?? process.env.JETKVM_REMOTE_HOST ?? `tony@${host}`;
+    const target = sshTarget ?? process.env.JETKVM_REMOTE_HOST;
+    if (!target) throw new Error("JETKVM_REMOTE_HOST is required to deploy the remote agent");
 
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
     const agentDir = path.resolve(thisDir, "..", "..", "..", "e2e", "remote-agent");

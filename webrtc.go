@@ -402,6 +402,16 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 
 		l.Trace().Msg("received data in HID RPC message handler")
 
+		// Cancel before admitting the next message on this ordered channel.
+		// A separate worker can process a late cancel after the old macro has
+		// finished and its replacement has started, canceling the replacement.
+		if hidrpc.MessageType(msg.Data[0]) == hidrpc.TypeCancelKeyboardMacroReport {
+			if !session.isClosed() {
+				rpcCancelKeyboardMacro()
+			}
+			return
+		}
+
 		// Enqueue to ensure ordered processing
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
 		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
@@ -697,7 +707,8 @@ func onSessionConnected(session *Session) {
 func onLastSessionDisconnected() {
 	// Safety net: ensure all keys are released when the last session disconnects
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
-	stopAudio()
+	// The closing session already released its own audio capture. A replacement
+	// may have connected since the zero-session decision, so do not stop its audio.
 	_ = nativeInstance.VideoStop()
 	_ = applyHostDisplayAdvertisement("last_session_disconnected")
 	startVideoSleepModeTicker()

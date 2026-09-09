@@ -8,12 +8,17 @@ import {
   sshExec,
   waitForUdcState,
   waitForWebRTCReady,
+  skipWithoutDeviceShell,
 } from "../helpers";
 import { createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
 
 const agent = createRemoteAgent();
 
 const TEST_IMAGE = "e2e-recovery-test.iso";
+
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
 
 test.describe.configure({ mode: "serial" });
 
@@ -41,7 +46,7 @@ test.afterAll(async () => {
   if (page) await page.close();
 });
 
-test("USB recovery succeeds and keyboard survives with virtual media mounted (#1314)", async () => {
+test("USB recovery succeeds and keyboard survives with virtual media mounted (#1314) @ssh", async () => {
   test.setTimeout(180_000);
 
   expect(await waitForKeyboardRoundTrip(30_000), "keyboard must work before the test").toBe(true);

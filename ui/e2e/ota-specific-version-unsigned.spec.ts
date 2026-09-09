@@ -48,7 +48,7 @@ test.describe("OTA Specific Version Unsigned", () => {
     });
   });
 
-  test("specific-version update succeeds without signature", async ({ page }) => {
+  test("specific-version update succeeds without signature @ota", async ({ page }) => {
     await test.step("Configure mock API and stable channel", async () => {
       await configureDeviceUpdateUrl(mockServer.url);
       await setIncludePreRelease(false);
