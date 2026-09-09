@@ -61,8 +61,6 @@ export default function WebRTCVideo({
     setSize: setVideoSize,
     width: videoWidth,
     height: videoHeight,
-    clientWidth: videoClientWidth,
-    clientHeight: videoClientHeight,
     hdmiState,
     setVideoElement,
     setContainerElement,
@@ -282,17 +280,18 @@ export default function WebRTCVideo({
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
   }, [releaseKeyboardLock]);
 
   const absMouseMoveHandler = useMemo(
     () =>
       getAbsMouseMoveHandler({
-        videoClientWidth,
-        videoClientHeight,
         videoWidth,
         videoHeight,
       }),
-    [getAbsMouseMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
+    [getAbsMouseMoveHandler, videoWidth, videoHeight],
   );
 
   const relMouseMoveHandler = useMemo(() => getRelMouseMoveHandler(), [getRelMouseMoveHandler]);
@@ -581,7 +580,11 @@ export default function WebRTCVideo({
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
+      // Absolute mode listens to pointer events so touch input (iPad/tablet)
+      // is handled natively, incl. move events while dragging. Relative mode
+      // keeps mousemove, which is what pointer lock delivers movement through.
+      const moveEventName = isRelativeMouseMode ? "mousemove" : "pointermove";
+      videoElmRefValue.addEventListener(moveEventName, mouseHandler, { signal });
       videoElmRefValue.addEventListener("pointerdown", mouseHandler, { signal });
       videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
@@ -603,6 +606,23 @@ export default function WebRTCVideo({
         // Reset the mouse position when the window is blurred or the document is hidden
         window.addEventListener("blur", resetMousePosition, { signal });
         document.addEventListener("visibilitychange", resetMousePosition, { signal });
+        // Release buttons if a touch interaction is canceled by the system
+        // (e.g. iPadOS edge gestures), so buttons don't get stuck down.
+        videoElmRefValue.addEventListener("pointercancel", resetMousePosition, { signal });
+        // Capture the pointer while a button is held so the release still
+        // reaches us when it happens outside the video element (touch
+        // pointers are implicitly captured; this covers mouse/pen).
+        videoElmRefValue.addEventListener(
+          "pointerdown",
+          (e: PointerEvent) => {
+            try {
+              videoElmRefValue.setPointerCapture(e.pointerId);
+            } catch {
+              // ignore: capture is best-effort (e.g. pointer already gone)
+            }
+          },
+          { signal },
+        );
       }
 
       const preventContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -721,17 +741,23 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx("h-full w-full object-contain transition-all duration-1000", {
-                          "cursor-none": settings.isCursorHidden,
-                          "pointer-events-none": isOcrMode,
-                          "opacity-0!":
-                            isVideoLoading ||
-                            hdmiError ||
-                            hasConnectionIssues ||
-                            peerConnectionState !== "connected",
-                          "opacity-60!": showPointerLockBar,
-                          "animate-slideUpFade": isPlaying,
-                        })}
+                        className={cx(
+                          // touch-none: the video is the interaction surface —
+                          // deliver touch input as pointer events instead of
+                          // letting the browser scroll/zoom the page with it.
+                          "h-full w-full touch-none object-contain transition-all duration-1000",
+                          {
+                            "cursor-none": settings.isCursorHidden,
+                            "pointer-events-none": isOcrMode,
+                            "opacity-0!":
+                              isVideoLoading ||
+                              hdmiError ||
+                              hasConnectionIssues ||
+                              peerConnectionState !== "connected",
+                            "opacity-60!": showPointerLockBar,
+                            "animate-slideUpFade": isPlaying,
+                          },
+                        )}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />

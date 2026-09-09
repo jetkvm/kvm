@@ -7,8 +7,6 @@ import { useMouseStore, useSettingsStore } from "./stores";
 const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
 
 export interface AbsMouseMoveHandlerProps {
-  videoClientWidth: number;
-  videoClientHeight: number;
   videoWidth: number;
   videoHeight: number;
 }
@@ -78,34 +76,50 @@ export default function useMouse() {
   );
 
   const getAbsMouseMoveHandler = useCallback(
-    ({ videoClientWidth, videoClientHeight, videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
-      (e: MouseEvent) => {
-        if (!videoClientWidth || !videoClientHeight) return;
+    ({ videoWidth, videoHeight }: AbsMouseMoveHandlerProps) =>
+      (e: PointerEvent | MouseEvent) => {
         if (mouseMode !== "absolute") return;
+        if (!videoWidth || !videoHeight) return;
+
+        // Ignore secondary touch points so multi-touch doesn't fight over
+        // the single absolute pointer.
+        if ("isPrimary" in e && !e.isPrimary) return;
+
+        // Use clientX/Y against the element's bounding rect instead of
+        // offsetX/Y: offsetX/Y is unreliable for touch-synthesized events on
+        // iPadOS/WebKit (computed against the page rather than the target),
+        // which caused a large position offset for touch clients.
+        const target = e.currentTarget as HTMLElement | null;
+        if (!target) return;
+        const rect = target.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+
+        const localX = e.clientX - rect.left;
+        const localY = e.clientY - rect.top;
 
         // Get the aspect ratios of the video element and the video stream
-        const videoElementAspectRatio = videoClientWidth / videoClientHeight;
+        const videoElementAspectRatio = rect.width / rect.height;
         const videoStreamAspectRatio = videoWidth / videoHeight;
 
-        // Calculate the effective video display area
-        let effectiveWidth = videoClientWidth;
-        let effectiveHeight = videoClientHeight;
+        // Calculate the effective video display area (object-contain)
+        let effectiveWidth = rect.width;
+        let effectiveHeight = rect.height;
         let offsetX = 0;
         let offsetY = 0;
 
         if (videoElementAspectRatio > videoStreamAspectRatio) {
           // Pillarboxing: black bars on the left and right
-          effectiveWidth = videoClientHeight * videoStreamAspectRatio;
-          offsetX = (videoClientWidth - effectiveWidth) / 2;
+          effectiveWidth = rect.height * videoStreamAspectRatio;
+          offsetX = (rect.width - effectiveWidth) / 2;
         } else if (videoElementAspectRatio < videoStreamAspectRatio) {
           // Letterboxing: black bars on the top and bottom
-          effectiveHeight = videoClientWidth / videoStreamAspectRatio;
-          offsetY = (videoClientHeight - effectiveHeight) / 2;
+          effectiveHeight = rect.width / videoStreamAspectRatio;
+          offsetY = (rect.height - effectiveHeight) / 2;
         }
 
         // Clamp mouse position within the effective video boundaries
-        const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
-        const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
+        const clampedX = Math.min(Math.max(offsetX, localX), offsetX + effectiveWidth);
+        const clampedY = Math.min(Math.max(offsetY, localY), offsetY + effectiveHeight);
 
         // Map clamped mouse position to the video stream's coordinate system
         const relativeX = (clampedX - offsetX) / effectiveWidth;
