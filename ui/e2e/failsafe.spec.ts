@@ -5,6 +5,7 @@ import {
   ensureLocalAuthMode,
   restartAppViaSSH,
   sshExec,
+  skipWithoutDeviceShell,
 } from "./helpers";
 
 const CRASHDUMP_DIR = "/userdata/jetkvm/crashdump";
@@ -62,6 +63,10 @@ async function lastCrashLogState(): Promise<string> {
   ).then(output => output.trim());
 }
 
+test.beforeEach(async () => {
+  await skipWithoutDeviceShell();
+});
+
 test.describe("Failsafe startup classification", () => {
   test.setTimeout(180000);
   test.describe.configure({ mode: "serial" });
@@ -75,7 +80,7 @@ test.describe("Failsafe startup classification", () => {
     await restartAppViaSSH();
   });
 
-  test("plain app crash log is diagnostic only", async ({ page }) => {
+  test("plain app crash log is diagnostic only @ssh", async ({ page }) => {
     await writeSupervisorCrashLog(
       "plain-crash",
       `SIGILL: illegal instruction
@@ -92,7 +97,7 @@ github.com/jetkvm/kvm/pkg/nmlite.(*InterfaceManager).monitorInterfaceState
     expect(await lastCrashLogState()).toBe("missing");
   });
 
-  test("native restart exhaustion activates failsafe once", async ({ page }) => {
+  test("native restart exhaustion activates failsafe once @ssh", async ({ page }) => {
     await writeSupervisorCrashLog(
       "native-restart-exhausted",
       `max restart attempts reached, exiting: ${NATIVE_FAILSAFE_SENTINEL}

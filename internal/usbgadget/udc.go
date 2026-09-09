@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -61,6 +62,42 @@ func softConnectPath(udc string) string {
 	return path.Join(udcClassPath, udc, "soft_connect")
 }
 
+// dwc3RegdumpPath is the controller register dump debugfs exposes. JetKVM
+// mounts debugfs from fstab.
+func dwc3RegdumpPath(udc string) string {
+	return path.Join("/sys/kernel/debug/usb", udc, "regdump")
+}
+
+// dwc3RunStop reads DCTL.RUN_STOP from a register dump. The bit is the
+// pull-up: soft_connect clears it on "disconnect" and sets it on "connect",
+// while the sysfs state and speed files keep their last value across both.
+func dwc3RunStop(regdump []byte) (bool, error) {
+	for _, line := range strings.Split(string(regdump), "\n") {
+		name, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(name) != "DCTL" {
+			continue
+		}
+		v, err := strconv.ParseUint(strings.TrimPrefix(strings.TrimSpace(value), "0x"), 16, 32)
+		if err != nil {
+			return false, fmt.Errorf("parse DCTL %q: %w", value, err)
+		}
+		return v&(1<<31) != 0, nil
+	}
+	return false, fmt.Errorf("DCTL not found in register dump")
+}
+
+// isPullupEnabled reports whether the controller presents the gadget to the
+// host. Without a readable register dump it reports false, which makes the
+// caller rebind as it always did before adoption existed.
+func isPullupEnabled(udc string) bool {
+	regdump, err := os.ReadFile(dwc3RegdumpPath(udc))
+	if err != nil {
+		return false
+	}
+	on, err := dwc3RunStop(regdump)
+	return err == nil && on
+}
+
 func softDisconnect(udc string) error {
 	err := os.WriteFile(softConnectPath(udc), []byte("disconnect"), 0644)
 	if err == nil {
@@ -80,6 +117,8 @@ func (u *UsbGadget) SoftReconnect() error {
 	if err := softDisconnect(u.udc); err != nil {
 		return err
 	}
+	// The host re-enumerates on reconnect, the same as after a rebind.
+	u.resetHidHandover()
 	return softConnect(u.udc)
 }
 
@@ -94,9 +133,14 @@ func isHidgChardevHealthy() bool {
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
 	u.log.Info().Str("udc", u.udc).Msg("rebinding USB gadget to UDC")
+	// f_hid re-initialises the same cdev on every bind. Descriptors left open
+	// from the previous bind would drop the fresh refcount to zero when they
+	// are finally closed, and every open after that fails with ENXIO.
+	u.ResetHIDFiles()
 	if err := rebindUsb(u.udc, ignoreUnbindError); err != nil {
 		return err
 	}
+	u.resetHidHandover()
 	time.Sleep(100 * time.Millisecond)
 	if !u.IsGadgetAttachedToUDC() {
 		return os.WriteFile(path.Join(u.kvmGadgetPath, "UDC"), []byte(u.udc), 0644)
@@ -106,10 +150,29 @@ func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
 
 // RebindUsb rebinds the USB gadget to the UDC.
 func (u *UsbGadget) RebindUsb(ignoreUnbindError bool) error {
+	return u.rebindUsbWith(func() error { return u.rebindUsb(ignoreUnbindError) })
+}
+
+// rebindUsbWith excludes descriptor admission for the entire public rebind.
+// Configuration transactions use withHIDRebind while already holding configLock.
+func (u *UsbGadget) rebindUsbWith(rebind func() error) error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
-	return u.rebindUsb(ignoreUnbindError)
+	return u.withHIDRebind(rebind)
+}
+
+// withHIDRebind requires configLock and excludes HID access during a rebind.
+func (u *UsbGadget) withHIDRebind(rebind func() error) error {
+	u.hidLifecycle.Lock()
+	defer u.hidLifecycle.Unlock()
+	// An open may outlive its caller's timeout. It must return and close its
+	// old-generation descriptor before the controller can be rebound.
+	if err := u.hidOpens.wait(hidOpenDrainTimeout); err != nil {
+		return err
+	}
+
+	return rebind()
 }
 
 // GetUsbState returns the current state of the USB gadget

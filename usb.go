@@ -269,6 +269,7 @@ func tryReopenKeyboard(reason string, requireWritable bool) bool {
 		setUSBRecoveryTimer(time.Now())
 		time.Sleep(delay)
 		if err := gadget.ReopenKeyboardHidFile(); err != nil {
+			usbLogger.Debug().Err(err).Str("reason", reason).Msg("keyboard HID file reopen failed")
 			continue
 		}
 		if gadget.GetUsbState() != usbgadget.USBStateConfigured {
@@ -320,14 +321,15 @@ func attemptHidWriteRecovery(state string) string {
 		Msg("keyboard HID writes are timing out while USB is configured; reconnecting gadget")
 
 	setUSBRecoveryTimer(time.Now())
-	if err := gadget.SoftReconnect(); err == nil {
-		gadget.ResetHIDFiles()
-		if tryReopenKeyboard("hid_write_timeout_soft_reconnect", true) {
+	// A soft reconnect can restore HID while leaving mass-storage bulk
+	// transfers stuck on this controller. Rebind so every function recovers.
+	if err := gadget.RebindUsb(true); err == nil {
+		if tryReopenKeyboard("hid_write_timeout_rebind", true) {
 			return gadget.GetUsbState()
 		}
 	}
 
-	usbLogger.Warn().Msg("keyboard HID writes still failing after soft reconnect; attempting full USB gadget reconfigure")
+	usbLogger.Warn().Msg("keyboard HID writes still failing after UDC rebind; attempting full USB gadget reconfigure")
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")

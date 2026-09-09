@@ -57,8 +57,7 @@ export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
 
   // rrecalculate remaining time every 30 seconds
   useEffect(() => {
-    // schedule immediate initial update
-    setInterval(() => setRemaining(dayjs(lifetime).fromNow()), 0);
+    setRemaining(dayjs(lifetime).fromNow());
 
     const interval = setInterval(() => {
       setRemaining(dayjs(lifetime).fromNow());
@@ -195,6 +194,10 @@ export default function SettingsNetworkRoute() {
         }
         settings.ipv4_static.netmask = netMaskFromCidr4(cidrNotation);
         settings.ipv4_static.address = parts[0];
+      }
+
+      if (settings.ipv4_static) {
+        settings.ipv4_static.dns = settings.ipv4_static.dns.filter(Boolean);
       }
 
       send("setNetworkSettings", { settings }, async resp => {

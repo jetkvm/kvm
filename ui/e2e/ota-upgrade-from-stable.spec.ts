@@ -67,7 +67,7 @@ test.describe("OTA Upgrade from Latest Stable", () => {
     await rebootDeviceViaSSH();
   });
 
-  test("upgrade from latest stable succeeds with config reset", async ({ page }) => {
+  test("upgrade from latest stable succeeds with config reset @ota", async ({ page }) => {
     await test.step("Trigger update with config reset", async () => {
       await page.goto(
         `/settings/general/update?custom_app_version=${env.releaseVersion}&reset_config=true`,

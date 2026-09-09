@@ -2,9 +2,11 @@ package usbgadget
 
 import (
 	"cmp"
+	"errors"
 	"os"
 	"path"
 	"strings"
+	"syscall"
 )
 
 var massStorageBaseConfig = gadgetConfigItem{
@@ -13,7 +15,11 @@ var massStorageBaseConfig = gadgetConfigItem{
 	path:       []string{"functions", "mass_storage.usb0"},
 	configPath: []string{"mass_storage.usb0"},
 	attrs: gadgetAttributes{
-		"stall": "1",
+		// Never halt the bulk endpoints. Every halt call in f_mass_storage is
+		// gated by this flag, and on this dwc3 the halt races the function's
+		// disable path on disconnect and oopses in the kernel (#1360). With
+		// stalls off the function pads with a zero-length packet instead.
+		"stall": "0",
 	},
 }
 
@@ -58,12 +64,21 @@ func (u *UsbGadget) SetMassStorageImage(imagePath string) error {
 }
 
 func (u *UsbGadget) forceEjectLocked() error {
-	if softDisconnect(u.udc) == nil {
-		defer func() {
-			_ = softConnect(u.udc)
-		}()
+	if err := u.setMassStorageImageLocked("\n"); !errors.Is(err, syscall.EBUSY) {
+		return err
 	}
-	return u.setMassStorageImageLocked("\n")
+
+	// A soft reconnect can leave the first SCSI INQUIRY stuck. Detach the
+	// controller to release the host's medium lock, clear the image while
+	// detached, then restore every USB function even if clearing fails.
+	return u.withHIDRebind(func() error {
+		u.ResetHIDFiles()
+		if err := u.UnbindUDC(); err != nil {
+			return errors.Join(err, u.rebindUsb(true))
+		}
+		err := u.setMassStorageImageLocked("\n")
+		return errors.Join(err, u.rebindUsb(true))
+	})
 }
 
 func (u *UsbGadget) ForceEjectMassStorageImage() error {

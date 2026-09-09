@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import {
+  deviceShellAvailable,
   sshExec,
   resetConfigViaSSH,
   restartAppViaSSH,
@@ -9,13 +10,18 @@ import {
 } from "./helpers";
 
 export default async function globalTeardown() {
+  if (!(await deviceShellAvailable())) {
+    console.log("[global-teardown] No device shell; skipping log capture and reset.");
+    return;
+  }
+
   const resultsDir = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),
     "../test-results",
   );
 
-  if (hasTestFailures(resultsDir)) {
-    console.log("[global-teardown] Test failures detected, capturing device logs...");
+  if (hasTestArtifacts(resultsDir)) {
+    console.log("[global-teardown] Tests produced artifacts, capturing device logs...");
     const logDir = path.join(resultsDir, "device-logs");
     fs.mkdirSync(logDir, { recursive: true });
 
@@ -51,9 +57,9 @@ export default async function globalTeardown() {
   }
 }
 
-function hasTestFailures(resultsDir: string): boolean {
+function hasTestArtifacts(resultsDir: string): boolean {
   if (!fs.existsSync(resultsDir)) return false;
-  // Playwright creates per-test subdirectories in test-results/ for failed tests
+  // Per-test directories can contain failure traces or retained diagnostic attachments.
   const entries = fs.readdirSync(resultsDir, { withFileTypes: true });
   return entries.some(e => e.isDirectory());
 }

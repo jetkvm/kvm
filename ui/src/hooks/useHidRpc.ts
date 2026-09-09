@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Logger } from "tslog";
 
 import { useRTCStore } from "@hooks/stores";
@@ -197,10 +197,10 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     (
       message: RpcMessage,
       { ignoreHandshakeState, useUnreliableChannel, requireOrdered = true }: sendMessageParams = {},
-    ) => {
-      if (hidRpcDisabled) return;
-      if (rpcHidChannel?.readyState !== "open") return;
-      if (!rpcHidReady && !ignoreHandshakeState) return;
+    ): boolean => {
+      if (hidRpcDisabled) return false;
+      if (rpcHidChannel?.readyState !== "open") return false;
+      if (!rpcHidReady && !ignoreHandshakeState) return false;
 
       let data: Uint8Array | undefined;
       try {
@@ -208,19 +208,20 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       } catch (e) {
         logger.error("Failed to marshal message", e);
       }
-      if (!data) return;
+      if (!data) return false;
 
       if (useUnreliableChannel) {
         if (requireOrdered && rpcHidUnreliableReady) {
           rpcHidUnreliableChannel?.send(data as unknown as ArrayBuffer);
-          return;
+          return true;
         } else if (!requireOrdered && rpcHidUnreliableNonOrderedReady) {
           rpcHidUnreliableNonOrderedChannel?.send(data as unknown as ArrayBuffer);
-          return;
+          return true;
         }
       }
 
-      rpcHidChannel?.send(data as unknown as ArrayBuffer);
+      rpcHidChannel.send(data as unknown as ArrayBuffer);
+      return true;
     },
     [
       rpcHidChannel,
@@ -247,14 +248,18 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     [sendMessage],
   );
 
-  const lastAbsButtons = useRef(0);
+  // Button authority belongs to one channel/handshake. The first report must
+  // establish it reliably, including when a held button survives reconnect.
+  const lastAbsButtons = useMemo(
+    () => ({ current: null as number | null }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Reset button authority for each channel and handshake.
+    [rpcHidChannel, rpcHidReady],
+  );
 
   const reportAbsMouseEvent = useCallback(
     (x: number, y: number, buttons: number) => {
       const buttonsChanged = buttons !== lastAbsButtons.current;
-      lastAbsButtons.current = buttons;
-
-      sendMessage(new PointerReportMessage(x, y, buttons), {
+      const sent = sendMessage(new PointerReportMessage(x, y, buttons), {
         // Use the reliable channel for button state changes to guarantee delivery.
         // Movement-only events use the unreliable channel for lower latency;
         // lost movement packets self-correct via subsequent mousemove events,
@@ -262,8 +267,9 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
         // no such redundancy and must not be dropped.
         useUnreliableChannel: !buttonsChanged,
       });
+      if (sent) lastAbsButtons.current = buttons;
     },
-    [sendMessage],
+    [sendMessage, lastAbsButtons],
   );
 
   const reportRelMouseEvent = useCallback(

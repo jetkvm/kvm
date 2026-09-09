@@ -1,9 +1,8 @@
-import semver from "semver";
-
 import { KeySequence } from "@hooks/stores";
 import { getLocale, locales, type LocalizedString } from "@localizations/runtime.js";
 import { m } from "@localizations/messages.js";
 import { CLOUD_BACKWARDS_COMPATIBLE_VERSION, CLOUD_ENABLE_VERSIONED_UI } from "@/ui.config";
+import { selectCloudUiVersion } from "@/cloudVersion";
 
 const isInvalidDate = (date: Date) => date instanceof Date && isNaN(date.getTime());
 
@@ -257,9 +256,11 @@ export function isChromeOS() {
  * "Loading video stream..." screen. See jetkvm/kvm#1413.
  */
 export function isLinuxDesktop() {
-  const uaData = (navigator as Navigator & {
-    userAgentData?: { platform?: string };
-  }).userAgentData;
+  const uaData = (
+    navigator as Navigator & {
+      userAgentData?: { platform?: string };
+    }
+  ).userAgentData;
 
   if (uaData?.platform) return uaData.platform === "Linux";
 
@@ -335,12 +336,7 @@ export function sleep(ms: number): Promise<void> {
 export function buildCloudUrl(deviceId: string, appVersion: string | undefined, path = ""): string {
   let uri = `/devices/${deviceId}${path}`;
   if (CLOUD_ENABLE_VERSIONED_UI) {
-    const version =
-      appVersion &&
-      semver.valid(appVersion) &&
-      semver.gte(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION)
-        ? appVersion
-        : CLOUD_BACKWARDS_COMPATIBLE_VERSION;
+    const version = selectCloudUiVersion(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION);
     uri = `/v/${version}${uri}`;
   }
   return new URL(uri, window.location.origin).href;
