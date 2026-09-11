@@ -692,8 +692,11 @@ func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 	dataChannel.OnClose(func() {
 		scopedLogger.Info().Msg("Serial channel closed")
 
+		// A replacement channel may already own the sink: this close can
+		// run after the new session's OnOpen when the old peer went away
+		// without a clean shutdown.
 		if consoleBroker != nil {
-			consoleBroker.SetSink(nil)
+			consoleBroker.ClearSink(dataChannelSink{dataChannel: dataChannel})
 		}
 	})
 }

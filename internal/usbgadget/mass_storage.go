@@ -1,13 +1,106 @@
 package usbgadget
 
+import (
+	"cmp"
+	"errors"
+	"os"
+	"path"
+	"strings"
+	"syscall"
+)
+
 var massStorageBaseConfig = gadgetConfigItem{
 	order:      3000,
 	device:     "mass_storage.usb0",
 	path:       []string{"functions", "mass_storage.usb0"},
 	configPath: []string{"mass_storage.usb0"},
 	attrs: gadgetAttributes{
-		"stall": "1",
+		// Never halt the bulk endpoints. Every halt call in f_mass_storage is
+		// gated by this flag, and on this dwc3 the halt races the function's
+		// disable path on disconnect and oopses in the kernel (#1360). With
+		// stalls off the function pads with a zero-length packet instead.
+		"stall": "0",
 	},
+}
+
+func (u *UsbGadget) lunFilePath() (string, error) {
+	lunPath, err := u.GetPath("mass_storage_lun0")
+	if err != nil {
+		return "", err
+	}
+	return path.Join(lunPath, "file"), nil
+}
+
+func (u *UsbGadget) GetMassStorageImage() (string, error) {
+	filePath, err := u.lunFilePath()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func (u *UsbGadget) setMassStorageImageLocked(imagePath string) error {
+	filePath, err := u.lunFilePath()
+	if err != nil {
+		return err
+	}
+	imagePath = cmp.Or(imagePath, "\n")
+	if err := os.WriteFile(filePath, []byte(imagePath), 0644); err != nil {
+		return err
+	}
+	u.configMap["mass_storage_lun0"].attrs["file"] = imagePath
+	return nil
+}
+
+func (u *UsbGadget) SetMassStorageImage(imagePath string) error {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+
+	return u.setMassStorageImageLocked(imagePath)
+}
+
+func (u *UsbGadget) forceEjectLocked() error {
+	if err := u.setMassStorageImageLocked("\n"); !errors.Is(err, syscall.EBUSY) {
+		return err
+	}
+
+	// A soft reconnect can leave the first SCSI INQUIRY stuck. Detach the
+	// controller to release the host's medium lock, clear the image while
+	// detached, then restore every USB function even if clearing fails.
+	return u.withHIDRebind(func() error {
+		u.ResetHIDFiles()
+		if err := u.UnbindUDC(); err != nil {
+			return errors.Join(err, u.rebindUsb(true))
+		}
+		err := u.setMassStorageImageLocked("\n")
+		return errors.Join(err, u.rebindUsb(true))
+	})
+}
+
+func (u *UsbGadget) ForceEjectMassStorageImage() error {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+
+	return u.forceEjectLocked()
+}
+
+func (u *UsbGadget) syncMassStorageImageFromKernel() {
+	img, err := u.GetMassStorageImage()
+	if err != nil || img == "" {
+		return
+	}
+	if strings.HasPrefix(img, "/dev/nbd") {
+		if err := u.forceEjectLocked(); err != nil {
+			u.log.Warn().Err(err).Str("image", img).Msg("failed to eject stale nbd-backed image at init")
+		}
+		return
+	}
+	u.configMap["mass_storage_lun0"].attrs["file"] = img
+	u.log.Info().Str("image", img).Msg("adopted already-mounted mass storage image from kernel")
 }
 
 var massStorageLun0Config = gadgetConfigItem{

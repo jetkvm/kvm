@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { BacklightSettings, useSettingsStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { Checkbox } from "@components/Checkbox";
-import { FeatureFlag } from "@components/FeatureFlag";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -215,33 +214,27 @@ export default function SettingsHardwareRoute() {
         </p>
       </div>
 
-      <FeatureFlag minAppVersion="0.4.9">
-        <div className="space-y-4">
-          <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
-          <SettingsSectionHeader
-            title={m.hardware_power_saving_title()}
-            description={m.hardware_power_saving_description()}
+      <div className="space-y-4">
+        <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <SettingsSectionHeader
+          title={m.hardware_power_saving_title()}
+          description={m.hardware_power_saving_description()}
+        />
+        <SettingsItem
+          badge={m.experimental()}
+          title={m.hardware_power_saving_hdmi_sleep_title()}
+          description={m.hardware_power_saving_hdmi_sleep_description()}
+        >
+          <Checkbox
+            checked={powerSavingEnabled}
+            onChange={e => handlePowerSavingChange(e.target.checked)}
           />
-          <SettingsItem
-            badge={m.experimental()}
-            title={m.hardware_power_saving_hdmi_sleep_title()}
-            description={m.hardware_power_saving_hdmi_sleep_description()}
-          >
-            <Checkbox
-              checked={powerSavingEnabled}
-              onChange={e => handlePowerSavingChange(e.target.checked)}
-            />
-          </SettingsItem>
-        </div>
-      </FeatureFlag>
+        </SettingsItem>
+      </div>
 
-      <FeatureFlag minAppVersion="0.3.8">
-        <UsbDeviceSetting />
-      </FeatureFlag>
+      <UsbDeviceSetting />
 
-      <FeatureFlag minAppVersion="0.3.8">
-        <UsbInfoSetting />
-      </FeatureFlag>
+      <UsbInfoSetting />
     </div>
   );
 }

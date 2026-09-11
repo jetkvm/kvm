@@ -4,6 +4,7 @@ package usbgadget
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path"
 	"time"
@@ -62,12 +63,22 @@ type UsbGadget struct {
 
 	configLock sync.Mutex
 
+	// Descriptor lock order: configLock (rebind only), keyboardMutex (keyboard
+	// reports only), hidLifecycle, then the per-device file lock. Never nest
+	// lifecycle read locks or hold one across the blocking LED Read. Rebind
+	// takes no keyboardMutex, so admitted keyboard work can finish first.
+	hidLifecycle sync.RWMutex
+	hidOpens     hidOpenTracker
+	// nil uses os.OpenFile; overridden by lifecycle tests without device access.
+	hidOpenFile func(string, int, os.FileMode) (*os.File, error)
+
 	keyboardHidFile *os.File
 	keyboardLock    sync.Mutex
 	wakeHidFile     *os.File
 	wakeHidLock     sync.Mutex
 	absMouseHidFile *os.File
 	absMouseLock    sync.Mutex
+	absMousePressed bool
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
 
@@ -99,6 +110,9 @@ type UsbGadget struct {
 
 	logSuppressionCounter map[string]int
 	logSuppressionLock    sync.Mutex
+
+	hidWriteTimeoutStreaks map[string]int
+	hidWriteStreakLock     sync.Mutex
 }
 
 const configFSPath = "/sys/kernel/config"
@@ -130,7 +144,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		name:                 name,
 		kvmGadgetPath:        path.Join(gadgetPath, name),
 		configC1Path:         path.Join(gadgetPath, name, "configs/c.1"),
-		configMap:            configMap,
+		configMap:            deepCopyConfigMap(configMap),
 		customConfig:         *config,
 		configLock:           sync.Mutex{},
 		keyboardLock:         sync.Mutex{},
@@ -159,6 +173,16 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 	}
 
 	return g
+}
+
+func deepCopyConfigMap(configMap map[string]gadgetConfigItem) map[string]gadgetConfigItem {
+	copied := make(map[string]gadgetConfigItem, len(configMap))
+	for key, item := range configMap {
+		item.attrs = maps.Clone(item.attrs)
+		item.configAttrs = maps.Clone(item.configAttrs)
+		copied[key] = item
+	}
+	return copied
 }
 
 // Close cleans up resources used by the USB gadget
@@ -224,4 +248,6 @@ func (u *UsbGadget) ResetHIDFiles() {
 		u.relMouseHidFile = nil
 	}
 	unlockWithLog(&u.relMouseLock, u.log, "relMouseHidFile reset")
+
+	u.clearHidWriteTimeoutStreaks()
 }

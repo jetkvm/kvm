@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/rs/zerolog"
+	"github.com/sourcegraph/tf-dag/dag"
 )
 
 // no os package should occur in this file
@@ -24,6 +26,8 @@ type UsbGadgetTransaction struct {
 	isGadgetConfigItemEnabled func(key string) bool
 
 	reorderSymlinkChanges *RequestedFileChange
+	// disabledFunctionKeys are the symlink removals the UDC write waits on.
+	disabledFunctionKeys []string
 }
 
 func (u *UsbGadget) newUsbGadgetTransaction(lock bool) error {
@@ -60,14 +64,15 @@ func (u *UsbGadget) WithTransaction(fn func() error) error {
 		u.log.Error().Err(err).Msg("failed to create transaction")
 		return err
 	}
+	// Clear the transaction on every exit, or a callback error would leave
+	// it behind and every later WithTransaction would fail to start one.
+	defer func() { u.tx = nil }()
+
 	if err := fn(); err != nil {
 		u.log.Error().Err(err).Msg("transaction failed")
 		return err
 	}
-	result := u.tx.Commit()
-	u.tx = nil
-
-	return result
+	return u.tx.Commit()
 }
 
 func (tx *UsbGadgetTransaction) addFileChange(component string, change RequestedFileChange) string {
@@ -98,8 +103,42 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 	})
 }
 
+// HasPendingChanges resolves the staged changes, including the symlink
+// reorder that Commit appends, without applying anything, and reports whether
+// any of them would touch the configfs tree.
+func (tx *UsbGadgetTransaction) HasPendingChanges() (bool, error) {
+	staged := slices.Clone(tx.c.Changes)
+	if tx.reorderSymlinkChanges != nil {
+		finalize := *tx.reorderSymlinkChanges
+		finalize.Component = "gadget-finalize"
+		staged = append(staged, FileChange{RequestedFileChange: finalize})
+	}
+	r := ChangeSetResolver{changeset: &ChangeSet{Changes: staged}, g: &dag.AcyclicGraph{}, l: tx.log}
+	resolved, err := r.GetChanges()
+	if err != nil {
+		return false, err
+	}
+	for _, change := range resolved {
+		action := change.Action()
+		if action == FileChangeResolvedActionDoNothing {
+			continue
+		}
+		// An optional attribute the kernel does not expose cannot be
+		// created; Commit ignores that failure, so it is not a change.
+		if change.IgnoreErrors && action == FileChangeResolvedActionCreateFile {
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func (tx *UsbGadgetTransaction) Commit() error {
-	tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	// With every USB device class disabled there is no function to link and
+	// no reorder change was staged.
+	if tx.reorderSymlinkChanges != nil {
+		tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+	}
 
 	err := tx.c.Apply()
 	if err != nil {
@@ -189,7 +228,8 @@ func (tx *UsbGadgetTransaction) DisableGadgetItemConfig(item gadgetConfigItem) {
 	}
 
 	configPath := joinPath(tx.configC1Path, item.configPath)
-	_ = tx.removeFile("gadget", configPath, "remove symlink: disable gadget config")
+	key := tx.removeFile("gadget", configPath, "remove symlink: disable gadget config")
+	tx.disabledFunctionKeys = append(tx.disabledFunctionKeys, key)
 }
 
 func (tx *UsbGadgetTransaction) writeGadgetItemConfig(item gadgetConfigItem, deps []string) []string {
@@ -317,6 +357,15 @@ func (tx *UsbGadgetTransaction) addReorderSymlinkChange(path string, target stri
 }
 
 func (tx *UsbGadgetTransaction) WriteUDC() {
+	// Rebinding with a disabled function still linked enumerates it on the
+	// host, and unlinking it afterwards makes configfs unbind the gadget
+	// again, so the removals come first. With every function disabled
+	// nothing stages the reorder change, so only wait on it when it exists.
+	deps := append([]string(nil), tx.disabledFunctionKeys...)
+	if tx.reorderSymlinkChanges != nil {
+		deps = append(deps, "reorder-symlinks")
+	}
+
 	// bound the gadget to a UDC (USB Device Controller)
 	path := path.Join(tx.kvmGadgetPath, "UDC")
 	tx.addFileChange("udc", RequestedFileChange{
@@ -324,7 +373,7 @@ func (tx *UsbGadgetTransaction) WriteUDC() {
 		Path:            path,
 		ExpectedState:   FileStateFileContentMatch,
 		ExpectedContent: []byte(tx.udc),
-		DependsOn:       []string{"reorder-symlinks"},
+		DependsOn:       deps,
 		Description:     "write UDC",
 	})
 }

@@ -119,6 +119,8 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 
 	n, err = file.Write(data)
 	if err == nil {
+		u.resetHidWriteTimeoutStreak(file.Name())
+		u.resetLogSuppressionCounter(fmt.Sprintf("writeWithTimeout_%s", file.Name()))
 		return
 	}
 
@@ -129,6 +131,7 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 		Msg("write failed")
 
 	if errors.Is(err, os.ErrDeadlineExceeded) {
+		u.recordHidWriteTimeout(file.Name())
 		u.logWithSuppression(
 			fmt.Sprintf("writeWithTimeout_%s", file.Name()),
 			1000,
@@ -141,6 +144,34 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 	}
 
 	return
+}
+
+func (u *UsbGadget) recordHidWriteTimeout(name string) {
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	if u.hidWriteTimeoutStreaks == nil {
+		u.hidWriteTimeoutStreaks = make(map[string]int)
+	}
+	u.hidWriteTimeoutStreaks[name]++
+}
+
+func (u *UsbGadget) resetHidWriteTimeoutStreak(name string) {
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	delete(u.hidWriteTimeoutStreaks, name)
+}
+
+func (u *UsbGadget) clearHidWriteTimeoutStreaks() {
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	clear(u.hidWriteTimeoutStreaks)
+}
+
+func (u *UsbGadget) ClearHidWriteTimeoutStreaks() {
+	u.clearHidWriteTimeoutStreaks()
 }
 
 func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...any) {
@@ -168,9 +199,7 @@ func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
 	u.logSuppressionLock.Lock()
 	defer u.logSuppressionLock.Unlock()
 
-	if _, ok := u.logSuppressionCounter[counterName]; !ok {
-		u.logSuppressionCounter[counterName] = 0
-	}
+	delete(u.logSuppressionCounter, counterName)
 }
 
 func unlockWithLog(lock *sync.Mutex, logger *zerolog.Logger, msg string, args ...any) {

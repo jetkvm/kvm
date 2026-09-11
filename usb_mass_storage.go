@@ -24,35 +24,6 @@ import (
 	"github.com/psanford/httpreadat"
 )
 
-func writeFile(path string, data string) error {
-	return os.WriteFile(path, []byte(data), 0644)
-}
-
-func getMassStorageImage() (string, error) {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return "", fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-
-	imagePath, err := os.ReadFile(path.Join(massStorageFunctionPath, "file"))
-	if err != nil {
-		return "", fmt.Errorf("failed to get mass storage image path: %w", err)
-	}
-	return strings.TrimSpace(string(imagePath)), nil
-}
-
-func setMassStorageImage(imagePath string) error {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-
-	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
-		return fmt.Errorf("failed to set image path: %w", err)
-	}
-	return nil
-}
-
 // rebindAndRecoverHID performs a corrective USB rebind with recovery poller
 // suppression, resets HID file handles, waits for the kernel to re-attach the
 // HID function driver, and reopens the keyboard chardev.
@@ -61,12 +32,11 @@ func rebindAndRecoverHID(context string) error {
 	if err := gadget.RebindUsb(true); err != nil {
 		return fmt.Errorf("%s: corrective USB rebind failed: %w", context, err)
 	}
-	setUSBRecoveryTimer(time.Now())
 	gadget.ResetHIDFiles()
-	time.Sleep(1 * time.Second)
-	if err := gadget.OpenKeyboardHidFile(); err != nil {
-		usbLogger.Warn().Err(err).Msgf("failed to reopen keyboard HID file after %s rebind", context)
+	if !tryReopenKeyboard(context, false) {
+		usbLogger.Warn().Msgf("keyboard HID file not ready after %s rebind", context)
 	}
+	setUSBRecoveryTimer(time.Now())
 	return nil
 }
 
@@ -113,15 +83,15 @@ func setMassStorageMode(cdrom bool) error {
 }
 
 func mountImage(imagePath string) error {
-	err := setMassStorageImage("")
+	err := gadget.SetMassStorageImage("")
 	if err != nil {
 		return fmt.Errorf("remove mass storage image error: %w", err)
 	}
-	err = setMassStorageImage(imagePath)
+	err = gadget.SetMassStorageImage(imagePath)
 	if err != nil {
 		return fmt.Errorf("set mass storage image error: %w", err)
 	}
-	err = setMassStorageImage(imagePath)
+	err = gadget.SetMassStorageImage(imagePath)
 	if err != nil {
 		return fmt.Errorf("set Mass Storage Image Error: %w", err)
 	}
@@ -333,20 +303,18 @@ func unmountImageLocked() error {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
 
-	err := setMassStorageImage("\n")
+	err := gadget.SetMassStorageImage("\n")
 	if err != nil {
 		if !errors.Is(err, syscall.EBUSY) {
 			return fmt.Errorf("failed to unmount image: %w", err)
 		}
 
-		logger.Warn().Err(err).Msg("unmount failed with EBUSY, rebinding USB gadget to force-eject")
+		logger.Warn().Err(err).Msg("unmount failed with EBUSY, force-ejecting via controller rebind")
 
-		if rebindErr := rebindAndRecoverHID("ebusy-unmount"); rebindErr != nil {
-			return fmt.Errorf("failed to unmount image: %w, %w", err, rebindErr)
-		}
-
-		if retryErr := setMassStorageImage("\n"); retryErr != nil {
-			return fmt.Errorf("failed to unmount image after gadget rebind: %w", retryErr)
+		setUSBRecoveryTimer(time.Now())
+		defer func() { setUSBRecoveryTimer(time.Now()) }()
+		if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
+			return fmt.Errorf("failed to unmount image: %w, %w", err, ejectErr)
 		}
 	}
 
@@ -377,7 +345,7 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 		return nil, fmt.Errorf("failed to get mass storage cdrom enabled: %w", err)
 	}
 
-	diskPath, err := getMassStorageImage()
+	diskPath, err := gadget.GetMassStorageImage()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mass storage image: %w", err)
 	}
@@ -479,7 +447,7 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 	logger.Debug().Msg("nbd device started")
 	//TODO: replace by polling on block device having right size
 	time.Sleep(1 * time.Second)
-	err = setMassStorageImage("/dev/nbd0")
+	err = gadget.SetMassStorageImage("/dev/nbd0")
 	if err != nil {
 		return err
 	}
@@ -507,7 +475,7 @@ func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 		return fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
 
-	err = setMassStorageImage(fullPath)
+	err = gadget.SetMassStorageImage(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to set mass storage image: %w", err)
 	}
@@ -643,8 +611,28 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 	filePath := path.Join(imagesFolder, sanitizedFilename)
 	uploadPath := filePath + ".incomplete"
 
+	// Held from the exists check through the open: finishUpload renames
+	// under the same lock, so the partial file cannot change in between.
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+
 	if _, err := os.Stat(filePath); err == nil {
 		return nil, fmt.Errorf("file already exists: %s", sanitizedFilename)
+	}
+
+	// A retry after a cancel must not race the transfer it replaces. A data
+	// channel closes gracefully and still delivers what it had buffered, so
+	// the old handler could keep appending while the new one measures the
+	// partial file and appends too. Closing the old file ends that transfer.
+	for id, p := range pendingUploads {
+		if p.File.Name() != uploadPath {
+			continue
+		}
+		p.writeLock.Lock()
+		p.File.Close()
+		p.writeLock.Unlock()
+		delete(pendingUploads, id)
+		logger.Info().Str("uploadId", id).Msg("upload superseded by a new start for the same file")
 	}
 
 	var alreadyUploadedBytes int64 = 0
@@ -657,13 +645,13 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file for upload: %v", err)
 	}
-	pendingUploadsMutex.Lock()
 	pendingUploads[uploadId] = pendingUpload{
 		File:                 file,
 		Size:                 size,
 		AlreadyUploadedBytes: alreadyUploadedBytes,
+		writeLock:            &sync.Mutex{},
 	}
-	pendingUploadsMutex.Unlock()
+	time.AfterFunc(uploadClaimTimeout, func() { expireUnclaimedUpload(uploadId) })
 	return &StorageFileUpload{
 		AlreadyUploadedBytes: alreadyUploadedBytes,
 		DataChannel:          uploadId,
@@ -674,10 +662,79 @@ type pendingUpload struct {
 	File                 *os.File
 	Size                 int64
 	AlreadyUploadedBytes int64
+	// writeLock serialises the transport's writes with a supersede from
+	// rpcStartStorageFileUpload, so nothing lands after the replacement
+	// measured the partial file.
+	writeLock *sync.Mutex
+	claimed   bool
 }
+
+// uploadClaimTimeout bounds how long a started upload waits for its
+// transport. The UI gives up on the start call after 30 s; an abort in that
+// window used to leave the file open and the entry in the map until reboot.
+const uploadClaimTimeout = 60 * time.Second
 
 var pendingUploads = make(map[string]pendingUpload)
 var pendingUploadsMutex sync.Mutex
+
+// claimPendingUpload hands the upload to its transport.
+func claimPendingUpload(uploadId string) (pendingUpload, bool) {
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+	p, ok := pendingUploads[uploadId]
+	if !ok {
+		return pendingUpload{}, false
+	}
+	p.claimed = true
+	pendingUploads[uploadId] = p
+	return p, true
+}
+
+// expireUnclaimedUpload releases an upload whose transport never arrived.
+func expireUnclaimedUpload(uploadId string) {
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+	p, ok := pendingUploads[uploadId]
+	if !ok || p.claimed {
+		return
+	}
+	p.File.Close()
+	delete(pendingUploads, uploadId)
+	logger.Warn().Str("uploadId", uploadId).Msg("upload transport never arrived, releasing the upload")
+}
+
+// finishUpload closes the upload and, when every byte arrived, renames the
+// file into place. It runs under the map lock so that a start for the same
+// file cannot measure the partial file while the rename is in flight, and
+// a superseded upload never renames over its replacement.
+func finishUpload(uploadId string, p pendingUpload, written int64) {
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+
+	p.File.Close()
+	if _, live := pendingUploads[uploadId]; !live {
+		logger.Info().Str("uploadId", uploadId).Msg("upload was superseded, leaving the file to its replacement")
+		return
+	}
+	delete(pendingUploads, uploadId)
+
+	if written != p.Size {
+		logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
+		return
+	}
+	newName := strings.TrimSuffix(p.File.Name(), ".incomplete")
+	if err := os.Rename(p.File.Name(), newName); err != nil {
+		logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
+	} else {
+		logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
+	}
+}
+
+func (p pendingUpload) write(data []byte) (int, error) {
+	p.writeLock.Lock()
+	defer p.writeLock.Unlock()
+	return p.File.Write(data)
+}
 
 type UploadProgress struct {
 	Size                 int64
@@ -687,38 +744,25 @@ type UploadProgress struct {
 func handleUploadChannel(d *webrtc.DataChannel) {
 	defer d.Close()
 	uploadId := d.Label()
-	pendingUploadsMutex.Lock()
-	pendingUpload, ok := pendingUploads[uploadId]
-	pendingUploadsMutex.Unlock()
+	pendingUpload, ok := claimPendingUpload(uploadId)
 	if !ok {
 		logger.Warn().Str("uploadId", uploadId).Msg("upload channel opened for unknown upload")
 		return
 	}
 	totalBytesWritten := pendingUpload.AlreadyUploadedBytes
-	defer func() {
-		pendingUpload.File.Close()
-		if totalBytesWritten == pendingUpload.Size {
-			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
-			err := os.Rename(pendingUpload.File.Name(), newName)
-			if err != nil {
-				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
-			} else {
-				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
-			}
-		} else {
-			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
-		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
-	}()
+	defer func() { finishUpload(uploadId, pendingUpload, totalBytesWritten) }()
 	uploadComplete := make(chan struct{})
+	var finishOnce sync.Once
+	finish := func() { finishOnce.Do(func() { close(uploadComplete) }) }
+	// A client that cancels closes the channel. Without this the handler
+	// blocked forever, keeping the file open and the pending entry alive.
+	d.OnClose(finish)
 	lastProgressTime := time.Now()
 	d.OnMessage(func(msg webrtc.DataChannelMessage) {
-		bytesWritten, err := pendingUpload.File.Write(msg.Data)
+		bytesWritten, err := pendingUpload.write(msg.Data)
 		if err != nil {
 			logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
-			close(uploadComplete)
+			finish()
 			return
 		}
 		totalBytesWritten += int64(bytesWritten)
@@ -726,7 +770,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		sendProgress := time.Since(lastProgressTime) >= 200*time.Millisecond
 		if totalBytesWritten >= pendingUpload.Size {
 			sendProgress = true
-			close(uploadComplete)
+			finish()
 		}
 
 		if sendProgress {
@@ -753,32 +797,14 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 
 func handleUploadHttp(c *gin.Context) {
 	uploadId := c.Query("uploadId")
-	pendingUploadsMutex.Lock()
-	pendingUpload, ok := pendingUploads[uploadId]
-	pendingUploadsMutex.Unlock()
+	pendingUpload, ok := claimPendingUpload(uploadId)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Upload not found"})
 		return
 	}
 
 	totalBytesWritten := pendingUpload.AlreadyUploadedBytes
-	defer func() {
-		pendingUpload.File.Close()
-		if totalBytesWritten == pendingUpload.Size {
-			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
-			err := os.Rename(pendingUpload.File.Name(), newName)
-			if err != nil {
-				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
-			} else {
-				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
-			}
-		} else {
-			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
-		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
-	}()
+	defer func() { finishUpload(uploadId, pendingUpload, totalBytesWritten) }()
 
 	reader := c.Request.Body
 	buffer := make([]byte, 32*1024)
@@ -791,7 +817,7 @@ func handleUploadHttp(c *gin.Context) {
 		}
 
 		if n > 0 {
-			bytesWritten, err := pendingUpload.File.Write(buffer[:n])
+			bytesWritten, err := pendingUpload.write(buffer[:n])
 			if err != nil {
 				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write upload data"})
