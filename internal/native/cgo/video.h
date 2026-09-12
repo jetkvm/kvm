@@ -62,4 +62,18 @@ void video_set_codec_type(int type);
  */
 int video_get_codec_type();
 
+/**
+ * @brief Capture a single JPEG frame from the live video stream.
+ *
+ * On success, *out_buf is set to a malloc'd buffer containing the JPEG bytes
+ * and *out_len is set to its length. The caller is responsible for freeing
+ * *out_buf with free().
+ *
+ * @param out_buf  Output pointer for the JPEG buffer (caller must free).
+ * @param out_len  Output pointer for the buffer length.
+ * @return 0 on success, non-zero on error (ENODEV = no signal, ENODATA = not
+ *         streaming, EBUSY = capture already in progress, ETIMEDOUT = timeout).
+ */
+int video_capture_jpeg(uint8_t **out_buf, size_t *out_len);
+
 #endif //VIDEO_DAEMON_VIDEO_H

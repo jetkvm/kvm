@@ -1,5 +1,7 @@
 package native
 
+import "fmt"
+
 type EmptyNativeInterface struct {
 }
 
@@ -117,3 +119,7 @@ func (e *EmptyNativeInterface) SwitchToScreenIf(screenName string, shouldSwitch 
 func (e *EmptyNativeInterface) SwitchToScreenIfDifferent(screenName string) {}
 
 func (e *EmptyNativeInterface) DoNotUseThisIsForCrashTestingOnly() {}
+
+func (e *EmptyNativeInterface) VideoCaptureJPEG() ([]byte, error) {
+	return nil, fmt.Errorf("not supported in failsafe mode")
+}

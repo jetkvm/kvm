@@ -237,3 +237,11 @@ func (s *grpcServer) DoNotUseThisIsForCrashTestingOnly(ctx context.Context, req 
 	s.native.DoNotUseThisIsForCrashTestingOnly()
 	return &pb.Empty{}, nil
 }
+
+func (s *grpcServer) VideoGetJPEG(ctx context.Context, req *pb.Empty) (*pb.VideoGetJPEGResponse, error) {
+	data, err := s.native.VideoCaptureJPEG()
+	if err != nil {
+		return nil, err
+	}
+	return &pb.VideoGetJPEGResponse{Data: data}, nil
+}

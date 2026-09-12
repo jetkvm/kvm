@@ -22,6 +22,7 @@ service NativeService {
   rpc VideoLogStatus(Empty) returns (VideoLogStatusResponse);
   rpc VideoStop(Empty) returns (Empty);
   rpc VideoStart(Empty) returns (Empty);
+  rpc VideoGetJPEG(Empty) returns (VideoGetJPEGResponse);
 
   // UI methods
   rpc GetLVGLVersion(Empty) returns (GetLVGLVersionResponse);
@@ -68,6 +69,10 @@ message VideoState {
   int32 width = 3;
   int32 height = 4;
   double frame_per_second = 5;
+}
+
+message VideoGetJPEGResponse {
+  bytes data = 1;
 }
 
 message VideoSetSleepModeRequest {
