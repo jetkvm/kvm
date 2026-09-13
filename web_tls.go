@@ -172,7 +172,7 @@ func runWebSecureServer() {
 			GetCertificate:   getCertificate,
 		},
 	}
-	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting websecure server")
+	websecureLogger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Bool("tailscaleOnly", config.LocalTailscaleOnly).Msg("Starting websecure server")
 
 	go func() {
 		for range stopTLS {
