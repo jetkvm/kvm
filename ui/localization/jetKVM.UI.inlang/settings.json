@@ -17,7 +17,8 @@
     "sv",
     "tr",
     "zh-tw",
-    "zh"
+    "zh",
+    "ko"
   ],
   "languageTags": [
     "en",
@@ -34,7 +35,8 @@
     "sv",
     "tr",
     "zh-tw",
-    "zh"
+    "zh",
+    "ko"
   ],
   "modules": [
     "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@latest/dist/index.js",
