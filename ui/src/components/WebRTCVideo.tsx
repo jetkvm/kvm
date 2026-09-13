@@ -12,6 +12,7 @@ import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
+  AudioPermissionBanner,
   HDMIErrorOverlay,
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
@@ -506,8 +507,8 @@ export default function WebRTCVideo({
 
   // Audio plays through a separate <audio> element because the <video> is
   // muted (kept muted so video autoplay isn't blocked when no user gesture
-  // has been recorded). If the browser blocks audio autoplay, the autoplay
-  // overlay surfaces a click target.
+  // has been recorded). If the browser blocks audio autoplay, a small banner
+  // surfaces a click target while video playback and input continue.
   useEffect(
     function updateAudioStream() {
       const elm = audioElm.current;
@@ -637,18 +638,11 @@ export default function WebRTCVideo({
 
   const hasNoAutoPlayPermissions = useMemo(() => {
     if (peerConnection?.connectionState !== "connected") return false;
-    if (isPlaying && !audioAutoplayBlocked) return false;
+    if (isPlaying) return false;
     if (hdmiError) return false;
     if (videoHeight === 0 || videoWidth === 0) return false;
     return true;
-  }, [
-    audioAutoplayBlocked,
-    hdmiError,
-    isPlaying,
-    peerConnection?.connectionState,
-    videoHeight,
-    videoWidth,
-  ]);
+  }, [hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
 
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
@@ -747,6 +741,15 @@ export default function WebRTCVideo({
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
                                 videoElm.current?.play();
+                                audioElm.current
+                                  ?.play()
+                                  .then(() => setAudioAutoplayBlocked(false))
+                                  .catch(() => undefined);
+                              }}
+                            />
+                            <AudioPermissionBanner
+                              show={isPlaying && audioEnabled && audioAutoplayBlocked && !hdmiError}
+                              onEnableAudio={() => {
                                 audioElm.current
                                   ?.play()
                                   .then(() => setAudioAutoplayBlocked(false))

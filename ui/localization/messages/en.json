@@ -1015,6 +1015,7 @@
     "usb_state_low_power_mode": "Low power mode",
     "user_interface_language_description": "Select the language to use in the JetKVM user interface",
     "user_interface_language_title": "Interface Language",
+    "video_audio_permission_required": "Audio needs your permission",
     "video_brightness_description": "Brightness level ({value}x)",
     "video_brightness_title": "Brightness",
     "video_codec_auto": "Auto",
