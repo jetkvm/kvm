@@ -60,11 +60,14 @@ export function MacroForm({
     const steps = macro.steps || [];
 
     if (steps.length) {
-      const hasKeyOrModifier = steps.some(
-        step => step.keys.length > 0 || step.modifiers.length > 0,
+      const hasContent = steps.some(
+        step =>
+          step.keys.length > 0 ||
+          step.modifiers.length > 0 ||
+          (step.text !== undefined && step.text.length > 0),
       );
 
-      if (!hasKeyOrModifier) {
+      if (!hasContent) {
         newErrors.steps = {
           0: { keys: m.macro_at_least_one_step_keys_or_modifiers() },
         };
@@ -162,6 +165,41 @@ export function MacroForm({
     setMacro({ ...macro, steps: newSteps });
   };
 
+  const handleTextChange = (stepIndex: number, text: string) => {
+    const newSteps = [...(macro.steps || [])];
+    newSteps[stepIndex].text = text;
+    setMacro({ ...macro, steps: newSteps });
+
+    // Clear step errors when text is entered
+    if (errors.steps?.[stepIndex]?.keys && text.length > 0) {
+      const newErrors = { ...errors };
+      delete newErrors.steps?.[stepIndex].keys;
+      if (Object.keys(newErrors.steps?.[stepIndex] || {}).length === 0) {
+        delete newErrors.steps?.[stepIndex];
+      }
+      if (Object.keys(newErrors.steps || {}).length === 0) {
+        delete newErrors.steps;
+      }
+      setErrors(newErrors);
+    }
+  };
+
+  const handleStepTypeChange = (stepIndex: number, type: "keys" | "text") => {
+    const newSteps = [...(macro.steps || [])];
+    if (type === "text") {
+      newSteps[stepIndex] = {
+        keys: [],
+        modifiers: [],
+        delay: newSteps[stepIndex].delay,
+        text: newSteps[stepIndex].text ?? "",
+      };
+    } else {
+      const { text: _, ...rest } = newSteps[stepIndex];
+      newSteps[stepIndex] = rest;
+    }
+    setMacro({ ...macro, steps: newSteps });
+  };
+
   const handleStepMove = (stepIndex: number, direction: "up" | "down") => {
     const newSteps = [...(macro.steps || [])];
     const newIndex = direction === "up" ? stepIndex - 1 : stepIndex + 1;
@@ -231,6 +269,8 @@ export function MacroForm({
                 keyQuery={keyQueries[stepIndex] || ""}
                 onModifierChange={modifiers => handleModifierChange(stepIndex, modifiers)}
                 onDelayChange={delay => handleDelayChange(stepIndex, delay)}
+                onTextChange={text => handleTextChange(stepIndex, text)}
+                onStepTypeChange={type => handleStepTypeChange(stepIndex, type)}
                 isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
                 keyboard={selectedKeyboard}
               />
