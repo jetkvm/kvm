@@ -49,7 +49,7 @@
     "react-hook-form": "^7.68.0",
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
-    "react-router": "^7.10.1",
+    "react-router": "^7.12.0",
     "react-simple-keyboard": "^3.8.141",
     "react-use-websocket": "^4.13.0",
     "react-xtermjs": "^1.0.10",
@@ -63,11 +63,11 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@inlang/cli": "^3.0.12",
-    "@inlang/paraglide-js": "^2.6.0",
-    "@inlang/plugin-m-function-matcher": "^2.1.0",
+    "@inlang/cli": "^3.1.9",
+    "@inlang/paraglide-js": "^2.15.1",
+    "@inlang/plugin-m-function-matcher": "^2.2.4",
     "@inlang/plugin-message-format": "^4.0.0",
-    "@inlang/sdk": "^2.4.9",
+    "@inlang/sdk": "^2.9.1",
     "@playwright/test": "^1.49.0",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.18",
@@ -88,7 +88,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vite": "^8.0.5"
   },
   "lint-staged": {
     "*.{ts,tsx}": "oxlint --fix --deny-warnings",
