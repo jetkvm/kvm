@@ -418,7 +418,7 @@ export function AudioPermissionBanner({ show, onEnableAudio }: AudioPermissionBa
     <AnimatePresence>
       {show && (
         <motion.div
-          className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex justify-center"
+          className="pointer-events-none absolute inset-x-2 top-2 z-10 flex justify-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
