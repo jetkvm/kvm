@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type {} from "../../src/test/testHooks.types";
+import type {} from "../../src/test/testHooks";
 
 export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<void> {
   await expect
