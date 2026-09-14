@@ -684,13 +684,13 @@ func pipeWireSinkName(data []byte, card int) string {
 	return ""
 }
 
-// ensureToneWAV writes a 20 s 997 Hz stereo sine WAV for pw-play (which needs
-// a file, unlike speaker-test's generated tone).
+// ensureToneWAV writes a 60 s 997 Hz stereo sine WAV for pw-play, covering
+// audio setup and the sustained test's 30 s observation window.
 func ensureToneWAV() (string, error) {
 	const (
-		path = "/tmp/jetkvm-tone.wav"
+		path = "/tmp/jetkvm-tone-60s.wav"
 		rate = 48000
-		secs = 20
+		secs = 60
 		amp  = 0.6
 	)
 	if _, err := os.Stat(path); err == nil {
