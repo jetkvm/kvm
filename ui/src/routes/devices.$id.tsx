@@ -118,6 +118,10 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
+
+  // A cloud navigation between devices keeps this route mounted. The new
+  // device must not inherit the previous device's capabilities.
+  useEffect(() => () => setCapabilities([]), [params.id, setCapabilities]);
   const {
     sidebarView,
     setSidebarView,
@@ -292,7 +296,6 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableNonOrderedChannel(null);
       setRpcHidProtocolVersion(null);
       setTerminalChannel(null);
-      setCapabilities([]);
     };
   }, [
     clearCandidatePairStats,
@@ -305,7 +308,6 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidProtocolVersion,
     setTerminalChannel,
-    setCapabilities,
   ]);
 
   // TURN server usage detection
@@ -597,6 +599,7 @@ export default function KvmIdRoute() {
   // unmount during a reconnect; the route teardown clears it.
   const shell = useCapability("shell");
   useEffect(() => {
+    if (!shell) setTerminalChannel(null);
     if (!peerConnection || !shell) return;
     const channel = peerConnection.createDataChannel("terminal");
     channel.onclose = () => console.log("terminalDataChannel has closed");
