@@ -215,6 +215,14 @@ func (u *UsbGadget) IsGadgetAttachedToUDC() bool {
 // and closing cached handles, so no old descriptor survives the controller change.
 func (u *UsbGadget) SetEmulationEnabled(enabled bool) error {
 	return u.rebindUsbWith(func() error {
+		bound, err := u.IsUDCBound()
+		if err != nil {
+			return err
+		}
+		// A repeated request must not close healthy HID handles or their LED reader.
+		if bound == enabled {
+			return nil
+		}
 		u.ResetHIDFiles()
 		if enabled {
 			return u.BindUDC()
