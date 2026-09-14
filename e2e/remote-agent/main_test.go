@@ -4,11 +4,31 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestPipeWireCommandUsesDesktopSession(t *testing.T) {
+	for _, user := range []string{"", "0", "1234", "invalid"} {
+		t.Run(user, func(t *testing.T) {
+			t.Setenv("SUDO_UID", user)
+			t.Setenv("SUDO_GID", "1235")
+			cmd := pipewireCommand("pw-play", "--target", "test-sink", "/tmp/tone.wav")
+			if os.Geteuid() == 0 && user == "1234" {
+				if cmd.SysProcAttr == nil || cmd.SysProcAttr.Credential.Uid != 1234 || cmd.SysProcAttr.Credential.Gid != 1235 ||
+					!strings.Contains(strings.Join(cmd.Env, "\n"), "XDG_RUNTIME_DIR=/run/user/1234") {
+					t.Fatal("PipeWire must use the original user's credentials and runtime directory")
+				}
+			} else if cmd.Args[0] != "pw-play" || !strings.Contains(strings.Join(cmd.Env, "\n"), "XDG_RUNTIME_DIR=/run/user/"+strconv.Itoa(os.Getuid())) {
+				t.Fatalf("local command: %v", cmd.Args)
+			}
+		})
+	}
+}
 
 func waitMonitorSignal(t *testing.T, signal <-chan struct{}, description string) {
 	t.Helper()
