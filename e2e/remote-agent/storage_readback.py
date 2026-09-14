@@ -1,6 +1,7 @@
 """Read-only SHA-256 verification of one explicitly identified USB medium."""
 
 import base64
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -52,16 +53,22 @@ def main():
         raise ValueError("Readback must be between 1 byte and 1 GiB")
     deadline = time.monotonic() + 25
     while True:
-        name = find_medium(Path("/sys/class/block"), identity)
-        if name:
-            break
+        try:
+            name = find_medium(Path("/sys/class/block"), identity)
+            if name:
+                device = Path("/dev") / name
+                if not stat.S_ISBLK(device.stat().st_mode):
+                    raise RuntimeError("Selected path is not a block device")
+                source = device.open("rb", buffering=0)
+                break
+        except OSError as error:
+            # Sysfs entries and device nodes can disappear or lag enumeration.
+            if error.errno not in (errno.ENOENT, errno.ENODEV, errno.ENXIO):
+                raise
         if time.monotonic() >= deadline:
             raise RuntimeError("Expected USB medium did not enumerate")
         time.sleep(0.25)
-    device = Path("/dev") / name
-    if not stat.S_ISBLK(device.stat().st_mode):
-        raise RuntimeError("Selected path is not a block device")
-    with device.open("rb", buffering=0) as source:
+    with source:
         result = hash_bytes(source, identity["size"])
     print(json.dumps({"device": str(device), "bytes": identity["size"], "sha256": result}))
 
