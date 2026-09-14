@@ -107,6 +107,9 @@ export const useWebSocketSignaling: SignalingHook = ({
         );
         setLoadingMessage(m.establishing_secure_connection());
       } catch (error) {
+        // A peer closed while this was pending has been replaced; the
+        // rejection must not stop reconnecting for its replacement.
+        if (pc.connectionState === "closed") return;
         console.error("[setRemoteSessionDescription] Failed to set remote description:", error);
         cleanupAndStopReconnecting();
         return;
@@ -115,6 +118,13 @@ export const useWebSocketSignaling: SignalingHook = ({
       // Replace the interval-based check with a more reliable approach
       let attempts = 0;
       const checkInterval = setInterval(() => {
+        // The peer this poll belongs to may have been closed and replaced
+        // before its SCTP timeout expired. A retired peer must not mark the
+        // replacement connection as failed.
+        if (pc.connectionState === "closed") {
+          clearInterval(checkInterval);
+          return;
+        }
         attempts++;
 
         // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
