@@ -1,9 +1,7 @@
 import { lookup } from "node:dns/promises";
-import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
 import { callJsonRpc, ensureRpcReady, reconnectAfterReboot } from "../helpers";
-import { registerSharedSession } from "./shared";
+import { agent, registerSharedSession } from "./shared";
 
 let page: Page;
 let original: Record<string, unknown> | undefined;
@@ -30,7 +28,6 @@ test.afterEach(async ({ browser }) => {
 registerSharedSession(p => {
   page = p;
 });
-const quote = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
 
 test("custom NTP queries the configured host and persists across reboot @network", async () => {
   test.setTimeout(240_000);
@@ -40,50 +37,10 @@ test("custom NTP queries the configured host and persists across reboot @network
   const { address: source } = await lookup(new URL(process.env.JETKVM_URL!).hostname, {
     family: 4,
   });
-  const script = readFileSync(
-    new URL("../../../e2e/remote-agent/ntp_server.py", import.meta.url),
-    "utf8",
-  );
   original = (await callJsonRpc(page, "getNetworkSettings")) as Record<string, unknown>;
-  const child = spawn("ssh", [
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "ConnectTimeout=10",
-    target,
-    `sudo -n python3 -u -c ${quote(script)} ${quote(source)}`,
-  ]);
-  let output = "",
-    errors = "";
-  let closed = false;
-  const exited = new Promise<void>(resolve =>
-    child.once("close", () => {
-      closed = true;
-      resolve();
-    }),
-  );
-  child.stdout.on("data", chunk => {
-    output += chunk.toString();
-  });
-  child.stderr.on("data", chunk => {
-    errors += chunk.toString();
-  });
-  child.on("error", error => {
-    errors += String(error);
-  });
-  const count = () => (output.match(/"request": true/g) || []).length;
-  stopResponder = async () => {
-    child.stdin.end();
-    await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 5000))]);
-    if (!closed) child.kill("SIGTERM");
-    expect(closed, "NTP responder must stop after its owner closes").toBe(true);
-  };
-  await expect
-    .poll(() => {
-      if (closed) throw new Error(`NTP responder failed: ${errors}`);
-      return output.includes('"ready": true');
-    })
-    .toBe(true);
+  const responder = await agent!.startNtpResponder(source);
+  stopResponder = responder.stop;
+  const count = responder.count;
   // Start from a different configuration so saving must trigger a fresh query,
   // even when this host was already the user's selected server.
   await callJsonRpc(page, "setNetworkSettings", {
