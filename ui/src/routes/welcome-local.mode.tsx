@@ -35,9 +35,10 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
 
   if (localAuthMode === "noPassword") {
     try {
-      await api.POST(`${DEVICE_API}/device/setup`, {
+      const response = await api.POST(`${DEVICE_API}/device/setup`, {
         localAuthMode,
       });
+      if (!response.ok) return { error: m.auth_authentication_mode_error() };
       return redirect("/");
     } catch (error) {
       console.error("Error setting authentication mode:", error);
