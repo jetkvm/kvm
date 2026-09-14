@@ -8,10 +8,10 @@ import { captureHardwareState, restoreHardwareState, type HardwareState } from "
 export function registerResetCleanup(): void {
   let hardware: HardwareState | undefined;
   const settings: { setter: string; params: Record<string, unknown> }[] = [];
-  test.beforeAll(async ({ browser }) => {
+  test.beforeAll(async ({ browser, baseURL }) => {
     test.setTimeout(90_000);
     await ensureNoPasswordViaAPI();
-    const page = await browser.newPage();
+    const page = await browser.newPage({ baseURL });
     try {
       await ensureRpcReady(page, { navigateFirst: true });
       hardware = await captureHardwareState(page);
@@ -48,10 +48,10 @@ export function registerResetCleanup(): void {
       await page.close();
     }
   });
-  test.afterAll(async ({ browser }) => {
+  test.afterAll(async ({ browser, baseURL }) => {
     test.setTimeout(120_000);
     if (!hardware) return;
-    const page = await browser.newPage();
+    const page = await browser.newPage({ baseURL });
     const errors: unknown[] = [];
     try {
       // A failed welcome test may leave either onboarding or its known password.
