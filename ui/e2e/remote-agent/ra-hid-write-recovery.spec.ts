@@ -1,3 +1,9 @@
+import {
+  captureHardwareState,
+  configureTestUSB,
+  restoreHardwareState,
+  type HardwareState,
+} from "../helpers/hardware-state";
 import { execSync } from "child_process";
 import { test, expect, type Page } from "@playwright/test";
 import {
@@ -15,6 +21,7 @@ const agent = createRemoteAgent();
 test.describe.configure({ mode: "serial" });
 
 let page: Page;
+let originalHardware: HardwareState | undefined;
 
 function remoteHostExec(cmd: string, timeoutMs = 15_000): string {
   const target = process.env.JETKVM_REMOTE_HOST;
@@ -56,11 +63,17 @@ test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
   await page.goto("/", { waitUntil: "networkidle" });
   await ensureRpcReady(page);
+  originalHardware = await captureHardwareState(page);
+  await configureTestUSB(page, originalHardware);
   await agent!.waitForInputDevices(["keyboard", "absolute_mouse", "relative_mouse"], 30_000);
 });
 
 test.afterAll(async () => {
-  if (page) await page.close();
+  try {
+    if (page && originalHardware) await restoreHardwareState(page, originalHardware);
+  } finally {
+    if (page) await page.close();
+  }
 });
 
 test("keyboard self-recovers when HID writes time out while USB stays configured (#1512)", async () => {
