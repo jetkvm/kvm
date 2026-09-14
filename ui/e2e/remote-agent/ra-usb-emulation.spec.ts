@@ -27,7 +27,9 @@ test("USB emulation detaches from the host and recovers keyboard input", async (
 });
 
 test("USB reconnect preserves mounted media bytes and keyboard input", async () => {
-  test.setTimeout(120_000);
+  // Three cycles allow 15 s detach + 30 s input + 45 s media readback each.
+  // Reserve another two minutes for upload, initial readback and cleanup.
+  test.setTimeout(3 * (15_000 + 30_000 + 45_000) + 120_000);
   const filename = `e2e-usb-reconnect-${Date.now()}.img`;
   const data = randomBytes(1024 * 1024);
   const sha256 = createHash("sha256").update(data).digest("hex");
@@ -83,6 +85,8 @@ test("USB remains enumerated without a browser session and recovers input", asyn
     (await agent!.getUSBDevices()).filter(d => d.id.toLowerCase() === usbID);
   const before = await device();
   expect(before).toHaveLength(1);
+  expect(before[0].bus).toMatch(/^[1-9]\d*$/);
+  expect(before[0].device).toMatch(/^[1-9]\d*$/);
   try {
     await page.goto("about:blank");
     // A changed bus/device number reveals an unwanted USB re-enumeration.

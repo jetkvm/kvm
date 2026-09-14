@@ -383,9 +383,10 @@ func listUSBDevices() []USBDevice {
 		}
 
 		devices = append(devices, USBDevice{
-			Bus:  filepath.Base(entry),
-			ID:   vendor + ":" + product,
-			Name: name,
+			Bus:    readSysFile(filepath.Join(entry, "busnum")),
+			Device: readSysFile(filepath.Join(entry, "devnum")),
+			ID:     vendor + ":" + product,
+			Name:   name,
 		})
 	}
 
