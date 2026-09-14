@@ -24,6 +24,7 @@ import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useVideoStreamPause } from "@hooks/useVideoStreamPause";
 
 import {
   MountMediaState,
@@ -39,6 +40,7 @@ export default function MountRoute() {
 }
 
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
+  useVideoStreamPause();
   const uploadChannel = useCapability("upload_channel");
   const { modalView, setModalView, setRemoteVirtualMediaState, errorMessage, setErrorMessage } =
     useMountMediaStore();
