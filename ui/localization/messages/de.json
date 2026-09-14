@@ -611,6 +611,7 @@
     "mount_upload_error": "Upload-Fehler: {error}",
     "mount_upload_failed_datachannel": "Fehler beim Erstellen des Datenkanals für den Datei-Upload",
     "mount_upload_failed_rtc": "Upload fehlgeschlagen: {error}",
+    "mount_upload_local_network_only": "Image-Uploads sind nur im lokalen Netzwerk verfügbar. Öffnen Sie das Gerät über seine lokale Adresse und versuchen Sie es erneut.",
     "mount_upload_successful": "Upload erfolgreich",
     "mount_upload_title": "Neues Bild hochladen",
     "mount_uploaded_has_been_uploaded": "{name} wurde hochgeladen",

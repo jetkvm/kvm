@@ -611,6 +611,7 @@
     "mount_upload_error": "Ошибка загрузки: {error}",
     "mount_upload_failed_datachannel": "Не удалось создать канал данных для загрузки файла",
     "mount_upload_failed_rtc": "Ошибка загрузки: {error}",
+    "mount_upload_local_network_only": "Загрузка образов доступна только в локальной сети. Откройте устройство по его локальному адресу и повторите попытку.",
     "mount_upload_successful": "Загрузка успешна",
     "mount_upload_title": "Загрузить новое изображение",
     "mount_uploaded_has_been_uploaded": "{name} был загружен",

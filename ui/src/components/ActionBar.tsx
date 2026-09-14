@@ -21,6 +21,7 @@ import { cx } from "@/cva.config";
 import {
   useHidStore,
   useMountMediaStore,
+  useCapability,
   useSettingsStore,
   useUiStore,
   useVideoStore,
@@ -56,6 +57,11 @@ export default function Actionbar({
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
+  const shell = useCapability("shell");
+  const kvmTerminal = developerMode && shell;
+  const extensions = useCapability("extensions");
+  const usbSerial = useCapability("usb_serial");
+  const usbSerialConsole = usbSerialConsoleEnabled && usbSerial;
   const { send } = useJsonRpc();
 
   useEffect(() => {
@@ -92,7 +98,7 @@ export default function Actionbar({
         className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1.5"
       >
         <div className="relative flex flex-wrap items-center gap-x-2 gap-y-2">
-          {developerMode && usbSerialConsoleEnabled ? (
+          {kvmTerminal && usbSerialConsole ? (
             <SplitButtonGroup>
               <SplitButtonPrimary
                 icon={({ className }) => <CommandLineIcon className={className} />}
@@ -110,7 +116,7 @@ export default function Actionbar({
                 ]}
               />
             </SplitButtonGroup>
-          ) : developerMode ? (
+          ) : kvmTerminal ? (
             <Button
               size="XS"
               theme="light"
@@ -118,7 +124,7 @@ export default function Actionbar({
               LeadingIcon={({ className }) => <CommandLineIcon className={className} />}
               onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
             />
-          ) : usbSerialConsoleEnabled ? (
+          ) : usbSerialConsole ? (
             <Button
               size="XS"
               theme="light"
@@ -272,32 +278,34 @@ export default function Actionbar({
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-          <Popover>
-            <PopoverButton as={Fragment}>
-              <Button
-                size="XS"
-                theme="light"
-                text={m.action_bar_extension()}
-                LeadingIcon={LuCable}
-                onClick={() => {
-                  setDisableVideoFocusTrap(true);
+          {extensions && (
+            <Popover>
+              <PopoverButton as={Fragment}>
+                <Button
+                  size="XS"
+                  theme="light"
+                  text={m.action_bar_extension()}
+                  LeadingIcon={LuCable}
+                  onClick={() => {
+                    setDisableVideoFocusTrap(true);
+                  }}
+                />
+              </PopoverButton>
+              <PopoverPanel
+                anchor="bottom start"
+                transition
+                className={cx(
+                  "z-10 flex w-[420px] flex-col overflow-visible!",
+                  "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
+                )}
+              >
+                {({ open }) => {
+                  checkIfStateChanged(open);
+                  return <ExtensionPopover />;
                 }}
-              />
-            </PopoverButton>
-            <PopoverPanel
-              anchor="bottom start"
-              transition
-              className={cx(
-                "z-10 flex w-[420px] flex-col overflow-visible!",
-                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
-              )}
-            >
-              {({ open }) => {
-                checkIfStateChanged(open);
-                return <ExtensionPopover />;
-              }}
-            </PopoverPanel>
-          </Popover>
+              </PopoverPanel>
+            </Popover>
+          )}
 
           <div className="block lg:hidden">
             <Button

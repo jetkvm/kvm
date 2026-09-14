@@ -611,6 +611,7 @@
     "mount_upload_error": "Errore di caricamento: {error}",
     "mount_upload_failed_datachannel": "Impossibile creare il canale dati per il caricamento del file",
     "mount_upload_failed_rtc": "Caricamento non riuscito: {error}",
+    "mount_upload_local_network_only": "Il caricamento delle immagini è disponibile solo sulla rete locale. Apri il dispositivo usando il suo indirizzo locale e riprova.",
     "mount_upload_successful": "Caricamento riuscito",
     "mount_upload_title": "Carica nuova immagine",
     "mount_uploaded_has_been_uploaded": "{name} è stato caricato",

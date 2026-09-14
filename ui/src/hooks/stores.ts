@@ -725,18 +725,29 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
 export interface DeviceState {
   appVersion: string | null;
   systemVersion: string | null;
+  capabilities: Set<string>;
 
   setAppVersion: (version: string) => void;
   setSystemVersion: (version: string) => void;
+  setCapabilities: (capabilities: string[]) => void;
 }
+
+// Optional device features reported by getDeviceCapabilities.
+export type Capability = "shell" | "extensions" | "usb_serial" | "custom_edid" | "upload_channel";
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
   systemVersion: null,
+  capabilities: new Set(),
 
   setAppVersion: (version: string) => set({ appVersion: version }),
   setSystemVersion: (version: string) => set({ systemVersion: version }),
+  setCapabilities: (capabilities: string[]) => set({ capabilities: new Set(capabilities) }),
 }));
+
+// Whether the connected device reported a capability in getDeviceCapabilities.
+export const useCapability = (name: Capability) =>
+  useDeviceStore(state => state.capabilities.has(name));
 
 export interface TerminalState {
   terminator: string | null;

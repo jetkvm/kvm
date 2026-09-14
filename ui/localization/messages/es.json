@@ -611,6 +611,7 @@
     "mount_upload_error": "Error de carga: {error}",
     "mount_upload_failed_datachannel": "No se pudo crear el canal de datos para la carga de archivos",
     "mount_upload_failed_rtc": "Error de carga: {error}",
+    "mount_upload_local_network_only": "La carga de imágenes solo está disponible en la red local. Abra el dispositivo mediante su dirección local e inténtelo de nuevo.",
     "mount_upload_successful": "Subida exitosa",
     "mount_upload_title": "Subir nueva imagen",
     "mount_uploaded_has_been_uploaded": "Se ha cargado {name}",

@@ -606,6 +606,7 @@
     "mount_upload_error": "Gwall llwytho: {error}",
     "mount_upload_failed_datachannel": "Methwyd â chreu sianel ddata ar gyfer llwytho ffeil",
     "mount_upload_failed_rtc": "Methwyd â llwytho: {error}",
+    "mount_upload_local_network_only": "Dim ond ar y rhwydwaith lleol y mae uwchlwytho delweddau ar gael. Agorwch y ddyfais gan ddefnyddio ei chyfeiriad lleol a rhowch gynnig arall arni.",
     "mount_upload_successful": "Llwythwyd yn llwyddiannus",
     "mount_upload_title": "Llwytho Delwedd Newydd",
     "mount_uploaded_has_been_uploaded": "Mae {name} wedi'i lwytho",

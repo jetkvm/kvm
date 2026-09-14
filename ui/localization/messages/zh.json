@@ -611,6 +611,7 @@
     "mount_upload_error": "上传出错：{error}",
     "mount_upload_failed_datachannel": "为文件上传创建数据通道失败。",
     "mount_upload_failed_rtc": "上传失败：{error}",
+    "mount_upload_local_network_only": "镜像上传只能在本地网络下使用，请通过设备本地地址打开后重试。",
     "mount_upload_successful": "上传成功",
     "mount_upload_title": "上传新镜像",
     "mount_uploaded_has_been_uploaded": "{name} 已上传",

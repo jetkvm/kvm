@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { useSettingsStore } from "@hooks/stores";
+import { useCapability, useSettingsStore } from "@hooks/stores";
 import { Button } from "@components/Button";
 import { Checkbox } from "@components/Checkbox";
 import { TextAreaWithLabel } from "@components/TextArea";
@@ -45,6 +45,7 @@ const browserCodecOptions = h265Supported
   : allCodecOptions.filter(o => o.value !== "h265");
 
 export default function SettingsVideoRoute() {
+  const customEdid = useCapability("custom_edid");
   const { send } = useJsonRpc();
   const [streamQuality, setStreamQuality] = useState("1");
   const [streamQualityLoading, setStreamQualityLoading] = useState(true);
@@ -410,11 +411,11 @@ export default function SettingsVideoRoute() {
                   }}
                   options={[
                     ...edidPresets.map(p => ({ value: p.edid, label: p.name })),
-                    { value: "custom", label: m.video_edid_custom() },
+                    ...(customEdid ? [{ value: "custom", label: m.video_edid_custom() }] : []),
                   ]}
                 />
               </SettingsItem>
-              {customEdidValue !== null && (
+              {customEdid && customEdidValue !== null && (
                 <>
                   <SettingsItem
                     title={m.video_custom_edid_title()}
