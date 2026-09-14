@@ -221,11 +221,13 @@ if (isOnDevice) {
       path: "/welcome/mode",
       element: <WelcomeLocalModeRoute />,
       action: WelcomeLocalModeRoute.action,
+      loader: WelcomeLocalModeRoute.loader,
     },
     {
       path: "/welcome/password",
       element: <WelcomeLocalPasswordRoute />,
       action: WelcomeLocalPasswordRoute.action,
+      loader: WelcomeLocalPasswordRoute.loader,
     },
     {
       path: "/welcome",
