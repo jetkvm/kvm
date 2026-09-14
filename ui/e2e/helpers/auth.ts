@@ -1,11 +1,25 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { resetConfigViaSSH, restartAppViaSSH, sshExec } from "./ssh";
+import { deviceShellAvailable, resetConfigViaSSH, restartAppViaSSH, sshExec } from "./ssh";
 
 const ANIMATION_DELAY = 150;
 
 // Known test passwords - used when device is in unknown state and needs login
-const KNOWN_TEST_PASSWORDS = ["TestPassword123", "NewPassword456"];
+const KNOWN_TEST_PASSWORDS = [
+  ...new Set(
+    [process.env.JETKVM_PASSWORD, "TestPassword123", "NewPassword456"].filter(
+      (p): p is string => !!p,
+    ),
+  ),
+];
+
+async function requireAuthRecoveryShell(): Promise<void> {
+  if (!(await deviceShellAvailable())) {
+    throw new Error(
+      "Cannot authenticate to device; set JETKVM_PASSWORD to its current password. Device SSH recovery is unavailable.",
+    );
+  }
+}
 
 /**
  * Reset the device to onboarding/welcome state via SSH.
@@ -147,9 +161,16 @@ export async function dismissSessionTakeoverDialog(page: Page): Promise<void> {
   }
 }
 
+/** Wait for the auth loader to render a terminal local page, not network idle. */
+export async function waitForLocalAuthPage(page: Page): Promise<void> {
+  await page
+    .locator('input[name="password"], a[href="/welcome/mode"], video')
+    .first()
+    .waitFor({ state: "attached", timeout: 15000 });
+}
+
 export async function openAccessSettings(page: Page): Promise<void> {
   await page.goto("/settings/access");
-  await page.waitForLoadState("networkidle");
   await dismissSessionTakeoverDialog(page);
 
   // Wait for the local auth section to appear (indicates loaderData is loaded)
@@ -259,7 +280,7 @@ export type LocalAuthModeConfig = { mode: "noPassword" } | { mode: "password"; p
  */
 export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConfig): Promise<void> {
   await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  await waitForLocalAuthPage(page);
 
   const currentUrl = page.url();
 
@@ -312,6 +333,7 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
       return;
     }
 
+    await requireAuthRecoveryShell();
     await resetConfigViaSSH();
     await restartAppViaSSH();
     await page.goto("/");
@@ -364,7 +386,8 @@ export async function ensureLocalAuthMode(page: Page, desired: LocalAuthModeConf
         await openAccessSettings(page);
       }
     }
-    // Fall back to SSH
+    // Fall back only when a device shell is available.
+    await requireAuthRecoveryShell();
     await clearPasswordViaSSH();
     await page.goto("/");
     await page.waitForLoadState("networkidle");
