@@ -6,7 +6,7 @@ import { callJsonRpc, ensureRpcReady } from "./device";
 const ANIMATION_DELAY = 150;
 
 // Known test passwords - used when device is in unknown state and needs login
-const KNOWN_TEST_PASSWORDS = [
+export const KNOWN_TEST_PASSWORDS = [
   ...new Set(
     [process.env.JETKVM_PASSWORD, "TestPassword123", "NewPassword456"].filter(
       (p): p is string => !!p,

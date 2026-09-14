@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { KNOWN_TEST_PASSWORDS } from "./auth";
 import { callJsonRpc, ensureRpcReady, ensureNoPasswordViaAPI } from "./device";
 import { captureHardwareState, restoreHardwareState, type HardwareState } from "./hardware-state";
 
@@ -58,14 +59,25 @@ export function registerResetCleanup(): void {
       const status = await (await page.request.get("/device/status")).json();
       if (status.isSetup && (await page.request.get("/device")).status() === 401) {
         const origin = new URL(process.env.JETKVM_URL!).origin;
-        const login = await page.request.post("/auth/login-local", {
-          headers: { Origin: origin },
-          data: { password: "TestPassword123" },
-        });
-        expect(login.ok()).toBe(true);
+        let password: string | undefined;
+        for (const candidate of KNOWN_TEST_PASSWORDS) {
+          const login = await page.request.post("/auth/login-local", {
+            headers: { Origin: origin },
+            data: { password: candidate },
+          });
+          if (login.ok()) {
+            password = candidate;
+            break;
+          }
+          expect(
+            login.status(),
+            "known-password login should fail only for invalid credentials",
+          ).toBe(401);
+        }
+        expect(password, "authenticate with a known password during reset cleanup").toBeDefined();
         const disabled = await page.request.delete("/auth/local-password", {
           headers: { Origin: origin },
-          data: { password: "TestPassword123" },
+          data: { password },
         });
         expect(disabled.ok()).toBe(true);
       }
