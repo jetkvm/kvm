@@ -611,6 +611,7 @@
     "mount_upload_error": "上傳錯誤：{error}",
     "mount_upload_failed_datachannel": "建立檔案上傳資料通道失敗",
     "mount_upload_failed_rtc": "上傳失敗：{error}",
+    "mount_upload_local_network_only": "映像檔上傳只能在區域網路內使用，請透過裝置的本機位址開啟後再試一次。",
     "mount_upload_successful": "上傳成功",
     "mount_upload_title": "上傳新映像檔",
     "mount_uploaded_has_been_uploaded": "{name} 已上傳",

@@ -611,6 +611,7 @@
     "mount_upload_error": "Uploadfejl: {error}",
     "mount_upload_failed_datachannel": "Kunne ikke oprette datakanal til filupload",
     "mount_upload_failed_rtc": "Upload mislykkedes: {error}",
+    "mount_upload_local_network_only": "Upload af diskaftryk er kun tilgængelig på det lokale netværk. Åbn enheden via dens lokale adresse, og prøv igen.",
     "mount_upload_successful": "Upload fuldført",
     "mount_upload_title": "Upload nyt billede",
     "mount_uploaded_has_been_uploaded": "{name} er blevet uploadet",

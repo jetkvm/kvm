@@ -611,6 +611,7 @@
     "mount_upload_error": "Upload error: {error}",
     "mount_upload_failed_datachannel": "Failed to create data channel for file upload",
     "mount_upload_failed_rtc": "Upload failed: {error}",
+    "mount_upload_local_network_only": "Image uploads are available only on the local network. Open the device using its local address and try again.",
     "mount_upload_successful": "Upload successful",
     "mount_upload_title": "Upload New Image",
     "mount_uploaded_has_been_uploaded": "{name} has been uploaded",

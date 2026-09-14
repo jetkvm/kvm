@@ -415,6 +415,12 @@ type SSHKeyState struct {
 	SSHKey string `json:"sshKey"`
 }
 
+// rpcGetDeviceCapabilities lists the optional features this firmware supports.
+// The UI hides the controls for a capability the device does not report.
+func rpcGetDeviceCapabilities() ([]string, error) {
+	return []string{"shell", "extensions", "usb_serial", "custom_edid", "upload_channel"}, nil
+}
+
 func rpcGetDevModeState() (DevModeState, error) {
 	devModeEnabled := false
 	if _, err := os.Stat(devModeFile); err != nil {
@@ -1328,6 +1334,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"ping":                       {Func: rpcPing},
 	"reboot":                     {Func: rpcReboot, Params: []string{"force"}},
 	"getDeviceID":                {Func: rpcGetDeviceID},
+	"getDeviceCapabilities":      {Func: rpcGetDeviceCapabilities},
 	"deregisterDevice":           {Func: rpcDeregisterDevice},
 	"getCloudState":              {Func: rpcGetCloudState},
 	"getNetworkState":            {Func: rpcGetNetworkState},

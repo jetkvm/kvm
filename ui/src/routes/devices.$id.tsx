@@ -34,6 +34,8 @@ import {
   VideoState,
   useFailsafeModeStore,
   useSettingsStore,
+  useCapability,
+  useDeviceStore,
 } from "@hooks/stores";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
@@ -107,6 +109,7 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
 };
 
 export default function KvmIdRoute() {
+  const setCapabilities = useDeviceStore(state => state.setCapabilities);
   const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
@@ -244,15 +247,6 @@ export default function KvmIdRoute() {
       rpcHidUnreliableNonOrderedChannel.onopen = () => {
         setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
       };
-
-      // Create terminal channel as part of initial offer
-      const terminalDataChannel = pc.createDataChannel("terminal");
-      terminalDataChannel.onclose = () => console.log("terminalDataChannel has closed");
-      terminalDataChannel.onerror = (ev: Event) =>
-        console.error(`Error on terminalDataChannel '${terminalDataChannel.label}': ${ev.type}`);
-      terminalDataChannel.onopen = () => {
-        setTerminalChannel(terminalDataChannel);
-      };
     },
     [
       bumpMediaStreamTrackVersion,
@@ -262,7 +256,6 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableNonOrderedChannel,
       setRpcHidUnreliableChannel,
       setRpcHidProtocolVersion,
-      setTerminalChannel,
       setTransceiver,
     ],
   );
@@ -299,6 +292,7 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableNonOrderedChannel(null);
       setRpcHidProtocolVersion(null);
       setTerminalChannel(null);
+      setCapabilities([]);
     };
   }, [
     clearCandidatePairStats,
@@ -311,6 +305,7 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidProtocolVersion,
     setTerminalChannel,
+    setCapabilities,
   ]);
 
   // TURN server usage detection
@@ -470,6 +465,14 @@ export default function KvmIdRoute() {
 
   const { send } = useJsonRpc(onJsonRpcRequest);
 
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    send("getDeviceCapabilities", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setCapabilities(resp.result as string[]);
+    });
+  }, [rpcDataChannel?.readyState, send, setCapabilities]);
+
   // Mouse movement handler for E2E tests (needs send from useJsonRpc)
   const handleAbsMouseMove = useCallback(
     (x: number, y: number, buttons: number) => {
@@ -571,20 +574,37 @@ export default function KvmIdRoute() {
 
   // One channel per peer connection: a channel from a previous peer is dead
   // after a reconnect, so it is closed and replaced rather than kept.
+  const extensions = useCapability("extensions");
   useEffect(() => {
-    const channel = peerConnection ? peerConnection.createDataChannel("serial") : null;
+    const channel =
+      peerConnection && extensions ? peerConnection.createDataChannel("serial") : null;
     setSerialConsole(channel);
     return () => channel?.close();
-  }, [peerConnection]);
+  }, [peerConnection, extensions]);
 
   // CDC-ACM console data channel
   const [cdcACMConsole, setCdcACMConsole] = useState<RTCDataChannel | null>(null);
 
+  const usbSerial = useCapability("usb_serial");
   useEffect(() => {
-    const channel = peerConnection ? peerConnection.createDataChannel("cdcacm") : null;
+    const channel = peerConnection && usbSerial ? peerConnection.createDataChannel("cdcacm") : null;
     setCdcACMConsole(channel);
     return () => channel?.close();
-  }, [peerConnection]);
+  }, [peerConnection, usbSerial]);
+
+  // KVM terminal data channel, published once open. The previous channel
+  // stays in the store until the replacement opens, so the terminal does not
+  // unmount during a reconnect; the route teardown clears it.
+  const shell = useCapability("shell");
+  useEffect(() => {
+    if (!peerConnection || !shell) return;
+    const channel = peerConnection.createDataChannel("terminal");
+    channel.onclose = () => console.log("terminalDataChannel has closed");
+    channel.onerror = (ev: Event) =>
+      console.error(`Error on terminalDataChannel '${channel.label}': ${ev.type}`);
+    channel.onopen = () => setTerminalChannel(channel);
+    return () => channel.close();
+  }, [peerConnection, shell, setTerminalChannel]);
 
   // Register E2E test hooks
   useEffect(() => {

@@ -611,6 +611,7 @@
     "mount_upload_error": "アップロードエラー: {error}",
     "mount_upload_failed_datachannel": "ファイルアップロード用のデータチャネル作成に失敗しました",
     "mount_upload_failed_rtc": "アップロード失敗: {error}",
+    "mount_upload_local_network_only": "イメージのアップロードはローカルネットワークでのみ利用できます。デバイスのローカルアドレスを開いて、もう一度お試しください。",
     "mount_upload_successful": "アップロード成功",
     "mount_upload_title": "新しいイメージをアップロード",
     "mount_uploaded_has_been_uploaded": "{name} がアップロードされました",

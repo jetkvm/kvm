@@ -611,6 +611,7 @@
     "mount_upload_error": "Erreur de téléchargement : {error}",
     "mount_upload_failed_datachannel": "Échec de la création du canal de données pour le téléchargement du fichier",
     "mount_upload_failed_rtc": "Échec du téléchargement : {error}",
+    "mount_upload_local_network_only": "L’envoi d’images n’est disponible que sur le réseau local. Ouvrez l’appareil à l’aide de son adresse locale, puis réessayez.",
     "mount_upload_successful": "Téléchargement réussi",
     "mount_upload_title": "Télécharger une nouvelle image",
     "mount_uploaded_has_been_uploaded": "{name} a été téléchargé",

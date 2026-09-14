@@ -611,6 +611,7 @@
     "mount_upload_error": "Yükleme hatası: {error}",
     "mount_upload_failed_datachannel": "Dosya yüklemesi için veri kanalı oluşturulamadı",
     "mount_upload_failed_rtc": "Yükleme başarısız oldu: {error}",
+    "mount_upload_local_network_only": "Görüntü yüklemeleri yalnızca yerel ağda kullanılabilir. Cihazı yerel adresi üzerinden açıp yeniden deneyin.",
     "mount_upload_successful": "Yükleme başarılı",
     "mount_upload_title": "Yeni Görüntü Yükle",
     "mount_uploaded_has_been_uploaded": "{name} yüklendi",

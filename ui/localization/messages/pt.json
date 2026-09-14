@@ -611,6 +611,7 @@
     "mount_upload_error": "Erro no upload: {error}",
     "mount_upload_failed_datachannel": "Falha ao criar canal de dados para upload de arquivo",
     "mount_upload_failed_rtc": "Upload falhou: {error}",
+    "mount_upload_local_network_only": "O envio de imagens só está disponível na rede local. Abra o dispositivo usando o endereço local e tente novamente.",
     "mount_upload_successful": "Upload bem-sucedido",
     "mount_upload_title": "Enviar Nova Imagem",
     "mount_uploaded_has_been_uploaded": "{name} foi enviado",

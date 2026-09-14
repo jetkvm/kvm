@@ -611,6 +611,7 @@
     "mount_upload_error": "Opplastingsfeil: {error}",
     "mount_upload_failed_datachannel": "Kunne ikke opprette datakanal for filopplasting",
     "mount_upload_failed_rtc": "Opplasting mislyktes: {error}",
+    "mount_upload_local_network_only": "Opplasting av avbildninger er bare tilgjengelig på det lokale nettverket. Åpne enheten med den lokale adressen og prøv igjen.",
     "mount_upload_successful": "Opplastingen var vellykket",
     "mount_upload_title": "Last opp nytt bilde",
     "mount_uploaded_has_been_uploaded": "{name} har blitt lastet opp",

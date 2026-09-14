@@ -30,6 +30,7 @@ import {
   RemoteVirtualMediaState,
   useMountMediaStore,
   useRTCStore,
+  useCapability,
 } from "../hooks/stores";
 
 export default function MountRoute() {
@@ -38,6 +39,7 @@ export default function MountRoute() {
 }
 
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
+  const uploadChannel = useCapability("upload_channel");
   const { modalView, setModalView, setRemoteVirtualMediaState, errorMessage, setErrorMessage } =
     useMountMediaStore();
   const [incompleteFileName, setIncompleteFileName] = useState<string | null>(null);
@@ -170,6 +172,10 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
                     handleStorageMount(fileName, mode);
                   }}
                   onNewImageClick={incompleteFile => {
+                    if (!isOnDevice && !uploadChannel) {
+                      notifications.error(m.mount_upload_local_network_only());
+                      return;
+                    }
                     setIncompleteFileName(incompleteFile || null);
                     setModalView("upload");
                   }}
