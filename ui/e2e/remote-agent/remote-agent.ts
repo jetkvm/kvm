@@ -248,16 +248,35 @@ export class RemoteAgent {
     this.baseUrl = `http://${host}:${port}`;
   }
 
-  private async get<T>(path: string, signal?: AbortSignal): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, { signal });
-    if (!res.ok) throw new Error(`Remote agent ${path}: ${res.status}`);
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, options);
+    if (!res.ok) throw new Error(`Remote agent ${path}: ${res.status} ${await res.text()}`);
     return res.json() as Promise<T>;
   }
 
-  private async del<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`Remote agent DELETE ${path}: ${res.status}`);
-    return res.json() as Promise<T>;
+  private get<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return this.request(path, { signal });
+  }
+
+  private del<T>(path: string): Promise<T> {
+    return this.request(path, { method: "DELETE" });
+  }
+
+  private post<T>(path: string, body: unknown, timeoutMs = 5000): Promise<T> {
+    return this.request(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  }
+
+  hashUsbMedium(identity: { vendor: string; product: string; serial: string; size: number }) {
+    return this.post<{ device: string; bytes: number; sha256: string }>(
+      "/storage/readback",
+      identity,
+      45_000,
+    );
   }
 
   /** Check if the agent is running. */
@@ -566,26 +585,10 @@ export class RemoteAgent {
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
     const agentDir = path.resolve(thisDir, "..", "..", "..", "e2e", "remote-agent");
     const binary = path.join(agentDir, "remote-agent");
-    const goSource = path.join(agentDir, "main.go");
-
-    if (!fs.existsSync(goSource)) {
-      throw new Error(
-        `Remote agent source not found at ${goSource}. ` +
-          `Restore it with: git checkout e2e-remote-host-agent -- e2e/remote-agent/`,
-      );
-    }
-
-    // Rebuild if source is newer than binary (or binary doesn't exist)
-    const needsBuild =
-      !fs.existsSync(binary) || fs.statSync(goSource).mtimeMs > fs.statSync(binary).mtimeMs;
-
-    if (needsBuild) {
-      console.log("[remote-agent] Building remote-agent binary...");
-      execSync("GOOS=linux GOARCH=amd64 go build -buildvcs=false -o remote-agent .", {
-        cwd: agentDir,
-        stdio: "inherit",
-      });
-    }
+    execSync("GOOS=linux GOARCH=amd64 go build -buildvcs=false -o remote-agent .", {
+      cwd: agentDir,
+      stdio: "inherit",
+    });
 
     const sshOpts =
       "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=5 -o ServerAliveCountMax=3";
@@ -600,18 +603,21 @@ export class RemoteAgent {
       /* deploy below */
     }
 
-    if (!needsBuild && remoteHash === binaryHash && (await this.health())) return;
+    if (remoteHash === binaryHash && (await this.health())) return;
 
     console.log(`[remote-agent] Deploying to ${target}...`);
     // Kill the running agent first — Linux prevents overwriting a running binary
-    execSync(`ssh ${sshOpts} ${target} 'pkill -x remote-agent 2>/dev/null; sleep 0.5'`, {
-      stdio: "inherit",
-    });
+    execSync(
+      `ssh ${sshOpts} ${target} 'sudo -n true && { sudo -n pkill -x remote-agent 2>/dev/null || test $? = 1; } && sleep 0.5'`,
+      {
+        stdio: "inherit",
+      },
+    );
     execSync(`scp ${sshOpts} "${binary}" ${target}:/tmp/remote-agent`, { stdio: "inherit" });
 
     console.log(`[remote-agent] Starting on port ${port}...`);
     execSync(
-      `ssh ${sshOpts} ${target} 'PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
+      `ssh ${sshOpts} ${target} 'nohup sudo -n PORT=${port} /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
       { stdio: "inherit" },
     );
     execSync(`ssh ${sshOpts} ${target} 'printf %s ${binaryHash} > /tmp/remote-agent.sha256'`);
