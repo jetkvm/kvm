@@ -320,6 +320,11 @@ func (tx *UsbGadgetTransaction) writeGadgetItemConfig(item gadgetConfigItem, dep
 func (tx *UsbGadgetTransaction) writeGadgetAttrs(basePath string, attrs gadgetAttributes, component string, beforeChange []string) (files []string) {
 	files = make([]string, 0)
 	for key, val := range attrs {
+		// configfs ignores zero-byte writes. A newline clears an empty text
+		// attribute so the live gadget agrees with the saved configuration.
+		if val == "" {
+			val = "\n"
+		}
 		filePath := filepath.Join(basePath, key)
 		tx.addFileChange(component, RequestedFileChange{
 			Path:            filePath,

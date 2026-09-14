@@ -285,3 +285,61 @@ test("a forced rebind drops the inherited absolute mouse press @ssh", async () =
 
   await reconnect();
 });
+
+test("clearing a custom USB serial reaches the host and survives app restart @ssh", async () => {
+  test.setTimeout(90_000);
+  const original = (await callJsonRpc(page, "getUsbConfig")) as {
+    vendor_id: string;
+    product_id: string;
+    serial_number: string;
+    manufacturer: string;
+    product: string;
+  };
+  const serial = "e2e-restart-serial";
+  const hostSerial = () =>
+    remoteHostExec(
+      "for d in /sys/bus/usb/devices/*-*/; do " +
+        '[ -f "$d/manufacturer" ] || continue; ' +
+        'grep -qi jetkvm "$d/manufacturer" 2>/dev/null || continue; ' +
+        'cat "$d/serial" 2>/dev/null || true; break; done',
+    ).trim();
+  try {
+    await callJsonRpc(page, "setUsbConfig", {
+      usbConfig: { ...original, serial_number: serial },
+    });
+    await expect.poll(hostSerial, { timeout: 15_000 }).toBe(serial);
+    const customDevice = gadgetDeviceNumber();
+    await restartAppViaSSH();
+    expect(gadgetDeviceNumber(), "custom serial must be adopted without re-enumerating").toBe(
+      customDevice,
+    );
+    expect(hostSerial()).toBe(serial);
+    await reconnect();
+
+    await callJsonRpc(page, "setUsbConfig", {
+      usbConfig: { ...original, serial_number: "" },
+    });
+    await expect
+      .poll(
+        async () => {
+          const present = findGadgetDeviceNumber();
+          return present !== null && present !== customDevice && hostSerial() === "";
+        },
+        { message: "host must enumerate with the custom serial removed", timeout: 15_000 },
+      )
+      .toBe(true);
+    const emptySerialDevice = gadgetDeviceNumber();
+    for (let restart = 0; restart < 2; restart++) {
+      await restartAppViaSSH();
+      expect(gadgetDeviceNumber(), "cleared serial must not trigger a startup rebind").toBe(
+        emptySerialDevice,
+      );
+      expect(hostSerial()).toBe("");
+      await reconnect();
+      expect((await waitForKeyboardReady(agent!, page, 15_000)).length).toBeGreaterThan(0);
+    }
+  } finally {
+    await reconnect();
+    await callJsonRpc(page, "setUsbConfig", { usbConfig: original });
+  }
+});
