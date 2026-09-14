@@ -142,7 +142,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params)
+	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -421,6 +421,34 @@ func rpcGetDeviceCapabilities() ([]string, error) {
 	return []string{"shell", "extensions", "usb_serial", "custom_edid", "upload_channel"}, nil
 }
 
+// videoPausedBy is the session whose UI asked for the video stream to stop,
+// for example while its virtual media dialog is open, so a device that cannot
+// encode video and serve an upload at the same time keeps the pipeline down.
+// Only that session can resume; its disconnect releases the pause.
+var (
+	videoPauseMu  sync.Mutex
+	videoPausedBy *Session
+)
+
+func rpcSetVideoStreamPaused(session *Session, paused bool) error {
+	videoPauseMu.Lock()
+	defer videoPauseMu.Unlock()
+	if paused {
+		videoPausedBy = session
+		return nativeInstance.VideoStop()
+	}
+	if videoPausedBy != nil && videoPausedBy != session {
+		return nil
+	}
+	videoPausedBy = nil
+	// The resuming session may already have been replaced; video restarts for
+	// the session that is current now, with its codec.
+	if currentSession != nil {
+		startNativeVideoLocked(currentSession)
+	}
+	return nil
+}
+
 func rpcGetDevModeState() (DevModeState, error) {
 	devModeEnabled := false
 	if _, err := os.Stat(devModeFile); err != nil {
@@ -533,7 +561,7 @@ type RPCHandler struct {
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
-func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (result any, err error) {
+func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any, session *Session) (result any, err error) {
 	// Use defer to recover from a panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -547,11 +575,11 @@ func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string
 	}()
 
 	// Call the handler
-	result, err = riskyCallRPCHandler(logger, handler, params)
+	result, err = riskyCallRPCHandler(logger, handler, params, session)
 	return result, err // do not combine these two lines into one, as it breaks the above defer function's setting of err
 }
 
-func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (any, error) {
+func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any, session *Session) (any, error) {
 	handlerValue := reflect.ValueOf(handler.Func)
 	handlerType := handlerValue.Type()
 
@@ -562,8 +590,15 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	numParams := handlerType.NumIn()
 	allParamNames := append(handler.Params, handler.OptionalParams...) //nolint:gocritic
 
-	if len(allParamNames) != numParams {
-		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(allParamNames))
+	// A handler whose first parameter is *Session receives the calling session
+	// ahead of its named parameters.
+	offset := 0
+	if numParams > 0 && handlerType.In(0) == reflect.TypeOf((*Session)(nil)) {
+		offset = 1
+	}
+
+	if len(allParamNames)+offset != numParams {
+		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams-offset, len(allParamNames))
 		logger.Error().Strs("paramNames", allParamNames).Err(err).Msg("Cannot call RPC handler")
 		return nil, err
 	}
@@ -574,10 +609,13 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	}
 
 	args := make([]reflect.Value, numParams)
+	if offset == 1 {
+		args[0] = reflect.ValueOf(session)
+	}
 
-	for i := range numParams {
+	for i := offset; i < numParams; i++ {
 		paramType := handlerType.In(i)
-		paramName := allParamNames[i]
+		paramName := allParamNames[i-offset]
 		paramValue, ok := params[paramName]
 		if !ok {
 			if optionalSet[paramName] {
@@ -1374,6 +1412,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
+	"setVideoStreamPaused":       {Func: rpcSetVideoStreamPaused, Params: []string{"paused"}},
 	"getDevChannelState":         {Func: rpcGetDevChannelState},
 	"setDevChannelState":         {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":            {Func: rpcGetLocalVersion},
