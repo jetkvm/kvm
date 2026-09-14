@@ -825,6 +825,19 @@ export interface TailscaleStatus {
   health?: string[];
 }
 
+export interface NetbirdStatus {
+  installed: boolean;
+  running: boolean;
+  daemonStatus?: string;
+  managementURL?: string;
+  managementError?: string;
+  fqdn?: string;
+  netbirdIp?: string;
+  netbirdIpv6?: string;
+  peersTotal?: number;
+  peersConnected?: number;
+}
+
 export interface NetworkState {
   interface_name?: string;
   mac_address?: string;
