@@ -279,6 +279,54 @@ export class RemoteAgent {
     );
   }
 
+  async startNtpResponder(source: string) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/ntp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`NTP responder: ${await response.text()}`);
+    } finally {
+      clearTimeout(timeout);
+    }
+    const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+    let requests = 0,
+      pending = "",
+      failure: unknown;
+    const done = (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) throw new Error("NTP responder disconnected or expired");
+          pending += value;
+          const lines = pending.split("\n");
+          pending = lines.pop()!;
+          for (const line of lines) requests = (JSON.parse(line) as { requests: number }).requests;
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) failure = error;
+      } finally {
+        controller.abort();
+        reader.releaseLock();
+      }
+    })();
+    return {
+      count: () => {
+        if (failure) throw failure;
+        return requests;
+      },
+      stop: async () => {
+        controller.abort();
+        await done;
+      },
+    };
+  }
+
   /** Check if the agent is running. */
   async health(timeoutMs = 2000): Promise<boolean> {
     const controller = new AbortController();

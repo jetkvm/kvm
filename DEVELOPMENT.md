@@ -344,6 +344,14 @@ separate browser context submits incorrect passwords. Cleanup disables the test
 password through that retained session and reboots through RPC to clear the
 in-memory limiter. It does not wait for or shorten the production lockout.
 
+The custom-NTP case starts a temporary responder through the host agent and
+checks that the device queries it before and after reboot. The host name must
+resolve from the device, or use its IPv4 address, and UDP port 123 must be free.
+The responder accepts requests only from the configured device IP and stops
+when its owning HTTP request closes, with a seven-minute maximum lifetime.
+Public fallback is disabled during this case, and original network settings
+are restored in cleanup. No device SSH or Prometheus metrics are required.
+
 ---
 
 ## Common Issues & Solutions
