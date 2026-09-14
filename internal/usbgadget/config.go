@@ -65,24 +65,35 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"mass_storage_lun0": massStorageLun0Config,
 	// serial console (CDC-ACM)
 	"serial_console": serialConsoleConfig,
+	// CDC-NCM (Ethernet over USB)
+	"ncm": ncmConfig,
 }
 
 func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
+	return isGadgetConfigItemEnabledForDevices(itemKey, &u.enabledDevices)
+}
+
+// isGadgetConfigItemEnabledForDevices reports whether a gadget config item is
+// enabled for an arbitrary Devices selection. Items without an explicit case
+// (base, base_info, wake_hid, audio, ...) are always enabled.
+func isGadgetConfigItemEnabledForDevices(itemKey string, devices *Devices) bool {
 	switch itemKey {
 	case "absolute_mouse":
-		return u.enabledDevices.AbsoluteMouse
+		return devices.AbsoluteMouse
 	case "relative_mouse":
-		return u.enabledDevices.RelativeMouse
+		return devices.RelativeMouse
 	case "keyboard":
-		return u.enabledDevices.Keyboard
+		return devices.Keyboard
 	case "mass_storage_base":
-		return u.enabledDevices.MassStorage
+		return devices.MassStorage
 	case "mass_storage_lun0":
-		return u.enabledDevices.MassStorage
+		return devices.MassStorage
 	case "serial_console":
-		return u.enabledDevices.SerialConsole
+		return devices.SerialConsole
 	case "audio":
-		return u.enabledDevices.Audio
+		return devices.Audio
+	case "ncm":
+		return devices.Ncm
 	default:
 		return true
 	}
@@ -100,6 +111,13 @@ func (u *UsbGadget) loadGadgetConfig() {
 	u.configMap["base_info"].attrs["serialnumber"] = u.customConfig.SerialNumber
 	u.configMap["base_info"].attrs["manufacturer"] = u.customConfig.Manufacturer
 	u.configMap["base_info"].attrs["product"] = u.customConfig.Product
+
+	if u.customConfig.NcmHostMAC != "" {
+		u.configMap["ncm"].attrs["host_addr"] = u.customConfig.NcmHostMAC
+	}
+	if u.customConfig.NcmDevMAC != "" {
+		u.configMap["ncm"].attrs["dev_addr"] = u.customConfig.NcmDevMAC
+	}
 }
 
 func (u *UsbGadget) SetGadgetConfig(config *Config) {
@@ -229,6 +247,19 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, e
 		adopted, err = u.configureUsbGadgetLocked(resetUsb, forceRebind)
 		return err
 	})
+	if err == nil {
+		// The NCM network interface lives outside the configfs transaction: it
+		// only exists once the gadget is bound. Both calls are idempotent, so
+		// this also re-asserts the host-isolation firewall on the adopted path
+		// where no rebind happened.
+		if u.enabledDevices.Ncm {
+			if ncmErr := u.bringUpNcmInterface(); ncmErr != nil {
+				u.log.Warn().Err(ncmErr).Msg("failed to bring up NCM interface")
+			}
+		} else {
+			u.tearDownNcmInterface()
+		}
+	}
 	return adopted, err
 }
 
