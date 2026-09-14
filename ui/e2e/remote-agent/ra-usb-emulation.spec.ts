@@ -2,8 +2,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { expectMountedImageHash } from "../helpers/storage-readback";
 import { ensureUSBEmulationState } from "../helpers/hardware-state";
 import { test, expect, type Page } from "@playwright/test";
-import { callJsonRpc, ensureRpcReady } from "../helpers";
-import { agent, registerSharedSession } from "./shared";
+import { callJsonRpc, ensureRpcReady, waitForLedState } from "../helpers";
+import { agent, registerSharedSession, remoteHostExec } from "./shared";
 import { waitForKeyboardReady } from "./remote-agent";
 
 let page: Page;
@@ -19,11 +19,48 @@ test("USB emulation detaches from the host and recovers keyboard input", async (
     await callJsonRpc(page, "setUsbEmulationState", { enabled: false });
     expect(await callJsonRpc(page, "getUsbEmulationState")).toBe(false);
     await expect.poll(() => agent!.getJetKVMInputDevices(), { timeout: 15_000 }).toEqual([]);
+    await callJsonRpc(page, "setUsbEmulationState", { enabled: false });
     await callJsonRpc(page, "setUsbEmulationState", { enabled: true });
     expect(await callJsonRpc(page, "getUsbEmulationState")).toBe(true);
     expect((await waitForKeyboardReady(agent!, page, 30_000)).length).toBeGreaterThan(0);
   } finally {
     await ensureUSBEmulationState(page, true);
+  }
+});
+
+test("repeated USB enable preserves host-driven keyboard LED updates", async () => {
+  const leds = JSON.parse(
+    remoteHostExec(`python3 - <<'PY'
+import json
+from pathlib import Path
+leds = []
+for p in Path('/sys/class/leds').glob('*::capslock'):
+    if 'JetKVM' in (p / 'device/name').read_text():
+        leds.append({'path': str(p), 'enabled': (p / 'brightness').read_text().strip() != '0'})
+print(json.dumps(leds))
+PY`),
+  ) as { path: string; enabled: boolean }[];
+  expect(leds, "host must expose the JetKVM keyboard's Caps Lock LED").toHaveLength(1);
+  const led = leds[0];
+  expect(led.path).toMatch(/^\/sys\/class\/leds\/input\d+::capslock$/);
+  const setHostLED = (enabled: boolean) =>
+    remoteHostExec(`echo ${Number(enabled)} | sudo -n tee '${led.path}/brightness' > /dev/null`);
+  try {
+    // Establish that host output reports reach the existing listener.
+    setHostLED(!led.enabled);
+    await waitForLedState(page, "caps_lock", !led.enabled);
+    setHostLED(led.enabled);
+    await waitForLedState(page, "caps_lock", led.enabled);
+
+    await callJsonRpc(page, "setUsbEmulationState", { enabled: true });
+    await callJsonRpc(page, "setUsbEmulationState", { enabled: true });
+
+    // Send no keyboard input: a HID write could reopen a wrongly closed handle
+    // and hide the lost listener. Reusing the LED path also detects re-enumeration.
+    setHostLED(!led.enabled);
+    await waitForLedState(page, "caps_lock", !led.enabled);
+  } finally {
+    setHostLED(led.enabled);
   }
 });
 
