@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { expectMountedImageHash } from "../helpers/storage-readback";
+import { ensureUSBEmulationState } from "../helpers/hardware-state";
 import { test, expect, type Page } from "@playwright/test";
 import { callJsonRpc, ensureRpcReady } from "../helpers";
 import { agent, registerSharedSession } from "./shared";
@@ -21,7 +22,7 @@ test("USB emulation detaches from the host and recovers keyboard input", async (
     expect(await callJsonRpc(page, "getUsbEmulationState")).toBe(true);
     expect((await waitForKeyboardReady(agent!, page, 30_000)).length).toBeGreaterThan(0);
   } finally {
-    await callJsonRpc(page, "setUsbEmulationState", { enabled: true });
+    await ensureUSBEmulationState(page, true);
   }
 });
 
@@ -61,7 +62,7 @@ test("USB reconnect preserves mounted media bytes and keyboard input", async () 
       await expectMountedImageHash(page, data.length, sha256);
     }
   } finally {
-    await callJsonRpc(page, "setUsbEmulationState", { enabled: true });
+    await ensureUSBEmulationState(page, true);
     try {
       await callJsonRpc(page, "unmountImage");
     } finally {
