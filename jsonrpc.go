@@ -714,12 +714,7 @@ func rpcGetUsbEmulationState() (bool, error) {
 
 func rpcSetUsbEmulationState(enabled bool) error {
 	setUSBEmulationDesired(enabled)
-
-	if enabled {
-		return gadget.BindUDC()
-	} else {
-		return gadget.UnbindUDC()
-	}
+	return gadget.SetEmulationEnabled(enabled)
 }
 
 func rpcGetUsbConfig() (usbgadget.Config, error) {

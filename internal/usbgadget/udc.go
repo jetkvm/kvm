@@ -211,6 +211,18 @@ func (u *UsbGadget) IsGadgetAttachedToUDC() bool {
 	return strings.TrimSpace(string(content)) != ""
 }
 
+// SetEmulationEnabled enables or disables USB emulation after draining HID opens
+// and closing cached handles, so no old descriptor survives the controller change.
+func (u *UsbGadget) SetEmulationEnabled(enabled bool) error {
+	return u.rebindUsbWith(func() error {
+		u.ResetHIDFiles()
+		if enabled {
+			return u.BindUDC()
+		}
+		return u.UnbindUDC()
+	})
+}
+
 // BindUDC binds the gadget to the UDC.
 func (u *UsbGadget) BindUDC() error {
 	err := os.WriteFile(path.Join(dwc3Path, "bind"), []byte(u.udc), 0644)
