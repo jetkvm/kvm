@@ -107,7 +107,7 @@ test.describe("Custom NTP time sync", () => {
     return baseline;
   }
 
-  test("custom NTP server is queried after settings change @network", async ({ page }) => {
+  test("custom NTP server is queried after settings change @network @metrics", async ({ page }) => {
     await page.goto("/");
     await waitForWebRTCReady(page);
 
@@ -124,7 +124,7 @@ test.describe("Custom NTP time sync", () => {
     expect((await getNtpMetrics(page)).status).toBe(1);
   });
 
-  test("invalid NTP server falls back to defaults @network", async ({ page }) => {
+  test("invalid NTP server falls back to defaults @network @metrics", async ({ page }) => {
     await page.goto("/");
     await waitForWebRTCReady(page);
 

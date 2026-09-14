@@ -334,7 +334,8 @@ export function initTestHooks(): void {
       if (result && codecId) {
         const codecReport = stats.get(codecId);
         if (codecReport && codecReport.mimeType) {
-          result.codecMimeType = codecReport.mimeType;
+          // TypeScript does not track the assignment inside stats.forEach.
+          (result as { codecMimeType: string }).codecMimeType = codecReport.mimeType;
         }
       }
       return result;
@@ -371,7 +372,8 @@ export function initTestHooks(): void {
       if (result && codecId) {
         const codecReport = stats.get(codecId);
         if (codecReport && codecReport.mimeType) {
-          result.codecMimeType = codecReport.mimeType;
+          // TypeScript does not track the assignment inside stats.forEach.
+          (result as { codecMimeType: string }).codecMimeType = codecReport.mimeType;
         }
       }
       return result;

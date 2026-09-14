@@ -1,3 +1,9 @@
+import {
+  captureHardwareState,
+  configureTestUSB,
+  restoreHardwareState,
+  type HardwareState,
+} from "../helpers/hardware-state";
 // Session, host helpers and constants shared by the remote-agent specs.
 // Every spec registers one page and WebRTC session per file through
 // registerSharedSession() and runs its tests against it in serial mode.
@@ -5,6 +11,7 @@ import { execSync } from "child_process";
 import { test, expect, type Page } from "@playwright/test";
 import {
   SSH_OPTS,
+  ensureNoPasswordViaAPI,
   callJsonRpc,
   waitForWebRTCReady,
   ensureRpcReady,
@@ -430,7 +437,7 @@ export async function usbReconfigWithRetry<T>(
 }
 
 export async function setUsbDevicesAndWait(
-  devices: typeof USB_DEVICES_DEFAULT,
+  devices: Partial<typeof USB_DEVICES_DEFAULT>,
   expectedTypes: string[],
   timeoutMs = 45_000,
 ) {
@@ -474,35 +481,7 @@ export const ALL_SCAN_KEYS = (() => {
   return keys;
 })();
 
-export async function ensureNoPasswordViaAPI() {
-  const host = getDeviceHost();
-  const status = await fetch(`http://${host}/device/status`).then(
-    r => r.json() as Promise<{ isSetup: boolean }>,
-  );
-
-  if (!status.isSetup) {
-    const res = await fetch(`http://${host}/device/setup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ localAuthMode: "noPassword" }),
-    });
-    if (!res.ok) throw new Error(`Setup POST failed: ${res.status}`);
-    return;
-  }
-
-  const probe = await fetch(`http://${host}/device`);
-  if (probe.status === 401) {
-    await sshExec("rm -f /userdata/kvm_config.json && sync");
-    await restartAppViaSSH();
-    const res = await fetch(`http://${host}/device/setup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ localAuthMode: "noPassword" }),
-    });
-    if (!res.ok) throw new Error(`Setup POST after reset failed: ${res.status}`);
-    await setupMacrosViaSSH();
-  }
-}
+export { ensureNoPasswordViaAPI } from "../helpers";
 
 export async function setupMacrosViaRPC(page: Page, retries = 3) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -522,6 +501,8 @@ export async function setupMacrosViaRPC(page: Page, retries = 3) {
 }
 
 export function registerSharedSession(onPage: (page: Page) => void): void {
+  let originalHardware: HardwareState | undefined;
+  let originalMacros: unknown;
   test.beforeAll(async ({ browser }) => {
     test.skip(!agent, "JETKVM_REMOTE_HOST not set");
 
@@ -544,6 +525,9 @@ export function registerSharedSession(onPage: (page: Page) => void): void {
 
     await ensureRpcReady(sharedPage);
 
+    originalHardware = await captureHardwareState(sharedPage);
+    await configureTestUSB(sharedPage, originalHardware);
+    originalMacros = await callJsonRpc(sharedPage, "getKeyboardMacros");
     await setupMacrosViaRPC(sharedPage);
     await sharedPage.reload({ waitUntil: "networkidle" });
     await ensureRpcReady(sharedPage);
@@ -580,15 +564,32 @@ export function registerSharedSession(onPage: (page: Page) => void): void {
   });
 
   test.afterAll(async () => {
-    if (!agent) return;
+    if (!sharedPage) return;
+    const errors: unknown[] = [];
     try {
-      const existing = (await callJsonRpc(sharedPage, "getKeyboardMacros")) as { id: string }[];
-      const filtered = existing.filter(m => !m.id.startsWith("e2e_test_"));
-      await callJsonRpc(sharedPage, "setKeyboardMacros", { params: { macros: filtered } });
-    } catch {
-      /* page may already be closed */
+      if (originalHardware || originalMacros)
+        await ensureRpcReady(sharedPage, { navigateFirst: true });
+      if (originalMacros) {
+        try {
+          await callJsonRpc(sharedPage, "setKeyboardMacros", {
+            params: { macros: originalMacros },
+          });
+          expect(await callJsonRpc(sharedPage, "getKeyboardMacros")).toEqual(originalMacros);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (originalHardware) {
+        try {
+          await restoreHardwareState(sharedPage, originalHardware);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    } finally {
+      await sharedPage.close();
     }
-    if (sharedPage) await sharedPage.close();
+    if (errors.length) throw new AggregateError(errors, "Shared session restoration failed");
   });
 
   // Snapshot /userdata/jetkvm/last.log into the failing test's output dir before
