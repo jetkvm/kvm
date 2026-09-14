@@ -71,7 +71,7 @@ export function registerResetCleanup(): void {
       }
       await ensureNoPasswordViaAPI();
       await ensureRpcReady(page, { navigateFirst: true });
-      for (const setting of settings) {
+      for (const setting of settings.filter(s => s.setter !== "setNetworkSettings")) {
         try {
           await callJsonRpc(page, setting.setter, setting.params);
         } catch (error) {
@@ -82,6 +82,15 @@ export function registerResetCleanup(): void {
         await restoreHardwareState(page, hardware);
       } catch (error) {
         errors.push(error);
+      }
+      // Applying the original network can change the address or reboot. Restore
+      // SSH keys, developer access and all hardware state before that last step.
+      for (const setting of settings.filter(s => s.setter === "setNetworkSettings")) {
+        try {
+          await callJsonRpc(page, setting.setter, setting.params);
+        } catch (error) {
+          errors.push(error);
+        }
       }
       if (errors.length) throw new AggregateError(errors, "Reset cleanup failed");
     } finally {

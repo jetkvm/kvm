@@ -7,6 +7,7 @@ import {
   submitWelcomePassword,
   loginLocal,
   logout,
+  ensureLocalAuthMode,
 } from "./helpers";
 
 import { registerResetCleanup } from "./helpers/reset";
@@ -55,5 +56,12 @@ test.describe("Welcome Password Flow Tests", { tag: "@destructive" }, () => {
 
     expect(page.url()).toContain("/login-local");
     await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 5000 });
+  });
+
+  test("reset accepts a password left by the password-change tests", async ({ page }) => {
+    await ensureLocalAuthMode(page, { mode: "password", password: "NewPassword456" });
+    await logout(page);
+    await resetDeviceToWelcome(page);
+    await expect(page).toHaveURL(/\/welcome$/);
   });
 });

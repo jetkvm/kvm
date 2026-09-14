@@ -117,6 +117,37 @@ export async function reconnectAfterReboot(
   await ensureRpcReady(page, { timeoutMs, navigateFirst: true });
 }
 
+/** Send reboot once, observe shutdown, then reconnect without resending it. */
+export async function rebootAndReconnect(page: Page): Promise<void> {
+  await ensureRpcReady(page, { timeoutMs: 20_000 });
+  await Promise.all([
+    rawJsonRpc(page, "reboot", { force: true }, 5000).catch(error => {
+      const message = String(error);
+      if (!RPC_CHANNEL_DROPPED.test(message) && !message.includes("RPC timeout for reboot"))
+        throw error;
+      // A lost reply is acceptable only if the shutdown observer below succeeds.
+    }),
+    expect
+      .poll(
+        async () => {
+          try {
+            const response = await page.request.get("/device/status", { timeout: 1000 });
+            return !response.ok();
+          } catch {
+            return true;
+          }
+        },
+        {
+          message: "device must go down after the single reboot request",
+          timeout: 20_000,
+          intervals: [100, 200, 500],
+        },
+      )
+      .toBe(true),
+  ]);
+  await reconnectAfterReboot(page, 0, 90_000);
+}
+
 // A method the device does not implement answers "Method not found". Tests
 // for that feature skip on it instead of failing: the suite also runs against
 // older firmware during upgrade testing, and a missing method is a version

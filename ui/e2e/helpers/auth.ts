@@ -40,8 +40,15 @@ export async function resetDeviceToWelcome(page: Page): Promise<void> {
   }
 
   if (currentUrl.includes("/login")) {
-    const password = process.env.JETKVM_PASSWORD || "TestPassword123";
-    await loginLocal(page, password);
+    let loggedIn = false;
+    for (const password of KNOWN_TEST_PASSWORDS) {
+      if ((await loginLocal(page, password, false)).success) {
+        loggedIn = true;
+        break;
+      }
+      if (!page.url().includes("/login")) break;
+    }
+    expect(loggedIn, "authenticate with a known password before factory reset").toBe(true);
   }
   await ensureRpcReady(page);
   await callJsonRpc(page, "factoryReset");
@@ -140,24 +147,23 @@ export async function loginLocal(
     }
     return { success: false, error: "Submit button disabled" };
   }
-  await submitButton.click();
-
-  // Race between successful navigation and error message appearance so failed
-  // logins resolve quickly (~500ms) instead of waiting for the full URL timeout.
-  const errorLocator = page.locator(".text-red-500, .text-red-600").first();
-  const outcome = await Promise.race([
-    page
-      .waitForURL(url => !url.toString().includes("/login"), {
-        timeout: 5000,
-      })
-      .then(() => "navigated" as const),
-    errorLocator.waitFor({ state: "visible", timeout: 5000 }).then(() => "error" as const),
-  ]).catch(() => "timeout" as const);
-
-  if (outcome === "navigated") {
+  // A previous failed attempt can leave its error visible during the next
+  // request. Decide from this submission's response, not that stale message.
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      response =>
+        new URL(response.url()).pathname === "/auth/login-local" &&
+        response.request().method() === "POST",
+      { timeout: 10_000 },
+    ),
+    submitButton.click(),
+  ]);
+  if (response.ok()) {
+    await page.waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 });
     return { success: true };
   }
 
+  const errorLocator = page.locator(".text-red-500, .text-red-600").first();
   const errorText = await errorLocator.textContent({ timeout: 1000 }).catch(() => null);
 
   if (expectSuccess) {

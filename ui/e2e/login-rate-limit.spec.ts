@@ -1,11 +1,5 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
-import {
-  callJsonRpc,
-  ensureNoPasswordViaAPI,
-  ensureLocalAuthMode,
-  ensureRpcReady,
-  reconnectAfterReboot,
-} from "./helpers";
+import { ensureNoPasswordViaAPI, ensureLocalAuthMode, rebootAndReconnect } from "./helpers";
 
 const TEST_PASSWORD = "TestPassword123";
 let passwordEnabled = false;
@@ -27,7 +21,7 @@ test("rate limiting after multiple failed login attempts", async ({ page, browse
   for (let attempt = 0; attempt < 10; attempt++) {
     await login.locator('input[name="password"]').fill("wrongpassword123");
     const reply = login.waitForResponse(
-      (response) =>
+      response =>
         new URL(response.url()).pathname === "/auth/login-local" &&
         response.request().method() === "POST",
     );
@@ -46,7 +40,8 @@ test("rate limiting after multiple failed login attempts", async ({ page, browse
 });
 
 test.afterEach(async ({ page, request }) => {
-  test.setTimeout(150_000);
+  // Allow 20 s RPC readiness + 20 s shutdown + 90 s reconnect, plus auth cleanup.
+  test.setTimeout(180_000);
   try {
     await loginContext?.close();
   } finally {
@@ -59,11 +54,9 @@ test.afterEach(async ({ page, request }) => {
       });
       expect(response.ok(), "restore no-password auth using the retained session").toBe(true);
       await ensureNoPasswordViaAPI();
-      await ensureRpcReady(page, { navigateFirst: true });
       // Lockouts can last minutes. Reboot clears the in-memory limiter without
       // changing its policy or relying on device shell access.
-      await callJsonRpc(page, "reboot", { force: true });
-      await reconnectAfterReboot(page);
+      await rebootAndReconnect(page);
       await ensureNoPasswordViaAPI();
     }
     passwordEnabled = false;
