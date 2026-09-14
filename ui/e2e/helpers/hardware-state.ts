@@ -24,6 +24,13 @@ export interface HardwareState {
   media: MediaState | null;
 }
 
+export async function ensureUSBEmulationState(page: Page, enabled: boolean): Promise<void> {
+  // The controller bind/unbind RPC is not idempotent on Linux.
+  if ((await callJsonRpc(page, "getUsbEmulationState")) !== enabled) {
+    await callJsonRpc(page, "setUsbEmulationState", { enabled });
+  }
+}
+
 export async function captureHardwareState(page: Page): Promise<HardwareState> {
   // Sequential RPCs avoid competing with USB transitions on small devices.
   const config = (await callJsonRpc(page, "getUsbConfig")) as UsbConfig;
@@ -65,7 +72,7 @@ export async function configureTestUSB(
   if (state.audio?.enabled)
     await callJsonRpc(page, "setAudioConfig", { params: { enabled: false } });
   if (state.media) await callJsonRpc(page, "unmountImage");
-  await callJsonRpc(page, "setUsbEmulationState", { enabled: true });
+  await ensureUSBEmulationState(page, true);
   const config = {
     vendor_id: "0x1d6b",
     product_id: "0x0104",
@@ -106,7 +113,7 @@ export async function restoreHardwareState(page: Page, state: HardwareState): Pr
   await step(() => callJsonRpc(page, "setUsbConfig", { usbConfig: state.config }));
   await step(() => restoreMedia(page, state.media));
   if (state.audio) await step(() => callJsonRpc(page, "setAudioConfig", { params: state.audio! }));
-  await step(() => callJsonRpc(page, "setUsbEmulationState", { enabled: state.enabled }));
+  await step(() => ensureUSBEmulationState(page, state.enabled));
   await step(async () => expect(await captureHardwareState(page)).toEqual(state));
   if (errors.length) throw new AggregateError(errors, "Hardware state restoration failed");
 }
