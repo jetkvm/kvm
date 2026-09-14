@@ -123,6 +123,11 @@ func videoLogStatus() string {
 	return ""
 }
 
+func videoGetSnapshot() ([]byte, error) {
+	panicPlatformNotSupported()
+	return nil, nil
+}
+
 func videoGetEDID() (string, error) {
 	panicPlatformNotSupported()
 	return "", nil
