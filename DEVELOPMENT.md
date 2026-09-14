@@ -332,11 +332,23 @@ Static checks:
 (cd e2e/remote-agent && go test -race ./...)
 ```
 
+Welcome and factory-reset tests use the public reset RPC and setup API, and
+carry `@destructive`. Run them on a disposable, DHCP-addressable test device:
+reset erases uploaded files and uncaptured settings. A mounted stored image is
+rejected before resetting because its bytes cannot be restored. Captured USB,
+network, display, macros and supported access/developer settings are restored.
+These tests do not preserve cloud credentials or arbitrary uploaded data.
+
+The login rate-limit test retains an authenticated cleanup session while a
+separate browser context submits incorrect passwords. Cleanup disables the test
+password through that retained session and reboots through RPC to clear the
+in-memory limiter. It does not wait for or shorten the production lockout.
+
 The custom-NTP case starts a temporary responder through the host agent and
 checks that the device queries it before and after reboot. The host name must
 resolve from the device, or use its IPv4 address, and UDP port 123 must be free.
 The responder accepts requests only from the configured device IP and stops
-when its owning HTTP request closes, with a five-minute maximum lifetime.
+when its owning HTTP request closes, with a seven-minute maximum lifetime.
 Public fallback is disabled during this case, and original network settings
 are restored in cleanup. No device SSH or Prometheus metrics are required.
 

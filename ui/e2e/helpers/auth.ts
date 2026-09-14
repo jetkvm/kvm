@@ -1,11 +1,12 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { deviceShellAvailable, resetConfigViaSSH, restartAppViaSSH, sshExec } from "./ssh";
+import { callJsonRpc, ensureRpcReady } from "./device";
 
 const ANIMATION_DELAY = 150;
 
 // Known test passwords - used when device is in unknown state and needs login
-const KNOWN_TEST_PASSWORDS = [
+export const KNOWN_TEST_PASSWORDS = [
   ...new Set(
     [process.env.JETKVM_PASSWORD, "TestPassword123", "NewPassword456"].filter(
       (p): p is string => !!p,
@@ -22,7 +23,7 @@ async function requireAuthRecoveryShell(): Promise<void> {
 }
 
 /**
- * Reset the device to onboarding/welcome state via SSH.
+ * Reset the device to onboarding/welcome state through the public RPC.
  * Prefer ensureLocalAuthMode() unless testing the welcome flow itself.
  */
 export async function resetDeviceToWelcome(page: Page): Promise<void> {
@@ -38,8 +39,36 @@ export async function resetDeviceToWelcome(page: Page): Promise<void> {
     return;
   }
 
-  await resetConfigViaSSH();
-  await restartAppViaSSH();
+  if (currentUrl.includes("/login")) {
+    let loggedIn = false;
+    for (const password of KNOWN_TEST_PASSWORDS) {
+      if ((await loginLocal(page, password, false)).success) {
+        loggedIn = true;
+        break;
+      }
+      if (!page.url().includes("/login")) break;
+    }
+    expect(loggedIn, "authenticate with a known password before factory reset").toBe(true);
+  }
+  await ensureRpcReady(page);
+  await callJsonRpc(page, "factoryReset");
+  // The post-reset state proves completion even if a fast reboot is missed.
+  await expect
+    .poll(
+      async () => {
+        try {
+          const response = await page.request.get("/device/status", { timeout: 2000 });
+          if (!response.ok()) return false;
+          const status = await response.json();
+          return status.isSetup === false && !status.factoryResetPending;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 120_000, intervals: [1000] },
+    )
+    .toBe(true);
+  await page.context().clearCookies();
   await page.goto("/");
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(ANIMATION_DELAY);
@@ -118,24 +147,23 @@ export async function loginLocal(
     }
     return { success: false, error: "Submit button disabled" };
   }
-  await submitButton.click();
-
-  // Race between successful navigation and error message appearance so failed
-  // logins resolve quickly (~500ms) instead of waiting for the full URL timeout.
-  const errorLocator = page.locator(".text-red-500, .text-red-600").first();
-  const outcome = await Promise.race([
-    page
-      .waitForURL(url => !url.toString().includes("/login"), {
-        timeout: 5000,
-      })
-      .then(() => "navigated" as const),
-    errorLocator.waitFor({ state: "visible", timeout: 5000 }).then(() => "error" as const),
-  ]).catch(() => "timeout" as const);
-
-  if (outcome === "navigated") {
+  // A previous failed attempt can leave its error visible during the next
+  // request. Decide from this submission's response, not that stale message.
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      response =>
+        new URL(response.url()).pathname === "/auth/login-local" &&
+        response.request().method() === "POST",
+      { timeout: 10_000 },
+    ),
+    submitButton.click(),
+  ]);
+  if (response.ok()) {
+    await page.waitForURL(url => !url.toString().includes("/login"), { timeout: 5000 });
     return { success: true };
   }
 
+  const errorLocator = page.locator(".text-red-500, .text-red-600").first();
   const errorText = await errorLocator.textContent({ timeout: 1000 }).catch(() => null);
 
   if (expectSuccess) {

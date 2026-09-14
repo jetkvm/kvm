@@ -1,0 +1,112 @@
+import { test, expect } from "@playwright/test";
+import { KNOWN_TEST_PASSWORDS } from "./auth";
+import { callJsonRpc, ensureRpcReady, ensureNoPasswordViaAPI } from "./device";
+import { captureHardwareState, restoreHardwareState, type HardwareState } from "./hardware-state";
+
+/** Preserve the test rig through destructive reset without using a device shell.
+ * Uploaded files are erased by factory reset; run on a disposable test device.
+ */
+export function registerResetCleanup(): void {
+  let hardware: HardwareState | undefined;
+  const settings: { setter: string; params: Record<string, unknown> }[] = [];
+  test.beforeAll(async ({ browser, baseURL }) => {
+    test.setTimeout(90_000);
+    await ensureNoPasswordViaAPI();
+    const page = await browser.newPage({ baseURL });
+    try {
+      await ensureRpcReady(page, { navigateFirst: true });
+      hardware = await captureHardwareState(page);
+      if (hardware.media?.source === "Storage")
+        throw new Error(
+          "Unmount stored media before destructive reset tests; reset erases uploaded files",
+        );
+      settings.push({
+        setter: "setKeyboardMacros",
+        params: { params: { macros: await callJsonRpc(page, "getKeyboardMacros") } },
+      });
+      for (const [getter, setter, key] of [
+        ["getNetworkSettings", "setNetworkSettings", "settings"],
+        ["getBacklightSettings", "setBacklightSettings", "params"],
+        ["getDisplayRotation", "setDisplayRotation", "params"],
+        ["getVideoCodecPreference", "setVideoCodecPreference", "codec"],
+        ["getStreamQualityFactor", "setStreamQualityFactor", "factor"],
+        ["getKeyboardLayout", "setKeyboardLayout", "layout"],
+        ["getHostDisplayIdleMode", "setHostDisplayIdleMode", ""],
+        ["getSSHKeyState", "setSSHKeyState", "sshKey"],
+        ["getDevModeState", "setDevModeState", ""],
+      ]) {
+        try {
+          const value = await callJsonRpc(page, getter);
+          settings.push({
+            setter,
+            params: key ? { [key]: value } : (value as Record<string, unknown>),
+          });
+        } catch (error) {
+          if (!/method not found/i.test(String(error))) throw error;
+        }
+      }
+    } finally {
+      await page.close();
+    }
+  });
+  test.afterAll(async ({ browser, baseURL }) => {
+    test.setTimeout(120_000);
+    if (!hardware) return;
+    const page = await browser.newPage({ baseURL });
+    const errors: unknown[] = [];
+    try {
+      // A failed welcome test may leave either onboarding or its known password.
+      const status = await (await page.request.get("/device/status")).json();
+      if (status.isSetup && (await page.request.get("/device")).status() === 401) {
+        const origin = new URL(process.env.JETKVM_URL!).origin;
+        let password: string | undefined;
+        for (const candidate of KNOWN_TEST_PASSWORDS) {
+          const login = await page.request.post("/auth/login-local", {
+            headers: { Origin: origin },
+            data: { password: candidate },
+          });
+          if (login.ok()) {
+            password = candidate;
+            break;
+          }
+          expect(
+            login.status(),
+            "known-password login should fail only for invalid credentials",
+          ).toBe(401);
+        }
+        expect(password, "authenticate with a known password during reset cleanup").toBeDefined();
+        const disabled = await page.request.delete("/auth/local-password", {
+          headers: { Origin: origin },
+          data: { password },
+        });
+        expect(disabled.ok()).toBe(true);
+      }
+      await ensureNoPasswordViaAPI();
+      await ensureRpcReady(page, { navigateFirst: true });
+      for (const setting of settings.filter(s => s.setter !== "setNetworkSettings")) {
+        try {
+          await callJsonRpc(page, setting.setter, setting.params);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      try {
+        await restoreHardwareState(page, hardware);
+      } catch (error) {
+        errors.push(error);
+      }
+      // Applying the original network can change the address or reboot. Restore
+      // SSH keys, developer access and all hardware state before that last step.
+      for (const setting of settings.filter(s => s.setter === "setNetworkSettings")) {
+        try {
+          await callJsonRpc(page, setting.setter, setting.params);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length) throw new AggregateError(errors, "Reset cleanup failed");
+    } finally {
+      await page.close();
+    }
+  });
+}
