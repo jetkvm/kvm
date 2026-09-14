@@ -3,6 +3,7 @@ package ota
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -35,6 +36,17 @@ const (
 	keyFetchTimeout = 30 * time.Second
 )
 
+// embeddedRootKey is the JetKVM release root public key compiled into the
+// binary. The trust anchor is rootKeyFingerprint (also compiled in), so the
+// key bytes are effectively constant — embedding them lets us verify updates
+// without a network round-trip to third-party keyservers on the update path,
+// and without leaking the device's IP to those keyservers. The keyservers
+// remain a fallback (see FetchPublicKey) in case the embedded key is ever
+// missing or fails to load.
+//
+//go:embed root_key.asc
+var embeddedRootKey []byte
+
 // GPGVerifier handles GPG signature verification for OTA updates
 type GPGVerifier struct {
 	mu            sync.RWMutex
@@ -44,14 +56,18 @@ type GPGVerifier struct {
 	logger        *zerolog.Logger
 	httpClient    func() HttpClient
 	rootKeyFP     string
+	// embeddedKey is the public key compiled into the binary, tried before any
+	// keyserver. Defaults to embeddedRootKey; tests may override or clear it.
+	embeddedKey []byte
 }
 
 // NewGPGVerifier creates a new GPG verifier instance
 func NewGPGVerifier(logger *zerolog.Logger, httpClient func() HttpClient) *GPGVerifier {
 	return &GPGVerifier{
-		logger:     logger,
-		httpClient: httpClient,
-		rootKeyFP:  rootKeyFingerprint,
+		logger:      logger,
+		httpClient:  httpClient,
+		rootKeyFP:   rootKeyFingerprint,
+		embeddedKey: embeddedRootKey,
 	}
 }
 
@@ -78,6 +94,22 @@ func (g *GPGVerifier) FetchPublicKey(ctx context.Context) ([]byte, error) {
 		return key, nil
 	}
 	g.mu.RUnlock()
+
+	// Prefer the key embedded in the binary. It is validated against the pinned
+	// fingerprint exactly like a fetched key, so it is no less trusted — and it
+	// avoids depending on third-party keyservers being reachable on the update
+	// path. Keyservers are only used as a fallback below.
+	if len(g.embeddedKey) > 0 {
+		keyring, err := g.parseAndValidateKeyring(g.embeddedKey)
+		if err == nil {
+			g.updateMemoryCache(g.embeddedKey, keyring)
+			g.logger.Debug().Msg("using public key embedded in binary")
+			key := make([]byte, len(g.embeddedKey))
+			copy(key, g.embeddedKey)
+			return key, nil
+		}
+		g.logger.Warn().Err(err).Msg("embedded public key failed to load, falling back to keyservers")
+	}
 
 	// Fetch from keyservers (returns already-validated keyring)
 	key, keyring, err := g.fetchFromKeyservers(ctx, g.rootKeyFP)
