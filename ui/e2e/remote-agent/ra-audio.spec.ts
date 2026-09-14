@@ -11,8 +11,10 @@ import {
   ensureNoPasswordViaAPI,
   waitForAudioStream,
   waitForWebRTCReady,
+  waitForVideoDimensions,
 } from "../helpers";
 import { createRemoteAgent, type AudioDeviceInfo } from "./remote-agent";
+import { remoteHostSetDPMS } from "./shared";
 
 const agent = createRemoteAgent();
 const USB_ENUMERATION_SETTLE_MS = 3_000;
@@ -161,7 +163,12 @@ declare global {
 test("USB audio delivers a sustained 997 Hz tone alongside video and HID @audio", async ({
   page,
 }, info) => {
-  test.setTimeout(100_000);
+  test.setTimeout(130_000);
+  try {
+    remoteHostSetDPMS(false);
+  } catch {
+    // Hosts without GNOME may not expose this wake command; verify video below.
+  }
   await page.goto("/");
   await waitForWebRTCReady(page);
   await skipWithoutRpc(page, "getAudioConfig", "audio");
@@ -170,6 +177,8 @@ test("USB audio delivers a sustained 997 Hz tone alongside video and HID @audio"
     await page.reload();
     await waitForWebRTCReady(page);
     await waitForAudioStream(page);
+    await waitForJetKvmAudioDevice("before the sustained tone");
+    await waitForVideoDimensions(page, 30_000);
     await agent!.startAudioTone();
     await page.mouse.click(5, 5);
     await page.evaluate(async () => {
