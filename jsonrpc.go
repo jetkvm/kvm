@@ -980,6 +980,7 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 }
 
 func updateUsbRelatedConfig() error {
+	setUSBRecoveryTimer(time.Now())
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
 	}

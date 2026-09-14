@@ -333,6 +333,12 @@ func (u *UsbGadget) listenKeyboardEvents(ctx context.Context, file *os.File) {
 	}()
 }
 
+func (u *UsbGadget) HasKeyboard() bool {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+	return u.enabledDevices.Keyboard
+}
+
 func (u *UsbGadget) closeKeyboardHidFileLocked() {
 	if u.keyboardStateCancel != nil {
 		u.keyboardStateCancel()
