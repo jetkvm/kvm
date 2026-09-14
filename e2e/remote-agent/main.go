@@ -794,6 +794,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /storage/readback", handleStorageReadback)
+	mux.HandleFunc("POST /ntp", handleNTP)
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
