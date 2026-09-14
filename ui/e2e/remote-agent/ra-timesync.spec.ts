@@ -7,12 +7,12 @@ let page: Page;
 let original: Record<string, unknown> | undefined;
 let stopResponder: (() => Promise<void>) | undefined;
 
-test.afterEach(async ({ browser }) => {
+test.afterEach(async ({ browser, baseURL }) => {
   test.setTimeout(90_000);
   try {
     if (original) {
       if (!page.isClosed()) await page.goto("about:blank");
-      const recovery = await browser.newPage();
+      const recovery = await browser.newPage({ baseURL });
       try {
         await ensureRpcReady(recovery, { navigateFirst: true });
         await callJsonRpc(recovery, "setNetworkSettings", { settings: original });
@@ -30,7 +30,8 @@ registerSharedSession(p => {
 });
 
 test("custom NTP queries the configured host and persists across reboot @network", async () => {
-  test.setTimeout(240_000);
+  // Two 90 s query windows + 120 s reconnect, with a minute for setup and RPCs.
+  test.setTimeout(360_000);
   page.setDefaultTimeout(10_000);
   const target = process.env.JETKVM_REMOTE_HOST!;
   const host = target.split("@").at(-1)!;

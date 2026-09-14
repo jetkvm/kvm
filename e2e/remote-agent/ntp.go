@@ -68,7 +68,8 @@ func handleNTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	// Outlive the six-minute E2E budget while still bounding abandoned requests.
+	ctx, cancel := context.WithTimeout(r.Context(), 7*time.Minute)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	count := 0
