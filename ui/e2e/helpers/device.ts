@@ -228,7 +228,9 @@ export async function waitForDeviceReady(host: string, timeout = 60000): Promise
   throw new Error(`Device at ${host} did not become ready within ${timeout}ms`);
 }
 
-async function rawJsonRpc(
+// Stress tests must surface a dropped channel instead of reconnecting and
+// repeating the operation. Most functional tests should use callJsonRpc.
+export async function rawJsonRpc(
   page: Page,
   method: string,
   params: Record<string, unknown>,
