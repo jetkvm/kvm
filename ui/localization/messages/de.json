@@ -155,6 +155,7 @@
     "appearance_theme_system": "System",
     "appearance_title": "Darstellung",
     "attach": "Anhängen",
+    "atx_power_control_board_not_responding": "Keine Antwort von der ATX-Erweiterungsplatine. Prüfen Sie das RJ-12-Kabel und die Stromversorgung der Platine.",
     "atx_power_control_get_state_error": "ATX-Stromversorgungsstatus konnte nicht abgerufen werden: {error}",
     "atx_power_control_hdd_led": "Festplatten-LED",
     "atx_power_control_hold_hint": "3 Sekunden halten zum Ausschalten erzwingen",
