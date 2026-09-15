@@ -124,6 +124,10 @@ func runJigglerCronTab() error {
 	return nil
 }
 
+// absMouseMaxCoord is the logical maximum for the absolute mouse's X/Y axes,
+// per absoluteMouseCombinedReportDesc (0-32767).
+const absMouseMaxCoord = 32767
+
 func runJiggler() {
 	if config.JigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
@@ -135,20 +139,37 @@ func runJiggler() {
 		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
 			logger.Debug().Msg("Jiggling mouse...")
-			dx := int8(rand.Intn(3) + 1)
-			dy := int8(rand.Intn(3) + 1)
-			if rand.Intn(2) == 0 {
-				dx = -dx
+			dx, dy := randomSignedOffset(1, 3), randomSignedOffset(1, 3)
+			var err error
+			if gadget.HasAbsoluteMouse() {
+				x, y := gadget.GetAbsMousePosition()
+				err = rpcAbsMouseReport(clampAbsCoord(x+dx), clampAbsCoord(y+dy), 0)
+			} else {
+				err = rpcRelMouseReport(int8(dx), int8(dy), 0)
 			}
-			if rand.Intn(2) == 0 {
-				dy = -dy
-			}
-			err := rpcRelMouseReport(dx, dy, 0)
 			if err != nil {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
 		}
 	}
+}
+
+func randomSignedOffset(minMagnitude, maxMagnitude int) int {
+	magnitude := rand.Intn(maxMagnitude-minMagnitude+1) + minMagnitude
+	if rand.Intn(2) == 0 {
+		magnitude = -magnitude
+	}
+	return magnitude
+}
+
+func clampAbsCoord(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > absMouseMaxCoord {
+		return absMouseMaxCoord
+	}
+	return v
 }
 
 func calculateJobDelta(s gocron.Scheduler) (time.Duration, error) {
