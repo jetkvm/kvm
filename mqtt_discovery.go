@@ -412,6 +412,9 @@ func (m *MQTTManager) publishHADiscovery() {
 		m.removeDiscovery("button", "reboot")
 	}
 
+	// Keyboard macro buttons: one per stored macro when actions enabled
+	m.publishMacroDiscovery(device, availTopic, availTemplate, actionsEnabled)
+
 	// Firmware Update: always published, but command_topic only when actions enabled.
 	// NOTE: Do NOT use value_template/latest_version_template here — HA needs to parse
 	// the full JSON directly to recognize in_progress and update_percentage fields.
@@ -633,6 +636,33 @@ func (m *MQTTManager) publishDCDiscovery(device *haDevice, availTopic, availTemp
 	}
 }
 
+// publishMacroDiscovery publishes one Home Assistant button per stored keyboard
+// macro. Buttons are addressed by slot (macro_1 .. macro_<MaxMacrosPerDevice>)
+// rather than macro ID so that buttons for deleted or renamed macros —
+// including ones published before a reboot — are always cleared without
+// tracking extra state; the button's payload_press carries the macro ID, which
+// handleKeyboardMacroCommand resolves.
+func (m *MQTTManager) publishMacroDiscovery(device *haDevice, availTopic, availTemplate string, actionsEnabled bool) {
+	for i := 1; i <= MaxMacrosPerDevice; i++ {
+		objectID := fmt.Sprintf("macro_%d", i)
+		if actionsEnabled && i <= len(config.KeyboardMacros) {
+			macro := config.KeyboardMacros[i-1]
+			m.publishDiscovery("button", objectID, haDiscoveryPayload{
+				Name:              "Macro: " + macro.Name,
+				UniqueID:          fmt.Sprintf("jetkvm_%s_%s", m.deviceID, objectID),
+				CommandTopic:      m.topic("keyboard_macro", "set"),
+				PayloadPress:      macro.ID,
+				Icon:              "mdi:keyboard-outline",
+				AvailabilityTopic: availTopic,
+				AvailTemplate:     availTemplate,
+				Device:            device,
+			})
+		} else {
+			m.removeDiscovery("button", objectID)
+		}
+	}
+}
+
 func (m *MQTTManager) publishDiscovery(component, objectID string, payload haDiscoveryPayload) {
 	payload.DefaultEntityID = fmt.Sprintf("%s.jetkvm_%s_%s", component, m.deviceID, objectID)
 	discoveryTopic := fmt.Sprintf("homeassistant/%s/jetkvm_%s/%s/config", component, m.deviceID, objectID)
@@ -691,6 +721,10 @@ func (m *MQTTManager) removeAllDiscovery() {
 	m.removeDiscovery("binary_sensor", "jiggler")
 	m.removeDiscovery("button", "reboot")
 	m.removeDiscovery("update", "firmware")
+	// Keyboard macro buttons (all slots)
+	for i := 1; i <= MaxMacrosPerDevice; i++ {
+		m.removeDiscovery("button", fmt.Sprintf("macro_%d", i))
+	}
 
 	// Extension-specific entities (both switch and binary_sensor variants)
 	m.removeATXDiscovery()
@@ -728,8 +762,9 @@ func (m *MQTTManager) cleanupAllTopics() {
 	mqttLogger.Info().Msg("cleaned up all MQTT topics and discovery entries")
 }
 
-// republishHADiscovery removes old extension entities and re-publishes all discovery configs.
-// Call this when the active extension changes.
+// republishHADiscovery re-publishes all discovery configs (removing entities
+// that no longer apply). Call this after a change that affects discovery, such
+// as the active extension changing or stored keyboard macros being edited.
 func (m *MQTTManager) republishHADiscovery() {
 	if !m.IsConnected() {
 		return
@@ -741,5 +776,5 @@ func (m *MQTTManager) republishHADiscovery() {
 	// Re-publish all discovery configs (publishHADiscovery handles removal of inactive extension entities)
 	m.publishHADiscovery()
 
-	mqttLogger.Info().Str("extension", config.ActiveExtension).Msg("republished HA discovery after extension change")
+	mqttLogger.Info().Str("extension", config.ActiveExtension).Msg("republished HA discovery")
 }
