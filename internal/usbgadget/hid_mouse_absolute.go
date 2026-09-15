@@ -98,6 +98,12 @@ func (u *UsbGadget) HasAbsoluteMouse() bool {
 	return u.enabledDevices.AbsoluteMouse
 }
 
+func (u *UsbGadget) GetAbsMousePosition() (int, int) {
+	u.absMouseLock.Lock()
+	defer u.absMouseLock.Unlock()
+	return u.lastAbsX, u.lastAbsY
+}
+
 func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	u.hidLifecycle.RLock()
 	defer u.hidLifecycle.RUnlock()
@@ -120,6 +126,8 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	if err != nil {
 		return err
 	}
+
+	u.lastAbsX, u.lastAbsY = x, y
 
 	if pressed := buttons != 0; pressed != u.absMousePressed {
 		u.absMousePressed = pressed
