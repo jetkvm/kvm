@@ -539,8 +539,10 @@ func newSession(config SessionConfig) (*Session, error) {
 			case <-session.done:
 				return
 			case msg := <-rpcQueue:
-				// TODO: only use goroutine if the task is asynchronous
-				go onRPCMessage(msg, session)
+				// onRPCMessage decides per handler whether to run inline on
+				// this goroutine or spawn one, so ordering-sensitive handlers
+				// can rely on the queue's order.
+				onRPCMessage(msg, session)
 			}
 		}
 	}()
