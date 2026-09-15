@@ -99,6 +99,11 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 }
 
+// onRPCMessage parses one message off the session's rpcQueue and dispatches it.
+// It runs on the queue's pump goroutine: handlers marked Synchronous keep
+// running there so they observe messages in the order the client sent them,
+// and everything else is handed to a fresh goroutine so a slow handler cannot
+// head-of-line block the queue.
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
@@ -120,14 +125,6 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger := jsonRpcLogger.With().
-		Str("method", request.Method).
-		Interface("params", request.Params).
-		Interface("id", request.ID).Logger()
-
-	scopedLogger.Trace().Msg("Received RPC request")
-	t := time.Now()
-
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -141,6 +138,25 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		writeJSONRPCResponse(errorResponse, session)
 		return
 	}
+
+	if handler.Synchronous {
+		invokeRPCHandler(request, handler, session)
+		return
+	}
+	go invokeRPCHandler(request, handler, session)
+}
+
+// invokeRPCHandler runs one handler and writes its response back to the
+// session. Called inline on the pump for Synchronous handlers, and from a
+// per-message goroutine for everything else.
+func invokeRPCHandler(request JSONRPCRequest, handler RPCHandler, session *Session) {
+	scopedLogger := jsonRpcLogger.With().
+		Str("method", request.Method).
+		Interface("params", request.Params).
+		Interface("id", request.ID).Logger()
+
+	scopedLogger.Trace().Msg("Received RPC request")
+	t := time.Now()
 
 	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
 	if err != nil {
@@ -558,6 +574,15 @@ type RPCHandler struct {
 	Func           any
 	Params         []string
 	OptionalParams []string
+
+	// Synchronous runs the handler inline on the session's rpcQueue pump
+	// goroutine instead of in a fresh per-message goroutine, so consecutive
+	// calls are applied in the order they were dequeued. Set it on handlers
+	// that toggle shared state, where the scheduler running a pair out of
+	// order would leave the wrong value behind. Slow or blocking handlers
+	// must stay asynchronous (the default) — they would stall every later
+	// message on the queue.
+	Synchronous bool
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
@@ -1412,7 +1437,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
-	"setVideoStreamPaused":       {Func: rpcSetVideoStreamPaused, Params: []string{"paused"}},
+	"setVideoStreamPaused":       {Func: rpcSetVideoStreamPaused, Params: []string{"paused"}, Synchronous: true},
 	"getDevChannelState":         {Func: rpcGetDevChannelState},
 	"setDevChannelState":         {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":            {Func: rpcGetLocalVersion},
