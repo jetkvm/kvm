@@ -223,3 +223,11 @@ func (c *GRPCClient) SwitchToScreenIfDifferent(screenName string) {
 func (c *GRPCClient) DoNotUseThisIsForCrashTestingOnly() {
 	_, _ = c.client.DoNotUseThisIsForCrashTestingOnly(context.Background(), &pb.Empty{})
 }
+
+func (c *GRPCClient) VideoCaptureJPEG() ([]byte, error) {
+	resp, err := c.client.VideoGetJPEG(context.Background(), &pb.Empty{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}

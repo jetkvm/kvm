@@ -734,3 +734,14 @@ func (p *NativeProxy) DoNotUseThisIsForCrashTestingOnly() {
 		return nil
 	})
 }
+
+func (p *NativeProxy) VideoCaptureJPEG() ([]byte, error) {
+	p.clientMu.RLock()
+	defer p.clientMu.RUnlock()
+
+	if p.client == nil {
+		return nil, fmt.Errorf("gRPC client not initialized")
+	}
+
+	return p.client.VideoCaptureJPEG()
+}
