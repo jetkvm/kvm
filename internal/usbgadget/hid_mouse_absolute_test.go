@@ -23,23 +23,23 @@ func TestAbsMousePositionTracksLastReport(t *testing.T) {
 		enabledDevices:        Devices{AbsoluteMouse: true},
 	}
 
-	if x, y := u.GetAbsMousePosition(); x != 0 || y != 0 {
-		t.Fatalf("initial GetAbsMousePosition = (%d, %d), want (0, 0)", x, y)
+	if x, y, known := u.GetAbsMousePosition(); x != 0 || y != 0 || known {
+		t.Fatalf("initial GetAbsMousePosition = (%d, %d, %v), want (0, 0, false)", x, y, known)
 	}
 
 	if err := u.AbsMouseReport(1234, 5678, 0); err != nil {
 		t.Fatalf("AbsMouseReport: %v", err)
 	}
-	if x, y := u.GetAbsMousePosition(); x != 1234 || y != 5678 {
-		t.Fatalf("GetAbsMousePosition = (%d, %d), want (1234, 5678)", x, y)
+	if x, y, known := u.GetAbsMousePosition(); x != 1234 || y != 5678 || !known {
+		t.Fatalf("GetAbsMousePosition = (%d, %d, %v), want (1234, 5678, true)", x, y, known)
 	}
 
 	// Position tracking must not depend on a button-state change.
 	if err := u.AbsMouseReport(42, 99, 0); err != nil {
 		t.Fatalf("AbsMouseReport: %v", err)
 	}
-	if x, y := u.GetAbsMousePosition(); x != 42 || y != 99 {
-		t.Fatalf("GetAbsMousePosition = (%d, %d), want (42, 99)", x, y)
+	if x, y, known := u.GetAbsMousePosition(); x != 42 || y != 99 || !known {
+		t.Fatalf("GetAbsMousePosition = (%d, %d, %v), want (42, 99, true)", x, y, known)
 	}
 }
 
@@ -54,7 +54,7 @@ func TestAbsMousePositionDisabledDeviceNoop(t *testing.T) {
 	if err := u.AbsMouseReport(1234, 5678, 0); err != nil {
 		t.Fatalf("AbsMouseReport with disabled device: %v", err)
 	}
-	if x, y := u.GetAbsMousePosition(); x != 0 || y != 0 {
-		t.Fatalf("GetAbsMousePosition = (%d, %d), want (0, 0) since the device is disabled", x, y)
+	if x, y, known := u.GetAbsMousePosition(); x != 0 || y != 0 || known {
+		t.Fatalf("GetAbsMousePosition = (%d, %d, %v), want (0, 0, false) since the device is disabled", x, y, known)
 	}
 }

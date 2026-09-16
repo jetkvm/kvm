@@ -81,6 +81,7 @@ type UsbGadget struct {
 	absMousePressed bool
 	lastAbsX        int
 	lastAbsY        int
+	lastAbsKnown    bool
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
 

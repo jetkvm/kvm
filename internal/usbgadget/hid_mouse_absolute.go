@@ -98,10 +98,14 @@ func (u *UsbGadget) HasAbsoluteMouse() bool {
 	return u.enabledDevices.AbsoluteMouse
 }
 
-func (u *UsbGadget) GetAbsMousePosition() (int, int) {
+// GetAbsMousePosition returns the last reported absolute mouse position, and
+// whether that position reflects a real report. Before the first AbsMouseReport,
+// lastAbsX/lastAbsY are zero-initialized and do not represent an actual cursor
+// position, so known is false.
+func (u *UsbGadget) GetAbsMousePosition() (x int, y int, known bool) {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
-	return u.lastAbsX, u.lastAbsY
+	return u.lastAbsX, u.lastAbsY, u.lastAbsKnown
 }
 
 func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
@@ -128,6 +132,7 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	}
 
 	u.lastAbsX, u.lastAbsY = x, y
+	u.lastAbsKnown = true
 
 	if pressed := buttons != 0; pressed != u.absMousePressed {
 		u.absMousePressed = pressed

@@ -128,6 +128,23 @@ func runJigglerCronTab() error {
 // per absoluteMouseCombinedReportDesc (0-32767).
 const absMouseMaxCoord = 32767
 
+// Absolute jiggle offsets are HID logical units, not pixels: the host scales
+// them by round(hid/32767*displayWidth) (see ui/e2e/helpers/hid.ts). A raw
+// offset of 1-3 quantizes to no visible movement on most displays, so use a
+// small percentage of the full range instead. This guarantees a host-visible
+// nudge regardless of display size while staying imperceptibly small.
+const (
+	absJiggleOffsetMin = 100
+	absJiggleOffsetMax = 300
+)
+
+// Relative jiggle offsets are already host pixels (or close to it), so a
+// small raw value is enough.
+const (
+	relJiggleOffsetMin = 1
+	relJiggleOffsetMax = 3
+)
+
 func runJiggler() {
 	if config.JigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
@@ -139,12 +156,14 @@ func runJiggler() {
 		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
 			logger.Debug().Msg("Jiggling mouse...")
-			dx, dy := randomSignedOffset(1, 3), randomSignedOffset(1, 3)
 			var err error
-			if gadget.HasAbsoluteMouse() {
-				x, y := gadget.GetAbsMousePosition()
+			if x, y, known := gadget.GetAbsMousePosition(); gadget.HasAbsoluteMouse() && known {
+				dx := randomSignedOffset(absJiggleOffsetMin, absJiggleOffsetMax)
+				dy := randomSignedOffset(absJiggleOffsetMin, absJiggleOffsetMax)
 				err = rpcAbsMouseReport(clampAbsCoord(x+dx), clampAbsCoord(y+dy), 0)
 			} else {
+				dx := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
+				dy := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
 				err = rpcRelMouseReport(int8(dx), int8(dy), 0)
 			}
 			if err != nil {
