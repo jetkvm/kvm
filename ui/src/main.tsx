@@ -57,6 +57,7 @@ const SecurityAccessLocalAuthRoute = lazy(
   () => import("@routes/devices.$id.settings.access.local-auth"),
 );
 const SettingsMqttRoute = lazy(() => import("@routes/devices.$id.settings.mqtt"));
+const SettingsSchedulerRoute = lazy(() => import("@routes/devices.$id.settings.scheduler"));
 const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
 const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
 const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
@@ -192,6 +193,10 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
         {
           path: "appearance",
           element: <SettingsAppearanceRoute />,
+        },
+        {
+          path: "scheduler",
+          element: <SettingsSchedulerRoute />,
         },
         {
           path: "macros",
