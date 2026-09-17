@@ -4,6 +4,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -50,11 +51,7 @@ func receiverVideoBitrate(packet *rtcp.ReceiverEstimatedMaximumBitrate, ssrc uin
 
 func readVideoRTCP(sender *webrtc.RTPSender) {
 	defer updateVideoREMB(sender, 0)
-	for {
-		packets, _, err := sender.ReadRTCP()
-		if err != nil {
-			return
-		}
+	readVideoRTCPPackets(sender, func(packets []rtcp.Packet) {
 		params := sender.GetParameters()
 		for _, packet := range packets {
 			remb, ok := packet.(*rtcp.ReceiverEstimatedMaximumBitrate)
@@ -68,5 +65,26 @@ func readVideoRTCP(sender *webrtc.RTPSender) {
 				}
 			}
 		}
+	})
+}
+
+type videoRTCPReader interface {
+	Read([]byte) (int, interceptor.Attributes, error)
+}
+
+// Keep read errors separate from packet decoding errors. Invalid RTCP must not
+// end draining or clear a receiver's estimate while its sender is still open.
+func readVideoRTCPPackets(reader videoRTCPReader, handle func([]rtcp.Packet)) {
+	buf := make([]byte, 1500)
+	for {
+		n, _, err := reader.Read(buf)
+		if err != nil {
+			return
+		}
+		packets, err := rtcp.Unmarshal(buf[:n])
+		if err != nil {
+			continue
+		}
+		handle(packets)
 	}
 }

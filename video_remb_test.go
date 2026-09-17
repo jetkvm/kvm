@@ -3,11 +3,13 @@
 package kvm
 
 import (
+	"io"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/native"
+	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -164,5 +166,44 @@ func TestVideoREMBFeedback(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("disconnect did not clear REMB")
+	}
+}
+
+// A consumed malformed packet must not prevent later valid feedback from being
+// processed. Read EOF still terminates the loop so the caller can clean up.
+type scriptedVideoRTCPReader struct{ packets [][]byte }
+
+func (r *scriptedVideoRTCPReader) Read(buf []byte) (int, interceptor.Attributes, error) {
+	if len(r.packets) == 0 {
+		return 0, nil, io.EOF
+	}
+	packet := r.packets[0]
+	r.packets = r.packets[1:]
+	return copy(buf, packet), nil, nil
+}
+
+func TestVideoRTCPContinuesAfterMalformedPacket(t *testing.T) {
+	packet := &rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 1000000, SSRCs: []uint32{42}}
+	first, err := packet.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet.Bitrate = 2000000
+	second, err := packet.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This header claims a receiver report, but its body is missing.
+	reader := &scriptedVideoRTCPReader{packets: [][]byte{first, {0x80, 201, 0, 1}, second}}
+	var estimates []uint32
+	readVideoRTCPPackets(reader, func(packets []rtcp.Packet) {
+		for _, p := range packets {
+			if remb, ok := p.(*rtcp.ReceiverEstimatedMaximumBitrate); ok {
+				estimates = append(estimates, receiverVideoBitrate(remb, 42))
+			}
+		}
+	})
+	if len(estimates) != 2 || estimates[0] != 1000000 || estimates[1] != 2000000 {
+		t.Fatalf("feedback after malformed packet: %v", estimates)
 	}
 }
