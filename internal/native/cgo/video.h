@@ -1,12 +1,17 @@
 #ifndef VIDEO_DAEMON_VIDEO_H
 #define VIDEO_DAEMON_VIDEO_H
 
+#include <stdint.h>
+
 /**
  * @brief Initialize the video subsystem
  *
  * @return int 0 on success, -1 on failure
  */
 int video_init(float quality_factor);
+
+// Receiver estimate in bit/s; zero clears it. Only applied in Auto mode.
+void video_set_remb(uint32_t bitrate);
 
 /**
  * @brief Shutdown the video subsystem

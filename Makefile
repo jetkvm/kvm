@@ -59,8 +59,12 @@ BIN_DIR := $(shell pwd)/bin
 
 TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort -u)
 
-test:
+test: test_video_bitrate
 	go test ./...
+
+.PHONY: test_video_bitrate
+test_video_bitrate:
+	./scripts/test_video_bitrate.sh
 
 # Fail fast if rclone cannot reach the R2 bucket.
 check_r2:

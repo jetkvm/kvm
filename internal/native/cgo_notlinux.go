@@ -141,3 +141,8 @@ func videoGetStreamingStatus() VideoStreamingStatus {
 func crash() {
 	panicPlatformNotSupported()
 }
+
+func videoSetREMB(bitrate uint32) error {
+	panicPlatformNotSupported()
+	return nil
+}

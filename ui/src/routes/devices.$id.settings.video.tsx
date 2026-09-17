@@ -20,6 +20,7 @@ interface EDIDPreset {
 }
 
 const streamQualityOptions = [
+  { value: "0", label: m.video_quality_auto() },
   { value: "1", label: m.video_quality_high() },
   { value: "0.5", label: m.video_quality_medium() },
   { value: "0.1", label: m.video_quality_low() },
@@ -47,7 +48,7 @@ const browserCodecOptions = h265Supported
 export default function SettingsVideoRoute() {
   const customEdid = useCapability("custom_edid");
   const { send } = useJsonRpc();
-  const [streamQuality, setStreamQuality] = useState("1");
+  const [streamQuality, setStreamQuality] = useState("0");
   const [streamQualityLoading, setStreamQualityLoading] = useState(true);
   const [codecPreference, setCodecPreference] = useState("auto");
   const [supportedCodecs, setSupportedCodecs] = useState<string[] | null>(null);

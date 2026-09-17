@@ -380,7 +380,7 @@ uint8_t jetkvm_video_get_streaming_status() {
 }
 
 int jetkvm_video_set_quality_factor(float quality_factor) {
-    if (quality_factor <= 0) {
+    if (!(quality_factor >= 0 && quality_factor <= 1)) {
         return -1;
     }
     video_set_quality_factor(quality_factor);
@@ -441,4 +441,8 @@ void jetkvm_crash() {
     // let's call a function that will crash the program
     int* p = 0;
     *p = 0;
+}
+
+void jetkvm_video_set_remb(uint32_t bitrate) {
+    video_set_remb(bitrate);
 }

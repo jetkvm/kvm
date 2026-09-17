@@ -10,6 +10,7 @@ service NativeService {
   rpc IsReady(IsReadyRequest) returns (IsReadyResponse);
 
   // Video methods
+  rpc VideoSetREMB(VideoSetREMBRequest) returns (Empty);
   rpc VideoSetSleepMode(VideoSetSleepModeRequest) returns (Empty);
   rpc VideoGetSleepMode(Empty) returns (VideoGetSleepModeResponse);
   rpc VideoSleepModeSupported(Empty) returns (VideoSleepModeSupportedResponse);
@@ -266,3 +267,8 @@ message VideoFrame {
   int64 duration_ns = 2;
 }
 
+
+// Receiver estimate in bits per second; zero clears the limit.
+message VideoSetREMBRequest {
+  uint32 bitrate = 1;
+}
