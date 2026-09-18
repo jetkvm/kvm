@@ -67,6 +67,7 @@ func (u *UsbGadget) resetHidHandover() {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 	u.absMousePressed = false
+	u.lastAbsButtons = 0
 	updateHidHandover(func(h *hidHandover) { *h = hidHandover{} })
 }
 

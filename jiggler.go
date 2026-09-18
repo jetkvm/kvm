@@ -124,10 +124,6 @@ func runJigglerCronTab() error {
 	return nil
 }
 
-// absMouseMaxCoord is the logical maximum for the absolute mouse's X/Y axes,
-// per absoluteMouseCombinedReportDesc (0-32767).
-const absMouseMaxCoord = 32767
-
 // Absolute jiggle offsets are HID logical units, not pixels: the host scales
 // them by round(hid/32767*displayWidth) (see ui/e2e/helpers/hid.ts). A raw
 // offset of 1-3 quantizes to no visible movement on most displays, so use a
@@ -157,11 +153,10 @@ func runJiggler() {
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
 			logger.Debug().Msg("Jiggling mouse...")
 			var err error
-			if x, y, known := gadget.GetAbsMousePosition(); gadget.HasAbsoluteMouse() && known {
-				dx := randomSignedOffset(absJiggleOffsetMin, absJiggleOffsetMax)
-				dy := randomSignedOffset(absJiggleOffsetMin, absJiggleOffsetMax)
-				err = rpcAbsMouseReport(clampAbsCoord(x+dx), clampAbsCoord(y+dy), 0)
-			} else {
+			_, _, absPositionKnown := gadget.GetAbsMousePosition()
+			if gadget.HasAbsoluteMouse() && (absPositionKnown || !gadget.HasRelativeMouse()) {
+				err = rpcJiggleAbsMouseReport(absJiggleOffsetMin, absJiggleOffsetMax)
+			} else if gadget.HasRelativeMouse() {
 				dx := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
 				dy := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
 				err = rpcRelMouseReport(int8(dx), int8(dy), 0)
@@ -179,16 +174,6 @@ func randomSignedOffset(minMagnitude, maxMagnitude int) int {
 		magnitude = -magnitude
 	}
 	return magnitude
-}
-
-func clampAbsCoord(v int) int {
-	if v < 0 {
-		return 0
-	}
-	if v > absMouseMaxCoord {
-		return absMouseMaxCoord
-	}
-	return v
 }
 
 func calculateJobDelta(s gocron.Scheduler) (time.Duration, error) {

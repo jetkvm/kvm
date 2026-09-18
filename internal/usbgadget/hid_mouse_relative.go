@@ -86,6 +86,10 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 	return nil
 }
 
+func (u *UsbGadget) HasRelativeMouse() bool {
+	return u.enabledDevices.RelativeMouse
+}
+
 func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	u.hidLifecycle.RLock()
 	defer u.hidLifecycle.RUnlock()

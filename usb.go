@@ -92,6 +92,10 @@ func rpcAbsMouseReport(x int, y int, buttons uint8) error {
 	return rpcHidReport(func() error { return gadget.AbsMouseReport(x, y, buttons) })
 }
 
+func rpcJiggleAbsMouseReport(minMagnitude, maxMagnitude int) error {
+	return rpcHidReport(func() error { return gadget.JiggleAbsMouse(minMagnitude, maxMagnitude) })
+}
+
 func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
 	return rpcHidReport(func() error { return gadget.RelMouseReport(dx, dy, buttons) })
 }
