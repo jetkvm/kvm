@@ -155,6 +155,7 @@
     "appearance_theme_system": "Sistema",
     "appearance_title": "Aspetto",
     "attach": "Allega",
+    "atx_power_control_board_not_responding": "Nessuna risposta dalla scheda di estensione ATX. Controlla il cavo RJ-12 e l'alimentazione della scheda.",
     "atx_power_control_get_state_error": "Impossibile ottenere lo stato di alimentazione ATX: {error}",
     "atx_power_control_hdd_led": "LED dell'HDD",
     "atx_power_control_hold_hint": "Tenere premuto 3 s per lo spegnimento forzato",
