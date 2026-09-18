@@ -212,7 +212,9 @@ export async function putRemoteHostToSleepForUSBWakeTest(
 
   if (options.wakeAfterSeconds) {
     try {
-      remoteHostExec("command -v rtcwake >/dev/null");
+      // Match the sudo invocation used to suspend: rtcwake may be in sbin,
+      // outside the SSH user's PATH but available through sudo's secure_path.
+      remoteHostExec("sudo -n rtcwake --version >/dev/null");
     } catch {
       test.skip(true, "rtcwake is not available on remote host");
     }
