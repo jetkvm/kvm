@@ -734,3 +734,9 @@ func (p *NativeProxy) DoNotUseThisIsForCrashTestingOnly() {
 		return nil
 	})
 }
+
+func (p *NativeProxy) VideoSetREMB(bitrate uint32) error {
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoSetREMB(bitrate)
+	})
+}

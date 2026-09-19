@@ -53,6 +53,8 @@ const char *jetkvm_ui_get_lvgl_version();
 
 const char *jetkvm_ui_event_code_to_name(int code);
 
+void jetkvm_video_set_remb(uint32_t bitrate);
+
 int jetkvm_video_init(float quality_factor);
 void jetkvm_video_shutdown();
 void jetkvm_video_start();

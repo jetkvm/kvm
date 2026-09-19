@@ -233,7 +233,7 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 		return "", err
 	}
 
-	go drainRTCP(rtpSender)
+	go readVideoRTCP(rtpSender)
 
 	if err := s.attachAudioTrack(offer.SDP); err != nil {
 		return "", err

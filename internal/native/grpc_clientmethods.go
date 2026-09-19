@@ -223,3 +223,8 @@ func (c *GRPCClient) SwitchToScreenIfDifferent(screenName string) {
 func (c *GRPCClient) DoNotUseThisIsForCrashTestingOnly() {
 	_, _ = c.client.DoNotUseThisIsForCrashTestingOnly(context.Background(), &pb.Empty{})
 }
+
+func (c *GRPCClient) VideoSetREMB(bitrate uint32) error {
+	_, err := c.client.VideoSetREMB(context.Background(), &pb.VideoSetREMBRequest{Bitrate: bitrate})
+	return err
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,6 +187,9 @@ func rpcGetStreamQualityFactor() (float64, error) {
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
+	if math.IsNaN(factor) || math.IsInf(factor, 0) || factor < 0 || factor > 1 {
+		return fmt.Errorf("quality factor must be between 0 (Auto) and 1 (High)")
+	}
 	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
 	err := nativeInstance.VideoSetQualityFactor(factor)
 	if err != nil {

@@ -24,6 +24,7 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 #include "video.h"
+#include "video_bitrate.h"
 #include "ctrl.h"
 #include "log.h"
 
@@ -42,7 +43,8 @@ MB_POOL memPool = MB_INVALID_POOLID;
 
 bool sleep_mode_available = false;
 bool should_exit = false;
-float quality_factor = 1.0f;
+_Atomic float quality_factor = 1.0f;
+static _Atomic uint32_t receiver_bitrate = 0;
 int codec_type = 0;
 
 static void *venc_read_stream(void *arg);
@@ -91,29 +93,6 @@ static void detect_sleep_mode()
     }
     sleep_mode_available = true;
     ensure_sleep_mode_disabled();
-}
-
-double calculate_bitrate(float bitrate_factor, int width, int height)
-{
-    const int32_t base_bitrate_high = 4000;
-    const int32_t base_bitrate_low = 512;
-
-    double pixels = (double)width * height;
-    double ref_pixels = 1920.0 * 1080.0;
-
-    double scale_factor = pixels / ref_pixels;
-
-    int32_t base_bitrate = base_bitrate_low + (int32_t)((base_bitrate_high - base_bitrate_low) * bitrate_factor);
-
-    int32_t bitrate = (int32_t)(base_bitrate * scale_factor);
-
-    const int32_t min_bitrate = 200;
-    if (bitrate < min_bitrate)
-    {
-        bitrate = min_bitrate;
-    }
-
-    return bitrate;
 }
 
 static bool is_hd_video(RK_U32 height)
@@ -360,7 +339,7 @@ int video_init(float factor)
 {
     detect_sleep_mode();
 
-    if (factor <= 0) {
+    if (!(factor >= 0 && factor <= 1)) {
         factor = 1.0f;
     }
     quality_factor = factor;
@@ -668,8 +647,8 @@ void *run_video_stream(void *arg)
         struct v4l2_plane tmp_plane;
 
         // Set VENC parameters
-        int32_t bitrate = calculate_bitrate(quality_factor, width, height);
-        RK_S32 ret = venc_start(bitrate, bitrate * 3 / 2, width, height, fps);
+        video_bitrate bitrate = video_bitrate_for(quality_factor, width, height, atomic_load(&receiver_bitrate));
+        RK_S32 ret = venc_start(bitrate.target, bitrate.maximum, width, height, fps);
         if (ret != RK_SUCCESS)
         {
             log_error("Set VENC parameters failed with %#x", ret);
@@ -693,8 +672,38 @@ void *run_video_stream(void *arg)
         stFrame.stVFrame.enDynamicRange = DYNAMIC_RANGE_SDR8;
         stFrame.stVFrame.enColorGamut = color_gamut_for_height(height);
 
+        RK_U64 last_bitrate_update = 0;
         while (streaming_flag)
         {
+            // Only the capture thread touches the live encoder attributes, so
+            // updates cannot race channel creation/destruction or format changes.
+            RK_U64 now = get_us();
+            if (now - last_bitrate_update >= 250000) {
+                last_bitrate_update = now;
+                video_bitrate next = video_bitrate_for(quality_factor, width, height, atomic_load(&receiver_bitrate));
+                if (next.target != bitrate.target || next.maximum != bitrate.maximum) {
+                    VENC_CHN_ATTR_S attr;
+                    ret = RK_MPI_VENC_GetChnAttr(VENC_CHANNEL, &attr);
+                    if (ret == RK_SUCCESS) {
+                        if (attr.stVencAttr.enType == RK_VIDEO_ID_HEVC) {
+                            attr.stRcAttr.stH265Vbr.u32BitRate = next.target;
+                            attr.stRcAttr.stH265Vbr.u32MaxBitRate = next.maximum;
+                            attr.stRcAttr.stH265Vbr.u32MinBitRate = next.target / 2;
+                        } else {
+                            attr.stRcAttr.stH264Vbr.u32BitRate = next.target;
+                            attr.stRcAttr.stH264Vbr.u32MaxBitRate = next.maximum;
+                            attr.stRcAttr.stH264Vbr.u32MinBitRate = next.target / 2;
+                        }
+                        ret = RK_MPI_VENC_SetChnAttr(VENC_CHANNEL, &attr);
+                    }
+                    if (ret == RK_SUCCESS) {
+                        bitrate = next;
+                        log_debug("Video bitrate target=%u max=%u kbit/s", bitrate.target, bitrate.maximum);
+                    } else {
+                        log_error("Failed to update video bitrate: %#x", ret);
+                    }
+                }
+            }
             FD_ZERO(&fds);
             FD_SET(video_dev_fd, &fds);
             tv.tv_sec = 1;
@@ -1036,4 +1045,8 @@ void video_set_codec_type(int type) {
 
 int video_get_codec_type() {
     return codec_type;
+}
+
+void video_set_remb(uint32_t bitrate) {
+    atomic_store(&receiver_bitrate, bitrate);
 }
