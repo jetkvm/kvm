@@ -226,7 +226,7 @@ export function UpdateVideoPausedOverlay({ show }: UpdateVideoPausedOverlayProps
     <AnimatePresence>
       {show && (
         <motion.div
-          className="aspect-video h-full w-full"
+          className="absolute inset-0 z-10 aspect-video h-full w-full"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0 } }}
