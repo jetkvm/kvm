@@ -33,7 +33,8 @@ type Session struct {
 	HidChannel               *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
 
-	rpcQueue chan webrtc.DataChannelMessage
+	rpcQueue        chan webrtc.DataChannelMessage
+	orderedRPCQueue chan orderedRPCCall
 
 	hidRPCAvailable          bool
 	lastKeepAliveArrivalTime time.Time  // Track when last keep-alive packet arrived
@@ -309,6 +310,59 @@ func (s *Session) enqueueHidMessage(queueIndex int, msg hidQueueMessage) bool {
 	}
 }
 
+const orderedRPCQueueSize = 64
+
+// orderedRPCCall is a dispatched RPC waiting to run on the session's ordered
+// worker.
+type orderedRPCCall struct {
+	request JSONRPCRequest
+	handler RPCHandler
+}
+
+func (s *Session) initOrderedRPCQueue() {
+	// serialise handlers marked Ordered onto one worker so they are applied in
+	// the order the client sent them, without their native calls stalling the
+	// rpcQueue pump that every other RPC shares
+	queue := make(chan orderedRPCCall, orderedRPCQueueSize)
+	s.orderedRPCQueue = queue
+	go s.handleOrderedRPCQueue(queue)
+}
+
+func (s *Session) handleOrderedRPCQueue(queue <-chan orderedRPCCall) {
+	for {
+		select {
+		case <-s.done:
+			return
+		default:
+		}
+
+		select {
+		case <-s.done:
+			return
+		case call := <-queue:
+			invokeRPCHandler(call.request, call.handler, s)
+		}
+	}
+}
+
+// enqueueOrderedRPC hands a call to the ordered worker. The send never blocks:
+// the pump it runs on must keep draining for the rest of the session's RPCs. A
+// full queue means the worker is wedged on a native call, so the call is
+// dropped — the session stays responsive and the client can resend.
+func (s *Session) enqueueOrderedRPC(call orderedRPCCall) {
+	if s == nil || s.orderedRPCQueue == nil || s.isClosed() {
+		return
+	}
+
+	select {
+	case s.orderedRPCQueue <- call:
+	default:
+		jsonRpcLogger.Error().
+			Str("method", call.request.Method).
+			Msg("dropping ordered RPC; queue full")
+	}
+}
+
 const keysDownStateQueueSize = 64
 
 func (s *Session) initKeysDownStateQueue() {
@@ -525,6 +579,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	}
 	session.initQueues()
 	session.initKeysDownStateQueue()
+	session.initOrderedRPCQueue()
 
 	rpcQueue := session.rpcQueue
 	go func() {
@@ -539,8 +594,11 @@ func newSession(config SessionConfig) (*Session, error) {
 			case <-session.done:
 				return
 			case msg := <-rpcQueue:
-				// TODO: only use goroutine if the task is asynchronous
-				go onRPCMessage(msg, session)
+				// Runs on this goroutine so that handlers marked Ordered are
+				// handed to their worker in the order they were dequeued.
+				// onRPCMessage only parses and routes; it never runs a handler
+				// here, so a slow one cannot stall the queue.
+				onRPCMessage(msg, session)
 			}
 		}
 	}()

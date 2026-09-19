@@ -99,6 +99,12 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 }
 
+// onRPCMessage parses one message off the session's rpcQueue and routes it to a
+// handler. It runs on the queue's pump goroutine and never runs a handler
+// itself: handlers marked Ordered go to the session's ordered worker, which
+// applies them one at a time in the order they were dequeued, and everything
+// else gets a fresh goroutine. Both hand-offs are non-blocking, so no handler
+// can stall the pump and with it the rest of the session's RPCs.
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
@@ -120,14 +126,6 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger := jsonRpcLogger.With().
-		Str("method", request.Method).
-		Interface("params", request.Params).
-		Interface("id", request.ID).Logger()
-
-	scopedLogger.Trace().Msg("Received RPC request")
-	t := time.Now()
-
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -141,6 +139,25 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		writeJSONRPCResponse(errorResponse, session)
 		return
 	}
+
+	if handler.Ordered {
+		session.enqueueOrderedRPC(orderedRPCCall{request: request, handler: handler})
+		return
+	}
+	go invokeRPCHandler(request, handler, session)
+}
+
+// invokeRPCHandler runs one handler and writes its response back to the
+// session. Called from the session's ordered worker for Ordered handlers, and
+// from a per-message goroutine for everything else.
+func invokeRPCHandler(request JSONRPCRequest, handler RPCHandler, session *Session) {
+	scopedLogger := jsonRpcLogger.With().
+		Str("method", request.Method).
+		Interface("params", request.Params).
+		Interface("id", request.ID).Logger()
+
+	scopedLogger.Trace().Msg("Received RPC request")
+	t := time.Now()
 
 	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
 	if err != nil {
@@ -561,6 +578,15 @@ type RPCHandler struct {
 	Func           any
 	Params         []string
 	OptionalParams []string
+
+	// Ordered runs the handler on the session's ordered worker instead of in
+	// a fresh per-message goroutine, so consecutive calls are applied in the
+	// order they were dequeued rather than in whichever order the scheduler
+	// happens to run them. Set it on handlers that assign shared state, where
+	// losing that race leaves the wrong value behind. Handlers that opt in
+	// still share one worker, so a slow one delays the other Ordered handlers
+	// (but nothing else).
+	Ordered bool
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
@@ -1415,7 +1441,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
-	"setVideoStreamPaused":       {Func: rpcSetVideoStreamPaused, Params: []string{"paused"}},
+	"setVideoStreamPaused":       {Func: rpcSetVideoStreamPaused, Params: []string{"paused"}, Ordered: true},
 	"getDevChannelState":         {Func: rpcGetDevChannelState},
 	"setDevChannelState":         {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":            {Func: rpcGetLocalVersion},
