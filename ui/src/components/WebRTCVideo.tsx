@@ -5,7 +5,14 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
-import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
+import {
+  useCapability,
+  useRTCStore,
+  useSettingsStore,
+  useUiStore,
+  useUpdateStore,
+  useVideoStore,
+} from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
@@ -17,6 +24,7 @@ import {
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
+  UpdateVideoPausedOverlay,
 } from "@components/VideoOverlay";
 import OcrOverlay from "@components/OcrOverlay";
 import { keys } from "@/keyboardMappings";
@@ -83,6 +91,12 @@ export default function WebRTCVideo({
   const rawHdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const [isInitialHdmiErrorGraceActive, setIsInitialHdmiErrorGraceActive] = useState(false);
   const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
+
+  // A device without video_during_update pauses the stream once the
+  // firmware download starts (systemUpdatePending) until it reboots.
+  const videoDuringUpdate = useCapability("video_during_update");
+  const { otaState } = useUpdateStore();
+  const updatePausesVideo = !videoDuringUpdate && otaState.updating && otaState.systemUpdatePending;
 
   // Video-related
   const handleResize = useCallback(
@@ -737,6 +751,7 @@ export default function WebRTCVideo({
                           <div className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                            <UpdateVideoPausedOverlay show={updatePausesVideo} />
                             <NoAutoplayPermissionsOverlay
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {

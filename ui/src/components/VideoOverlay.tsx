@@ -214,6 +214,41 @@ export function PeerConnectionDisconnectedOverlay({ show }: PeerConnectionDiscon
   );
 }
 
+interface UpdateVideoPausedOverlayProps {
+  readonly show: boolean;
+}
+
+// Shown while a device without the video_during_update capability installs
+// an update: it pauses the stream, so the last frame would otherwise sit
+// there looking like a hang.
+export function UpdateVideoPausedOverlay({ show }: UpdateVideoPausedOverlayProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="aspect-video h-full w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <OverlayContent>
+            <div className="flex flex-col items-start gap-y-1">
+              <LoadingSpinner className="h-12 w-12 text-blue-800 dark:text-blue-200" />
+              <div className="space-y-2 text-left text-black dark:text-white">
+                <h2 className="text-xl font-bold">{m.video_overlay_update_paused_title()}</h2>
+                <p className="text-sm text-slate-700 dark:text-slate-300">
+                  {m.video_overlay_update_paused_description()}
+                </p>
+              </div>
+            </div>
+          </OverlayContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 interface HDMIErrorOverlayProps {
   readonly show: boolean;
   readonly hdmiState: string;
