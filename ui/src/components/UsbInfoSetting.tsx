@@ -29,6 +29,7 @@ export interface USBConfig {
   serial_number: string;
   manufacturer: string;
   product: string;
+  configuration: string;
 }
 
 const usbConfigs = [
@@ -66,6 +67,7 @@ export function UsbInfoSetting() {
         serial_number: deviceId,
         manufacturer: "JetKVM",
         product: "USB Emulation Device",
+        configuration: "Config 1: HID",
       },
       "Logitech USB Input Device": {
         vendor_id: "0x046d",
@@ -73,6 +75,7 @@ export function UsbInfoSetting() {
         serial_number: generatedSerialNumber,
         manufacturer: "Logitech (x64)",
         product: "Logitech USB Input Device",
+        configuration: "RQR24.11_B0036",
       },
       "Wireless MultiMedia Keyboard": {
         vendor_id: "0x045e",
@@ -80,6 +83,7 @@ export function UsbInfoSetting() {
         serial_number: generatedSerialNumber,
         manufacturer: "Microsoft",
         product: "Wireless MultiMedia Keyboard",
+        configuration: "Config 1: HID",
       },
       "Multimedia Pro Keyboard": {
         vendor_id: "0x413c",
@@ -87,6 +91,7 @@ export function UsbInfoSetting() {
         serial_number: generatedSerialNumber,
         manufacturer: "Dell Inc.",
         product: "Multimedia Pro Keyboard",
+        configuration: "Config 1: HID",
       },
     }),
     [deviceId],
@@ -203,6 +208,7 @@ function USBConfigDialog({
     serial_number: "",
     manufacturer: "",
     product: "",
+    configuration: "",
   });
 
   const { send } = useJsonRpc();
@@ -240,6 +246,10 @@ function USBConfigDialog({
 
   const handleUsbProduct = (value: string) => {
     setUsbConfigState({ ...usbConfigState, product: value });
+  };
+
+  const handleUsbConfiguration = (value: string) => {
+    setUsbConfigState({ ...usbConfigState, configuration: value });
   };
 
   return (
@@ -281,6 +291,13 @@ function USBConfigDialog({
           placeholder={m.usb_config_product_name_placeholder()}
           defaultValue={usbConfigState?.product}
           onChange={e => handleUsbProduct(e.target.value)}
+        />
+        <InputFieldWithLabel
+          required
+          label={m.usb_config_configuration_label()}
+          placeholder={m.usb_config_configuration_placeholder()}
+          defaultValue={usbConfigState?.configuration}
+          onChange={e => handleUsbConfiguration(e.target.value)}
         />
       </div>
       <div className="mt-6 flex gap-x-2">
