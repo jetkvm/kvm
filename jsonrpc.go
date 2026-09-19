@@ -417,8 +417,11 @@ type SSHKeyState struct {
 
 // rpcGetDeviceCapabilities lists the optional features this firmware supports.
 // The UI hides the controls for a capability the device does not report.
+// video_during_update: the video stream keeps running while an update
+// downloads and installs; a device without it pauses video for the
+// duration and the UI says so over the video.
 func rpcGetDeviceCapabilities() ([]string, error) {
-	return []string{"shell", "extensions", "usb_serial", "custom_edid", "upload_channel"}, nil
+	return []string{"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update"}, nil
 }
 
 // videoPausedBy is the session whose UI asked for the video stream to stop,

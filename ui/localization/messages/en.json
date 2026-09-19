@@ -1079,6 +1079,8 @@
     "video_overlay_try_again": "Try again",
     "video_overlay_try_wake": "Try to wake",
     "video_overlay_trying_wake": "Trying to wake…",
+    "video_overlay_update_paused_description": "The video stream stays off while the update downloads and installs. The device reconnects after it reboots.",
+    "video_overlay_update_paused_title": "Video paused during update",
     "video_pointer_lock_disabled": "Pointer lock disabled",
     "video_pointer_lock_enabled": "Pointer lock enabled — press Escape to unlock",
     "video_quality_high": "High",

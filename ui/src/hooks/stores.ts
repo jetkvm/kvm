@@ -733,7 +733,13 @@ export interface DeviceState {
 }
 
 // Optional device features reported by getDeviceCapabilities.
-export type Capability = "shell" | "extensions" | "usb_serial" | "custom_edid" | "upload_channel";
+export type Capability =
+  | "shell"
+  | "extensions"
+  | "usb_serial"
+  | "custom_edid"
+  | "upload_channel"
+  | "video_during_update"; // video keeps streaming while an update installs
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
