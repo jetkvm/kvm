@@ -124,6 +124,23 @@ func runJigglerCronTab() error {
 	return nil
 }
 
+// Absolute jiggle offsets are HID logical units, not pixels: the host scales
+// them by round(hid/32767*displayWidth) (see ui/e2e/helpers/hid.ts). A raw
+// offset of 1-3 quantizes to no visible movement on most displays, so use a
+// small percentage of the full range instead. This guarantees a host-visible
+// nudge regardless of display size while staying imperceptibly small.
+const (
+	absJiggleOffsetMin = 100
+	absJiggleOffsetMax = 300
+)
+
+// Relative jiggle offsets are already host pixels (or close to it), so a
+// small raw value is enough.
+const (
+	relJiggleOffsetMin = 1
+	relJiggleOffsetMax = 3
+)
+
 func runJiggler() {
 	if config.JigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
@@ -135,20 +152,28 @@ func runJiggler() {
 		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
 			logger.Debug().Msg("Jiggling mouse...")
-			dx := int8(rand.Intn(3) + 1)
-			dy := int8(rand.Intn(3) + 1)
-			if rand.Intn(2) == 0 {
-				dx = -dx
+			var err error
+			_, _, absPositionKnown := gadget.GetAbsMousePosition()
+			if gadget.HasAbsoluteMouse() && (absPositionKnown || !gadget.HasRelativeMouse()) {
+				err = rpcJiggleAbsMouseReport(absJiggleOffsetMin, absJiggleOffsetMax)
+			} else if gadget.HasRelativeMouse() {
+				dx := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
+				dy := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
+				err = rpcRelMouseReport(int8(dx), int8(dy), 0)
 			}
-			if rand.Intn(2) == 0 {
-				dy = -dy
-			}
-			err := rpcRelMouseReport(dx, dy, 0)
 			if err != nil {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
 		}
 	}
+}
+
+func randomSignedOffset(minMagnitude, maxMagnitude int) int {
+	magnitude := rand.Intn(maxMagnitude-minMagnitude+1) + minMagnitude
+	if rand.Intn(2) == 0 {
+		magnitude = -magnitude
+	}
+	return magnitude
 }
 
 func calculateJobDelta(s gocron.Scheduler) (time.Duration, error) {
