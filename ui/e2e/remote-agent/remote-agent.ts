@@ -376,7 +376,8 @@ export class RemoteAgent {
   // ── Device/system APIs ──
 
   async getUSBDevices(): Promise<USBDevice[]> {
-    return this.get<USBDevice[]>("/usb/devices");
+    // The Go agent encodes its nil slice as null during an empty USB scan.
+    return (await this.get<USBDevice[] | null>("/usb/devices")) ?? [];
   }
 
   async getMounts(): Promise<MountInfo[]> {
