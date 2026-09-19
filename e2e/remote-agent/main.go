@@ -360,7 +360,7 @@ func discoverJetKVMDevices() map[string]string {
 
 // listUSBDevices returns currently connected USB devices.
 func listUSBDevices() []USBDevice {
-	var devices []USBDevice
+	devices := []USBDevice{}
 
 	entries, err := filepath.Glob("/sys/bus/usb/devices/[0-9]*")
 	if err != nil {
@@ -431,7 +431,7 @@ type AudioDeviceInfo struct {
 
 // listInputDevices returns all input devices, with JetKVM ones flagged.
 func listInputDevices() []InputDeviceInfo {
-	var devices []InputDeviceInfo
+	devices := []InputDeviceInfo{}
 
 	data, err := os.ReadFile("/proc/bus/input/devices")
 	if err != nil {
@@ -493,7 +493,7 @@ func listInputDevices() []InputDeviceInfo {
 
 // getDisplayInfo reads display information from DRM sysfs.
 func getDisplayInfo() []DisplayInfo {
-	var displays []DisplayInfo
+	displays := []DisplayInfo{}
 
 	entries, err := filepath.Glob("/sys/class/drm/card*-*")
 	if err != nil {
@@ -547,7 +547,7 @@ func listAudioDevices() []AudioDeviceInfo {
 		return nil
 	}
 
-	var devices []AudioDeviceInfo
+	devices := []AudioDeviceInfo{}
 	for _, line := range strings.Split(string(out), "\n") {
 		m := aplayDeviceRE.FindStringSubmatch(strings.TrimSpace(line))
 		if m == nil {
@@ -742,7 +742,7 @@ func (a *Agent) stopAudioToneLocked() {
 
 // listMounts returns current mount points, filtered to interesting ones.
 func listMounts() []MountInfo {
-	var mounts []MountInfo
+	mounts := []MountInfo{}
 
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
