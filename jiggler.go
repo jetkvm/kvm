@@ -134,11 +134,14 @@ const (
 	absJiggleOffsetMax = 300
 )
 
-// Relative jiggle offsets are already host pixels (or close to it), so a
-// small raw value is enough.
+// Relative jiggling sends an out-and-back move (+N,+N then -N,-N), so net
+// displacement is zero and there's no position to anchor or go stale. A
+// smaller magnitude (the original #1424 fix used 1-3px) risks being
+// swallowed by pointer acceleration or an idle-detection threshold on the
+// host, which is likely why that fix didn't reliably prevent #1604.
 const (
-	relJiggleOffsetMin = 1
-	relJiggleOffsetMax = 3
+	relJiggleOffsetMin = 10
+	relJiggleOffsetMax = 20
 )
 
 func runJiggler() {
@@ -153,27 +156,21 @@ func runJiggler() {
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
 			logger.Debug().Msg("Jiggling mouse...")
 			var err error
-			_, _, absPositionKnown := gadget.GetAbsMousePosition()
-			if gadget.HasAbsoluteMouse() && (absPositionKnown || !gadget.HasRelativeMouse()) {
+			// Prefer the relative out-and-back nudge: it never anchors to a
+			// position, so it can't go stale or drift into the way of local
+			// work the way an absolute nudge can. Absolute is a last resort
+			// for configs where relative mouse is disabled entirely.
+			switch {
+			case gadget.HasRelativeMouse():
+				err = rpcJiggleRelMouseReport(relJiggleOffsetMin, relJiggleOffsetMax)
+			case gadget.HasAbsoluteMouse():
 				err = rpcJiggleAbsMouseReport(absJiggleOffsetMin, absJiggleOffsetMax)
-			} else if gadget.HasRelativeMouse() {
-				dx := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
-				dy := randomSignedOffset(relJiggleOffsetMin, relJiggleOffsetMax)
-				err = rpcRelMouseReport(int8(dx), int8(dy), 0)
 			}
 			if err != nil {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
 		}
 	}
-}
-
-func randomSignedOffset(minMagnitude, maxMagnitude int) int {
-	magnitude := rand.Intn(maxMagnitude-minMagnitude+1) + minMagnitude
-	if rand.Intn(2) == 0 {
-		magnitude = -magnitude
-	}
-	return magnitude
 }
 
 func calculateJobDelta(s gocron.Scheduler) (time.Duration, error) {

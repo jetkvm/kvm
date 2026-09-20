@@ -101,6 +101,12 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	u.relMouseLock.Lock()
 	defer u.relMouseLock.Unlock()
 
+	return u.relMouseReportLocked(mx, my, buttons)
+}
+
+// relMouseReportLocked writes a relative mouse report and tracks the last
+// reported button mask. Callers must hold relMouseLock.
+func (u *UsbGadget) relMouseReportLocked(mx int8, my int8, buttons uint8) error {
 	err := u.relMouseWriteHidFile([]byte{
 		buttons,  // Buttons
 		byte(mx), // X
@@ -112,8 +118,37 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 		return err
 	}
 
+	u.lastRelButtons = buttons
 	u.resetUserInputTime()
 	return nil
+}
+
+// JiggleRelMouse nudges the cursor with a relative out-and-back move: +N,+N
+// then -N,-N, with N a random magnitude in [minMagnitude, maxMagnitude] on
+// each axis. Net displacement is zero, so unlike an absolute nudge there's
+// no position to anchor and nothing that can go stale relative to the host's
+// real cursor. Both writes happen under a single lock acquisition, so a real
+// report from a live session can't land between them, and it reuses the
+// last reported button mask so it never releases a button held mid-drag.
+func (u *UsbGadget) JiggleRelMouse(minMagnitude, maxMagnitude int) error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
+	if !u.enabledDevices.RelativeMouse {
+		return nil
+	}
+
+	u.relMouseLock.Lock()
+	defer u.relMouseLock.Unlock()
+
+	dx := randomSignedOffset(minMagnitude, maxMagnitude)
+	dy := randomSignedOffset(minMagnitude, maxMagnitude)
+	buttons := u.lastRelButtons
+
+	if err := u.relMouseReportLocked(int8(dx), int8(dy), buttons); err != nil {
+		return err
+	}
+	return u.relMouseReportLocked(int8(-dx), int8(-dy), buttons)
 }
 
 func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
