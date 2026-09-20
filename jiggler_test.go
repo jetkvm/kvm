@@ -10,6 +10,27 @@ import (
 // A cold boot builds the schedule while the clock is still at the epoch, and
 // the later jump to real time wedges gocron in a multi-million-step catch-up
 // walk. initJiggler waits this out instead.
+// Saving jiggler settings during the deferred-start window must not build the
+// schedule: the scheduler is nil, so nothing stops it, and it would land back
+// on the epoch clock - the exact catch-up this defer exists to avoid.
+func TestRebuildJigglerCronTabSkipsWhileDeferred(t *testing.T) {
+	schedulerLock.Lock()
+	jigglerSchedulePending = true
+	schedulerLock.Unlock()
+	t.Cleanup(func() {
+		schedulerLock.Lock()
+		jigglerSchedulePending = false
+		schedulerLock.Unlock()
+	})
+
+	if err := rebuildJigglerCronTab(); err != nil {
+		t.Fatalf("rebuildJigglerCronTab while deferred: %v", err)
+	}
+	if scheduler != nil {
+		t.Fatal("built a scheduler while the clock was still untrustworthy")
+	}
+}
+
 func TestWaitForTrustworthyClockReturnsOnSync(t *testing.T) {
 	calls := 0
 	synced := func() bool {

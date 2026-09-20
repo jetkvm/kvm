@@ -21,9 +21,13 @@ type JigglerConfig struct {
 var jobDelta time.Duration = 0
 var scheduler gocron.Scheduler = nil
 
-// schedulerLock serialises scheduler replacement: initJiggler may still be
-// waiting for a trustworthy clock when a config change arrives.
+// schedulerLock serialises scheduler replacement, and guards the flag below.
 var schedulerLock sync.Mutex
+
+// jigglerSchedulePending is set while initJiggler waits for a trustworthy
+// clock. A config change arriving in that window must not build the schedule
+// itself, or it would put it back on the epoch clock.
+var jigglerSchedulePending bool
 
 func rpcSetJigglerState(enabled bool) error {
 	config.JigglerEnabled = enabled
@@ -52,13 +56,10 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 	logger.Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
 	config.JigglerConfig = &jigglerConfig
-	schedulerLock.Lock()
-	err := replaceJigglerCronTabLocked()
-	schedulerLock.Unlock()
-	if err != nil {
+	if err := rebuildJigglerCronTab(); err != nil {
 		return err
 	}
-	err = SaveConfig()
+	err := SaveConfig()
 	if err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
@@ -97,6 +98,10 @@ func initJiggler() {
 		startJigglerCronTab()
 		return
 	}
+
+	schedulerLock.Lock()
+	jigglerSchedulePending = true
+	schedulerLock.Unlock()
 
 	logger.Info().Msg("system clock is not yet trustworthy, deferring jiggler schedule until time sync")
 	go func() {
@@ -139,9 +144,24 @@ func startJigglerCronTab() {
 	schedulerLock.Lock()
 	defer schedulerLock.Unlock()
 
+	jigglerSchedulePending = false
 	if err := replaceJigglerCronTabLocked(); err != nil {
 		logger.Error().Err(err).Msg("error scheduling jiggler crontab")
 	}
+}
+
+// rebuildJigglerCronTab rebuilds the schedule from the current config, unless
+// the deferred start is still pending: building now would defeat the wait. That
+// start reads the config when it runs, so the new settings still apply.
+func rebuildJigglerCronTab() error {
+	schedulerLock.Lock()
+	defer schedulerLock.Unlock()
+
+	if jigglerSchedulePending {
+		logger.Info().Msg("clock not yet trustworthy, jiggler config saved for the deferred schedule")
+		return nil
+	}
+	return replaceJigglerCronTabLocked()
 }
 
 // replaceJigglerCronTabLocked rebuilds the schedule. Caller must hold schedulerLock.
