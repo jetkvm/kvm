@@ -419,6 +419,13 @@ func prepareHTTPMount(url string, mode VirtualMediaMode) error {
 	httpRangeReader = httpreadat.New(url)
 	logger.Info().Str("url", url).Int64("size", urlInfo.Size).Msg("using remote url")
 
+	// f_mass_storage refuses cdrom and ro while the LUN holds an open medium,
+	// and a refused write aborts the whole gadget transaction. Eject first; on
+	// an already empty LUN this is a no-op.
+	if err := gadget.SetMassStorageImage(""); err != nil {
+		return fmt.Errorf("failed to eject before setting mass storage mode: %w", err)
+	}
+
 	if err := setMassStorageMode(mode == CDROM); err != nil {
 		return fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
@@ -469,6 +476,12 @@ func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 	fileInfo, err := os.Stat(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// Same as in prepareHTTPMount: the mode cannot be changed against an open
+	// medium, and a refused write aborts the gadget transaction.
+	if err := gadget.SetMassStorageImage(""); err != nil {
+		return fmt.Errorf("failed to eject before setting mass storage mode: %w", err)
 	}
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
