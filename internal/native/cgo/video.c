@@ -25,6 +25,7 @@
 #include <sys/socket.h>
 #include "video.h"
 #include "video_bitrate.h"
+#include "video_remb_gate.h"
 #include "ctrl.h"
 #include "log.h"
 
@@ -44,7 +45,28 @@ MB_POOL memPool = MB_INVALID_POOLID;
 bool sleep_mode_available = false;
 bool should_exit = false;
 _Atomic float quality_factor = 1.0f;
+// Latest receiver estimate, its report count and the encoded byte count feed
+// the REMB gate, which only the capture thread steps.
 static _Atomic uint32_t receiver_bitrate = 0;
+static _Atomic uint32_t receiver_reports = 0;
+static _Atomic uint64_t encoded_bytes = 0;
+static video_remb_gate remb_gate;
+static uint32_t remb_gate_reports = 0;
+
+// Auto: the gate turns receiver reports into a target at or below High's
+// rate; a manual preset ignores receiver feedback (video_bitrate_for).
+static uint32_t gated_bitrate_limit(int width, int height, RK_U64 now_us)
+{
+    if (quality_factor != 0) return 0;
+    const uint32_t reports = atomic_load(&receiver_reports);
+    const int64_t now_ms = (int64_t)(now_us / 1000);
+    if (reports != remb_gate_reports) {
+        remb_gate_reports = reports;
+        video_remb_gate_report(&remb_gate, atomic_load(&receiver_bitrate), now_ms);
+    }
+    const video_bitrate high = video_bitrate_for(0, width, height, 0);
+    return video_remb_gate_step(&remb_gate, high.target * 1000U, atomic_load(&encoded_bytes), now_ms);
+}
 int codec_type = 0;
 
 static void *venc_read_stream(void *arg);
@@ -429,6 +451,7 @@ static void *venc_read_stream(void *arg)
                    loopCount, stFrame.u32Seq, stFrame.pstPack->u32Len,
                    stFrame.pstPack->u64PTS, nowUs - stFrame.pstPack->u64PTS);
             pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
+            atomic_fetch_add(&encoded_bytes, stFrame.pstPack->u32Len);
             video_send_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
             s32Ret = RK_MPI_VENC_ReleaseStream(VENC_CHANNEL, &stFrame);
             if (s32Ret != RK_SUCCESS)
@@ -646,8 +669,10 @@ void *run_video_stream(void *arg)
 
         struct v4l2_plane tmp_plane;
 
-        // Set VENC parameters
-        video_bitrate bitrate = video_bitrate_for(quality_factor, width, height, atomic_load(&receiver_bitrate));
+        // Set VENC parameters. A new stream starts from the ceiling: the
+        // gate's evidence was against the previous stream.
+        memset(&remb_gate, 0, sizeof(remb_gate));
+        video_bitrate bitrate = video_bitrate_for(quality_factor, width, height, 0);
         RK_S32 ret = venc_start(bitrate.target, bitrate.maximum, width, height, fps);
         if (ret != RK_SUCCESS)
         {
@@ -680,7 +705,8 @@ void *run_video_stream(void *arg)
             RK_U64 now = get_us();
             if (now - last_bitrate_update >= 250000) {
                 last_bitrate_update = now;
-                video_bitrate next = video_bitrate_for(quality_factor, width, height, atomic_load(&receiver_bitrate));
+                video_bitrate next = video_bitrate_for(quality_factor, width, height,
+                                                       gated_bitrate_limit(width, height, now));
                 if (next.target != bitrate.target || next.maximum != bitrate.maximum) {
                     VENC_CHN_ATTR_S attr;
                     ret = RK_MPI_VENC_GetChnAttr(VENC_CHANNEL, &attr);
@@ -698,7 +724,9 @@ void *run_video_stream(void *arg)
                     }
                     if (ret == RK_SUCCESS) {
                         bitrate = next;
-                        log_debug("Video bitrate target=%u max=%u kbit/s", bitrate.target, bitrate.maximum);
+                        log_debug("Video bitrate target=%u max=%u kbit/s (%s remb=%u achieved=%u)",
+                                  bitrate.target, bitrate.maximum,
+                                  video_remb_reason_name(remb_gate.reason), remb_gate.remb, remb_gate.achieved);
                     } else {
                         log_error("Failed to update video bitrate: %#x", ret);
                     }
@@ -1049,4 +1077,7 @@ int video_get_codec_type() {
 
 void video_set_remb(uint32_t bitrate) {
     atomic_store(&receiver_bitrate, bitrate);
+    // Zero means no receiver is left; it is not an estimate. The gate holds
+    // its target until fresh reports arrive and expires them after 5 s.
+    if (bitrate != 0) atomic_fetch_add(&receiver_reports, 1);
 }
