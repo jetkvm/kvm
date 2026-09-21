@@ -333,7 +333,7 @@
     "general_update_status_progress": "{part} progreso",
     "general_update_status_verifying": "Verificando la actualización {update_type} …",
     "general_update_system_type": "Sistema",
-    "general_update_system_update_title": "Actualización del sistema Linux",
+    "general_update_system_update_title": "Actualización del sistema",
     "general_update_up_to_date_description": "Su sistema está ejecutando la última versión. No hay actualizaciones disponibles actualmente.",
     "general_update_up_to_date_title": "El sistema está actualizado",
     "general_update_updating_description": "No apagues tu dispositivo. Este proceso puede tardar unos minutos.",

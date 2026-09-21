@@ -333,7 +333,7 @@
     "general_update_status_progress": "進捗 {part}",
     "general_update_status_verifying": "{update_type} 更新を検証中…",
     "general_update_system_type": "システム",
-    "general_update_system_update_title": "Linuxシステム更新",
+    "general_update_system_update_title": "システム更新",
     "general_update_up_to_date_description": "システムは最新バージョンです。現在利用可能な更新はありません。",
     "general_update_up_to_date_title": "システムは最新です",
     "general_update_updating_description": "デバイスの電源を切らないでください。この処理には数分かかる場合があります。",

@@ -333,7 +333,7 @@
     "general_update_status_progress": "{part} framsteg",
     "general_update_status_verifying": "Verifierar {update_type} uppdatering…",
     "general_update_system_type": "System",
-    "general_update_system_update_title": "Linux-systemuppdatering",
+    "general_update_system_update_title": "Systemuppdatering",
     "general_update_up_to_date_description": "Ditt system kör den senaste versionen. Inga uppdateringar finns tillgängliga för närvarande.",
     "general_update_up_to_date_title": "Systemet är uppdaterat",
     "general_update_updating_description": "Stäng inte av enheten. Den här processen kan ta några minuter.",

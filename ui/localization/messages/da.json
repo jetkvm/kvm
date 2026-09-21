@@ -333,7 +333,7 @@
     "general_update_status_progress": "{part} fremskridt",
     "general_update_status_verifying": "Bekræfter {update_type} opdatering…",
     "general_update_system_type": "System",
-    "general_update_system_update_title": "Linux-systemopdatering",
+    "general_update_system_update_title": "Systemopdatering",
     "general_update_up_to_date_description": "Dit system kører den nyeste version. Der er ingen tilgængelige opdateringer i øjeblikket.",
     "general_update_up_to_date_title": "Systemet er opdateret",
     "general_update_updating_description": "Sluk ikke enheden. Denne proces kan tage et par minutter.",
