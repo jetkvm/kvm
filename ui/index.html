@@ -77,6 +77,300 @@
     class="h-full w-full bg-[#f3f9ff] font-sans text-sm antialiased md:text-base dark:bg-slate-900"
   >
     <div id="root" class="h-full w-full"></div>
+    <div id="skeleton" aria-hidden="true">
+      <div class="sk-header">
+        <svg
+          class="sk-logo"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 89 24"
+          fill="none"
+        >
+          <path
+            fill="oklch(48.8% .243 264.376)"
+            d="M0 6a6 6 0 0 1 6-6h12a6 6 0 0 1 6 6v12a6 6 0 0 1-6 6H6a6 6 0 0 1-6-6V6Z"
+          />
+          <path
+            fill="#fff"
+            d="M13.885 12a1.895 1.895 0 1 1-3.79 0 1.895 1.895 0 0 1 3.79 0Z"
+          />
+          <path
+            fill="#fff"
+            fill-rule="evenodd"
+            d="M7.59 9.363c.49.182.74.727.558 1.218A4.103 4.103 0 0 0 12 16.105a4.103 4.103 0 0 0 3.852-5.526.947.947 0 0 1 1.777-.658A5.998 5.998 0 0 1 12 18a5.998 5.998 0 0 1-5.628-8.078.947.947 0 0 1 1.218-.56ZM11.993 7.895c-.628 0-1.22.14-1.75.39a.947.947 0 1 1-.808-1.714A5.985 5.985 0 0 1 11.993 6c.913 0 1.78.204 2.557.57a.947.947 0 1 1-.808 1.715 4.09 4.09 0 0 0-1.75-.39Z"
+            clip-rule="evenodd"
+          />
+          <path
+            fill="currentColor"
+            d="m28.32 13.84 1.872-.384v1.056c0 .672.165 1.163.496 1.472.33.299.747.448 1.248.448.512 0 .917-.16 1.216-.48.299-.33.448-.784.448-1.36V6.656h1.92v7.888c0 .501-.085.976-.256 1.424-.17.448-.41.843-.72 1.184a3.57 3.57 0 0 1-1.12.8 3.625 3.625 0 0 1-1.472.288 4.196 4.196 0 0 1-1.504-.256 3.424 3.424 0 0 1-1.152-.752c-.31-.32-.55-.704-.72-1.152a4.196 4.196 0 0 1-.256-1.504v-.736Zm14.672-.592a1.866 1.866 0 0 0-.144-.64 1.469 1.469 0 0 0-.352-.56 1.776 1.776 0 0 0-.592-.384 2.19 2.19 0 0 0-.832-.144c-.288 0-.55.053-.784.16-.224.096-.416.23-.576.4-.16.16-.288.347-.384.56a1.61 1.61 0 0 0-.16.608h3.824Zm1.776 2.528a3.633 3.633 0 0 1-.464.96c-.203.299-.454.56-.752.784-.299.224-.64.4-1.024.528s-.81.192-1.28.192c-.533 0-1.04-.09-1.52-.272a3.846 3.846 0 0 1-1.264-.816 4.23 4.23 0 0 1-.88-1.312c-.214-.523-.32-1.115-.32-1.776 0-.619.101-1.179.304-1.68.213-.501.496-.928.848-1.28.352-.363.757-.64 1.216-.832a3.487 3.487 0 0 1 1.424-.304c.597 0 1.13.096 1.6.288.48.192.88.464 1.2.816.33.352.581.779.752 1.28.17.49.256 1.045.256 1.664 0 .15-.005.283-.016.4a.814.814 0 0 1-.032.192H39.12c.01.299.075.57.192.816.117.245.272.459.464.64s.41.325.656.432c.256.096.528.144.816.144.565 0 .997-.128 1.296-.384.31-.267.528-.592.656-.976l1.568.496Zm4.221-5.568h1.617v1.648h-1.617v3.616c0 .341.08.592.24.752.16.15.411.224.752.224.128 0 .256-.005.384-.016.128-.021.214-.037.256-.048v1.536c-.053.021-.17.053-.352.096-.18.053-.442.08-.783.08-.726 0-1.296-.203-1.712-.608-.416-.405-.624-.976-.624-1.712v-3.92h-1.44v-1.648h.4c.416 0 .72-.117.912-.352a1.32 1.32 0 0 0 .288-.864V7.824h1.68v2.384Zm7.076 2.88-1.504 1.648V18h-1.92V6.656h1.92v5.44l4.88-5.44h2.528l-4.592 5.008L62.017 18h-2.416l-3.536-4.912ZM70.67 6.656h2.032L68.414 18h-1.952L62.238 6.656h2.08l3.168 8.832 3.184-8.832ZM84.795 18V9.648L81.26 18h-1.664l-3.504-8.32V18H74.22V6.656h2.56l3.68 8.656 3.632-8.656H86.7V18h-1.904Z"
+          />
+        </svg>
+        <div class="sk-status">
+          <div class="sk-card">
+            <i style="width: 84px"></i
+            ><i style="width: 64px" class="sk-dot"></i>
+          </div>
+          <div class="sk-card">
+            <i style="width: 32px"></i
+            ><i style="width: 80px" class="sk-dot"></i>
+          </div>
+        </div>
+      </div>
+      <div class="sk-actions">
+        <div>
+          <b style="width: 112px"></b><b style="width: 108px"></b
+          ><b style="width: 112px"></b><b style="width: 128px"></b>
+        </div>
+        <div>
+          <b style="width: 88px"></b><b style="width: 130px"></b
+          ><b style="width: 84px"></b><b style="width: 118px"></b>
+        </div>
+      </div>
+      <div class="sk-stage"></div>
+      <div class="sk-footer"><i style="width: 32px"></i></div>
+      <div class="sk-overlay">
+        <div class="sk-video">
+          <svg
+            class="sk-spinner"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              opacity=".25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            />
+            <path
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+        </div>
+      </div>
+    </div>
+    <style>
+      #skeleton {
+        --sk-bg: #f3f9ff;
+        --sk-surface: #fff;
+        --sk-line: oklch(27.9% 0.041 260.031 / 20%);
+        --sk-outline: oklch(27.9% 0.041 260.031 / 30%);
+        --sk-bone: oklch(92.9% 0.013 255.508);
+        --sk-bone-strong: oklch(86.9% 0.022 252.894);
+        --sk-stage: oklch(97% 0.014 254.604 / 32%);
+        --sk-dot: oklch(80.9% 0.105 251.813);
+        --sk-tint: oklch(97% 0.014 254.604 / 25%);
+        --sk-spinner: oklch(42.4% 0.199 265.638);
+        --sk-brand: oklch(48.8% 0.243 264.376);
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        background: var(--sk-bg);
+        color: var(--sk-brand);
+        user-select: none;
+        visibility: hidden;
+        animation: sk-reveal 0s linear 500ms forwards;
+        transition: opacity 150ms ease-out;
+      }
+      @keyframes sk-reveal {
+        to {
+          visibility: visible;
+        }
+      }
+      .dark #skeleton {
+        --sk-bg: oklch(20.8% 0.042 265.755);
+        --sk-surface: oklch(20.8% 0.042 265.755);
+        --sk-line: oklch(86.9% 0.022 252.894 / 20%);
+        --sk-outline: oklch(86.9% 0.022 252.894 / 20%);
+        --sk-bone: oklch(37.2% 0.044 257.287);
+        --sk-bone-strong: oklch(44.6% 0.043 257.281);
+        --sk-stage: oklch(27.9% 0.041 260.031 / 32%);
+        --sk-dot: oklch(37.2% 0.044 257.287);
+        --sk-tint: oklch(27.9% 0.041 260.031 / 25%);
+        --sk-spinner: oklch(88.2% 0.059 254.128);
+        --sk-brand: #fff;
+      }
+      #skeleton.sk-done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #skeleton i {
+        display: block;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--sk-bone);
+      }
+      .sk-header,
+      .sk-actions,
+      .sk-footer {
+        background: var(--sk-surface);
+      }
+      .sk-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
+        padding: 0 32px;
+        border-bottom: 1px solid var(--sk-line);
+      }
+      .sk-logo {
+        height: 24px;
+        width: 89px;
+      }
+      .sk-status {
+        display: flex;
+        gap: 8px;
+      }
+      .sk-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        width: 159px;
+        height: 40px;
+        padding: 0 10px;
+        border-radius: 4px;
+        background: var(--sk-surface);
+        outline: 1px solid var(--sk-outline);
+      }
+      .dark .sk-card {
+        background: oklch(27.9% 0.041 260.031);
+      }
+      .sk-dot {
+        position: relative;
+        margin-left: 12px;
+      }
+      .sk-dot::before {
+        content: "";
+        position: absolute;
+        left: -12px;
+        top: 0;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--sk-bone-strong);
+      }
+      .sk-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 8px 16px;
+        min-height: 39.5px;
+        padding: 6px 32px;
+        border-bottom: 1px solid var(--sk-line);
+      }
+      .sk-actions > div {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      #skeleton b {
+        display: flex;
+        align-items: center;
+        height: 28px;
+        padding: 0 12px;
+        border-radius: 4px;
+        background: var(--sk-surface);
+        outline: 1px solid var(--sk-outline);
+        outline-offset: -1px;
+      }
+      #skeleton b::before {
+        content: "";
+        flex: 1;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--sk-bone);
+      }
+      .sk-stage {
+        background-color: var(--sk-stage);
+        background-image:
+          radial-gradient(var(--sk-dot) 0.5px, transparent 0.5px),
+          radial-gradient(var(--sk-dot) 0.5px, transparent 0.5px);
+        background-position:
+          0 0,
+          10px 10px;
+        background-size: 20px 20px;
+      }
+      .sk-overlay {
+        position: absolute;
+        top: 57px;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .sk-video {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 80rem;
+        height: 100%;
+        max-height: 720px;
+        border-radius: 6px;
+        background-color: var(--sk-surface);
+        background-image:
+          linear-gradient(to top right, var(--sk-tint), transparent),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='%23dbeafe' stroke-opacity='.25'%3E%3Cpath d='M0 .5H31.5V32'/%3E%3C/svg%3E");
+        outline: 1px solid var(--sk-outline);
+        outline-offset: -1px;
+        color: var(--sk-spinner);
+      }
+      .dark .sk-video {
+        background-color: oklch(27.9% 0.041 260.031);
+        background-image:
+          linear-gradient(to top right, var(--sk-tint), transparent),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='%23334155' stroke-opacity='.07'%3E%3Cpath d='M0 .5H31.5V32'/%3E%3C/svg%3E");
+      }
+      .sk-spinner {
+        width: 28px;
+        height: 28px;
+        animation: sk-spin 1s linear infinite;
+      }
+      @keyframes sk-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .sk-footer {
+        display: flex;
+        align-items: center;
+        height: 25px;
+        padding: 0 8px;
+        border-top: 1px solid var(--sk-outline);
+      }
+      @media (max-width: 767px) {
+        .sk-status {
+          display: none;
+        }
+      }
+    </style>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var skeleton = document.getElementById("skeleton");
+        var observer = new MutationObserver(function () {
+          if (!root.firstElementChild) return;
+          observer.disconnect();
+          if (getComputedStyle(skeleton).visibility === "hidden") {
+            skeleton.remove();
+            return;
+          }
+          skeleton.classList.add("sk-done");
+          setTimeout(function () {
+            skeleton.remove();
+          }, 200);
+        });
+        observer.observe(root, { childList: true });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
