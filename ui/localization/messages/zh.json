@@ -333,7 +333,7 @@
     "general_update_status_progress": "更新进度 {part}",
     "general_update_status_verifying": "正在校验 {update_type} 更新...",
     "general_update_system_type": "系统",
-    "general_update_system_update_title": "Linux 系统更新",
+    "general_update_system_update_title": "系统更新",
     "general_update_up_to_date_description": "您的系统已是最新版本，当前无可用更新。",
     "general_update_up_to_date_title": "系统已是最新",
     "general_update_updating_description": "更新过程中请勿关闭设备电源。此过程可能需要几分钟时间。",

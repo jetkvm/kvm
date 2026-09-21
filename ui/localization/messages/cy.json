@@ -328,7 +328,7 @@
     "general_update_status_progress": "Cynnydd {part}",
     "general_update_status_verifying": "Yn gwirio diweddariad {update_type}…",
     "general_update_system_type": "System",
-    "general_update_system_update_title": "Diweddariad System Linux",
+    "general_update_system_update_title": "Diweddariad System",
     "general_update_up_to_date_description": "Mae eich system yn rhedeg y fersiwn diweddaraf. Nid oes diweddariadau ar gael ar hyn o bryd.",
     "general_update_up_to_date_title": "Mae'r system yn gyfredol",
     "general_update_updating_description": "Peidiwch â diffodd eich dyfais. Gall y broses hon gymryd ychydig funudau.",

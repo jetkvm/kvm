@@ -333,7 +333,7 @@
     "general_update_status_progress": "Прогресс {part}",
     "general_update_status_verifying": "Проверка обновления {update_type}…",
     "general_update_system_type": "Система",
-    "general_update_system_update_title": "Обновление Linux-системы",
+    "general_update_system_update_title": "Обновление системы",
     "general_update_up_to_date_description": "Ваша система обновлена. Новых обновлений нет.",
     "general_update_up_to_date_title": "Система актуальна",
     "general_update_updating_description": "Пожалуйста, не выключайте устройство. Процесс может занять несколько минут.",

@@ -333,7 +333,7 @@
     "general_update_status_progress": "{part} fremgang",
     "general_update_status_verifying": "Verifiserer {update_type} oppdatering…",
     "general_update_system_type": "System",
-    "general_update_system_update_title": "Linux-systemoppdatering",
+    "general_update_system_update_title": "Systemoppdatering",
     "general_update_up_to_date_description": "Systemet ditt kjører den nyeste versjonen. Ingen oppdateringer er tilgjengelige for øyeblikket.",
     "general_update_up_to_date_title": "Alt er oppdatert",
     "general_update_updating_description": "Ikke slå av enheten. Denne prosessen kan ta noen minutter.",
