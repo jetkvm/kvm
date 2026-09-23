@@ -256,6 +256,9 @@ func TestFetchPublicKey_AllKeyserversFail(t *testing.T) {
 	callCount := &atomic.Int32{}
 	mock := &failingHTTPClient{callCount: callCount}
 	v := newGPGVerifierWithMock(t, func() HttpClient { return mock })
+	// Clear the embedded key so the keyserver path is actually exercised;
+	// otherwise the embedded key satisfies the request without any network.
+	v.embeddedKey = nil
 
 	ctx := context.Background()
 	key, err := v.FetchPublicKey(ctx)
@@ -263,6 +266,41 @@ func TestFetchPublicKey_AllKeyserversFail(t *testing.T) {
 	assert.Nil(t, key)
 	assert.Contains(t, err.Error(), "all keyservers failed")
 	assert.Equal(t, int32(1), callCount.Load(), "should have tried the one test keyserver")
+}
+
+// TestEmbeddedRootKey_MatchesPinnedFingerprint guarantees that the key bytes
+// compiled into the binary actually match the pinned fingerprint. If someone
+// replaces root_key.asc with the wrong key, this fails at test time rather than
+// silently shipping a key that can't verify any real release.
+func TestEmbeddedRootKey_MatchesPinnedFingerprint(t *testing.T) {
+	require.NotEmpty(t, embeddedRootKey, "a root key must be embedded in the binary")
+
+	v := newTestGPGVerifier() // rootKeyFP == rootKeyFingerprint
+	keyring, err := v.parseAndValidateKeyring(embeddedRootKey)
+	require.NoError(t, err, "embedded key must parse and match the pinned fingerprint %s", rootKeyFingerprint)
+	require.NotEmpty(t, keyring)
+
+	fp := extractFingerprintFromArmoredKey(t, embeddedRootKey)
+	assert.Equal(t, rootKeyFingerprint, fp, "embedded key fingerprint must equal the pinned fingerprint")
+}
+
+// TestFetchPublicKey_PrefersEmbeddedKey verifies the embedded key satisfies a
+// fetch without any keyserver request, even when every keyserver would fail.
+func TestFetchPublicKey_PrefersEmbeddedKey(t *testing.T) {
+	callCount := &atomic.Int32{}
+	mock := &failingHTTPClient{callCount: callCount}
+	logger := zerolog.New(os.Stdout).Level(zerolog.WarnLevel)
+	v := NewGPGVerifier(&logger, func() HttpClient { return mock })
+
+	ctx := context.Background()
+	key, err := v.FetchPublicKey(ctx)
+	require.NoError(t, err, "embedded key should satisfy the request")
+	require.NotEmpty(t, key)
+	assert.Equal(t, int32(0), callCount.Load(), "no keyserver request should be made when the embedded key is valid")
+
+	keyring, err := v.getKeyring(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, keyring)
 }
 
 func TestFetchPublicKey_CachedKeyIsValid(t *testing.T) {
