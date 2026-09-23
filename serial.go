@@ -301,12 +301,12 @@ func sendCustomCommand(command string) error {
 		hexString = strings.ReplaceAll(hexString, " ", "")
 
 		if len(hexString)%2 != 0 {
-			return fmt.Errorf("Invalid hex command: must have an even number of characters")
+			return fmt.Errorf("invalid hex command: must have an even number of characters")
 		}
 
 		decoded, err := hex.DecodeString(hexString)
 		if err != nil {
-			return fmt.Errorf("Invalid hex command: %v", err)
+			return fmt.Errorf("invalid hex command: %v", err)
 		}
 		payload = decoded
 	} else {
