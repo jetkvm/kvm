@@ -1,6 +1,6 @@
 {
   "navigation": {
-    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/6",
+    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/2",
     "selectedActionObject": "[jetkvm.eez-project]:/actions/0",
     "selectedGlobalVariableObject": "[jetkvm.eez-project]:/variables/globalVariables/3",
     "selectedStyleObject": "[jetkvm.eez-project]:/lvglStyles/styles/8",
@@ -77,7 +77,7 @@
           },
           {
             "type": "border",
-            "selected": 0,
+            "selected": 1,
             "location": "bottom",
             "children": [
               {
@@ -196,16 +196,17 @@
               "type": "tabset",
               "id": "EDITORS",
               "weight": 49.64170733710455,
+              "selected": 1,
               "enableDeleteWhenEmpty": false,
               "enableClose": false,
               "children": [
                 {
                   "type": "tab",
                   "id": "#f70195bf-98bb-4fe3-acbf-f8580cb4fd56",
-                  "name": "NetworkInfoScreen",
+                  "name": "MenuScreen",
                   "component": "editor",
                   "config": {
-                    "objectPath": "[jetkvm.eez-project]:/userPages/6",
+                    "objectPath": "[jetkvm.eez-project]:/userPages/3",
                     "permanent": false
                   },
                   "icon": "svg:page"
@@ -244,7 +245,8 @@
                   },
                   "icon": "svg:page"
                 }
-              ]
+              ],
+              "active": true
             },
             {
               "type": "row",
@@ -264,8 +266,7 @@
                       "enableClose": false,
                       "icon": "svg:properties"
                     }
-                  ],
-                  "active": true
+                  ]
                 },
                 {
                   "type": "tabset",
@@ -1128,7 +1129,10 @@
               }
             },
             "1": {
-              "0": {}
+              "0": {},
+              "1": {
+                "$selected": true
+              }
             },
             "2": {},
             "3": {
@@ -1281,14 +1285,8 @@
           "0": {
             "0": {
               "0": {},
-              "1": {}
-            },
-            "1": {
-              "0": {
-                "1": {
-                  "$selected": true
-                }
-              }
+              "1": {},
+              "$selected": true
             }
           }
         }
