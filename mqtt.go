@@ -204,8 +204,9 @@ func (m *MQTTManager) onConnect(client mqtt.Client) {
 	// the current state of all switches and sensors right away.
 	if config.ActiveExtension == "atx-power" {
 		m.publishATXState(ATXState{
-			Power: ledPWRState.Load(),
-			HDD:   ledHDDState.Load(),
+			Power:      ledPWRState.Load(),
+			HDD:        ledHDDState.Load(),
+			Responsive: atxBoardResponsive(),
 		})
 	}
 	if config.ActiveExtension == "dc-power" {

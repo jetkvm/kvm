@@ -155,6 +155,7 @@
     "appearance_theme_system": "Système",
     "appearance_title": "Apparence",
     "attach": "Attacher",
+    "atx_power_control_board_not_responding": "Aucune réponse de la carte d'extension ATX. Vérifiez le câble RJ-12 et l'alimentation de la carte.",
     "atx_power_control_get_state_error": "Échec de l'obtention de l'état d'alimentation ATX : {error}",
     "atx_power_control_hdd_led": "Voyant du disque dur",
     "atx_power_control_hold_hint": "Maintenir 3 s pour forcer l'arrêt",
