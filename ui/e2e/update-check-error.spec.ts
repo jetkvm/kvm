@@ -4,6 +4,7 @@ import { test, expect } from "@playwright/test";
 
 import {
   configureDeviceUpdateUrl,
+  ensureLocalAuthMode,
   getLocalNetworkIP,
   restartAppViaSSH,
   restoreDeviceUpdateUrl,
@@ -18,8 +19,15 @@ import {
 test.describe("Update check failure", () => {
   let server: http.Server | undefined;
 
-  test.beforeAll(async () => {
+  test.beforeAll(async ({ browser }) => {
     await skipWithoutDeviceShell();
+    // Onboarding also writes kvm_config.json, which the URL change edits.
+    const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
+    try {
+      await ensureLocalAuthMode(await context.newPage(), { mode: "noPassword" });
+    } finally {
+      await context.close();
+    }
     server = http.createServer((_request, response) => {
       response.writeHead(500);
       response.end();
