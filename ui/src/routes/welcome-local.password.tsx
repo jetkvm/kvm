@@ -18,14 +18,13 @@ import {
   MAX_PASSWORD_LENGTH,
 } from "@routes/devices.$id.settings.access.local-auth";
 
-import { DeviceStatus } from "./welcome-local";
+import { fetchDeviceStatus } from "./welcome-local";
 
 const loader: LoaderFunction = async () => {
-  const res = await api
-    .GET(`${DEVICE_API}/device/status`)
-    .then(res => res.json() as Promise<DeviceStatus>);
+  const res = await fetchDeviceStatus();
 
   if (res.isSetup) return redirect("/login-local");
+  if (res.factoryResetPending) return redirect("/welcome");
   return null;
 };
 

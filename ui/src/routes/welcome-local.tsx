@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { redirect } from "react-router";
+import { redirect, useLoaderData } from "react-router";
 import type { LoaderFunction } from "react-router";
 import { cx } from "cva";
 
@@ -16,15 +16,23 @@ import { m } from "@localizations/messages.js";
 
 export interface DeviceStatus {
   isSetup: boolean;
+  factoryResetPending?: boolean;
+  factoryResetError?: string;
+}
+
+// A non-OK answer (for example a 502 while the device reboots) is not a
+// status: treating it as one would hide a pending factory reset.
+export async function fetchDeviceStatus(): Promise<DeviceStatus> {
+  const res = await api.GET(`${DEVICE_API}/device/status`);
+  if (!res.ok) throw new Error(`device status: HTTP ${res.status}`);
+  return (await res.json()) as DeviceStatus;
 }
 
 const loader: LoaderFunction = async () => {
-  const res = await api
-    .GET(`${DEVICE_API}/device/status`)
-    .then(res => res.json() as Promise<DeviceStatus>);
+  const res = await fetchDeviceStatus();
 
   if (res.isSetup) return redirect("/login-local");
-  return null;
+  return res;
 };
 
 const LogoLeadingIcon = ({ className }: { className?: string }) => (
@@ -32,7 +40,21 @@ const LogoLeadingIcon = ({ className }: { className?: string }) => (
 );
 
 export default function WelcomeRoute() {
+  const [status, setStatus] = useState(useLoaderData() as DeviceStatus);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  // A pending reset can finish only after a reboot, and this page stays open
+  // through it: ask again until the device clears the flag. Requests fail
+  // while the device is down; the next one retries.
+  useEffect(() => {
+    if (!status.factoryResetPending) return;
+    const timer = setInterval(() => {
+      fetchDeviceStatus()
+        .then(setStatus)
+        .catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [status.factoryResetPending]);
 
   useEffect(() => {
     const img = new Image();
@@ -85,14 +107,20 @@ export default function WelcomeRoute() {
                     {m.jetkvm_description()}
                   </p>
                   <div className="animate-fadeIn opacity-0 animation-delay-2300">
-                    <LinkButton
-                      size="LG"
-                      theme="light"
-                      text={m.jetkvm_setup()}
-                      LeadingIcon={LogoLeadingIcon}
-                      textAlign="center"
-                      to="/welcome/mode"
-                    />
+                    {status.factoryResetPending ? (
+                      <p role="alert" className="text-red-600 dark:text-red-400">
+                        {status.factoryResetError || m.advanced_factory_reset_success()}
+                      </p>
+                    ) : (
+                      <LinkButton
+                        size="LG"
+                        theme="light"
+                        text={m.jetkvm_setup()}
+                        LeadingIcon={LogoLeadingIcon}
+                        textAlign="center"
+                        to="/welcome/mode"
+                      />
+                    )}
                   </div>
                 </div>
               </div>

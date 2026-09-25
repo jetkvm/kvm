@@ -18,6 +18,9 @@ import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
 import { SystemVersionInfo } from "@hooks/useVersion";
+import api from "@/api";
+import { DEVICE_API } from "@/ui.config";
+import type { DeviceStatus } from "./welcome-local";
 
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
@@ -35,9 +38,29 @@ export default function SettingsAdvancedRoute() {
   const [systemVersion, setSystemVersion] = useState<string>("");
   const [resetConfig, setResetConfig] = useState(false);
   const [showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
+  const [resetStatus, setResetStatus] = useState<DeviceStatus>();
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
+
+  // A device that could not finish a factory reset reports why in
+  // /device/status; show it in place of the factory reset description.
+  useEffect(() => {
+    if (!isOnDevice) return;
+    let active = true;
+    api
+      .GET(`${DEVICE_API}/device/status`)
+      .then(response => (response.ok ? (response.json() as Promise<DeviceStatus>) : undefined))
+      .then(status => {
+        if (active) setResetStatus(status);
+      })
+      .catch(() => {
+        /* The existing connection UI handles an unavailable device. */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     send("getDevModeState", {}, (resp: JsonRpcResponse) => {
@@ -507,7 +530,15 @@ export default function SettingsAdvancedRoute() {
 
             <SettingsItem
               title={m.advanced_factory_reset_title()}
-              description={m.advanced_factory_reset_description()}
+              description={
+                resetStatus?.factoryResetError ? (
+                  <span role="alert" className="text-red-600 dark:text-red-400">
+                    {resetStatus.factoryResetError}
+                  </span>
+                ) : (
+                  m.advanced_factory_reset_description()
+                )
+              }
             >
               <Button
                 size="SM"
