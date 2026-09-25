@@ -37,7 +37,13 @@ import {
   useCapability,
   useDeviceStore,
 } from "@hooks/stores";
-import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
+import {
+  holdRpcEvents,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  RpcMethodNotFound,
+  useJsonRpc,
+} from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import type { VersionInfo as LocalVersion } from "@hooks/useVersion";
 import { useHiddenVideoStreamPause } from "@hooks/useHiddenVideoStreamPause";
@@ -200,6 +206,7 @@ export default function KvmIdRoute() {
       pc.addTransceiver("audio", { direction: "recvonly" });
 
       const rpcDataChannel = pc.createDataChannel("rpc");
+      holdRpcEvents(rpcDataChannel);
       rpcDataChannel.onclose = () => {
         console.log("rpcDataChannel has closed");
         setRpcDataChannel(null);
@@ -479,7 +486,7 @@ export default function KvmIdRoute() {
     }
   }
 
-  const { send } = useJsonRpc(onJsonRpcRequest);
+  const { send } = useJsonRpc(onJsonRpcRequest, { receiveHeldEvents: true });
 
   // Mouse movement handler for E2E tests (needs send from useJsonRpc)
   const handleAbsMouseMove = useCallback(
