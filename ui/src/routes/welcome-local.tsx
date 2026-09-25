@@ -34,8 +34,23 @@ const LogoLeadingIcon = ({ className }: { className?: string }) => (
 );
 
 export default function WelcomeRoute() {
-  const status = useLoaderData() as DeviceStatus;
+  const [status, setStatus] = useState(useLoaderData() as DeviceStatus);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  // A pending reset can finish only after a reboot, and this page stays open
+  // through it: ask again until the device clears the flag. Requests fail
+  // while the device is down; the next one retries.
+  useEffect(() => {
+    if (!status.factoryResetPending) return;
+    const timer = setInterval(() => {
+      api
+        .GET(`${DEVICE_API}/device/status`)
+        .then(res => res.json() as Promise<DeviceStatus>)
+        .then(setStatus)
+        .catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [status.factoryResetPending]);
 
   useEffect(() => {
     const img = new Image();
