@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { useCapability, useSettingsStore } from "@hooks/stores";
+import { useCapability, useSettingsStore, VideoScaling } from "@hooks/stores";
 import { Button } from "@components/Button";
 import { Checkbox } from "@components/Checkbox";
 import { TextAreaWithLabel } from "@components/TextArea";
@@ -84,6 +84,8 @@ export default function SettingsVideoRoute() {
     setVideoBrightness,
     videoContrast,
     setVideoContrast,
+    videoScaling,
+    setVideoScaling,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -321,6 +323,22 @@ export default function SettingsVideoRoute() {
                 checked={disableHostDisplayWhenIdle}
                 disabled={disableHostDisplayWhenIdleLoading}
                 onChange={e => handleDisableHostDisplayWhenIdleChange(e.target.checked)}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.video_scaling_title()}
+              description={m.video_scaling_description()}
+            >
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={videoScaling}
+                options={[
+                  { value: "fit", label: m.video_scaling_fit() },
+                  { value: "actual", label: m.video_scaling_actual() },
+                ]}
+                onChange={e => setVideoScaling(e.target.value as VideoScaling)}
               />
             </SettingsItem>
 

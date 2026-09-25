@@ -5,6 +5,7 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
+import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
 import {
   useCapability,
   useRTCStore,
@@ -78,7 +79,8 @@ export default function WebRTCVideo({
   } = useVideoStore();
 
   // Video enhancement settings
-  const { videoSaturation, videoBrightness, videoContrast } = useSettingsStore();
+  const { videoSaturation, videoBrightness, videoContrast, videoScaling } = useSettingsStore();
+  const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
   const { isOcrMode } = useUiStore();
@@ -576,12 +578,16 @@ export default function WebRTCVideo({
 
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
+      // A stream resolution change only fires resize, so the store size would go stale
+      videoElmRefValue.addEventListener("resize", () => updateVideoSizeStore(videoElmRefValue), {
+        signal,
+      });
 
       return () => {
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler],
+    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, updateVideoSizeStore],
   );
 
   // Setup Mouse Events
@@ -678,13 +684,25 @@ export default function WebRTCVideo({
 
   // Conditionally set the filter style so we don't fallback to software rendering if these values are default of 1.0
   const videoStyle = useMemo(() => {
-    const isDefault = videoSaturation === 1.0 && videoBrightness === 1.0 && videoContrast === 1.0;
-    return isDefault
-      ? {} // No filter if all settings are default (1.0)
-      : {
-          filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
-        };
-  }, [videoSaturation, videoBrightness, videoContrast]);
+    const style: React.CSSProperties = {};
+    if (videoSaturation !== 1.0 || videoBrightness !== 1.0 || videoContrast !== 1.0) {
+      style.filter = `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`;
+    }
+    if (videoScaling === "actual" && videoWidth && videoHeight) {
+      style.width = videoWidth / devicePixelRatio;
+      style.height = videoHeight / devicePixelRatio;
+      style.maxHeight = "100%";
+    }
+    return style;
+  }, [
+    videoSaturation,
+    videoBrightness,
+    videoContrast,
+    videoScaling,
+    videoWidth,
+    videoHeight,
+    devicePixelRatio,
+  ]);
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
