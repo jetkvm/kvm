@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Intentar otra vez",
     "video_overlay_try_wake": "Intentar despertar",
     "video_overlay_trying_wake": "Intentando despertar…",
+    "video_pixel_perfect_description": "Muestra el video en su resolución nativa en lugar de ajustarlo a la ventana. El video más grande que la ventana se recorta.",
+    "video_pixel_perfect_title": "Mapeo de píxeles 1:1",
     "video_pointer_lock_disabled": "Bloqueo del puntero deshabilitado",
     "video_pointer_lock_enabled": "Bloqueo del puntero habilitado: presione Escape para desbloquear",
     "video_quality_auto": "Auto",

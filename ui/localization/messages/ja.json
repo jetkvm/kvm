@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "再試行",
     "video_overlay_try_wake": "スリープ解除を試行",
     "video_overlay_trying_wake": "スリープ解除を試行中…",
+    "video_pixel_perfect_description": "ウィンドウに合わせて拡大縮小せず、ビデオをネイティブ解像度で表示します。ウィンドウより大きい部分は切り取られます。",
+    "video_pixel_perfect_title": "1:1 ピクセルマッピング",
     "video_pointer_lock_disabled": "ポインターロック無効",
     "video_pointer_lock_enabled": "ポインターロック有効 — Escapeで解除",
     "video_quality_auto": "自動",

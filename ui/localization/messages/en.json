@@ -1081,6 +1081,8 @@
     "video_overlay_trying_wake": "Trying to wake…",
     "video_overlay_update_paused_description": "The video stream stays off while the update downloads and installs. The device reconnects after it reboots.",
     "video_overlay_update_paused_title": "Video paused during update",
+    "video_pixel_perfect_description": "Show the video at its native resolution instead of scaling it to fit the window. Video larger than the window is cropped.",
+    "video_pixel_perfect_title": "1:1 pixel mapping",
     "video_pointer_lock_disabled": "Pointer lock disabled",
     "video_pointer_lock_enabled": "Pointer lock enabled — press Escape to unlock",
     "video_quality_auto": "Auto",

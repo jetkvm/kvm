@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Essayer à nouveau",
     "video_overlay_try_wake": "Essayer de réveiller",
     "video_overlay_trying_wake": "Tentative de réveil…",
+    "video_pixel_perfect_description": "Affiche la vidéo à sa résolution native au lieu de l’adapter à la fenêtre. La vidéo plus grande que la fenêtre est rognée.",
+    "video_pixel_perfect_title": "Correspondance de pixels 1:1",
     "video_pointer_lock_disabled": "Verrouillage du pointeur désactivé",
     "video_pointer_lock_enabled": "Verrouillage du pointeur activé — appuyez sur Échap pour déverrouiller",
     "video_quality_auto": "Auto",

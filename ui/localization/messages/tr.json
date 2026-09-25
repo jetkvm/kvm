@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Tekrar dene",
     "video_overlay_try_wake": "Uyandırmayı dene",
     "video_overlay_trying_wake": "Uyandırılmaya çalışılıyor…",
+    "video_pixel_perfect_description": "Videoyu pencereye sığacak şekilde ölçeklemek yerine yerel çözünürlüğünde gösterir. Pencereden büyük video kırpılır.",
+    "video_pixel_perfect_title": "1:1 piksel eşleme",
     "video_pointer_lock_disabled": "İşaretçi kilidi devre dışı",
     "video_pointer_lock_enabled": "İşaretçi kilidi etkin — kilidi açmak için Escape tuşuna basın",
     "video_quality_auto": "Otomatik",

@@ -402,6 +402,9 @@ export interface SettingsState {
   videoContrast: number;
   setVideoContrast: (value: number) => void;
 
+  videoPixelPerfect: boolean;
+  setVideoPixelPerfect: (enabled: boolean) => void;
+
   hideHeaderBar: boolean;
   setHideHeaderBar: (hide: boolean) => void;
 
@@ -456,6 +459,9 @@ export const useSettingsStore = create(
 
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
+
+      videoPixelPerfect: false,
+      setVideoPixelPerfect: (enabled: boolean) => set({ videoPixelPerfect: enabled }),
 
       hideHeaderBar: false,
       setHideHeaderBar: (hide: boolean) => set({ hideHeaderBar: hide }),

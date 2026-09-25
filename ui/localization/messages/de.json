@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Versuchen Sie es erneut",
     "video_overlay_try_wake": "Aufwecken versuchen",
     "video_overlay_trying_wake": "Aufwecken…",
+    "video_pixel_perfect_description": "Zeigt das Video in nativer Auflösung an, statt es an das Fenster anzupassen. Video, das größer als das Fenster ist, wird beschnitten.",
+    "video_pixel_perfect_title": "1:1-Pixelzuordnung",
     "video_pointer_lock_disabled": "Zeigersperre deaktiviert",
     "video_pointer_lock_enabled": "Zeigersperre aktiviert – drücken Sie Escape, um die Sperre aufzuheben",
     "video_quality_auto": "Auto",

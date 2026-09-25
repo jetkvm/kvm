@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Попробовать снова",
     "video_overlay_try_wake": "Попробовать разбудить",
     "video_overlay_trying_wake": "Пробуем разбудить…",
+    "video_pixel_perfect_description": "Показывать видео в исходном разрешении, не масштабируя его под окно. Видео больше окна обрезается.",
+    "video_pixel_perfect_title": "Попиксельное отображение 1:1",
     "video_pointer_lock_disabled": "Блокировка указателя отключена",
     "video_pointer_lock_enabled": "Блокировка указателя включена — нажмите Escape, чтобы разблокировать",
     "video_quality_auto": "Авто",

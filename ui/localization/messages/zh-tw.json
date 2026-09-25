@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "再試一次",
     "video_overlay_try_wake": "嘗試喚醒",
     "video_overlay_trying_wake": "正在嘗試喚醒…",
+    "video_pixel_perfect_description": "以原始解析度顯示視訊，而不是縮放以符合視窗。超出視窗的部分將被裁切。",
+    "video_pixel_perfect_title": "1:1 像素對應",
     "video_pointer_lock_disabled": "指標鎖定已停用",
     "video_pointer_lock_enabled": "指標鎖定已啟用 — 按 Escape 解鎖",
     "video_quality_auto": "自動",

@@ -84,6 +84,8 @@ export default function SettingsVideoRoute() {
     setVideoBrightness,
     videoContrast,
     setVideoContrast,
+    videoPixelPerfect,
+    setVideoPixelPerfect,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -321,6 +323,16 @@ export default function SettingsVideoRoute() {
                 checked={disableHostDisplayWhenIdle}
                 disabled={disableHostDisplayWhenIdleLoading}
                 onChange={e => handleDisableHostDisplayWhenIdleChange(e.target.checked)}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.video_pixel_perfect_title()}
+              description={m.video_pixel_perfect_description()}
+            >
+              <Checkbox
+                checked={videoPixelPerfect}
+                onChange={e => setVideoPixelPerfect(e.target.checked)}
               />
             </SettingsItem>
 

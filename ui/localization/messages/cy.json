@@ -1065,6 +1065,8 @@
     "video_overlay_try_again": "Rhowch gynnig arall",
     "video_overlay_try_wake": "Ceisio deffro",
     "video_overlay_trying_wake": "Yn ceisio deffro…",
+    "video_pixel_perfect_description": "Dangos y fideo yn ei gydraniad brodorol yn lle ei raddio i ffitio'r ffenestr. Caiff fideo sy'n fwy na'r ffenestr ei docio.",
+    "video_pixel_perfect_title": "Mapio picseli 1:1",
     "video_pointer_lock_disabled": "Clo pwyntydd wedi'i analluogi",
     "video_pointer_lock_enabled": "Clo pwyntydd wedi'i alluogi — pwyswch Escape i ddatgloi",
     "video_quality_auto": "Awto",

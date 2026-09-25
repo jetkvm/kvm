@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Riprova",
     "video_overlay_try_wake": "Prova a riattivare",
     "video_overlay_trying_wake": "Riattivazione…",
+    "video_pixel_perfect_description": "Mostra il video alla risoluzione nativa invece di adattarlo alla finestra. Il video più grande della finestra viene ritagliato.",
+    "video_pixel_perfect_title": "Mappatura pixel 1:1",
     "video_pointer_lock_disabled": "Blocco puntatore disabilitato",
     "video_pointer_lock_enabled": "Blocco puntatore abilitato: premi Esc per sbloccarlo",
     "video_quality_auto": "Auto",

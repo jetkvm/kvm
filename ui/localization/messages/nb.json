@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Prøv igjen",
     "video_overlay_try_wake": "Prøv å vekke",
     "video_overlay_trying_wake": "Prøver å vekke…",
+    "video_pixel_perfect_description": "Vis videoen i opprinnelig oppløsning i stedet for å skalere den til vinduet. Video som er større enn vinduet, beskjæres.",
+    "video_pixel_perfect_title": "1:1-pikselvisning",
     "video_pointer_lock_disabled": "Pekerlås deaktivert",
     "video_pointer_lock_enabled": "Pekerlås aktivert – trykk Escape for å låse opp",
     "video_quality_auto": "Auto",

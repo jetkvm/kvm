@@ -1078,6 +1078,8 @@
     "video_overlay_try_again": "Prøv igen",
     "video_overlay_try_wake": "Prøv at vække",
     "video_overlay_trying_wake": "Prøver at vække…",
+    "video_pixel_perfect_description": "Vis videoen i dens oprindelige opløsning i stedet for at skalere den til vinduet. Video, der er større end vinduet, beskæres.",
+    "video_pixel_perfect_title": "1:1-pixelvisning",
     "video_pointer_lock_disabled": "Markørlås deaktiveret",
     "video_pointer_lock_enabled": "Markørlås aktiveret — tryk på Escape for at låse op",
     "video_quality_auto": "Auto",
