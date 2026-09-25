@@ -428,6 +428,19 @@ func rpcGetDeviceCapabilities() ([]string, error) {
 	return []string{"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update"}, nil
 }
 
+// reportLocalVersionAndCapabilities sends the device's version and
+// capabilities to a session whose RPC channel just opened. They do not change
+// while the session runs; the UI waits for these events instead of asking.
+func reportLocalVersionAndCapabilities(session *Session) {
+	if version, err := rpcGetLocalVersion(); err != nil {
+		jsonRpcLogger.Warn().Err(err).Msg("failed to read the local version for the localVersion event")
+	} else {
+		writeJSONRPCEvent("localVersion", version, session)
+	}
+	capabilities, _ := rpcGetDeviceCapabilities()
+	writeJSONRPCEvent("deviceCapabilities", capabilities, session)
+}
+
 // videoPausedBy is the session whose UI asked for the video stream to stop,
 // for example while its virtual media dialog is open, so a device that cannot
 // encode video and serve an upload at the same time keeps the pipeline down.
