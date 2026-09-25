@@ -26,6 +26,7 @@ const loader: LoaderFunction = async () => {
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");
+  if (res.factoryResetPending) return redirect("/welcome");
   return null;
 };
 

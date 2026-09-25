@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { redirect } from "react-router";
+import { redirect, useLoaderData } from "react-router";
 import type { LoaderFunction } from "react-router";
 import { cx } from "cva";
 
@@ -16,6 +16,8 @@ import { m } from "@localizations/messages.js";
 
 export interface DeviceStatus {
   isSetup: boolean;
+  factoryResetPending?: boolean;
+  factoryResetError?: string;
 }
 
 const loader: LoaderFunction = async () => {
@@ -24,7 +26,7 @@ const loader: LoaderFunction = async () => {
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");
-  return null;
+  return res;
 };
 
 const LogoLeadingIcon = ({ className }: { className?: string }) => (
@@ -32,6 +34,7 @@ const LogoLeadingIcon = ({ className }: { className?: string }) => (
 );
 
 export default function WelcomeRoute() {
+  const status = useLoaderData() as DeviceStatus;
   const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
@@ -85,14 +88,20 @@ export default function WelcomeRoute() {
                     {m.jetkvm_description()}
                   </p>
                   <div className="animate-fadeIn opacity-0 animation-delay-2300">
-                    <LinkButton
-                      size="LG"
-                      theme="light"
-                      text={m.jetkvm_setup()}
-                      LeadingIcon={LogoLeadingIcon}
-                      textAlign="center"
-                      to="/welcome/mode"
-                    />
+                    {status.factoryResetPending ? (
+                      <p role="alert" className="text-red-600 dark:text-red-400">
+                        {status.factoryResetError || m.advanced_factory_reset_success()}
+                      </p>
+                    ) : (
+                      <LinkButton
+                        size="LG"
+                        theme="light"
+                        text={m.jetkvm_setup()}
+                        LeadingIcon={LogoLeadingIcon}
+                        textAlign="center"
+                        to="/welcome/mode"
+                      />
+                    )}
                   </div>
                 </div>
               </div>
