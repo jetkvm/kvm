@@ -20,10 +20,16 @@ export interface DeviceStatus {
   factoryResetError?: string;
 }
 
+// A non-OK answer (for example a 502 while the device reboots) is not a
+// status: treating it as one would hide a pending factory reset.
+export async function fetchDeviceStatus(): Promise<DeviceStatus> {
+  const res = await api.GET(`${DEVICE_API}/device/status`);
+  if (!res.ok) throw new Error(`device status: HTTP ${res.status}`);
+  return (await res.json()) as DeviceStatus;
+}
+
 const loader: LoaderFunction = async () => {
-  const res = await api
-    .GET(`${DEVICE_API}/device/status`)
-    .then(res => res.json() as Promise<DeviceStatus>);
+  const res = await fetchDeviceStatus();
 
   if (res.isSetup) return redirect("/login-local");
   return res;
@@ -43,10 +49,8 @@ export default function WelcomeRoute() {
   useEffect(() => {
     if (!status.factoryResetPending) return;
     const timer = setInterval(() => {
-      api
-        .GET(`${DEVICE_API}/device/status`)
-        .then(res => (res.ok ? (res.json() as Promise<DeviceStatus>) : undefined))
-        .then(next => next && setStatus(next))
+      fetchDeviceStatus()
+        .then(setStatus)
         .catch(() => undefined);
     }, 5000);
     return () => clearInterval(timer);

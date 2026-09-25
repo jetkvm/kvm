@@ -13,12 +13,10 @@ import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
 
-import { DeviceStatus } from "./welcome-local";
+import { fetchDeviceStatus } from "./welcome-local";
 
 const loader: LoaderFunction = async () => {
-  const res = await api
-    .GET(`${DEVICE_API}/device/status`)
-    .then(res => res.json() as Promise<DeviceStatus>);
+  const res = await fetchDeviceStatus();
 
   if (res.isSetup) return redirect("/login-local");
   if (res.factoryResetPending) return redirect("/welcome");
