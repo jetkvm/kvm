@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"bufio"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -289,7 +290,29 @@ func sendCustomCommand(command string) error {
 	if serialMux == nil {
 		return fmt.Errorf("serial mux not initialized")
 	}
-	payload := []byte(command)
+
+	var payload []byte
+
+	if strings.HasPrefix(command, "hex:") {
+		hexString := strings.TrimSpace(strings.TrimPrefix(command, "hex:"))
+
+		hexString = strings.ReplaceAll(hexString, "0x", "")
+		hexString = strings.ReplaceAll(hexString, "0X", "")
+		hexString = strings.ReplaceAll(hexString, " ", "")
+
+		if len(hexString)%2 != 0 {
+			return fmt.Errorf("invalid hex command: must have an even number of characters")
+		}
+
+		decoded, err := hex.DecodeString(hexString)
+		if err != nil {
+			return fmt.Errorf("invalid hex command: %v", err)
+		}
+		payload = decoded
+	} else {
+		payload = []byte(command)
+	}
+
 	serialMux.Enqueue(payload, "button", true, TXUser) // echo if enabled
 	return nil
 }
