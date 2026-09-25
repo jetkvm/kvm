@@ -575,6 +575,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			})
 			// Wait for channel to be open before sending initial state
 			d.OnOpen(func() {
+				go reportLocalVersionAndCapabilities(session)
 				triggerOTAStateUpdate(otaState.ToRPCState())
 				triggerVideoStateUpdate()
 				triggerUSBStateUpdate()
