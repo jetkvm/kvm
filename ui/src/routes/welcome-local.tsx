@@ -45,8 +45,8 @@ export default function WelcomeRoute() {
     const timer = setInterval(() => {
       api
         .GET(`${DEVICE_API}/device/status`)
-        .then(res => res.json() as Promise<DeviceStatus>)
-        .then(setStatus)
+        .then(res => (res.ok ? (res.json() as Promise<DeviceStatus>) : undefined))
+        .then(next => next && setStatus(next))
         .catch(() => undefined);
     }, 5000);
     return () => clearInterval(timer);
