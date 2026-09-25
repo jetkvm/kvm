@@ -79,7 +79,7 @@ export default function WebRTCVideo({
   } = useVideoStore();
 
   // Video enhancement settings
-  const { videoSaturation, videoBrightness, videoContrast, videoPixelPerfect } = useSettingsStore();
+  const { videoSaturation, videoBrightness, videoContrast, videoScaling } = useSettingsStore();
   const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
@@ -688,21 +688,17 @@ export default function WebRTCVideo({
     if (videoSaturation !== 1.0 || videoBrightness !== 1.0 || videoContrast !== 1.0) {
       style.filter = `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`;
     }
-    // One stream pixel per device pixel: size the element in CSS pixels and let
-    // the container clip the rest. maxWidth undoes the preflight max-width: 100%
-    // and flexShrink keeps the flex parent from squeezing the element.
-    if (videoPixelPerfect && videoWidth && videoHeight) {
+    if (videoScaling === "actual" && videoWidth && videoHeight) {
       style.width = videoWidth / devicePixelRatio;
       style.height = videoHeight / devicePixelRatio;
-      style.maxWidth = "none";
-      style.flexShrink = 0;
+      style.maxHeight = "100%";
     }
     return style;
   }, [
     videoSaturation,
     videoBrightness,
     videoContrast,
-    videoPixelPerfect,
+    videoScaling,
     videoWidth,
     videoHeight,
     devicePixelRatio,

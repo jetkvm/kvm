@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { useCapability, useSettingsStore } from "@hooks/stores";
+import { useCapability, useSettingsStore, VideoScaling } from "@hooks/stores";
 import { Button } from "@components/Button";
 import { Checkbox } from "@components/Checkbox";
 import { TextAreaWithLabel } from "@components/TextArea";
@@ -84,8 +84,8 @@ export default function SettingsVideoRoute() {
     setVideoBrightness,
     videoContrast,
     setVideoContrast,
-    videoPixelPerfect,
-    setVideoPixelPerfect,
+    videoScaling,
+    setVideoScaling,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -327,12 +327,18 @@ export default function SettingsVideoRoute() {
             </SettingsItem>
 
             <SettingsItem
-              title={m.video_pixel_perfect_title()}
-              description={m.video_pixel_perfect_description()}
+              title={m.video_scaling_title()}
+              description={m.video_scaling_description()}
             >
-              <Checkbox
-                checked={videoPixelPerfect}
-                onChange={e => setVideoPixelPerfect(e.target.checked)}
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={videoScaling}
+                options={[
+                  { value: "fit", label: m.video_scaling_fit() },
+                  { value: "actual", label: m.video_scaling_actual() },
+                ]}
+                onChange={e => setVideoScaling(e.target.value as VideoScaling)}
               />
             </SettingsItem>
 

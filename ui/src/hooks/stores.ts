@@ -360,6 +360,8 @@ export interface BacklightSettings {
   off_after: number;
 }
 
+export type VideoScaling = "fit" | "actual";
+
 export interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
@@ -402,8 +404,8 @@ export interface SettingsState {
   videoContrast: number;
   setVideoContrast: (value: number) => void;
 
-  videoPixelPerfect: boolean;
-  setVideoPixelPerfect: (enabled: boolean) => void;
+  videoScaling: VideoScaling;
+  setVideoScaling: (scaling: VideoScaling) => void;
 
   hideHeaderBar: boolean;
   setHideHeaderBar: (hide: boolean) => void;
@@ -460,8 +462,8 @@ export const useSettingsStore = create(
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
 
-      videoPixelPerfect: false,
-      setVideoPixelPerfect: (enabled: boolean) => set({ videoPixelPerfect: enabled }),
+      videoScaling: "fit",
+      setVideoScaling: (scaling: VideoScaling) => set({ videoScaling: scaling }),
 
       hideHeaderBar: false,
       setHideHeaderBar: (hide: boolean) => set({ hideHeaderBar: hide }),
