@@ -204,7 +204,8 @@ export async function renewDHCPLease() {
 }
 
 export interface VersionInfo {
-  appVersion: string;
+  // Absent on a device whose firmware is a single image with no separate app.
+  appVersion?: string;
   systemVersion: string;
 }
 

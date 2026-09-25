@@ -39,7 +39,7 @@ import {
 } from "@hooks/stores";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { useVersion } from "@hooks/useVersion";
+import type { VersionInfo as LocalVersion } from "@hooks/useVersion";
 import { useHiddenVideoStreamPause } from "@hooks/useHiddenVideoStreamPause";
 import WebRTCVideo from "@components/WebRTCVideo";
 import DashboardNavbar from "@components/Header";
@@ -111,6 +111,8 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
 
 export default function KvmIdRoute() {
   const setCapabilities = useDeviceStore(state => state.setCapabilities);
+  const setAppVersion = useDeviceStore(state => state.setAppVersion);
+  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
   const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
@@ -463,17 +465,21 @@ export default function KvmIdRoute() {
       console.debug("Setting failsafe mode", { active, reason });
       setFailsafeMode(active, reason);
     }
+
+    // The device sends its version and capabilities each time the RPC
+    // channel opens.
+    if (resp.method === "localVersion") {
+      const { appVersion, systemVersion } = resp.params as LocalVersion;
+      setAppVersion(appVersion ?? "");
+      setSystemVersion(systemVersion);
+    }
+
+    if (resp.method === "deviceCapabilities") {
+      setCapabilities(resp.params as unknown as string[]);
+    }
   }
 
   const { send } = useJsonRpc(onJsonRpcRequest);
-
-  useEffect(() => {
-    if (rpcDataChannel?.readyState !== "open") return;
-    send("getDeviceCapabilities", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setCapabilities(resp.result as string[]);
-    });
-  }, [rpcDataChannel?.readyState, send, setCapabilities]);
 
   // Mouse movement handler for E2E tests (needs send from useJsonRpc)
   const handleAbsMouseMove = useCallback(
@@ -639,14 +645,6 @@ export default function KvmIdRoute() {
       setDisableVideoFocusTrap(true);
     }
   }, [navigateTo, location.pathname, setDisableVideoFocusTrap]);
-
-  const { appVersion, getLocalVersion } = useVersion();
-
-  useEffect(() => {
-    if (appVersion) return;
-
-    getLocalVersion();
-  }, [appVersion, getLocalVersion]);
 
   const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
 
