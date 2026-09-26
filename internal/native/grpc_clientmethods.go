@@ -3,6 +3,9 @@ package native
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	pb "github.com/jetkvm/kvm/internal/native/proto"
 )
 
@@ -75,6 +78,17 @@ func (c *GRPCClient) VideoLogStatus() (string, error) {
 		return "", err
 	}
 	return resp.Status, nil
+}
+
+func (c *GRPCClient) VideoGetSnapshot() ([]byte, error) {
+	resp, err := c.client.VideoGetSnapshot(context.Background(), &pb.Empty{})
+	if err != nil {
+		if status.Code(err) == codes.FailedPrecondition {
+			return nil, ErrVideoNotStreaming
+		}
+		return nil, err
+	}
+	return resp.Jpeg, nil
 }
 
 func (c *GRPCClient) VideoStop() error {

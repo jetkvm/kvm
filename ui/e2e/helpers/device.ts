@@ -6,23 +6,25 @@ export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<v
   await expect
     .poll(
       async () => {
-        const status = await page.evaluate(() => {
-          const hooks = window.__kvmTestHooks;
-          if (!hooks) {
-            return { hooks: false, webrtc: false, hid: false };
-          }
-          return {
-            hooks: true,
-            webrtc: hooks.isWebRTCConnected(),
-            hid: hooks.isHidRpcReady(),
-          };
-        }).catch(error => {
-          // A redirect/reload can replace the document between poll attempts.
-          // Keep waiting for readiness in the new document; closed pages and
-          // other evaluation failures must still fail the test.
-          if (String(error).includes("Execution context was destroyed")) return null;
-          throw error;
-        });
+        const status = await page
+          .evaluate(() => {
+            const hooks = window.__kvmTestHooks;
+            if (!hooks) {
+              return { hooks: false, webrtc: false, hid: false };
+            }
+            return {
+              hooks: true,
+              webrtc: hooks.isWebRTCConnected(),
+              hid: hooks.isHidRpcReady(),
+            };
+          })
+          .catch(error => {
+            // A redirect/reload can replace the document between poll attempts.
+            // Keep waiting for readiness in the new document; closed pages and
+            // other evaluation failures must still fail the test.
+            if (String(error).includes("Execution context was destroyed")) return null;
+            throw error;
+          });
         return !!status && status.hooks && status.webrtc && status.hid;
       },
       {

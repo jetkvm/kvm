@@ -118,11 +118,17 @@ test.describe("Upload cancel and resume", () => {
     const size = () => remoteSize(page, FILE_NAME);
     // Open-file metadata need not reflect streamed bytes until the writer
     // closes. Cancel while the browser shows an in-flight upload instead.
-    const progress = page.getByRole("heading", { name: /^Uploading / })
-      .locator("..").locator('div[style*="width:"]');
-    await expect.poll(async () => progress.evaluate(element =>
-      Number.parseFloat((element as HTMLElement).style.width)),
-    { timeout: 20_000 }).toBeGreaterThan(25);
+    const progress = page
+      .getByRole("heading", { name: /^Uploading / })
+      .locator("..")
+      .locator('div[style*="width:"]');
+    await expect
+      .poll(
+        async () =>
+          progress.evaluate(element => Number.parseFloat((element as HTMLElement).style.width)),
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(25);
 
     await page.getByRole("button", { name: "Cancel Upload" }).click();
 
@@ -164,8 +170,9 @@ test("a second start for the same file supersedes the first", async ({ page }) =
       })) as { dataChannel: string };
     const first = await start();
     const second = await start();
-    expect(second.dataChannel, "a new start must invalidate the previous upload ID")
-      .not.toBe(first.dataChannel);
+    expect(second.dataChannel, "a new start must invalidate the previous upload ID").not.toBe(
+      first.dataChannel,
+    );
 
     // Data for the first upload is rejected rather than appended beside the
     // second transfer's bytes.
