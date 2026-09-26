@@ -424,8 +424,13 @@ type SSHKeyState struct {
 // video_during_update: the video stream keeps running while an update
 // downloads and installs; a device without it pauses video for the
 // duration and the UI says so over the video.
+// http_proxy, domain, mdns, ipv6: the network settings of the same names can
+// be changed; the Network page hides those a device does not report.
 func rpcGetDeviceCapabilities() ([]string, error) {
-	return []string{"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update"}, nil
+	return []string{
+		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
+		"http_proxy", "domain", "mdns", "ipv6",
+	}, nil
 }
 
 // reportLocalVersionAndCapabilities sends the device's version and

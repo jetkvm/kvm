@@ -7,7 +7,13 @@ import validator from "validator";
 
 import PublicIPCard from "@components/PublicIPCard";
 import TailscaleCard from "@components/TailscaleCard";
-import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
+import {
+  NetworkSettings,
+  NetworkState,
+  useCapability,
+  useNetworkStateStore,
+  useRTCStore,
+} from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
@@ -80,11 +86,17 @@ export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
 }
 
 const NonCustomDomainOptions = ["dhcp", "local"];
+const DhcpClientOptions = ["jetdhcpc", "udhcpc"];
 
 export default function SettingsNetworkRoute() {
   const { send } = useJsonRpc();
 
   const networkState = useNetworkStateStore(state => state);
+  // A device hides the settings it cannot change by not reporting them.
+  const hasHttpProxy = useCapability("http_proxy");
+  const hasDomain = useCapability("domain");
+  const hasMdns = useCapability("mdns");
+  const hasIpv6 = useCapability("ipv6");
   const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
 
   // Some input needs direct state management. Mostly options that open more details
@@ -273,7 +285,11 @@ export default function SettingsNetworkRoute() {
         });
       }
 
-      if (dirty.ipv4_static?.dns && dirty.ipv4_static.dns.length > 0 && dirty.ipv4_static.dns.every(dirty => dirty)) {
+      if (
+        dirty.ipv4_static?.dns &&
+        dirty.ipv4_static.dns.length > 0 &&
+        dirty.ipv4_static.dns.every(dirty => dirty)
+      ) {
         changes.push({
           label: m.network_ipv4_dns(),
           from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
@@ -305,7 +321,11 @@ export default function SettingsNetworkRoute() {
         });
       }
 
-      if (dirty.ipv6_static?.dns && dirty.ipv6_static.dns.length > 0 && dirty.ipv6_static.dns.every(dirty => dirty)) {
+      if (
+        dirty.ipv6_static?.dns &&
+        dirty.ipv6_static.dns.length > 0 &&
+        dirty.ipv6_static.dns.every(dirty => dirty)
+      ) {
         changes.push({
           label: m.network_ipv6_dns(),
           from: initialSettingsRef.current?.ipv6_static?.dns.join(", ").toString() ?? "",
@@ -332,6 +352,7 @@ export default function SettingsNetworkRoute() {
     [prepareSettings, formState.dirtyFields, onSubmit],
   );
 
+  const dhcpClient = watch("dhcp_client");
   const ipv4mode = watch("ipv4_mode");
   const ipv6mode = watch("ipv6_mode");
   const domain = watch("domain");
@@ -416,76 +437,82 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
-              <SettingsItem
-                title={m.network_http_proxy_title()}
-                description={m.network_http_proxy_description()}
-              >
-                <InputField
-                  size="SM"
-                  placeholder="http://proxy.example.com:8080"
-                  {...register("http_proxy", {
-                    validate: (value: string | null) => {
-                      if (value === "" || value === null) return true;
-                      if (!validator.isURL(value || "", { protocols: ["http", "https"] })) {
-                        return m.network_http_proxy_invalid();
-                      }
-                      return true;
-                    },
-                  })}
-                  error={formState.errors.http_proxy?.message}
-                />
-              </SettingsItem>
-
-              <div className="space-y-1">
+              {hasHttpProxy && (
                 <SettingsItem
-                  title={m.network_domain_title()}
-                  description={m.network_domain_description()}
+                  title={m.network_http_proxy_title()}
+                  description={m.network_http_proxy_description()}
                 >
-                  <div className="space-y-2">
-                    <SelectMenuBasic
-                      size="SM"
-                      options={[
-                        { value: "dhcp", label: m.network_domain_dhcp_provided() },
-                        { value: "local", label: m.network_domain_local() },
-                        { value: "custom", label: m.network_domain_custom() },
-                      ]}
-                      {...register("domain")}
-                      error={formState.errors.domain?.message}
-                    />
-                  </div>
+                  <InputField
+                    size="SM"
+                    placeholder="http://proxy.example.com:8080"
+                    {...register("http_proxy", {
+                      validate: (value: string | null) => {
+                        if (value === "" || value === null) return true;
+                        if (!validator.isURL(value || "", { protocols: ["http", "https"] })) {
+                          return m.network_http_proxy_invalid();
+                        }
+                        return true;
+                      },
+                    })}
+                    error={formState.errors.http_proxy?.message}
+                  />
                 </SettingsItem>
+              )}
 
-                {domain === "custom" && (
-                  <div className="mt-2 w-1/3 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
-                    <InputFieldWithLabel
-                      size="SM"
-                      type="text"
-                      label={m.network_custom_domain()}
-                      placeholder="home.example.com"
-                      value={customDomain}
-                      onChange={e => {
-                        setCustomDomain(e.target.value);
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+              {hasDomain && (
+                <div className="space-y-1">
+                  <SettingsItem
+                    title={m.network_domain_title()}
+                    description={m.network_domain_description()}
+                  >
+                    <div className="space-y-2">
+                      <SelectMenuBasic
+                        size="SM"
+                        options={[
+                          { value: "dhcp", label: m.network_domain_dhcp_provided() },
+                          { value: "local", label: m.network_domain_local() },
+                          { value: "custom", label: m.network_domain_custom() },
+                        ]}
+                        {...register("domain")}
+                        error={formState.errors.domain?.message}
+                      />
+                    </div>
+                  </SettingsItem>
 
-              <SettingsItem
-                title={m.network_mdns_title()}
-                description={m.network_mdns_description()}
-              >
-                <SelectMenuBasic
-                  size="SM"
-                  options={[
-                    { value: "disabled", label: m.network_mdns_disabled() },
-                    { value: "auto", label: m.network_mdns_auto() },
-                    { value: "ipv4_only", label: m.network_mdns_ipv4_only() },
-                    { value: "ipv6_only", label: m.network_mdns_ipv6_only() },
-                  ]}
-                  {...register("mdns_mode")}
-                />
-              </SettingsItem>
+                  {domain === "custom" && (
+                    <div className="mt-2 w-1/3 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
+                      <InputFieldWithLabel
+                        size="SM"
+                        type="text"
+                        label={m.network_custom_domain()}
+                        placeholder="home.example.com"
+                        value={customDomain}
+                        onChange={e => {
+                          setCustomDomain(e.target.value);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {hasMdns && (
+                <SettingsItem
+                  title={m.network_mdns_title()}
+                  description={m.network_mdns_description()}
+                >
+                  <SelectMenuBasic
+                    size="SM"
+                    options={[
+                      { value: "disabled", label: m.network_mdns_disabled() },
+                      { value: "auto", label: m.network_mdns_auto() },
+                      { value: "ipv4_only", label: m.network_mdns_ipv4_only() },
+                      { value: "ipv6_only", label: m.network_mdns_ipv6_only() },
+                    ]}
+                    {...register("mdns_mode")}
+                  />
+                </SettingsItem>
+              )}
 
               <SettingsItem
                 title={m.network_time_sync_title()}
@@ -510,14 +537,19 @@ export default function SettingsNetworkRoute() {
                 title={m.network_dhcp_client_title()}
                 description={m.network_dhcp_client_description()}
               >
-                <SelectMenuBasic
-                  size="SM"
-                  options={[
-                    { value: "jetdhcpc", label: m.network_dhcp_client_jetkvm() },
-                    { value: "udhcpc", label: "udhcpc" }, // do not localize
-                  ]}
-                  {...register("dhcp_client")}
-                />
+                {/* A device with a single, fixed DHCP client reports its own name. */}
+                {dhcpClient && !DhcpClientOptions.includes(dhcpClient) ? (
+                  <span className="font-mono text-sm text-black dark:text-white">{dhcpClient}</span>
+                ) : (
+                  <SelectMenuBasic
+                    size="SM"
+                    options={[
+                      { value: "jetdhcpc", label: m.network_dhcp_client_jetkvm() },
+                      { value: "udhcpc", label: "udhcpc" }, // do not localize
+                    ]}
+                    {...register("dhcp_client")}
+                  />
+                )}
               </SettingsItem>
 
               <SettingsItem
@@ -578,48 +610,52 @@ export default function SettingsNetworkRoute() {
                 </AutoHeight>
               </div>
 
-              <SettingsItem
-                title={m.network_ipv6_mode_title()}
-                description={m.network_ipv6_mode_description()}
-              >
-                <SelectMenuBasic
-                  size="SM"
-                  options={[
-                    { value: "disabled", label: m.network_ipv6_mode_disabled() },
-                    { value: "slaac", label: m.network_ipv6_mode_slaac() },
-                    //{ value: "dhcpv6", label: m.network_ipv6_mode_dhcpv6() },
-                    //{ value: "slaac_and_dhcpv6", label: m.network_ipv6_mode_slaac_dhcpv6() },
-                    { value: "static", label: m.network_ipv6_mode_static() },
-                    { value: "link_local", label: m.network_ipv6_mode_link_local() },
-                  ]}
-                  {...register("ipv6_mode")}
-                />
-              </SettingsItem>
+              {hasIpv6 && (
+                <>
+                  <SettingsItem
+                    title={m.network_ipv6_mode_title()}
+                    description={m.network_ipv6_mode_description()}
+                  >
+                    <SelectMenuBasic
+                      size="SM"
+                      options={[
+                        { value: "disabled", label: m.network_ipv6_mode_disabled() },
+                        { value: "slaac", label: m.network_ipv6_mode_slaac() },
+                        //{ value: "dhcpv6", label: m.network_ipv6_mode_dhcpv6() },
+                        //{ value: "slaac_and_dhcpv6", label: m.network_ipv6_mode_slaac_dhcpv6() },
+                        { value: "static", label: m.network_ipv6_mode_static() },
+                        { value: "link_local", label: m.network_ipv6_mode_link_local() },
+                      ]}
+                      {...register("ipv6_mode")}
+                    />
+                  </SettingsItem>
 
-              <div className="space-y-4">
-                <AutoHeight>
-                  {!networkState ? (
-                    <GridCard>
-                      <div className="p-4">
-                        <div className="space-y-4">
-                          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                            {m.network_ipv6_information()}
-                          </h3>
-                          <div className="animate-pulse space-y-3">
-                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-                            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                  <div className="space-y-4">
+                    <AutoHeight>
+                      {!networkState ? (
+                        <GridCard>
+                          <div className="p-4">
+                            <div className="space-y-4">
+                              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                                {m.network_ipv6_information()}
+                              </h3>
+                              <div className="animate-pulse space-y-3">
+                                <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                                <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                                <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </GridCard>
-                  ) : ipv6mode === "static" ? (
-                    <StaticIpv6Card />
-                  ) : (
-                    <Ipv6NetworkCard networkState={networkState || undefined} />
-                  )}
-                </AutoHeight>
-              </div>
+                        </GridCard>
+                      ) : ipv6mode === "static" ? (
+                        <StaticIpv6Card />
+                      ) : (
+                        <Ipv6NetworkCard networkState={networkState || undefined} />
+                      )}
+                    </AutoHeight>
+                  </div>
+                </>
+              )}
 
               {isLLDPAvailable && (
                 <div className="hidden space-y-4">
