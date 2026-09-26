@@ -1,8 +1,13 @@
 package kvm
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/keyboard"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -26,6 +31,18 @@ func (m *MQTTManager) subscribeCommands() {
 		if token := m.client.Subscribe(topic, 1, handler); token.Wait() && token.Error() != nil {
 			mqttLogger.Error().Err(token.Error()).Str("topic", topic).Msg("failed to subscribe")
 		}
+	}
+
+	// The keyboard macro command is subscribed at QoS 0, unlike the commands
+	// above: with the persistent session (CleanSession false), a QoS 1
+	// subscription makes the broker queue commands published while the device
+	// is offline and replay them on reconnect, and a macro must never be
+	// replayed into the attached host. Brokers that do not queue QoS 0 for
+	// offline persistent sessions (the common default) avoid that entirely;
+	// brokers that do queue QoS 0 are a residual risk noted in the PR.
+	// Retained messages are dropped in the handler.
+	if token := m.client.Subscribe(m.topic("keyboard_macro", "set"), 0, m.handleKeyboardMacroCommand); token.Wait() && token.Error() != nil {
+		mqttLogger.Error().Err(token.Error()).Str("topic", m.topic("keyboard_macro", "set")).Msg("failed to subscribe")
 	}
 
 	mqttLogger.Info().Msg("subscribed to command topics")
@@ -222,4 +239,73 @@ func (m *MQTTManager) handleVirtualMediaCommand(client mqtt.Client, msg mqtt.Mes
 
 	// Publish updated state immediately
 	m.publishVirtualMediaState()
+}
+
+// findKeyboardMacro locates a stored keyboard macro by ID, or by name
+// (case-insensitive) if no ID matches.
+func findKeyboardMacro(nameOrID string) (*KeyboardMacro, bool) {
+	for i := range config.KeyboardMacros {
+		if config.KeyboardMacros[i].ID == nameOrID {
+			return &config.KeyboardMacros[i], true
+		}
+	}
+	for i := range config.KeyboardMacros {
+		if strings.EqualFold(config.KeyboardMacros[i].Name, nameOrID) {
+			return &config.KeyboardMacros[i], true
+		}
+	}
+	return nil, false
+}
+
+// macroHIDSteps converts a stored macro's steps into wire-level HID steps.
+func macroHIDSteps(steps []KeyboardMacroStep) ([]hidrpc.KeyboardMacroStep, error) {
+	macroSteps := make([]keyboard.MacroStep, len(steps))
+	for i, step := range steps {
+		macroSteps[i] = keyboard.MacroStep(step)
+	}
+	return keyboard.HIDSteps(macroSteps)
+}
+
+// executeKeyboardSteps runs converted macro steps on a new goroutine — the
+// steps sleep between reports, and paho delivers all messages on one ordered
+// goroutine, so executing inline would stall every other command handler.
+// rpcExecuteKeyboardMacro cancels any running macro and serializes execution,
+// so overlapping commands run one after another rather than interleaving.
+func executeKeyboardSteps(source string, steps []hidrpc.KeyboardMacroStep) {
+	go func() {
+		if err := rpcExecuteKeyboardMacro(steps); err != nil {
+			if errors.Is(err, context.Canceled) {
+				mqttLogger.Info().Str("source", source).Msg("keyboard input canceled")
+				return
+			}
+			mqttLogger.Error().Err(err).Str("source", source).Msg("failed to execute keyboard input")
+		}
+	}()
+}
+
+func (m *MQTTManager) handleKeyboardMacroCommand(client mqtt.Client, msg mqtt.Message) {
+	if !m.actionsAllowed() {
+		mqttLogger.Warn().Msg("keyboard macro command rejected: actions are disabled")
+		return
+	}
+	if msg.Retained() {
+		mqttLogger.Warn().Msg("ignoring retained keyboard macro command")
+		return
+	}
+	payload := strings.TrimSpace(string(msg.Payload()))
+	mqttLogger.Info().Str("payload", payload).Msg("received keyboard macro command")
+
+	macro, ok := findKeyboardMacro(payload)
+	if !ok {
+		mqttLogger.Warn().Str("payload", payload).Msg("unknown keyboard macro")
+		return
+	}
+
+	steps, err := macroHIDSteps(macro.Steps)
+	if err != nil {
+		mqttLogger.Error().Err(err).Str("macro", macro.Name).Msg("failed to convert keyboard macro")
+		return
+	}
+
+	executeKeyboardSteps("macro "+macro.Name, steps)
 }
