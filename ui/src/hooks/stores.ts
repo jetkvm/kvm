@@ -747,7 +747,11 @@ export type Capability =
   | "usb_serial"
   | "custom_edid"
   | "upload_channel"
-  | "video_during_update"; // video keeps streaming while an update installs
+  | "video_during_update" // video keeps streaming while an update installs
+  | "http_proxy" // network settings the device can change
+  | "domain"
+  | "mdns"
+  | "ipv6";
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
