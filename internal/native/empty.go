@@ -121,3 +121,5 @@ func (e *EmptyNativeInterface) SwitchToScreenIf(screenName string, shouldSwitch 
 func (e *EmptyNativeInterface) SwitchToScreenIfDifferent(screenName string) {}
 
 func (e *EmptyNativeInterface) DoNotUseThisIsForCrashTestingOnly() {}
+
+func (e *EmptyNativeInterface) VideoSetREMB(bitrate uint32) error { return nil }

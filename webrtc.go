@@ -233,7 +233,7 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 		return "", err
 	}
 
-	go drainRTCP(rtpSender)
+	go readVideoRTCP(rtpSender)
 
 	if err := s.attachAudioTrack(offer.SDP); err != nil {
 		return "", err
@@ -575,6 +575,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			})
 			// Wait for channel to be open before sending initial state
 			d.OnOpen(func() {
+				go reportLocalVersionAndCapabilities(session)
 				triggerOTAStateUpdate(otaState.ToRPCState())
 				triggerVideoStateUpdate()
 				triggerUSBStateUpdate()
@@ -640,6 +641,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				currentSession = nil
 			}
 			session.close()
+			releaseVideoPause(session)
 
 			// Release audio capture if this session owned it; otherwise the
 			// goroutine would keep writing samples to a now-dead track.
@@ -683,8 +685,41 @@ func sessionVideoCodecType(session *Session) int {
 }
 
 func startNativeVideoForSession(session *Session) {
+	videoPauseMu.Lock()
+	defer videoPauseMu.Unlock()
+	startNativeVideoLocked(session)
+}
+
+// startNativeVideoLocked starts the pipeline unless a pause is held. The
+// caller holds videoPauseMu.
+func startNativeVideoLocked(session *Session) {
+	if videoPausedBy != nil {
+		return
+	}
 	_ = nativeInstance.VideoSetCodecType(sessionVideoCodecType(session))
 	_ = nativeInstance.VideoStart()
+}
+
+// stopNativeVideo stops the pipeline under the pause lock so it cannot
+// interleave with a resume that is starting it.
+func stopNativeVideo() {
+	videoPauseMu.Lock()
+	defer videoPauseMu.Unlock()
+	_ = nativeInstance.VideoStop()
+}
+
+// releaseVideoPause drops a pause held by a closing session and restarts video
+// for the session that replaced it, if any.
+func releaseVideoPause(session *Session) {
+	videoPauseMu.Lock()
+	defer videoPauseMu.Unlock()
+	if videoPausedBy != session {
+		return
+	}
+	videoPausedBy = nil
+	if currentSession != nil && currentSession != session {
+		startNativeVideoLocked(currentSession)
+	}
 }
 
 func onFirstSessionConnected(session *Session) {
@@ -709,7 +744,7 @@ func onLastSessionDisconnected() {
 	_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 	// The closing session already released its own audio capture. A replacement
 	// may have connected since the zero-session decision, so do not stop its audio.
-	_ = nativeInstance.VideoStop()
+	stopNativeVideo()
 	_ = applyHostDisplayAdvertisement("last_session_disconnected")
 	startVideoSleepModeTicker()
 }

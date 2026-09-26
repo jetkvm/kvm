@@ -11,6 +11,9 @@
  */
 int video_init(float quality_factor);
 
+// Receiver estimate in bit/s; zero clears it. Only applied in Auto mode.
+void video_set_remb(uint32_t bitrate);
+
 /**
  * @brief Shutdown the video subsystem
  */

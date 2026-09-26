@@ -1,3 +1,9 @@
+import {
+  captureHardwareState,
+  configureTestUSB,
+  restoreHardwareState,
+  type HardwareState,
+} from "../helpers/hardware-state";
 import { test, expect, type Page } from "@playwright/test";
 import {
   callJsonRpc,
@@ -18,6 +24,7 @@ const agent = createRemoteAgent();
 test.describe.configure({ mode: "serial" });
 
 let page: Page;
+let originalHardware: HardwareState | undefined;
 
 // 128 wire steps at 9 bytes each plus the 6 byte header.
 const MAX_MACRO_MESSAGE_BYTES = 128 * 9 + 6;
@@ -76,6 +83,8 @@ test.beforeAll(async ({ browser }) => {
   await page.goto("/", { waitUntil: "networkidle" });
   await waitForWebRTCReady(page);
   await ensureRpcReady(page);
+  originalHardware = await captureHardwareState(page);
+  await configureTestUSB(page, originalHardware);
   // Terminal channels settle focus shortly after the initial connection.
   await page.waitForTimeout(1_000);
   await expect
@@ -86,7 +95,11 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  if (page) await page.close();
+  try {
+    if (page && originalHardware) await restoreHardwareState(page, originalHardware);
+  } finally {
+    if (page) await page.close();
+  }
 });
 
 test("a paste longer than one chunk lands on the host in full and in order", async () => {

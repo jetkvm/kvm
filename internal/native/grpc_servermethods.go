@@ -249,3 +249,10 @@ func (s *grpcServer) DoNotUseThisIsForCrashTestingOnly(ctx context.Context, req 
 	s.native.DoNotUseThisIsForCrashTestingOnly()
 	return &pb.Empty{}, nil
 }
+
+func (s *grpcServer) VideoSetREMB(ctx context.Context, req *pb.VideoSetREMBRequest) (*pb.Empty, error) {
+	if err := s.native.VideoSetREMB(req.Bitrate); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.Empty{}, nil
+}

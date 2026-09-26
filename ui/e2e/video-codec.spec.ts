@@ -96,7 +96,7 @@ test.describe("Video codec negotiation", () => {
     }
   });
 
-  test("H.265 preference gracefully falls back to H.264 when browser lacks support", async ({
+  test("H.265 preference gracefully falls back to H.264 when browser lacks support @h265", async ({
     page,
   }) => {
     await page.goto("/");
@@ -168,7 +168,9 @@ test.describe("Video codec negotiation", () => {
     const originalCodec = (await callJsonRpc(page, "getVideoCodecPreference")) as string;
 
     try {
-      for (const codec of ["h264", "h265", "auto"]) {
+      const supported = (await callJsonRpc(page, "getSupportedVideoCodecs")) as string[];
+      expect(supported).toContain("h264");
+      for (const codec of [...supported, "auto"]) {
         await callJsonRpc(page, "setVideoCodecPreference", { codec });
         const result = await callJsonRpc(page, "getVideoCodecPreference");
         expect(result).toBe(codec);
@@ -183,7 +185,7 @@ test.describe("Video codec negotiation", () => {
   });
 });
 
-test("codec settings use device capabilities and retain an unavailable saved preference", async ({
+test("codec settings use device capabilities and retain an unavailable saved preference @h265", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -242,7 +244,7 @@ test("codec capability requests recover from errors, invalid replies and timeout
           return;
         }
       }
-      return send.call(this, data);
+      return send.call(this, data as never);
     };
   });
   const pageErrors: string[] = [];
@@ -313,7 +315,9 @@ test("codec capability requests recover from errors, invalid replies and timeout
     await expect(select).toHaveValue("auto");
     await expect
       .poll(() =>
-        select.locator("option").evaluateAll(options => options.map(option => option.value)),
+        select
+          .locator("option")
+          .evaluateAll(options => options.map(option => (option as HTMLOptionElement).value)),
       )
       .toEqual(["auto", "h264"]);
     await expect(retry).toBeHidden();

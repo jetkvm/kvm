@@ -107,6 +107,9 @@ export const useWebSocketSignaling: SignalingHook = ({
         );
         setLoadingMessage(m.establishing_secure_connection());
       } catch (error) {
+        // A peer closed while this was pending has been replaced; the
+        // rejection must not stop reconnecting for its replacement.
+        if (pc.connectionState === "closed") return;
         console.error("[setRemoteSessionDescription] Failed to set remote description:", error);
         cleanupAndStopReconnecting();
         return;
@@ -115,6 +118,13 @@ export const useWebSocketSignaling: SignalingHook = ({
       // Replace the interval-based check with a more reliable approach
       let attempts = 0;
       const checkInterval = setInterval(() => {
+        // The peer this poll belongs to may have been closed and replaced
+        // before its SCTP timeout expired. A retired peer must not mark the
+        // replacement connection as failed.
+        if (pc.connectionState === "closed") {
+          clearInterval(checkInterval);
+          return;
+        }
         attempts++;
 
         // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
@@ -147,6 +157,33 @@ export const useWebSocketSignaling: SignalingHook = ({
   const isSettingRemoteAnswerPending = useRef(false);
   const makingOffer = useRef(false);
   const reconnectAttemptsRef = useRef(2000);
+  const authCheckRef = useRef<AbortController | null>(null);
+  useEffect(() => () => authCheckRef.current?.abort(), []);
+
+  const checkLocalSession = useCallback(async () => {
+    // Browsers hide the HTTP status of a failed WebSocket handshake. Probe
+    // the local HTTP API so an expired login does not look like an ICE failure.
+    if (!isOnDevice || authCheckRef.current) return;
+    const controller = new AbortController();
+    authCheckRef.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch("/device", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (response.status === 401 && !controller.signal.aborted) {
+        // Re-enter the normal route loader, which handles login and setup.
+        window.location.reload();
+      }
+    } catch {
+      // A reboot or network interruption should keep the normal retry path.
+    } finally {
+      clearTimeout(timeout);
+      if (authCheckRef.current === controller) authCheckRef.current = null;
+    }
+  }, []);
+
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
   const { sendMessage } = useWebSocket(
@@ -170,6 +207,7 @@ export const useWebSocketSignaling: SignalingHook = ({
 
       onClose(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] onClose", event);
+        void checkLocalSession();
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
 
@@ -180,6 +218,8 @@ export const useWebSocketSignaling: SignalingHook = ({
 
       onOpen() {
         console.debug("[Websocket] onOpen");
+        authCheckRef.current?.abort();
+        authCheckRef.current = null;
         // We want to clear the reboot state when the websocket connection is opened
         // Currently the flow is:
         // 1. User clicks reboot

@@ -360,6 +360,8 @@ export interface BacklightSettings {
   off_after: number;
 }
 
+export type VideoScaling = "fit" | "actual";
+
 export interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
@@ -401,6 +403,9 @@ export interface SettingsState {
 
   videoContrast: number;
   setVideoContrast: (value: number) => void;
+
+  videoScaling: VideoScaling;
+  setVideoScaling: (scaling: VideoScaling) => void;
 
   hideHeaderBar: boolean;
   setHideHeaderBar: (hide: boolean) => void;
@@ -456,6 +461,9 @@ export const useSettingsStore = create(
 
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
+
+      videoScaling: "fit",
+      setVideoScaling: (scaling: VideoScaling) => set({ videoScaling: scaling }),
 
       hideHeaderBar: false,
       setHideHeaderBar: (hide: boolean) => set({ hideHeaderBar: hide }),
@@ -725,18 +733,35 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
 export interface DeviceState {
   appVersion: string | null;
   systemVersion: string | null;
+  capabilities: Set<string>;
 
   setAppVersion: (version: string) => void;
   setSystemVersion: (version: string) => void;
+  setCapabilities: (capabilities: string[]) => void;
 }
+
+// Optional device features reported by getDeviceCapabilities.
+export type Capability =
+  | "shell"
+  | "extensions"
+  | "usb_serial"
+  | "custom_edid"
+  | "upload_channel"
+  | "video_during_update"; // video keeps streaming while an update installs
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
   systemVersion: null,
+  capabilities: new Set(),
 
   setAppVersion: (version: string) => set({ appVersion: version }),
   setSystemVersion: (version: string) => set({ systemVersion: version }),
+  setCapabilities: (capabilities: string[]) => set({ capabilities: new Set(capabilities) }),
 }));
+
+// Whether the connected device reported a capability in getDeviceCapabilities.
+export const useCapability = (name: Capability) =>
+  useDeviceStore(state => state.capabilities.has(name));
 
 export interface TerminalState {
   terminator: string | null;

@@ -102,14 +102,34 @@ async function sendRpcRequest<T>(
       reject(new Error("Request aborted"));
     };
 
+    // A closed channel can never deliver the response.
+    const closeHandler = () => {
+      cleanup();
+      reject(new Error("RTC data channel closed before RPC response"));
+    };
+
     const cleanup = () => {
       rpcDataChannel.removeEventListener("message", messageHandler);
+      rpcDataChannel.removeEventListener("close", closeHandler);
       signal.removeEventListener("abort", abortHandler);
     };
 
     signal.addEventListener("abort", abortHandler);
     rpcDataChannel.addEventListener("message", messageHandler);
-    rpcDataChannel.send(JSON.stringify(request));
+    rpcDataChannel.addEventListener("close", closeHandler);
+    if (signal.aborted) {
+      abortHandler();
+    } else if (rpcDataChannel.readyState !== "open") {
+      // The channel closed after waitForRtcReady returned it.
+      closeHandler();
+    } else {
+      try {
+        rpcDataChannel.send(JSON.stringify(request));
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    }
   });
 }
 
@@ -204,7 +224,8 @@ export async function renewDHCPLease() {
 }
 
 export interface VersionInfo {
-  appVersion: string;
+  // Absent on a device whose firmware is a single image with no separate app.
+  appVersion?: string;
   systemVersion: string;
 }
 

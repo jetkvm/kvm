@@ -6,6 +6,7 @@ type NativeInterface interface {
 	VideoSetSleepMode(enabled bool) error
 	VideoGetSleepMode() (bool, error)
 	VideoSleepModeSupported() bool
+	VideoSetREMB(bitrate uint32) error
 	VideoSetQualityFactor(factor float64) error
 	VideoGetQualityFactor() (float64, error)
 	VideoSetCodecType(codecType int) error

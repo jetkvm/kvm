@@ -453,3 +453,10 @@ func videoSetEDID(edid string) error {
 func crash() {
 	C.jetkvm_crash()
 }
+
+func videoSetREMB(bitrate uint32) error {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+	C.jetkvm_video_set_remb(C.uint32_t(bitrate))
+	return nil
+}

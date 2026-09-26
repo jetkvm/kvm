@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import {
   createBrowserRouter,
   isRouteErrorResponse,
+  Outlet,
   redirect,
   type RouteObject,
   RouterProvider,
@@ -103,6 +104,21 @@ export async function checkAuth() {
 }
 
 let router: ReturnType<typeof createBrowserRouter>;
+
+function Shell() {
+  return (
+    <>
+      <Outlet />
+      <Notifications
+        toastOptions={{
+          className:
+            "rounded-sm border-none bg-white text-black shadow-sm outline-1 outline-slate-800/30",
+        }}
+        max={2}
+      />
+    </>
+  );
+}
 
 const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject => ({
   element: <DeviceRoute />,
@@ -218,41 +234,50 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
 if (isOnDevice) {
   router = createBrowserRouter([
     {
-      path: "/welcome/mode",
-      element: <WelcomeLocalModeRoute />,
-      action: WelcomeLocalModeRoute.action,
-    },
-    {
-      path: "/welcome/password",
-      element: <WelcomeLocalPasswordRoute />,
-      action: WelcomeLocalPasswordRoute.action,
-    },
-    {
-      path: "/welcome",
-      element: <WelcomeRoute />,
-      loader: WelcomeRoute.loader,
-    },
-    {
-      path: "/login-local",
-      element: <LoginLocalRoute />,
-      action: LoginLocalRoute.action,
-      loader: LoginLocalRoute.loader,
-    },
-    getDeviceRoute({
-      path: "/",
-      errorElement: <ErrorBoundary />,
-      HydrateFallback: () => <div className="p-4">{m.loading()}</div>,
-    }),
-    {
-      path: "/adopt",
-      element: <AdoptRoute />,
-      loader: AdoptRoute.loader,
-      errorElement: <ErrorBoundary />,
+      element: <Shell />,
+      HydrateFallback: () => null,
+      children: [
+        {
+          path: "/welcome/mode",
+          element: <WelcomeLocalModeRoute />,
+          action: WelcomeLocalModeRoute.action,
+          loader: WelcomeLocalModeRoute.loader,
+        },
+        {
+          path: "/welcome/password",
+          element: <WelcomeLocalPasswordRoute />,
+          action: WelcomeLocalPasswordRoute.action,
+          loader: WelcomeLocalPasswordRoute.loader,
+        },
+        {
+          path: "/welcome",
+          element: <WelcomeRoute />,
+          loader: WelcomeRoute.loader,
+        },
+        {
+          path: "/login-local",
+          element: <LoginLocalRoute />,
+          action: LoginLocalRoute.action,
+          loader: LoginLocalRoute.loader,
+        },
+        getDeviceRoute({
+          path: "/",
+          errorElement: <ErrorBoundary />,
+        }),
+        {
+          path: "/adopt",
+          element: <AdoptRoute />,
+          loader: AdoptRoute.loader,
+          errorElement: <ErrorBoundary />,
+        },
+      ],
     },
   ]);
 } else {
   const routeObjects: RouteObject[] = [
     {
+      element: <Shell />,
+      HydrateFallback: () => null,
       errorElement: <ErrorBoundary />,
       children: [
         { path: "signup", element: <SignupRoute /> },
@@ -319,18 +344,7 @@ if (isOnDevice) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  ReactDOM.createRoot(document.getElementById("root")!).render(
-    <>
-      <RouterProvider router={router} />
-      <Notifications
-        toastOptions={{
-          className:
-            "rounded-sm border-none bg-white text-black shadow-sm outline-1 outline-slate-800/30",
-        }}
-        max={2}
-      />
-    </>,
-  );
+  ReactDOM.createRoot(document.getElementById("root")!).render(<RouterProvider router={router} />);
 });
 
 // eslint-disable-next-line react-refresh/only-export-components

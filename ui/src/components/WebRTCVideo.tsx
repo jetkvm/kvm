@@ -5,17 +5,27 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
-import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
+import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
+import {
+  useCapability,
+  useRTCStore,
+  useSettingsStore,
+  useUiStore,
+  useUpdateStore,
+  useVideoStore,
+} from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
+  AudioPermissionBanner,
   HDMIErrorOverlay,
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
+  UpdateVideoPausedOverlay,
 } from "@components/VideoOverlay";
 import OcrOverlay from "@components/OcrOverlay";
 import { keys } from "@/keyboardMappings";
@@ -69,7 +79,8 @@ export default function WebRTCVideo({
   } = useVideoStore();
 
   // Video enhancement settings
-  const { videoSaturation, videoBrightness, videoContrast } = useSettingsStore();
+  const { videoSaturation, videoBrightness, videoContrast, videoScaling } = useSettingsStore();
+  const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
   const { isOcrMode } = useUiStore();
@@ -82,6 +93,12 @@ export default function WebRTCVideo({
   const rawHdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const [isInitialHdmiErrorGraceActive, setIsInitialHdmiErrorGraceActive] = useState(false);
   const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
+
+  // A device without video_during_update pauses the stream once the
+  // firmware download starts (systemUpdatePending) until it reboots.
+  const videoDuringUpdate = useCapability("video_during_update");
+  const { otaState } = useUpdateStore();
+  const updatePausesVideo = !videoDuringUpdate && otaState.updating && otaState.systemUpdatePending;
 
   // Video-related
   const handleResize = useCallback(
@@ -506,8 +523,8 @@ export default function WebRTCVideo({
 
   // Audio plays through a separate <audio> element because the <video> is
   // muted (kept muted so video autoplay isn't blocked when no user gesture
-  // has been recorded). If the browser blocks audio autoplay, the autoplay
-  // overlay surfaces a click target.
+  // has been recorded). If the browser blocks audio autoplay, a small banner
+  // surfaces a click target while video playback and input continue.
   useEffect(
     function updateAudioStream() {
       const elm = audioElm.current;
@@ -561,12 +578,16 @@ export default function WebRTCVideo({
 
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
+      // A stream resolution change only fires resize, so the store size would go stale
+      videoElmRefValue.addEventListener("resize", () => updateVideoSizeStore(videoElmRefValue), {
+        signal,
+      });
 
       return () => {
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler],
+    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, updateVideoSizeStore],
   );
 
   // Setup Mouse Events
@@ -637,18 +658,11 @@ export default function WebRTCVideo({
 
   const hasNoAutoPlayPermissions = useMemo(() => {
     if (peerConnection?.connectionState !== "connected") return false;
-    if (isPlaying && !audioAutoplayBlocked) return false;
+    if (isPlaying) return false;
     if (hdmiError) return false;
     if (videoHeight === 0 || videoWidth === 0) return false;
     return true;
-  }, [
-    audioAutoplayBlocked,
-    hdmiError,
-    isPlaying,
-    peerConnection?.connectionState,
-    videoHeight,
-    videoWidth,
-  ]);
+  }, [hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
 
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
@@ -670,13 +684,25 @@ export default function WebRTCVideo({
 
   // Conditionally set the filter style so we don't fallback to software rendering if these values are default of 1.0
   const videoStyle = useMemo(() => {
-    const isDefault = videoSaturation === 1.0 && videoBrightness === 1.0 && videoContrast === 1.0;
-    return isDefault
-      ? {} // No filter if all settings are default (1.0)
-      : {
-          filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
-        };
-  }, [videoSaturation, videoBrightness, videoContrast]);
+    const style: React.CSSProperties = {};
+    if (videoSaturation !== 1.0 || videoBrightness !== 1.0 || videoContrast !== 1.0) {
+      style.filter = `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`;
+    }
+    if (videoScaling === "actual" && videoWidth && videoHeight) {
+      style.width = videoWidth / devicePixelRatio;
+      style.height = videoHeight / devicePixelRatio;
+      style.maxHeight = "100%";
+    }
+    return style;
+  }, [
+    videoSaturation,
+    videoBrightness,
+    videoContrast,
+    videoScaling,
+    videoWidth,
+    videoHeight,
+    devicePixelRatio,
+  ]);
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
@@ -743,10 +769,20 @@ export default function WebRTCVideo({
                           <div className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                            <UpdateVideoPausedOverlay show={updatePausesVideo} />
                             <NoAutoplayPermissionsOverlay
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
                                 videoElm.current?.play();
+                                audioElm.current
+                                  ?.play()
+                                  .then(() => setAudioAutoplayBlocked(false))
+                                  .catch(() => undefined);
+                              }}
+                            />
+                            <AudioPermissionBanner
+                              show={isPlaying && audioEnabled && audioAutoplayBlocked && !hdmiError}
+                              onEnableAudio={() => {
                                 audioElm.current
                                   ?.play()
                                   .then(() => setAudioAutoplayBlocked(false))

@@ -51,6 +51,10 @@ export default defineConfig(({ mode, command }) => {
               // Let Rolldown handle tesseract.js naturally via dynamic import
               // to avoid CommonJS/ESM interop issues across chunks
               if (id.includes("tesseract")) return;
+              // Minified inside "vendor", the xterm addons can reference a
+              // renamed identifier from another module (Rolldown 1.0.0-rc.12);
+              // their own chunk keeps their names local.
+              if (id.includes("@xterm")) return "xterm";
               return "vendor";
             }
             return null;

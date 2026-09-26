@@ -34,10 +34,19 @@ import {
   VideoState,
   useFailsafeModeStore,
   useSettingsStore,
+  useCapability,
+  useDeviceStore,
 } from "@hooks/stores";
-import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
+import {
+  holdRpcEvents,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  RpcMethodNotFound,
+  useJsonRpc,
+} from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { useVersion } from "@hooks/useVersion";
+import type { VersionInfo as LocalVersion } from "@hooks/useVersion";
+import { useHiddenVideoStreamPause } from "@hooks/useHiddenVideoStreamPause";
 import WebRTCVideo from "@components/WebRTCVideo";
 import DashboardNavbar from "@components/Header";
 const ConnectionStatsSidebar = lazy(() => import("@components/sidebar/connectionStats"));
@@ -107,6 +116,9 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
 };
 
 export default function KvmIdRoute() {
+  const setCapabilities = useDeviceStore(state => state.setCapabilities);
+  const setAppVersion = useDeviceStore(state => state.setAppVersion);
+  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
   const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
@@ -115,6 +127,7 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
+  useHiddenVideoStreamPause();
   const {
     sidebarView,
     setSidebarView,
@@ -193,6 +206,7 @@ export default function KvmIdRoute() {
       pc.addTransceiver("audio", { direction: "recvonly" });
 
       const rpcDataChannel = pc.createDataChannel("rpc");
+      holdRpcEvents(rpcDataChannel);
       rpcDataChannel.onclose = () => {
         console.log("rpcDataChannel has closed");
         setRpcDataChannel(null);
@@ -244,15 +258,6 @@ export default function KvmIdRoute() {
       rpcHidUnreliableNonOrderedChannel.onopen = () => {
         setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
       };
-
-      // Create terminal channel as part of initial offer
-      const terminalDataChannel = pc.createDataChannel("terminal");
-      terminalDataChannel.onclose = () => console.log("terminalDataChannel has closed");
-      terminalDataChannel.onerror = (ev: Event) =>
-        console.error(`Error on terminalDataChannel '${terminalDataChannel.label}': ${ev.type}`);
-      terminalDataChannel.onopen = () => {
-        setTerminalChannel(terminalDataChannel);
-      };
     },
     [
       bumpMediaStreamTrackVersion,
@@ -262,7 +267,6 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableNonOrderedChannel,
       setRpcHidUnreliableChannel,
       setRpcHidProtocolVersion,
-      setTerminalChannel,
       setTransceiver,
     ],
   );
@@ -299,6 +303,7 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableNonOrderedChannel(null);
       setRpcHidProtocolVersion(null);
       setTerminalChannel(null);
+      setCapabilities([]);
     };
   }, [
     clearCandidatePairStats,
@@ -311,6 +316,7 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidProtocolVersion,
     setTerminalChannel,
+    setCapabilities,
   ]);
 
   // TURN server usage detection
@@ -466,9 +472,21 @@ export default function KvmIdRoute() {
       console.debug("Setting failsafe mode", { active, reason });
       setFailsafeMode(active, reason);
     }
+
+    // The device sends its version and capabilities each time the RPC
+    // channel opens.
+    if (resp.method === "localVersion") {
+      const { appVersion, systemVersion } = resp.params as LocalVersion;
+      setAppVersion(appVersion ?? "");
+      setSystemVersion(systemVersion);
+    }
+
+    if (resp.method === "deviceCapabilities") {
+      setCapabilities(resp.params as unknown as string[]);
+    }
   }
 
-  const { send } = useJsonRpc(onJsonRpcRequest);
+  const { send } = useJsonRpc(onJsonRpcRequest, { receiveHeldEvents: true });
 
   // Mouse movement handler for E2E tests (needs send from useJsonRpc)
   const handleAbsMouseMove = useCallback(
@@ -571,20 +589,37 @@ export default function KvmIdRoute() {
 
   // One channel per peer connection: a channel from a previous peer is dead
   // after a reconnect, so it is closed and replaced rather than kept.
+  const extensions = useCapability("extensions");
   useEffect(() => {
-    const channel = peerConnection ? peerConnection.createDataChannel("serial") : null;
+    const channel =
+      peerConnection && extensions ? peerConnection.createDataChannel("serial") : null;
     setSerialConsole(channel);
     return () => channel?.close();
-  }, [peerConnection]);
+  }, [peerConnection, extensions]);
 
   // CDC-ACM console data channel
   const [cdcACMConsole, setCdcACMConsole] = useState<RTCDataChannel | null>(null);
 
+  const usbSerial = useCapability("usb_serial");
   useEffect(() => {
-    const channel = peerConnection ? peerConnection.createDataChannel("cdcacm") : null;
+    const channel = peerConnection && usbSerial ? peerConnection.createDataChannel("cdcacm") : null;
     setCdcACMConsole(channel);
     return () => channel?.close();
-  }, [peerConnection]);
+  }, [peerConnection, usbSerial]);
+
+  // KVM terminal data channel, published once open. The previous channel
+  // stays in the store until the replacement opens, so the terminal does not
+  // unmount during a reconnect; the route teardown clears it.
+  const shell = useCapability("shell");
+  useEffect(() => {
+    if (!peerConnection || !shell) return;
+    const channel = peerConnection.createDataChannel("terminal");
+    channel.onclose = () => console.log("terminalDataChannel has closed");
+    channel.onerror = (ev: Event) =>
+      console.error(`Error on terminalDataChannel '${channel.label}': ${ev.type}`);
+    channel.onopen = () => setTerminalChannel(channel);
+    return () => channel.close();
+  }, [peerConnection, shell, setTerminalChannel]);
 
   // Register E2E test hooks
   useEffect(() => {
@@ -617,14 +652,6 @@ export default function KvmIdRoute() {
       setDisableVideoFocusTrap(true);
     }
   }, [navigateTo, location.pathname, setDisableVideoFocusTrap]);
-
-  const { appVersion, getLocalVersion } = useVersion();
-
-  useEffect(() => {
-    if (appVersion) return;
-
-    getLocalVersion();
-  }, [appVersion, getLocalVersion]);
 
   const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
 

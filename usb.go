@@ -354,8 +354,43 @@ func triggerUSBStateUpdate() {
 	}()
 }
 
+// Only accessed by the USB state poller.
+var enumerationRecovery usbgadget.EnumerationRecovery
+
+func attemptUSBEnumerationRecovery(state string) string {
+	hostPresent, hostKnown := gadget.IsUsbHostPresent()
+	now := time.Now()
+	usbStateLock.Lock()
+	shouldRecover := enumerationRecovery.ShouldAttempt(state, usbEmulationDesired, hostPresent, hostKnown, lastUSBRecoveryTry, now)
+	if !shouldRecover {
+		usbStateLock.Unlock()
+		return state
+	}
+	lastUSBRecoveryTry = now
+	defer func() { setUSBRecoveryTimer(time.Now()) }()
+
+	udcBound, _ := gadget.IsUDCBound()
+	usbLogger.Warn().Str("state", state).Bool("host_present", hostPresent).
+		Bool("udc_bound", udcBound).Bool("gadget_attached", gadget.IsGadgetAttachedToUDC()).
+		Msg("USB enumeration stalled; attempting one controller rebind")
+	// Serialize the decision and rebind with setUSBEmulationDesired: a disable
+	// request must either prevent recovery or unbind after recovery finishes.
+	err := gadget.RebindUsb(true)
+	usbStateLock.Unlock()
+	if err != nil {
+		usbLogger.Warn().Err(err).Msg("USB enumeration recovery rebind failed; automatic enumeration retry exhausted")
+	} else if gadget.HasKeyboard() && !tryReopenKeyboard("enumeration_timeout", true) {
+		usbLogger.Warn().Str("state", gadget.GetUsbState()).
+			Msg("USB enumeration recovery did not restore a configured, writable keyboard; automatic enumeration retry exhausted")
+	}
+	// Without a keyboard, the next poll observes enumeration directly; probing
+	// an intentionally disabled HID function would report a false failure.
+	return gadget.GetUsbState()
+}
+
 func checkUSBState() {
 	newState := gadget.GetUsbState()
+	newState = attemptUSBEnumerationRecovery(newState)
 	if newState == usbgadget.USBStateNotAttached {
 		newState = attemptUSBRecovery(newState)
 	} else {

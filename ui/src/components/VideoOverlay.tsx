@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { LuPlay, LuPower } from "react-icons/lu";
+import { LuPlay, LuPower, LuVolumeX } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
 
 import { m } from "@localizations/messages.js";
@@ -214,6 +214,41 @@ export function PeerConnectionDisconnectedOverlay({ show }: PeerConnectionDiscon
   );
 }
 
+interface UpdateVideoPausedOverlayProps {
+  readonly show: boolean;
+}
+
+// Shown while a device without the video_during_update capability installs
+// an update: it pauses the stream, so the last frame would otherwise sit
+// there looking like a hang.
+export function UpdateVideoPausedOverlay({ show }: UpdateVideoPausedOverlayProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="absolute inset-0 z-10 aspect-video h-full w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <OverlayContent>
+            <div className="flex flex-col items-start gap-y-1">
+              <LoadingSpinner className="h-12 w-12 text-blue-800 dark:text-blue-200" />
+              <div className="space-y-2 text-left text-black dark:text-white">
+                <h2 className="text-xl font-bold">{m.video_overlay_update_paused_title()}</h2>
+                <p className="text-sm text-slate-700 dark:text-slate-300">
+                  {m.video_overlay_update_paused_description()}
+                </p>
+              </div>
+            </div>
+          </OverlayContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 interface HDMIErrorOverlayProps {
   readonly show: boolean;
   readonly hdmiState: string;
@@ -402,6 +437,49 @@ export function NoAutoplayPermissionsOverlay({
               </div>
             </div>
           </OverlayContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+interface AudioPermissionBannerProps {
+  readonly show: boolean;
+  readonly onEnableAudio: () => void;
+}
+
+export function AudioPermissionBanner({ show, onEnableAudio }: AudioPermissionBannerProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="pointer-events-none absolute inset-x-2 top-2 z-10 flex justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <div
+            className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-md border border-slate-800/20 bg-white px-3 py-2 shadow-sm dark:border-slate-300/20 dark:bg-slate-800"
+            onKeyDown={event => event.stopPropagation()}
+            onKeyUp={event => event.stopPropagation()}
+          >
+            <span
+              role="status"
+              className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
+            >
+              <LuVolumeX aria-hidden="true" className="h-4 w-4 shrink-0" />
+              {m.video_audio_permission_required()}
+            </span>
+            <Button
+              type="button"
+              size="XS"
+              theme="light"
+              text={m.audio_enable_title()}
+              data-testid="enable-audio"
+              onClick={onEnableAudio}
+            />
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

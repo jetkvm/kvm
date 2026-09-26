@@ -263,3 +263,9 @@ func (n *Native) VideoGetStreamingStatus() VideoStreamingStatus {
 
 	return videoGetStreamingStatus()
 }
+
+// VideoSetREMB updates the receiver's bitrate limit in bits per second.
+// Zero clears the limit. The native encoder only applies it in Auto mode.
+func (n *Native) VideoSetREMB(bitrate uint32) error {
+	return videoSetREMB(bitrate)
+}
