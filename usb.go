@@ -89,6 +89,7 @@ func rpcKeypressReport(key byte, press bool) error {
 }
 
 func rpcAbsMouseReport(x int, y int, buttons uint8) error {
+	x, y = applyAbsMouseMapping(x, y)
 	return rpcHidReport(func() error { return gadget.AbsMouseReport(x, y, buttons) })
 }
 
