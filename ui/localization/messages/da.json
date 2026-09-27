@@ -155,6 +155,7 @@
     "appearance_theme_system": "System",
     "appearance_title": "Udseende",
     "attach": "Vedhæft",
+    "atx_power_control_board_not_responding": "Intet svar fra ATX-udvidelseskortet. Kontrollér RJ-12-kablet og kortets strømforsyning.",
     "atx_power_control_get_state_error": "Kunne ikke hente ATX-strømtilstand: {error}",
     "atx_power_control_hdd_led": "HDD-LED",
     "atx_power_control_hold_hint": "Hold nede i 3 sek. for at tvinge slukning",

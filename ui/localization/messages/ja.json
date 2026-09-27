@@ -155,6 +155,7 @@
     "appearance_theme_system": "システム",
     "appearance_title": "外観",
     "attach": "接続",
+    "atx_power_control_board_not_responding": "ATX拡張ボードから応答がありません。RJ-12ケーブルとボードの電源を確認してください。",
     "atx_power_control_get_state_error": "ATX電源状態の取得に失敗しました: {error}",
     "atx_power_control_hdd_led": "HDD LED",
     "atx_power_control_hold_hint": "3秒長押しで強制オフ",

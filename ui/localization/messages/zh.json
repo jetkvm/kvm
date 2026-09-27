@@ -155,6 +155,7 @@
     "appearance_theme_system": "跟随系统",
     "appearance_title": "外观",
     "attach": "挂载",
+    "atx_power_control_board_not_responding": "ATX 扩展板无响应。请检查 RJ-12 线缆和扩展板的电源。",
     "atx_power_control_get_state_error": "获取 ATX 电源状态失败：{error}",
     "atx_power_control_hdd_led": "硬盘指示灯",
     "atx_power_control_hold_hint": "按住 3 秒强制关机",
