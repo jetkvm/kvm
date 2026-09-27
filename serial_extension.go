@@ -76,6 +76,7 @@ func (e *extensionPort) start(extension string) error {
 	}
 	e.port = port
 	e.extension = extension
+	serialPortTracker.opened(*mode)
 
 	stop := make(chan struct{})
 	e.stop = stop
@@ -115,6 +116,7 @@ func (e *extensionPort) deactivate() {
 		e.broker.Close()
 	}
 	e.port.Close()
+	serialPortTracker.closed()
 	if e.readerDone != nil {
 		<-e.readerDone
 	}
@@ -154,7 +156,11 @@ func (e *extensionPort) setLineMode(mode *serial.Mode) error {
 	if e.port == nil {
 		return errSerialPortClosed
 	}
-	return e.port.SetMode(mode)
+	if err := e.port.SetMode(mode); err != nil {
+		return err
+	}
+	serialPortTracker.setMode(*mode)
+	return nil
 }
 
 // sendBreak holds the TX line low for d.
@@ -183,7 +189,9 @@ func (e *extensionPort) setConsoleSettings(settings consoleSettings) {
 	if e.mux == nil {
 		return
 	}
-	_ = e.port.SetMode(settings.mode)
+	if err := e.port.SetMode(settings.mode); err == nil {
+		serialPortTracker.setMode(*settings.mode)
+	}
 	e.mux.SetEchoEnabled(settings.echo)
 	e.broker.SetNormOptions(settings.norm)
 }
