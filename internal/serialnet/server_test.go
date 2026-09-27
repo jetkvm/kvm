@@ -1,4 +1,4 @@
-package kvm
+package serialnet
 
 import (
 	"bufio"
@@ -160,29 +160,28 @@ func TestTelnetBreak(t *testing.T) {
 
 /* ---------- settings ---------- */
 
-func TestSerialNetworkSettingsDefaultsAndValidation(t *testing.T) {
-	var s SerialSettings
-	s.normalizeNetwork()
-	if s.NetworkMode != SerialNetworkModeDisabled || s.Ser2NetPort != 2217 ||
-		s.Ser2NetProtocol != Ser2NetProtocolRaw || s.NetworkMaxClients != 1 {
+func TestSettingsDefaultsAndValidation(t *testing.T) {
+	var s Settings
+	s.Normalize()
+	if s != (Settings{Mode: ModeDisabled, Port: 2217, Protocol: ProtocolRaw, MaxClients: 1}) {
 		t.Fatalf("defaults = %+v", s)
 	}
-	if err := s.validateNetwork(); err != nil {
+	if err := s.Validate(); err != nil {
 		t.Fatalf("defaults invalid: %v", err)
 	}
 
-	bad := []func(*SerialSettings){
-		func(s *SerialSettings) { s.NetworkMode = "telnet" },
-		func(s *SerialSettings) { s.Ser2NetProtocol = "ssh" },
-		func(s *SerialSettings) { s.Ser2NetPort = 70000 },
-		func(s *SerialSettings) { s.Ser2NetPort = 80 },
-		func(s *SerialSettings) { s.Ser2NetPort = 22 },
-		func(s *SerialSettings) { s.NetworkMaxClients = 9 },
+	bad := []func(*Settings){
+		func(s *Settings) { s.Mode = "telnet" },
+		func(s *Settings) { s.Protocol = "ssh" },
+		func(s *Settings) { s.Port = 70000 },
+		func(s *Settings) { s.Port = 80 },
+		func(s *Settings) { s.Port = 22 },
+		func(s *Settings) { s.MaxClients = 9 },
 	}
 	for i, mutate := range bad {
 		c := s
 		mutate(&c)
-		if err := c.validateNetwork(); err == nil {
+		if err := c.Validate(); err == nil {
 			t.Errorf("case %d: expected an error for %+v", i, c)
 		}
 	}
@@ -190,18 +189,18 @@ func TestSerialNetworkSettingsDefaultsAndValidation(t *testing.T) {
 
 /* ---------- fan-out ---------- */
 
-func TestSerialRxHubDropsStalledSubscriber(t *testing.T) {
-	h := newSerialRxHub()
+func TestHubDropsStalledSubscriber(t *testing.T) {
+	h := NewHub()
 	slow := h.subscribe()
-	for i := 0; i < serialClientQueueDepth; i++ {
-		h.broadcast([]byte{1})
+	for i := 0; i < clientQueueDepth; i++ {
+		h.Broadcast([]byte{1})
 	}
 	select {
 	case <-slow.done:
 		t.Fatal("dropped before the queue was full")
 	default:
 	}
-	h.broadcast([]byte{1})
+	h.Broadcast([]byte{1})
 	select {
 	case <-slow.done:
 	default:
@@ -246,23 +245,24 @@ func (u *uartRecorder) waitFor(t *testing.T, want string) {
 	}
 }
 
-func newTestSerialServer(t *testing.T) (*serialNetServer, *uartRecorder) {
+func newTestServer(t *testing.T) (*Server, *uartRecorder) {
 	t.Helper()
 	uart := newUARTRecorder()
-	s := newSerialNetServer(newSerialRxHub())
-	s.write = uart.write
-	s.bindAddr = func(int) string { return "127.0.0.1:0" }
+	s := NewServer(NewHub(), Deps{
+		Write:    uart.write,
+		BindAddr: func(int) string { return "127.0.0.1:0" },
+	})
 	t.Cleanup(s.Stop)
 	return s, uart
 }
 
-func ser2netSettings(protocol string, maxClients int) serialNetworkSettings {
-	return serialNetworkSettings{Mode: SerialNetworkModeSer2Net, Port: 2217, Protocol: protocol, MaxClients: maxClients}
+func ser2netSettings(protocol string, maxClients int) Settings {
+	return Settings{Mode: ModeSer2Net, Port: 2217, Protocol: protocol, MaxClients: maxClients}
 }
 
 // waitClients polls until the server reports n clients; registration runs on
 // the accept goroutine.
-func waitClients(t *testing.T, s *serialNetServer, n int) {
+func waitClients(t *testing.T, s *Server, n int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for len(s.Status().Clients) != n {
@@ -274,8 +274,8 @@ func waitClients(t *testing.T, s *serialNetServer, n int) {
 }
 
 func TestSer2NetRawRelaysBothWays(t *testing.T) {
-	s, uart := newTestSerialServer(t)
-	if err := s.Apply(true, ser2netSettings(Ser2NetProtocolRaw, 1)); err != nil {
+	s, uart := newTestServer(t)
+	if err := s.Apply(true, ser2netSettings(ProtocolRaw, 1)); err != nil {
 		t.Fatal(err)
 	}
 	st := s.Status()
@@ -290,7 +290,7 @@ func TestSer2NetRawRelaysBothWays(t *testing.T) {
 	defer conn.Close()
 	waitClients(t, s, 1)
 
-	s.hub.broadcast([]byte("login: "))
+	s.hub.Broadcast([]byte("login: "))
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 7)
 	if _, err := io.ReadFull(conn, buf); err != nil || string(buf) != "login: " {
@@ -305,8 +305,8 @@ func TestSer2NetRawRelaysBothWays(t *testing.T) {
 }
 
 func TestSer2NetRejectsClientsOverLimit(t *testing.T) {
-	s, _ := newTestSerialServer(t)
-	if err := s.Apply(true, ser2netSettings(Ser2NetProtocolRaw, 1)); err != nil {
+	s, _ := newTestServer(t)
+	if err := s.Apply(true, ser2netSettings(ProtocolRaw, 1)); err != nil {
 		t.Fatal(err)
 	}
 	addr := s.Status().ListenAddress
@@ -331,8 +331,8 @@ func TestSer2NetRejectsClientsOverLimit(t *testing.T) {
 }
 
 func TestSer2NetStopDropsClients(t *testing.T) {
-	s, _ := newTestSerialServer(t)
-	if err := s.Apply(true, ser2netSettings(Ser2NetProtocolRaw, 2)); err != nil {
+	s, _ := newTestServer(t)
+	if err := s.Apply(true, ser2netSettings(ProtocolRaw, 2)); err != nil {
 		t.Fatal(err)
 	}
 	addr := s.Status().ListenAddress
@@ -344,7 +344,7 @@ func TestSer2NetStopDropsClients(t *testing.T) {
 	waitClients(t, s, 1)
 
 	// Re-applying identical settings keeps the session.
-	if err := s.Apply(true, ser2netSettings(Ser2NetProtocolRaw, 2)); err != nil {
+	if err := s.Apply(true, ser2netSettings(ProtocolRaw, 2)); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(s.Status().Clients); n != 1 {
@@ -366,14 +366,14 @@ func TestSer2NetStopDropsClients(t *testing.T) {
 }
 
 func TestSer2NetInactiveOrOtherModeDoesNotListen(t *testing.T) {
-	s, _ := newTestSerialServer(t)
-	if err := s.Apply(false, ser2netSettings(Ser2NetProtocolRaw, 1)); err != nil {
+	s, _ := newTestServer(t)
+	if err := s.Apply(false, ser2netSettings(ProtocolRaw, 1)); err != nil {
 		t.Fatal(err)
 	}
 	if s.Status().Running {
 		t.Fatal("listening while the extension is not loaded")
 	}
-	if err := s.Apply(true, serialNetworkSettings{Mode: SerialNetworkModeWeb, MaxClients: 1}); err != nil {
+	if err := s.Apply(true, Settings{Mode: ModeWeb, MaxClients: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if st := s.Status(); st.ListenAddress != "" || !st.Running {
@@ -382,7 +382,7 @@ func TestSer2NetInactiveOrOtherModeDoesNotListen(t *testing.T) {
 }
 
 func TestSer2NetRFC2217Session(t *testing.T) {
-	s, uart := newTestSerialServer(t)
+	s, uart := newTestServer(t)
 	base := serial.Mode{BaudRate: 115200, DataBits: 8}
 	var mu sync.Mutex
 	var applied []serial.Mode
@@ -393,7 +393,7 @@ func TestSer2NetRFC2217Session(t *testing.T) {
 		mu.Unlock()
 		return nil
 	}
-	if err := s.Apply(true, ser2netSettings(Ser2NetProtocolRFC2217, 1)); err != nil {
+	if err := s.Apply(true, ser2netSettings(ProtocolRFC2217, 1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -422,7 +422,7 @@ func TestSer2NetRFC2217Session(t *testing.T) {
 	uart.waitFor(t, "hi\xff")
 
 	// UART output containing IAC reaches the client escaped.
-	s.hub.broadcast([]byte{'x', telnetIAC})
+	s.hub.Broadcast([]byte{'x', telnetIAC})
 	got = make([]byte, 3)
 	if _, err := io.ReadFull(r, got); err != nil || !bytes.Equal(got, []byte{'x', telnetIAC, telnetIAC}) {
 		t.Fatalf("escaped data = %v, %v", got, err)
@@ -454,8 +454,8 @@ func TestSer2NetRFC2217Session(t *testing.T) {
 }
 
 func TestSerialWebSocketRelaysBothWays(t *testing.T) {
-	s, uart := newTestSerialServer(t)
-	if err := s.Apply(true, serialNetworkSettings{Mode: SerialNetworkModeWeb, MaxClients: 1}); err != nil {
+	s, uart := newTestServer(t)
+	if err := s.Apply(true, Settings{Mode: ModeWeb, MaxClients: 1}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -465,7 +465,7 @@ func TestSerialWebSocketRelaysBothWays(t *testing.T) {
 			return
 		}
 		defer ws.CloseNow()
-		s.serveWeb(r.Context(), ws, r.RemoteAddr)
+		s.ServeWeb(r.Context(), ws, r.RemoteAddr)
 	}))
 	defer srv.Close()
 
@@ -485,7 +485,7 @@ func TestSerialWebSocketRelaysBothWays(t *testing.T) {
 	}
 	uart.waitFor(t, "uname -a\r")
 
-	s.hub.broadcast([]byte("Linux\r\n"))
+	s.hub.Broadcast([]byte("Linux\r\n"))
 	_, p, err := ws.Read(ctx)
 	if err != nil || string(p) != "Linux\r\n" {
 		t.Fatalf("read %q, %v", p, err)
@@ -503,7 +503,7 @@ func TestSerialWebSocketRelaysBothWays(t *testing.T) {
 	}
 
 	// Switching to ser2net closes the web session.
-	if err := s.Apply(true, ser2netSettings(Ser2NetProtocolRaw, 1)); err != nil {
+	if err := s.Apply(true, ser2netSettings(ProtocolRaw, 1)); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err = ws.Read(ctx)

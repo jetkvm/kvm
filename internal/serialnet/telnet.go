@@ -1,4 +1,4 @@
-package kvm
+package serialnet
 
 import (
 	"encoding/binary"
@@ -333,7 +333,7 @@ func (t *telnetSession) apply(next serial.Mode) {
 		return
 	}
 	if err := t.setMode(next); err != nil {
-		serialLogger.Warn().Err(err).Interface("mode", next).Msg("RFC 2217 client requested an unsupported serial mode")
+		logger.Warn().Err(err).Interface("mode", next).Msg("RFC 2217 client requested an unsupported serial mode")
 		return
 	}
 	t.mode = next
