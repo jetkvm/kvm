@@ -624,6 +624,7 @@ func setTerminalPaused(paused bool) {
 }
 
 func initSerialPort() {
+	registerSerialMetrics()
 	_ = extPort.activate(config.ActiveExtension)
 	if config.ActiveExtension == "serial-console" {
 		_ = mountSerialConsole()
