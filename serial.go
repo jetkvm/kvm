@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/serialnet"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
@@ -393,10 +394,10 @@ var serialConfig = SerialSettings{
 	PreserveANSI:       true,
 	ShowNLTag:          false,
 	Buttons:            []QuickButton{},
-	NetworkMode:        SerialNetworkModeDisabled,
-	Ser2NetPort:        defaultSer2NetPort,
-	Ser2NetProtocol:    Ser2NetProtocolRaw,
-	NetworkMaxClients:  defaultSerialNetworkMaxClients,
+	NetworkMode:        serialnet.ModeDisabled,
+	Ser2NetPort:        serialnet.DefaultPort,
+	Ser2NetProtocol:    serialnet.ProtocolRaw,
+	NetworkMaxClients:  serialnet.DefaultMaxClients,
 }
 
 const serialSettingsPath = "/userdata/serialSettings.json"

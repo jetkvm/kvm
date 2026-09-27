@@ -1,4 +1,4 @@
-package kvm
+package serialnet
 
 import (
 	"strings"
@@ -9,14 +9,14 @@ import (
 )
 
 func TestSerialCollector(t *testing.T) {
-	state := &serialPortState{}
-	network := SerialNetworkStatus{Mode: SerialNetworkModeDisabled, MaxClients: 1}
+	state := &PortState{}
+	network := Status{Mode: ModeDisabled, MaxClients: 1}
 	extension := ""
-	c := &serialCollector{
+	c := &collector{
 		device:    "/dev/ttyS3",
 		state:     state,
 		extension: func() string { return extension },
-		network:   func() SerialNetworkStatus { return network },
+		network:   func() Status { return network },
 	}
 
 	// Closed port: no line settings are reported.
@@ -39,12 +39,12 @@ jetkvm_serial_port_open{device="/dev/ttyS3"} 0
 	}
 
 	// Open, reconfigured (e.g. by an RFC 2217 client), serving ser2net.
-	state.opened(serial.Mode{BaudRate: 115200, DataBits: 8})
-	state.setMode(serial.Mode{BaudRate: 9600, DataBits: 7, Parity: serial.EvenParity, StopBits: serial.TwoStopBits})
+	state.Opened(serial.Mode{BaudRate: 115200, DataBits: 8})
+	state.SetMode(serial.Mode{BaudRate: 9600, DataBits: 7, Parity: serial.EvenParity, StopBits: serial.TwoStopBits})
 	extension = "serial-console"
-	network = SerialNetworkStatus{
-		Mode:          SerialNetworkModeSer2Net,
-		Protocol:      Ser2NetProtocolRFC2217,
+	network = Status{
+		Mode:          ModeSer2Net,
+		Protocol:      ProtocolRFC2217,
 		Running:       true,
 		ListenAddress: "[::]:2217",
 		MaxClients:    2,
@@ -83,7 +83,7 @@ jetkvm_serial_port_open{device="/dev/ttyS3"} 1
 	}
 
 	// Closing the port drops the settings series instead of leaving them stale.
-	state.closed()
+	state.Closed()
 	if n := testutil.CollectAndCount(c, "jetkvm_serial_port_info", "jetkvm_serial_port_baud_rate"); n != 0 {
 		t.Fatalf("got %d settings series for a closed port", n)
 	}

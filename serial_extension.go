@@ -76,7 +76,7 @@ func (e *extensionPort) start(extension string) error {
 	}
 	e.port = port
 	e.extension = extension
-	serialPortTracker.opened(*mode)
+	serialPortTracker.Opened(*mode)
 
 	stop := make(chan struct{})
 	e.stop = stop
@@ -116,7 +116,7 @@ func (e *extensionPort) deactivate() {
 		e.broker.Close()
 	}
 	e.port.Close()
-	serialPortTracker.closed()
+	serialPortTracker.Closed()
 	if e.readerDone != nil {
 		<-e.readerDone
 	}
@@ -159,7 +159,7 @@ func (e *extensionPort) setLineMode(mode *serial.Mode) error {
 	if err := e.port.SetMode(mode); err != nil {
 		return err
 	}
-	serialPortTracker.setMode(*mode)
+	serialPortTracker.SetMode(*mode)
 	return nil
 }
 
@@ -190,7 +190,7 @@ func (e *extensionPort) setConsoleSettings(settings consoleSettings) {
 		return
 	}
 	if err := e.port.SetMode(settings.mode); err == nil {
-		serialPortTracker.setMode(*settings.mode)
+		serialPortTracker.SetMode(*settings.mode)
 	}
 	e.mux.SetEchoEnabled(settings.echo)
 	e.broker.SetNormOptions(settings.norm)
