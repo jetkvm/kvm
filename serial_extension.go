@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"errors"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/sync"
 	"go.bug.st/serial"
@@ -142,6 +143,30 @@ func (e *extensionPort) write(data []byte) error {
 	}
 	_, err := port.Write(data)
 	return err
+}
+
+// setLineMode changes the UART line settings without touching the saved
+// Serial Console settings, e.g. for an RFC 2217 client's session.
+func (e *extensionPort) setLineMode(mode *serial.Mode) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.port == nil {
+		return errSerialPortClosed
+	}
+	return e.port.SetMode(mode)
+}
+
+// sendBreak holds the TX line low for d.
+func (e *extensionPort) sendBreak(d time.Duration) error {
+	e.mu.Lock()
+	port := e.port
+	e.mu.Unlock()
+
+	if port == nil {
+		return errSerialPortClosed
+	}
+	return port.Break(d)
 }
 
 func (e *extensionPort) console() (*SerialMux, *ConsoleBroker) {
