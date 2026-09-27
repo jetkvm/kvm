@@ -317,6 +317,10 @@ var serialConfig = SerialSettings{
 	PreserveANSI:       true,
 	ShowNLTag:          false,
 	Buttons:            []QuickButton{},
+	NetworkMode:        SerialNetworkModeDisabled,
+	Ser2NetPort:        defaultSer2NetPort,
+	Ser2NetProtocol:    Ser2NetProtocolRaw,
+	NetworkMaxClients:  defaultSerialNetworkMaxClients,
 }
 
 const serialSettingsPath = "/userdata/serialSettings.json"
@@ -349,6 +353,10 @@ type SerialSettings struct {
 	PreserveANSI       bool          `json:"preserveANSI"`       // Whether to preserve ANSI escape codes
 	ShowNLTag          bool          `json:"showNLTag"`          // Whether to show a special tag for new lines
 	Buttons            []QuickButton `json:"buttons"`            // Custom quick buttons
+	NetworkMode        string        `json:"networkMode"`        // Network access: "disabled", "ser2net", "web"
+	Ser2NetPort        int           `json:"ser2netPort"`        // TCP port for ser2net mode
+	Ser2NetProtocol    string        `json:"ser2netProtocol"`    // ser2net protocol: "raw", "rfc2217"
+	NetworkMaxClients  int           `json:"networkMaxClients"`  // Concurrent network clients allowed
 }
 
 type DCMsg struct {
@@ -383,7 +391,7 @@ func getSerialSettings() (SerialSettings, error) {
 	file, err := os.Open(serialSettingsPath)
 	if err != nil {
 		logger.Info().Msg("SerialSettings file doesn't exist, using default")
-		return serialConfig, err
+		return serialConfig, nil
 	}
 	defer file.Close()
 
@@ -394,6 +402,7 @@ func getSerialSettings() (SerialSettings, error) {
 		return serialConfig, nil
 	}
 
+	loadedConfig.normalizeNetwork()
 	serialConfig = loadedConfig // Update global config
 
 	// Apply settings to serial port, when opening the extension
@@ -428,7 +437,11 @@ func getSerialSettings() (SerialSettings, error) {
 		Parity:   parity,
 	}
 
-	_ = port.SetMode(serialPortMode)
+	// The port is nil when /dev/ttyS3 failed to open; this now also runs at
+	// boot when the Serial Console extension is loaded.
+	if port != nil {
+		_ = port.SetMode(serialPortMode)
+	}
 
 	if serialMux != nil {
 		serialMux.SetEchoEnabled(serialConfig.EnableEcho)
@@ -473,6 +486,11 @@ func getSerialSettings() (SerialSettings, error) {
 }
 
 func setSerialSettings(newSettings SerialSettings) error {
+	newSettings.normalizeNetwork()
+	if err := newSettings.validateNetwork(); err != nil {
+		return err
+	}
+
 	logger.Trace().Str("path", serialSettingsPath).Msg("Saving config")
 
 	file, err := os.Create(serialSettingsPath)
@@ -521,7 +539,9 @@ func setSerialSettings(newSettings SerialSettings) error {
 		Parity:   parity,
 	}
 
-	_ = port.SetMode(serialPortMode)
+	if port != nil {
+		_ = port.SetMode(serialPortMode)
+	}
 
 	serialConfig = newSettings // Update global config
 
@@ -564,7 +584,7 @@ func setSerialSettings(newSettings SerialSettings) error {
 		consoleBroker.SetNormOptions(norm)
 	}
 
-	return nil
+	return applySerialNetwork(serialConfig)
 }
 
 func setTerminalPaused(paused bool) {
@@ -580,6 +600,8 @@ func initSerialPort() {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
+	case "serial-console":
+		_ = mountSerialConsole()
 	}
 }
 
