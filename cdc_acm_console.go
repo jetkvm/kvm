@@ -15,6 +15,14 @@ func handleCDCACMChannel(d *webrtc.DataChannel) {
 
 	var f *os.File
 	d.OnOpen(func() {
+		// When the serial console gadget is disabled (the default), /dev/ttyGS0
+		// does not exist. Skip quietly instead of warning on every channel open.
+		if config == nil || config.UsbDevices == nil || !config.UsbDevices.SerialConsole {
+			scopedLogger.Debug().Msg("CDC-ACM console is not enabled in USB device configuration")
+			d.Close()
+			return
+		}
+
 		var err error
 		f, err = os.OpenFile(cdcACMDevicePath, os.O_RDWR, 0)
 		if err != nil {
