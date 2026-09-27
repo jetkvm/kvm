@@ -558,12 +558,7 @@ func newDeviceSerialNetServer(hub *serialRxHub) *serialNetServer {
 		}
 	}
 	s.mode = func() serial.Mode { return *serialPortMode }
-	s.setMode = func(m serial.Mode) error {
-		if port == nil {
-			return errors.New("serial port is not open")
-		}
-		return port.SetMode(&m)
-	}
+	s.setMode = func(m serial.Mode) error { return setSerialPortMode(&m) }
 	s.sendBreak = func() {
 		if port == nil {
 			return

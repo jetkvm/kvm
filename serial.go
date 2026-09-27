@@ -22,7 +22,7 @@ var serialMux *SerialMux
 var consoleBroker *ConsoleBroker
 
 func mountATXControl() error {
-	_ = port.SetMode(defaultMode)
+	_ = setSerialPortMode(defaultMode)
 	go runATXControl()
 
 	return nil
@@ -139,7 +139,7 @@ func pressATXResetButton(duration time.Duration) error {
 }
 
 func mountDCControl() error {
-	_ = port.SetMode(defaultMode)
+	_ = setSerialPortMode(defaultMode)
 	registerDCMetrics()
 	go runDCControl()
 	return nil
@@ -437,11 +437,9 @@ func getSerialSettings() (SerialSettings, error) {
 		Parity:   parity,
 	}
 
-	// The port is nil when /dev/ttyS3 failed to open; this now also runs at
-	// boot when the Serial Console extension is loaded.
-	if port != nil {
-		_ = port.SetMode(serialPortMode)
-	}
+	// Also runs at boot when the Serial Console extension is loaded, where
+	// the port may have failed to open; setSerialPortMode checks for that.
+	_ = setSerialPortMode(serialPortMode)
 
 	if serialMux != nil {
 		serialMux.SetEchoEnabled(serialConfig.EnableEcho)
@@ -539,9 +537,7 @@ func setSerialSettings(newSettings SerialSettings) error {
 		Parity:   parity,
 	}
 
-	if port != nil {
-		_ = port.SetMode(serialPortMode)
-	}
+	_ = setSerialPortMode(serialPortMode)
 
 	serialConfig = newSettings // Update global config
 
@@ -594,6 +590,7 @@ func setTerminalPaused(paused bool) {
 }
 
 func initSerialPort() {
+	registerSerialMetrics()
 	_ = reopenSerialPort()
 	switch config.ActiveExtension {
 	case "atx-power":
@@ -608,6 +605,7 @@ func initSerialPort() {
 func reopenSerialPort() error {
 	if port != nil {
 		port.Close()
+		serialPortTracker.closed()
 	}
 	var err error
 	port, err = serial.Open(serialPortPath, defaultMode)
@@ -619,6 +617,7 @@ func reopenSerialPort() error {
 			Msg("Error opening serial port")
 		return err
 	}
+	serialPortTracker.opened(*defaultMode)
 
 	// new broker (no sink yet—set it in handleSerialChannel.OnOpen)
 	norm := NormalizationOptions{
