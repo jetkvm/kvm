@@ -97,7 +97,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
     setMountInProgress(true);
     send("mountWithStorage", { filename: fileName, mode }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) triggerError(resp.error.message);
+      if ("error" in resp) {
+        triggerError(typeof resp.error.data === "string" ? resp.error.data : resp.error.message);
+        setMountInProgress(false);
+        return;
+      }
 
       clearMountMediaState();
       syncRemoteVirtualMediaState()
