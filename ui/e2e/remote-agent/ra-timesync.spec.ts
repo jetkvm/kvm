@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { test, expect, type Page } from "@playwright/test";
-import { callJsonRpc, ensureRpcReady, reconnectAfterReboot } from "../helpers";
+import { callJsonRpc, ensureRpcReady, rebootAndReconnect } from "../helpers";
 import { agent, registerSharedSession } from "./shared";
 
 let page: Page;
@@ -75,8 +75,8 @@ test("custom NTP queries the configured host and persists across reboot @network
     });
   await expect.poll(count, { timeout: 90_000 }).toBeGreaterThan(0);
   const before = count();
-  await callJsonRpc(page, "reboot", { force: true });
-  await reconnectAfterReboot(page);
+  // The spec budgets 120 s for the reconnect (reconnectAfterReboot's default).
+  await rebootAndReconnect(page, 120_000);
   expect(await callJsonRpc(page, "getNetworkSettings")).toMatchObject({
     time_sync_mode: "custom",
     time_sync_ntp_servers: configuredServers,
