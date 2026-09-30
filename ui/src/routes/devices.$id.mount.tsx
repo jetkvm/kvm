@@ -498,6 +498,108 @@ export interface StorageFile {
   createdAt: Date;
 }
 
+// A device with removable storage (the JetKVM Mini's TF card) keeps images on
+// a card that can be missing or unformatted.
+interface StorageState {
+  initialized: boolean;
+  cardPresent: boolean;
+  filesystemMounted: boolean;
+}
+
+function parseStorageState(value: unknown): StorageState | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Partial<StorageState>;
+  if (
+    typeof candidate.initialized !== "boolean" ||
+    typeof candidate.cardPresent !== "boolean" ||
+    typeof candidate.filesystemMounted !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    initialized: candidate.initialized,
+    cardPresent: candidate.cardPresent,
+    filesystemMounted: candidate.filesystemMounted,
+  };
+}
+
+function isStorageReady(state: StorageState | null): boolean {
+  return state?.initialized === true && state.cardPresent && state.filesystemMounted;
+}
+
+function TfCardStatus({
+  state,
+  failed,
+  onFormatted,
+}: {
+  state: StorageState | null;
+  failed: boolean;
+  onFormatted: () => void;
+}) {
+  const { send } = useJsonRpc();
+  const [formatting, setFormatting] = useState(false);
+  const canFormat =
+    !failed &&
+    state?.initialized === true &&
+    state.cardPresent === true &&
+    state.filesystemMounted === false;
+  const status = failed
+    ? { label: m.mount_tf_card_service_unavailable(), color: "bg-red-500" }
+    : state === null
+      ? { label: m.mount_calculating(), color: "bg-slate-400" }
+      : !state.initialized
+        ? { label: m.mount_tf_card_service_unavailable(), color: "bg-red-500" }
+        : !state.cardPresent
+          ? { label: m.mount_tf_card_not_detected(), color: "bg-amber-500" }
+          : !state.filesystemMounted
+            ? { label: m.mount_tf_card_filesystem_unavailable(), color: "bg-amber-500" }
+            : { label: m.mount_tf_card_ready(), color: "bg-emerald-500" };
+
+  function handleFormat() {
+    if (!canFormat || formatting || !window.confirm(m.mount_tf_card_format_confirm())) return;
+    setFormatting(true);
+    send("formatStorage", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        const error = typeof resp.error.data === "string" ? resp.error.data : resp.error.message;
+        notifications.error(m.mount_tf_card_format_error({ error }));
+        setFormatting(false);
+        return;
+      }
+      notifications.success(m.mount_tf_card_format_success());
+      setFormatting(false);
+      onFormatted();
+    });
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-x-4 px-4 py-3">
+        <div className="flex items-center gap-x-2">
+          <span className={cx("h-2.5 w-2.5 shrink-0 rounded-full", status.color)} />
+          <span className="text-sm font-medium text-black dark:text-white">
+            {m.mount_tf_card()}
+          </span>
+        </div>
+        <div className="flex items-center justify-end gap-x-3">
+          <span className="text-right text-sm text-slate-700 dark:text-slate-300">
+            {status.label}
+          </span>
+          {canFormat && (
+            <Button
+              size="XS"
+              theme="danger"
+              text={m.mount_tf_card_format()}
+              loading={formatting}
+              disabled={formatting}
+              onClick={handleFormat}
+            />
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function DeviceFileView({
   onMountStorageFile,
   mountInProgress,
@@ -523,6 +625,9 @@ function DeviceFileView({
     bytesFree: number;
   }
   const [storageSpace, setStorageSpace] = useState<StorageSpace | null>(null);
+  const removableStorage = useCapability("removable_storage");
+  const [storageState, setStorageState] = useState<StorageState | null>(null);
+  const [storageStateFailed, setStorageStateFailed] = useState(false);
 
   const percentageUsed = useMemo(() => {
     if (!storageSpace) return 0;
@@ -541,7 +646,7 @@ function DeviceFileView({
     return storageSpace.bytesFree;
   }, [storageSpace]);
 
-  const syncStorage = useCallback(() => {
+  const loadFilesAndSpace = useCallback(() => {
     send("listStorageFiles", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.mount_error_list_storage({ error: resp.error }));
@@ -568,6 +673,29 @@ function DeviceFileView({
     });
   }, [send, setOnStorageFiles, setStorageSpace]);
 
+  const syncStorage = useCallback(() => {
+    if (!removableStorage) {
+      loadFilesAndSpace();
+      return;
+    }
+    // Only list files and space once the card is mounted.
+    setStorageStateFailed(false);
+    send("getStorageState", {}, (resp: JsonRpcResponse) => {
+      const state = "error" in resp ? null : parseStorageState(resp.result);
+      setStorageState(state);
+      setStorageStateFailed(state === null);
+      if (isStorageReady(state)) {
+        loadFilesAndSpace();
+        return;
+      }
+      setOnStorageFiles([]);
+      setStorageSpace(null);
+      // A different card may come next: its files need a fresh selection.
+      setSelected(null);
+      setCurrentPage(1);
+    });
+  }, [loadFilesAndSpace, removableStorage, send, setOnStorageFiles, setStorageSpace]);
+
   interface StorageFiles {
     files: {
       filename: string;
@@ -579,6 +707,20 @@ function DeviceFileView({
   useEffect(() => {
     syncStorage();
   }, [syncStorage]);
+
+  // A card can be inserted, removed or finish mounting while the view is
+  // open: ask again every few seconds and resync when the state changes.
+  const storageStateJson = JSON.stringify(storageState);
+  useEffect(() => {
+    if (!removableStorage) return;
+    const timer = setInterval(() => {
+      send("getStorageState", {}, (resp: JsonRpcResponse) => {
+        const state = "error" in resp ? null : parseStorageState(resp.result);
+        if (JSON.stringify(state) !== storageStateJson) syncStorage();
+      });
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [removableStorage, send, storageStateJson, syncStorage]);
 
   function handleDeleteFile(file: StorageFile) {
     console.log("Deleting file:", file);
@@ -614,12 +756,30 @@ function DeviceFileView({
     setCurrentPage(prev => Math.min(prev + 1, totalPages));
   };
 
+  if (removableStorage && !isStorageReady(storageState)) {
+    return (
+      <div className="w-full space-y-4">
+        <ViewHeader
+          title={m.mount_view_device_title()}
+          description={m.mount_view_device_description()}
+        />
+        <TfCardStatus state={storageState} failed={storageStateFailed} onFormatted={syncStorage} />
+        <div className="flex items-center gap-x-2">
+          <Button size="MD" theme="light" text={m.back()} onClick={() => onBack()} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full space-y-4">
       <ViewHeader
         title={m.mount_view_device_title()}
         description={m.mount_view_device_description()}
       />
+      {removableStorage && (
+        <TfCardStatus state={storageState} failed={storageStateFailed} onFormatted={syncStorage} />
+      )}
       <div
         className="w-full animate-fadeIn opacity-0"
         style={{
