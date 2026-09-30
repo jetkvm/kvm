@@ -4,6 +4,7 @@ import pkg from "react-use-websocket";
 import { CLOUD_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
 import { useRTCStore, useUiStore } from "@hooks/stores";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { m } from "@localizations/messages.js";
 import { isLinuxDesktop } from "@/utils";
 
@@ -62,6 +63,23 @@ export const useWebSocketSignaling: SignalingHook = ({
 
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
+
+  // A device can report a takeover on the signaling socket: an
+  // "other-session-connected" message, or close code 4001 when the message is
+  // not read. The session may have no RPC channel open yet, so the RPC
+  // otherSessionConnected event cannot be relied on. The socket then stays
+  // closed until the user selects Use Here; reconnecting on its own would take
+  // the session back from the other tab.
+  const { navigateTo } = useDeviceUiNavigation();
+  const [sessionSuperseded, setSessionSuperseded] = useState(false);
+  const sessionSupersededRef = useRef(false);
+  const stopForOtherSession = useCallback(() => {
+    sessionSupersededRef.current = true;
+    setSessionSuperseded(true);
+    useRTCStore.getState().peerConnection?.close();
+    setPeerConnectionState("closed");
+    navigateTo("/other-session");
+  }, [navigateTo, setPeerConnectionState]);
 
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
@@ -202,11 +220,12 @@ export const useWebSocketSignaling: SignalingHook = ({
 
       shouldReconnect(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] shouldReconnect", event);
-        return true;
+        return !sessionSupersededRef.current && event.code !== 4001;
       },
 
       onClose(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] onClose", event);
+        if (event.code === 4001) stopForOtherSession();
         void checkLocalSession();
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
@@ -240,6 +259,11 @@ export const useWebSocketSignaling: SignalingHook = ({
         // device is reachable. That is our cue to create the peer and offer;
         // the answer and ICE candidates then arrive over the same socket.
         const parsedMessage = JSON.parse(message.data);
+
+        if (parsedMessage.type === "other-session-connected") {
+          stopForOtherSession();
+          return;
+        }
 
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
@@ -287,6 +311,7 @@ export const useWebSocketSignaling: SignalingHook = ({
         }
       },
     },
+    !sessionSuperseded,
   );
 
   const sendWebRTCSignal = useCallback(
@@ -399,5 +424,17 @@ export const useWebSocketSignaling: SignalingHook = ({
     };
   }, [peerConnection]);
 
-  return { connect: setupPeerConnection, loadingMessage, connectionFailed };
+  // Use Here: after a takeover on the signaling socket, reopening the socket
+  // brings new device metadata, which sets up a fresh peer.
+  const connect = useCallback(async () => {
+    if (sessionSupersededRef.current) {
+      sessionSupersededRef.current = false;
+      setSessionSuperseded(false);
+      setPeerConnectionState("new");
+      return;
+    }
+    await setupPeerConnection();
+  }, [setupPeerConnection, setPeerConnectionState]);
+
+  return { connect, loadingMessage, connectionFailed };
 };
