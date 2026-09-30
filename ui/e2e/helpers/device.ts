@@ -58,7 +58,13 @@ export async function ensureRpcReady(
       }
       const useHere = page.getByRole("button", { name: "Use Here" });
       if (await useHere.isVisible({ timeout: 200 }).catch(() => false)) {
-        await useHere.click();
+        // The dialog stays until the page has navigated away from it. After
+        // the caller's own "Use Here" click that navigation can end while this
+        // click waits for the button to be stable, and a click without a
+        // timeout then waits for a button that does not come back.
+        await useHere.click({ timeout: 5000 }).catch(async (error: unknown) => {
+          if (await useHere.isVisible()) throw error;
+        });
         await page.waitForTimeout(1000);
       }
       await waitForWebRTCReady(page, Math.min(15000, Math.max(5000, deadline - Date.now())));
@@ -117,8 +123,40 @@ export async function reconnectAfterReboot(
   await ensureRpcReady(page, { timeoutMs, navigateFirst: true });
 }
 
-/** Send reboot once, observe shutdown, then reconnect without resending it. */
-export async function rebootAndReconnect(page: Page): Promise<void> {
+/**
+ * Wait until /device/status has failed several times in a row. A single miss
+ * is not a reboot: a busy device (flashing an image, rebuilding video) can
+ * answer late, and a short probe times out although it is still up.
+ */
+export async function waitForDeviceDown(
+  page: Page,
+  message: string,
+  timeoutMs: number,
+): Promise<void> {
+  let misses = 0;
+  await expect
+    .poll(
+      async () => {
+        let up = false;
+        try {
+          const response = await page.request.get("/device/status", { timeout: 2000 });
+          up = response.ok();
+        } catch {
+          up = false;
+        }
+        misses = up ? 0 : misses + 1;
+        return misses >= 3;
+      },
+      { message, timeout: timeoutMs, intervals: [1000] },
+    )
+    .toBe(true);
+}
+
+/**
+ * Send reboot once, observe shutdown, then reconnect without resending it.
+ * `timeoutMs` bounds the reconnect after the device went down.
+ */
+export async function rebootAndReconnect(page: Page, timeoutMs = 90_000): Promise<void> {
   await ensureRpcReady(page, { timeoutMs: 20_000 });
   await Promise.all([
     rawJsonRpc(page, "reboot", { force: true }, 5000).catch(error => {
@@ -127,25 +165,9 @@ export async function rebootAndReconnect(page: Page): Promise<void> {
         throw error;
       // A lost reply is acceptable only if the shutdown observer below succeeds.
     }),
-    expect
-      .poll(
-        async () => {
-          try {
-            const response = await page.request.get("/device/status", { timeout: 1000 });
-            return !response.ok();
-          } catch {
-            return true;
-          }
-        },
-        {
-          message: "device must go down after the single reboot request",
-          timeout: 20_000,
-          intervals: [100, 200, 500],
-        },
-      )
-      .toBe(true),
+    waitForDeviceDown(page, "device must go down after the single reboot request", 30_000),
   ]);
-  await reconnectAfterReboot(page, 0, 90_000);
+  await reconnectAfterReboot(page, 0, timeoutMs);
 }
 
 // A method the device does not implement answers "Method not found". Tests
