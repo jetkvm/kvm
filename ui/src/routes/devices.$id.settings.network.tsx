@@ -197,7 +197,24 @@ export default function SettingsNetworkRoute() {
     [customDomain],
   );
 
-  const { register, handleSubmit, watch, formState, reset } = formMethods;
+  const { register, handleSubmit, watch, formState, reset, getValues, setValue } = formMethods;
+  const reloadSettings = useCallback(
+    () =>
+      fetchNetworkData().then(
+        ({ settings }) => {
+          // IPv4 belongs to the network just joined; other unsaved edits, such as
+          // the hostname, are device-wide and stay unsaved.
+          const edited = getValues();
+          const kept = (Object.keys(formState.dirtyFields) as (keyof NetworkSettings)[]).filter(
+            key => !key.startsWith("ipv4"),
+          );
+          reset(settings);
+          for (const key of kept) setValue(key, edited[key], { shouldDirty: true });
+        },
+        () => undefined,
+      ),
+    [fetchNetworkData, formState, getValues, reset, setValue],
+  );
 
   const onSubmit = useCallback(
     async (settings: NetworkSettings) => {
@@ -398,7 +415,7 @@ export default function SettingsNetworkRoute() {
             }
           />
           <div className="space-y-4">
-            {hasWifi && <WifiNetworksCard />}
+            {hasWifi && <WifiNetworksCard onSwitched={reloadSettings} />}
             <div className="flex items-center justify-between">
               <SettingsItem
                 title={m.network_mac_address_title()}

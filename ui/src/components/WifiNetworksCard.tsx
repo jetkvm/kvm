@@ -102,7 +102,9 @@ function confirmOnEnter(action: () => void) {
   };
 }
 
-export default function WifiNetworksCard() {
+// onSwitched: the device finished switching to another network, whose IPv4
+// settings the page's network form has to load.
+export default function WifiNetworksCard({ onSwitched }: { onSwitched?: () => void }) {
   const { send } = useJsonRpc();
   const channel = useRTCStore(state => state.rpcDataChannel);
   const [settings, setSettings] = useState<WifiSettings | null>(null);
@@ -144,11 +146,17 @@ export default function WifiNetworksCard() {
             notifications.error(
               m.wifi_networks_connect_failed({ ssid, error: value.connect_error }),
             );
-          else notifications.success(m.wifi_networks_connected({ ssid }));
+          else {
+            notifications.success(m.wifi_networks_connected({ ssid }));
+            onSwitched?.();
+          }
         }
       }),
-    [send],
+    [send, onSwitched],
   );
+
+  // A reply lost with a closed RPC channel must not keep the card busy.
+  useEffect(() => setPending(false), [channel]);
 
   useEffect(() => {
     if (channel?.readyState !== "open") return;
