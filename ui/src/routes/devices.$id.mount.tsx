@@ -100,6 +100,8 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
       if ("error" in resp) {
         triggerError(typeof resp.error.data === "string" ? resp.error.data : resp.error.message);
         setMountInProgress(false);
+        // The state was cleared when the mount was sent; show what is still mounted.
+        syncRemoteVirtualMediaState().catch(() => undefined);
         return;
       }
 
