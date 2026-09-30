@@ -119,12 +119,8 @@ export const useWebSocketSignaling: SignalingHook = ({
     sessionSupersededRef.current = true;
     setSessionSuperseded(true);
     retirePeer();
-    // The other session owns any reboot now. Use Here remounts the rebooting
-    // overlay on a live peer, where it would wait for a disconnect that never
-    // comes.
-    setRebootState({ isRebooting: false, postRebootAction: null });
     navigateTo("/other-session");
-  }, [navigateTo, retirePeer, setRebootState]);
+  }, [navigateTo, retirePeer]);
 
   // The RPC otherSessionConnected event only navigates to that page.
   useEffect(() => {
@@ -132,7 +128,11 @@ export const useWebSocketSignaling: SignalingHook = ({
     sessionSupersededRef.current = true;
     setSessionSuperseded(true);
     retirePeer();
-  }, [location.pathname, retirePeer]);
+    // The other session owns any reboot now. Use Here remounts the rebooting
+    // overlay on a live peer, where it would wait for a disconnect that never
+    // comes.
+    setRebootState({ isRebooting: false, postRebootAction: null });
+  }, [location.pathname, retirePeer, setRebootState]);
 
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
