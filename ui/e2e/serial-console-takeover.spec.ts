@@ -1,10 +1,10 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import {
   callJsonRpc,
   ensureNoPasswordViaAPI,
-  ensureRpcReady,
-  rpcAvailable,
+  skipWithoutRpc,
   waitForWebRTCReady,
+  withRpcPage,
 } from "./helpers";
 
 // Every session opens a serial data channel and the device makes it the
@@ -80,24 +80,10 @@ test.describe("serial console sink across a session takeover", () => {
   let settingsChanged = false;
   let settings: Record<string, unknown> = DEFAULT_SERIAL_SETTINGS;
 
-  async function withPage(browser: Browser, fn: (page: Page) => Promise<void>): Promise<void> {
-    const page = await browser.newPage();
-    try {
-      await page.goto("/", { waitUntil: "networkidle" });
-      await ensureRpcReady(page);
-      await fn(page);
-    } finally {
-      await page.close();
-    }
-  }
-
   test.beforeAll(async ({ browser }) => {
     await ensureNoPasswordViaAPI();
-    await withPage(browser, async page => {
-      test.skip(
-        !(await rpcAvailable(page, "getSerialSettings")),
-        "device has no serial console (getSerialSettings)",
-      );
+    await withRpcPage(browser, async page => {
+      await skipWithoutRpc(page, "getSerialSettings", "serial console");
       try {
         settings = (await callJsonRpc(page, "getSerialSettings")) as Record<string, unknown>;
       } catch {
@@ -110,7 +96,7 @@ test.describe("serial console sink across a session takeover", () => {
 
   test.afterAll(async ({ browser }) => {
     if (!settingsChanged) return;
-    await withPage(browser, async page => {
+    await withRpcPage(browser, async page => {
       await callJsonRpc(page, "setSerialSettings", { settings });
     });
   });

@@ -840,6 +840,12 @@ var factoryResetPaths = []string{
 func rpcFactoryReset() error {
 	logger.Info().Msg("Factory reset initiated, removing all user data")
 
+	if config.CloudToken != "" && config.CloudURL != "" {
+		if err := rpcDeregisterDevice(); err != nil {
+			logger.Warn().Err(err).Msg("failed to deregister device from cloud during factory reset")
+		}
+	}
+
 	var errs []error
 	for _, path := range factoryResetPaths {
 		if err := os.RemoveAll(path); err != nil {
