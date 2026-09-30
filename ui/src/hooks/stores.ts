@@ -733,11 +733,12 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
 export interface DeviceState {
   appVersion: string | null;
   systemVersion: string | null;
-  capabilities: Set<string>;
+  // null until the device reports them on this RPC channel.
+  capabilities: Set<string> | null;
 
   setAppVersion: (version: string) => void;
   setSystemVersion: (version: string) => void;
-  setCapabilities: (capabilities: string[]) => void;
+  setCapabilities: (capabilities: string[] | null) => void;
 }
 
 // Optional device features reported by getDeviceCapabilities.
@@ -762,16 +763,16 @@ export type Capability =
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
   systemVersion: null,
-  capabilities: new Set(),
+  capabilities: null,
 
   setAppVersion: (version: string) => set({ appVersion: version }),
   setSystemVersion: (version: string) => set({ systemVersion: version }),
-  setCapabilities: (capabilities: string[]) => set({ capabilities: new Set(capabilities) }),
+  setCapabilities: capabilities => set({ capabilities: capabilities && new Set(capabilities) }),
 }));
 
 // Whether the connected device reported a capability in getDeviceCapabilities.
 export const useCapability = (name: Capability) =>
-  useDeviceStore(state => state.capabilities.has(name));
+  useDeviceStore(state => state.capabilities?.has(name) ?? false);
 
 export interface TerminalState {
   terminator: string | null;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { useCapability, useSettingsStore } from "@hooks/stores";
+import { useCapability, useDeviceStore, useSettingsStore } from "@hooks/stores";
 import { JsonRpcError, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button, LinkButton } from "@components/Button";
@@ -38,10 +38,18 @@ export default function SettingsAdvancedRoute() {
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
+  const shell = useCapability("shell");
   const localLoopback = useCapability("local_loopback");
   const logLevel = useCapability("log_level");
+  // A one-image firmware reports an empty appVersion and updates only its system.
+  const deviceAppVersion = useDeviceStore(state => state.appVersion);
+  const separateApp = deviceAppVersion !== "";
+  // Both arrive when the RPC channel opens; until then the device may have a shell.
+  const reported =
+    useDeviceStore(state => state.capabilities !== null) && deviceAppVersion !== null;
 
   useEffect(() => {
+    if (!shell) return;
     send("getDevModeState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const result = resp.result as { enabled: boolean };
@@ -52,7 +60,9 @@ export default function SettingsAdvancedRoute() {
       if ("error" in resp) return;
       setSSHKey(resp.result as string);
     });
+  }, [send, setDeveloperMode, shell]);
 
+  useEffect(() => {
     send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
@@ -62,7 +72,7 @@ export default function SettingsAdvancedRoute() {
       if ("error" in resp) return;
       setDevChannel(resp.result as boolean);
     });
-  }, [send, setDeveloperMode]);
+  }, [send]);
 
   useEffect(() => {
     if (!localLoopback) return;
@@ -214,11 +224,12 @@ export default function SettingsAdvancedRoute() {
     setCustomVersionUpdateLoading(false);
   }, []);
 
+  const target = separateApp ? updateTarget : "system";
+
   const handleCustomVersionUpdate = useCallback(async () => {
     const components: UpdateComponents = {};
-    if (["app", "both"].includes(updateTarget) && appVersion) components.app = appVersion;
-    if (["system", "both"].includes(updateTarget) && systemVersion)
-      components.system = systemVersion;
+    if (["app", "both"].includes(target) && appVersion) components.app = appVersion;
+    if (["system", "both"].includes(target) && systemVersion) components.system = systemVersion;
     let versionInfo: SystemVersionInfo | undefined;
 
     try {
@@ -250,7 +261,8 @@ export default function SettingsAdvancedRoute() {
     pageParams.set("reset_config", resetConfig.toString());
 
     if (!hasUpdate) {
-      handleVersionUpdateError("No update available");
+      // The check reports its own failures, such as an unknown version, in `error`.
+      handleVersionUpdateError(versionInfo?.error ?? "No update available");
       return;
     }
 
@@ -263,8 +275,94 @@ export default function SettingsAdvancedRoute() {
     navigateTo,
     resetConfig,
     systemVersion,
-    updateTarget,
+    target,
   ]);
+
+  const versionUpdate = (
+    <div className="space-y-4">
+      <SettingsItem
+        title={m.advanced_version_update_title()}
+        description={m.advanced_version_update_description()}
+      />
+
+      {separateApp && (
+        <SelectMenuBasic
+          label={m.advanced_version_update_target_label()}
+          options={[
+            { value: "app", label: m.advanced_version_update_target_app() },
+            { value: "system", label: m.advanced_version_update_target_system() },
+            { value: "both", label: m.advanced_version_update_target_both() },
+          ]}
+          value={updateTarget}
+          onChange={e => setUpdateTarget(e.target.value)}
+        />
+      )}
+
+      {(target === "app" || target === "both") && (
+        <InputFieldWithLabel
+          label={m.advanced_version_update_app_label()}
+          placeholder="0.4.9"
+          value={appVersion}
+          onChange={e => setAppVersion(e.target.value)}
+        />
+      )}
+
+      {(target === "system" || target === "both") && (
+        <InputFieldWithLabel
+          label={m.advanced_version_update_system_label()}
+          placeholder="0.4.9"
+          value={systemVersion}
+          onChange={e => setSystemVersion(e.target.value)}
+        />
+      )}
+
+      {separateApp && (
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          {m.advanced_version_update_helper()}{" "}
+          <a
+            href="https://github.com/jetkvm/kvm/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-blue-700 hover:underline dark:text-blue-500"
+          >
+            {m.advanced_version_update_github_link()}
+          </a>
+        </p>
+      )}
+
+      <div>
+        <CheckboxWithLabel
+          label={m.advanced_version_update_reset_config_label()}
+          description={m.advanced_version_update_reset_config_description()}
+          checked={resetConfig}
+          onChange={e => setResetConfig(e.target.checked)}
+        />
+      </div>
+
+      <div>
+        <CheckboxWithLabel
+          label={m.advanced_version_change_acknowledged_label()}
+          checked={versionChangeAcknowledged}
+          onChange={e => setVersionChangeAcknowledged(e.target.checked)}
+        />
+      </div>
+
+      <Button
+        size="SM"
+        theme="primary"
+        text={m.advanced_version_update_button()}
+        disabled={
+          (target === "app" && !appVersion) ||
+          (target === "system" && !systemVersion) ||
+          (target === "both" && (!appVersion || !systemVersion)) ||
+          !versionChangeAcknowledged ||
+          customVersionUpdateLoading
+        }
+        loading={customVersionUpdateLoading}
+        onClick={handleCustomVersionUpdate}
+      />
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -282,16 +380,19 @@ export default function SettingsAdvancedRoute() {
             }}
           />
         </SettingsItem>
-        <SettingsItem
-          title={m.advanced_developer_mode_title()}
-          description={m.advanced_developer_mode_description()}
-        >
-          <Checkbox
-            checked={settings.developerMode}
-            onChange={e => handleDevModeChange(e.target.checked)}
-          />
-        </SettingsItem>
-        {settings.developerMode ? (
+        {shell && (
+          <SettingsItem
+            title={m.advanced_developer_mode_title()}
+            description={m.advanced_developer_mode_description()}
+          >
+            <Checkbox
+              checked={settings.developerMode}
+              onChange={e => handleDevModeChange(e.target.checked)}
+            />
+          </SettingsItem>
+        )}
+        {reported && !shell && versionUpdate}
+        {shell && settings.developerMode ? (
           <NestedSettingsGroup>
             <GridCard>
               <div className="flex items-start gap-x-4 p-4 select-none">
@@ -358,85 +459,7 @@ export default function SettingsAdvancedRoute() {
               </div>
             )}
 
-            <div className="space-y-4">
-              <SettingsItem
-                title={m.advanced_version_update_title()}
-                description={m.advanced_version_update_description()}
-              />
-
-              <SelectMenuBasic
-                label={m.advanced_version_update_target_label()}
-                options={[
-                  { value: "app", label: m.advanced_version_update_target_app() },
-                  { value: "system", label: m.advanced_version_update_target_system() },
-                  { value: "both", label: m.advanced_version_update_target_both() },
-                ]}
-                value={updateTarget}
-                onChange={e => setUpdateTarget(e.target.value)}
-              />
-
-              {(updateTarget === "app" || updateTarget === "both") && (
-                <InputFieldWithLabel
-                  label={m.advanced_version_update_app_label()}
-                  placeholder="0.4.9"
-                  value={appVersion}
-                  onChange={e => setAppVersion(e.target.value)}
-                />
-              )}
-
-              {(updateTarget === "system" || updateTarget === "both") && (
-                <InputFieldWithLabel
-                  label={m.advanced_version_update_system_label()}
-                  placeholder="0.4.9"
-                  value={systemVersion}
-                  onChange={e => setSystemVersion(e.target.value)}
-                />
-              )}
-
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {m.advanced_version_update_helper()}{" "}
-                <a
-                  href="https://github.com/jetkvm/kvm/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-blue-700 hover:underline dark:text-blue-500"
-                >
-                  {m.advanced_version_update_github_link()}
-                </a>
-              </p>
-
-              <div>
-                <CheckboxWithLabel
-                  label={m.advanced_version_update_reset_config_label()}
-                  description={m.advanced_version_update_reset_config_description()}
-                  checked={resetConfig}
-                  onChange={e => setResetConfig(e.target.checked)}
-                />
-              </div>
-
-              <div>
-                <CheckboxWithLabel
-                  label={m.advanced_version_change_acknowledged_label()}
-                  checked={versionChangeAcknowledged}
-                  onChange={e => setVersionChangeAcknowledged(e.target.checked)}
-                />
-              </div>
-
-              <Button
-                size="SM"
-                theme="primary"
-                text={m.advanced_version_update_button()}
-                disabled={
-                  (updateTarget === "app" && !appVersion) ||
-                  (updateTarget === "system" && !systemVersion) ||
-                  (updateTarget === "both" && (!appVersion || !systemVersion)) ||
-                  !versionChangeAcknowledged ||
-                  customVersionUpdateLoading
-                }
-                loading={customVersionUpdateLoading}
-                onClick={handleCustomVersionUpdate}
-              />
-            </div>
+            {versionUpdate}
           </NestedSettingsGroup>
         ) : null}
 
