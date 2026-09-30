@@ -6,6 +6,7 @@ import {
   waitForVideoDimensions,
   sshExec,
   skipWithoutDeviceShell,
+  skipWithoutCapability,
 } from "../helpers";
 import { connectedDisplayConnectors, waitForKeyboardReady } from "./remote-agent";
 import { agent, registerSharedSession, remoteHostSetDPMS } from "./shared";
@@ -215,6 +216,7 @@ test.describe("Remote Host Agent: display", () => {
 
   test("video: non-aligned resolution 1366x768 produces video frames @custom-edid", async () => {
     test.setTimeout(60_000);
+    await skipWithoutCapability(sharedPage, "custom_edid");
 
     const originalEdid = (await callJsonRpc(sharedPage, "getEDID")) as string;
 
