@@ -39,6 +39,8 @@ export default function SettingsAdvancedRoute() {
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
   const shell = useCapability("shell");
+  // A device that keeps its image files on a removable card keeps them through a reset.
+  const removableStorage = useCapability("removable_storage");
   const localLoopback = useCapability("local_loopback");
   const logLevel = useCapability("log_level");
   // A one-image firmware reports an empty appVersion and updates only its system.
@@ -542,7 +544,11 @@ export default function SettingsAdvancedRoute() {
 
             <SettingsItem
               title={m.advanced_factory_reset_title()}
-              description={m.advanced_factory_reset_description()}
+              description={
+                removableStorage
+                  ? m.advanced_factory_reset_description_removable_storage()
+                  : m.advanced_factory_reset_description()
+              }
             >
               <Button
                 size="SM"
@@ -573,9 +579,17 @@ export default function SettingsAdvancedRoute() {
         open={showFactoryResetConfirm}
         onClose={() => setShowFactoryResetConfirm(false)}
         title={m.advanced_factory_reset_dialog_title()}
-        description={m.advanced_factory_reset_dialog_description()}
+        description={
+          removableStorage
+            ? m.advanced_factory_reset_dialog_description_removable_storage()
+            : m.advanced_factory_reset_dialog_description()
+        }
         variant="danger"
-        confirmText={m.advanced_factory_reset_confirm()}
+        confirmText={
+          removableStorage
+            ? m.advanced_factory_reset_confirm_removable_storage()
+            : m.advanced_factory_reset_confirm()
+        }
         onConfirm={() => {
           setShowFactoryResetConfirm(false);
           handleFactoryReset();
