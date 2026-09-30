@@ -627,14 +627,17 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
       isCheckingRef.current = true;
 
       try {
-        const { appVersion } = await getLocalVersion({
+        const { appVersion, systemVersion, sku } = await getLocalVersion({
           attemptTimeoutMs: 2000,
         });
 
         if (cancelled) return;
 
         clearInterval(intervalId);
-        const targetUrl = buildCloudUrl(deviceId, appVersion, postRebootAction.redirectTo);
+        // The JetKVM Mini's firmware is one image with no separate app. Its
+        // cloud UI is published as <firmware version>-mini.
+        const version = sku?.startsWith("jetkvm-mini") ? `${systemVersion}-mini` : appVersion;
+        const targetUrl = buildCloudUrl(deviceId, version, postRebootAction.redirectTo);
         await redirectTo(targetUrl);
       } catch (err) {
         console.debug("Cloud reconnect check failed:", err);
