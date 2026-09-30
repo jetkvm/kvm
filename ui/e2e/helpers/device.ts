@@ -165,6 +165,14 @@ export async function skipWithoutRpc(page: Page, method: string, feature: string
   test.skip(!(await rpcAvailable(page, method)), `device has no ${feature} (${method})`);
 }
 
+export async function skipWithoutCapability(page: Page, capability: string): Promise<void> {
+  const capabilities = (await callJsonRpc(page, "getDeviceCapabilities")) as string[];
+  test.skip(
+    !capabilities.includes(capability),
+    `device does not report ${capability} (getDeviceCapabilities: ${JSON.stringify(capabilities)})`,
+  );
+}
+
 export function getDeviceHost(): string {
   const url = process.env.JETKVM_URL;
   if (!url) {
