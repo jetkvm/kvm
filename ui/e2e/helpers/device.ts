@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import type {} from "../../src/test/testHooks";
 
 export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<void> {
@@ -77,6 +77,21 @@ export async function ensureRpcReady(
   }
   const detail = lastError instanceof Error ? lastError.message : String(lastError);
   throw new Error(`Page never became RPC-ready within ${timeoutMs}ms: ${detail}`);
+}
+
+/** Open a connected page, run `fn` against it, close it. */
+export async function withRpcPage<T>(browser: Browser, fn: (page: Page) => Promise<T>): Promise<T> {
+  const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
+  const page = await context.newPage();
+  try {
+    // ensureRpcReady navigates with a bounded goto and retries; a bare
+    // goto(networkidle) has no timeout and hung on a device still settling.
+    await ensureRpcReady(page, { timeoutMs: 90_000, navigateFirst: true });
+    return await fn(page);
+  } finally {
+    await page.close().catch(() => undefined);
+    await context.close().catch(() => undefined);
+  }
 }
 
 /** Get the current app version from the /metrics endpoint. */
@@ -193,6 +208,23 @@ export async function skipWithoutCapability(page: Page, capability: string): Pro
     !capabilities.includes(capability),
     `device does not report ${capability} (getDeviceCapabilities: ${JSON.stringify(capabilities)})`,
   );
+}
+
+export async function skipWithoutVideoCodec(page: Page, codec: string): Promise<void> {
+  const codecs = (await callJsonRpc(page, "getSupportedVideoCodecs")) as string[];
+  test.skip(
+    !codecs.includes(codec),
+    `device does not encode ${codec} (getSupportedVideoCodecs: ${JSON.stringify(codecs)})`,
+  );
+}
+
+// Prometheus metrics are optional: a device without /metrics answers 404, and
+// tests that read counters from it skip. Any other failure is an error.
+export async function skipWithoutMetrics(page: Page): Promise<void> {
+  const response = await page.request.get("/metrics", { timeout: 10_000 });
+  if (response.status() !== 404 && !response.ok())
+    throw new Error(`/metrics returned ${response.status()}`);
+  test.skip(response.status() === 404, "device has no /metrics endpoint");
 }
 
 export function getDeviceHost(): string {

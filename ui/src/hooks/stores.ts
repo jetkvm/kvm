@@ -748,6 +748,7 @@ export type Capability =
   | "custom_edid"
   | "upload_channel"
   | "video_during_update" // video keeps streaming while an update installs
+  | "wifi" // Wi-Fi networks and frequency band
   | "http_proxy" // network settings the device can change
   | "domain"
   | "mdns"
