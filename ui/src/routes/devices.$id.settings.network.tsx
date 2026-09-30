@@ -200,7 +200,8 @@ export default function SettingsNetworkRoute() {
   const reloadSettings = useCallback(
     () =>
       fetchNetworkData().then(
-        ({ settings }) => reset(settings),
+        // Fields the user has edited keep their values and stay unsaved.
+        ({ settings }) => reset(settings, { keepDirtyValues: true }),
         () => undefined,
       ),
     [fetchNetworkData, reset],
