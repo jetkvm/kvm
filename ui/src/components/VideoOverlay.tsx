@@ -525,10 +525,14 @@ interface RebootingOverlayProps {
   readonly deviceId?: string; // Required for cloud mode to build versioned URLs
 }
 
+// Peer states that show the connection dropped. A peer retired by a signaling
+// close that will reconnect reports "connecting" (useWebSocketSignaling).
+const DROPPED_PEER_STATES = ["disconnected", "closed", "failed", "connecting"];
+
 export function RebootingOverlay({ show, postRebootAction, deviceId }: RebootingOverlayProps) {
   const { peerConnectionState } = useRTCStore();
   const [hasSeenDisconnect, setHasSeenDisconnect] = useState(
-    ["disconnected", "closed", "failed"].includes(peerConnectionState ?? ""),
+    DROPPED_PEER_STATES.includes(peerConnectionState ?? ""),
   );
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const isCheckingRef = useRef(false);
@@ -537,7 +541,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
   // Detect connection drop (confirms reboot started)
   useEffect(() => {
     if (!show || hasSeenDisconnect) return;
-    if (["disconnected", "closed", "failed"].includes(peerConnectionState ?? "")) {
+    if (DROPPED_PEER_STATES.includes(peerConnectionState ?? "")) {
       console.log("hasSeenDisconnect", hasSeenDisconnect);
       setHasSeenDisconnect(true);
     }
