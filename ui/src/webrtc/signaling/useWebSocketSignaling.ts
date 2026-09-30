@@ -3,7 +3,7 @@ import pkg from "react-use-websocket";
 
 import { CLOUD_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
-import { useRTCStore } from "@hooks/stores";
+import { useRTCStore, useUiStore } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { m } from "@localizations/messages.js";
 import { isLinuxDesktop } from "@/utils";
@@ -59,6 +59,7 @@ export const useWebSocketSignaling: SignalingHook = ({
     setPeerConnectionState,
     setMediaStream,
   } = useRTCStore();
+  const setRebootState = useUiStore(state => state.setRebootState);
 
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
@@ -77,8 +78,12 @@ export const useWebSocketSignaling: SignalingHook = ({
     setSessionSuperseded(true);
     useRTCStore.getState().peerConnection?.close();
     setPeerConnectionState("closed");
+    // The other session owns any reboot now. Use Here remounts the rebooting
+    // overlay on a live peer, where it would wait for a disconnect that never
+    // comes.
+    setRebootState({ isRebooting: false, postRebootAction: null });
     navigateTo("/other-session");
-  }, [navigateTo, setPeerConnectionState]);
+  }, [navigateTo, setPeerConnectionState, setRebootState]);
 
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
