@@ -16,19 +16,19 @@ const agent = createRemoteAgent();
 
 const TEST_IMAGE = "e2e-recovery-test.iso";
 
-test.beforeEach(async () => {
-  await skipWithoutDeviceShell();
-});
-
 test.describe.configure({ mode: "serial" });
 
 let page: Page;
+// afterAll also runs when beforeAll skips; it undoes only what the test did.
+let imageCreated = false;
+let imageMounted = false;
 
 async function waitForKeyboardRoundTrip(timeoutMs: number): Promise<boolean> {
   return (await waitForKeyboardReady(agent!, page, timeoutMs)).length > 0;
 }
 
 test.beforeAll(async ({ browser }) => {
+  await skipWithoutDeviceShell();
   test.skip(!agent, "JETKVM_REMOTE_HOST not set");
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 
@@ -39,10 +39,12 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  try {
-    await callJsonRpc(page, "unmountImage");
-  } catch {}
-  await sshExec(`rm -f /userdata/jetkvm/images/${TEST_IMAGE}`, true);
+  if (imageMounted) {
+    try {
+      await callJsonRpc(page, "unmountImage");
+    } catch {}
+  }
+  if (imageCreated) await sshExec(`rm -f /userdata/jetkvm/images/${TEST_IMAGE}`, true);
   if (page) await page.close();
 });
 
@@ -51,12 +53,14 @@ test("USB recovery succeeds and keyboard survives with virtual media mounted (#1
 
   expect(await waitForKeyboardRoundTrip(30_000), "keyboard must work before the test").toBe(true);
 
+  imageCreated = true;
   await sshExec(
     `mkdir -p /userdata/jetkvm/images && dd if=/dev/zero of=/userdata/jetkvm/images/${TEST_IMAGE} bs=1M count=8 2>/dev/null`,
   );
   try {
     await callJsonRpc(page, "unmountImage");
   } catch {}
+  imageMounted = true;
   await callJsonRpc(page, "mountWithStorage", { filename: TEST_IMAGE, mode: "CDROM" });
 
   const mounted = (await callJsonRpc(page, "getVirtualMediaState")) as {
