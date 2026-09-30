@@ -66,7 +66,8 @@ type LocalDevice struct {
 }
 
 type DeviceStatus struct {
-	IsSetup bool `json:"isSetup"`
+	IsSetup bool   `json:"isSetup"`
+	SKU     string `json:"sku"`
 }
 
 type SetupRequest struct {
@@ -778,6 +779,7 @@ func handleDeviceStatus(c *gin.Context) {
 
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
+		SKU:     GetDeviceSKU(),
 	}
 
 	c.JSON(http.StatusOK, response)
