@@ -211,6 +211,17 @@ try {
     assert.equal(sockets.length, 1);
     assert.equal(await page.evaluate(() => window.probe.peers[0].connectionState), "closed");
   });
+  await test("a refresh on the other-session page opens no signaling socket", async ({
+    page,
+    sockets,
+  }) => {
+    sockets[0].send(JSON.stringify({ type: "other-session-connected" }));
+    sockets[0].close({ code: 4001, reason: "another session" });
+    await page.waitForURL("**/other-session");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(800);
+    assert.equal(sockets.length, 1);
+  });
   const takeoverHub = {};
   const twoClients = async first => {
     const second = await fixture({ takeoverHub });
