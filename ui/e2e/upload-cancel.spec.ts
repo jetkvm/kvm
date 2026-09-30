@@ -62,11 +62,6 @@ async function expectImageMatches(page: Page, name: string, sha256: string, size
   await expectHostImageHash(page, name, size, sha256);
 }
 
-async function openRpcPage(page: Page): Promise<void> {
-  await page.goto("/", { waitUntil: "networkidle" });
-  await ensureRpcReady(page);
-}
-
 async function openUploadView(page: Page): Promise<void> {
   await page.goto("/mount", { waitUntil: "networkidle" });
   await ensureRpcReady(page);
@@ -87,14 +82,14 @@ test.describe("Upload cancel and resume", () => {
     writeFileSync(localPath, data);
     sha256 = createHash("sha256").update(data).digest("hex");
     const page = await browser.newPage();
-    await openRpcPage(page);
+    await ensureRpcReady(page, { navigateFirst: true });
     await deleteImage(page, FILE_NAME);
     await page.close();
   });
 
   test.afterAll(async ({ browser }) => {
     const page = await browser.newPage();
-    await openRpcPage(page);
+    await ensureRpcReady(page, { navigateFirst: true });
     await deleteImage(page, FILE_NAME);
     await page.close();
   });
@@ -154,7 +149,7 @@ test("a second start for the same file supersedes the first", async ({ page }) =
   const cleanup = () => deleteImage(page, name);
 
   await ensureNoPasswordViaAPI();
-  await openRpcPage(page);
+  await ensureRpcReady(page, { navigateFirst: true });
   await cleanup();
   try {
     const start = async () =>
