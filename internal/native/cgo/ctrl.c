@@ -429,6 +429,14 @@ char *jetkvm_video_log_status() {
     return (char *)videoc_log_status();
 }
 
+int jetkvm_video_get_snapshot(uint8_t **out_buf, size_t *out_len) {
+    return video_get_snapshot(out_buf, out_len);
+}
+
+void jetkvm_video_free_snapshot(uint8_t *buf) {
+    video_free_snapshot(buf);
+}
+
 int jetkvm_video_init(float factor) {
     return video_init(factor);
 }

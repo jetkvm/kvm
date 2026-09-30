@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -82,6 +83,17 @@ func (s *grpcServer) VideoLogStatus(ctx context.Context, req *pb.Empty) (*pb.Vid
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &pb.VideoLogStatusResponse{Status: logStatus}, nil
+}
+
+func (s *grpcServer) VideoGetSnapshot(ctx context.Context, req *pb.Empty) (*pb.VideoGetSnapshotResponse, error) {
+	jpeg, err := s.native.VideoGetSnapshot()
+	if err != nil {
+		if errors.Is(err, ErrVideoNotStreaming) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.VideoGetSnapshotResponse{Jpeg: jpeg}, nil
 }
 
 func (s *grpcServer) VideoStop(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
