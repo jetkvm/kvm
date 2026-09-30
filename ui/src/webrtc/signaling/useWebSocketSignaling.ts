@@ -3,7 +3,7 @@ import pkg from "react-use-websocket";
 
 import { CLOUD_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
-import { useRTCStore, useUiStore } from "@hooks/stores";
+import { useRTCStore } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { m } from "@localizations/messages.js";
 import { isLinuxDesktop } from "@/utils";
@@ -59,7 +59,6 @@ export const useWebSocketSignaling: SignalingHook = ({
     setPeerConnectionState,
     setMediaStream,
   } = useRTCStore();
-  const setRebootState = useUiStore(state => state.setRebootState);
 
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
@@ -239,16 +238,12 @@ export const useWebSocketSignaling: SignalingHook = ({
         console.debug("[Websocket] onOpen");
         authCheckRef.current?.abort();
         authCheckRef.current = null;
-        // We want to clear the reboot state when the websocket connection is opened
-        // Currently the flow is:
-        // 1. User clicks reboot
-        // 2. Device sends event 'willReboot'
-        // 3. We set the reboot state
-        // 4. Reboot modal is shown
-        // 5. WS tries to reconnect
-        // 6. WS reconnects
-        // 7. This function is called and now we clear the reboot state
-        setRebootState({ isRebooting: false, postRebootAction: null });
+        // A reboot is not cleared here. After 'willReboot' the rebooting
+        // overlay polls the device's health check and redirects once it
+        // answers; that page load ends the reboot state. The socket can
+        // reopen before that poll, when a heartbeat reaches the restarted
+        // device, and clearing the state then removed the overlay together
+        // with its redirect.
       },
 
       onMessage(event: WebSocketEventMap["message"]) {
