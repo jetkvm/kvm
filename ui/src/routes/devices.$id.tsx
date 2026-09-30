@@ -303,7 +303,7 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableNonOrderedChannel(null);
       setRpcHidProtocolVersion(null);
       setTerminalChannel(null);
-      setCapabilities([]);
+      setCapabilities(null);
     };
   }, [
     clearCandidatePairStats,
@@ -491,7 +491,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     // A new or closed channel may lead to different firmware: gated features
     // stay hidden until this channel's deviceCapabilities event arrives.
-    if (rpcDataChannel?.readyState !== "open") setCapabilities([]);
+    if (rpcDataChannel?.readyState !== "open") setCapabilities(null);
   }, [rpcDataChannel?.readyState, setCapabilities]);
 
   // Mouse movement handler for E2E tests (needs send from useJsonRpc)

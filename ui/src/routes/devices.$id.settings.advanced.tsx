@@ -42,7 +42,11 @@ export default function SettingsAdvancedRoute() {
   const localLoopback = useCapability("local_loopback");
   const logLevel = useCapability("log_level");
   // A one-image firmware reports an empty appVersion and updates only its system.
-  const separateApp = useDeviceStore(state => state.appVersion) !== "";
+  const deviceAppVersion = useDeviceStore(state => state.appVersion);
+  const separateApp = deviceAppVersion !== "";
+  // Both arrive when the RPC channel opens; until then the device may have a shell.
+  const reported =
+    useDeviceStore(state => state.capabilities !== null) && deviceAppVersion !== null;
 
   useEffect(() => {
     if (!shell) return;
@@ -387,7 +391,7 @@ export default function SettingsAdvancedRoute() {
             />
           </SettingsItem>
         )}
-        {!shell && versionUpdate}
+        {reported && !shell && versionUpdate}
         {shell && settings.developerMode ? (
           <NestedSettingsGroup>
             <GridCard>
