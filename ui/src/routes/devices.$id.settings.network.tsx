@@ -197,6 +197,14 @@ export default function SettingsNetworkRoute() {
   );
 
   const { register, handleSubmit, watch, formState, reset } = formMethods;
+  const reloadSettings = useCallback(
+    () =>
+      fetchNetworkData().then(
+        ({ settings }) => reset(settings),
+        () => undefined,
+      ),
+    [fetchNetworkData, reset],
+  );
 
   const onSubmit = useCallback(
     async (settings: NetworkSettings) => {
@@ -397,7 +405,7 @@ export default function SettingsNetworkRoute() {
             }
           />
           <div className="space-y-4">
-            {hasWifi && <WifiNetworksCard />}
+            {hasWifi && <WifiNetworksCard onSwitched={reloadSettings} />}
             <div className="flex items-center justify-between">
               <SettingsItem
                 title={m.network_mac_address_title()}
