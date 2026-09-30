@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router";
 import pkg from "react-use-websocket";
 
 import { CLOUD_API } from "@/ui.config";
@@ -65,9 +66,13 @@ export const useWebSocketSignaling: SignalingHook = ({
   // otherSessionConnected event cannot be relied on. The socket then stays
   // closed until the user selects Use Here; reconnecting on its own would take
   // the session back from the other tab.
+  // The same holds on the other-session page itself, also after a refresh.
+  const location = useLocation();
   const { navigateTo } = useDeviceUiNavigation();
-  const [sessionSuperseded, setSessionSuperseded] = useState(false);
-  const sessionSupersededRef = useRef(false);
+  const [sessionSuperseded, setSessionSuperseded] = useState(() =>
+    location.pathname.endsWith("/other-session"),
+  );
+  const sessionSupersededRef = useRef(sessionSuperseded);
 
   // The peer this hook set up last. A peer that is no longer it has been
   // retired: its pending callbacks (a late offer, a queued ICE candidate, a
@@ -117,6 +122,14 @@ export const useWebSocketSignaling: SignalingHook = ({
     setRebootState({ isRebooting: false, postRebootAction: null });
     navigateTo("/other-session");
   }, [navigateTo, retirePeer, setRebootState]);
+
+  // The RPC otherSessionConnected event only navigates to that page.
+  useEffect(() => {
+    if (!location.pathname.endsWith("/other-session")) return;
+    sessionSupersededRef.current = true;
+    setSessionSuperseded(true);
+    retirePeer();
+  }, [location.pathname, retirePeer]);
 
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
