@@ -97,6 +97,7 @@ export default function SettingsNetworkRoute() {
   const hasDomain = useCapability("domain");
   const hasMdns = useCapability("mdns");
   const hasIpv6 = useCapability("ipv6");
+  const hasTailscale = useCapability("tailscale");
   const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
 
   // Some input needs direct state management. Mostly options that open more details
@@ -568,7 +569,7 @@ export default function SettingsNetworkRoute() {
 
               {isCloudAdopted && <PublicIPCard />}
 
-              <TailscaleCard />
+              {hasTailscale && <TailscaleCard />}
 
               <div>
                 <AutoHeight>

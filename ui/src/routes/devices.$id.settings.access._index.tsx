@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useCapability } from "@hooks/stores";
 import { useLoaderData, useNavigate, type LoaderFunction } from "react-router";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 
@@ -54,6 +55,7 @@ export default function SettingsAccessIndexRoute() {
   // Use a simple string identifier for the selected provider
   const [selectedProvider, setSelectedProvider] = useState<string>("jetkvm");
   const [tlsMode, setTlsMode] = useState<string>("unknown");
+  const tls = useCapability("tls");
   const [tlsCert, setTlsCert] = useState<string>("");
   const [tlsKey, setTlsKey] = useState<string>("");
 
@@ -195,13 +197,13 @@ export default function SettingsAccessIndexRoute() {
   // Fetch device ID and cloud state on component mount
   useEffect(() => {
     getCloudState();
-    getTLSState();
+    if (tls) getTLSState();
 
     send("getDeviceID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       setDeviceId(resp.result as string);
     });
-  }, [send, getCloudState, getTLSState]);
+  }, [send, getCloudState, getTLSState, tls]);
 
   return (
     <div className="space-y-4">
@@ -215,25 +217,27 @@ export default function SettingsAccessIndexRoute() {
               description={m.access_local_description()}
             />
             <>
-              <SettingsItem
-                title={m.access_https_mode_title()}
-                badge="Experimental"
-                description={m.access_https_description()}
-              >
-                <SelectMenuBasic
-                  size="SM"
-                  value={tlsMode}
-                  onChange={e => handleTlsModeChange(e.target.value)}
-                  disabled={tlsMode === "unknown"}
-                  options={[
-                    { value: "disabled", label: m.access_tls_disabled() },
-                    { value: "self-signed", label: m.access_tls_self_signed() },
-                    { value: "custom", label: m.access_tls_custom() },
-                  ]}
-                />
-              </SettingsItem>
+              {tls && (
+                <SettingsItem
+                  title={m.access_https_mode_title()}
+                  badge="Experimental"
+                  description={m.access_https_description()}
+                >
+                  <SelectMenuBasic
+                    size="SM"
+                    value={tlsMode}
+                    onChange={e => handleTlsModeChange(e.target.value)}
+                    disabled={tlsMode === "unknown"}
+                    options={[
+                      { value: "disabled", label: m.access_tls_disabled() },
+                      { value: "self-signed", label: m.access_tls_self_signed() },
+                      { value: "custom", label: m.access_tls_custom() },
+                    ]}
+                  />
+                </SettingsItem>
+              )}
 
-              {tlsMode === "custom" && (
+              {tls && tlsMode === "custom" && (
                 <NestedSettingsGroup className="mt-4">
                   <SettingsItem
                     title={m.access_tls_certificate_title()}

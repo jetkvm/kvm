@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { useSettingsStore } from "@hooks/stores";
+import { useCapability, useSettingsStore } from "@hooks/stores";
 import { JsonRpcError, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button, LinkButton } from "@components/Button";
@@ -38,6 +38,8 @@ export default function SettingsAdvancedRoute() {
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
   const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
+  const localLoopback = useCapability("local_loopback");
+  const logLevel = useCapability("log_level");
 
   useEffect(() => {
     send("getDevModeState", {}, (resp: JsonRpcResponse) => {
@@ -60,17 +62,23 @@ export default function SettingsAdvancedRoute() {
       if ("error" in resp) return;
       setDevChannel(resp.result as boolean);
     });
+  }, [send, setDeveloperMode]);
 
+  useEffect(() => {
+    if (!localLoopback) return;
     send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setLocalLoopbackOnly(resp.result as boolean);
     });
+  }, [send, localLoopback]);
 
+  useEffect(() => {
+    if (!logLevel) return;
     send("getDefaultLogLevel", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setDefaultLogLevel(resp.result as string);
     });
-  }, [send, setDeveloperMode]);
+  }, [send, logLevel]);
 
   const getUsbEmulationState = useCallback(() => {
     send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
@@ -432,15 +440,17 @@ export default function SettingsAdvancedRoute() {
           </NestedSettingsGroup>
         ) : null}
 
-        <SettingsItem
-          title={m.advanced_loopback_only_title()}
-          description={m.advanced_loopback_only_description()}
-        >
-          <Checkbox
-            checked={localLoopbackOnly}
-            onChange={e => handleLoopbackOnlyModeChange(e.target.checked)}
-          />
-        </SettingsItem>
+        {localLoopback && (
+          <SettingsItem
+            title={m.advanced_loopback_only_title()}
+            description={m.advanced_loopback_only_description()}
+          >
+            <Checkbox
+              checked={localLoopbackOnly}
+              onChange={e => handleLoopbackOnlyModeChange(e.target.checked)}
+            />
+          </SettingsItem>
+        )}
 
         <SettingsItem
           title={m.advanced_troubleshooting_mode_title()}
@@ -456,38 +466,40 @@ export default function SettingsAdvancedRoute() {
 
         {settings.debugMode && (
           <NestedSettingsGroup>
-            <SettingsItem
-              title={m.advanced_troubleshooting_log_level_title()}
-              description={m.advanced_troubleshooting_log_level_description()}
-            >
-              <SelectMenuBasic
-                size="SM"
-                value={defaultLogLevel}
-                options={[
-                  { label: m.advanced_log_level_error(), value: "ERROR" },
-                  { label: m.advanced_log_level_warning(), value: "WARN" },
-                  { label: m.advanced_log_level_info(), value: "INFO" },
-                  { label: m.advanced_log_level_debug(), value: "DEBUG" },
-                  { label: m.advanced_log_level_trace(), value: "TRACE" },
-                ]}
-                onChange={e => {
-                  const level = e.target.value;
-                  const previousLevel = defaultLogLevel;
-                  setDefaultLogLevel(level);
-                  send("setDefaultLogLevel", { level }, (resp: JsonRpcResponse) => {
-                    if ("error" in resp) {
-                      setDefaultLogLevel(previousLevel);
-                      notifications.error(
-                        m.advanced_error_set_log_level({
-                          error: resp.error.data || m.unknown_error(),
-                        }),
-                      );
-                      return;
-                    }
-                  });
-                }}
-              />
-            </SettingsItem>
+            {logLevel && (
+              <SettingsItem
+                title={m.advanced_troubleshooting_log_level_title()}
+                description={m.advanced_troubleshooting_log_level_description()}
+              >
+                <SelectMenuBasic
+                  size="SM"
+                  value={defaultLogLevel}
+                  options={[
+                    { label: m.advanced_log_level_error(), value: "ERROR" },
+                    { label: m.advanced_log_level_warning(), value: "WARN" },
+                    { label: m.advanced_log_level_info(), value: "INFO" },
+                    { label: m.advanced_log_level_debug(), value: "DEBUG" },
+                    { label: m.advanced_log_level_trace(), value: "TRACE" },
+                  ]}
+                  onChange={e => {
+                    const level = e.target.value;
+                    const previousLevel = defaultLogLevel;
+                    setDefaultLogLevel(level);
+                    send("setDefaultLogLevel", { level }, (resp: JsonRpcResponse) => {
+                      if ("error" in resp) {
+                        setDefaultLogLevel(previousLevel);
+                        notifications.error(
+                          m.advanced_error_set_log_level({
+                            error: resp.error.data || m.unknown_error(),
+                          }),
+                        );
+                        return;
+                      }
+                    });
+                  }}
+                />
+              </SettingsItem>
+            )}
 
             <SettingsItem
               title={m.advanced_usb_emulation_title()}

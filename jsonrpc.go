@@ -426,10 +426,14 @@ type SSHKeyState struct {
 // duration and the UI says so over the video.
 // http_proxy, domain, mdns, ipv6: the network settings of the same names can
 // be changed; the Network page hides those a device does not report.
+// tls, local_loopback, log_level, tailscale: the HTTPS setting (Access page),
+// the loopback-only setting and the default log level (Advanced page) and the
+// Tailscale card (Network page), each shown only when reported.
 func rpcGetDeviceCapabilities() ([]string, error) {
 	return []string{
 		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
 		"http_proxy", "domain", "mdns", "ipv6",
+		"tls", "local_loopback", "log_level", "tailscale",
 	}, nil
 }
 

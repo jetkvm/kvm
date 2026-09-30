@@ -751,7 +751,11 @@ export type Capability =
   | "http_proxy" // network settings the device can change
   | "domain"
   | "mdns"
-  | "ipv6";
+  | "ipv6"
+  | "tls" // HTTPS listener with a selectable certificate
+  | "local_loopback" // web UI can be limited to the loopback interface
+  | "log_level" // default log level can be changed
+  | "tailscale"; // Tailscale client
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
