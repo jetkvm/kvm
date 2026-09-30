@@ -11,6 +11,9 @@ import { isLinuxDesktop } from "@/utils";
 
 import type { SignalingHook } from "./types";
 
+// React Router matches the route with a trailing slash and in any case.
+const isOtherSessionPath = (path: string) => /\/other-session\/?$/i.test(path);
+
 const useWebSocket = pkg.default ?? pkg;
 
 /**
@@ -70,7 +73,7 @@ export const useWebSocketSignaling: SignalingHook = ({
   const location = useLocation();
   const { navigateTo } = useDeviceUiNavigation();
   const [sessionSuperseded, setSessionSuperseded] = useState(() =>
-    location.pathname.endsWith("/other-session"),
+    isOtherSessionPath(location.pathname),
   );
   const sessionSupersededRef = useRef(sessionSuperseded);
 
@@ -125,7 +128,7 @@ export const useWebSocketSignaling: SignalingHook = ({
 
   // The RPC otherSessionConnected event only navigates to that page.
   useEffect(() => {
-    if (!location.pathname.endsWith("/other-session")) return;
+    if (!isOtherSessionPath(location.pathname)) return;
     sessionSupersededRef.current = true;
     setSessionSuperseded(true);
     retirePeer();
