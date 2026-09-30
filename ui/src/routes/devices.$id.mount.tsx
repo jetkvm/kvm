@@ -705,6 +705,20 @@ function DeviceFileView({
     syncStorage();
   }, [syncStorage]);
 
+  // A card can be inserted, removed or finish mounting while the view is
+  // open: ask again every few seconds and resync when the state changes.
+  const storageStateJson = JSON.stringify(storageState);
+  useEffect(() => {
+    if (!removableStorage) return;
+    const timer = setInterval(() => {
+      send("getStorageState", {}, (resp: JsonRpcResponse) => {
+        const state = "error" in resp ? null : parseStorageState(resp.result);
+        if (JSON.stringify(state) !== storageStateJson) syncStorage();
+      });
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [removableStorage, send, storageStateJson, syncStorage]);
+
   function handleDeleteFile(file: StorageFile) {
     console.log("Deleting file:", file);
     send("deleteStorageFile", { filename: file.name }, (resp: JsonRpcResponse) => {
@@ -748,7 +762,7 @@ function DeviceFileView({
         />
         <TfCardStatus state={storageState} failed={storageStateFailed} onFormatted={syncStorage} />
         <div className="flex items-center gap-x-2">
-          <Button size="MD" theme="light" text="Back" onClick={() => onBack()} />
+          <Button size="MD" theme="light" text={m.back()} onClick={() => onBack()} />
         </div>
       </div>
     );
