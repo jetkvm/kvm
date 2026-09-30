@@ -130,6 +130,33 @@ try {
     await page.waitForTimeout(100);
     assert.equal(await page.evaluate(() => window.probe.peers[0].connectionState), "closed");
   });
+  await test("a signaling close that reconnects does not publish a failed connection", async ({
+    page,
+    sockets,
+  }) => {
+    await page.evaluate(() => {
+      window.probe.states = [];
+      window.probe.watch = setInterval(
+        () => window.probe.states.push(window.__kvmTestHooks._getPeerConnectionState?.()),
+        5,
+      );
+    });
+    sockets[0].close({ code: 1001, reason: "offline test disconnect" });
+    await waitFor(() => sockets.length === 2, "replacement signaling socket missing");
+    await page.waitForFunction(() => window.probe.peers.length === 2);
+    const states = await page.evaluate(() => {
+      clearInterval(window.probe.watch);
+      return window.probe.states;
+    });
+    assert.ok(
+      states.includes("connecting"),
+      `no reconnect progress: ${[...new Set(states)].join(", ")}`,
+    );
+    assert.ok(
+      !states.includes("closed"),
+      `published a failure: ${[...new Set(states)].join(", ")}`,
+    );
+  });
   const delayedOffer = async ({ page, sockets, messages }) => {
     await page.waitForFunction(() => window.probe.localPending);
     sockets[0].close({ code: 1001, reason: "offline test disconnect" });

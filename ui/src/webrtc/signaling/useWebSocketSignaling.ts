@@ -82,25 +82,30 @@ export const useWebSocketSignaling: SignalingHook = ({
       !sessionSupersededRef.current,
     [],
   );
-  const retirePeer = useCallback(() => {
-    const pc = activePeerRef.current;
-    // Invalidate ownership before close or any pending asynchronous callback.
-    activePeerRef.current = null;
-    if (connectionPollRef.current !== null) {
-      clearInterval(connectionPollRef.current);
-      connectionPollRef.current = null;
-    }
-    if (pc) {
-      pc.onnegotiationneeded = null;
-      pc.onicecandidate = null;
-      pc.onicegatheringstatechange = null;
-      pc.onconnectionstatechange = null;
-      pc.close();
-    }
-    setPeerConnection(null);
-    setPeerConnectionState("closed");
-    setMediaStream(null);
-  }, [setMediaStream, setPeerConnection, setPeerConnectionState]);
+  // Publishes `state` for the retired peer: "connecting" while the signaling
+  // socket reconnects, so the page shows progress instead of a failure.
+  const retirePeer = useCallback(
+    (state: RTCPeerConnectionState = "closed") => {
+      const pc = activePeerRef.current;
+      // Invalidate ownership before close or any pending asynchronous callback.
+      activePeerRef.current = null;
+      if (connectionPollRef.current !== null) {
+        clearInterval(connectionPollRef.current);
+        connectionPollRef.current = null;
+      }
+      if (pc) {
+        pc.onnegotiationneeded = null;
+        pc.onicecandidate = null;
+        pc.onicegatheringstatechange = null;
+        pc.onconnectionstatechange = null;
+        pc.close();
+      }
+      setPeerConnection(null);
+      setPeerConnectionState(state);
+      setMediaStream(null);
+    },
+    [setMediaStream, setPeerConnection, setPeerConnectionState],
+  );
 
   const stopForOtherSession = useCallback(() => {
     sessionSupersededRef.current = true;
@@ -233,6 +238,10 @@ export const useWebSocketSignaling: SignalingHook = ({
   }, []);
 
   const networkReconnectNotBefore = useRef(0);
+  // A takeover (the message, or close code 4001) ends the session; any other
+  // close reconnects.
+  const willReconnect = (event: CloseEvent) => !sessionSupersededRef.current && event.code !== 4001;
+
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
   const { sendMessage, getWebSocket } = useWebSocket(
@@ -252,12 +261,12 @@ export const useWebSocketSignaling: SignalingHook = ({
 
       shouldReconnect(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] shouldReconnect", event);
-        return !sessionSupersededRef.current && event.code !== 4001;
+        return willReconnect(event);
       },
 
       onClose(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] onClose", event);
-        retirePeer();
+        retirePeer(willReconnect(event) ? "connecting" : "closed");
         if (event.code === 4001) stopForOtherSession();
         void checkLocalSession();
         // The next signaling socket obtains metadata and owns a fresh peer.
