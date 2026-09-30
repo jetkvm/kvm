@@ -1121,5 +1121,15 @@
     "wake_on_lan_invalid_mac": "无效的 MAC 地址。",
     "wake_on_lan_magic_sent_success": "“魔术包”发送成功。",
     "welcome_to_jetkvm": "欢迎使用 JetKVM",
-    "welcome_to_jetkvm_description": "远程控制您的任意计算机"
+    "welcome_to_jetkvm_description": "远程控制您的任意计算机",
+    "wifi_band_2g": "仅 2.4 GHz",
+    "wifi_band_5g": "仅 5 GHz",
+    "wifi_band_apply": "应用 Wi-Fi 频段",
+    "wifi_band_auto": "自动",
+    "wifi_band_description": "选择设备使用的频段。应用后 Wi-Fi 会短暂断开，请确保当前网络提供所选频段。",
+    "wifi_band_failed": "所选频段无法连接，已恢复之前的频段。",
+    "wifi_band_label": "连接频段",
+    "wifi_band_save_timeout": "未收到响应，请重新连接后检查已保存的 Wi-Fi 频段。",
+    "wifi_band_saved": "正在应用 Wi-Fi 频段并重新连接…",
+    "wifi_band_title": "Wi-Fi"
 }

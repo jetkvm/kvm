@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import validator from "validator";
 
+import WifiNetworksCard from "@components/WifiNetworksCard";
 import PublicIPCard from "@components/PublicIPCard";
 import TailscaleCard from "@components/TailscaleCard";
 import {
@@ -97,6 +98,7 @@ export default function SettingsNetworkRoute() {
   const hasDomain = useCapability("domain");
   const hasMdns = useCapability("mdns");
   const hasIpv6 = useCapability("ipv6");
+  const hasWifi = useCapability("wifi");
   const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
 
   // Some input needs direct state management. Mostly options that open more details
@@ -395,6 +397,7 @@ export default function SettingsNetworkRoute() {
             }
           />
           <div className="space-y-4">
+            {hasWifi && <WifiNetworksCard />}
             <div className="flex items-center justify-between">
               <SettingsItem
                 title={m.network_mac_address_title()}
