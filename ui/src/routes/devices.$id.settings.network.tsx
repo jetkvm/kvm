@@ -196,15 +196,23 @@ export default function SettingsNetworkRoute() {
     [customDomain],
   );
 
-  const { register, handleSubmit, watch, formState, reset } = formMethods;
+  const { register, handleSubmit, watch, formState, reset, getValues, setValue } = formMethods;
   const reloadSettings = useCallback(
     () =>
       fetchNetworkData().then(
-        // Fields the user has edited keep their values and stay unsaved.
-        ({ settings }) => reset(settings, { keepDirtyValues: true }),
+        ({ settings }) => {
+          // IPv4 belongs to the network just joined; other unsaved edits, such as
+          // the hostname, are device-wide and stay unsaved.
+          const edited = getValues();
+          const kept = (Object.keys(formState.dirtyFields) as (keyof NetworkSettings)[]).filter(
+            key => !key.startsWith("ipv4"),
+          );
+          reset(settings);
+          for (const key of kept) setValue(key, edited[key], { shouldDirty: true });
+        },
         () => undefined,
       ),
-    [fetchNetworkData, reset],
+    [fetchNetworkData, formState, getValues, reset, setValue],
   );
 
   const onSubmit = useCallback(
