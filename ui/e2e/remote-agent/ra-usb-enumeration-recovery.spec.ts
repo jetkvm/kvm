@@ -10,7 +10,7 @@ import {
   sshExec,
   waitForUdcState,
 } from "../helpers";
-import { createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
+import { createRemoteAgent, waitForKeyboardReady, skipWithoutRemoteHost } from "./remote-agent";
 import { remoteHostExec } from "./shared";
 
 const agent = createRemoteAgent();
@@ -59,7 +59,7 @@ let savedEnabled: boolean;
 
 test.beforeEach(async ({ page }) => {
   savedDevices = undefined;
-  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+  skipWithoutRemoteHost();
   await skipWithoutDeviceShell();
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
   await page.goto("/", { waitUntil: "networkidle" });

@@ -15,7 +15,12 @@ import {
   waitForWebRTCReady,
   skipWithoutDeviceShell,
 } from "../helpers";
-import { KEY, createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
+import {
+  KEY,
+  createRemoteAgent,
+  waitForKeyboardReady,
+  skipWithoutRemoteHost,
+} from "./remote-agent";
 
 // An app restart keeps the previous instance's gadget bound when nothing in
 // the configuration changed, so the host never sees a disconnect. These tests
@@ -88,7 +93,7 @@ async function reconnect(): Promise<void> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+  skipWithoutRemoteHost();
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 
   page = await browser.newPage();

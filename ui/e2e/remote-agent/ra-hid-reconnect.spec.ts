@@ -5,7 +5,7 @@ import {
 } from "../helpers/hardware-state";
 import { test, expect } from "@playwright/test";
 import { ensureNoPasswordViaAPI, ensureRpcReady, sendAbsMouseMove } from "../helpers";
-import { createRemoteAgent } from "./remote-agent";
+import { createRemoteAgent, skipWithoutRemoteHost } from "./remote-agent";
 
 const agent = createRemoteAgent();
 
@@ -14,7 +14,7 @@ test("mouse buttons reach the host after a session takeover and reconnect", asyn
   browser,
 }) => {
   test.setTimeout(90_000);
-  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+  skipWithoutRemoteHost();
   await agent!.ensureDeployed();
   await ensureNoPasswordViaAPI();
   await page.addInitScript(() => {

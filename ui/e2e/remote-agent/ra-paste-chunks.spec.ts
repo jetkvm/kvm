@@ -11,7 +11,7 @@ import {
   ensureRpcReady,
   waitForWebRTCReady,
 } from "../helpers";
-import { KEY, createRemoteAgent } from "./remote-agent";
+import { KEY, createRemoteAgent, skipWithoutRemoteHost } from "./remote-agent";
 
 // A paste is sent to the device as keyboard macro reports of at most 128 wire
 // steps each, and the next report only goes out once the device reports the
@@ -63,7 +63,7 @@ async function openPasteModal(): Promise<void> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+  skipWithoutRemoteHost();
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 
   page = await browser.newPage();
