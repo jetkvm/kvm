@@ -690,6 +690,9 @@ function DeviceFileView({
       }
       setOnStorageFiles([]);
       setStorageSpace(null);
+      // A different card may come next: its files need a fresh selection.
+      setSelected(null);
+      setCurrentPage(1);
     });
   }, [loadFilesAndSpace, removableStorage, send, setOnStorageFiles, setStorageSpace]);
 
