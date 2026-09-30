@@ -286,10 +286,11 @@ test("deleting the macro and disabling the jiggler in the UI take effect", async
 
 // A device that reports its session in /webrtc/stats (the JetKVM Mini) is
 // polled until it closes; a device without that endpoint gets a fixed wait
-// for the peer connection to close.
+// for the peer connection to close. Without it, the device answers 404 or
+// serves the UI's HTML for the unknown path, so only JSON counts.
 async function waitForSessionClosed(request: APIRequestContext): Promise<void> {
   const stats = await request.get("/webrtc/stats", { timeout: 5_000 });
-  if (stats.status() === 404) {
+  if (!stats.ok() || !stats.headers()["content-type"]?.includes("application/json")) {
     await new Promise(resolve => setTimeout(resolve, 5_000));
     return;
   }
