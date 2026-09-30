@@ -7,7 +7,7 @@ import {
   waitForDecodedFrames,
   waitForWebRTCReady,
 } from "../helpers";
-import { createRemoteAgent, KEY } from "./remote-agent";
+import { createRemoteAgent, KEY, skipWithoutRemoteHost } from "./remote-agent";
 
 const agent = createRemoteAgent();
 const RPC_TIMEOUT_MS = 2_000;
@@ -20,7 +20,7 @@ const PASTE_KEYS = [KEY.A, KEY.B, KEY.C, KEY.D, KEY.E, KEY.F, KEY.G, KEY.H, KEY.
 // One test gives the entire workload a shared deadline. A failing cycle must
 // not be hidden by Playwright retries or the helpers' reconnect/reload loops.
 test.describe.configure({ retries: 0, timeout: 240_000 });
-test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+skipWithoutRemoteHost();
 
 async function ready(page: Page): Promise<void> {
   await waitForWebRTCReady(page, 10_000);
