@@ -918,6 +918,8 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = unmountATXControl()
 	case "dc-power":
 		_ = unmountDCControl()
+	case "serial-console":
+		_ = unmountSerialConsole()
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
@@ -928,6 +930,10 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
+	case "serial-console":
+		// Failures show up in getSerialNetworkStatus; the extension itself
+		// still loads.
+		_ = mountSerialConsole()
 	}
 
 	// Re-publish MQTT HA Discovery for the new extension
@@ -1495,6 +1501,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setATXPowerAction":          {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":          {Func: rpcGetSerialSettings},
 	"setSerialSettings":          {Func: rpcSetSerialSettings, Params: []string{"settings"}},
+	"getSerialNetworkStatus":     {Func: rpcGetSerialNetworkStatus},
 	"sendCustomCommand":          {Func: rpcSendCustomCommand, Params: []string{"command"}},
 	"getSerialCommandHistory":    {Func: rpcGetSerialCommandHistory},
 	"setSerialCommandHistory":    {Func: rpcSetSerialCommandHistory, Params: []string{"commandHistory"}},
