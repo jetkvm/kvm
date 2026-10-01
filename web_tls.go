@@ -138,6 +138,10 @@ func setTLSState(s TLSState) error {
 		startWebSecureServer()
 	}
 
+	// The advertised Bonjour port follows TLS state (443 when on,
+	// 80 when off), so refresh the mDNS service when it flips.
+	restartMdns()
+
 	return nil
 }
 
