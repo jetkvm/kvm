@@ -16,15 +16,19 @@ const loader: LoaderFunction = async ({ request }: LoaderFunctionArgs) => {
 
   const tempToken = searchParams.get("tempToken");
   const deviceId = searchParams.get("deviceId");
-  const oidcGoogle = searchParams.get("oidcGoogle");
-  const clientId = searchParams.get("clientId");
+  const oidcToken = searchParams.get("oidcToken") ?? searchParams.get("oidcGoogle");
+  const oidcClientId = searchParams.get("oidcClientId") ?? searchParams.get("clientId");
+  const oidcIssuer = searchParams.get("oidcIssuer");
 
   const [cloudStateResponse, registerResponse] = await Promise.all([
     api.GET(`${DEVICE_API}/cloud/state`),
     api.POST(`${DEVICE_API}/cloud/register`, {
       token: tempToken,
-      oidcGoogle,
-      clientId,
+      oidcToken,
+      oidcClientId,
+      oidcIssuer,
+      oidcGoogle: oidcToken,
+      clientId: oidcClientId,
     }),
   ]);
 
