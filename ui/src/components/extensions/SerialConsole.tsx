@@ -10,6 +10,7 @@ import {
   LuArrowBigDown,
   LuCircleX,
   LuTerminal,
+  LuExternalLink,
 } from "react-icons/lu";
 import { useEffect, useMemo, useState } from "react";
 
@@ -24,6 +25,7 @@ import { useUiStore, useTerminalStore } from "@/hooks/stores";
 import Checkbox from "@components/Checkbox";
 import { SettingsItem } from "@components/SettingsItem";
 import { m } from "@localizations/messages.js";
+import { isOnDevice } from "@/main";
 
 /** ============== Types ============== */
 interface QuickButton {
@@ -48,7 +50,23 @@ interface SerialSettings {
   preserveANSI: boolean; // future use
   showNLTag: boolean; // future use
   buttons: QuickButton[];
+  networkMode: "disabled" | "ser2net" | "web";
+  ser2netPort: number;
+  ser2netProtocol: "raw" | "rfc2217";
+  networkMaxClients: number;
 }
+
+interface SerialNetworkStatus {
+  mode: string;
+  protocol?: string;
+  running: boolean;
+  listenAddress?: string;
+  maxClients: number;
+  clients: { transport: string; remote: string; connectedAt: string }[];
+  error?: string;
+}
+
+const SERIAL_NETWORK_STATUS_POLL_MS = 3000;
 
 /** ============== Component ============== */
 
@@ -73,7 +91,13 @@ export function SerialConsole() {
     preserveANSI: true,
     showNLTag: true,
     buttons: [],
+    networkMode: "disabled",
+    ser2netPort: 2217,
+    ser2netProtocol: "raw",
+    networkMaxClients: 1,
   });
+  const [networkStatus, setNetworkStatus] = useState<SerialNetworkStatus | null>(null);
+  const [portDraft, setPortDraft] = useState("2217");
 
   type NormalizeMode = "caret" | "names" | "hex"; // note: caret (not carret)
 
@@ -101,8 +125,35 @@ export function SerialConsole() {
 
       setSettings(resp.result as SerialSettings);
       setTerminator((resp.result as SerialSettings).terminator.value);
+      setPortDraft(String((resp.result as SerialSettings).ser2netPort));
     });
   }, [send, setTerminator]);
+
+  useEffect(() => {
+    const refresh = () =>
+      send("getSerialNetworkStatus", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) return;
+        setNetworkStatus(resp.result as SerialNetworkStatus);
+      });
+    refresh();
+    const id = setInterval(refresh, SERIAL_NETWORK_STATUS_POLL_MS);
+    return () => clearInterval(id);
+  }, [send]);
+
+  const commitPort = () => {
+    const port = Number(portDraft);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setPortDraft(String(settings.ser2netPort));
+      return;
+    }
+    if (port !== settings.ser2netPort) handleSerialSettingsChange("ser2netPort", port);
+  };
+
+  const deviceHost = isOnDevice ? window.location.hostname : "<device-ip>";
+  const ser2netCommand =
+    settings.ser2netProtocol === "rfc2217"
+      ? `telnet ${deviceHost} ${settings.ser2netPort}`
+      : `socat -,raw,echo=0 tcp:${deviceHost}:${settings.ser2netPort}`;
 
   const handleSerialSettingsChange = (config: keyof SerialSettings, value: unknown) => {
     const newSettings = { ...settings, [config]: value };
@@ -439,6 +490,113 @@ export function SerialConsole() {
                     }}
                   />
                 </SettingsItem>
+              </div>
+              <hr className="border-slate-700/30 dark:border-slate-600/30" />
+
+              {/* Network access (ser2net / web console) */}
+              <div className="space-y-3">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {m.serial_console_network_access()}
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {m.serial_console_network_access_description()}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <SelectMenuBasic
+                    label={m.serial_console_network_mode()}
+                    options={[
+                      { label: m.serial_console_network_mode_disabled(), value: "disabled" },
+                      { label: m.serial_console_network_mode_ser2net(), value: "ser2net" },
+                      { label: m.serial_console_network_mode_web(), value: "web" },
+                    ]}
+                    value={settings.networkMode}
+                    onChange={e => handleSerialSettingsChange("networkMode", e.target.value)}
+                  />
+                  {settings.networkMode !== "disabled" && (
+                    <SelectMenuBasic
+                      label={m.serial_console_network_max_clients()}
+                      options={[1, 2, 3, 4, 5, 6, 7, 8].map(n => ({
+                        label: String(n),
+                        value: String(n),
+                      }))}
+                      value={settings.networkMaxClients}
+                      onChange={e =>
+                        handleSerialSettingsChange("networkMaxClients", Number(e.target.value))
+                      }
+                    />
+                  )}
+                  {settings.networkMode === "ser2net" && (
+                    <>
+                      <SelectMenuBasic
+                        label={m.serial_console_network_protocol()}
+                        options={[
+                          { label: m.serial_console_network_protocol_raw(), value: "raw" },
+                          {
+                            label: m.serial_console_network_protocol_rfc2217(),
+                            value: "rfc2217",
+                          },
+                        ]}
+                        value={settings.ser2netProtocol}
+                        onChange={e =>
+                          handleSerialSettingsChange("ser2netProtocol", e.target.value)
+                        }
+                      />
+                      <InputFieldWithLabel
+                        size="MD"
+                        type="number"
+                        min={1}
+                        max={65535}
+                        label={m.serial_console_network_port()}
+                        value={portDraft}
+                        onChange={e => setPortDraft(e.target.value)}
+                        onBlur={commitPort}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") commitPort();
+                        }}
+                      />
+                    </>
+                  )}
+                </div>
+                {settings.networkMode === "ser2net" && (
+                  <div className="space-y-1 text-xs">
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {m.serial_console_network_ser2net_hint({ command: ser2netCommand })}
+                    </p>
+                    <p className="text-amber-600 dark:text-amber-400">
+                      {m.serial_console_network_ser2net_warning()}
+                    </p>
+                  </div>
+                )}
+                {settings.networkMode === "web" && (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {m.serial_console_network_web_hint()}
+                    </p>
+                    {isOnDevice && (
+                      <Button
+                        size="XS"
+                        theme="primary"
+                        LeadingIcon={LuExternalLink}
+                        text={m.serial_console_network_open_web_console()}
+                        onClick={() => window.open("/serial", "_blank", "noopener")}
+                      />
+                    )}
+                  </div>
+                )}
+                {settings.networkMode !== "disabled" && networkStatus && (
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    {networkStatus.error
+                      ? m.serial_console_network_status_error({ error: networkStatus.error })
+                      : networkStatus.running
+                        ? m.serial_console_network_status_running({
+                            clients: networkStatus.clients.length,
+                            max: networkStatus.maxClients,
+                          })
+                        : m.serial_console_network_status_stopped()}
+                  </p>
+                )}
               </div>
               <hr className="border-slate-700/30 dark:border-slate-600/30" />
             </>
