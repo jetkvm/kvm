@@ -22,3 +22,10 @@ func TestBaseGadgetConfigItemsAlwaysEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestMassStoragePrecedesHIDInterfaces(t *testing.T) {
+	if massStorageBaseConfig.order >= keyboardConfig.order ||
+		massStorageBaseConfig.order >= wakeHIDConfig.order {
+		t.Fatal("mass storage must be the first USB interface for bootloader compatibility")
+	}
+}
