@@ -437,6 +437,10 @@ void jetkvm_video_shutdown() {
     video_shutdown();
 }
 
+int jetkvm_video_capture_jpeg(uint8_t **out_buf, size_t *out_len) {
+    return video_capture_jpeg(out_buf, out_len);
+}
+
 void jetkvm_crash() {
     // let's call a function that will crash the program
     int* p = 0;

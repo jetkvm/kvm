@@ -579,3 +579,43 @@ func (m *MQTTManager) startPeriodicStatusUpdates(interval time.Duration) {
 		}
 	}()
 }
+
+// publishScreenshot captures a single JPEG frame from the video stream and
+// publishes it to the screenshot image topic.
+func (m *MQTTManager) publishScreenshot() {
+	if nativeInstance == nil {
+		return
+	}
+	if !lastVideoState.Ready {
+		mqttLogger.Debug().Msg("skipping screenshot: video not ready")
+		return
+	}
+
+	// If the capture chip is in HDMI sleep mode, wake it and wait for the
+	// HDMI signal to re-lock before attempting capture.
+	sleeping, _ := nativeInstance.VideoGetSleepMode()
+	if sleeping {
+		mqttLogger.Info().Msg("waking capture chip from sleep mode for screenshot")
+		if err := nativeInstance.VideoSetSleepMode(false); err != nil {
+			mqttLogger.Warn().Err(err).Msg("failed to wake capture chip for screenshot")
+			return
+		}
+		// Allow the HDMI capture chip time to re-lock the signal.
+		// This mirrors the delay used in VideoStart() for the same reason.
+		time.Sleep(5 * time.Second)
+	}
+
+	// Always restart the sleep mode ticker after a capture attempt so that
+	// repeated button presses reset the idle countdown. This means the chip
+	// will not sleep until the full idle timeout has elapsed since the last
+	// capture, which is the expected behaviour when the user is actively
+	// requesting screenshots.
+	defer startVideoSleepModeTicker()
+
+	data, err := nativeInstance.VideoCaptureJPEG()
+	if err != nil {
+		mqttLogger.Warn().Err(err).Msg("failed to capture JPEG for MQTT screenshot")
+		return
+	}
+	m.publishBinary(m.topic("screenshot", "image"), data, false)
+}
