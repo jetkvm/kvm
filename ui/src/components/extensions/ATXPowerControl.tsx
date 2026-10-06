@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
+import { LuHardDrive, LuPower, LuRotateCcw, LuTriangleAlert } from "react-icons/lu";
 
 import { m } from "@localizations/messages.js";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
@@ -10,10 +10,12 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import notifications from "@/notifications";
 
 const LONG_PRESS_DURATION = 3000; // 3 seconds for long press
+const STATE_POLL_INTERVAL = 5000; // Poll board responsiveness every 5 seconds
 
 interface ATXState {
   power: boolean;
   hdd: boolean;
+  responsive?: boolean;
 }
 
 export function ATXPowerControl() {
@@ -29,17 +31,26 @@ export function ATXPowerControl() {
     }
   });
 
-  // Request initial state
+  // Request initial state and keep polling while the control is open,
+  // so an unresponsive extension board is detected and surfaced.
   useEffect(() => {
-    send("getATXState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          m.atx_power_control_get_state_error({ error: resp.error.data || m.unknown_error() }),
-        );
-        return;
-      }
-      setAtxState(resp.result as ATXState);
-    });
+    const requestState = (notifyOnError: boolean) => {
+      send("getATXState", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          if (notifyOnError) {
+            notifications.error(
+              m.atx_power_control_get_state_error({ error: resp.error.data || m.unknown_error() }),
+            );
+          }
+          return;
+        }
+        setAtxState(resp.result as ATXState);
+      });
+    };
+
+    requestState(true);
+    const pollTimer = setInterval(() => requestState(false), STATE_POLL_INTERVAL);
+    return () => clearInterval(pollTimer);
   }, [send]);
 
   const handlePowerPress = (pressed: boolean) => {
@@ -115,6 +126,13 @@ export function ATXPowerControl() {
       ) : (
         <Card className="min-h-[120px] animate-fadeIn opacity-0">
           <div className="space-y-4 p-3">
+            {/* Board responsiveness warning */}
+            {atxState.responsive === false && (
+              <div className="flex items-start gap-x-2 text-xs text-amber-600 dark:text-amber-500">
+                <LuTriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{m.atx_power_control_board_not_responding()}</span>
+              </div>
+            )}
             {/* Control Buttons */}
             <div className="flex items-center space-x-2">
               <Button
@@ -147,7 +165,9 @@ export function ATXPowerControl() {
                 }}
               />
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{m.atx_power_control_hold_hint()}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {m.atx_power_control_hold_hint()}
+            </p>
 
             <hr className="border-slate-700/30 dark:border-slate-600/30" />
             {/* Status Indicators */}
