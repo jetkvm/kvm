@@ -651,11 +651,15 @@ func (m *SerialMux) SetEchoEnabled(v bool) { m.echoEnabled.Store(v) }
 
 func (m *SerialMux) Enqueue(payload []byte, source string, requestEcho bool, origin TXOrigin) {
 	serialLogger.Trace().Str("src", source).Bool("echo", requestEcho).Msg("Enqueuing TX data to serial port")
-	m.txQ <- txFrame{
+	// A closed mux has no writer left; don't block the caller forever.
+	select {
+	case m.txQ <- txFrame{
 		payload: append([]byte(nil), payload...),
 		source:  source,
 		echo:    requestEcho,
 		origin:  origin,
+	}:
+	case <-m.done:
 	}
 }
 
@@ -675,9 +679,14 @@ func (m *SerialMux) reader() {
 				time.Sleep(50 * time.Millisecond)
 				continue
 			}
-			if n > 0 && m.broker != nil {
+			if n == 0 {
+				continue
+			}
+			data := append([]byte(nil), buf[:n]...)
+			serialRx.Broadcast(data)
+			if m.broker != nil {
 				scopedLogger.Trace().Msg("Sending RX data to console broker")
-				m.broker.Enqueue(consoleEvent{kind: evRX, data: append([]byte(nil), buf[:n]...)})
+				m.broker.Enqueue(consoleEvent{kind: evRX, data: data})
 			}
 		}
 	}
