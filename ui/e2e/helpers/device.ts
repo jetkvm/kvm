@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import type {} from "../../src/test/testHooks";
 
 export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<void> {
@@ -58,7 +58,13 @@ export async function ensureRpcReady(
       }
       const useHere = page.getByRole("button", { name: "Use Here" });
       if (await useHere.isVisible({ timeout: 200 }).catch(() => false)) {
-        await useHere.click();
+        // The dialog stays until the page has navigated away from it. After
+        // the caller's own "Use Here" click that navigation can end while this
+        // click waits for the button to be stable, and a click without a
+        // timeout then waits for a button that does not come back.
+        await useHere.click({ timeout: 5000 }).catch(async (error: unknown) => {
+          if (await useHere.isVisible()) throw error;
+        });
         await page.waitForTimeout(1000);
       }
       await waitForWebRTCReady(page, Math.min(15000, Math.max(5000, deadline - Date.now())));
@@ -71,6 +77,21 @@ export async function ensureRpcReady(
   }
   const detail = lastError instanceof Error ? lastError.message : String(lastError);
   throw new Error(`Page never became RPC-ready within ${timeoutMs}ms: ${detail}`);
+}
+
+/** Open a connected page, run `fn` against it, close it. */
+export async function withRpcPage<T>(browser: Browser, fn: (page: Page) => Promise<T>): Promise<T> {
+  const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
+  const page = await context.newPage();
+  try {
+    // ensureRpcReady navigates with a bounded goto and retries; a bare
+    // goto(networkidle) has no timeout and hung on a device still settling.
+    await ensureRpcReady(page, { timeoutMs: 90_000, navigateFirst: true });
+    return await fn(page);
+  } finally {
+    await page.close().catch(() => undefined);
+    await context.close().catch(() => undefined);
+  }
 }
 
 /** Get the current app version from the /metrics endpoint. */
@@ -117,8 +138,40 @@ export async function reconnectAfterReboot(
   await ensureRpcReady(page, { timeoutMs, navigateFirst: true });
 }
 
-/** Send reboot once, observe shutdown, then reconnect without resending it. */
-export async function rebootAndReconnect(page: Page): Promise<void> {
+/**
+ * Wait until /device/status has failed several times in a row. A single miss
+ * is not a reboot: a busy device (flashing an image, rebuilding video) can
+ * answer late, and a short probe times out although it is still up.
+ */
+export async function waitForDeviceDown(
+  page: Page,
+  message: string,
+  timeoutMs: number,
+): Promise<void> {
+  let misses = 0;
+  await expect
+    .poll(
+      async () => {
+        let up = false;
+        try {
+          const response = await page.request.get("/device/status", { timeout: 2000 });
+          up = response.ok();
+        } catch {
+          up = false;
+        }
+        misses = up ? 0 : misses + 1;
+        return misses >= 3;
+      },
+      { message, timeout: timeoutMs, intervals: [1000] },
+    )
+    .toBe(true);
+}
+
+/**
+ * Send reboot once, observe shutdown, then reconnect without resending it.
+ * `timeoutMs` bounds the reconnect after the device went down.
+ */
+export async function rebootAndReconnect(page: Page, timeoutMs = 90_000): Promise<void> {
   await ensureRpcReady(page, { timeoutMs: 20_000 });
   await Promise.all([
     rawJsonRpc(page, "reboot", { force: true }, 5000).catch(error => {
@@ -127,25 +180,9 @@ export async function rebootAndReconnect(page: Page): Promise<void> {
         throw error;
       // A lost reply is acceptable only if the shutdown observer below succeeds.
     }),
-    expect
-      .poll(
-        async () => {
-          try {
-            const response = await page.request.get("/device/status", { timeout: 1000 });
-            return !response.ok();
-          } catch {
-            return true;
-          }
-        },
-        {
-          message: "device must go down after the single reboot request",
-          timeout: 20_000,
-          intervals: [100, 200, 500],
-        },
-      )
-      .toBe(true),
+    waitForDeviceDown(page, "device must go down after the single reboot request", 30_000),
   ]);
-  await reconnectAfterReboot(page, 0, 90_000);
+  await reconnectAfterReboot(page, 0, timeoutMs);
 }
 
 // A method the device does not implement answers "Method not found". Tests
@@ -163,6 +200,31 @@ export async function rpcAvailable(page: Page, method: string): Promise<boolean>
 
 export async function skipWithoutRpc(page: Page, method: string, feature: string): Promise<void> {
   test.skip(!(await rpcAvailable(page, method)), `device has no ${feature} (${method})`);
+}
+
+export async function skipWithoutCapability(page: Page, capability: string): Promise<void> {
+  const capabilities = (await callJsonRpc(page, "getDeviceCapabilities")) as string[];
+  test.skip(
+    !capabilities.includes(capability),
+    `device does not report ${capability} (getDeviceCapabilities: ${JSON.stringify(capabilities)})`,
+  );
+}
+
+export async function skipWithoutVideoCodec(page: Page, codec: string): Promise<void> {
+  const codecs = (await callJsonRpc(page, "getSupportedVideoCodecs")) as string[];
+  test.skip(
+    !codecs.includes(codec),
+    `device does not encode ${codec} (getSupportedVideoCodecs: ${JSON.stringify(codecs)})`,
+  );
+}
+
+// Prometheus metrics are optional: a device without /metrics answers 404, and
+// tests that read counters from it skip. Any other failure is an error.
+export async function skipWithoutMetrics(page: Page): Promise<void> {
+  const response = await page.request.get("/metrics", { timeout: 10_000 });
+  if (response.status() !== 404 && !response.ok())
+    throw new Error(`/metrics returned ${response.status()}`);
+  test.skip(response.status() === 404, "device has no /metrics endpoint");
 }
 
 export function getDeviceHost(): string {

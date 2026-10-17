@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-import { callJsonRpc, rpcAvailable, waitForWebRTCReady } from "./helpers";
+import {
+  callJsonRpc,
+  skipWithoutMetrics,
+  skipWithoutRpc,
+  waitForWebRTCReady,
+  withRpcPage,
+} from "./helpers";
 import type { Page } from "@playwright/test";
 
 interface NetworkSettings {
@@ -44,36 +50,18 @@ test.describe("Custom NTP time sync", () => {
   let originalSettings: NetworkSettings;
 
   test.beforeAll(async ({ browser }) => {
-    const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
-    const page = await context.newPage();
-    try {
-      await page.goto("/");
-      await waitForWebRTCReady(page);
-      test.skip(
-        !(await rpcAvailable(page, "getNetworkSettings")),
-        "device has no network settings (getNetworkSettings)",
-      );
+    await withRpcPage(browser, async page => {
+      await skipWithoutRpc(page, "getNetworkSettings", "network settings");
+      await skipWithoutMetrics(page);
       originalSettings = (await callJsonRpc(page, "getNetworkSettings")) as NetworkSettings;
-    } finally {
-      await page.close();
-      await context.close();
-    }
+    });
   });
 
   test.afterAll(async ({ browser }) => {
     if (!originalSettings) return;
-    const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
-    const page = await context.newPage();
-    try {
-      await page.goto("/");
-      await waitForWebRTCReady(page);
-      await callJsonRpc(page, "setNetworkSettings", {
-        settings: originalSettings,
-      });
-    } finally {
-      await page.close();
-      await context.close();
-    }
+    await withRpcPage(browser, page =>
+      callJsonRpc(page, "setNetworkSettings", { settings: originalSettings }),
+    );
   });
 
   /**

@@ -227,6 +227,7 @@ export interface VersionInfo {
   // Absent on a device whose firmware is a single image with no separate app.
   appVersion?: string;
   systemVersion: string;
+  sku?: string;
 }
 
 export interface SystemVersionInfo {

@@ -129,7 +129,14 @@ export async function loginLocal(
   await expect(passwordInput).toBeVisible({ timeout: 5000 });
 
   // Check if input is enabled (might be disabled due to rate-limiting)
-  const isEnabled = await passwordInput.isEnabled({ timeout: 3000 }).catch(() => false);
+  // The form is also disabled for a moment after a failed attempt while the
+  // route revalidates, so wait for it instead of sampling once.
+  const isEnabled = await expect(passwordInput)
+    .toBeEnabled({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
   if (!isEnabled) {
     if (expectSuccess) {
       throw new Error("Login failed: password input is disabled (likely rate-limited)");
@@ -140,7 +147,12 @@ export async function loginLocal(
   await passwordInput.fill(password, { timeout: 5000 });
 
   const submitButton = page.getByRole("button", { name: /Log in/i });
-  const submitEnabled = await submitButton.isEnabled({ timeout: 3000 }).catch(() => false);
+  const submitEnabled = await expect(submitButton)
+    .toBeEnabled({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
   if (!submitEnabled) {
     if (expectSuccess) {
       throw new Error("Login failed: submit button is disabled");
@@ -174,11 +186,16 @@ export async function loginLocal(
   return { success: false, error: errorText || undefined };
 }
 
+/** Log out with the page parked on about:blank. A device page that is still
+ * loading opens its signaling socket after the logout, gets 401 and reloads
+ * itself, and that reload can abort the caller's next navigation. */
 export async function logout(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await fetch("/auth/logout", { method: "POST" });
+  const origin = new URL(page.url()).origin;
+  await page.goto("about:blank");
+  const response = await page.request.post(`${origin}/auth/logout`, {
+    headers: { Origin: origin },
   });
-  await page.waitForTimeout(100);
+  expect(response.status(), "POST /auth/logout").toBe(200);
 }
 
 export async function dismissSessionTakeoverDialog(page: Page): Promise<void> {

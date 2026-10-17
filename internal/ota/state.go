@@ -32,6 +32,7 @@ type UpdateMetadata struct {
 type LocalMetadata struct {
 	AppVersion    string `json:"appVersion"`
 	SystemVersion string `json:"systemVersion"`
+	SKU           string `json:"sku,omitempty"`
 }
 
 // UpdateStatus represents the current update status

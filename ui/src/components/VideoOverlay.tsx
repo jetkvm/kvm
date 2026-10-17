@@ -525,10 +525,14 @@ interface RebootingOverlayProps {
   readonly deviceId?: string; // Required for cloud mode to build versioned URLs
 }
 
+// Peer states that show the connection dropped. A peer retired by a signaling
+// close that will reconnect reports "connecting" (useWebSocketSignaling).
+const DROPPED_PEER_STATES = ["disconnected", "closed", "failed", "connecting"];
+
 export function RebootingOverlay({ show, postRebootAction, deviceId }: RebootingOverlayProps) {
   const { peerConnectionState } = useRTCStore();
   const [hasSeenDisconnect, setHasSeenDisconnect] = useState(
-    ["disconnected", "closed", "failed"].includes(peerConnectionState ?? ""),
+    DROPPED_PEER_STATES.includes(peerConnectionState ?? ""),
   );
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const isCheckingRef = useRef(false);
@@ -537,7 +541,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
   // Detect connection drop (confirms reboot started)
   useEffect(() => {
     if (!show || hasSeenDisconnect) return;
-    if (["disconnected", "closed", "failed"].includes(peerConnectionState ?? "")) {
+    if (DROPPED_PEER_STATES.includes(peerConnectionState ?? "")) {
       console.log("hasSeenDisconnect", hasSeenDisconnect);
       setHasSeenDisconnect(true);
     }
@@ -627,14 +631,17 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
       isCheckingRef.current = true;
 
       try {
-        const { appVersion } = await getLocalVersion({
+        const { appVersion, systemVersion, sku } = await getLocalVersion({
           attemptTimeoutMs: 2000,
         });
 
         if (cancelled) return;
 
         clearInterval(intervalId);
-        const targetUrl = buildCloudUrl(deviceId, appVersion, postRebootAction.redirectTo);
+        // The JetKVM Mini's firmware is one image with no separate app. Its
+        // cloud UI is published as <firmware version>-mini.
+        const version = sku?.startsWith("jetkvm-mini") ? `${systemVersion}-mini` : appVersion;
+        const targetUrl = buildCloudUrl(deviceId, version, postRebootAction.redirectTo);
         await redirectTo(targetUrl);
       } catch (err) {
         console.debug("Cloud reconnect check failed:", err);

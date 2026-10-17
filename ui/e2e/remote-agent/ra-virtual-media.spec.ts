@@ -199,10 +199,12 @@ test.describe("Remote Host Agent: virtual media", () => {
       await new Promise(r => setTimeout(r, 1000));
     }
     if (!blockDev) {
-      // Some hosts don't enumerate USB mass storage as sr* (missing sr_mod, etc.)
+      // The device may not have presented the CD-ROM; that is a failure, not
+      // a missing precondition (a host without sr_mod fails here too).
       await callJsonRpc(sharedPage, "unmountImage");
-      test.skip(true, "CDROM block device did not appear on remote host (sr_mod not loaded?)");
-      return;
+      throw new Error(
+        "CDROM block device did not appear on remote host within 45 s (sr_mod not loaded?)",
+      );
     }
 
     // Lock the CDROM medium — sends PREVENT MEDIUM REMOVAL, which causes the
@@ -213,9 +215,9 @@ test.describe("Remote Host Agent: virtual media", () => {
     // (userspace freeze fails after 20s).
     try {
       remoteHostExec(`sudo eject -i on ${blockDev}`);
-    } catch {
-      test.skip(true, "Could not lock CDROM medium on remote host");
-      return;
+    } catch (error) {
+      await callJsonRpc(sharedPage, "unmountImage");
+      throw new Error(`Could not lock CDROM medium on remote host: ${String(error)}`);
     }
 
     try {

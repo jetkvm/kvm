@@ -117,7 +117,7 @@ type Config struct {
 	NetworkConfig        *types.NetworkConfig `json:"network_config"`
 	DefaultLogLevel      string               `json:"default_log_level"`
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
-	VideoQualityFactor   float64              `json:"video_quality_factor"` // 0 = Auto (REMB), up to High
+	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	VideoCodecPreference string               `json:"video_codec_preference"`
 	HideDisplayWhenIdle  bool                 `json:"host_display_disable_when_idle"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
@@ -206,7 +206,7 @@ func getDefaultConfig() Config {
 			return c
 		}(),
 		DefaultLogLevel:      "WARN",
-		VideoQualityFactor:   0, // Auto, capped at High
+		VideoQualityFactor:   1.0,
 		VideoCodecPreference: "auto",
 		MqttConfig: &MQTTConfig{
 			Enabled:           false,

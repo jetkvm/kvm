@@ -153,6 +153,7 @@ func rpcGetLocalVersion() (*ota.LocalMetadata, error) {
 	return &ota.LocalMetadata{
 		AppVersion:    appVersion.String(),
 		SystemVersion: systemVersion.String(),
+		SKU:           GetDeviceSKU(),
 	}, nil
 }
 

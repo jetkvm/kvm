@@ -11,7 +11,7 @@ import {
   waitForUdcState,
   skipWithoutDeviceShell,
 } from "../helpers";
-import { createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
+import { createRemoteAgent, waitForKeyboardReady, skipWithoutRemoteHost } from "./remote-agent";
 
 const agent = createRemoteAgent();
 
@@ -72,7 +72,7 @@ function writePortDisable(value: number) {
 }
 
 test.beforeAll(async ({ browser }) => {
-  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+  skipWithoutRemoteHost();
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 
   hostIsRoot = remoteHostExec("id -u").trim() === "0";

@@ -9,6 +9,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { HID_KEY, tapKey } from "../helpers";
 
@@ -696,6 +697,11 @@ function sleep(ms: number): Promise<void> {
  * Create a RemoteAgent from the JETKVM_REMOTE_HOST env var.
  * Falls back to null if not configured (tests can skip gracefully).
  */
+// Specs that drive or observe the host skip on a bench without one.
+export function skipWithoutRemoteHost(): void {
+  test.skip(!process.env.JETKVM_REMOTE_HOST, "needs a remote host (JETKVM_REMOTE_HOST)");
+}
+
 export function createRemoteAgent(): RemoteAgent | null {
   const raw = process.env.JETKVM_REMOTE_HOST;
   if (!raw) return null;

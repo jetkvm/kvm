@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useCapability } from "@hooks/stores";
 
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -82,6 +83,7 @@ export default function SettingsMqttRoute() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeExtension, setActiveExtension] = useState<string>("");
+  const extensions = useCapability("extensions");
   const [portMode, setPortMode] = useState<"default" | "custom">("default");
   const [topicMode, setTopicMode] = useState<"default" | "custom">("default");
   const [testing, setTesting] = useState(false);
@@ -91,7 +93,7 @@ export default function SettingsMqttRoute() {
     let settled = 0;
     const settle = () => {
       settled++;
-      if (settled >= 3) setLoading(false);
+      if (settled >= 2) setLoading(false);
     };
 
     send("getMqttSettings", {}, resp => {
@@ -116,16 +118,16 @@ export default function SettingsMqttRoute() {
       setConnectionState(result.connected ? "connected" : "disconnected");
       settle();
     });
-
-    send("getActiveExtension", {}, resp => {
-      if ("error" in resp) {
-        settle();
-        return;
-      }
-      setActiveExtension(resp.result as string);
-      settle();
-    });
   }, [send]);
+
+  // Only a device with an extension port has an active extension.
+  useEffect(() => {
+    if (!extensions) return;
+    send("getActiveExtension", {}, resp => {
+      if ("error" in resp) return;
+      setActiveExtension(resp.result as string);
+    });
+  }, [send, extensions]);
 
   // Poll connection status
   useEffect(() => {
@@ -248,7 +250,7 @@ export default function SettingsMqttRoute() {
     }
   };
 
-  const hasATXExtension = activeExtension === "atx-power";
+  const hasATXExtension = extensions && activeExtension === "atx-power";
 
   const saveButtonText = () => {
     if (savePhase === "testing") return m.mqtt_testing();

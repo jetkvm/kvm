@@ -14,7 +14,7 @@ import {
   skipWithoutDeviceShell,
   rebootDeviceViaSSH,
 } from "../helpers";
-import { waitForKeyboardReady, KEY } from "./remote-agent";
+import { waitForKeyboardReady, KEY, skipWithoutRemoteHost } from "./remote-agent";
 import {
   ID_DEFAULT,
   ID_LOGITECH,
@@ -95,7 +95,7 @@ test.describe("Remote Host Agent: USB gadget", () => {
     await skipWithoutDeviceShell();
     test.setTimeout(90_000);
 
-    test.skip(!process.env.JETKVM_REMOTE_HOST, "JETKVM_REMOTE_HOST not set");
+    skipWithoutRemoteHost();
 
     // Verify the host does NOT see a ttyACM device
     const beforeACM = await usbReconfigWithRetry(
@@ -141,7 +141,7 @@ test.describe("Remote Host Agent: USB gadget", () => {
     // Budget for the ModemManager-probe wait plus typed-string retries.
     test.setTimeout(150_000);
 
-    test.skip(!process.env.JETKVM_REMOTE_HOST, "JETKVM_REMOTE_HOST not set");
+    skipWithoutRemoteHost();
 
     // Enable serial console
     await callJsonRpc(sharedPage, "setUsbDevices", {

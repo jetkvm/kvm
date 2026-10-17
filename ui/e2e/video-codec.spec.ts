@@ -7,6 +7,7 @@ import {
   waitForVideoStream,
   wakeDisplay,
   callJsonRpc,
+  skipWithoutVideoCodec,
 } from "./helpers";
 
 declare global {
@@ -103,6 +104,7 @@ test.describe("Video codec negotiation", () => {
     await page.waitForLoadState("networkidle");
     await ensureLocalAuthMode(page, { mode: "noPassword" });
     await waitForWebRTCReady(page);
+    await skipWithoutVideoCodec(page, "h265");
     await wakeDisplay(page);
     await waitForVideoStream(page);
 
@@ -192,6 +194,7 @@ test("codec settings use device capabilities and retain an unavailable saved pre
   await page.goto("/");
   await ensureLocalAuthMode(page, { mode: "noPassword" });
   await ensureRpcReady(page);
+  await skipWithoutVideoCodec(page, "h265");
   const supported = await callJsonRpc(page, "getSupportedVideoCodecs");
   expect(supported).toEqual(["h264", "h265"]);
   const original = await callJsonRpc(page, "getVideoCodecPreference");

@@ -17,7 +17,9 @@ export default function OtherSessionRoute() {
 
   // Function to handle closing the modal
   const handleClose = () => {
-    outletContext?.setupPeerConnection().then(() => navigate(".."));
+    // Replace the entry, so Back cannot return to this page and retire the
+    // session the user just took back.
+    outletContext?.setupPeerConnection().then(() => navigate("..", { replace: true }));
   };
 
   return (

@@ -135,14 +135,6 @@ export default function WebRTCVideo({
     if (videoElm.current) updateVideoSizeStore(videoElm.current);
   }, [updateVideoSizeStore]);
 
-  // isPlaying belongs to the current peer connection/stream, not the component lifetime.
-  // Reset it before reconnects so startup loading and HDMI grace can run again.
-  useEffect(() => {
-    if (peerConnectionState !== "connected") {
-      setIsPlaying(false);
-    }
-  }, [peerConnectionState]);
-
   // Restoring EDID for idle display hiding cycles HDMI hotplug on the bridge.
   // The host can report no_signal/no_lock while it re-enumerates the display,
   // so keep the startup UI in the loading state before showing a persistent
@@ -494,6 +486,8 @@ export default function WebRTCVideo({
 
   useEffect(
     function updateVideoStream() {
+      // Each new peer connection brings a new MediaStream, so this is where isPlaying resets.
+      // An ICE disconnect that recovers keeps the stream, and the video element keeps playing.
       setIsPlaying(false);
 
       if (!mediaStream) {
