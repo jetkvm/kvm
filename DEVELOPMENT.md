@@ -145,6 +145,7 @@ tail -f /userdata/jetkvm/last.log
 - `web.go` - Add new API endpoints here
 - `config.go` - Add new settings here
 - `tailscale.go` - Tailscale status and control-server logic
+- `wireguard.go` - WireGuard settings and status (the tunnel itself is in `internal/wireguard`)
 - `ui/src/routes/` - Add new pages here
 - `ui/src/components/` - Add new UI components here
 
@@ -265,6 +266,24 @@ Notes:
 - Query strings, fragments, user info, and non-root paths are rejected.
 - Control server changes are applied with `tailscale set --login-server=...`.
 - When apply fails, the previous configured URL is restored and not persisted.
+
+### WireGuard testing
+
+JetKVM can run a kernel WireGuard interface (`wg0`) so the device can be reached over a self-hosted VPN. The settings are stored under `wireguard_config` in `/userdata/kvm_config.json` and exposed through JSON-RPC:
+
+- `getWireguardSettings` returns the settings with the private and preshared keys masked
+- `setWireguardSettings` validates, saves and applies the settings
+- `generateWireguardKey` replaces the device's private key and returns the public key
+- `getWireguardStatus` returns the interface state, public key and per-peer handshake and traffic
+- `parseWireguardConfig` parses a pasted `.conf` (wg-quick format) without saving it
+
+Notes:
+
+- The capability `wireguard` is reported only when the kernel has the WireGuard module (`CONFIG_WIREGUARD`).
+- Only the VPN's own ranges are routed (split tunnel); `0.0.0.0/0` and `::/0` are rejected.
+- The device only answers connections that come in through the tunnel. The tunnel addresses are set as `/32` or `/128` and the allowed IPs are routed in table `51820`, which an `ip rule` uses for traffic from the tunnel addresses only. The main routing table is not changed, so replies to clients that reach the device over the LAN keep going out over the LAN.
+- Host name endpoints are resolved again while a peer has no recent handshake.
+- Check the tunnel on the device with `ip addr show wg0`, `ip rule` and `ip route show table 51820`.
 
 
 ### End to End Testing
