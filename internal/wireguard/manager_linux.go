@@ -33,14 +33,11 @@ const (
 
 	moduleName = "wireguard"
 
-	// IFA_F_NODAD, which golang.org/x/sys/unix only defines on Linux
-	ifaFlagNoDAD = 0x02
-
-	// endpoints given as host names are resolved again while the peer has
-	// not completed a handshake for longer than staleHandshake
+	// endpoints given as host names are resolved again while a peer with a
+	// keepalive has not completed a handshake for longer than staleHandshake
 	resolveInterval = 30 * time.Second
 	staleHandshake  = 3 * time.Minute
-	resolveTimeout  = 10 * time.Second
+	resolveTimeout  = 5 * time.Second
 )
 
 // Supported reports whether the kernel has WireGuard, either loaded or as a
@@ -77,8 +74,9 @@ type Manager struct {
 	mu      sync.Mutex
 	cfg     Config
 	lastErr string
-	// stopResolver stops the endpoint resolver of the applied config.
-	stopResolver context.CancelFunc
+	// stopResolver stops the endpoint resolver of the applied config and
+	// waits for it to exit, so it cannot write an endpoint after Apply.
+	stopResolver func()
 }
 
 // NewManager returns a Manager. Nothing changes on the device until Apply.
@@ -94,13 +92,14 @@ func (m *Manager) Apply(cfg Config) error {
 	defer m.applyMu.Unlock()
 
 	m.mu.Lock()
-	if m.stopResolver != nil {
-		m.stopResolver()
-		m.stopResolver = nil
-	}
+	stop := m.stopResolver
+	m.stopResolver = nil
 	m.cfg = cfg
 	m.lastErr = ""
 	m.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
 
 	var err error
 	if cfg.Enabled {
@@ -118,15 +117,31 @@ func (m *Manager) Apply(cfg Config) error {
 
 	if cfg.Enabled {
 		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
 		m.mu.Lock()
-		m.stopResolver = cancel
+		m.stopResolver = func() {
+			cancel()
+			<-done
+		}
 		m.mu.Unlock()
-		go m.resolveEndpoints(ctx, cfg)
+		go func() {
+			defer close(done)
+			m.resolveEndpoints(ctx, cfg)
+		}()
 		m.logger.Info().Strs("addresses", cfg.Addresses).Int("peers", len(cfg.Peers)).Msg("WireGuard interface up")
 	} else {
 		m.logger.Info().Msg("WireGuard interface removed")
 	}
 	return nil
+}
+
+// SetError records a config that could not be applied, such as an invalid
+// stored config at boot, so Status reports it.
+func (m *Manager) SetError(cfg Config, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = cfg
+	m.lastErr = err.Error()
 }
 
 func (m *Manager) setUp(cfg Config) error {
@@ -186,8 +201,28 @@ func (m *Manager) setUp(cfg Config) error {
 
 // deviceConfig builds the wgctrl config. An endpoint that cannot be resolved
 // yet, for example while DNS is not up at boot, is left out and filled in by
-// the resolver.
+// the resolver. Endpoints are resolved in parallel so a save waits for at
+// most one resolveTimeout.
 func (m *Manager) deviceConfig(cfg Config) (*wgtypes.Config, error) {
+	endpoints := make([]*net.UDPAddr, len(cfg.Peers))
+	var wg sync.WaitGroup
+	for i, p := range cfg.Peers {
+		if p.Endpoint == "" {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ep, err := resolveEndpoint(context.Background(), p.Endpoint)
+			if err != nil {
+				m.logger.Warn().Err(err).Str("endpoint", p.Endpoint).Msg("failed to resolve WireGuard endpoint, will retry")
+				return
+			}
+			endpoints[i] = ep
+		}()
+	}
+	wg.Wait()
+
 	priv, err := wgtypes.ParseKey(cfg.PrivateKey)
 	if err != nil {
 		return nil, errors.New("private key is not a valid WireGuard key")
@@ -200,7 +235,7 @@ func (m *Manager) deviceConfig(cfg Config) (*wgtypes.Config, error) {
 		Peers:        make([]wgtypes.PeerConfig, 0, len(cfg.Peers)),
 	}
 
-	for _, p := range cfg.Peers {
+	for i, p := range cfg.Peers {
 		pub, err := wgtypes.ParseKey(p.PublicKey)
 		if err != nil {
 			return nil, fmt.Errorf("peer %s: public key is not a valid WireGuard key", p.PublicKey)
@@ -218,14 +253,7 @@ func (m *Manager) deviceConfig(cfg Config) (*wgtypes.Config, error) {
 			}
 			pc.PresharedKey = &psk
 		}
-		if p.Endpoint != "" {
-			ep, err := resolveEndpoint(p.Endpoint)
-			if err != nil {
-				m.logger.Warn().Err(err).Str("endpoint", p.Endpoint).Msg("failed to resolve WireGuard endpoint, will retry")
-			} else {
-				pc.Endpoint = ep
-			}
-		}
+		pc.Endpoint = endpoints[i]
 		for _, a := range p.AllowedIPs {
 			prefix, err := parseAllowedIP(a)
 			if err != nil {
@@ -300,7 +328,7 @@ func reconcileAddresses(link netlink.Link, addrs []netip.Prefix) error {
 		addr := &netlink.Addr{IPNet: prefixToIPNet(netip.PrefixFrom(ip, ip.BitLen()))}
 		if ip.Is6() {
 			// no duplicate address detection: the tunnel has no other hosts
-			addr.Flags = ifaFlagNoDAD
+			addr.Flags = unix.IFA_F_NODAD
 		}
 		if err := netlink.AddrAdd(link, addr); err != nil {
 			return fmt.Errorf("failed to add address %s to %s: %w", ip, InterfaceName, err)
@@ -436,14 +464,18 @@ func (m *Manager) resolveEndpoints(ctx context.Context, cfg Config) {
 			if !ok {
 				continue
 			}
-			// a literal IP never changes; a resolved name is kept while it works
-			if net.ParseIP(host) != nil && peer.Endpoint != nil {
-				continue
+			// A literal IP never changes. A resolved name is kept while it
+			// works; without a keepalive an idle tunnel has no handshakes, so
+			// a stale handshake says nothing and the name is kept as well.
+			if peer.Endpoint != nil {
+				if net.ParseIP(host) != nil || p.PersistentKeepalive == 0 {
+					continue
+				}
+				if time.Since(peer.LastHandshakeTime) < staleHandshake {
+					continue
+				}
 			}
-			if peer.Endpoint != nil && time.Since(peer.LastHandshakeTime) < staleHandshake {
-				continue
-			}
-			ep, err := resolveEndpoint(p.Endpoint)
+			ep, err := resolveEndpoint(ctx, p.Endpoint)
 			if err != nil {
 				m.logger.Debug().Err(err).Str("endpoint", p.Endpoint).Msg("failed to resolve WireGuard endpoint")
 				continue
@@ -468,7 +500,7 @@ func (m *Manager) resolveEndpoints(ctx context.Context, cfg Config) {
 	}
 }
 
-func resolveEndpoint(endpoint string) (*net.UDPAddr, error) {
+func resolveEndpoint(ctx context.Context, endpoint string) (*net.UDPAddr, error) {
 	host, port, err := splitEndpoint(endpoint)
 	if err != nil {
 		return nil, err
@@ -476,7 +508,7 @@ func resolveEndpoint(endpoint string) (*net.UDPAddr, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return &net.UDPAddr{IP: ip, Port: port}, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), resolveTimeout)
+	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
 	defer cancel()
 	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
 	if err != nil {
@@ -501,10 +533,7 @@ func (m *Manager) Status() Status {
 	lastErr := m.lastErr
 	m.mu.Unlock()
 
-	st := Status{Supported: Supported(), Enabled: cfg.Enabled, Error: lastErr, Peers: []PeerStatus{}}
-	if cfg.PrivateKey != "" {
-		st.PublicKey, _ = PublicKey(cfg.PrivateKey)
-	}
+	st := Status{Enabled: cfg.Enabled, Error: lastErr, Peers: []PeerStatus{}}
 	names := make(map[string]string, len(cfg.Peers))
 	for _, p := range cfg.Peers {
 		names[p.PublicKey] = p.Name
@@ -525,7 +554,6 @@ func (m *Manager) Status() Status {
 	if err != nil {
 		return st
 	}
-	st.PublicKey = dev.PublicKey.String()
 	st.ListenPort = dev.ListenPort
 	for _, p := range dev.Peers {
 		ps := PeerStatus{

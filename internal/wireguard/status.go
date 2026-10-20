@@ -2,9 +2,9 @@ package wireguard
 
 // Status is the state of the tunnel for the UI.
 type Status struct {
-	Supported  bool         `json:"supported"`
-	Enabled    bool         `json:"enabled"`
-	Up         bool         `json:"up"`
+	Enabled bool `json:"enabled"`
+	Up      bool `json:"up"`
+	// PublicKey is not filled in by Manager.Status.
 	PublicKey  string       `json:"publicKey,omitempty"`
 	ListenPort int          `json:"listenPort,omitempty"`
 	Error      string       `json:"error,omitempty"`
