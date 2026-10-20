@@ -61,7 +61,9 @@ func TestValidateRejects(t *testing.T) {
 		{"no peers", func(c *Config) { c.Peers = nil }, "at least one peer"},
 		{"bad peer key", func(c *Config) { c.Peers[0].PublicKey = "abc" }, "public key"},
 		{"bad preshared key", func(c *Config) { c.Peers[0].PresharedKey = "abc" }, "preshared key"},
-		{"endpoint without port", func(c *Config) { c.Peers[0].Endpoint = "vpn.example.com" }, "host:port"},
+		{"endpoint with path", func(c *Config) { c.Peers[0].Endpoint = "vpn.example.com/x" }, "host name or address"},
+		{"endpoint empty host", func(c *Config) { c.Peers[0].Endpoint = ":51820" }, "host name or address"},
+		{"duplicate address", func(c *Config) { c.Addresses = []string{"10.8.0.5", "10.8.0.5/24"} }, "listed twice"},
 		{"endpoint bad port", func(c *Config) { c.Peers[0].Endpoint = "vpn.example.com:99999" }, "invalid port"},
 		{"no allowed IPs", func(c *Config) { c.Peers[0].AllowedIPs = nil }, "allowed IP"},
 		{"bad allowed IP", func(c *Config) { c.Peers[0].AllowedIPs = []string{"10.8.0.0/33"} }, "not a valid IP range"},
@@ -81,6 +83,24 @@ func TestValidateRejects(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.errMsg)
 		})
+	}
+}
+
+func TestValidateEndpointDefaultPort(t *testing.T) {
+	tests := map[string]string{
+		"vpn.example.com":       "vpn.example.com:51820",
+		"vpn.example.com:443":   "vpn.example.com:443",
+		"192.0.2.1":             "192.0.2.1:51820",
+		"2001:db8::1":           "[2001:db8::1]:51820",
+		"[2001:db8::1]":         "[2001:db8::1]:51820",
+		"[2001:db8::1]:51821":   "[2001:db8::1]:51821",
+		" vpn.example.com:443 ": "vpn.example.com:443",
+	}
+	for in, want := range tests {
+		cfg := validConfig()
+		cfg.Peers[0].Endpoint = in
+		require.NoError(t, cfg.Validate(), in)
+		assert.Equal(t, want, cfg.Peers[0].Endpoint, in)
 	}
 }
 
@@ -107,19 +127,21 @@ func TestMaskAndUnmask(t *testing.T) {
 	masked.Peers[0].AllowedIPs[0] = "10.9.0.0/24"
 	assert.Equal(t, "10.8.0.0/24", stored.Peers[0].AllowedIPs[0])
 
-	masked.Unmask(stored)
+	require.NoError(t, masked.Unmask(stored))
 	assert.Equal(t, testPrivateKey, masked.PrivateKey)
 	assert.Equal(t, testPeerKey2, masked.Peers[0].PresharedKey)
 }
 
-func TestUnmaskNewPeerHasNoStoredKey(t *testing.T) {
+func TestUnmaskChangedPublicKeyNeedsPresharedKeyAgain(t *testing.T) {
 	stored := validConfig()
+	stored.Peers[0].PresharedKey = testPeerKey2
 	cfg := validConfig()
 	cfg.Peers[0].PublicKey = testPeerKey2
 	cfg.Peers[0].PresharedKey = SecretMask
 
-	cfg.Unmask(stored)
-	assert.Empty(t, cfg.Peers[0].PresharedKey)
+	err := cfg.Unmask(stored)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "preshared key again")
 }
 
 func TestMaskedEmptyKeysStayEmpty(t *testing.T) {

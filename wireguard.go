@@ -23,6 +23,7 @@ func initWireguard() {
 	}
 	if err := cfg.Validate(); err != nil {
 		wireguardLogger.Error().Err(err).Msg("invalid WireGuard config, not starting the tunnel")
+		wireguardManager.SetError(cfg, err)
 		return
 	}
 	// resolving the endpoints can wait for DNS, so do not hold up the boot
@@ -36,7 +37,9 @@ func rpcGetWireguardSettings() (wireguard.Config, error) {
 }
 
 func rpcSetWireguardSettings(settings wireguard.Config) error {
-	settings.Unmask(*config.WireguardConfig)
+	if err := settings.Unmask(*config.WireguardConfig); err != nil {
+		return err
+	}
 	if err := settings.Validate(); err != nil {
 		return err
 	}

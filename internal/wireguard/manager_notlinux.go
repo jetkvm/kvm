@@ -28,6 +28,9 @@ func (m *Manager) Apply(cfg Config) error {
 	return nil
 }
 
+// SetError does nothing; Apply already reports that WireGuard needs Linux.
+func (m *Manager) SetError(_ Config, _ error) {}
+
 // Status reports that WireGuard is not supported.
 func (m *Manager) Status() Status {
 	return Status{Peers: []PeerStatus{}}

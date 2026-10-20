@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCopy, LuFileUp, LuPlus, LuTrash2 } from "react-icons/lu";
 
 import { Button } from "@components/Button";
@@ -49,7 +49,6 @@ interface WireguardPeerStatus {
 }
 
 interface WireguardStatus {
-  supported: boolean;
   enabled: boolean;
   up: boolean;
   publicKey?: string;
@@ -193,6 +192,7 @@ export default function SettingsWireguardRoute() {
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
   const [importWarnings, setImportWarnings] = useState<ImportWarning[]>([]);
   const [noPassword, setNoPassword] = useState(false);
   const [loopbackOnly, setLoopbackOnly] = useState(false);
@@ -204,17 +204,21 @@ export default function SettingsWireguardRoute() {
     });
   }, [send]);
 
-  const loadSettings = useCallback(() => {
-    send("getWireguardSettings", {}, resp => {
-      if ("error" in resp) {
-        notifications.error(m.wireguard_load_failed({ error: rpcErrorMessage(resp.error) }));
-        return;
-      }
-      const next = toForm(resp.result as WireguardSettings);
-      setSaved(next);
-      setForm(next);
-    });
-  }, [send]);
+  /* keepForm leaves unsaved edits in place and only updates what is saved. */
+  const loadSettings = useCallback(
+    (keepForm = false) => {
+      send("getWireguardSettings", {}, resp => {
+        if ("error" in resp) {
+          notifications.error(m.wireguard_load_failed({ error: rpcErrorMessage(resp.error) }));
+          return;
+        }
+        const next = toForm(resp.result as WireguardSettings);
+        setSaved(next);
+        if (!keepForm) setForm(next);
+      });
+    },
+    [send],
+  );
 
   useEffect(() => {
     loadSettings();
@@ -270,7 +274,8 @@ export default function SettingsWireguardRoute() {
       setSaving(false);
       if ("error" in resp) {
         notifications.error(m.wireguard_save_failed({ error: rpcErrorMessage(resp.error) }));
-        // a failed apply still saved the settings
+        // a failed apply still saved the settings; keep the form for fixing
+        loadSettings(true);
         refreshStatus();
         return;
       }
@@ -309,10 +314,13 @@ export default function SettingsWireguardRoute() {
       }
       const result = resp.result as ImportResult;
       const imported = toForm(result.config);
+      // A file can hold only an [Interface] or only a [Peer] section; keep
+      // what it leaves out.
       setForm(current => ({
-        ...imported,
         enabled: current?.enabled ?? false,
         privateKey: imported.privateKey || current?.privateKey || "",
+        addresses: imported.addresses || current?.addresses || "",
+        listenPort: imported.listenPort || current?.listenPort || "",
         peers: imported.peers.length > 0 ? imported.peers : (current?.peers ?? []),
       }));
       setImportWarnings(result.warnings ?? []);
@@ -386,6 +394,21 @@ export default function SettingsWireguardRoute() {
 
           {importOpen && (
             <NestedSettingsGroup>
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".conf,.txt,text/plain"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  file
+                    .text()
+                    .then(setImportText)
+                    .catch(() => notifications.error(m.wireguard_import_file_failed()));
+                }}
+              />
               <TextAreaWithLabel
                 label={m.wireguard_import_label()}
                 description={m.wireguard_import_description()}
@@ -405,6 +428,14 @@ export default function SettingsWireguardRoute() {
                   data-testid="wireguard-import-apply"
                   disabled={importText.trim() === ""}
                   onClick={importConf}
+                />
+                <Button
+                  size="SM"
+                  theme="light"
+                  type="button"
+                  text={m.wireguard_import_file()}
+                  data-testid="wireguard-import-file"
+                  onClick={() => fileInput.current?.click()}
                 />
                 <Button
                   size="SM"

@@ -67,11 +67,16 @@ func (c *Config) Validate() error {
 	if len(c.Addresses) > maxAddresses {
 		return fmt.Errorf("at most %d addresses are supported", maxAddresses)
 	}
+	seenAddrs := make(map[netip.Addr]bool, len(c.Addresses))
 	for i, a := range c.Addresses {
 		p, err := parseAddress(a)
 		if err != nil {
 			return err
 		}
+		if seenAddrs[p.Addr()] {
+			return fmt.Errorf("address %s is listed twice", p.Addr())
+		}
+		seenAddrs[p.Addr()] = true
 		c.Addresses[i] = p.String()
 	}
 
@@ -134,9 +139,11 @@ func (p *Peer) validate(enabled bool) error {
 
 	p.Endpoint = strings.TrimSpace(p.Endpoint)
 	if p.Endpoint != "" {
-		if _, _, err := splitEndpoint(p.Endpoint); err != nil {
+		host, port, err := splitEndpoint(p.Endpoint)
+		if err != nil {
 			return err
 		}
+		p.Endpoint = net.JoinHostPort(host, strconv.Itoa(port))
 	}
 
 	if len(p.AllowedIPs) > maxAllowedIPs {
@@ -197,11 +204,22 @@ func parseAllowedIP(s string) (netip.Prefix, error) {
 	return p.Masked(), nil
 }
 
-// splitEndpoint splits host:port, accepting [v6]:port.
+// DefaultPort is used for an endpoint given without a port.
+const DefaultPort = 51820
+
+// splitEndpoint splits host:port, accepting [v6]:port, or a host alone,
+// which gets DefaultPort.
 func splitEndpoint(s string) (string, int, error) {
 	host, portStr, err := net.SplitHostPort(s)
-	if err != nil || host == "" {
-		return "", 0, fmt.Errorf("endpoint %q must be host:port, such as vpn.example.com:51820", s)
+	if err != nil {
+		host = strings.TrimSuffix(strings.TrimPrefix(s, "["), "]")
+		if host == "" || strings.ContainsAny(host, "[] /") || (strings.Contains(host, ":") && net.ParseIP(host) == nil) {
+			return "", 0, fmt.Errorf("endpoint %q must be a host name or address, optionally with a port, such as vpn.example.com:51820", s)
+		}
+		return host, DefaultPort, nil
+	}
+	if host == "" {
+		return "", 0, fmt.Errorf("endpoint %q must be a host name or address, optionally with a port, such as vpn.example.com:51820", s)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port < 1 || port > 65535 {
@@ -248,18 +266,27 @@ func (c Config) Masked() Config {
 }
 
 // Unmask replaces SecretMask values in c with the keys stored in old. A peer's
-// preshared key is matched by the peer's public key.
-func (c *Config) Unmask(old Config) {
+// preshared key is matched by the peer's public key; when that key changed,
+// the stored preshared key cannot be matched and has to be entered again.
+func (c *Config) Unmask(old Config) error {
 	if c.PrivateKey == SecretMask {
 		c.PrivateKey = old.PrivateKey
 	}
 	oldPSK := make(map[string]string, len(old.Peers))
 	for _, p := range old.Peers {
-		oldPSK[strings.TrimSpace(p.PublicKey)] = p.PresharedKey
-	}
-	for i := range c.Peers {
-		if c.Peers[i].PresharedKey == SecretMask {
-			c.Peers[i].PresharedKey = oldPSK[strings.TrimSpace(c.Peers[i].PublicKey)]
+		if p.PresharedKey != "" {
+			oldPSK[strings.TrimSpace(p.PublicKey)] = p.PresharedKey
 		}
 	}
+	for i := range c.Peers {
+		if c.Peers[i].PresharedKey != SecretMask {
+			continue
+		}
+		psk, ok := oldPSK[strings.TrimSpace(c.Peers[i].PublicKey)]
+		if !ok {
+			return fmt.Errorf("peer %d: the public key changed, so enter the preshared key again or clear it", i+1)
+		}
+		c.Peers[i].PresharedKey = psk
+	}
+	return nil
 }

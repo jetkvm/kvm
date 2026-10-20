@@ -282,7 +282,8 @@ Notes:
 - The capability `wireguard` is reported only when the kernel has the WireGuard module (`CONFIG_WIREGUARD`).
 - Only the VPN's own ranges are routed (split tunnel); `0.0.0.0/0` and `::/0` are rejected.
 - The device only answers connections that come in through the tunnel. The tunnel addresses are set as `/32` or `/128` and the allowed IPs are routed in table `51820`, which an `ip rule` uses for traffic from the tunnel addresses only. The main routing table is not changed, so replies to clients that reach the device over the LAN keep going out over the LAN.
-- Host name endpoints are resolved again while a peer has no recent handshake.
+- An endpoint without a port uses `51820`. Host name endpoints of peers with a keepalive are resolved again while the peer has no recent handshake.
+- The private and preshared keys are masked in `getWireguardSettings` and in the diagnostics download.
 - Check the tunnel on the device with `ip addr show wg0`, `ip rule` and `ip route show table 51820`.
 
 
