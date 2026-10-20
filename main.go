@@ -104,6 +104,9 @@ func Main() {
 		logger.Error().Err(err).Msg("failed to initialize mDNS")
 	}
 
+	setProcTitle("initWireguard")
+	initWireguard()
+
 	setProcTitle("initPrometheus")
 	initPrometheus()
 	if err := setInitialVirtualMediaState(); err != nil {
