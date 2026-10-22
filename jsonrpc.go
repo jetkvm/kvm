@@ -53,7 +53,8 @@ type BacklightSettings struct {
 }
 
 type AudioConfig struct {
-	Enabled bool `json:"enabled"`
+	Enabled           bool `json:"enabled"`
+	MicrophoneEnabled bool `json:"microphone_enabled"`
 }
 
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
@@ -380,7 +381,7 @@ func rpcGetBacklightSettings() (*BacklightSettings, error) {
 }
 
 func rpcGetAudioConfig() (*AudioConfig, error) {
-	return &AudioConfig{Enabled: effectiveAudioEnabled()}, nil
+	return &AudioConfig{Enabled: effectiveAudioEnabled(), MicrophoneEnabled: effectiveMicrophoneEnabled()}, nil
 }
 
 func rpcSetAudioConfig(params AudioConfig) error {
@@ -388,10 +389,15 @@ func rpcSetAudioConfig(params AudioConfig) error {
 	if enabled && (config.UsbDevices == nil || !config.UsbDevices.Audio) {
 		enabled = false
 	}
-	if config.AudioEnabled == enabled {
+	microphoneEnabled := params.MicrophoneEnabled && config.UsbDevices != nil && config.UsbDevices.Audio
+	if config.AudioEnabled == enabled && config.MicrophoneEnabled == microphoneEnabled {
 		return nil
 	}
 	config.AudioEnabled = enabled
+	config.MicrophoneEnabled = microphoneEnabled
+	if !microphoneEnabled {
+		stopMicrophone()
+	}
 	if !effectiveAudioEnabled() {
 		stopAudio()
 	}
@@ -1066,6 +1072,8 @@ func updateUsbRelatedConfig() error {
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 	if !usbDevices.Audio {
 		config.AudioEnabled = false
+		config.MicrophoneEnabled = false
+		stopMicrophone()
 	}
 	config.UsbDevices = &usbDevices
 	if !effectiveAudioEnabled() {
@@ -1091,6 +1099,8 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.Audio = enabled
 		if !enabled {
 			config.AudioEnabled = false
+			config.MicrophoneEnabled = false
+			stopMicrophone()
 		}
 	default:
 		return fmt.Errorf("invalid device: %s", device)

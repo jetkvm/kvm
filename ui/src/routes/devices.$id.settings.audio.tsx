@@ -1,3 +1,5 @@
+import { useParams } from "react-router";
+import { microphoneStorageKey } from "@/webrtc/microphone";
 import { useCallback, useEffect, useState } from "react";
 import { LinkButton } from "@components/Button";
 import { Checkbox } from "@components/Checkbox";
@@ -12,6 +14,7 @@ import { LuInfo } from "react-icons/lu";
 
 interface AudioConfig {
   enabled: boolean;
+  microphone_enabled: boolean;
 }
 
 interface UsbDeviceConfig {
@@ -20,6 +23,8 @@ interface UsbDeviceConfig {
 
 export default function SettingsAudioRoute() {
   const { send } = useJsonRpc();
+  const { id = "" } = useParams();
+  const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [usbAudioEnabled, setUsbAudioEnabled] = useState<boolean | null>(null);
 
@@ -27,6 +32,7 @@ export default function SettingsAudioRoute() {
     send("getAudioConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       setEnabled((resp.result as AudioConfig).enabled);
+      setMicrophoneEnabled((resp.result as AudioConfig).microphone_enabled ?? false);
     });
 
     send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
@@ -43,22 +49,50 @@ export default function SettingsAudioRoute() {
     (next: boolean) => {
       const previous = enabled;
       setEnabled(next);
-      send("setAudioConfig", { params: { enabled: next } }, (resp: JsonRpcResponse) => {
+      send(
+        "setAudioConfig",
+        { params: { enabled: next, microphone_enabled: microphoneEnabled } },
+        (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            notifications.error(resp.error.data || m.unknown_error());
+            setEnabled(previous);
+            return;
+          }
+          // Close the WebRTC connection before reloading. Firefox's soft
+          // reload doesn't always tear it down, which leaves the new page in
+          // a half-renegotiated state (tracks land on receivers but never
+          // attach to a MediaStream). Closing first guarantees a clean start.
+          useRTCStore.getState().peerConnection?.close();
+          window.location.reload();
+        },
+      );
+    },
+    [enabled, microphoneEnabled, send],
+  );
+
+  const handleMicrophoneChange = (next: boolean) => {
+    send(
+      "setAudioConfig",
+      { params: { enabled: enabled ?? false, microphone_enabled: next } },
+      (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(resp.error.data || m.unknown_error());
-          setEnabled(previous);
           return;
         }
-        // Close the WebRTC connection before reloading. Firefox's soft
-        // reload doesn't always tear it down, which leaves the new page in
-        // a half-renegotiated state (tracks land on receivers but never
-        // attach to a MediaStream). Closing first guarantees a clean start.
+        const key = microphoneStorageKey(id);
+        if (next) window.sessionStorage.setItem(key, "true");
+        else {
+          window.sessionStorage.removeItem(key);
+          useRTCStore
+            .getState()
+            .peerConnection?.getSenders()
+            .forEach((sender) => sender.track?.stop());
+        }
         useRTCStore.getState().peerConnection?.close();
         window.location.reload();
-      });
-    },
-    [enabled, send],
-  );
+      },
+    );
+  };
 
   const audioBlockedByUsb = usbAudioEnabled === false;
 
@@ -75,7 +109,22 @@ export default function SettingsAudioRoute() {
             checked={enabled ?? false}
             disabled={enabled === null || usbAudioEnabled === null || audioBlockedByUsb}
             aria-describedby={audioBlockedByUsb ? "audio-usb-disabled-hint" : undefined}
-            onChange={e => handleChange(e.target.checked)}
+            onChange={(e) => handleChange(e.target.checked)}
+          />
+        </SettingsItem>
+        <SettingsItem
+          title={m.audio_microphone_title()}
+          badge="Experimental"
+          description={m.audio_microphone_description()}
+        >
+          <Checkbox
+            checked={
+              microphoneEnabled &&
+              window.sessionStorage.getItem(microphoneStorageKey(id)) === "true"
+            }
+            aria-label={m.audio_microphone_title()}
+            disabled={enabled === null || usbAudioEnabled !== true}
+            onChange={(e) => handleMicrophoneChange(e.target.checked)}
           />
         </SettingsItem>
         {audioBlockedByUsb && (

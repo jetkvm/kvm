@@ -20,6 +20,11 @@ var (
 	audioStopped chan struct{}
 	audioTrack   *webrtc.TrackLocalStaticSample
 	audioMu      sync.Mutex
+
+	microphoneCancel  context.CancelFunc
+	microphoneStopped chan struct{}
+	microphoneTrack   *webrtc.TrackRemote
+	microphoneMu      sync.Mutex
 )
 
 func startAudio(track *webrtc.TrackLocalStaticSample) {
@@ -62,6 +67,52 @@ func stopAudioLocked() {
 	audioCancel = nil
 	audioStopped = nil
 	audioTrack = nil
+}
+
+func startMicrophone(track *webrtc.TrackRemote) {
+	microphoneMu.Lock()
+	defer microphoneMu.Unlock()
+	if !effectiveMicrophoneEnabled() {
+		go drainRemoteTrack(track)
+		return
+	}
+	stopMicrophoneLocked()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	microphoneCancel = cancel
+	microphoneStopped = make(chan struct{})
+	microphoneTrack = track
+
+	go runMicrophonePlayback(ctx, track, microphoneStopped)
+}
+
+func stopMicrophone() {
+	microphoneMu.Lock()
+	defer microphoneMu.Unlock()
+	stopMicrophoneLocked()
+}
+
+func stopMicrophoneIfOwner(track *webrtc.TrackRemote) {
+	microphoneMu.Lock()
+	defer microphoneMu.Unlock()
+	if microphoneTrack != track {
+		return
+	}
+	stopMicrophoneLocked()
+}
+
+func stopMicrophoneLocked() {
+	if microphoneCancel == nil {
+		return
+	}
+	microphoneCancel()
+	if microphoneTrack != nil {
+		_ = microphoneTrack.SetReadDeadline(time.Now())
+	}
+	<-microphoneStopped
+	microphoneCancel = nil
+	microphoneStopped = nil
+	microphoneTrack = nil
 }
 
 // reopenThreshold is the number of consecutive non-idle read errors that
@@ -169,6 +220,111 @@ func alsaCaptureDevice() string {
 		return "hw:" + strconv.Itoa(card) + ",0"
 	}
 	return "hw:1,0"
+}
+
+func runMicrophonePlayback(ctx context.Context, track *webrtc.TrackRemote, stopped chan<- struct{}) {
+	defer close(stopped)
+
+	if !strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypePCMU) {
+		audioLogger.Warn().Str("codec", track.Codec().MimeType).Msg("unsupported microphone codec")
+		return
+	}
+
+	// Read continuously even while USB is paused; never replay an old backlog.
+	queue := audio.NewLiveQueue()
+	readerStopped := make(chan struct{})
+	go func() {
+		defer close(readerStopped)
+		defer queue.Close()
+		for {
+			packet, _, err := track.ReadRTP()
+			if err != nil {
+				return
+			}
+			if len(packet.Payload) > 0 {
+				queue.Offer(packet.Payload)
+			}
+		}
+	}()
+	defer func() {
+		_ = track.SetReadDeadline(time.Now())
+		<-readerStopped
+	}()
+
+	playback, err := openPlaybackWithBackoff(ctx)
+	if err != nil {
+		return
+	}
+	defer func() { _ = playback.Close() }()
+
+	audioLogger.Info().Str("codec", track.Codec().MimeType).Msg("microphone playback started")
+	defer audioLogger.Info().Msg("microphone playback stopped")
+
+	consecutiveErrors := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		payload, ok := queue.Next(ctx)
+		if !ok {
+			return
+		}
+
+		if err := playback.WritePCMU(payload); err != nil {
+			// Timeouts/partial writes must recover too, not only hard errors.
+			consecutiveErrors++
+			if consecutiveErrors >= reopenThreshold {
+				audioLogger.Warn().Err(err).Msg("recovering stalled microphone playback")
+				_ = playback.Close()
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(250 * time.Millisecond):
+				}
+				next, err := openPlaybackWithBackoff(ctx)
+				if err != nil {
+					return
+				}
+				playback = next
+				consecutiveErrors = 0
+			}
+			continue
+		}
+		consecutiveErrors = 0
+	}
+}
+
+func openPlaybackWithBackoff(ctx context.Context) (*audio.ALSAPlayback, error) {
+	backoff := 100 * time.Millisecond
+	for {
+		device := alsaPlaybackDevice()
+		playback, err := audio.OpenALSAPlayback(device)
+		if err == nil {
+			audioLogger.Info().Str("device", device).Msg("audio playback opened")
+			return playback, nil
+		}
+		audioLogger.Warn().Err(err).Str("device", device).Dur("retry_in", backoff).Msg("audio playback open failed")
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff *= 2; backoff > 2*time.Second {
+			backoff = 2 * time.Second
+		}
+	}
+}
+
+// alsaPlaybackDevice returns the ALSA playback device for the UAC1 gadget card.
+func alsaPlaybackDevice() string {
+	if card, ok := findALSACard("UAC1Gadget"); ok {
+		return "hw:" + strconv.Itoa(card) + ",0"
+	}
+	// Never fall back to another sound card: it may be a physical speaker.
+	return "hw:UAC1Gadget,0"
 }
 
 func findALSACard(cardID string) (int, bool) {
