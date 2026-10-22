@@ -660,3 +660,30 @@ If you enable the [Sherlock](https://inlang.com/m/r7kp499g/app-inlang-ideExtensi
 **Happy coding!**
 
 For more information, visit the [JetKVM Documentation](https://jetkvm.com/docs) or join our [Discord Server](https://jetkvm.com/discord).
+
+## Experimental browser microphone passthrough
+
+Enable **USB Audio** in Hardware settings, then enable **Send microphone** in
+Audio settings. The browser must use HTTPS (or localhost), support PCMU codec
+preferences, and have permission to access its microphone. The connected computer
+must select JetKVM's USB audio input as its microphone.
+
+Sending is opt-in for each browser tab and device. The device-side microphone
+setting alone does not start browser capture. Turning the toggle off, closing the
+tab, or losing the peer connection stops the browser's capture tracks. A new tab
+must opt in again. Incoming audio is discarded unless the device also enables
+microphone playback. Existing host-to-browser audio remains independently
+configurable.
+
+This first implementation negotiates G.711 PCMU (8 kHz mono, voice quality) and
+expands it to the gadget's 48 kHz stereo S16_LE playback stream. It requires a
+Linux CGO build with `libasound.so.2` available at runtime. It does not implement
+Opus, echo-reference processing, or a full RTP jitter buffer. A bounded queue
+keeps only recent audio and discards stale packets during USB backpressure rather
+than replaying earlier speech when the host resumes.
+
+Hardware verification should cover browser permission denial, two independent
+browser tabs/devices, disconnect/reconnect, microphone disable, USB Audio disable,
+and host USB suspend/reattach. Verify that an old session closing cannot stop a
+replacement session's microphone, and that stale speech is not played after USB
+resumes. Test on a non-production host before deploying a development build.

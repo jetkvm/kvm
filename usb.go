@@ -26,6 +26,10 @@ func effectiveAudioEnabled() bool {
 		config.UsbDevices.Audio
 }
 
+func effectiveMicrophoneEnabled() bool {
+	return config != nil && config.UsbDevices != nil && config.UsbDevices.Audio && config.MicrophoneEnabled
+}
+
 // initUsbGadget initializes the USB gadget.
 // call it only after the config is loaded.
 func initUsbGadget() {

@@ -32,3 +32,14 @@ func LinearToPCMU(sample int16) byte {
 
 	return byte(^(segment<<4 | quantized) & mask)
 }
+
+// PCMUToLinear decodes a G.711 mu-law sample to signed 16-bit PCM.
+func PCMUToLinear(sample byte) int16 {
+	u := ^sample
+	pcm := ((int(u) & 0x0f) << 3) + pcmuBias
+	pcm <<= (uint(u) & 0x70) >> 4
+	if u&0x80 != 0 {
+		return int16(pcmuBias - pcm)
+	}
+	return int16(pcm - pcmuBias)
+}

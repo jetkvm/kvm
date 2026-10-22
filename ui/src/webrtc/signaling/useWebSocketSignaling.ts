@@ -25,7 +25,7 @@ function stripH265FromVideoTransceivers(pc: RTCPeerConnection) {
   try {
     const caps = RTCRtpReceiver.getCapabilities?.("video");
     if (!caps) return;
-    const filtered = caps.codecs.filter(c => c.mimeType !== "video/H265");
+    const filtered = caps.codecs.filter((c) => c.mimeType !== "video/H265");
     if (filtered.length === caps.codecs.length) return;
 
     for (const t of pc.getTransceivers()) {
@@ -58,7 +58,7 @@ export const useWebSocketSignaling: SignalingHook = ({
 }) => {
   const { setPeerConnection, peerConnectionState, setPeerConnectionState, setMediaStream } =
     useRTCStore();
-  const setRebootState = useUiStore(state => state.setRebootState);
+  const setRebootState = useUiStore((state) => state.setRebootState);
 
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
@@ -367,7 +367,7 @@ export const useWebSocketSignaling: SignalingHook = ({
         } else if (parsedMessage.type === "new-ice-candidate") {
           console.debug("[Websocket] Received new-ice-candidate");
           const candidate = parsedMessage.data;
-          void peerConnection.addIceCandidate(candidate).catch(error => {
+          void peerConnection.addIceCandidate(candidate).catch((error) => {
             if (isCurrentPeer(peerConnection)) {
               console.warn("[Websocket] Failed to add ICE candidate", error);
             }
@@ -485,8 +485,16 @@ export const useWebSocketSignaling: SignalingHook = ({
       }
     };
 
-    onPeerConnection(pc);
-
+    try {
+      await onPeerConnection(pc);
+    } catch (error) {
+      if (!isCurrentPeer(pc)) return;
+      console.error("Failed to attach peer connection", error);
+      cleanupAndStopReconnecting();
+      return;
+    }
+    // Permission prompts can outlive this peer or the signaling hook.
+    if (!isCurrentPeer(pc)) return;
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
