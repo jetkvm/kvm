@@ -25,6 +25,7 @@
     "i18n:find-unused": "python3 ./tools/find_unused_messages.py",
     "i18n:find-dupes": "python3 ./tools/find_duplicate_translations.py",
     "keyboard:check": "node tools/check_keyboard_layouts.mjs",
+    "keyboard:generate-macos": "node tools/generate_macos_layouts.mjs",
     "test:e2e": "playwright test",
     "prepare": "cd .. && husky ui/.husky"
   },
