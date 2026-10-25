@@ -161,7 +161,7 @@ const chars = {
   ñ: { key: "KeyN", accentKey: keyTilde },
   ṅ: { key: "KeyN", accentKey: keyOverdot },
   o: { key: "KeyO" },
-  ö: { key: "Key0", accentKey: keyTrema },
+  ö: { key: "KeyO", accentKey: keyTrema },
   ó: { key: "KeyO", accentKey: keyAcute },
   ô: { key: "KeyO", accentKey: keyHat },
   ò: { key: "KeyO", accentKey: keyGrave },
