@@ -528,7 +528,11 @@ export default function WebRTCVideo({
       elm
         .play()
         .then(() => setAudioAutoplayBlocked(false))
-        .catch(() => setAudioAutoplayBlocked(true));
+        // Only the autoplay policy needs a click; a play() interrupted by the
+        // next stream change is not a permission problem.
+        .catch((error: unknown) =>
+          setAudioAutoplayBlocked((error as DOMException | undefined)?.name === "NotAllowedError"),
+        );
 
       return () => {
         elm.srcObject = null;
