@@ -79,6 +79,11 @@ export interface UIState {
   isOcrMode: boolean;
   setOcrMode: (enabled: boolean) => void;
 
+  // The video's fullscreen container; the device page's focus trap uses it
+  // as its container so the hidden text input inside it keeps the focus.
+  videoContainer: HTMLElement | null;
+  setVideoContainer: (element: HTMLElement | null) => void;
+
   usbSerialConsoleEnabled: boolean;
   setUsbSerialConsoleEnabled: (enabled: boolean) => void;
 
@@ -117,6 +122,9 @@ export const useUiStore = create<UIState>(set => ({
 
   isOcrMode: false,
   setOcrMode: (enabled: boolean) => set({ isOcrMode: enabled }),
+
+  videoContainer: null,
+  setVideoContainer: (element: HTMLElement | null) => set({ videoContainer: element }),
 
   usbSerialConsoleEnabled: false,
   setUsbSerialConsoleEnabled: (enabled: boolean) => set({ usbSerialConsoleEnabled: enabled }),

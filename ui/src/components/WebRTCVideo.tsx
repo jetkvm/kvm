@@ -6,6 +6,7 @@ import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import usePaste from "@hooks/usePaste";
+import TargetTextInput, { targetTextInputId } from "@components/TargetTextInput";
 import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
 import {
   useCapability,
@@ -39,11 +40,40 @@ function reportSkipped(skipped: string[]) {
   if (skipped.length > 0) notifications.error(m.paste_skipped_chars({ chars: skipped.join(" ") }));
 }
 
+// A physical key always carries a code. A key event without one was injected
+// by software with a virtual key only, which is how dictation tools press
+// Ctrl+V after putting the text on the clipboard.
+function isInjectedKey(e: KeyboardEvent) {
+  return e.code === "" || e.code === "Unidentified";
+}
+function isVKey(e: KeyboardEvent) {
+  return e.code === "KeyV" || (isInjectedKey(e) && e.key.toLowerCase() === "v");
+}
+
 // Ctrl+V and Ctrl+Shift+V (Cmd on a Mac) each paste the client clipboard
 // when their switch is on; otherwise the combination reaches the target.
 function isClientPasteShortcut(e: KeyboardEvent, ctrlV: boolean, ctrlShiftV: boolean) {
-  if (e.code !== "KeyV" || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
+  if (!isVKey(e) || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
   return e.shiftKey ? ctrlShiftV : ctrlV;
+}
+
+// A plain Ctrl+V injected without a key code, which is how dictation tools
+// paste, is handed to the browser's paste so the text reaches the target. A
+// person's plain Ctrl+V has a key code and reaches the target as keys.
+function isInjectedPasteChord(e: KeyboardEvent) {
+  return isInjectedKey(e) && isVKey(e) && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
+}
+
+// Simulated typing (Windows VK_PACKET, some soft keyboards) carries no key
+// code, only the character.
+function isTypedCharacter(e: KeyboardEvent) {
+  if ((e.code !== "" && e.code !== "Unidentified") || e.ctrlKey || e.metaKey || e.altKey)
+    return false;
+  if (e.key === "Enter") return true;
+  // One code point: a BMP character or a surrogate pair. Named keys such as
+  // "Process" or "Dead" are longer.
+  const first = e.key.charCodeAt(0);
+  return e.key.length === 1 || (e.key.length === 2 && first >= 0xd800 && first <= 0xdbff);
 }
 
 export default function WebRTCVideo({
@@ -96,7 +126,14 @@ export default function WebRTCVideo({
   const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
-  const { isOcrMode } = useUiStore();
+  const { isOcrMode, setVideoContainer } = useUiStore();
+
+  // The device page's focus trap uses the video container, so the hidden
+  // text input inside it keeps the focus, in fullscreen too.
+  useEffect(() => {
+    setVideoContainer(fullscreenContainerRef.current);
+    return () => setVideoContainer(null);
+  }, [setVideoContainer]);
 
   // RTC related states
   const { peerConnection } = useRTCStore();
@@ -347,6 +384,36 @@ export default function WebRTCVideo({
     return code;
   }
 
+  // Characters typed without a key code are collected briefly and pasted as text.
+  const typedText = useRef({ text: "", timer: 0 });
+  const queueTypedText = useCallback(
+    (text: string) => {
+      typedText.current.text += text;
+      window.clearTimeout(typedText.current.timer);
+      typedText.current.timer = window.setTimeout(() => {
+        const pending = typedText.current.text;
+        typedText.current.text = "";
+        void pasteText(pending)
+          .then(result => reportSkipped(result.skipped))
+          .catch((error: unknown) =>
+            notifications.error(m.paste_modal_failed_paste({ error: String(error) })),
+          );
+      }, 30);
+    },
+    [pasteText],
+  );
+
+  const focusTextInput = useCallback(() => {
+    document.getElementById(targetTextInputId)?.focus({ preventScroll: true });
+  }, []);
+
+  // Take the focus once the video plays, unless an input already has it.
+  useEffect(() => {
+    if (!isPlaying) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || active === videoElm.current) focusTextInput();
+  }, [isPlaying, focusTextInput]);
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
@@ -357,11 +424,16 @@ export default function WebRTCVideo({
         if (e.repeat) e.preventDefault();
         return;
       }
+      if (isInjectedPasteChord(e)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
 
       if (hidKey === undefined) {
+        if (isTypedCharacter(e)) {
+          queueTypedText(e.key === "Enter" ? "\n" : e.key);
+          return;
+        }
         console.warn(`Key down not mapped: ${code}`);
         return;
       }
@@ -432,6 +504,7 @@ export default function WebRTCVideo({
       isWindowsClient,
       settings.pasteOnCtrlV,
       settings.pasteOnCtrlShiftV,
+      queueTypedText,
     ],
   );
 
@@ -439,6 +512,7 @@ export default function WebRTCVideo({
     async (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
       if (isClientPasteShortcut(e, settings.pasteOnCtrlV, settings.pasteOnCtrlShiftV)) return;
+      if (isTypedCharacter(e)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -485,10 +559,19 @@ export default function WebRTCVideo({
     (e: ClipboardEvent) => {
       if (isOcrMode) return;
       const target = e.target as HTMLElement | null;
-      if (target?.closest("input, textarea, [contenteditable='true'], [data-headlessui-state]"))
+      const isTextInputShim = target?.hasAttribute("data-text-input-shim") ?? false;
+      if (
+        !isTextInputShim &&
+        target?.closest("input, textarea, [contenteditable='true'], [data-headlessui-state]")
+      )
         return;
       const data = e.clipboardData;
       if (!data) return;
+      // Text pasted into the hidden text input is left to the browser: the
+      // field's input event forwards it, and the text stays there for a
+      // moment because a dictation tool may read it back to confirm the paste
+      // landed before it restores the clipboard.
+      if (isTextInputShim) return;
       e.preventDefault();
       const text = data.getData("text/plain");
       if (text)
@@ -622,6 +705,17 @@ export default function WebRTCVideo({
       videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
 
+      // A click on the video must not move the focus away from the hidden
+      // text input (the default mousedown action would), so it stays there.
+      videoElmRefValue.addEventListener(
+        "mousedown",
+        e => {
+          e.preventDefault();
+          focusTextInput();
+        },
+        { signal },
+      );
+
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
       // A stream resolution change only fires resize, so the store size would go stale
@@ -633,7 +727,7 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, updateVideoSizeStore],
+    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, focusTextInput, updateVideoSizeStore],
   );
 
   // Setup Mouse Events
@@ -806,6 +900,7 @@ export default function WebRTCVideo({
                         })}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
+                      <TargetTextInput />
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
