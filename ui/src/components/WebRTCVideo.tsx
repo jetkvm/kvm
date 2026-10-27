@@ -5,6 +5,7 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
+import usePaste from "@hooks/usePaste";
 import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
 import {
   useCapability,
@@ -34,6 +35,17 @@ import { m } from "@localizations/messages.js";
 
 const initialHdmiErrorGraceMs = 2500;
 
+function reportSkipped(skipped: string[]) {
+  if (skipped.length > 0) notifications.error(m.paste_skipped_chars({ chars: skipped.join(" ") }));
+}
+
+// Ctrl+V and Ctrl+Shift+V (Cmd on a Mac) each paste the client clipboard
+// when their switch is on; otherwise the combination reaches the target.
+function isClientPasteShortcut(e: KeyboardEvent, ctrlV: boolean, ctrlShiftV: boolean) {
+  if (e.code !== "KeyV" || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
+  return e.shiftKey ? ctrlShiftV : ctrlV;
+}
+
 export default function WebRTCVideo({
   hasConnectionIssues,
   hideStatusBar,
@@ -60,6 +72,7 @@ export default function WebRTCVideo({
   // Store hooks
   const settings = useSettingsStore();
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
+  const { pasteText } = usePaste();
   const {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
@@ -337,6 +350,13 @@ export default function WebRTCVideo({
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      // The browser's paste event must fire (preventDefault would stop it)
+      // and the V must not reach the target; pasteHandler does the rest.
+      if (isClientPasteShortcut(e, settings.pasteOnCtrlV, settings.pasteOnCtrlShiftV)) {
+        // A held chord repeats; one paste is enough.
+        if (e.repeat) e.preventDefault();
+        return;
+      }
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -405,12 +425,20 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [
+      handleKeyPress,
+      isKeyboardLockActive,
+      isOcrMode,
+      isWindowsClient,
+      settings.pasteOnCtrlV,
+      settings.pasteOnCtrlShiftV,
+    ],
   );
 
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      if (isClientPasteShortcut(e, settings.pasteOnCtrlV, settings.pasteOnCtrlShiftV)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -448,7 +476,30 @@ export default function WebRTCVideo({
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress, isOcrMode, isWindowsClient],
+    [handleKeyPress, isOcrMode, isWindowsClient, settings.pasteOnCtrlV, settings.pasteOnCtrlShiftV],
+  );
+
+  // Pastes the client's clipboard (text, or images and files for the host
+  // agent) when the video has the focus. Inputs and popovers keep theirs.
+  const pasteHandler = useCallback(
+    (e: ClipboardEvent) => {
+      if (isOcrMode) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true'], [data-headlessui-state]"))
+        return;
+      const data = e.clipboardData;
+      if (!data) return;
+      e.preventDefault();
+      const text = data.getData("text/plain");
+      if (text)
+        void pasteText(text)
+          .then(result => reportSkipped(result.skipped))
+          .catch((error: unknown) =>
+            notifications.error(m.paste_modal_failed_paste({ error: String(error) })),
+          );
+      else notifications.error(m.paste_clipboard_empty());
+    },
+    [isOcrMode, pasteText],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -546,6 +597,7 @@ export default function WebRTCVideo({
 
       document.addEventListener("keydown", keyDownHandler, { signal });
       document.addEventListener("keyup", keyUpHandler, { signal });
+      document.addEventListener("paste", pasteHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
       document.addEventListener("visibilitychange", resetKeyboardState, { signal });
@@ -554,7 +606,7 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [keyDownHandler, keyUpHandler, resetKeyboardState],
+    [keyDownHandler, keyUpHandler, pasteHandler, resetKeyboardState],
   );
 
   // Setup Video Event Listeners

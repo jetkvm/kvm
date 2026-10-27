@@ -412,6 +412,14 @@ export interface SettingsState {
 
   hideStatusBar: boolean;
   setHideStatusBar: (hide: boolean) => void;
+
+  // Key combinations that paste the client's clipboard into the target while
+  // the video has the focus; one that is off reaches the target as keys. A
+  // paste chord injected by a dictation tool is taken regardless.
+  pasteOnCtrlV: boolean;
+  setPasteOnCtrlV: (enabled: boolean) => void;
+  pasteOnCtrlShiftV: boolean;
+  setPasteOnCtrlShiftV: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -470,6 +478,11 @@ export const useSettingsStore = create(
 
       hideStatusBar: false,
       setHideStatusBar: (hide: boolean) => set({ hideStatusBar: hide }),
+
+      pasteOnCtrlV: false,
+      setPasteOnCtrlV: (enabled: boolean) => set({ pasteOnCtrlV: enabled }),
+      pasteOnCtrlShiftV: false,
+      setPasteOnCtrlShiftV: (enabled: boolean) => set({ pasteOnCtrlShiftV: enabled }),
     }),
     {
       name: "settings",
