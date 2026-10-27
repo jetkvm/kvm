@@ -6,6 +6,7 @@ import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import usePaste from "@hooks/usePaste";
+import { isClientPasteShortcut, isInjectedPasteChord, isTypedCharacter } from "@/keyboardPaste";
 import TargetTextInput, { targetTextInputId } from "@components/TargetTextInput";
 import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
 import {
@@ -38,42 +39,6 @@ const initialHdmiErrorGraceMs = 2500;
 
 function reportSkipped(skipped: string[]) {
   if (skipped.length > 0) notifications.error(m.paste_skipped_chars({ chars: skipped.join(" ") }));
-}
-
-// A physical key always carries a code. A key event without one was injected
-// by software with a virtual key only, which is how dictation tools press
-// Ctrl+V after putting the text on the clipboard.
-function isInjectedKey(e: KeyboardEvent) {
-  return e.code === "" || e.code === "Unidentified";
-}
-function isVKey(e: KeyboardEvent) {
-  return e.code === "KeyV" || (isInjectedKey(e) && e.key.toLowerCase() === "v");
-}
-
-// Ctrl+V and Ctrl+Shift+V (Cmd on a Mac) each paste the client clipboard
-// when their switch is on; otherwise the combination reaches the target.
-function isClientPasteShortcut(e: KeyboardEvent, ctrlV: boolean, ctrlShiftV: boolean) {
-  if (!isVKey(e) || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
-  return e.shiftKey ? ctrlShiftV : ctrlV;
-}
-
-// A plain Ctrl+V injected without a key code, which is how dictation tools
-// paste, is handed to the browser's paste so the text reaches the target. A
-// person's plain Ctrl+V has a key code and reaches the target as keys.
-function isInjectedPasteChord(e: KeyboardEvent) {
-  return isInjectedKey(e) && isVKey(e) && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
-}
-
-// Simulated typing (Windows VK_PACKET, some soft keyboards) carries no key
-// code, only the character.
-function isTypedCharacter(e: KeyboardEvent) {
-  if ((e.code !== "" && e.code !== "Unidentified") || e.ctrlKey || e.metaKey || e.altKey)
-    return false;
-  if (e.key === "Enter") return true;
-  // One code point: a BMP character or a surrogate pair. Named keys such as
-  // "Process" or "Dead" are longer.
-  const first = e.key.charCodeAt(0);
-  return e.key.length === 1 || (e.key.length === 2 && first >= 0xd800 && first <= 0xdbff);
 }
 
 export default function WebRTCVideo({

@@ -1,52 +1,13 @@
 import { useCallback } from "react";
 
-import useKeyboard, { type MacroStep } from "@/hooks/useKeyboard";
+import useKeyboard from "@/hooks/useKeyboard";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
-
-type Layout = ReturnType<typeof useKeyboardLayout>["selectedKeyboard"];
+import { textToMacroSteps } from "@/keyboardPaste";
 
 export interface PasteResult {
   via: "keystrokes" | "cancelled";
   // Characters the keyboard layout cannot produce.
   skipped: string[];
-}
-
-export const defaultKeystrokeDelay = 20;
-
-// Converts text to key presses of the layout, the way the paste modal always
-// has: accent key first for composed characters, a space after a dead key.
-export function textToMacroSteps(
-  text: string,
-  layout: Layout,
-  delay = defaultKeystrokeDelay,
-): { steps: MacroStep[]; skipped: string[] } {
-  const steps: MacroStep[] = [];
-  const skipped = new Set<string>();
-  for (const char of text) {
-    const normalized = char.normalize("NFC");
-    const keyprops = layout.chars[normalized];
-    if (!keyprops?.key) {
-      skipped.add(normalized);
-      continue;
-    }
-    const { key, shift, altRight, deadKey, accentKey } = keyprops;
-    if (accentKey) {
-      const accentModifiers: string[] = [];
-      if (accentKey.shift) accentModifiers.push("ShiftLeft");
-      if (accentKey.altRight) accentModifiers.push("AltRight");
-      steps.push({
-        keys: [String(accentKey.key)],
-        modifiers: accentModifiers.length > 0 ? accentModifiers : null,
-        delay,
-      });
-    }
-    const modifiers: string[] = [];
-    if (shift) modifiers.push("ShiftLeft");
-    if (altRight) modifiers.push("AltRight");
-    steps.push({ keys: [String(key)], modifiers: modifiers.length > 0 ? modifiers : null, delay });
-    if (deadKey) steps.push({ keys: ["Space"], modifiers: null, delay });
-  }
-  return { steps, skipped: [...skipped] };
 }
 
 // Pastes run one after another: a second keystroke macro cancels the one
