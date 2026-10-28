@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -214,6 +217,9 @@ func setupRouter() *gin.Engine {
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}
+
+	// JSON-RPC over HTTP for scripts and automation without a WebRTC session.
+	r.POST("/api/rpc", apiAuthMiddleware(), handleAPIRPC)
 
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
@@ -574,6 +580,81 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// apiAuthMiddleware gates endpoints meant for both headless/programmatic
+// access (CI, HIL test rigs) and the browser UI. In noPassword mode it lets
+// requests through with no credentials, same trusted-network assumption as
+// the cookie-protected routes. In password mode it accepts either the same
+// session cookie protectedMiddleware checks (so an already-logged-in tab can
+// just load the URL directly) or HTTP Basic Auth against the device
+// password with the username ignored (so a script can just
+// `curl -u api:<password>`).
+func apiAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		if authToken, err := c.Cookie("authToken"); err == nil && authToken != "" && authToken == config.LocalAuthToken {
+			c.Next()
+			return
+		}
+
+		_, password, ok := c.Request.BasicAuth()
+		if !ok {
+			c.Header("WWW-Authenticate", "Basic realm=\"JetKVM\"")
+			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Basic auth is required")
+			return
+		}
+
+		// Same per-IP lockout as the login form, so the API is no faster
+		// way to guess the password.
+		ip := c.ClientIP()
+		if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+			sendErrorJsonThenAbort(c, http.StatusTooManyRequests, "Too many failed attempts. Please try again later.")
+			return
+		}
+		if !apiPasswordOK(password) {
+			passwordRateLimiter.RecordFailure(ip)
+			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
+			return
+		}
+		passwordRateLimiter.RecordSuccess(ip)
+
+		c.Next()
+	}
+}
+
+// A bcrypt check takes most of a second on the device, so a verified password
+// is remembered as a digest and reused until the stored hash changes.
+var apiAuthCache struct {
+	sync.Mutex
+	hash   string
+	digest [sha256.Size]byte
+}
+
+func apiPasswordOK(password string) bool {
+	// One read of the stored hash: the password is verified against it and
+	// cached under it, so a password change during the bcrypt check cannot
+	// leave the old password cached under the new hash.
+	hash := config.HashedPassword
+	digest := sha256.Sum256([]byte(password))
+	apiAuthCache.Lock()
+	hit := apiAuthCache.hash == hash && subtle.ConstantTimeCompare(digest[:], apiAuthCache.digest[:]) == 1
+	apiAuthCache.Unlock()
+	if hit {
+		return true
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return false
+	}
+	apiAuthCache.Lock()
+	apiAuthCache.hash, apiAuthCache.digest = hash, digest
+	apiAuthCache.Unlock()
+	return true
 }
 
 func getBindAddress(listenPort int) string {
