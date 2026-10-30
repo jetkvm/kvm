@@ -334,9 +334,20 @@ export default function WebRTCVideo({
     return code;
   }
 
+  // A click or key on the video is a user gesture: use it to start audio when
+  // the autoplay policy blocked it, instead of asking for a second click.
+  const retryBlockedAudio = useCallback(() => {
+    if (!audioAutoplayBlocked) return;
+    audioElm.current
+      ?.play()
+      .then(() => setAudioAutoplayBlocked(false))
+      .catch(() => {});
+  }, [audioAutoplayBlocked]);
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      retryBlockedAudio();
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -405,7 +416,7 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient, retryBlockedAudio],
   );
 
   const keyUpHandler = useCallback(
@@ -528,7 +539,11 @@ export default function WebRTCVideo({
       elm
         .play()
         .then(() => setAudioAutoplayBlocked(false))
-        .catch(() => setAudioAutoplayBlocked(true));
+        // Only the autoplay policy needs a click; a play() interrupted by the
+        // next stream change is not a permission problem.
+        .catch((error: unknown) =>
+          setAudioAutoplayBlocked((error as DOMException | undefined)?.name === "NotAllowedError"),
+        );
 
       return () => {
         elm.srcObject = null;
@@ -569,6 +584,7 @@ export default function WebRTCVideo({
       // To prevent the video from being paused when the user presses a space in fullscreen mode
       videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
+      videoElmRefValue.addEventListener("mousedown", retryBlockedAudio, { signal });
 
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
@@ -581,7 +597,13 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, updateVideoSizeStore],
+    [
+      onVideoPlaying,
+      videoKeyDownHandler,
+      videoKeyUpHandler,
+      retryBlockedAudio,
+      updateVideoSizeStore,
+    ],
   );
 
   // Setup Mouse Events
