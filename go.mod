@@ -23,6 +23,7 @@ require (
 	github.com/pion/ice/v4 v4.1.0
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.1.0
+	github.com/pion/opus v0.1.0
 	github.com/pion/webrtc/v4 v4.2.1
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/prometheus/client_golang v1.23.2

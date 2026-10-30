@@ -664,21 +664,23 @@ For more information, visit the [JetKVM Documentation](https://jetkvm.com/docs) 
 ## Experimental browser microphone passthrough
 
 Enable **USB Audio** in Hardware settings, then enable **Send microphone** in
-Audio settings. The browser must use HTTPS (or localhost), support PCMU codec
-preferences, and have permission to access its microphone. The connected computer
-must select JetKVM's USB audio input as its microphone.
+Audio settings. The browser must use HTTPS (or localhost), offer Opus or PCMU,
+and have permission to access its microphone. The connected computer must select
+JetKVM's USB audio input as its microphone.
 
 Sending is opt-in for each browser tab and device. The device-side microphone
 setting alone does not start browser capture. Turning the toggle off, closing the
-tab, or losing the peer connection stops the browser's capture tracks. A new tab
-must opt in again. Incoming audio is discarded unless the device also enables
+tab, or losing the peer connection, including another tab taking the session over,
+stops the browser's capture tracks. A new tab must opt in again. Incoming audio is discarded unless the device also enables
 microphone playback. Existing host-to-browser audio remains independently
 configurable.
 
-This first implementation negotiates G.711 PCMU (8 kHz mono, voice quality) and
-expands it to the gadget's 48 kHz stereo S16_LE playback stream. It requires a
-Linux CGO build with `libasound.so.2` available at runtime. It does not implement
-Opus, echo-reference processing, or a full RTP jitter buffer. A bounded queue
+The browser offers Opus first; the device decodes it in pure Go to the gadget's
+48 kHz stereo S16_LE playback stream, at about a tenth of the CPU while the
+microphone is on. G.711 PCMU (8 kHz mono) remains the fallback for browsers that
+do not offer Opus. Host audio keeps its own line, so G.722 stays available in that
+direction. Playback requires a Linux CGO build with `libasound.so.2` available at
+runtime. There is no echo-reference processing or full RTP jitter buffer. A bounded queue
 keeps only recent audio and discards stale packets during USB backpressure rather
 than replaying earlier speech when the host resumes.
 

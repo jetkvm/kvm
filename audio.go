@@ -69,6 +69,11 @@ func stopAudioLocked() {
 	audioTrack = nil
 }
 
+func supportedMicrophoneCodec(mime string) bool {
+	return strings.EqualFold(mime, webrtc.MimeTypePCMU) ||
+		strings.EqualFold(mime, webrtc.MimeTypeOpus)
+}
+
 func startMicrophone(track *webrtc.TrackRemote) {
 	microphoneMu.Lock()
 	defer microphoneMu.Unlock()
@@ -225,7 +230,7 @@ func alsaCaptureDevice() string {
 func runMicrophonePlayback(ctx context.Context, track *webrtc.TrackRemote, stopped chan<- struct{}) {
 	defer close(stopped)
 
-	if !strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypePCMU) {
+	if !supportedMicrophoneCodec(track.Codec().MimeType) {
 		audioLogger.Warn().Str("codec", track.Codec().MimeType).Msg("unsupported microphone codec")
 		return
 	}
@@ -257,6 +262,15 @@ func runMicrophonePlayback(ctx context.Context, track *webrtc.TrackRemote, stopp
 	}
 	defer func() { _ = playback.Close() }()
 
+	var opusDecoder *audio.OpusPlaybackDecoder
+	if strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeOpus) {
+		opusDecoder, err = audio.NewOpusPlaybackDecoder()
+		if err != nil {
+			audioLogger.Error().Err(err).Msg("could not initialize Opus microphone decoder")
+			return
+		}
+	}
+
 	audioLogger.Info().Str("codec", track.Codec().MimeType).Msg("microphone playback started")
 	defer audioLogger.Info().Msg("microphone playback stopped")
 
@@ -273,11 +287,23 @@ func runMicrophonePlayback(ctx context.Context, track *webrtc.TrackRemote, stopp
 			return
 		}
 
-		if err := playback.WritePCMU(payload); err != nil {
+		var writeErr error
+		if opusDecoder != nil {
+			var pcm []int16
+			pcm, writeErr = opusDecoder.Decode(payload)
+			if writeErr != nil {
+				audioLogger.Warn().Err(writeErr).Msg("dropping invalid Opus microphone packet")
+				continue
+			}
+			writeErr = playback.WritePCM16(pcm)
+		} else {
+			writeErr = playback.WritePCMU(payload)
+		}
+		if writeErr != nil {
 			// Timeouts/partial writes must recover too, not only hard errors.
 			consecutiveErrors++
 			if consecutiveErrors >= reopenThreshold {
-				audioLogger.Warn().Err(err).Msg("recovering stalled microphone playback")
+				audioLogger.Warn().Err(writeErr).Msg("recovering stalled microphone playback")
 				_ = playback.Close()
 				select {
 				case <-ctx.Done():

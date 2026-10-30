@@ -572,7 +572,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			return
 		}
 
-		if !strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypePCMU) {
+		if !supportedMicrophoneCodec(track.Codec().MimeType) {
 			scopedLogger.Warn().Str("codec", track.Codec().MimeType).Msg("browser microphone track has unsupported codec")
 			go drainRemoteTrack(track)
 			return

@@ -4,9 +4,10 @@ import { m } from "@localizations/messages.js";
 export const microphoneStorageKey = (deviceId?: string) => `jetkvm.microphone.${deviceId ?? ""}`;
 
 export function preferMicrophoneCodec(transceiver: RTCRtpTransceiver) {
-  const codecs = RTCRtpSender.getCapabilities("audio")?.codecs.filter(
-    (codec) => codec.mimeType.toLowerCase() === "audio/pcmu",
-  );
+  // Opus first for wideband voice; PCMU stays as the fallback every device accepts.
+  const supported = RTCRtpSender.getCapabilities("audio")?.codecs ?? [];
+  const codecs = ["audio/opus", "audio/pcmu"]
+    .flatMap((mime) => supported.filter((codec) => codec.mimeType.toLowerCase() === mime));
   if (!codecs?.length) throw new Error(m.audio_microphone_codec_unsupported());
   transceiver.setCodecPreferences(codecs);
 }
