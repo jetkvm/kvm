@@ -2,6 +2,8 @@ module github.com/jetkvm/kvm
 
 go 1.24.4
 
+godebug multipathtcp=0
+
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/ProtonMail/go-crypto v1.1.5
