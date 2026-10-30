@@ -18,6 +18,7 @@ BUILDKIT_FLAVOR := arm-rockchip830-linux-uclibcgnueabihf
 BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 DOCKER_BUILD_TAG ?= ghcr.io/jetkvm/buildkit:latest
 SKIP_NATIVE_IF_EXISTS ?= 0
+RELEASE_BRANCH ?= dev
 SKIP_UI_BUILD ?= 0
 ENABLE_SYNC_TRACE ?= 0
 
@@ -228,15 +229,15 @@ frontend:
 	fi
 
 git_check_dev:
-	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "dev" ]; then \
-		echo "Error: Must be on 'dev' branch"; exit 1; \
+	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "$(RELEASE_BRANCH)" ]; then \
+		echo "Error: Must be on '$(RELEASE_BRANCH)' branch"; exit 1; \
 	fi
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "Error: Working tree is dirty. Commit or stash changes."; exit 1; \
 	fi
-	@git fetch origin dev
-	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/dev)" ]; then \
-		echo "Error: Local dev is not up-to-date with origin/dev"; exit 1; \
+	@git fetch origin $(RELEASE_BRANCH)
+	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/$(RELEASE_BRANCH))" ]; then \
+		echo "Error: Local $(RELEASE_BRANCH) is not up-to-date with origin/$(RELEASE_BRANCH)"; exit 1; \
 	fi
 	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not installed"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "Error: gh CLI not authenticated. Run 'gh auth login'"; exit 1; }
