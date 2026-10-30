@@ -44,6 +44,11 @@ func (m *Message) String() string {
 			return fmt.Sprintf("MouseReport{Malformed: %v}", m.d)
 		}
 		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	case TypeWheelReport:
+		if len(m.d) < 2 {
+			return fmt.Sprintf("WheelReport{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("WheelReport{DeltaY: %d, DeltaX: %d}", int8(m.d[0]), int8(m.d[1]))
 	case TypeKeypressKeepAliveReport:
 		return "KeypressKeepAliveReport"
 	case TypeKeyboardMacroReport:
@@ -186,6 +191,28 @@ func (m *Message) MouseReport() (MouseReport, error) {
 		DX:     int8(m.d[0]),
 		DY:     int8(m.d[1]),
 		Button: uint8(m.d[2]),
+	}, nil
+}
+
+// WheelReport ..
+type WheelReport struct {
+	DeltaY int8
+	DeltaX int8
+}
+
+// WheelReport returns the wheel report from the message.
+func (m *Message) WheelReport() (WheelReport, error) {
+	if m.t != TypeWheelReport {
+		return WheelReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	if len(m.d) != 2 {
+		return WheelReport{}, fmt.Errorf("invalid message length: %d", len(m.d))
+	}
+
+	return WheelReport{
+		DeltaY: int8(m.d[0]),
+		DeltaX: int8(m.d[1]),
 	}, nil
 }
 
