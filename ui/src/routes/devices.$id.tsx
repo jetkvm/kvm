@@ -118,9 +118,9 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
 };
 
 export default function KvmIdRoute() {
-  const setCapabilities = useDeviceStore((state) => state.setCapabilities);
-  const setAppVersion = useDeviceStore((state) => state.setAppVersion);
-  const setSystemVersion = useDeviceStore((state) => state.setSystemVersion);
+  const setCapabilities = useDeviceStore(state => state.setCapabilities);
+  const setAppVersion = useDeviceStore(state => state.setAppVersion);
+  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
   const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
@@ -151,8 +151,8 @@ export default function KvmIdRoute() {
     }
   }, [hasEmbedParam, isEmbedMode, setEmbedMode]);
 
-  const settingsHideHeaderBar = useSettingsStore((state) => state.hideHeaderBar);
-  const settingsHideStatusBar = useSettingsStore((state) => state.hideStatusBar);
+  const settingsHideHeaderBar = useSettingsStore(state => state.hideHeaderBar);
+  const settingsHideStatusBar = useSettingsStore(state => state.hideStatusBar);
   const hideHeaderBar = isEmbedMode || settingsHideHeaderBar;
   const hideStatusBar = isEmbedMode || settingsHideStatusBar;
 
@@ -182,7 +182,7 @@ export default function KvmIdRoute() {
   const microphoneGenerationRef = useRef(0);
   const stopClientMicrophone = useCallback(() => {
     microphoneGenerationRef.current++;
-    clientMicrophoneStreamRef.current?.getTracks().forEach((track) => track.stop());
+    clientMicrophoneStreamRef.current?.getTracks().forEach(track => track.stop());
     clientMicrophoneStreamRef.current = null;
   }, []);
   useEffect(() => () => stopClientMicrophone(), [stopClientMicrophone]);
@@ -191,38 +191,44 @@ export default function KvmIdRoute() {
 
   // Everything that must be part of the initial offer is attached here; the
   // signaling adapter owns the peer connection itself.
+  const startClientMicrophone = useCallback(
+    async (
+      pc: RTCPeerConnection,
+      transceiver: RTCRtpTransceiver,
+      generation: number,
+      key: string,
+    ) => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia)
+          throw new Error(m.audio_microphone_secure_required());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        if (pc.connectionState === "closed" || generation !== microphoneGenerationRef.current) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        clientMicrophoneStreamRef.current = stream;
+        pc.addEventListener("connectionstatechange", () => {
+          if (["closed", "failed", "disconnected"].includes(pc.connectionState)) {
+            stream.getTracks().forEach(track => track.stop());
+          }
+        });
+        await transceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
+      } catch (error) {
+        window.sessionStorage.removeItem(key);
+        notifications.error(m.audio_microphone_start_failed({ error: String(error) }));
+      }
+    },
+    [],
+  );
+
   const attachPeerConnection = useCallback(
     async (pc: RTCPeerConnection) => {
       stopClientMicrophone();
       const microphoneGeneration = microphoneGenerationRef.current;
-      let microphoneStream: MediaStream | null = null;
       const key = microphoneStorageKey(params.id);
-      if (window.sessionStorage.getItem(key) === "true") {
-        try {
-          if (!navigator.mediaDevices?.getUserMedia)
-            throw new Error(m.audio_microphone_secure_required());
-          microphoneStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          });
-          if (
-            pc.connectionState === "closed" ||
-            microphoneGeneration !== microphoneGenerationRef.current
-          ) {
-            microphoneStream.getTracks().forEach((track) => track.stop());
-            return;
-          }
-          clientMicrophoneStreamRef.current = microphoneStream;
-          const ownedStream = microphoneStream;
-          pc.addEventListener("connectionstatechange", () => {
-            if (["closed", "failed", "disconnected"].includes(pc.connectionState)) {
-              ownedStream.getTracks().forEach((track) => track.stop());
-            }
-          });
-        } catch (error) {
-          window.sessionStorage.removeItem(key);
-          notifications.error(m.audio_microphone_start_failed({ error: String(error) }));
-        }
-      }
+      const microphoneWanted = window.sessionStorage.getItem(key) === "true";
       pc.ontrack = function (event) {
         // Assemble a single canonical MediaStream from every incoming track.
         // We don't trust event.streams[0]: when the answer SDP omits a=msid
@@ -234,30 +240,27 @@ export default function KvmIdRoute() {
           stream = new MediaStream();
           setMediaStream(stream);
         }
-        if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+        if (!stream.getTracks().some(t => t.id === event.track.id)) {
           stream.addTrack(event.track);
           bumpMediaStreamTrackVersion();
         }
       };
 
       setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
-      const microphoneTrack = microphoneStream?.getAudioTracks()[0];
-      if (microphoneTrack && microphoneStream) {
-        const transceiver = pc.addTransceiver(microphoneTrack, {
-          direction: "sendrecv",
-          streams: [microphoneStream],
-        });
+      // Host audio keeps its own line, so the microphone's codec choice (Opus or
+      // PCMU) cannot take G.722 away from it.
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      if (microphoneWanted) {
+        // The line is negotiated without a track, so an unanswered permission
+        // prompt never holds up the session; the track is attached when it arrives.
+        const microphoneTransceiver = pc.addTransceiver("audio", { direction: "sendonly" });
         try {
-          preferMicrophoneCodec(transceiver);
+          preferMicrophoneCodec(microphoneTransceiver);
+          void startClientMicrophone(pc, microphoneTransceiver, microphoneGeneration, key);
         } catch (error) {
-          stopClientMicrophone();
           window.sessionStorage.removeItem(key);
-          transceiver.direction = "recvonly";
-          await transceiver.sender.replaceTrack(null);
           notifications.error(m.audio_microphone_start_failed({ error: String(error) }));
         }
-      } else {
-        pc.addTransceiver("audio", { direction: "recvonly" });
       }
 
       const rpcDataChannel = pc.createDataChannel("rpc");
@@ -316,6 +319,7 @@ export default function KvmIdRoute() {
     },
     [
       stopClientMicrophone,
+      startClientMicrophone,
       params.id,
       bumpMediaStreamTrackVersion,
       setMediaStream,
@@ -433,7 +437,7 @@ export default function KvmIdRoute() {
   const { setHdmiState } = useVideoStore();
   const { keyboardLedState, setKeyboardLedState, keysDownState, setKeysDownState, setUsbState } =
     useHidStore();
-  const setHidRpcDisabled = useRTCStore((state) => state.setHidRpcDisabled);
+  const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
   const { setFailsafeMode } = useFailsafeModeStore();
 
   // Keyboard handler for E2E tests
@@ -848,11 +852,11 @@ export default function KvmIdRoute() {
       <div
         className="z-50"
         role="form"
-        onClick={(e) => e.stopPropagation()}
-        onMouseUp={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyUp={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
+        onClick={e => e.stopPropagation()}
+        onMouseUp={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+        onKeyUp={e => e.stopPropagation()}
+        onKeyDown={e => {
           e.stopPropagation();
           if (e.key === "Escape") navigateTo("/");
         }}
