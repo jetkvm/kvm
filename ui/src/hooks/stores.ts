@@ -758,7 +758,8 @@ export type Capability =
   | "tls" // HTTPS listener with a selectable certificate
   | "local_loopback" // web UI can be limited to the loopback interface
   | "log_level" // default log level can be changed
-  | "tailscale"; // Tailscale client
+  | "tailscale" // Tailscale client
+  | "wireguard"; // kernel WireGuard tunnel
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
