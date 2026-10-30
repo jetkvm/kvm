@@ -179,13 +179,22 @@ export default function KvmIdRoute() {
   const [displayHostname, setDisplayHostname] = useState<string | null>(null);
 
   const clientMicrophoneStreamRef = useRef<MediaStream | null>(null);
+  const clientMicrophoneOwnerRef = useRef<RTCPeerConnection | null>(null);
   const microphoneGenerationRef = useRef(0);
   const stopClientMicrophone = useCallback(() => {
     microphoneGenerationRef.current++;
     clientMicrophoneStreamRef.current?.getTracks().forEach(track => track.stop());
     clientMicrophoneStreamRef.current = null;
+    clientMicrophoneOwnerRef.current = null;
   }, []);
   useEffect(() => () => stopClientMicrophone(), [stopClientMicrophone]);
+  // A retired connection is closed without a connectionstatechange event, so
+  // the store losing it is the signal to release the microphone.
+  useEffect(() => {
+    if (clientMicrophoneOwnerRef.current && clientMicrophoneOwnerRef.current !== peerConnection) {
+      stopClientMicrophone();
+    }
+  }, [peerConnection, stopClientMicrophone]);
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
@@ -209,6 +218,7 @@ export default function KvmIdRoute() {
           return;
         }
         clientMicrophoneStreamRef.current = stream;
+        clientMicrophoneOwnerRef.current = pc;
         pc.addEventListener("connectionstatechange", () => {
           if (["closed", "failed", "disconnected"].includes(pc.connectionState)) {
             stream.getTracks().forEach(track => track.stop());
