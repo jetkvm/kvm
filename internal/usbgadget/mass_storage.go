@@ -10,7 +10,10 @@ import (
 )
 
 var massStorageBaseConfig = gadgetConfigItem{
-	order:      3000,
+	// Bound before audio so the bulk IN endpoint stays EP5 IN; with both audio
+	// directions enabled, audio would otherwise take it and push mass storage
+	// to EP6 IN, which loses the medium on some hosts (#1634).
+	order:      2000,
 	device:     "mass_storage.usb0",
 	path:       []string{"functions", "mass_storage.usb0"},
 	configPath: []string{"mass_storage.usb0"},
@@ -104,7 +107,7 @@ func (u *UsbGadget) syncMassStorageImageFromKernel() {
 }
 
 var massStorageLun0Config = gadgetConfigItem{
-	order: 3001,
+	order: 2001,
 	path:  []string{"functions", "mass_storage.usb0", "lun.0"},
 	attrs: gadgetAttributes{
 		"cdrom":     "1",
