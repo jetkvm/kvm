@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -581,6 +584,41 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	}
 }
 
+var (
+	verifiedBasicAuthMu   sync.RWMutex
+	verifiedBasicAuthHash string
+	verifiedBasicAuthSHA  [32]byte
+)
+
+func verifyBasicAuthPassword(password string) bool {
+	hashedPassword := config.HashedPassword
+	if hashedPassword == "" {
+		return false
+	}
+
+	pwSHA := sha256.Sum256([]byte(password))
+
+	verifiedBasicAuthMu.RLock()
+	cacheValid := verifiedBasicAuthHash == hashedPassword &&
+		subtle.ConstantTimeCompare(verifiedBasicAuthSHA[:], pwSHA[:]) == 1
+	verifiedBasicAuthMu.RUnlock()
+
+	if cacheValid {
+		return true
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err != nil {
+		return false
+	}
+
+	verifiedBasicAuthMu.Lock()
+	verifiedBasicAuthHash = hashedPassword
+	verifiedBasicAuthSHA = pwSHA
+	verifiedBasicAuthMu.Unlock()
+
+	return true
+}
+
 // apiAuthMiddleware gates endpoints meant for both headless/programmatic
 // access (CI, HIL test rigs) and the browser UI. In noPassword mode it lets
 // requests through with no credentials, same trusted-network assumption as
@@ -588,7 +626,10 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 // session cookie protectedMiddleware checks (so an already-logged-in tab can
 // just load the URL directly) or HTTP Basic Auth against the device
 // password with the username ignored (so a script can just
-// `curl -u api:<password>`).
+// `curl -u api:<password>`). Basic Auth attempts are checked against
+// passwordRateLimiter, and successfully verified passwords are fast-path
+// cached as a SHA-256 digest tied to config.HashedPassword to avoid
+// continuous high-cost bcrypt operations on the low-power CPU.
 func apiAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if config.LocalAuthMode == "noPassword" {
@@ -601,6 +642,16 @@ func apiAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		ip := c.ClientIP()
+		if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error":       "Too many failed attempts. Please try again later.",
+				"retry_after": retryAfter,
+			})
+			return
+		}
+
 		_, password, ok := c.Request.BasicAuth()
 		if !ok {
 			c.Header("WWW-Authenticate", "Basic realm=\"JetKVM\"")
@@ -608,11 +659,13 @@ func apiAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password)); err != nil {
+		if !verifyBasicAuthPassword(password) {
+			passwordRateLimiter.RecordFailure(ip)
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}
 
+		passwordRateLimiter.RecordSuccess(ip)
 		c.Next()
 	}
 }

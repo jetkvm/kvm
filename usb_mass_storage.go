@@ -677,6 +677,14 @@ const uploadClaimTimeout = 60 * time.Second
 var pendingUploads = make(map[string]pendingUpload)
 var pendingUploadsMutex sync.Mutex
 
+// uploadInProgress reports whether an upload to the JetKVM's storage is
+// started or running.
+func uploadInProgress() bool {
+	pendingUploadsMutex.Lock()
+	defer pendingUploadsMutex.Unlock()
+	return len(pendingUploads) > 0
+}
+
 // claimPendingUpload hands the upload to its transport.
 func claimPendingUpload(uploadId string) (pendingUpload, bool) {
 	pendingUploadsMutex.Lock()
