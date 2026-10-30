@@ -126,6 +126,11 @@ func stopMicrophoneLocked() {
 // the handle is dead — typically a USB gadget rebuild or host reattach.
 const reopenThreshold = 5
 
+// idleReopenThreshold is the number of consecutive short writes, about ten
+// seconds of 20 ms packets, after which microphone playback is reopened
+// while the host is not reading from the microphone.
+const idleReopenThreshold = 500
+
 func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, stopped chan<- struct{}) {
 	defer close(stopped)
 
@@ -301,9 +306,20 @@ func runMicrophonePlayback(ctx context.Context, track *webrtc.TrackRemote, stopp
 		}
 		if writeErr != nil {
 			// Timeouts/partial writes must recover too, not only hard errors.
+			// A host that is not reading from the microphone makes every write
+			// short; that is idleness, not a stall, so it reopens rarely and quietly.
 			consecutiveErrors++
-			if consecutiveErrors >= reopenThreshold {
-				audioLogger.Warn().Err(writeErr).Msg("recovering stalled microphone playback")
+			idle := errors.Is(writeErr, audio.ErrNoAudioData)
+			threshold := reopenThreshold
+			if idle {
+				threshold = idleReopenThreshold
+			}
+			if consecutiveErrors >= threshold {
+				event := audioLogger.Warn()
+				if idle {
+					event = audioLogger.Debug()
+				}
+				event.Err(writeErr).Msg("recovering stalled microphone playback")
 				_ = playback.Close()
 				select {
 				case <-ctx.Done():
