@@ -389,7 +389,7 @@ func rpcSetAudioConfig(params AudioConfig) error {
 	if enabled && (config.UsbDevices == nil || !config.UsbDevices.Audio) {
 		enabled = false
 	}
-	microphoneEnabled := params.MicrophoneEnabled && config.UsbDevices != nil && config.UsbDevices.Audio
+	microphoneEnabled := params.MicrophoneEnabled && enabled
 	if config.AudioEnabled == enabled && config.MicrophoneEnabled == microphoneEnabled {
 		return nil
 	}

@@ -672,8 +672,8 @@ Sending is opt-in for each browser tab and device. The device-side microphone
 setting alone does not start browser capture. Turning the toggle off, closing the
 tab, or losing the peer connection, including another tab taking the session over,
 stops the browser's capture tracks. A new tab must opt in again. Incoming audio is discarded unless the device also enables
-microphone playback. Existing host-to-browser audio remains independently
-configurable.
+microphone playback. The microphone requires Enable Audio; turning audio off
+turns the microphone off with it.
 
 The browser offers Opus first; the device decodes it in pure Go to the gadget's
 48 kHz stereo S16_LE playback stream, at about a tenth of the CPU while the
