@@ -2,7 +2,7 @@ BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
 REVISION  := $(shell git rev-parse HEAD)
-VERSION := 0.5.9
+VERSION := 0.5.10
 VERSION_DEV := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M)
 
 # SKUs the app binary must be published under in R2. The binary is currently
