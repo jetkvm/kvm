@@ -12,6 +12,25 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
+// A frame more than videoStallGap after the previous one ends a stall. The
+// pacing of the last normal frame carries over the first frame after it.
+const videoStallGap = 500 * time.Millisecond
+
+var lastVideoFrameDuration = 16 * time.Millisecond
+
+// videoFrameTiming turns the time since the previous frame into how far the
+// RTP clock skips before this frame and the duration the frame itself gets.
+// pion applies a sample's duration after its packets, so a stall charged to
+// the frame would stamp the next frame that far ahead and the browser would
+// hold the picture until it catches up. Called from the frame callback only.
+func videoFrameTiming(sinceLastFrame time.Duration) (skip, duration time.Duration) {
+	if sinceLastFrame > videoStallGap {
+		return sinceLastFrame - lastVideoFrameDuration, lastVideoFrameDuration
+	}
+	lastVideoFrameDuration = sinceLastFrame
+	return 0, sinceLastFrame
+}
+
 var (
 	nativeInstance native.NativeInterface
 	nativeCmdLock  = sync.Mutex{}
@@ -68,12 +87,18 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 				nativeLogger.Warn().Str("event", event).Msg("unknown rpc event received")
 			}
 		},
-		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
-			if currentSession != nil {
-				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
-				if err != nil {
-					nativeLogger.Warn().Err(err).Msg("error writing sample")
-				}
+		OnVideoFrameReceived: func(frame []byte, sinceLastFrame time.Duration) {
+			session := currentSession
+			if session == nil {
+				return
+			}
+			skip, duration := videoFrameTiming(sinceLastFrame)
+			if skip > 0 {
+				// An empty sample only moves the clock.
+				_ = session.VideoTrack.WriteSample(media.Sample{Duration: skip})
+			}
+			if err := session.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration}); err != nil {
+				nativeLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
