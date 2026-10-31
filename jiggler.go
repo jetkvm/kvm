@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -25,16 +26,10 @@ var scheduler gocron.Scheduler = nil
 // schedulerLock serialises scheduler replacement, and guards the flag below.
 var schedulerLock sync.Mutex
 
-// jigglerSchedulePending is set while the schedule must not be built: while
-// initJiggler waits for a trustworthy clock, and between time sync announcing a
-// clock jump and completing it. A config change arriving in that window must
-// not build the schedule itself, or it would put it back on the old clock.
+// jigglerSchedulePending is set between time sync announcing a clock jump and
+// completing it. A config change arriving in that window must not build the
+// schedule itself, or it would put it on the clock that is about to change.
 var jigglerSchedulePending bool
-
-// jigglerClockChanging is set between time sync announcing a clock jump and
-// completing it. The offline fallback must not build in that window either:
-// the After hook will, on the new clock.
-var jigglerClockChanging bool
 
 func rpcSetJigglerState(enabled bool) error {
 	config.JigglerEnabled = enabled
@@ -88,15 +83,10 @@ func shutdownJigglerSchedulerLocked() {
 	scheduler = nil
 }
 
-const (
-	jigglerClockPollInterval = 5 * time.Second
-	jigglerClockWaitLimit    = 10 * time.Minute
-	// jigglerClockJumpLimit is the smallest clock change worth rebuilding the
-	// schedule for. The hourly NTP corrections are milliseconds and gocron
-	// absorbs them; anything larger costs it a catch-up step per schedule
-	// interval skipped.
-	jigglerClockJumpLimit = time.Minute
-)
+// jigglerClockJumpLimit is the smallest clock change worth rebuilding the
+// schedule for. The hourly NTP corrections are milliseconds and gocron absorbs
+// them; anything larger costs it a catch-up step per schedule interval skipped.
+const jigglerClockJumpLimit = time.Minute
 
 func initJiggler() {
 	ensureConfigLoaded()
@@ -109,61 +99,16 @@ func initJiggler() {
 	//
 	// Time sync tells us before it moves the clock, so the schedule is torn
 	// down on the old clock and rebuilt on the new one, whenever the jump
-	// happens. Register the hook before looking at the clock, so a sync landing
-	// in between is not missed.
+	// happens. Until then a schedule on the epoch clock is harmless: it
+	// jiggles on time, and the inactivity check is monotonic. Register the
+	// hook before building, so a sync landing in between is not missed.
 	if timeSync != nil {
 		timeSync.SetClockHook(timesync.ClockHook{
 			Before: jigglerBeforeClockSet,
 			After:  jigglerAfterClockSet,
 		})
 	}
-
-	if !isTimeSyncNeeded() {
-		startJigglerCronTab()
-		return
-	}
-
-	schedulerLock.Lock()
-	jigglerSchedulePending = true
-	schedulerLock.Unlock()
-
-	logger.Info().Msg("system clock is not yet trustworthy, deferring jiggler schedule until time sync")
-	go func() {
-		if !waitForTrustworthyClock(timeSyncSucceeded, jigglerClockPollInterval, jigglerClockWaitLimit) {
-			// An offline device with no jiggler at all is the worse failure.
-			// When it does come online, the clock hook replaces this schedule
-			// before the clock jumps.
-			logger.Warn().Msgf("clock still unsynced after %v, scheduling jiggler anyway", jigglerClockWaitLimit)
-		}
-		// On a synced clock the hook has normally built the schedule already;
-		// this is a no-op then.
-		startJigglerCronTabIfPending()
-	}()
-}
-
-// timeSyncSucceeded is the quiet form of the clock check: isTimeSyncNeeded logs
-// a warning on every call, which a poll loop would turn into log spam.
-func timeSyncSucceeded() bool {
-	return timeSync != nil && timeSync.IsSyncSuccess()
-}
-
-// waitForTrustworthyClock polls until synced reports true, reporting whether it
-// did so within the limit. The elapsed check is monotonic, so the jump being
-// waited on cannot skew it.
-func waitForTrustworthyClock(synced func() bool, poll time.Duration, limit time.Duration) bool {
-	start := time.Now()
-	ticker := time.NewTicker(poll)
-	defer ticker.Stop()
-
-	for {
-		if synced() {
-			return true
-		}
-		if time.Since(start) >= limit {
-			return false
-		}
-		<-ticker.C
-	}
+	startJigglerCronTab()
 }
 
 // jigglerBeforeClockSet runs on the old clock, just before time sync moves it.
@@ -180,19 +125,16 @@ func jigglerBeforeClockSet(jump time.Duration) {
 	defer schedulerLock.Unlock()
 
 	logger.Info().Dur("jump", jump).Msg("clock about to jump, stopping jiggler schedule")
-	jigglerClockChanging = true
 	jigglerSchedulePending = true
 	shutdownJigglerSchedulerLocked()
 }
 
-// jigglerAfterClockSet runs on the new clock. It builds the schedule if one is
-// pending, whether jigglerBeforeClockSet stopped it or initJiggler deferred it
-// on an untrustworthy clock, and leaves a running schedule alone otherwise.
+// jigglerAfterClockSet runs on the new clock. It rebuilds the schedule that
+// jigglerBeforeClockSet stopped, and leaves a running one alone otherwise.
 func jigglerAfterClockSet(jump time.Duration) {
 	schedulerLock.Lock()
 	defer schedulerLock.Unlock()
 
-	jigglerClockChanging = false
 	if !jigglerSchedulePending {
 		return
 	}
@@ -207,22 +149,8 @@ func startJigglerCronTab() {
 	buildJigglerCronTabLocked()
 }
 
-// startJigglerCronTabIfPending builds the schedule only if nothing has since
-// the deferral began, and not in the middle of a clock change: the After hook
-// builds then.
-func startJigglerCronTabIfPending() {
-	schedulerLock.Lock()
-	defer schedulerLock.Unlock()
-
-	if !jigglerSchedulePending || jigglerClockChanging {
-		return
-	}
-	buildJigglerCronTabLocked()
-}
-
-// buildJigglerCronTabLocked ends any deferral and builds the schedule from the
-// current config on the current clock, replacing any existing one. Caller must
-// hold schedulerLock.
+// buildJigglerCronTabLocked builds the schedule from the current config on the
+// current clock, replacing any existing one. Caller must hold schedulerLock.
 func buildJigglerCronTabLocked() {
 	jigglerSchedulePending = false
 	if err := replaceJigglerCronTabLocked(); err != nil {
@@ -239,7 +167,7 @@ func rebuildJigglerCronTab() error {
 	defer schedulerLock.Unlock()
 
 	if jigglerSchedulePending {
-		logger.Info().Msg("clock not settled yet, jiggler config saved for the pending schedule")
+		logger.Info().Msg("clock is changing, jiggler config saved for the pending schedule")
 		return nil
 	}
 	return replaceJigglerCronTabLocked()
@@ -278,11 +206,7 @@ func runJigglerCronTab() error {
 			cronTab,
 			true,
 		),
-		gocron.NewTask(
-			func() {
-				runJiggler()
-			},
-		),
+		gocron.NewTask(runJiggler),
 	)
 	if err != nil {
 		return err
@@ -297,11 +221,17 @@ func runJigglerCronTab() error {
 	return nil
 }
 
-func runJiggler() {
+// runJiggler is the scheduled task. gocron passes the job's context and cancels
+// it when the schedule is replaced, on a config change or a clock jump, so the
+// jitter wait must not outlive that: the replacement would otherwise block on
+// it for gocron's stop timeout.
+func runJiggler(ctx context.Context) {
 	if config.JigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
-			time.Sleep(jitter)
+			if !waitUnlessCancelled(ctx, jitter) {
+				return
+			}
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
@@ -321,6 +251,18 @@ func runJiggler() {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
 		}
+	}
+}
+
+// waitUnlessCancelled waits for d, reporting false if ctx is cancelled first.
+func waitUnlessCancelled(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 

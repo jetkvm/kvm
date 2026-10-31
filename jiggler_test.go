@@ -3,6 +3,7 @@
 package kvm
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -19,7 +20,6 @@ func useJigglerTestConfig(t *testing.T) {
 		schedulerLock.Lock()
 		shutdownJigglerSchedulerLocked()
 		jigglerSchedulePending = false
-		jigglerClockChanging = false
 		schedulerLock.Unlock()
 		config = originalConfig
 	})
@@ -32,27 +32,10 @@ func jigglerSchedulePendingForTest() bool {
 }
 
 // A cold boot builds the schedule while the clock is still at the epoch, and
-// the later jump to real time wedges gocron in a multi-million-step catch-up
-// walk. initJiggler waits this out instead.
-// Saving jiggler settings during the deferred-start window must not build the
-// schedule: the scheduler is nil, so nothing stops it, and it would land back
-// on the epoch clock - the exact catch-up this defer exists to avoid.
-func TestRebuildJigglerCronTabSkipsWhileDeferred(t *testing.T) {
-	useJigglerTestConfig(t)
-	schedulerLock.Lock()
-	jigglerSchedulePending = true
-	schedulerLock.Unlock()
-
-	if err := rebuildJigglerCronTab(); err != nil {
-		t.Fatalf("rebuildJigglerCronTab while deferred: %v", err)
-	}
-	if scheduler != nil {
-		t.Fatal("built a scheduler while the clock was still untrustworthy")
-	}
-}
-
-// Time sync announces a large jump before making it. The schedule built on the
-// old clock must be gone by then, and a fresh one built on the new clock after.
+// the later jump to real time would wedge gocron in a multi-million-step
+// catch-up walk. Time sync announces a large jump before making it: the
+// schedule built on the old clock must be gone by then, and a fresh one built
+// on the new clock after.
 func TestClockHookRebuildsScheduleOnLargeJump(t *testing.T) {
 	useJigglerTestConfig(t)
 	startJigglerCronTab()
@@ -124,104 +107,41 @@ func TestClockHookLeavesScheduleAloneOnSmallCorrection(t *testing.T) {
 	}
 }
 
-// With the schedule deferred on an untrustworthy clock, the first successful
-// sync is what builds it, whatever the size of the jump.
-func TestClockHookBuildsDeferredSchedule(t *testing.T) {
-	useJigglerTestConfig(t)
-	schedulerLock.Lock()
-	jigglerSchedulePending = true
-	schedulerLock.Unlock()
-
-	jigglerBeforeClockSet(time.Second)
-	jigglerAfterClockSet(time.Second)
-	if scheduler == nil {
-		t.Fatal("deferred schedule not built on the first clock set")
-	}
-	if jigglerSchedulePendingForTest() {
-		t.Fatal("schedule still pending after it was built")
-	}
-}
-
-// The offline fallback must not replace a schedule the clock hook already
-// built on a synced clock.
-func TestStartJigglerCronTabIfPendingKeepsExistingSchedule(t *testing.T) {
+// A config change outside a clock jump rebuilds at once, as it always did.
+func TestRebuildJigglerCronTabReplacesScheduler(t *testing.T) {
 	useJigglerTestConfig(t)
 	startJigglerCronTab()
 	old := scheduler
 
-	startJigglerCronTabIfPending()
-	if scheduler != old {
-		t.Fatal("fallback replaced a schedule that was already built")
+	if err := rebuildJigglerCronTab(); err != nil {
+		t.Fatalf("rebuildJigglerCronTab: %v", err)
+	}
+	if scheduler == nil || scheduler == old {
+		t.Fatal("config change did not replace the scheduler")
 	}
 }
 
-// The offline fallback firing in the middle of a clock change must not build
-// on the old clock. The After hook builds once the clock has moved.
-func TestStartJigglerCronTabIfPendingWaitsOutClockChange(t *testing.T) {
-	useJigglerTestConfig(t)
-	startJigglerCronTab()
-
-	jump := 2 * time.Hour
-	jigglerBeforeClockSet(jump)
-	startJigglerCronTabIfPending()
-	if scheduler != nil {
-		t.Fatal("fallback built the schedule while the clock was changing")
-	}
-
-	jigglerAfterClockSet(jump)
-	if scheduler == nil {
-		t.Fatal("no scheduler built after the clock change")
-	}
-}
-
-func TestStartJigglerCronTabIfPendingBuildsDeferredSchedule(t *testing.T) {
-	useJigglerTestConfig(t)
-	schedulerLock.Lock()
-	jigglerSchedulePending = true
-	schedulerLock.Unlock()
-
-	startJigglerCronTabIfPending()
-	if scheduler == nil {
-		t.Fatal("fallback did not build the deferred schedule")
-	}
-	if jigglerSchedulePendingForTest() {
-		t.Fatal("schedule still pending after the fallback built it")
-	}
-}
-
-func TestWaitForTrustworthyClockReturnsOnSync(t *testing.T) {
-	calls := 0
-	synced := func() bool {
-		calls++
-		return calls >= 3
-	}
+// Replacing the schedule cancels the running job's context. The jitter wait
+// has to return then, or the replacement blocks on it for gocron's stop timeout.
+func TestWaitUnlessCancelledReturnsOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go cancel()
 
 	start := time.Now()
-	if !waitForTrustworthyClock(synced, time.Millisecond, time.Minute) {
-		t.Fatal("waitForTrustworthyClock reported a timeout, want success")
-	}
-	if calls != 3 {
-		t.Errorf("synced called %d times, want 3", calls)
+	if waitUnlessCancelled(ctx, time.Minute) {
+		t.Fatal("waitUnlessCancelled reported the wait completing, want cancellation")
 	}
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Errorf("took %v, want to return as soon as the clock synced", elapsed)
+		t.Errorf("took %v, want to return as soon as the context was cancelled", elapsed)
 	}
 }
 
-// An offline device never syncs. Waiting forever would leave it without a
-// jiggler at all, so the wait has to give up and let the caller schedule.
-func TestWaitForTrustworthyClockGivesUpAtLimit(t *testing.T) {
+func TestWaitUnlessCancelledWaitsOutTheDelay(t *testing.T) {
 	start := time.Now()
-	if waitForTrustworthyClock(func() bool { return false }, time.Millisecond, 20*time.Millisecond) {
-		t.Fatal("waitForTrustworthyClock reported success, want a timeout")
+	if !waitUnlessCancelled(context.Background(), 20*time.Millisecond) {
+		t.Fatal("waitUnlessCancelled reported cancellation, want the wait completing")
 	}
 	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
-		t.Errorf("returned after %v, want at least the 20ms limit", elapsed)
-	}
-}
-
-func TestWaitForTrustworthyClockSucceedsImmediately(t *testing.T) {
-	if !waitForTrustworthyClock(func() bool { return true }, time.Millisecond, time.Minute) {
-		t.Fatal("waitForTrustworthyClock reported a timeout for an already-synced clock")
+		t.Errorf("returned after %v, want at least the 20ms delay", elapsed)
 	}
 }
