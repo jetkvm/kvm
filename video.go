@@ -47,24 +47,26 @@ func rpcGetVideoState() (native.VideoState, error) {
 const (
 	screenshotAutoStartTimeout  = 10 * time.Second
 	screenshotSnapshotRetryWait = 300 * time.Millisecond
+	screenshotLease             = 5 * time.Minute
 )
 
 var (
-	errVideoPaused       = errors.New("video is paused while virtual media is in use")
 	screenshotInFlightMu sync.Mutex
 	screenshotInFlight   int
-)
 
-func isVideoPausedLocked() bool {
-	return videoPausedBy != nil || uploadInProgress()
-}
+	// Capture started for a screenshot stays up until the lease runs out, so
+	// a client polling for changes does not restart it on every call.
+	screenshotLeaseMu    sync.Mutex
+	screenshotLeaseUntil time.Time
+	screenshotLeaseTimer *time.Timer
+)
 
 // captureScreenshot returns a JPEG snapshot, starting video capture on
 // demand if nothing is currently streaming (e.g. no browser session is
-// open) and stopping it again afterward, unless a real WebRTC session or
-// another concurrent screenshot request still needs it running.
-// It respects videoPauseMu and virtual media uploads so it does not
-// conflict with sessions pausing video or resource-intensive uploads.
+// open). Capture then stays up for screenshotLease after the last
+// screenshot and is stopped unless a session is streaming, so a session
+// that paused the stream, as a hidden tab or the virtual media dialog
+// does, gets it back paused once the screenshots stop.
 func captureScreenshot() ([]byte, error) {
 	screenshotInFlightMu.Lock()
 	screenshotInFlight++
@@ -75,52 +77,76 @@ func captureScreenshot() ([]byte, error) {
 		screenshotInFlightMu.Unlock()
 	}()
 
-	videoPauseMu.Lock()
-	if isVideoPausedLocked() {
-		videoPauseMu.Unlock()
-		return nil, errVideoPaused
-	}
-	if getActiveSessions() == 0 {
-		_ = nativeInstance.VideoStart()
-	}
-	videoPauseMu.Unlock()
-
-	defer func() {
-		screenshotInFlightMu.Lock()
-		soleRequester := screenshotInFlight <= 1
-		screenshotInFlightMu.Unlock()
-		if soleRequester && getActiveSessions() == 0 {
-			videoPauseMu.Lock()
-			if videoPausedBy == nil {
-				_ = nativeInstance.VideoStop()
-			}
-			videoPauseMu.Unlock()
-		}
-	}()
-
 	deadline := time.Now().Add(screenshotAutoStartTimeout)
-	for {
-		videoPauseMu.Lock()
-		paused := isVideoPausedLocked()
-		videoPauseMu.Unlock()
-		if paused {
-			return nil, errVideoPaused
-		}
+	screenshotLeaseMu.Lock()
+	coldStart := time.Now().After(screenshotLeaseUntil) && !sessionStreaming()
+	screenshotLeaseMu.Unlock()
 
+	// Started under the pause lock so it cannot interleave with a pause.
+	videoPauseMu.Lock()
+	_ = nativeInstance.VideoStart()
+	videoPauseMu.Unlock()
+	defer extendScreenshotLease()
+
+	if coldStart {
+		// The first frames after a start can come from the capture pool as
+		// it was before the stop, so skip one and let the pool turn over.
+		if _, err := snapshotBefore(deadline); err != nil {
+			return nil, err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return snapshotBefore(deadline)
+}
+
+// snapshotBefore asks the native side for a frame until deadline. It retries
+// on any error, not just ErrVideoNotStreaming: the native side also returns
+// transient per-attempt errors (encoder timeout, no frame yet) while capture
+// is still spinning up or between frames.
+func snapshotBefore(deadline time.Time) ([]byte, error) {
+	for {
 		jpegBytes, err := nativeInstance.VideoGetSnapshot()
 		if err == nil {
 			return jpegBytes, nil
 		}
-		// Retry on any error while the deadline allows, not just
-		// ErrVideoNotStreaming: the native side also returns transient
-		// per-attempt errors (encoder timeout, no frame yet) while capture
-		// is still spinning up or between frames, which should be retried
-		// against the next captured frame rather than failing immediately.
 		if !time.Now().Before(deadline) {
 			return nil, err
 		}
 		time.Sleep(screenshotSnapshotRetryWait)
 	}
+}
+
+// sessionStreaming reports whether a WebRTC session is receiving video.
+func sessionStreaming() bool {
+	videoPauseMu.Lock()
+	paused := videoPausedBy != nil
+	videoPauseMu.Unlock()
+	return !paused && getActiveSessions() > 0
+}
+
+func extendScreenshotLease() {
+	screenshotLeaseMu.Lock()
+	defer screenshotLeaseMu.Unlock()
+	screenshotLeaseUntil = time.Now().Add(screenshotLease)
+	if screenshotLeaseTimer != nil {
+		screenshotLeaseTimer.Stop()
+	}
+	screenshotLeaseTimer = time.AfterFunc(screenshotLease, releaseScreenshotLease)
+}
+
+// releaseScreenshotLease stops capture once no screenshot has asked for it
+// for screenshotLease, unless a session is streaming.
+func releaseScreenshotLease() {
+	screenshotLeaseMu.Lock()
+	expired := !time.Now().Before(screenshotLeaseUntil)
+	screenshotLeaseMu.Unlock()
+	screenshotInFlightMu.Lock()
+	busy := screenshotInFlight > 0
+	screenshotInFlightMu.Unlock()
+	if !expired || busy || sessionStreaming() {
+		return
+	}
+	_ = nativeInstance.VideoStop()
 }
 
 // handleScreenshotJPEG returns a single JPEG-encoded frame of the current
@@ -161,10 +187,6 @@ func handleScreenshotPNG(c *gin.Context) {
 }
 
 func writeScreenshotError(c *gin.Context, err error) {
-	if errors.Is(err, errVideoPaused) {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
-		return
-	}
 	if errors.Is(err, native.ErrVideoNotStreaming) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no video signal detected (timed out starting capture)"})
 		return
