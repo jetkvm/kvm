@@ -5,6 +5,9 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
+import usePaste from "@hooks/usePaste";
+import { isClientPasteShortcut, isInjectedPasteChord, isTypedCharacter } from "@/keyboardPaste";
+import TargetTextInput, { targetTextInputId } from "@components/TargetTextInput";
 import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
 import {
   useCapability,
@@ -34,6 +37,10 @@ import { m } from "@localizations/messages.js";
 
 const initialHdmiErrorGraceMs = 2500;
 
+function reportSkipped(skipped: string[]) {
+  if (skipped.length > 0) notifications.error(m.paste_skipped_chars({ chars: skipped.join(" ") }));
+}
+
 export default function WebRTCVideo({
   hasConnectionIssues,
   hideStatusBar,
@@ -60,6 +67,7 @@ export default function WebRTCVideo({
   // Store hooks
   const settings = useSettingsStore();
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
+  const { pasteText } = usePaste();
   const {
     getRelMouseMoveHandler,
     getAbsMouseMoveHandler,
@@ -83,7 +91,14 @@ export default function WebRTCVideo({
   const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
-  const { isOcrMode } = useUiStore();
+  const { isOcrMode, setVideoContainer } = useUiStore();
+
+  // The device page's focus trap uses the video container, so the hidden
+  // text input inside it keeps the focus, in fullscreen too.
+  useEffect(() => {
+    setVideoContainer(fullscreenContainerRef.current);
+    return () => setVideoContainer(null);
+  }, [setVideoContainer]);
 
   // RTC related states
   const { peerConnection } = useRTCStore();
@@ -334,14 +349,56 @@ export default function WebRTCVideo({
     return code;
   }
 
+  // Characters typed without a key code are collected briefly and pasted as text.
+  const typedText = useRef({ text: "", timer: 0 });
+  const queueTypedText = useCallback(
+    (text: string) => {
+      typedText.current.text += text;
+      window.clearTimeout(typedText.current.timer);
+      typedText.current.timer = window.setTimeout(() => {
+        const pending = typedText.current.text;
+        typedText.current.text = "";
+        void pasteText(pending)
+          .then(result => reportSkipped(result.skipped))
+          .catch((error: unknown) =>
+            notifications.error(m.paste_modal_failed_paste({ error: String(error) })),
+          );
+      }, 30);
+    },
+    [pasteText],
+  );
+
+  const focusTextInput = useCallback(() => {
+    document.getElementById(targetTextInputId)?.focus({ preventScroll: true });
+  }, []);
+
+  // Take the focus once the video plays, unless an input already has it.
+  useEffect(() => {
+    if (!isPlaying) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || active === videoElm.current) focusTextInput();
+  }, [isPlaying, focusTextInput]);
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      // The browser's paste event must fire (preventDefault would stop it)
+      // and the V must not reach the target; pasteHandler does the rest.
+      if (isClientPasteShortcut(e, settings.pasteOnCtrlV, settings.pasteOnCtrlShiftV)) {
+        // A held chord repeats; one paste is enough.
+        if (e.repeat) e.preventDefault();
+        return;
+      }
+      if (isInjectedPasteChord(e)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
 
       if (hidKey === undefined) {
+        if (isTypedCharacter(e)) {
+          queueTypedText(e.key === "Enter" ? "\n" : e.key);
+          return;
+        }
         console.warn(`Key down not mapped: ${code}`);
         return;
       }
@@ -405,12 +462,22 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [
+      handleKeyPress,
+      isKeyboardLockActive,
+      isOcrMode,
+      isWindowsClient,
+      settings.pasteOnCtrlV,
+      settings.pasteOnCtrlShiftV,
+      queueTypedText,
+    ],
   );
 
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      if (isClientPasteShortcut(e, settings.pasteOnCtrlV, settings.pasteOnCtrlShiftV)) return;
+      if (isTypedCharacter(e)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -448,7 +515,39 @@ export default function WebRTCVideo({
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress, isOcrMode, isWindowsClient],
+    [handleKeyPress, isOcrMode, isWindowsClient, settings.pasteOnCtrlV, settings.pasteOnCtrlShiftV],
+  );
+
+  // Pastes the client's clipboard (text, or images and files for the host
+  // agent) when the video has the focus. Inputs and popovers keep theirs.
+  const pasteHandler = useCallback(
+    (e: ClipboardEvent) => {
+      if (isOcrMode) return;
+      const target = e.target as HTMLElement | null;
+      const isTextInputShim = target?.hasAttribute("data-text-input-shim") ?? false;
+      if (
+        !isTextInputShim &&
+        target?.closest("input, textarea, [contenteditable='true'], [data-headlessui-state]")
+      )
+        return;
+      const data = e.clipboardData;
+      if (!data) return;
+      // Text pasted into the hidden text input is left to the browser: the
+      // field's input event forwards it, and the text stays there for a
+      // moment because a dictation tool may read it back to confirm the paste
+      // landed before it restores the clipboard.
+      if (isTextInputShim) return;
+      e.preventDefault();
+      const text = data.getData("text/plain");
+      if (text)
+        void pasteText(text)
+          .then(result => reportSkipped(result.skipped))
+          .catch((error: unknown) =>
+            notifications.error(m.paste_modal_failed_paste({ error: String(error) })),
+          );
+      else notifications.error(m.paste_clipboard_empty());
+    },
+    [isOcrMode, pasteText],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -546,6 +645,7 @@ export default function WebRTCVideo({
 
       document.addEventListener("keydown", keyDownHandler, { signal });
       document.addEventListener("keyup", keyUpHandler, { signal });
+      document.addEventListener("paste", pasteHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
       document.addEventListener("visibilitychange", resetKeyboardState, { signal });
@@ -554,7 +654,7 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [keyDownHandler, keyUpHandler, resetKeyboardState],
+    [keyDownHandler, keyUpHandler, pasteHandler, resetKeyboardState],
   );
 
   // Setup Video Event Listeners
@@ -570,6 +670,17 @@ export default function WebRTCVideo({
       videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
 
+      // A click on the video must not move the focus away from the hidden
+      // text input (the default mousedown action would), so it stays there.
+      videoElmRefValue.addEventListener(
+        "mousedown",
+        e => {
+          e.preventDefault();
+          focusTextInput();
+        },
+        { signal },
+      );
+
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
       // A stream resolution change only fires resize, so the store size would go stale
@@ -581,7 +692,7 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, updateVideoSizeStore],
+    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, focusTextInput, updateVideoSizeStore],
   );
 
   // Setup Mouse Events
@@ -754,6 +865,7 @@ export default function WebRTCVideo({
                         })}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
+                      <TargetTextInput />
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div

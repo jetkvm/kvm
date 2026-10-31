@@ -7,8 +7,8 @@ import { cx } from "@/cva.config";
 import { m } from "@localizations/messages.js";
 import { useHidStore, useSettingsStore, useUiStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
-import useKeyboard, { type MacroStep } from "@hooks/useKeyboard";
 import useKeyboardLayout from "@hooks/useKeyboardLayout";
+import usePaste from "@hooks/usePaste";
 import notifications from "@/notifications";
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
@@ -28,7 +28,7 @@ export default function PasteModal() {
   const { setDisableVideoFocusTrap } = useUiStore();
 
   const { send } = useJsonRpc();
-  const { executeMacro, cancelExecuteMacro } = useKeyboard();
+  const { pasteText, cancelPaste } = usePaste();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const [delayValue, setDelayValue] = useState(defaultDelay);
@@ -54,10 +54,10 @@ export default function PasteModal() {
   }, [send, setKeyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
-    void cancelExecuteMacro();
+    void cancelPaste();
     setDisableVideoFocusTrap(false);
     setInvalidChars([]);
-  }, [setDisableVideoFocusTrap, cancelExecuteMacro]);
+  }, [setDisableVideoFocusTrap, cancelPaste]);
 
   const updateInvalidChars = useCallback(
     (value: string) => {
@@ -74,58 +74,13 @@ export default function PasteModal() {
   );
 
   const onConfirmPaste = useCallback(async () => {
-    if (!selectedKeyboard) return;
-
-    const text = textValue;
-
     try {
-      const macroSteps: MacroStep[] = [];
-
-      for (const char of text) {
-        const normalizedChar = char.normalize("NFC");
-        const keyprops = selectedKeyboard.chars[normalizedChar];
-        if (!keyprops) continue;
-
-        const { key, shift, altRight, deadKey, accentKey } = keyprops;
-        if (!key) continue;
-
-        // if this is an accented character, we need to send that accent FIRST
-        if (accentKey) {
-          const accentModifiers: string[] = [];
-          if (accentKey.shift) accentModifiers.push("ShiftLeft");
-          if (accentKey.altRight) accentModifiers.push("AltRight");
-
-          macroSteps.push({
-            keys: [String(accentKey.key)],
-            modifiers: accentModifiers.length > 0 ? accentModifiers : null,
-            delay,
-          });
-        }
-
-        // now send the actual key
-        const modifiers: string[] = [];
-        if (shift) modifiers.push("ShiftLeft");
-        if (altRight) modifiers.push("AltRight");
-
-        macroSteps.push({
-          keys: [String(key)],
-          modifiers: modifiers.length > 0 ? modifiers : null,
-          delay,
-        });
-
-        // if what was requested was a dead key, we need to send an unmodified space to emit
-        // just the accent character
-        if (deadKey) macroSteps.push({ keys: ["Space"], modifiers: null, delay });
-      }
-
-      if (macroSteps.length > 0) {
-        await executeMacro(macroSteps);
-      }
+      await pasteText(textValue, { delay });
     } catch (error) {
       console.error("Failed to paste text:", error);
       notifications.error(m.paste_modal_failed_paste({ error: String(error) }));
     }
-  }, [selectedKeyboard, executeMacro, delay, textValue]);
+  }, [pasteText, delay, textValue]);
 
   useEffect(() => {
     TextAreaRef.current?.focus();

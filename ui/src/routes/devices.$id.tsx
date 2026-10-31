@@ -48,6 +48,7 @@ import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import type { VersionInfo as LocalVersion } from "@hooks/useVersion";
 import { useHiddenVideoStreamPause } from "@hooks/useHiddenVideoStreamPause";
 import WebRTCVideo from "@components/WebRTCVideo";
+import { targetTextInputId } from "@components/TargetTextInput";
 import DashboardNavbar from "@components/Header";
 const ConnectionStatsSidebar = lazy(() => import("@components/sidebar/connectionStats"));
 const Terminal = lazy(() => import("@components/Terminal"));
@@ -133,6 +134,7 @@ export default function KvmIdRoute() {
     setSidebarView,
     disableVideoFocusTrap,
     setDisableVideoFocusTrap,
+    videoContainer,
     rebootState,
     setRebootState,
     isEmbedMode,
@@ -486,6 +488,11 @@ export default function KvmIdRoute() {
     }
   }
 
+  const focusTrapContainers = useMemo(
+    () => (videoContainer ? [videoContainer] : []),
+    [videoContainer],
+  );
+
   const { send } = useJsonRpc(onJsonRpcRequest, { receiveHeldEvents: true });
 
   useEffect(() => {
@@ -732,18 +739,20 @@ export default function KvmIdRoute() {
         </AnimatePresence>
       )}
       <div className="relative h-full">
-        {!hideHeaderBar && (
+        {/* The trap keeps the keyboard focus on the hidden text input inside
+            the video container (see TargetTextInput); without that container,
+            for example on the failsafe screen, there is nothing to trap. */}
+        {!hideHeaderBar && videoContainer && (
           <FocusTrap
             paused={disableVideoFocusTrap}
+            containerElements={focusTrapContainers}
             focusTrapOptions={{
               allowOutsideClick: true,
               escapeDeactivates: false,
-              fallbackFocus: "#videoFocusTrap",
+              fallbackFocus: `#${targetTextInputId}`,
             }}
           >
-            <div className="absolute top-0">
-              <button className="absolute top-0" tabIndex={-1} id="videoFocusTrap" />
-            </div>
+            <div className="absolute top-0" />
           </FocusTrap>
         )}
 
