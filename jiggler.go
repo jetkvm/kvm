@@ -3,6 +3,7 @@ package kvm
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 	_ "time/tzdata"
 
@@ -19,6 +20,14 @@ type JigglerConfig struct {
 
 var jobDelta time.Duration = 0
 var scheduler gocron.Scheduler = nil
+
+// schedulerLock serialises scheduler replacement, and guards the flag below.
+var schedulerLock sync.Mutex
+
+// jigglerSchedulePending is set while initJiggler waits for a trustworthy
+// clock. A config change arriving in that window must not build the schedule
+// itself, or it would put it back on the epoch clock.
+var jigglerSchedulePending bool
 
 func rpcSetJigglerState(enabled bool) error {
 	config.JigglerEnabled = enabled
@@ -47,15 +56,10 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 	logger.Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
 	config.JigglerConfig = &jigglerConfig
-	err := removeExistingCrobJobs(scheduler)
-	if err != nil {
-		return fmt.Errorf("error removing cron jobs from scheduler %v", err)
+	if err := rebuildJigglerCronTab(); err != nil {
+		return err
 	}
-	err = runJigglerCronTab()
-	if err != nil {
-		return fmt.Errorf("error scheduling jiggler crontab: %v", err)
-	}
-	err = SaveConfig()
+	err := SaveConfig()
 	if err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
@@ -63,6 +67,10 @@ func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 }
 
 func removeExistingCrobJobs(s gocron.Scheduler) error {
+	// No scheduler yet while initJiggler waits for a trustworthy clock.
+	if s == nil {
+		return nil
+	}
 	for _, j := range s.Jobs() {
 		err := s.RemoveJob(j.ID())
 		if err != nil {
@@ -72,13 +80,99 @@ func removeExistingCrobJobs(s gocron.Scheduler) error {
 	return nil
 }
 
+const (
+	jigglerClockPollInterval = 5 * time.Second
+	jigglerClockWaitLimit    = 10 * time.Minute
+)
+
 func initJiggler() {
 	ensureConfigLoaded()
-	err := runJigglerCronTab()
-	if err != nil {
-		logger.Error().Msgf("Error scheduling jiggler crontab: %v", err)
+
+	// A cold boot starts at the UNIX epoch (no battery-backed RTC) and time
+	// sync later jumps the clock forward by decades. gocron reacts to a
+	// next-run in the past by walking the cron expression forward one step at
+	// a time: ~30M steps from 1970 for a per-minute schedule, over an hour of
+	// pegged CPU with no jiggles, and it cannot be interrupted once started.
+	// So don't build the schedule until the clock is trustworthy.
+	if !isTimeSyncNeeded() {
+		startJigglerCronTab()
 		return
 	}
+
+	schedulerLock.Lock()
+	jigglerSchedulePending = true
+	schedulerLock.Unlock()
+
+	logger.Info().Msg("system clock is not yet trustworthy, deferring jiggler schedule until time sync")
+	go func() {
+		if waitForTrustworthyClock(timeSyncSucceeded, jigglerClockPollInterval, jigglerClockWaitLimit) {
+			logger.Info().Msg("clock synced, scheduling jiggler")
+		} else {
+			// An offline device with no jiggler at all is the worse failure.
+			logger.Warn().Msgf("clock still unsynced after %v, scheduling jiggler anyway", jigglerClockWaitLimit)
+		}
+		startJigglerCronTab()
+	}()
+}
+
+// timeSyncSucceeded is the quiet form of the clock check: isTimeSyncNeeded logs
+// a warning on every call, which a poll loop would turn into log spam.
+func timeSyncSucceeded() bool {
+	return timeSync != nil && timeSync.IsSyncSuccess()
+}
+
+// waitForTrustworthyClock polls until synced reports true, reporting whether it
+// did so within the limit. Time sync offers no completion signal to subscribe
+// to. The elapsed check is monotonic, so the jump being waited on cannot skew it.
+func waitForTrustworthyClock(synced func() bool, poll time.Duration, limit time.Duration) bool {
+	start := time.Now()
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+
+	for {
+		if synced() {
+			return true
+		}
+		if time.Since(start) >= limit {
+			return false
+		}
+		<-ticker.C
+	}
+}
+
+func startJigglerCronTab() {
+	schedulerLock.Lock()
+	defer schedulerLock.Unlock()
+
+	jigglerSchedulePending = false
+	if err := replaceJigglerCronTabLocked(); err != nil {
+		logger.Error().Err(err).Msg("error scheduling jiggler crontab")
+	}
+}
+
+// rebuildJigglerCronTab rebuilds the schedule from the current config, unless
+// the deferred start is still pending: building now would defeat the wait. That
+// start reads the config when it runs, so the new settings still apply.
+func rebuildJigglerCronTab() error {
+	schedulerLock.Lock()
+	defer schedulerLock.Unlock()
+
+	if jigglerSchedulePending {
+		logger.Info().Msg("clock not yet trustworthy, jiggler config saved for the deferred schedule")
+		return nil
+	}
+	return replaceJigglerCronTabLocked()
+}
+
+// replaceJigglerCronTabLocked rebuilds the schedule. Caller must hold schedulerLock.
+func replaceJigglerCronTabLocked() error {
+	if err := removeExistingCrobJobs(scheduler); err != nil {
+		return fmt.Errorf("error removing cron jobs from scheduler: %w", err)
+	}
+	if err := runJigglerCronTab(); err != nil {
+		return fmt.Errorf("error scheduling jiggler crontab: %w", err)
+	}
+	return nil
 }
 
 func runJigglerCronTab() error {
