@@ -2,9 +2,14 @@ package usbgadget
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"time"
 )
+
+// absMouseMaxCoord is the logical maximum for the absolute mouse's X/Y axes,
+// per absoluteMouseCombinedReportDesc below (0-32767).
+const absMouseMaxCoord = 32767
 
 var absoluteMouseConfig = gadgetConfigItem{
 	order:      1001,
@@ -98,6 +103,16 @@ func (u *UsbGadget) HasAbsoluteMouse() bool {
 	return u.enabledDevices.AbsoluteMouse
 }
 
+// GetAbsMousePosition returns the last reported absolute mouse position, and
+// whether that position reflects a real report. Before the first AbsMouseReport,
+// lastAbsX/lastAbsY are zero-initialized and do not represent an actual cursor
+// position, so known is false.
+func (u *UsbGadget) GetAbsMousePosition() (x int, y int, known bool) {
+	u.absMouseLock.Lock()
+	defer u.absMouseLock.Unlock()
+	return u.lastAbsX, u.lastAbsY, u.lastAbsKnown
+}
+
 func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	u.hidLifecycle.RLock()
 	defer u.hidLifecycle.RUnlock()
@@ -109,6 +124,12 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
+	return u.absMouseReportLocked(x, y, buttons)
+}
+
+// absMouseReportLocked writes an absolute mouse report and updates the
+// tracked position and button state. Callers must hold absMouseLock.
+func (u *UsbGadget) absMouseReportLocked(x int, y int, buttons uint8) error {
 	err := u.absMouseWriteHidFile([]byte{
 		1,            // Report ID 1
 		buttons,      // Buttons
@@ -121,6 +142,10 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 		return err
 	}
 
+	u.lastAbsX, u.lastAbsY = x, y
+	u.lastAbsKnown = true
+	u.lastAbsButtons = buttons
+
 	if pressed := buttons != 0; pressed != u.absMousePressed {
 		u.absMousePressed = pressed
 		updateHidHandover(func(h *hidHandover) {
@@ -130,6 +155,52 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 
 	u.resetUserInputTime()
 	return nil
+}
+
+// JiggleAbsMouse nudges the absolute mouse position by a random offset in
+// [minMagnitude, maxMagnitude] on each axis. Reading the position, reusing
+// the current button mask, and writing the report all happen under one
+// lock, so a concurrent real report can't interleave and leave the cursor
+// jumping from a stale position or a held button released mid-drag.
+// With no prior report, it seeds from the center of the coordinate space.
+func (u *UsbGadget) JiggleAbsMouse(minMagnitude, maxMagnitude int) error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
+	if !u.enabledDevices.AbsoluteMouse {
+		return nil
+	}
+
+	u.absMouseLock.Lock()
+	defer u.absMouseLock.Unlock()
+
+	x, y := u.lastAbsX, u.lastAbsY
+	if !u.lastAbsKnown {
+		x, y = absMouseMaxCoord/2, absMouseMaxCoord/2
+	}
+
+	x = clampAbsCoord(x + randomSignedOffset(minMagnitude, maxMagnitude))
+	y = clampAbsCoord(y + randomSignedOffset(minMagnitude, maxMagnitude))
+
+	return u.absMouseReportLocked(x, y, u.lastAbsButtons)
+}
+
+func randomSignedOffset(minMagnitude, maxMagnitude int) int {
+	magnitude := rand.Intn(maxMagnitude-minMagnitude+1) + minMagnitude
+	if rand.Intn(2) == 0 {
+		magnitude = -magnitude
+	}
+	return magnitude
+}
+
+func clampAbsCoord(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > absMouseMaxCoord {
+		return absMouseMaxCoord
+	}
+	return v
 }
 
 func (u *UsbGadget) AbsMouseWheelReport(wheelY int8, wheelX int8) error {

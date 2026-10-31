@@ -124,6 +124,26 @@ func runJigglerCronTab() error {
 	return nil
 }
 
+// Absolute jiggle offsets are HID logical units, not pixels: the host scales
+// them by round(hid/32767*displayWidth) (see ui/e2e/helpers/hid.ts). A raw
+// offset of 1-3 quantizes to no visible movement on most displays, so use a
+// small percentage of the full range instead. This guarantees a host-visible
+// nudge regardless of display size while staying imperceptibly small.
+const (
+	absJiggleOffsetMin = 100
+	absJiggleOffsetMax = 300
+)
+
+// Relative jiggling sends an out-and-back move (+N,+N then -N,-N), so net
+// displacement is zero and there's no position to anchor or go stale. A
+// smaller magnitude (the original #1424 fix used 1-3px) risks being
+// swallowed by pointer acceleration or an idle-detection threshold on the
+// host, which is likely why that fix didn't reliably prevent #1604.
+const (
+	relJiggleOffsetMin = 10
+	relJiggleOffsetMax = 20
+)
+
 func runJiggler() {
 	if config.JigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
@@ -135,15 +155,17 @@ func runJiggler() {
 		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
 			logger.Debug().Msg("Jiggling mouse...")
-			dx := int8(rand.Intn(3) + 1)
-			dy := int8(rand.Intn(3) + 1)
-			if rand.Intn(2) == 0 {
-				dx = -dx
+			var err error
+			// Prefer the relative out-and-back nudge: it never anchors to a
+			// position, so it can't go stale or drift into the way of local
+			// work the way an absolute nudge can. Absolute is a last resort
+			// for configs where relative mouse is disabled entirely.
+			switch {
+			case gadget.HasRelativeMouse():
+				err = rpcJiggleRelMouseReport(relJiggleOffsetMin, relJiggleOffsetMax)
+			case gadget.HasAbsoluteMouse():
+				err = rpcJiggleAbsMouseReport(absJiggleOffsetMin, absJiggleOffsetMax)
 			}
-			if rand.Intn(2) == 0 {
-				dy = -dy
-			}
-			err := rpcRelMouseReport(dx, dy, 0)
 			if err != nil {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
