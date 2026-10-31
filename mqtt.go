@@ -43,6 +43,11 @@ type MQTTManager struct {
 	connected atomic.Bool
 	lastError atomic.Value // stores string; cleared on successful connect
 
+	// Macro IDs deleted while disconnected; their buttons are cleared on the
+	// next discovery pass.
+	pendingMacroRemovalsMu sync.Mutex
+	pendingMacroRemovals   []string
+
 	updateRequested atomic.Bool // set when an update is triggered via MQTT, cleared when OTA finishes
 
 	debounceMs int
