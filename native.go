@@ -12,20 +12,15 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
-// A frame more than videoStallGap after the previous one ends a stall. The
-// pacing of the last normal frame carries over the first frame after it.
-const videoStallGap = 500 * time.Millisecond
-
+// lastVideoFrameDuration is the pacing of the last normal frame, which the
+// first frame after a stall takes over. Frame callback only.
 var lastVideoFrameDuration = 16 * time.Millisecond
 
 // videoFrameTiming turns the time since the previous frame into how far the
 // RTP clock skips before this frame and the duration the frame itself gets.
-// pion applies a sample's duration after its packets, so a stall charged to
-// the frame would stamp the next frame that far ahead and the browser would
-// hold the picture until it catches up. Called from the frame callback only.
 func videoFrameTiming(sinceLastFrame time.Duration) (skip, duration time.Duration) {
-	if sinceLastFrame > videoStallGap {
-		return sinceLastFrame - lastVideoFrameDuration, lastVideoFrameDuration
+	if skip = rtpClockSkip(sinceLastFrame, lastVideoFrameDuration); skip > 0 {
+		return skip, lastVideoFrameDuration
 	}
 	lastVideoFrameDuration = sinceLastFrame
 	return 0, sinceLastFrame
