@@ -1,7 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 import useKeyboard from "@/hooks/useKeyboard";
-import useKeyboardLayout from "@/hooks/useKeyboardLayout";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { keyboardForLayout } from "@/hooks/useKeyboardLayout";
+import { useRTCStore, useSettingsStore } from "@/hooks/stores";
+import { loadKeyboardLayout } from "@/keyboardLayoutLoader";
 import { textToMacroSteps } from "@/keyboardPaste";
 
 export interface PasteResult {
@@ -20,15 +23,43 @@ let pasteGeneration = 0;
 // inserted by dictation tools: the text is typed with the selected layout.
 export default function usePaste() {
   const { executeMacro, cancelExecuteMacro } = useKeyboard();
-  const { selectedKeyboard } = useKeyboardLayout();
+  const { send } = useJsonRpc();
+  const rpcDataChannel = useRTCStore((state) => state.rpcDataChannel);
+  const { setKeyboardLayout } = useSettingsStore();
+
+  // Only the keyboard settings and the paste modal fetched the device's
+  // layout, so a fresh browser typed its first dictation or shortcut paste
+  // with the "en-US" default. The layout is fetched once per connection, the
+  // first paste waits for it, and nothing is typed with a layout the device
+  // did not confirm.
+  useEffect(() => {
+    void loadKeyboardLayout(rpcDataChannel, send, setKeyboardLayout);
+  }, [rpcDataChannel, send, setKeyboardLayout]);
 
   const doPasteText = useCallback(
-    async (text: string, options?: { delay?: number }): Promise<PasteResult> => {
-      const { steps, skipped } = textToMacroSteps(text, selectedKeyboard, options?.delay);
+    async (
+      text: string,
+      options?: { delay?: number },
+    ): Promise<PasteResult> => {
+      const loaded = await loadKeyboardLayout(
+        rpcDataChannel,
+        send,
+        setKeyboardLayout,
+      );
+      if (!loaded)
+        throw new Error("the device's keyboard layout could not be read");
+      const keyboard = keyboardForLayout(
+        useSettingsStore.getState().keyboardLayout,
+      );
+      const { steps, skipped } = textToMacroSteps(
+        text,
+        keyboard,
+        options?.delay,
+      );
       if (steps.length > 0) await executeMacro(steps);
       return { via: "keystrokes", skipped };
     },
-    [selectedKeyboard, executeMacro],
+    [rpcDataChannel, send, setKeyboardLayout, executeMacro],
   );
 
   const pasteText = useCallback(
