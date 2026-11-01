@@ -1,6 +1,11 @@
 package kvm
 
-import "github.com/jetkvm/kvm/internal/native"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/jetkvm/kvm/internal/native"
+)
 
 // EDIDPreset is an EDID the device offers by name. The list lives here so the
 // UI does not carry its own copy and the device decides what it advertises.
@@ -20,4 +25,40 @@ var edidPresets = []EDIDPreset{
 
 func rpcGetEDIDPresets() ([]EDIDPreset, error) {
 	return edidPresets, nil
+}
+
+// edidPresetByName finds a preset by its name, ignoring case.
+func edidPresetByName(name string) (EDIDPreset, bool) {
+	for _, p := range edidPresets {
+		if strings.EqualFold(p.Name, name) {
+			return p, true
+		}
+	}
+	return EDIDPreset{}, false
+}
+
+// edidPresetName is the name of the preset an EDID string matches, "" for a
+// custom EDID. An empty EDID string is the default.
+func edidPresetName(edid string) string {
+	if edid == "" {
+		edid = native.DefaultEDID
+	}
+	for _, p := range edidPresets {
+		if strings.EqualFold(p.EDID, edid) {
+			return p.Name
+		}
+	}
+	return ""
+}
+
+func rpcGetEDIDPreset() (string, error) {
+	return edidPresetName(config.EdidString), nil
+}
+
+func rpcSetEDIDPreset(name string) error {
+	p, ok := edidPresetByName(name)
+	if !ok {
+		return fmt.Errorf("unknown EDID preset: %s", name)
+	}
+	return rpcSetEDID(p.EDID)
 }
