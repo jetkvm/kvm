@@ -24,7 +24,7 @@ int get_edid(uint8_t *edid, size_t max_size)
         return -1;
     }
 
-    if (max_size != 128 && max_size != 256)
+    if (max_size < 128 || max_size % 128 != 0 || max_size > EDID_MAX_SIZE)
     {
         errno = EINVAL;
         return -1;
@@ -43,7 +43,7 @@ int get_edid(uint8_t *edid, size_t max_size)
     memset(&v4l2_edid, 0, sizeof(v4l2_edid));
     v4l2_edid.pad = 0;
     v4l2_edid.start_block = 0;
-    v4l2_edid.blocks = 2;
+    v4l2_edid.blocks = max_size / 128; // the driver trims this to what is stored
     v4l2_edid.edid = edid;
 
     if (ioctl(fd, VIDIOC_G_EDID, &v4l2_edid) < 0)
@@ -78,7 +78,7 @@ int set_edid(uint8_t *edid, size_t size)
         return -1;
     }
 
-    if (size != 0 && size != 128 && size != 256)
+    if (size % 128 != 0 || size > EDID_MAX_SIZE)
     {
         errno = EINVAL;
         return -1;
