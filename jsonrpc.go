@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -1384,6 +1385,20 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	return err
 }
 
+// rpcRunKeyboardMacro runs a stored macro by ID or case-insensitive name, the
+// way the MQTT command does, and returns when it has finished.
+func rpcRunKeyboardMacro(macro string) error {
+	stored, ok := findKeyboardMacro(strings.TrimSpace(macro))
+	if !ok {
+		return fmt.Errorf("unknown keyboard macro: %s", macro)
+	}
+	steps, err := macroHIDSteps(stored.Steps)
+	if err != nil {
+		return err
+	}
+	return rpcExecuteKeyboardMacro(steps)
+}
+
 func rpcCancelKeyboardMacro() {
 	cancelKeyboardMacro()
 }
@@ -1535,6 +1550,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardLayout":          {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":          {Func: getKeyboardMacros},
 	"setKeyboardMacros":          {Func: setKeyboardMacros, Params: []string{"params"}},
+	"runKeyboardMacro":           {Func: rpcRunKeyboardMacro, Params: []string{"macro"}},
 	"getLocalLoopbackOnly":       {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":       {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 	"getDefaultLogLevel":         {Func: rpcGetDefaultLogLevel},
