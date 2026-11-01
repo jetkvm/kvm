@@ -686,6 +686,12 @@ export default function WebRTCVideo({
       style.width = videoWidth / devicePixelRatio;
       style.height = videoHeight / devicePixelRatio;
       style.maxHeight = "100%";
+    } else if (videoWidth && videoHeight) {
+      // Fit to window: as wide as the container allows, or as wide as its
+      // height allows at the stream's aspect, whichever is smaller. The box
+      // is then the picture itself, scaled up or down.
+      style.width = `min(100%, calc(100cqh * ${videoWidth} / ${videoHeight}))`;
+      style.aspectRatio = `${videoWidth} / ${videoHeight}`;
     }
     return style;
   }, [
@@ -728,8 +734,9 @@ export default function WebRTCVideo({
                   <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}
-                      className="relative flex h-full w-full items-center justify-center"
+                      className="relative flex h-full w-full items-center justify-center [container-type:size]"
                     >
+                      {/* The element keeps the picture's own shape, so the pointer is only tracked over the picture. */}
                       <video
                         ref={videoElm}
                         autoPlay
@@ -741,7 +748,7 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx("h-full w-full object-contain transition-all duration-1000", {
+                        className={cx("max-h-full max-w-full transition-all duration-1000", {
                           "cursor-none": settings.isCursorHidden,
                           "pointer-events-none": isOcrMode,
                           "opacity-0!":
