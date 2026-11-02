@@ -72,15 +72,16 @@ type UsbGadget struct {
 	// nil uses os.OpenFile; overridden by lifecycle tests without device access.
 	hidOpenFile func(string, int, os.FileMode) (*os.File, error)
 
-	keyboardHidFile *os.File
-	keyboardLock    sync.Mutex
-	wakeHidFile     *os.File
-	wakeHidLock     sync.Mutex
-	absMouseHidFile *os.File
-	absMouseLock    sync.Mutex
-	absMousePressed bool
-	relMouseHidFile *os.File
-	relMouseLock    sync.Mutex
+	keyboardHidFile      *os.File
+	keyboardLock         sync.Mutex
+	wakeHidFile          *os.File
+	wakeHidLock          sync.Mutex
+	absMouseHidFile      *os.File
+	absMouseLock         sync.Mutex
+	absMousePressed      bool
+	absMouseX, absMouseY int // Last successful absolute report; protected by absMouseLock.
+	relMouseHidFile      *os.File
+	relMouseLock         sync.Mutex
 
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)

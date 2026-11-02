@@ -109,6 +109,24 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
+	return u.absMouseReportLocked(x, y, buttons)
+}
+
+// ReleaseAbsoluteMouseButtons preserves the last successfully reported position.
+// A session that never pressed an absolute button must not move the pointer.
+func (u *UsbGadget) ReleaseAbsoluteMouseButtons() error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+	u.absMouseLock.Lock()
+	defer u.absMouseLock.Unlock()
+	if !u.enabledDevices.AbsoluteMouse || !u.absMousePressed {
+		return nil
+	}
+	return u.absMouseReportLocked(u.absMouseX, u.absMouseY, 0)
+}
+
+// Caller holds lifecycle admission and absMouseLock.
+func (u *UsbGadget) absMouseReportLocked(x, y int, buttons uint8) error {
 	err := u.absMouseWriteHidFile([]byte{
 		1,            // Report ID 1
 		buttons,      // Buttons
@@ -120,6 +138,8 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	if err != nil {
 		return err
 	}
+
+	u.absMouseX, u.absMouseY = x, y
 
 	if pressed := buttons != 0; pressed != u.absMousePressed {
 		u.absMousePressed = pressed
