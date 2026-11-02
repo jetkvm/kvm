@@ -2,11 +2,12 @@ package usbgadget
 
 import (
 	"errors"
-	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Stock writeWithTimeout deliberately swallows deadlines. A subsequent hard
