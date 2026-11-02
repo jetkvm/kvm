@@ -56,12 +56,14 @@ func TestLateMacroCompletionPreservesReplacementCancellation(t *testing.T) {
 	var onceOld, onceNew sync.Once
 	unblockOld := func() { onceOld.Do(func() { close(releaseOld) }) }
 	unblockNew := func() { onceNew.Do(func() { close(releaseNew) }) }
+	var oldContext context.Context
 	enteredOld, enteredNew, cancelledNew, extraStep := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
 	runKeyboardMacroSteps = func(ctx context.Context, steps []hidrpc.KeyboardMacroStep, session *Session) error {
 		if steps[0].Keys[0] == 4 {
 			if session != oldSession {
 				t.Error("old macro lost its caller")
 			}
+			oldContext = ctx
 			close(enteredOld)
 			<-releaseOld
 			return ctx.Err()
@@ -96,6 +98,9 @@ func TestLateMacroCompletionPreservesReplacementCancellation(t *testing.T) {
 	macroOwnershipWait(t, enteredOld)
 	newDone = macroOwnershipDispatch(t, replacement, 5)
 	macroOwnershipWait(t, enteredNew)
+	if oldContext.Err() != context.Canceled {
+		t.Fatal("replacement entry did not cancel old runner context")
+	}
 	unblockOld()
 	macroOwnershipWait(t, oldDone) // Join the entire real completion, not just its runner.
 	log := zerolog.Nop()
@@ -115,7 +120,7 @@ func TestLateMacroCompletionPreservesReplacementCancellation(t *testing.T) {
 	}
 }
 
-func TestLegacyMacroWrappersPreserveExecutionAndCancellation(t *testing.T) {
+func TestMacroCompletionRetiresContextAndCancellationSlot(t *testing.T) {
 	oldCurrent, oldRunner := currentSession, runKeyboardMacroSteps
 	session := &Session{done: make(chan struct{})}
 	currentSession = session
@@ -123,12 +128,12 @@ func TestLegacyMacroWrappersPreserveExecutionAndCancellation(t *testing.T) {
 	runKeyboardMacroSteps = func(ctx context.Context, steps []hidrpc.KeyboardMacroStep, caller *Session) error {
 		running = ctx
 		if caller != session || ctx.Err() != nil {
-			t.Fatal("legacy execution wrapper lost live context/caller")
+			t.Fatal("owned execution lost live context/caller")
 		}
 		return nil
 	}
 	t.Cleanup(func() { setKeyboardMacroCancel(nil); currentSession, runKeyboardMacroSteps = oldCurrent, oldRunner })
-	if err := rpcExecuteKeyboardMacro(nil); err != nil {
+	if err := executeKeyboardMacroForSession(nil, session); err != nil {
 		t.Fatal(err)
 	}
 	if running == nil || running.Err() != context.Canceled {
@@ -140,8 +145,8 @@ func TestLegacyMacroWrappersPreserveExecutionAndCancellation(t *testing.T) {
 	if !slotCleared {
 		t.Fatal("completed macro retained cancellation slot")
 	}
-	// Empty input executes the real legacy step wrapper without keyboard IO.
-	if err := rpcDoExecuteKeyboardMacro(context.Background(), nil); err != nil {
+	// Empty input executes the real session-aware step runner without keyboard IO.
+	if err := doExecuteKeyboardMacroForSession(context.Background(), nil, session); err != nil {
 		t.Fatal(err)
 	}
 }
