@@ -944,7 +944,7 @@ func handleSetup(c *gin.Context) {
 
 		config.HashedPassword = string(hashedPassword)
 		config.LocalAuthToken = uuid.New().String()
-	touchAuthActivity()
+		touchAuthActivity()
 
 		// Set the cookie
 		c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
