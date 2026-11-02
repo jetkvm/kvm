@@ -152,19 +152,36 @@ function KeyboardWrapper() {
       // handle the fake key-macros we have defined for common combinations
       if (key === "CtrlAltDelete") {
         await executeMacro([
-          { keys: ["Delete"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 },
+          {
+            keys: ["Delete"],
+            modifiers: ["ControlLeft", "AltLeft"],
+            delay: 100,
+            pressInSequence: true,
+          },
         ]);
         return;
       }
 
       if (key === "AltMetaEscape") {
-        await executeMacro([{ keys: ["Escape"], modifiers: ["AltLeft", "MetaLeft"], delay: 100 }]);
+        await executeMacro([
+          {
+            keys: ["Escape"],
+            modifiers: ["AltLeft", "MetaLeft"],
+            delay: 100,
+            pressInSequence: true,
+          },
+        ]);
         return;
       }
 
       if (key === "CtrlAltBackspace") {
         await executeMacro([
-          { keys: ["Backspace"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 },
+          {
+            keys: ["Backspace"],
+            modifiers: ["ControlLeft", "AltLeft"],
+            delay: 100,
+            pressInSequence: true,
+          },
         ]);
         return;
       }

@@ -44,6 +44,48 @@ export interface MacroStep {
   keys: string[] | null;
   modifiers: string[] | null;
   delay: number;
+  // Press the modifiers one at a time, then the keys, and release in reverse
+  // order, the way a physical keyboard does. Without it, everything in the
+  // step is pressed in a single report and held for 20 ms.
+  pressInSequence?: boolean;
+}
+
+// Timing for steps with pressInSequence. Some hosts (seen on an HP laptop
+// running Windows 11, jetkvm/kvm#1737) ignore Ctrl+Alt+Delete when it arrives
+// as one 20 ms report, but accept it when the modifiers go down first and the
+// key is held a little longer.
+const SEQUENCE_PRESS_STAGE_MS = 80;
+const SEQUENCE_KEY_HOLD_MS = 150;
+const SEQUENCE_RELEASE_STAGE_MS = 50;
+
+// expandMacroStep turns one macro step into the reports that press its keys.
+// The caller appends the report that releases everything.
+function expandMacroStep(
+  step: MacroStep,
+  keyValues: number[],
+  modifierMasks: number[],
+): KeyboardMacroStep[] {
+  const modifierMask = modifierMasks.reduce((acc, val) => acc + val, 0);
+  if (!step.pressInSequence) {
+    return [{ keys: [...keyValues], modifier: modifierMask, delay: 20 }];
+  }
+
+  const reports: KeyboardMacroStep[] = [];
+  const held: number[] = [];
+  let mask = 0;
+  for (const modifier of modifierMasks) {
+    mask |= modifier;
+    held.push(mask);
+    reports.push({ keys: [], modifier: mask, delay: SEQUENCE_PRESS_STAGE_MS });
+  }
+  if (keyValues.length > 0) {
+    reports.push({ keys: [...keyValues], modifier: mask, delay: SEQUENCE_KEY_HOLD_MS });
+    reports.push({ keys: [], modifier: mask, delay: SEQUENCE_RELEASE_STAGE_MS });
+  }
+  for (let i = held.length - 2; i >= 0; i--) {
+    reports.push({ keys: [], modifier: held[i], delay: SEQUENCE_RELEASE_STAGE_MS });
+  }
+  return reports;
 }
 
 export type MacroSteps = MacroStep[];
@@ -335,15 +377,11 @@ export default function useKeyboard() {
 
       for (const [_, step] of steps.entries()) {
         const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
-        const modifierMask: number = (step.modifiers || [])
-
-          .map(mod => modifiers[mod])
-
-          .reduce((acc, val) => acc + val, 0);
+        const modifierMasks = (step.modifiers || []).map(mod => modifiers[mod]).filter(Boolean);
 
         // If the step has keys and/or modifiers, press them and hold for the delay
-        if (keyValues.length > 0 || modifierMask > 0) {
-          macro.push({ keys: keyValues, modifier: modifierMask, delay: 20 });
+        if (keyValues.length > 0 || modifierMasks.length > 0) {
+          macro.push(...expandMacroStep(step, keyValues, modifierMasks));
           macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
         }
       }
@@ -441,13 +479,14 @@ export default function useKeyboard() {
 
       for (const [_, step] of steps.entries()) {
         const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
-        const modifierMask: number = (step.modifiers || [])
-          .map(mod => modifiers[mod])
-          .reduce((acc, val) => acc + val, 0);
+        const modifierMasks = (step.modifiers || []).map(mod => modifiers[mod]).filter(Boolean);
 
         // If the step has keys and/or modifiers, press them and hold for the delay
-        if (keyValues.length > 0 || modifierMask > 0) {
-          promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
+        if (keyValues.length > 0 || modifierMasks.length > 0) {
+          for (const report of expandMacroStep(step, keyValues, modifierMasks)) {
+            promises.push(() => sendKeystrokeLegacy(report.keys, report.modifier, ac));
+            if (step.pressInSequence) promises.push(() => sleep(report.delay));
+          }
           promises.push(() => resetKeyboardState());
           promises.push(() => sleep(step.delay || 100));
         }
