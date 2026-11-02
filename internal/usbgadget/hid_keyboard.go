@@ -474,6 +474,7 @@ func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error
 		return err
 	}
 
+	u.keyboardLastWritePath = u.keyboardHidFile.Name()
 	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
@@ -706,17 +707,16 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 
 func (u *UsbGadget) KeyboardWriteTimeoutStreak() int {
 	u.keyboardLock.Lock()
-	file := u.keyboardHidFile
-	u.keyboardLock.Unlock()
-
-	if file == nil {
-		return 0
+	name := u.keyboardLastWritePath
+	if u.keyboardHidFile != nil {
+		name = u.keyboardHidFile.Name()
 	}
+	u.keyboardLock.Unlock()
 
 	u.hidWriteStreakLock.Lock()
 	defer u.hidWriteStreakLock.Unlock()
 
-	return u.hidWriteTimeoutStreaks[file.Name()]
+	return u.hidWriteTimeoutStreaks[name]
 }
 
 func (u *UsbGadget) VerifyKeyboardWritable() error {
