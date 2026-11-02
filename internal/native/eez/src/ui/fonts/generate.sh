@@ -20,4 +20,4 @@ gen book16 Inter-Regular.ttf 15 17 3
 gen book18 Inter-Regular.ttf 17 19 4
 gen book20 Inter-Regular.ttf 19 20 5
 gen book24 Inter-Regular.ttf 23 25 5
-gen bold30 Inter-Bold.ttf 27 31 6
+gen bold30 Inter-Bold.ttf 25 31 5
