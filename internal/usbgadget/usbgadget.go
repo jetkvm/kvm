@@ -81,6 +81,7 @@ type UsbGadget struct {
 	absMousePressed bool
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
+	relMouseButtons uint8 // Last accepted relative report buttons; protected by relMouseLock.
 
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
