@@ -1303,8 +1303,10 @@ func rpcEmitTestLog(level string) error {
 }
 
 var (
-	keyboardMacroCancel context.CancelFunc
-	keyboardMacroLock   sync.Mutex
+	keyboardMacroCancel     context.CancelFunc
+	keyboardMacroLock       sync.Mutex
+	keyboardMacroGeneration uint64
+	runKeyboardMacroSteps   = doExecuteKeyboardMacroForSession
 )
 
 // cancelKeyboardMacro cancels any ongoing keyboard macro execution
@@ -1323,33 +1325,46 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
+	keyboardMacroGeneration++
 	keyboardMacroCancel = cancel
 }
 
 func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
-	cancelKeyboardMacro()
+	return executeKeyboardMacroForSession(macro, currentSession)
+}
 
+func executeKeyboardMacroForSession(macro []hidrpc.KeyboardMacroStep, session *Session) error {
 	ctx, cancel := context.WithCancel(context.Background())
-	setKeyboardMacroCancel(cancel)
+	defer cancel()
 
-	s := hidrpc.KeyboardMacroState{
-		State:   true,
-		IsPaste: true,
+	keyboardMacroLock.Lock()
+	if keyboardMacroCancel != nil {
+		keyboardMacroCancel()
 	}
+	keyboardMacroGeneration++
+	generation := keyboardMacroGeneration
+	keyboardMacroCancel = cancel
 
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	s := hidrpc.KeyboardMacroState{State: true, IsPaste: true}
+	if session != nil {
+		session.reportHidRPCKeyboardMacroState(s)
 	}
+	keyboardMacroLock.Unlock()
 
-	err := rpcDoExecuteKeyboardMacro(ctx, macro)
+	err := runKeyboardMacroSteps(ctx, macro, session)
 
-	setKeyboardMacroCancel(nil)
-
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+	// Session workers are independent. A canceled old runner may finish only
+	// after its replacement has acquired the cancellation slot.
+	if keyboardMacroGeneration != generation {
+		return err
+	}
+	keyboardMacroCancel = nil
 	s.State = false
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	if session != nil {
+		session.reportHidRPCKeyboardMacroState(s)
 	}
-
 	return err
 }
 
@@ -1364,6 +1379,10 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 }
 
 func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+	return doExecuteKeyboardMacroForSession(ctx, macro, nil)
+}
+
+func doExecuteKeyboardMacroForSession(ctx context.Context, macro []hidrpc.KeyboardMacroStep, session *Session) error {
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
