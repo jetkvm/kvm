@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -214,6 +217,11 @@ func setupRouter() *gin.Engine {
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}
+
+	// Screenshot endpoints: for headless/API consumers (CI, HIL rigs), not the
+	// browser UI, so they use apiAuthMiddleware rather than cookie auth.
+	r.GET("/screenshot.jpg", apiAuthMiddleware(), handleScreenshotJPEG)
+	r.GET("/screenshot.png", apiAuthMiddleware(), handleScreenshotPNG)
 
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
@@ -572,6 +580,92 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+var (
+	verifiedBasicAuthMu   sync.RWMutex
+	verifiedBasicAuthHash string
+	verifiedBasicAuthSHA  [32]byte
+)
+
+func verifyBasicAuthPassword(password string) bool {
+	hashedPassword := config.HashedPassword
+	if hashedPassword == "" {
+		return false
+	}
+
+	pwSHA := sha256.Sum256([]byte(password))
+
+	verifiedBasicAuthMu.RLock()
+	cacheValid := verifiedBasicAuthHash == hashedPassword &&
+		subtle.ConstantTimeCompare(verifiedBasicAuthSHA[:], pwSHA[:]) == 1
+	verifiedBasicAuthMu.RUnlock()
+
+	if cacheValid {
+		return true
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err != nil {
+		return false
+	}
+
+	verifiedBasicAuthMu.Lock()
+	verifiedBasicAuthHash = hashedPassword
+	verifiedBasicAuthSHA = pwSHA
+	verifiedBasicAuthMu.Unlock()
+
+	return true
+}
+
+// apiAuthMiddleware gates endpoints meant for both headless/programmatic
+// access (CI, HIL test rigs) and the browser UI. In noPassword mode it lets
+// requests through with no credentials, same trusted-network assumption as
+// the cookie-protected routes. In password mode it accepts either the same
+// session cookie protectedMiddleware checks (so an already-logged-in tab can
+// just load the URL directly) or HTTP Basic Auth against the device
+// password with the username ignored (so a script can just
+// `curl -u api:<password>`). Basic Auth attempts are checked against
+// passwordRateLimiter, and successfully verified passwords are fast-path
+// cached as a SHA-256 digest tied to config.HashedPassword to avoid
+// continuous high-cost bcrypt operations on the low-power CPU.
+func apiAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		if authToken, err := c.Cookie("authToken"); err == nil && authToken != "" && authToken == config.LocalAuthToken {
+			c.Next()
+			return
+		}
+
+		ip := c.ClientIP()
+		if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error":       "Too many failed attempts. Please try again later.",
+				"retry_after": retryAfter,
+			})
+			return
+		}
+
+		_, password, ok := c.Request.BasicAuth()
+		if !ok {
+			c.Header("WWW-Authenticate", "Basic realm=\"JetKVM\"")
+			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Basic auth is required")
+			return
+		}
+
+		if !verifyBasicAuthPassword(password) {
+			passwordRateLimiter.RecordFailure(ip)
+			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
+			return
+		}
+
+		passwordRateLimiter.RecordSuccess(ip)
 		c.Next()
 	}
 }
