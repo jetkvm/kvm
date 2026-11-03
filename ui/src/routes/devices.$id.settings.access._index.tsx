@@ -58,6 +58,31 @@ export default function SettingsAccessIndexRoute() {
   const tls = useCapability("tls");
   const [tlsCert, setTlsCert] = useState<string>("");
   const [tlsKey, setTlsKey] = useState<string>("");
+  const [sessionTimeout, setSessionTimeout] = useState<string>("0");
+
+  useEffect(() => {
+    send("getLocalAuthSessionTimeout", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setSessionTimeout(String(resp.result as number));
+    });
+  }, [send]);
+
+  const handleSessionTimeoutChange = (value: string) => {
+    send(
+      "setLocalAuthSessionTimeout",
+      { timeoutMinutes: parseInt(value, 10) },
+      (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(
+            m.access_session_timeout_update_failed({ error: String(resp.error.data || "") }),
+          );
+          return;
+        }
+        setSessionTimeout(value);
+        notifications.success(m.access_session_timeout_updated());
+      },
+    );
+  };
 
   const getCloudState = useCallback(() => {
     send("getCloudState", {}, (resp: JsonRpcResponse) => {
@@ -298,6 +323,27 @@ export default function SettingsAccessIndexRoute() {
                 )}
               </SettingsItem>
             </>
+
+            {loaderData.authMode === "password" && (
+              <SettingsItem
+                title={m.access_session_timeout_title()}
+                description={m.access_session_timeout_description()}
+              >
+                <SelectMenuBasic
+                  size="SM"
+                  value={sessionTimeout}
+                  onChange={e => handleSessionTimeoutChange(e.target.value)}
+                  options={[
+                    { value: "0", label: m.access_session_timeout_never() },
+                    { value: "15", label: m.access_session_timeout_15_minutes() },
+                    { value: "30", label: m.access_session_timeout_30_minutes() },
+                    { value: "60", label: m.access_session_timeout_1_hour() },
+                    { value: "240", label: m.access_session_timeout_4_hours() },
+                    { value: "1440", label: m.access_session_timeout_1_day() },
+                  ]}
+                />
+              </SettingsItem>
+            )}
 
             {loaderData.authMode === "password" && (
               <SettingsItem
