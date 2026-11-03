@@ -13,6 +13,8 @@ import { m } from "@localizations/messages.js";
 export default function SettingsKeyboardRoute() {
   const { setKeyboardLayout } = useSettingsStore();
   const { showPressedKeys, setShowPressedKeys } = useSettingsStore();
+  const { pasteOnCtrlV, setPasteOnCtrlV, pasteOnCtrlShiftV, setPasteOnCtrlShiftV } =
+    useSettingsStore();
   const { selectedKeyboard, keyboardOptions } = useKeyboardLayout();
 
   const { send } = useJsonRpc();
@@ -75,6 +77,24 @@ export default function SettingsKeyboardRoute() {
           <Checkbox
             checked={showPressedKeys}
             onChange={e => setShowPressedKeys(e.target.checked)}
+          />
+        </SettingsItem>
+      </div>
+
+      <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+
+      <SettingsItem title={m.paste_section_title()} description={m.paste_section_description()} />
+      <div className="ml-2 space-y-4 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
+        <SettingsItem title={m.paste_shortcut_title()} description={m.paste_shortcut_description()}>
+          <Checkbox checked={pasteOnCtrlV} onChange={e => setPasteOnCtrlV(e.target.checked)} />
+        </SettingsItem>
+        <SettingsItem
+          title={m.paste_shortcut_shift_title()}
+          description={m.paste_shortcut_shift_description()}
+        >
+          <Checkbox
+            checked={pasteOnCtrlShiftV}
+            onChange={e => setPasteOnCtrlShiftV(e.target.checked)}
           />
         </SettingsItem>
       </div>
