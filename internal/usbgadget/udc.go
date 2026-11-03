@@ -114,12 +114,14 @@ func (u *UsbGadget) SoftReconnect() error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
-	if err := softDisconnect(u.udc); err != nil {
-		return err
-	}
-	// The host re-enumerates on reconnect, the same as after a rebind.
-	u.resetHidHandover()
-	return softConnect(u.udc)
+	return u.withHIDRebind(func() error {
+		if err := softDisconnect(u.udc); err != nil {
+			return err
+		}
+		// The host re-enumerates on reconnect, the same as after a rebind.
+		u.resetHidHandover()
+		return softConnect(u.udc)
+	})
 }
 
 func isHidgChardevHealthy() bool {
@@ -164,6 +166,10 @@ func (u *UsbGadget) rebindUsbWith(rebind func() error) error {
 
 // withHIDRebind requires configLock and excludes HID access during a rebind.
 func (u *UsbGadget) withHIDRebind(rebind func() error) error {
+	// Drain complete keyboard transactions before excluding descriptor access.
+	// Taking lifecycle first would deadlock a writer awaiting IO admission.
+	keyboardMutex.Lock()
+	defer keyboardMutex.Unlock()
 	u.hidLifecycle.Lock()
 	defer u.hidLifecycle.Unlock()
 	// An open may outlive its caller's timeout. It must return and close its
