@@ -43,7 +43,7 @@ int get_edid(uint8_t *edid, size_t max_size)
     memset(&v4l2_edid, 0, sizeof(v4l2_edid));
     v4l2_edid.pad = 0;
     v4l2_edid.start_block = 0;
-    v4l2_edid.blocks = 2;
+    v4l2_edid.blocks = max_size / 128;
     v4l2_edid.edid = edid;
 
     if (ioctl(fd, VIDIOC_G_EDID, &v4l2_edid) < 0)
@@ -54,6 +54,11 @@ int get_edid(uint8_t *edid, size_t max_size)
     }
 
     close(fd);
+    if (v4l2_edid.blocks == 0 || v4l2_edid.blocks > max_size / 128)
+    {
+        errno = EIO;
+        return -1;
+    }
     return v4l2_edid.blocks * 128;
 }
 
