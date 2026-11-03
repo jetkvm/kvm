@@ -88,6 +88,7 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 	defer audioLogger.Info().Msg("audio capture stopped")
 
 	sample := media.Sample{Duration: 20 * time.Millisecond}
+	lastPacket := time.Now()
 	consecutiveErrors := 0
 
 	for {
@@ -129,6 +130,14 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 		if len(payload) == 0 {
 			continue
 		}
+
+		// The host stops streaming while nothing plays; an empty sample
+		// moves the clock across the silence before this packet.
+		now := time.Now()
+		if skip := rtpClockSkip(now.Sub(lastPacket), sample.Duration); skip > 0 {
+			_ = track.WriteSample(media.Sample{Duration: skip})
+		}
+		lastPacket = now
 
 		sample.Data = payload
 		if err := track.WriteSample(sample); err != nil {

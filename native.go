@@ -12,6 +12,20 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
+// lastVideoFrameDuration is the pacing of the last normal frame, which the
+// first frame after a stall takes over. Frame callback only.
+var lastVideoFrameDuration = 16 * time.Millisecond
+
+// videoFrameTiming turns the time since the previous frame into how far the
+// RTP clock skips before this frame and the duration the frame itself gets.
+func videoFrameTiming(sinceLastFrame time.Duration) (skip, duration time.Duration) {
+	if skip = rtpClockSkip(sinceLastFrame, lastVideoFrameDuration); skip > 0 {
+		return skip, lastVideoFrameDuration
+	}
+	lastVideoFrameDuration = sinceLastFrame
+	return 0, sinceLastFrame
+}
+
 var (
 	nativeInstance native.NativeInterface
 	nativeCmdLock  = sync.Mutex{}
@@ -68,12 +82,18 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 				nativeLogger.Warn().Str("event", event).Msg("unknown rpc event received")
 			}
 		},
-		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
-			if currentSession != nil {
-				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
-				if err != nil {
-					nativeLogger.Warn().Err(err).Msg("error writing sample")
-				}
+		OnVideoFrameReceived: func(frame []byte, sinceLastFrame time.Duration) {
+			session := currentSession
+			if session == nil {
+				return
+			}
+			skip, duration := videoFrameTiming(sinceLastFrame)
+			if skip > 0 {
+				// An empty sample only moves the clock.
+				_ = session.VideoTrack.WriteSample(media.Sample{Duration: skip})
+			}
+			if err := session.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration}); err != nil {
+				nativeLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
