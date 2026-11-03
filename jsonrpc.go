@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -1218,10 +1219,28 @@ func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 		newMacros = append(newMacros, macro)
 	}
 
+	// IDs that disappear in this edit lose their Home Assistant buttons.
+	kept := make(map[string]bool, len(newMacros))
+	for _, macro := range newMacros {
+		kept[macro.ID] = true
+	}
+	var removed []string
+	for _, macro := range config.KeyboardMacros {
+		if !kept[macro.ID] {
+			removed = append(removed, macro.ID)
+		}
+	}
+
 	config.KeyboardMacros = newMacros
 
 	if err := SaveConfig(); err != nil {
 		return nil, err
+	}
+
+	// Keep the Home Assistant macro buttons in sync with the stored macros
+	if mqttManager != nil {
+		mqttManager.republishHADiscovery()
+		mqttManager.removeMacroDiscovery(removed)
 	}
 
 	return nil, nil
@@ -1305,6 +1324,14 @@ func rpcEmitTestLog(level string) error {
 var (
 	keyboardMacroCancel context.CancelFunc
 	keyboardMacroLock   sync.Mutex
+
+	// keyboardMacroRun serializes macro execution. Executions share
+	// keyboardMacroCancel and drive the same global HID gadget, so they must
+	// not overlap. Historically the only caller was the single WebRTC
+	// session's HID queue (inherently serial); MQTT keyboard commands add
+	// concurrent callers, so a new execution now cancels the running one and
+	// waits for it to unwind before starting, instead of interleaving reports.
+	keyboardMacroRun sync.Mutex
 )
 
 // cancelKeyboardMacro cancels any ongoing keyboard macro execution
@@ -1327,7 +1354,12 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 }
 
 func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
+	// Cancel any running macro, then wait for it to actually finish before
+	// starting this one — see keyboardMacroRun. cancelKeyboardMacro makes the
+	// in-flight macro return promptly at its next step, so this rarely blocks.
 	cancelKeyboardMacro()
+	keyboardMacroRun.Lock()
+	defer keyboardMacroRun.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	setKeyboardMacroCancel(cancel)
@@ -1351,6 +1383,20 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	}
 
 	return err
+}
+
+// rpcRunKeyboardMacro runs a stored macro by ID or case-insensitive name, the
+// way the MQTT command does, and returns when it has finished.
+func rpcRunKeyboardMacro(macro string) error {
+	stored, ok := findKeyboardMacro(strings.TrimSpace(macro))
+	if !ok {
+		return fmt.Errorf("unknown keyboard macro: %s", macro)
+	}
+	steps, err := macroHIDSteps(stored.Steps)
+	if err != nil {
+		return err
+	}
+	return rpcExecuteKeyboardMacro(steps)
 }
 
 func rpcCancelKeyboardMacro() {
@@ -1504,6 +1550,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardLayout":          {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":          {Func: getKeyboardMacros},
 	"setKeyboardMacros":          {Func: setKeyboardMacros, Params: []string{"params"}},
+	"runKeyboardMacro":           {Func: rpcRunKeyboardMacro, Params: []string{"macro"}},
 	"getLocalLoopbackOnly":       {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":       {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 	"getDefaultLogLevel":         {Func: rpcGetDefaultLogLevel},
