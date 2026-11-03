@@ -365,9 +365,10 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	file, err := u.openWithTimeout("/dev/hidg0", os.O_RDWR, 0666, 3*time.Second)
+	path := u.hidDevicePath("keyboard", "/dev/hidg0")
+	file, err := u.openWithTimeout(path, os.O_RDWR, 0666, 3*time.Second)
 	if err != nil {
-		return fmt.Errorf("failed to open hidg0: %w", err)
+		return fmt.Errorf("failed to open %s: %w", path, err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -386,9 +387,10 @@ func (u *UsbGadget) openWakeHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	file, err := u.openWithTimeout("/dev/hidg3", os.O_WRONLY, 0666, 3*time.Second)
+	path := u.hidDevicePath("wake_hid", "/dev/hidg3")
+	file, err := u.openWithTimeout(path, os.O_WRONLY, 0666, 3*time.Second)
 	if err != nil {
-		return fmt.Errorf("failed to open hidg3: %w", err)
+		return fmt.Errorf("failed to open %s: %w", path, err)
 	}
 
 	u.wakeHidFile = file
