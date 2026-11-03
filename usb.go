@@ -38,10 +38,6 @@ func initUsbGadget() {
 
 	setUSBRecoveryTimer(time.Now())
 
-	if present, known := gadget.IsUsbHostPresent(); known {
-		lastHostOK = present
-	}
-
 	go func() {
 		for {
 			checkUSBState()
@@ -147,8 +143,7 @@ var (
 	usbEmulationDesired     = true
 	lastUSBRecoveryTry      time.Time
 	lastHidWriteRecoveryTry time.Time
-	lastHostOK              bool
-	sessionlessSoftCycles   int
+	hostEnumerationWait     usbgadget.HostEnumerationWait
 	correctiveRebinds       int
 )
 
@@ -196,26 +191,39 @@ func attemptUSBRecovery(state string) string {
 
 	if udcBound && gadgetAttached {
 		hostPresent, hostKnown := gadget.IsUsbHostPresent()
-		hostOK := hostKnown && hostPresent
 
-		usbStateLock.Lock()
-		hostAppeared := hostOK && !lastHostOK
-		lastHostOK = hostOK
-		sessionlessSoftCycles++
-		escalate := hostOK && (sessionlessSoftCycles == 6 || sessionlessSoftCycles%60 == 0)
-		usbStateLock.Unlock()
-
-		if escalate {
+		switch {
+		case hostKnown && hostPresent:
+			// VBUS is up but the host controller is not talking to us: the
+			// host is booting or resetting. It enumerates the bound gadget by
+			// itself once its controller is back. Reconnecting or rebinding
+			// now races that enumeration and can leave a function (mass
+			// storage in particular) unresponsive for the whole session.
+			usbStateLock.Lock()
+			rebind := hostEnumerationWait.ShouldRebind(true, now)
+			usbStateLock.Unlock()
+			if !rebind {
+				usbLogger.Debug().Msg("host present but not enumerating; leaving the bound gadget alone")
+				return state
+			}
 			usbLogger.Warn().
-				Int("soft_cycles", sessionlessSoftCycles).
-				Msg("host present but no session after repeated soft reconnects; escalating to UDC rebind")
-		}
-
-		if !hostAppeared && !escalate {
-			usbLogger.Debug().
-				Bool("host_present", hostPresent).
-				Bool("host_known", hostKnown).
-				Msg("no USB host session; soft-reconnecting gadget")
+				Str("waited", usbgadget.USBHostEnumerationTimeout.String()).
+				Msg("host present but never enumerated the gadget; escalating to UDC rebind")
+		case hostKnown:
+			// No VBUS: there is nothing to reconnect to. Starting the
+			// controller without a host fails (dwc3: failed to enable
+			// ep0out) and can leave it unable to enumerate when the host
+			// powers on a moment later.
+			usbStateLock.Lock()
+			hostEnumerationWait.Reset()
+			usbStateLock.Unlock()
+			usbLogger.Debug().Msg("no USB host; leaving the bound gadget alone")
+			return state
+		default:
+			usbStateLock.Lock()
+			hostEnumerationWait.Reset()
+			usbStateLock.Unlock()
+			usbLogger.Debug().Msg("USB host presence unknown; soft-reconnecting gadget")
 			if err := gadget.SoftReconnect(); err == nil {
 				return gadget.GetUsbState()
 			}
@@ -227,6 +235,12 @@ func attemptUSBRecovery(state string) string {
 		Bool("udc_bound", udcBound).
 		Bool("gadget_attached", gadgetAttached).
 		Msg("USB gadget is detached while USB emulation should be enabled; rebinding USB gadget")
+
+	if !udcBound || !gadgetAttached {
+		usbStateLock.Lock()
+		hostEnumerationWait.Reset()
+		usbStateLock.Unlock()
+	}
 
 	if err := gadget.RebindUsb(true); err != nil {
 		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget by rebinding USB device controller")
@@ -394,6 +408,11 @@ func checkUSBState() {
 	if newState == usbgadget.USBStateNotAttached {
 		newState = attemptUSBRecovery(newState)
 	} else {
+		if usbgadget.IsUSBStateAttached(newState) {
+			usbStateLock.Lock()
+			hostEnumerationWait.Reset()
+			usbStateLock.Unlock()
+		}
 		newState = attemptHidWriteRecovery(newState)
 	}
 
@@ -414,7 +433,6 @@ func checkUSBState() {
 		openErr := gadget.OpenKeyboardHidFile()
 		if openErr == nil {
 			lastUSBRecoveryTry = time.Time{}
-			sessionlessSoftCycles = 0
 			correctiveRebinds = 0
 		} else {
 			now := time.Now()
