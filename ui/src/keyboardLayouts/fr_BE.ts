@@ -8,7 +8,7 @@ const isoCode = "nl-BE";
 const keyTrema: KeyCombo = { key: "BracketLeft", shift: true }; // tréma (umlaut), two dots placed above a vowel
 const keyHat: KeyCombo = { key: "BracketLeft" }; // accent circonflexe (accent hat), mark ^ placed above the letter
 const keyAcute: KeyCombo = { key: "Semicolon", altRight: true }; // accent aigu (acute accent), mark ´ placed above the letter
-const keyGrave: KeyCombo = { key: "Quote", shift: true }; // accent grave, mark ` placed above the letter
+const keyGrave: KeyCombo = { key: "Backslash", altRight: true }; // accent grave, mark ` placed above the letter
 const keyTilde: KeyCombo = { key: "Slash", altRight: true }; // tilde, mark ~ placed above the letter
 
 const chars = {
@@ -59,10 +59,10 @@ const chars = {
   Ù: { key: "KeyU", shift: true, accentKey: keyGrave },
   Ũ: { key: "KeyU", shift: true, accentKey: keyTilde },
   V: { key: "KeyV", shift: true },
-  W: { key: "KeyW", shift: true },
+  W: { key: "KeyZ", shift: true },
   X: { key: "KeyX", shift: true },
-  Y: { key: "KeyZ", shift: true },
-  Z: { key: "KeyY", shift: true },
+  Y: { key: "KeyY", shift: true },
+  Z: { key: "KeyW", shift: true },
   a: { key: "KeyQ" },
   ä: { key: "KeyQ", accentKey: keyTrema },
   â: { key: "KeyQ", accentKey: keyHat },
@@ -107,10 +107,10 @@ const chars = {
   ú: { key: "KeyU", accentKey: keyAcute },
   ũ: { key: "KeyU", accentKey: keyTilde },
   v: { key: "KeyV" },
-  w: { key: "KeyW" },
+  w: { key: "KeyZ" },
   x: { key: "KeyX" },
-  y: { key: "KeyZ" },
-  z: { key: "KeyY" },
+  y: { key: "KeyY" },
+  z: { key: "KeyW" },
   "²": { key: "Backquote" },
   "³": { key: "Backquote", shift: true },
   "&": { key: "Digit1" },
@@ -141,11 +141,11 @@ const chars = {
   "}": { key: "Digit0", altRight: true },
   ")": { key: "Minus" },
   "°": { key: "Minus", shift: true },
-  "-": { key: "Equal", deadKey: true },
+  "-": { key: "Equal" },
   _: { key: "Equal", shift: true },
   "[": { key: "BracketLeft", altRight: true },
   $: { key: "BracketRight" },
-  "*": { key: "BracketRight", altRight: true },
+  "*": { key: "BracketRight", shift: true },
   "]": { key: "BracketRight", altRight: true },
   ù: { key: "Quote" },
   "%": { key: "Quote", shift: true },
@@ -159,7 +159,7 @@ const chars = {
   "/": { key: "Period", shift: true },
   "=": { key: "Slash" },
   "+": { key: "Slash", shift: true },
-  "~": { key: "Slash", deadKey: true },
+  "~": { key: "Slash", deadKey: true, altRight: true },
   "<": { key: "IntlBackslash" },
   ">": { key: "IntlBackslash", shift: true },
   "\\": { key: "IntlBackslash", altRight: true },

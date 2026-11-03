@@ -7,9 +7,9 @@ const isoCode = "es-ES";
 
 const keyTrema: KeyCombo = { key: "Quote", shift: true }; // tréma (umlaut), two dots placed above a vowel
 const keyAcute: KeyCombo = { key: "Quote" }; // accent aigu (acute accent), mark ´ placed above the letter
-const keyHat: KeyCombo = { key: "BracketRight", shift: true }; // accent circonflexe (accent hat), mark ^ placed above the letter
-const keyGrave: KeyCombo = { key: "BracketRight" }; // accent grave, mark ` placed above the letter
-const keyTilde: KeyCombo = { key: "Key4", altRight: true }; // tilde, mark ~ placed above the letter
+const keyHat: KeyCombo = { key: "BracketLeft", shift: true }; // accent circonflexe (accent hat), mark ^ placed above the letter
+const keyGrave: KeyCombo = { key: "BracketLeft" }; // accent grave, mark ` placed above the letter
+const keyTilde: KeyCombo = { key: "Digit4", altRight: true }; // tilde, mark ~ placed above the letter
 
 const chars = {
   A: { key: "KeyA", shift: true },
@@ -144,7 +144,7 @@ const chars = {
   "=": { key: "Digit0", shift: true },
   "'": { key: "Minus" },
   "?": { key: "Minus", shift: true },
-  "¡": { key: "Equal", deadKey: true },
+  "¡": { key: "Equal" },
   "¿": { key: "Equal", shift: true },
   "[": { key: "BracketLeft", altRight: true },
   "+": { key: "BracketRight" },
