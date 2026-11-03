@@ -32,6 +32,7 @@ var (
 	wolLogger       = logging.GetSubsystemLogger("wol")
 	usbLogger       = logging.GetSubsystemLogger("usb")
 	tailscaleLogger = logging.GetSubsystemLogger("tailscale")
+	wireguardLogger = logging.GetSubsystemLogger("wireguard")
 	// external components
 	ginLogger = logging.GetSubsystemLogger("gin")
 )
