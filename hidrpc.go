@@ -12,6 +12,22 @@ import (
 )
 
 func handleHidRPCMessage(message hidrpc.Message, session *Session) {
+	if session == nil || session.isClosed() {
+		return
+	}
+	// A macro waits between writes; do not retain ordinary input admission
+	// across its sleeps. Its runner owns cancellation and per-step admission.
+	if message.Type() == hidrpc.TypeKeyboardMacroReport {
+		handleHidRPCMessageAdmitted(message, session)
+		return
+	}
+	_ = withSessionInput(session, func() error {
+		handleHidRPCMessageAdmitted(message, session)
+		return nil
+	})
+}
+
+func handleHidRPCMessageAdmitted(message hidrpc.Message, session *Session) {
 	var rpcErr error
 
 	switch message.Type() {
@@ -34,7 +50,7 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
 			return
 		}
-		rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+		rpcErr = executeKeyboardMacroForSession(keyboardMacroReport.Steps, session)
 	case hidrpc.TypeCancelKeyboardMacroReport:
 		rpcCancelKeyboardMacro()
 		return

@@ -100,6 +100,9 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 }
 
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
+	if session == nil || session.isClosed() {
+		return
+	}
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
 	if err != nil {
@@ -142,7 +145,20 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
+	var result any
+	switch request.Method {
+	case "absMouseReport", "relMouseReport", "wheelReport", "keyboardReport", "keypressReport", "wakeHost":
+		err = withSessionInput(session, func() error {
+			var callErr error
+			result, callErr = callRPCHandler(scopedLogger, handler, request.Params, session)
+			return callErr
+		})
+		if errors.Is(err, context.Canceled) && session.isClosed() {
+			return
+		}
+	default:
+		result, err = callRPCHandler(scopedLogger, handler, request.Params, session)
+	}
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -1326,30 +1342,33 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 	keyboardMacroCancel = cancel
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
-	cancelKeyboardMacro()
+var runKeyboardMacroSteps = doExecuteKeyboardMacroForSession
 
+func executeKeyboardMacroForSession(macro []hidrpc.KeyboardMacroStep, session *Session) error {
 	ctx, cancel := context.WithCancel(context.Background())
-	setKeyboardMacroCancel(cancel)
-
-	s := hidrpc.KeyboardMacroState{
-		State:   true,
-		IsPaste: true,
+	defer cancel()
+	state := hidrpc.KeyboardMacroState{State: true, IsPaste: true}
+	setup := func() error {
+		cancelKeyboardMacro()
+		setKeyboardMacroCancel(cancel)
+		if session != nil {
+			session.reportHidRPCKeyboardMacroState(state)
+		}
+		return nil
 	}
-
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	if session != nil {
+		if err := withSessionInput(session, setup); err != nil {
+			return err
+		}
+	} else {
+		_ = setup()
 	}
-
-	err := rpcDoExecuteKeyboardMacro(ctx, macro)
-
+	err := runKeyboardMacroSteps(ctx, macro, session)
 	setKeyboardMacroCancel(nil)
-
-	s.State = false
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	state.State = false
+	if session != nil {
+		session.reportHidRPCKeyboardMacroState(state)
 	}
-
 	return err
 }
 
@@ -1363,39 +1382,53 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
 }
 
-func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
-	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
-
-	for i, step := range macro {
-		delay := time.Duration(step.Delay) * time.Millisecond
-
-		err := rpcKeyboardReport(step.Modifier, step.Keys)
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
+func doExecuteKeyboardMacroForSession(ctx context.Context, macro []hidrpc.KeyboardMacroStep, session *Session) error {
+	return executeKeyboardMacroSteps(ctx, macro, session, func(modifier byte, keys []byte) error {
+		if err := rpcKeyboardReport(modifier, keys); err != nil {
 			return err
 		}
-
-		// notify the device that the keyboard state is being cleared
-		if isClearKeyStep(step) {
+		if isClearKeyStep(hidrpc.KeyboardMacroStep{Modifier: modifier, Keys: keys}) && gadget != nil {
 			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
 		}
+		return nil
+	})
+}
 
-		// Use context-aware sleep that can be cancelled
+// report is the HID transport boundary; session admission is taken only for IO.
+func executeKeyboardMacroSteps(ctx context.Context, macro []hidrpc.KeyboardMacroStep, session *Session, report func(byte, []byte) error) error {
+	var done <-chan struct{}
+	if session != nil {
+		done = session.done
+	}
+	input := func(write func() error) error {
+		if session != nil {
+			return withSessionInput(session, write)
+		}
+		return write()
+	}
+	for _, step := range macro {
+		err := input(func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return report(step.Modifier, step.Keys)
+		})
+		if err != nil {
+			return err
+		}
 		select {
-		case <-time.After(delay):
-			// Sleep completed normally
+		case <-time.After(time.Duration(step.Delay) * time.Millisecond):
+		case <-done:
+			return context.Canceled
 		case <-ctx.Done():
-			// make sure keyboard state is reset
-			err := rpcKeyboardReport(0, keyboardClearStateKeys)
-			if err != nil {
+			// A retired session's final neutral report already ran; never clear a
+			// replacement's keys from this old macro's cancellation cleanup.
+			if err := input(func() error { return report(0, keyboardClearStateKeys) }); err != nil && !errors.Is(err, context.Canceled) {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}
-
-			logger.Debug().Int("step", i).Msg("Keyboard macro cancelled during sleep")
 			return ctx.Err()
 		}
 	}
-
 	return nil
 }
 

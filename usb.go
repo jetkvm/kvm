@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -138,6 +139,40 @@ func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
 
 func rpcGetKeysDownState() (state usbgadget.KeysDownState) {
 	return gadget.GetKeysDownState()
+}
+
+// Attempt every enabled function even when another release fails.
+func rpcReleaseHIDInputs() error {
+	devices := effectiveUsbDevices()
+	if devices == nil || gadget == nil {
+		return nil
+	}
+	if !usbReadyForHidReports() {
+		return nil
+	}
+	// Keep every release error; classifying a joined error as transient could
+	// otherwise suppress another function's permanent failure.
+	return releaseHIDInputs(devices, gadget)
+}
+
+type hidInputReleaser interface {
+	KeyboardReport(byte, []byte) error
+	RelMouseReport(int8, int8, uint8) error
+	ReleaseAbsoluteMouseButtons() error
+}
+
+func releaseHIDInputs(devices *usbgadget.Devices, target hidInputReleaser) error {
+	var keyboardErr, relativeErr, absoluteErr error
+	if devices.Keyboard {
+		keyboardErr = target.KeyboardReport(0, keyboardClearStateKeys)
+	}
+	if devices.RelativeMouse {
+		relativeErr = target.RelMouseReport(0, 0, 0)
+	}
+	if devices.AbsoluteMouse {
+		absoluteErr = target.ReleaseAbsoluteMouseButtons()
+	}
+	return errors.Join(keyboardErr, relativeErr, absoluteErr)
 }
 
 var (
