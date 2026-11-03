@@ -141,3 +141,8 @@ func videoGetStreamingStatus() VideoStreamingStatus {
 func crash() {
 	panicPlatformNotSupported()
 }
+
+func videoCaptureJPEG() ([]byte, error) {
+	panicPlatformNotSupported()
+	return nil, nil
+}
