@@ -61,6 +61,7 @@ const SettingsMqttRoute = lazy(() => import("@routes/devices.$id.settings.mqtt")
 const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
 const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
 const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
+const SerialWebConsoleRoute = lazy(() => import("@routes/serial"));
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -264,6 +265,15 @@ if (isOnDevice) {
           path: "/",
           errorElement: <ErrorBoundary />,
         }),
+        {
+          path: "/serial",
+          element: <SerialWebConsoleRoute />,
+          loader: async () => {
+            await checkDeviceAuth();
+            return null;
+          },
+          errorElement: <ErrorBoundary />,
+        },
         {
           path: "/adopt",
           element: <AdoptRoute />,
