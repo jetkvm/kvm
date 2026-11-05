@@ -7,12 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/internal/websecure"
 )
 
 const (
+	// webSecureReadHeaderTimeout bounds how long a client may take to send its
+	// request headers, so slow clients cannot hold connections open forever.
+	webSecureReadHeaderTimeout = 10 * time.Second
+
 	tlsStorePath                     = "/userdata/jetkvm/tls"
 	webSecureSelfSignedDefaultDomain = "jetkvm.local"
 	webSecureSelfSignedCAName        = "JetKVM Self-Signed CA"
@@ -164,8 +169,9 @@ func runWebSecureServer() {
 	bindAddress := getBindAddress(443)
 
 	server := &http.Server{
-		Addr:    bindAddress,
-		Handler: r,
+		Addr:              bindAddress,
+		Handler:           r,
+		ReadHeaderTimeout: webSecureReadHeaderTimeout,
 		TLSConfig: &tls.Config{
 			MaxVersion:       tls.VersionTLS13,
 			CurvePreferences: []tls.CurveID{},
