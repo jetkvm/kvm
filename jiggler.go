@@ -1,12 +1,15 @@
 package kvm
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 	_ "time/tzdata"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/jetkvm/kvm/internal/timesync"
 	"github.com/jetkvm/kvm/internal/tzdata"
 )
 
@@ -19,6 +22,14 @@ type JigglerConfig struct {
 
 var jobDelta time.Duration = 0
 var scheduler gocron.Scheduler = nil
+
+// schedulerLock serialises scheduler replacement, and guards the flag below.
+var schedulerLock sync.Mutex
+
+// jigglerSchedulePending is set between time sync announcing a clock jump and
+// completing it. A config change arriving in that window must not build the
+// schedule itself, or it would put it on the clock that is about to change.
+var jigglerSchedulePending bool
 
 func rpcSetJigglerState(enabled bool) error {
 	config.JigglerEnabled = enabled
@@ -47,38 +58,128 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
 	logger.Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
 	config.JigglerConfig = &jigglerConfig
-	err := removeExistingCrobJobs(scheduler)
-	if err != nil {
-		return fmt.Errorf("error removing cron jobs from scheduler %v", err)
+	if err := rebuildJigglerCronTab(); err != nil {
+		return err
 	}
-	err = runJigglerCronTab()
-	if err != nil {
-		return fmt.Errorf("error scheduling jiggler crontab: %v", err)
-	}
-	err = SaveConfig()
+	err := SaveConfig()
 	if err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
 }
 
-func removeExistingCrobJobs(s gocron.Scheduler) error {
-	for _, j := range s.Jobs() {
-		err := s.RemoveJob(j.ID())
-		if err != nil {
-			return err
-		}
+// shutdownJigglerSchedulerLocked stops the current scheduler, if there is one.
+// Caller must hold schedulerLock. gocron cancels the scheduler before it waits
+// for a running job, so a job finishing afterwards is not rescheduled: that is
+// what makes stopping ahead of a clock jump safe. The wait is bounded by
+// gocron's stop timeout, so this cannot hang on a catch-up walk either.
+func shutdownJigglerSchedulerLocked() {
+	if scheduler == nil {
+		return
 	}
-	return nil
+	if err := scheduler.Shutdown(); err != nil {
+		logger.Warn().Err(err).Msg("jiggler scheduler did not stop cleanly")
+	}
+	scheduler = nil
 }
+
+// jigglerClockJumpLimit is the smallest clock change worth rebuilding the
+// schedule for. The hourly NTP corrections are milliseconds and gocron absorbs
+// them; anything larger costs it a catch-up step per schedule interval skipped.
+const jigglerClockJumpLimit = time.Minute
 
 func initJiggler() {
 	ensureConfigLoaded()
-	err := runJigglerCronTab()
-	if err != nil {
-		logger.Error().Msgf("Error scheduling jiggler crontab: %v", err)
+
+	// A cold boot starts at the UNIX epoch (no battery-backed RTC) and time
+	// sync later jumps the clock forward by decades. gocron reacts to a
+	// next-run in the past by walking the cron expression forward one step at
+	// a time: ~30M steps from 1970 for a per-minute schedule, over an hour of
+	// pegged CPU with no jiggles, and it cannot be interrupted once started.
+	//
+	// Time sync tells us before it moves the clock, so the schedule is torn
+	// down on the old clock and rebuilt on the new one, whenever the jump
+	// happens. Until then a schedule on the epoch clock is harmless: it
+	// jiggles on time, and the inactivity check is monotonic. Register the
+	// hook before building, so a sync landing in between is not missed.
+	if timeSync != nil {
+		timeSync.SetClockHook(timesync.ClockHook{
+			Before: jigglerBeforeClockSet,
+			After:  jigglerAfterClockSet,
+		})
+	}
+	startJigglerCronTab()
+}
+
+// jigglerBeforeClockSet runs on the old clock, just before time sync moves it.
+// A schedule built on the old clock must not see a large jump: gocron would
+// walk the cron expression from the old time to the new one inside its event
+// loop. So the schedule is stopped here and rebuilt by jigglerAfterClockSet.
+// Marking it pending keeps a config change arriving in between from building
+// on the old clock.
+func jigglerBeforeClockSet(jump time.Duration) {
+	if jump.Abs() < jigglerClockJumpLimit {
 		return
 	}
+	schedulerLock.Lock()
+	defer schedulerLock.Unlock()
+
+	logger.Info().Dur("jump", jump).Msg("clock about to jump, stopping jiggler schedule")
+	jigglerSchedulePending = true
+	shutdownJigglerSchedulerLocked()
+}
+
+// jigglerAfterClockSet runs on the new clock. It rebuilds the schedule that
+// jigglerBeforeClockSet stopped, and leaves a running one alone otherwise.
+func jigglerAfterClockSet(jump time.Duration) {
+	schedulerLock.Lock()
+	defer schedulerLock.Unlock()
+
+	if !jigglerSchedulePending {
+		return
+	}
+	logger.Info().Dur("jump", jump).Msg("clock set, building jiggler schedule")
+	buildJigglerCronTabLocked()
+}
+
+func startJigglerCronTab() {
+	schedulerLock.Lock()
+	defer schedulerLock.Unlock()
+
+	buildJigglerCronTabLocked()
+}
+
+// buildJigglerCronTabLocked builds the schedule from the current config on the
+// current clock, replacing any existing one. Caller must hold schedulerLock.
+func buildJigglerCronTabLocked() {
+	jigglerSchedulePending = false
+	if err := replaceJigglerCronTabLocked(); err != nil {
+		logger.Error().Err(err).Msg("error scheduling jiggler crontab")
+	}
+}
+
+// rebuildJigglerCronTab rebuilds the schedule from the current config, unless
+// a build is pending: doing it now would put the schedule on a clock that is
+// about to change. The pending build reads the config when it runs, so the new
+// settings still apply.
+func rebuildJigglerCronTab() error {
+	schedulerLock.Lock()
+	defer schedulerLock.Unlock()
+
+	if jigglerSchedulePending {
+		logger.Info().Msg("clock is changing, jiggler config saved for the pending schedule")
+		return nil
+	}
+	return replaceJigglerCronTabLocked()
+}
+
+// replaceJigglerCronTabLocked rebuilds the schedule. Caller must hold schedulerLock.
+func replaceJigglerCronTabLocked() error {
+	shutdownJigglerSchedulerLocked()
+	if err := runJigglerCronTab(); err != nil {
+		return fmt.Errorf("error scheduling jiggler crontab: %w", err)
+	}
+	return nil
 }
 
 func runJigglerCronTab() error {
@@ -105,11 +206,7 @@ func runJigglerCronTab() error {
 			cronTab,
 			true,
 		),
-		gocron.NewTask(
-			func() {
-				runJiggler()
-			},
-		),
+		gocron.NewTask(runJiggler),
 	)
 	if err != nil {
 		return err
@@ -124,11 +221,17 @@ func runJigglerCronTab() error {
 	return nil
 }
 
-func runJiggler() {
+// runJiggler is the scheduled task. gocron passes the job's context and cancels
+// it when the schedule is replaced, on a config change or a clock jump, so the
+// jitter wait must not outlive that: the replacement would otherwise block on
+// it for gocron's stop timeout.
+func runJiggler(ctx context.Context) {
 	if config.JigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
-			time.Sleep(jitter)
+			if !waitUnlessCancelled(ctx, jitter) {
+				return
+			}
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
@@ -148,6 +251,18 @@ func runJiggler() {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
 		}
+	}
+}
+
+// waitUnlessCancelled waits for d, reporting false if ctx is cancelled first.
+func waitUnlessCancelled(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
