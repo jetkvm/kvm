@@ -563,8 +563,9 @@ func (m *MQTTManager) startPeriodicStatusUpdates(interval time.Duration) {
 				// Publish current ATX state only if ATX extension is active
 				if config.ActiveExtension == "atx-power" {
 					m.publishATXState(ATXState{
-						Power: ledPWRState.Load(),
-						HDD:   ledHDDState.Load(),
+						Power:      ledPWRState.Load(),
+						HDD:        ledHDDState.Load(),
+						Responsive: atxBoardResponsive(),
 					})
 				}
 
