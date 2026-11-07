@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -60,9 +61,11 @@ type ChangePasswordRequest struct {
 }
 
 type LocalDevice struct {
-	AuthMode     *string `json:"authMode"`
-	DeviceID     string  `json:"deviceId"`
-	LoopbackOnly bool    `json:"loopbackOnly"`
+	AuthMode            *string     `json:"authMode"`
+	DeviceID            string      `json:"deviceId"`
+	LoopbackOnly        bool        `json:"loopbackOnly"`
+	LastLogin           *LocalLogin `json:"lastLogin,omitempty"`
+	FailedLoginAttempts uint32      `json:"failedLoginAttempts"`
 }
 
 type DeviceStatus struct {
@@ -456,6 +459,9 @@ func handleWebRTCSignalWsMessages(
 	}
 }
 
+// Kept in memory only, so that failed logins never cause a flash write.
+var failedLoginAttempts atomic.Uint32
+
 func handleLogin(c *gin.Context) {
 	if config.LocalAuthMode == "noPassword" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Login is disabled in noPassword mode"})
@@ -483,6 +489,7 @@ func handleLogin(c *gin.Context) {
 	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
 	if err != nil {
 		passwordRateLimiter.RecordFailure(ip)
+		failedLoginAttempts.Add(1)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
@@ -491,11 +498,13 @@ func handleLogin(c *gin.Context) {
 	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
+	config.LastLocalLogin = &LocalLogin{Time: time.Now(), IP: ip}
 
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
+	failedLoginAttempts.Store(0)
 
 	// Set the cookie
 	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
@@ -619,6 +628,10 @@ func handleDevice(c *gin.Context) {
 		AuthMode:     &config.LocalAuthMode,
 		DeviceID:     GetDeviceID(),
 		LoopbackOnly: config.LocalLoopbackOnly,
+	}
+	if config.LocalAuthMode == "password" {
+		response.LastLogin = config.LastLocalLogin
+		response.FailedLoginAttempts = failedLoginAttempts.Load()
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -754,10 +767,12 @@ func handleDeletePassword(c *gin.Context) {
 	config.HashedPassword = ""
 	config.LocalAuthToken = ""
 	config.LocalAuthMode = "noPassword"
+	config.LastLocalLogin = nil
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
+	failedLoginAttempts.Store(0)
 
 	c.SetCookie("authToken", "", -1, "/", "", false, true)
 

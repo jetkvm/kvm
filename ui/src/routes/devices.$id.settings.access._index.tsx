@@ -18,6 +18,7 @@ import api from "@/api";
 import notifications from "@/notifications";
 import { DEVICE_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
+import { formatters } from "@/utils";
 import { m } from "@localizations/messages.js";
 
 import { LocalDevice } from "./devices.$id";
@@ -298,6 +299,34 @@ export default function SettingsAccessIndexRoute() {
                 )}
               </SettingsItem>
             </>
+
+            {loaderData.authMode === "password" && (
+              <SettingsItem
+                title={m.access_last_login_title()}
+                description={
+                  loaderData.lastLogin
+                    ? m.access_last_login_description({
+                        time: formatters.date(new Date(loaderData.lastLogin.time), {
+                          month: "short",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        }),
+                        ip: loaderData.lastLogin.ip,
+                      })
+                    : m.access_last_login_none()
+                }
+              >
+                <span
+                  className={
+                    loaderData.failedLoginAttempts
+                      ? "text-sm font-medium text-red-600 dark:text-red-400"
+                      : "text-sm text-slate-700 dark:text-slate-300"
+                  }
+                >
+                  {m.access_failed_login_attempts({ count: loaderData.failedLoginAttempts ?? 0 })}
+                </span>
+              </SettingsItem>
+            )}
 
             {loaderData.authMode === "password" && (
               <SettingsItem

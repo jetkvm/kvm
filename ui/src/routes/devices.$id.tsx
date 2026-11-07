@@ -83,6 +83,8 @@ interface CloudLoaderResp {
 export interface LocalDevice {
   authMode: AuthMode;
   deviceId: string;
+  lastLogin?: { time: string; ip: string };
+  failedLoginAttempts?: number;
 }
 
 const deviceLoader = async () => {
