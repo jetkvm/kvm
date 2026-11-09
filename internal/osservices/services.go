@@ -580,15 +580,37 @@ func (s *Session) FileAvailable() bool {
 // quoteName quotes a name for an error message: quotes, backslashes, control
 // characters and the bytes of invalid UTF-8 escaped, cut at a character.
 func quoteName(name string) string {
-	quoted := fmt.Sprintf("%q", name)
-	if len(quoted) > 70 {
-		cut := 64
-		for cut > 0 && quoted[cut]&0xc0 == 0x80 {
-			cut--
+	const hex = "0123456789abcdef"
+	valid := UTF8Valid([]byte(name))
+	out := []byte{'"'}
+	for i := 0; i < len(name); {
+		c := name[i]
+		unit := 1
+		if valid && c >= 0xc0 {
+			unit = 2
+			if c >= 0xf0 {
+				unit = 4
+			} else if c >= 0xe0 {
+				unit = 3
+			}
 		}
-		quoted = quoted[:cut] + `..."`
+		// Room for this character, "...", the closing quote and the C
+		// terminator in the Mini's 72-byte buffer.
+		if len(out)+4+3+2 > 72 {
+			out = append(out, "..."...)
+			break
+		}
+		switch {
+		case c == '"' || c == '\\':
+			out = append(out, '\\', c)
+		case c < 0x20 || c == 0x7f || (c >= 0x80 && !valid):
+			out = append(out, '\\', 'x', hex[c>>4], hex[c&0x0f])
+		default:
+			out = append(out, name[i:i+unit]...)
+		}
+		i += unit
 	}
-	return quoted
+	return string(append(out, '"'))
 }
 
 // FileDrop offers files to the sender in one file.drop. It returns the drop
