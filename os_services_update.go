@@ -13,7 +13,3 @@ func osServicesUpdateState(osservices.State) any { return nil }
 func rpcGuestUpdateStart() error {
 	return errors.New("no OS Services release is known")
 }
-
-func rpcMountBuiltinInstaller() error {
-	return errors.New("the OS Services installer is not available")
-}
