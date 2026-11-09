@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { useDeviceStore } from "@hooks/stores";
+import { useCapability, useDeviceStore } from "@hooks/stores";
 import { Button } from "@components/Button";
 import Checkbox from "@components/Checkbox";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
@@ -17,6 +17,8 @@ export default function SettingsGeneralRoute() {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const [autoUpdate, setAutoUpdate] = useState(true);
+  // Auto-update also updates OS Services on the connected computer.
+  const osServices = useCapability("os_services");
   const currentVersions = useDeviceStore(state => {
     const { appVersion, systemVersion } = state;
     // appVersion is "" once known on a device with no separate app.
@@ -131,7 +133,11 @@ export default function SettingsGeneralRoute() {
           <div className="space-y-4">
             <SettingsItem
               title={m.general_auto_update_title()}
-              description={m.general_auto_update_description()}
+              description={
+                osServices
+                  ? m.general_auto_update_description_os_services()
+                  : m.general_auto_update_description()
+              }
             >
               <Checkbox
                 checked={autoUpdate}

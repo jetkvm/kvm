@@ -23,14 +23,17 @@ import {
   NetworkState,
   OtaState,
   PostRebootAction,
+  StorageDownloadState,
   USBStates,
   useHidStore,
+  useStorageDownloadStore,
   useNetworkStateStore,
   User,
   useRTCStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
+  RpcVideoState,
   VideoState,
   useFailsafeModeStore,
   useSettingsStore,
@@ -53,6 +56,8 @@ const ConnectionStatsSidebar = lazy(() => import("@components/sidebar/connection
 const Terminal = lazy(() => import("@components/Terminal"));
 const UpdateInProgressStatusCard = lazy(() => import("@components/UpdateInProgressStatusCard"));
 import Modal from "@components/Modal";
+import GuestFileTransferStatusCard from "@components/GuestFileTransferStatusCard";
+import GuestUpdateStatusCard from "@components/GuestUpdateStatusCard";
 import { FailSafeModeOverlay } from "@components/FailSafeModeOverlay";
 import {
   ConnectionFailedOverlay,
@@ -61,6 +66,7 @@ import {
   RebootingOverlay,
 } from "@components/VideoOverlay";
 import { m } from "@localizations/messages.js";
+import notifications from "@/notifications";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
@@ -178,6 +184,7 @@ export default function KvmIdRoute() {
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
+  const setStorageDownload = useStorageDownloadStore(state => state.setDownload);
 
   // Everything that must be part of the initial offer is attached here; the
   // signaling adapter owns the peer connection itself.
@@ -373,7 +380,7 @@ export default function KvmIdRoute() {
   }, 10000);
 
   const { setNetworkState } = useNetworkStateStore();
-  const { setHdmiState } = useVideoStore();
+  const { applyVideoState, setOsServicesSettings, resetOsServicesSettings } = useVideoStore();
   const { keyboardLedState, setKeyboardLedState, keysDownState, setKeysDownState, setUsbState } =
     useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
@@ -400,9 +407,13 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "videoInputState") {
-      const hdmiState = resp.params as Parameters<VideoState["setHdmiState"]>[0];
-      console.debug("Setting HDMI state", hdmiState);
-      setHdmiState(hdmiState);
+      applyVideoState(resp.params as unknown as RpcVideoState);
+    }
+
+    if (resp.method === "osServicesSettings") {
+      setOsServicesSettings(
+        resp.params as unknown as Parameters<VideoState["setOsServicesSettings"]>[0],
+      );
     }
 
     if (resp.method === "networkState") {
@@ -422,6 +433,10 @@ export default function KvmIdRoute() {
       const downState = resp.params as KeysDownState;
       console.debug("Setting key down state:", downState);
       setKeysDownState(downState);
+    }
+
+    if (resp.method === "storageDownloadState") {
+      setStorageDownload(resp.params as StorageDownloadState);
     }
 
     if (resp.method === "otaState") {
@@ -508,12 +523,13 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
+    // A new connection may be a restarted device whose OS Services settings
+    // sequence starts over; the settings page reloads through its own RPC.
+    resetOsServicesSettings();
     console.log("Requesting video state");
     send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
-      console.debug("Setting HDMI state", hdmiState);
-      setHdmiState(hdmiState);
+      applyVideoState(resp.result as RpcVideoState);
     });
 
     console.log("Requesting network settings");
@@ -526,7 +542,19 @@ export default function KvmIdRoute() {
         setDisplayHostname(null);
       }
     });
-  }, [rpcDataChannel?.readyState, send, setHdmiState]);
+  }, [rpcDataChannel?.readyState, send, applyVideoState, resetOsServicesSettings]);
+
+  // A download the firmware started before this session holds video off;
+  // the overlay says why. Only a device with removable storage downloads to
+  // it, and the capability arrives after the channel opens.
+  const removableStorage = useCapability("removable_storage");
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open" || !removableStorage) return;
+    send("getStorageDownloadState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setStorageDownload(resp.result as StorageDownloadState);
+    });
+  }, [rpcDataChannel?.readyState, removableStorage, send, setStorageDownload]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
@@ -626,6 +654,52 @@ export default function KvmIdRoute() {
     channel.onopen = () => setTerminalChannel(channel);
     return () => channel.close();
   }, [peerConnection, shell, setTerminalChannel]);
+
+  // A guest terminal channel is a shell running on the guest, so it exists
+  // only while the panel is shown: hiding the panel ends the shell, and a
+  // shell that ends collapses the panel, with the KVM's closing line as a
+  // notice. Only a device with OS Services has one.
+  const osServices = useCapability("os_services");
+  const terminalType = useUiStore(state => state.terminalType);
+  const setTerminalType = useUiStore(state => state.setTerminalType);
+  const [guestTerminalChannel, setGuestTerminalChannel] = useState<RTCDataChannel | null>(null);
+  const guestTerminalBacklog = useRef<(string | ArrayBuffer | Blob)[]>([]);
+  useEffect(() => {
+    if (terminalType !== "guest" || !peerConnection || !osServices) return;
+    const channel = peerConnection.createDataChannel("guest-terminal");
+    // Shell output is binary; as array buffers it is written in the order
+    // it arrived, which a Blob's asynchronous read would not keep.
+    channel.binaryType = "arraybuffer";
+    // Output can arrive before the panel's terminal listens (the guest's
+    // prompt, or the reason the KVM refused); it is held for the panel.
+    guestTerminalBacklog.current = [];
+    channel.onmessage = e => guestTerminalBacklog.current.push(e.data);
+    channel.onopen = () => setGuestTerminalChannel(channel);
+    channel.onerror = (ev: Event) =>
+      console.error(`Error on guest terminal channel '${channel.label}': ${ev.type}`);
+    // The KVM's last text line before it closes says why the session is
+    // over; the panel is gone by then, so it becomes a notice. A close with
+    // no line (the KVM refused the terminal for want of memory) gets one too.
+    let closingLine: string | null = null;
+    channel.addEventListener("message", e => {
+      if (typeof e.data !== "string") return;
+      const line = /^\r\n\[(.*)\]\r\n$/.exec(e.data);
+      if (line) closingLine = line[1];
+    });
+    channel.onclose = () => {
+      if (closingLine === "The shell exited") notifications.success(closingLine);
+      else notifications.error(closingLine ?? m.guest_terminal_closed());
+      setTerminalType("none");
+    };
+    return () => {
+      // A channel this effect has given up must not report in later.
+      channel.onopen = null;
+      channel.onmessage = null;
+      channel.onclose = null;
+      channel.close();
+      setGuestTerminalChannel(null);
+    };
+  }, [terminalType, peerConnection, osServices, setTerminalType]);
 
   // Register E2E test hooks
   useEffect(() => {
@@ -731,6 +805,8 @@ export default function KvmIdRoute() {
           </motion.div>
         </AnimatePresence>
       )}
+      {!isEmbedMode && !outlet && osServices && <GuestFileTransferStatusCard />}
+      {!isEmbedMode && !outlet && osServices && <GuestUpdateStatusCard />}
       <div className="relative h-full">
         {!hideHeaderBar && (
           <FocusTrap
@@ -808,6 +884,15 @@ export default function KvmIdRoute() {
 
       {terminalChannel && (
         <Terminal type="kvm" dataChannel={terminalChannel} title={m.kvm_terminal()} />
+      )}
+
+      {guestTerminalChannel && (
+        <Terminal
+          type="guest"
+          dataChannel={guestTerminalChannel}
+          backlog={guestTerminalBacklog}
+          title={m.guest_terminal()}
+        />
       )}
 
       {serialConsole && (

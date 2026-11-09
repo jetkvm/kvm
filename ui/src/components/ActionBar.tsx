@@ -19,6 +19,7 @@ import { SplitButtonGroup, SplitButtonPrimary, SplitButtonCaret } from "@compone
 
 import { cx } from "@/cva.config";
 import {
+  AvailableTerminalTypes,
   useHidStore,
   useMountMediaStore,
   useCapability,
@@ -50,10 +51,20 @@ export default function Actionbar({
     toggleSidebarView,
     isOcrMode,
     setOcrMode,
+    pendingPasteText,
     usbSerialConsoleEnabled,
     setUsbSerialConsoleEnabled,
     isEmbedMode,
   } = useUiStore();
+  const pasteButtonRef = useRef<HTMLButtonElement>(null);
+
+  // A clipboard chord on the video hands its text to the paste popover; the
+  // popover consumes the text once it is open.
+  useEffect(() => {
+    if (pendingPasteText === null) return;
+    const button = pasteButtonRef.current;
+    if (button && !button.hasAttribute("data-open")) button.click();
+  }, [pendingPasteText]);
   const { remoteVirtualMediaState } = useMountMediaStore();
   const { width: videoWidth, height: videoHeight } = useVideoStore();
   const { developerMode } = useSettingsStore();
@@ -62,6 +73,9 @@ export default function Actionbar({
   const extensions = useCapability("extensions");
   const usbSerial = useCapability("usb_serial");
   const usbSerialConsole = usbSerialConsoleEnabled && usbSerial;
+  // An OS Services sender on a device with OS Services can offer a shell.
+  const osServices = useCapability("os_services");
+  const guestTerminal = useVideoStore(state => state.guestTerminal) && osServices;
   const { send } = useJsonRpc();
 
   useEffect(() => {
@@ -90,6 +104,26 @@ export default function Actionbar({
     [setDisableVideoFocusTrap],
   );
 
+  // The terminals this session can open, first one on the button, the rest
+  // in its menu.
+  const terminals: {
+    type: AvailableTerminalTypes;
+    label: string;
+    icon: React.FC<{ className: string | undefined }>;
+  }[] = [
+    ...(kvmTerminal
+      ? [{ type: "kvm" as const, label: m.kvm_terminal(), icon: CommandLineIcon }]
+      : []),
+    ...(usbSerialConsole
+      ? [{ type: "cdcacm" as const, label: "USB Serial Console", icon: LuTerminal }]
+      : []),
+    ...(guestTerminal
+      ? [{ type: "guest" as const, label: m.guest_terminal(), icon: LuTerminal }]
+      : []),
+  ];
+  const toggleTerminal = (type: AvailableTerminalTypes) =>
+    setTerminalType(terminalType === type ? "none" : type);
+
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
       <div
@@ -98,45 +132,36 @@ export default function Actionbar({
         className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1.5"
       >
         <div className="relative flex flex-wrap items-center gap-x-2 gap-y-2">
-          {kvmTerminal && usbSerialConsole ? (
+          {terminals.length > 1 ? (
             <SplitButtonGroup>
               <SplitButtonPrimary
-                icon={({ className }) => <CommandLineIcon className={className} />}
-                label={m.kvm_terminal()}
-                onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
+                icon={terminals[0].icon}
+                label={terminals[0].label}
+                onClick={() => toggleTerminal(terminals[0].type)}
               />
               <SplitButtonCaret
-                menuItems={[
-                  {
-                    label: "USB Serial Console",
-                    icon: LuTerminal,
-                    onClick: () => setTerminalType(terminalType === "cdcacm" ? "none" : "cdcacm"),
-                    active: terminalType === "cdcacm",
-                  },
-                ]}
+                menuItems={terminals.slice(1).map(terminal => ({
+                  label: terminal.label,
+                  icon: terminal.icon,
+                  onClick: () => toggleTerminal(terminal.type),
+                  active: terminalType === terminal.type,
+                }))}
               />
             </SplitButtonGroup>
-          ) : kvmTerminal ? (
+          ) : terminals.length === 1 ? (
             <Button
               size="XS"
               theme="light"
-              text={m.kvm_terminal()}
-              LeadingIcon={({ className }) => <CommandLineIcon className={className} />}
-              onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
-            />
-          ) : usbSerialConsole ? (
-            <Button
-              size="XS"
-              theme="light"
-              text="USB Serial Console"
-              LeadingIcon={LuTerminal}
-              onClick={() => setTerminalType(terminalType === "cdcacm" ? "none" : "cdcacm")}
+              text={terminals[0].label}
+              LeadingIcon={terminals[0].icon}
+              onClick={() => toggleTerminal(terminals[0].type)}
             />
           ) : null}
           <Popover>
             <SplitButtonGroup>
               <PopoverButton
                 as={SplitButtonPrimary}
+                ref={pasteButtonRef}
                 icon={MdOutlineContentPasteGo}
                 label={m.paste_text()}
                 onClick={() => setDisableVideoFocusTrap(true)}

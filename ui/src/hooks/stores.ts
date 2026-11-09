@@ -40,7 +40,7 @@ const appendStatToMap = <T extends { timestamp: number }>(
 
 // Constants and types
 export type AvailableSidebarViews = "connection-stats";
-export type AvailableTerminalTypes = "kvm" | "serial" | "cdcacm" | "none";
+export type AvailableTerminalTypes = "kvm" | "serial" | "cdcacm" | "guest" | "none";
 
 export interface User {
   sub: string;
@@ -78,6 +78,11 @@ export interface UIState {
 
   isOcrMode: boolean;
   setOcrMode: (enabled: boolean) => void;
+
+  // Text captured from the browser clipboard that the paste popover should
+  // open with; consumed by the popover once shown.
+  pendingPasteText: string | null;
+  setPendingPasteText: (text: string | null) => void;
 
   usbSerialConsoleEnabled: boolean;
   setUsbSerialConsoleEnabled: (enabled: boolean) => void;
@@ -117,6 +122,9 @@ export const useUiStore = create<UIState>(set => ({
 
   isOcrMode: false,
   setOcrMode: (enabled: boolean) => set({ isOcrMode: enabled }),
+
+  pendingPasteText: null,
+  setPendingPasteText: (text: string | null) => set({ pendingPasteText: text }),
 
   usbSerialConsoleEnabled: false,
   setUsbSerialConsoleEnabled: (enabled: boolean) => set({ usbSerialConsoleEnabled: enabled }),
@@ -306,6 +314,95 @@ export interface HdmiState {
   error?: HdmiErrorStates;
 }
 
+export type VideoSource = "physical" | "guest" | "switching_to_physical" | "switching_to_guest";
+
+// Clipboard access advertised by a connected OS Services sender.
+export interface GuestClipboardState {
+  read: boolean;
+  write: boolean;
+  os: "windows" | "macos" | "linux" | "unknown";
+}
+
+// Live OS Services state as the KVM reports it in every video state.
+export interface OsServicesStatus {
+  sender?: { version: string; displays: string[] };
+  connected: boolean;
+  video: boolean;
+  // The sender registered its video service; without it the video setting
+  // has nothing to act on.
+  videoRegistered: boolean;
+  // Why the sender's video service faulted, while it is faulted.
+  videoError?: string;
+  clipboard: boolean;
+  // The sender waits for its user to approve this KVM's key.
+  approvalPending: boolean;
+  // This KVM's key, as the sender's approval dialog shows it; empty until
+  // the first sender connects.
+  fingerprint: string;
+}
+
+const noOsServices: OsServicesStatus = {
+  connected: false,
+  video: false,
+  videoRegistered: false,
+  clipboard: false,
+  approvalPending: false,
+  fingerprint: "",
+};
+
+// The getVideoState reply and every videoInputState event. The OS Services
+// fields come only from a device with the os_services capability.
+export interface RpcVideoState extends HdmiState {
+  source?: VideoSource;
+  osServices?: OsServicesStatus;
+  guestClipboard?: GuestClipboardState;
+  guestTerminal?: boolean;
+  guestFile?: GuestFileState;
+  guestUpdate?: GuestUpdateState;
+}
+
+// Desired state persisted by JetKVM.
+export interface OsServicesSettings {
+  adaptation?: string;
+  terminal_enabled: boolean;
+  files_enabled: boolean;
+  capture_display: string;
+  video_enabled: boolean;
+  resolution: string;
+  display_mode: "mirror" | "extend";
+  clipboard_enabled: boolean;
+}
+
+export interface OsServicesSettingsEvent {
+  sequence: number;
+  settings: OsServicesSettings;
+}
+
+// File reception advertised by a connected OS Services sender: files
+// dropped on the video are written to the guest's Downloads folder, with a home-folder fallback.
+export interface GuestFileState {
+  receive: boolean;
+}
+
+// The newest OS Services release the KVM firmware installs, and the update
+// of the connected sender to it. Absent while no release is known.
+export interface GuestUpdateState {
+  version: string;
+  // The connected sender is older than the release.
+  available: boolean;
+  // The connected sender can install the release's package; otherwise the
+  // installer ISO is the way to update.
+  installable: boolean;
+  // Auto-update is on: the KVM installs the update itself once no browser
+  // is connected, so the status card does not offer it. The settings page
+  // still can.
+  automatic: boolean;
+  phase?: "downloading" | "sending" | "installing" | "done" | "failed";
+  sent?: number;
+  size?: number;
+  error?: string;
+}
+
 export interface VideoState {
   width: number;
   height: number;
@@ -314,7 +411,25 @@ export interface VideoState {
   setClientSize: (width: number, height: number) => void;
   setSize: (width: number, height: number) => void;
   hdmiState: HdmiStates;
-  setHdmiState: (state: { ready: boolean; error?: HdmiErrorStates }) => void;
+  videoSource: VideoSource;
+  // Decided by the KVM and shown as-is in the info bar.
+  osServices: OsServicesStatus;
+  guestClipboard: GuestClipboardState | null;
+  setGuestClipboard: (state: GuestClipboardState | null) => void;
+  // Every reader of a video state payload applies it as one store update.
+  applyVideoState: (state: RpcVideoState) => void;
+  osServicesSettings: OsServicesSettings | null;
+  osServicesSettingsSequence: number;
+  // Announcements can arrive out of order; one older than the last applied
+  // is dropped. The sequence belongs to one backend process, so a new RPC
+  // connection starts it over.
+  setOsServicesSettings: (event: OsServicesSettingsEvent) => void;
+  resetOsServicesSettings: () => void;
+
+  // True while a connected OS Services sender offers a shell.
+  guestTerminal: boolean;
+  guestFile: GuestFileState | null;
+  guestUpdate: GuestUpdateState | null;
   videoElement: HTMLVideoElement | null;
   setVideoElement: (element: HTMLVideoElement | null) => void;
   containerElement: HTMLElement | null;
@@ -335,18 +450,39 @@ export const useVideoStore = create<VideoState>(set => ({
   setSize: (width: number, height: number) => set({ width, height }),
 
   hdmiState: "connecting",
-  setHdmiState: (state: HdmiState) => {
-    if (!state) return;
-    const { ready, error } = state;
+  videoSource: "physical",
+  osServices: noOsServices,
+  guestClipboard: null,
+  setGuestClipboard: (guestClipboard: GuestClipboardState | null) => set({ guestClipboard }),
+  guestTerminal: false,
+  guestFile: null,
+  guestUpdate: null,
 
-    if (ready) {
-      return set({ hdmiState: "ready" });
-    } else if (error) {
-      return set({ hdmiState: error });
-    } else {
-      return set({ hdmiState: "connecting" });
-    }
-  },
+  applyVideoState: (state: RpcVideoState) =>
+    set(store => ({
+      hdmiState: state.ready ? "ready" : (state.error ?? "connecting"),
+      videoSource: state.source ?? store.videoSource,
+      // A device without the field (no OS Services) has no OS Services,
+      // and the store must not keep the previous device's.
+      osServices: state.osServices ?? noOsServices,
+      guestClipboard: state.guestClipboard ?? null,
+      guestTerminal: state.guestTerminal ?? false,
+      guestFile: state.guestFile ?? null,
+      guestUpdate: state.guestUpdate ?? null,
+    })),
+
+  osServicesSettings: null,
+  osServicesSettingsSequence: 0,
+  setOsServicesSettings: (event: OsServicesSettingsEvent) =>
+    set(state =>
+      event.sequence > state.osServicesSettingsSequence
+        ? {
+            osServicesSettings: event.settings,
+            osServicesSettingsSequence: event.sequence,
+          }
+        : {},
+    ),
+  resetOsServicesSettings: () => set({ osServicesSettings: null, osServicesSettingsSequence: 0 }),
 
   videoElement: null,
   setVideoElement: (element: HTMLVideoElement | null) => set({ videoElement: element }),
@@ -479,7 +615,7 @@ export const useSettingsStore = create(
 );
 
 export interface RemoteVirtualMediaState {
-  source: "HTTP" | "Storage" | null;
+  source: "HTTP" | "Storage" | "Builtin" | null;
   mode: "CDROM" | "Disk" | null;
   filename: string | null;
   url: string | null;
@@ -522,6 +658,29 @@ export const useMountMediaStore = create<MountMediaState>(set => ({
 
   errorMessage: null,
   setErrorMessage: (message: string | null) => set({ errorMessage: message }),
+}));
+
+// downloadToStorage on a device with removable storage: one file streamed
+// from a URL onto its card. videoPaused is true while the transfer holds
+// video off.
+export interface StorageDownloadState {
+  state: "idle" | "downloading" | "done" | "error";
+  filename: string;
+  bytes: number;
+  total: number;
+  reused: boolean;
+  videoPaused: boolean;
+  error: string;
+}
+
+export interface StorageDownloadStore {
+  download: StorageDownloadState | null;
+  setDownload: (download: StorageDownloadState | null) => void;
+}
+
+export const useStorageDownloadStore = create<StorageDownloadStore>(set => ({
+  download: null,
+  setDownload: download => set({ download }),
 }));
 
 export interface KeyboardLedState {
@@ -758,7 +917,8 @@ export type Capability =
   | "tls" // HTTPS listener with a selectable certificate
   | "local_loopback" // web UI can be limited to the loopback interface
   | "log_level" // default log level can be changed
-  | "tailscale"; // Tailscale client
+  | "tailscale" // Tailscale client
+  | "os_services"; // USB link to the OS Services sender on the remote host (clipboard, file drop, shell)
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
