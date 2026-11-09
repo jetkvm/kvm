@@ -383,6 +383,7 @@
     "hdmi_switch_description": "Управление HDMI-коммутатором TESmart по сети",
     "hdmi_switch_get_config_error": "Не удалось загрузить настройки HDMI-коммутатора: {error}",
     "hdmi_switch_get_state_error": "Не удалось получить состояние HDMI-коммутатора: {error}",
+    "hdmi_switch_host": "Хост",
     "hdmi_switch_not_configured": "Не настроено",
     "hdmi_switch_offline": "Офлайн",
     "hdmi_switch_port_count": "Количество портов",

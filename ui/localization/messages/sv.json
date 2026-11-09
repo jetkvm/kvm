@@ -383,6 +383,7 @@
     "hdmi_switch_description": "Styr en TESmart HDMI-växlare över nätverket",
     "hdmi_switch_get_config_error": "Kunde inte läsa in HDMI-växlarens inställningar: {error}",
     "hdmi_switch_get_state_error": "Kunde inte hämta HDMI-växlarens status: {error}",
+    "hdmi_switch_host": "Värd",
     "hdmi_switch_not_configured": "Inte konfigurerad",
     "hdmi_switch_offline": "Offline",
     "hdmi_switch_port_count": "Antal portar",

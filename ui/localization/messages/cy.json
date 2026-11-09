@@ -378,6 +378,7 @@
     "hdmi_switch_description": "Rheoli switsh HDMI TESmart dros y rhwydwaith",
     "hdmi_switch_get_config_error": "Wedi methu llwyddo gosodiadau'r switsh HDMI: {error}",
     "hdmi_switch_get_state_error": "Wedi methu cael cyflwr y switsh HDMI: {error}",
+    "hdmi_switch_host": "Gwesteiwr",
     "hdmi_switch_not_configured": "Heb ei ffurfweddu",
     "hdmi_switch_offline": "All-lein",
     "hdmi_switch_port_count": "Nifer y porthladdi",

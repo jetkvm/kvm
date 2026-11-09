@@ -383,6 +383,7 @@
     "hdmi_switch_description": "Styr en TESmart HDMI-bryter over nettverket",
     "hdmi_switch_get_config_error": "Kunne ikke laste inn HDMI-bryter-innstillinger: {error}",
     "hdmi_switch_get_state_error": "Kunne ikke hente HDMI-bryter-status: {error}",
+    "hdmi_switch_host": "Vert",
     "hdmi_switch_not_configured": "Ikke konfigurert",
     "hdmi_switch_offline": "Offline",
     "hdmi_switch_port_count": "Antall porter",

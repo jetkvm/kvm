@@ -383,6 +383,7 @@
     "hdmi_switch_description": "通过网络控制 TESmart HDMI 切换器",
     "hdmi_switch_get_config_error": "加载 HDMI 切换器设置失败：{error}",
     "hdmi_switch_get_state_error": "获取 HDMI 切换器状态失败：{error}",
+    "hdmi_switch_host": "主机",
     "hdmi_switch_not_configured": "未配置",
     "hdmi_switch_offline": "离线",
     "hdmi_switch_port_count": "端口数量",

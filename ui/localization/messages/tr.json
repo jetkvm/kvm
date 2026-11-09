@@ -383,6 +383,7 @@
     "hdmi_switch_description": "Ağ üzerinden TESmart HDMI anahtarını kontrol et",
     "hdmi_switch_get_config_error": "HDMI anahtar ayarları yüklenemedi: {error}",
     "hdmi_switch_get_state_error": "HDMI anahtar durumu alınamadı: {error}",
+    "hdmi_switch_host": "Host",
     "hdmi_switch_not_configured": "Yapılandırılmadı",
     "hdmi_switch_offline": "Çevrimdışı",
     "hdmi_switch_port_count": "Port sayısı",

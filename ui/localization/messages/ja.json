@@ -383,6 +383,7 @@
     "hdmi_switch_description": "ネットワーク経由でTESmart HDMIスイッチを制御する",
     "hdmi_switch_get_config_error": "HDMIスイッチの設定の読み込みに失敗しました: {error}",
     "hdmi_switch_get_state_error": "HDMIスイッチの状態の取得に失敗しました: {error}",
+    "hdmi_switch_host": "ホスト",
     "hdmi_switch_not_configured": "未設定",
     "hdmi_switch_offline": "オフライン",
     "hdmi_switch_port_count": "ポート数",

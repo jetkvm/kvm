@@ -383,6 +383,7 @@
     "hdmi_switch_description": "Styr en TESmart HDMI-switch over netværket",
     "hdmi_switch_get_config_error": "Kunne ikke indlæse HDMI-switch-indstillinger: {error}",
     "hdmi_switch_get_state_error": "Kunne ikke hente HDMI-switch-status: {error}",
+    "hdmi_switch_host": "Vært",
     "hdmi_switch_not_configured": "Ikke konfigureret",
     "hdmi_switch_offline": "Offline",
     "hdmi_switch_port_count": "Antal porte",

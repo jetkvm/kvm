@@ -383,6 +383,7 @@
     "hdmi_switch_description": "Controlla uno switch HDMI TESmart tramite la rete",
     "hdmi_switch_get_config_error": "Impossibile caricare le impostazioni dello switch HDMI: {error}",
     "hdmi_switch_get_state_error": "Impossibile ottenere lo stato dello switch HDMI: {error}",
+    "hdmi_switch_host": "Host",
     "hdmi_switch_not_configured": "Non configurato",
     "hdmi_switch_offline": "Offline",
     "hdmi_switch_port_count": "Numero di porte",
