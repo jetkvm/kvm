@@ -56,6 +56,8 @@ const ConnectionStatsSidebar = lazy(() => import("@components/sidebar/connection
 const Terminal = lazy(() => import("@components/Terminal"));
 const UpdateInProgressStatusCard = lazy(() => import("@components/UpdateInProgressStatusCard"));
 import Modal from "@components/Modal";
+import GuestFileTransferStatusCard from "@components/GuestFileTransferStatusCard";
+import GuestUpdateStatusCard from "@components/GuestUpdateStatusCard";
 import { FailSafeModeOverlay } from "@components/FailSafeModeOverlay";
 import {
   ConnectionFailedOverlay,
@@ -64,6 +66,7 @@ import {
   RebootingOverlay,
 } from "@components/VideoOverlay";
 import { m } from "@localizations/messages.js";
+import notifications from "@/notifications";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
@@ -652,6 +655,52 @@ export default function KvmIdRoute() {
     return () => channel.close();
   }, [peerConnection, shell, setTerminalChannel]);
 
+  // A guest terminal channel is a shell running on the guest, so it exists
+  // only while the panel is shown: hiding the panel ends the shell, and a
+  // shell that ends collapses the panel, with the KVM's closing line as a
+  // notice. Only a device with OS Services has one.
+  const osServices = useCapability("os_services");
+  const terminalType = useUiStore(state => state.terminalType);
+  const setTerminalType = useUiStore(state => state.setTerminalType);
+  const [guestTerminalChannel, setGuestTerminalChannel] = useState<RTCDataChannel | null>(null);
+  const guestTerminalBacklog = useRef<(string | ArrayBuffer | Blob)[]>([]);
+  useEffect(() => {
+    if (terminalType !== "guest" || !peerConnection || !osServices) return;
+    const channel = peerConnection.createDataChannel("guest-terminal");
+    // Shell output is binary; as array buffers it is written in the order
+    // it arrived, which a Blob's asynchronous read would not keep.
+    channel.binaryType = "arraybuffer";
+    // Output can arrive before the panel's terminal listens (the guest's
+    // prompt, or the reason the KVM refused); it is held for the panel.
+    guestTerminalBacklog.current = [];
+    channel.onmessage = e => guestTerminalBacklog.current.push(e.data);
+    channel.onopen = () => setGuestTerminalChannel(channel);
+    channel.onerror = (ev: Event) =>
+      console.error(`Error on guest terminal channel '${channel.label}': ${ev.type}`);
+    // The KVM's last text line before it closes says why the session is
+    // over; the panel is gone by then, so it becomes a notice. A close with
+    // no line (the KVM refused the terminal for want of memory) gets one too.
+    let closingLine: string | null = null;
+    channel.addEventListener("message", e => {
+      if (typeof e.data !== "string") return;
+      const line = /^\r\n\[(.*)\]\r\n$/.exec(e.data);
+      if (line) closingLine = line[1];
+    });
+    channel.onclose = () => {
+      if (closingLine === "The shell exited") notifications.success(closingLine);
+      else notifications.error(closingLine ?? m.guest_terminal_closed());
+      setTerminalType("none");
+    };
+    return () => {
+      // A channel this effect has given up must not report in later.
+      channel.onopen = null;
+      channel.onmessage = null;
+      channel.onclose = null;
+      channel.close();
+      setGuestTerminalChannel(null);
+    };
+  }, [terminalType, peerConnection, osServices, setTerminalType]);
+
   // Register E2E test hooks
   useEffect(() => {
     registerTestHandlers({
@@ -756,6 +805,8 @@ export default function KvmIdRoute() {
           </motion.div>
         </AnimatePresence>
       )}
+      {!isEmbedMode && !outlet && osServices && <GuestFileTransferStatusCard />}
+      {!isEmbedMode && !outlet && osServices && <GuestUpdateStatusCard />}
       <div className="relative h-full">
         {!hideHeaderBar && (
           <FocusTrap
@@ -833,6 +884,15 @@ export default function KvmIdRoute() {
 
       {terminalChannel && (
         <Terminal type="kvm" dataChannel={terminalChannel} title={m.kvm_terminal()} />
+      )}
+
+      {guestTerminalChannel && (
+        <Terminal
+          type="guest"
+          dataChannel={guestTerminalChannel}
+          backlog={guestTerminalBacklog}
+          title={m.guest_terminal()}
+        />
       )}
 
       {serialConsole && (

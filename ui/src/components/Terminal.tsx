@@ -1,6 +1,6 @@
 import "react-simple-keyboard/build/css/index.css";
 import { ChevronDownIcon, PauseCircleIcon, PlayCircleIcon } from "@heroicons/react/16/solid";
-import { useEffect, useMemo, useCallback, useState } from "react";
+import { MutableRefObject, useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -17,6 +17,11 @@ import notifications from "@/notifications";
 import { Button } from "@components/Button";
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
+
+// Guest terminal keystrokes go out as binary; a paste is split so no single
+// message exceeds what a data channel accepts.
+const guestInputEncoder = new TextEncoder();
+const guestInputChunk = 16 * 1024;
 
 // Terminal theme configuration
 const SOLARIZED_THEME = {
@@ -64,15 +69,19 @@ function Terminal({
   title,
   dataChannel,
   type,
+  backlog,
 }: {
   readonly title: string;
   readonly dataChannel: RTCDataChannel;
   readonly type: AvailableTerminalTypes;
+  // Messages the channel received before this terminal was listening.
+  readonly backlog?: MutableRefObject<(string | ArrayBuffer | Blob)[]>;
 }) {
   const { terminalType, setTerminalType, setDisableVideoFocusTrap, disableVideoFocusTrap } =
     useUiStore();
   const { terminator } = useTerminalStore();
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const [terminalPaused, setTerminalPaused] = useState(false);
 
   const isTerminalTypeEnabled = useMemo(() => {
@@ -119,32 +128,46 @@ function Terminal({
 
     const abortController = new AbortController();
     const binaryType = dataChannel.binaryType;
-    dataChannel.addEventListener(
-      "message",
-      e => {
-        if (typeof e.data === "string") {
-          instance.write(e.data); // text path
-          return;
-        }
-        // binary path (if the server ever sends bytes)
-        // Handle binary data differently based on browser implementation
-        // Firefox sends data as blobs, chrome sends data as arraybuffer
-        if (binaryType === "arraybuffer") {
-          instance.write(new Uint8Array(e.data));
-        } else if (binaryType === "blob") {
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (!reader.result) return;
-            instance.write(new Uint8Array(reader.result as ArrayBuffer));
-          };
-          reader.readAsArrayBuffer(e.data);
-        }
-      },
-      { signal: abortController.signal },
-    );
+    const deliver = (data: string | ArrayBuffer | Blob) => {
+      if (typeof data === "string") {
+        instance.write(data); // text path
+        return;
+      }
+      // binary path (if the server ever sends bytes)
+      // Handle binary data differently based on browser implementation
+      // Firefox sends data as blobs, chrome sends data as arraybuffer
+      if (binaryType === "arraybuffer") {
+        instance.write(new Uint8Array(data as ArrayBuffer));
+      } else if (binaryType === "blob") {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (!reader.result) return;
+          instance.write(new Uint8Array(reader.result as ArrayBuffer));
+        };
+        reader.readAsArrayBuffer(data as Blob);
+      }
+    };
+    dataChannel.addEventListener("message", e => deliver(e.data), {
+      signal: abortController.signal,
+    });
+    if (backlog) {
+      // The listener now sees every message; hand it what arrived earlier.
+      dataChannel.onmessage = null;
+      backlog.current.splice(0).forEach(deliver);
+    }
 
     const onDataHandler = instance.onData(data => {
-      if (type === "kvm" || type === "cdcacm") {
+      if (type === "guest") {
+        // The guest terminal takes keystrokes as binary, so its text
+        // messages can only ever be the size below and pasted JSON is never
+        // mistaken for one. A channel can close under a still-mounted
+        // panel, and keystrokes then have nowhere to go.
+        if (dataChannel.readyState !== "open") return;
+        const bytes = guestInputEncoder.encode(data);
+        for (let offset = 0; offset < bytes.length; offset += guestInputChunk) {
+          dataChannel.send(bytes.subarray(offset, offset + guestInputChunk));
+        }
+      } else if (type === "kvm" || type === "cdcacm") {
         dataChannel.send(data);
       } else {
         if (data === "\r") {
@@ -160,19 +183,27 @@ function Terminal({
       }
     });
 
-    // Setup escape key handler
+    // Setup escape key handler. A guest shell takes Escape itself (vi, less);
+    // its panel hides with the Hide button.
     const onKeyHandler = instance.onKey(e => {
       const { domEvent } = e;
-      if (domEvent.key === "Escape") {
+      if (domEvent.key === "Escape" && type !== "guest") {
         setTerminalType("none");
         setDisableVideoFocusTrap(false);
         domEvent.preventDefault();
       }
     });
 
+    // The guest lays its shell's screen out for the panel's size, so it
+    // learns the size again whenever the panel is refitted.
+    const onResizeHandler = instance.onResize(({ rows, cols }) => {
+      if (type !== "guest" || dataChannel.readyState !== "open") return;
+      dataChannel.send(JSON.stringify({ rows, cols }));
+    });
+
     // Send initial terminal size (not applicable for CDC-ACM raw serial)
     if (dataChannel.readyState === "open" && type !== "cdcacm") {
-      if (type === "kvm") {
+      if (type === "kvm" || type === "guest") {
         dataChannel.send(JSON.stringify({ rows: instance.rows, cols: instance.cols }));
       } else {
         dataChannel.send(
@@ -189,8 +220,10 @@ function Terminal({
       abortController.abort();
       onDataHandler.dispose();
       onKeyHandler.dispose();
+      onResizeHandler.dispose();
     };
   }, [
+    backlog,
     dataChannel,
     instance,
     readyState,
@@ -206,6 +239,7 @@ function Terminal({
     // Load the fit addon
     const fitAddon = new FitAddon();
     instance.loadAddon(fitAddon);
+    fitAddonRef.current = fitAddon;
 
     instance.loadAddon(new ClipboardAddon());
     instance.loadAddon(new Unicode11Addon());
@@ -223,8 +257,15 @@ function Terminal({
     window.addEventListener("resize", handleResize);
     return () => {
       window.removeEventListener("resize", handleResize);
+      fitAddonRef.current = null;
     };
   }, [instance]);
+
+  // The guest terminal fills its panel from the moment it appears, not only
+  // after a window resize, since the guest's shell is sized to it.
+  useEffect(() => {
+    if (type === "guest" && isTerminalTypeEnabled) fitAddonRef.current?.fit();
+  }, [instance, isTerminalTypeEnabled, type]);
 
   const sendLine = useCallback(
     (line: string) => {

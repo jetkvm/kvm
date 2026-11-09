@@ -3,13 +3,17 @@ import { useResizeObserver } from "usehooks-ts";
 
 import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
+import useGuestClipboard from "@hooks/useGuestClipboard";
+import useGuestFileDrop from "@hooks/useGuestFileDrop";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
 import {
+  RpcVideoState,
   useCapability,
   useRTCStore,
   useSettingsStore,
+  useStorageDownloadStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
@@ -22,6 +26,7 @@ import InfoBar from "@components/InfoBar";
 import {
   AudioPermissionBanner,
   HDMIErrorOverlay,
+  LoadingConnectionOverlay,
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
@@ -33,6 +38,29 @@ import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
 const initialHdmiErrorGraceMs = 2500;
+// The device owns the switch between HDMI capture and OS Services video
+// and reports a switching source until the new path has a stable signal
+// (or its own give-up). Its worst case is ~38 s (parking wait + teardown +
+// 30 s give-up); this longer timeout is only a safety net for a resolution
+// event that never reached this client.
+const sourceSwitchTimeoutMs = 45_000;
+
+// On a device with OS Services, Ctrl+Shift+V and Ctrl+Shift+C (Cmd on macOS)
+// move the clipboard between this browser and the target instead of reaching
+// the target as keystrokes.
+function isClipboardChord(e: KeyboardEvent) {
+  return (
+    (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.code === "KeyV" || e.code === "KeyC")
+  );
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  const element = target as HTMLElement | null;
+  return (
+    !!element &&
+    (element.isContentEditable || element.tagName === "INPUT" || element.tagName === "TEXTAREA")
+  );
+}
 
 export default function WebRTCVideo({
   hasConnectionIssues,
@@ -74,6 +102,8 @@ export default function WebRTCVideo({
     clientWidth: videoClientWidth,
     clientHeight: videoClientHeight,
     hdmiState,
+    videoSource,
+    applyVideoState,
     setVideoElement,
     setContainerElement,
   } = useVideoStore();
@@ -83,13 +113,21 @@ export default function WebRTCVideo({
   const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
-  const { isOcrMode } = useUiStore();
+  const { isOcrMode, setPendingPasteText } = useUiStore();
+  const { osServices, pasteViaGuest, copyFromGuest } = useGuestClipboard();
+  // Files dragged from the desktop onto the video go to the remote host.
+  useGuestFileDrop(videoElm);
 
   // RTC related states
   const { peerConnection } = useRTCStore();
 
   // HDMI and UI states
   const isVideoLoading = !isPlaying;
+  // Only a device with OS Services switches the video source.
+  const isSourceSwitching =
+    osServices && (videoSource === "switching_to_guest" || videoSource === "switching_to_physical");
+  const [sourceSwitchTimedOut, setSourceSwitchTimedOut] = useState(false);
+  const showSourceSwitchOverlay = isSourceSwitching && !sourceSwitchTimedOut;
   const rawHdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const [isInitialHdmiErrorGraceActive, setIsInitialHdmiErrorGraceActive] = useState(false);
   const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
@@ -99,6 +137,12 @@ export default function WebRTCVideo({
   const videoDuringUpdate = useCapability("video_during_update");
   const { otaState } = useUpdateStore();
   const updatePausesVideo = !videoDuringUpdate && otaState.updating && otaState.systemUpdatePending;
+  // A device with removable storage also pauses the stream while it
+  // downloads a file to its TF card, such as the OS Services installer, so
+  // the transfer gets the link.
+  const downloadPausesVideo = useStorageDownloadStore(
+    state => state.download?.state === "downloading" && state.download.videoPaused,
+  );
 
   // Video-related
   const handleResize = useCallback(
@@ -154,6 +198,32 @@ export default function WebRTCVideo({
       window.clearTimeout(timeout);
     };
   }, [isPlaying, peerConnectionState]);
+
+  // Safety net: the device resolves every switch, so reaching this timeout
+  // means the resolution event never arrived here (lost to session churn or
+  // a reload race). Resync from the device instead of trusting stale state,
+  // and only report a failure if the device really is still switching.
+  useEffect(() => {
+    if (!isSourceSwitching) {
+      setSourceSwitchTimedOut(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setSourceSwitchTimedOut(true);
+      sendRpc("getVideoState", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(m.video_overlay_source_switch_timeout());
+          return;
+        }
+        const state = resp.result as RpcVideoState;
+        applyVideoState(state);
+        if (state.source === "switching_to_guest" || state.source === "switching_to_physical") {
+          notifications.error(m.video_overlay_source_switch_timeout());
+        }
+      });
+    }, sourceSwitchTimeoutMs);
+    return () => window.clearTimeout(timeout);
+  }, [isSourceSwitching, videoSource, sendRpc, applyVideoState]);
 
   // On mount, get the video size
   useEffect(
@@ -337,6 +407,15 @@ export default function WebRTCVideo({
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      if (osServices && isClipboardChord(e)) {
+        // Ctrl+Shift+V keeps its default action so the browser fires `paste`;
+        // Ctrl+Shift+C is handled here. Neither chord reaches the target, and
+        // a held chord transfers once: cancelling the repeat also cancels the
+        // `paste` event it would fire.
+        if (e.repeat || e.code === "KeyC") e.preventDefault();
+        if (!e.repeat && e.code === "KeyC") void copyFromGuest();
+        return;
+      }
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -405,12 +484,14 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient, osServices, copyFromGuest],
   );
 
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      // The clipboard chords never reached the target on keydown.
+      if (osServices && isClipboardChord(e)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -448,7 +529,7 @@ export default function WebRTCVideo({
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress, isOcrMode, isWindowsClient],
+    [handleKeyPress, isOcrMode, isWindowsClient, osServices],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -538,6 +619,28 @@ export default function WebRTCVideo({
     [mediaStream, mediaStreamTrackVersion, audioEnabled],
   );
 
+  // A paste event only reaches the document when Ctrl+Shift+V was left to
+  // its default action above (plain Ctrl+V is cancelled and forwarded), or
+  // when the browser's Edit menu was used. Either way it is a deliberate
+  // request to paste this browser's clipboard into the target.
+  const pasteHandler = useCallback(
+    (e: ClipboardEvent) => {
+      if (isOcrMode || isEditableTarget(e.target)) return;
+      e.preventDefault();
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (!text) {
+        notifications.error(m.clipboard_paste_empty());
+        return;
+      }
+      void pasteViaGuest(text).then(result => {
+        // Without an OS Services clipboard the paste popover types the text,
+        // showing which characters the keyboard layout cannot produce.
+        if (result === "unavailable") setPendingPasteText(text);
+      });
+    },
+    [isOcrMode, pasteViaGuest, setPendingPasteText],
+  );
+
   // Setup Keyboard Events
   useEffect(
     function setupKeyboardEvents() {
@@ -546,6 +649,7 @@ export default function WebRTCVideo({
 
       document.addEventListener("keydown", keyDownHandler, { signal });
       document.addEventListener("keyup", keyUpHandler, { signal });
+      if (osServices) document.addEventListener("paste", pasteHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
       document.addEventListener("visibilitychange", resetKeyboardState, { signal });
@@ -554,7 +658,7 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [keyDownHandler, keyUpHandler, resetKeyboardState],
+    [keyDownHandler, keyUpHandler, osServices, pasteHandler, resetKeyboardState],
   );
 
   // Setup Video Event Listeners
@@ -761,12 +865,27 @@ export default function WebRTCVideo({
                           className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                         >
                           <div className="relative h-full w-full rounded-md">
-                            <LoadingVideoOverlay show={isVideoLoading} />
+                            <LoadingConnectionOverlay
+                              show={showSourceSwitchOverlay}
+                              text={
+                                videoSource === "switching_to_physical"
+                                  ? m.video_overlay_switching_to_physical()
+                                  : m.video_overlay_switching_to_guest()
+                              }
+                            />
+                            <LoadingVideoOverlay
+                              show={isVideoLoading && !showSourceSwitchOverlay}
+                            />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
                             <VideoPausedOverlay
                               show={updatePausesVideo}
                               title={m.video_overlay_update_paused_title()}
                               description={m.video_overlay_update_paused_description()}
+                            />
+                            <VideoPausedOverlay
+                              show={downloadPausesVideo && !updatePausesVideo}
+                              title={m.video_overlay_download_paused_title()}
+                              description={m.video_overlay_download_paused_description()}
                             />
                             <NoAutoplayPermissionsOverlay
                               show={hasNoAutoPlayPermissions}
