@@ -68,12 +68,13 @@ func speedDescriptors(b *bytes.Buffer, packetSize uint16) {
 }
 
 // osDescHeader is struct usb_os_desc_header: interface, dwLength,
-// bcdVersion 0x0100, wIndex, and bCount with a reserved byte (wIndex 4) or
-// wCount (wIndex 5).
+// bcdVersion, wIndex, and bCount with a reserved byte (wIndex 4) or wCount
+// (wIndex 5). FunctionFS before Linux 5.12 takes only bcdVersion 0x0001
+// (the JetKVM runs 5.10); later kernels take it too, with a warning.
 func osDescHeader(b *bytes.Buffer, length uint32, index uint16, count uint16) {
 	b.WriteByte(0) // interface
 	_ = binary.Write(b, binary.LittleEndian, length)
-	_ = binary.Write(b, binary.LittleEndian, uint16(0x0100))
+	_ = binary.Write(b, binary.LittleEndian, uint16(0x0001))
 	_ = binary.Write(b, binary.LittleEndian, index)
 	_ = binary.Write(b, binary.LittleEndian, count)
 }
