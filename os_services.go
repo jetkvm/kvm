@@ -194,6 +194,11 @@ func (s *osServicesService) ticker() {
 		s.link.Mu.Lock()
 		s.session.Tick()
 		s.video.tick(s.session)
+		if source := s.session.Source(); source != s.lastSource {
+			s.lastSource = source
+			osServicesLogger.Info().Str("session", s.session.String()).Bool("owned", s.video.owned.Load()).
+				Bool("presented", s.video.presented.Load()).Msg("video source changed")
+		}
 		s.flushTerminalCredits()
 		s.link.Mu.Unlock()
 		s.link.Wake()
@@ -248,15 +253,8 @@ func (s *osServicesService) SessionEnded(reason string) {
 
 func (s *osServicesService) ResetTransport() { s.link.ResetTransport() }
 
+// StateChanged may come without the session lock (the update relay).
 func (s *osServicesService) StateChanged() {
-	if s.session == nil {
-		return
-	}
-	if source := s.session.Source(); source != s.lastSource {
-		s.lastSource = source
-		osServicesLogger.Info().Str("session", s.session.String()).Bool("owned", s.video.owned.Load()).
-			Bool("presented", s.video.presented.Load()).Msg("video source changed")
-	}
 	select {
 	case s.stateSignal <- struct{}{}:
 	default:
