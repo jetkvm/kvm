@@ -76,10 +76,13 @@ func (u *UsbGadget) prepareExternalFunction() bool {
 	if _, ok := u.configMap[f.Key]; !ok {
 		return false
 	}
-	if _, err := os.Stat(configFSPath + "/usb_gadget"); err != nil {
-		// configfs is not mounted yet; the transaction mounts it, and the
-		// function joins at the next configuration.
-		return false
+	// At boot configfs is not mounted yet; the transaction would mount it,
+	// but the instance must exist before the transaction links it.
+	if _, err := os.Stat(gadgetPath); err != nil {
+		if err := mountConfigFS(configFSPath); err != nil {
+			u.log.Warn().Err(err).Str("function", f.Key).Msg("cannot mount configfs for the external function")
+			return false
+		}
 	}
 	dir := path.Join(u.kvmGadgetPath, "functions", "ffs."+f.Instance)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
