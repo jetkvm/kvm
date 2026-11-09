@@ -497,22 +497,25 @@ type Session struct {
 	videoSenderEnabled  bool
 	videoDisablePending bool
 	videoStreamStarted  bool
-	videoResetPending   bool
-	videoPTSRestart     bool
-	videoWidth          uint32
-	videoHeight         uint32
-	videoFPS            uint32
-	videoCodec          Codec
-	videoFrameCapacity  int
-	videoLastCaptureUS  uint64
-	videoSentCaptureOK  bool
-	videoSentCaptureUS  uint64
-	videoKeyframeGen    uint32
-	videoKeyframeTaken  int64
-	videoKeyframeAsked  bool
-	videoKeyframeAskMS  int64
-	videoError          string
-	parameterSets       []byte
+	// The codec changed while video showed; enabled statuses of the old
+	// codec are stale until one of the new codec arrives.
+	videoCodecChanging bool
+	videoResetPending  bool
+	videoPTSRestart    bool
+	videoWidth         uint32
+	videoHeight        uint32
+	videoFPS           uint32
+	videoCodec         Codec
+	videoFrameCapacity int
+	videoLastCaptureUS uint64
+	videoSentCaptureOK bool
+	videoSentCaptureUS uint64
+	videoKeyframeGen   uint32
+	videoKeyframeTaken int64
+	videoKeyframeAsked bool
+	videoKeyframeAskMS int64
+	videoError         string
+	parameterSets      []byte
 
 	// The video.frame being read.
 	frameHead       [videoFrameHeaderLen]byte
@@ -609,6 +612,7 @@ func (s *Session) clearVideo() {
 	s.videoDisablePending = false
 	s.videoStreamStarted = false
 	s.videoResetPending = false
+	s.videoCodecChanging = false
 	s.videoError = ""
 	s.parameterSets = s.parameterSets[:0]
 }

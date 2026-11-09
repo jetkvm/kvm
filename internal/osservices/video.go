@@ -1,6 +1,9 @@
 package osservices
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // --- Service video ----------------------------------------------------------
 
@@ -173,7 +176,9 @@ func (s *Session) videoUpdate() {
 		return
 	}
 	if s.videoSwitchWanted && s.settings.VideoEnabled && s.videoPlatform() && !s.videoCodecOffered() {
-		s.videoError = fmt.Sprintf("the browser uses %s, which the sender does not offer", s.settings.Codec)
+		s.videoError = codecNotOffered(s.settings.Codec)
+	} else if s.videoCodecOffered() && strings.HasPrefix(s.videoError, codecNotOfferedPrefix) {
+		s.videoError = ""
 	}
 	s.videoSwitchWanted = s.videoSwitchWanted && s.settings.VideoEnabled && s.videoPlatform() && s.videoCodecOffered()
 	switch s.videoSource {
@@ -331,6 +336,13 @@ func (s *Session) videoStartStream(width, height, fps uint32, codec Codec, reset
 }
 
 func (s *Session) handleEnabledStatus(payload []byte) {
+	if s.videoCodecChanging {
+		if Codec(payload[2]) != s.settings.Codec {
+			// Sent before the sender had the new codec.
+			return
+		}
+		s.videoCodecChanging = false
+	}
 	if err := s.enabledStatusError(payload); err != "" {
 		s.faultService(ServiceVideo, err)
 		return
@@ -426,7 +438,7 @@ func (s *Session) videoApplySettings(previous *Settings) {
 		s.videoDisable()
 	case codecChanged && !s.videoCodecOffered():
 		s.videoDisable()
-		s.videoError = fmt.Sprintf("the browser uses %s, which the sender does not offer", now.Codec)
+		s.videoError = codecNotOffered(now.Codec)
 	case resized:
 		// The sender hears of the new size once the display is up.
 		s.videoConfigEnabled = false
@@ -434,8 +446,17 @@ func (s *Session) videoApplySettings(previous *Settings) {
 			s.faultService(ServiceVideo, videoNotPresented)
 		}
 	case s.videoConfigEnabled:
+		// Statuses of the previous codec may be on their way; the sender
+		// starts a new stream for the new one.
+		s.videoCodecChanging = s.videoCodecChanging || codecChanged
 		s.sendVideoConfig(true)
 	}
+}
+
+const codecNotOfferedPrefix = "the browser uses "
+
+func codecNotOffered(codec Codec) string {
+	return fmt.Sprintf("%s%s, which the sender does not offer", codecNotOfferedPrefix, codec)
 }
 
 // videoTargets are the static targets: the settings' own, else a bitrate by
@@ -491,7 +512,12 @@ func (s *Session) sendVideoConfig(enabled bool) bool {
 		payload[0] = 1
 	}
 	payload[1] = byte(s.settings.Layout)
-	payload[2] = byte(s.settings.Codec)
+	// The KVM requests H.265 only from a sender that offers it; without it
+	// video does not switch, and the codec field of a disabled config is
+	// H.264.
+	if s.videoCodecOffered() {
+		payload[2] = byte(s.settings.Codec)
+	}
 	le.PutUint32(payload[4:], s.settings.Width)
 	le.PutUint32(payload[8:], s.settings.Height)
 	le.PutUint32(payload[12:], targetKbps)
@@ -750,7 +776,10 @@ func (s *Session) frameUnitError(unit []byte) string {
 		return "the video.frame keyframe flag does not match its access unit"
 	}
 	if s.frameFlags&frameParameterSets != 0 && !s.keepParameterSets(unit) {
-		return "a video.frame flagged with parameter sets has none"
+		if s.videoCodec == CodecH265 {
+			return "a video.frame flagged with parameter sets has no VPS, SPS and PPS"
+		}
+		return "a video.frame flagged with parameter sets has no SPS and PPS"
 	}
 	return ""
 }
