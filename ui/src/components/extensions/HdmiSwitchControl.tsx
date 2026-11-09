@@ -97,9 +97,12 @@ export function HdmiSwitchControl() {
         );
         return;
       }
-      setConfig(resp.result as HdmiSwitchConfig);
-      setIsEditingSettings(false);
-      setEditedConfig(null);
+      const saved = resp.result as HdmiSwitchConfig | undefined;
+      if (saved) {
+        setConfig(saved);
+        setIsEditingSettings(false);
+        setEditedConfig(null);
+      }
     });
   };
 

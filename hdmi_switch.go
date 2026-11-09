@@ -174,18 +174,18 @@ func rpcGetHdmiSwitchConfig() (tesmart.Config, error) {
 	return cfg, nil
 }
 
-func rpcSetHdmiSwitchConfig(cfg tesmart.Config) error {
+func rpcSetHdmiSwitchConfig(cfg tesmart.Config) (tesmart.Config, error) {
 	tesmart.NormalizeConfig(&cfg)
 
 	LoadConfig()
 	config.HdmiSwitch = &cfg
 	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+		return cfg, fmt.Errorf("failed to save config: %w", err)
 	}
 
 	hdmiSwitchLogger.Info().Str("host", cfg.Host).Int("port", cfg.Port).Int("portCount", cfg.PortCount).Msg("HDMI switch config updated")
 
 	// Refresh immediately so the UI sees the new host/port right away.
 	pollHdmiSwitchState()
-	return nil
+	return cfg, nil
 }
