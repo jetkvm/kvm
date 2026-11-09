@@ -1385,7 +1385,9 @@ func (s *Session) State() State {
 	return st
 }
 
-// String helps logs.
+// String describes the session's handover for logs.
 func (s *Session) String() string {
-	return fmt.Sprintf("link=%d parse=%d source=%s", s.link, s.parse, s.videoSource)
+	return fmt.Sprintf("link=%d parse=%d source=%s restoring=%t disable_pending=%t sender_enabled=%t config_enabled=%t registered=%t switches=%d blocked=%t",
+		s.link, s.parse, s.videoSource, s.videoRestoring, s.videoDisablePending, s.videoSenderEnabled,
+		s.videoConfigEnabled, s.videoRegistered, len(s.recovery.startsMS), s.recovery.blocked)
 }

@@ -756,7 +756,7 @@ func onFirstSessionConnected(session *Session) {
 // connected can fire before then, racing the assignment.
 func onSessionConnected(session *Session) {
 	notifyFailsafeMode(session)
-	go osServicesBrowserChanged()
+	go osServicesBrowserChanged(session)
 	if session.AudioTrack != nil {
 		startAudio(session.AudioTrack)
 	}

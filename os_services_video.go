@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/osservices"
 	"github.com/jetkvm/kvm/internal/osservices/edid"
 	"github.com/pion/webrtc/v4"
@@ -17,6 +18,12 @@ const (
 	// guestFrameQueue frames wait for the WebRTC track at most; while it is
 	// full, the session holds the USB read.
 	guestFrameQueue = 8
+	// hardwareCaptureRestartDelay: the hardware capture starts again this
+	// long after the KVM display is gone. The target needs the time to set
+	// its output for the hardware capture's EDID, and a new switch in it
+	// cancels the start: the native pipeline crashes or hangs when it is
+	// stopped right after it started, or while it captures above 1080p.
+	hardwareCaptureRestartDelay = 2 * time.Second
 )
 
 type guestFrame struct {
@@ -41,8 +48,10 @@ type guestVideo struct {
 	edid      atomic.Value // string
 
 	// Display changes run in order on one goroutine, outside the session
-	// lock.
-	ops chan func()
+	// lock. restartGeneration, of that goroutine, cancels a pending start
+	// of the hardware capture.
+	ops               chan func()
+	restartGeneration uint64
 
 	frames   chan guestFrame
 	reserved atomic.Int32
@@ -109,7 +118,10 @@ func (s *osServicesService) DisplayPresent(width, height, serial uint32) bool {
 	v.owned.Store(true)
 	v.edid.Store(edid.Hex(data))
 	v.ops <- func() {
-		stopNativeVideo()
+		v.restartGeneration++
+		if lastVideoState.Streaming != native.VideoStreamingStatusInactive {
+			stopNativeVideo()
+		}
 		if err := reapplyHostDisplayAdvertisement("os_services_present"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot present the KVM display")
 			v.edid.Store("")
@@ -131,11 +143,19 @@ func (s *osServicesService) DisplayRestore() {
 		}
 		v.presented.Store(false)
 		v.owned.Store(false)
-		if session := currentSession; session != nil && getActiveSessions() > 0 {
-			startNativeVideoForSession(session)
-		}
 		osServicesLogger.Info().Msg("hardware capture restored")
-		s.StateChanged()
+		v.restartGeneration++
+		generation := v.restartGeneration
+		time.AfterFunc(hardwareCaptureRestartDelay, func() {
+			v.ops <- func() {
+				if v.restartGeneration != generation || v.owned.Load() {
+					return
+				}
+				if session := currentSession; session != nil && getActiveSessions() > 0 {
+					startNativeVideoForSession(session)
+				}
+			}
+		})
 	}
 }
 

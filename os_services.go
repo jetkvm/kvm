@@ -60,6 +60,8 @@ type osServicesService struct {
 	settingsSequence uint32
 
 	stateSignal chan struct{}
+	// The source last logged; guarded by link.Mu.
+	lastSource osservices.VideoSource
 
 	// Guarded by link.Mu.
 	clipboardWaits map[uint32]chan clipboardResult
@@ -200,14 +202,17 @@ func (s *osServicesService) ticker() {
 
 // applySettings hands the settings and the browser's codec to the session.
 func (s *osServicesService) applySettings() {
-	codec := osServicesBrowserCodec()
-	settings := s.config().sessionSettings(codec)
+	s.applySettingsFor(currentSession)
+}
+
+func (s *osServicesService) applySettingsFor(browser *Session) {
+	settings := s.config().sessionSettings(browserCodec(browser))
 	s.do(func(session *osservices.Session) { session.ApplySettings(settings) })
 }
 
-// osServicesBrowserCodec is the codec of the current browser session.
-func osServicesBrowserCodec() osservices.Codec {
-	if session := currentSession; session != nil && session.codecMimeType == webrtc.MimeTypeH265 {
+// browserCodec is the codec a browser session negotiated.
+func browserCodec(session *Session) osservices.Codec {
+	if session != nil && session.codecMimeType == webrtc.MimeTypeH265 {
 		return osservices.CodecH265
 	}
 	return osservices.CodecH264
@@ -244,6 +249,14 @@ func (s *osServicesService) SessionEnded(reason string) {
 func (s *osServicesService) ResetTransport() { s.link.ResetTransport() }
 
 func (s *osServicesService) StateChanged() {
+	if s.session == nil {
+		return
+	}
+	if source := s.session.Source(); source != s.lastSource {
+		s.lastSource = source
+		osServicesLogger.Info().Str("session", s.session.String()).Bool("owned", s.video.owned.Load()).
+			Bool("presented", s.video.presented.Load()).Msg("video source changed")
+	}
 	select {
 	case s.stateSignal <- struct{}{}:
 	default:
@@ -555,13 +568,13 @@ func osServicesPrefersH264() bool {
 	return prefer
 }
 
-// osServicesBrowserChanged: a browser session became current or connected;
-// it needs the codec it negotiated and a keyframe.
-func osServicesBrowserChanged() {
+// osServicesBrowserChanged: a browser session connected; it needs the codec
+// it negotiated and a keyframe. currentSession may not point at it yet.
+func osServicesBrowserChanged(session *Session) {
 	if osServices == nil {
 		return
 	}
-	osServices.applySettings()
+	osServices.applySettingsFor(session)
 	osServices.video.wantKeyframe()
 }
 
