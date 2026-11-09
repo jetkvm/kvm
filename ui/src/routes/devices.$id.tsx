@@ -23,14 +23,17 @@ import {
   NetworkState,
   OtaState,
   PostRebootAction,
+  StorageDownloadState,
   USBStates,
   useHidStore,
+  useStorageDownloadStore,
   useNetworkStateStore,
   User,
   useRTCStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
+  RpcVideoState,
   VideoState,
   useFailsafeModeStore,
   useSettingsStore,
@@ -178,6 +181,7 @@ export default function KvmIdRoute() {
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
+  const setStorageDownload = useStorageDownloadStore(state => state.setDownload);
 
   // Everything that must be part of the initial offer is attached here; the
   // signaling adapter owns the peer connection itself.
@@ -373,7 +377,7 @@ export default function KvmIdRoute() {
   }, 10000);
 
   const { setNetworkState } = useNetworkStateStore();
-  const { setHdmiState } = useVideoStore();
+  const { applyVideoState, setOsServicesSettings, resetOsServicesSettings } = useVideoStore();
   const { keyboardLedState, setKeyboardLedState, keysDownState, setKeysDownState, setUsbState } =
     useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
@@ -400,9 +404,13 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "videoInputState") {
-      const hdmiState = resp.params as Parameters<VideoState["setHdmiState"]>[0];
-      console.debug("Setting HDMI state", hdmiState);
-      setHdmiState(hdmiState);
+      applyVideoState(resp.params as unknown as RpcVideoState);
+    }
+
+    if (resp.method === "osServicesSettings") {
+      setOsServicesSettings(
+        resp.params as unknown as Parameters<VideoState["setOsServicesSettings"]>[0],
+      );
     }
 
     if (resp.method === "networkState") {
@@ -422,6 +430,10 @@ export default function KvmIdRoute() {
       const downState = resp.params as KeysDownState;
       console.debug("Setting key down state:", downState);
       setKeysDownState(downState);
+    }
+
+    if (resp.method === "storageDownloadState") {
+      setStorageDownload(resp.params as StorageDownloadState);
     }
 
     if (resp.method === "otaState") {
@@ -508,12 +520,13 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
+    // A new connection may be a restarted device whose OS Services settings
+    // sequence starts over; the settings page reloads through its own RPC.
+    resetOsServicesSettings();
     console.log("Requesting video state");
     send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
-      console.debug("Setting HDMI state", hdmiState);
-      setHdmiState(hdmiState);
+      applyVideoState(resp.result as RpcVideoState);
     });
 
     console.log("Requesting network settings");
@@ -526,7 +539,19 @@ export default function KvmIdRoute() {
         setDisplayHostname(null);
       }
     });
-  }, [rpcDataChannel?.readyState, send, setHdmiState]);
+  }, [rpcDataChannel?.readyState, send, applyVideoState, resetOsServicesSettings]);
+
+  // A download the firmware started before this session holds video off;
+  // the overlay says why. Only a device with removable storage downloads to
+  // it, and the capability arrives after the channel opens.
+  const removableStorage = useCapability("removable_storage");
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open" || !removableStorage) return;
+    send("getStorageDownloadState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setStorageDownload(resp.result as StorageDownloadState);
+    });
+  }, [rpcDataChannel?.readyState, removableStorage, send, setStorageDownload]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
