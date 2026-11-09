@@ -914,6 +914,8 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = unmountATXControl()
 	case "dc-power":
 		_ = unmountDCControl()
+	case "hdmi-switch":
+		_ = unmountHdmiSwitchControl()
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
@@ -924,6 +926,8 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
+	case "hdmi-switch":
+		_ = mountHdmiSwitchControl()
 	}
 
 	// Re-publish MQTT HA Discovery for the new extension
@@ -1489,6 +1493,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setActiveExtension":         {Func: rpcSetActiveExtension, Params: []string{"extensionId"}},
 	"getATXState":                {Func: rpcGetATXState},
 	"setATXPowerAction":          {Func: rpcSetATXPowerAction, Params: []string{"action"}},
+	"getHdmiSwitchState":         {Func: rpcGetHdmiSwitchState},
+	"setHdmiSwitchInput":         {Func: rpcSetHdmiSwitchInput, Params: []string{"input"}},
+	"getHdmiSwitchConfig":        {Func: rpcGetHdmiSwitchConfig},
+	"setHdmiSwitchConfig":        {Func: rpcSetHdmiSwitchConfig, Params: []string{"config"}},
 	"getSerialSettings":          {Func: rpcGetSerialSettings},
 	"setSerialSettings":          {Func: rpcSetSerialSettings, Params: []string{"settings"}},
 	"sendCustomCommand":          {Func: rpcSendCustomCommand, Params: []string{"command"}},
