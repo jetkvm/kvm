@@ -25,7 +25,8 @@ var keyboardConfig = gadgetConfigItem{
 		"no_out_endpoint": "0",
 		"wakeup_on_write": "0",
 	},
-	reportDesc: keyboardReportDesc,
+	reportDesc:  keyboardReportDesc,
+	inEndpoints: 1,
 }
 
 var wakeHIDConfig = gadgetConfigItem{
@@ -40,7 +41,8 @@ var wakeHIDConfig = gadgetConfigItem{
 		"no_out_endpoint": "1",
 		"wakeup_on_write": "1",
 	},
-	reportDesc: wakeReportDesc,
+	reportDesc:  wakeReportDesc,
+	inEndpoints: 1,
 }
 
 var wakeReportDesc = []byte{

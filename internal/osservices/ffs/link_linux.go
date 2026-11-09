@@ -3,13 +3,16 @@ package ffs
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/osservices"
 	"github.com/rs/zerolog"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -23,6 +26,12 @@ const (
 	// kvmRestartWindow: a reconfiguration this soon after the KVM restarted
 	// its own USB device does not count against the video retry budget.
 	kvmRestartWindow = 10 * time.Second
+	// stopWait is how long Stop waits for the goroutines. The longest step
+	// is an IN write that the host does not read, inWriteWait and the time
+	// to cancel it.
+	stopWait = 6 * time.Second
+	// disabledWait is the pause between tries of I/O on a disabled function.
+	disabledWait = 100 * time.Millisecond
 )
 
 // Link connects a Function to a Session. Mu guards the session: every
@@ -34,6 +43,10 @@ type Link struct {
 	udc     string
 
 	fn *Function
+	// stopping ends the goroutines of the current Start; stopped closes
+	// when all of them returned.
+	stopping atomic.Bool
+	stopped  chan struct{}
 
 	// The OUT framer, and the wake-up for a held read.
 	framer framer
@@ -61,12 +74,59 @@ func NewLink(log *zerolog.Logger, udc string) *Link {
 // SetSession sets the session the link serves, before Start.
 func (l *Link) SetSession(s *osservices.Session) { l.session = s }
 
-// Start runs the link's goroutines on fn until fn fails.
+// Start runs the link's goroutines on fn until Stop. The link has no
+// function at that time: it is new, or Stop returned nil.
 func (l *Link) Start(fn *Function) {
 	l.fn = fn
-	go l.control()
-	go l.reader()
-	go l.writer()
+	l.stopping.Store(false)
+	stopped := make(chan struct{})
+	l.stopped = stopped
+	l.Mu.Lock()
+	l.session.SetFaulted(false)
+	l.Mu.Unlock()
+
+	var running sync.WaitGroup
+	for _, run := range []func(){l.control, l.reader, l.writer} {
+		running.Add(1)
+		go func() {
+			defer running.Done()
+			run()
+		}()
+	}
+	go func() {
+		running.Wait()
+		close(stopped)
+	}()
+}
+
+// Stop ends the session and the link's goroutines; after it returned nil,
+// the caller closes the function, and Start can run the link on a new one.
+//
+// The caller does not hold Mu, and it has detached the gadget from the USB
+// controller: a read that waits for the host ends only when its endpoint is
+// disabled. When the goroutines do not end in time, Stop returns an error
+// and the function must stay open; a later Stop waits for them again.
+func (l *Link) Stop() error {
+	if l.fn == nil {
+		return nil
+	}
+	l.stopping.Store(true)
+	l.fn.Interrupt()
+	l.Mu.Lock()
+	l.session.USBReconfigured(l.byKVM())
+	l.Mu.Unlock()
+	l.flush()
+	l.Wake()
+
+	timer := time.NewTimer(stopWait)
+	defer timer.Stop()
+	select {
+	case <-l.stopped:
+		l.fn = nil
+		return nil
+	case <-timer.C:
+		return errors.New("ffs: the link's goroutines did not stop")
+	}
 }
 
 // NoteKVMRestart: the KVM is about to restart its own USB device, for a
@@ -144,6 +204,9 @@ func (l *Link) ResetTransport() {
 func (l *Link) control() {
 	for {
 		events, err := l.fn.ReadEvents()
+		if errors.Is(err, ErrStopped) {
+			return
+		}
 		if err != nil {
 			l.log.Warn().Err(err).Msg("OS Services ep0 failed; the USB function is faulted")
 			l.Mu.Lock()
@@ -163,7 +226,14 @@ func (l *Link) event(e Event) {
 		l.setup(e.Setup)
 	case EventEnable:
 		l.packetSize = l.currentPacketSize()
+		if address, err := l.fn.INEndpoint(); err != nil {
+			l.log.Debug().Err(err).Msg("OS Services: cannot read the bulk IN endpoint address")
+		} else {
+			l.log.Info().Str("in_endpoint", fmt.Sprintf("0x%02x", address)).Msg("OS Services USB function enabled")
+		}
 		l.reconfigured("enable")
+		// The reader and the writer try again at once.
+		l.Wake()
 	case EventDisable:
 		l.reconfigured("disable")
 	case EventUnbind:
@@ -234,19 +304,22 @@ func (l *Link) reader() {
 		// A session that ended stops reading until the next RESET: the
 		// sender's writes then stall and it starts again.
 		for !l.reading() {
+			if l.stopping.Load() {
+				return
+			}
 			l.waitWake(50 * time.Millisecond)
 		}
 		l.Mu.Lock()
 		length := l.framer.nextLength()
 		l.Mu.Unlock()
 		n, err := l.fn.Read(buf[:length])
+		if l.stopping.Load() {
+			return
+		}
 		if err != nil {
-			if errors.Is(err, os.ErrClosed) {
-				return
-			}
-			// ESHUTDOWN and the like: the function was disabled; the
-			// events report it.
-			time.Sleep(20 * time.Millisecond)
+			// EAGAIN: the function is disabled. ESHUTDOWN and the like: it
+			// was disabled during the read. The events report both.
+			l.waitWake(disabledWait)
 			continue
 		}
 		l.Mu.Lock()
@@ -260,7 +333,7 @@ func (l *Link) reader() {
 // output for the browser, the rest of the read stays here, and the bus with
 // it.
 func (l *Link) feed(data []byte) {
-	for len(data) > 0 {
+	for len(data) > 0 && !l.stopping.Load() {
 		l.Mu.Lock()
 		if !l.session.Reading() {
 			l.Mu.Unlock()
@@ -296,19 +369,27 @@ func (l *Link) writer() {
 	zeroLengthDue := false
 	for {
 		l.qmu.Lock()
-		for len(l.queue) == 0 && !zeroLengthDue {
+		for len(l.queue) == 0 && !zeroLengthDue && !l.stopping.Load() {
 			l.qcond.Wait()
 		}
 		n := copy(chunk, l.queue)
 		generation := l.generation
 		l.qmu.Unlock()
+		if l.stopping.Load() {
+			return
+		}
 
 		written, err := l.fn.Write(chunk[:n], inWriteWait)
+		if l.stopping.Load() {
+			return
+		}
 		if err != nil {
-			if errors.Is(err, os.ErrClosed) {
-				return
+			// EAGAIN: the function is disabled, which the events report.
+			level := zerolog.InfoLevel
+			if errors.Is(err, unix.EAGAIN) {
+				level = zerolog.DebugLevel
 			}
-			l.log.Info().Err(err).Int("bytes", n).Msg("OS Services: IN write failed")
+			l.log.WithLevel(level).Err(err).Int("bytes", n).Msg("OS Services: IN write failed")
 			l.Mu.Lock()
 			if l.session.Open() || l.session.Reading() {
 				l.session.End("the IN endpoint did not drain")

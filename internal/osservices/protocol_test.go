@@ -1517,7 +1517,7 @@ func TestServicesRandomizedTerminalAndFileTraffic(t *testing.T) {
 				sender.exit(shells[rng.IntN(len(shells))], byte(pick(exitExited, exitClosed, exitFailed)))
 			case x < 0.42:
 				// A shell, or a session_id the KVM never used.
-				targets := append(sortedKeys(sender.shells), uint32(randint(1<<30, 1<<32-1)))
+				targets := append(sortedKeys(sender.shells), uint32(randint(1<<30, 1<<31-1)))
 				sender.output(targets[rng.IntN(len(targets))], randomBytes(rng, pick(1, 50, 70000)))
 			case x < 0.44 && len(sender.shells) > 0:
 				r.k.f.backedUp = true

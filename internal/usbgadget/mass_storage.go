@@ -21,6 +21,7 @@ var massStorageBaseConfig = gadgetConfigItem{
 		// stalls off the function pads with a zero-length packet instead.
 		"stall": "0",
 	},
+	inEndpoints: 1,
 }
 
 func (u *UsbGadget) lunFilePath() (string, error) {

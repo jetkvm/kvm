@@ -108,6 +108,7 @@ func initOSServices() {
 		Instance:        osServicesFFSInstance,
 		Order:           5000,
 		Prepare:         s.prepareFunction,
+		Release:         s.releaseFunction,
 		MSOSDescriptors: true,
 	})
 	go s.ticker()
@@ -143,8 +144,8 @@ func loadOSServicesKey(path string) (ed25519.PrivateKey, error) {
 }
 
 // prepareFunction mounts the FunctionFS instance and writes its descriptors,
-// once; usbgadget calls it before each configuration.
-func (s *osServicesService) prepareFunction() error {
+// unless the function is open; usbgadget calls it before each configuration.
+func (s *osServicesService) prepareFunction(spareIN bool) error {
 	s.fnMu.Lock()
 	defer s.fnMu.Unlock()
 	if s.fn != nil {
@@ -153,13 +154,32 @@ func (s *osServicesService) prepareFunction() error {
 	if err := ffs.Mount(osServicesFFSMount, osServicesFFSInstance); err != nil {
 		return err
 	}
-	fn, err := ffs.Open(osServicesFFSMount)
+	fn, err := ffs.Open(osServicesFFSMount, spareIN)
 	if err != nil {
 		return err
 	}
 	s.fn = fn
 	s.link.Start(fn)
-	osServicesLogger.Info().Msg("OS Services USB function ready")
+	osServicesLogger.Info().Bool("spare_in", spareIN).Msg("OS Services USB function ready")
+	return nil
+}
+
+// releaseFunction stops the link and closes the FunctionFS instance, so that
+// the next prepareFunction writes the descriptors again. usbgadget calls it
+// with the gadget detached from the USB controller. After an error the
+// function stays open and the link stays stopped.
+func (s *osServicesService) releaseFunction() error {
+	s.fnMu.Lock()
+	defer s.fnMu.Unlock()
+	if s.fn == nil {
+		return nil
+	}
+	if err := s.link.Stop(); err != nil {
+		return err
+	}
+	s.fn.Close()
+	s.fn = nil
+	osServicesLogger.Info().Msg("OS Services USB function released")
 	return nil
 }
 

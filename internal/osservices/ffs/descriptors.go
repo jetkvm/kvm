@@ -3,6 +3,14 @@
 // 0x01), one bulk OUT and one bulk IN endpoint, and Microsoft OS 1.0
 // descriptors so that Windows binds WinUSB without a driver package
 // (Transport, USB interface).
+//
+// The interface can have one more endpoint, an interrupt IN endpoint that
+// nothing uses. The USB controller gives a function its IN endpoints in the
+// order of the descriptors, so the unused endpoint takes the number the
+// bulk IN endpoint would have, and the bulk IN endpoint takes the next one.
+// The caller asks for it when the bulk IN endpoint would get a number that
+// does not work on the device. A sender takes the bulk endpoints and ignores
+// the rest.
 package ffs
 
 import (
@@ -38,33 +46,54 @@ const (
 	PacketSizeHS = 512
 )
 
-func interfaceDescriptor(b *bytes.Buffer) {
+// Endpoint transfer types (bmAttributes).
+const (
+	transferBulk      = 2
+	transferInterrupt = 3
+)
+
+// The spare interrupt IN endpoint: a small packet and a long interval (10 ms
+// at full speed, 64 ms at high speed), as nothing reads it.
+const (
+	sparePacketSize = 8
+	spareInterval   = 10
+)
+
+func interfaceDescriptor(b *bytes.Buffer, endpoints byte) {
 	b.Write([]byte{
-		9,    // bLength
-		4,    // bDescriptorType: interface
-		0,    // bInterfaceNumber
-		0,    // bAlternateSetting
-		2,    // bNumEndpoints
-		0xff, // bInterfaceClass
-		0x4a, // bInterfaceSubClass
-		0x01, // bInterfaceProtocol
-		0,    // iInterface: none, as on the JetKVM Mini
+		9,         // bLength
+		4,         // bDescriptorType: interface
+		0,         // bInterfaceNumber
+		0,         // bAlternateSetting
+		endpoints, // bNumEndpoints
+		0xff,      // bInterfaceClass
+		0x4a,      // bInterfaceSubClass
+		0x01,      // bInterfaceProtocol
+		0,         // iInterface: none, as on the JetKVM Mini
 	})
 }
 
-func endpointDescriptor(b *bytes.Buffer, address byte, packetSize uint16) {
-	b.Write([]byte{7, 5, address, 2}) // bLength, endpoint, address, bulk
+func endpointDescriptor(b *bytes.Buffer, address, attributes byte, packetSize uint16, interval byte) {
+	b.Write([]byte{7, 5, address, attributes}) // bLength, endpoint, address, transfer type
 	_ = binary.Write(b, binary.LittleEndian, packetSize)
-	b.WriteByte(0) // bInterval
+	b.WriteByte(interval)
 }
 
-// speedDescriptors are the interface and its endpoints at one speed. The
-// OUT endpoint comes first, so FunctionFS names it ep1 and the IN endpoint
-// ep2.
-func speedDescriptors(b *bytes.Buffer, packetSize uint16) {
-	interfaceDescriptor(b)
-	endpointDescriptor(b, 0x01, packetSize)
-	endpointDescriptor(b, 0x82, packetSize)
+// speedDescriptors are the interface and its endpoints at one speed.
+// FunctionFS names the endpoint files by the endpoint numbers here: ep1 is
+// the bulk OUT endpoint; ep2 is the bulk IN endpoint, or with the spare
+// endpoint ep2 is the spare and ep3 the bulk IN endpoint.
+func speedDescriptors(b *bytes.Buffer, packetSize uint16, spareIN bool) {
+	if !spareIN {
+		interfaceDescriptor(b, 2)
+		endpointDescriptor(b, 0x01, transferBulk, packetSize, 0)
+		endpointDescriptor(b, 0x82, transferBulk, packetSize, 0)
+		return
+	}
+	interfaceDescriptor(b, 3)
+	endpointDescriptor(b, 0x01, transferBulk, packetSize, 0)
+	endpointDescriptor(b, 0x82, transferInterrupt, sparePacketSize, spareInterval)
+	endpointDescriptor(b, 0x83, transferBulk, packetSize, 0)
 }
 
 // osDescHeader is struct usb_os_desc_header: interface, dwLength,
@@ -110,20 +139,28 @@ func extendedProperties(b *bytes.Buffer) {
 }
 
 // Descriptors is the FunctionFS v2 descriptor blob that ep0 takes first.
-func Descriptors() []byte {
+// With spareIN the interface has the unused interrupt IN endpoint before
+// the bulk IN endpoint.
+func Descriptors(spareIN bool) []byte {
 	var body bytes.Buffer
-	speedDescriptors(&body, PacketSizeFS)
-	speedDescriptors(&body, PacketSizeHS)
+	speedDescriptors(&body, PacketSizeFS, spareIN)
+	speedDescriptors(&body, PacketSizeHS, spareIN)
 	extendedCompatID(&body)
 	extendedProperties(&body)
+
+	// The interface and each endpoint count as one descriptor.
+	perSpeed := uint32(3)
+	if spareIN {
+		perSpeed = 4
+	}
 
 	var b bytes.Buffer
 	const headerLen = 4 * 6 // magic, length, flags, fs, hs and os counts
 	_ = binary.Write(&b, binary.LittleEndian, uint32(descriptorsMagicV2))
 	_ = binary.Write(&b, binary.LittleEndian, uint32(headerLen+body.Len()))
 	_ = binary.Write(&b, binary.LittleEndian, uint32(hasFSDesc|hasHSDesc|hasMSOSDesc))
-	_ = binary.Write(&b, binary.LittleEndian, uint32(3)) // fs_count
-	_ = binary.Write(&b, binary.LittleEndian, uint32(3)) // hs_count
+	_ = binary.Write(&b, binary.LittleEndian, perSpeed)  // fs_count
+	_ = binary.Write(&b, binary.LittleEndian, perSpeed)  // hs_count
 	_ = binary.Write(&b, binary.LittleEndian, uint32(2)) // os_count
 	b.Write(body.Bytes())
 	return b.Bytes()

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"syscall"
 )
 
 // ExternalFunction is a gadget function whose driver runs in user space
@@ -22,8 +23,17 @@ type ExternalFunction struct {
 	Order uint
 	// Prepare readies the driver for the instance (mounts it and writes the
 	// descriptors). The gadget calls it before every configuration; it
-	// returns at once when the driver is ready.
-	Prepare func() error
+	// returns at once when the driver is ready. With spareIN the
+	// descriptors declare one IN endpoint that nothing uses before the
+	// function's own IN endpoint (externalNeedsSpareIN). spareIN changes
+	// only after a Release.
+	Prepare func(spareIN bool) error
+	// Release closes the driver's files of the instance, so that the next
+	// Prepare can write other descriptors. The gadget calls it with the
+	// gadget detached from the UDC. After an error the driver still holds
+	// the instance open, and the gadget calls Release again before the next
+	// Prepare.
+	Release func() error
 	// MSOSDescriptors turns on the Microsoft OS 1.0 descriptors of the
 	// gadget, which a FunctionFS function fills.
 	MSOSDescriptors bool
@@ -65,9 +75,48 @@ const (
 	msOSSignature  = "MSFT100"
 )
 
+// unreliableINEndpoint reports whether IN endpoint n of the RV1106 USB
+// controller loses data: after the host enumerates the device again,
+// endpoint 6 sends nothing and endpoint 8 sends stale data, until the
+// controller is bound again (#1634).
+func unreliableINEndpoint(n int) bool { return n == 6 || n == 8 }
+
+// externalNeedsSpareIN reports whether the external function's descriptors
+// need a spare IN endpoint before the function's own, which is the only IN
+// endpoint it uses. Without the spare, that endpoint has the number after
+// the IN endpoints of the functions before it; the spare takes that number
+// and moves the function's endpoint to the next one. The numbers after 6
+// and 8 are reliable.
+func (u *UsbGadget) externalNeedsSpareIN(f *ExternalFunction) bool {
+	return unreliableINEndpoint(u.inEndpointsBefore(f.Order) + 1)
+}
+
+// releaseExternalFunction detaches the gadget from the UDC and has the
+// driver close the instance. With the gadget detached the kernel has
+// unbound the function: I/O that waited on its endpoints has ended, and the
+// last close of its files does not make the kernel unregister a bound
+// gadget. The caller holds configLock and has excluded HID access
+// (withHIDRebind); the configuration that follows attaches the gadget again.
+func (u *UsbGadget) releaseExternalFunction(f *ExternalFunction) error {
+	if f.Release == nil {
+		return errors.New("the external function has no Release")
+	}
+	// As for a rebind: no HID descriptor stays open over the unbind, and the
+	// host session ends before the functions shut down.
+	u.ResetHIDFiles()
+	_ = softDisconnect(u.udc)
+	err := os.WriteFile(path.Join(u.kvmGadgetPath, "UDC"), []byte("\n"), 0o644)
+	// ENODEV: the gadget is not attached.
+	if err != nil && !errors.Is(err, syscall.ENODEV) {
+		u.log.Warn().Err(err).Msg("cannot detach the gadget from the UDC")
+	}
+	return f.Release()
+}
+
 // prepareExternalFunction creates the external function's instance and runs
-// its Prepare. It reports whether the function can be linked. The caller
-// holds configLock.
+// its Prepare, after a Release when the descriptors must change. It reports
+// whether the function can be linked. The caller holds configLock and has
+// excluded HID access (withHIDRebind).
 func (u *UsbGadget) prepareExternalFunction() bool {
 	f := registeredExternalFunction()
 	if f == nil {
@@ -75,6 +124,17 @@ func (u *UsbGadget) prepareExternalFunction() bool {
 	}
 	if _, ok := u.configMap[f.Key]; !ok {
 		return false
+	}
+	spareIN := u.externalNeedsSpareIN(f)
+	if u.externalPrepared && (u.externalMustRelease || u.externalSpareIN != spareIN) {
+		if err := u.releaseExternalFunction(f); err != nil {
+			u.externalMustRelease = true
+			u.log.Warn().Err(err).Str("function", f.Key).Msg("cannot release the external function; leaving it out of the gadget")
+			return false
+		}
+		u.externalPrepared = false
+		u.externalMustRelease = false
+		u.log.Info().Str("function", f.Key).Bool("spare_in", spareIN).Msg("external function released for new descriptors")
 	}
 	// At boot configfs is not mounted yet; the transaction would mount it,
 	// but the instance must exist before the transaction links it.
@@ -89,10 +149,12 @@ func (u *UsbGadget) prepareExternalFunction() bool {
 		u.log.Warn().Err(err).Str("function", f.Key).Msg("cannot create the external function instance")
 		return false
 	}
-	if err := f.Prepare(); err != nil {
+	if err := f.Prepare(spareIN); err != nil {
 		u.log.Warn().Err(err).Str("function", f.Key).Msg("external function not ready; leaving it out of the gadget")
 		return false
 	}
+	u.externalPrepared = true
+	u.externalSpareIN = spareIN
 	if f.MSOSDescriptors {
 		if err := u.enableMSOSDescriptors(); err != nil {
 			u.log.Warn().Err(err).Msg("cannot turn on the Microsoft OS descriptors")

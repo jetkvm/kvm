@@ -106,6 +106,13 @@ type UsbGadget struct {
 	// externalReady: the registered external function (FunctionFS) is
 	// ready, so the configuration links it.
 	externalReady bool
+	// externalPrepared: the external function's driver holds the instance
+	// open, with the descriptors for externalSpareIN. externalMustRelease:
+	// its Release failed, so the driver is stopped but still open, and the
+	// next configuration releases it first.
+	externalPrepared    bool
+	externalSpareIN     bool
+	externalMustRelease bool
 
 	onKeyboardStateChange *func(state KeyboardState)
 	onKeysDownChange      *func(state KeysDownState)
