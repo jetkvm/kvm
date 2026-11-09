@@ -25,7 +25,7 @@ import {
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
-  UpdateVideoPausedOverlay,
+  VideoPausedOverlay,
 } from "@components/VideoOverlay";
 import OcrOverlay from "@components/OcrOverlay";
 import { keys } from "@/keyboardMappings";
@@ -763,7 +763,11 @@ export default function WebRTCVideo({
                           <div className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
-                            <UpdateVideoPausedOverlay show={updatePausesVideo} />
+                            <VideoPausedOverlay
+                              show={updatePausesVideo}
+                              title={m.video_overlay_update_paused_title()}
+                              description={m.video_overlay_update_paused_description()}
+                            />
                             <NoAutoplayPermissionsOverlay
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
