@@ -103,6 +103,10 @@ type UsbGadget struct {
 	tx     *UsbGadgetTransaction
 	txLock sync.Mutex
 
+	// externalReady: the registered external function (FunctionFS) is
+	// ready, so the configuration links it.
+	externalReady bool
+
 	onKeyboardStateChange *func(state KeyboardState)
 	onKeysDownChange      *func(state KeysDownState)
 
@@ -140,11 +144,22 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 
 	keyboardCtx, keyboardCancel := context.WithCancel(context.Background())
 
+	configMap = deepCopyConfigMap(configMap)
+	if f := registeredExternalFunction(); f != nil {
+		configMap[f.Key] = f.configItem()
+		// Windows asks a device for its Microsoft OS descriptors once per
+		// vendor ID, product ID and bcdDevice. A new bcdDevice makes it ask
+		// a device it has seen without them.
+		if f.MSOSDescriptors {
+			configMap["base"].attrs["bcdDevice"] = "0x0101"
+		}
+	}
+
 	g := &UsbGadget{
 		name:                 name,
 		kvmGadgetPath:        path.Join(gadgetPath, name),
 		configC1Path:         path.Join(gadgetPath, name, "configs/c.1"),
-		configMap:            deepCopyConfigMap(configMap),
+		configMap:            configMap,
 		customConfig:         *config,
 		configLock:           sync.Mutex{},
 		keyboardLock:         sync.Mutex{},

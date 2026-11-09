@@ -84,6 +84,9 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 	case "audio":
 		return u.enabledDevices.Audio
 	default:
+		if f := registeredExternalFunction(); f != nil && itemKey == f.Key {
+			return u.externalReady
+		}
 		return true
 	}
 }
@@ -233,6 +236,7 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, e
 }
 
 func (u *UsbGadget) configureUsbGadgetLocked(resetUsb bool, forceRebind bool) (bool, error) {
+	u.externalReady = u.prepareExternalFunction()
 	disconnected := false
 	adopted := false
 	err := u.WithTransaction(func() error {
