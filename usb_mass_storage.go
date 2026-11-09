@@ -41,6 +41,7 @@ func rebindAndRecoverHID(context string) error {
 }
 
 func setMassStorageMode(cdrom bool) error {
+	osServicesNoteKVMRestart()
 	mode := "0"
 	if cdrom {
 		mode = "1"

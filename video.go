@@ -21,7 +21,7 @@ const (
 
 func triggerVideoStateUpdate() {
 	go func() {
-		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
+		writeJSONRPCEvent("videoInputState", currentVideoState(), currentSession)
 	}()
 
 	// Publish video state to MQTT
@@ -32,9 +32,9 @@ func triggerVideoStateUpdate() {
 	nativeLogger.Info().Interface("state", lastVideoState).Msg("video state updated")
 }
 
-func rpcGetVideoState() (native.VideoState, error) {
+func rpcGetVideoState() (rpcVideoState, error) {
 	notifyFailsafeMode(currentSession)
-	return lastVideoState, nil
+	return currentVideoState(), nil
 }
 
 var (
@@ -43,6 +43,11 @@ var (
 )
 
 func configuredVideoEDID() string {
+	// While service video owns the display, the target sees the KVM
+	// display that OS Services presents.
+	if edid := osServicesDisplayEDID(); edid != "" {
+		return edid
+	}
 	if config.EdidString == "" || isInternalDisabledEDID(config.EdidString) {
 		return native.DefaultEDID
 	}
@@ -60,7 +65,7 @@ func isHostDisplayAdvertised() bool {
 }
 
 func shouldAdvertiseHostDisplayLocked() bool {
-	return !config.HideDisplayWhenIdle || getActiveSessions() > 0
+	return !config.HideDisplayWhenIdle || getActiveSessions() > 0 || osServicesDisplayEDID() != ""
 }
 
 func setHostDisplayAdvertised(enabled bool, reason string, force bool) error {

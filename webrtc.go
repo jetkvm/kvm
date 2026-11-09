@@ -11,6 +11,7 @@ import (
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/osservices"
 	"github.com/jetkvm/kvm/internal/playoutdelay"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -20,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -180,8 +182,19 @@ func (s *Session) attachAudioTrack(offerSDP string) error {
 func drainRTCP(sender *webrtc.RTPSender) {
 	buf := make([]byte, 1500)
 	for {
-		if _, _, err := sender.Read(buf); err != nil {
+		n, _, err := sender.Read(buf)
+		if err != nil {
 			return
+		}
+		// The hardware encoder sends a keyframe every half second; service
+		// video sends one only on request.
+		if packets, err := rtcp.Unmarshal(buf[:n]); err == nil {
+			for _, packet := range packets {
+				switch packet.(type) {
+				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+					osServicesKeyframeRequest()
+				}
+			}
 		}
 	}
 }
@@ -190,6 +203,11 @@ func drainRTCP(sender *webrtc.RTPSender) {
 // Always validates against the browser's SDP offer to prevent negotiation failure.
 func resolveCodec(offerSDP string) string {
 	browserSupportsH265 := strings.Contains(strings.ToUpper(offerSDP), "H265")
+
+	// An OS Services sender that shows video without H.265 decides.
+	if osServicesPrefersH264() {
+		return webrtc.MimeTypeH264
+	}
 
 	switch config.VideoCodecPreference {
 	case "h265":
@@ -587,9 +605,13 @@ func newSession(config SessionConfig) (*Session, error) {
 			handleSerialChannel(d)
 		case "cdcacm":
 			handleCDCACMChannel(d)
+		case osservices.TerminalChannelLabel:
+			handleGuestTerminalChannel(d)
 		default:
 			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
 				go handleUploadChannel(d)
+			} else if strings.HasPrefix(d.Label(), osservices.FileChannelPrefix) {
+				handleGuestFileChannel(d)
 			}
 		}
 	})
@@ -693,7 +715,7 @@ func startNativeVideoForSession(session *Session) {
 // startNativeVideoLocked starts the pipeline unless a pause is held. The
 // caller holds videoPauseMu.
 func startNativeVideoLocked(session *Session) {
-	if videoPausedBy != nil {
+	if videoPausedBy != nil || osServicesOwnsVideo() {
 		return
 	}
 	_ = nativeInstance.VideoSetCodecType(sessionVideoCodecType(session))
@@ -734,6 +756,7 @@ func onFirstSessionConnected(session *Session) {
 // connected can fire before then, racing the assignment.
 func onSessionConnected(session *Session) {
 	notifyFailsafeMode(session)
+	go osServicesBrowserChanged()
 	if session.AudioTrack != nil {
 		startAudio(session.AudioTrack)
 	}

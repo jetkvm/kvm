@@ -64,6 +64,7 @@ func Main() {
 	go runWatchdog()
 
 	// initialize usb gadget
+	initOSServices()
 	setProcTitle("initUsbGadget")
 	initUsbGadget()
 
