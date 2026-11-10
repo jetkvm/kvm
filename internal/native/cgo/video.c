@@ -336,11 +336,15 @@ struct buffer
 
 const int input_buffer_count = 3;
 
+// The size of one capture buffer in the pool. A frame that needs more is not
+// captured: a request to the pool for a larger block does not return.
+const uint32_t input_buffer_size = 1920 * 1080 * 3;
+
 static int32_t buf_init()
 {
     MB_POOL_CONFIG_S stMbPoolCfg;
     memset(&stMbPoolCfg, 0, sizeof(MB_POOL_CONFIG_S));
-    stMbPoolCfg.u64MBSize = 1920 * 1080 * 3; // max resolution
+    stMbPoolCfg.u64MBSize = input_buffer_size;
     stMbPoolCfg.u32MBCnt = input_buffer_count;
     stMbPoolCfg.enAllocType = MB_ALLOC_TYPE_DMA;
     stMbPoolCfg.bPreAlloc = RK_TRUE;
@@ -576,6 +580,15 @@ void *run_video_stream(void *arg)
         log_info("capture colorimetry: colorspace=%u ycbcr_enc=%u quantization=%u xfer=%u",
                  fmt.fmt.pix_mp.colorspace, fmt.fmt.pix_mp.ycbcr_enc,
                  fmt.fmt.pix_mp.quantization, fmt.fmt.pix_mp.xfer_func);
+
+        if (fmt.fmt.pix_mp.plane_fmt[0].sizeimage > input_buffer_size)
+        {
+            log_error("a %ux%u frame of %u bytes does not fit a capture buffer of %u bytes",
+                      width, height, fmt.fmt.pix_mp.plane_fmt[0].sizeimage, input_buffer_size);
+            close(video_dev_fd);
+            usleep(1000000);
+            continue;
+        }
 
         struct v4l2_buffer buf;
 
@@ -980,6 +993,20 @@ void *run_detect_format(void *arg)
                 log_error("error VIDIOC_QUERY_DV_TIMINGS: %s", strerror(errno));
                 sleep(1);
                 continue;
+            }
+        }
+        else if ((uint64_t)dv_timings.bt.width * dv_timings.bt.height * 2 > input_buffer_size)
+        {
+            // A YUYV frame of this size, at 2 bytes for each pixel, does not
+            // fit a capture buffer.
+            log_warn("HDMI status: %ux%u is out of range", dv_timings.bt.width, dv_timings.bt.height);
+            bool had_signal = detected_signal;
+            detected_signal = false;
+            video_report_format(false, "out_of_range", 0, 0, 0);
+            if (had_signal)
+            {
+                // The capture of the previous format stops.
+                video_restart_streaming();
             }
         }
         else
