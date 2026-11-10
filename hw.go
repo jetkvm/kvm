@@ -37,7 +37,16 @@ func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Dur
 	writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
 	time.Sleep(1 * time.Second) // Wait for the JSONRPCEvent to be sent
 
-	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
+	screenSwitched := make(chan struct{})
+	go func() {
+		nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
+		close(screenSwitched)
+	}()
+	select {
+	case <-screenSwitched:
+	case <-time.After(2 * time.Second):
+		logger.Warn().Msg("reboot screen did not switch, rebooting anyway")
+	}
 	if delay > 1*time.Second {
 		time.Sleep(delay - 1*time.Second) // wait requested extra settle time
 	}
