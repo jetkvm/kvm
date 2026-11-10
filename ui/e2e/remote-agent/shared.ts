@@ -315,13 +315,13 @@ export const TEST_MACROS = [
     id: "e2e_test_a",
     name: "E2E KeyA",
     steps: [{ keys: ["KeyA"], modifiers: [], delay: 50 }],
-    sortOrder: 0,
+    sortOrder: 1,
   },
   {
     id: "e2e_test_ctrl_a",
     name: "E2E Ctrl+A",
     steps: [{ keys: ["KeyA"], modifiers: ["ControlLeft"], delay: 50 }],
-    sortOrder: 1,
+    sortOrder: 2,
   },
   {
     id: "e2e_test_abc",
@@ -331,7 +331,7 @@ export const TEST_MACROS = [
       { keys: ["KeyB"], modifiers: [], delay: 50 },
       { keys: ["KeyC"], modifiers: [], delay: 50 },
     ],
-    sortOrder: 2,
+    sortOrder: 3,
   },
 ];
 

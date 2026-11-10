@@ -6,23 +6,25 @@ export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<v
   await expect
     .poll(
       async () => {
-        const status = await page.evaluate(() => {
-          const hooks = window.__kvmTestHooks;
-          if (!hooks) {
-            return { hooks: false, webrtc: false, hid: false };
-          }
-          return {
-            hooks: true,
-            webrtc: hooks.isWebRTCConnected(),
-            hid: hooks.isHidRpcReady(),
-          };
-        }).catch(error => {
-          // A redirect/reload can replace the document between poll attempts.
-          // Keep waiting for readiness in the new document; closed pages and
-          // other evaluation failures must still fail the test.
-          if (String(error).includes("Execution context was destroyed")) return null;
-          throw error;
-        });
+        const status = await page
+          .evaluate(() => {
+            const hooks = window.__kvmTestHooks;
+            if (!hooks) {
+              return { hooks: false, webrtc: false, hid: false };
+            }
+            return {
+              hooks: true,
+              webrtc: hooks.isWebRTCConnected(),
+              hid: hooks.isHidRpcReady(),
+            };
+          })
+          .catch(error => {
+            // A redirect/reload can replace the document between poll attempts.
+            // Keep waiting for readiness in the new document; closed pages and
+            // other evaluation failures must still fail the test.
+            if (String(error).includes("Execution context was destroyed")) return null;
+            throw error;
+          });
         return !!status && status.hooks && status.webrtc && status.hid;
       },
       {
@@ -139,15 +141,29 @@ export async function reconnectAfterReboot(
 }
 
 /**
- * Wait until /device/status has failed several times in a row. A single miss
- * is not a reboot: a busy device (flashing an image, rebuilding video) can
- * answer late, and a short probe times out although it is still up.
+ * Wait until /device/status has failed several times in a row, or the app
+ * reports a new process start time. A single miss is not a reboot: a busy
+ * device (flashing an image, rebuilding video) can answer late, and a short
+ * probe times out although it is still up. A fast reboot can come back before
+ * three misses, which is what the start time is for.
  */
 export async function waitForDeviceDown(
   page: Page,
   message: string,
   timeoutMs: number,
+  { minMisses = 3 }: { minMisses?: number } = {},
 ): Promise<void> {
+  const processStart = async () => {
+    try {
+      const response = await page.request.get("/metrics", { timeout: 2000 });
+      return response.ok()
+        ? (await response.text()).match(/^process_start_time_seconds\s+(\S+)/m)?.[1]
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const startedAt = await processStart();
   let misses = 0;
   await expect
     .poll(
@@ -160,7 +176,10 @@ export async function waitForDeviceDown(
           up = false;
         }
         misses = up ? 0 : misses + 1;
-        return misses >= 3;
+        if (misses >= minMisses) return true;
+        if (!up || startedAt === undefined) return false;
+        const now = await processStart();
+        return now !== undefined && now !== startedAt;
       },
       { message, timeout: timeoutMs, intervals: [1000] },
     )
