@@ -65,7 +65,9 @@ test("the rebooting overlay redirects when the signaling socket reopens first", 
     rawJsonRpc(page, "reboot", { force: true }, 5000).catch(() => {
       // The reply can be lost in the reset; the device going down proves it.
     }),
-    waitForDeviceDown(page, "device must go down after the reboot request", 30_000),
+    waitForDeviceDown(page, "device must go down after the reboot request", 30_000, {
+      minMisses: 1,
+    }),
   ]);
   holdHealthCheck = true;
   await expect(page.getByText("Device is Rebooting")).toBeVisible();
