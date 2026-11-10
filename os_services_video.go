@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/osservices"
 	"github.com/jetkvm/kvm/internal/osservices/edid"
 	"github.com/pion/webrtc/v4"
@@ -20,9 +19,8 @@ const (
 	guestFrameQueue = 8
 	// hardwareCaptureRestartDelay: the hardware capture starts again this
 	// long after the KVM display is gone. The target needs the time to set
-	// its output for the hardware capture's EDID, and a new switch in it
-	// cancels the start: the native pipeline crashes or hangs when it is
-	// stopped right after it started, or while it captures above 1080p.
+	// its output for the hardware capture's EDID. A new switch in that time
+	// cancels the start.
 	hardwareCaptureRestartDelay = 2 * time.Second
 )
 
@@ -119,9 +117,10 @@ func (s *osServicesService) DisplayPresent(width, height, serial uint32) bool {
 	v.edid.Store(edid.Hex(data))
 	v.ops <- func() {
 		v.restartGeneration++
-		if lastVideoState.Streaming != native.VideoStreamingStatusInactive {
-			stopNativeVideo()
-		}
+		// The hardware capture is off before the display changes, so that
+		// it does not follow the target to the mode of the KVM display.
+		// The stop does nothing when no capture runs.
+		stopNativeVideo()
 		if err := reapplyHostDisplayAdvertisement("os_services_present"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot present the KVM display")
 			v.edid.Store("")
