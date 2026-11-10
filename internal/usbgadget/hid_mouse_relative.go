@@ -68,8 +68,10 @@ var relativeMouseCombinedReportDesc = []byte{
 
 func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 	if u.relMouseHidFile == nil {
-		var err error
-		path := u.hidDevicePath("relative_mouse", "/dev/hidg2")
+		path, err := u.hidDevicePath("relative_mouse")
+		if err != nil {
+			return err
+		}
 		u.relMouseHidFile, err = u.openWithTimeout(path, os.O_RDWR, 0666, 3*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to open %s: %w", path, err)

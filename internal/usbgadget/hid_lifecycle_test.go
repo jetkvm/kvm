@@ -55,8 +55,7 @@ func TestHIDRebindBlocksDescriptorAdmissions(t *testing.T) {
 	}
 	for name, operation := range operations {
 		t.Run(name, func(t *testing.T) {
-			u := newTestGadgetWithKeyboard(nil)
-			u.enabledDevices = defaultUsbGadgetDevices
+			u := newTestGadgetWithKeyboard(t, nil)
 			file := hidTestSocket(t)
 			u.hidOpenFile = func(string, int, os.FileMode) (*os.File, error) { return file, nil }
 			t.Cleanup(u.ResetHIDFiles)
@@ -105,7 +104,7 @@ func TestHIDRebindBlocksDescriptorAdmissions(t *testing.T) {
 }
 
 func TestHIDRebindDrainsAdmittedOpenAndClosesLEDReader(t *testing.T) {
-	u := newTestGadgetWithKeyboard(nil)
+	u := newTestGadgetWithKeyboard(t, nil)
 	file := hidTestSocket(t)
 	t.Cleanup(u.ResetHIDFiles)
 	opening := make(chan struct{})
@@ -148,7 +147,7 @@ func TestHIDRebindDrainsAdmittedOpenAndClosesLEDReader(t *testing.T) {
 }
 
 func TestHIDRebindDrainsTimedOutBackgroundOpen(t *testing.T) {
-	u := newTestGadgetWithKeyboard(nil)
+	u := newTestGadgetWithKeyboard(t, nil)
 	file := hidTestSocket(t)
 	opening := make(chan struct{})
 	resume := make(chan struct{})
@@ -202,7 +201,7 @@ func TestHIDRebindDrainsAdmittedWriter(t *testing.T) {
 	}
 	defer r.Close()
 	defer w.Close()
-	u := newTestGadgetWithKeyboard(w)
+	u := newTestGadgetWithKeyboard(t, w)
 	keys := []byte{4, 0, 0, 0, 0, 0}
 
 	// Stop a writer after lifecycle admission but before it opens/writes the
@@ -260,7 +259,7 @@ func TestHIDRebindDrainsAdmittedWriter(t *testing.T) {
 }
 
 func TestHIDRebindTimeoutReleasesLocksAndAllowsRetry(t *testing.T) {
-	u := newTestGadgetWithKeyboard(nil)
+	u := newTestGadgetWithKeyboard(t, nil)
 	file := hidTestSocket(t)
 	resume := make(chan struct{})
 	var resumeOnce sync.Once
@@ -357,8 +356,7 @@ func TestMouseOpenTimeoutReleasesLifecycleAndTracksLateDescriptor(t *testing.T) 
 		"relative": func(u *UsbGadget) error { return u.RelMouseReport(1, 1, 0) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			u := newTestGadgetWithKeyboard(nil)
-			u.enabledDevices = defaultUsbGadgetDevices
+			u := newTestGadgetWithKeyboard(t, nil)
 			file := hidTestSocket(t)
 			resume := make(chan struct{})
 			var once sync.Once

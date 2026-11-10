@@ -365,7 +365,14 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	path := u.hidDevicePath("keyboard", "/dev/hidg0")
+	if !u.enabledDevices.Keyboard {
+		return nil
+	}
+
+	path, err := u.hidDevicePath("keyboard")
+	if err != nil {
+		return err
+	}
 	file, err := u.openWithTimeout(path, os.O_RDWR, 0666, 3*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", path, err)
@@ -387,7 +394,10 @@ func (u *UsbGadget) openWakeHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	path := u.hidDevicePath("wake_hid", "/dev/hidg3")
+	path, err := u.hidDevicePath("wake_hid")
+	if err != nil {
+		return err
+	}
 	file, err := u.openWithTimeout(path, os.O_WRONLY, 0666, 3*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to open %s: %w", path, err)
@@ -472,13 +482,17 @@ func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error
 	u.keyboardLock.Lock()
 	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile wrote")
 
+	if !u.enabledDevices.Keyboard {
+		return nil
+	}
+
 	if err := u.openKeyboardHidFileLocked(false); err != nil {
 		return err
 	}
 
 	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
 	if err != nil {
-		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
+		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to the keyboard")
 		u.closeKeyboardHidFileLocked()
 		return err
 	}
@@ -499,7 +513,7 @@ func (u *UsbGadget) wakeWriteHidFile(report byte) error {
 
 	_, err := u.writeWithTimeout(u.wakeHidFile, []byte{report})
 	if err != nil {
-		u.logWithSuppression("wakeWriteHidFile", 100, u.log, err, "failed to write to hidg3")
+		u.logWithSuppression("wakeWriteHidFile", 100, u.log, err, "failed to write to the wake device")
 		u.closeWakeHidFileLocked()
 		return err
 	}
@@ -550,7 +564,7 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	keyboardMutex.Lock()
 	err := u.keyboardWriteHidFileLocked(modifier, keys)
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
-		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
+		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report")
 	}
 	u.UpdateKeysDown(modifier, keys)
 	keyboardMutex.Unlock()
