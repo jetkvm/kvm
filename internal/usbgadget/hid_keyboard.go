@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/internal/timinglog"
 
 	"github.com/rs/xid"
 	"github.com/rs/zerolog"
@@ -492,11 +493,16 @@ func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error
 		return err
 	}
 
-	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
+	report := append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...)
+	n, err := u.writeWithTimeout(u.keyboardHidFile, report)
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to the keyboard")
 		u.closeKeyboardHidFileLocked()
 		return err
+	}
+	// A write that timed out has no error and wrote no report.
+	if n == len(report) {
+		timinglog.Key(keys[0], time.Now())
 	}
 	u.resetLogSuppressionCounter("keyboardWriteHidFile")
 	return nil

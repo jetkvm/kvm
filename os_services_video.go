@@ -7,6 +7,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/osservices"
 	"github.com/jetkvm/kvm/internal/osservices/edid"
+	"github.com/jetkvm/kvm/internal/timinglog"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -31,6 +32,8 @@ type guestFrame struct {
 	keyframe bool
 	codec    osservices.Codec
 	fps      uint32
+	// received: when the last byte of the access unit was there.
+	received time.Time
 }
 
 // guestVideo shows service video: it presents the KVM display through the
@@ -204,6 +207,7 @@ func (s *osServicesService) FrameCommit(frame *osservices.VideoFrame) bool {
 		keyframe: frame.Keyframe,
 		codec:    frame.Codec,
 		fps:      frame.FPS,
+		received: s.start.Add(time.Duration(frame.ReceivedUS) * time.Microsecond),
 	}:
 		return true
 	default:
@@ -268,8 +272,13 @@ func (v *guestVideo) writer() {
 			}
 			lastPTS = f.pts90k
 			havePTS = true
+			// The timing log has the frame when the track sent packets
+			// for it.
+			_, sent := session.videoTap.Last()
 			if err := session.VideoTrack.WriteSample(media.Sample{Data: data, Duration: duration}); err != nil {
 				osServicesLogger.Debug().Err(err).Msg("cannot write service video")
+			} else if timestamp, now := session.videoTap.Last(); now != sent {
+				timinglog.Frame(timestamp, f.received)
 			}
 		}
 		v.pool.Put(f.buf)

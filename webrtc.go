@@ -14,6 +14,7 @@ import (
 	"github.com/jetkvm/kvm/internal/osservices"
 	"github.com/jetkvm/kvm/internal/playoutdelay"
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/internal/timinglog"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 
 	"github.com/coder/websocket"
@@ -29,6 +30,7 @@ import (
 type Session struct {
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
+	videoTap                 *timinglog.VideoTap
 	AudioTrack               *webrtc.TrackLocalStaticSample
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
@@ -522,6 +524,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 	interceptorRegistry.Add(playoutdelay.NewFactory())
+	// The tap is the last interceptor: it sees each video packet of the
+	// track one time, and no packet that is sent again.
+	videoTap := &timinglog.VideoTap{}
+	interceptorRegistry.Add(videoTap)
 
 	api := webrtc.NewAPI(
 		webrtc.WithSettingEngine(webrtcSettingEngine),
@@ -538,6 +544,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session := &Session{
 		peerConnection: peerConnection,
+		videoTap:       videoTap,
 		done:           make(chan struct{}),
 		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
 	}
