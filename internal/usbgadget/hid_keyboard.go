@@ -193,6 +193,7 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 // DefaultAutoReleaseDuration is the default duration for auto-release of a key.
 const DefaultAutoReleaseDuration = 100 * time.Millisecond
 
+// Caller holds keyboardMutex through state commit and timer scheduling.
 func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease scheduled")
@@ -204,9 +205,15 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	// TODO: make this configurable
 	// We currently hardcode the duration to 100ms
 	// However, it should be the same as the duration of the keep-alive reset called baseExtension.
-	u.kbdAutoReleaseTimers[key] = time.AfterFunc(100*time.Millisecond, func() {
-		u.performAutoRelease(key)
+	var timer *time.Timer
+	timer = time.AfterFunc(100*time.Millisecond, func() {
+		// Acquire before reading the captured timer: scheduleAutoRelease's
+		// caller still owns this mutex until timer assignment is complete.
+		keyboardMutex.Lock()
+		defer keyboardMutex.Unlock()
+		u.performAutoReleaseLocked(key, timer)
 	})
+	u.kbdAutoReleaseTimers[key] = timer
 }
 
 func (u *UsbGadget) cancelAutoRelease(key byte) {
@@ -249,11 +256,12 @@ func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	}
 }
 
-func (u *UsbGadget) performAutoRelease(key byte) {
+// Caller holds keyboardMutex. Timer identity fences a callback queued before
+// reconnect or replacement, even if Stop could not stop its running goroutine.
+func (u *UsbGadget) performAutoReleaseLocked(key byte, timer *time.Timer) {
 	u.kbdAutoReleaseLock.Lock()
 
-	if u.kbdAutoReleaseTimers[key] == nil {
-		u.log.Warn().Uint8("key", key).Msg("autoRelease timer not found")
+	if timer == nil || u.kbdAutoReleaseTimers[key] != timer {
 		u.kbdAutoReleaseLock.Unlock()
 		return
 	}
@@ -277,7 +285,7 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 		return
 	}
 
-	_, err := u.keypressReport(key, false)
+	_, err := u.keypressReportLocked(key, false)
 	if err != nil {
 		u.log.Warn().Uint8("key", key).Msg("failed to release key")
 	}
@@ -617,7 +625,8 @@ var KeyCodeToMaskMap = map[byte]byte{
 	RightSuper:   ModifierMaskRightSuper,
 }
 
-func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) {
+// Caller holds keyboardMutex through state commit and timer scheduling.
+func (u *UsbGadget) keypressReportLocked(key byte, press bool) (KeysDownState, error) {
 	defer u.resetUserInputTime()
 
 	l := u.log.With().Uint8("key", key).Bool("press", press).Logger()
@@ -629,7 +638,6 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 	// Hold keyboardMutex for the entire read-compute-write-update sequence.
 	// This prevents concurrent callers (auto-release timers, session disconnect
 	// clears, other key events) from interleaving and causing lost updates.
-	keyboardMutex.Lock()
 
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
 	// for handling key presses and releases. It ensures that the USB gadget
@@ -692,13 +700,14 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 
 	err := u.keyboardWriteHidFileLocked(modifier, keys)
 	newState := u.UpdateKeysDown(modifier, keys)
-	keyboardMutex.Unlock()
 
 	return newState, err
 }
 
 func (u *UsbGadget) KeypressReport(key byte, press bool) error {
-	state, err := u.keypressReport(key, press)
+	keyboardMutex.Lock()
+	defer keyboardMutex.Unlock()
+	state, err := u.keypressReportLocked(key, press)
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("key", key).Bool("press", press).Msg("failed to report key")
 	}
