@@ -71,6 +71,16 @@ void video_report_format(bool ready, const char *error, u_int16_t width, u_int16
 void video_send_format_report();
 int video_send_frame(const uint8_t *frame, ssize_t len);
 
+/**
+ * @brief Capture a single JPEG frame from the live video stream.
+ *
+ * On success, *out_buf is set to a malloc'd buffer containing JPEG bytes and
+ * *out_len to its length. The caller must free *out_buf with free().
+ *
+ * @return 0 on success, non-zero on error.
+ */
+int jetkvm_video_capture_jpeg(uint8_t **out_buf, size_t *out_len);
+
 
 
 #endif //VIDEO_DAEMON_CTRL_H
