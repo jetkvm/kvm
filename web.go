@@ -946,6 +946,10 @@ func handleDiagnosticsDownload(c *gin.Context) {
 		redactedConfig.LocalAuthToken = ""
 		redactedConfig.HashedPassword = ""
 		redactedConfig.GoogleIdentity = ""
+		if config.WireguardConfig != nil {
+			maskedWireguard := config.WireguardConfig.Masked()
+			redactedConfig.WireguardConfig = &maskedWireguard
+		}
 		if configData, err := json.MarshalIndent(redactedConfig, "", "  "); err == nil {
 			if err := addBytesToZip(zw, "config.json", configData); err != nil {
 				logger.Warn().Err(err).Msg("failed to add config to zip")
