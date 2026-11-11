@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
+import { LuHdmiPort, LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
 
 import { m } from "@localizations/messages.js";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
@@ -7,6 +7,7 @@ import Card, { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
 import { DCPowerControl } from "@components/extensions/DCPowerControl";
+import { HdmiSwitchControl } from "@components/extensions/HdmiSwitchControl";
 import { SerialConsole } from "@components/extensions/SerialConsole";
 import { Button } from "@components/Button";
 import notifications from "@/notifications";
@@ -30,6 +31,12 @@ const AVAILABLE_EXTENSIONS: Extension[] = [
     name: m.extensions_dc_power_control(),
     description: m.extensions_dc_power_control(),
     icon: LuPlugZap,
+  },
+  {
+    id: "hdmi-switch",
+    name: m.hdmi_switch(),
+    description: m.hdmi_switch_description(),
+    icon: LuHdmiPort,
   },
   {
     id: "serial-console",
@@ -77,6 +84,8 @@ export default function ExtensionPopover() {
         return <ATXPowerControl />;
       case "dc-power":
         return <DCPowerControl />;
+      case "hdmi-switch":
+        return <HdmiSwitchControl />;
       case "serial-console":
         return <SerialConsole />;
       default:

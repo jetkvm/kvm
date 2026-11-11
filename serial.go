@@ -580,6 +580,8 @@ func initSerialPort() {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
+	case "hdmi-switch":
+		_ = mountHdmiSwitchControl()
 	}
 }
 
