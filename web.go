@@ -602,6 +602,8 @@ func getBindAddress(listenPort int) string {
 	return bindAddress
 }
 
+const webReadHeaderTimeout = 10 * time.Second
+
 func RunWebServer() {
 	r := setupRouter()
 
@@ -609,7 +611,12 @@ func RunWebServer() {
 	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	if err := r.Run(bindAddress); err != nil {
+	server := &http.Server{
+		Addr:              bindAddress,
+		Handler:           r.Handler(),
+		ReadHeaderTimeout: webReadHeaderTimeout,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }

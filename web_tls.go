@@ -164,8 +164,9 @@ func runWebSecureServer() {
 	bindAddress := getBindAddress(443)
 
 	server := &http.Server{
-		Addr:    bindAddress,
-		Handler: r,
+		Addr:              bindAddress,
+		Handler:           r,
+		ReadHeaderTimeout: webReadHeaderTimeout,
 		TLSConfig: &tls.Config{
 			MaxVersion:       tls.VersionTLS13,
 			CurvePreferences: []tls.CurveID{},
