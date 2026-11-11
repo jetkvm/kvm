@@ -100,7 +100,37 @@ func (u *UsbGadget) syncMassStorageImageFromKernel() {
 		return
 	}
 	u.configMap["mass_storage_lun0"].attrs["file"] = img
-	u.log.Info().Str("image", img).Msg("adopted already-mounted mass storage image from kernel")
+	cdrom, ro := u.adoptLunModeFromKernel()
+	u.log.Info().Str("image", img).Str("cdrom", cdrom).Str("ro", ro).Msg("adopted already-mounted mass storage image from kernel")
+}
+
+// adoptLunModeFromKernel reads the live cdrom and ro attributes back into the
+// attribute set. The mounted mode is not persisted anywhere else, so without
+// this a restart would rebuild the defaults and silently turn a disk-mounted
+// image into a CD-ROM. It returns the adopted values, empty where the
+// attribute could not be read.
+func (u *UsbGadget) adoptLunModeFromKernel() (cdrom string, ro string) {
+	lunPath, err := u.GetPath("mass_storage_lun0")
+	if err != nil {
+		u.log.Warn().Err(err).Msg("cannot resolve the mass storage LUN path, keeping the default mode")
+		return "", ""
+	}
+	adopted := map[string]string{"cdrom": "", "ro": ""}
+	for attr := range adopted {
+		data, err := os.ReadFile(path.Join(lunPath, attr))
+		if err != nil {
+			u.log.Warn().Err(err).Str("attr", attr).Msg("cannot read the live LUN attribute, keeping its default")
+			continue
+		}
+		val := strings.TrimSpace(string(data))
+		if val == "" {
+			u.log.Debug().Str("attr", attr).Msg("the live LUN attribute is empty, keeping its default")
+			continue
+		}
+		u.configMap["mass_storage_lun0"].attrs[attr] = val
+		adopted[attr] = val
+	}
+	return adopted["cdrom"], adopted["ro"]
 }
 
 var massStorageLun0Config = gadgetConfigItem{
