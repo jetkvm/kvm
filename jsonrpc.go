@@ -901,6 +901,23 @@ func rpcSetDCRestoreState(state int) error {
 	return nil
 }
 
+func rpcGetLocalAuthSessionTimeout() (int, error) {
+	return config.LocalAuthSessionTimeoutMinutes, nil
+}
+
+func rpcSetLocalAuthSessionTimeout(timeoutMinutes int) error {
+	maxTimeoutMinutes := 7 * 24 * 60
+	if timeoutMinutes < 0 || timeoutMinutes > maxTimeoutMinutes {
+		return fmt.Errorf("session timeout must be between 0 and %d minutes", maxTimeoutMinutes)
+	}
+	config.LocalAuthSessionTimeoutMinutes = timeoutMinutes
+	if timeoutMinutes > 0 {
+		// Count inactivity from the moment the timeout is (re)configured
+		touchAuthActivity()
+	}
+	return SaveConfig()
+}
+
 func rpcGetActiveExtension() (string, error) {
 	return config.ActiveExtension, nil
 }
@@ -1424,6 +1441,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"rpcMountBuiltInImage":       {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
 	"setJigglerState":            {Func: rpcSetJigglerState, Params: []string{"enabled"}},
 	"getJigglerState":            {Func: rpcGetJigglerState},
+	"getLocalAuthSessionTimeout": {Func: rpcGetLocalAuthSessionTimeout},
+	"setLocalAuthSessionTimeout": {Func: rpcSetLocalAuthSessionTimeout, Params: []string{"timeoutMinutes"}},
 	"setJigglerConfig":           {Func: rpcSetJigglerConfig, Params: []string{"jigglerConfig"}},
 	"getJigglerConfig":           {Func: rpcGetJigglerConfig},
 	"getTimezones":               {Func: rpcGetTimezones},

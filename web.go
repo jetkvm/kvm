@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -97,6 +98,35 @@ const (
 	// authTokenMaxAge is the lifetime of the authToken cookie, in seconds.
 	authTokenMaxAge = 7 * 24 * 60 * 60 // 1 week
 )
+
+var (
+	// lastAuthActivity holds the unix timestamp (seconds) of the last
+	// authenticated request. It is kept in memory only: persisting it would
+	// cost a config flash write per request.
+	lastAuthActivity atomic.Int64
+
+	// authTimeNow is swapped out in tests.
+	authTimeNow = time.Now
+)
+
+func touchAuthActivity() {
+	lastAuthActivity.Store(authTimeNow().Unix())
+}
+
+// localAuthSessionExpired reports whether the inactivity timeout has elapsed.
+// A zero lastAuthActivity (fresh boot) counts as activity rather than locking
+// the user out right after a restart.
+func localAuthSessionExpired() bool {
+	timeoutMinutes := config.LocalAuthSessionTimeoutMinutes
+	if timeoutMinutes <= 0 {
+		return false
+	}
+	last := lastAuthActivity.Load()
+	if last == 0 {
+		return false
+	}
+	return authTimeNow().Unix()-last > int64(timeoutMinutes)*60
+}
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -491,6 +521,7 @@ func handleLogin(c *gin.Context) {
 	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
+	touchAuthActivity()
 
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -528,6 +559,20 @@ func protectedMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		// An open WebRTC session counts as activity, so the session is never
+		// expired out from under a connected KVM client.
+		if currentSession == nil && localAuthSessionExpired() {
+			config.LocalAuthToken = ""
+			if err := SaveConfig(); err != nil {
+				logger.Warn().Err(err).Msg("failed to save config while expiring the local session")
+			}
+			c.SetCookie("authToken", "", -1, "/", "", false, true)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
+			c.Abort()
+			return
+		}
+		touchAuthActivity()
 
 		c.Next()
 	}
@@ -662,6 +707,7 @@ func handleCreatePassword(c *gin.Context) {
 
 	config.HashedPassword = string(hashedPassword)
 	config.LocalAuthToken = uuid.New().String()
+	touchAuthActivity()
 	config.LocalAuthMode = "password"
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -717,6 +763,7 @@ func handleUpdatePassword(c *gin.Context) {
 
 	config.HashedPassword = string(hashedPassword)
 	config.LocalAuthToken = uuid.New().String()
+	touchAuthActivity()
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
@@ -855,6 +902,7 @@ func handleSetup(c *gin.Context) {
 
 		config.HashedPassword = string(hashedPassword)
 		config.LocalAuthToken = uuid.New().String()
+		touchAuthActivity()
 
 		// Set the cookie
 		c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
