@@ -244,6 +244,10 @@ func rpcGetEDID() (string, error) {
 }
 
 func rpcSetEDID(edid string) error {
+	return setEDIDWithSave(edid, SaveConfig)
+}
+
+func setEDIDWithSave(edid string, save func() error) error {
 	if isInternalDisabledEDID(edid) {
 		return fmt.Errorf("invalid EDID")
 	}
@@ -259,14 +263,13 @@ func rpcSetEDID(edid string) error {
 
 	if err := reapplyHostDisplayAdvertisement("set_edid"); err != nil {
 		config.EdidString = previousEDID
-		return err
+		return errors.Join(err, reapplyHostDisplayAdvertisement("set_edid_rollback"))
 	}
 
 	// Save EDID to config, allowing it to be restored on reboot.
-	if err := SaveConfig(); err != nil {
+	if err := save(); err != nil {
 		config.EdidString = previousEDID
-		_ = reapplyHostDisplayAdvertisement("set_edid_rollback")
-		return fmt.Errorf("failed to save config: %w", err)
+		return errors.Join(fmt.Errorf("failed to save config: %w", err), reapplyHostDisplayAdvertisement("set_edid_rollback"))
 	}
 	return nil
 }
