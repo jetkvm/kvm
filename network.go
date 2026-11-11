@@ -70,6 +70,7 @@ func getMdnsOptions() *mdns.MDNSOptions {
 			IPv4: ipv4,
 			IPv6: ipv6,
 		},
+		Service: buildMdnsService(),
 	}
 }
 
