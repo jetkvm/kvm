@@ -36,6 +36,21 @@
 #define RK_ALIGN_16(x) RK_ALIGN(x, 16)
 #define RK_ALIGN_32(x) RK_ALIGN(x, 32)
 
+// The capture driver lays rows out at its own stride, which is the frame
+// width rather than a 16-pixel multiple; the encoder has to read rows at
+// that stride or a width such as 1080 shears into diagonal bands. The
+// encoder takes a stride only when it is a multiple of 16 bytes (8 YUYV
+// pixels); for a width such as 1366 it keeps the aligned value it always
+// used, and that width shears as before instead of producing nothing.
+static uint32_t capture_stride_px = 0;
+
+static uint32_t venc_vir_width(uint32_t width)
+{
+    if (capture_stride_px >= width && capture_stride_px % 8 == 0)
+        return capture_stride_px;
+    return RK_ALIGN_16(width);
+}
+
 int sub_dev_fd = -1;
 #define VENC_CHANNEL 0
 MB_POOL memPool = MB_INVALID_POOLID;
@@ -210,7 +225,7 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
     stAttr->stVencAttr.enPixelFormat = RK_FMT_YUV422_YUYV;
     stAttr->stVencAttr.u32PicWidth = width;
     stAttr->stVencAttr.u32PicHeight = height;
-    stAttr->stVencAttr.u32VirWidth = RK_ALIGN_16(width);
+    stAttr->stVencAttr.u32VirWidth = venc_vir_width(width);
     stAttr->stVencAttr.u32VirHeight = RK_ALIGN_16(height);
     stAttr->stVencAttr.u32StreamBufCnt = 3;
     stAttr->stVencAttr.u32BufSize = width * height * 3 / 2;
@@ -573,6 +588,10 @@ void *run_video_stream(void *arg)
             close(video_dev_fd);
             continue;
         }
+        capture_stride_px = fmt.fmt.pix_mp.plane_fmt[0].bytesperline / 2;
+        log_info("capture stride: %u bytes per line, %u px", fmt.fmt.pix_mp.plane_fmt[0].bytesperline, capture_stride_px);
+        if (capture_stride_px % 8 != 0)
+            log_warn("capture stride of %u px is not encoder aligned; this width will shear", capture_stride_px);
         log_info("capture colorimetry: colorspace=%u ycbcr_enc=%u quantization=%u xfer=%u",
                  fmt.fmt.pix_mp.colorspace, fmt.fmt.pix_mp.ycbcr_enc,
                  fmt.fmt.pix_mp.quantization, fmt.fmt.pix_mp.xfer_func);
@@ -685,7 +704,7 @@ void *run_video_stream(void *arg)
         memset(&stFrame, 0, sizeof(VIDEO_FRAME_INFO_S));
         stFrame.stVFrame.u32Width = width;
         stFrame.stVFrame.u32Height = height;
-        stFrame.stVFrame.u32VirWidth = RK_ALIGN_16(width);
+        stFrame.stVFrame.u32VirWidth = venc_vir_width(width);
         stFrame.stVFrame.u32VirHeight = RK_ALIGN_16(height);
         stFrame.stVFrame.enField = VIDEO_FIELD_FRAME;
         stFrame.stVFrame.enPixelFormat = RK_FMT_YUV422_YUYV;

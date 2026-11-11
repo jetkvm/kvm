@@ -13,6 +13,9 @@
  * @param max_size Maximum size of the buffer (should be 128 or 256)
  * @return int Number of bytes read on success, -1 on failure
  */
+// The receiver stores up to eight 128-byte EDID blocks.
+#define EDID_MAX_SIZE (8 * 128)
+
 int get_edid(uint8_t *edid, size_t max_size);
 
 /**

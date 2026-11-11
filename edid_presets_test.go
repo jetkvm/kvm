@@ -4,6 +4,7 @@ package kvm
 
 import (
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"github.com/jetkvm/kvm/internal/native"
@@ -44,5 +45,24 @@ func TestEDIDPresets(t *testing.T) {
 			t.Errorf("preset %q duplicates another preset's EDID", p.Name)
 		}
 		edids[p.EDID] = true
+	}
+}
+
+func TestEDIDPresetLookup(t *testing.T) {
+	p, ok := edidPresetByName("jetkvm, PORTRAIT mode")
+	if !ok || p.Name != "JetKVM, Portrait Mode" {
+		t.Fatalf("lookup by name: %v %q", ok, p.Name)
+	}
+	if _, ok := edidPresetByName("no such preset"); ok {
+		t.Fatal("an unknown name resolved")
+	}
+	if got := edidPresetName(""); got != "JetKVM Default" {
+		t.Fatalf("empty EDID is %q, want the default", got)
+	}
+	if got := edidPresetName(strings.ToLower(p.EDID)); got != p.Name {
+		t.Fatalf("lower-case EDID gives %q", got)
+	}
+	if got := edidPresetName("00FFFFFFFFFFFF00"); got != "" {
+		t.Fatalf("custom EDID gives %q", got)
 	}
 }
