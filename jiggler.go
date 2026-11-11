@@ -143,10 +143,9 @@ func jigglerAfterClockSet(jump time.Duration) {
 }
 
 func startJigglerCronTab() {
-	schedulerLock.Lock()
-	defer schedulerLock.Unlock()
-
-	buildJigglerCronTabLocked()
+	if err := rebuildJigglerCronTab(); err != nil {
+		logger.Error().Err(err).Msg("error scheduling jiggler crontab")
+	}
 }
 
 // buildJigglerCronTabLocked builds the schedule from the current config on the

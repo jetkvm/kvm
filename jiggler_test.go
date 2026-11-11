@@ -107,6 +107,25 @@ func TestClockHookLeavesScheduleAloneOnSmallCorrection(t *testing.T) {
 	}
 }
 
+func TestStartDuringClockJumpWaitsForNewClock(t *testing.T) {
+	useJigglerTestConfig(t)
+
+	jump := 56 * 365 * 24 * time.Hour
+	jigglerBeforeClockSet(jump)
+	startJigglerCronTab()
+	if scheduler != nil {
+		t.Fatal("startup built the schedule on the old clock")
+	}
+	if !jigglerSchedulePendingForTest() {
+		t.Fatal("startup cleared the pending mark before the clock was set")
+	}
+
+	jigglerAfterClockSet(jump)
+	if scheduler == nil {
+		t.Fatal("no scheduler built after the clock jump")
+	}
+}
+
 // A config change outside a clock jump rebuilds at once, as it always did.
 func TestRebuildJigglerCronTabReplacesScheduler(t *testing.T) {
 	useJigglerTestConfig(t)
