@@ -3,6 +3,7 @@ import { LuCommand } from "react-icons/lu";
 
 import { useMacrosStore } from "@hooks/stores";
 import useKeyboard from "@hooks/useKeyboard";
+import useKeyboardLayout from "@hooks/useKeyboardLayout";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import Container from "@components/Container";
@@ -10,6 +11,7 @@ import Container from "@components/Container";
 export default function MacroBar() {
   const { macros, initialized, loadMacros, setSendFn } = useMacrosStore();
   const { executeMacro } = useKeyboard();
+  const { selectedKeyboard } = useKeyboardLayout();
   const { send } = useJsonRpc();
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function MacroBar() {
               size="XS"
               theme="light"
               text={macro.name}
-              onClick={() => executeMacro(macro.steps)}
+              onClick={() => executeMacro(macro.steps, selectedKeyboard)}
             />
           ))}
         </div>
