@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -214,6 +217,9 @@ func setupRouter() *gin.Engine {
 
 		protected.GET("/diagnostics", handleDiagnosticsDownload)
 	}
+
+	// JSON-RPC over HTTP for scripts and automation without a WebRTC session.
+	r.POST("/api/rpc", apiAuthMiddleware(), handleAPIRPC)
 
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
@@ -574,6 +580,100 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// apiAuthMiddleware gates the routes meant for scripts and automation (CI,
+// HIL test rigs, an MCP server). In noPassword mode it lets requests through
+// with no credentials, same trusted-network assumption as the cookie-protected
+// routes. In password mode it takes HTTP Basic Auth against the device
+// password with the username ignored (so a script can just
+// `curl -u api:<password>`), and nothing else: the UI does its JSON-RPC over
+// WebRTC and never needs the session cookie here.
+func apiAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if apiCredentialsOK(c) {
+			c.Next()
+		}
+	}
+}
+
+// sessionOrAPIAuthMiddleware also takes the session cookie protectedMiddleware
+// checks, so an already-logged-in tab can load the URL directly, and leaves
+// everything else to the same credential check. For routes a browser loads,
+// like the screenshot URLs.
+//
+//nolint:unused // #1553 registers the screenshot routes with it; drop this once the two merge.
+func sessionOrAPIAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if authToken, err := c.Cookie("authToken"); err == nil && authToken != "" && authToken == config.LocalAuthToken {
+			c.Next()
+			return
+		}
+		if apiCredentialsOK(c) {
+			c.Next()
+		}
+	}
+}
+
+// apiCredentialsOK is the one place API credentials are checked. It returns
+// true in noPassword mode or for the right Basic Auth password; otherwise it
+// has written the 401 or 429 reply and aborted the request.
+func apiCredentialsOK(c *gin.Context) bool {
+	if config.LocalAuthMode == "noPassword" {
+		return true
+	}
+
+	_, password, ok := c.Request.BasicAuth()
+	if !ok {
+		c.Header("WWW-Authenticate", "Basic realm=\"JetKVM\"")
+		sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Basic auth is required")
+		return false
+	}
+
+	// Same per-IP lockout as the login form, so the API is no faster
+	// way to guess the password.
+	ip := c.ClientIP()
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+		sendErrorJsonThenAbort(c, http.StatusTooManyRequests, "Too many failed attempts. Please try again later.")
+		return false
+	}
+	if !apiPasswordOK(password) {
+		passwordRateLimiter.RecordFailure(ip)
+		sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
+		return false
+	}
+	passwordRateLimiter.RecordSuccess(ip)
+	return true
+}
+
+// A bcrypt check takes most of a second on the device, so a verified password
+// is remembered as a digest and reused until the stored hash changes.
+var apiAuthCache struct {
+	sync.Mutex
+	hash   string
+	digest [sha256.Size]byte
+}
+
+func apiPasswordOK(password string) bool {
+	// One read of the stored hash: the password is verified against it and
+	// cached under it, so a password change during the bcrypt check cannot
+	// leave the old password cached under the new hash.
+	hash := config.HashedPassword
+	digest := sha256.Sum256([]byte(password))
+	apiAuthCache.Lock()
+	hit := apiAuthCache.hash == hash && subtle.ConstantTimeCompare(digest[:], apiAuthCache.digest[:]) == 1
+	apiAuthCache.Unlock()
+	if hit {
+		return true
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return false
+	}
+	apiAuthCache.Lock()
+	apiAuthCache.hash, apiAuthCache.digest = hash, digest
+	apiAuthCache.Unlock()
+	return true
 }
 
 func getBindAddress(listenPort int) string {
