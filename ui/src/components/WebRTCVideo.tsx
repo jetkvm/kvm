@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
 import { cx } from "@/cva.config";
-import { isWindows } from "@/utils";
+import { isMac, isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
@@ -114,8 +114,20 @@ export default function WebRTCVideo({
   // AltGr Fix for Windows Clients
   const altGrSyntheticThresholdMs = 3;
   const isWindowsClient = useMemo(() => isWindows(), []);
+  const isMacClient = useMemo(() => isMac(), []);
+  // Local DOM state only, not the remote host's LED state. Retain it across
+  // blur/reset and callback replacement so a trailing keyup cannot toggle twice.
+  const lastCapsLockStateRef = useRef<boolean | null>(null);
+  const lastCapsLockEventTypeRef = useRef<string | null>(null);
+  const capsLockObservationInterruptedRef = useRef(false);
   const lastKeyDownRef = useRef<{ hidKey: number; time: number } | null>(null);
   const altGrLoopRef = useRef(false);
+
+  useEffect(() => {
+    // A replacement session or OCR overlay can hide physical Caps events.
+    // Invalidate observation only; never synchronize the remote lock state.
+    capsLockObservationInterruptedRef.current = true;
+  }, [peerConnection, isOcrMode]);
 
   useResizeObserver({
     ref: videoElm as React.RefObject<HTMLElement>,
@@ -334,6 +346,54 @@ export default function WebRTCVideo({
     return code;
   }
 
+  const resetKeyboardInput = useCallback(() => {
+    capsLockObservationInterruptedRef.current = true;
+    void resetKeyboardState();
+  }, [resetKeyboardState]);
+
+  const handlePhysicalCapsLock = useCallback(
+    (e: KeyboardEvent, hidKey: number) => {
+      if (!isMacClient) return false;
+      const capsLock = e.getModifierState("CapsLock");
+      if (hidKey !== keys.CapsLock) {
+        // Rebase from ordinary input after Caps changed outside this document
+        // (or in an input overlay). Observation alone never sends a Caps pulse.
+        // A changed state also disproves any old pending paired release.
+        if (lastCapsLockStateRef.current !== capsLock) lastCapsLockEventTypeRef.current = null;
+        lastCapsLockStateRef.current = capsLock;
+        capsLockObservationInterruptedRef.current = false;
+        return false;
+      }
+
+      // macOS Chromium can emit only down on enable and only up on disable.
+      // Observe the lock state to also deduplicate browsers that emit a normal
+      // down/up pair. A first event counts even when Caps was already enabled
+      // locally; this is one toggle, NOT synchronization with the remote LED.
+      // Requires accurate getModifierState("CapsLock") on Caps events.
+      if (!e.repeat) {
+        const stateChanged = lastCapsLockStateRef.current !== capsLock;
+        const trailingRelease =
+          e.type === "keyup" && lastCapsLockEventTypeRef.current === "keydown" && !stateChanged;
+        // After a known observation gap, equal state can mean a new press
+        // following an unseen toggle elsewhere. Still swallow the trailing
+        // release of a paired keydown that was already handled before blur.
+        const resumedPress = capsLockObservationInterruptedRef.current && !trailingRelease;
+        lastCapsLockStateRef.current = capsLock;
+        lastCapsLockEventTypeRef.current = e.type;
+        capsLockObservationInterruptedRef.current = false;
+        if (stateChanged || resumedPress) {
+          // handleKeyPress queues synchronously on the existing ordered path.
+          // No await/timer: release stays in this session and preserves other
+          // held keys, unlike a full keyboard reset or a macro.
+          void handleKeyPress(hidKey, true);
+          void handleKeyPress(hidKey, false);
+        }
+      }
+      return true;
+    },
+    [handleKeyPress, isMacClient],
+  );
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
@@ -345,6 +405,8 @@ export default function WebRTCVideo({
         console.warn(`Key down not mapped: ${code}`);
         return;
       }
+
+      if (handlePhysicalCapsLock(e, hidKey)) return;
 
       // Detect Windows synthetic AltGr (CtrlLeft then AltRight within ~3ms) and cancel the synthetic Ctrl
       if (isWindowsClient) {
@@ -405,7 +467,7 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [handleKeyPress, handlePhysicalCapsLock, isKeyboardLockActive, isOcrMode, isWindowsClient],
   );
 
   const keyUpHandler = useCallback(
@@ -419,6 +481,8 @@ export default function WebRTCVideo({
         console.warn(`Key up not mapped: ${code}`);
         return;
       }
+
+      if (handlePhysicalCapsLock(e, hidKey)) return;
 
       if (isWindowsClient) {
         // On Windows, handle ControlLeft specially to preserve FIFO semantics with AltGr buffering.
@@ -448,7 +512,7 @@ export default function WebRTCVideo({
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress, isOcrMode, isWindowsClient],
+    [handleKeyPress, handlePhysicalCapsLock, isOcrMode, isWindowsClient],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -546,15 +610,24 @@ export default function WebRTCVideo({
 
       document.addEventListener("keydown", keyDownHandler, { signal });
       document.addEventListener("keyup", keyUpHandler, { signal });
+      // Form fields/popovers can stop propagation without blurring the window.
+      // A focus change invalidates observation but sends no remote input.
+      document.addEventListener(
+        "focusin",
+        () => {
+          capsLockObservationInterruptedRef.current = true;
+        },
+        { signal },
+      );
 
-      window.addEventListener("blur", resetKeyboardState, { signal });
-      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
+      window.addEventListener("blur", resetKeyboardInput, { signal });
+      document.addEventListener("visibilitychange", resetKeyboardInput, { signal });
 
       return () => {
         abortController.abort();
       };
     },
-    [keyDownHandler, keyUpHandler, resetKeyboardState],
+    [keyDownHandler, keyUpHandler, resetKeyboardInput],
   );
 
   // Setup Video Event Listeners
