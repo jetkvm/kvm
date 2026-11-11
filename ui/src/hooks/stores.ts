@@ -79,6 +79,11 @@ export interface UIState {
   isOcrMode: boolean;
   setOcrMode: (enabled: boolean) => void;
 
+  // The video's fullscreen container; the device page's focus trap uses it
+  // as its container so the hidden text input inside it keeps the focus.
+  videoContainer: HTMLElement | null;
+  setVideoContainer: (element: HTMLElement | null) => void;
+
   usbSerialConsoleEnabled: boolean;
   setUsbSerialConsoleEnabled: (enabled: boolean) => void;
 
@@ -117,6 +122,9 @@ export const useUiStore = create<UIState>(set => ({
 
   isOcrMode: false,
   setOcrMode: (enabled: boolean) => set({ isOcrMode: enabled }),
+
+  videoContainer: null,
+  setVideoContainer: (element: HTMLElement | null) => set({ videoContainer: element }),
 
   usbSerialConsoleEnabled: false,
   setUsbSerialConsoleEnabled: (enabled: boolean) => set({ usbSerialConsoleEnabled: enabled }),
@@ -412,6 +420,14 @@ export interface SettingsState {
 
   hideStatusBar: boolean;
   setHideStatusBar: (hide: boolean) => void;
+
+  // Key combinations that paste the client's clipboard into the target while
+  // the video has the focus; one that is off reaches the target as keys. A
+  // paste chord injected by a dictation tool is taken regardless.
+  pasteOnCtrlV: boolean;
+  setPasteOnCtrlV: (enabled: boolean) => void;
+  pasteOnCtrlShiftV: boolean;
+  setPasteOnCtrlShiftV: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -470,6 +486,11 @@ export const useSettingsStore = create(
 
       hideStatusBar: false,
       setHideStatusBar: (hide: boolean) => set({ hideStatusBar: hide }),
+
+      pasteOnCtrlV: false,
+      setPasteOnCtrlV: (enabled: boolean) => set({ pasteOnCtrlV: enabled }),
+      pasteOnCtrlShiftV: false,
+      setPasteOnCtrlShiftV: (enabled: boolean) => set({ pasteOnCtrlShiftV: enabled }),
     }),
     {
       name: "settings",
