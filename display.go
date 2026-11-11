@@ -52,9 +52,28 @@ func updateDisplayUsbState() {
 
 func updateDisplay() {
 	if networkManager != nil {
-		nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkManager.IPv4String())
-		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkManager.IPv6String())
-		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+		var ipv6String string
+		ipv4String := networkManager.IPv4String()
+		ipv6Addrs := networkManager.GetIPv6Addresses()
+		ipv6Addrs = append(ipv6Addrs, networkManager.GetIPv6LinkLocalAddress())
+
+		if len(ipv6Addrs) > 0 {
+			ipv6String = strings.Join(ipv6Addrs, "\n")
+		}
+
+		nativeInstance.UpdateLabelAndChangeVisibility(
+			"home_info_ipv4_addr",
+			ipv4String,
+		)
+
+		nativeInstance.UpdateLabelAndChangeVisibility(
+			"home_info_ipv6_addr",
+			ipv6String,
+		)
+		nativeInstance.UpdateLabelIfChanged(
+			"home_info_mac_addr",
+			networkManager.MACString(),
+		)
 	}
 
 	_, _ = nativeInstance.UIObjHide("menu_btn_network")
