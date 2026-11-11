@@ -23,7 +23,7 @@ var consoleBroker *ConsoleBroker
 
 func mountATXControl() error {
 	_ = port.SetMode(defaultMode)
-	go runATXControl()
+	go runATXControl(port)
 
 	return nil
 }
@@ -40,16 +40,35 @@ var (
 	btnPWRState bool
 )
 
-func runATXControl() {
+func runATXControl(p serial.Port) {
 	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
 
-	reader := bufio.NewReader(port)
+	reader := bufio.NewReader(p)
+	backoff := time.Second
+	const maxBackoff = 30 * time.Second
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
+			// If the global port has been swapped out (unmount or extension
+			// switch replaces it via reopenSerialPort), the read error is an
+			// intentional shutdown signal for this worker: stop quietly.
+			if port != p {
+				scopedLogger.Debug().Msg("Serial port replaced, stopping ATX control worker")
+				return
+			}
+			// Otherwise the read failed transiently. Back off and retry with a
+			// fresh reader instead of terminating the goroutine permanently.
 			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
-			return
+			time.Sleep(backoff)
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			reader = bufio.NewReader(p)
+			continue
 		}
+		// Successful read: reset the backoff.
+		backoff = time.Second
 
 		// Each line should be 4 binary digits + newline
 		if len(line) != 5 {
@@ -141,7 +160,7 @@ func pressATXResetButton(duration time.Duration) error {
 func mountDCControl() error {
 	_ = port.SetMode(defaultMode)
 	registerDCMetrics()
-	go runDCControl()
+	go runDCControl(port)
 	return nil
 }
 
@@ -161,16 +180,35 @@ func getDCState() DCPowerState {
 	return dcState
 }
 
-func runDCControl() {
+func runDCControl(p serial.Port) {
 	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
-	reader := bufio.NewReader(port)
+	reader := bufio.NewReader(p)
 	hasRestoreFeature := false
+	backoff := time.Second
+	const maxBackoff = 30 * time.Second
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
+			// If the global port has been swapped out (unmount or extension
+			// switch replaces it via reopenSerialPort), the read error is an
+			// intentional shutdown signal for this worker: stop quietly.
+			if port != p {
+				scopedLogger.Debug().Msg("Serial port replaced, stopping DC control worker")
+				return
+			}
+			// Otherwise the read failed transiently. Back off and retry with a
+			// fresh reader instead of terminating the goroutine permanently.
 			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
-			return
+			time.Sleep(backoff)
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			reader = bufio.NewReader(p)
+			continue
 		}
+		// Successful read: reset the backoff.
+		backoff = time.Second
 
 		// Split the line by semicolon
 		parts := strings.Split(strings.TrimSpace(line), ";")
