@@ -40,6 +40,7 @@ type Session struct {
 	lastTimerResetTime       time.Time  // Track when auto-release timer was last reset
 	keepAliveJitterLock      sync.Mutex // Protect jitter compensation timing state
 	hidQueue                 []chan hidQueueMessage
+	hidInputLock             sync.Mutex // Admission and final retirement barrier.
 
 	keysDownStateQueue chan usbgadget.KeysDownState
 	done               chan struct{}
@@ -374,9 +375,7 @@ func (s *Session) isClosed() bool {
 }
 
 func (s *Session) close() {
-	s.closeOnce.Do(func() {
-		close(s.done)
-	})
+	s.closeWithRelease(rpcReleaseHIDInputs)
 }
 
 func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {
@@ -406,9 +405,7 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 		// A separate worker can process a late cancel after the old macro has
 		// finished and its replacement has started, canceling the replacement.
 		if hidrpc.MessageType(msg.Data[0]) == hidrpc.TypeCancelKeyboardMacroReport {
-			if !session.isClosed() {
-				rpcCancelKeyboardMacro()
-			}
+			_ = withSessionInput(session, func() error { rpcCancelKeyboardMacro(); return nil })
 			return
 		}
 
@@ -629,17 +626,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
-			if session == currentSession {
-				// Cancel any ongoing keyboard report multi when session closes
-				cancelKeyboardMacro()
-				// Stop pending auto-release timers (avoids unnecessary work),
-				// then clear all keys. keyboardMutex inside KeyboardReport
-				// serialises with any auto-release goroutine already in flight,
-				// so the clear is guaranteed to be the final state.
-				gadget.CancelAllAutoReleaseTimers()
-				_ = rpcKeyboardReport(0, keyboardClearStateKeys)
-				currentSession = nil
-			}
+
 			session.close()
 			releaseVideoPause(session)
 
