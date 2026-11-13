@@ -41,6 +41,7 @@ func rebindAndRecoverHID(context string) error {
 }
 
 func setMassStorageMode(cdrom bool) error {
+	osServicesNoteKVMRestart()
 	mode := "0"
 	if cdrom {
 		mode = "1"
@@ -273,6 +274,8 @@ type VirtualMediaSource string
 const (
 	HTTP    VirtualMediaSource = "HTTP"
 	Storage VirtualMediaSource = "Storage"
+	// Builtin is a disc the firmware makes: the OS Services installer.
+	Builtin VirtualMediaSource = "Builtin"
 )
 
 type VirtualMediaMode string
@@ -375,6 +378,9 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 			return nil, fmt.Errorf("failed to get file info: %w", err)
 		}
 		initialState.Size = info.Size()
+		if diskPath == builtinInstallerPath {
+			initialState.Source = Builtin
+		}
 	}
 
 	return initialState, nil

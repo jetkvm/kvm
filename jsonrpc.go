@@ -426,11 +426,15 @@ type SSHKeyState struct {
 // the loopback-only setting and the default log level (Advanced page) and the
 // Tailscale card (Network page), each shown only when reported.
 func rpcGetDeviceCapabilities() ([]string, error) {
-	return []string{
+	capabilities := []string{
 		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
 		"http_proxy", "domain", "mdns", "ipv6",
 		"tls", "local_loopback", "log_level", "tailscale",
-	}, nil
+	}
+	if osServices != nil {
+		capabilities = append(capabilities, "os_services")
+	}
+	return capabilities, nil
 }
 
 // reportLocalVersionAndCapabilities sends the device's version and
@@ -792,6 +796,7 @@ func rpcGetUsbConfig() (usbgadget.Config, error) {
 }
 
 func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
+	osServicesNoteKVMRestart()
 	LoadConfig()
 	config.UsbConfig = &usbConfig
 	gadget.SetGadgetConfig(config.UsbConfig)
@@ -835,6 +840,7 @@ var factoryResetPaths = []string{
 	serialSettingsPath,
 	SerialCommandHistoryPath,
 	failsafeDefaultLastCrashPath,
+	osServicesKeyPath,
 }
 
 func rpcFactoryReset() error {
@@ -1064,6 +1070,7 @@ func updateUsbRelatedConfig() error {
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	osServicesNoteKVMRestart()
 	if !usbDevices.Audio {
 		config.AudioEnabled = false
 	}
@@ -1076,6 +1083,7 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
+	osServicesNoteKVMRestart()
 	switch device {
 	case "absoluteMouse":
 		config.UsbDevices.AbsoluteMouse = enabled
@@ -1419,6 +1427,13 @@ var rpcHandlers = map[string]RPCHandler{
 	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
 	"wakeHost":                   {Func: rpcWakeHost},
 	"getVideoState":              {Func: rpcGetVideoState},
+	"getOsServicesSettings":      {Func: rpcGetOsServicesSettings},
+	"setOsServicesSettings":      {Func: rpcSetOsServicesSettings, Params: []string{"settings"}},
+	"guestClipboardGet":          {Func: rpcGuestClipboardGet},
+	"guestClipboardSet":          {Func: rpcGuestClipboardSet, Params: []string{"text"}},
+	"guestFileDrop":              {Func: rpcGuestFileDrop, Params: []string{"drop"}},
+	"guestUpdateStart":           {Func: rpcGuestUpdateStart},
+	"mountBuiltinInstaller":      {Func: rpcMountBuiltinInstaller},
 	"getUSBState":                {Func: rpcGetUSBState},
 	"unmountImage":               {Func: rpcUnmountImage},
 	"rpcMountBuiltInImage":       {Func: rpcMountBuiltInImage, Params: []string{"filename"}},

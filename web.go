@@ -27,6 +27,7 @@ import (
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/supervisor"
+	"github.com/jetkvm/kvm/internal/timinglog"
 	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -200,6 +201,7 @@ func setupRouter() *gin.Engine {
 	protected.Use(protectedMiddleware())
 	{
 		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		protected.GET("/webrtc/stats", handleWebRTCStats)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
@@ -612,6 +614,18 @@ func RunWebServer() {
 	if err := r.Run(bindAddress); err != nil {
 		panic(err)
 	}
+}
+
+// handleWebRTCStats answers the timing log (internal/timinglog) for
+// timing=<action>: "start" starts an empty log first, "stop" stops the log
+// first, and each other action only reads.
+func handleWebRTCStats(c *gin.Context) {
+	action, ok := c.GetQuery("timing")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the timing query is required"})
+		return
+	}
+	c.JSON(http.StatusOK, timinglog.Answer(action))
 }
 
 func handleDevice(c *gin.Context) {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  useCapability,
   useHidStore,
   useMouseStore,
   useRTCStore,
@@ -12,6 +13,20 @@ import { useHidRpc } from "@hooks/useHidRpc";
 import { keys, modifiers } from "@/keyboardMappings";
 import { cx } from "@/cva.config";
 import { m } from "@localizations/messages.js";
+
+// One cell of the OS Services state: dim until its state is on.
+function GuestIndicator({ on, label }: { on: boolean; label: string }) {
+  return (
+    <div
+      className={cx(
+        "shrink-0 p-1 px-1.5 text-xs",
+        on ? "text-black dark:text-white" : "text-slate-800/20 dark:text-slate-300/20",
+      )}
+    >
+      {label}
+    </div>
+  );
+}
 
 export default function InfoBar() {
   const { keysDownState } = useHidStore();
@@ -30,7 +45,8 @@ export default function InfoBar() {
   const { isPasteInProgress } = useHidStore();
   const { keyboardLedState, usbState } = useHidStore();
   const { isTurnServerInUse, peerConnection, peerConnectionState } = useRTCStore();
-  const { hdmiState } = useVideoStore();
+  const { hdmiState, osServices } = useVideoStore();
+  const hasOsServices = useCapability("os_services");
 
   const [videoCodec, setVideoCodec] = useState<string | null>(null);
   const [videoBitrate, setVideoBitrate] = useState<string | null>(null);
@@ -208,6 +224,14 @@ export default function InfoBar() {
           {isTurnServerInUse && (
             <div className="shrink-0 p-1 px-1.5 text-xs text-black dark:text-white">
               {m.info_relayed_by_cloudflare()}
+            </div>
+          )}
+
+          {hasOsServices && (
+            <div className="flex items-center divide-x divide-slate-800/20 border-r-2 border-r-slate-800/30 dark:divide-slate-300/20 dark:border-r-slate-300/30">
+              <GuestIndicator on={osServices.connected} label={m.info_os_services()} />
+              <GuestIndicator on={osServices.video} label={m.info_guest_video()} />
+              <GuestIndicator on={osServices.clipboard} label={m.info_guest_clipboard()} />
             </div>
           )}
 

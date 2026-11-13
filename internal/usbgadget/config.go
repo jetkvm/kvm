@@ -13,6 +13,9 @@ type gadgetConfigItem struct {
 	configAttrs gadgetAttributes
 	configPath  []string
 	reportDesc  []byte
+	// inEndpoints is the number of IN endpoints the function takes from
+	// the USB controller, besides the control endpoint.
+	inEndpoints int
 }
 
 type gadgetAttributes map[string]string
@@ -84,8 +87,25 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 	case "audio":
 		return u.enabledDevices.Audio
 	default:
+		if f := registeredExternalFunction(); f != nil && itemKey == f.Key {
+			return u.externalReady
+		}
 		return true
 	}
+}
+
+// inEndpointsBefore is the number of IN endpoints of the enabled functions
+// that come before order. The controller numbers the IN endpoints from 1 in
+// the order of the functions, so the next function's first IN endpoint is
+// this number plus 1.
+func (u *UsbGadget) inEndpointsBefore(order uint) int {
+	count := 0
+	for key, item := range u.configMap {
+		if item.order < order && u.isGadgetConfigItemEnabled(key) {
+			count += item.inEndpoints
+		}
+	}
+	return count
 }
 
 func (u *UsbGadget) loadGadgetConfig() {
@@ -233,6 +253,7 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, e
 }
 
 func (u *UsbGadget) configureUsbGadgetLocked(resetUsb bool, forceRebind bool) (bool, error) {
+	u.externalReady = u.prepareExternalFunction()
 	disconnected := false
 	adopted := false
 	err := u.WithTransaction(func() error {

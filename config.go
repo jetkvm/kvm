@@ -123,6 +123,7 @@ type Config struct {
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
 	AudioEnabled         bool                 `json:"audio_enabled"`
+	OSServices           *OSServicesConfig    `json:"os_services"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -200,6 +201,7 @@ func getDefaultConfig() Config {
 		TLSMode:       "",
 		UsbConfig:     func() *usbgadget.Config { c := defaultUsbConfig; return &c }(),
 		UsbDevices:    func() *usbgadget.Devices { c := defaultUsbDevices; return &c }(),
+		OSServices:    defaultOSServicesConfig(),
 		NetworkConfig: func() *types.NetworkConfig {
 			c := &types.NetworkConfig{}
 			_ = confparser.SetDefaultsAndValidate(c)
@@ -289,6 +291,10 @@ func LoadConfig() {
 
 	if !loadedConfig.UsbDevices.Audio {
 		loadedConfig.AudioEnabled = false
+	}
+
+	if loadedConfig.OSServices == nil {
+		loadedConfig.OSServices = defaultOSServicesConfig()
 	}
 
 	if loadedConfig.NetworkConfig == nil {

@@ -7,6 +7,7 @@ import { cx } from "@/cva.config";
 import { m } from "@localizations/messages.js";
 import { useHidStore, useSettingsStore, useUiStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import useGuestClipboard, { clipboardShortcut } from "@hooks/useGuestClipboard";
 import useKeyboard, { type MacroStep } from "@hooks/useKeyboard";
 import useKeyboardLayout from "@hooks/useKeyboardLayout";
 import notifications from "@/notifications";
@@ -25,10 +26,11 @@ export default function PasteModal() {
   const { isPasteInProgress } = useHidStore();
   const [textValue, setTextValue] = useState("");
   const [hideText, setHideText] = useState(false);
-  const { setDisableVideoFocusTrap } = useUiStore();
+  const { setDisableVideoFocusTrap, pendingPasteText, setPendingPasteText } = useUiStore();
 
   const { send } = useJsonRpc();
   const { executeMacro, cancelExecuteMacro } = useKeyboard();
+  const { osServices, guestClipboard, pasteViaGuest } = useGuestClipboard();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const [delayValue, setDelayValue] = useState(defaultDelay);
@@ -73,12 +75,24 @@ export default function PasteModal() {
     [selectedKeyboard],
   );
 
+  // A clipboard chord on the video with no OS Services clipboard hands its
+  // text here, so the layout check is visible before anything is typed.
+  useEffect(() => {
+    if (pendingPasteText === null) return;
+    setTextValue(pendingPasteText);
+    updateInvalidChars(pendingPasteText);
+    setPendingPasteText(null);
+  }, [pendingPasteText, setPendingPasteText, updateInvalidChars]);
+
   const onConfirmPaste = useCallback(async () => {
     if (!selectedKeyboard) return;
 
     const text = textValue;
 
     try {
+      // An OS Services clipboard pastes the text whole; without one it is typed.
+      if ((await pasteViaGuest(text)) !== "unavailable") return;
+
       const macroSteps: MacroStep[] = [];
 
       for (const char of text) {
@@ -125,7 +139,7 @@ export default function PasteModal() {
       console.error("Failed to paste text:", error);
       notifications.error(m.paste_modal_failed_paste({ error: String(error) }));
     }
-  }, [selectedKeyboard, executeMacro, delay, textValue]);
+  }, [selectedKeyboard, executeMacro, delay, textValue, pasteViaGuest]);
 
   useEffect(() => {
     TextAreaRef.current?.focus();
@@ -238,13 +252,23 @@ export default function PasteModal() {
                       </div>
                     ))}
                 </div>
-                <div className="space-y-4">
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {m.paste_modal_sending_using_layout({
-                      iso: selectedKeyboard.isoCode,
-                      name: selectedKeyboard.name,
-                    })}
-                  </p>
+                <div className="space-y-1">
+                  {!guestClipboard?.write && (
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {m.paste_modal_sending_using_layout({
+                        iso: selectedKeyboard.isoCode,
+                        name: selectedKeyboard.name,
+                      })}
+                    </p>
+                  )}
+                  {osServices && (
+                    <p className="text-xs text-slate-500 dark:text-slate-500">
+                      {m.clipboard_shortcut_hint({
+                        paste: clipboardShortcut("V"),
+                        copy: clipboardShortcut("C"),
+                      })}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

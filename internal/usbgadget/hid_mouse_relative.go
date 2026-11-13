@@ -18,7 +18,8 @@ var relativeMouseConfig = gadgetConfigItem{
 		"no_out_endpoint": "1",
 		"wakeup_on_write": "0",
 	},
-	reportDesc: relativeMouseCombinedReportDesc,
+	reportDesc:  relativeMouseCombinedReportDesc,
+	inEndpoints: 1,
 }
 
 // from: https://github.com/NicoHood/HID/blob/b16be57caef4295c6cd382a7e4c64db5073647f7/src/SingleReport/BootMouse.cpp#L26
