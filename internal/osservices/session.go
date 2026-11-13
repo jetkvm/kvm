@@ -708,9 +708,9 @@ func (s *Session) sendClipboardConfig() bool {
 	return s.sendMessage(ServiceClipboard, clipboardConfig, []byte{enabled})
 }
 
-// faultService detaches a service after an invalid message (Errors): it
-// fails what the service owes and ignores its messages until it registers
-// again.
+// faultService detaches a service after an invalid message (Errors and
+// session end): it fails what the service owes and ignores its messages until
+// it registers again.
 func (s *Session) faultService(service uint16, reason string) {
 	if service >= serviceCount || service == ServiceSession {
 		s.endSession(reason)
@@ -756,7 +756,7 @@ func (s *Session) faultService(service uint16, reason string) {
 
 func (s *Session) signAndSendReady(hello []byte) {
 	ready := make([]byte, readyLen)
-	// The lower of the two minor versions (Version).
+	// The lower of the two minor versions (Versions).
 	minor := le.Uint16(hello[2:])
 	s.protocolMinor = min(minor, ProtocolMinor)
 	le.PutUint16(ready, ProtocolMajor)
@@ -769,7 +769,7 @@ func (s *Session) signAndSendReady(hello []byte) {
 	}
 	copy(ready[20:], key)
 	// The signed bytes: the context text, the hello payload and the first
-	// 52 bytes of this payload (KVM approval).
+	// 52 bytes of this payload (Handshake).
 	signed := make([]byte, 0, len(signatureContext)+helloLen+readySignedLen)
 	signed = append(signed, signatureContext...)
 	signed = append(signed, hello[:helloLen]...)

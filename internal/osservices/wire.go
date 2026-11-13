@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-// Protocol version (Version).
+// Protocol version (Versions).
 const (
 	ProtocolMajor = 5
 	ProtocolMinor = 0
