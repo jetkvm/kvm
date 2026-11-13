@@ -840,6 +840,7 @@ var factoryResetPaths = []string{
 	serialSettingsPath,
 	SerialCommandHistoryPath,
 	failsafeDefaultLastCrashPath,
+	osServicesKeyPath,
 }
 
 func rpcFactoryReset() error {
