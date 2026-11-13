@@ -37,6 +37,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			_ = reapplyHostDisplayAdvertisement("native_restarted")
 		},
 		OnVideoStateChange: func(state native.VideoState) {
+			state = unsupportedResolutionState(state)
 			lastVideoState = state
 			triggerVideoStateUpdate()
 			requestDisplayUpdate(false, "video_state_changed")
