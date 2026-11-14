@@ -224,4 +224,3 @@ func TestScreenshotStartsCaptureUnderPauseLock(t *testing.T) {
 		t.Fatal("capture was started without the pause lock, so a pause could slip in and be undone")
 	}
 }
-
