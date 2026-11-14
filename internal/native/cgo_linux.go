@@ -178,6 +178,25 @@ func videoGetStreamingStatus() VideoStreamingStatus {
 	return VideoStreamingStatus(isStreaming)
 }
 
+func videoGetSnapshot() ([]byte, error) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	var buf *C.uint8_t
+	var length C.size_t
+
+	ret := C.jetkvm_video_get_snapshot(&buf, &length)
+	if ret != 0 {
+		if ret == -1 {
+			return nil, ErrVideoNotStreaming
+		}
+		return nil, fmt.Errorf("failed to capture video snapshot: %d", int(ret))
+	}
+	defer C.jetkvm_video_free_snapshot(buf)
+
+	return C.GoBytes(unsafe.Pointer(buf), C.int(length)), nil
+}
+
 func videoLogStatus() string {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()

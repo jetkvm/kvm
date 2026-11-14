@@ -505,12 +505,12 @@ func (p *NativeProxy) Stop() error {
 	return nil
 }
 
-func zeroValue[V string | bool | float64 | int]() V {
+func zeroValue[V string | bool | float64 | int | []byte]() V {
 	var v V
 	return v
 }
 
-func nativeProxyClientExec[K comparable, V string | bool | float64 | int](p *NativeProxy, fn func(*GRPCClient) (V, error)) (V, error) {
+func nativeProxyClientExec[K comparable, V string | bool | float64 | int | []byte](p *NativeProxy, fn func(*GRPCClient) (V, error)) (V, error) {
 	p.clientMu.RLock()
 	defer p.clientMu.RUnlock()
 
@@ -591,6 +591,14 @@ func (p *NativeProxy) VideoGetEDID() (string, error) {
 func (p *NativeProxy) VideoLogStatus() (string, error) {
 	return nativeProxyClientExec[string](p, func(client *GRPCClient) (string, error) {
 		return client.VideoLogStatus()
+	})
+}
+
+func (p *NativeProxy) VideoGetSnapshot() ([]byte, error) {
+	// []byte isn't `comparable`, so K (unused by nativeProxyClientExec) can't be
+	// instantiated as []byte too; bool is an arbitrary stand-in.
+	return nativeProxyClientExec[bool, []byte](p, func(client *GRPCClient) ([]byte, error) {
+		return client.VideoGetSnapshot()
 	})
 }
 
