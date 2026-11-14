@@ -94,10 +94,7 @@ func (d *Diagnostics) LogUSBGadget() {
 	d.runShellLog("extcon name", "cat /sys/class/extcon/*/name 2>&1 || echo 'no extcon name'")
 
 	// === USB Character Devices ===
-	hidDevices := []string{"/dev/hidg0", "/dev/hidg1", "/dev/hidg2"}
-	for _, path := range hidDevices {
-		d.checkFileLog(filepath.Base(path), path)
-	}
+	d.runShellLog("hidg devices", "ls -la /dev/hidg* 2>&1 || echo 'no hidg devices'")
 	d.runShellLog("hidraw devices", "ls -la /dev/hidraw* 2>&1 || echo 'no hidraw devices'")
 
 	// === Mass Storage (if present) ===

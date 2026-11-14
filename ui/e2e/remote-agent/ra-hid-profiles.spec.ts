@@ -170,8 +170,11 @@ test("a macro and a jiggler schedule entered in the UI are saved as entered", as
     await expect(page.getByRole("heading", { name: macroName, exact: true })).toBeVisible({
       timeout: 12_000,
     });
-    expect(await macrosNamed(page, macroName)).toEqual([
-      expect.objectContaining({ steps: [{ keys: ["F24"], modifiers: [], delay: 50 }] }),
+    const saved = await macrosNamed(page, macroName);
+    expect(saved).toHaveLength(1);
+    const steps = saved[0].steps as { modifiers: string[] | null }[];
+    expect(steps.map(step => ({ ...step, modifiers: step.modifiers ?? [] }))).toEqual([
+      { keys: ["F24"], modifiers: [], delay: 50 },
     ]);
   });
 

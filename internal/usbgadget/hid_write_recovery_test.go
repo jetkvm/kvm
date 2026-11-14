@@ -50,7 +50,7 @@ func tryHIDWriteWithBriefBackpressure(t *testing.T, attempt int) bool {
 		drained <- drainResult{started, time.Now(), err}
 	}()
 	report := []byte{2, 0, 6, 0, 0, 0, 0, 0}
-	u := newTestGadgetWithKeyboard(w)
+	u := newTestGadgetWithKeyboard(t, w)
 	started := time.Now()
 	close(start)
 	n, err := u.writeWithTimeout(w, report)
@@ -93,7 +93,7 @@ func TestWriteTimeoutLoggingResumesAfterSuccessfulWrite(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := zerolog.New(&logs)
-	u := newTestGadgetWithKeyboard(w)
+	u := newTestGadgetWithKeyboard(t, w)
 	u.log = &logger
 	report := make([]byte, hidKeyBufferSize)
 
@@ -142,12 +142,20 @@ func drainPipe(t *testing.T, r *os.File) {
 	}
 }
 
-func newTestGadgetWithKeyboard(w *os.File) *UsbGadget {
+func newTestGadgetWithKeyboard(t *testing.T, w *os.File) *UsbGadget {
 	logger := zerolog.Nop()
 	return &UsbGadget{
 		log:                   &logger,
 		logSuppressionCounter: make(map[string]int),
 		keyboardHidFile:       w,
+		enabledDevices:        defaultUsbGadgetDevices,
+		configMap:             defaultGadgetConfig,
+		kvmGadgetPath: fakeHidGadget(t, map[string]string{
+			"hid.usb0": "242:0\n",
+			"hid.usb1": "242:1\n",
+			"hid.usb2": "242:2\n",
+			"hid.usb3": "242:3\n",
+		}),
 	}
 }
 
@@ -158,7 +166,7 @@ func TestKeyboardWriteTimeoutStreak(t *testing.T) {
 	}
 	defer r.Close()
 
-	u := newTestGadgetWithKeyboard(w)
+	u := newTestGadgetWithKeyboard(t, w)
 	fillPipeBuffer(t, w)
 
 	report := make([]byte, hidKeyBufferSize)
@@ -187,7 +195,7 @@ func TestResetHIDFilesClearsWriteTimeoutStreaks(t *testing.T) {
 	}
 	defer r.Close()
 
-	u := newTestGadgetWithKeyboard(w)
+	u := newTestGadgetWithKeyboard(t, w)
 	fillPipeBuffer(t, w)
 
 	report := make([]byte, hidKeyBufferSize)
@@ -286,7 +294,7 @@ func TestVerifyKeyboardWritable(t *testing.T) {
 	}
 	defer r.Close()
 
-	u := newTestGadgetWithKeyboard(w)
+	u := newTestGadgetWithKeyboard(t, w)
 
 	fillPipeBuffer(t, w)
 	if err := u.VerifyKeyboardWritable(); err == nil {
