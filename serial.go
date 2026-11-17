@@ -58,6 +58,8 @@ type atxLink struct {
 	timer   atxTimer
 	gen     uint64
 	stopped bool
+
+	sendMu sync.Mutex
 }
 
 func startATXLink() *atxLink {
@@ -80,26 +82,45 @@ func (l *atxLink) armLocked() {
 
 func (l *atxLink) expire(gen uint64) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.stopped || gen != l.gen {
+		l.mu.Unlock()
 		return
 	}
 	atxBoardSilent.Store(true)
+	l.mu.Unlock()
+
 	serialLogger.Warn().Dur("timeout", atxSilenceTimeout).Msg("ATX extension board sends no status")
-	broadcastATXState(currentATXState())
+	l.broadcast(gen)
 }
 
 func (l *atxLink) received() {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.stopped {
+		l.mu.Unlock()
 		return
 	}
 	l.armLocked()
-	if atxBoardSilent.Swap(false) {
+	gen := l.gen
+	cameBack := atxBoardSilent.Swap(false)
+	l.mu.Unlock()
+
+	if cameBack {
 		serialLogger.Info().Msg("ATX extension board sends status again")
 	}
-	broadcastATXState(currentATXState())
+	l.broadcast(gen)
+}
+
+func (l *atxLink) broadcast(gen uint64) {
+	l.sendMu.Lock()
+	defer l.sendMu.Unlock()
+
+	l.mu.Lock()
+	current := !l.stopped && gen == l.gen
+	l.mu.Unlock()
+
+	if current {
+		broadcastATXState(currentATXState())
+	}
 }
 
 func (l *atxLink) stop() {

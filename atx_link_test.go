@@ -85,6 +85,8 @@ func (t fakeToken) Error() error                   { return nil }
 type fakeMQTTClient struct {
 	mqtt.Client
 
+	hold func(ATXState)
+
 	mu        sync.Mutex
 	published []ATXState
 }
@@ -100,6 +102,9 @@ func (c *fakeMQTTClient) Publish(topic string, _ byte, _ bool, payload any) mqtt
 	var state ATXState
 	if err := json.Unmarshal(payload.([]byte), &state); err != nil {
 		panic(err)
+	}
+	if c.hold != nil {
+		c.hold(state)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -263,6 +268,55 @@ func TestATXSwitchAwayClearsSilence(t *testing.T) {
 	clock.advance(atxSilenceTimeout - time.Second)
 	if !respondingNow(t) {
 		t.Fatal("board reported as silent before the timeout after reactivation")
+	}
+}
+
+func TestATXBlockedPublishDoesNotHoldTheLink(t *testing.T) {
+	clock := useFakeATXClock(t)
+	client := useTestMQTTManager(t)
+	ports := useFakeExtensionPort(t)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	client.hold = func(state ATXState) {
+		if !state.Responding {
+			close(entered)
+			<-release
+		}
+	}
+
+	if err := extPort.activate("atx-power"); err != nil {
+		t.Fatal(err)
+	}
+	go clock.advance(atxSilenceTimeout)
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the silence was not published")
+	}
+
+	ports.current().deliver(t, "1111\n")
+	eventually(t, "a line to re-arm the timer during a blocked publish", func() bool {
+		return clock.pending() == 1 && respondingNow(t)
+	})
+
+	extPort.mu.Lock()
+	link := extPort.atx
+	extPort.mu.Unlock()
+	stopped := make(chan struct{})
+	go func() {
+		link.stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stop waited for a blocked publish")
+	}
+	if n := clock.pending(); n != 0 {
+		t.Fatalf("%d silence timers still pending after stop", n)
 	}
 }
 
