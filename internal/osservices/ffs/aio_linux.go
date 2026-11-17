@@ -55,6 +55,16 @@ type aioEndpoint struct {
 	ctx uintptr
 	fd  int
 	buf []byte
+	// abandoned holds the context and the buffer of each request that the
+	// kernel did not give back after a cancel. The kernel can still use
+	// the buffer and can still complete the request in that context, so
+	// both stay until the endpoint closes.
+	abandoned []abandonedRequest
+}
+
+type abandonedRequest struct {
+	ctx uintptr
+	buf []byte
 }
 
 func newAIOEndpoint(fd int, size int) (*aioEndpoint, error) {
@@ -72,6 +82,23 @@ func (e *aioEndpoint) close() {
 		_, _, _ = unix.Syscall(unix.SYS_IO_DESTROY, e.ctx, 0, 0)
 		e.ctx = 0
 	}
+	for _, request := range e.abandoned {
+		_, _, _ = unix.Syscall(unix.SYS_IO_DESTROY, request.ctx, 0, 0)
+	}
+	e.abandoned = nil
+}
+
+// abandon leaves the request in flight to the kernel: the endpoint takes a
+// new context and a new buffer, and keeps the old ones. The caller holds mu.
+func (e *aioEndpoint) abandon() error {
+	var ctx uintptr
+	if _, _, errno := unix.Syscall(unix.SYS_IO_SETUP, 1, uintptr(unsafe.Pointer(&ctx)), 0); errno != 0 {
+		return fmt.Errorf("io_setup: %w", errno)
+	}
+	e.abandoned = append(e.abandoned, abandonedRequest{ctx: e.ctx, buf: e.buf})
+	e.ctx = ctx
+	e.buf = make([]byte, len(e.buf))
+	return nil
 }
 
 // getEvent waits up to timeout (forever when negative) for the completion of
@@ -129,6 +156,9 @@ func (e *aioEndpoint) transfer(opcode uint16, data []byte, timeout time.Duration
 		event, done, err = e.getEvent(2 * time.Second)
 		if err == nil && !done {
 			err = errors.New("ffs: a cancelled transfer did not complete")
+			if abandonErr := e.abandon(); abandonErr != nil {
+				err = fmt.Errorf("%w, and the endpoint cannot go on: %w", err, abandonErr)
+			}
 		}
 		if err == nil {
 			err = ErrTimeout

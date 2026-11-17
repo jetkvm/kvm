@@ -57,7 +57,12 @@ type Link struct {
 	qcond      *sync.Cond
 	queue      []byte
 	generation uint64
-	packetSize int
+	// packetSize is the bulk packet size of the bus speed: the control
+	// goroutine sets it at each enable, the writer reads it.
+	packetSize atomic.Int64
+	// resetPending: a RESET waits for Mu. A Write that waits for room in
+	// the queue holds Mu, so it gives up at once.
+	resetPending atomic.Bool
 
 	restartMu    sync.Mutex
 	kvmRestartAt time.Time
@@ -65,7 +70,8 @@ type Link struct {
 
 // NewLink makes a link for a session; Start runs it on a function.
 func NewLink(log *zerolog.Logger, udc string) *Link {
-	l := &Link{log: log, udc: udc, wake: make(chan struct{}, 1), packetSize: PacketSizeHS}
+	l := &Link{log: log, udc: udc, wake: make(chan struct{}, 1)}
+	l.packetSize.Store(PacketSizeHS)
 	l.qcond = sync.NewCond(&l.qmu)
 	l.framer.init(PacketSizeHS, readCapacity)
 	return l
@@ -111,6 +117,7 @@ func (l *Link) Stop() error {
 		return nil
 	}
 	l.stopping.Store(true)
+	l.wakeWriters()
 	l.fn.Interrupt()
 	l.Mu.Lock()
 	l.session.USBReconfigured(l.byKVM())
@@ -162,7 +169,7 @@ func (l *Link) Write(envelope, head, body []byte) bool {
 	deadline := time.Now().Add(inWriteWait)
 	for len(l.queue)+need > inQueueCapacity {
 		left := time.Until(deadline)
-		if left <= 0 {
+		if left <= 0 || l.resetPending.Load() || l.stopping.Load() {
 			return false
 		}
 		timer := time.AfterFunc(left, func() {
@@ -178,6 +185,13 @@ func (l *Link) Write(envelope, head, body []byte) bool {
 	l.queue = append(l.queue, body...)
 	l.qcond.Broadcast()
 	return true
+}
+
+// wakeWriters wakes a Write that waits for room in the queue.
+func (l *Link) wakeWriters() {
+	l.qmu.Lock()
+	l.qcond.Broadcast()
+	l.qmu.Unlock()
 }
 
 // flush drops what waits for the IN endpoint.
@@ -225,7 +239,12 @@ func (l *Link) event(e Event) {
 	case EventSetup:
 		l.setup(e.Setup)
 	case EventEnable:
-		l.packetSize = l.currentPacketSize()
+		packetSize := l.currentPacketSize()
+		l.packetSize.Store(int64(packetSize))
+		// The function was disabled, so no message is in flight.
+		l.Mu.Lock()
+		l.framer.init(packetSize, readCapacity)
+		l.Mu.Unlock()
 		if address, err := l.fn.INEndpoint(); err != nil {
 			l.log.Debug().Err(err).Msg("OS Services: cannot read the bulk IN endpoint address")
 		} else {
@@ -270,9 +289,18 @@ func (l *Link) setup(s Setup) {
 		}
 		return
 	}
+	reset := s.Request == osservices.USBRequestReset
+	if reset {
+		// The sender allows 2 s for the answer, and a Write that waits for
+		// room in the queue can hold Mu that long. The session that it
+		// writes for ends with this RESET.
+		l.resetPending.Store(true)
+		l.wakeWriters()
+	}
 	l.Mu.Lock()
+	l.resetPending.Store(false)
 	var status [osservices.USBStatusLen]byte
-	if s.Request == osservices.USBRequestReset {
+	if reset {
 		status = l.session.USBReset()
 		// The reader takes the next read as the start of the new session
 		// and drops what it held; the session is admitted at once, as the
@@ -406,7 +434,7 @@ func (l *Link) writer() {
 		}
 		// A transfer of whole packets does not end the host's read; a
 		// zero-length packet does, once nothing else follows.
-		zeroLengthDue = n > 0 && n%l.packetSize == 0 && len(l.queue) == 0
+		zeroLengthDue = n > 0 && n%int(l.packetSize.Load()) == 0 && len(l.queue) == 0
 		l.qcond.Broadcast()
 		l.qmu.Unlock()
 	}
