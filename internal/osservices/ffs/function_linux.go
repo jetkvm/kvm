@@ -96,6 +96,12 @@ func splitLines(text string) []string {
 
 // Mount mounts the functionfs instance name at dir, unless it is mounted
 // there already. The instance must exist in configfs (functions/ffs.name).
+//
+// With no_disconnect, the kernel keeps the gadget connected when the
+// process that holds the function exits: the function stops, and the other
+// functions of the gadget stay. Without it, the kernel takes the whole
+// gadget off the bus until the process is back. The gadget still connects
+// again once when the next process opens the function.
 func Mount(dir, name string) error {
 	if Mounted(dir, name) {
 		return nil
@@ -103,7 +109,7 @@ func Mount(dir, name string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := unix.Mount(name, dir, "functionfs", 0, ""); err != nil {
+	if err := unix.Mount(name, dir, "functionfs", 0, "no_disconnect=1"); err != nil {
 		return fmt.Errorf("mount functionfs %s at %s: %w", name, dir, err)
 	}
 	return nil
