@@ -267,6 +267,12 @@ func (d *Downloader) transfer(ctx context.Context, u *neturl.URL, filename strin
 		return fmt.Errorf("the server answered HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 
+	finalPath := filepath.Join(d.Dir, filename)
+	partialPath := finalPath + IncompleteSuffix
+	if err := os.Remove(partialPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to remove the incomplete file: %w", err)
+	}
+
 	size := max(resp.ContentLength, 0)
 	if size > 0 {
 		free, err := d.FreeSpace()
@@ -281,9 +287,7 @@ func (d *Downloader) transfer(ctx context.Context, u *neturl.URL, filename strin
 	d.state.Size = size
 	d.mu.Unlock()
 
-	finalPath := filepath.Join(d.Dir, filename)
-	partialPath := finalPath + IncompleteSuffix
-	file, err := os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create the file: %w", err)
 	}

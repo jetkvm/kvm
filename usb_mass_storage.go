@@ -474,6 +474,9 @@ func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 	if currentVirtualMediaState != nil {
 		return fmt.Errorf("another virtual media is already mounted")
 	}
+	if err := errIfDownloading(filename); err != nil {
+		return err
+	}
 
 	fullPath := filepath.Join(imagesFolder, filename)
 	fileInfo, err := os.Stat(fullPath)
@@ -509,10 +512,6 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	if err != nil {
 		return err
 	}
-	if err := errIfDownloading(filename); err != nil {
-		return err
-	}
-
 	if err := prepareStorageMount(filename, mode); err != nil {
 		return err
 	}

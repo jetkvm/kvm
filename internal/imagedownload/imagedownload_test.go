@@ -437,6 +437,7 @@ func TestTruncatedBodyLeavesNoFile(t *testing.T) {
 
 func TestStalePartialIsReplaced(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 		w.Write(payload)
 	}))
 	defer ts.Close()
@@ -445,6 +446,16 @@ func TestStalePartialIsReplaced(t *testing.T) {
 	stale := bytes.Repeat([]byte("x"), len(payload)*2)
 	if err := os.WriteFile(filepath.Join(d.Dir, "a.iso"+IncompleteSuffix), stale, 0644); err != nil {
 		t.Fatal(err)
+	}
+	capacity := int64(len(stale)) + 10
+	d.FreeSpace = func() (int64, error) {
+		used := int64(0)
+		entries, _ := os.ReadDir(d.Dir)
+		for _, e := range entries {
+			info, _ := e.Info()
+			used += info.Size()
+		}
+		return capacity - used, nil
 	}
 	if s := run(t, d, ts.URL+"/a.iso", ""); s.Status != StatusDone {
 		t.Fatalf("state = %+v", s)

@@ -57,9 +57,8 @@ func rpcStartStorageDownload(url string, filename string) (*imagedownload.State,
 	partial := filename + imagedownload.IncompleteSuffix
 
 	virtualMediaStateMutex.RLock()
-	mounted := currentVirtualMediaState != nil && currentVirtualMediaState.Filename == partial
-	virtualMediaStateMutex.RUnlock()
-	if mounted {
+	defer virtualMediaStateMutex.RUnlock()
+	if currentVirtualMediaState != nil && currentVirtualMediaState.Filename == partial {
 		return nil, fmt.Errorf("%s is mounted; unmount it first", partial)
 	}
 
