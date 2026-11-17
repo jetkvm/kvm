@@ -1,5 +1,3 @@
-//go:build linux && arm
-
 package kvm
 
 import (
@@ -61,10 +59,13 @@ func TestMacroDeletedWhileDisconnected(t *testing.T) {
 	client := &retainingClient{connected: true, retained: map[string]string{}}
 	m := &MQTTManager{client: client, deviceID: "dev", baseTopic: "jetkvm/dev"}
 	m.connected.Store(true)
-	config = &Config{KeyboardMacros: []KeyboardMacro{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}}
+	useConfig(t, &Config{
+		MqttConfig:     &MQTTConfig{EnableKeyboardMacros: true},
+		KeyboardMacros: []KeyboardMacro{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}},
+	})
 	button := func(id string) string { return "homeassistant/button/jetkvm_dev/macro_" + id + "/config" }
 
-	m.publishMacroDiscovery(&haDevice{}, "jetkvm/dev/status", "", true)
+	m.publishMacroDiscovery(&haDevice{}, "jetkvm/dev/status", "")
 	if _, ok := client.retained[button("a")]; !ok {
 		t.Fatal("button for macro a was not published")
 	}
@@ -74,11 +75,39 @@ func TestMacroDeletedWhileDisconnected(t *testing.T) {
 	m.removeMacroDiscovery([]string{"a"})
 
 	client.connected = true
-	m.publishMacroDiscovery(&haDevice{}, "jetkvm/dev/status", "", true)
+	m.publishMacroDiscovery(&haDevice{}, "jetkvm/dev/status", "")
 	if _, ok := client.retained[button("a")]; ok {
 		t.Fatal("button of the macro deleted while disconnected survived the reconnect")
 	}
 	if _, ok := client.retained[button("b")]; !ok {
 		t.Fatal("button of the surviving macro is missing")
+	}
+}
+
+func TestMacroButtonsFollowKeyboardMacroSwitch(t *testing.T) {
+	client := &retainingClient{connected: true, retained: map[string]string{}}
+	m := &MQTTManager{client: client, deviceID: "dev", baseTopic: "jetkvm/dev"}
+	m.connected.Store(true)
+	useConfig(t, &Config{
+		MqttConfig:     &MQTTConfig{EnableActions: true},
+		KeyboardMacros: []KeyboardMacro{{ID: "a", Name: "A"}},
+	})
+	button := "homeassistant/button/jetkvm_dev/macro_a/config"
+
+	m.publishMacroDiscovery(&haDevice{}, "jetkvm/dev/status", "")
+	if _, ok := client.retained[button]; ok {
+		t.Fatal("macro button published with the keyboard macro switch off")
+	}
+
+	config.MqttConfig.EnableKeyboardMacros = true
+	m.publishMacroDiscovery(&haDevice{}, "jetkvm/dev/status", "")
+	if _, ok := client.retained[button]; !ok {
+		t.Fatal("macro button missing with the keyboard macro switch on")
+	}
+
+	config.MqttConfig.EnableKeyboardMacros = false
+	m.publishMacroDiscovery(&haDevice{}, "jetkvm/dev/status", "")
+	if _, ok := client.retained[button]; ok {
+		t.Fatal("macro button survived turning the keyboard macro switch off")
 	}
 }
