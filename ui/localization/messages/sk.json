@@ -155,6 +155,8 @@
     "appearance_theme_system": "Systémová",
     "appearance_title": "Vzhľad",
     "attach": "Pripojiť",
+    "atx_power_control_board_not_responding": "Rozširujúca doska ATX neodpovedá",
+    "atx_power_control_board_not_responding_hint": "Skontrolujte kábel RJ-12 a napájanie rozširujúcej dosky.",
     "atx_power_control_get_state_error": "Nepodarilo sa získať stav ATX napájania: {error}",
     "atx_power_control_hdd_led": "HDD LED",
     "atx_power_control_hold_hint": "Podržať 3s pre nútené vypnutie",

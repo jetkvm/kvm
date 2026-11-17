@@ -158,6 +158,8 @@
     "appearance_theme_system": "Sistema",
     "appearance_title": "Apariencia",
     "attach": "Adjuntar",
+    "atx_power_control_board_not_responding": "La placa de extensión ATX no responde",
+    "atx_power_control_board_not_responding_hint": "Compruebe el cable RJ-12 y la alimentación de la placa de extensión.",
     "atx_power_control_get_state_error": "No se pudo obtener el estado de energía ATX: {error}",
     "atx_power_control_hdd_led": "LED del disco duro",
     "atx_power_control_hold_hint": "Mantenga presionado 3 s para forzar el apagado",

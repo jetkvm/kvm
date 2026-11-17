@@ -158,6 +158,8 @@
     "appearance_theme_system": "System",
     "appearance_title": "Udseende",
     "attach": "Vedhæft",
+    "atx_power_control_board_not_responding": "ATX-udvidelseskortet svarer ikke",
+    "atx_power_control_board_not_responding_hint": "Kontrollér RJ-12-kablet og strømmen til udvidelseskortet.",
     "atx_power_control_get_state_error": "Kunne ikke hente ATX-strømtilstand: {error}",
     "atx_power_control_hdd_led": "HDD-LED",
     "atx_power_control_hold_hint": "Hold nede i 3 sek. for at tvinge slukning",

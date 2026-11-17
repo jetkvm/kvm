@@ -158,6 +158,8 @@
     "appearance_theme_system": "Sistem",
     "appearance_title": "Görünüm",
     "attach": "Bağla",
+    "atx_power_control_board_not_responding": "ATX genişletme kartı yanıt vermiyor",
+    "atx_power_control_board_not_responding_hint": "RJ-12 kablosunu ve genişletme kartının gücünü kontrol edin.",
     "atx_power_control_get_state_error": "ATX güç durumu alınamadı: {error}",
     "atx_power_control_hdd_led": "HDD LED",
     "atx_power_control_hold_hint": "Zorla kapatmak için 3 saniye basılı tutun",

@@ -155,6 +155,8 @@
     "appearance_theme_system": "시스템",
     "appearance_title": "화면 표시",
     "attach": "연결",
+    "atx_power_control_board_not_responding": "ATX 확장 보드가 응답하지 않습니다",
+    "atx_power_control_board_not_responding_hint": "RJ-12 케이블과 확장 보드의 전원을 확인하세요.",
     "atx_power_control_get_state_error": "실패했습니다: get ATX power state: {error}",
     "atx_power_control_hdd_led": "atx 전원 제어 hdd led",
     "atx_power_control_hold_hint": "강제 종료하려면 3초간 누르세요",

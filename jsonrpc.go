@@ -949,16 +949,13 @@ func rpcSetATXPowerAction(action string) error {
 }
 
 type ATXState struct {
-	Power bool `json:"power"`
-	HDD   bool `json:"hdd"`
+	Power      bool `json:"power"`
+	HDD        bool `json:"hdd"`
+	Responding bool `json:"responding"`
 }
 
 func rpcGetATXState() (ATXState, error) {
-	state := ATXState{
-		Power: ledPWRState.Load(),
-		HDD:   ledHDDState.Load(),
-	}
-	return state, nil
+	return currentATXState(), nil
 }
 
 func rpcSendCustomCommand(command string) error {

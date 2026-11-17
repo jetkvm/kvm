@@ -476,6 +476,18 @@ func (m *MQTTManager) publishATXDiscovery(device *haDevice, availTopic, availTem
 		Device:            device,
 	})
 
+	m.publishDiscovery("binary_sensor", "atx_board", haDiscoveryPayload{
+		Name:              "ATX Extension Board",
+		UniqueID:          fmt.Sprintf("jetkvm_%s_atx_board", m.deviceID),
+		StateTopic:        m.topic("atx", "state"),
+		ValueTemplate:     "{{ 'ON' if value_json.responding else 'OFF' }}",
+		DeviceClass:       "connectivity",
+		EntityCategory:    "diagnostic",
+		AvailabilityTopic: availTopic,
+		AvailTemplate:     availTemplate,
+		Device:            device,
+	})
+
 	// ATX Buttons: only when actions enabled
 	if actionsEnabled {
 		m.publishDiscovery("button", "atx_power_short", haDiscoveryPayload{
@@ -649,6 +661,7 @@ func (m *MQTTManager) removeDiscovery(component, objectID string) {
 func (m *MQTTManager) removeATXDiscovery() {
 	m.removeDiscovery("binary_sensor", "power_led")
 	m.removeDiscovery("binary_sensor", "hdd_led")
+	m.removeDiscovery("binary_sensor", "atx_board")
 	m.removeDiscovery("button", "atx_power_short")
 	m.removeDiscovery("button", "atx_power_long")
 	m.removeDiscovery("button", "atx_reset")

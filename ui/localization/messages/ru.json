@@ -158,6 +158,8 @@
     "appearance_theme_system": "Системная",
     "appearance_title": "Внешний вид",
     "attach": "Подключить",
+    "atx_power_control_board_not_responding": "Плата расширения ATX не отвечает",
+    "atx_power_control_board_not_responding_hint": "Проверьте кабель RJ-12 и питание платы расширения.",
     "atx_power_control_get_state_error": "Не удалось получить состояние ATX-питания: {error}",
     "atx_power_control_hdd_led": "Индикатор HDD",
     "atx_power_control_hold_hint": "Удерживайте 3 с для принудительного выключения",

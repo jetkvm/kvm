@@ -158,6 +158,8 @@
     "appearance_theme_system": "System",
     "appearance_title": "Utseende",
     "attach": "Bifoga",
+    "atx_power_control_board_not_responding": "ATX-expansionskortet svarar inte",
+    "atx_power_control_board_not_responding_hint": "Kontrollera RJ-12-kabeln och strömmen till expansionskortet.",
     "atx_power_control_get_state_error": "Misslyckades med att hämta ATX-strömstatus: {error}",
     "atx_power_control_hdd_led": "Hårddisk-LED",
     "atx_power_control_hold_hint": "Håll in 3 s för att tvinga avstängning",
