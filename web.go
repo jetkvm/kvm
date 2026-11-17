@@ -464,14 +464,8 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Check rate limit before processing
-	ip := c.ClientIP()
-	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
-		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "Too many failed attempts. Please try again later.",
-			"retry_after": retryAfter,
-		})
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(c.ClientIP()); !allowed {
+		sendTooManyAttemptsThenAbort(c, retryAfter)
 		return
 	}
 
@@ -482,15 +476,14 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
-	if err != nil {
-		passwordRateLimiter.RecordFailure(ip)
+	switch result, retryAfter := checkPassword(c, req.Password); result {
+	case passwordLockedOut:
+		sendTooManyAttemptsThenAbort(c, retryAfter)
+		return
+	case passwordWrong:
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
-
-	// Clear rate limit on successful login
-	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
 
@@ -560,24 +553,15 @@ func metricsAuthMiddleware() gin.HandlerFunc {
 
 		// Fall back to basic auth (Prometheus scraper)
 		_, password, ok := c.Request.BasicAuth()
-		if ok && config.HashedPassword != "" {
-			ip := c.ClientIP()
-			if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
-				c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"error":       "Too many failed attempts. Please try again later.",
-					"retry_after": retryAfter,
-				})
-				c.Abort()
+		if ok {
+			switch result, retryAfter := checkPassword(c, password); result {
+			case passwordLockedOut:
+				sendTooManyAttemptsThenAbort(c, retryAfter)
 				return
-			}
-
-			if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password)); err == nil {
-				passwordRateLimiter.RecordSuccess(ip)
+			case passwordCorrect:
 				c.Next()
 				return
 			}
-			passwordRateLimiter.RecordFailure(ip)
 		}
 
 		c.Header("WWW-Authenticate", `Basic realm="JetKVM Metrics"`)
@@ -614,8 +598,11 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password))
-		if err != nil {
+		switch result, retryAfter := checkPassword(c, password); result {
+		case passwordLockedOut:
+			sendTooManyAttemptsThenAbort(c, retryAfter)
+			return
+		case passwordWrong:
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}
