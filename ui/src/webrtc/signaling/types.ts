@@ -15,12 +15,12 @@ export interface SignalingOptions {
   /** ICE servers for this session. Omitted on the local network. */
   readonly iceServers?: RTCIceServer[];
   /**
-   * Called synchronously for every new RTCPeerConnection, after the adapter
+   * Called for every new RTCPeerConnection, after the adapter
    * has installed its own handlers and before negotiation starts. Anything
    * that must be part of the initial offer (transceivers, data channels) is
    * added here.
    */
-  readonly onPeerConnection: (pc: RTCPeerConnection) => void;
+  readonly onPeerConnection: (pc: RTCPeerConnection) => void | Promise<void>;
 }
 
 export interface SignalingController {

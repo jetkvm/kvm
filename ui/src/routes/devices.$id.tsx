@@ -64,6 +64,8 @@ import { m } from "@localizations/messages.js";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
+import notifications from "@/notifications";
+import { microphoneStorageKey, preferMicrophoneCodec } from "@/webrtc/microphone";
 import { useSignaling } from "@/webrtc/signaling";
 
 export type AuthMode = "password" | "noPassword" | null;
@@ -176,13 +178,67 @@ export default function KvmIdRoute() {
   const location = useLocation();
   const [displayHostname, setDisplayHostname] = useState<string | null>(null);
 
+  const clientMicrophoneStreamRef = useRef<MediaStream | null>(null);
+  const clientMicrophoneOwnerRef = useRef<RTCPeerConnection | null>(null);
+  const microphoneGenerationRef = useRef(0);
+  const stopClientMicrophone = useCallback(() => {
+    microphoneGenerationRef.current++;
+    clientMicrophoneStreamRef.current?.getTracks().forEach(track => track.stop());
+    clientMicrophoneStreamRef.current = null;
+    clientMicrophoneOwnerRef.current = null;
+  }, []);
+  useEffect(() => () => stopClientMicrophone(), [stopClientMicrophone]);
+  // A retired connection is closed without a connectionstatechange event, so
+  // the store losing it is the signal to release the microphone.
+  useEffect(() => {
+    if (clientMicrophoneOwnerRef.current && clientMicrophoneOwnerRef.current !== peerConnection) {
+      stopClientMicrophone();
+    }
+  }, [peerConnection, stopClientMicrophone]);
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
   // Everything that must be part of the initial offer is attached here; the
   // signaling adapter owns the peer connection itself.
+  const startClientMicrophone = useCallback(
+    async (
+      pc: RTCPeerConnection,
+      transceiver: RTCRtpTransceiver,
+      generation: number,
+      key: string,
+    ) => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia)
+          throw new Error(m.audio_microphone_secure_required());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        if (pc.connectionState === "closed" || generation !== microphoneGenerationRef.current) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        clientMicrophoneStreamRef.current = stream;
+        clientMicrophoneOwnerRef.current = pc;
+        pc.addEventListener("connectionstatechange", () => {
+          if (["closed", "failed", "disconnected"].includes(pc.connectionState)) {
+            stream.getTracks().forEach(track => track.stop());
+          }
+        });
+        await transceiver.sender.replaceTrack(stream.getAudioTracks()[0]);
+      } catch (error) {
+        window.sessionStorage.removeItem(key);
+        notifications.error(m.audio_microphone_start_failed({ error: String(error) }));
+      }
+    },
+    [],
+  );
+
   const attachPeerConnection = useCallback(
-    (pc: RTCPeerConnection) => {
+    async (pc: RTCPeerConnection) => {
+      stopClientMicrophone();
+      const microphoneGeneration = microphoneGenerationRef.current;
+      const key = microphoneStorageKey(params.id);
+      const microphoneWanted = window.sessionStorage.getItem(key) === "true";
       pc.ontrack = function (event) {
         // Assemble a single canonical MediaStream from every incoming track.
         // We don't trust event.streams[0]: when the answer SDP omits a=msid
@@ -201,9 +257,21 @@ export default function KvmIdRoute() {
       };
 
       setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
-      // Always offer audio; the backend gates it on device config and leaves
-      // the m-line inactive when disabled.
+      // Host audio keeps its own line, so the microphone's codec choice (Opus or
+      // PCMU) cannot take G.722 away from it.
       pc.addTransceiver("audio", { direction: "recvonly" });
+      if (microphoneWanted) {
+        // The line is negotiated without a track, so an unanswered permission
+        // prompt never holds up the session; the track is attached when it arrives.
+        const microphoneTransceiver = pc.addTransceiver("audio", { direction: "sendonly" });
+        try {
+          preferMicrophoneCodec(microphoneTransceiver);
+          void startClientMicrophone(pc, microphoneTransceiver, microphoneGeneration, key);
+        } catch (error) {
+          window.sessionStorage.removeItem(key);
+          notifications.error(m.audio_microphone_start_failed({ error: String(error) }));
+        }
+      }
 
       const rpcDataChannel = pc.createDataChannel("rpc");
       holdRpcEvents(rpcDataChannel);
@@ -260,6 +328,9 @@ export default function KvmIdRoute() {
       };
     },
     [
+      stopClientMicrophone,
+      startClientMicrophone,
+      params.id,
       bumpMediaStreamTrackVersion,
       setMediaStream,
       setRpcDataChannel,
