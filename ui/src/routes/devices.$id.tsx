@@ -607,11 +607,14 @@ export default function KvmIdRoute() {
   const [cdcACMConsole, setCdcACMConsole] = useState<RTCDataChannel | null>(null);
 
   const usbSerial = useCapability("usb_serial");
+  const usbSerialConsoleEnabled = useUiStore(state => state.usbSerialConsoleEnabled);
+  const cdcACMWanted = usbSerial && usbSerialConsoleEnabled;
   useEffect(() => {
-    const channel = peerConnection && usbSerial ? peerConnection.createDataChannel("cdcacm") : null;
+    const channel =
+      peerConnection && cdcACMWanted ? peerConnection.createDataChannel("cdcacm") : null;
     setCdcACMConsole(channel);
     return () => channel?.close();
-  }, [peerConnection, usbSerial]);
+  }, [peerConnection, cdcACMWanted]);
 
   // KVM terminal data channel, published once open. The previous channel
   // stays in the store until the replacement opens, so the terminal does not
