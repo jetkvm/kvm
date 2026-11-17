@@ -66,3 +66,20 @@ func TestHidCancelStopsMacroWaitingToRun(t *testing.T) {
 		t.Fatal("the macro canceled while waiting ran after the running macro finished")
 	}
 }
+
+func TestLateCleanupOfCanceledMacroKeepsReplacementCancelable(t *testing.T) {
+	defer cancelKeyboardMacro()
+	a := registerKeyboardMacro()
+	cancelKeyboardMacro()
+	b := registerKeyboardMacro()
+
+	a.finish()
+	cancelKeyboardMacro()
+
+	if a.ctx.Err() == nil {
+		t.Fatal("macro A was not canceled")
+	}
+	if b.ctx.Err() != context.Canceled {
+		t.Fatal("macro A's late cleanup made macro B impossible to cancel")
+	}
+}
