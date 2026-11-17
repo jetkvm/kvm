@@ -12,8 +12,6 @@ import type { LoaderFunction, LoaderFunctionArgs, Params } from "react-router";
 import { useInterval } from "usehooks-ts";
 import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
-import pkg from "react-use-websocket";
-const useWebSocket = pkg.default ?? pkg;
 
 import { cx } from "@/cva.config";
 import { CLOUD_API } from "@/ui.config";
@@ -36,10 +34,19 @@ import {
   VideoState,
   useFailsafeModeStore,
   useSettingsStore,
+  useCapability,
+  useDeviceStore,
 } from "@hooks/stores";
-import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
+import {
+  holdRpcEvents,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  RpcMethodNotFound,
+  useJsonRpc,
+} from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { useVersion } from "@hooks/useVersion";
+import type { VersionInfo as LocalVersion } from "@hooks/useVersion";
+import { useHiddenVideoStreamPause } from "@hooks/useHiddenVideoStreamPause";
 import WebRTCVideo from "@components/WebRTCVideo";
 import DashboardNavbar from "@components/Header";
 const ConnectionStatsSidebar = lazy(() => import("@components/sidebar/connectionStats"));
@@ -53,11 +60,11 @@ import {
   PeerConnectionDisconnectedOverlay,
   RebootingOverlay,
 } from "@components/VideoOverlay";
-import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
 import useKeyboard from "@hooks/useKeyboard";
 import { registerTestHandlers, cleanupTestHooks } from "@/test/testHooks";
+import { useSignaling } from "@/webrtc/signaling";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -109,6 +116,9 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
 };
 
 export default function KvmIdRoute() {
+  const setCapabilities = useDeviceStore(state => state.setCapabilities);
+  const setAppVersion = useDeviceStore(state => state.setAppVersion);
+  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
   const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
@@ -117,6 +127,7 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
+  useHiddenVideoStreamPause();
   const {
     sidebarView,
     setSidebarView,
@@ -147,8 +158,8 @@ export default function KvmIdRoute() {
     peerConnection,
     setPeerConnection,
     peerConnectionState,
-    setPeerConnectionState,
     setMediaStream,
+    bumpMediaStreamTrackVersion,
     setRpcDataChannel,
     isTurnServerInUse,
     setTurnServerInUse,
@@ -163,445 +174,121 @@ export default function KvmIdRoute() {
   } = useRTCStore();
 
   const location = useLocation();
-  const isLegacySignalingEnabled = useRef(false);
-  const [connectionFailed, setConnectionFailed] = useState(false);
   const [displayHostname, setDisplayHostname] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
-  const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
-  const cleanupAndStopReconnecting = useCallback(
-    function cleanupAndStopReconnecting() {
-      console.log("Closing peer connection");
+  // Everything that must be part of the initial offer is attached here; the
+  // signaling adapter owns the peer connection itself.
+  const attachPeerConnection = useCallback(
+    (pc: RTCPeerConnection) => {
+      pc.ontrack = function (event) {
+        // Assemble a single canonical MediaStream from every incoming track.
+        // We don't trust event.streams[0]: when the answer SDP omits a=msid
+        // for a track (pion does this for audio in some configurations),
+        // Firefox hands us a fresh synthetic stream that would overwrite the
+        // canonical one and strip tracks already attached to it.
+        let stream = useRTCStore.getState().mediaStream;
+        if (!stream) {
+          stream = new MediaStream();
+          setMediaStream(stream);
+        }
+        if (!stream.getTracks().some(t => t.id === event.track.id)) {
+          stream.addTrack(event.track);
+          bumpMediaStreamTrackVersion();
+        }
+      };
 
-      setConnectionFailed(true);
-      if (peerConnection) {
-        setPeerConnectionState(peerConnection.connectionState);
-      }
-      connectionFailedRef.current = true;
+      setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
+      // Always offer audio; the backend gates it on device config and leaves
+      // the m-line inactive when disabled.
+      pc.addTransceiver("audio", { direction: "recvonly" });
 
-      peerConnection?.close();
-      signalingAttempts.current = 0;
-    },
-    [peerConnection, setPeerConnectionState],
-  );
+      const rpcDataChannel = pc.createDataChannel("rpc");
+      holdRpcEvents(rpcDataChannel);
+      rpcDataChannel.onclose = () => {
+        console.log("rpcDataChannel has closed");
+        setRpcDataChannel(null);
+      };
+      rpcDataChannel.onerror = (ev: Event) =>
+        console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev.type}`);
+      rpcDataChannel.onopen = () => {
+        setRpcDataChannel(rpcDataChannel);
+      };
 
-  // We need to track connectionFailed in a ref to avoid stale closure issues
-  // This is necessary because syncRemoteSessionDescription is a callback that captures
-  // the connectionFailed value at creation time, but we need the latest value
-  // when the function is actually called. Without this ref, the function would use
-  // a stale value of connectionFailed in some conditions.
-  //
-  // We still need the state variable for UI rendering, so we sync the ref with the state.
-  // This pattern is a workaround for what useEvent hook would solve more elegantly
-  // (which would give us a callback that always has access to latest state without re-creation).
-  const connectionFailedRef = useRef(false);
-  useEffect(() => {
-    connectionFailedRef.current = connectionFailed;
-  }, [connectionFailed]);
+      const rpcHidChannel = pc.createDataChannel("hidrpc");
+      rpcHidChannel.binaryType = "arraybuffer";
+      rpcHidChannel.onclose = () => console.log("rpcHidChannel has closed");
+      rpcHidChannel.onerror = (ev: Event) =>
+        console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${ev.type}`);
+      rpcHidChannel.onopen = () => {
+        setRpcHidChannel(rpcHidChannel);
+      };
+      doRpcHidHandshake(rpcHidChannel, setRpcHidProtocolVersion);
 
-  const signalingAttempts = useRef(0);
-  const setRemoteSessionDescription = useCallback(
-    async function setRemoteSessionDescription(
-      pc: RTCPeerConnection,
-      remoteDescription: RTCSessionDescriptionInit,
-    ) {
-      setLoadingMessage(m.setting_remote_description());
-
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
-        console.log(
-          "[setRemoteSessionDescription] Remote description set successfully to: " +
-            remoteDescription.sdp,
+      const rpcHidUnreliableChannel = pc.createDataChannel("hidrpc-unreliable-ordered", {
+        ordered: true,
+        maxRetransmits: 0,
+      });
+      rpcHidUnreliableChannel.binaryType = "arraybuffer";
+      rpcHidUnreliableChannel.onclose = () => console.log("rpcHidUnreliableChannel has closed");
+      rpcHidUnreliableChannel.onerror = (ev: Event) =>
+        console.error(
+          `Error on rpcHidUnreliableChannel '${rpcHidUnreliableChannel.label}': ${ev.type}`,
         );
-        setLoadingMessage(m.establishing_secure_connection());
-      } catch (error) {
-        console.error("[setRemoteSessionDescription] Failed to set remote description:", error);
-        cleanupAndStopReconnecting();
-        return;
-      }
+      rpcHidUnreliableChannel.onopen = () => {
+        setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
+      };
 
-      // Replace the interval-based check with a more reliable approach
-      let attempts = 0;
-      const checkInterval = setInterval(() => {
-        attempts++;
-
-        // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
-        if (pc.sctp?.state === "connected") {
-          console.log("[setRemoteSessionDescription] Remote description set");
-          clearInterval(checkInterval);
-          setLoadingMessage(m.connection_established());
-        } else if (attempts >= 10) {
-          console.warn(
-            "[setRemoteSessionDescription] Failed to establish connection after 10 attempts",
-            {
-              connectionState: pc.connectionState,
-              iceConnectionState: pc.iceConnectionState,
-            },
-          );
-          cleanupAndStopReconnecting();
-          clearInterval(checkInterval);
-        } else {
-          console.log("[setRemoteSessionDescription] Waiting for connection, state:", {
-            connectionState: pc.connectionState,
-            iceConnectionState: pc.iceConnectionState,
-          });
-        }
-      }, 1000);
-    },
-    [cleanupAndStopReconnecting],
-  );
-
-  const ignoreOffer = useRef(false);
-  const isSettingRemoteAnswerPending = useRef(false);
-  const makingOffer = useRef(false);
-  const reconnectAttemptsRef = useRef(2000);
-  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-
-  const reconnectInterval = (attempt: number) => {
-    // Exponential backoff with a max of 10 seconds between attempts
-    return Math.min(500 * 2 ** attempt, 10000);
-  };
-
-  const { sendMessage, getWebSocket } = useWebSocket(
-    isOnDevice
-      ? `${wsProtocol}//${window.location.host}/webrtc/signaling/client`
-      : `${CLOUD_API.replace("http", "ws")}/webrtc/signaling/client?id=${params.id}`,
-    {
-      heartbeat: true,
-      retryOnError: true,
-      reconnectAttempts: reconnectAttemptsRef.current,
-      reconnectInterval: reconnectInterval,
-      onReconnectStop: (numAttempts: number) => {
-        console.debug("Reconnect stopped after ", numAttempts, "attempts");
-        cleanupAndStopReconnecting();
-      },
-
-      shouldReconnect(event: WebSocketEventMap["close"]) {
-        console.debug("[Websocket] shouldReconnect", event);
-        return !isLegacySignalingEnabled.current;
-      },
-
-      onClose(event: WebSocketEventMap["close"]) {
-        console.debug("[Websocket] onClose", event);
-        // We don't want to close everything down, we wait for the reconnect to stop instead
-      },
-
-      onError(event: WebSocketEventMap["error"]) {
-        console.error("[Websocket] onError", event);
-        // We don't want to close everything down, we wait for the reconnect to stop instead
-      },
-
-      onOpen() {
-        console.debug("[Websocket] onOpen");
-        // We want to clear the reboot state when the websocket connection is opened
-        // Currently the flow is:
-        // 1. User clicks reboot
-        // 2. Device sends event 'willReboot'
-        // 3. We set the reboot state
-        // 4. Reboot modal is shown
-        // 5. WS tries to reconnect
-        // 6. WS reconnects
-        // 7. This function is called and now we clear the reboot state
-        setRebootState({ isRebooting: false, postRebootAction: null });
-      },
-
-      onMessage(event: WebSocketEventMap["message"]) {
-        const message = event;
-        if (message.data === "pong") return;
-
-        /*
-          Currently the signaling process is as follows:
-            After open, the other side will send a `device-metadata` message with the device version
-            If the device version is not set, we can assume the device is using the legacy signaling
-            Otherwise, we can assume the device is using the new signaling
-
-            If the device is using the legacy signaling, we close the websocket connection
-            and use the legacy HTTPSignaling function to get the remote session description
-
-            If the device is using the new signaling, we don't need to do anything special, but continue to use the websocket connection
-            to chat with the other peer about the connection
-        */
-
-        const parsedMessage = JSON.parse(message.data);
-
-        if (parsedMessage.type === "device-metadata") {
-          const { deviceVersion } = parsedMessage.data;
-          console.debug("[Websocket] Received device-metadata message");
-          console.debug("[Websocket] Device version", deviceVersion);
-          // If the device version is not set, we can assume the device is using the legacy signaling
-          if (!deviceVersion) {
-            console.log("[Websocket] Device is using legacy signaling");
-
-            // Now we don't need the websocket connection anymore, as we've established that we need to use the legacy signaling
-            // which does everything over HTTP(at least from the perspective of the client)
-            isLegacySignalingEnabled.current = true;
-            getWebSocket()?.close();
-          } else {
-            console.log("[Websocket] Device is using new signaling");
-            isLegacySignalingEnabled.current = false;
-          }
-
-          setupPeerConnection();
-        }
-
-        if (!peerConnection) return;
-
-        if (parsedMessage.type === "answer") {
-          console.debug("[Websocket] Received answer");
-          const readyForOffer =
-            // If we're making an offer, we don't want to accept an answer
-            !makingOffer &&
-            // If the peer connection is stable or we're setting the remote answer pending, we're ready for an offer
-            (peerConnection?.signalingState === "stable" || isSettingRemoteAnswerPending.current);
-
-          // If we're not ready for an offer, we don't want to accept an offer
-          ignoreOffer.current = parsedMessage.type === "offer" && !readyForOffer;
-          if (ignoreOffer.current) return;
-
-          // Set so we don't accept an answer while we're setting the remote description
-          isSettingRemoteAnswerPending.current = parsedMessage.type === "answer";
-          console.debug(
-            "[Websocket] Setting remote answer pending",
-            isSettingRemoteAnswerPending.current,
-          );
-
-          const sd = atob(parsedMessage.data);
-          const remoteSessionDescription = JSON.parse(sd);
-
-          setRemoteSessionDescription(
-            peerConnection,
-            new RTCSessionDescription(remoteSessionDescription),
-          );
-
-          // Reset the remote answer pending flag
-          isSettingRemoteAnswerPending.current = false;
-        } else if (parsedMessage.type === "new-ice-candidate") {
-          console.debug("[Websocket] Received new-ice-candidate");
-          const candidate = parsedMessage.data;
-          peerConnection.addIceCandidate(candidate);
-        }
-      },
-    },
-  );
-
-  const sendWebRTCSignal = useCallback(
-    (type: string, data: unknown) => {
-      // Second argument tells the library not to queue the message, and send it once the connection is established again.
-      // We have event handlers that handle the connection set up, so we don't need to queue the message.
-      sendMessage(JSON.stringify({ type, data }), false);
-    },
-    [sendMessage],
-  );
-
-  const legacyHTTPSignaling = useCallback(
-    async (pc: RTCPeerConnection) => {
-      const sd = btoa(JSON.stringify(pc.localDescription));
-
-      // Legacy mode == UI in cloud with updated code connecting to older device version.
-      // In device mode, old devices wont serve this JS, and on newer devices legacy mode wont be enabled
-      const sessionUrl = `${CLOUD_API}/webrtc/session`;
-
-      console.log("Trying to get remote session description");
-      setLoadingMessage(
-        m.getting_remote_session_description({ attempt: signalingAttempts.current + 1 }),
+      const rpcHidUnreliableNonOrderedChannel = pc.createDataChannel(
+        "hidrpc-unreliable-nonordered",
+        {
+          ordered: false,
+          maxRetransmits: 0,
+        },
       );
-      const res = await api.POST(sessionUrl, {
-        sd,
-        // When on device, we don't need to specify the device id, as it's already known
-        ...(isOnDevice ? {} : { id: params.id }),
-      });
-
-      const json = await res.json();
-      if (res.status === 401) return navigate(isOnDevice ? "/login-local" : "/login");
-      if (!res.ok) {
-        console.error("Error getting SDP", { status: res.status, json });
-        cleanupAndStopReconnecting();
-        return;
-      }
-
-      console.debug("Successfully got Remote Session Description. Setting.");
-      setLoadingMessage(m.setting_remote_session_description());
-
-      const decodedSd = atob(json.sd);
-      const parsedSd = JSON.parse(decodedSd);
-      setRemoteSessionDescription(pc, new RTCSessionDescription(parsedSd));
+      rpcHidUnreliableNonOrderedChannel.binaryType = "arraybuffer";
+      rpcHidUnreliableNonOrderedChannel.onclose = () =>
+        console.log("rpcHidUnreliableNonOrderedChannel has closed");
+      rpcHidUnreliableNonOrderedChannel.onerror = (ev: Event) =>
+        console.error(
+          `Error on rpcHidUnreliableNonOrderedChannel '${rpcHidUnreliableNonOrderedChannel.label}': ${ev.type}`,
+        );
+      rpcHidUnreliableNonOrderedChannel.onopen = () => {
+        setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
+      };
     },
-    [cleanupAndStopReconnecting, navigate, params.id, setRemoteSessionDescription],
+    [
+      bumpMediaStreamTrackVersion,
+      setMediaStream,
+      setRpcDataChannel,
+      setRpcHidChannel,
+      setRpcHidUnreliableNonOrderedChannel,
+      setRpcHidUnreliableChannel,
+      setRpcHidProtocolVersion,
+      setTransceiver,
+    ],
   );
 
-  const setupPeerConnection = useCallback(async () => {
-    console.debug("[setupPeerConnection] Setting up peer connection");
-    setConnectionFailed(false);
-    setLoadingMessage(m.connecting_to_device());
+  // We only use STUN or TURN servers if we're in the cloud
+  const iceServers = useMemo(
+    () => (isInCloud && iceConfig?.iceServers ? [iceConfig.iceServers] : undefined),
+    [iceConfig?.iceServers],
+  );
 
-    let pc: RTCPeerConnection;
-    try {
-      console.debug("[setupPeerConnection] Creating peer connection");
-      setLoadingMessage(m.creating_peer_connection());
-      pc = new RTCPeerConnection({
-        // We only use STUN or TURN servers if we're in the cloud
-        ...(isInCloud && iceConfig?.iceServers ? { iceServers: [iceConfig?.iceServers] } : {}),
-      });
-
-      setPeerConnectionState(pc.connectionState);
-      console.debug("[setupPeerConnection] Peer connection created", pc);
-      setLoadingMessage(m.setting_up_connection_to_device());
-    } catch (e) {
-      console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
-      setTimeout(() => {
-        cleanupAndStopReconnecting();
-      }, 1000);
-      return;
-    }
-
-    // Set up event listeners and data channels
-    pc.onconnectionstatechange = () => {
-      console.debug("[setupPeerConnection] Connection state changed", pc.connectionState);
-      setPeerConnectionState(pc.connectionState);
-    };
-
-    pc.onnegotiationneeded = async () => {
-      try {
-        console.debug("[setupPeerConnection] Creating offer");
-        makingOffer.current = true;
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        const sd = btoa(JSON.stringify(pc.localDescription));
-        const isNewSignalingEnabled = isLegacySignalingEnabled.current === false;
-        if (isNewSignalingEnabled) {
-          sendWebRTCSignal("offer", { sd: sd });
-        } else {
-          console.log("Legacy signaling. Waiting for ICE Gathering to complete...");
-        }
-      } catch (e) {
-        console.error(`[setupPeerConnection] Error creating offer: ${e}`, new Date().toISOString());
-        cleanupAndStopReconnecting();
-      } finally {
-        makingOffer.current = false;
-      }
-    };
-
-    pc.onicecandidate = ({ candidate }) => {
-      if (!candidate) return;
-      if (candidate.candidate === "") return;
-      sendWebRTCSignal("new-ice-candidate", candidate);
-    };
-
-    pc.onicegatheringstatechange = event => {
-      const pc = event.currentTarget as RTCPeerConnection;
-      if (pc.iceGatheringState === "complete") {
-        console.debug("ICE Gathering completed");
-        setLoadingMessage(m.ice_gathering_completed());
-
-        if (isLegacySignalingEnabled.current) {
-          // We can now start the https/ws connection to get the remote session description from the KVM device
-          legacyHTTPSignaling(pc);
-        }
-      } else if (pc.iceGatheringState === "gathering") {
-        console.debug("ICE Gathering Started");
-        setLoadingMessage(m.gathering_ice_candidates());
-      }
-    };
-
-    pc.ontrack = function (event) {
-      setMediaStream(event.streams[0]);
-    };
-
-    setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
-
-    const rpcDataChannel = pc.createDataChannel("rpc");
-    rpcDataChannel.onclose = () => {
-      console.log("rpcDataChannel has closed");
-      setRpcDataChannel(null);
-    };
-    rpcDataChannel.onerror = (ev: Event) =>
-      console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev}`);
-    rpcDataChannel.onopen = () => {
-      setRpcDataChannel(rpcDataChannel);
-    };
-
-    const rpcHidChannel = pc.createDataChannel("hidrpc");
-    rpcHidChannel.binaryType = "arraybuffer";
-    rpcHidChannel.onclose = () => console.log("rpcHidChannel has closed");
-    rpcHidChannel.onerror = (ev: Event) =>
-      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${ev}`);
-    rpcHidChannel.onopen = () => {
-      setRpcHidChannel(rpcHidChannel);
-    };
-    doRpcHidHandshake(rpcHidChannel, setRpcHidProtocolVersion);
-
-    const rpcHidUnreliableChannel = pc.createDataChannel("hidrpc-unreliable-ordered", {
-      ordered: true,
-      maxRetransmits: 0,
-    });
-    rpcHidUnreliableChannel.binaryType = "arraybuffer";
-    rpcHidUnreliableChannel.onclose = () => console.log("rpcHidUnreliableChannel has closed");
-    rpcHidUnreliableChannel.onerror = (ev: Event) =>
-      console.error(`Error on rpcHidUnreliableChannel '${rpcHidUnreliableChannel.label}': ${ev}`);
-    rpcHidUnreliableChannel.onopen = () => {
-      setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
-    };
-
-    const rpcHidUnreliableNonOrderedChannel = pc.createDataChannel("hidrpc-unreliable-nonordered", {
-      ordered: false,
-      maxRetransmits: 0,
-    });
-    rpcHidUnreliableNonOrderedChannel.binaryType = "arraybuffer";
-    rpcHidUnreliableNonOrderedChannel.onclose = () =>
-      console.log("rpcHidUnreliableNonOrderedChannel has closed");
-    rpcHidUnreliableNonOrderedChannel.onerror = (ev: Event) =>
-      console.error(
-        `Error on rpcHidUnreliableNonOrderedChannel '${rpcHidUnreliableNonOrderedChannel.label}': ${ev}`,
-      );
-    rpcHidUnreliableNonOrderedChannel.onopen = () => {
-      setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
-    };
-
-    // Create terminal channel as part of initial offer
-    const terminalDataChannel = pc.createDataChannel("terminal");
-    terminalDataChannel.onclose = () => console.log("terminalDataChannel has closed");
-    terminalDataChannel.onerror = (ev: Event) =>
-      console.error(`Error on terminalDataChannel '${terminalDataChannel.label}': ${ev}`);
-    terminalDataChannel.onopen = () => {
-      setTerminalChannel(terminalDataChannel);
-    };
-
-    setPeerConnection(pc);
-  }, [
-    cleanupAndStopReconnecting,
-    iceConfig?.iceServers,
-    legacyHTTPSignaling,
-    sendWebRTCSignal,
-    setMediaStream,
-    setPeerConnection,
-    setPeerConnectionState,
-    setRpcDataChannel,
-    setRpcHidChannel,
-    setRpcHidUnreliableNonOrderedChannel,
-    setRpcHidUnreliableChannel,
-    setRpcHidProtocolVersion,
-    setTerminalChannel,
-    setTransceiver,
-  ]);
-
-  useEffect(() => {
-    if (peerConnectionState === "failed") {
-      console.warn("Connection failed, closing peer connection");
-      cleanupAndStopReconnecting();
-    }
-  }, [peerConnectionState, cleanupAndStopReconnecting]);
+  const {
+    connect: setupPeerConnection,
+    loadingMessage,
+    connectionFailed,
+  } = useSignaling({
+    deviceId: params.id,
+    iceServers,
+    onPeerConnection: attachPeerConnection,
+  });
 
   // Cleanup effect
   const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();
-
-  useEffect(() => {
-    return () => {
-      peerConnection?.close();
-    };
-  }, [peerConnection]);
 
   // For some reason, we have to have this unmount separate from the cleanup effect above
   useEffect(() => {
@@ -611,7 +298,12 @@ export default function KvmIdRoute() {
       setSidebarView(null);
       setPeerConnection(null);
       setRpcDataChannel(null);
+      setRpcHidChannel(null);
+      setRpcHidUnreliableChannel(null);
+      setRpcHidUnreliableNonOrderedChannel(null);
+      setRpcHidProtocolVersion(null);
       setTerminalChannel(null);
+      setCapabilities(null);
     };
   }, [
     clearCandidatePairStats,
@@ -619,7 +311,12 @@ export default function KvmIdRoute() {
     setPeerConnection,
     setSidebarView,
     setRpcDataChannel,
+    setRpcHidChannel,
+    setRpcHidUnreliableChannel,
+    setRpcHidUnreliableNonOrderedChannel,
+    setRpcHidProtocolVersion,
     setTerminalChannel,
+    setCapabilities,
   ]);
 
   // TURN server usage detection
@@ -683,7 +380,7 @@ export default function KvmIdRoute() {
   const { setFailsafeMode } = useFailsafeModeStore();
 
   // Keyboard handler for E2E tests
-  const { handleKeyPress } = useKeyboard();
+  const { handleKeyPress, pauseKeepAlive } = useKeyboard();
 
   // Mouse handler for E2E tests
   const { reportAbsMouseEvent, rpcHidReady } = useHidRpc();
@@ -710,7 +407,9 @@ export default function KvmIdRoute() {
 
     if (resp.method === "networkState") {
       console.debug("Setting network state", resp.params);
-      setNetworkState(resp.params as NetworkState);
+      const state = resp.params as NetworkState;
+      setNetworkState(state);
+      if (state.hostname) setDisplayHostname(state.hostname);
     }
 
     if (resp.method === "keyboardLedState") {
@@ -773,9 +472,27 @@ export default function KvmIdRoute() {
       console.debug("Setting failsafe mode", { active, reason });
       setFailsafeMode(active, reason);
     }
+
+    // The device sends its version and capabilities each time the RPC
+    // channel opens.
+    if (resp.method === "localVersion") {
+      const { appVersion, systemVersion } = resp.params as LocalVersion;
+      setAppVersion(appVersion ?? "");
+      setSystemVersion(systemVersion);
+    }
+
+    if (resp.method === "deviceCapabilities") {
+      setCapabilities(resp.params as unknown as string[]);
+    }
   }
 
-  const { send } = useJsonRpc(onJsonRpcRequest);
+  const { send } = useJsonRpc(onJsonRpcRequest, { receiveHeldEvents: true });
+
+  useEffect(() => {
+    // A new or closed channel may lead to different firmware: gated features
+    // stay hidden until this channel's deviceCapabilities event arrives.
+    if (rpcDataChannel?.readyState !== "open") setCapabilities(null);
+  }, [rpcDataChannel?.readyState, setCapabilities]);
 
   // Mouse movement handler for E2E tests (needs send from useJsonRpc)
   const handleAbsMouseMove = useCallback(
@@ -876,27 +593,45 @@ export default function KvmIdRoute() {
   // Serial console - still created via useEffect for now
   const [serialConsole, setSerialConsole] = useState<RTCDataChannel | null>(null);
 
+  // One channel per peer connection: a channel from a previous peer is dead
+  // after a reconnect, so it is closed and replaced rather than kept.
+  const extensions = useCapability("extensions");
   useEffect(() => {
-    if (!peerConnection) return;
-    if (!serialConsole) {
-      setSerialConsole(peerConnection.createDataChannel("serial"));
-    }
-  }, [peerConnection, serialConsole]);
+    const channel =
+      peerConnection && extensions ? peerConnection.createDataChannel("serial") : null;
+    setSerialConsole(channel);
+    return () => channel?.close();
+  }, [peerConnection, extensions]);
 
   // CDC-ACM console data channel
   const [cdcACMConsole, setCdcACMConsole] = useState<RTCDataChannel | null>(null);
 
+  const usbSerial = useCapability("usb_serial");
   useEffect(() => {
-    if (!peerConnection) return;
-    if (!cdcACMConsole) {
-      setCdcACMConsole(peerConnection.createDataChannel("cdcacm"));
-    }
-  }, [peerConnection, cdcACMConsole]);
+    const channel = peerConnection && usbSerial ? peerConnection.createDataChannel("cdcacm") : null;
+    setCdcACMConsole(channel);
+    return () => channel?.close();
+  }, [peerConnection, usbSerial]);
+
+  // KVM terminal data channel, published once open. The previous channel
+  // stays in the store until the replacement opens, so the terminal does not
+  // unmount during a reconnect; the route teardown clears it.
+  const shell = useCapability("shell");
+  useEffect(() => {
+    if (!peerConnection || !shell) return;
+    const channel = peerConnection.createDataChannel("terminal");
+    channel.onclose = () => console.log("terminalDataChannel has closed");
+    channel.onerror = (ev: Event) =>
+      console.error(`Error on terminalDataChannel '${channel.label}': ${ev.type}`);
+    channel.onopen = () => setTerminalChannel(channel);
+    return () => channel.close();
+  }, [peerConnection, shell, setTerminalChannel]);
 
   // Register E2E test hooks
   useEffect(() => {
     registerTestHandlers({
       handleKeyPress,
+      pauseKeepAlive,
       handleAbsMouseMove,
       getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
       getKeysDownState: () => useHidStore.getState().keysDownState,
@@ -910,7 +645,7 @@ export default function KvmIdRoute() {
       getPeerConnection: () => useRTCStore.getState().peerConnection,
     });
     return cleanupTestHooks;
-  }, [handleKeyPress, handleAbsMouseMove]);
+  }, [handleKeyPress, pauseKeepAlive, handleAbsMouseMove]);
 
   const outlet = useOutlet();
   const onModalClose = useCallback(() => {
@@ -923,14 +658,6 @@ export default function KvmIdRoute() {
       setDisableVideoFocusTrap(true);
     }
   }, [navigateTo, location.pathname, setDisableVideoFocusTrap]);
-
-  const { appVersion, getLocalVersion } = useVersion();
-
-  useEffect(() => {
-    if (appVersion) return;
-
-    getLocalVersion();
-  }, [appVersion, getLocalVersion]);
 
   const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
 
@@ -989,7 +716,7 @@ export default function KvmIdRoute() {
   ]);
 
   return (
-    <FeatureFlagProvider appVersion={appVersion}>
+    <>
       <title>{displayHostname ? `${displayHostname} - JetKVM` : "JetKVM"}</title>
       {!isEmbedMode && !outlet && otaState.updating && (
         <AnimatePresence>
@@ -1038,7 +765,7 @@ export default function KvmIdRoute() {
           )}
 
           <div className="relative flex h-full w-full overflow-hidden">
-            {isFailsafeMode && failsafeReason === "video" ? null : (
+            {isFailsafeMode && failsafeReason === "native" ? null : (
               <WebRTCVideo
                 hasConnectionIssues={!!ConnectionStatusElement}
                 hideStatusBar={hideStatusBar}
@@ -1090,7 +817,7 @@ export default function KvmIdRoute() {
       {cdcACMConsole && (
         <Terminal type="cdcacm" dataChannel={cdcACMConsole} title="USB Serial Console" />
       )}
-    </FeatureFlagProvider>
+    </>
   );
 }
 

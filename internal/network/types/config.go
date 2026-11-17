@@ -11,8 +11,8 @@ import (
 type IPv4StaticConfig struct {
 	Address null.String `json:"address,omitempty" validate_type:"ipv4" required:"true"`
 	Netmask null.String `json:"netmask,omitempty" validate_type:"ipv4" required:"true"`
-	Gateway null.String `json:"gateway,omitempty" validate_type:"ipv4" required:"true"`
-	DNS     []string    `json:"dns,omitempty" validate_type:"ipv4" required:"true"`
+	Gateway null.String `json:"gateway,omitempty" validate_type:"ipv4"`
+	DNS     []string    `json:"dns,omitempty" validate_type:"ipv4"`
 }
 
 // IPv6StaticConfig represents static IPv6 configuration

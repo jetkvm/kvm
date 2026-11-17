@@ -8,6 +8,7 @@ package native
 import (
 	"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/rs/zerolog"
@@ -32,7 +33,7 @@ static inline void jetkvm_cgo_setup_video_state_handler() {
     jetkvm_set_video_state_handler(&jetkvm_go_video_state_handler);
 }
 
-extern void jetkvm_go_video_handler(cuint8_t *frame, ssize_t len);
+extern void jetkvm_go_video_handler(cuint8_t *frame, ssize_t len, uint64_t pts_us);
 static inline void jetkvm_cgo_setup_video_handler() {
     jetkvm_set_video_handler(&jetkvm_go_video_handler);
 }
@@ -80,8 +81,11 @@ func jetkvm_go_log_handler(level C.int, filename *C.cchar_t, funcname *C.cchar_t
 }
 
 //export jetkvm_go_video_handler
-func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t) {
-	videoFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
+func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t, ptsUs C.uint64_t) {
+	videoFrameChan <- videoFrame{
+		data: C.GoBytes(unsafe.Pointer(frame), C.int(len)),
+		pts:  time.Duration(ptsUs) * time.Microsecond,
+	}
 }
 
 //export jetkvm_go_indev_handler
@@ -422,7 +426,10 @@ func videoSetEDID(edid string) error {
 
 	edidCStr := C.CString(edid)
 	defer C.free(unsafe.Pointer(edidCStr))
-	C.jetkvm_video_set_edid(edidCStr)
+	ret := C.jetkvm_video_set_edid(edidCStr)
+	if ret != 0 {
+		return fmt.Errorf("failed to set EDID: %d", ret)
+	}
 	return nil
 }
 

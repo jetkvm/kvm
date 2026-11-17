@@ -5,9 +5,13 @@
  */
 
 import { execSync } from "child_process";
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { HID_KEY, tapKey } from "../helpers";
 
 export interface KeyboardEvent {
   time_ms: number;
@@ -54,6 +58,23 @@ export interface DisplayInfo {
   status: "connected" | "disconnected";
   resolution?: string;
   modes?: string[];
+}
+
+export function connectedDisplayConnectors(displays: DisplayInfo[]): string[] {
+  return displays
+    .filter(d => d.status === "connected")
+    .map(d => d.connector)
+    .sort();
+}
+
+export interface AudioDeviceInfo {
+  card: number;
+  device: number;
+  name: string;
+  pcm: string;
+  description?: string;
+  usb_id?: string;
+  is_jetkvm: boolean;
 }
 
 // Linux evdev key codes (matching input-event-codes.h)
@@ -228,32 +249,105 @@ export class RemoteAgent {
     this.baseUrl = `http://${host}:${port}`;
   }
 
-  private async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`);
-    if (!res.ok) throw new Error(`Remote agent ${path}: ${res.status}`);
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, options);
+    if (!res.ok) throw new Error(`Remote agent ${path}: ${res.status} ${await res.text()}`);
     return res.json() as Promise<T>;
   }
 
-  private async del<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`Remote agent DELETE ${path}: ${res.status}`);
-    return res.json() as Promise<T>;
+  private get<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return this.request(path, { signal });
+  }
+
+  private del<T>(path: string): Promise<T> {
+    return this.request(path, { method: "DELETE" });
+  }
+
+  private post<T>(path: string, body: unknown, timeoutMs = 5000): Promise<T> {
+    return this.request(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  }
+
+  hashUsbMedium(identity: { vendor: string; product: string; serial: string; size: number }) {
+    return this.post<{ device: string; bytes: number; sha256: string }>(
+      "/storage/readback",
+      identity,
+      45_000,
+    );
+  }
+
+  async startNtpResponder(source: string) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/ntp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`NTP responder: ${await response.text()}`);
+    } finally {
+      clearTimeout(timeout);
+    }
+    const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+    let requests = 0,
+      pending = "",
+      failure: unknown;
+    const done = (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) throw new Error("NTP responder disconnected or expired");
+          pending += value;
+          const lines = pending.split("\n");
+          pending = lines.pop()!;
+          for (const line of lines) requests = (JSON.parse(line) as { requests: number }).requests;
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) failure = error;
+      } finally {
+        controller.abort();
+        reader.releaseLock();
+      }
+    })();
+    return {
+      count: () => {
+        if (failure) throw failure;
+        return requests;
+      },
+      stop: async () => {
+        controller.abort();
+        await done;
+      },
+    };
   }
 
   /** Check if the agent is running. */
-  async health(): Promise<boolean> {
+  async health(timeoutMs = 2000): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await this.get<{ status: string }>("/health");
-      return res.status === "ok";
+      const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
+      if (!res.ok) return false;
+      const body = (await res.json()) as { status: string };
+      return body.status === "ok";
     } catch {
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
   // ── Event APIs ──
 
-  async getKeyboardEvents(): Promise<KeyboardEvent[]> {
-    return this.get<KeyboardEvent[]>("/events/keyboard");
+  async getKeyboardEvents(signal?: AbortSignal): Promise<KeyboardEvent[]> {
+    return this.get<KeyboardEvent[]>("/events/keyboard", signal);
   }
 
   async getMouseEvents(): Promise<MouseEvent[]> {
@@ -283,7 +377,8 @@ export class RemoteAgent {
   // ── Device/system APIs ──
 
   async getUSBDevices(): Promise<USBDevice[]> {
-    return this.get<USBDevice[]>("/usb/devices");
+    // The Go agent encodes its nil slice as null during an empty USB scan.
+    return (await this.get<USBDevice[] | null>("/usb/devices")) ?? [];
   }
 
   async getMounts(): Promise<MountInfo[]> {
@@ -296,6 +391,18 @@ export class RemoteAgent {
 
   async getDisplays(): Promise<DisplayInfo[]> {
     return this.get<DisplayInfo[]>("/display");
+  }
+
+  async getAudioDevices(): Promise<AudioDeviceInfo[]> {
+    return this.get<AudioDeviceInfo[]>("/audio/devices");
+  }
+
+  async startAudioTone(): Promise<AudioDeviceInfo> {
+    return this.get<AudioDeviceInfo>("/audio/start-tone");
+  }
+
+  async stopAudioTone(): Promise<void> {
+    await this.get("/audio/stop-tone");
   }
 
   // ── High-level verification helpers ──
@@ -496,6 +603,25 @@ export class RemoteAgent {
     throw new Error(`Timed out waiting for resolution ${expected} (${timeoutMs}ms)`);
   }
 
+  async waitForDisplays(
+    predicate: (displays: DisplayInfo[]) => boolean,
+    timeoutMs = 15000,
+    description = "display state",
+  ): Promise<DisplayInfo[]> {
+    const deadline = Date.now() + timeoutMs;
+    let lastDisplays: DisplayInfo[] = [];
+
+    while (Date.now() < deadline) {
+      lastDisplays = await this.getDisplays();
+      if (predicate(lastDisplays)) return lastDisplays;
+      await sleep(500);
+    }
+
+    throw new Error(
+      `Timed out waiting for ${description} (${timeoutMs}ms). Last displays: ${JSON.stringify(lastDisplays)}`,
+    );
+  }
+
   /**
    * Ensure the remote agent is running on the target host.
    * Always rebuilds from source when it has changed and redeploys.
@@ -503,50 +629,48 @@ export class RemoteAgent {
   async ensureDeployed(sshTarget?: string): Promise<void> {
     const host = this.baseUrl.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
     const port = parseInt(this.baseUrl.replace(/.*:/, ""), 10);
-    const target = sshTarget ?? process.env.JETKVM_REMOTE_HOST ?? `tony@${host}`;
+    const target = sshTarget ?? process.env.JETKVM_REMOTE_HOST;
+    if (!target) throw new Error("JETKVM_REMOTE_HOST is required to deploy the remote agent");
 
     const thisDir = path.dirname(fileURLToPath(import.meta.url));
     const agentDir = path.resolve(thisDir, "..", "..", "..", "e2e", "remote-agent");
     const binary = path.join(agentDir, "remote-agent");
-    const goSource = path.join(agentDir, "main.go");
-
-    if (!fs.existsSync(goSource)) {
-      throw new Error(
-        `Remote agent source not found at ${goSource}. ` +
-          `Restore it with: git checkout e2e-remote-host-agent -- e2e/remote-agent/`,
-      );
-    }
-
-    // Rebuild if source is newer than binary (or binary doesn't exist)
-    const needsBuild =
-      !fs.existsSync(binary) || fs.statSync(goSource).mtimeMs > fs.statSync(binary).mtimeMs;
-
-    if (needsBuild) {
-      console.log("[remote-agent] Building remote-agent binary...");
-      execSync("GOOS=linux GOARCH=amd64 go build -o remote-agent .", {
-        cwd: agentDir,
-        stdio: "inherit",
-      });
-    }
-
-    // Skip deploy only when the binary hasn't changed and the agent is already running
-    if (!needsBuild && (await this.health())) return;
+    execSync("GOOS=linux GOARCH=amd64 go build -buildvcs=false -o remote-agent .", {
+      cwd: agentDir,
+      stdio: "inherit",
+    });
 
     const sshOpts =
       "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=5 -o ServerAliveCountMax=3";
+    const binaryHash = crypto.createHash("sha256").update(fs.readFileSync(binary)).digest("hex");
+    let remoteHash = "";
+    try {
+      remoteHash = execSync(
+        `ssh ${sshOpts} ${target} 'cat /tmp/remote-agent.sha256 2>/dev/null || true'`,
+        { encoding: "utf8" },
+      ).trim();
+    } catch {
+      /* deploy below */
+    }
+
+    if (remoteHash === binaryHash && (await this.health())) return;
 
     console.log(`[remote-agent] Deploying to ${target}...`);
     // Kill the running agent first — Linux prevents overwriting a running binary
-    execSync(`ssh ${sshOpts} ${target} 'pkill -x remote-agent 2>/dev/null; sleep 0.5'`, {
-      stdio: "inherit",
-    });
+    execSync(
+      `ssh ${sshOpts} ${target} 'sudo -n true && { sudo -n pkill -x remote-agent 2>/dev/null || test $? = 1; } && sleep 0.5'`,
+      {
+        stdio: "inherit",
+      },
+    );
     execSync(`scp ${sshOpts} "${binary}" ${target}:/tmp/remote-agent`, { stdio: "inherit" });
 
     console.log(`[remote-agent] Starting on port ${port}...`);
     execSync(
-      `ssh ${sshOpts} ${target} 'PORT=${port} nohup /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
+      `ssh ${sshOpts} ${target} 'nohup sudo -n PORT=${port} /tmp/remote-agent </dev/null >/tmp/remote-agent.log 2>&1 & sleep 0.5'`,
       { stdio: "inherit" },
     );
+    execSync(`ssh ${sshOpts} ${target} 'printf %s ${binaryHash} > /tmp/remote-agent.sha256'`);
 
     await sleep(1500);
 
@@ -573,10 +697,38 @@ function sleep(ms: number): Promise<void> {
  * Create a RemoteAgent from the JETKVM_REMOTE_HOST env var.
  * Falls back to null if not configured (tests can skip gracefully).
  */
+// Specs that drive or observe the host skip on a bench without one.
+export function skipWithoutRemoteHost(): void {
+  test.skip(!process.env.JETKVM_REMOTE_HOST, "needs a remote host (JETKVM_REMOTE_HOST)");
+}
+
 export function createRemoteAgent(): RemoteAgent | null {
   const raw = process.env.JETKVM_REMOTE_HOST;
   if (!raw) return null;
   const host = raw.includes("@") ? raw.split("@").pop()! : raw;
   const port = parseInt(process.env.JETKVM_REMOTE_PORT || "9182", 10);
   return new RemoteAgent(host, port);
+}
+
+export async function waitForKeyboardReady(
+  ra: RemoteAgent,
+  page: Page,
+  timeoutMs = 30000,
+  perTryMs = 3000,
+): Promise<KeyboardEvent[]> {
+  const deadline = Date.now() + timeoutMs;
+  let events: KeyboardEvent[] = [];
+  while (Date.now() < deadline) {
+    try {
+      events = await ra.expectKeyPress(
+        KEY.SPACE,
+        async () => {
+          await tapKey(page, HID_KEY.SPACE);
+        },
+        perTryMs,
+      );
+      return events;
+    } catch {}
+  }
+  return events;
 }

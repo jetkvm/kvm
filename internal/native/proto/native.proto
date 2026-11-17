@@ -265,4 +265,3 @@ message VideoFrame {
   bytes frame = 1;
   int64 duration_ns = 2;
 }
-

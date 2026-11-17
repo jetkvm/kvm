@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useCapability } from "@hooks/stores";
 
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -82,6 +83,7 @@ export default function SettingsMqttRoute() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeExtension, setActiveExtension] = useState<string>("");
+  const extensions = useCapability("extensions");
   const [portMode, setPortMode] = useState<"default" | "custom">("default");
   const [topicMode, setTopicMode] = useState<"default" | "custom">("default");
   const [testing, setTesting] = useState(false);
@@ -91,7 +93,7 @@ export default function SettingsMqttRoute() {
     let settled = 0;
     const settle = () => {
       settled++;
-      if (settled >= 3) setLoading(false);
+      if (settled >= 2) setLoading(false);
     };
 
     send("getMqttSettings", {}, resp => {
@@ -116,16 +118,16 @@ export default function SettingsMqttRoute() {
       setConnectionState(result.connected ? "connected" : "disconnected");
       settle();
     });
-
-    send("getActiveExtension", {}, resp => {
-      if ("error" in resp) {
-        settle();
-        return;
-      }
-      setActiveExtension(resp.result as string);
-      settle();
-    });
   }, [send]);
+
+  // Only a device with an extension port has an active extension.
+  useEffect(() => {
+    if (!extensions) return;
+    send("getActiveExtension", {}, resp => {
+      if ("error" in resp) return;
+      setActiveExtension(resp.result as string);
+    });
+  }, [send, extensions]);
 
   // Poll connection status
   useEffect(() => {
@@ -163,7 +165,7 @@ export default function SettingsMqttRoute() {
           );
           return;
         }
-        notifications.success(m.mqtt_saved_success());
+        notifications.success(m.mqtt_saved_disconnect());
         setConnectionState("disconnected");
       });
       return;
@@ -248,11 +250,12 @@ export default function SettingsMqttRoute() {
     }
   };
 
-  const hasATXExtension = activeExtension === "atx-power";
+  const hasATXExtension = extensions && activeExtension === "atx-power";
 
   const saveButtonText = () => {
     if (savePhase === "testing") return m.mqtt_testing();
     if (savePhase === "saving") return m.saving();
+    if (settings.enabled === false) return m.mqtt_save_disconnect_button();
     return m.mqtt_save_button();
   };
 
@@ -483,6 +486,18 @@ export default function SettingsMqttRoute() {
                 text={testing ? m.mqtt_testing() : m.mqtt_test_button()}
                 loading={testing}
                 onClick={handleTestConnection}
+              />
+            </div>
+          </>
+        ) || (
+          <>
+            <div className="flex items-center gap-x-2 pt-2">
+              <Button
+                size="SM"
+                theme="primary"
+                text={saveButtonText()}
+                loading={savePhase !== "idle"}
+                onClick={handleSave}
               />
             </div>
           </>

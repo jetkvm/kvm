@@ -25,6 +25,7 @@ import (
 
 const (
 	maxFrameSize                   = 1920 * 1080 / 2
+	videoFrameHeaderSize           = 4 + 8
 	defaultMaxRestartAttempts uint = 5
 )
 
@@ -41,7 +42,7 @@ type nativeProxyOptions struct {
 	HandshakeMessage      string          `env:"JETKVM_NATIVE_HANDSHAKE_MESSAGE"`
 	MaxRestartAttempts    uint
 
-	OnVideoFrameReceived func(frame []byte, duration time.Duration)
+	OnVideoFrameReceived func(frame []byte, pts time.Duration)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnVideoStateChange   func(state VideoState)
@@ -266,20 +267,19 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	defer conn.Close()
 
 	inboundPacket := make([]byte, maxFrameSize)
-	var frameSizeBuffer [4]byte
-	lastFrame := time.Now()
+	var header [videoFrameHeaderSize]byte
 
 	for {
-		// Read 4-byte frame length prefix
-		_, err := io.ReadFull(conn, frameSizeBuffer[:])
+		_, err := io.ReadFull(conn, header[:])
 		if err != nil {
 			if err != io.EOF {
-				p.logger.Warn().Err(err).Msg("failed to read frame size from socket")
+				p.logger.Warn().Err(err).Msg("failed to read frame header from socket")
 			}
 			break
 		}
 
-		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
+		frameSize := binary.LittleEndian.Uint32(header[:4])
+		pts := time.Duration(binary.LittleEndian.Uint64(header[4:])) * time.Microsecond
 		if frameSize == 0 || frameSize > maxFrameSize {
 			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
 				Msg("received invalid frame size")
@@ -293,10 +293,7 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 			break
 		}
 
-		now := time.Now()
-		sinceLastFrame := now.Sub(lastFrame)
-		lastFrame = now
-		p.options.OnVideoFrameReceived(inboundPacket[:frameSize], sinceLastFrame)
+		p.options.OnVideoFrameReceived(inboundPacket[:frameSize], pts)
 	}
 }
 
@@ -459,7 +456,7 @@ func (p *NativeProxy) restartProcess() error {
 	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
 
 	if p.restarts >= p.options.MaxRestartAttempts {
-		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonVideoMaxRestartAttemptsReached)
+		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonNativeMaxRestartAttemptsReached)
 		return fmt.Errorf("max restart attempts reached")
 	}
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/native"
+	"github.com/jetkvm/kvm/internal/sync"
 )
 
 var (
@@ -34,6 +35,78 @@ func triggerVideoStateUpdate() {
 func rpcGetVideoState() (native.VideoState, error) {
 	notifyFailsafeMode(currentSession)
 	return lastVideoState, nil
+}
+
+var (
+	hostDisplayAdvertiseLock = sync.Mutex{}
+	hostDisplayAdvertised    bool
+)
+
+func configuredVideoEDID() string {
+	if config.EdidString == "" || isInternalDisabledEDID(config.EdidString) {
+		return native.DefaultEDID
+	}
+	return config.EdidString
+}
+
+func isInternalDisabledEDID(edid string) bool {
+	return edid == native.DisabledEDID
+}
+
+func isHostDisplayAdvertised() bool {
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+	return hostDisplayAdvertised
+}
+
+func shouldAdvertiseHostDisplayLocked() bool {
+	return !config.HideDisplayWhenIdle || getActiveSessions() > 0
+}
+
+func setHostDisplayAdvertised(enabled bool, reason string, force bool) error {
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+
+	return setHostDisplayAdvertisedLocked(enabled, reason, force)
+}
+
+func setHostDisplayAdvertisedLocked(enabled bool, reason string, force bool) error {
+	if !force && enabled == hostDisplayAdvertised {
+		return nil
+	}
+
+	edid := native.DisabledEDID
+	if enabled {
+		edid = configuredVideoEDID()
+	}
+
+	if err := nativeInstance.VideoSetEDID(edid); err != nil {
+		nativeLogger.Warn().Err(err).Bool("advertised", enabled).Str("reason", reason).Msg("failed to update host display advertisement")
+		return err
+	}
+
+	hostDisplayAdvertised = enabled
+	nativeLogger.Info().Bool("advertised", enabled).Str("reason", reason).Msg("host display advertisement updated")
+	return nil
+}
+
+// applyHostDisplayAdvertisement reconciles the advertised state without rewriting
+// EDID when the host display is already in the desired state.
+func applyHostDisplayAdvertisement(reason string) error {
+	return updateHostDisplayAdvertisement(reason, false)
+}
+
+// reapplyHostDisplayAdvertisement rewrites EDID even if the advertised
+// boolean is unchanged; use it when native state or configured EDID changed.
+func reapplyHostDisplayAdvertisement(reason string) error {
+	return updateHostDisplayAdvertisement(reason, true)
+}
+
+func updateHostDisplayAdvertisement(reason string, force bool) error {
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+
+	return setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, force)
 }
 
 type rpcVideoSleepModeResponse struct {

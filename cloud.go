@@ -327,6 +327,7 @@ func runWebsocketClient() error {
 	header := http.Header{}
 	header.Set("X-Device-ID", GetDeviceID())
 	header.Set("X-App-Version", builtAppVersion)
+	header.Set("X-Device-SKU", GetDeviceSKU())
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
@@ -475,6 +476,8 @@ func handleSessionRequest(
 	}
 	if currentSession != nil {
 		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
+		gadget.CancelAllAutoReleaseTimers()
+		_ = rpcKeyboardReport(0, keyboardClearStateKeys)
 		peerConn := currentSession.peerConnection
 		go func() {
 			time.Sleep(1 * time.Second)

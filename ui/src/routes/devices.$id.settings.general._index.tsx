@@ -19,7 +19,8 @@ export default function SettingsGeneralRoute() {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const currentVersions = useDeviceStore(state => {
     const { appVersion, systemVersion } = state;
-    if (!appVersion || !systemVersion) return null;
+    // appVersion is "" once known on a device with no separate app.
+    if (appVersion === null || !systemVersion) return null;
     return { appVersion, systemVersion };
   });
 
@@ -104,10 +105,14 @@ export default function SettingsGeneralRoute() {
               title={m.general_check_for_updates()}
               description={
                 <>
-                  {m.general_app_version({
-                    version: currentVersions ? currentVersions.appVersion : m.loading(),
-                  })}
-                  <br />
+                  {(!currentVersions || currentVersions.appVersion) && (
+                    <>
+                      {m.general_app_version({
+                        version: currentVersions ? currentVersions.appVersion : m.loading(),
+                      })}
+                      <br />
+                    </>
+                  )}
                   {m.general_system_version({
                     version: currentVersions ? currentVersions.systemVersion : m.loading(),
                   })}

@@ -66,7 +66,8 @@ type LocalDevice struct {
 }
 
 type DeviceStatus struct {
-	IsSetup bool `json:"isSetup"`
+	IsSetup bool   `json:"isSetup"`
+	SKU     string `json:"sku"`
 }
 
 type SetupRequest struct {
@@ -101,6 +102,13 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
+	// The device is reached directly, not behind a reverse proxy, so don't
+	// trust any X-Forwarded-For/X-Real-IP headers. Without this, gin trusts
+	// all proxies by default and c.ClientIP() returns a client-controlled
+	// value, letting a caller spoof their IP to evade the login rate limiter.
+	if err := r.SetTrustedProxies(nil); err != nil {
+		logger.Fatal().Err(err).Msg("failed to disable trusted proxies")
+	}
 	r.Use(gin_logger.SetLogger(
 		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
 			return *ginLogger
@@ -164,7 +172,9 @@ func setupRouter() *gin.Engine {
 	r.POST("/device/setup", handleSetup)
 
 	// A Prometheus metrics endpoint.
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	// Requires auth (cookie or basic auth) when password mode is enabled,
+	// open when localAuthMode is noPassword (consistent with other endpoints).
+	r.GET("/metrics", metricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
 
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
@@ -191,22 +201,6 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
-		/*
-		 * Legacy WebRTC session endpoint
-		 *
-		 * This endpoint is maintained for backward compatibility when users upgrade from a version
-		 * using the legacy HTTP-based signaling method to the new WebSocket-based signaling method.
-		 *
-		 * During the upgrade process, when the "Rebooting device after update..." message appears,
-		 * the browser still runs the previous JavaScript code which polls this endpoint to establish
-		 * a new WebRTC session. Once the session is established, the page will automatically reload
-		 * with the updated code.
-		 *
-		 * Without this endpoint, the stale JavaScript would fail to establish a connection,
-		 * causing users to see the "Rebooting device after update..." message indefinitely
-		 * until they manually refresh the page, leading to a confusing user experience.
-		 */
-		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
@@ -237,41 +231,6 @@ func setupRouter() *gin.Engine {
 
 // TODO: support multiple sessions?
 var currentSession *Session
-
-func handleWebRTCSession(c *gin.Context) {
-	var req WebRTCSessionRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	session, err := newSession(SessionConfig{MDNSMode: config.NetworkConfig.MDNSMode.String})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-
-	sd, err := session.ExchangeOffer(req.Sd)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
-	}
-
-	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
-
-	currentSession = session
-	c.JSON(http.StatusOK, gin.H{"sd": sd})
-}
 
 var (
 	pingMessage = []byte("ping")
@@ -505,14 +464,8 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Check rate limit before processing
-	ip := c.ClientIP()
-	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
-		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "Too many failed attempts. Please try again later.",
-			"retry_after": retryAfter,
-		})
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(c.ClientIP()); !allowed {
+		sendTooManyAttemptsThenAbort(c, retryAfter)
 		return
 	}
 
@@ -523,15 +476,14 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
-	if err != nil {
-		passwordRateLimiter.RecordFailure(ip)
+	switch result, retryAfter := checkPassword(c, req.Password); result {
+	case passwordLockedOut:
+		sendTooManyAttemptsThenAbort(c, retryAfter)
+		return
+	case passwordWrong:
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
-
-	// Clear rate limit on successful login
-	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
 
@@ -581,6 +533,43 @@ func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 	c.Abort()
 }
 
+// metricsAuthMiddleware authenticates the /metrics endpoint using either the
+// session cookie or HTTP basic auth (for Prometheus scrape configs). When
+// localAuthMode is noPassword, all requests are allowed through — consistent
+// with every other endpoint on the device.
+func metricsAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		// Try cookie auth first (browser access)
+		authToken, err := c.Cookie("authToken")
+		if err == nil && authToken == config.LocalAuthToken && authToken != "" {
+			c.Next()
+			return
+		}
+
+		// Fall back to basic auth (Prometheus scraper)
+		_, password, ok := c.Request.BasicAuth()
+		if ok {
+			switch result, retryAfter := checkPassword(c, password); result {
+			case passwordLockedOut:
+				sendTooManyAttemptsThenAbort(c, retryAfter)
+				return
+			case passwordCorrect:
+				c.Next()
+				return
+			}
+		}
+
+		c.Header("WWW-Authenticate", `Basic realm="JetKVM Metrics"`)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.Abort()
+	}
+}
+
 func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if requireDeveloperMode {
@@ -609,8 +598,11 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password))
-		if err != nil {
+		switch result, retryAfter := checkPassword(c, password); result {
+		case passwordLockedOut:
+			sendTooManyAttemptsThenAbort(c, retryAfter)
+			return
+		case passwordWrong:
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}
@@ -645,6 +637,8 @@ func getBindAddress(listenPort int) string {
 	return bindAddress
 }
 
+const webReadHeaderTimeout = 10 * time.Second
+
 func RunWebServer() {
 	r := setupRouter()
 
@@ -652,7 +646,12 @@ func RunWebServer() {
 	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	if err := r.Run(bindAddress); err != nil {
+	server := &http.Server{
+		Addr:              bindAddress,
+		Handler:           r.Handler(),
+		ReadHeaderTimeout: webReadHeaderTimeout,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
@@ -822,6 +821,7 @@ func handleDeviceStatus(c *gin.Context) {
 
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
+		SKU:     GetDeviceSKU(),
 	}
 
 	c.JSON(http.StatusOK, response)

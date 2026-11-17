@@ -36,11 +36,13 @@ let requestCounter = 0;
 
 // Map of blocked RPC methods by failsafe reason
 const blockedMethodsByReason: Record<string, string[]> = {
-  video: [
+  native: [
     "setStreamQualityFactor",
     "setVideoCodecPreference",
     "getEDID",
     "setEDID",
+    "getHostDisplayIdleMode",
+    "setHostDisplayIdleMode",
     "getVideoLogStatus",
     "setDisplayRotation",
     "getVideoSleepMode",
@@ -49,7 +51,34 @@ const blockedMethodsByReason: Record<string, string[]> = {
   ],
 };
 
-export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
+// Device events that arrive before any component listens. The device sends
+// its connect-time events (localVersion, deviceCapabilities, videoInputState,
+// ...) as soon as the rpc channel opens, but useJsonRpc attaches its listener
+// in an effect that runs after the channel is stored on open. A DataChannel
+// message with no listener is lost, so the channel's creator holds them.
+const heldEvents = new WeakMap<RTCDataChannel, { events: JsonRpcRequest[]; stop: () => void }>();
+
+// Call right after creating the rpc channel, before it can open.
+export function holdRpcEvents(channel: RTCDataChannel) {
+  const events: JsonRpcRequest[] = [];
+  const hold = (e: MessageEvent) => {
+    try {
+      const payload = JSON.parse(e.data) as JsonRpcResponse | JsonRpcRequest;
+      if ("method" in payload) events.push(payload);
+    } catch {
+      // Not JSON-RPC; the subscriber would ignore it too.
+    }
+  };
+  channel.addEventListener("message", hold);
+  heldEvents.set(channel, { events, stop: () => channel.removeEventListener("message", hold) });
+}
+
+export function useJsonRpc(
+  onRequest?: (payload: JsonRpcRequest) => void,
+  // The one subscriber that receives the events held by holdRpcEvents.
+  options?: { receiveHeldEvents?: boolean },
+) {
+  const receiveHeldEvents = options?.receiveHeldEvents ?? false;
   const { rpcDataChannel } = useRTCStore();
   const { isFailsafeMode, reason } = useFailsafeModeStore();
 
@@ -85,7 +114,14 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
       // Store the callback if it exists
       if (callback) callbackStore.set(payload.id, callback);
 
-      rpcDataChannel.send(JSON.stringify(payload));
+      // The channel can close between the readyState check and the send.
+      // Drop the callback so it cannot wait forever for a reply.
+      try {
+        rpcDataChannel.send(JSON.stringify(payload));
+      } catch (error) {
+        callbackStore.delete(payload.id);
+        console.error(`Failed to send RPC method "${method}"`, error);
+      }
     },
     [rpcDataChannel, isFailsafeMode, reason],
   );
@@ -108,17 +144,27 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
 
       const callback = callbackStore.get(payload.id);
       if (callback) {
-        callback(payload);
+        // Delete first so a throwing callback cannot leave its entry behind.
         callbackStore.delete(payload.id);
+        callback(payload);
       }
     };
 
     rpcDataChannel.addEventListener("message", messageHandler);
 
+    // Hand over the held events. No message is dispatched between adding
+    // the listener above and this loop, so none is lost or delivered twice.
+    const held = receiveHeldEvents ? heldEvents.get(rpcDataChannel) : undefined;
+    if (held && onRequest) {
+      heldEvents.delete(rpcDataChannel);
+      held.stop();
+      for (const event of held.events) onRequest(event);
+    }
+
     return () => {
       rpcDataChannel.removeEventListener("message", messageHandler);
     };
-  }, [rpcDataChannel, onRequest]);
+  }, [rpcDataChannel, onRequest, receiveHeldEvents]);
 
   return { send };
 }

@@ -23,9 +23,37 @@ var keyboardConfig = gadgetConfigItem{
 		"subclass":        "1",
 		"report_length":   "8",
 		"no_out_endpoint": "0",
-		"wakeup_on_write": "1",
+		"wakeup_on_write": "0",
 	},
 	reportDesc: keyboardReportDesc,
+}
+
+var wakeHIDConfig = gadgetConfigItem{
+	order:      1003,
+	device:     "hid.usb3",
+	path:       []string{"functions", "hid.usb3"},
+	configPath: []string{"hid.usb3"},
+	attrs: gadgetAttributes{
+		"protocol":        "0",
+		"subclass":        "0",
+		"report_length":   "1",
+		"no_out_endpoint": "1",
+		"wakeup_on_write": "1",
+	},
+	reportDesc: wakeReportDesc,
+}
+
+var wakeReportDesc = []byte{
+	0x06, 0x00, 0xff, // USAGE_PAGE (Vendor Defined 0xff00)
+	0x09, 0x01, // USAGE (1)
+	0xa1, 0x01, // COLLECTION (Application)
+	0x15, 0x00, //   LOGICAL_MINIMUM (0)
+	0x26, 0xff, 0x00, //   LOGICAL_MAXIMUM (255)
+	0x75, 0x08, //   REPORT_SIZE (8)
+	0x95, 0x01, //   REPORT_COUNT (1)
+	0x09, 0x01, //   USAGE (1)
+	0x81, 0x02, //   INPUT (Data,Var,Abs)
+	0xc0, // END_COLLECTION
 }
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
@@ -124,6 +152,11 @@ func (u *UsbGadget) updateKeyboardState(state byte) {
 		return
 	}
 
+	// Persist every report, unchanged ones included: a rebind resets the
+	// handover, and the host's report after re-enumeration usually repeats
+	// the state the process already holds.
+	updateHidHandover(func(h *hidHandover) { h.KeyboardLeds = state })
+
 	if u.keyboardState == state {
 		return
 	}
@@ -157,10 +190,6 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
-func (u *UsbGadget) SetOnKeepAliveReset(f func()) {
-	u.onKeepAliveReset = &f
-}
-
 // DefaultAutoReleaseDuration is the default duration for auto-release of a key.
 const DefaultAutoReleaseDuration = 100 * time.Millisecond
 
@@ -188,11 +217,6 @@ func (u *UsbGadget) cancelAutoRelease(key byte) {
 		timer.Stop()
 		u.kbdAutoReleaseTimers[key] = nil
 		delete(u.kbdAutoReleaseTimers, key)
-
-		// Reset keep-alive timing when key is released
-		if u.onKeepAliveReset != nil {
-			(*u.onKeepAliveReset)()
-		}
 	}
 }
 
@@ -239,21 +263,13 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 	delete(u.kbdAutoReleaseTimers, key)
 	u.kbdAutoReleaseLock.Unlock()
 
-	// Skip if already released
+	// Timers are only scheduled for non-modifier keys.
 	state := u.GetKeysDownState()
 	alreadyReleased := true
-
-	if mask, exists := KeyCodeToMaskMap[key]; exists {
-		// Modifier keys are tracked in state.Modifier bitmask, not in state.Keys
-		if state.Modifier&mask != 0 {
+	for i := range state.Keys {
+		if state.Keys[i] == key {
 			alreadyReleased = false
-		}
-	} else {
-		for i := range state.Keys {
-			if state.Keys[i] == key {
-				alreadyReleased = false
-				break
-			}
+			break
 		}
 	}
 
@@ -317,6 +333,12 @@ func (u *UsbGadget) listenKeyboardEvents(ctx context.Context, file *os.File) {
 	}()
 }
 
+func (u *UsbGadget) HasKeyboard() bool {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+	return u.enabledDevices.Keyboard
+}
+
 func (u *UsbGadget) closeKeyboardHidFileLocked() {
 	if u.keyboardStateCancel != nil {
 		u.keyboardStateCancel()
@@ -329,6 +351,13 @@ func (u *UsbGadget) closeKeyboardHidFileLocked() {
 	}
 }
 
+func (u *UsbGadget) closeWakeHidFileLocked() {
+	if u.wakeHidFile != nil {
+		u.wakeHidFile.Close()
+		u.wakeHidFile = nil
+	}
+}
+
 func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 	if forceReopen {
 		u.closeKeyboardHidFileLocked()
@@ -336,9 +365,17 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 		return nil
 	}
 
-	file, err := openWithTimeout("/dev/hidg0", os.O_RDWR, 0666, 3*time.Second)
+	if !u.enabledDevices.Keyboard {
+		return nil
+	}
+
+	path, err := u.hidDevicePath("keyboard")
 	if err != nil {
-		return fmt.Errorf("failed to open hidg0: %w", err)
+		return err
+	}
+	file, err := u.openWithTimeout(path, os.O_RDWR, 0666, 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", path, err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -350,24 +387,49 @@ func (u *UsbGadget) openKeyboardHidFileLocked(forceReopen bool) error {
 	return nil
 }
 
-func openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Duration) (*os.File, error) {
+func (u *UsbGadget) openWakeHidFileLocked(forceReopen bool) error {
+	if forceReopen {
+		u.closeWakeHidFileLocked()
+	} else if u.wakeHidFile != nil {
+		return nil
+	}
+
+	path, err := u.hidDevicePath("wake_hid")
+	if err != nil {
+		return err
+	}
+	file, err := u.openWithTimeout(path, os.O_WRONLY, 0666, 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", path, err)
+	}
+
+	u.wakeHidFile = file
+	return nil
+}
+
+func (u *UsbGadget) openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Duration) (*os.File, error) {
 	type result struct {
 		file *os.File
 		err  error
 	}
 	ch := make(chan result, 1)
+	// Caller holds hidLifecycle.RLock, so rebind cannot start waiting until
+	// admission is recorded. Ownership lasts through late-result cleanup.
+	u.hidOpens.begin()
 	go func() {
-		f, err := os.OpenFile(name, flag, perm)
+		f, err := u.openHIDFile(name, flag, perm)
 		ch <- result{f, err}
 	}()
 
 	select {
 	case r := <-ch:
+		u.hidOpens.end()
 		return r.file, r.err
 	case <-time.After(timeout):
 		// Drain the channel in the background to close the leaked fd if the
 		// open eventually succeeds.
 		go func() {
+			defer u.hidOpens.end()
 			if r := <-ch; r.file != nil {
 				r.file.Close()
 			}
@@ -377,6 +439,9 @@ func openWithTimeout(name string, flag int, perm os.FileMode, timeout time.Durat
 }
 
 func (u *UsbGadget) openKeyboardHidFile() error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
 	u.keyboardLock.Lock()
 	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile opened")
 
@@ -384,6 +449,9 @@ func (u *UsbGadget) openKeyboardHidFile() error {
 }
 
 func (u *UsbGadget) reopenKeyboardHidFile() error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
 	u.keyboardLock.Lock()
 	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile reopened")
 
@@ -409,19 +477,47 @@ var keyboardMutex sync.Mutex
 // keyboardWriteHidFileLocked writes a keyboard HID report to the device.
 // Caller MUST hold keyboardMutex.
 func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error {
-	if err := u.openKeyboardHidFile(); err != nil {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+	u.keyboardLock.Lock()
+	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile wrote")
+
+	if !u.enabledDevices.Keyboard {
+		return nil
+	}
+
+	if err := u.openKeyboardHidFileLocked(false); err != nil {
 		return err
 	}
 
 	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
 	if err != nil {
-		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
-		u.keyboardLock.Lock()
+		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to the keyboard")
 		u.closeKeyboardHidFileLocked()
-		unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile closed after write error")
 		return err
 	}
 	u.resetLogSuppressionCounter("keyboardWriteHidFile")
+	return nil
+}
+
+func (u *UsbGadget) wakeWriteHidFile(report byte) error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
+	u.wakeHidLock.Lock()
+	defer unlockWithLog(&u.wakeHidLock, u.log, "wakeHidFile wrote")
+
+	if err := u.openWakeHidFileLocked(false); err != nil {
+		return err
+	}
+
+	_, err := u.writeWithTimeout(u.wakeHidFile, []byte{report})
+	if err != nil {
+		u.logWithSuppression("wakeWriteHidFile", 100, u.log, err, "failed to write to the wake device")
+		u.closeWakeHidFileLocked()
+		return err
+	}
+	u.resetLogSuppressionCounter("wakeWriteHidFile")
 	return nil
 }
 
@@ -468,12 +564,20 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	keyboardMutex.Lock()
 	err := u.keyboardWriteHidFileLocked(modifier, keys)
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
-		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
+		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report")
 	}
 	u.UpdateKeysDown(modifier, keys)
 	keyboardMutex.Unlock()
 
 	return err
+}
+
+func (u *UsbGadget) WakeReport(active bool) error {
+	var report byte
+	if active {
+		report = 1
+	}
+	return u.wakeWriteHidFile(report)
 }
 
 const (
@@ -598,15 +702,68 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 	if err != nil && !IsHIDTemporarilyUnavailableError(err) {
 		u.log.Warn().Uint8("key", key).Bool("press", press).Msg("failed to report key")
 	}
-	isRolledOver := state.Keys[0] == hidErrorRollOver
 
-	if isRolledOver {
-		u.cancelAutoRelease(key)
-	} else if press {
-		u.scheduleAutoRelease(key)
-	} else {
-		u.cancelAutoRelease(key)
+	isRolledOver := state.Keys[0] == hidErrorRollOver
+	_, isModifier := KeyCodeToMaskMap[key]
+
+	// Modifiers are tracked separately from the key buffer and must only be
+	// released by explicit state clears or matching key-up reports.
+	if !isModifier {
+		switch {
+		case isRolledOver, !press:
+			u.cancelAutoRelease(key)
+		default:
+			u.scheduleAutoRelease(key)
+		}
 	}
 
 	return err
+}
+
+func (u *UsbGadget) KeyboardWriteTimeoutStreak() int {
+	u.keyboardLock.Lock()
+	file := u.keyboardHidFile
+	u.keyboardLock.Unlock()
+
+	if file == nil {
+		return 0
+	}
+
+	u.hidWriteStreakLock.Lock()
+	defer u.hidWriteStreakLock.Unlock()
+
+	return u.hidWriteTimeoutStreaks[file.Name()]
+}
+
+func (u *UsbGadget) VerifyKeyboardWritable() error {
+	keyboardMutex.Lock()
+	defer keyboardMutex.Unlock()
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+	u.keyboardLock.Lock()
+	defer unlockWithLog(&u.keyboardLock, u.log, "keyboardHidFile probed")
+
+	if err := u.openKeyboardHidFileLocked(false); err != nil {
+		return err
+	}
+
+	file := u.keyboardHidFile
+	if file == nil {
+		return fmt.Errorf("keyboard HID file is not open")
+	}
+
+	state := u.GetKeysDownState()
+	keys := make([]byte, hidKeyBufferSize)
+	copy(keys, state.Keys)
+	report := append([]byte{state.Modifier, 0x00}, keys...)
+
+	if err := file.SetWriteDeadline(time.Now().Add(hidProbeWriteTimeout)); err != nil {
+		return err
+	}
+	if _, err := file.Write(report); err != nil {
+		return fmt.Errorf("keyboard HID probe write failed: %w", err)
+	}
+
+	u.resetHidWriteTimeoutStreak(file.Name())
+	return nil
 }

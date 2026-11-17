@@ -25,7 +25,7 @@ void jetkvm_c_log_handler(int level, const char *filename, const char *funcname,
 
 // Video handler that pipes frames to the Unix socket
 // This will be called by the video subsystem via video_send_frame -> jetkvm_set_video_handler's handler
-void jetkvm_video_handler(const uint8_t *frame, ssize_t len) {
+void jetkvm_video_handler(const uint8_t *frame, ssize_t len, uint64_t pts_us) {
     // pthread_mutex_lock(&client_fd_mutex);
     // if (client_fd >= 0 && frame != NULL && len > 0) {
     //     ssize_t bytes_written = 0;

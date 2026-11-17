@@ -5,21 +5,34 @@ import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
-import { useRTCStore, useSettingsStore, useUiStore, useVideoStore } from "@hooks/stores";
+import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
+import {
+  useCapability,
+  useRTCStore,
+  useSettingsStore,
+  useUiStore,
+  useUpdateStore,
+  useVideoStore,
+} from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
 import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
+  AudioPermissionBanner,
   HDMIErrorOverlay,
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
+  UpdateVideoPausedOverlay,
 } from "@components/VideoOverlay";
 import OcrOverlay from "@components/OcrOverlay";
 import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+
+const initialHdmiErrorGraceMs = 2500;
 
 export default function WebRTCVideo({
   hasConnectionIssues,
@@ -30,11 +43,17 @@ export default function WebRTCVideo({
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
+  const audioElm = useRef<HTMLAudioElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
-  const { mediaStream, peerConnectionState } = useRTCStore();
+  const overlaysRef = useRef<HTMLDivElement>(null);
+  const { mediaStream, mediaStreamTrackVersion, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
+
+  const { send: sendRpc } = useJsonRpc();
 
   const isPointerLockPossible =
     window.location.protocol === "https:" || window.location.hostname === "localhost";
@@ -61,7 +80,8 @@ export default function WebRTCVideo({
   } = useVideoStore();
 
   // Video enhancement settings
-  const { videoSaturation, videoBrightness, videoContrast } = useSettingsStore();
+  const { videoSaturation, videoBrightness, videoContrast, videoScaling } = useSettingsStore();
+  const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
   const { isOcrMode } = useUiStore();
@@ -70,8 +90,16 @@ export default function WebRTCVideo({
   const { peerConnection } = useRTCStore();
 
   // HDMI and UI states
-  const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const isVideoLoading = !isPlaying;
+  const rawHdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
+  const [isInitialHdmiErrorGraceActive, setIsInitialHdmiErrorGraceActive] = useState(false);
+  const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
+
+  // A device without video_during_update pauses the stream once the
+  // firmware download starts (systemUpdatePending) until it reboots.
+  const videoDuringUpdate = useCapability("video_during_update");
+  const { otaState } = useUpdateStore();
+  const updatePausesVideo = !videoDuringUpdate && otaState.updating && otaState.systemUpdatePending;
 
   // Video-related
   const handleResize = useCallback(
@@ -107,6 +135,26 @@ export default function WebRTCVideo({
     setIsPlaying(true);
     if (videoElm.current) updateVideoSizeStore(videoElm.current);
   }, [updateVideoSizeStore]);
+
+  // Restoring EDID for idle display hiding cycles HDMI hotplug on the bridge.
+  // The host can report no_signal/no_lock while it re-enumerates the display,
+  // so keep the startup UI in the loading state before showing a persistent
+  // HDMI error.
+  useEffect(() => {
+    if (peerConnectionState !== "connected" || isPlaying) {
+      setIsInitialHdmiErrorGraceActive(false);
+      return;
+    }
+
+    setIsInitialHdmiErrorGraceActive(true);
+    const timeout = window.setTimeout(() => {
+      setIsInitialHdmiErrorGraceActive(false);
+    }, initialHdmiErrorGraceMs);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isPlaying, peerConnectionState]);
 
   // On mount, get the video size
   useEffect(
@@ -287,9 +335,20 @@ export default function WebRTCVideo({
     return code;
   }
 
+  // A click or key on the video is a user gesture: use it to start audio when
+  // the autoplay policy blocked it, instead of asking for a second click.
+  const retryBlockedAudio = useCallback(() => {
+    if (!audioAutoplayBlocked) return;
+    audioElm.current
+      ?.play()
+      .then(() => setAudioAutoplayBlocked(false))
+      .catch(() => {});
+  }, [audioAutoplayBlocked]);
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      retryBlockedAudio();
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -358,7 +417,7 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient, retryBlockedAudio],
   );
 
   const keyUpHandler = useCallback(
@@ -438,33 +497,61 @@ export default function WebRTCVideo({
   );
 
   useEffect(
-    function updateVideoStreamOnNewTrack() {
-      if (!peerConnection) return;
-      const abortController = new AbortController();
-      const signal = abortController.signal;
-
-      peerConnection.addEventListener(
-        "track",
-        (e: RTCTrackEvent) => {
-          addStreamToVideoElm(e.streams[0]);
-        },
-        { signal },
-      );
-
-      return () => {
-        abortController.abort();
-      };
-    },
-    [addStreamToVideoElm, peerConnection],
-  );
-
-  useEffect(
     function updateVideoStream() {
-      if (!mediaStream) return;
-      // We set the as early as possible
+      // Each new peer connection brings a new MediaStream, so this is where isPlaying resets.
+      // An ICE disconnect that recovers keeps the stream, and the video element keeps playing.
+      setIsPlaying(false);
+
+      if (!mediaStream) {
+        if (videoElm.current) videoElm.current.srcObject = null;
+        return;
+      }
+
       addStreamToVideoElm(mediaStream);
     },
     [addStreamToVideoElm, mediaStream],
+  );
+
+  // Fetch the device's audio-enabled state once the RPC channel is ready.
+  // We only attach the <audio> element below when it's true — otherwise
+  // Firefox prompts for audio autoplay permission on a silent stream that
+  // would never actually play any sound.
+  useEffect(
+    function fetchAudioConfig() {
+      if (peerConnection?.connectionState !== "connected") return;
+      sendRpc("getAudioConfig", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) return;
+        setAudioEnabled((resp.result as { enabled: boolean }).enabled);
+      });
+    },
+    [peerConnection?.connectionState, sendRpc],
+  );
+
+  // Audio plays through a separate <audio> element because the <video> is
+  // muted (kept muted so video autoplay isn't blocked when no user gesture
+  // has been recorded). If the browser blocks audio autoplay, a small banner
+  // surfaces a click target while video playback and input continue.
+  useEffect(
+    function updateAudioStream() {
+      const elm = audioElm.current;
+      if (!elm || !mediaStream || !audioEnabled) return;
+
+      elm.srcObject = mediaStream;
+      elm
+        .play()
+        .then(() => setAudioAutoplayBlocked(false))
+        // Only the autoplay policy needs a click; a play() interrupted by the
+        // next stream change is not a permission problem.
+        .catch((error: unknown) =>
+          setAudioAutoplayBlocked((error as DOMException | undefined)?.name === "NotAllowedError"),
+        );
+
+      return () => {
+        elm.srcObject = null;
+        setAudioAutoplayBlocked(false);
+      };
+    },
+    [mediaStream, mediaStreamTrackVersion, audioEnabled],
   );
 
   // Setup Keyboard Events
@@ -498,15 +585,26 @@ export default function WebRTCVideo({
       // To prevent the video from being paused when the user presses a space in fullscreen mode
       videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
+      videoElmRefValue.addEventListener("mousedown", retryBlockedAudio, { signal });
 
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
+      // A stream resolution change only fires resize, so the store size would go stale
+      videoElmRefValue.addEventListener("resize", () => updateVideoSizeStore(videoElmRefValue), {
+        signal,
+      });
 
       return () => {
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler],
+    [
+      onVideoPlaying,
+      videoKeyDownHandler,
+      videoKeyUpHandler,
+      retryBlockedAudio,
+      updateVideoSizeStore,
+    ],
   );
 
   // Setup Mouse Events
@@ -530,9 +628,26 @@ export default function WebRTCVideo({
       });
 
       if (isRelativeMouseMode) {
-        videoElmRefValue.addEventListener(
+        containerRef.current?.addEventListener(
           "click",
-          () => {
+          (e: MouseEvent) => {
+            const target = e.target as Element;
+            if (target !== videoElmRefValue) {
+              const overlays = overlaysRef.current;
+              if (!hdmiError || !overlays?.contains(target)) return;
+
+              const isOnControl = Array.from(overlays.querySelectorAll("a, button")).some(el => {
+                const r = el.getBoundingClientRect();
+                return (
+                  e.clientX >= r.left &&
+                  e.clientX <= r.right &&
+                  e.clientY >= r.top &&
+                  e.clientY <= r.bottom
+                );
+              });
+              if (isOnControl) return;
+            }
+
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
             }
@@ -548,11 +663,21 @@ export default function WebRTCVideo({
       const preventContextMenu = (e: MouseEvent) => e.preventDefault();
       videoElmRefValue.addEventListener("contextmenu", preventContextMenu, { signal });
 
+      // Suppress browser Back/Forward navigation on X1/X2 mouse buttons so
+      // those presses are forwarded to the remote target instead.
+      const preventXButtonNav = (e: MouseEvent) => {
+        if (e.button === 3 || e.button === 4) e.preventDefault();
+      };
+      videoElmRefValue.addEventListener("mousedown", preventXButtonNav, { signal });
+      videoElmRefValue.addEventListener("mouseup", preventXButtonNav, { signal });
+      videoElmRefValue.addEventListener("auxclick", preventXButtonNav, { signal });
+
       return () => {
         abortController.abort();
       };
     },
     [
+      hdmiError,
       isPointerLockActive,
       isPointerLockPossible,
       requestPointerLock,
@@ -594,25 +719,32 @@ export default function WebRTCVideo({
 
   // Conditionally set the filter style so we don't fallback to software rendering if these values are default of 1.0
   const videoStyle = useMemo(() => {
-    const isDefault = videoSaturation === 1.0 && videoBrightness === 1.0 && videoContrast === 1.0;
-    return isDefault
-      ? {} // No filter if all settings are default (1.0)
-      : {
-          filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
-        };
-  }, [videoSaturation, videoBrightness, videoContrast]);
+    const style: React.CSSProperties = {};
+    if (videoSaturation !== 1.0 || videoBrightness !== 1.0 || videoContrast !== 1.0) {
+      style.filter = `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`;
+    }
+    if (videoScaling === "actual" && videoWidth && videoHeight) {
+      style.width = videoWidth / devicePixelRatio;
+      style.height = videoHeight / devicePixelRatio;
+      style.maxHeight = "100%";
+    }
+    return style;
+  }, [
+    videoSaturation,
+    videoBrightness,
+    videoContrast,
+    videoScaling,
+    videoWidth,
+    videoHeight,
+    devicePixelRatio,
+  ]);
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
-          <fieldset
-            disabled={peerConnection?.connectionState !== "connected"}
-            className="contents"
-          >
-            <Actionbar
-              requestFullscreen={requestFullscreen}
-            />
+          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <Actionbar requestFullscreen={requestFullscreen} />
             <MacroBar />
           </fieldset>
         </div>
@@ -634,9 +766,7 @@ export default function WebRTCVideo({
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
-                  <div
-                    className="relative mx-4 my-2 flex items-center justify-center overflow-hidden"
-                  >
+                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div
                       ref={fullscreenContainerRef}
                       className="relative flex h-full w-full items-center justify-center"
@@ -652,34 +782,46 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx(
-                          "h-full w-full object-contain transition-all duration-1000",
-                          {
-                            "cursor-none": settings.isCursorHidden,
-                            "pointer-events-none": isOcrMode,
-                            "opacity-0!":
-                              isVideoLoading ||
-                              hdmiError ||
-                              hasConnectionIssues ||
-                              peerConnectionState !== "connected",
-                            "opacity-60!": showPointerLockBar,
-                            "animate-slideUpFade": isPlaying,
-                          },
-                        )}
+                        className={cx("h-full w-full object-contain transition-all duration-1000", {
+                          "cursor-none": settings.isCursorHidden,
+                          "pointer-events-none": isOcrMode,
+                          "opacity-0!":
+                            isVideoLoading ||
+                            hdmiError ||
+                            hasConnectionIssues ||
+                            peerConnectionState !== "connected",
+                          "opacity-60!": showPointerLockBar,
+                          "animate-slideUpFade": isPlaying,
+                        })}
                       />
+                      {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />
                       {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
                           className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                         >
-                          <div className="relative h-full w-full rounded-md">
+                          <div ref={overlaysRef} className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                            <UpdateVideoPausedOverlay show={updatePausesVideo} />
                             <NoAutoplayPermissionsOverlay
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
                                 videoElm.current?.play();
+                                audioElm.current
+                                  ?.play()
+                                  .then(() => setAudioAutoplayBlocked(false))
+                                  .catch(() => undefined);
+                              }}
+                            />
+                            <AudioPermissionBanner
+                              show={isPlaying && audioEnabled && audioAutoplayBlocked && !hdmiError}
+                              onEnableAudio={() => {
+                                audioElm.current
+                                  ?.play()
+                                  .then(() => setAudioAutoplayBlocked(false))
+                                  .catch(() => undefined);
                               }}
                             />
                           </div>

@@ -3,6 +3,7 @@ package kvm
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -118,8 +119,10 @@ type Config struct {
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	VideoCodecPreference string               `json:"video_codec_preference"`
+	HideDisplayWhenIdle  bool                 `json:"host_display_disable_when_idle"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+	AudioEnabled         bool                 `json:"audio_enabled"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -175,6 +178,7 @@ var (
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
+		Audio:         true,
 	}
 )
 
@@ -259,8 +263,15 @@ func LoadConfig() {
 	defer file.Close()
 
 	// load and merge the default config with the user config
+	rawConfig, err := io.ReadAll(file)
+	if err != nil {
+		logger.Warn().Err(err).Msg("config file reading failed")
+		configSuccess.Set(0.0)
+		return
+	}
+
 	loadedConfig := defaultConfig
-	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
+	if err := json.Unmarshal(rawConfig, &loadedConfig); err != nil {
 		logger.Warn().Err(err).Msg("config file JSON parsing failed")
 		configSuccess.Set(0.0)
 		return
@@ -273,6 +284,12 @@ func LoadConfig() {
 
 	if loadedConfig.UsbDevices == nil {
 		loadedConfig.UsbDevices = getDefaultConfig().UsbDevices
+	} else if !usbDevicesConfigHasAudio(rawConfig) {
+		loadedConfig.UsbDevices.Audio = defaultUsbDevices.Audio
+	}
+
+	if !loadedConfig.UsbDevices.Audio {
+		loadedConfig.AudioEnabled = false
 	}
 
 	if loadedConfig.NetworkConfig == nil {
@@ -295,9 +312,19 @@ func LoadConfig() {
 	// Until rolling logs land, do not persist verbose levels across reboots.
 	loadedConfig.DefaultLogLevel = "WARN"
 
-	// Migrate old default EDID (Toshiba TSB, no CEA extension) to new JetKVM v1 EDID
-	const oldDefaultEDID = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
-	if loadedConfig.EdidString == "" || loadedConfig.EdidString == oldDefaultEDID {
+	// Migrate prior JetKVM defaults to the current native.DefaultEDID:
+	//   - Toshiba TSB chip default (pre-JetKVM-v1 EDID, no CEA extension)
+	//   - JetKVM v1 EDID without the 1280x720@120 DTD (the previous default that
+	//     advertised only 1080p60 + 720p60 in the base block)
+	//   - JetKVM v1 EDID with 720p120 in CTA extension only (NVIDIA didn't pick
+	//     it up; superseded by base-block DTD1 = 720p120)
+	const tsbDefaultEDID = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
+	const jkvV1NoHighRefresh = "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cf"
+	const jkvV1CtaOnly120 = "00ffffffffffff0028b4010001eeffc0302301038047287856ee91a3544c99260f5054000000d1c081c0318001010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fd00174c0f5111000a202020202020000000fc004a65744b564d2076310a202020011d020322d1431004012309070783010000e200cfe40d100401e305000065030c001000773300a050d02b2030203500122c2100001a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001c"
+	if loadedConfig.EdidString == "" ||
+		strings.EqualFold(loadedConfig.EdidString, tsbDefaultEDID) ||
+		strings.EqualFold(loadedConfig.EdidString, jkvV1NoHighRefresh) ||
+		strings.EqualFold(loadedConfig.EdidString, jkvV1CtaOnly120) {
 		loadedConfig.EdidString = native.DefaultEDID
 	}
 
@@ -309,6 +336,19 @@ func LoadConfig() {
 	configSuccessTime.SetToCurrentTime()
 
 	logger.Info().Str("path", configPath).Msg("config loaded")
+}
+
+func usbDevicesConfigHasAudio(rawConfig []byte) bool {
+	var payload struct {
+		UsbDevices map[string]json.RawMessage `json:"usb_devices"`
+	}
+
+	if err := json.Unmarshal(rawConfig, &payload); err != nil || payload.UsbDevices == nil {
+		return true
+	}
+
+	_, ok := payload.UsbDevices["audio"]
+	return ok
 }
 
 func SaveConfig() error {

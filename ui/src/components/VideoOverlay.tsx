@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { LuPlay } from "react-icons/lu";
+import { LuPlay, LuPower, LuVolumeX } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
 
 import { m } from "@localizations/messages.js";
@@ -10,6 +10,7 @@ import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
 import { useRTCStore, PostRebootAction } from "@/hooks/stores";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 import { isOnDevice } from "@/main";
@@ -213,14 +214,80 @@ export function PeerConnectionDisconnectedOverlay({ show }: PeerConnectionDiscon
   );
 }
 
+interface UpdateVideoPausedOverlayProps {
+  readonly show: boolean;
+}
+
+// Shown while a device without the video_during_update capability installs
+// an update: it pauses the stream, so the last frame would otherwise sit
+// there looking like a hang.
+export function UpdateVideoPausedOverlay({ show }: UpdateVideoPausedOverlayProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="absolute inset-0 z-10 aspect-video h-full w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <OverlayContent>
+            <div className="flex flex-col items-start gap-y-1">
+              <LoadingSpinner className="h-12 w-12 text-blue-800 dark:text-blue-200" />
+              <div className="space-y-2 text-left text-black dark:text-white">
+                <h2 className="text-xl font-bold">{m.video_overlay_update_paused_title()}</h2>
+                <p className="text-sm text-slate-700 dark:text-slate-300">
+                  {m.video_overlay_update_paused_description()}
+                </p>
+              </div>
+            </div>
+          </OverlayContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 interface HDMIErrorOverlayProps {
   readonly show: boolean;
   readonly hdmiState: string;
 }
 
 export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
+  const { send } = useJsonRpc();
+  const [wakeAttemptPending, setWakeAttemptPending] = useState(false);
+  const wakeAttemptTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNoSignal = hdmiState === "no_signal";
   const isOtherError = hdmiState === "no_lock" || hdmiState === "out_of_range";
+  const canWakeHost = isNoSignal;
+
+  useEffect(() => {
+    return () => {
+      if (wakeAttemptTimeoutRef.current) {
+        clearTimeout(wakeAttemptTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleWakeHost = useCallback(() => {
+    if (wakeAttemptPending) return;
+
+    setWakeAttemptPending(true);
+    if (wakeAttemptTimeoutRef.current) {
+      clearTimeout(wakeAttemptTimeoutRef.current);
+    }
+    wakeAttemptTimeoutRef.current = setTimeout(() => {
+      setWakeAttemptPending(false);
+      wakeAttemptTimeoutRef.current = null;
+    }, 2500);
+
+    void send("wakeHost", {}, resp => {
+      if ("error" in resp) {
+        console.error("Failed to wake host", resp.error);
+      }
+    });
+  }, [send, wakeAttemptPending]);
 
   return (
     <>
@@ -249,7 +316,21 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                         <li>{m.video_overlay_no_hdmi_adapter_compat()}</li>
                       </ul>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-x-2">
+                      {canWakeHost && (
+                        <Button
+                          onClick={handleWakeHost}
+                          loading={wakeAttemptPending}
+                          LeadingIcon={LuPower}
+                          text={
+                            wakeAttemptPending
+                              ? m.video_overlay_trying_wake()
+                              : m.video_overlay_try_wake()
+                          }
+                          size="SM"
+                          theme="primary"
+                        />
+                      )}
                       <LinkButton
                         to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"
@@ -362,6 +443,49 @@ export function NoAutoplayPermissionsOverlay({
   );
 }
 
+interface AudioPermissionBannerProps {
+  readonly show: boolean;
+  readonly onEnableAudio: () => void;
+}
+
+export function AudioPermissionBanner({ show, onEnableAudio }: AudioPermissionBannerProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="pointer-events-none absolute inset-x-2 top-2 z-10 flex justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <div
+            className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-md border border-slate-800/20 bg-white px-3 py-2 shadow-sm dark:border-slate-300/20 dark:bg-slate-800"
+            onKeyDown={event => event.stopPropagation()}
+            onKeyUp={event => event.stopPropagation()}
+          >
+            <span
+              role="status"
+              className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
+            >
+              <LuVolumeX aria-hidden="true" className="h-4 w-4 shrink-0" />
+              {m.video_audio_permission_required()}
+            </span>
+            <Button
+              type="button"
+              size="XS"
+              theme="light"
+              text={m.audio_enable_title()}
+              data-testid="enable-audio"
+              onClick={onEnableAudio}
+            />
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 interface PointerLockBarProps {
   readonly show: boolean;
 }
@@ -401,10 +525,14 @@ interface RebootingOverlayProps {
   readonly deviceId?: string; // Required for cloud mode to build versioned URLs
 }
 
+// Peer states that show the connection dropped. A peer retired by a signaling
+// close that will reconnect reports "connecting" (useWebSocketSignaling).
+const DROPPED_PEER_STATES = ["disconnected", "closed", "failed", "connecting"];
+
 export function RebootingOverlay({ show, postRebootAction, deviceId }: RebootingOverlayProps) {
   const { peerConnectionState } = useRTCStore();
   const [hasSeenDisconnect, setHasSeenDisconnect] = useState(
-    ["disconnected", "closed", "failed"].includes(peerConnectionState ?? ""),
+    DROPPED_PEER_STATES.includes(peerConnectionState ?? ""),
   );
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const isCheckingRef = useRef(false);
@@ -413,7 +541,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
   // Detect connection drop (confirms reboot started)
   useEffect(() => {
     if (!show || hasSeenDisconnect) return;
-    if (["disconnected", "closed", "failed"].includes(peerConnectionState ?? "")) {
+    if (DROPPED_PEER_STATES.includes(peerConnectionState ?? "")) {
       console.log("hasSeenDisconnect", hasSeenDisconnect);
       setHasSeenDisconnect(true);
     }
@@ -503,14 +631,17 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
       isCheckingRef.current = true;
 
       try {
-        const { appVersion } = await getLocalVersion({
+        const { appVersion, systemVersion, sku } = await getLocalVersion({
           attemptTimeoutMs: 2000,
         });
 
         if (cancelled) return;
 
         clearInterval(intervalId);
-        const targetUrl = buildCloudUrl(deviceId, appVersion, postRebootAction.redirectTo);
+        // The JetKVM Mini's firmware is one image with no separate app. Its
+        // cloud UI is published as <firmware version>-mini.
+        const version = sku?.startsWith("jetkvm-mini") ? `${systemVersion}-mini` : appVersion;
+        const targetUrl = buildCloudUrl(deviceId, version, postRebootAction.redirectTo);
         await redirectTo(targetUrl);
       } catch (err) {
         console.debug("Cloud reconnect check failed:", err);

@@ -15,10 +15,11 @@ cd "$SCRIPT_DIR"
 GOOS=linux GOARCH=amd64 go build -o "$BINARY" .
 
 echo "Deploying to $TARGET..."
+ssh "$TARGET" 'sudo -n true && { sudo -n pkill -x remote-agent 2>/dev/null || test $? = 1; } && sleep 0.5'
 scp "$BINARY" "$TARGET:/tmp/remote-agent"
 
 echo "Starting remote-agent on port $PORT..."
-ssh "$TARGET" "pkill -f '/tmp/remote-agent' 2>/dev/null || true; sleep 0.3; PORT=$PORT nohup /tmp/remote-agent > /tmp/remote-agent.log 2>&1 & disown"
+ssh "$TARGET" "nohup sudo -n PORT=$PORT /tmp/remote-agent </dev/null > /tmp/remote-agent.log 2>&1 & disown"
 
 sleep 1
 

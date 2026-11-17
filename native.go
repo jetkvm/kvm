@@ -9,7 +9,6 @@ import (
 	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/pion/webrtc/v4/pkg/media"
 )
 
 var (
@@ -34,6 +33,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		MaxRestartAttempts:   config.NativeMaxRestart,
 		OnNativeRestart: func() {
 			configureDisplayOnNativeRestart()
+			_ = reapplyHostDisplayAdvertisement("native_restarted")
 		},
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
@@ -67,12 +67,13 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 				nativeLogger.Warn().Str("event", event).Msg("unknown rpc event received")
 			}
 		},
-		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
-			if currentSession != nil {
-				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
-				if err != nil {
-					nativeLogger.Warn().Err(err).Msg("error writing sample")
-				}
+		OnVideoFrameReceived: func(frame []byte, pts time.Duration) {
+			session := currentSession
+			if session == nil {
+				return
+			}
+			if err := session.writeVideoFrame(frame, pts); err != nil {
+				nativeLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		},
 		GetSessionInfo: func() diagnostics.SessionInfo {
@@ -98,9 +99,7 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		nativeLogger.Fatal().Err(err).Msg("failed to start native proxy")
 	}
 	go func() {
-		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
-			nativeLogger.Warn().Err(err).Msg("error setting EDID")
-		}
+		_ = reapplyHostDisplayAdvertisement("native_started")
 	}()
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {

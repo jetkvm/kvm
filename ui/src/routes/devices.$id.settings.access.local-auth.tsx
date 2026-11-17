@@ -31,9 +31,12 @@ export default function SecurityAccessLocalAuthRoute() {
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const { modalView, setModalView } = useLocalAuthModalStore();
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const revalidator = useRevalidator();
 
   const handleCreatePassword = async (password: string, confirmPassword: string) => {
+    if (isSubmitting) return;
+
     if (password === "") {
       setError(m.local_auth_error_enter_password());
       return;
@@ -54,6 +57,8 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
       return;
     }
 
+    setError(null);
+    setIsSubmitting(true);
     try {
       const res = await api.POST("/auth/password-local", { password });
       if (res.ok) {
@@ -67,6 +72,8 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
     } catch (error) {
       console.error(error);
       setError(m.local_auth_error_setting_password());
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -75,6 +82,8 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
     newPassword: string,
     confirmNewPassword: string,
   ) => {
+    if (isSubmitting) return;
+
     if (oldPassword === "") {
       setError(m.local_auth_error_enter_old_password());
       return;
@@ -101,6 +110,8 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
       return;
     }
 
+    setError(null);
+    setIsSubmitting(true);
     try {
       const res = await api.PUT("/auth/password-local", {
         oldPassword,
@@ -118,15 +129,21 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
     } catch (error) {
       console.error(error);
       setError(m.local_auth_error_changing_password());
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDeletePassword = async (password: string) => {
+    if (isSubmitting) return;
+
     if (password === "") {
       setError(m.local_auth_error_enter_current_password());
       return;
     }
 
+    setError(null);
+    setIsSubmitting(true);
     try {
       const res = await api.DELETE("/auth/local-password", { password });
       if (res.ok) {
@@ -140,6 +157,8 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
     } catch (error) {
       console.error(error);
       setError(m.local_auth_error_disabling_password());
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -151,6 +170,7 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
             onSetPassword={handleCreatePassword}
             onCancel={onClose}
             error={error}
+            isSubmitting={isSubmitting}
           />
         )}
 
@@ -159,6 +179,7 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
             onDeletePassword={handleDeletePassword}
             onCancel={onClose}
             error={error}
+            isSubmitting={isSubmitting}
           />
         )}
 
@@ -167,6 +188,7 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
             onUpdatePassword={handleUpdatePassword}
             onCancel={onClose}
             error={error}
+            isSubmitting={isSubmitting}
           />
         )}
 
@@ -202,10 +224,12 @@ function CreatePasswordModal({
   onSetPassword,
   onCancel,
   error,
+  isSubmitting,
 }: {
   onSetPassword: (password: string, confirmPassword: string) => void;
   onCancel: () => void;
   error: string | null;
+  isSubmitting: boolean;
 }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -214,8 +238,10 @@ function CreatePasswordModal({
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <form
         className="space-y-4"
+        aria-busy={isSubmitting}
         onSubmit={e => {
           e.preventDefault();
+          onSetPassword(password, confirmPassword);
         }}
       >
         <div>
@@ -227,6 +253,7 @@ function CreatePasswordModal({
         <InputFieldWithLabel
           label={m.local_auth_create_new_password_label()}
           type="password"
+          disabled={isSubmitting}
           placeholder={m.local_auth_create_new_password_placeholder()}
           value={password}
           autoFocus
@@ -235,6 +262,7 @@ function CreatePasswordModal({
         <InputFieldWithLabel
           label={m.local_auth_confirm_new_password_label()}
           type="password"
+          disabled={isSubmitting}
           placeholder={m.local_auth_create_confirm_password_placeholder()}
           value={confirmPassword}
           onChange={e => setConfirmPassword(e.target.value)}
@@ -245,12 +273,16 @@ function CreatePasswordModal({
             size="SM"
             theme="primary"
             text={m.local_auth_create_secure_button()}
-            onClick={() => onSetPassword(password, confirmPassword)}
+            type="submit"
+            loading={isSubmitting}
+            disabled={isSubmitting}
           />
           <Button
             size="SM"
             theme="light"
             text={m.local_auth_create_not_now_button()}
+            type="button"
+            disabled={isSubmitting}
             onClick={onCancel}
           />
         </div>
@@ -264,16 +296,25 @@ function DeletePasswordModal({
   onDeletePassword,
   onCancel,
   error,
+  isSubmitting,
 }: {
   onDeletePassword: (password: string) => void;
   onCancel: () => void;
   error: string | null;
+  isSubmitting: boolean;
 }) {
   const [password, setPassword] = useState("");
 
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
-      <div className="space-y-4">
+      <form
+        className="space-y-4"
+        aria-busy={isSubmitting}
+        onSubmit={e => {
+          e.preventDefault();
+          onDeletePassword(password);
+        }}
+      >
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
             {m.local_auth_disable_local_device_protection_title()}
@@ -285,6 +326,7 @@ function DeletePasswordModal({
         <InputFieldWithLabel
           label={m.local_auth_current_password_label()}
           type="password"
+          disabled={isSubmitting}
           placeholder={m.local_auth_enter_current_password_placeholder()}
           value={password}
           onChange={e => setPassword(e.target.value)}
@@ -294,12 +336,21 @@ function DeletePasswordModal({
             size="SM"
             theme="danger"
             text={m.local_auth_disable_protection_button()}
-            onClick={() => onDeletePassword(password)}
+            type="submit"
+            loading={isSubmitting}
+            disabled={isSubmitting}
           />
-          <Button size="SM" theme="light" text={m.cancel()} onClick={onCancel} />
+          <Button
+            size="SM"
+            theme="light"
+            text={m.cancel()}
+            type="button"
+            disabled={isSubmitting}
+            onClick={onCancel}
+          />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
-      </div>
+      </form>
     </div>
   );
 }
@@ -308,10 +359,12 @@ function UpdatePasswordModal({
   onUpdatePassword,
   onCancel,
   error,
+  isSubmitting,
 }: {
   onUpdatePassword: (oldPassword: string, newPassword: string, confirmNewPassword: string) => void;
   onCancel: () => void;
   error: string | null;
+  isSubmitting: boolean;
 }) {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -321,8 +374,10 @@ function UpdatePasswordModal({
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <form
         className="space-y-4"
+        aria-busy={isSubmitting}
         onSubmit={e => {
           e.preventDefault();
+          onUpdatePassword(oldPassword, newPassword, confirmNewPassword);
         }}
       >
         <div>
@@ -336,6 +391,7 @@ function UpdatePasswordModal({
         <InputFieldWithLabel
           label={m.local_auth_current_password_label()}
           type="password"
+          disabled={isSubmitting}
           placeholder={m.local_auth_enter_current_password_placeholder()}
           value={oldPassword}
           onChange={e => setOldPassword(e.target.value)}
@@ -343,6 +399,7 @@ function UpdatePasswordModal({
         <InputFieldWithLabel
           label={m.local_auth_new_password_label()}
           type="password"
+          disabled={isSubmitting}
           placeholder={m.local_auth_enter_new_password_placeholder()}
           value={newPassword}
           onChange={e => setNewPassword(e.target.value)}
@@ -350,6 +407,7 @@ function UpdatePasswordModal({
         <InputFieldWithLabel
           label={m.local_auth_confirm_new_password_label()}
           type="password"
+          disabled={isSubmitting}
           placeholder={m.local_auth_reenter_new_password_placeholder()}
           value={confirmNewPassword}
           onChange={e => setConfirmNewPassword(e.target.value)}
@@ -359,9 +417,18 @@ function UpdatePasswordModal({
             size="SM"
             theme="primary"
             text={m.local_auth_update_password_button()}
-            onClick={() => onUpdatePassword(oldPassword, newPassword, confirmNewPassword)}
+            type="submit"
+            loading={isSubmitting}
+            disabled={isSubmitting}
           />
-          <Button size="SM" theme="light" text={m.cancel()} onClick={onCancel} />
+          <Button
+            size="SM"
+            theme="light"
+            text={m.cancel()}
+            type="button"
+            disabled={isSubmitting}
+            onClick={onCancel}
+          />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>

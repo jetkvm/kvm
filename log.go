@@ -28,6 +28,7 @@ var (
 	terminalLogger  = logging.GetSubsystemLogger("terminal")
 	cdcACMLogger    = logging.GetSubsystemLogger("cdcacm")
 	displayLogger   = logging.GetSubsystemLogger("display")
+	audioLogger     = logging.GetSubsystemLogger("audio")
 	wolLogger       = logging.GetSubsystemLogger("wol")
 	usbLogger       = logging.GetSubsystemLogger("usb")
 	tailscaleLogger = logging.GetSubsystemLogger("tailscale")

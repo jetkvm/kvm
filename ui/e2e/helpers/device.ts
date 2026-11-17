@@ -1,0 +1,360 @@
+import { expect, test } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
+import type {} from "../../src/test/testHooks";
+
+export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const status = await page
+          .evaluate(() => {
+            const hooks = window.__kvmTestHooks;
+            if (!hooks) {
+              return { hooks: false, webrtc: false, hid: false };
+            }
+            return {
+              hooks: true,
+              webrtc: hooks.isWebRTCConnected(),
+              hid: hooks.isHidRpcReady(),
+            };
+          })
+          .catch(error => {
+            // A redirect/reload can replace the document between poll attempts.
+            // Keep waiting for readiness in the new document; closed pages and
+            // other evaluation failures must still fail the test.
+            if (String(error).includes("Execution context was destroyed")) return null;
+            throw error;
+          });
+        return !!status && status.hooks && status.webrtc && status.hid;
+      },
+      {
+        message: "Waiting for WebRTC connection and HID RPC to be ready",
+        timeout,
+        intervals: [200, 500, 1000],
+      },
+    )
+    .toBe(true);
+}
+
+/**
+ * Wait until JSON-RPC over WebRTC actually works, verified by a getDeviceID
+ * round-trip. Each attempt claims the WebRTC slot ("Use Here"), waits for the
+ * connection, and probes RPC; on failure it reloads and retries until the
+ * deadline, so a slow reconnect (e.g. after a reboot) recovers instead of
+ * flaking like a single fixed-window wait would.
+ */
+export async function ensureRpcReady(
+  page: Page,
+  {
+    timeoutMs = 60000,
+    navigateFirst = false,
+  }: { timeoutMs?: number; navigateFirst?: boolean } = {},
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  for (let attempt = 0; Date.now() < deadline; attempt++) {
+    try {
+      // First attempt trusts the caller's existing navigation; retries reload.
+      if (attempt > 0 || navigateFirst) {
+        await page.goto("/", { waitUntil: "networkidle", timeout: 20000 });
+      }
+      const useHere = page.getByRole("button", { name: "Use Here" });
+      if (await useHere.isVisible({ timeout: 200 }).catch(() => false)) {
+        // The dialog stays until the page has navigated away from it. After
+        // the caller's own "Use Here" click that navigation can end while this
+        // click waits for the button to be stable, and a click without a
+        // timeout then waits for a button that does not come back.
+        await useHere.click({ timeout: 5000 }).catch(async (error: unknown) => {
+          if (await useHere.isVisible()) throw error;
+        });
+        await page.waitForTimeout(1000);
+      }
+      await waitForWebRTCReady(page, Math.min(15000, Math.max(5000, deadline - Date.now())));
+      await rawJsonRpc(page, "getDeviceID", {}, 5000);
+      return;
+    } catch (err) {
+      lastError = err;
+      await page.waitForTimeout(1000);
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Page never became RPC-ready within ${timeoutMs}ms: ${detail}`);
+}
+
+/** Open a connected page, run `fn` against it, close it. */
+export async function withRpcPage<T>(browser: Browser, fn: (page: Page) => Promise<T>): Promise<T> {
+  const context = await browser.newContext({ baseURL: process.env.JETKVM_URL });
+  const page = await context.newPage();
+  try {
+    // ensureRpcReady navigates with a bounded goto and retries; a bare
+    // goto(networkidle) has no timeout and hung on a device still settling.
+    await ensureRpcReady(page, { timeoutMs: 90_000, navigateFirst: true });
+    return await fn(page);
+  } finally {
+    await page.close().catch(() => undefined);
+    await context.close().catch(() => undefined);
+  }
+}
+
+/** Get the current app version from the /metrics endpoint. */
+export async function getCurrentVersion(page: Page): Promise<string | null> {
+  return page.evaluate(async () => {
+    try {
+      const response = await fetch("/metrics");
+      if (!response.ok) return null;
+
+      const text = await response.text();
+      // Look for promhttp_metric_handler_requests_total or similar app-specific metrics
+      // The app version is in the build_info metric, not go_info
+      const match = text.match(/build_info.*version="([^"]+)"/);
+      if (match) return match[1];
+
+      // Fallback: try to find any version that's not the go version
+      const allVersions = Array.from(text.matchAll(/version="([^"]+)"/g));
+      for (const m of allVersions) {
+        const ver = m[1];
+        // Skip go versions
+        if (!ver.startsWith("go1.")) {
+          return ver;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Failed to fetch version from /metrics:", error);
+      return null;
+    }
+  });
+}
+
+/**
+ * Reconnect a page after a device reboot: wait for the device to actually go
+ * down and come back (waitBeforeRetry), then retry until RPC works.
+ */
+export async function reconnectAfterReboot(
+  page: Page,
+  waitBeforeRetry = 2000,
+  timeoutMs = 120_000,
+): Promise<void> {
+  await page.waitForTimeout(waitBeforeRetry);
+  await ensureRpcReady(page, { timeoutMs, navigateFirst: true });
+}
+
+/**
+ * Wait until /device/status has failed several times in a row, or the app
+ * reports a new process start time. A single miss is not a reboot: a busy
+ * device (flashing an image, rebuilding video) can answer late, and a short
+ * probe times out although it is still up. A fast reboot can come back before
+ * three misses, which is what the start time is for.
+ */
+export async function waitForDeviceDown(
+  page: Page,
+  message: string,
+  timeoutMs: number,
+  { minMisses = 3 }: { minMisses?: number } = {},
+): Promise<void> {
+  const processStart = async () => {
+    try {
+      const response = await page.request.get("/metrics", { timeout: 2000 });
+      return response.ok()
+        ? (await response.text()).match(/^process_start_time_seconds\s+(\S+)/m)?.[1]
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const startedAt = await processStart();
+  let misses = 0;
+  await expect
+    .poll(
+      async () => {
+        let up = false;
+        try {
+          const response = await page.request.get("/device/status", { timeout: 2000 });
+          up = response.ok();
+        } catch {
+          up = false;
+        }
+        misses = up ? 0 : misses + 1;
+        if (misses >= minMisses) return true;
+        if (!up || startedAt === undefined) return false;
+        const now = await processStart();
+        return now !== undefined && now !== startedAt;
+      },
+      { message, timeout: timeoutMs, intervals: [1000] },
+    )
+    .toBe(true);
+}
+
+/**
+ * Send reboot once, observe shutdown, then reconnect without resending it.
+ * `timeoutMs` bounds the reconnect after the device went down.
+ */
+export async function rebootAndReconnect(page: Page, timeoutMs = 90_000): Promise<void> {
+  await ensureRpcReady(page, { timeoutMs: 20_000 });
+  await Promise.all([
+    rawJsonRpc(page, "reboot", { force: true }, 5000).catch(error => {
+      const message = String(error);
+      if (!RPC_CHANNEL_DROPPED.test(message) && !message.includes("RPC timeout for reboot"))
+        throw error;
+      // A lost reply is acceptable only if the shutdown observer below succeeds.
+    }),
+    waitForDeviceDown(page, "device must go down after the single reboot request", 30_000),
+  ]);
+  await reconnectAfterReboot(page, 0, timeoutMs);
+}
+
+// A method the device does not implement answers "Method not found". Tests
+// for that feature skip on it instead of failing: the suite also runs against
+// older firmware during upgrade testing, and a missing method is a version
+// fact, not a regression. Probe with a getter; the call is made for real.
+export async function rpcAvailable(page: Page, method: string): Promise<boolean> {
+  try {
+    await callJsonRpc(page, method, {});
+    return true;
+  } catch (error) {
+    return !/method not found/i.test(String(error));
+  }
+}
+
+export async function skipWithoutRpc(page: Page, method: string, feature: string): Promise<void> {
+  test.skip(!(await rpcAvailable(page, method)), `device has no ${feature} (${method})`);
+}
+
+export async function skipWithoutCapability(page: Page, capability: string): Promise<void> {
+  const capabilities = (await callJsonRpc(page, "getDeviceCapabilities")) as string[];
+  test.skip(
+    !capabilities.includes(capability),
+    `device does not report ${capability} (getDeviceCapabilities: ${JSON.stringify(capabilities)})`,
+  );
+}
+
+export async function skipWithoutVideoCodec(page: Page, codec: string): Promise<void> {
+  const codecs = (await callJsonRpc(page, "getSupportedVideoCodecs")) as string[];
+  test.skip(
+    !codecs.includes(codec),
+    `device does not encode ${codec} (getSupportedVideoCodecs: ${JSON.stringify(codecs)})`,
+  );
+}
+
+// Prometheus metrics are optional: a device without /metrics answers 404, and
+// tests that read counters from it skip. Any other failure is an error.
+export async function skipWithoutMetrics(page: Page): Promise<void> {
+  const response = await page.request.get("/metrics", { timeout: 10_000 });
+  if (response.status() !== 404 && !response.ok())
+    throw new Error(`/metrics returned ${response.status()}`);
+  test.skip(response.status() === 404, "device has no /metrics endpoint");
+}
+
+export function getDeviceHost(): string {
+  const url = process.env.JETKVM_URL;
+  if (!url) {
+    throw new Error("JETKVM_URL environment variable is not set");
+  }
+  return new URL(url).hostname;
+}
+
+/**
+ * Ensure the device is set up with no-password local auth via the HTTP setup API.
+ * No-op if already set up without a password. Used by e2e bootstrap.
+ */
+export async function ensureNoPasswordViaAPI(): Promise<void> {
+  const origin = new URL(process.env.JETKVM_URL!).origin;
+  const response = await fetch(`${origin}/device/status`);
+  if (!response.ok) throw new Error(`Setup status failed: ${response.status}`);
+  const status = (await response.json()) as {
+    isSetup: boolean;
+    factoryResetPending?: boolean;
+    factoryResetError?: string;
+  };
+  if (status.factoryResetPending)
+    throw new Error(
+      `Factory reset is pending: ${status.factoryResetError ?? "wait for completion"}`,
+    );
+  if (status.isSetup) {
+    const probe = await fetch(new URL("/device", process.env.JETKVM_URL!));
+    if (probe.status === 401)
+      throw new Error(
+        "This host suite requires no-password mode. Disable protection with the current password before running it; no SSH reset is attempted.",
+      );
+    if (!probe.ok) throw new Error(`Device probe failed: ${probe.status}`);
+    return;
+  }
+
+  const res = await fetch(`${origin}/device/setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: origin },
+    body: JSON.stringify({ localAuthMode: "noPassword" }),
+  });
+  if (!res.ok) throw new Error(`Setup POST failed: ${res.status}`);
+}
+
+export async function waitForDeviceReady(host: string, timeout = 60000): Promise<void> {
+  const startTime = Date.now();
+  const url = `http://${host}`;
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (response.ok || response.status === 401 || response.status === 302) {
+        // Device is responding (even if it redirects to login)
+        return;
+      }
+    } catch {
+      // Device not ready yet, continue waiting
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`Device at ${host} did not become ready within ${timeout}ms`);
+}
+
+// Stress tests must surface a dropped channel instead of reconnecting and
+// repeating the operation. Most functional tests should use callJsonRpc.
+export async function rawJsonRpc(
+  page: Page,
+  method: string,
+  params: Record<string, unknown>,
+  timeoutMs?: number,
+): Promise<unknown> {
+  return page.evaluate(
+    ({ method, params, timeoutMs }) => {
+      return new Promise((resolve, reject) => {
+        const hooks = window.__kvmTestHooks;
+        if (!hooks) return reject(new Error("Test hooks not available"));
+        hooks.sendJsonRpc(
+          method,
+          params,
+          (resp: { error?: { message: string; data?: string }; result?: unknown }) => {
+            if (resp.error)
+              reject(
+                new Error(`${resp.error.message}${resp.error.data ? `: ${resp.error.data}` : ""}`),
+              );
+            else resolve(resp.result);
+          },
+          timeoutMs,
+        );
+      });
+    },
+    { method, params, timeoutMs },
+  );
+}
+
+const RPC_CHANNEL_DROPPED =
+  /RPC data channel not available|Test hooks not available|Execution context was destroyed/;
+
+export async function callJsonRpc(
+  page: Page,
+  method: string,
+  params: Record<string, unknown> = {},
+  timeoutMs?: number,
+): Promise<unknown> {
+  try {
+    return await rawJsonRpc(page, method, params, timeoutMs);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!RPC_CHANNEL_DROPPED.test(msg)) throw err;
+    await ensureRpcReady(page, { timeoutMs: 20000 });
+    return rawJsonRpc(page, method, params, timeoutMs);
+  }
+}

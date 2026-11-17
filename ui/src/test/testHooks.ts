@@ -13,6 +13,7 @@ import { KeyboardLedState, KeysDownState } from "@/hooks/stores";
 /** Internal handlers set by React components (prefixed with _ to indicate internal use) */
 interface TestHooksInternal {
   _handleKeyPress?: (key: number, press: boolean) => void;
+  _pauseKeepAlive?: (ms: number) => void;
   _handleAbsMouseMove?: (x: number, y: number, buttons: number) => void;
   _getKeyboardLedState?: () => KeyboardLedState;
   _getKeysDownState?: () => KeysDownState;
@@ -30,6 +31,10 @@ export interface KvmTestHooks extends TestHooksInternal {
   getKeyboardLedState: () => KeyboardLedState | null;
   getKeysDownState: () => KeysDownState | null;
   sendKeypress: (key: number, press: boolean) => void;
+  /**
+   * Test-only: pause keypress keepalives while preserving held keys.
+   */
+  pauseKeepAlive: (ms: number) => void;
   sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
   sendJsonRpc: (
     method: string,
@@ -56,6 +61,7 @@ export interface KvmTestHooks extends TestHooksInternal {
   isWebRTCConnected: () => boolean;
   isHidRpcReady: () => boolean;
   isVideoStreamActive: () => boolean;
+  isAudioStreamActive: () => boolean;
   getInboundVideoStats: () => Promise<{
     bytesReceived: number;
     timestamp: number;
@@ -67,6 +73,15 @@ export interface KvmTestHooks extends TestHooksInternal {
     totalDecodeTime: number;
     freezeCount: number;
     totalFreezesDuration: number;
+    codecMimeType: string;
+  } | null>;
+  getInboundAudioStats: () => Promise<{
+    bytesReceived: number;
+    packetsReceived: number;
+    timestamp: number;
+    audioLevel: number;
+    totalAudioEnergy: number;
+    totalSamplesDuration: number;
     codecMimeType: string;
   } | null>;
 }
@@ -94,6 +109,14 @@ export function initTestHooks(): void {
         hooks._handleKeyPress(key, press);
       } else {
         console.warn("[E2E] sendKeypress called but no handler registered");
+      }
+    },
+
+    pauseKeepAlive: (ms: number) => {
+      if (hooks._pauseKeepAlive) {
+        hooks._pauseKeepAlive(ms);
+      } else {
+        console.warn("[E2E] pauseKeepAlive called but no handler registered");
       }
     },
 
@@ -264,6 +287,13 @@ export function initTestHooks(): void {
       return videoTracks.length > 0 && videoTracks[0].readyState === "live";
     },
 
+    isAudioStreamActive: () => {
+      const stream = hooks._getMediaStream?.();
+      if (!stream) return false;
+      const audioTracks = stream.getAudioTracks();
+      return audioTracks.length > 0 && audioTracks[0].readyState === "live";
+    },
+
     getInboundVideoStats: async () => {
       const pc = hooks._getPeerConnection?.();
       if (!pc) return null;
@@ -304,7 +334,46 @@ export function initTestHooks(): void {
       if (result && codecId) {
         const codecReport = stats.get(codecId);
         if (codecReport && codecReport.mimeType) {
-          result.codecMimeType = codecReport.mimeType;
+          // TypeScript does not track the assignment inside stats.forEach.
+          (result as { codecMimeType: string }).codecMimeType = codecReport.mimeType;
+        }
+      }
+      return result;
+    },
+
+    getInboundAudioStats: async () => {
+      const pc = hooks._getPeerConnection?.();
+      if (!pc) return null;
+      const stats = await pc.getStats();
+      let result: {
+        bytesReceived: number;
+        packetsReceived: number;
+        timestamp: number;
+        audioLevel: number;
+        totalAudioEnergy: number;
+        totalSamplesDuration: number;
+        codecMimeType: string;
+      } | null = null;
+      let codecId: string | null = null;
+      stats.forEach(report => {
+        if (report.type === "inbound-rtp" && report.kind === "audio") {
+          codecId = report.codecId ?? null;
+          result = {
+            bytesReceived: report.bytesReceived ?? 0,
+            packetsReceived: report.packetsReceived ?? 0,
+            timestamp: report.timestamp,
+            audioLevel: report.audioLevel ?? 0,
+            totalAudioEnergy: report.totalAudioEnergy ?? 0,
+            totalSamplesDuration: report.totalSamplesDuration ?? 0,
+            codecMimeType: "",
+          };
+        }
+      });
+      if (result && codecId) {
+        const codecReport = stats.get(codecId);
+        if (codecReport && codecReport.mimeType) {
+          // TypeScript does not track the assignment inside stats.forEach.
+          (result as { codecMimeType: string }).codecMimeType = codecReport.mimeType;
         }
       }
       return result;
@@ -321,6 +390,7 @@ export function initTestHooks(): void {
  */
 export function registerTestHandlers(handlers: {
   handleKeyPress: (key: number, press: boolean) => void;
+  pauseKeepAlive: (ms: number) => void;
   handleAbsMouseMove: (x: number, y: number, buttons: number) => void;
   getKeyboardLedState: () => KeyboardLedState;
   getKeysDownState: () => KeysDownState;
@@ -336,6 +406,7 @@ export function registerTestHandlers(handlers: {
   if (!window.__kvmTestHooks) return;
 
   window.__kvmTestHooks._handleKeyPress = handlers.handleKeyPress;
+  window.__kvmTestHooks._pauseKeepAlive = handlers.pauseKeepAlive;
   window.__kvmTestHooks._handleAbsMouseMove = handlers.handleAbsMouseMove;
   window.__kvmTestHooks._getKeyboardLedState = handlers.getKeyboardLedState;
   window.__kvmTestHooks._getKeysDownState = handlers.getKeysDownState;
@@ -356,6 +427,7 @@ export function cleanupTestHooks(): void {
   if (!window.__kvmTestHooks) return;
 
   window.__kvmTestHooks._handleKeyPress = undefined;
+  window.__kvmTestHooks._pauseKeepAlive = undefined;
   window.__kvmTestHooks._handleAbsMouseMove = undefined;
   window.__kvmTestHooks._getKeyboardLedState = undefined;
   window.__kvmTestHooks._getKeysDownState = undefined;

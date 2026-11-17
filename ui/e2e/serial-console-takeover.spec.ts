@@ -1,0 +1,189 @@
+import { test, expect, type Page } from "@playwright/test";
+import {
+  callJsonRpc,
+  ensureNoPasswordViaAPI,
+  skipWithoutRpc,
+  waitForWebRTCReady,
+  withRpcPage,
+} from "./helpers";
+
+// Every session opens a serial data channel and the device makes it the
+// console broker's sink. On a takeover the device closes the replaced peer
+// connection a second after answering the new one, so the old channel's
+// close lands after the new channel became the sink. That close used to
+// clear the sink unconditionally and the new session's console went silent.
+
+declare global {
+  interface Window {
+    __e2eSerial?: { dc: RTCDataChannel; rx: string[] };
+  }
+}
+
+// Hooks the page's own serial channel so the test can watch what the device
+// sends on it without going through the terminal UI.
+async function hookSerialChannel(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const create = RTCPeerConnection.prototype.createDataChannel;
+    RTCPeerConnection.prototype.createDataChannel = function (label, init) {
+      const dc = create.call(this, label, init);
+      if (label === "serial") {
+        const hook = { dc, rx: [] as string[] };
+        dc.addEventListener("message", e => hook.rx.push(String(e.data)));
+        window.__e2eSerial = hook;
+      }
+      return dc;
+    };
+  });
+}
+
+// The device writes only to the channel that owns the sink. With echo on,
+// what a session sends comes back to it through the broker, which makes sink
+// ownership observable end to end.
+async function expectEcho(page: Page, tag: string): Promise<void> {
+  const text = `${tag}_${Date.now()}`;
+  await page.evaluate(text => {
+    const hook = window.__e2eSerial;
+    if (!hook || hook.dc.readyState !== "open") throw new Error("serial channel not open");
+    hook.dc.send(JSON.stringify({ type: "serial", data: `${text}\n` }));
+  }, text);
+  await expect
+    .poll(
+      async () =>
+        (await page.evaluate(() => window.__e2eSerial?.rx ?? [])).some(m => m.includes(text)),
+      {
+        message: `${tag}: echo should arrive on this session's serial channel`,
+        timeout: 5_000,
+      },
+    )
+    .toBe(true);
+}
+
+// The counterpart of expectEcho: while another extension owns the port there
+// is no console, so what a session sends must not come back.
+async function expectNoEcho(page: Page, tag: string): Promise<void> {
+  const text = `${tag}_${Date.now()}`;
+  await page.evaluate(text => {
+    window.__e2eSerial?.dc.send(JSON.stringify({ type: "serial", data: `${text}\n` }));
+  }, text);
+  await page.waitForTimeout(1_000);
+  const rx = await page.evaluate(() => window.__e2eSerial?.rx ?? []);
+  expect(
+    rx.some(m => m.includes(text)),
+    `${tag}: no console echo`,
+  ).toBe(false);
+}
+
+// The device's built-in defaults; getSerialSettings errors until a settings
+// file exists.
+const DEFAULT_SERIAL_SETTINGS = {
+  baudRate: 115200,
+  dataBits: 8,
+  parity: "none",
+  stopBits: "1",
+  terminator: { label: "LF (\\n)", value: "\n" },
+  hideSerialSettings: false,
+  enableEcho: false,
+  normalizeMode: "names",
+  normalizeLineEnd: "keep",
+  tabRender: "",
+  preserveANSI: true,
+  showNLTag: false,
+  buttons: [],
+};
+
+test.describe("serial console sink across a session takeover", () => {
+  let settingsChanged = false;
+  let settings: Record<string, unknown> = DEFAULT_SERIAL_SETTINGS;
+  let extension: string | undefined;
+
+  test.beforeAll(async ({ browser }) => {
+    await ensureNoPasswordViaAPI();
+    await withRpcPage(browser, async page => {
+      await skipWithoutRpc(page, "getSerialSettings", "serial console");
+      try {
+        settings = (await callJsonRpc(page, "getSerialSettings")) as Record<string, unknown>;
+      } catch {
+        // No settings file yet: the device runs on its defaults.
+      }
+      // The console reads the extension port only while it is the active
+      // extension.
+      extension = (await callJsonRpc(page, "getActiveExtension")) as string;
+      await callJsonRpc(page, "setActiveExtension", {
+        extensionId: "serial-console",
+      });
+      await callJsonRpc(page, "setSerialSettings", {
+        settings: { ...settings, enableEcho: true },
+      });
+      settingsChanged = true;
+    });
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (extension === undefined) return;
+    await withRpcPage(browser, async page => {
+      if (settingsChanged) await callJsonRpc(page, "setSerialSettings", { settings });
+      await callJsonRpc(page, "setActiveExtension", { extensionId: extension });
+    });
+  });
+
+  // The UI opens the serial channel once per connection, before the user
+  // selects an extension. The console must reach that channel when it is
+  // selected later, and must stay off the port while the ATX or DC extension
+  // reads it.
+  test("the console follows the active extension on an open channel @serial", async ({
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+
+    const page = await browser.newPage();
+    await hookSerialChannel(page);
+    await page.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(page);
+    await expectEcho(page, "initial");
+
+    for (const other of ["atx-power", "dc-power", "", "atx-power"]) {
+      await callJsonRpc(page, "setActiveExtension", { extensionId: other });
+      expect(await callJsonRpc(page, "getActiveExtension")).toBe(other);
+      await expectNoEcho(page, `while_${other || "none"}`);
+
+      await callJsonRpc(page, "setActiveExtension", {
+        extensionId: "serial-console",
+      });
+      await expectEcho(page, `after_${other || "none"}`);
+    }
+
+    await page.close();
+  });
+
+  test("the new session keeps its serial sink when the replaced session's channel closes @serial", async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+
+    const first = await browser.newPage();
+    await hookSerialChannel(first);
+    await first.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(first);
+    await expectEcho(first, "first");
+
+    const second = await browser.newPage();
+    await hookSerialChannel(second);
+    await second.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(second);
+    await expectEcho(second, "second");
+
+    // The device closes the first peer connection a second after the
+    // takeover. The browser reports the channel closed once that happened.
+    await expect
+      .poll(() => first.evaluate(() => window.__e2eSerial?.dc.readyState), {
+        message: "replaced session's serial channel should close",
+        timeout: 15_000,
+      })
+      .toBe("closed");
+
+    await expectEcho(second, "after_close");
+
+    await first.close();
+    await second.close();
+  });
+});

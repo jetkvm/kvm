@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,17 +10,37 @@ import (
 
 var gadget *usbgadget.UsbGadget
 
+func effectiveUsbDevices() *usbgadget.Devices {
+	if config == nil || config.UsbDevices == nil {
+		return nil
+	}
+
+	devices := *config.UsbDevices
+	return &devices
+}
+
+func effectiveAudioEnabled() bool {
+	return config != nil &&
+		config.UsbDevices != nil &&
+		config.AudioEnabled &&
+		config.UsbDevices.Audio
+}
+
 // initUsbGadget initializes the USB gadget.
 // call it only after the config is loaded.
 func initUsbGadget() {
 	gadget = usbgadget.NewUsbGadget(
 		"jetkvm",
-		config.UsbDevices,
+		effectiveUsbDevices(),
 		config.UsbConfig,
 		usbLogger,
 	)
 
 	setUSBRecoveryTimer(time.Now())
+
+	if present, known := gadget.IsUsbHostPresent(); known {
+		lastHostOK = present
+	}
 
 	go func() {
 		for {
@@ -37,11 +58,6 @@ func initUsbGadget() {
 	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
 		if currentSession != nil {
 			currentSession.enqueueKeysDownState(state)
-		}
-	})
-
-	gadget.SetOnKeepAliveReset(func() {
-		if currentSession != nil {
 			currentSession.resetKeepAliveTime()
 		}
 	})
@@ -89,6 +105,33 @@ func rpcWheelReport(wheelY int8, wheelX int8) error {
 	})
 }
 
+func rpcWakeHost() error {
+	if gadget == nil {
+		return fmt.Errorf("USB gadget is not initialized")
+	}
+
+	state := gadget.GetUsbState()
+	if !usbgadget.IsUSBStateAttached(state) {
+		return nil
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := gadget.WakeReport(true); err != nil && !usbgadget.IsHIDTemporarilyUnavailableError(err) {
+			return err
+		}
+
+		time.Sleep(50 * time.Millisecond)
+
+		if err := gadget.WakeReport(false); err != nil && !usbgadget.IsHIDTemporarilyUnavailableError(err) {
+			return err
+		}
+
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	return nil
+}
+
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
 	return gadget.GetKeyboardState()
 }
@@ -101,15 +144,19 @@ var (
 	usbState     = usbgadget.USBStateUnknown
 	usbStateLock sync.Mutex
 
-	usbEmulationDesired = true
-	lastUSBRecoveryTry  time.Time
+	usbEmulationDesired     = true
+	lastUSBRecoveryTry      time.Time
+	lastHidWriteRecoveryTry time.Time
+	lastHostOK              bool
+	sessionlessSoftCycles   int
+	correctiveRebinds       int
 )
 
 func usbReadyForHidReports() bool {
 	usbStateLock.Lock()
 	state := usbState
 	usbStateLock.Unlock()
-	return state != usbgadget.USBStateNotAttached && state != usbgadget.USBStateUnknown
+	return usbgadget.IsUSBStateAttached(state)
 }
 
 func rpcGetUSBState() (state string) {
@@ -134,9 +181,7 @@ func attemptUSBRecovery(state string) string {
 	now := time.Now()
 
 	usbStateLock.Lock()
-	desired := usbEmulationDesired
-	lastAttempt := lastUSBRecoveryTry
-	shouldRecover := usbgadget.ShouldAttemptUSBRecovery(state, desired, lastAttempt, now)
+	shouldRecover := usbgadget.ShouldAttemptUSBRecovery(state, usbEmulationDesired, lastUSBRecoveryTry, now)
 	if shouldRecover {
 		lastUSBRecoveryTry = now
 	}
@@ -146,47 +191,64 @@ func attemptUSBRecovery(state string) string {
 		return state
 	}
 
-	usbLogger.Warn().Msg("USB gadget is detached while USB emulation should be enabled; rebinding USB gadget")
+	udcBound, _ := gadget.IsUDCBound()
+	gadgetAttached := gadget.IsGadgetAttachedToUDC()
 
-	if err := gadget.RebindUsb(true); err != nil {
-		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget by rebinding USB device controller")
-		return state
-	}
+	if udcBound && gadgetAttached {
+		hostPresent, hostKnown := gadget.IsUsbHostPresent()
+		hostOK := hostKnown && hostPresent
 
-	// Clear stale /dev/hidg* handles from the pre-rebind gadget instance.
-	// The next write/open must use the newly recreated device nodes.
-	gadget.ResetHIDFiles()
+		usbStateLock.Lock()
+		hostAppeared := hostOK && !lastHostOK
+		lastHostOK = hostOK
+		sessionlessSoftCycles++
+		escalate := hostOK && (sessionlessSoftCycles == 6 || sessionlessSoftCycles%60 == 0)
+		usbStateLock.Unlock()
 
-	// After rebind, the kernel recreates /dev/hidg* but the character
-	// devices take several seconds to become usable (ENXIO until the
-	// function driver attaches). Retry the keyboard HID file open with
-	// increasing delays up to ~20 seconds total.
-	delays := []time.Duration{
-		1 * time.Second,
-		1 * time.Second,
-		2 * time.Second,
-		2 * time.Second,
-		3 * time.Second,
-		3 * time.Second,
-		4 * time.Second,
-		4 * time.Second,
-	}
-	tryReopenKeyboard := func(openDelays []time.Duration, reason string) bool {
-		for _, delay := range openDelays {
-			time.Sleep(delay)
-			if err := gadget.ReopenKeyboardHidFile(); err == nil {
-				usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened successfully after USB recovery")
-				return true
-			}
+		if escalate {
+			usbLogger.Warn().
+				Int("soft_cycles", sessionlessSoftCycles).
+				Msg("host present but no session after repeated soft reconnects; escalating to UDC rebind")
 		}
-		return false
+
+		if !hostAppeared && !escalate {
+			usbLogger.Debug().
+				Bool("host_present", hostPresent).
+				Bool("host_known", hostKnown).
+				Msg("no USB host session; soft-reconnecting gadget")
+			if err := gadget.SoftReconnect(); err == nil {
+				return gadget.GetUsbState()
+			}
+			usbLogger.Warn().Msg("soft reconnect failed; falling back to UDC rebind")
+		}
 	}
 
-	if tryReopenKeyboard(delays, "udc_rebind") {
-		return gadget.GetUsbState()
+	usbLogger.Warn().
+		Bool("udc_bound", udcBound).
+		Bool("gadget_attached", gadgetAttached).
+		Msg("USB gadget is detached while USB emulation should be enabled; rebinding USB gadget")
+
+	// A config left with no linked function cannot be bound to a UDC, so the
+	// rebind fails with EINVAL and every retry fails the same way. Fall
+	// through to the reconfigure below, which relinks the functions and is
+	// the only thing that repairs that state.
+	rebound := true
+	if err := gadget.RebindUsb(true); err != nil {
+		rebound = false
+		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget by rebinding USB device controller; attempting full USB gadget reconfigure")
 	}
 
-	usbLogger.Warn().Msg("keyboard HID file not ready after UDC rebind; attempting full USB gadget reconfigure")
+	if rebound {
+		// Clear stale /dev/hidg* handles from the pre-rebind gadget instance.
+		// The next write/open must use the newly recreated device nodes.
+		gadget.ResetHIDFiles()
+
+		if tryReopenKeyboard("udc_rebind", false) {
+			return gadget.GetUsbState()
+		}
+
+		usbLogger.Warn().Msg("keyboard HID file not ready after UDC rebind; attempting full USB gadget reconfigure")
+	}
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")
@@ -194,7 +256,95 @@ func attemptUSBRecovery(state string) string {
 	}
 	gadget.ResetHIDFiles()
 
-	if !tryReopenKeyboard(delays, "gadget_reconfigure") {
+	if !tryReopenKeyboard("gadget_reconfigure", false) {
+		usbLogger.Warn().Msg("keyboard HID file not ready after full USB recovery retry window")
+	}
+
+	return gadget.GetUsbState()
+}
+
+var usbRecoveryReopenDelays = []time.Duration{
+	time.Second, time.Second, 2 * time.Second, 2 * time.Second,
+	3 * time.Second, 3 * time.Second, 4 * time.Second, 4 * time.Second,
+}
+
+const keyboardProbeFailureLimit = 3
+
+func tryReopenKeyboard(reason string, requireWritable bool) bool {
+	probeFailures := 0
+	for _, delay := range usbRecoveryReopenDelays {
+		setUSBRecoveryTimer(time.Now())
+		time.Sleep(delay)
+		if err := gadget.ReopenKeyboardHidFile(); err != nil {
+			usbLogger.Debug().Err(err).Str("reason", reason).Msg("keyboard HID file reopen failed")
+			continue
+		}
+		if gadget.GetUsbState() != usbgadget.USBStateConfigured {
+			if requireWritable {
+				continue
+			}
+			usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened successfully after USB recovery")
+			return true
+		}
+		if err := gadget.VerifyKeyboardWritable(); err != nil {
+			probeFailures++
+			usbLogger.Warn().Err(err).Str("reason", reason).Int("probe_failures", probeFailures).
+				Msg("keyboard HID file reopened but not writable")
+			if probeFailures >= keyboardProbeFailureLimit {
+				return false
+			}
+			continue
+		}
+		usbLogger.Info().Str("reason", reason).Msg("keyboard HID file reopened and verified writable after USB recovery")
+		return true
+	}
+	return false
+}
+
+func attemptHidWriteRecovery(state string) string {
+	if state != usbgadget.USBStateConfigured {
+		gadget.ClearHidWriteTimeoutStreaks()
+		return state
+	}
+
+	now := time.Now()
+
+	usbStateLock.Lock()
+	desired := usbEmulationDesired
+	lastAttempt := lastHidWriteRecoveryTry
+	usbStateLock.Unlock()
+
+	timeouts := gadget.KeyboardWriteTimeoutStreak()
+	if !usbgadget.ShouldEscalateHidWriteRecovery(state, desired, timeouts, lastAttempt, now) {
+		return state
+	}
+
+	usbStateLock.Lock()
+	lastHidWriteRecoveryTry = now
+	usbStateLock.Unlock()
+
+	usbLogger.Warn().
+		Int("consecutive_timeouts", timeouts).
+		Msg("keyboard HID writes are timing out while USB is configured; reconnecting gadget")
+
+	setUSBRecoveryTimer(time.Now())
+	// A soft reconnect can restore HID while leaving mass-storage bulk
+	// transfers stuck on this controller. Rebind so every function recovers.
+	if err := gadget.RebindUsb(true); err == nil {
+		if tryReopenKeyboard("hid_write_timeout_rebind", true) {
+			return gadget.GetUsbState()
+		}
+	}
+
+	usbLogger.Warn().Msg("keyboard HID writes still failing after UDC rebind; attempting full USB gadget reconfigure")
+
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")
+		return gadget.GetUsbState()
+	}
+	gadget.ResetHIDFiles()
+
+	if !tryReopenKeyboard("hid_write_timeout_reconfigure", true) {
 		usbLogger.Warn().Msg("keyboard HID file not ready after full USB recovery retry window")
 	}
 
@@ -211,20 +361,53 @@ func triggerUSBStateUpdate() {
 	}()
 }
 
+// Only accessed by the USB state poller.
+var enumerationRecovery usbgadget.EnumerationRecovery
+
+func attemptUSBEnumerationRecovery(state string) string {
+	hostPresent, hostKnown := gadget.IsUsbHostPresent()
+	now := time.Now()
+	usbStateLock.Lock()
+	shouldRecover := enumerationRecovery.ShouldAttempt(state, usbEmulationDesired, hostPresent, hostKnown, lastUSBRecoveryTry, now)
+	if !shouldRecover {
+		usbStateLock.Unlock()
+		return state
+	}
+	lastUSBRecoveryTry = now
+	defer func() { setUSBRecoveryTimer(time.Now()) }()
+
+	udcBound, _ := gadget.IsUDCBound()
+	usbLogger.Warn().Str("state", state).Bool("host_present", hostPresent).
+		Bool("udc_bound", udcBound).Bool("gadget_attached", gadget.IsGadgetAttachedToUDC()).
+		Msg("USB enumeration stalled; attempting one controller rebind")
+	// Serialize the decision and rebind with setUSBEmulationDesired: a disable
+	// request must either prevent recovery or unbind after recovery finishes.
+	err := gadget.RebindUsb(true)
+	usbStateLock.Unlock()
+	if err != nil {
+		usbLogger.Warn().Err(err).Msg("USB enumeration recovery rebind failed; automatic enumeration retry exhausted")
+	} else if gadget.HasKeyboard() && !tryReopenKeyboard("enumeration_timeout", true) {
+		usbLogger.Warn().Str("state", gadget.GetUsbState()).
+			Msg("USB enumeration recovery did not restore a configured, writable keyboard; automatic enumeration retry exhausted")
+	}
+	// Without a keyboard, the next poll observes enumeration directly; probing
+	// an intentionally disabled HID function would report a false failure.
+	return gadget.GetUsbState()
+}
+
 func checkUSBState() {
 	newState := gadget.GetUsbState()
+	newState = attemptUSBEnumerationRecovery(newState)
 	if newState == usbgadget.USBStateNotAttached {
 		newState = attemptUSBRecovery(newState)
+	} else {
+		newState = attemptHidWriteRecovery(newState)
 	}
 
 	usbStateLock.Lock()
 	defer usbStateLock.Unlock()
 
-	if newState != usbgadget.USBStateNotAttached {
-		// Once USB is attached again, clear recovery rate limiting so any future
-		// detach can be recovered immediately.
-		lastUSBRecoveryTry = time.Time{}
-	}
+	attached := usbgadget.IsUSBStateAttached(newState)
 
 	if newState == usbState {
 		return
@@ -234,23 +417,31 @@ func checkUSBState() {
 	usbState = newState
 	usbLogger.Info().Str("from", oldState).Str("to", newState).Msg("USB state changed")
 
-	if newState != usbgadget.USBStateNotAttached {
+	if attached {
 		openErr := gadget.OpenKeyboardHidFile()
-		if openErr != nil {
-			usbLogger.Warn().Err(openErr).Str("state", newState).Msg("HID chardev broken after state change, attempting corrective rebind")
+		if openErr == nil {
+			lastUSBRecoveryTry = time.Time{}
+			sessionlessSoftCycles = 0
+			correctiveRebinds = 0
+		} else {
+			now := time.Now()
+			gate := usbgadget.USBRecoveryRetryInterval << min(correctiveRebinds, 6)
+			if lastUSBRecoveryTry.IsZero() || now.Sub(lastUSBRecoveryTry) >= gate {
+				correctiveRebinds++
+				usbLogger.Warn().Err(openErr).Str("state", newState).Msg("HID chardev broken after state change, attempting corrective rebind")
 
-			lastUSBRecoveryTry = time.Now()
-			usbStateLock.Unlock()
+				usbStateLock.Unlock()
 
-			gadget.ResetHIDFiles()
-			if rebindErr := gadget.RebindUsb(true); rebindErr == nil {
-				time.Sleep(1 * time.Second)
-				_ = gadget.OpenKeyboardHidFile()
+				if err := rebindAndRecoverHID("hid-chardev-broken"); err != nil {
+					usbLogger.Warn().Err(err).Msg("corrective rebind failed")
+				}
+
+				usbStateLock.Lock()
+				usbState = gadget.GetUsbState()
+			} else {
+				usbState = oldState
+				return
 			}
-
-			usbStateLock.Lock()
-			usbState = gadget.GetUsbState()
-			lastUSBRecoveryTry = time.Now()
 		}
 	}
 

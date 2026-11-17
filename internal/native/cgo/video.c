@@ -116,12 +116,66 @@ double calculate_bitrate(float bitrate_factor, int width, int height)
     return bitrate;
 }
 
-static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 max_bitrate, RK_U32 width, RK_U32 height)
+static bool is_hd_video(RK_U32 height)
+{
+    return height > 576;
+}
+
+static COLOR_GAMUT_E color_gamut_for_height(RK_U32 height)
+{
+    return is_hd_video(height) ? COLOR_GAMUT_BT709 : COLOR_GAMUT_BT601;
+}
+
+static void set_v4l2_yuv_colorimetry(struct v4l2_pix_format_mplane *pix, RK_U32 height)
+{
+    if (is_hd_video(height))
+    {
+        pix->colorspace = V4L2_COLORSPACE_REC709;
+        pix->ycbcr_enc = V4L2_YCBCR_ENC_709;
+    }
+    else
+    {
+        pix->colorspace = V4L2_COLORSPACE_SMPTE170M;
+        pix->ycbcr_enc = V4L2_YCBCR_ENC_601;
+    }
+
+    pix->quantization = V4L2_QUANTIZATION_LIM_RANGE;
+    pix->xfer_func = V4L2_XFER_FUNC_709;
+}
+
+static void configure_vui_video_signal(VENC_VUI_VIDEO_SIGNAL_S *video_signal, RK_U32 height)
+{
+    memset(video_signal, 0, sizeof(VENC_VUI_VIDEO_SIGNAL_S));
+    video_signal->video_signal_type_present_flag = 1;
+    video_signal->video_format = 5; // unspecified
+    video_signal->video_full_range_flag = 0; // YUV video levels: black=16, white=235
+    video_signal->colour_description_present_flag = 1;
+
+    if (is_hd_video(height))
+    {
+        video_signal->colour_primaries = 1; // BT.709
+        video_signal->transfer_characteristics = 1; // BT.709
+        video_signal->matrix_coefficients = 1; // BT.709
+    }
+    else
+    {
+        video_signal->colour_primaries = 6; // SMPTE 170M
+        video_signal->transfer_characteristics = 6; // SMPTE 170M
+        video_signal->matrix_coefficients = 6; // SMPTE 170M
+    }
+}
+
+static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 max_bitrate, RK_U32 width, RK_U32 height, RK_U32 fps)
 {
     memset(stAttr, 0, sizeof(VENC_CHN_ATTR_S));
 
     RK_U32 min_bitrate = bitrate / 2;
     if (min_bitrate < 2) min_bitrate = 2;
+
+    // GOP scales with framerate so IDR cadence stays ~0.5s regardless of source
+    // refresh — keeps WebRTC recovery latency bounded at 60 Hz and 120 Hz alike.
+    RK_U32 gop = fps > 0 ? fps / 2 : 30;
+    if (gop < 1) gop = 1;
 
     if (codec_type == 1) {
         // H.265 (HEVC)
@@ -129,8 +183,12 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
         stAttr->stRcAttr.stH265Vbr.u32BitRate = bitrate;
         stAttr->stRcAttr.stH265Vbr.u32MaxBitRate = max_bitrate;
         stAttr->stRcAttr.stH265Vbr.u32MinBitRate = min_bitrate;
-        stAttr->stRcAttr.stH265Vbr.u32Gop = 30;
+        stAttr->stRcAttr.stH265Vbr.u32Gop = gop;
         stAttr->stRcAttr.stH265Vbr.u32StatTime = 2;
+        stAttr->stRcAttr.stH265Vbr.u32SrcFrameRateNum = fps;
+        stAttr->stRcAttr.stH265Vbr.u32SrcFrameRateDen = 1;
+        stAttr->stRcAttr.stH265Vbr.fr32DstFrameRateNum = fps;
+        stAttr->stRcAttr.stH265Vbr.fr32DstFrameRateDen = 1;
         stAttr->stVencAttr.enType = RK_VIDEO_ID_HEVC;
         stAttr->stVencAttr.u32Profile = H265E_PROFILE_MAIN;
     } else {
@@ -139,8 +197,12 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
         stAttr->stRcAttr.stH264Vbr.u32BitRate = bitrate;
         stAttr->stRcAttr.stH264Vbr.u32MaxBitRate = max_bitrate;
         stAttr->stRcAttr.stH264Vbr.u32MinBitRate = min_bitrate;
-        stAttr->stRcAttr.stH264Vbr.u32Gop = 30;
+        stAttr->stRcAttr.stH264Vbr.u32Gop = gop;
         stAttr->stRcAttr.stH264Vbr.u32StatTime = 2;
+        stAttr->stRcAttr.stH264Vbr.u32SrcFrameRateNum = fps;
+        stAttr->stRcAttr.stH264Vbr.u32SrcFrameRateDen = 1;
+        stAttr->stRcAttr.stH264Vbr.fr32DstFrameRateNum = fps;
+        stAttr->stRcAttr.stH264Vbr.fr32DstFrameRateDen = 1;
         stAttr->stVencAttr.enType = RK_VIDEO_ID_AVC;
         stAttr->stVencAttr.u32Profile = H264E_PROFILE_HIGH;
     }
@@ -155,13 +217,57 @@ static void populate_venc_attr(VENC_CHN_ATTR_S *stAttr, RK_U32 bitrate, RK_U32 m
     stAttr->stVencAttr.enMirror = MIRROR_NONE;
 }
 
+static void venc_configure_limited_range_vui(RK_U32 height)
+{
+    int32_t ret;
+
+    if (codec_type == 1)
+    {
+        VENC_H265_VUI_S stH265Vui;
+        memset(&stH265Vui, 0, sizeof(VENC_H265_VUI_S));
+        ret = RK_MPI_VENC_GetH265Vui(VENC_CHANNEL, &stH265Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_GetH265Vui failed: %#x", ret);
+            return;
+        }
+        configure_vui_video_signal(&stH265Vui.stVuiVideoSignal, height);
+        ret = RK_MPI_VENC_SetH265Vui(VENC_CHANNEL, &stH265Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_SetH265Vui failed: %#x", ret);
+            return;
+        }
+    }
+    else
+    {
+        VENC_H264_VUI_S stH264Vui;
+        memset(&stH264Vui, 0, sizeof(VENC_H264_VUI_S));
+        ret = RK_MPI_VENC_GetH264Vui(VENC_CHANNEL, &stH264Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_GetH264Vui failed: %#x", ret);
+            return;
+        }
+        configure_vui_video_signal(&stH264Vui.stVuiVideoSignal, height);
+        ret = RK_MPI_VENC_SetH264Vui(VENC_CHANNEL, &stH264Vui);
+        if (ret != RK_SUCCESS)
+        {
+            log_warn("RK_MPI_VENC_SetH264Vui failed: %#x", ret);
+            return;
+        }
+    }
+
+    log_info("configured VENC VUI as limited-range %s", is_hd_video(height) ? "BT.709" : "BT.601");
+}
+
 pthread_t *venc_read_thread = NULL;
 volatile bool venc_running = false;
-static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height)
+static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, int32_t height, int32_t fps)
 {
     int32_t ret;
     VENC_CHN_ATTR_S stAttr;
-    populate_venc_attr(&stAttr, bitrate, max_bitrate, width, height);
+    populate_venc_attr(&stAttr, bitrate, max_bitrate, width, height, fps);
 
     ret = RK_MPI_VENC_CreateChn(VENC_CHANNEL, &stAttr);
     if (ret < 0)
@@ -169,6 +275,8 @@ static int32_t venc_start(int32_t bitrate, int32_t max_bitrate, int32_t width, i
         RK_LOGE("error RK_MPI_VENC_CreateChn, %d", ret);
         return ret;
     }
+
+    venc_configure_limited_range_vui(height);
 
     VENC_RECV_PIC_PARAM_S stRecvParam;
     memset(&stRecvParam, 0, sizeof(VENC_RECV_PIC_PARAM_S));
@@ -342,7 +450,7 @@ static void *venc_read_stream(void *arg)
                    loopCount, stFrame.u32Seq, stFrame.pstPack->u32Len,
                    stFrame.pstPack->u64PTS, nowUs - stFrame.pstPack->u64PTS);
             pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
-            video_send_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
+            video_send_frame(pData, (ssize_t)stFrame.pstPack->u32Len, stFrame.pstPack->u64PTS);
             s32Ret = RK_MPI_VENC_ReleaseStream(VENC_CHANNEL, &stFrame);
             if (s32Ret != RK_SUCCESS)
             {
@@ -366,6 +474,9 @@ static void *venc_read_stream(void *arg)
 }
 
 uint32_t detected_width, detected_height;
+// detected_fps is the rounded source vrefresh from the latest dv-timings query.
+// 60 is a safe default until the first SOURCE_CHANGE event fires.
+uint32_t detected_fps = 60;
 bool detected_signal = false, streaming_flag = false;
 
 bool streaming_stopped = true;
@@ -373,6 +484,7 @@ pthread_mutex_t streaming_stopped_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_t *streaming_thread = NULL;
 pthread_mutex_t streaming_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t video_lifecycle_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 bool get_streaming_flag()
 {
@@ -444,6 +556,7 @@ void *run_video_stream(void *arg)
 
         uint32_t width = detected_width;
         uint32_t height = detected_height;
+        uint32_t fps = detected_fps;
         struct v4l2_format fmt;
         memset(&fmt, 0, sizeof(struct v4l2_format));
         fmt.type = type;
@@ -451,6 +564,7 @@ void *run_video_stream(void *arg)
         fmt.fmt.pix_mp.height = height;
         fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_YUYV;
         fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
+        set_v4l2_yuv_colorimetry(&fmt.fmt.pix_mp, height);
 
         if (ioctl(video_dev_fd, VIDIOC_S_FMT, &fmt) < 0)
         {
@@ -459,6 +573,9 @@ void *run_video_stream(void *arg)
             close(video_dev_fd);
             continue;
         }
+        log_info("capture colorimetry: colorspace=%u ycbcr_enc=%u quantization=%u xfer=%u",
+                 fmt.fmt.pix_mp.colorspace, fmt.fmt.pix_mp.ycbcr_enc,
+                 fmt.fmt.pix_mp.quantization, fmt.fmt.pix_mp.xfer_func);
 
         struct v4l2_buffer buf;
 
@@ -553,7 +670,7 @@ void *run_video_stream(void *arg)
 
         // Set VENC parameters
         int32_t bitrate = calculate_bitrate(quality_factor, width, height);
-        RK_S32 ret = venc_start(bitrate, bitrate * 3 / 2, width, height);
+        RK_S32 ret = venc_start(bitrate, bitrate * 3 / 2, width, height, fps);
         if (ret != RK_SUCCESS)
         {
             log_error("Set VENC parameters failed with %#x", ret);
@@ -565,8 +682,17 @@ void *run_video_stream(void *arg)
         int r;
         uint32_t num = 0;
         VIDEO_FRAME_INFO_S stFrame;
-
-
+        memset(&stFrame, 0, sizeof(VIDEO_FRAME_INFO_S));
+        stFrame.stVFrame.u32Width = width;
+        stFrame.stVFrame.u32Height = height;
+        stFrame.stVFrame.u32VirWidth = RK_ALIGN_16(width);
+        stFrame.stVFrame.u32VirHeight = RK_ALIGN_16(height);
+        stFrame.stVFrame.enField = VIDEO_FIELD_FRAME;
+        stFrame.stVFrame.enPixelFormat = RK_FMT_YUV422_YUYV;
+        stFrame.stVFrame.enVideoFormat = VIDEO_FORMAT_LINEAR;
+        stFrame.stVFrame.enCompressMode = COMPRESS_MODE_NONE;
+        stFrame.stVFrame.enDynamicRange = DYNAMIC_RANGE_SDR8;
+        stFrame.stVFrame.enColorGamut = color_gamut_for_height(height);
 
         while (streaming_flag)
         {
@@ -602,20 +728,11 @@ void *run_video_stream(void *arg)
                 break;
             }
             log_trace("got frame, bytesused = %d", tmp_plane.bytesused);
-            memset(&stFrame, 0, sizeof(VIDEO_FRAME_INFO_S));
-            MB_BLK blk = RK_NULL;
-            blk = RK_MPI_MMZ_Fd2Handle(tmp_plane.m.fd);
+            MB_BLK blk = RK_MPI_MMZ_Fd2Handle(tmp_plane.m.fd);
             assert(blk != RK_NULL);
             stFrame.stVFrame.pMbBlk = blk;
-            stFrame.stVFrame.u32Width = width;
-            stFrame.stVFrame.u32Height = height;
-            stFrame.stVFrame.u32VirWidth = RK_ALIGN_16(width);
-            stFrame.stVFrame.u32VirHeight = RK_ALIGN_16(height);
-            stFrame.stVFrame.u32TimeRef = num; // frame number
+            stFrame.stVFrame.u32TimeRef = num;
             stFrame.stVFrame.u64PTS = get_us();
-            stFrame.stVFrame.enPixelFormat = RK_FMT_YUV422_YUYV;
-            stFrame.stVFrame.u32FrameFlag |= 0;
-            stFrame.stVFrame.enCompressMode = COMPRESS_MODE_NONE;
             bool retried = false;
         retry_send_frame:
             if (RK_MPI_VENC_SendFrame(VENC_CHANNEL, &stFrame, 2000) != RK_SUCCESS)
@@ -704,7 +821,7 @@ void video_shutdown()
     log_info("Destroyed streaming mutex");
 }
 
-void video_start_streaming()
+static void video_start_streaming_locked()
 {
     log_info("starting video streaming");
     if (streaming_thread != NULL)
@@ -739,6 +856,13 @@ void video_start_streaming()
     streaming_thread = new_thread;
 }
 
+void video_start_streaming()
+{
+    pthread_mutex_lock(&video_lifecycle_mutex);
+    video_start_streaming_locked();
+    pthread_mutex_unlock(&video_lifecycle_mutex);
+}
+
 bool wait_for_streaming_stopped()
 {
     int attempts = 0;
@@ -754,7 +878,7 @@ bool wait_for_streaming_stopped()
     return false;
 }
 
-void video_stop_streaming()
+static void video_stop_streaming_locked()
 {
     if (streaming_thread == NULL) {
         log_info("video streaming already stopped");
@@ -774,6 +898,13 @@ void video_stop_streaming()
     log_info("video streaming stopped");
 }
 
+void video_stop_streaming()
+{
+    pthread_mutex_lock(&video_lifecycle_mutex);
+    video_stop_streaming_locked();
+    pthread_mutex_unlock(&video_lifecycle_mutex);
+}
+
 uint8_t video_get_streaming_status() {
     // streaming flag can be false when stopping streaming
     if (get_streaming_flag() == true) return 1;
@@ -783,24 +914,25 @@ uint8_t video_get_streaming_status() {
 
 void video_restart_streaming()
 {
+    pthread_mutex_lock(&video_lifecycle_mutex);
     uint8_t streaming_status = video_get_streaming_status();
     // 0 = stopped, 1 = running, 2 = stopping
 
     if (streaming_status == 0)
     {
         log_info("will not restart video streaming because it's stopped");
+        pthread_mutex_unlock(&video_lifecycle_mutex);
         return;
     }
 
     if (streaming_status == 1 || streaming_status == 2) {
-        video_stop_streaming();
+        video_stop_streaming_locked();
     }
 
-    if (!wait_for_streaming_stopped()) {
-        return;
+    if (wait_for_streaming_stopped()) {
+        video_start_streaming_locked();
     }
-
-    video_start_streaming();
+    pthread_mutex_unlock(&video_lifecycle_mutex);
 }
 
 void *run_detect_format(void *arg)
@@ -861,10 +993,19 @@ void *run_detect_format(void *arg)
                                          dv_timings.bt.hbackporch));
             log_info("Frames per second: %.2f fps", frames_per_second);
 
-            bool should_restart = dv_timings.bt.width != detected_width || dv_timings.bt.height != detected_height || !detected_signal;
+            // Round to nearest integer for the encoder rate control. CVT-RB
+            // sources land a touch under (e.g. 119.91); rounding keeps the
+            // encoder sized for the nominal rate.
+            uint32_t fps_int = (uint32_t)(frames_per_second + 0.5);
+            if (fps_int < 1) fps_int = 1;
+            // Tolerate ±1 fps wobble between SOURCE_CHANGE events without
+            // tearing down the pipeline.
+            bool fps_changed = fps_int > detected_fps + 1 || fps_int + 1 < detected_fps;
+            bool should_restart = dv_timings.bt.width != detected_width || dv_timings.bt.height != detected_height || fps_changed || !detected_signal;
 
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
+            detected_fps = fps_int;
             detected_signal = true;
             video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
 

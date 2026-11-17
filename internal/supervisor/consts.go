@@ -8,5 +8,5 @@ const (
 	ErrorDumpTemplate = "jetkvm-%s.log"              // The error dump template is the template for the error dump file
 	AppLogPath        = "/userdata/jetkvm/last.log"  // The application stdout/stderr log file
 
-	FailsafeReasonVideoMaxRestartAttemptsReached = "failsafe::video.max_restart_attempts_reached"
+	FailsafeReasonNativeMaxRestartAttemptsReached = "failsafe::native.max_restart_attempts_reached"
 )

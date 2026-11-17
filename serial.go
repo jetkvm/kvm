@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -17,22 +18,6 @@ import (
 
 const serialPortPath = "/dev/ttyS3"
 
-var port serial.Port
-var serialMux *SerialMux
-var consoleBroker *ConsoleBroker
-
-func mountATXControl() error {
-	_ = port.SetMode(defaultMode)
-	go runATXControl()
-
-	return nil
-}
-
-func unmountATXControl() error {
-	_ = reopenSerialPort()
-	return nil
-}
-
 var (
 	ledHDDState atomic.Bool
 	ledPWRState atomic.Bool
@@ -40,14 +25,18 @@ var (
 	btnPWRState bool
 )
 
-func runATXControl() {
+func runATXControl(port io.Reader, stop <-chan struct{}) {
 	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
 
 	reader := bufio.NewReader(port)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
+			select {
+			case <-stop:
+			default:
+				scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
+			}
 			return
 		}
 
@@ -97,19 +86,19 @@ func runATXControl() {
 }
 
 func pressATXPowerButton(duration time.Duration) error {
-	_, err := port.Write([]byte("\n"))
+	err := extPort.write([]byte("\n"))
 	if err != nil {
 		return err
 	}
 
-	_, err = port.Write([]byte("BTN_PWR_ON\n"))
+	err = extPort.write([]byte("BTN_PWR_ON\n"))
 	if err != nil {
 		return err
 	}
 
 	time.Sleep(duration)
 
-	_, err = port.Write([]byte("BTN_PWR_OFF\n"))
+	err = extPort.write([]byte("BTN_PWR_OFF\n"))
 	if err != nil {
 		return err
 	}
@@ -118,35 +107,23 @@ func pressATXPowerButton(duration time.Duration) error {
 }
 
 func pressATXResetButton(duration time.Duration) error {
-	_, err := port.Write([]byte("\n"))
+	err := extPort.write([]byte("\n"))
 	if err != nil {
 		return err
 	}
 
-	_, err = port.Write([]byte("BTN_RST_ON\n"))
+	err = extPort.write([]byte("BTN_RST_ON\n"))
 	if err != nil {
 		return err
 	}
 
 	time.Sleep(duration)
 
-	_, err = port.Write([]byte("BTN_RST_OFF\n"))
+	err = extPort.write([]byte("BTN_RST_OFF\n"))
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func mountDCControl() error {
-	_ = port.SetMode(defaultMode)
-	registerDCMetrics()
-	go runDCControl()
-	return nil
-}
-
-func unmountDCControl() error {
-	_ = reopenSerialPort()
 	return nil
 }
 
@@ -161,14 +138,18 @@ func getDCState() DCPowerState {
 	return dcState
 }
 
-func runDCControl() {
+func runDCControl(port io.Reader, stop <-chan struct{}) {
 	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
 	reader := bufio.NewReader(port)
 	hasRestoreFeature := false
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
+			select {
+			case <-stop:
+			default:
+				scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
+			}
 			return
 		}
 
@@ -249,7 +230,7 @@ func runDCControl() {
 }
 
 func setDCPowerState(on bool) error {
-	_, err := port.Write([]byte("\n"))
+	err := extPort.write([]byte("\n"))
 	if err != nil {
 		return err
 	}
@@ -257,7 +238,7 @@ func setDCPowerState(on bool) error {
 	if on {
 		command = "PWR_ON\n"
 	}
-	_, err = port.Write([]byte(command))
+	err = extPort.write([]byte(command))
 	if err != nil {
 		return err
 	}
@@ -265,7 +246,7 @@ func setDCPowerState(on bool) error {
 }
 
 func setDCRestoreState(state int) error {
-	_, err := port.Write([]byte("\n"))
+	err := extPort.write([]byte("\n"))
 	if err != nil {
 		return err
 	}
@@ -276,7 +257,7 @@ func setDCRestoreState(state int) error {
 	case 2:
 		command = "RESTORE_MODE_LAST_STATE\n"
 	}
-	_, err = port.Write([]byte(command))
+	err = extPort.write([]byte(command))
 	if err != nil {
 		return err
 	}
@@ -286,11 +267,11 @@ func setDCRestoreState(state int) error {
 func sendCustomCommand(command string) error {
 	scopedLogger := serialLogger.With().Str("service", "custom_buttons_tx").Logger()
 	scopedLogger.Debug().Msgf("Sending custom command: %q", command)
-	if serialMux == nil {
-		return fmt.Errorf("serial mux not initialized")
+	mux, _ := extPort.console()
+	if mux == nil {
+		return fmt.Errorf("serial console is not active")
 	}
-	payload := []byte(command)
-	serialMux.Enqueue(payload, "button", true, TXUser) // echo if enabled
+	mux.Enqueue([]byte(command), "button", true, TXUser)
 	return nil
 }
 
@@ -428,46 +409,7 @@ func getSerialSettings() (SerialSettings, error) {
 		Parity:   parity,
 	}
 
-	_ = port.SetMode(serialPortMode)
-
-	if serialMux != nil {
-		serialMux.SetEchoEnabled(serialConfig.EnableEcho)
-	}
-
-	var normalizeMode NormalizeMode
-	switch serialConfig.NormalizeMode {
-	case "caret":
-		normalizeMode = ModeCaret
-	case "names":
-		normalizeMode = ModeNames
-	case "hex":
-		normalizeMode = ModeHex
-	default:
-		normalizeMode = ModeNames
-	}
-
-	var crlfMode LineEndingMode
-	switch serialConfig.NormalizeLineEnd {
-	case "keep":
-		crlfMode = LineEnding_AsIs
-	case "lf":
-		crlfMode = LineEnding_LF
-	case "cr":
-		crlfMode = LineEnding_CR
-	case "crlf":
-		crlfMode = LineEnding_CRLF
-	case "lfcr":
-		crlfMode = LineEnding_LFCR
-	default:
-		crlfMode = LineEnding_AsIs
-	}
-
-	if consoleBroker != nil {
-		norm := NormalizationOptions{
-			Mode: normalizeMode, LineEnding: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
-		}
-		consoleBroker.SetNormOptions(norm)
-	}
+	applyConsoleSettings()
 
 	return loadedConfig, nil
 }
@@ -521,102 +463,59 @@ func setSerialSettings(newSettings SerialSettings) error {
 		Parity:   parity,
 	}
 
-	_ = port.SetMode(serialPortMode)
-
 	serialConfig = newSettings // Update global config
 
-	if serialMux != nil {
-		serialMux.SetEchoEnabled(serialConfig.EnableEcho)
-	}
-
-	var normalizeMode NormalizeMode
-	switch serialConfig.NormalizeMode {
-	case "caret":
-		normalizeMode = ModeCaret
-	case "names":
-		normalizeMode = ModeNames
-	case "hex":
-		normalizeMode = ModeHex
-	default:
-		normalizeMode = ModeNames
-	}
-
-	var crlfMode LineEndingMode
-	switch serialConfig.NormalizeLineEnd {
-	case "keep":
-		crlfMode = LineEnding_AsIs
-	case "lf":
-		crlfMode = LineEnding_LF
-	case "cr":
-		crlfMode = LineEnding_CR
-	case "crlf":
-		crlfMode = LineEnding_CRLF
-	case "lfcr":
-		crlfMode = LineEnding_LFCR
-	default:
-		crlfMode = LineEnding_AsIs
-	}
-
-	if consoleBroker != nil {
-		norm := NormalizationOptions{
-			Mode: normalizeMode, LineEnding: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
-		}
-		consoleBroker.SetNormOptions(norm)
-	}
+	applyConsoleSettings()
 
 	return nil
 }
 
+func applyConsoleSettings() {
+	extPort.setConsoleSettings(consoleSettings{
+		mode: serialPortMode,
+		echo: serialConfig.EnableEcho,
+		norm: normalizationOptions(serialConfig),
+	})
+}
+
+func normalizationOptions(settings SerialSettings) NormalizationOptions {
+	norm := NormalizationOptions{
+		Mode:         ModeNames,
+		LineEnding:   LineEnding_AsIs,
+		TabRender:    settings.TabRender,
+		PreserveANSI: settings.PreserveANSI,
+		ShowNLTag:    settings.ShowNLTag,
+	}
+
+	switch settings.NormalizeMode {
+	case "caret":
+		norm.Mode = ModeCaret
+	case "hex":
+		norm.Mode = ModeHex
+	}
+
+	switch settings.NormalizeLineEnd {
+	case "lf":
+		norm.LineEnding = LineEnding_LF
+	case "cr":
+		norm.LineEnding = LineEnding_CR
+	case "crlf":
+		norm.LineEnding = LineEnding_CRLF
+	case "lfcr":
+		norm.LineEnding = LineEnding_LFCR
+	}
+
+	return norm
+}
+
 func setTerminalPaused(paused bool) {
-	if consoleBroker != nil {
-		consoleBroker.SetTerminalPaused(paused)
+	if _, broker := extPort.console(); broker != nil {
+		broker.SetTerminalPaused(paused)
 	}
 }
 
 func initSerialPort() {
-	_ = reopenSerialPort()
-	switch config.ActiveExtension {
-	case "atx-power":
-		_ = mountATXControl()
-	case "dc-power":
-		_ = mountDCControl()
-	}
-}
-
-func reopenSerialPort() error {
-	if port != nil {
-		port.Close()
-	}
-	var err error
-	port, err = serial.Open(serialPortPath, defaultMode)
-	if err != nil {
-		serialLogger.Error().
-			Err(err).
-			Str("path", serialPortPath).
-			Interface("mode", defaultMode).
-			Msg("Error opening serial port")
-		return err
-	}
-
-	// new broker (no sink yet—set it in handleSerialChannel.OnOpen)
-	norm := NormalizationOptions{
-		Mode: ModeNames, LineEnding: LineEnding_LF, TabRender: "", PreserveANSI: true,
-	}
-	if consoleBroker != nil {
-		consoleBroker.Close()
-	}
-	consoleBroker = NewConsoleBroker(nil, norm)
-	consoleBroker.Start()
-
-	// new mux
-	if serialMux != nil {
-		serialMux.Close()
-	}
-	serialMux = NewSerialMux(port, consoleBroker)
-	serialMux.SetEchoEnabled(serialConfig.EnableEcho) // honor your setting
-	serialMux.Start()
-
-	return nil
+	_ = extPort.activate(config.ActiveExtension)
 }
 
 func handleSerialChannel(dataChannel *webrtc.DataChannel) {
@@ -624,66 +523,11 @@ func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 		Uint16("data_channel_id", *dataChannel.ID()).Str("service", "serial terminal channel").Logger()
 
 	dataChannel.OnOpen(func() {
-		// Plug the terminal sink into the broker
-		scopedLogger.Info().Msg("Opening serial channel from console broker")
-		if consoleBroker != nil {
-			consoleBroker.SetSink(dataChannelSink{dataChannel: dataChannel})
-			consoleBroker.Enqueue(consoleEvent{
-				kind: evRX,
-				data: []byte("[serial attached]\n"),
-			})
-			scopedLogger.Info().Msg("Serial channel is now active")
-		}
+		scopedLogger.Info().Msg("Serial channel opened")
+		extPort.attachSink(dataChannelSink{dataChannel: dataChannel})
 	})
 
-	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if serialMux == nil || consoleBroker == nil {
-			return
-		}
-
-		// Try parse as our JSON envelope
-		var m DCMsg
-		if msg.IsString && json.Unmarshal(msg.Data, &m) == nil && m.Type != "" {
-			switch m.Type {
-			case "serial":
-				// data is a JSON string (what the user typed)
-				var s string
-				if err := json.Unmarshal(m.Data, &s); err != nil {
-					scopedLogger.Warn().Err(err).Msg("Failed to decode serial payload string")
-					return
-				}
-
-				// Write to UART (echo controlled by serialConfig.EnableEcho inside mux)
-				serialMux.Enqueue([]byte(s), "webrtc", true, TXUser)
-
-			case "system":
-				// Display in terminal for debugging, but do NOT write to UART
-				// Show raw JSON that arrived
-				consoleBroker.Enqueue(consoleEvent{
-					kind:   evTX,
-					data:   append([]byte(nil), msg.Data...),
-					origin: TXSystem,
-				})
-
-				// Optional: handle known system message
-				if m.Name == "term.size" {
-					scopedLogger.Trace().RawJSON("msg", msg.Data).Msg("Terminal size message received on serial channel")
-				}
-
-			default:
-				// Unknown envelope type: show it as system/debug
-				consoleBroker.Enqueue(consoleEvent{
-					kind:   evTX,
-					data:   append([]byte(nil), msg.Data...),
-					origin: TXSystem,
-				})
-			}
-			return
-		}
-
-		// Backward compatibility: treat non-envelope as raw serial bytes
-		serialMux.Enqueue(msg.Data, "webrtc-raw", true, TXUser)
-	})
+	dataChannel.OnMessage(handleSerialChannelMessage)
 
 	dataChannel.OnError(func(err error) {
 		scopedLogger.Warn().Err(err).Msg("Serial channel error")
@@ -692,8 +536,45 @@ func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 	dataChannel.OnClose(func() {
 		scopedLogger.Info().Msg("Serial channel closed")
 
-		if consoleBroker != nil {
-			consoleBroker.SetSink(nil)
-		}
+		// A replacement channel may already own the sink: this close can
+		// run after the new session's OnOpen when the old peer went away
+		// without a clean shutdown.
+		extPort.detachSink(dataChannelSink{dataChannel: dataChannel})
 	})
+}
+
+func handleSerialChannelMessage(msg webrtc.DataChannelMessage) {
+	mux, broker := extPort.console()
+	if mux == nil {
+		return
+	}
+
+	// Try parse as our JSON envelope
+	var m DCMsg
+	if msg.IsString && json.Unmarshal(msg.Data, &m) == nil && m.Type != "" {
+		switch m.Type {
+		case "serial":
+			// data is a JSON string (what the user typed)
+			var s string
+			if err := json.Unmarshal(m.Data, &s); err != nil {
+				serialLogger.Warn().Err(err).Msg("Failed to decode serial payload string")
+				return
+			}
+
+			// Write to UART (echo controlled by serialConfig.EnableEcho inside mux)
+			mux.Enqueue([]byte(s), "webrtc", true, TXUser)
+
+		default:
+			// Display in terminal for debugging, but do NOT write to UART
+			broker.Enqueue(consoleEvent{
+				kind:   evTX,
+				data:   append([]byte(nil), msg.Data...),
+				origin: TXSystem,
+			})
+		}
+		return
+	}
+
+	// Backward compatibility: treat non-envelope as raw serial bytes
+	mux.Enqueue(msg.Data, "webrtc-raw", true, TXUser)
 }

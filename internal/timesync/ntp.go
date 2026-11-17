@@ -122,8 +122,8 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			// query the server
 			now, response, err := queryNtpServer(server, timeout)
 			if err != nil {
-				scopedLogger.Warn().
-					Str("error", err.Error()).
+				scopedLogger.Debug().
+					Err(err).
 					Msg("failed to query NTP server")
 				results <- nil
 				return

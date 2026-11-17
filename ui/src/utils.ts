@@ -1,9 +1,8 @@
-import semver from "semver";
-
 import { KeySequence } from "@hooks/stores";
 import { getLocale, locales, type LocalizedString } from "@localizations/runtime.js";
 import { m } from "@localizations/messages.js";
 import { CLOUD_BACKWARDS_COMPATIBLE_VERSION, CLOUD_ENABLE_VERSIONED_UI } from "@/ui.config";
+import { selectCloudUiVersion } from "@/cloudVersion";
 
 const isInvalidDate = (date: Date) => date instanceof Date && isNaN(date.getTime());
 
@@ -247,6 +246,27 @@ export function isChromeOS() {
   return !!navigator.userAgent.match(" CrOS ");
 }
 
+/**
+ * Linux desktop browsers, excluding Android and ChromeOS.
+ *
+ * Used to gate H.265 support: many Linux browsers advertise H.265 in
+ * `RTCRtpReceiver.getCapabilities()` and in their SDP offers but cannot
+ * actually decode the stream (Chrome on NVIDIA proprietary, Brave/Chromium
+ * on Wayland, Firefox on most Linux setups), leaving users stuck on the
+ * "Loading video stream..." screen. See jetkvm/kvm#1413.
+ */
+export function isLinuxDesktop() {
+  const uaData = (
+    navigator as Navigator & {
+      userAgentData?: { platform?: string };
+    }
+  ).userAgentData;
+
+  if (uaData?.platform) return uaData.platform === "Linux";
+
+  return /\bLinux\b/.test(navigator.userAgent) && !isAndroid() && !isChromeOS();
+}
+
 export function normalizeSortOrders(macros: KeySequence[]): KeySequence[] {
   return macros.map((macro, index) => ({
     ...macro,
@@ -316,12 +336,7 @@ export function sleep(ms: number): Promise<void> {
 export function buildCloudUrl(deviceId: string, appVersion: string | undefined, path = ""): string {
   let uri = `/devices/${deviceId}${path}`;
   if (CLOUD_ENABLE_VERSIONED_UI) {
-    const version =
-      appVersion &&
-      semver.valid(appVersion) &&
-      semver.gte(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION)
-        ? appVersion
-        : CLOUD_BACKWARDS_COMPATIBLE_VERSION;
+    const version = selectCloudUiVersion(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION);
     uri = `/v/${version}${uri}`;
   }
   return new URL(uri, window.location.origin).href;

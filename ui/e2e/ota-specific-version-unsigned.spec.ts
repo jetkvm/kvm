@@ -48,7 +48,7 @@ test.describe("OTA Specific Version Unsigned", () => {
     });
   });
 
-  test("specific-version update succeeds without signature", async ({ page }) => {
+  test("specific-version update succeeds without signature @ota", async ({ page }) => {
     await test.step("Configure mock API and stable channel", async () => {
       await configureDeviceUpdateUrl(mockServer.url);
       await setIncludePreRelease(false);
@@ -73,7 +73,7 @@ test.describe("OTA Specific Version Unsigned", () => {
         { timeout: 30000 },
       );
 
-      await reconnectAfterReboot(page, 35000, 30);
+      await reconnectAfterReboot(page, 35000);
 
       const finalVersion = await getCurrentVersion(page);
       expect(finalVersion).toBe(env.releaseVersion);

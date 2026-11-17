@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LuLink, LuRadioReceiver, LuCheck, LuUpload } from "react-icons/lu";
+import { LuLink, LuRadioReceiver, LuCheck, LuUpload, LuDownload } from "react-icons/lu";
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
 
@@ -12,7 +12,7 @@ import NetBootIcon from "@assets/netboot-icon.svg";
 import LogoBlueIcon from "@assets/logo-blue.svg";
 import LogoWhiteIcon from "@assets/logo-white.svg";
 import { cx } from "@/cva.config";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
 import Card, { GridCard } from "@components/Card";
@@ -24,12 +24,14 @@ import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useVideoStreamPause } from "@hooks/useVideoStreamPause";
 
 import {
   MountMediaState,
   RemoteVirtualMediaState,
   useMountMediaStore,
   useRTCStore,
+  useCapability,
 } from "../hooks/stores";
 
 export default function MountRoute() {
@@ -38,6 +40,8 @@ export default function MountRoute() {
 }
 
 export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
+  useVideoStreamPause();
+  const uploadChannel = useCapability("upload_channel");
   const { modalView, setModalView, setRemoteVirtualMediaState, errorMessage, setErrorMessage } =
     useMountMediaStore();
   const [incompleteFileName, setIncompleteFileName] = useState<string | null>(null);
@@ -70,7 +74,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
     setMountInProgress(true);
     send("mountWithHTTP", { url, mode }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) triggerError(resp.error.message);
+      if ("error" in resp) {
+        triggerError(typeof resp.error.data === "string" ? resp.error.data : resp.error.message);
+        setMountInProgress(false);
+        return;
+      }
 
       clearMountMediaState();
       syncRemoteVirtualMediaState()
@@ -89,7 +97,13 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
 
     setMountInProgress(true);
     send("mountWithStorage", { filename: fileName, mode }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) triggerError(resp.error.message);
+      if ("error" in resp) {
+        triggerError(typeof resp.error.data === "string" ? resp.error.data : resp.error.message);
+        setMountInProgress(false);
+        // The state was cleared when the mount was sent; show what is still mounted.
+        syncRemoteVirtualMediaState().catch(() => undefined);
+        return;
+      }
 
       clearMountMediaState();
       syncRemoteVirtualMediaState()
@@ -118,7 +132,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         className={cx("mx-auto max-w-4xl px-4 transition-all duration-300 ease-in-out", {
           "max-w-4xl": modalView === "mode",
           "max-w-2xl": modalView === "device",
-          "max-w-xl": modalView === "url" || modalView === "upload" || modalView === "error",
+          "max-w-xl":
+            modalView === "url" ||
+            modalView === "upload" ||
+            modalView === "download" ||
+            modalView === "error",
         })}
       >
         <GridCard cardClassName="relative w-full text-left pointer-events-auto">
@@ -166,10 +184,19 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
                     handleStorageMount(fileName, mode);
                   }}
                   onNewImageClick={incompleteFile => {
+                    if (!isOnDevice && !uploadChannel) {
+                      notifications.error(m.mount_upload_local_network_only());
+                      return;
+                    }
                     setIncompleteFileName(incompleteFile || null);
                     setModalView("upload");
                   }}
+                  onDownloadClick={() => setModalView("download")}
                 />
+              )}
+
+              {modalView === "download" && (
+                <DownloadFileView onBack={() => setModalView("device")} />
               )}
 
               {modalView === "upload" && (
@@ -335,8 +362,9 @@ function UrlView({
       icon: UbuntuIcon,
     },
     {
-      name: "Debian 13 Trixie",
-      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso",
+      name: "Debian 13 Trixie Netinst",
+      // Debian netinst filenames are point-release pinned in /current/.
+      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso",
       icon: DebianIcon,
     },
     {
@@ -350,8 +378,8 @@ function UrlView({
       icon: FedoraIcon,
     },
     {
-      name: "openSUSE Leap 16.0",
-      url: "https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-online-installer-x86_64.install.iso",
+      name: "openSUSE Leap 16.1",
+      url: "https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-online-installer-x86_64.install.iso",
       icon: OpenSUSEIcon,
     },
     {
@@ -481,16 +509,120 @@ export interface StorageFile {
   createdAt: Date;
 }
 
+// A device with removable storage (the JetKVM Mini's TF card) keeps images on
+// a card that can be missing or unformatted.
+interface StorageState {
+  initialized: boolean;
+  cardPresent: boolean;
+  filesystemMounted: boolean;
+}
+
+function parseStorageState(value: unknown): StorageState | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Partial<StorageState>;
+  if (
+    typeof candidate.initialized !== "boolean" ||
+    typeof candidate.cardPresent !== "boolean" ||
+    typeof candidate.filesystemMounted !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    initialized: candidate.initialized,
+    cardPresent: candidate.cardPresent,
+    filesystemMounted: candidate.filesystemMounted,
+  };
+}
+
+function isStorageReady(state: StorageState | null): boolean {
+  return state?.initialized === true && state.cardPresent && state.filesystemMounted;
+}
+
+function TfCardStatus({
+  state,
+  failed,
+  onFormatted,
+}: {
+  state: StorageState | null;
+  failed: boolean;
+  onFormatted: () => void;
+}) {
+  const { send } = useJsonRpc();
+  const [formatting, setFormatting] = useState(false);
+  const canFormat =
+    !failed &&
+    state?.initialized === true &&
+    state.cardPresent === true &&
+    state.filesystemMounted === false;
+  const status = failed
+    ? { label: m.mount_tf_card_service_unavailable(), color: "bg-red-500" }
+    : state === null
+      ? { label: m.mount_calculating(), color: "bg-slate-400" }
+      : !state.initialized
+        ? { label: m.mount_tf_card_service_unavailable(), color: "bg-red-500" }
+        : !state.cardPresent
+          ? { label: m.mount_tf_card_not_detected(), color: "bg-amber-500" }
+          : !state.filesystemMounted
+            ? { label: m.mount_tf_card_filesystem_unavailable(), color: "bg-amber-500" }
+            : { label: m.mount_tf_card_ready(), color: "bg-emerald-500" };
+
+  function handleFormat() {
+    if (!canFormat || formatting || !window.confirm(m.mount_tf_card_format_confirm())) return;
+    setFormatting(true);
+    send("formatStorage", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        const error = typeof resp.error.data === "string" ? resp.error.data : resp.error.message;
+        notifications.error(m.mount_tf_card_format_error({ error }));
+        setFormatting(false);
+        return;
+      }
+      notifications.success(m.mount_tf_card_format_success());
+      setFormatting(false);
+      onFormatted();
+    });
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-x-4 px-4 py-3">
+        <div className="flex items-center gap-x-2">
+          <span className={cx("h-2.5 w-2.5 shrink-0 rounded-full", status.color)} />
+          <span className="text-sm font-medium text-black dark:text-white">
+            {m.mount_tf_card()}
+          </span>
+        </div>
+        <div className="flex items-center justify-end gap-x-3">
+          <span className="text-right text-sm text-slate-700 dark:text-slate-300">
+            {status.label}
+          </span>
+          {canFormat && (
+            <Button
+              size="XS"
+              theme="danger"
+              text={m.mount_tf_card_format()}
+              loading={formatting}
+              disabled={formatting}
+              onClick={handleFormat}
+            />
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function DeviceFileView({
   onMountStorageFile,
   mountInProgress,
   onBack,
   onNewImageClick,
+  onDownloadClick,
 }: {
   onMountStorageFile: (name: string, mode: RemoteVirtualMediaState["mode"]) => void;
   mountInProgress: boolean;
   onBack: () => void;
   onNewImageClick: (incompleteFileName?: string) => void;
+  onDownloadClick: () => void;
 }) {
   const [onStorageFiles, setOnStorageFiles] = useState<StorageFile[]>([]);
 
@@ -506,14 +638,16 @@ function DeviceFileView({
     bytesFree: number;
   }
   const [storageSpace, setStorageSpace] = useState<StorageSpace | null>(null);
+  const removableStorage = useCapability("removable_storage");
+  const storageDownload = useCapability("storage_download");
+  const [storageState, setStorageState] = useState<StorageState | null>(null);
+  const [storageStateFailed, setStorageStateFailed] = useState(false);
 
   const percentageUsed = useMemo(() => {
     if (!storageSpace) return 0;
-    return Number(
-      ((storageSpace.bytesUsed / (storageSpace.bytesUsed + storageSpace.bytesFree)) * 100).toFixed(
-        1,
-      ),
-    );
+    const total = storageSpace.bytesUsed + storageSpace.bytesFree;
+    if (total === 0) return 0;
+    return Number(((storageSpace.bytesUsed / total) * 100).toFixed(1));
   }, [storageSpace]);
 
   const bytesUsed = useMemo(() => {
@@ -526,7 +660,7 @@ function DeviceFileView({
     return storageSpace.bytesFree;
   }, [storageSpace]);
 
-  const syncStorage = useCallback(() => {
+  const loadFilesAndSpace = useCallback(() => {
     send("listStorageFiles", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.mount_error_list_storage({ error: resp.error }));
@@ -553,6 +687,29 @@ function DeviceFileView({
     });
   }, [send, setOnStorageFiles, setStorageSpace]);
 
+  const syncStorage = useCallback(() => {
+    if (!removableStorage) {
+      loadFilesAndSpace();
+      return;
+    }
+    // Only list files and space once the card is mounted.
+    setStorageStateFailed(false);
+    send("getStorageState", {}, (resp: JsonRpcResponse) => {
+      const state = "error" in resp ? null : parseStorageState(resp.result);
+      setStorageState(state);
+      setStorageStateFailed(state === null);
+      if (isStorageReady(state)) {
+        loadFilesAndSpace();
+        return;
+      }
+      setOnStorageFiles([]);
+      setStorageSpace(null);
+      // A different card may come next: its files need a fresh selection.
+      setSelected(null);
+      setCurrentPage(1);
+    });
+  }, [loadFilesAndSpace, removableStorage, send, setOnStorageFiles, setStorageSpace]);
+
   interface StorageFiles {
     files: {
       filename: string;
@@ -564,6 +721,20 @@ function DeviceFileView({
   useEffect(() => {
     syncStorage();
   }, [syncStorage]);
+
+  // A card can be inserted, removed or finish mounting while the view is
+  // open: ask again every few seconds and resync when the state changes.
+  const storageStateJson = JSON.stringify(storageState);
+  useEffect(() => {
+    if (!removableStorage) return;
+    const timer = setInterval(() => {
+      send("getStorageState", {}, (resp: JsonRpcResponse) => {
+        const state = "error" in resp ? null : parseStorageState(resp.result);
+        if (JSON.stringify(state) !== storageStateJson) syncStorage();
+      });
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [removableStorage, send, storageStateJson, syncStorage]);
 
   function handleDeleteFile(file: StorageFile) {
     console.log("Deleting file:", file);
@@ -599,12 +770,30 @@ function DeviceFileView({
     setCurrentPage(prev => Math.min(prev + 1, totalPages));
   };
 
+  if (removableStorage && !isStorageReady(storageState)) {
+    return (
+      <div className="w-full space-y-4">
+        <ViewHeader
+          title={m.mount_view_device_title()}
+          description={m.mount_view_device_description()}
+        />
+        <TfCardStatus state={storageState} failed={storageStateFailed} onFormatted={syncStorage} />
+        <div className="flex items-center gap-x-2">
+          <Button size="MD" theme="light" text={m.back()} onClick={() => onBack()} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full space-y-4">
       <ViewHeader
         title={m.mount_view_device_title()}
         description={m.mount_view_device_description()}
       />
+      {removableStorage && (
+        <TfCardStatus state={storageState} failed={storageStateFailed} onFormatted={syncStorage} />
+      )}
       <div
         className="w-full animate-fadeIn opacity-0"
         style={{
@@ -625,13 +814,21 @@ function DeviceFileView({
                     {m.mount_no_images_description()}
                   </p>
                 </div>
-                <div>
+                <div className="flex justify-center gap-x-2">
                   <Button
                     size="SM"
                     theme="primary"
                     text={m.mount_upload_title()}
                     onClick={() => onNewImageClick()}
                   />
+                  {storageDownload && (
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text={m.mount_download_title()}
+                      onClick={onDownloadClick}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -764,7 +961,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 && (
         <div
-          className="w-full animate-fadeIn opacity-0"
+          className="w-full animate-fadeIn space-y-2 opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.25s",
@@ -777,11 +974,22 @@ function DeviceFileView({
             text={m.mount_button_upload_new_image()}
             onClick={() => onNewImageClick()}
           />
+          {storageDownload && (
+            <Button
+              size="MD"
+              theme="light"
+              fullWidth
+              text={m.mount_download_title()}
+              onClick={onDownloadClick}
+            />
+          )}
         </div>
       )}
     </div>
   );
 }
+
+const START_STORAGE_UPLOAD_TIMEOUT_MS = 30_000;
 
 function UploadFileView({
   onBack,
@@ -801,35 +1009,52 @@ function UploadFileView({
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { send } = useJsonRpc();
-  const rtcDataChannelRef = useRef<RTCDataChannel | null>(null);
 
-  useEffect(() => {
-    const ref = rtcDataChannelRef.current;
-    return () => {
-      console.log("unmounting");
-      if (ref) {
-        ref.onopen = null;
-        ref.onerror = null;
-        ref.onmessage = null;
-        ref.onclose = null;
-        ref.close();
-      }
-    };
+  // One controller per upload attempt. Aborting it stops the transport the
+  // attempt is using and makes its late callbacks return early, so
+  // cancelling, picking another file or leaving the view cannot leave a
+  // transfer running or write into stale state.
+  const attemptRef = useRef<AbortController | null>(null);
+
+  const abortUpload = useCallback(() => {
+    attemptRef.current?.abort();
+    attemptRef.current = null;
   }, []);
 
-  function handleWebRTCUpload(file: File, alreadyUploadedBytes: number, dataChannel: string) {
+  useEffect(() => abortUpload, [abortUpload]);
+
+  function failUpload(error: string) {
+    abortUpload();
+    setUploadError(error);
+    setUploadState("idle");
+    setUploadSpeed(null);
+  }
+
+  function handleWebRTCUpload(
+    file: File,
+    alreadyUploadedBytes: number,
+    dataChannel: string,
+    signal: AbortSignal,
+  ) {
     const rtcDataChannel = useRTCStore.getState().peerConnection?.createDataChannel(dataChannel);
 
     if (!rtcDataChannel) {
       console.error("Failed to create data channel for file upload");
       notifications.error(m.mount_upload_failed_datachannel());
-      setUploadState("idle");
+      failUpload(m.mount_upload_failed_datachannel());
       console.log("Upload state set to 'idle'");
 
       return;
     }
 
-    rtcDataChannelRef.current = rtcDataChannel;
+    signal.addEventListener("abort", () => {
+      rtcDataChannel.onopen = null;
+      rtcDataChannel.onerror = null;
+      rtcDataChannel.onmessage = null;
+      rtcDataChannel.onclose = null;
+      rtcDataChannel.onbufferedamountlow = null;
+      rtcDataChannel.close();
+    });
 
     const lowWaterMark = 256 * 1024;
     const highWaterMark = 1 * 1024 * 1024;
@@ -879,6 +1104,7 @@ function UploadFileView({
 
       let offset = alreadyUploadedBytes;
       const sendNextChunk = () => {
+        if (signal.aborted) return;
         if (offset >= file.size) {
           rtcDataChannel.close();
           setUploadState("success");
@@ -889,7 +1115,14 @@ function UploadFileView({
 
         const chunk = file.slice(offset, offset + chunkSize);
         chunk.arrayBuffer().then(buffer => {
-          rtcDataChannel.send(buffer);
+          if (signal.aborted) return;
+          try {
+            rtcDataChannel.send(buffer);
+          } catch (error) {
+            console.error("RTC Data channel send failed:", error);
+            failUpload(m.mount_upload_failed_rtc({ error: String(error) }));
+            return;
+          }
 
           if (rtcDataChannel.bufferedAmount >= highWaterMark) {
             pauseSending = true;
@@ -912,16 +1145,22 @@ function UploadFileView({
     rtcDataChannel.onerror = error => {
       console.error("RTC Data channel error:", error);
       notifications.error(m.mount_upload_failed_rtc({ error: error }));
-      setUploadState("idle");
+      failUpload(m.mount_upload_failed_rtc({ error: error }));
       console.log("Upload state set to 'idle'");
     };
   }
 
-  async function handleHttpUpload(file: File, alreadyUploadedBytes: number, dataChannel: string) {
-    const uploadUrl = `${DEVICE_API}/storage/upload?uploadId=${dataChannel}`;
+  function handleHttpUpload(
+    file: File,
+    alreadyUploadedBytes: number,
+    uploadId: string,
+    signal: AbortSignal,
+  ) {
+    const uploadUrl = `${DEVICE_API}/storage/upload?uploadId=${encodeURIComponent(uploadId)}`;
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", uploadUrl, true);
+    signal.addEventListener("abort", () => xhr.abort());
 
     let lastUploadedBytes = alreadyUploadedBytes;
     let lastUpdateTime = Date.now();
@@ -962,15 +1201,13 @@ function UploadFileView({
         setUploadState("success");
       } else {
         console.error("Upload error:", xhr.statusText);
-        setUploadError(xhr.statusText);
-        setUploadState("idle");
+        failUpload(xhr.statusText);
       }
     };
 
     xhr.onerror = () => {
       console.error("XHR error:", xhr.statusText);
-      setUploadError(xhr.statusText);
-      setUploadState("idle");
+      failUpload(xhr.statusText);
     };
 
     // Prepare the data to send
@@ -993,6 +1230,12 @@ function UploadFileView({
         return;
       }
 
+      // A previous attempt, if any, is abandoned here.
+      abortUpload();
+      const attempt = new AbortController();
+      attemptRef.current = attempt;
+      const { signal } = attempt;
+
       setFileError(null);
       console.log(`File selected: ${file.name}, size: ${file.size} bytes`);
       setUploadedFileName(file.name);
@@ -1000,32 +1243,50 @@ function UploadFileView({
       setUploadState("uploading");
       console.log("Upload state set to 'uploading'");
 
+      const startTimeout = window.setTimeout(() => {
+        if (signal.aborted) return;
+        failUpload("Timed out waiting to start the storage upload");
+      }, START_STORAGE_UPLOAD_TIMEOUT_MS);
+
       send(
         "startStorageFileUpload",
         { filename: file.name, size: file.size },
         (resp: JsonRpcResponse) => {
+          if (signal.aborted) return;
+          window.clearTimeout(startTimeout);
           console.log("startStorageFileUpload response:", resp);
           if ("error" in resp) {
             console.error("Upload error:", resp.error.message);
-            setUploadError(resp.error.data || resp.error.message);
-            setUploadState("idle");
+            failUpload(resp.error.data || resp.error.message);
             console.log("Upload state set to 'idle'");
             return;
           }
 
-          const { alreadyUploadedBytes, dataChannel } = resp.result as {
-            alreadyUploadedBytes: number;
-            dataChannel: string;
+          const { alreadyUploadedBytes, dataChannel } = (resp.result ?? {}) as {
+            alreadyUploadedBytes?: unknown;
+            dataChannel?: unknown;
           };
+          if (
+            typeof alreadyUploadedBytes !== "number" ||
+            !Number.isSafeInteger(alreadyUploadedBytes) ||
+            alreadyUploadedBytes < 0 ||
+            alreadyUploadedBytes > file.size ||
+            typeof dataChannel !== "string" ||
+            dataChannel.length === 0
+          ) {
+            console.error("Invalid startStorageFileUpload response:", resp.result);
+            failUpload("Invalid response from device");
+            return;
+          }
 
           console.log(
             `Already uploaded bytes: ${alreadyUploadedBytes}, Data channel: ${dataChannel}`,
           );
 
           if (isOnDevice) {
-            handleHttpUpload(file, alreadyUploadedBytes, dataChannel);
+            handleHttpUpload(file, alreadyUploadedBytes, dataChannel, signal);
           } else {
-            handleWebRTCUpload(file, alreadyUploadedBytes, dataChannel);
+            handleWebRTCUpload(file, alreadyUploadedBytes, dataChannel, signal);
           }
         },
       );
@@ -1183,6 +1444,7 @@ function UploadFileView({
               theme="light"
               text={m.mount_button_cancel_upload()}
               onClick={() => {
+                abortUpload();
                 onCancelUpload();
                 setUploadState("idle");
                 setUploadProgress(0);
@@ -1200,6 +1462,223 @@ function UploadFileView({
             />
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface StorageDownloadState {
+  status: "idle" | "downloading" | "done" | "failed" | "cancelled";
+  filename?: string;
+  size: number;
+  received: number;
+  error?: string;
+}
+
+function parseHttpUrl(value: string): URL | null {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function fileNameFromUrl(url: URL | null): string {
+  const last = url?.pathname.split("/").pop() ?? "";
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+function DownloadFileView({ onBack }: { onBack: () => void }) {
+  const [url, setUrl] = useState("");
+  const [editedFileName, setEditedFileName] = useState<string | null>(null);
+  const [download, setDownload] = useState<StorageDownloadState | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [speed, setSpeed] = useState<number | null>(null);
+  const lastSample = useRef<{ received: number; time: number } | null>(null);
+
+  const applyState = useCallback((next: StorageDownloadState) => {
+    const now = Date.now();
+    const last = lastSample.current;
+    if (next.status !== "downloading") {
+      lastSample.current = null;
+      setSpeed(null);
+    } else if (!last) {
+      lastSample.current = { received: next.received, time: now };
+    } else if (now - last.time >= 400) {
+      const current = ((next.received - last.received) * 1000) / (now - last.time);
+      setSpeed(previous => (previous === null ? current : previous * 0.7 + current * 0.3));
+      lastSample.current = { received: next.received, time: now };
+    }
+    setDownload(next);
+  }, []);
+
+  const onEvent = useCallback(
+    (payload: JsonRpcRequest) => {
+      if (payload.method === "storageDownloadState") {
+        applyState(payload.params as StorageDownloadState);
+      }
+    },
+    [applyState],
+  );
+  const { send } = useJsonRpc(onEvent);
+
+  useEffect(() => {
+    send("getStorageDownloadState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const state = resp.result as StorageDownloadState;
+      if (state.status === "downloading") applyState(state);
+    });
+  }, [send, applyState]);
+
+  const parsedUrl = useMemo(() => parseHttpUrl(url), [url]);
+  const fileName = editedFileName ?? fileNameFromUrl(parsedUrl);
+  const fileNameValid = /^[^/\\]+\.(iso|img)$/i.test(fileName);
+
+  function handleStart() {
+    setStartError(null);
+    setStarting(true);
+    send(
+      "startStorageDownload",
+      { url: url.trim(), filename: fileName },
+      (resp: JsonRpcResponse) => {
+        setStarting(false);
+        if ("error" in resp) {
+          setStartError(resp.error.data || resp.error.message);
+          return;
+        }
+        applyState(resp.result as StorageDownloadState);
+      },
+    );
+  }
+
+  const status = download?.status ?? "idle";
+  const error = startError ?? (status === "failed" ? download?.error : null);
+  const percent =
+    download && download.size > 0 ? Math.min((download.received / download.size) * 100, 100) : null;
+
+  return (
+    <div className="w-full space-y-4">
+      <ViewHeader title={m.mount_download_title()} description={m.mount_download_description()} />
+
+      {status === "downloading" && download && (
+        <Card>
+          <div className="space-y-2 p-4">
+            <div className="inline-block">
+              <Card>
+                <div className="p-1">
+                  <LuDownload className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                </div>
+              </Card>
+            </div>
+            <h3 className="text-lg leading-none font-semibold text-black dark:text-white">
+              {m.mount_downloading_with_name({
+                name: formatters.truncateMiddle(download.filename, 30),
+              })}
+            </h3>
+            <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
+              {download.size > 0
+                ? `${formatters.bytes(download.received)} / ${formatters.bytes(download.size)}`
+                : formatters.bytes(download.received)}
+            </p>
+            <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-300 dark:bg-slate-700">
+              <div
+                className={cx(
+                  "h-3.5 rounded-full bg-blue-700 transition-all duration-500 ease-linear dark:bg-blue-500",
+                  { "animate-pulse": percent === null },
+                )}
+                style={{ width: `${percent ?? 100}%` }}
+              ></div>
+            </div>
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+              <span>{m.mount_downloading()}</span>
+              <span>{speed !== null ? `${formatters.bytes(speed)}/s` : m.mount_calculating()}</span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {status === "done" && download && (
+        <Card>
+          <div className="space-y-1 p-6 text-center">
+            <div className="inline-block">
+              <Card>
+                <div className="p-1">
+                  <LuCheck className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                </div>
+              </Card>
+            </div>
+            <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
+              {m.mount_download_successful()}
+            </h3>
+            <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
+              {m.mount_download_has_been_downloaded({
+                name: formatters.truncateMiddle(download.filename, 40),
+              })}
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {status !== "downloading" && status !== "done" && (
+        <div className="animate-fadeIn space-y-4 opacity-0" style={{ animationDuration: "0.7s" }}>
+          <InputFieldWithLabel
+            placeholder="https://example.com/image.iso"
+            type="url"
+            label={m.mount_url_input_label()}
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+          />
+          <InputFieldWithLabel
+            placeholder="image.iso"
+            type="text"
+            label={m.mount_download_filename_label()}
+            description={m.mount_supported_formats()}
+            value={fileName}
+            onChange={e => setEditedFileName(e.target.value)}
+          />
+        </div>
+      )}
+
+      {error && status !== "downloading" && (
+        <p className="text-sm break-words text-red-600 dark:text-red-400">
+          {m.mount_download_error({ error })}
+        </p>
+      )}
+
+      <div className="flex w-full justify-end space-x-2">
+        {status === "downloading" ? (
+          <Button
+            size="MD"
+            theme="light"
+            text={m.mount_button_cancel_download()}
+            onClick={() => send("cancelStorageDownload", {})}
+          />
+        ) : status === "done" ? (
+          <Button
+            size="MD"
+            theme="primary"
+            text={m.mount_button_back_to_overview()}
+            onClick={onBack}
+          />
+        ) : (
+          <>
+            <Button size="MD" theme="blank" text={m.back()} onClick={onBack} />
+            <Button
+              size="MD"
+              theme="primary"
+              text={m.mount_button_start_download()}
+              disabled={!parsedUrl || !fileNameValid || starting}
+              loading={starting}
+              onClick={handleStart}
+            />
+          </>
+        )}
       </div>
     </div>
   );

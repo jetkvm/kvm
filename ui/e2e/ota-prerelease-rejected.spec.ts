@@ -49,7 +49,7 @@ test.describe("OTA Prerelease Rejected (Not Opted-In)", () => {
     await rebootDeviceViaSSH();
   });
 
-  test("unsigned prerelease update is rejected when not opted in", async ({ page }) => {
+  test("unsigned prerelease update is rejected when not opted in @ota", async ({ page }) => {
     await triggerUpdate(page);
     await expect(page.getByText(/requires GPG signature/i)).toBeVisible({ timeout: 30000 });
   });

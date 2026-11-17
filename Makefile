@@ -2,8 +2,14 @@ BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
 REVISION  := $(shell git rev-parse HEAD)
-VERSION := 0.5.7
+VERSION := 0.5.11
 VERSION_DEV := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M)
+
+# SKUs the app binary must be published under in R2. The binary is currently
+# identical across SKUs but the cloud-api releases endpoint resolves
+# artifacts per SKU (app/<version>/skus/<sku>/jetkvm_app). Keep in sync with
+# KNOWN_SKUS in cloud-api/scripts/sync-releases.ts.
+APP_SKUS := jetkvm-v2 jetkvm-v2-sdmmc
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -12,6 +18,7 @@ BUILDKIT_FLAVOR := arm-rockchip830-linux-uclibcgnueabihf
 BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 DOCKER_BUILD_TAG ?= ghcr.io/jetkvm/buildkit:latest
 SKIP_NATIVE_IF_EXISTS ?= 0
+RELEASE_BRANCH ?= dev
 SKIP_UI_BUILD ?= 0
 ENABLE_SYNC_TRACE ?= 0
 
@@ -217,28 +224,20 @@ frontend:
 		find ../static/ -type f \
 			\( -name '*.js' \
 			-o -name '*.css' \
-			-o -name '*.html' \
-			-o -name '*.ico' \
-			-o -name '*.png' \
-			-o -name '*.jpg' \
-			-o -name '*.jpeg' \
-			-o -name '*.gif' \
 			-o -name '*.svg' \
-			-o -name '*.webp' \
-			-o -name '*.woff2' \
-			\) -exec sh -c 'gzip -9 -kfv {}' \; ;\
+			\) -exec sh -c 'gzip -9 -fv {}' \; ;\
 	fi
 
 git_check_dev:
-	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "dev" ]; then \
-		echo "Error: Must be on 'dev' branch"; exit 1; \
+	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "$(RELEASE_BRANCH)" ]; then \
+		echo "Error: Must be on '$(RELEASE_BRANCH)' branch"; exit 1; \
 	fi
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "Error: Working tree is dirty. Commit or stash changes."; exit 1; \
 	fi
-	@git fetch origin dev
-	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/dev)" ]; then \
-		echo "Error: Local dev is not up-to-date with origin/dev"; exit 1; \
+	@git fetch origin $(RELEASE_BRANCH)
+	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/$(RELEASE_BRANCH))" ]; then \
+		echo "Error: Local $(RELEASE_BRANCH) is not up-to-date with origin/$(RELEASE_BRANCH)"; exit 1; \
 	fi
 	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not installed"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "Error: gh CLI not authenticated. Run 'gh auth login'"; exit 1; }
@@ -280,11 +279,29 @@ dev_release: git_check_dev check_r2
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
 	@echo "  Version:   $(VERSION_DEV)"
-	@read -p "Are you sure you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
-	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
-	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
-	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
+	@app_hash=$$(cat bin/jetkvm_app.sha256); \
+	echo ""; \
+	echo "═══════════════════════════════════════════════════════"; \
+	echo "  R2 Upload"; \
+	echo "═══════════════════════════════════════════════════════"; \
+	echo "  Destination: r2://jetkvm-update/app/$(VERSION_DEV)/skus/<sku>/"; \
+	echo "  SHA256:      $$app_hash"; \
+	echo "  Files to upload:"; \
+	for sku in $(APP_SKUS); do \
+		echo "    - $$sku"; \
+		echo "        bin/jetkvm_app        -> r2://jetkvm-update/app/$(VERSION_DEV)/skus/$$sku/jetkvm_app"; \
+		echo "        bin/jetkvm_app.sha256 -> r2://jetkvm-update/app/$(VERSION_DEV)/skus/$$sku/jetkvm_app.sha256"; \
+	done; \
+	echo "═══════════════════════════════════════════════════════"; \
+	echo ""
+	@read -p "The R2 upload is prepared. These are the files. Do you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
+	@echo "Uploading device app to R2 (skus: $(APP_SKUS))..."
+	@for sku in $(APP_SKUS); do \
+		echo "  -> $$sku"; \
+		rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/skus/$$sku/jetkvm_app || exit 1; \
+		rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/skus/$$sku/jetkvm_app.sha256 || exit 1; \
+	done
 	./scripts/deploy_cloud_app.sh -v $(VERSION_DEV) --skip-confirmation
 	@git tag release/$(VERSION_DEV)
 	@git push origin release/$(VERSION_DEV)
@@ -330,7 +347,7 @@ release: git_check_dev check_r2
 		exit 1; \
 	fi
 	$(MAKE) check_signing_key SIGNING_KEY_FPR=$(SIGNING_KEY_FPR)
-	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q "jetkvm_app"; then \
+	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q .; then \
 		echo "Error: Version $(VERSION) already exists in R2"; exit 1; \
 	fi
 	@latest_dev=$$(curl -s "https://api.jetkvm.com/releases?deviceId=123&prerelease=true" | jq -r '.appVersion // ""'); \
@@ -358,13 +375,33 @@ release: git_check_dev check_r2
 	@echo "───────────────────────────────────────────────────────"
 	@echo "  All tests completed. Everything is tested and ready for release."
 	@echo "  Version:   $(VERSION)"
-	@read -p "Are you sure you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
-
-	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
-	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
-	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
-	rclone copyto bin/jetkvm_app.sig r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sig
+	@app_hash=$$(cat bin/jetkvm_app.sha256); \
+	echo ""; \
+	echo "═══════════════════════════════════════════════════════"; \
+	echo "  R2 Upload (PRODUCTION, signed)"; \
+	echo "═══════════════════════════════════════════════════════"; \
+	echo "  Destination: r2://jetkvm-update/app/$(VERSION)/skus/<sku>/"; \
+	echo "  SHA256:      $$app_hash"; \
+	echo "  Signing key: $(SIGNING_KEY_FPR)"; \
+	echo "  Files to upload:"; \
+	for sku in $(APP_SKUS); do \
+		echo "    - $$sku"; \
+		echo "        bin/jetkvm_app        -> r2://jetkvm-update/app/$(VERSION)/skus/$$sku/jetkvm_app"; \
+		echo "        bin/jetkvm_app.sha256 -> r2://jetkvm-update/app/$(VERSION)/skus/$$sku/jetkvm_app.sha256"; \
+		echo "        bin/jetkvm_app.sig    -> r2://jetkvm-update/app/$(VERSION)/skus/$$sku/jetkvm_app.sig"; \
+	done; \
+	echo "═══════════════════════════════════════════════════════"; \
+	echo ""
+	@read -p "The R2 upload is prepared. These are the files. Do you want to continue? [y/N] " final_confirm && [ "$$final_confirm" = "y" ] || exit 1
+
+	@echo "Uploading device app to R2 (skus: $(APP_SKUS))..."
+	@for sku in $(APP_SKUS); do \
+		echo "  -> $$sku"; \
+		rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/skus/$$sku/jetkvm_app || exit 1; \
+		rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/skus/$$sku/jetkvm_app.sha256 || exit 1; \
+		rclone copyto bin/jetkvm_app.sig r2://jetkvm-update/app/$(VERSION)/skus/$$sku/jetkvm_app.sig || exit 1; \
+	done
 	./scripts/deploy_cloud_app.sh -v $(VERSION) --set-as-default --skip-confirmation
 	@git tag release/$(VERSION)
 	@git push origin release/$(VERSION)

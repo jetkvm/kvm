@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
-import { useUiStore } from "@hooks/stores";
+import { useCapability, useUiStore } from "@hooks/stores";
 import { m } from "@localizations/messages.js";
 import { SettingsItem } from "@components/SettingsItem";
 import Checkbox from "@components/Checkbox";
@@ -26,6 +26,7 @@ export interface UsbDeviceConfig {
   relative_mouse: boolean;
   mass_storage: boolean;
   serial_console: boolean;
+  audio: boolean;
 }
 
 const defaultUsbDeviceConfig: UsbDeviceConfig = {
@@ -34,11 +35,12 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   relative_mouse: true,
   mass_storage: true,
   serial_console: false,
+  audio: true,
 };
 
 const usbPresets = [
   {
-    label: m.usb_device_keyboard_mouse_and_mass_storage(),
+    label: m.usb_device_keyboard_mouse_mass_storage_and_audio(),
     value: "default",
     config: {
       keyboard: true,
@@ -46,6 +48,7 @@ const usbPresets = [
       relative_mouse: true,
       mass_storage: true,
       serial_console: false,
+      audio: true,
     },
   },
   {
@@ -57,6 +60,7 @@ const usbPresets = [
       relative_mouse: false,
       mass_storage: false,
       serial_console: false,
+      audio: false,
     },
   },
   {
@@ -66,6 +70,7 @@ const usbPresets = [
 ];
 
 export function UsbDeviceSetting() {
+  const usbSerial = useCapability("usb_serial");
   const { send } = useJsonRpc();
   const [loading, setLoading] = useState(false);
   const { setUsbSerialConsoleEnabled } = useUiStore();
@@ -81,7 +86,10 @@ export function UsbDeviceSetting() {
           m.usb_device_failed_load({ error: String(resp.error.data || m.unknown_error()) }),
         );
       } else {
-        const usbConfigState = resp.result as UsbDeviceConfig;
+        const usbConfigState = {
+          ...defaultUsbDeviceConfig,
+          ...(resp.result as UsbDeviceConfig),
+        };
         setUsbDeviceConfig(usbConfigState);
         setUsbSerialConsoleEnabled(usbConfigState.serial_console);
 
@@ -228,15 +236,28 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title={m.usb_device_enable_serial_console_title()}
-                description={m.usb_device_enable_serial_console_description()}
+                title={m.usb_device_enable_audio_title()}
+                description={m.usb_device_enable_audio_description()}
               >
                 <Checkbox
-                  checked={usbDeviceConfig.serial_console}
-                  onChange={onUsbConfigItemChange("serial_console")}
+                  checked={usbDeviceConfig.audio}
+                  onChange={onUsbConfigItemChange("audio")}
                 />
               </SettingsItem>
             </div>
+            {usbSerial && (
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.usb_device_enable_serial_console_title()}
+                  description={m.usb_device_enable_serial_console_description()}
+                >
+                  <Checkbox
+                    checked={usbDeviceConfig.serial_console}
+                    onChange={onUsbConfigItemChange("serial_console")}
+                  />
+                </SettingsItem>
+              </div>
+            )}
           </div>
           <div className="mt-6 flex gap-x-2">
             <Button

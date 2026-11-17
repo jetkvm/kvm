@@ -9,8 +9,8 @@ interface FailsafeModeBannerProps {
 export function FailsafeModeBanner({ reason }: FailsafeModeBannerProps) {
   const getReasonMessage = () => {
     switch (reason) {
-      case "video":
-        return "Failsafe Mode Active: Video-related settings are currently unavailable";
+      case "native":
+        return "Failsafe Mode Active: Native settings are currently unavailable";
       default:
         return "Failsafe Mode Active: Some settings may be unavailable";
     }

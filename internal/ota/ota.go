@@ -42,6 +42,9 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 	query := updateURL.Query()
 	query.Set("deviceId", params.DeviceID)
 	query.Set("prerelease", fmt.Sprintf("%v", params.IncludePreRelease))
+	if params.SKU != "" {
+		query.Set("sku", params.SKU)
+	}
 
 	// set the custom versions if they are specified
 	for component, constraint := range params.Components {
@@ -305,6 +308,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 // UpdateParams represents the parameters for the update
 type UpdateParams struct {
 	DeviceID          string            `json:"deviceID"`
+	SKU               string            `json:"sku"`
 	Components        map[string]string `json:"components"`
 	IncludePreRelease bool              `json:"includePreRelease"`
 	ResetConfig       bool              `json:"resetConfig"`

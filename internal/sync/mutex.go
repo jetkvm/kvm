@@ -42,6 +42,14 @@ func (m *RWMutex) Lock() {
 	m.mu.Lock()
 }
 
+// TryLock tries to lock the mutex for writing.
+func (m *RWMutex) TryLock() bool {
+	logTryLock(m)
+	locked := m.mu.TryLock()
+	logTryLockResult(m, locked)
+	return locked
+}
+
 // Unlock unlocks the mutex
 func (m *RWMutex) Unlock() {
 	logUnlock(m)

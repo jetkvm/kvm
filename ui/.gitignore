@@ -23,3 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 /screenshot.png
+# compiled remote-agent binaries
+/e2e/remote-agent/bin/

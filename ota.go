@@ -94,6 +94,7 @@ func GetLocalVersion() (systemVersion *semver.Version, appVersion *semver.Versio
 func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 	updateStatus, err := otaState.GetUpdateStatus(context.Background(), ota.UpdateParams{
 		DeviceID:          GetDeviceID(),
+		SKU:               GetDeviceSKU(),
 		IncludePreRelease: includePreRelease,
 		RequestID:         uuid.New().String(),
 	})
@@ -152,6 +153,7 @@ func rpcGetLocalVersion() (*ota.LocalMetadata, error) {
 	return &ota.LocalMetadata{
 		AppVersion:    appVersion.String(),
 		SystemVersion: systemVersion.String(),
+		SKU:           GetDeviceSKU(),
 	}, nil
 }
 
@@ -169,6 +171,7 @@ func rpcTryUpdate() error {
 func rpcCheckUpdateComponents(params updateParams, includePreRelease bool) (*ota.UpdateStatus, error) {
 	updateParams := ota.UpdateParams{
 		DeviceID:          GetDeviceID(),
+		SKU:               GetDeviceSKU(),
 		IncludePreRelease: includePreRelease,
 		Components:        params.Components,
 	}
@@ -182,6 +185,7 @@ func rpcCheckUpdateComponents(params updateParams, includePreRelease bool) (*ota
 func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetConfig bool) error {
 	updateParams := ota.UpdateParams{
 		DeviceID:          GetDeviceID(),
+		SKU:               GetDeviceSKU(),
 		IncludePreRelease: includePreRelease,
 		ResetConfig:       resetConfig,
 		Components:        params.Components,
