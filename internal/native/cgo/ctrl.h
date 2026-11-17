@@ -18,7 +18,7 @@ typedef struct
 typedef void (jetkvm_video_state_handler_t)(jetkvm_video_state_t *state);
 typedef void (jetkvm_log_handler_t)(int level, const char *filename, const char *funcname, int line, const char *message);
 typedef void (jetkvm_rpc_handler_t)(const char *method, const char *params);
-typedef void (jetkvm_video_handler_t)(const uint8_t *frame, ssize_t len);
+typedef void (jetkvm_video_handler_t)(const uint8_t *frame, ssize_t len, uint64_t pts_us);
 typedef void (jetkvm_indev_handler_t)(int code);
 
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler);
@@ -69,7 +69,7 @@ jetkvm_video_state_t *jetkvm_video_get_status();
 
 void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second);
 void video_send_format_report();
-int video_send_frame(const uint8_t *frame, ssize_t len);
+int video_send_frame(const uint8_t *frame, ssize_t len, uint64_t pts_us);
 
 
 
