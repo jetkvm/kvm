@@ -56,6 +56,7 @@ interface MacroStep {
   keys: string[];
   modifiers: string[];
   delay: number;
+  text?: string;
 }
 
 interface MacroStepCardProps {
@@ -69,6 +70,8 @@ interface MacroStepCardProps {
   keyQuery: string;
   onModifierChange: (modifiers: string[]) => void;
   onDelayChange: (delay: number) => void;
+  onTextChange: (text: string) => void;
+  onStepTypeChange: (type: "keys" | "text") => void;
   isLastStep: boolean;
   keyboard: KeyboardLayout;
 }
@@ -92,10 +95,14 @@ export function MacroStepCard({
   keyQuery,
   onModifierChange,
   onDelayChange,
+  onTextChange,
+  onStepTypeChange,
   isLastStep,
   keyboard,
 }: Readonly<MacroStepCardProps>) {
   const { keyDisplayMap } = keyboard;
+
+  const isTextMode = step.text !== undefined;
 
   const keyOptions = useMemo(
     () =>
@@ -129,6 +136,17 @@ export function MacroStepCard({
       );
     }
   }, [keyOptions, keyQuery, step.keys]);
+
+  const invalidChars = useMemo(() => {
+    if (!isTextMode || !step.text) return [];
+    return [
+      ...new Set(
+        [...(new Intl.Segmenter().segment(step.text) ?? [])]
+          .map(x => x.segment.normalize("NFC"))
+          .filter(char => !keyboard.chars[char]),
+      ),
+    ];
+  }, [isTextMode, step.text, keyboard.chars]);
 
   return (
     <Card className="p-4">
@@ -169,92 +187,143 @@ export function MacroStepCard({
         </div>
       </div>
 
-      <div className="mt-2 space-y-4">
-        <div className="flex w-full flex-col gap-2">
-          <FieldLabel
-            label={m.macro_step_modifiers_label()}
-            description={m.macro_step_modifiers_description()}
+      {/* Step Type Toggle */}
+      <div className="mb-4">
+        <FieldLabel
+          label={m.macro_step_type_label()}
+          description={m.macro_step_type_description()}
+        />
+        <div className="mt-1.5 flex gap-2">
+          <Button
+            size="XS"
+            theme={!isTextMode ? "primary" : "light"}
+            text={m.macro_step_type_keys()}
+            onClick={() => onStepTypeChange("keys")}
           />
-          <div className="inline-flex flex-wrap gap-3">
-            {Object.entries(groupedModifiers).map(([group, mods]) => (
-              <div
-                key={group}
-                className="relative min-w-[120px] rounded-md border border-slate-200 p-2 dark:border-slate-700"
-              >
-                <span className="absolute -top-2.5 left-2 bg-white px-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                  {group}
-                </span>
-                <div className="flex flex-wrap gap-4 pt-1">
-                  {mods.map(option => (
-                    <Button
-                      key={option.value}
-                      size="XS"
-                      theme={
-                        ensureArray(step.modifiers).includes(option.value) ? "primary" : "light"
-                      }
-                      text={option.label.split(" ")[1] || option.label}
-                      onClick={() => handleModifierToggle(option.value)}
-                    />
+          <Button
+            size="XS"
+            theme={isTextMode ? "primary" : "light"}
+            text={m.macro_step_type_text()}
+            onClick={() => onStepTypeChange("text")}
+          />
+        </div>
+      </div>
+
+      <div className="mt-2 space-y-4">
+        {isTextMode ? (
+          /* Type Text Mode */
+          <div className="flex w-full flex-col gap-1">
+            <FieldLabel
+              label={m.macro_step_text_label()}
+              description={m.macro_step_text_description()}
+            />
+            <textarea
+              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400"
+              rows={3}
+              placeholder={m.macro_step_text_placeholder()}
+              value={step.text || ""}
+              onChange={e => onTextChange(e.target.value)}
+              onKeyDown={e => e.stopPropagation()}
+              onKeyUp={e => e.stopPropagation()}
+              onKeyDownCapture={e => e.stopPropagation()}
+              onKeyUpCapture={e => e.stopPropagation()}
+            />
+            {invalidChars.length > 0 && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                {m.macro_step_text_invalid_chars()}: {invalidChars.join(", ")}
+              </p>
+            )}
+          </div>
+        ) : (
+          /* Keys Mode (original) */
+          <>
+            <div className="flex w-full flex-col gap-2">
+              <FieldLabel
+                label={m.macro_step_modifiers_label()}
+                description={m.macro_step_modifiers_description()}
+              />
+              <div className="inline-flex flex-wrap gap-3">
+                {Object.entries(groupedModifiers).map(([group, mods]) => (
+                  <div
+                    key={group}
+                    className="relative min-w-[120px] rounded-md border border-slate-200 p-2 dark:border-slate-700"
+                  >
+                    <span className="absolute -top-2.5 left-2 bg-white px-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      {group}
+                    </span>
+                    <div className="flex flex-wrap gap-4 pt-1">
+                      {mods.map(option => (
+                        <Button
+                          key={option.value}
+                          size="XS"
+                          theme={
+                            ensureArray(step.modifiers).includes(option.value) ? "primary" : "light"
+                          }
+                          text={option.label.split(" ")[1] || option.label}
+                          onClick={() => handleModifierToggle(option.value)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex w-full flex-col gap-1">
+              <div className="flex items-center gap-1">
+                <FieldLabel
+                  label={m.macro_step_keys_label()}
+                  description={m.macro_step_keys_description({ max: MAX_KEYS_PER_STEP })}
+                />
+              </div>
+
+              {step.keys?.length > 0 && (
+                <div className="flex flex-wrap gap-1 pb-2">
+                  {step.keys.map((key, keyIndex) => (
+                    <span
+                      key={`key-${keyIndex}`}
+                      className="inline-flex items-center rounded-md bg-blue-100 px-1 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+                    >
+                      <span className="px-1">{keyDisplay(keyDisplayMap, key)}</span>
+                      <Button
+                        size="XS"
+                        className=""
+                        theme="blank"
+                        onClick={() => {
+                          const newKeys = step.keys.filter((_, i) => i !== keyIndex);
+                          onKeySelect({ value: null, keys: newKeys });
+                        }}
+                        LeadingIcon={LuX}
+                      />
+                    </span>
                   ))}
                 </div>
+              )}
+              <div className="relative w-full">
+                <Combobox
+                  onChange={option => {
+                    const selectedOption = option as ComboboxOption | null;
+                    onKeySelect({ value: selectedOption?.value ?? null });
+                    onKeyQueryChange("");
+                  }}
+                  displayValue={() => keyQuery}
+                  onInputChange={onKeyQueryChange}
+                  options={() => filteredKeys}
+                  disabledMessage={m.macro_step_max_keys_reached({ max: MAX_KEYS_PER_STEP })}
+                  size="SM"
+                  immediate
+                  disabled={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP}
+                  placeholder={
+                    ensureArray(step.keys).length >= MAX_KEYS_PER_STEP
+                      ? m.macro_step_max_keys_reached()
+                      : m.macro_step_search_for_key()
+                  }
+                  emptyMessage={m.macro_step_no_matching_keys_found()}
+                />
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex w-full flex-col gap-1">
-          <div className="flex items-center gap-1">
-            <FieldLabel
-              label={m.macro_step_keys_label()}
-              description={m.macro_step_keys_description({ max: MAX_KEYS_PER_STEP })}
-            />
-          </div>
-
-          {step.keys?.length > 0 && (
-            <div className="flex flex-wrap gap-1 pb-2">
-              {step.keys.map((key, keyIndex) => (
-                <span
-                  key={`key-${keyIndex}`}
-                  className="inline-flex items-center rounded-md bg-blue-100 px-1 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
-                >
-                  <span className="px-1">{keyDisplay(keyDisplayMap, key)}</span>
-                  <Button
-                    size="XS"
-                    className=""
-                    theme="blank"
-                    onClick={() => {
-                      const newKeys = step.keys.filter((_, i) => i !== keyIndex);
-                      onKeySelect({ value: null, keys: newKeys });
-                    }}
-                    LeadingIcon={LuX}
-                  />
-                </span>
-              ))}
             </div>
-          )}
-          <div className="relative w-full">
-            <Combobox
-              onChange={option => {
-                const selectedOption = option as ComboboxOption | null;
-                onKeySelect({ value: selectedOption?.value ?? null });
-                onKeyQueryChange("");
-              }}
-              displayValue={() => keyQuery}
-              onInputChange={onKeyQueryChange}
-              options={() => filteredKeys}
-              disabledMessage={m.macro_step_max_keys_reached({ max: MAX_KEYS_PER_STEP })}
-              size="SM"
-              immediate
-              disabled={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP}
-              placeholder={
-                ensureArray(step.keys).length >= MAX_KEYS_PER_STEP
-                  ? m.macro_step_max_keys_reached()
-                  : m.macro_step_search_for_key()
-              }
-              emptyMessage={m.macro_step_no_matching_keys_found()}
-            />
-          </div>
-        </div>
+          </>
+        )}
 
         <div className="flex w-full flex-col gap-1">
           <div className="flex items-center gap-1">
