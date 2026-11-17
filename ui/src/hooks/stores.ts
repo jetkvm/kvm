@@ -491,7 +491,7 @@ export interface MountMediaState {
   remoteVirtualMediaState: RemoteVirtualMediaState | null;
   setRemoteVirtualMediaState: (state: MountMediaState["remoteVirtualMediaState"]) => void;
 
-  modalView: "mode" | "url" | "device" | "upload" | "error" | null;
+  modalView: "mode" | "url" | "device" | "upload" | "download" | "error" | null;
   setModalView: (view: MountMediaState["modalView"]) => void;
 
   isMountMediaDialogOpen: boolean;
@@ -758,7 +758,8 @@ export type Capability =
   | "tls" // HTTPS listener with a selectable certificate
   | "local_loopback" // web UI can be limited to the loopback interface
   | "log_level" // default log level can be changed
-  | "tailscale"; // Tailscale client
+  | "tailscale" // Tailscale client
+  | "storage_download"; // device downloads an image from a URL into its storage
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,

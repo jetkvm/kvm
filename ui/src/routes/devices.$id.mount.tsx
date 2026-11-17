@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LuLink, LuRadioReceiver, LuCheck, LuUpload } from "react-icons/lu";
+import { LuLink, LuRadioReceiver, LuCheck, LuUpload, LuDownload } from "react-icons/lu";
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
 
@@ -12,7 +12,7 @@ import NetBootIcon from "@assets/netboot-icon.svg";
 import LogoBlueIcon from "@assets/logo-blue.svg";
 import LogoWhiteIcon from "@assets/logo-white.svg";
 import { cx } from "@/cva.config";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
 import Card, { GridCard } from "@components/Card";
@@ -132,7 +132,11 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
         className={cx("mx-auto max-w-4xl px-4 transition-all duration-300 ease-in-out", {
           "max-w-4xl": modalView === "mode",
           "max-w-2xl": modalView === "device",
-          "max-w-xl": modalView === "url" || modalView === "upload" || modalView === "error",
+          "max-w-xl":
+            modalView === "url" ||
+            modalView === "upload" ||
+            modalView === "download" ||
+            modalView === "error",
         })}
       >
         <GridCard cardClassName="relative w-full text-left pointer-events-auto">
@@ -187,7 +191,12 @@ export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
                     setIncompleteFileName(incompleteFile || null);
                     setModalView("upload");
                   }}
+                  onDownloadClick={() => setModalView("download")}
                 />
+              )}
+
+              {modalView === "download" && (
+                <DownloadFileView onBack={() => setModalView("device")} />
               )}
 
               {modalView === "upload" && (
@@ -607,11 +616,13 @@ function DeviceFileView({
   mountInProgress,
   onBack,
   onNewImageClick,
+  onDownloadClick,
 }: {
   onMountStorageFile: (name: string, mode: RemoteVirtualMediaState["mode"]) => void;
   mountInProgress: boolean;
   onBack: () => void;
   onNewImageClick: (incompleteFileName?: string) => void;
+  onDownloadClick: () => void;
 }) {
   const [onStorageFiles, setOnStorageFiles] = useState<StorageFile[]>([]);
 
@@ -628,6 +639,7 @@ function DeviceFileView({
   }
   const [storageSpace, setStorageSpace] = useState<StorageSpace | null>(null);
   const removableStorage = useCapability("removable_storage");
+  const storageDownload = useCapability("storage_download");
   const [storageState, setStorageState] = useState<StorageState | null>(null);
   const [storageStateFailed, setStorageStateFailed] = useState(false);
 
@@ -802,13 +814,21 @@ function DeviceFileView({
                     {m.mount_no_images_description()}
                   </p>
                 </div>
-                <div>
+                <div className="flex justify-center gap-x-2">
                   <Button
                     size="SM"
                     theme="primary"
                     text={m.mount_upload_title()}
                     onClick={() => onNewImageClick()}
                   />
+                  {storageDownload && (
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text={m.mount_download_title()}
+                      onClick={onDownloadClick}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -941,7 +961,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 && (
         <div
-          className="w-full animate-fadeIn opacity-0"
+          className="w-full animate-fadeIn space-y-2 opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.25s",
@@ -954,6 +974,15 @@ function DeviceFileView({
             text={m.mount_button_upload_new_image()}
             onClick={() => onNewImageClick()}
           />
+          {storageDownload && (
+            <Button
+              size="MD"
+              theme="light"
+              fullWidth
+              text={m.mount_download_title()}
+              onClick={onDownloadClick}
+            />
+          )}
         </div>
       )}
     </div>
@@ -1433,6 +1462,223 @@ function UploadFileView({
             />
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface StorageDownloadState {
+  status: "idle" | "downloading" | "done" | "failed" | "cancelled";
+  filename?: string;
+  size: number;
+  received: number;
+  error?: string;
+}
+
+function parseHttpUrl(value: string): URL | null {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function fileNameFromUrl(url: URL | null): string {
+  const last = url?.pathname.split("/").pop() ?? "";
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+function DownloadFileView({ onBack }: { onBack: () => void }) {
+  const [url, setUrl] = useState("");
+  const [editedFileName, setEditedFileName] = useState<string | null>(null);
+  const [download, setDownload] = useState<StorageDownloadState | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [speed, setSpeed] = useState<number | null>(null);
+  const lastSample = useRef<{ received: number; time: number } | null>(null);
+
+  const applyState = useCallback((next: StorageDownloadState) => {
+    const now = Date.now();
+    const last = lastSample.current;
+    if (next.status !== "downloading") {
+      lastSample.current = null;
+      setSpeed(null);
+    } else if (!last) {
+      lastSample.current = { received: next.received, time: now };
+    } else if (now - last.time >= 400) {
+      const current = ((next.received - last.received) * 1000) / (now - last.time);
+      setSpeed(previous => (previous === null ? current : previous * 0.7 + current * 0.3));
+      lastSample.current = { received: next.received, time: now };
+    }
+    setDownload(next);
+  }, []);
+
+  const onEvent = useCallback(
+    (payload: JsonRpcRequest) => {
+      if (payload.method === "storageDownloadState") {
+        applyState(payload.params as StorageDownloadState);
+      }
+    },
+    [applyState],
+  );
+  const { send } = useJsonRpc(onEvent);
+
+  useEffect(() => {
+    send("getStorageDownloadState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      const state = resp.result as StorageDownloadState;
+      if (state.status === "downloading") applyState(state);
+    });
+  }, [send, applyState]);
+
+  const parsedUrl = useMemo(() => parseHttpUrl(url), [url]);
+  const fileName = editedFileName ?? fileNameFromUrl(parsedUrl);
+  const fileNameValid = /^[^/\\]+\.(iso|img)$/i.test(fileName);
+
+  function handleStart() {
+    setStartError(null);
+    setStarting(true);
+    send(
+      "startStorageDownload",
+      { url: url.trim(), filename: fileName },
+      (resp: JsonRpcResponse) => {
+        setStarting(false);
+        if ("error" in resp) {
+          setStartError(resp.error.data || resp.error.message);
+          return;
+        }
+        applyState(resp.result as StorageDownloadState);
+      },
+    );
+  }
+
+  const status = download?.status ?? "idle";
+  const error = startError ?? (status === "failed" ? download?.error : null);
+  const percent =
+    download && download.size > 0 ? Math.min((download.received / download.size) * 100, 100) : null;
+
+  return (
+    <div className="w-full space-y-4">
+      <ViewHeader title={m.mount_download_title()} description={m.mount_download_description()} />
+
+      {status === "downloading" && download && (
+        <Card>
+          <div className="space-y-2 p-4">
+            <div className="inline-block">
+              <Card>
+                <div className="p-1">
+                  <LuDownload className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                </div>
+              </Card>
+            </div>
+            <h3 className="text-lg leading-none font-semibold text-black dark:text-white">
+              {m.mount_downloading_with_name({
+                name: formatters.truncateMiddle(download.filename, 30),
+              })}
+            </h3>
+            <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
+              {download.size > 0
+                ? `${formatters.bytes(download.received)} / ${formatters.bytes(download.size)}`
+                : formatters.bytes(download.received)}
+            </p>
+            <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-300 dark:bg-slate-700">
+              <div
+                className={cx(
+                  "h-3.5 rounded-full bg-blue-700 transition-all duration-500 ease-linear dark:bg-blue-500",
+                  { "animate-pulse": percent === null },
+                )}
+                style={{ width: `${percent ?? 100}%` }}
+              ></div>
+            </div>
+            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+              <span>{m.mount_downloading()}</span>
+              <span>{speed !== null ? `${formatters.bytes(speed)}/s` : m.mount_calculating()}</span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {status === "done" && download && (
+        <Card>
+          <div className="space-y-1 p-6 text-center">
+            <div className="inline-block">
+              <Card>
+                <div className="p-1">
+                  <LuCheck className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                </div>
+              </Card>
+            </div>
+            <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
+              {m.mount_download_successful()}
+            </h3>
+            <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
+              {m.mount_download_has_been_downloaded({
+                name: formatters.truncateMiddle(download.filename, 40),
+              })}
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {status !== "downloading" && status !== "done" && (
+        <div className="animate-fadeIn space-y-4 opacity-0" style={{ animationDuration: "0.7s" }}>
+          <InputFieldWithLabel
+            placeholder="https://example.com/image.iso"
+            type="url"
+            label={m.mount_url_input_label()}
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+          />
+          <InputFieldWithLabel
+            placeholder="image.iso"
+            type="text"
+            label={m.mount_download_filename_label()}
+            description={m.mount_supported_formats()}
+            value={fileName}
+            onChange={e => setEditedFileName(e.target.value)}
+          />
+        </div>
+      )}
+
+      {error && status !== "downloading" && (
+        <p className="text-sm break-words text-red-600 dark:text-red-400">
+          {m.mount_download_error({ error })}
+        </p>
+      )}
+
+      <div className="flex w-full justify-end space-x-2">
+        {status === "downloading" ? (
+          <Button
+            size="MD"
+            theme="light"
+            text={m.mount_button_cancel_download()}
+            onClick={() => send("cancelStorageDownload", {})}
+          />
+        ) : status === "done" ? (
+          <Button
+            size="MD"
+            theme="primary"
+            text={m.mount_button_back_to_overview()}
+            onClick={onBack}
+          />
+        ) : (
+          <>
+            <Button size="MD" theme="blank" text={m.back()} onClick={onBack} />
+            <Button
+              size="MD"
+              theme="primary"
+              text={m.mount_button_start_download()}
+              disabled={!parsedUrl || !fileNameValid || starting}
+              loading={starting}
+              onClick={handleStart}
+            />
+          </>
+        )}
       </div>
     </div>
   );
