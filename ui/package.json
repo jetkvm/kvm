@@ -49,7 +49,7 @@
     "react-hook-form": "^7.68.0",
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
-    "react-router": "^7.10.1",
+    "react-router": "^7.18.2",
     "react-simple-keyboard": "^3.8.141",
     "react-use-websocket": "^4.13.0",
     "react-xtermjs": "^1.0.10",
@@ -85,15 +85,21 @@
     "oxfmt": "^0.42.0",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "^0.18.1",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.23",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vite": "^8.1.6"
   },
   "lint-staged": {
     "*.{ts,tsx}": "oxlint --fix --deny-warnings",
     "*.{ts,tsx,js,jsx,css,md}": "oxfmt",
     "localization/messages/*.json": "npm run i18n:resort"
+  },
+  "overrides": {
+    "kysely": "^0.28.17",
+    "uuid": "^11.1.1",
+    "tinypool": "2.1.2",
+    "postcss-selector-parser": "^6.1.5"
   },
   "engines": {
     "node": "^22.21.1"
