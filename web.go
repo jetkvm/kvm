@@ -931,6 +931,8 @@ func handleSetup(c *gin.Context) {
 		return
 	}
 
+	updateMdnsTXT()
+
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
 }
 
