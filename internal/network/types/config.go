@@ -30,8 +30,6 @@ type MDNSListenOptions struct {
 
 // NetworkConfig represents the complete network configuration for an interface
 type NetworkConfig struct {
-	DHCPClient null.String `json:"dhcp_client,omitempty" one_of:"jetdhcpc,udhcpc" default:"udhcpc"`
-
 	Hostname  null.String `json:"hostname,omitempty" validate_type:"hostname"`
 	HTTPProxy null.String `json:"http_proxy,omitempty" validate_type:"proxy"`
 	Domain    null.String `json:"domain,omitempty" validate_type:"hostname"`
@@ -39,7 +37,7 @@ type NetworkConfig struct {
 	IPv4Mode   null.String       `json:"ipv4_mode,omitempty" one_of:"dhcp,static,disabled" default:"dhcp"`
 	IPv4Static *IPv4StaticConfig `json:"ipv4_static,omitempty" required_if:"IPv4Mode=static"`
 
-	IPv6Mode   null.String       `json:"ipv6_mode,omitempty" one_of:"slaac,dhcpv6,slaac_and_dhcpv6,static,link_local,disabled" default:"slaac"`
+	IPv6Mode   null.String       `json:"ipv6_mode,omitempty" one_of:"slaac,static,link_local,disabled" default:"slaac"`
 	IPv6Static *IPv6StaticConfig `json:"ipv6_static,omitempty" required_if:"IPv6Mode=static"`
 
 	LLDPMode                null.String `json:"lldp_mode,omitempty" one_of:"disabled,basic,all" default:"basic"`
@@ -51,6 +49,13 @@ type NetworkConfig struct {
 	TimeSyncParallel        null.Int    `json:"time_sync_parallel,omitempty" default:"4"`
 	TimeSyncNTPServers      []string    `json:"time_sync_ntp_servers,omitempty" validate_type:"hostname_or_ipv4_or_ipv6" required_if:"TimeSyncOrdering=ntp_user_provided"`
 	TimeSyncHTTPUrls        []string    `json:"time_sync_http_urls,omitempty" validate_type:"url" required_if:"TimeSyncOrdering=http_user_provided"`
+}
+
+func (c *NetworkConfig) Migrate() {
+	switch c.IPv6Mode.String {
+	case "dhcpv6", "slaac_and_dhcpv6":
+		c.IPv6Mode = null.StringFrom("slaac")
+	}
 }
 
 // GetMDNSMode returns the MDNS mode configuration

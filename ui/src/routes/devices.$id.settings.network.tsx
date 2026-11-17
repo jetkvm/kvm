@@ -87,7 +87,6 @@ export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
 }
 
 const NonCustomDomainOptions = ["dhcp", "local"];
-const DhcpClientOptions = ["jetdhcpc", "udhcpc"];
 
 export default function SettingsNetworkRoute() {
   const { send } = useJsonRpc();
@@ -264,14 +263,6 @@ export default function SettingsNetworkRoute() {
 
       // Build list of critical changes for display
       const changes: { label: string; from: string; to: string }[] = [];
-
-      if (dirty.dhcp_client) {
-        changes.push({
-          label: m.network_dhcp_client_title(),
-          from: initialSettingsRef.current?.dhcp_client as string,
-          to: data.dhcp_client as string,
-        });
-      }
 
       if (dirty.ipv4_mode) {
         changes.push({
@@ -554,24 +545,14 @@ export default function SettingsNetworkRoute() {
 
               {timeSyncMode === "custom" && <CustomTimeSyncCard />}
 
-              <SettingsItem
-                title={m.network_dhcp_client_title()}
-                description={m.network_dhcp_client_description()}
-              >
-                {/* A device with a single, fixed DHCP client reports its own name. */}
-                {dhcpClient && !DhcpClientOptions.includes(dhcpClient) ? (
+              {dhcpClient && (
+                <SettingsItem
+                  title={m.network_dhcp_client_title()}
+                  description={m.network_dhcp_client_description()}
+                >
                   <span className="font-mono text-sm text-black dark:text-white">{dhcpClient}</span>
-                ) : (
-                  <SelectMenuBasic
-                    size="SM"
-                    options={[
-                      { value: "jetdhcpc", label: m.network_dhcp_client_jetkvm() },
-                      { value: "udhcpc", label: "udhcpc" }, // do not localize
-                    ]}
-                    {...register("dhcp_client")}
-                  />
-                )}
-              </SettingsItem>
+                </SettingsItem>
+              )}
 
               <SettingsItem
                 title={m.network_ipv4_mode_title()}
@@ -642,8 +623,6 @@ export default function SettingsNetworkRoute() {
                       options={[
                         { value: "disabled", label: m.network_ipv6_mode_disabled() },
                         { value: "slaac", label: m.network_ipv6_mode_slaac() },
-                        //{ value: "dhcpv6", label: m.network_ipv6_mode_dhcpv6() },
-                        //{ value: "slaac_and_dhcpv6", label: m.network_ipv6_mode_slaac_dhcpv6() },
                         { value: "static", label: m.network_ipv6_mode_static() },
                         { value: "link_local", label: m.network_ipv6_mode_link_local() },
                       ]}

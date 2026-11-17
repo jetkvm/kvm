@@ -295,6 +295,7 @@ func LoadConfig() {
 	if loadedConfig.NetworkConfig == nil {
 		loadedConfig.NetworkConfig = getDefaultConfig().NetworkConfig
 	}
+	loadedConfig.NetworkConfig.Migrate()
 
 	if loadedConfig.JigglerConfig == nil {
 		loadedConfig.JigglerConfig = getDefaultConfig().JigglerConfig

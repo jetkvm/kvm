@@ -40,9 +40,7 @@ func (l *Lease) ToJSON() string {
 
 // ToDHCPLease converts a lease to a DHCP lease.
 func (l *Lease) ToDHCPLease() *types.DHCPLease {
-	lease := &l.DHCPLease
-	lease.DHCPClient = "udhcpc"
-	return lease
+	return &l.DHCPLease
 }
 
 // SetLeaseExpiry sets the lease expiry time.

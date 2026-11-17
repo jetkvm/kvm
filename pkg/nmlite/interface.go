@@ -84,7 +84,7 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 	}
 
 	// create the dhcp client
-	im.dhcpClient, err = NewDHCPClient(ctx, ifaceName, &scopedLogger, config.DHCPClient.String)
+	im.dhcpClient, err = NewDHCPClient(ctx, ifaceName, &scopedLogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DHCP client: %w", err)
 	}
@@ -96,9 +96,6 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 			return
 		}
 
-		if err := im.applyDHCPLease(lease); err != nil {
-			im.logger.Error().Err(err).Msg("failed to apply DHCP lease")
-		}
 		im.updateStateFromDHCPLease(lease)
 		if im.onDHCPLeaseChange != nil {
 			im.onDHCPLeaseChange(lease)
@@ -446,12 +443,8 @@ func (im *InterfaceManager) applyIPv6Config() error {
 	switch mode {
 	case "static":
 		return im.applyIPv6Static()
-	case "dhcpv6":
-		return im.applyIPv6DHCP()
 	case "slaac":
 		return im.applyIPv6SLAAC()
-	case "slaac_and_dhcpv6":
-		return im.applyIPv6SLAACAndDHCP()
 	case "link_local":
 		return im.applyIPv6LinkLocal()
 	case "disabled":
@@ -544,17 +537,6 @@ func (im *InterfaceManager) applyIPv6Static() error {
 	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet6, link.StaticProtocol)
 }
 
-// applyIPv6DHCP applies DHCPv6 configuration
-func (im *InterfaceManager) applyIPv6DHCP() error {
-	if im.dhcpClient == nil {
-		return fmt.Errorf("DHCP client not available")
-	}
-
-	// Enable DHCPv6
-	im.dhcpClient.SetIPv6(true)
-	return im.dhcpClient.Start()
-}
-
 // applyIPv6SLAAC applies SLAAC configuration
 func (im *InterfaceManager) applyIPv6SLAAC() error {
 	// Disable DHCPv6
@@ -584,19 +566,6 @@ func (im *InterfaceManager) applyIPv6SLAAC() error {
 	}
 
 	// Enable SLAAC
-	return im.staticConfig.EnableIPv6SLAAC()
-}
-
-// applyIPv6SLAACAndDHCP applies SLAAC + DHCPv6 configuration
-func (im *InterfaceManager) applyIPv6SLAACAndDHCP() error {
-	// Enable both SLAAC and DHCPv6
-	if im.dhcpClient != nil {
-		im.dhcpClient.SetIPv6(true)
-		if err := im.dhcpClient.Start(); err != nil {
-			return fmt.Errorf("failed to start DHCP client: %w", err)
-		}
-	}
-
 	return im.staticConfig.EnableIPv6SLAAC()
 }
 
@@ -801,51 +770,4 @@ func (im *InterfaceManager) ReconcileLinkAddrs(addrs []types.IPAddress, family i
 	}
 
 	return nl.ReconcileLink(link, addrs, family, protocol)
-}
-
-// applyDHCPLease applies DHCP lease configuration using ReconcileLinkAddrs
-func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
-	if lease == nil {
-		return fmt.Errorf("DHCP lease is nil")
-	}
-
-	if lease.DHCPClient != "jetdhcpc" {
-		im.logger.Warn().Str("dhcp_client", lease.DHCPClient).Msg("ignoring DHCP lease, not implemented yet")
-		return nil
-	}
-
-	if lease.IsIPv6() {
-		im.logger.Warn().Msg("ignoring IPv6 DHCP lease, not implemented yet")
-		return nil
-	}
-
-	// Convert DHCP lease to IPv4Config
-	ipv4Config := im.convertDHCPLeaseToIPv4Config(lease)
-
-	// Apply the configuration using ReconcileLinkAddrs
-	return im.ReconcileLinkAddrs([]types.IPAddress{*ipv4Config}, link.AfInet, link.DhcpProtocol)
-}
-
-// convertDHCPLeaseToIPv4Config converts a DHCP lease to IPv4Config
-func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease) *types.IPAddress {
-	ipNet := lease.IPNet()
-	if ipNet == nil {
-		return nil
-	}
-
-	// Create IPv4Address
-	ipv4Addr := types.IPAddress{
-		Address:   *ipNet,
-		Gateway:   lease.Routers[0],
-		Secondary: false,
-		Permanent: false,
-	}
-
-	im.logger.Trace().
-		Interface("ipv4Addr", ipv4Addr).
-		Interface("lease", lease).
-		Msg("converted DHCP lease to IPv4Config")
-
-	// Create IPv4Config
-	return &ipv4Addr
 }

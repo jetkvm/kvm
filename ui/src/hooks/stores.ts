@@ -880,14 +880,7 @@ export interface NetworkState {
   setDhcpLeaseExpiry: (expiry: Date) => void;
 }
 
-export type IPv6Mode =
-  | "disabled"
-  | "slaac"
-  | "dhcpv6"
-  | "slaac_and_dhcpv6"
-  | "static"
-  | "link_local"
-  | "unknown";
+export type IPv6Mode = "disabled" | "slaac" | "static" | "link_local" | "unknown";
 export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
 export type LLDPMode = "disabled" | "basic" | "all" | "unknown";
 export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
@@ -907,7 +900,7 @@ export interface IPv6StaticConfig {
 }
 
 export interface NetworkSettings {
-  dhcp_client: string;
+  dhcp_client?: string;
   hostname: string | null;
   domain: string | null;
   http_proxy: string | null;

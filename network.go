@@ -173,7 +173,7 @@ func initNetwork() error {
 	if err := nm.AddInterface(NetIfName, nc); err != nil {
 		return fmt.Errorf("failed to add interface: %w", err)
 	}
-	_ = nm.CleanUpLegacyDHCPClients()
+	_ = nm.StopUnusedDHCPClient()
 
 	networkManager = nm
 
@@ -227,19 +227,10 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 }
 
 func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *ota.PostRebootAction) {
-	oldDhcpClient := oldConfig.DHCPClient.String
-
 	l := networkLogger.With().
 		Interface("old", oldConfig).
 		Interface("new", newConfig).
 		Logger()
-
-	// DHCP client change always requires reboot
-	if newConfig.DHCPClient.String != oldDhcpClient {
-		rebootRequired = true
-		l.Info().Msg("DHCP client changed, reboot required")
-		return rebootRequired, postRebootAction
-	}
 
 	oldIPv4Mode := oldConfig.IPv4Mode.String
 	newIPv4Mode := newConfig.IPv4Mode.String
@@ -278,8 +269,8 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		return rebootRequired, postRebootAction
 	}
 
-	// IPv6 mode change requires reboot when using udhcpc
-	if newConfig.IPv6Mode.String != oldConfig.IPv6Mode.String && oldDhcpClient == "udhcpc" {
+	// IPv6 mode change requires reboot
+	if newConfig.IPv6Mode.String != oldConfig.IPv6Mode.String {
 		rebootRequired = true
 		l.Info().Msg("IPv6 mode changed with udhcpc, reboot required")
 	}
@@ -360,21 +351,6 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 
 func rpcRenewDHCPLease() error {
 	return networkManager.RenewDHCPLease(NetIfName)
-}
-
-func rpcToggleDHCPClient() error {
-	switch config.NetworkConfig.DHCPClient.String {
-	case "jetdhcpc":
-		config.NetworkConfig.DHCPClient.String = "udhcpc"
-	case "udhcpc":
-		config.NetworkConfig.DHCPClient.String = "jetdhcpc"
-	}
-
-	if err := SaveConfig(); err != nil {
-		return err
-	}
-
-	return rpcReboot(true)
 }
 
 func rpcGetPublicIPAddresses(refresh bool) ([]myip.PublicIP, error) {
