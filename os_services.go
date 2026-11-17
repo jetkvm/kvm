@@ -465,23 +465,39 @@ func rpcSetOsServicesSettings(settings map[string]any) (OSServicesConfig, error)
 	if merged == current {
 		return current, nil
 	}
-	configLock.Lock()
-	stored := merged
-	config.OSServices = &stored
-	configLock.Unlock()
-	if err := SaveConfig(); err != nil {
-		return merged, fmt.Errorf("failed to save config: %w", err)
+	store := func(settings OSServicesConfig) {
+		configLock.Lock()
+		config.OSServices = &settings
+		configLock.Unlock()
 	}
-	if merged.Enabled != current.Enabled {
-		// The USB interface comes or goes: the target enumerates the KVM
-		// again, as for a change of the USB devices.
+	// The gadget reads the switch from the config. As for the USB devices,
+	// the gadget changes first and the settings are saved after it, so a
+	// gadget that refuses the change leaves the settings as they were.
+	updateGadget := func() error {
 		osServicesNoteKVMRestart()
 		setUSBRecoveryTimer(time.Now())
 		err := gadget.UpdateGadgetConfig()
 		setUSBRecoveryTimer(time.Now())
-		if err != nil {
-			return merged, fmt.Errorf("failed to write gadget config: %w", err)
+		return err
+	}
+	store(merged)
+	if merged.Enabled != current.Enabled {
+		if err := updateGadget(); err != nil {
+			store(current)
+			if again := updateGadget(); again != nil {
+				osServicesLogger.Warn().Err(again).Msg("cannot put the gadget back after a refused OS Services switch")
+			}
+			return current, fmt.Errorf("failed to write gadget config: %w", err)
 		}
+	}
+	if err := SaveConfig(); err != nil {
+		store(current)
+		if merged.Enabled != current.Enabled {
+			if again := updateGadget(); again != nil {
+				osServicesLogger.Warn().Err(again).Msg("cannot put the gadget back after a failed save")
+			}
+		}
+		return current, fmt.Errorf("failed to save config: %w", err)
 	}
 	s.applySettings()
 	s.announceSettings(merged)
