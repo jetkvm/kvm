@@ -26,40 +26,54 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			return
 		}
 		session.hidRPCAvailable = true
-	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
-		rpcErr = handleHidRPCKeyboardInput(message)
 	case hidrpc.TypeKeyboardMacroReport:
 		keyboardMacroReport, err := message.KeyboardMacroReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
 			return
 		}
-		rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+		if !session.acceptsInput() {
+			rpcErr = errSessionInputRetired
+			break
+		}
+		rpcErr = rpcExecuteKeyboardMacro(session, keyboardMacroReport.Steps)
 	case hidrpc.TypeCancelKeyboardMacroReport:
-		rpcCancelKeyboardMacro()
+		if session.acceptsInput() {
+			rpcCancelKeyboardMacro()
+		}
 		return
+	default:
+		rpcErr = session.input(func() error { return handleHidRPCInput(message, session) })
+	}
+
+	if errors.Is(rpcErr, errSessionInputRetired) {
+		logger.Debug().Uint8("type", uint8(message.Type())).Msg("dropped HID RPC input from a replaced or closed session")
+	} else if rpcErr != nil {
+		logger.Warn().Err(rpcErr).Msg("failed to handle HID RPC message")
+	}
+}
+
+func handleHidRPCInput(message hidrpc.Message, session *Session) error {
+	switch message.Type() {
+	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
+		return handleHidRPCKeyboardInput(message)
 	case hidrpc.TypeKeypressKeepAliveReport:
-		rpcErr = handleHidRPCKeypressKeepAlive(session)
+		return handleHidRPCKeypressKeepAlive(session)
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {
-			logger.Warn().Err(err).Msg("failed to get pointer report")
-			return
+			return fmt.Errorf("failed to get pointer report: %w", err)
 		}
-		rpcErr = rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
+		return rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
 	case hidrpc.TypeMouseReport:
 		mouseReport, err := message.MouseReport()
 		if err != nil {
-			logger.Warn().Err(err).Msg("failed to get mouse report")
-			return
+			return fmt.Errorf("failed to get mouse report: %w", err)
 		}
-		rpcErr = rpcRelMouseReport(mouseReport.DX, mouseReport.DY, mouseReport.Button)
+		return rpcRelMouseReport(mouseReport.DX, mouseReport.DY, mouseReport.Button)
 	default:
 		logger.Warn().Uint8("type", uint8(message.Type())).Msg("unknown HID RPC message type")
-	}
-
-	if rpcErr != nil {
-		logger.Warn().Err(rpcErr).Msg("failed to handle HID RPC message")
+		return nil
 	}
 }
 

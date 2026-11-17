@@ -142,7 +142,20 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
+	var result any
+	call := func() error {
+		result, err = callRPCHandler(scopedLogger, handler, request.Params, session)
+		return err
+	}
+	if handler.Input {
+		err = session.input(call)
+	} else {
+		err = call()
+	}
+	if errors.Is(err, errSessionInputRetired) {
+		scopedLogger.Debug().Msg("dropped RPC input from a replaced or closed session")
+		return
+	}
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -589,6 +602,7 @@ type RPCHandler struct {
 	Func           any
 	Params         []string
 	OptionalParams []string
+	Input          bool
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
@@ -1323,7 +1337,7 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 	keyboardMacroCancel = cancel
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
+func rpcExecuteKeyboardMacro(session *Session, macro []hidrpc.KeyboardMacroStep) error {
 	cancelKeyboardMacro()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1338,7 +1352,7 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 		currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
-	err := rpcDoExecuteKeyboardMacro(ctx, macro)
+	err := rpcDoExecuteKeyboardMacro(ctx, session, macro)
 
 	setKeyboardMacroCancel(nil)
 
@@ -1360,21 +1374,28 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
 }
 
-func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+func rpcDoExecuteKeyboardMacro(ctx context.Context, session *Session, macro []hidrpc.KeyboardMacroStep) error {
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
 		delay := time.Duration(step.Delay) * time.Millisecond
 
-		err := rpcKeyboardReport(step.Modifier, step.Keys)
+		err := session.input(func() error {
+			if err := rpcKeyboardReport(step.Modifier, step.Keys); err != nil {
+				return err
+			}
+			// notify the device that the keyboard state is being cleared
+			if isClearKeyStep(step) {
+				gadget.UpdateKeysDown(0, keyboardClearStateKeys)
+			}
+			return nil
+		})
+		if errors.Is(err, errSessionInputRetired) {
+			return err
+		}
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
 			return err
-		}
-
-		// notify the device that the keyboard state is being cleared
-		if isClearKeyStep(step) {
-			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
 		}
 
 		// Use context-aware sleep that can be cancelled
@@ -1383,8 +1404,8 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 			// Sleep completed normally
 		case <-ctx.Done():
 			// make sure keyboard state is reset
-			err := rpcKeyboardReport(0, keyboardClearStateKeys)
-			if err != nil {
+			err := session.input(func() error { return rpcKeyboardReport(0, keyboardClearStateKeys) })
+			if err != nil && !errors.Is(err, errSessionInputRetired) {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}
 
@@ -1409,11 +1430,11 @@ var rpcHandlers = map[string]RPCHandler{
 	"renewDHCPLease":             {Func: rpcRenewDHCPLease},
 	"getKeyboardLedState":        {Func: rpcGetKeyboardLedState},
 	"getKeyDownState":            {Func: rpcGetKeysDownState},
-	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
-	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}},
-	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
-	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
-	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
+	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}, Input: true},
+	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}, Input: true},
+	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}, Input: true},
+	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}, Input: true},
+	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}, Input: true},
 	"wakeHost":                   {Func: rpcWakeHost},
 	"getVideoState":              {Func: rpcGetVideoState},
 	"getUSBState":                {Func: rpcGetUSBState},
