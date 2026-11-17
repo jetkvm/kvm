@@ -95,6 +95,29 @@ func setHostDisplayAdvertisedLocked(enabled bool, reason string, force bool) err
 	return nil
 }
 
+// hostDisplayChangeHPDLow is how long HPD stays low when the target gets
+// another display. Some sources ignore a shorter pulse and keep the old
+// display: a Mac powers its DP-to-HDMI converter off only 300 ms after HPD
+// falls. A target that sees the display go and come back also sets the mode
+// of the new display before it shows a picture on it.
+const hostDisplayChangeHPDLow = 2 * time.Second
+
+// changeHostDisplay gives the target the configured EDID as another display:
+// it takes the display away, keeps HPD low for hostDisplayChangeHPDLow and
+// advertises the display again.
+func changeHostDisplay(reason string) error {
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+
+	if hostDisplayAdvertised {
+		if err := setHostDisplayAdvertisedLocked(false, reason, true); err != nil {
+			return err
+		}
+		time.Sleep(hostDisplayChangeHPDLow)
+	}
+	return setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
+}
+
 // applyHostDisplayAdvertisement reconciles the advertised state without rewriting
 // EDID when the host display is already in the desired state.
 func applyHostDisplayAdvertisement(reason string) error {

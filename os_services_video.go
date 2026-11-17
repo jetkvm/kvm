@@ -123,7 +123,7 @@ func (s *osServicesService) DisplayPresent(width, height, serial uint32) bool {
 		// it does not follow the target to the mode of the KVM display.
 		// The stop does nothing when no capture runs.
 		stopNativeVideo()
-		if err := reapplyHostDisplayAdvertisement("os_services_present"); err != nil {
+		if err := changeHostDisplay("os_services_present"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot present the KVM display")
 			v.edid.Store("")
 			v.owned.Store(false)
@@ -139,7 +139,7 @@ func (s *osServicesService) DisplayRestore() {
 	v := &s.video
 	v.edid.Store("")
 	v.ops <- func() {
-		if err := reapplyHostDisplayAdvertisement("os_services_restore"); err != nil {
+		if err := changeHostDisplay("os_services_restore"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot restore the hardware capture's EDID")
 		}
 		v.presented.Store(false)
