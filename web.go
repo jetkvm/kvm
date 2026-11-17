@@ -561,10 +561,23 @@ func metricsAuthMiddleware() gin.HandlerFunc {
 		// Fall back to basic auth (Prometheus scraper)
 		_, password, ok := c.Request.BasicAuth()
 		if ok {
+			ip := c.ClientIP()
+			if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+				c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+				c.JSON(http.StatusTooManyRequests, gin.H{
+					"error":       "Too many failed attempts. Please try again later.",
+					"retry_after": retryAfter,
+				})
+				c.Abort()
+				return
+			}
+
 			if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password)); err == nil {
+				passwordRateLimiter.RecordSuccess(ip)
 				c.Next()
 				return
 			}
+			passwordRateLimiter.RecordFailure(ip)
 		}
 
 		c.Header("WWW-Authenticate", `Basic realm="JetKVM Metrics"`)
