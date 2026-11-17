@@ -99,7 +99,8 @@ type UsbGadget struct {
 
 	absMouseAccumulatedWheelY float64
 
-	lastUserInput time.Time
+	lastUserInput     time.Time
+	lastUserInputLock sync.RWMutex
 
 	tx     *UsbGadgetTransaction
 	txLock sync.Mutex
