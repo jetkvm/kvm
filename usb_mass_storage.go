@@ -82,8 +82,24 @@ func setMassStorageMode(cdrom bool) error {
 	return nil
 }
 
-func mountImage(imagePath string) error {
+func ejectMassStorageImage() error {
 	err := gadget.SetMassStorageImage("")
+	if !errors.Is(err, syscall.EBUSY) {
+		return err
+	}
+
+	logger.Warn().Err(err).Msg("eject failed with EBUSY, force-ejecting via controller rebind")
+
+	setUSBRecoveryTimer(time.Now())
+	defer func() { setUSBRecoveryTimer(time.Now()) }()
+	if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
+		return fmt.Errorf("%w, %w", err, ejectErr)
+	}
+	return nil
+}
+
+func mountImage(imagePath string) error {
+	err := ejectMassStorageImage()
 	if err != nil {
 		return fmt.Errorf("remove mass storage image error: %w", err)
 	}
@@ -303,19 +319,8 @@ func unmountImageLocked() error {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
 
-	err := gadget.SetMassStorageImage("\n")
-	if err != nil {
-		if !errors.Is(err, syscall.EBUSY) {
-			return fmt.Errorf("failed to unmount image: %w", err)
-		}
-
-		logger.Warn().Err(err).Msg("unmount failed with EBUSY, force-ejecting via controller rebind")
-
-		setUSBRecoveryTimer(time.Now())
-		defer func() { setUSBRecoveryTimer(time.Now()) }()
-		if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
-			return fmt.Errorf("failed to unmount image: %w, %w", err, ejectErr)
-		}
+	if err := ejectMassStorageImage(); err != nil {
+		return fmt.Errorf("failed to unmount image: %w", err)
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -422,7 +427,7 @@ func prepareHTTPMount(url string, mode VirtualMediaMode) error {
 	// f_mass_storage refuses cdrom and ro while the LUN holds an open medium,
 	// and a refused write aborts the whole gadget transaction. Eject first; on
 	// an already empty LUN this is a no-op.
-	if err := gadget.SetMassStorageImage(""); err != nil {
+	if err := ejectMassStorageImage(); err != nil {
 		return fmt.Errorf("failed to eject before setting mass storage mode: %w", err)
 	}
 
@@ -480,7 +485,7 @@ func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 
 	// Same as in prepareHTTPMount: the mode cannot be changed against an open
 	// medium, and a refused write aborts the gadget transaction.
-	if err := gadget.SetMassStorageImage(""); err != nil {
+	if err := ejectMassStorageImage(); err != nil {
 		return fmt.Errorf("failed to eject before setting mass storage mode: %w", err)
 	}
 
