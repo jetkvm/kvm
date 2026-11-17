@@ -112,6 +112,9 @@ const chars = {
   X: { key: "KeyX", shift: true },
   "»": { key: "KeyX", altRight: true },
   // cross key between shift and y (aka OEM 102 key)
+  "<": { key: "IntlBackslash" },
+  ">": { key: "IntlBackslash", shift: true },
+  "|": { key: "IntlBackslash", altRight: true },
   y: { key: "KeyZ" },
   Y: { key: "KeyZ", shift: true },
   "›": { key: "KeyZ", altRight: true }, // single right-pointing angle quotation mark, ›
@@ -120,18 +123,15 @@ const chars = {
   "¨": { key: "KeyY", deadKey: true, altRight: true }, // diaeresis accent, mark ¨ placed above the letter
   "°": { key: "Backquote", shift: true },
   "^": { key: "Backquote", deadKey: true },
-  "|": { key: "Backquote", altRight: true },
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
   "’": { key: "Digit1", altRight: true }, // single quote, mark ’ placed above the letter
   2: { key: "Digit2" },
   '"': { key: "Digit2", shift: true },
   "²": { key: "Digit2", altRight: true },
-  "<": { key: "Digit2", altRight: true }, // non-US < and >
   3: { key: "Digit3" },
   "§": { key: "Digit3", shift: true },
   "³": { key: "Digit3", altRight: true },
-  ">": { key: "Digit3", altRight: true }, // non-US < and >
   4: { key: "Digit4" },
   $: { key: "Digit4", shift: true },
   "—": { key: "Digit4", altRight: true }, // em dash, —
