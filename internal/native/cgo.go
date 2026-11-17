@@ -1,7 +1,7 @@
 package native
 
 var (
-	_ func()                             = setUpNativeHandlers
+	_ func() error                       = setUpNativeHandlers
 	_ func()                             = crash
 	_ func(uint16)                       = uiInit
 	_ func()                             = uiTick

@@ -6,8 +6,8 @@ import "errors"
 
 var errNotSupported = errors.New("native: the C bridge is available only on linux/arm")
 
-func setUpNativeHandlers() {
-	panic(errNotSupported)
+func setUpNativeHandlers() error {
+	return errNotSupported
 }
 
 func crash() {

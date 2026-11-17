@@ -112,7 +112,7 @@ func uiEventCodeToName(code int) string {
 	return name
 }
 
-func setUpNativeHandlers() {
+func setUpNativeHandlers() error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -121,6 +121,7 @@ func setUpNativeHandlers() {
 	C.jetkvm_cgo_setup_video_handler()
 	C.jetkvm_cgo_setup_indev_handler()
 	C.jetkvm_cgo_setup_rpc_handler()
+	return nil
 }
 
 func uiInit(rotation uint16) {
