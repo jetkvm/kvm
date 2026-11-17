@@ -14,6 +14,7 @@ import (
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/jetkvm/kvm/internal/wireguard"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -122,6 +123,7 @@ type Config struct {
 	HideDisplayWhenIdle  bool                 `json:"host_display_disable_when_idle"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+	WireguardConfig      *wireguard.Config    `json:"wireguard_config"`
 	AudioEnabled         bool                 `json:"audio_enabled"`
 }
 
@@ -216,6 +218,7 @@ func getDefaultConfig() Config {
 			EnableActions:     true,
 			DebounceMs:        500,
 		},
+		WireguardConfig: defaultWireguardConfig(),
 	}
 }
 
@@ -301,6 +304,10 @@ func LoadConfig() {
 
 	if loadedConfig.MqttConfig == nil {
 		loadedConfig.MqttConfig = getDefaultConfig().MqttConfig
+	}
+
+	if loadedConfig.WireguardConfig == nil {
+		loadedConfig.WireguardConfig = defaultWireguardConfig()
 	}
 
 	// fixup old keyboard layout value

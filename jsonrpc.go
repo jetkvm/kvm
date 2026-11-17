@@ -20,6 +20,7 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
+	"github.com/jetkvm/kvm/internal/wireguard"
 )
 
 type JSONRPCRequest struct {
@@ -99,6 +100,13 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 }
 
+// secretRPCMethods carry private keys in their params or result, which are
+// left out of the logs.
+var secretRPCMethods = map[string]bool{
+	"setWireguardSettings": true,
+	"parseWireguardConfig": true,
+}
+
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
@@ -120,9 +128,13 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	var loggedParams any = request.Params
+	if secretRPCMethods[request.Method] {
+		loggedParams = "[redacted]"
+	}
 	scopedLogger := jsonRpcLogger.With().
 		Str("method", request.Method).
-		Interface("params", request.Params).
+		Interface("params", loggedParams).
 		Interface("id", request.ID).Logger()
 
 	scopedLogger.Trace().Msg("Received RPC request")
@@ -158,7 +170,11 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger.Trace().Dur("duration", time.Since(t)).Interface("result", result).Msg("RPC handler returned")
+	var loggedResult = result
+	if secretRPCMethods[request.Method] {
+		loggedResult = "[redacted]"
+	}
+	scopedLogger.Trace().Dur("duration", time.Since(t)).Interface("result", loggedResult).Msg("RPC handler returned")
 
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
@@ -425,12 +441,18 @@ type SSHKeyState struct {
 // tls, local_loopback, log_level, tailscale: the HTTPS setting (Access page),
 // the loopback-only setting and the default log level (Advanced page) and the
 // Tailscale card (Network page), each shown only when reported.
+// wireguard: the WireGuard settings page; reported only when the kernel
+// has WireGuard.
 func rpcGetDeviceCapabilities() ([]string, error) {
-	return []string{
+	capabilities := []string{
 		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
 		"http_proxy", "domain", "mdns", "ipv6",
 		"tls", "local_loopback", "log_level", "tailscale",
-	}, nil
+	}
+	if wireguard.Supported() {
+		capabilities = append(capabilities, "wireguard")
+	}
+	return capabilities, nil
 }
 
 // reportLocalVersionAndCapabilities sends the device's version and
@@ -1518,4 +1540,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"setMqttSettings":            {Func: rpcSetMqttSettings, Params: []string{"settings"}},
 	"getMqttStatus":              {Func: rpcGetMqttStatus},
 	"testMqttConnection":         {Func: rpcTestMqttConnection, Params: []string{"settings"}},
+	"getWireguardSettings":       {Func: rpcGetWireguardSettings},
+	"setWireguardSettings":       {Func: rpcSetWireguardSettings, Params: []string{"settings"}},
+	"generateWireguardKey":       {Func: rpcGenerateWireguardKey},
+	"getWireguardStatus":         {Func: rpcGetWireguardStatus},
+	"parseWireguardConfig":       {Func: rpcParseWireguardConfig, Params: []string{"text"}},
 }
