@@ -228,6 +228,11 @@ func (s *osServicesService) VideoGap() { s.video.wantKeyframe() }
 
 func (s *osServicesService) KeyframeWanted() uint32 {
 	v := &s.video
+	// Without a browser, no frame answers the request. The request stays
+	// for the next browser.
+	if session := currentSession; session == nil || session.VideoTrack == nil {
+		return 0
+	}
 	v.keyMu.Lock()
 	defer v.keyMu.Unlock()
 	return v.keyframeGen
