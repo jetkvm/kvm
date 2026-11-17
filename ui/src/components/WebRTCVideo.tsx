@@ -632,9 +632,21 @@ export default function WebRTCVideo({
           "click",
           (e: MouseEvent) => {
             const target = e.target as Element;
-            const isOnVideoArea =
-              target === videoElmRefValue || overlaysRef.current?.contains(target);
-            if (!isOnVideoArea || target.closest("a, button")) return;
+            if (target !== videoElmRefValue) {
+              const overlays = overlaysRef.current;
+              if (!hdmiError || !overlays?.contains(target)) return;
+
+              const isOnControl = Array.from(overlays.querySelectorAll("a, button")).some(el => {
+                const r = el.getBoundingClientRect();
+                return (
+                  e.clientX >= r.left &&
+                  e.clientX <= r.right &&
+                  e.clientY >= r.top &&
+                  e.clientY <= r.bottom
+                );
+              });
+              if (isOnControl) return;
+            }
 
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
@@ -665,6 +677,7 @@ export default function WebRTCVideo({
       };
     },
     [
+      hdmiError,
       isPointerLockActive,
       isPointerLockPossible,
       requestPointerLock,
