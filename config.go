@@ -101,6 +101,7 @@ type Config struct {
 	HashedPassword       string               `json:"hashed_password"`
 	LocalAuthToken       string               `json:"local_auth_token"`
 	LocalAuthMode        string               `json:"localAuthMode"` //TODO: fix it with migration
+	LocalAuthIdleMinutes int                  `json:"local_auth_idle_minutes"`
 	LocalLoopbackOnly    bool                 `json:"local_loopback_only"`
 	WakeOnLanDevices     []WakeOnLanDevice    `json:"wake_on_lan_devices"`
 	KeyboardMacros       []KeyboardMacro      `json:"keyboard_macros"`
@@ -154,7 +155,7 @@ func (c *Config) SetDisplayRotation(rotation string) error {
 	return nil
 }
 
-const configPath = "/userdata/kvm_config.json"
+var configPath = "/userdata/kvm_config.json"
 
 // it's a temporary solution to avoid sharing the same pointer
 // we should migrate to a proper config solution in the future

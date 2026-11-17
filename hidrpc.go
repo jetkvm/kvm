@@ -11,6 +11,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
+var hidWheelReport = rpcWheelReport
+
 func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 	var rpcErr error
 
@@ -31,10 +33,6 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
 			return
-		}
-		if !session.acceptsInput() {
-			rpcErr = errSessionInputRetired
-			break
 		}
 		rpcErr = rpcExecuteKeyboardMacro(session, keyboardMacroReport.Steps)
 	case hidrpc.TypeCancelKeyboardMacroReport:
@@ -71,6 +69,12 @@ func handleHidRPCInput(message hidrpc.Message, session *Session) error {
 			return fmt.Errorf("failed to get mouse report: %w", err)
 		}
 		return rpcRelMouseReport(mouseReport.DX, mouseReport.DY, mouseReport.Button)
+	case hidrpc.TypeWheelReport:
+		wheelReport, err := message.WheelReport()
+		if err != nil {
+			return fmt.Errorf("failed to get wheel report: %w", err)
+		}
+		return hidWheelReport(wheelReport.DeltaY, wheelReport.DeltaX)
 	default:
 		logger.Warn().Uint8("type", uint8(message.Type())).Msg("unknown HID RPC message type")
 		return nil

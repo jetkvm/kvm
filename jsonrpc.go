@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -129,6 +130,9 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	t := time.Now()
 
 	handler, ok := rpcHandlers[request.Method]
+	if ok && rpcCountsAsLocalAuthActivity(request.Method) {
+		session.recordLocalAuthActivity()
+	}
 	if !ok {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -1229,10 +1233,28 @@ func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 		newMacros = append(newMacros, macro)
 	}
 
+	// IDs that disappear in this edit lose their Home Assistant buttons.
+	kept := make(map[string]bool, len(newMacros))
+	for _, macro := range newMacros {
+		kept[macro.ID] = true
+	}
+	var removed []string
+	for _, macro := range config.KeyboardMacros {
+		if !kept[macro.ID] {
+			removed = append(removed, macro.ID)
+		}
+	}
+
 	config.KeyboardMacros = newMacros
 
 	if err := SaveConfig(); err != nil {
 		return nil, err
+	}
+
+	// Keep the Home Assistant macro buttons in sync with the stored macros
+	if mqttManager != nil {
+		mqttManager.republishHADiscovery()
+		mqttManager.removeMacroDiscovery(removed)
 	}
 
 	return nil, nil
@@ -1313,35 +1335,73 @@ func rpcEmitTestLog(level string) error {
 	return nil
 }
 
+type keyboardMacroRun struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 var (
-	keyboardMacroCancel context.CancelFunc
-	keyboardMacroLock   sync.Mutex
+	keyboardMacroLock    sync.Mutex
+	keyboardMacroCurrent *keyboardMacroRun
+
+	keyboardMacroExec sync.Mutex
 )
 
-// cancelKeyboardMacro cancels any ongoing keyboard macro execution
+// cancelKeyboardMacro cancels the registered keyboard macro, running or
+// waiting to run.
 func cancelKeyboardMacro() {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	if keyboardMacroCancel != nil {
-		keyboardMacroCancel()
+	if keyboardMacroCurrent != nil {
+		keyboardMacroCurrent.cancel()
 		logger.Info().Msg("canceled keyboard macro")
-		keyboardMacroCancel = nil
+		keyboardMacroCurrent = nil
 	}
 }
 
-func setKeyboardMacroCancel(cancel context.CancelFunc) {
+func registerKeyboardMacro() *keyboardMacroRun {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	keyboardMacroCancel = cancel
+	if keyboardMacroCurrent != nil {
+		keyboardMacroCurrent.cancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	keyboardMacroCurrent = &keyboardMacroRun{ctx: ctx, cancel: cancel}
+	return keyboardMacroCurrent
 }
 
-func rpcExecuteKeyboardMacro(session *Session, macro []hidrpc.KeyboardMacroStep) error {
-	cancelKeyboardMacro()
+func tryRegisterKeyboardMacro() *keyboardMacroRun {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
 
+	if keyboardMacroCurrent != nil {
+		return nil
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	setKeyboardMacroCancel(cancel)
+	keyboardMacroCurrent = &keyboardMacroRun{ctx: ctx, cancel: cancel}
+	return keyboardMacroCurrent
+}
+
+func (r *keyboardMacroRun) finish() {
+	keyboardMacroLock.Lock()
+	if keyboardMacroCurrent == r {
+		keyboardMacroCurrent = nil
+	}
+	keyboardMacroLock.Unlock()
+	r.cancel()
+}
+
+func (r *keyboardMacroRun) execute(session *Session, macro []hidrpc.KeyboardMacroStep) error {
+	defer r.finish()
+
+	keyboardMacroExec.Lock()
+	defer keyboardMacroExec.Unlock()
+
+	if err := r.ctx.Err(); err != nil {
+		return err
+	}
 
 	s := hidrpc.KeyboardMacroState{
 		State:   true,
@@ -1352,9 +1412,7 @@ func rpcExecuteKeyboardMacro(session *Session, macro []hidrpc.KeyboardMacroStep)
 		currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
-	err := rpcDoExecuteKeyboardMacro(ctx, session, macro)
-
-	setKeyboardMacroCancel(nil)
+	err := rpcDoExecuteKeyboardMacro(r.ctx, session, macro)
 
 	s.State = false
 	if currentSession != nil {
@@ -1362,6 +1420,27 @@ func rpcExecuteKeyboardMacro(session *Session, macro []hidrpc.KeyboardMacroStep)
 	}
 
 	return err
+}
+
+func rpcExecuteKeyboardMacro(session *Session, macro []hidrpc.KeyboardMacroStep) error {
+	if session != nil && !session.acceptsInput() {
+		return errSessionInputRetired
+	}
+	return registerKeyboardMacro().execute(session, macro)
+}
+
+// rpcRunKeyboardMacro runs a stored macro by ID or case-insensitive name, the
+// way the MQTT command does, and returns when it has finished.
+func rpcRunKeyboardMacro(session *Session, macro string) error {
+	stored, ok := findKeyboardMacro(strings.TrimSpace(macro))
+	if !ok {
+		return fmt.Errorf("unknown keyboard macro: %s", macro)
+	}
+	steps, err := macroHIDSteps(stored.Steps)
+	if err != nil {
+		return err
+	}
+	return rpcExecuteKeyboardMacro(session, steps)
 }
 
 func rpcCancelKeyboardMacro() {
@@ -1434,7 +1513,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}, Input: true},
 	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}, Input: true},
 	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}, Input: true},
-	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}, Input: true},
 	"wakeHost":                   {Func: rpcWakeHost},
 	"getVideoState":              {Func: rpcGetVideoState},
 	"getUSBState":                {Func: rpcGetUSBState},
@@ -1442,6 +1520,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"rpcMountBuiltInImage":       {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
 	"setJigglerState":            {Func: rpcSetJigglerState, Params: []string{"enabled"}},
 	"getJigglerState":            {Func: rpcGetJigglerState},
+	"getLocalAuthSessionTimeout": {Func: rpcGetLocalAuthSessionTimeout},
+	"setLocalAuthSessionTimeout": {Func: rpcSetLocalAuthSessionTimeout, Params: []string{"timeoutMinutes"}},
 	"setJigglerConfig":           {Func: rpcSetJigglerConfig, Params: []string{"jigglerConfig"}},
 	"getJigglerConfig":           {Func: rpcGetJigglerConfig},
 	"getTimezones":               {Func: rpcGetTimezones},
@@ -1525,6 +1605,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardLayout":          {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":          {Func: getKeyboardMacros},
 	"setKeyboardMacros":          {Func: setKeyboardMacros, Params: []string{"params"}},
+	"runKeyboardMacro":           {Func: rpcRunKeyboardMacro, Params: []string{"macro"}},
 	"getLocalLoopbackOnly":       {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":       {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 	"getDefaultLogLevel":         {Func: rpcGetDefaultLogLevel},

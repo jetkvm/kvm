@@ -1,6 +1,8 @@
 package kvm
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -137,5 +139,62 @@ func TestLateCloseOfReplacedSessionKeepsNewSessionInput(t *testing.T) {
 	}
 	if currentSession != nil {
 		t.Fatal("close of the current session left it current")
+	}
+}
+
+func TestHandoffDropsOldSessionWheel(t *testing.T) {
+	var log inputLog
+	a, b := newInputTestSession(t), newInputTestSession(t)
+	names := map[*Session]string{a: "a", b: "b"}
+	setupSessionInputTest(t, &log, names, nil)
+	oldWheel := hidWheelReport
+	t.Cleanup(func() { hidWheelReport = oldWheel })
+	var sender *Session
+	hidWheelReport = func(y, x int8) error {
+		log.add("wheel-" + names[sender])
+		return nil
+	}
+	wheel := func(s *Session) {
+		sender = s
+		onHidMessage(hidQueueMessage{DataChannelMessage: webrtc.DataChannelMessage{
+			Data: []byte{byte(hidrpc.TypeWheelReport), 1, 0},
+		}}, s)
+	}
+
+	takeOverCurrentSession(a)
+	wheel(a)
+	takeOverCurrentSession(b)
+	wheel(a)
+	wheel(b)
+
+	if want := []string{"wheel-a", "release", "wheel-b"}; !reflect.DeepEqual(log.get(), want) {
+		t.Fatalf("events = %v, want %v", log.get(), want)
+	}
+}
+
+func TestSessionlessMacroRunsAndTakeoverCancelsIt(t *testing.T) {
+	var log inputLog
+	a, b := newInputTestSession(t), newInputTestSession(t)
+	setupSessionInputTest(t, &log, nil, nil)
+	defer cancelKeyboardMacro()
+	takeOverCurrentSession(a)
+
+	f13 := []byte{0x68, 0, 0, 0, 0, 0}
+	short := []hidrpc.KeyboardMacroStep{{Keys: f13, Delay: 1}}
+	if err := tryRegisterKeyboardMacro().execute(nil, short); err != nil {
+		t.Fatalf("macro without a session returned %v, want nil", err)
+	}
+
+	run := tryRegisterKeyboardMacro()
+	done := make(chan error, 1)
+	go func() { done <- run.execute(nil, []hidrpc.KeyboardMacroStep{{Keys: f13, Delay: 2000}}) }()
+	takeOverCurrentSession(b)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("macro without a session returned %v after takeover, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("takeover left the macro without a session running")
 	}
 }

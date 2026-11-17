@@ -52,6 +52,9 @@ type Session struct {
 
 	codecMimeType string
 
+	local     bool
+	signaling *websocket.Conn
+
 	videoClockMu sync.Mutex
 	videoClock   rtpclock.Clock
 }
@@ -423,6 +426,10 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 
 		l.Trace().Msg("received data in HID RPC message handler")
 
+		if hidMessageCountsAsLocalAuthActivity(hidrpc.MessageType(msg.Data[0])) {
+			session.recordLocalAuthActivity()
+		}
+
 		// Cancel before admitting the next message on this ordered channel.
 		// A separate worker can process a late cancel after the old macro has
 		// finished and its replacement has started, canceling the replacement.
@@ -543,6 +550,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		peerConnection: peerConnection,
 		done:           make(chan struct{}),
 		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
+	}
+	if !config.IsCloud {
+		session.local = true
+		session.signaling = config.ws
 	}
 	session.initQueues()
 	session.initKeysDownStateQueue()

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Form, redirect, useActionData } from "react-router";
+import { Form, redirect, useActionData, useSearchParams } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
 import { LuEye, LuEyeOff } from "react-icons/lu";
 
@@ -58,6 +58,8 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
 export default function LoginLocalRoute() {
   const actionData = useActionData() as { error?: string; success?: boolean };
   const [showPassword, setShowPassword] = useState(false);
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get("reason") === "session_expired";
 
   return (
     <>
@@ -79,6 +81,11 @@ export default function LoginLocalRoute() {
                 <p className="font-medium text-slate-600 dark:text-slate-400">
                   {m.login_enter_password_description()}
                 </p>
+                {sessionExpired && (
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                    {m.login_session_expired()}
+                  </p>
+                )}
               </div>
 
               <Fieldset className="space-y-12">
