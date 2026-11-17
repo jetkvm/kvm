@@ -131,12 +131,18 @@ func (s *osServicesService) DisplayPresent(width, height, serial uint32) bool {
 		stopNativeVideo()
 		if err := changeHostDisplay("os_services_present"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot present the KVM display")
-			v.edid.CompareAndSwap(want, "")
+			// An operation that came during the change has the display.
+			if !v.edid.CompareAndSwap(want, "") {
+				return
+			}
 			v.owned.Store(false)
 			// The failed change can leave the target without a display.
 			if err := reapplyHostDisplayAdvertisement("os_services_present_failed"); err != nil {
 				osServicesLogger.Warn().Err(err).Msg("cannot restore the hardware capture's EDID")
 			}
+			return
+		}
+		if v.edid.Load() != want {
 			return
 		}
 		osServicesLogger.Info().Uint32("width", width).Uint32("height", height).Msg("KVM display presented for service video")
@@ -156,6 +162,10 @@ func (s *osServicesService) DisplayRestore() {
 		}
 		if err := changeHostDisplay("os_services_restore"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot restore the hardware capture's EDID")
+		}
+		// A present that came during the change has the display.
+		if v.edid.Load() != "" {
+			return
 		}
 		v.presented.Store(false)
 		v.owned.Store(false)
