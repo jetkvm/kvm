@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/jetkvm/kvm/internal/rawtty"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -16,7 +17,9 @@ func handleCDCACMChannel(d *webrtc.DataChannel) {
 	var f *os.File
 	d.OnOpen(func() {
 		var err error
-		f, err = os.OpenFile(cdcACMDevicePath, os.O_RDWR, 0)
+		// Raw mode delivers prompts that don't end in a newline and keeps
+		// the host's output from being echoed back to it.
+		f, err = rawtty.Open(cdcACMDevicePath)
 		if err != nil {
 			scopedLogger.Warn().Err(err).Str("path", cdcACMDevicePath).Msg("Failed to open CDC-ACM device")
 			d.Close()
