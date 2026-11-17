@@ -6,18 +6,16 @@ import (
 	"fmt"
 
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/udhcpc"
 	"github.com/rs/zerolog"
 )
 
 // DHCPClient wraps the dhclient package for use in the network manager
 type DHCPClient struct {
-	ctx        context.Context
-	ifaceName  string
-	logger     *zerolog.Logger
-	client     types.DHCPClient
-	clientType string
+	ctx       context.Context
+	ifaceName string
+	logger    *zerolog.Logger
+	client    types.DHCPClient
 
 	// Configuration
 	ipv4Enabled bool
@@ -28,7 +26,7 @@ type DHCPClient struct {
 }
 
 // NewDHCPClient creates a new DHCP client
-func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger, clientType string) (*DHCPClient, error) {
+func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger) (*DHCPClient, error) {
 	if ifaceName == "" {
 		return nil, fmt.Errorf("interface name cannot be empty")
 	}
@@ -38,10 +36,9 @@ func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger
 	}
 
 	return &DHCPClient{
-		ctx:        ctx,
-		ifaceName:  ifaceName,
-		logger:     logger,
-		clientType: clientType,
+		ctx:       ctx,
+		ifaceName: ifaceName,
+		logger:    logger,
 	}, nil
 }
 
@@ -66,38 +63,6 @@ func (dc *DHCPClient) SetOnLeaseChange(callback func(lease *types.DHCPLease)) {
 	dc.onLeaseChange = callback
 }
 
-func (dc *DHCPClient) initClient() (types.DHCPClient, error) {
-	switch dc.clientType {
-	case "jetdhcpc":
-		return dc.initJetDHCPC()
-	case "udhcpc":
-		return dc.initUDHCPC()
-	default:
-		return nil, fmt.Errorf("invalid client type: %s", dc.clientType)
-	}
-}
-
-func (dc *DHCPClient) initJetDHCPC() (types.DHCPClient, error) {
-	return jetdhcpc.NewClient(dc.ctx, []string{dc.ifaceName}, &jetdhcpc.Config{
-		IPv4:               dc.ipv4Enabled,
-		IPv6:               dc.ipv6Enabled,
-		V4ClientIdentifier: true,
-		OnLease4Change: func(lease *types.DHCPLease) {
-			dc.handleLeaseChange(lease, false)
-		},
-		OnLease6Change: func(lease *types.DHCPLease) {
-			dc.handleLeaseChange(lease, true)
-		},
-		UpdateResolvConf: func(nameservers []string) error {
-			// This will be handled by the resolv.conf manager
-			dc.logger.Debug().
-				Interface("nameservers", nameservers).
-				Msg("DHCP client requested resolv.conf update")
-			return nil
-		},
-	}, dc.logger)
-}
-
 func (dc *DHCPClient) initUDHCPC() (types.DHCPClient, error) {
 	c := udhcpc.NewDHCPClient(&udhcpc.DHCPClientOptions{
 		InterfaceName: dc.ifaceName,
@@ -120,7 +85,7 @@ func (dc *DHCPClient) Start() error {
 	dc.logger.Info().Msg("starting DHCP client")
 
 	// Create the underlying DHCP client
-	client, err := dc.initClient()
+	client, err := dc.initUDHCPC()
 
 	if err != nil {
 		return fmt.Errorf("failed to create DHCP client: %w", err)

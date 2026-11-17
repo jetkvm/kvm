@@ -59,7 +59,6 @@ type DHCPLease struct {
 	LeaseExpiry       *time.Time    `json:"lease_expiry,omitempty"`                    // The expiry time of the lease
 
 	InterfaceName string `json:"interface_name,omitempty"` // The name of the interface
-	DHCPClient    string `json:"dhcp_client,omitempty"`    // The DHCP client that obtained the lease
 }
 
 // IsIPv6 returns true if the DHCP lease is for an IPv6 address

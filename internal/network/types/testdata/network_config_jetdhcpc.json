@@ -1,0 +1,25 @@
+{
+  "network_config": {
+    "dhcp_client": "jetdhcpc",
+    "hostname": "rack-kvm-07",
+    "http_proxy": "http://proxy.example.com:3128",
+    "domain": "lab.example.com",
+    "ipv4_mode": "static",
+    "ipv4_static": {
+      "address": "10.20.30.40",
+      "netmask": "255.255.254.0",
+      "gateway": "10.20.30.1",
+      "dns": ["10.20.30.2", "10.20.30.3"]
+    },
+    "ipv6_mode": "slaac_and_dhcpv6",
+    "lldp_mode": "all",
+    "lldp_tx_tlvs": ["chassis", "port"],
+    "mdns_mode": "ipv4_only",
+    "time_sync_mode": "custom",
+    "time_sync_ordering": ["ntp_user_provided", "http"],
+    "time_sync_disable_fallback": true,
+    "time_sync_parallel": 2,
+    "time_sync_ntp_servers": ["ntp.example.com"],
+    "time_sync_http_urls": ["https://time.example.com"]
+  }
+}

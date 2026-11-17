@@ -11,8 +11,8 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+	"github.com/jetkvm/kvm/pkg/nmlite/udhcpc"
 	"github.com/rs/zerolog"
 )
 
@@ -215,16 +215,11 @@ func (nm *NetworkManager) SetOnDHCPLeaseChange(callback func(iface string, lease
 	nm.onDHCPLeaseChange = callback
 }
 
-func (nm *NetworkManager) shouldKillLegacyDHCPClients() bool {
+func (nm *NetworkManager) dhcpClientUnused() bool {
 	nm.mu.RLock()
 	defer nm.mu.RUnlock()
 
-	// TODO: remove it when we need to support multiple interfaces
 	for _, im := range nm.interfaces {
-		if im.dhcpClient.clientType != "udhcpc" {
-			return true
-		}
-
 		if im.config.IPv4Mode.String != "dhcp" {
 			return true
 		}
@@ -232,11 +227,9 @@ func (nm *NetworkManager) shouldKillLegacyDHCPClients() bool {
 	return false
 }
 
-// CleanUpLegacyDHCPClients cleans up legacy DHCP clients
-func (nm *NetworkManager) CleanUpLegacyDHCPClients() error {
-	shouldKill := nm.shouldKillLegacyDHCPClients()
-	if shouldKill {
-		return jetdhcpc.KillUdhcpC(nm.logger)
+func (nm *NetworkManager) StopUnusedDHCPClient() error {
+	if nm.dhcpClientUnused() {
+		return udhcpc.KillAll(nm.logger)
 	}
 	return nil
 }

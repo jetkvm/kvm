@@ -60,12 +60,7 @@ func updateDisplay() {
 	_, _ = nativeInstance.UIObjHide("menu_btn_network")
 	_, _ = nativeInstance.UIObjHide("menu_btn_access")
 
-	switch config.NetworkConfig.DHCPClient.String {
-	case "jetdhcpc":
-		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to udhcpc")
-	case "udhcpc":
-		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to JetKVM")
-	}
+	_, _ = nativeInstance.UIObjHide("menu_btn_dhcp_client")
 
 	updateDisplayUsbState()
 
