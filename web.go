@@ -172,7 +172,9 @@ func setupRouter() *gin.Engine {
 	r.POST("/device/setup", handleSetup)
 
 	// A Prometheus metrics endpoint.
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	// Requires auth (cookie or basic auth) when password mode is enabled,
+	// open when localAuthMode is noPassword (consistent with other endpoints).
+	r.GET("/metrics", metricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
 
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
@@ -538,6 +540,52 @@ func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 	c.Abort()
 }
 
+// metricsAuthMiddleware authenticates the /metrics endpoint using either the
+// session cookie or HTTP basic auth (for Prometheus scrape configs). When
+// localAuthMode is noPassword, all requests are allowed through — consistent
+// with every other endpoint on the device.
+func metricsAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		// Try cookie auth first (browser access)
+		authToken, err := c.Cookie("authToken")
+		if err == nil && authToken == config.LocalAuthToken && authToken != "" {
+			c.Next()
+			return
+		}
+
+		// Fall back to basic auth (Prometheus scraper)
+		_, password, ok := c.Request.BasicAuth()
+		if ok && config.HashedPassword != "" {
+			ip := c.ClientIP()
+			if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+				c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+				c.JSON(http.StatusTooManyRequests, gin.H{
+					"error":       "Too many failed attempts. Please try again later.",
+					"retry_after": retryAfter,
+				})
+				c.Abort()
+				return
+			}
+
+			if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password)); err == nil {
+				passwordRateLimiter.RecordSuccess(ip)
+				c.Next()
+				return
+			}
+			passwordRateLimiter.RecordFailure(ip)
+		}
+
+		c.Header("WWW-Authenticate", `Basic realm="JetKVM Metrics"`)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.Abort()
+	}
+}
+
 func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if requireDeveloperMode {
@@ -602,6 +650,8 @@ func getBindAddress(listenPort int) string {
 	return bindAddress
 }
 
+const webReadHeaderTimeout = 10 * time.Second
+
 func RunWebServer() {
 	r := setupRouter()
 
@@ -609,7 +659,12 @@ func RunWebServer() {
 	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	if err := r.Run(bindAddress); err != nil {
+	server := &http.Server{
+		Addr:              bindAddress,
+		Handler:           r.Handler(),
+		ReadHeaderTimeout: webReadHeaderTimeout,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }

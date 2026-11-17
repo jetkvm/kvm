@@ -484,6 +484,7 @@ pthread_mutex_t streaming_stopped_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_t *streaming_thread = NULL;
 pthread_mutex_t streaming_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t video_lifecycle_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 bool get_streaming_flag()
 {
@@ -820,7 +821,7 @@ void video_shutdown()
     log_info("Destroyed streaming mutex");
 }
 
-void video_start_streaming()
+static void video_start_streaming_locked()
 {
     log_info("starting video streaming");
     if (streaming_thread != NULL)
@@ -855,6 +856,13 @@ void video_start_streaming()
     streaming_thread = new_thread;
 }
 
+void video_start_streaming()
+{
+    pthread_mutex_lock(&video_lifecycle_mutex);
+    video_start_streaming_locked();
+    pthread_mutex_unlock(&video_lifecycle_mutex);
+}
+
 bool wait_for_streaming_stopped()
 {
     int attempts = 0;
@@ -870,7 +878,7 @@ bool wait_for_streaming_stopped()
     return false;
 }
 
-void video_stop_streaming()
+static void video_stop_streaming_locked()
 {
     if (streaming_thread == NULL) {
         log_info("video streaming already stopped");
@@ -890,6 +898,13 @@ void video_stop_streaming()
     log_info("video streaming stopped");
 }
 
+void video_stop_streaming()
+{
+    pthread_mutex_lock(&video_lifecycle_mutex);
+    video_stop_streaming_locked();
+    pthread_mutex_unlock(&video_lifecycle_mutex);
+}
+
 uint8_t video_get_streaming_status() {
     // streaming flag can be false when stopping streaming
     if (get_streaming_flag() == true) return 1;
@@ -899,24 +914,25 @@ uint8_t video_get_streaming_status() {
 
 void video_restart_streaming()
 {
+    pthread_mutex_lock(&video_lifecycle_mutex);
     uint8_t streaming_status = video_get_streaming_status();
     // 0 = stopped, 1 = running, 2 = stopping
 
     if (streaming_status == 0)
     {
         log_info("will not restart video streaming because it's stopped");
+        pthread_mutex_unlock(&video_lifecycle_mutex);
         return;
     }
 
     if (streaming_status == 1 || streaming_status == 2) {
-        video_stop_streaming();
+        video_stop_streaming_locked();
     }
 
-    if (!wait_for_streaming_stopped()) {
-        return;
+    if (wait_for_streaming_stopped()) {
+        video_start_streaming_locked();
     }
-
-    video_start_streaming();
+    pthread_mutex_unlock(&video_lifecycle_mutex);
 }
 
 void *run_detect_format(void *arg)
