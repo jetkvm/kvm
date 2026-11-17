@@ -56,3 +56,18 @@ func getMdnsOptions() *mdns.MDNSOptions {
 		Version:      GetBuiltAppVersion(),
 	})
 }
+
+func updateMdnsTXT() {
+	if mDNS == nil {
+		return
+	}
+
+	options := getMdnsOptions()
+	if options == nil {
+		return
+	}
+
+	if err := mDNS.UpdateServiceTXT(options.Service); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to update mDNS TXT record")
+	}
+}

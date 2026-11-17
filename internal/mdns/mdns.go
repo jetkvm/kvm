@@ -259,6 +259,24 @@ func (m *MDNS) setService(service *MDNSService) {
 	m.service = service
 }
 
+func (m *MDNS) UpdateServiceTXT(service *MDNSService) error {
+	m.lock.Lock()
+	if m.conn == nil || !sameServiceExceptTXT(m.service, service) {
+		m.lock.Unlock()
+		m.setService(service)
+		return m.Restart()
+	}
+	defer m.lock.Unlock()
+
+	m.service = service
+	return m.conn.UpdateTXT(service.Instance, service.Type, service.TXT)
+}
+
+func sameServiceExceptTXT(a, b *MDNSService) bool {
+	return a != nil && b != nil && a.Instance != "" &&
+		a.Type == b.Type && a.Instance == b.Instance && a.Port == b.Port
+}
+
 // SetLocalNames sets the local names and restarts the mDNS server
 func (m *MDNS) SetLocalNames(localNames []string) error {
 	m.setLocalNames(localNames)
