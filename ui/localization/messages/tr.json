@@ -695,6 +695,8 @@
     "mqtt_error_tls": "TLS hatası — sertifika ayarlarınızı kontrol edin",
     "mqtt_ha_discovery_description": "Sensörleri, anahtarları ve kontrolleri Home Assistant'a otomatik olarak kaydet",
     "mqtt_ha_discovery_title": "Otomatik Keşif",
+    "mqtt_keyboard_macros_description": "MQTT istemcilerinin kayıtlı klavye makrolarını çalıştırmasına izin ver. Makro ana bilgisayarda yazar, bu yüzden broker'a yayın yapabilen herkes onun üzerinde yazabilir.",
+    "mqtt_keyboard_macros_title": "Klavye Makroları",
     "mqtt_load_error": "MQTT ayarları yüklenemedi: {error}",
     "mqtt_password_description": "MQTT aracınızda yapılandırıldığı gibi",
     "mqtt_password_label": "Şifre",
