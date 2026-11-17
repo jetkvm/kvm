@@ -28,13 +28,18 @@ let page: Page;
 let original: OsServicesSettings | undefined;
 test.afterAll(async () => {
   if (!page || !original) return;
-  await callJsonRpc(page, "unmountImage");
-  await callJsonRpc(
-    page,
-    "setOsServicesSettings",
-    { settings: { enabled: original.enabled } },
-    30_000,
-  );
+  await page.goto("/", { waitUntil: "networkidle" });
+  await ensureRpcReady(page);
+  try {
+    await callJsonRpc(page, "unmountImage");
+  } finally {
+    await callJsonRpc(
+      page,
+      "setOsServicesSettings",
+      { settings: { enabled: original.enabled } },
+      30_000,
+    );
+  }
 });
 
 registerSharedSession(p => {
@@ -72,8 +77,7 @@ PY`),
 
 function hostGadget(): HostGadget | null {
   const gadgets = hostGadgets();
-  expect(gadgets.length, "the host must have at most one JetKVM").toBeLessThanOrEqual(1);
-  return gadgets[0] ?? null;
+  return gadgets.length === 1 ? gadgets[0] : null;
 }
 
 async function setEnabled(enabled: boolean) {
@@ -92,6 +96,7 @@ async function waitForInterface(present: boolean): Promise<HostGadget> {
 
 test.beforeAll(async () => {
   await skipWithoutCapability(page, "os_services");
+  expect(hostGadgets().length, "the host must have one JetKVM").toBe(1);
   original = (await callJsonRpc(page, "getOsServicesSettings")) as OsServicesSettings;
 });
 
@@ -122,8 +127,14 @@ test("with OS Services on, an app restart enumerates the KVM again once and the 
   await restartAppViaSSH();
 
   await expect
-    .poll(() => hostGadget()?.devnum ?? null, { timeout: 30_000, intervals: [1000] })
-    .not.toBe(before);
+    .poll(
+      () => {
+        const devnum = hostGadget()?.devnum;
+        return devnum !== undefined && devnum !== before;
+      },
+      { message: "the host must enumerate the KVM again", timeout: 30_000, intervals: [1000] },
+    )
+    .toBe(true);
   const after = (await waitForInterface(true)).devnum;
 
   await page.goto("/", { waitUntil: "networkidle" });
