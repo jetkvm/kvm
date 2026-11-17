@@ -9,6 +9,7 @@ import {
   VideoState,
 } from "@hooks/stores";
 import { useHidRpc } from "@hooks/useHidRpc";
+import useKeyboard from "@hooks/useKeyboard";
 import { keys, modifiers } from "@/keyboardMappings";
 import { cx } from "@/cva.config";
 import { m } from "@localizations/messages.js";
@@ -16,7 +17,8 @@ import { m } from "@localizations/messages.js";
 export default function InfoBar() {
   const { keysDownState } = useHidStore();
   const { mouseX, mouseY, mouseMove } = useMouseStore();
-  const { rpcHidStatus } = useHidRpc();
+  const { rpcHidStatus, rpcHidReady } = useHidRpc();
+  const { handleKeyPress } = useKeyboard();
 
   const videoClientSize = useVideoStore(
     (state: VideoState) => `${Math.round(state.clientWidth)}x${Math.round(state.clientHeight)}`,
@@ -29,8 +31,17 @@ export default function InfoBar() {
   const { debugMode, mouseMode, showPressedKeys } = useSettingsStore();
   const { isPasteInProgress } = useHidStore();
   const { keyboardLedState, usbState } = useHidStore();
-  const { isTurnServerInUse, peerConnection, peerConnectionState } = useRTCStore();
+  const { isTurnServerInUse, peerConnection, peerConnectionState, rpcDataChannel } = useRTCStore();
   const { hdmiState } = useVideoStore();
+
+  const keyboardAvailable =
+    usbState === "configured" && (rpcHidReady || rpcDataChannel?.readyState === "open");
+
+  const toggleLock = (key: number) => {
+    if (!keyboardAvailable) return;
+    void handleKeyPress(key, true);
+    setTimeout(() => void handleKeyPress(key, false), 100);
+  };
 
   const [videoCodec, setVideoCodec] = useState<string | null>(null);
   const [videoBitrate, setVideoBitrate] = useState<string | null>(null);
@@ -211,38 +222,26 @@ export default function InfoBar() {
             </div>
           )}
 
-          <div
-            className={cx(
-              "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState.caps_lock
-                ? "text-black dark:text-white"
-                : "text-slate-800/20 dark:text-slate-300/20",
-            )}
-          >
-            {m.info_caps_lock()}
-          </div>
+          <LockToggle
+            label={m.info_caps_lock()}
+            active={keyboardLedState.caps_lock}
+            disabled={!keyboardAvailable}
+            onToggle={() => toggleLock(keys.CapsLock)}
+          />
 
-          <div
-            className={cx(
-              "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState.num_lock
-                ? "text-black dark:text-white"
-                : "text-slate-800/20 dark:text-slate-300/20",
-            )}
-          >
-            {m.info_num_lock()}
-          </div>
+          <LockToggle
+            label={m.info_num_lock()}
+            active={keyboardLedState.num_lock}
+            disabled={!keyboardAvailable}
+            onToggle={() => toggleLock(keys.NumLock)}
+          />
 
-          <div
-            className={cx(
-              "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState.scroll_lock
-                ? "text-black dark:text-white"
-                : "text-slate-800/20 dark:text-slate-300/20",
-            )}
-          >
-            {m.info_scroll_lock()}
-          </div>
+          <LockToggle
+            label={m.info_scroll_lock()}
+            active={keyboardLedState.scroll_lock}
+            disabled={!keyboardAvailable}
+            onToggle={() => toggleLock(keys.ScrollLock)}
+          />
 
           {keyboardLedState.compose ? (
             <div className="shrink-0 p-1 px-1.5 text-xs">{m.info_compose()}</div>
@@ -258,5 +257,34 @@ export default function InfoBar() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LockToggle({
+  label,
+  active,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  active: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      onMouseDown={e => e.preventDefault()}
+      onClick={onToggle}
+      className={cx(
+        "shrink-0 cursor-pointer p-1 px-1.5 text-xs outline-hidden disabled:cursor-default",
+        "focus-visible:ring-1 focus-visible:ring-blue-700 focus-visible:ring-inset enabled:hover:bg-slate-800/5 dark:enabled:hover:bg-slate-300/10",
+        active ? "text-black dark:text-white" : "text-slate-800/20 dark:text-slate-300/20",
+      )}
+    >
+      {label}
+    </button>
   );
 }
