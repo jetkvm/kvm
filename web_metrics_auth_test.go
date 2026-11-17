@@ -5,6 +5,7 @@ package kvm
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
@@ -119,4 +120,19 @@ func TestMetricsCorrectPasswordClearsEarlierFailures(t *testing.T) {
 		}
 		expectStatus(t, get(metricsRequest{password: metricsTestPassword}), http.StatusOK, "correct password")
 	}
+}
+
+func TestMetricsBasicAuthOnDeviceWithoutPasswordDoesNotLockOutSetup(t *testing.T) {
+	get := setupMetricsAuthTest(t, "")
+	config.HashedPassword = ""
+	config.LocalAuthToken = ""
+
+	for i := 0; i < maxAttempts*2; i++ {
+		expectStatus(t, get(metricsRequest{password: "stale"}), http.StatusUnauthorized, "basic auth before setup")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/device/setup", strings.NewReader("not json"))
+	rec := httptest.NewRecorder()
+	setupRouter().ServeHTTP(rec, req)
+	expectStatus(t, rec, http.StatusBadRequest, "setup with an invalid body after the scrapes")
 }

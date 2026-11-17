@@ -560,7 +560,7 @@ func metricsAuthMiddleware() gin.HandlerFunc {
 
 		// Fall back to basic auth (Prometheus scraper)
 		_, password, ok := c.Request.BasicAuth()
-		if ok {
+		if ok && config.HashedPassword != "" {
 			ip := c.ClientIP()
 			if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
 				c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
