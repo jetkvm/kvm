@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 type macroMessage struct {
@@ -37,7 +38,9 @@ func useConfig(t *testing.T, c *Config) {
 
 func stopRegisteredMacro() {
 	cancelKeyboardMacro()
-	keyboardMacroExec.Lock()
+	for !keyboardMacroExec.TryLock() {
+		time.Sleep(time.Millisecond)
+	}
 	keyboardMacroExec.Unlock()
 }
 
