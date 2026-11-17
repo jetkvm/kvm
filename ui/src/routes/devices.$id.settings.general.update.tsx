@@ -111,6 +111,11 @@ export function Dialog({
 
   const [versionInfo, setVersionInfo] = useState<null | SystemVersionInfo>(null);
   const { modalView, setModalView, otaState } = useUpdateStore();
+  // Reason of the last failed check. Kept out of otaState: that store mirrors
+  // the device's OTA state, and the parent route reopens the error view from
+  // its error field, so a check failure written there would come back on
+  // every later visit.
+  const [checkError, setCheckError] = useState<string | null>(null);
   const forceCustomUpdate = customSystemVersion !== undefined || customAppVersion !== undefined;
   const onConfirmCustomUpdate = useCallback(() => {
     onConfirmCustomUpdateCallback(
@@ -134,20 +139,32 @@ export function Dialog({
     [setModalView, forceCustomUpdate],
   );
 
+  const onFailedLoading = useCallback(
+    (reason: string | null) => {
+      setCheckError(reason);
+      setModalView("error");
+    },
+    [setModalView],
+  );
+
   return (
     <div className="pointer-events-auto relative mx-auto text-left">
       <div>
         {modalView === "error" && (
           <UpdateErrorState
-            errorMessage={otaState.error}
+            errorMessage={checkError ?? otaState.error}
             onClose={onClose}
-            onRetryUpdate={() => setModalView("loading")}
+            onRetryUpdate={() => {
+              setCheckError(null);
+              setModalView("loading");
+            }}
           />
         )}
 
         {modalView === "loading" && (
           <LoadingState
             onFinished={onFinishedLoading}
+            onFailed={onFailedLoading}
             onCancelCheck={onClose}
             customAppVersion={customAppVersion}
             customSystemVersion={customSystemVersion}
@@ -180,13 +197,26 @@ export function Dialog({
   );
 }
 
+// The reason a failed check gives: the JSON-RPC error's data (the device's
+// own message) or its message.
+function checkErrorReason(error: unknown): string | null {
+  if (error && typeof error === "object") {
+    const { data, message } = error as { data?: unknown; message?: unknown };
+    if (typeof data === "string" && data) return data;
+    if (typeof message === "string" && message) return message;
+  }
+  return null;
+}
+
 function LoadingState({
   onFinished,
+  onFailed,
   onCancelCheck,
   customAppVersion,
   customSystemVersion,
 }: {
   onFinished: (versionInfo: SystemVersionInfo) => void;
+  onFailed: (reason: string | null) => void;
   onCancelCheck: () => void;
   customAppVersion?: string;
   customSystemVersion?: string;
@@ -195,7 +225,6 @@ function LoadingState({
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const { getVersionInfo } = useVersion();
-  const { setModalView } = useUpdateStore();
 
   const progressBarRef = useRef<HTMLDivElement>(null);
 
@@ -233,7 +262,7 @@ function LoadingState({
       .catch(error => {
         if (!signal.aborted) {
           console.error("LoadingState: Error fetching version info", error);
-          setModalView("error");
+          onFailed(checkErrorReason(error));
         }
       });
 
@@ -241,7 +270,7 @@ function LoadingState({
       clearTimeout(animationTimer);
       abortControllerRef.current?.abort();
     };
-  }, [checkUpdate, onFinished, setModalView]);
+  }, [checkUpdate, onFinished, onFailed]);
 
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">

@@ -13,7 +13,7 @@ import {
   waitForWebRTCReady,
   waitForVideoDimensions,
 } from "../helpers";
-import { createRemoteAgent, type AudioDeviceInfo } from "./remote-agent";
+import { createRemoteAgent, type AudioDeviceInfo, skipWithoutRemoteHost } from "./remote-agent";
 import { remoteHostSetDPMS } from "./shared";
 
 const agent = createRemoteAgent();
@@ -21,7 +21,7 @@ const USB_ENUMERATION_SETTLE_MS = 3_000;
 let originalHardware: HardwareState | undefined;
 
 test.beforeAll(async ({ browser }) => {
-  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+  skipWithoutRemoteHost();
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
   const page = await browser.newPage();
   try {

@@ -360,6 +360,8 @@ export interface BacklightSettings {
   off_after: number;
 }
 
+export type VideoScaling = "fit" | "actual";
+
 export interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
@@ -401,6 +403,9 @@ export interface SettingsState {
 
   videoContrast: number;
   setVideoContrast: (value: number) => void;
+
+  videoScaling: VideoScaling;
+  setVideoScaling: (scaling: VideoScaling) => void;
 
   hideHeaderBar: boolean;
   setHideHeaderBar: (hide: boolean) => void;
@@ -457,6 +462,9 @@ export const useSettingsStore = create(
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
 
+      videoScaling: "fit",
+      setVideoScaling: (scaling: VideoScaling) => set({ videoScaling: scaling }),
+
       hideHeaderBar: false,
       setHideHeaderBar: (hide: boolean) => set({ hideHeaderBar: hide }),
 
@@ -483,7 +491,7 @@ export interface MountMediaState {
   remoteVirtualMediaState: RemoteVirtualMediaState | null;
   setRemoteVirtualMediaState: (state: MountMediaState["remoteVirtualMediaState"]) => void;
 
-  modalView: "mode" | "url" | "device" | "upload" | "error" | null;
+  modalView: "mode" | "url" | "device" | "upload" | "download" | "error" | null;
   setModalView: (view: MountMediaState["modalView"]) => void;
 
   isMountMediaDialogOpen: boolean;
@@ -695,6 +703,7 @@ export interface UsbConfigState {
   serial_number: string;
   manufacturer: string;
   product: string;
+  configuration: string;
 }
 
 export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
@@ -725,18 +734,47 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
 export interface DeviceState {
   appVersion: string | null;
   systemVersion: string | null;
+  // null until the device reports them on this RPC channel.
+  capabilities: Set<string> | null;
 
   setAppVersion: (version: string) => void;
   setSystemVersion: (version: string) => void;
+  setCapabilities: (capabilities: string[] | null) => void;
 }
+
+// Optional device features reported by getDeviceCapabilities.
+export type Capability =
+  | "shell"
+  | "extensions"
+  | "usb_serial"
+  | "custom_edid"
+  | "upload_channel"
+  | "video_during_update" // video keeps streaming while an update installs
+  | "removable_storage" // images live on a card that can be missing or unformatted
+  | "wifi" // Wi-Fi networks and frequency band
+  | "http_proxy" // network settings the device can change
+  | "domain"
+  | "mdns"
+  | "ipv6"
+  | "tls" // HTTPS listener with a selectable certificate
+  | "local_loopback" // web UI can be limited to the loopback interface
+  | "log_level" // default log level can be changed
+  | "tailscale" // Tailscale client
+  | "storage_download"; // device downloads an image from a URL into its storage
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
   systemVersion: null,
+  capabilities: null,
 
   setAppVersion: (version: string) => set({ appVersion: version }),
   setSystemVersion: (version: string) => set({ systemVersion: version }),
+  setCapabilities: capabilities => set({ capabilities: capabilities && new Set(capabilities) }),
 }));
+
+// Whether the connected device reported a capability in getDeviceCapabilities.
+export const useCapability = (name: Capability) =>
+  useDeviceStore(state => state.capabilities?.has(name) ?? false);
 
 export interface TerminalState {
   terminator: string | null;

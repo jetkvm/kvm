@@ -17,7 +17,6 @@ import {
   ensureRpcReady,
   waitForVideoDimensions,
   sshExec,
-  getDeviceHost,
   restartAppViaSSH,
   semverGte,
 } from "../helpers";
@@ -26,6 +25,7 @@ import {
   waitForKeyboardReady,
   HID_TO_LINUX,
   type MountInfo,
+  skipWithoutRemoteHost,
 } from "./remote-agent";
 
 let sharedPage: Page;
@@ -212,7 +212,9 @@ export async function putRemoteHostToSleepForUSBWakeTest(
 
   if (options.wakeAfterSeconds) {
     try {
-      remoteHostExec("command -v rtcwake >/dev/null");
+      // Match the sudo invocation used to suspend: rtcwake may be in sbin,
+      // outside the SSH user's PATH but available through sudo's secure_path.
+      remoteHostExec("sudo -n rtcwake --version >/dev/null");
     } catch {
       test.skip(true, "rtcwake is not available on remote host");
     }
@@ -313,13 +315,13 @@ export const TEST_MACROS = [
     id: "e2e_test_a",
     name: "E2E KeyA",
     steps: [{ keys: ["KeyA"], modifiers: [], delay: 50 }],
-    sortOrder: 0,
+    sortOrder: 1,
   },
   {
     id: "e2e_test_ctrl_a",
     name: "E2E Ctrl+A",
     steps: [{ keys: ["KeyA"], modifiers: ["ControlLeft"], delay: 50 }],
-    sortOrder: 1,
+    sortOrder: 2,
   },
   {
     id: "e2e_test_abc",
@@ -329,7 +331,7 @@ export const TEST_MACROS = [
       { keys: ["KeyB"], modifiers: [], delay: 50 },
       { keys: ["KeyC"], modifiers: [], delay: 50 },
     ],
-    sortOrder: 2,
+    sortOrder: 3,
   },
 ];
 
@@ -504,7 +506,7 @@ export function registerSharedSession(onPage: (page: Page) => void): void {
   let originalHardware: HardwareState | undefined;
   let originalMacros: unknown;
   test.beforeAll(async ({ browser }) => {
-    test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+    skipWithoutRemoteHost();
 
     await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 
@@ -514,12 +516,7 @@ export function registerSharedSession(onPage: (page: Page) => void): void {
 
     // If the page redirected to the welcome/setup flow, complete setup and reload
     if (sharedPage.url().includes("/welcome")) {
-      const host = getDeviceHost();
-      await fetch(`http://${host}/device/setup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ localAuthMode: "noPassword" }),
-      });
+      await ensureNoPasswordViaAPI();
       await sharedPage.goto("/", { waitUntil: "networkidle" });
     }
 

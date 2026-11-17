@@ -20,7 +20,7 @@ type Native struct {
 	displayRotation      uint16
 	defaultQualityFactor float64
 	onVideoStateChange   func(state VideoState)
-	onVideoFrameReceived func(frame []byte, duration time.Duration)
+	onVideoFrameReceived func(frame []byte, pts time.Duration)
 	onIndevEvent         func(event string)
 	onRpcEvent           func(event string)
 	sleepModeSupported   bool
@@ -36,7 +36,7 @@ type NativeOptions struct {
 	DefaultQualityFactor float64
 	MaxRestartAttempts   uint
 	OnVideoStateChange   func(state VideoState)
-	OnVideoFrameReceived func(frame []byte, duration time.Duration)
+	OnVideoFrameReceived func(frame []byte, pts time.Duration)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnNativeRestart      func()
@@ -78,8 +78,8 @@ func NewNative(opts NativeOptions) *Native {
 
 	onVideoFrameReceived := opts.OnVideoFrameReceived
 	if onVideoFrameReceived == nil {
-		onVideoFrameReceived = func(frame []byte, duration time.Duration) {
-			nativeLogger.Trace().Interface("frame", frame).Dur("duration", duration).Msg("video frame received")
+		onVideoFrameReceived = func(frame []byte, pts time.Duration) {
+			nativeLogger.Trace().Interface("frame", frame).Dur("pts", pts).Msg("video frame received")
 		}
 	}
 
@@ -125,7 +125,9 @@ func NewNative(opts NativeOptions) *Native {
 func (n *Native) Start() error {
 	// set up singleton
 	setInstance(n)
-	setUpNativeHandlers()
+	if err := setUpNativeHandlers(); err != nil {
+		return err
+	}
 
 	// start the native video
 	go n.handleLogChan()

@@ -235,7 +235,7 @@ func updateStaticContents() {
 	nativeInstance.UpdateLabelAndChangeVisibility("build_date", version.BuildDate)
 	nativeInstance.UpdateLabelAndChangeVisibility("golang_version", version.GoVersion)
 
-	// nativeInstance.UpdateLabelAndChangeVisibility("boot_screen_device_id", GetDeviceID())
+	nativeInstance.UpdateLabelAndChangeVisibility("device_id", GetDeviceID())
 }
 
 // configureDisplayOnNativeRestart is called when the native process restarts

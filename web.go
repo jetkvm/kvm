@@ -66,7 +66,8 @@ type LocalDevice struct {
 }
 
 type DeviceStatus struct {
-	IsSetup bool `json:"isSetup"`
+	IsSetup bool   `json:"isSetup"`
+	SKU     string `json:"sku"`
 }
 
 type SetupRequest struct {
@@ -171,7 +172,9 @@ func setupRouter() *gin.Engine {
 	r.POST("/device/setup", handleSetup)
 
 	// A Prometheus metrics endpoint.
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	// Requires auth (cookie or basic auth) when password mode is enabled,
+	// open when localAuthMode is noPassword (consistent with other endpoints).
+	r.GET("/metrics", metricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
 
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
@@ -461,14 +464,8 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Check rate limit before processing
-	ip := c.ClientIP()
-	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
-		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "Too many failed attempts. Please try again later.",
-			"retry_after": retryAfter,
-		})
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(c.ClientIP()); !allowed {
+		sendTooManyAttemptsThenAbort(c, retryAfter)
 		return
 	}
 
@@ -479,15 +476,14 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
-	if err != nil {
-		passwordRateLimiter.RecordFailure(ip)
+	switch result, retryAfter := checkPassword(c, req.Password); result {
+	case passwordLockedOut:
+		sendTooManyAttemptsThenAbort(c, retryAfter)
+		return
+	case passwordWrong:
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
-
-	// Clear rate limit on successful login
-	passwordRateLimiter.RecordSuccess(ip)
 
 	config.LocalAuthToken = uuid.New().String()
 
@@ -537,6 +533,43 @@ func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 	c.Abort()
 }
 
+// metricsAuthMiddleware authenticates the /metrics endpoint using either the
+// session cookie or HTTP basic auth (for Prometheus scrape configs). When
+// localAuthMode is noPassword, all requests are allowed through — consistent
+// with every other endpoint on the device.
+func metricsAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		// Try cookie auth first (browser access)
+		authToken, err := c.Cookie("authToken")
+		if err == nil && authToken == config.LocalAuthToken && authToken != "" {
+			c.Next()
+			return
+		}
+
+		// Fall back to basic auth (Prometheus scraper)
+		_, password, ok := c.Request.BasicAuth()
+		if ok {
+			switch result, retryAfter := checkPassword(c, password); result {
+			case passwordLockedOut:
+				sendTooManyAttemptsThenAbort(c, retryAfter)
+				return
+			case passwordCorrect:
+				c.Next()
+				return
+			}
+		}
+
+		c.Header("WWW-Authenticate", `Basic realm="JetKVM Metrics"`)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.Abort()
+	}
+}
+
 func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if requireDeveloperMode {
@@ -565,8 +598,11 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password))
-		if err != nil {
+		switch result, retryAfter := checkPassword(c, password); result {
+		case passwordLockedOut:
+			sendTooManyAttemptsThenAbort(c, retryAfter)
+			return
+		case passwordWrong:
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}
@@ -601,6 +637,8 @@ func getBindAddress(listenPort int) string {
 	return bindAddress
 }
 
+const webReadHeaderTimeout = 10 * time.Second
+
 func RunWebServer() {
 	r := setupRouter()
 
@@ -608,7 +646,12 @@ func RunWebServer() {
 	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	if err := r.Run(bindAddress); err != nil {
+	server := &http.Server{
+		Addr:              bindAddress,
+		Handler:           r.Handler(),
+		ReadHeaderTimeout: webReadHeaderTimeout,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
@@ -778,6 +821,7 @@ func handleDeviceStatus(c *gin.Context) {
 
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
+		SKU:     GetDeviceSKU(),
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -867,6 +911,8 @@ func handleSetup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
 		return
 	}
+
+	updateMdnsTXT()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
 }

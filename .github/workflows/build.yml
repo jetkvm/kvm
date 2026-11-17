@@ -33,13 +33,13 @@ jobs:
           cache-dependency-path: "**/package-lock.json"
       - uses: actions/setup-go@v6
         with:
-          go-version: "^1.25.1"
+          go-version: "1.26.10"
       - name: Build frontend
         run: make frontend
       - name: Build application
         run: ./scripts/ci_helper.sh make build_dev
       - name: Run tests
-        run: go test ./... -json > testreport.json
+        run: go test -race ./... -json > testreport.json
       - uses: becheran/go-testreport@v0.3.2
         with:
           input: testreport.json

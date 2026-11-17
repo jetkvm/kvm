@@ -14,7 +14,7 @@ import {
   ensureRpcReady,
   tapKey,
 } from "../helpers";
-import { createRemoteAgent, waitForKeyboardReady } from "./remote-agent";
+import { createRemoteAgent, waitForKeyboardReady, skipWithoutRemoteHost } from "./remote-agent";
 
 const agent = createRemoteAgent();
 
@@ -56,7 +56,7 @@ function findGadgetKeyboardInterface(): string {
 }
 
 test.beforeAll(async ({ browser }) => {
-  test.skip(!agent, "JETKVM_REMOTE_HOST not set");
+  skipWithoutRemoteHost();
 
   await Promise.all([agent!.ensureDeployed(), ensureNoPasswordViaAPI()]);
 

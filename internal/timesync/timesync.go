@@ -41,6 +41,10 @@ type TimeSync struct {
 	syncSuccess bool
 	timer       *time.Timer
 
+	clockHook     ClockHook
+	clockHookLock *sync.Mutex
+	setClock      func(now time.Time) error
+
 	preCheckFunc PreCheckFunc
 	preCheckIPv4 PreCheckFunc
 	preCheckIPv6 PreCheckFunc
@@ -52,6 +56,18 @@ type TimeSyncOptions struct {
 	PreCheckIPv6  PreCheckFunc
 	Logger        *zerolog.Logger
 	NetworkConfig *types.NetworkConfig
+}
+
+// ClockHook is told when time sync is about to move the system clock, and once
+// it has. Before runs on the old clock and After on the new one; both get the
+// change being applied, so a subscriber can tell an hourly correction of a few
+// milliseconds from the decades-long jump of a cold boot. Both run on the time
+// sync goroutine and hold up the clock set, so they should return promptly.
+// After always runs, even when setting the clock failed, so that whatever
+// Before stopped is restored.
+type ClockHook struct {
+	Before func(jump time.Duration)
+	After  func(jump time.Duration)
 }
 
 type SyncMode struct {
@@ -81,7 +97,9 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 		preCheckIPv6:     opts.PreCheckIPv6,
 		networkConfig:    opts.NetworkConfig,
 		timer:            time.NewTimer(timeSyncWaitNetUpInt),
+		clockHookLock:    &sync.Mutex{},
 	}
+	t.setClock = t.setSystemTime
 
 	if t.rtcDevicePath != "" {
 		rtcTime, _ := t.readRtcTime()
@@ -97,6 +115,20 @@ func (t *TimeSync) SetDhcpNtpAddresses(addresses []string) {
 
 func (t *TimeSync) SetNetworkConfig(cfg *types.NetworkConfig) {
 	t.networkConfig = cfg
+}
+
+// SetClockHook registers the hook run around every clock change. Only one hook
+// is kept: a later call replaces the earlier one.
+func (t *TimeSync) SetClockHook(hook ClockHook) {
+	t.clockHookLock.Lock()
+	defer t.clockHookLock.Unlock()
+	t.clockHook = hook
+}
+
+func (t *TimeSync) getClockHook() ClockHook {
+	t.clockHookLock.Lock()
+	defer t.clockHookLock.Unlock()
+	return t.clockHook
 }
 
 func (t *TimeSync) getSyncMode() SyncMode {
@@ -254,20 +286,41 @@ Orders:
 		return fmt.Errorf("failed to get time from any source")
 	}
 
-	if offset != nil {
-		newNow := time.Now().Add(*offset)
-		now = &newNow
+	// HTTP sources give an absolute time where NTP gives an offset. Carry an
+	// offset either way: it stays right however long the clock set takes.
+	if offset == nil {
+		o := time.Until(*now)
+		offset = &o
 	}
 
-	log.Info().Time("now", *now).Msg("time obtained")
-
-	err := t.setSystemTime(*now)
-	if err != nil {
-		return fmt.Errorf("failed to set system time: %w", err)
+	if err := t.applyTime(log, *offset); err != nil {
+		return err
 	}
 
 	metricTimeSyncSuccessCount.Inc()
 
+	return nil
+}
+
+// applyTime moves the system clock by offset, running the clock hook around
+// the change. The offset is applied as late as possible, so the time the
+// Before hook takes does not end up in the clock.
+func (t *TimeSync) applyTime(log zerolog.Logger, offset time.Duration) error {
+	hook := t.getClockHook()
+	if hook.Before != nil {
+		hook.Before(offset)
+	}
+
+	now := time.Now().Add(offset)
+	log.Info().Time("now", now).Msg("time obtained")
+	err := t.setClock(now)
+
+	if hook.After != nil {
+		hook.After(offset)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to set system time: %w", err)
+	}
 	return nil
 }
 

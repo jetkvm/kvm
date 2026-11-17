@@ -142,7 +142,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params)
+	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -415,6 +415,71 @@ type SSHKeyState struct {
 	SSHKey string `json:"sshKey"`
 }
 
+// rpcGetDeviceCapabilities lists the optional features this firmware supports.
+// The UI hides the controls for a capability the device does not report.
+// video_during_update: the video stream keeps running while an update
+// downloads and installs; a device without it pauses video for the
+// duration and the UI says so over the video.
+// http_proxy, domain, mdns, ipv6: the network settings of the same names can
+// be changed; the Network page hides those a device does not report.
+// tls, local_loopback, log_level, tailscale: the HTTPS setting (Access page),
+// the loopback-only setting and the default log level (Advanced page) and the
+// Tailscale card (Network page), each shown only when reported.
+// storage_download: the device can download an image from a URL into its
+// storage (startStorageDownload); the mount page hides the control without it.
+func rpcGetDeviceCapabilities() ([]string, error) {
+	return []string{
+		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
+		"http_proxy", "domain", "mdns", "ipv6",
+		"tls", "local_loopback", "log_level", "tailscale",
+		"storage_download",
+	}, nil
+}
+
+// reportLocalVersionAndCapabilities sends the device's version and
+// capabilities to a session whose RPC channel just opened. They do not change
+// while the session runs; the UI waits for these events instead of asking.
+func reportLocalVersionAndCapabilities(session *Session) {
+	if version, err := rpcGetLocalVersion(); err != nil {
+		jsonRpcLogger.Warn().Err(err).Msg("failed to read the local version for the localVersion event")
+	} else {
+		writeJSONRPCEvent("localVersion", version, session)
+	}
+	capabilities, _ := rpcGetDeviceCapabilities()
+	writeJSONRPCEvent("deviceCapabilities", capabilities, session)
+}
+
+// videoPausedBy is the session whose UI asked for the video stream to stop,
+// for example while its virtual media dialog is open, so a device that cannot
+// encode video and serve an upload at the same time keeps the pipeline down.
+// Only that session can resume; its disconnect releases the pause.
+var (
+	videoPauseMu  sync.Mutex
+	videoPausedBy *Session
+)
+
+func rpcSetVideoStreamPaused(session *Session, paused bool) error {
+	videoPauseMu.Lock()
+	defer videoPauseMu.Unlock()
+	if session == nil || session.isClosed() {
+		return context.Canceled
+	}
+	if paused {
+		videoPausedBy = session
+		return nativeInstance.VideoStop()
+	}
+	if videoPausedBy != nil && videoPausedBy != session {
+		return nil
+	}
+	videoPausedBy = nil
+	// The resuming session may already have been replaced; video restarts for
+	// the session that is current now, with its codec.
+	if currentSession != nil {
+		startNativeVideoLocked(currentSession)
+	}
+	return nil
+}
+
 func rpcGetDevModeState() (DevModeState, error) {
 	devModeEnabled := false
 	if _, err := os.Stat(devModeFile); err != nil {
@@ -527,7 +592,7 @@ type RPCHandler struct {
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
-func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (result any, err error) {
+func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any, session *Session) (result any, err error) {
 	// Use defer to recover from a panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -541,11 +606,11 @@ func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string
 	}()
 
 	// Call the handler
-	result, err = riskyCallRPCHandler(logger, handler, params)
+	result, err = riskyCallRPCHandler(logger, handler, params, session)
 	return result, err // do not combine these two lines into one, as it breaks the above defer function's setting of err
 }
 
-func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (any, error) {
+func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any, session *Session) (any, error) {
 	handlerValue := reflect.ValueOf(handler.Func)
 	handlerType := handlerValue.Type()
 
@@ -556,8 +621,15 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	numParams := handlerType.NumIn()
 	allParamNames := append(handler.Params, handler.OptionalParams...) //nolint:gocritic
 
-	if len(allParamNames) != numParams {
-		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(allParamNames))
+	// A handler whose first parameter is *Session receives the calling session
+	// ahead of its named parameters.
+	offset := 0
+	if numParams > 0 && handlerType.In(0) == reflect.TypeOf((*Session)(nil)) {
+		offset = 1
+	}
+
+	if len(allParamNames)+offset != numParams {
+		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams-offset, len(allParamNames))
 		logger.Error().Strs("paramNames", allParamNames).Err(err).Msg("Cannot call RPC handler")
 		return nil, err
 	}
@@ -568,10 +640,13 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	}
 
 	args := make([]reflect.Value, numParams)
+	if offset == 1 {
+		args[0] = reflect.ValueOf(session)
+	}
 
-	for i := range numParams {
+	for i := offset; i < numParams; i++ {
 		paramType := handlerType.In(i)
-		paramName := allParamNames[i]
+		paramName := allParamNames[i-offset]
 		paramValue, ok := params[paramName]
 		if !ok {
 			if optionalSet[paramName] {
@@ -771,6 +846,12 @@ var factoryResetPaths = []string{
 func rpcFactoryReset() error {
 	logger.Info().Msg("Factory reset initiated, removing all user data")
 
+	if config.CloudToken != "" && config.CloudURL != "" {
+		if err := rpcDeregisterDevice(); err != nil {
+			logger.Warn().Err(err).Msg("failed to deregister device from cloud during factory reset")
+		}
+	}
+
 	var errs []error
 	for _, path := range factoryResetPaths {
 		if err := os.RemoveAll(path); err != nil {
@@ -831,24 +912,15 @@ func rpcGetActiveExtension() (string, error) {
 }
 
 func rpcSetActiveExtension(extensionId string) error {
-	if config.ActiveExtension == extensionId {
+	if config.ActiveExtension == extensionId && extPort.active(extensionId) {
 		return nil
 	}
-	switch config.ActiveExtension {
-	case "atx-power":
-		_ = unmountATXControl()
-	case "dc-power":
-		_ = unmountDCControl()
+	if err := extPort.activate(extensionId); err != nil {
+		return fmt.Errorf("failed to open the serial port: %w", err)
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
-	}
-	switch extensionId {
-	case "atx-power":
-		_ = mountATXControl()
-	case "dc-power":
-		_ = mountDCControl()
 	}
 
 	// Re-publish MQTT HA Discovery for the new extension
@@ -1328,6 +1400,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"ping":                       {Func: rpcPing},
 	"reboot":                     {Func: rpcReboot, Params: []string{"force"}},
 	"getDeviceID":                {Func: rpcGetDeviceID},
+	"getDeviceCapabilities":      {Func: rpcGetDeviceCapabilities},
 	"deregisterDevice":           {Func: rpcDeregisterDevice},
 	"getCloudState":              {Func: rpcGetCloudState},
 	"getNetworkState":            {Func: rpcGetNetworkState},
@@ -1366,6 +1439,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVideoLogStatus":          {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":          {Func: rpcGetVideoSleepMode},
 	"setVideoSleepMode":          {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
+	"setVideoStreamPaused":       {Func: rpcSetVideoStreamPaused, Params: []string{"paused"}},
 	"getDevChannelState":         {Func: rpcGetDevChannelState},
 	"setDevChannelState":         {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":            {Func: rpcGetLocalVersion},
@@ -1395,6 +1469,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"listStorageFiles":           {Func: rpcListStorageFiles},
 	"deleteStorageFile":          {Func: rpcDeleteStorageFile, Params: []string{"filename"}},
 	"startStorageFileUpload":     {Func: rpcStartStorageFileUpload, Params: []string{"filename", "size"}},
+	"startStorageDownload":       {Func: rpcStartStorageDownload, Params: []string{"url", "filename"}},
+	"getStorageDownloadState":    {Func: rpcGetStorageDownloadState},
+	"cancelStorageDownload":      {Func: rpcCancelStorageDownload},
 	"getWakeOnLanDevices":        {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":        {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"factoryReset":               {Func: rpcFactoryReset},

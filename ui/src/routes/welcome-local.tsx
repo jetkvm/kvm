@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { redirect } from "react-router";
+import { redirect, useLoaderData } from "react-router";
 import type { LoaderFunction } from "react-router";
 import { cx } from "cva";
 
 import LogoBlueIcon from "@assets/logo-blue.png";
 import LogoWhiteIcon from "@assets/logo-white.svg";
 import DeviceImage from "@assets/jetkvm-device-still.webp";
+import MiniDeviceImage from "@assets/jetkvm-mini-device-still.webp";
 import LogoMark from "@assets/logo-mark.png";
 import Container from "@components/Container";
 import GridBackground from "@components/GridBackground";
@@ -16,6 +17,7 @@ import { m } from "@localizations/messages.js";
 
 export interface DeviceStatus {
   isSetup: boolean;
+  sku?: string;
 }
 
 const loader: LoaderFunction = async () => {
@@ -24,7 +26,7 @@ const loader: LoaderFunction = async () => {
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");
-  return null;
+  return res;
 };
 
 const LogoLeadingIcon = ({ className }: { className?: string }) => (
@@ -32,13 +34,15 @@ const LogoLeadingIcon = ({ className }: { className?: string }) => (
 );
 
 export default function WelcomeRoute() {
+  const { sku } = useLoaderData() as DeviceStatus;
+  const deviceImage = sku?.startsWith("jetkvm-mini") ? MiniDeviceImage : DeviceImage;
   const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
     const img = new Image();
-    img.src = DeviceImage;
+    img.src = deviceImage;
     img.onload = () => setImageLoaded(true);
-  }, []);
+  }, [deviceImage]);
 
   return (
     <>
@@ -71,7 +75,7 @@ export default function WelcomeRoute() {
 
                   <div className="-mt-2! -ml-6 flex items-center justify-center">
                     <img
-                      src={DeviceImage}
+                      src={deviceImage}
                       alt={m.jetkvm_device()}
                       className="max-w-md scale-[0.98] animate-fadeInScaleFloat opacity-0 transition-all duration-1000 ease-out animation-delay-300"
                     />

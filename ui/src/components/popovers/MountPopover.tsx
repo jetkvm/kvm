@@ -12,9 +12,11 @@ import { RemoteVirtualMediaState, useMountMediaStore } from "@hooks/stores";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useVideoStreamPause } from "@hooks/useVideoStreamPause";
 import notifications from "@/notifications";
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
+  useVideoStreamPause();
   const { send } = useJsonRpc();
   const { remoteVirtualMediaState, setModalView, setRemoteVirtualMediaState } =
     useMountMediaStore();

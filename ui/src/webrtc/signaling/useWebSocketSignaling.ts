@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router";
 import pkg from "react-use-websocket";
 
 import { CLOUD_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
 import { useRTCStore, useUiStore } from "@hooks/stores";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { m } from "@localizations/messages.js";
 import { isLinuxDesktop } from "@/utils";
 
 import type { SignalingHook } from "./types";
+
+// React Router matches the route with a trailing slash and in any case.
+const isOtherSessionPath = (path: string) => /\/other-session\/?$/i.test(path);
 
 const useWebSocket = pkg.default ?? pkg;
 
@@ -51,31 +56,93 @@ export const useWebSocketSignaling: SignalingHook = ({
   iceServers,
   onPeerConnection,
 }) => {
-  const {
-    peerConnection,
-    setPeerConnection,
-    peerConnectionState,
-    setPeerConnectionState,
-    setMediaStream,
-  } = useRTCStore();
+  const { setPeerConnection, peerConnectionState, setPeerConnectionState, setMediaStream } =
+    useRTCStore();
   const setRebootState = useUiStore(state => state.setRebootState);
 
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
+
+  // A device can report a takeover on the signaling socket: an
+  // "other-session-connected" message, or close code 4001 when the message is
+  // not read. The session may have no RPC channel open yet, so the RPC
+  // otherSessionConnected event cannot be relied on. The socket then stays
+  // closed until the user selects Use Here; reconnecting on its own would take
+  // the session back from the other tab.
+  // The same holds on the other-session page itself, also after a refresh.
+  const location = useLocation();
+  const { navigateTo } = useDeviceUiNavigation();
+  const [sessionSuperseded, setSessionSuperseded] = useState(() =>
+    isOtherSessionPath(location.pathname),
+  );
+  const sessionSupersededRef = useRef(sessionSuperseded);
+
+  // The peer this hook set up last. A peer that is no longer it has been
+  // retired: its pending callbacks (a late offer, a queued ICE candidate, a
+  // connection poll) must not reach the signaling socket or the store, which
+  // now belong to its replacement.
+  const activePeerRef = useRef<RTCPeerConnection | null>(null);
+  const connectionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isCurrentPeer = useCallback(
+    (pc: RTCPeerConnection) =>
+      activePeerRef.current === pc &&
+      pc.connectionState !== "closed" &&
+      !sessionSupersededRef.current,
+    [],
+  );
+  // Publishes `state` for the retired peer: "connecting" while the signaling
+  // socket reconnects, so the page shows progress instead of a failure.
+  const retirePeer = useCallback(
+    (state: RTCPeerConnectionState = "closed") => {
+      const pc = activePeerRef.current;
+      // Invalidate ownership before close or any pending asynchronous callback.
+      activePeerRef.current = null;
+      if (connectionPollRef.current !== null) {
+        clearInterval(connectionPollRef.current);
+        connectionPollRef.current = null;
+      }
+      if (pc) {
+        pc.onnegotiationneeded = null;
+        pc.onicecandidate = null;
+        pc.onicegatheringstatechange = null;
+        pc.onconnectionstatechange = null;
+        pc.close();
+      }
+      setPeerConnection(null);
+      setPeerConnectionState(state);
+      setMediaStream(null);
+    },
+    [setMediaStream, setPeerConnection, setPeerConnectionState],
+  );
+
+  const stopForOtherSession = useCallback(() => {
+    sessionSupersededRef.current = true;
+    setSessionSuperseded(true);
+    retirePeer();
+    navigateTo("/other-session");
+  }, [navigateTo, retirePeer]);
+
+  // The RPC otherSessionConnected event only navigates to that page.
+  useEffect(() => {
+    if (!isOtherSessionPath(location.pathname)) return;
+    sessionSupersededRef.current = true;
+    setSessionSuperseded(true);
+    retirePeer();
+    // The other session owns any reboot now. Use Here remounts the rebooting
+    // overlay on a live peer, where it would wait for a disconnect that never
+    // comes.
+    setRebootState({ isRebooting: false, postRebootAction: null });
+  }, [location.pathname, retirePeer, setRebootState]);
 
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
       console.log("Closing peer connection");
 
       setConnectionFailed(true);
-      if (peerConnection) {
-        setPeerConnectionState(peerConnection.connectionState);
-      }
       connectionFailedRef.current = true;
-
-      peerConnection?.close();
+      retirePeer();
     },
-    [peerConnection, setPeerConnectionState],
+    [retirePeer],
   );
 
   // We need to track connectionFailed in a ref to avoid stale closure issues
@@ -101,6 +168,7 @@ export const useWebSocketSignaling: SignalingHook = ({
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
+        if (!isCurrentPeer(pc)) return;
         console.log(
           "[setRemoteSessionDescription] Remote description set successfully to: " +
             remoteDescription.sdp,
@@ -109,19 +177,23 @@ export const useWebSocketSignaling: SignalingHook = ({
       } catch (error) {
         // A peer closed while this was pending has been replaced; the
         // rejection must not stop reconnecting for its replacement.
-        if (pc.connectionState === "closed") return;
+        if (!isCurrentPeer(pc)) return;
         console.error("[setRemoteSessionDescription] Failed to set remote description:", error);
         cleanupAndStopReconnecting();
         return;
       }
+
+      if (!isCurrentPeer(pc)) return;
+      if (connectionPollRef.current !== null) clearInterval(connectionPollRef.current);
 
       // Replace the interval-based check with a more reliable approach
       let attempts = 0;
       const checkInterval = setInterval(() => {
         // The peer this poll belongs to may have been closed and replaced
         // before its SCTP timeout expired. A retired peer must not mark the
-        // replacement connection as failed.
-        if (pc.connectionState === "closed") {
+        // replacement connection as failed, and neither must a superseded
+        // session.
+        if (!isCurrentPeer(pc)) {
           clearInterval(checkInterval);
           return;
         }
@@ -149,8 +221,9 @@ export const useWebSocketSignaling: SignalingHook = ({
           });
         }
       }, 1000);
+      connectionPollRef.current = checkInterval;
     },
-    [cleanupAndStopReconnecting],
+    [cleanupAndStopReconnecting, isCurrentPeer],
   );
 
   const ignoreOffer = useRef(false);
@@ -184,9 +257,14 @@ export const useWebSocketSignaling: SignalingHook = ({
     }
   }, []);
 
+  const networkReconnectNotBefore = useRef(0);
+  // A takeover (the message, or close code 4001) ends the session; any other
+  // close reconnects.
+  const willReconnect = (event: CloseEvent) => !sessionSupersededRef.current && event.code !== 4001;
+
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
-  const { sendMessage } = useWebSocket(
+  const { sendMessage, getWebSocket } = useWebSocket(
     isOnDevice
       ? `${wsProtocol}//${window.location.host}/webrtc/signaling/client`
       : `${CLOUD_API.replace("http", "ws")}/webrtc/signaling/client?id=${deviceId}`,
@@ -194,7 +272,8 @@ export const useWebSocketSignaling: SignalingHook = ({
       heartbeat: true,
       retryOnError: true,
       reconnectAttempts: reconnectAttemptsRef.current,
-      reconnectInterval: reconnectInterval,
+      reconnectInterval: (attempt: number) =>
+        Math.max(reconnectInterval(attempt), networkReconnectNotBefore.current - Date.now()),
       onReconnectStop: (numAttempts: number) => {
         console.debug("Reconnect stopped after ", numAttempts, "attempts");
         cleanupAndStopReconnecting();
@@ -202,13 +281,15 @@ export const useWebSocketSignaling: SignalingHook = ({
 
       shouldReconnect(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] shouldReconnect", event);
-        return true;
+        return willReconnect(event);
       },
 
       onClose(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] onClose", event);
+        retirePeer(willReconnect(event) ? "connecting" : "closed");
+        if (event.code === 4001) stopForOtherSession();
         void checkLocalSession();
-        // We don't want to close everything down, we wait for the reconnect to stop instead
+        // The next signaling socket obtains metadata and owns a fresh peer.
       },
 
       onError(event: WebSocketEventMap["error"]) {
@@ -220,16 +301,12 @@ export const useWebSocketSignaling: SignalingHook = ({
         console.debug("[Websocket] onOpen");
         authCheckRef.current?.abort();
         authCheckRef.current = null;
-        // We want to clear the reboot state when the websocket connection is opened
-        // Currently the flow is:
-        // 1. User clicks reboot
-        // 2. Device sends event 'willReboot'
-        // 3. We set the reboot state
-        // 4. Reboot modal is shown
-        // 5. WS tries to reconnect
-        // 6. WS reconnects
-        // 7. This function is called and now we clear the reboot state
-        setRebootState({ isRebooting: false, postRebootAction: null });
+        // A reboot is not cleared here. After 'willReboot' the rebooting
+        // overlay polls the device's health check and redirects once it
+        // answers; that page load ends the reboot state. The socket can
+        // reopen before that poll, when a heartbeat reaches the restarted
+        // device, and clearing the state then removed the overlay together
+        // with its redirect.
       },
 
       onMessage(event: WebSocketEventMap["message"]) {
@@ -241,6 +318,12 @@ export const useWebSocketSignaling: SignalingHook = ({
         // the answer and ICE candidates then arrive over the same socket.
         const parsedMessage = JSON.parse(message.data);
 
+        if (parsedMessage.type === "other-session-connected") {
+          stopForOtherSession();
+          return;
+        }
+        if (sessionSupersededRef.current) return;
+
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
           console.debug("[Websocket] Received device-metadata message");
@@ -249,13 +332,14 @@ export const useWebSocketSignaling: SignalingHook = ({
           setupPeerConnection();
         }
 
-        if (!peerConnection) return;
+        const peerConnection = activePeerRef.current;
+        if (!peerConnection || !isCurrentPeer(peerConnection)) return;
 
         if (parsedMessage.type === "answer") {
           console.debug("[Websocket] Received answer");
           const readyForOffer =
             // If we're making an offer, we don't want to accept an answer
-            !makingOffer &&
+            !makingOffer.current &&
             // If the peer connection is stable or we're setting the remote answer pending, we're ready for an offer
             (peerConnection?.signalingState === "stable" || isSettingRemoteAnswerPending.current);
 
@@ -283,11 +367,31 @@ export const useWebSocketSignaling: SignalingHook = ({
         } else if (parsedMessage.type === "new-ice-candidate") {
           console.debug("[Websocket] Received new-ice-candidate");
           const candidate = parsedMessage.data;
-          peerConnection.addIceCandidate(candidate);
+          void peerConnection.addIceCandidate(candidate).catch(error => {
+            if (isCurrentPeer(peerConnection)) {
+              console.warn("[Websocket] Failed to add ICE candidate", error);
+            }
+          });
         }
       },
     },
+    !sessionSuperseded,
   );
+
+  // A settings page that changes the device's network (e.g. its Wi-Fi) sends
+  // this event. The socket closes while the device can still acknowledge, and
+  // the reconnect waits 3 s so the device's delayed network restart begins
+  // before a replacement connection opens.
+  useEffect(() => {
+    if (!isOnDevice) return;
+    const reconnect = () => {
+      if (sessionSupersededRef.current) return;
+      networkReconnectNotBefore.current = Date.now() + 3000;
+      getWebSocket()?.close(4000, "Network settings changed");
+    };
+    window.addEventListener("jetkvm-network-reconnect", reconnect);
+    return () => window.removeEventListener("jetkvm-network-reconnect", reconnect);
+  }, [getWebSocket]);
 
   const sendWebRTCSignal = useCallback(
     (type: string, data: unknown) => {
@@ -300,6 +404,9 @@ export const useWebSocketSignaling: SignalingHook = ({
 
   const setupPeerConnection = useCallback(async () => {
     console.debug("[setupPeerConnection] Setting up peer connection");
+    if (sessionSupersededRef.current) return;
+    retirePeer();
+    makingOffer.current = false;
     setConnectionFailed(false);
     setLoadingMessage(m.connecting_to_device());
 
@@ -320,19 +427,20 @@ export const useWebSocketSignaling: SignalingHook = ({
       setLoadingMessage(m.setting_up_connection_to_device());
     } catch (e) {
       console.error(`[setupPeerConnection] Error creating peer connection: ${String(e)}`);
-      setTimeout(() => {
-        cleanupAndStopReconnecting();
-      }, 1000);
+      cleanupAndStopReconnecting();
       return;
     }
+    activePeerRef.current = pc;
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
+      if (!isCurrentPeer(pc)) return;
       console.debug("[setupPeerConnection] Connection state changed", pc.connectionState);
       setPeerConnectionState(pc.connectionState);
     };
 
     pc.onnegotiationneeded = async () => {
+      if (!isCurrentPeer(pc)) return;
       try {
         console.debug("[setupPeerConnection] Creating offer");
         makingOffer.current = true;
@@ -342,28 +450,32 @@ export const useWebSocketSignaling: SignalingHook = ({
         }
 
         const offer = await pc.createOffer();
+        if (!isCurrentPeer(pc)) return;
         await pc.setLocalDescription(offer);
+        if (!isCurrentPeer(pc)) return;
         const sd = btoa(JSON.stringify(pc.localDescription));
         sendWebRTCSignal("offer", { sd: sd });
       } catch (e) {
+        if (!isCurrentPeer(pc)) return;
         console.error(
           `[setupPeerConnection] Error creating offer: ${String(e)}`,
           new Date().toISOString(),
         );
         cleanupAndStopReconnecting();
       } finally {
-        makingOffer.current = false;
+        if (isCurrentPeer(pc)) makingOffer.current = false;
       }
     };
 
     pc.onicecandidate = ({ candidate }) => {
+      if (!isCurrentPeer(pc)) return;
       if (!candidate) return;
       if (candidate.candidate === "") return;
       sendWebRTCSignal("new-ice-candidate", candidate);
     };
 
-    pc.onicegatheringstatechange = event => {
-      const pc = event.currentTarget as RTCPeerConnection;
+    pc.onicegatheringstatechange = () => {
+      if (!isCurrentPeer(pc)) return;
       if (pc.iceGatheringState === "complete") {
         console.debug("ICE Gathering completed");
         setLoadingMessage(m.ice_gathering_completed());
@@ -378,6 +490,8 @@ export const useWebSocketSignaling: SignalingHook = ({
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
+    isCurrentPeer,
+    retirePeer,
     iceServers,
     onPeerConnection,
     sendWebRTCSignal,
@@ -394,10 +508,20 @@ export const useWebSocketSignaling: SignalingHook = ({
   }, [peerConnectionState, cleanupAndStopReconnecting]);
 
   useEffect(() => {
-    return () => {
-      peerConnection?.close();
-    };
-  }, [peerConnection]);
+    return retirePeer;
+  }, [retirePeer]);
 
-  return { connect: setupPeerConnection, loadingMessage, connectionFailed };
+  // Use Here: after a takeover on the signaling socket, reopening the socket
+  // brings new device metadata, which sets up a fresh peer.
+  const connect = useCallback(async () => {
+    if (sessionSupersededRef.current) {
+      sessionSupersededRef.current = false;
+      setSessionSuperseded(false);
+      setPeerConnectionState("new");
+      return;
+    }
+    await setupPeerConnection();
+  }, [setupPeerConnection, setPeerConnectionState]);
+
+  return { connect, loadingMessage, connectionFailed };
 };

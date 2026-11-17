@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
-import { useUiStore } from "@hooks/stores";
+import { useCapability, useUiStore } from "@hooks/stores";
 import { m } from "@localizations/messages.js";
 import { SettingsItem } from "@components/SettingsItem";
 import Checkbox from "@components/Checkbox";
@@ -70,6 +70,7 @@ const usbPresets = [
 ];
 
 export function UsbDeviceSetting() {
+  const usbSerial = useCapability("usb_serial");
   const { send } = useJsonRpc();
   const [loading, setLoading] = useState(false);
   const { setUsbSerialConsoleEnabled } = useUiStore();
@@ -244,17 +245,19 @@ export function UsbDeviceSetting() {
                 />
               </SettingsItem>
             </div>
-            <div className="space-y-4">
-              <SettingsItem
-                title={m.usb_device_enable_serial_console_title()}
-                description={m.usb_device_enable_serial_console_description()}
-              >
-                <Checkbox
-                  checked={usbDeviceConfig.serial_console}
-                  onChange={onUsbConfigItemChange("serial_console")}
-                />
-              </SettingsItem>
-            </div>
+            {usbSerial && (
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.usb_device_enable_serial_console_title()}
+                  description={m.usb_device_enable_serial_console_description()}
+                >
+                  <Checkbox
+                    checked={usbDeviceConfig.serial_console}
+                    onChange={onUsbConfigItemChange("serial_console")}
+                  />
+                </SettingsItem>
+              </div>
+            )}
           </div>
           <div className="mt-6 flex gap-x-2">
             <Button

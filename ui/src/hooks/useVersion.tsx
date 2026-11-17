@@ -1,13 +1,14 @@
 import { useCallback } from "react";
 
 import { useDeviceStore } from "@/hooks/stores";
-import { JsonRpcError, RpcMethodNotFound } from "@/hooks/useJsonRpc";
-import { getUpdateStatus, getLocalVersion as getLocalVersionRpc } from "@/utils/jsonrpc";
+import { JsonRpcError } from "@/hooks/useJsonRpc";
+import { getUpdateStatus } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
 export interface VersionInfo {
-  appVersion: string;
+  // Absent on a device whose firmware is a single image with no separate app.
+  appVersion?: string;
   systemVersion: string;
 }
 
@@ -25,7 +26,7 @@ export function useVersion() {
   const getVersionInfo = useCallback(async () => {
     try {
       const result = await getUpdateStatus();
-      setAppVersion(result.local.appVersion);
+      setAppVersion(result.local.appVersion ?? "");
       setSystemVersion(result.local.systemVersion);
       return result;
     } catch (error) {
@@ -35,30 +36,8 @@ export function useVersion() {
     }
   }, [setAppVersion, setSystemVersion]);
 
-  const getLocalVersion = useCallback(async () => {
-    try {
-      const result = await getLocalVersionRpc();
-      setAppVersion(result.appVersion);
-      setSystemVersion(result.systemVersion);
-      return result;
-    } catch (error: unknown) {
-      const jsonRpcError = error as JsonRpcError;
-
-      if (jsonRpcError.code === RpcMethodNotFound) {
-        console.error("Failed to get local version, using legacy remote version");
-        const result = await getVersionInfo();
-        return result.local;
-      }
-
-      console.error("Failed to get device version", jsonRpcError);
-      notifications.error(m.updates_failed_get_device_version({ error: jsonRpcError.message }));
-      throw jsonRpcError;
-    }
-  }, [setAppVersion, setSystemVersion, getVersionInfo]);
-
   return {
     getVersionInfo,
-    getLocalVersion,
     appVersion,
     systemVersion,
   };

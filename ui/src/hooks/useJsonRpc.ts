@@ -51,7 +51,34 @@ const blockedMethodsByReason: Record<string, string[]> = {
   ],
 };
 
-export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
+// Device events that arrive before any component listens. The device sends
+// its connect-time events (localVersion, deviceCapabilities, videoInputState,
+// ...) as soon as the rpc channel opens, but useJsonRpc attaches its listener
+// in an effect that runs after the channel is stored on open. A DataChannel
+// message with no listener is lost, so the channel's creator holds them.
+const heldEvents = new WeakMap<RTCDataChannel, { events: JsonRpcRequest[]; stop: () => void }>();
+
+// Call right after creating the rpc channel, before it can open.
+export function holdRpcEvents(channel: RTCDataChannel) {
+  const events: JsonRpcRequest[] = [];
+  const hold = (e: MessageEvent) => {
+    try {
+      const payload = JSON.parse(e.data) as JsonRpcResponse | JsonRpcRequest;
+      if ("method" in payload) events.push(payload);
+    } catch {
+      // Not JSON-RPC; the subscriber would ignore it too.
+    }
+  };
+  channel.addEventListener("message", hold);
+  heldEvents.set(channel, { events, stop: () => channel.removeEventListener("message", hold) });
+}
+
+export function useJsonRpc(
+  onRequest?: (payload: JsonRpcRequest) => void,
+  // The one subscriber that receives the events held by holdRpcEvents.
+  options?: { receiveHeldEvents?: boolean },
+) {
+  const receiveHeldEvents = options?.receiveHeldEvents ?? false;
   const { rpcDataChannel } = useRTCStore();
   const { isFailsafeMode, reason } = useFailsafeModeStore();
 
@@ -125,10 +152,19 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
 
     rpcDataChannel.addEventListener("message", messageHandler);
 
+    // Hand over the held events. No message is dispatched between adding
+    // the listener above and this loop, so none is lost or delivered twice.
+    const held = receiveHeldEvents ? heldEvents.get(rpcDataChannel) : undefined;
+    if (held && onRequest) {
+      heldEvents.delete(rpcDataChannel);
+      held.stop();
+      for (const event of held.events) onRequest(event);
+    }
+
     return () => {
       rpcDataChannel.removeEventListener("message", messageHandler);
     };
-  }, [rpcDataChannel, onRequest]);
+  }, [rpcDataChannel, onRequest, receiveHeldEvents]);
 
   return { send };
 }
