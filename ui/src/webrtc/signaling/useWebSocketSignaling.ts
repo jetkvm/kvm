@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 import pkg from "react-use-websocket";
 
 import { CLOUD_API } from "@/ui.config";
+import { localLoginPath, sessionExpiredLoginPath } from "@/api";
 import { isOnDevice } from "@/main";
 import { useRTCStore, useUiStore } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
@@ -246,8 +247,7 @@ export const useWebSocketSignaling: SignalingHook = ({
         signal: controller.signal,
       });
       if (response.status === 401 && !controller.signal.aborted) {
-        // Re-enter the normal route loader, which handles login and setup.
-        window.location.reload();
+        window.location.assign(await localLoginPath(response));
       }
     } catch {
       // A reboot or network interruption should keep the normal retry path.
@@ -258,9 +258,10 @@ export const useWebSocketSignaling: SignalingHook = ({
   }, []);
 
   const networkReconnectNotBefore = useRef(0);
-  // A takeover (the message, or close code 4001) ends the session; any other
-  // close reconnects.
-  const willReconnect = (event: CloseEvent) => !sessionSupersededRef.current && event.code !== 4001;
+  // A takeover (the message, or close code 4001) and an expired login (close
+  // code 4003) end the session; any other close reconnects.
+  const willReconnect = (event: CloseEvent) =>
+    !sessionSupersededRef.current && event.code !== 4001 && event.code !== 4003;
 
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
@@ -287,6 +288,10 @@ export const useWebSocketSignaling: SignalingHook = ({
       onClose(event: WebSocketEventMap["close"]) {
         console.debug("[Websocket] onClose", event);
         retirePeer(willReconnect(event) ? "connecting" : "closed");
+        if (event.code === 4003) {
+          window.location.assign(sessionExpiredLoginPath);
+          return;
+        }
         if (event.code === 4001) stopForOtherSession();
         void checkLocalSession();
         // The next signaling socket obtains metadata and owns a fresh peer.

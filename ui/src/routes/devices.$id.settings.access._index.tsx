@@ -39,6 +39,21 @@ const loader: LoaderFunction = async () => {
   return null;
 };
 
+const sessionTimeoutChoices = ["0", "5", "15", "30", "60"];
+
+function sessionTimeoutLabel(minutes: string) {
+  if (minutes === "0") return m.access_session_timeout_off();
+  if (minutes === "60") return m.access_session_timeout_1_hour();
+  return m.access_session_timeout_minutes({ minutes });
+}
+
+function sessionTimeoutOptions(current: string) {
+  const choices = sessionTimeoutChoices.includes(current)
+    ? sessionTimeoutChoices
+    : [...sessionTimeoutChoices, current].sort((a, b) => Number(a) - Number(b));
+  return choices.map(value => ({ value, label: sessionTimeoutLabel(value) }));
+}
+
 export default function SettingsAccessIndexRoute() {
   const loaderData = useLoaderData() as LocalDevice | null;
 
@@ -333,14 +348,7 @@ export default function SettingsAccessIndexRoute() {
                   size="SM"
                   value={sessionTimeout}
                   onChange={e => handleSessionTimeoutChange(e.target.value)}
-                  options={[
-                    { value: "0", label: m.access_session_timeout_never() },
-                    { value: "15", label: m.access_session_timeout_15_minutes() },
-                    { value: "30", label: m.access_session_timeout_30_minutes() },
-                    { value: "60", label: m.access_session_timeout_1_hour() },
-                    { value: "240", label: m.access_session_timeout_4_hours() },
-                    { value: "1440", label: m.access_session_timeout_1_day() },
-                  ]}
+                  options={sessionTimeoutOptions(sessionTimeout)}
                 />
               </SettingsItem>
             )}
