@@ -5,6 +5,8 @@ import "time"
 const (
 	MaxStep     = 6 * time.Hour
 	RestartStep = time.Second / 60
+
+	silenceThreshold = 100 * time.Millisecond
 )
 
 type Clock struct {
@@ -36,4 +38,11 @@ func Step(prev, pts time.Duration) time.Duration {
 		return RestartStep
 	}
 	return step
+}
+
+func SilenceGap(sinceLast, packet time.Duration) time.Duration {
+	if sinceLast <= silenceThreshold {
+		return 0
+	}
+	return min(sinceLast-packet, MaxStep)
 }

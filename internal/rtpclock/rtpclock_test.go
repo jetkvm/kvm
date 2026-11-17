@@ -39,3 +39,22 @@ func TestMaxStepStaysBelowHalfTheRTPTimestampRange(t *testing.T) {
 		t.Fatalf("MaxStep is %v ticks at 90 kHz, a receiver reads it as a step back", ticks)
 	}
 }
+
+func TestSilenceGap(t *testing.T) {
+	const packet = 20 * time.Millisecond
+
+	for _, tc := range []struct {
+		name      string
+		sinceLast time.Duration
+		want      time.Duration
+	}{
+		{"continuous audio", packet, 0},
+		{"packets read late from the capture buffer", 80 * time.Millisecond, 0},
+		{"after silence", 30 * time.Second, 30*time.Second - packet},
+		{"after silence longer than the limit", 13 * time.Hour, MaxStep},
+	} {
+		if got := SilenceGap(tc.sinceLast, packet); got != tc.want {
+			t.Fatalf("%s: gap %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
