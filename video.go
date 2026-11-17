@@ -115,7 +115,13 @@ func changeHostDisplay(reason string) error {
 		}
 		time.Sleep(hostDisplayChangeHPDLow)
 	}
-	return setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
+	err := setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
+	if err != nil {
+		// HPD is low now. Without a second try, the target has no display
+		// until the next change.
+		err = setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
+	}
+	return err
 }
 
 // applyHostDisplayAdvertisement reconciles the advertised state without rewriting

@@ -116,8 +116,14 @@ func (s *osServicesService) DisplayPresent(width, height, serial uint32) bool {
 	v := &s.video
 	v.presented.Store(false)
 	v.owned.Store(true)
-	v.edid.Store(edid.Hex(data))
+	want := edid.Hex(data)
+	v.edid.Store(want)
 	v.ops <- func() {
+		// A restore or another display came after this one: that
+		// operation changes the display.
+		if v.edid.Load() != want {
+			return
+		}
 		v.restartGeneration++
 		// The hardware capture is off before the display changes, so that
 		// it does not follow the target to the mode of the KVM display.
@@ -125,8 +131,12 @@ func (s *osServicesService) DisplayPresent(width, height, serial uint32) bool {
 		stopNativeVideo()
 		if err := changeHostDisplay("os_services_present"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot present the KVM display")
-			v.edid.Store("")
+			v.edid.CompareAndSwap(want, "")
 			v.owned.Store(false)
+			// The failed change can leave the target without a display.
+			if err := reapplyHostDisplayAdvertisement("os_services_present_failed"); err != nil {
+				osServicesLogger.Warn().Err(err).Msg("cannot restore the hardware capture's EDID")
+			}
 			return
 		}
 		osServicesLogger.Info().Uint32("width", width).Uint32("height", height).Msg("KVM display presented for service video")
@@ -139,6 +149,11 @@ func (s *osServicesService) DisplayRestore() {
 	v := &s.video
 	v.edid.Store("")
 	v.ops <- func() {
+		// A display was presented after this restore: that operation
+		// changes the display, and the display stays owned.
+		if v.edid.Load() != "" {
+			return
+		}
 		if err := changeHostDisplay("os_services_restore"); err != nil {
 			osServicesLogger.Warn().Err(err).Msg("cannot restore the hardware capture's EDID")
 		}
