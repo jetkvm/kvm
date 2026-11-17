@@ -413,8 +413,8 @@ func (m *MQTTManager) publishHADiscovery() {
 		m.removeDiscovery("button", "reboot")
 	}
 
-	// Keyboard macro buttons: one per stored macro when actions enabled
-	m.publishMacroDiscovery(device, availTopic, availTemplate, actionsEnabled)
+	// Keyboard macro buttons: one per stored macro when keyboard macros are enabled
+	m.publishMacroDiscovery(device, availTopic, availTemplate)
 
 	// Firmware Update: always published, but command_topic only when actions enabled.
 	// NOTE: Do NOT use value_template/latest_version_template here — HA needs to parse
@@ -656,10 +656,11 @@ func macroObjectID(id string) string {
 }
 
 // publishMacroDiscovery publishes one Home Assistant button per stored keyboard
-// macro, or clears them while actions are disabled. Buttons of macros that no
+// macro, or clears them while keyboard macros over MQTT are disabled. Buttons of macros that no
 // longer exist are cleared by setKeyboardMacros, which knows the IDs that went
 // away; removals made while disconnected are sent here first.
-func (m *MQTTManager) publishMacroDiscovery(device *haDevice, availTopic, availTemplate string, actionsEnabled bool) {
+func (m *MQTTManager) publishMacroDiscovery(device *haDevice, availTopic, availTemplate string) {
+	enabled := keyboardMacrosAllowed()
 	m.pendingMacroRemovalsMu.Lock()
 	pending := m.pendingMacroRemovals
 	m.pendingMacroRemovals = nil
@@ -670,7 +671,7 @@ func (m *MQTTManager) publishMacroDiscovery(device *haDevice, availTopic, availT
 
 	for _, macro := range config.KeyboardMacros {
 		objectID := macroObjectID(macro.ID)
-		if !actionsEnabled {
+		if !enabled {
 			m.removeDiscovery("button", objectID)
 			continue
 		}

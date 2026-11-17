@@ -679,6 +679,8 @@
     "mqtt_error_tls": "TLS 오류 — check your certificate settings",
     "mqtt_ha_discovery_description": "MQTT ha discovery에 대한 설명입니다.",
     "mqtt_ha_discovery_title": "MQTT ha discovery",
+    "mqtt_keyboard_macros_description": "MQTT 클라이언트가 저장된 키보드 매크로를 실행할 수 있도록 허용합니다. 매크로는 호스트 컴퓨터에 입력하므로 브로커에 게시할 수 있는 사람은 누구나 호스트에 입력할 수 있습니다.",
+    "mqtt_keyboard_macros_title": "키보드 매크로",
     "mqtt_load_error": "실패했습니다: load MQTT settings: {error}",
     "mqtt_password_description": "MQTT 비밀번호에 대한 설명입니다.",
     "mqtt_password_label": "비밀번호",

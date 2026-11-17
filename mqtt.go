@@ -21,17 +21,18 @@ var mqttLogger = logging.GetSubsystemLogger("mqtt")
 const publishTimeout = 5 * time.Second
 
 type MQTTConfig struct {
-	Enabled           bool   `json:"enabled"`
-	Broker            string `json:"broker"`
-	Port              int    `json:"port"`
-	Username          string `json:"username"`
-	Password          string `json:"password"`
-	BaseTopic         string `json:"base_topic"`
-	UseTLS            bool   `json:"use_tls"`
-	TLSInsecure       bool   `json:"tls_insecure"`
-	EnableHADiscovery bool   `json:"enable_ha_discovery"`
-	EnableActions     bool   `json:"enable_actions"`
-	DebounceMs        int    `json:"debounce_ms"`
+	Enabled              bool   `json:"enabled"`
+	Broker               string `json:"broker"`
+	Port                 int    `json:"port"`
+	Username             string `json:"username"`
+	Password             string `json:"password"`
+	BaseTopic            string `json:"base_topic"`
+	UseTLS               bool   `json:"use_tls"`
+	TLSInsecure          bool   `json:"tls_insecure"`
+	EnableHADiscovery    bool   `json:"enable_ha_discovery"`
+	EnableActions        bool   `json:"enable_actions"`
+	EnableKeyboardMacros bool   `json:"enable_keyboard_macros"`
+	DebounceMs           int    `json:"debounce_ms"`
 }
 
 var mqttManager *MQTTManager
@@ -278,6 +279,10 @@ func (m *MQTTManager) publishString(topic string, payload string, retained bool)
 // actionsAllowed checks if MQTT actions are enabled in the config.
 func (m *MQTTManager) actionsAllowed() bool {
 	return config.MqttConfig != nil && config.MqttConfig.EnableActions
+}
+
+func keyboardMacrosAllowed() bool {
+	return config.MqttConfig != nil && config.MqttConfig.EnableKeyboardMacros
 }
 
 // --- JSON-RPC Handlers ---

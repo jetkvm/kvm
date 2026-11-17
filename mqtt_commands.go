@@ -285,8 +285,8 @@ func executeKeyboardSteps(source string, steps []hidrpc.KeyboardMacroStep) {
 }
 
 func (m *MQTTManager) handleKeyboardMacroCommand(client mqtt.Client, msg mqtt.Message) {
-	if !m.actionsAllowed() {
-		mqttLogger.Warn().Msg("keyboard macro command rejected: actions are disabled")
+	if !keyboardMacrosAllowed() {
+		mqttLogger.Warn().Msg("keyboard macro command rejected: keyboard macros over MQTT are disabled")
 		return
 	}
 	if msg.Retained() {
