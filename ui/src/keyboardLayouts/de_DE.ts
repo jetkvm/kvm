@@ -120,18 +120,18 @@ const chars = {
   "¨": { key: "KeyY", deadKey: true, altRight: true }, // diaeresis accent, mark ¨ placed above the letter
   "°": { key: "Backquote", shift: true },
   "^": { key: "Backquote", deadKey: true },
-  "|": { key: "Backquote", altRight: true },
+  "|": { key: "IntlBackslash", altRight: true },
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
   "’": { key: "Digit1", altRight: true }, // single quote, mark ’ placed above the letter
   2: { key: "Digit2" },
   '"': { key: "Digit2", shift: true },
   "²": { key: "Digit2", altRight: true },
-  "<": { key: "Digit2", altRight: true }, // non-US < and >
+  "<": { key: "IntlBackslash" }, // non-US < and >
   3: { key: "Digit3" },
   "§": { key: "Digit3", shift: true },
   "³": { key: "Digit3", altRight: true },
-  ">": { key: "Digit3", altRight: true }, // non-US < and >
+  ">": { key: "IntlBackslash", shift: true }, // non-US < and >
   4: { key: "Digit4" },
   $: { key: "Digit4", shift: true },
   "—": { key: "Digit4", altRight: true }, // em dash, —
@@ -158,7 +158,7 @@ const chars = {
   "\\": { key: "Minus", altRight: true },
   "´": { key: "Equal", deadKey: true }, // accent acute, mark ´ placed above the letter
   "`": { key: "Equal", shift: true, deadKey: true }, // accent grave, mark ` placed above the letter
-  "˙": { key: "Equal", control: true, altRight: true, deadKey: true }, // acute accent, mark ˙ placed above the letter
+  "˙": { key: "Equal", altRight: true, deadKey: true }, // acute accent, mark ˙ placed above the letter
   ü: { key: "BracketLeft" },
   Ü: { key: "BracketLeft", shift: true },
   Escape: { key: "BracketLeft", control: true },
@@ -169,7 +169,7 @@ const chars = {
   "~": { key: "BracketRight", altRight: true },
   ö: { key: "Semicolon" },
   Ö: { key: "Semicolon", shift: true },
-  ˌ: { key: "Semicolon", deadkey: true, altRight: true }, // modifier letter low vertical line, ˌ
+  ˌ: { key: "Semicolon", deadKey: true, altRight: true }, // modifier letter low vertical line, ˌ
   ä: { key: "Quote" },
   Ä: { key: "Quote", shift: true },
   "˗": { key: "Quote", deadKey: true, altRight: true }, // modifier letter minus sign, ˗
