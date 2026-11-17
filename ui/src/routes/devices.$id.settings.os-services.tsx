@@ -475,6 +475,14 @@ function OsServicesSettingsPage() {
                           m.os_services_files_title(),
                           m.os_services_files_description(),
                         ],
+                        [
+                          "clipboard_enabled",
+                          m.os_services_clipboard_title(),
+                          m.os_services_clipboard_description({
+                            paste: clipboardShortcut("V"),
+                            copy: clipboardShortcut("C"),
+                          }),
+                        ],
                       ] as const
                     ).map(([field, title, description]) => (
                       <SettingsItem
@@ -490,34 +498,6 @@ function OsServicesSettingsPage() {
                         />
                       </SettingsItem>
                     ))}
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
-                    <SettingsSectionHeader
-                      title={m.os_services_clipboard_section_title()}
-                      description={m.os_services_clipboard_section_description({
-                        paste: clipboardShortcut("V"),
-                        copy: clipboardShortcut("C"),
-                      })}
-                    />
-
-                    <SettingsItem
-                      title={m.os_services_clipboard_title()}
-                      description={m.os_services_clipboard_description()}
-                      loading={loading}
-                    >
-                      <Checkbox
-                        checked={settings.clipboard_enabled}
-                        disabled={loading}
-                        onChange={event =>
-                          update({
-                            ...settings,
-                            clipboard_enabled: event.target.checked,
-                          })
-                        }
-                      />
-                    </SettingsItem>
                   </div>
                 </>
               )}
