@@ -10,7 +10,7 @@ import (
 
 func wheelTestGadget(t *testing.T) *UsbGadget {
 	t.Helper()
-	u := newTestGadgetWithKeyboard(nil)
+	u := newTestGadgetWithKeyboard(t, nil)
 	u.enabledDevices = defaultUsbGadgetDevices
 	u.kbdAutoReleaseTimers = make(map[byte]*time.Timer)
 	u.keysDownState.Keys = make([]byte, 6)
