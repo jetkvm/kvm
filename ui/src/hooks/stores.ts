@@ -336,6 +336,9 @@ export interface OsServicesStatus {
   // Why the sender's video service faulted, while it is faulted.
   videoError?: string;
   clipboard: boolean;
+  // This session negotiated H.265 and the sender shows video without it; a
+  // new session takes H.264.
+  browserCodecNotOffered?: boolean;
   // The sender waits for its user to approve this KVM's key.
   approvalPending: boolean;
   // This KVM's key, as the sender's approval dialog shows it; empty until

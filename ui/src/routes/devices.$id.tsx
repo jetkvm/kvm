@@ -381,6 +381,32 @@ export default function KvmIdRoute() {
 
   const { setNetworkState } = useNetworkStateStore();
   const { applyVideoState, setOsServicesSettings, resetOsServicesSettings } = useVideoStore();
+
+  // The session negotiated H.265 and the OS Services sender shows video
+  // without it. The codec of a session is fixed, and a new session takes
+  // H.264 for this sender, so the page loads again, as it does after a change
+  // of the codec setting. At most one reload a minute, so that a KVM that
+  // keeps reporting the state cannot make the page load in a loop.
+  const browserCodecNotOffered = useVideoStore(
+    state => state.osServices.browserCodecNotOffered === true,
+  );
+  useEffect(() => {
+    if (!browserCodecNotOffered) return;
+    const key = "osServicesCodecReload";
+    let last = 0;
+    try {
+      last = Number(sessionStorage.getItem(key)) || 0;
+    } catch {
+      // Without storage the page reloads without the limit.
+    }
+    if (Date.now() - last < 60_000) return;
+    try {
+      sessionStorage.setItem(key, String(Date.now()));
+    } catch {
+      // See above.
+    }
+    window.location.reload();
+  }, [browserCodecNotOffered]);
   const { keyboardLedState, setKeyboardLedState, keysDownState, setKeysDownState, setUsbState } =
     useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);

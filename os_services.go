@@ -324,6 +324,10 @@ type osServicesStatusJSON struct {
 	Clipboard       bool                  `json:"clipboard"`
 	ApprovalPending bool                  `json:"approvalPending"`
 	Fingerprint     string                `json:"fingerprint"`
+	// BrowserCodecNotOffered: this browser session negotiated H.265 and
+	// the sender shows video without it. A new session takes H.264
+	// (resolveCodec), so the browser connects again.
+	BrowserCodecNotOffered bool `json:"browserCodecNotOffered,omitempty"`
 }
 
 type guestClipboardJSON struct {
@@ -394,6 +398,10 @@ func currentVideoState() rpcVideoState {
 		Clipboard:       st.Clipboard,
 		ApprovalPending: st.ApprovalPending,
 		Fingerprint:     st.Fingerprint,
+	}
+	if session := currentSession; session != nil && session.codecMimeType == webrtc.MimeTypeH265 {
+		status.BrowserCodecNotOffered = st.VideoRegistered &&
+			st.VideoCodecFlags&osservices.VideoCodecFlagH265 == 0 && osServices.config().VideoEnabled
 	}
 	if st.SenderInfo {
 		displays := st.Displays
