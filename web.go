@@ -282,12 +282,7 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
-	localAuthToken := ""
-	if config.LocalAuthMode == "password" {
-		localAuthToken, _ = c.Cookie("authToken")
-	}
-
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, localAuthToken, &scopedLogger)
+	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
@@ -298,7 +293,6 @@ func handleWebRTCSignalWsMessages(
 	isCloudConnection bool,
 	source string,
 	connectionID string,
-	localAuthToken string,
 	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -418,7 +412,7 @@ func handleWebRTCSignalWsMessages(
 
 		if message.Type == "offer" {
 			l.Info().Msg("new session request received")
-			if localAuthToken != "" && !localAuthTokenValid(localAuthToken) {
+			if !isCloudConnection && !localLoginActive() {
 				l.Info().Msg("local login expired, closing the signaling connection")
 				_ = wsCon.Close(signalingStatusSessionExpired, "session expired")
 				return nil
@@ -436,7 +430,7 @@ func handleWebRTCSignalWsMessages(
 
 			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, localAuthToken, &l)
+			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("error starting new session")
 				continue

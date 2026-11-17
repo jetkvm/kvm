@@ -75,34 +75,33 @@ func setLocalAuthToken(token string) {
 	config.LocalAuthToken = token
 }
 
-func expireIdleLocalAuthLocked() string {
+func expireIdleLocalAuthLocked() bool {
 	if !localAuthIdleLocked() {
-		return ""
+		return false
 	}
 	expiredLocalAuthToken = config.LocalAuthToken
 	config.LocalAuthToken = ""
-	return expiredLocalAuthToken
+	return true
 }
 
-func finishLocalAuthExpiry(expiredToken string) {
+func finishLocalAuthExpiry() {
 	logger.Info().Msg("local session expired after inactivity")
 	if err := SaveConfig(); err != nil {
 		logger.Warn().Err(err).Msg("failed to save config after the local session expired")
 	}
 	if s := currentSession; s != nil {
-		s.endForExpiredLogin(expiredToken)
+		s.endForExpiredLogin()
 	}
 }
 
 func expireIdleLocalAuth() bool {
 	localAuthMu.Lock()
-	expiredToken := expireIdleLocalAuthLocked()
+	expired := expireIdleLocalAuthLocked()
 	localAuthMu.Unlock()
-	if expiredToken == "" {
-		return false
+	if expired {
+		finishLocalAuthExpiry()
 	}
-	finishLocalAuthExpiry(expiredToken)
-	return true
+	return expired
 }
 
 func runLocalAuthExpirySweeper() {
@@ -128,20 +127,23 @@ func checkLocalAuthCookie(c *gin.Context) localAuthCookieState {
 		localAuthMu.Unlock()
 		return localAuthCookieInvalid
 	}
-	expiredToken := expireIdleLocalAuthLocked()
+	expired := expireIdleLocalAuthLocked()
 	localAuthMu.Unlock()
 
-	if expiredToken != "" {
-		finishLocalAuthExpiry(expiredToken)
+	if expired {
+		finishLocalAuthExpiry()
 		return localAuthCookieExpired
 	}
 	return localAuthCookieValid
 }
 
-func localAuthTokenValid(token string) bool {
+func localLoginActive() bool {
 	localAuthMu.Lock()
 	defer localAuthMu.Unlock()
-	return token != "" && token == config.LocalAuthToken && !localAuthIdleLocked()
+	if config.LocalAuthMode != "password" {
+		return true
+	}
+	return config.LocalAuthToken != "" && !localAuthIdleLocked()
 }
 
 func sendSessionExpiredThenAbort(c *gin.Context) {
@@ -174,13 +176,13 @@ func hidMessageCountsAsLocalAuthActivity(t hidrpc.MessageType) bool {
 }
 
 func (s *Session) recordLocalAuthActivity() {
-	if s != nil && s.localAuthToken != "" {
+	if s != nil && s.local {
 		recordLocalAuthActivity()
 	}
 }
 
-func (s *Session) endForExpiredLogin(expiredToken string) {
-	if s.localAuthToken != expiredToken {
+func (s *Session) endForExpiredLogin() {
+	if !s.local {
 		return
 	}
 	go func() {

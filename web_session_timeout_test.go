@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,7 +125,7 @@ func (st *sessionTimeoutTest) openLocalSession() *Session {
 		peerConnection: pc,
 		RPCChannel:     rpc,
 		done:           make(chan struct{}),
-		localAuthToken: st.token,
+		local:          true,
 	}
 	st.t.Cleanup(func() { _ = pc.Close() })
 	currentSession = session
@@ -236,7 +237,7 @@ func TestSessionTimeoutInputKeepsLoginAlive(t *testing.T) {
 func TestSessionTimeoutInputOfCloudSessionDoesNotKeepLocalLogin(t *testing.T) {
 	st := setupSessionTimeoutTest(t, "password", 15)
 	session := st.openLocalSession()
-	session.localAuthToken = ""
+	session.local = false
 
 	st.advance(10 * time.Minute)
 	sendHid(session, hidrpc.TypeKeypressReport)
@@ -249,6 +250,54 @@ func TestSessionTimeoutInputOfCloudSessionDoesNotKeepLocalLogin(t *testing.T) {
 	if session.peerConnection.ConnectionState() == webrtc.PeerConnectionStateClosed {
 		t.Fatal("the local login expiry closed a cloud session")
 	}
+}
+
+func (st *sessionTimeoutTest) send(method, path, cookie, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if cookie != "" {
+		req.AddCookie(&http.Cookie{Name: "authToken", Value: cookie})
+	}
+	rec := httptest.NewRecorder()
+	st.router.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestSessionTimeoutClosesSessionAfterPasswordChange(t *testing.T) {
+	st := setupSessionTimeoutTest(t, "password", 15)
+	session := st.openLocalSession()
+
+	body := `{"oldPassword":"` + metricsTestPassword + `","newPassword":"another password"}`
+	expectStatus(t, st.send(http.MethodPut, "/auth/password-local", st.token, body), http.StatusOK, "password change")
+	st.token = config.LocalAuthToken
+
+	st.advance(16 * time.Minute)
+	if !expireIdleLocalAuth() {
+		t.Fatal("the sweeper did not expire the login after the password change")
+	}
+	waitForPeerClosed(t, session)
+}
+
+func TestSessionTimeoutClosesSessionStartedBeforePasswordWasSet(t *testing.T) {
+	st := setupSessionTimeoutTest(t, "noPassword", 15)
+	config.HashedPassword = ""
+	session := st.openLocalSession()
+
+	rec := st.send(http.MethodPost, "/auth/password-local", "", `{"password":"`+metricsTestPassword+`"}`)
+	expectStatus(t, rec, http.StatusCreated, "password set during an open session")
+
+	st.advance(10 * time.Minute)
+	sendHid(session, hidrpc.TypeKeypressReport)
+	st.advance(10 * time.Minute)
+	if expireIdleLocalAuth() {
+		t.Fatal("input of the open session did not count after the password was set")
+	}
+
+	st.advance(6 * time.Minute)
+	if !expireIdleLocalAuth() {
+		t.Fatal("the sweeper did not expire the login set during the open session")
+	}
+	waitForPeerClosed(t, session)
 }
 
 func TestSessionTimeoutRestartInvalidatesCookie(t *testing.T) {

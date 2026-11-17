@@ -49,8 +49,8 @@ type Session struct {
 
 	codecMimeType string
 
-	localAuthToken string
-	signaling      *websocket.Conn
+	local     bool
+	signaling *websocket.Conn
 
 	videoClockMu sync.Mutex
 	videoClock   rtpclock.Clock
@@ -152,8 +152,6 @@ type SessionConfig struct {
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
 	MDNSMode   string
-
-	LocalAuthToken string
 }
 
 // negotiateAudioCodec returns the audio MIME type to use, or "" if the browser
@@ -549,8 +547,8 @@ func newSession(config SessionConfig) (*Session, error) {
 		done:           make(chan struct{}),
 		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
 	}
-	if !config.IsCloud && config.LocalAuthToken != "" {
-		session.localAuthToken = config.LocalAuthToken
+	if !config.IsCloud {
+		session.local = true
 		session.signaling = config.ws
 	}
 	session.initQueues()
