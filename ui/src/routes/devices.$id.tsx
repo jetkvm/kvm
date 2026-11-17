@@ -390,7 +390,7 @@ export default function KvmIdRoute() {
   const { handleKeyPress, pauseKeepAlive } = useKeyboard();
 
   // Mouse handler for E2E tests
-  const { reportAbsMouseEvent, rpcHidReady } = useHidRpc();
+  const { reportAbsMouseEvent, reportWheelEvent, rpcHidReady } = useHidRpc();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -635,11 +635,14 @@ export default function KvmIdRoute() {
   const [cdcACMConsole, setCdcACMConsole] = useState<RTCDataChannel | null>(null);
 
   const usbSerial = useCapability("usb_serial");
+  const usbSerialConsoleEnabled = useUiStore(state => state.usbSerialConsoleEnabled);
+  const cdcACMWanted = usbSerial && usbSerialConsoleEnabled;
   useEffect(() => {
-    const channel = peerConnection && usbSerial ? peerConnection.createDataChannel("cdcacm") : null;
+    const channel =
+      peerConnection && cdcACMWanted ? peerConnection.createDataChannel("cdcacm") : null;
     setCdcACMConsole(channel);
     return () => channel?.close();
-  }, [peerConnection, usbSerial]);
+  }, [peerConnection, cdcACMWanted]);
 
   // KVM terminal data channel, published once open. The previous channel
   // stays in the store until the replacement opens, so the terminal does not
@@ -707,6 +710,7 @@ export default function KvmIdRoute() {
       handleKeyPress,
       pauseKeepAlive,
       handleAbsMouseMove,
+      handleWheel: reportWheelEvent,
       getKeyboardLedState: () => useHidStore.getState().keyboardLedState,
       getKeysDownState: () => useHidStore.getState().keysDownState,
       getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
@@ -719,7 +723,7 @@ export default function KvmIdRoute() {
       getPeerConnection: () => useRTCStore.getState().peerConnection,
     });
     return cleanupTestHooks;
-  }, [handleKeyPress, pauseKeepAlive, handleAbsMouseMove]);
+  }, [handleKeyPress, pauseKeepAlive, handleAbsMouseMove, reportWheelEvent]);
 
   const outlet = useOutlet();
   const onModalClose = useCallback(() => {

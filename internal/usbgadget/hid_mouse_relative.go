@@ -1,6 +1,7 @@
 package usbgadget
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -112,8 +113,34 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 		return err
 	}
 
+	u.relMouseButtons = buttons
 	u.resetUserInputTime()
 	return nil
+}
+
+func (u *UsbGadget) releaseRelMouseButtons() error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
+	if !u.enabledDevices.RelativeMouse {
+		return nil
+	}
+
+	u.relMouseLock.Lock()
+	defer u.relMouseLock.Unlock()
+
+	if u.relMouseButtons == 0 {
+		return nil
+	}
+	if err := u.relMouseWriteHidFile([]byte{0, 0, 0, 0, 0}); err != nil {
+		return err
+	}
+	u.relMouseButtons = 0
+	return nil
+}
+
+func (u *UsbGadget) ReleaseMouseButtons() error {
+	return errors.Join(u.releaseAbsMouseButtons(), u.releaseRelMouseButtons())
 }
 
 func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
@@ -132,11 +159,11 @@ func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
 	}
 
 	err := u.relMouseWriteHidFile([]byte{
-		0,            // Buttons (none)
-		0,            // X
-		0,            // Y
-		byte(wheelY), // Wheel (signed)
-		byte(wheelX), // AC Pan (signed)
+		u.relMouseButtons, // Preserve held buttons while scrolling
+		0,                 // X
+		0,                 // Y
+		byte(wheelY),      // Wheel (signed)
+		byte(wheelX),      // AC Pan (signed)
 	})
 
 	u.resetUserInputTime()

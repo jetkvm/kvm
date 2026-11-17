@@ -95,8 +95,8 @@ func (m *MQTTManager) publishATXState(state ATXState) {
 		return
 	}
 
-	// Power LED changed: always publish immediately and reset debounce.
-	if state.Power != lastState.Power {
+	// Power LED or board responsiveness changed: always publish immediately and reset debounce.
+	if state.Power != lastState.Power || state.Responding != lastState.Responding {
 		m.cancelATXDebounceTimerLocked()
 		m.publishATXStateLocked(state)
 		return
@@ -562,10 +562,7 @@ func (m *MQTTManager) startPeriodicStatusUpdates(interval time.Duration) {
 
 				// Publish current ATX state only if ATX extension is active
 				if config.ActiveExtension == "atx-power" {
-					m.publishATXState(ATXState{
-						Power: ledPWRState.Load(),
-						HDD:   ledHDDState.Load(),
-					})
+					m.publishATXState(currentATXState())
 				}
 
 				// Publish current DC state only if DC extension is active

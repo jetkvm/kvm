@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { callJsonRpc, sendAbsMouseMove } from "../helpers";
+import { callJsonRpc, sendAbsMouseMove, sendWheel } from "../helpers";
 import { type MouseEvent as RAMouseEvent } from "./remote-agent";
 import {
   USB_DEVICES_DEFAULT,
@@ -210,35 +210,37 @@ test.describe("Remote Host Agent: mouse", () => {
 
     // Vertical scroll
     await agent!.clearMouseEvents();
-    await callJsonRpc(sharedPage, "wheelReport", { wheelY: 1, wheelX: 0 });
+    await sendWheel(sharedPage, 1, 0);
     const vWheel = await agent!.waitForMouseEvent(
       ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL,
       3000,
     );
     expect(vWheel.length, "Vertical wheel event should be received").toBeGreaterThan(0);
-    expect(vWheel[0].value).not.toBe(0);
+    expect(vWheel[0].value, "Positive wheelY scrolls up").toBe(1);
 
     // Horizontal scroll
     await agent!.clearMouseEvents();
-    await callJsonRpc(sharedPage, "wheelReport", { wheelY: 0, wheelX: 1 });
+    await sendWheel(sharedPage, 0, 1);
     const hWheel = await agent!.waitForMouseEvent(
       ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL,
       3000,
     );
     expect(hWheel.length, "Horizontal wheel event should be received").toBeGreaterThan(0);
-    expect(hWheel[0].value).not.toBe(0);
+    expect(hWheel[0].value, "Positive wheelX scrolls right").toBe(1);
 
     // Both axes simultaneously
     await agent!.clearMouseEvents();
-    await callJsonRpc(sharedPage, "wheelReport", { wheelY: -1, wheelX: 1 });
+    await sendWheel(sharedPage, -1, 1);
     const bothV = await agent!.waitForMouseEvent(
       ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL,
       3000,
     );
     expect(bothV.length, "Vertical wheel in combined event").toBeGreaterThan(0);
+    expect(bothV[0].value, "Negative wheelY scrolls down").toBe(-1);
     const bothEvents = await agent!.getMouseEvents();
     const bothH = bothEvents.filter(ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL);
     expect(bothH.length, "Horizontal wheel in combined event").toBeGreaterThan(0);
+    expect(bothH[0].value, "Positive wheelX scrolls right").toBe(1);
   });
 
   test("mouse: wheel scroll works in relative-only mouse mode", async () => {
@@ -257,7 +259,7 @@ test.describe("Remote Host Agent: mouse", () => {
       let vWheel: RAMouseEvent[] = [];
       while (Date.now() < vDeadline) {
         await agent!.clearMouseEvents();
-        await callJsonRpc(sharedPage, "wheelReport", { wheelY: 1, wheelX: 0 });
+        await sendWheel(sharedPage, 1, 0);
         try {
           vWheel = await agent!.waitForMouseEvent(
             ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL,
@@ -269,14 +271,14 @@ test.describe("Remote Host Agent: mouse", () => {
         }
       }
       expect(vWheel.length, "Vertical wheel in relative-only mode").toBeGreaterThan(0);
-      expect(vWheel[0].value).not.toBe(0);
+      expect(vWheel[0].value).toBe(1);
 
       // Horizontal scroll can hit the same post-re-enumeration race as vertical.
       const hDeadline = Date.now() + 10000;
       let hWheel: RAMouseEvent[] = [];
       while (Date.now() < hDeadline) {
         await agent!.clearMouseEvents();
-        await callJsonRpc(sharedPage, "wheelReport", { wheelY: 0, wheelX: 1 });
+        await sendWheel(sharedPage, 0, 1);
         try {
           hWheel = await agent!.waitForMouseEvent(
             ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL,
@@ -288,7 +290,7 @@ test.describe("Remote Host Agent: mouse", () => {
         }
       }
       expect(hWheel.length, "Horizontal wheel in relative-only mode").toBeGreaterThan(0);
-      expect(hWheel[0].value).not.toBe(0);
+      expect(hWheel[0].value).toBe(1);
     } finally {
       // Host xHCI re-enumeration regularly exceeds 10s; use the 45s default.
       await setUsbDevicesAndWait(USB_DEVICES_DEFAULT, [
@@ -312,7 +314,7 @@ test.describe("Remote Host Agent: mouse", () => {
     let vWheelEvents: RAMouseEvent[] = [];
     while (Date.now() < vDeadline) {
       await agent!.clearMouseEvents();
-      await callJsonRpc(sharedPage, "wheelReport", { wheelY: 1, wheelX: 0 });
+      await sendWheel(sharedPage, 1, 0);
       try {
         await agent!.waitForMouseEvent(
           ev => ev.type === "mouse_move_rel" && ev.code === REL_WHEEL,
@@ -339,7 +341,7 @@ test.describe("Remote Host Agent: mouse", () => {
     ).toBe(1);
 
     await agent!.clearMouseEvents();
-    await callJsonRpc(sharedPage, "wheelReport", { wheelY: 0, wheelX: 1 });
+    await sendWheel(sharedPage, 0, 1);
     await agent!.waitForMouseEvent(
       ev => ev.type === "mouse_move_rel" && ev.code === REL_HWHEEL,
       3000,

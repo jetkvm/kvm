@@ -372,7 +372,7 @@ func (s *Session) handleEnabledStatus(payload []byte) {
 func (s *Session) handleDisabledStatus(payload []byte) {
 	s.videoSenderEnabled = false
 	if !s.videoDisablePending && s.videoSource != SourceGuest &&
-		!(s.videoSource == SourceSwitchingToGuest && s.videoConfigEnabled) {
+		(s.videoSource != SourceSwitchingToGuest || !s.videoConfigEnabled) {
 		return
 	}
 	if le.Uint32(payload[28:]) == videoErrorDisplayAsleep {

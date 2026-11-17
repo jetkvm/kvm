@@ -28,11 +28,12 @@ type Devices struct {
 // Config is a struct that represents the customizations for a USB gadget.
 // TODO: rename to something else that won't confuse with the USB gadget configuration
 type Config struct {
-	VendorId     string `json:"vendor_id"`
-	ProductId    string `json:"product_id"`
-	SerialNumber string `json:"serial_number"`
-	Manufacturer string `json:"manufacturer"`
-	Product      string `json:"product"`
+	VendorId      string `json:"vendor_id"`
+	ProductId     string `json:"product_id"`
+	SerialNumber  string `json:"serial_number"`
+	Manufacturer  string `json:"manufacturer"`
+	Product       string `json:"product"`
+	Configuration string `json:"configuration"`
 
 	strictMode bool // when it's enabled, all warnings will be converted to errors
 	isEmpty    bool
@@ -79,8 +80,12 @@ type UsbGadget struct {
 	absMouseHidFile *os.File
 	absMouseLock    sync.Mutex
 	absMousePressed bool
+	absMouseButtons uint8
+	absMouseX       int
+	absMouseY       int
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
+	relMouseButtons uint8
 
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
@@ -98,7 +103,8 @@ type UsbGadget struct {
 
 	absMouseAccumulatedWheelY float64
 
-	lastUserInput time.Time
+	lastUserInput     time.Time
+	lastUserInputLock sync.RWMutex
 
 	tx     *UsbGadgetTransaction
 	txLock sync.Mutex

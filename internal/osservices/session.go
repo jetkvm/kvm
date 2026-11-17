@@ -885,7 +885,7 @@ func (s *Session) dispatch(payload []byte) {
 	// the handshake; anything else means the KVM is approved.
 	first := s.sessionMessages == 0
 	s.sessionMessages++
-	if first && s.approvalPending && !(s.service == ServiceSession && s.kind == sessionClose) {
+	if first && s.approvalPending && (s.service != ServiceSession || s.kind != sessionClose) {
 		s.approvalPending = false
 		s.notifyState()
 	}

@@ -20,3 +20,12 @@ export default Object.assign(api, {
   DELETE: (url: string, body?: object, options?: RequestInit) =>
     api(url, { method: "DELETE", body: JSON.stringify(body), ...options }),
 });
+
+export const sessionExpiredLoginPath = "/login-local?reason=session_expired";
+
+export async function localLoginPath(unauthorized: Response) {
+  const body = (await unauthorized.json().catch(() => null)) as {
+    code?: string;
+  } | null;
+  return body?.code === "session_expired" ? sessionExpiredLoginPath : "/login-local";
+}

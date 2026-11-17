@@ -627,7 +627,7 @@ export interface MountMediaState {
   remoteVirtualMediaState: RemoteVirtualMediaState | null;
   setRemoteVirtualMediaState: (state: MountMediaState["remoteVirtualMediaState"]) => void;
 
-  modalView: "mode" | "url" | "device" | "upload" | "error" | null;
+  modalView: "mode" | "url" | "device" | "upload" | "download" | "error" | null;
   setModalView: (view: MountMediaState["modalView"]) => void;
 
   isMountMediaDialogOpen: boolean;
@@ -862,6 +862,7 @@ export interface UsbConfigState {
   serial_number: string;
   manufacturer: string;
   product: string;
+  configuration: string;
 }
 
 export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
@@ -918,7 +919,8 @@ export type Capability =
   | "local_loopback" // web UI can be limited to the loopback interface
   | "log_level" // default log level can be changed
   | "tailscale" // Tailscale client
-  | "os_services"; // USB link to the OS Services sender on the remote host (clipboard, file drop, shell)
+  | "os_services" // USB link to the OS Services sender on the remote host (clipboard, file drop, shell)
+  | "storage_download"; // device downloads an image from a URL into its storage
 
 export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,

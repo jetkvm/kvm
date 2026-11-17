@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -129,6 +130,9 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	t := time.Now()
 
 	handler, ok := rpcHandlers[request.Method]
+	if ok && rpcCountsAsLocalAuthActivity(request.Method) {
+		session.recordLocalAuthActivity()
+	}
 	if !ok {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -142,7 +146,20 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
+	var result any
+	call := func() error {
+		result, err = callRPCHandler(scopedLogger, handler, request.Params, session)
+		return err
+	}
+	if handler.Input {
+		err = session.input(call)
+	} else {
+		err = call()
+	}
+	if errors.Is(err, errSessionInputRetired) {
+		scopedLogger.Debug().Msg("dropped RPC input from a replaced or closed session")
+		return
+	}
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -425,11 +442,14 @@ type SSHKeyState struct {
 // tls, local_loopback, log_level, tailscale: the HTTPS setting (Access page),
 // the loopback-only setting and the default log level (Advanced page) and the
 // Tailscale card (Network page), each shown only when reported.
+// storage_download: the device can download an image from a URL into its
+// storage (startStorageDownload); the mount page hides the control without it.
 func rpcGetDeviceCapabilities() ([]string, error) {
 	capabilities := []string{
 		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
 		"http_proxy", "domain", "mdns", "ipv6",
 		"tls", "local_loopback", "log_level", "tailscale",
+		"storage_download",
 	}
 	if osServices != nil {
 		capabilities = append(capabilities, "os_services")
@@ -462,6 +482,9 @@ var (
 func rpcSetVideoStreamPaused(session *Session, paused bool) error {
 	videoPauseMu.Lock()
 	defer videoPauseMu.Unlock()
+	if session == nil || session.isClosed() {
+		return context.Canceled
+	}
 	if paused {
 		videoPausedBy = session
 		return nativeInstance.VideoStop()
@@ -587,6 +610,7 @@ type RPCHandler struct {
 	Func           any
 	Params         []string
 	OptionalParams []string
+	Input          bool
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
@@ -912,24 +936,15 @@ func rpcGetActiveExtension() (string, error) {
 }
 
 func rpcSetActiveExtension(extensionId string) error {
-	if config.ActiveExtension == extensionId {
+	if config.ActiveExtension == extensionId && extPort.active(extensionId) {
 		return nil
 	}
-	switch config.ActiveExtension {
-	case "atx-power":
-		_ = unmountATXControl()
-	case "dc-power":
-		_ = unmountDCControl()
+	if err := extPort.activate(extensionId); err != nil {
+		return fmt.Errorf("failed to open the serial port: %w", err)
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
-	}
-	switch extensionId {
-	case "atx-power":
-		_ = mountATXControl()
-	case "dc-power":
-		_ = mountDCControl()
 	}
 
 	// Re-publish MQTT HA Discovery for the new extension
@@ -958,16 +973,13 @@ func rpcSetATXPowerAction(action string) error {
 }
 
 type ATXState struct {
-	Power bool `json:"power"`
-	HDD   bool `json:"hdd"`
+	Power      bool `json:"power"`
+	HDD        bool `json:"hdd"`
+	Responding bool `json:"responding"`
 }
 
 func rpcGetATXState() (ATXState, error) {
-	state := ATXState{
-		Power: ledPWRState.Load(),
-		HDD:   ledHDDState.Load(),
-	}
-	return state, nil
+	return currentATXState(), nil
 }
 
 func rpcSendCustomCommand(command string) error {
@@ -1226,10 +1238,28 @@ func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 		newMacros = append(newMacros, macro)
 	}
 
+	// IDs that disappear in this edit lose their Home Assistant buttons.
+	kept := make(map[string]bool, len(newMacros))
+	for _, macro := range newMacros {
+		kept[macro.ID] = true
+	}
+	var removed []string
+	for _, macro := range config.KeyboardMacros {
+		if !kept[macro.ID] {
+			removed = append(removed, macro.ID)
+		}
+	}
+
 	config.KeyboardMacros = newMacros
 
 	if err := SaveConfig(); err != nil {
 		return nil, err
+	}
+
+	// Keep the Home Assistant macro buttons in sync with the stored macros
+	if mqttManager != nil {
+		mqttManager.republishHADiscovery()
+		mqttManager.removeMacroDiscovery(removed)
 	}
 
 	return nil, nil
@@ -1310,35 +1340,73 @@ func rpcEmitTestLog(level string) error {
 	return nil
 }
 
+type keyboardMacroRun struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 var (
-	keyboardMacroCancel context.CancelFunc
-	keyboardMacroLock   sync.Mutex
+	keyboardMacroLock    sync.Mutex
+	keyboardMacroCurrent *keyboardMacroRun
+
+	keyboardMacroExec sync.Mutex
 )
 
-// cancelKeyboardMacro cancels any ongoing keyboard macro execution
+// cancelKeyboardMacro cancels the registered keyboard macro, running or
+// waiting to run.
 func cancelKeyboardMacro() {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	if keyboardMacroCancel != nil {
-		keyboardMacroCancel()
+	if keyboardMacroCurrent != nil {
+		keyboardMacroCurrent.cancel()
 		logger.Info().Msg("canceled keyboard macro")
-		keyboardMacroCancel = nil
+		keyboardMacroCurrent = nil
 	}
 }
 
-func setKeyboardMacroCancel(cancel context.CancelFunc) {
+func registerKeyboardMacro() *keyboardMacroRun {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	keyboardMacroCancel = cancel
+	if keyboardMacroCurrent != nil {
+		keyboardMacroCurrent.cancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	keyboardMacroCurrent = &keyboardMacroRun{ctx: ctx, cancel: cancel}
+	return keyboardMacroCurrent
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
-	cancelKeyboardMacro()
+func tryRegisterKeyboardMacro() *keyboardMacroRun {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
 
+	if keyboardMacroCurrent != nil {
+		return nil
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	setKeyboardMacroCancel(cancel)
+	keyboardMacroCurrent = &keyboardMacroRun{ctx: ctx, cancel: cancel}
+	return keyboardMacroCurrent
+}
+
+func (r *keyboardMacroRun) finish() {
+	keyboardMacroLock.Lock()
+	if keyboardMacroCurrent == r {
+		keyboardMacroCurrent = nil
+	}
+	keyboardMacroLock.Unlock()
+	r.cancel()
+}
+
+func (r *keyboardMacroRun) execute(session *Session, macro []hidrpc.KeyboardMacroStep) error {
+	defer r.finish()
+
+	keyboardMacroExec.Lock()
+	defer keyboardMacroExec.Unlock()
+
+	if err := r.ctx.Err(); err != nil {
+		return err
+	}
 
 	s := hidrpc.KeyboardMacroState{
 		State:   true,
@@ -1349,9 +1417,7 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 		currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
-	err := rpcDoExecuteKeyboardMacro(ctx, macro)
-
-	setKeyboardMacroCancel(nil)
+	err := rpcDoExecuteKeyboardMacro(r.ctx, session, macro)
 
 	s.State = false
 	if currentSession != nil {
@@ -1359,6 +1425,27 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	}
 
 	return err
+}
+
+func rpcExecuteKeyboardMacro(session *Session, macro []hidrpc.KeyboardMacroStep) error {
+	if session != nil && !session.acceptsInput() {
+		return errSessionInputRetired
+	}
+	return registerKeyboardMacro().execute(session, macro)
+}
+
+// rpcRunKeyboardMacro runs a stored macro by ID or case-insensitive name, the
+// way the MQTT command does, and returns when it has finished.
+func rpcRunKeyboardMacro(session *Session, macro string) error {
+	stored, ok := findKeyboardMacro(strings.TrimSpace(macro))
+	if !ok {
+		return fmt.Errorf("unknown keyboard macro: %s", macro)
+	}
+	steps, err := macroHIDSteps(stored.Steps)
+	if err != nil {
+		return err
+	}
+	return rpcExecuteKeyboardMacro(session, steps)
 }
 
 func rpcCancelKeyboardMacro() {
@@ -1371,21 +1458,28 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
 }
 
-func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+func rpcDoExecuteKeyboardMacro(ctx context.Context, session *Session, macro []hidrpc.KeyboardMacroStep) error {
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
 		delay := time.Duration(step.Delay) * time.Millisecond
 
-		err := rpcKeyboardReport(step.Modifier, step.Keys)
+		err := session.input(func() error {
+			if err := rpcKeyboardReport(step.Modifier, step.Keys); err != nil {
+				return err
+			}
+			// notify the device that the keyboard state is being cleared
+			if isClearKeyStep(step) {
+				gadget.UpdateKeysDown(0, keyboardClearStateKeys)
+			}
+			return nil
+		})
+		if errors.Is(err, errSessionInputRetired) {
+			return err
+		}
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
 			return err
-		}
-
-		// notify the device that the keyboard state is being cleared
-		if isClearKeyStep(step) {
-			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
 		}
 
 		// Use context-aware sleep that can be cancelled
@@ -1394,8 +1488,8 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 			// Sleep completed normally
 		case <-ctx.Done():
 			// make sure keyboard state is reset
-			err := rpcKeyboardReport(0, keyboardClearStateKeys)
-			if err != nil {
+			err := session.input(func() error { return rpcKeyboardReport(0, keyboardClearStateKeys) })
+			if err != nil && !errors.Is(err, errSessionInputRetired) {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}
 
@@ -1420,11 +1514,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"renewDHCPLease":             {Func: rpcRenewDHCPLease},
 	"getKeyboardLedState":        {Func: rpcGetKeyboardLedState},
 	"getKeyDownState":            {Func: rpcGetKeysDownState},
-	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
-	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}},
-	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
-	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
-	"wheelReport":                {Func: rpcWheelReport, Params: []string{"wheelY", "wheelX"}},
+	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}, Input: true},
+	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}, Input: true},
+	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}, Input: true},
+	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}, Input: true},
 	"wakeHost":                   {Func: rpcWakeHost},
 	"getVideoState":              {Func: rpcGetVideoState},
 	"getOsServicesSettings":      {Func: rpcGetOsServicesSettings},
@@ -1439,6 +1532,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"rpcMountBuiltInImage":       {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
 	"setJigglerState":            {Func: rpcSetJigglerState, Params: []string{"enabled"}},
 	"getJigglerState":            {Func: rpcGetJigglerState},
+	"getLocalAuthSessionTimeout": {Func: rpcGetLocalAuthSessionTimeout},
+	"setLocalAuthSessionTimeout": {Func: rpcSetLocalAuthSessionTimeout, Params: []string{"timeoutMinutes"}},
 	"setJigglerConfig":           {Func: rpcSetJigglerConfig, Params: []string{"jigglerConfig"}},
 	"getJigglerConfig":           {Func: rpcGetJigglerConfig},
 	"getTimezones":               {Func: rpcGetTimezones},
@@ -1488,6 +1583,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"listStorageFiles":           {Func: rpcListStorageFiles},
 	"deleteStorageFile":          {Func: rpcDeleteStorageFile, Params: []string{"filename"}},
 	"startStorageFileUpload":     {Func: rpcStartStorageFileUpload, Params: []string{"filename", "size"}},
+	"startStorageDownload":       {Func: rpcStartStorageDownload, Params: []string{"url", "filename"}},
+	"getStorageDownloadState":    {Func: rpcGetStorageDownloadState},
+	"cancelStorageDownload":      {Func: rpcCancelStorageDownload},
 	"getWakeOnLanDevices":        {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":        {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"factoryReset":               {Func: rpcFactoryReset},
@@ -1519,6 +1617,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardLayout":          {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":          {Func: getKeyboardMacros},
 	"setKeyboardMacros":          {Func: setKeyboardMacros, Params: []string{"params"}},
+	"runKeyboardMacro":           {Func: rpcRunKeyboardMacro, Params: []string{"macro"}},
 	"getLocalLoopbackOnly":       {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":       {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 	"getDefaultLogLevel":         {Func: rpcGetDefaultLogLevel},

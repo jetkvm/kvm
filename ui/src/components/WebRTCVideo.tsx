@@ -73,6 +73,7 @@ export default function WebRTCVideo({
   const videoElm = useRef<HTMLVideoElement>(null);
   const audioElm = useRef<HTMLAudioElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const overlaysRef = useRef<HTMLDivElement>(null);
   const { mediaStream, mediaStreamTrackVersion, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
@@ -404,9 +405,20 @@ export default function WebRTCVideo({
     return code;
   }
 
+  // A click or key on the video is a user gesture: use it to start audio when
+  // the autoplay policy blocked it, instead of asking for a second click.
+  const retryBlockedAudio = useCallback(() => {
+    if (!audioAutoplayBlocked) return;
+    audioElm.current
+      ?.play()
+      .then(() => setAudioAutoplayBlocked(false))
+      .catch(() => {});
+  }, [audioAutoplayBlocked]);
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      retryBlockedAudio();
       if (osServices && isClipboardChord(e)) {
         // Ctrl+Shift+V keeps its default action so the browser fires `paste`;
         // Ctrl+Shift+C is handled here. Neither chord reaches the target, and
@@ -484,7 +496,15 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient, osServices, copyFromGuest],
+    [
+      handleKeyPress,
+      isKeyboardLockActive,
+      isOcrMode,
+      isWindowsClient,
+      retryBlockedAudio,
+      osServices,
+      copyFromGuest,
+    ],
   );
 
   const keyUpHandler = useCallback(
@@ -609,7 +629,11 @@ export default function WebRTCVideo({
       elm
         .play()
         .then(() => setAudioAutoplayBlocked(false))
-        .catch(() => setAudioAutoplayBlocked(true));
+        // Only the autoplay policy needs a click; a play() interrupted by the
+        // next stream change is not a permission problem.
+        .catch((error: unknown) =>
+          setAudioAutoplayBlocked((error as DOMException | undefined)?.name === "NotAllowedError"),
+        );
 
       return () => {
         elm.srcObject = null;
@@ -673,6 +697,7 @@ export default function WebRTCVideo({
       // To prevent the video from being paused when the user presses a space in fullscreen mode
       videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
+      videoElmRefValue.addEventListener("mousedown", retryBlockedAudio, { signal });
 
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
@@ -685,7 +710,13 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, updateVideoSizeStore],
+    [
+      onVideoPlaying,
+      videoKeyDownHandler,
+      videoKeyUpHandler,
+      retryBlockedAudio,
+      updateVideoSizeStore,
+    ],
   );
 
   // Setup Mouse Events
@@ -709,9 +740,26 @@ export default function WebRTCVideo({
       });
 
       if (isRelativeMouseMode) {
-        videoElmRefValue.addEventListener(
+        containerRef.current?.addEventListener(
           "click",
-          () => {
+          (e: MouseEvent) => {
+            const target = e.target as Element;
+            if (target !== videoElmRefValue) {
+              const overlays = overlaysRef.current;
+              if (!hdmiError || !overlays?.contains(target)) return;
+
+              const isOnControl = Array.from(overlays.querySelectorAll("a, button")).some(el => {
+                const r = el.getBoundingClientRect();
+                return (
+                  e.clientX >= r.left &&
+                  e.clientX <= r.right &&
+                  e.clientY >= r.top &&
+                  e.clientY <= r.bottom
+                );
+              });
+              if (isOnControl) return;
+            }
+
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
             }
@@ -741,6 +789,7 @@ export default function WebRTCVideo({
       };
     },
     [
+      hdmiError,
       isPointerLockActive,
       isPointerLockPossible,
       requestPointerLock,
@@ -864,7 +913,7 @@ export default function WebRTCVideo({
                           style={{ animationDuration: "500ms" }}
                           className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                         >
-                          <div className="relative h-full w-full rounded-md">
+                          <div ref={overlaysRef} className="relative h-full w-full rounded-md">
                             <LoadingConnectionOverlay
                               show={showSourceSwitchOverlay}
                               text={

@@ -15,6 +15,7 @@ interface TestHooksInternal {
   _handleKeyPress?: (key: number, press: boolean) => void;
   _pauseKeepAlive?: (ms: number) => void;
   _handleAbsMouseMove?: (x: number, y: number, buttons: number) => void;
+  _handleWheel?: (deltaY: number, deltaX: number) => void;
   _getKeyboardLedState?: () => KeyboardLedState;
   _getKeysDownState?: () => KeysDownState;
   _getPeerConnectionState?: () => RTCPeerConnectionState | null;
@@ -36,6 +37,7 @@ export interface KvmTestHooks extends TestHooksInternal {
    */
   pauseKeepAlive: (ms: number) => void;
   sendAbsMouseMove: (x: number, y: number, buttons: number) => void;
+  sendWheel: (deltaY: number, deltaX: number) => void;
   sendJsonRpc: (
     method: string,
     params: Record<string, unknown>,
@@ -125,6 +127,14 @@ export function initTestHooks(): void {
         hooks._handleAbsMouseMove(x, y, buttons);
       } else {
         console.warn("[E2E] sendAbsMouseMove called but no handler registered");
+      }
+    },
+
+    sendWheel: (deltaY: number, deltaX: number) => {
+      if (hooks._handleWheel) {
+        hooks._handleWheel(deltaY, deltaX);
+      } else {
+        console.warn("[E2E] sendWheel called but no handler registered");
       }
     },
 
@@ -392,6 +402,7 @@ export function registerTestHandlers(handlers: {
   handleKeyPress: (key: number, press: boolean) => void;
   pauseKeepAlive: (ms: number) => void;
   handleAbsMouseMove: (x: number, y: number, buttons: number) => void;
+  handleWheel: (deltaY: number, deltaX: number) => void;
   getKeyboardLedState: () => KeyboardLedState;
   getKeysDownState: () => KeysDownState;
   getPeerConnectionState: () => RTCPeerConnectionState | null;
@@ -408,6 +419,7 @@ export function registerTestHandlers(handlers: {
   window.__kvmTestHooks._handleKeyPress = handlers.handleKeyPress;
   window.__kvmTestHooks._pauseKeepAlive = handlers.pauseKeepAlive;
   window.__kvmTestHooks._handleAbsMouseMove = handlers.handleAbsMouseMove;
+  window.__kvmTestHooks._handleWheel = handlers.handleWheel;
   window.__kvmTestHooks._getKeyboardLedState = handlers.getKeyboardLedState;
   window.__kvmTestHooks._getKeysDownState = handlers.getKeysDownState;
   window.__kvmTestHooks._getPeerConnectionState = handlers.getPeerConnectionState;
@@ -429,6 +441,7 @@ export function cleanupTestHooks(): void {
   window.__kvmTestHooks._handleKeyPress = undefined;
   window.__kvmTestHooks._pauseKeepAlive = undefined;
   window.__kvmTestHooks._handleAbsMouseMove = undefined;
+  window.__kvmTestHooks._handleWheel = undefined;
   window.__kvmTestHooks._getKeyboardLedState = undefined;
   window.__kvmTestHooks._getKeysDownState = undefined;
   window.__kvmTestHooks._getPeerConnectionState = undefined;

@@ -128,8 +128,10 @@ func TestRateFailedRaiseDoublesTheWait(t *testing.T) {
 		}
 	}
 	// A raise that holds for 10 s brings back the short wait.
-	if rr.run(8000, 10) != 1 || rr.run(8000, 10) != 1 {
-		t.Fatalf("the short wait did not come back")
+	for range 2 {
+		if rr.run(8000, 10) != 1 {
+			t.Fatalf("the short wait did not come back")
+		}
 	}
 }
 

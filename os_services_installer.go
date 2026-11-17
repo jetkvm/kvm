@@ -47,6 +47,10 @@ func prepareBuiltinInstallerMount() error {
 	if err := writeBuiltinInstaller(image); err != nil {
 		return err
 	}
+	// The mode cannot change while the LUN holds an open medium.
+	if err := ejectMassStorageImage(); err != nil {
+		return fmt.Errorf("failed to eject before setting mass storage mode: %w", err)
+	}
 	// setMassStorageMode notes the KVM's own USB restart for OS Services
 	// before it rebinds the gadget. A CD-ROM LUN is read-only.
 	if err := setMassStorageMode(true); err != nil {

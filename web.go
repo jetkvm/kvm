@@ -173,7 +173,9 @@ func setupRouter() *gin.Engine {
 	r.POST("/device/setup", handleSetup)
 
 	// A Prometheus metrics endpoint.
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	// Requires auth (cookie or basic auth) when password mode is enabled,
+	// open when localAuthMode is noPassword (consistent with other endpoints).
+	r.GET("/metrics", metricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
 
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
@@ -200,7 +202,7 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
-		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		protected.GET(localSignalingPath, handleLocalWebRTCSignal)
 		protected.GET("/webrtc/stats", handleWebRTCStats)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
@@ -228,6 +230,8 @@ func setupRouter() *gin.Engine {
 
 	return r
 }
+
+const localSignalingPath = "/webrtc/signaling/client"
 
 // TODO: support multiple sessions?
 var currentSession *Session
@@ -280,7 +284,8 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
+	localAuthToken, _ := c.Cookie("authToken")
+	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, localAuthToken, &scopedLogger)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
@@ -291,6 +296,7 @@ func handleWebRTCSignalWsMessages(
 	isCloudConnection bool,
 	source string,
 	connectionID string,
+	localAuthToken string,
 	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -410,6 +416,11 @@ func handleWebRTCSignalWsMessages(
 
 		if message.Type == "offer" {
 			l.Info().Msg("new session request received")
+			if !isCloudConnection && !localSignalingTokenValid(localAuthToken) {
+				l.Info().Msg("local login of this signaling connection is not valid, closing it")
+				_ = wsCon.Close(signalingStatusSessionExpired, "session expired")
+				return nil
+			}
 			var req WebRTCSessionRequest
 			err = json.Unmarshal(message.Data, &req)
 			if err != nil {
@@ -464,14 +475,8 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Check rate limit before processing
-	ip := c.ClientIP()
-	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
-		c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "Too many failed attempts. Please try again later.",
-			"retry_after": retryAfter,
-		})
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(c.ClientIP()); !allowed {
+		sendTooManyAttemptsThenAbort(c, retryAfter)
 		return
 	}
 
@@ -482,17 +487,17 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
-	if err != nil {
-		passwordRateLimiter.RecordFailure(ip)
+	switch result, retryAfter := checkPassword(c, req.Password); result {
+	case passwordLockedOut:
+		sendTooManyAttemptsThenAbort(c, retryAfter)
+		return
+	case passwordWrong:
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
 
-	// Clear rate limit on successful login
-	passwordRateLimiter.RecordSuccess(ip)
-
-	config.LocalAuthToken = uuid.New().String()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -500,13 +505,13 @@ func handleLogin(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
 func handleLogout(c *gin.Context) {
-	config.LocalAuthToken = ""
+	setLocalAuthToken("")
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
@@ -524,13 +529,19 @@ func protectedMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		authToken, err := c.Cookie("authToken")
-		if err != nil || authToken != config.LocalAuthToken || authToken == "" {
+		switch checkLocalAuthCookie(c) {
+		case localAuthCookieExpired:
+			sendSessionExpiredThenAbort(c)
+			return
+		case localAuthCookieInvalid:
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
 
+		if c.FullPath() != localSignalingPath {
+			recordLocalAuthActivity()
+		}
 		c.Next()
 	}
 }
@@ -538,6 +549,44 @@ func protectedMiddleware() gin.HandlerFunc {
 func sendErrorJsonThenAbort(c *gin.Context, status int, message string) {
 	c.JSON(status, gin.H{"error": message})
 	c.Abort()
+}
+
+// metricsAuthMiddleware authenticates the /metrics endpoint using either the
+// session cookie or HTTP basic auth (for Prometheus scrape configs). When
+// localAuthMode is noPassword, all requests are allowed through — consistent
+// with every other endpoint on the device.
+func metricsAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.LocalAuthMode == "noPassword" {
+			c.Next()
+			return
+		}
+
+		switch checkLocalAuthCookie(c) {
+		case localAuthCookieValid:
+			c.Next()
+			return
+		case localAuthCookieExpired:
+			c.SetCookie("authToken", "", -1, "/", "", false, true)
+		}
+
+		// Fall back to basic auth (Prometheus scraper)
+		_, password, ok := c.Request.BasicAuth()
+		if ok {
+			switch result, retryAfter := checkPassword(c, password); result {
+			case passwordLockedOut:
+				sendTooManyAttemptsThenAbort(c, retryAfter)
+				return
+			case passwordCorrect:
+				c.Next()
+				return
+			}
+		}
+
+		c.Header("WWW-Authenticate", `Basic realm="JetKVM Metrics"`)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.Abort()
+	}
 }
 
 func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
@@ -568,8 +617,11 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password))
-		if err != nil {
+		switch result, retryAfter := checkPassword(c, password); result {
+		case passwordLockedOut:
+			sendTooManyAttemptsThenAbort(c, retryAfter)
+			return
+		case passwordWrong:
 			sendErrorJsonThenAbort(c, http.StatusUnauthorized, "Invalid password")
 			return
 		}
@@ -604,14 +656,22 @@ func getBindAddress(listenPort int) string {
 	return bindAddress
 }
 
+const webReadHeaderTimeout = 10 * time.Second
+
 func RunWebServer() {
 	r := setupRouter()
+	go runLocalAuthExpirySweeper()
 
 	// Determine the binding address based on the config
 	bindAddress := getBindAddress(80) // default port
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	if err := r.Run(bindAddress); err != nil {
+	server := &http.Server{
+		Addr:              bindAddress,
+		Handler:           r.Handler(),
+		ReadHeaderTimeout: webReadHeaderTimeout,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
@@ -675,7 +735,8 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 	config.LocalAuthMode = "password"
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -683,7 +744,7 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
@@ -730,14 +791,15 @@ func handleUpdatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
@@ -766,7 +828,7 @@ func handleDeletePassword(c *gin.Context) {
 
 	// Disable password
 	config.HashedPassword = ""
-	config.LocalAuthToken = ""
+	setLocalAuthToken("")
 	config.LocalAuthMode = "noPassword"
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -868,14 +930,15 @@ func handleSetup(c *gin.Context) {
 		}
 
 		config.HashedPassword = string(hashedPassword)
-		config.LocalAuthToken = uuid.New().String()
+		token := uuid.New().String()
+		setLocalAuthToken(token)
 
 		// Set the cookie
-		c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+		c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 	} else {
 		// For noPassword mode, ensure the password field is empty
 		config.HashedPassword = ""
-		config.LocalAuthToken = ""
+		setLocalAuthToken("")
 	}
 
 	err := SaveConfig()
@@ -883,6 +946,8 @@ func handleSetup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
 		return
 	}
+
+	updateMdnsTXT()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
 }

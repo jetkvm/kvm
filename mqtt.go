@@ -21,17 +21,18 @@ var mqttLogger = logging.GetSubsystemLogger("mqtt")
 const publishTimeout = 5 * time.Second
 
 type MQTTConfig struct {
-	Enabled           bool   `json:"enabled"`
-	Broker            string `json:"broker"`
-	Port              int    `json:"port"`
-	Username          string `json:"username"`
-	Password          string `json:"password"`
-	BaseTopic         string `json:"base_topic"`
-	UseTLS            bool   `json:"use_tls"`
-	TLSInsecure       bool   `json:"tls_insecure"`
-	EnableHADiscovery bool   `json:"enable_ha_discovery"`
-	EnableActions     bool   `json:"enable_actions"`
-	DebounceMs        int    `json:"debounce_ms"`
+	Enabled              bool   `json:"enabled"`
+	Broker               string `json:"broker"`
+	Port                 int    `json:"port"`
+	Username             string `json:"username"`
+	Password             string `json:"password"`
+	BaseTopic            string `json:"base_topic"`
+	UseTLS               bool   `json:"use_tls"`
+	TLSInsecure          bool   `json:"tls_insecure"`
+	EnableHADiscovery    bool   `json:"enable_ha_discovery"`
+	EnableActions        bool   `json:"enable_actions"`
+	EnableKeyboardMacros bool   `json:"enable_keyboard_macros"`
+	DebounceMs           int    `json:"debounce_ms"`
 }
 
 var mqttManager *MQTTManager
@@ -42,6 +43,11 @@ type MQTTManager struct {
 	baseTopic string
 	connected atomic.Bool
 	lastError atomic.Value // stores string; cleared on successful connect
+
+	// Macro IDs deleted while disconnected; their buttons are cleared on the
+	// next discovery pass.
+	pendingMacroRemovalsMu sync.Mutex
+	pendingMacroRemovals   []string
 
 	updateRequested atomic.Bool // set when an update is triggered via MQTT, cleared when OTA finishes
 
@@ -203,10 +209,7 @@ func (m *MQTTManager) onConnect(client mqtt.Client) {
 	// Immediately publish all current states so Home Assistant knows
 	// the current state of all switches and sensors right away.
 	if config.ActiveExtension == "atx-power" {
-		m.publishATXState(ATXState{
-			Power: ledPWRState.Load(),
-			HDD:   ledHDDState.Load(),
-		})
+		m.publishATXState(currentATXState())
 	}
 	if config.ActiveExtension == "dc-power" {
 		m.publishDCState(getDCState())
@@ -273,6 +276,10 @@ func (m *MQTTManager) publishString(topic string, payload string, retained bool)
 // actionsAllowed checks if MQTT actions are enabled in the config.
 func (m *MQTTManager) actionsAllowed() bool {
 	return config.MqttConfig != nil && config.MqttConfig.EnableActions
+}
+
+func keyboardMacrosAllowed() bool {
+	return config.MqttConfig != nil && config.MqttConfig.EnableKeyboardMacros
 }
 
 // --- JSON-RPC Handlers ---

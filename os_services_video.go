@@ -9,7 +9,6 @@ import (
 	"github.com/jetkvm/kvm/internal/osservices/edid"
 	"github.com/jetkvm/kvm/internal/timinglog"
 	"github.com/pion/webrtc/v4"
-	"github.com/pion/webrtc/v4/pkg/media"
 )
 
 const (
@@ -248,6 +247,9 @@ func (s *osServicesService) KeyframeDone(generation uint32, delivered bool) {
 func (v *guestVideo) writer() {
 	var lastPTS uint32
 	havePTS := false
+	// pts is the capture time on a clock that only moves forward, made from
+	// the steps between the frames that went to the browser.
+	var pts time.Duration
 	for f := range v.frames {
 		session := currentSession
 		data := (*f.buf)[:f.length]
@@ -262,20 +264,20 @@ func (v *guestVideo) writer() {
 			if f.keyframe {
 				v.needKeyframe.Store(false)
 			}
-			frameDuration := time.Second / time.Duration(max(f.fps, 1))
-			duration := frameDuration
+			step := time.Second / time.Duration(max(f.fps, 1))
 			if havePTS {
 				delta := time.Duration(f.pts90k-lastPTS) * time.Second / 90000
 				if delta > 0 && delta <= time.Second {
-					duration = delta
+					step = delta
 				}
 			}
 			lastPTS = f.pts90k
 			havePTS = true
+			pts += step
 			// The timing log has the frame when the track sent packets
 			// for it.
 			_, sent := session.videoTap.Last()
-			if err := session.VideoTrack.WriteSample(media.Sample{Data: data, Duration: duration}); err != nil {
+			if err := session.writeVideoFrame(videoClockService, data, pts); err != nil {
 				osServicesLogger.Debug().Err(err).Msg("cannot write service video")
 			} else if timestamp, now := session.videoTap.Last(); now != sent {
 				timinglog.Frame(timestamp, f.received)

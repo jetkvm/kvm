@@ -14,7 +14,7 @@ import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
 import { initTestHooks } from "@/test/testHooks";
 import { CLOUD_API, CLOUD_ENABLE_VERSIONED_UI, DEVICE_API } from "@/ui.config";
-import api from "@/api";
+import api, { localLoginPath } from "@/api";
 import Root from "@/root";
 import { m } from "@localizations/messages.js";
 import Card from "@components/Card";
@@ -91,7 +91,7 @@ export async function checkDeviceAuth() {
   if (!res.isSetup) throw redirect("/welcome");
 
   const deviceRes = await api.GET(`${DEVICE_API}/device`);
-  if (deviceRes.status === 401) throw redirect("/login-local");
+  if (deviceRes.status === 401) throw redirect(await localLoginPath(deviceRes));
   if (deviceRes.ok) {
     const device = (await deviceRes.json()) as LocalDevice;
     return { authMode: device.authMode };

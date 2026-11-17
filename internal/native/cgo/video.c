@@ -454,7 +454,7 @@ static void *venc_read_stream(void *arg)
                    loopCount, stFrame.u32Seq, stFrame.pstPack->u32Len,
                    stFrame.pstPack->u64PTS, nowUs - stFrame.pstPack->u64PTS);
             pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
-            video_send_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
+            video_send_frame(pData, (ssize_t)stFrame.pstPack->u32Len, stFrame.pstPack->u64PTS);
             s32Ret = RK_MPI_VENC_ReleaseStream(VENC_CHANNEL, &stFrame);
             if (s32Ret != RK_SUCCESS)
             {
