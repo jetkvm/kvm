@@ -267,23 +267,6 @@ func macroHIDSteps(steps []KeyboardMacroStep) ([]hidrpc.KeyboardMacroStep, error
 	return keyboard.HIDSteps(macroSteps)
 }
 
-// executeKeyboardSteps runs converted macro steps on a new goroutine — the
-// steps sleep between reports, and paho delivers all messages on one ordered
-// goroutine, so executing inline would stall every other command handler.
-// rpcExecuteKeyboardMacro cancels any running macro and serializes execution,
-// so overlapping commands run one after another rather than interleaving.
-func executeKeyboardSteps(source string, steps []hidrpc.KeyboardMacroStep) {
-	go func() {
-		if err := rpcExecuteKeyboardMacro(steps); err != nil {
-			if errors.Is(err, context.Canceled) {
-				mqttLogger.Info().Str("source", source).Msg("keyboard input canceled")
-				return
-			}
-			mqttLogger.Error().Err(err).Str("source", source).Msg("failed to execute keyboard input")
-		}
-	}()
-}
-
 func (m *MQTTManager) handleKeyboardMacroCommand(client mqtt.Client, msg mqtt.Message) {
 	if !keyboardMacrosAllowed() {
 		mqttLogger.Warn().Msg("keyboard macro command rejected: keyboard macros over MQTT are disabled")
@@ -308,5 +291,19 @@ func (m *MQTTManager) handleKeyboardMacroCommand(client mqtt.Client, msg mqtt.Me
 		return
 	}
 
-	executeKeyboardSteps("macro "+macro.Name, steps)
+	name := macro.Name
+	run := tryRegisterKeyboardMacro()
+	if run == nil {
+		mqttLogger.Warn().Str("macro", name).Msg("keyboard macro command dropped: a keyboard macro is already running")
+		return
+	}
+	go func() {
+		if err := run.execute(steps); err != nil {
+			if errors.Is(err, context.Canceled) {
+				mqttLogger.Info().Str("macro", name).Msg("keyboard macro canceled")
+				return
+			}
+			mqttLogger.Error().Err(err).Str("macro", name).Msg("failed to execute keyboard macro")
+		}
+	}()
 }

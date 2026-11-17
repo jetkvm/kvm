@@ -1355,6 +1355,18 @@ func registerKeyboardMacro() *keyboardMacroRun {
 	return keyboardMacroCurrent
 }
 
+func tryRegisterKeyboardMacro() *keyboardMacroRun {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	if keyboardMacroCurrent != nil {
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	keyboardMacroCurrent = &keyboardMacroRun{ctx: ctx, cancel: cancel}
+	return keyboardMacroCurrent
+}
+
 func (r *keyboardMacroRun) finish() {
 	keyboardMacroLock.Lock()
 	if keyboardMacroCurrent == r {
