@@ -282,10 +282,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
 
   const reportWheelEvent = useCallback(
     (deltaY: number, deltaX: number) => {
-      // Wheel events are motion-like — a single dropped detent self-corrects
-      // via the next event, so we ride the unreliable-ordered channel for
-      // lower latency, matching how mouse motion is sent.
-      sendMessage(new WheelReportMessage(deltaY, deltaX), { useUnreliableChannel: true });
+      sendMessage(new WheelReportMessage(deltaY, deltaX));
     },
     [sendMessage],
   );
