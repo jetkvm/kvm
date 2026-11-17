@@ -129,6 +129,9 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	t := time.Now()
 
 	handler, ok := rpcHandlers[request.Method]
+	if ok && rpcCountsAsLocalAuthActivity(request.Method) {
+		session.recordLocalAuthActivity()
+	}
 	if !ok {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -905,23 +908,6 @@ func rpcSetDCRestoreState(state int) error {
 		return fmt.Errorf("failed to set DC restore state: %w", err)
 	}
 	return nil
-}
-
-func rpcGetLocalAuthSessionTimeout() (int, error) {
-	return config.LocalAuthSessionTimeoutMinutes, nil
-}
-
-func rpcSetLocalAuthSessionTimeout(timeoutMinutes int) error {
-	maxTimeoutMinutes := 7 * 24 * 60
-	if timeoutMinutes < 0 || timeoutMinutes > maxTimeoutMinutes {
-		return fmt.Errorf("session timeout must be between 0 and %d minutes", maxTimeoutMinutes)
-	}
-	config.LocalAuthSessionTimeoutMinutes = timeoutMinutes
-	if timeoutMinutes > 0 {
-		// Count inactivity from the moment the timeout is (re)configured
-		touchAuthActivity()
-	}
-	return SaveConfig()
 }
 
 func rpcGetActiveExtension() (string, error) {

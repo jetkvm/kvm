@@ -394,7 +394,7 @@ func runWebsocketClient() error {
 	wsResetMetrics(true, "cloud", wsURL.Host)
 
 	// we don't have a source for the cloud connection
-	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId, scopedLogger)
+	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId, "", scopedLogger)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
@@ -434,6 +434,7 @@ func handleSessionRequest(
 	req WebRTCSessionRequest,
 	isCloudConnection bool,
 	source string,
+	localAuthToken string,
 	scopedLogger *zerolog.Logger,
 ) error {
 	var sourceType string
@@ -463,6 +464,8 @@ func handleSessionRequest(
 		ICEServers: req.ICEServers,
 		Logger:     scopedLogger,
 		MDNSMode:   config.NetworkConfig.MDNSMode.String,
+
+		LocalAuthToken: localAuthToken,
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
