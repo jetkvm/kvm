@@ -470,6 +470,15 @@ func rpcSetOsServicesSettings(settings map[string]any) (OSServicesConfig, error)
 		config.OSServices = &settings
 		configLock.Unlock()
 	}
+	// While the gadget changes, the config holds the new switch, and a save
+	// from another call can write it. So a change that is taken back is
+	// saved too.
+	takeBack := func() {
+		store(current)
+		if err := SaveConfig(); err != nil {
+			osServicesLogger.Warn().Err(err).Msg("cannot save the OS Services settings that were taken back")
+		}
+	}
 	// The gadget reads the switch from the config. As for the USB devices,
 	// the gadget changes first and the settings are saved after it, so a
 	// gadget that refuses the change leaves the settings as they were.
@@ -483,7 +492,7 @@ func rpcSetOsServicesSettings(settings map[string]any) (OSServicesConfig, error)
 	store(merged)
 	if merged.Enabled != current.Enabled {
 		if err := updateGadget(); err != nil {
-			store(current)
+			takeBack()
 			if again := updateGadget(); again != nil {
 				osServicesLogger.Warn().Err(again).Msg("cannot put the gadget back after a refused OS Services switch")
 			}
@@ -491,7 +500,7 @@ func rpcSetOsServicesSettings(settings map[string]any) (OSServicesConfig, error)
 		}
 	}
 	if err := SaveConfig(); err != nil {
-		store(current)
+		takeBack()
 		if merged.Enabled != current.Enabled {
 			if again := updateGadget(); again != nil {
 				osServicesLogger.Warn().Err(again).Msg("cannot put the gadget back after a failed save")
