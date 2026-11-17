@@ -425,11 +425,14 @@ type SSHKeyState struct {
 // tls, local_loopback, log_level, tailscale: the HTTPS setting (Access page),
 // the loopback-only setting and the default log level (Advanced page) and the
 // Tailscale card (Network page), each shown only when reported.
+// storage_download: the device can download an image from a URL into its
+// storage (startStorageDownload); the mount page hides the control without it.
 func rpcGetDeviceCapabilities() ([]string, error) {
 	return []string{
 		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
 		"http_proxy", "domain", "mdns", "ipv6",
 		"tls", "local_loopback", "log_level", "tailscale",
+		"storage_download",
 	}, nil
 }
 
@@ -1473,6 +1476,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"listStorageFiles":           {Func: rpcListStorageFiles},
 	"deleteStorageFile":          {Func: rpcDeleteStorageFile, Params: []string{"filename"}},
 	"startStorageFileUpload":     {Func: rpcStartStorageFileUpload, Params: []string{"filename", "size"}},
+	"startStorageDownload":       {Func: rpcStartStorageDownload, Params: []string{"url", "filename"}},
+	"getStorageDownloadState":    {Func: rpcGetStorageDownloadState},
+	"cancelStorageDownload":      {Func: rpcCancelStorageDownload},
 	"getWakeOnLanDevices":        {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":        {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"factoryReset":               {Func: rpcFactoryReset},

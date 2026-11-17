@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	neturl "net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/imagedownload"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/resource"
 
@@ -190,17 +190,15 @@ type VirtualMediaUrlInfo struct {
 
 func rpcCheckMountUrl(rawURL string) (*VirtualMediaUrlInfo, error) {
 	rawURL = strings.TrimSpace(rawURL)
-	parsedURL, err := neturl.Parse(rawURL)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return &VirtualMediaUrlInfo{
-			Usable: false,
-			Reason: "Enter a valid HTTP or HTTPS image URL.",
-		}, nil
-	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+	if _, err := imagedownload.ParseURL(rawURL); errors.Is(err, imagedownload.ErrUnsupportedScheme) {
 		return &VirtualMediaUrlInfo{
 			Usable: false,
 			Reason: "Only HTTP and HTTPS image URLs can be mounted.",
+		}, nil
+	} else if err != nil {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "Enter a valid HTTP or HTTPS image URL.",
 		}, nil
 	}
 
@@ -476,6 +474,9 @@ func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 	if currentVirtualMediaState != nil {
 		return fmt.Errorf("another virtual media is already mounted")
 	}
+	if err := errIfDownloading(filename); err != nil {
+		return err
+	}
 
 	fullPath := filepath.Join(imagesFolder, filename)
 	fileInfo, err := os.Stat(fullPath)
@@ -511,7 +512,6 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	if err != nil {
 		return err
 	}
-
 	if err := prepareStorageMount(filename, mode); err != nil {
 		return err
 	}
@@ -599,6 +599,10 @@ func rpcDeleteStorageFile(filename string) error {
 		return err
 	}
 
+	if err := errIfDownloading(sanitizedFilename); err != nil {
+		return err
+	}
+
 	fullPath := filepath.Join(imagesFolder, sanitizedFilename)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -636,6 +640,9 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 
 	if _, err := os.Stat(filePath); err == nil {
 		return nil, fmt.Errorf("file already exists: %s", sanitizedFilename)
+	}
+	if err := errIfDownloading(sanitizedFilename + imagedownload.IncompleteSuffix); err != nil {
+		return nil, err
 	}
 
 	// A retry after a cancel must not race the transfer it replaces. A data
