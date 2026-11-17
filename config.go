@@ -88,44 +88,42 @@ func (m *KeyboardMacro) Validate() error {
 }
 
 type Config struct {
-	CloudURL            string         `json:"cloud_url"`
-	UpdateAPIURL        string         `json:"update_api_url"`
-	CloudAppURL         string         `json:"cloud_app_url"`
-	CloudToken          string         `json:"cloud_token"`
-	TailscaleControlURL string         `json:"tailscale_control_url,omitempty"`
-	GoogleIdentity      string         `json:"google_identity"`
-	JigglerEnabled      bool           `json:"jiggler_enabled"`
-	JigglerConfig       *JigglerConfig `json:"jiggler_config"`
-	AutoUpdateEnabled   bool           `json:"auto_update_enabled"`
-	IncludePreRelease   bool           `json:"include_pre_release"`
-	HashedPassword      string         `json:"hashed_password"`
-	LocalAuthToken      string         `json:"local_auth_token"`
-	LocalAuthMode       string         `json:"localAuthMode"` //TODO: fix it with migration
-	// LocalAuthSessionTimeoutMinutes expires the local session after this many
-	// minutes without an authenticated request; 0 disables the timeout.
-	LocalAuthSessionTimeoutMinutes int                  `json:"localAuthSessionTimeoutMinutes,omitempty"`
-	LocalLoopbackOnly              bool                 `json:"local_loopback_only"`
-	WakeOnLanDevices               []WakeOnLanDevice    `json:"wake_on_lan_devices"`
-	KeyboardMacros                 []KeyboardMacro      `json:"keyboard_macros"`
-	KeyboardLayout                 string               `json:"keyboard_layout"`
-	EdidString                     string               `json:"hdmi_edid_string"`
-	ActiveExtension                string               `json:"active_extension"`
-	DisplayRotation                string               `json:"display_rotation"`
-	DisplayMaxBrightness           int                  `json:"display_max_brightness"`
-	DisplayDimAfterSec             int                  `json:"display_dim_after_sec"`
-	DisplayOffAfterSec             int                  `json:"display_off_after_sec"`
-	TLSMode                        string               `json:"tls_mode"` // options: "self-signed", "user-defined", ""
-	UsbConfig                      *usbgadget.Config    `json:"usb_config"`
-	UsbDevices                     *usbgadget.Devices   `json:"usb_devices"`
-	NetworkConfig                  *types.NetworkConfig `json:"network_config"`
-	DefaultLogLevel                string               `json:"default_log_level"`
-	VideoSleepAfterSec             int                  `json:"video_sleep_after_sec"`
-	VideoQualityFactor             float64              `json:"video_quality_factor"`
-	VideoCodecPreference           string               `json:"video_codec_preference"`
-	HideDisplayWhenIdle            bool                 `json:"host_display_disable_when_idle"`
-	NativeMaxRestart               uint                 `json:"native_max_restart_attempts"`
-	MqttConfig                     *MQTTConfig          `json:"mqtt_config"`
-	AudioEnabled                   bool                 `json:"audio_enabled"`
+	CloudURL             string               `json:"cloud_url"`
+	UpdateAPIURL         string               `json:"update_api_url"`
+	CloudAppURL          string               `json:"cloud_app_url"`
+	CloudToken           string               `json:"cloud_token"`
+	TailscaleControlURL  string               `json:"tailscale_control_url,omitempty"`
+	GoogleIdentity       string               `json:"google_identity"`
+	JigglerEnabled       bool                 `json:"jiggler_enabled"`
+	JigglerConfig        *JigglerConfig       `json:"jiggler_config"`
+	AutoUpdateEnabled    bool                 `json:"auto_update_enabled"`
+	IncludePreRelease    bool                 `json:"include_pre_release"`
+	HashedPassword       string               `json:"hashed_password"`
+	LocalAuthToken       string               `json:"local_auth_token"`
+	LocalAuthMode        string               `json:"localAuthMode"` //TODO: fix it with migration
+	LocalAuthIdleMinutes int                  `json:"local_auth_idle_minutes"`
+	LocalLoopbackOnly    bool                 `json:"local_loopback_only"`
+	WakeOnLanDevices     []WakeOnLanDevice    `json:"wake_on_lan_devices"`
+	KeyboardMacros       []KeyboardMacro      `json:"keyboard_macros"`
+	KeyboardLayout       string               `json:"keyboard_layout"`
+	EdidString           string               `json:"hdmi_edid_string"`
+	ActiveExtension      string               `json:"active_extension"`
+	DisplayRotation      string               `json:"display_rotation"`
+	DisplayMaxBrightness int                  `json:"display_max_brightness"`
+	DisplayDimAfterSec   int                  `json:"display_dim_after_sec"`
+	DisplayOffAfterSec   int                  `json:"display_off_after_sec"`
+	TLSMode              string               `json:"tls_mode"` // options: "self-signed", "user-defined", ""
+	UsbConfig            *usbgadget.Config    `json:"usb_config"`
+	UsbDevices           *usbgadget.Devices   `json:"usb_devices"`
+	NetworkConfig        *types.NetworkConfig `json:"network_config"`
+	DefaultLogLevel      string               `json:"default_log_level"`
+	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
+	VideoQualityFactor   float64              `json:"video_quality_factor"`
+	VideoCodecPreference string               `json:"video_codec_preference"`
+	HideDisplayWhenIdle  bool                 `json:"host_display_disable_when_idle"`
+	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
+	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+	AudioEnabled         bool                 `json:"audio_enabled"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -157,7 +155,7 @@ func (c *Config) SetDisplayRotation(rotation string) error {
 	return nil
 }
 
-const configPath = "/userdata/kvm_config.json"
+var configPath = "/userdata/kvm_config.json"
 
 // it's a temporary solution to avoid sharing the same pointer
 // we should migrate to a proper config solution in the future

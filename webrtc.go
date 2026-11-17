@@ -49,6 +49,9 @@ type Session struct {
 
 	codecMimeType string
 
+	localAuthToken string
+	signaling      *websocket.Conn
+
 	videoClockMu sync.Mutex
 	videoClock   rtpclock.Clock
 }
@@ -149,6 +152,8 @@ type SessionConfig struct {
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
 	MDNSMode   string
+
+	LocalAuthToken string
 }
 
 // negotiateAudioCodec returns the audio MIME type to use, or "" if the browser
@@ -419,6 +424,10 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 
 		l.Trace().Msg("received data in HID RPC message handler")
 
+		if hidMessageCountsAsLocalAuthActivity(hidrpc.MessageType(msg.Data[0])) {
+			session.recordLocalAuthActivity()
+		}
+
 		// Cancel before admitting the next message on this ordered channel.
 		// A separate worker can process a late cancel after the old macro has
 		// finished and its replacement has started, canceling the replacement.
@@ -539,6 +548,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		peerConnection: peerConnection,
 		done:           make(chan struct{}),
 		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
+	}
+	if !config.IsCloud && config.LocalAuthToken != "" {
+		session.localAuthToken = config.LocalAuthToken
+		session.signaling = config.ws
 	}
 	session.initQueues()
 	session.initKeysDownStateQueue()

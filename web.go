@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -98,35 +97,6 @@ const (
 	// authTokenMaxAge is the lifetime of the authToken cookie, in seconds.
 	authTokenMaxAge = 7 * 24 * 60 * 60 // 1 week
 )
-
-var (
-	// lastAuthActivity holds the unix timestamp (seconds) of the last
-	// authenticated request. It is kept in memory only: persisting it would
-	// cost a config flash write per request.
-	lastAuthActivity atomic.Int64
-
-	// authTimeNow is swapped out in tests.
-	authTimeNow = time.Now
-)
-
-func touchAuthActivity() {
-	lastAuthActivity.Store(authTimeNow().Unix())
-}
-
-// localAuthSessionExpired reports whether the inactivity timeout has elapsed.
-// A zero lastAuthActivity (fresh boot) counts as activity rather than locking
-// the user out right after a restart.
-func localAuthSessionExpired() bool {
-	timeoutMinutes := config.LocalAuthSessionTimeoutMinutes
-	if timeoutMinutes <= 0 {
-		return false
-	}
-	last := lastAuthActivity.Load()
-	if last == 0 {
-		return false
-	}
-	return authTimeNow().Unix()-last > int64(timeoutMinutes)*60
-}
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -231,7 +201,7 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
-		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		protected.GET(localSignalingPath, handleLocalWebRTCSignal)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
@@ -258,6 +228,8 @@ func setupRouter() *gin.Engine {
 
 	return r
 }
+
+const localSignalingPath = "/webrtc/signaling/client"
 
 // TODO: support multiple sessions?
 var currentSession *Session
@@ -310,7 +282,12 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
+	localAuthToken := ""
+	if config.LocalAuthMode == "password" {
+		localAuthToken, _ = c.Cookie("authToken")
+	}
+
+	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, localAuthToken, &scopedLogger)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
@@ -321,6 +298,7 @@ func handleWebRTCSignalWsMessages(
 	isCloudConnection bool,
 	source string,
 	connectionID string,
+	localAuthToken string,
 	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -440,6 +418,11 @@ func handleWebRTCSignalWsMessages(
 
 		if message.Type == "offer" {
 			l.Info().Msg("new session request received")
+			if localAuthToken != "" && !localAuthTokenValid(localAuthToken) {
+				l.Info().Msg("local login expired, closing the signaling connection")
+				_ = wsCon.Close(signalingStatusSessionExpired, "session expired")
+				return nil
+			}
 			var req WebRTCSessionRequest
 			err = json.Unmarshal(message.Data, &req)
 			if err != nil {
@@ -453,7 +436,7 @@ func handleWebRTCSignalWsMessages(
 
 			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
+			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, localAuthToken, &l)
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("error starting new session")
 				continue
@@ -515,8 +498,8 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	config.LocalAuthToken = uuid.New().String()
-	touchAuthActivity()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -524,13 +507,13 @@ func handleLogin(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
 func handleLogout(c *gin.Context) {
-	config.LocalAuthToken = ""
+	setLocalAuthToken("")
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
@@ -548,27 +531,19 @@ func protectedMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		authToken, err := c.Cookie("authToken")
-		if err != nil || authToken != config.LocalAuthToken || authToken == "" {
+		switch checkLocalAuthCookie(c) {
+		case localAuthCookieExpired:
+			sendSessionExpiredThenAbort(c)
+			return
+		case localAuthCookieInvalid:
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
 
-		// An open WebRTC session counts as activity, so the session is never
-		// expired out from under a connected KVM client.
-		if currentSession == nil && localAuthSessionExpired() {
-			config.LocalAuthToken = ""
-			if err := SaveConfig(); err != nil {
-				logger.Warn().Err(err).Msg("failed to save config while expiring the local session")
-			}
-			c.SetCookie("authToken", "", -1, "/", "", false, true)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
-			c.Abort()
-			return
+		if c.FullPath() != localSignalingPath {
+			recordLocalAuthActivity()
 		}
-		touchAuthActivity()
-
 		c.Next()
 	}
 }
@@ -589,11 +564,12 @@ func metricsAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Try cookie auth first (browser access)
-		authToken, err := c.Cookie("authToken")
-		if err == nil && authToken == config.LocalAuthToken && authToken != "" {
+		switch checkLocalAuthCookie(c) {
+		case localAuthCookieValid:
 			c.Next()
 			return
+		case localAuthCookieExpired:
+			c.SetCookie("authToken", "", -1, "/", "", false, true)
 		}
 
 		// Fall back to basic auth (Prometheus scraper)
@@ -686,6 +662,7 @@ const webReadHeaderTimeout = 10 * time.Second
 
 func RunWebServer() {
 	r := setupRouter()
+	go runLocalAuthExpirySweeper()
 
 	// Determine the binding address based on the config
 	bindAddress := getBindAddress(80) // default port
@@ -748,8 +725,8 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
-	touchAuthActivity()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 	config.LocalAuthMode = "password"
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -757,7 +734,7 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
@@ -804,15 +781,15 @@ func handleUpdatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
-	touchAuthActivity()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
@@ -841,7 +818,7 @@ func handleDeletePassword(c *gin.Context) {
 
 	// Disable password
 	config.HashedPassword = ""
-	config.LocalAuthToken = ""
+	setLocalAuthToken("")
 	config.LocalAuthMode = "noPassword"
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -943,15 +920,15 @@ func handleSetup(c *gin.Context) {
 		}
 
 		config.HashedPassword = string(hashedPassword)
-		config.LocalAuthToken = uuid.New().String()
-		touchAuthActivity()
+		token := uuid.New().String()
+		setLocalAuthToken(token)
 
 		// Set the cookie
-		c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+		c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 	} else {
 		// For noPassword mode, ensure the password field is empty
 		config.HashedPassword = ""
-		config.LocalAuthToken = ""
+		setLocalAuthToken("")
 	}
 
 	err := SaveConfig()
