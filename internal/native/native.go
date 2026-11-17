@@ -125,7 +125,9 @@ func NewNative(opts NativeOptions) *Native {
 func (n *Native) Start() error {
 	// set up singleton
 	setInstance(n)
-	setUpNativeHandlers()
+	if err := setUpNativeHandlers(); err != nil {
+		return err
+	}
 
 	// start the native video
 	go n.handleLogChan()
