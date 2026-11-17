@@ -12,6 +12,7 @@ import (
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/playoutdelay"
+	"github.com/jetkvm/kvm/internal/rtpclock"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
+	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/rs/zerolog"
 )
 
@@ -46,6 +48,21 @@ type Session struct {
 	closeOnce          sync.Once
 
 	codecMimeType string
+
+	videoClockMu sync.Mutex
+	videoClock   rtpclock.Clock
+}
+
+func (s *Session) writeVideoFrame(frame []byte, pts time.Duration) error {
+	s.videoClockMu.Lock()
+	defer s.videoClockMu.Unlock()
+
+	if step := s.videoClock.Advance(pts); step > 0 {
+		if err := s.VideoTrack.WriteSample(media.Sample{Duration: step}); err != nil {
+			return err
+		}
+	}
+	return s.VideoTrack.WriteSample(media.Sample{Data: frame})
 }
 
 var (

@@ -77,10 +77,10 @@ void video_send_format_report() {
     }
 }
 
-int video_send_frame(const uint8_t *frame, ssize_t len)
+int video_send_frame(const uint8_t *frame, ssize_t len, uint64_t pts_us)
 {
     if (video_handler != NULL) {
-        (*video_handler)(frame, len);
+        (*video_handler)(frame, len, pts_us);
     } else {
         log_error("video handler is not set");
     }
