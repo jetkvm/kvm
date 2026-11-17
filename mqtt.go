@@ -209,10 +209,7 @@ func (m *MQTTManager) onConnect(client mqtt.Client) {
 	// Immediately publish all current states so Home Assistant knows
 	// the current state of all switches and sensors right away.
 	if config.ActiveExtension == "atx-power" {
-		m.publishATXState(ATXState{
-			Power: ledPWRState.Load(),
-			HDD:   ledHDDState.Load(),
-		})
+		m.publishATXState(currentATXState())
 	}
 	if config.ActiveExtension == "dc-power" {
 		m.publishDCState(getDCState())

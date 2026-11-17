@@ -160,6 +160,8 @@
     "appearance_theme_system": "System",
     "appearance_title": "Ymddangosiad",
     "attach": "Atodi",
+    "atx_power_control_board_not_responding": "Nid yw'r bwrdd estyniad ATX yn ymateb",
+    "atx_power_control_board_not_responding_hint": "Gwiriwch y cebl RJ-12 a'r pŵer i'r bwrdd estyniad.",
     "atx_power_control_get_state_error": "Methwyd cael cyflwr pŵer ATX: {error}",
     "atx_power_control_hdd_led": "LED HDD",
     "atx_power_control_hold_hint": "Dal am 3 eiliad i orfodi diffodd",

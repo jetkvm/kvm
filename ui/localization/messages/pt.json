@@ -165,6 +165,8 @@
     "appearance_theme_system": "Sistema",
     "appearance_title": "Aparência",
     "attach": "Anexar",
+    "atx_power_control_board_not_responding": "A placa de extensão ATX não está respondendo",
+    "atx_power_control_board_not_responding_hint": "Verifique o cabo RJ-12 e a alimentação da placa de extensão.",
     "atx_power_control_get_state_error": "Falha ao obter estado de energia ATX: {error}",
     "atx_power_control_hdd_led": "LED do HDD",
     "atx_power_control_hold_hint": "Manter premido 3 s para forçar o desligamento",

@@ -23,6 +23,7 @@ type extensionPort struct {
 	extension  string
 	stop       chan struct{}
 	readerDone <-chan struct{}
+	atx        *atxLink
 	mux        *SerialMux
 	broker     *ConsoleBroker
 	sink       Sink
@@ -80,7 +81,9 @@ func (e *extensionPort) start(extension string) error {
 
 	switch extension {
 	case "atx-power":
-		e.readerDone = startPortReader(func() { runATXControl(port, stop) })
+		link := startATXLink()
+		e.atx = link
+		e.readerDone = startPortReader(func() { runATXControl(port, stop, link) })
 	case "dc-power":
 		registerDCMetrics()
 		e.readerDone = startPortReader(func() { runDCControl(port, stop) })
@@ -114,7 +117,10 @@ func (e *extensionPort) deactivate() {
 	if e.readerDone != nil {
 		<-e.readerDone
 	}
-	e.port, e.stop, e.readerDone, e.mux, e.broker = nil, nil, nil, nil, nil
+	if e.atx != nil {
+		e.atx.stop()
+	}
+	e.port, e.stop, e.readerDone, e.mux, e.broker, e.atx = nil, nil, nil, nil, nil, nil
 }
 
 func startPortReader(run func()) <-chan struct{} {
