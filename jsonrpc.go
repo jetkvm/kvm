@@ -146,7 +146,20 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params, session)
+	var result any
+	call := func() error {
+		result, err = callRPCHandler(scopedLogger, handler, request.Params, session)
+		return err
+	}
+	if handler.Input {
+		err = session.input(call)
+	} else {
+		err = call()
+	}
+	if errors.Is(err, errSessionInputRetired) {
+		scopedLogger.Debug().Msg("dropped RPC input from a replaced or closed session")
+		return
+	}
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -593,6 +606,7 @@ type RPCHandler struct {
 	Func           any
 	Params         []string
 	OptionalParams []string
+	Input          bool
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
@@ -1376,7 +1390,7 @@ func (r *keyboardMacroRun) finish() {
 	r.cancel()
 }
 
-func (r *keyboardMacroRun) execute(macro []hidrpc.KeyboardMacroStep) error {
+func (r *keyboardMacroRun) execute(session *Session, macro []hidrpc.KeyboardMacroStep) error {
 	defer r.finish()
 
 	keyboardMacroExec.Lock()
@@ -1395,7 +1409,7 @@ func (r *keyboardMacroRun) execute(macro []hidrpc.KeyboardMacroStep) error {
 		currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
-	err := rpcDoExecuteKeyboardMacro(r.ctx, macro)
+	err := rpcDoExecuteKeyboardMacro(r.ctx, session, macro)
 
 	s.State = false
 	if currentSession != nil {
@@ -1405,13 +1419,16 @@ func (r *keyboardMacroRun) execute(macro []hidrpc.KeyboardMacroStep) error {
 	return err
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
-	return registerKeyboardMacro().execute(macro)
+func rpcExecuteKeyboardMacro(session *Session, macro []hidrpc.KeyboardMacroStep) error {
+	if session != nil && !session.acceptsInput() {
+		return errSessionInputRetired
+	}
+	return registerKeyboardMacro().execute(session, macro)
 }
 
 // rpcRunKeyboardMacro runs a stored macro by ID or case-insensitive name, the
 // way the MQTT command does, and returns when it has finished.
-func rpcRunKeyboardMacro(macro string) error {
+func rpcRunKeyboardMacro(session *Session, macro string) error {
 	stored, ok := findKeyboardMacro(strings.TrimSpace(macro))
 	if !ok {
 		return fmt.Errorf("unknown keyboard macro: %s", macro)
@@ -1420,7 +1437,7 @@ func rpcRunKeyboardMacro(macro string) error {
 	if err != nil {
 		return err
 	}
-	return rpcExecuteKeyboardMacro(steps)
+	return rpcExecuteKeyboardMacro(session, steps)
 }
 
 func rpcCancelKeyboardMacro() {
@@ -1433,21 +1450,28 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
 }
 
-func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+func rpcDoExecuteKeyboardMacro(ctx context.Context, session *Session, macro []hidrpc.KeyboardMacroStep) error {
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
 		delay := time.Duration(step.Delay) * time.Millisecond
 
-		err := rpcKeyboardReport(step.Modifier, step.Keys)
+		err := session.input(func() error {
+			if err := rpcKeyboardReport(step.Modifier, step.Keys); err != nil {
+				return err
+			}
+			// notify the device that the keyboard state is being cleared
+			if isClearKeyStep(step) {
+				gadget.UpdateKeysDown(0, keyboardClearStateKeys)
+			}
+			return nil
+		})
+		if errors.Is(err, errSessionInputRetired) {
+			return err
+		}
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
 			return err
-		}
-
-		// notify the device that the keyboard state is being cleared
-		if isClearKeyStep(step) {
-			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
 		}
 
 		// Use context-aware sleep that can be cancelled
@@ -1456,8 +1480,8 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 			// Sleep completed normally
 		case <-ctx.Done():
 			// make sure keyboard state is reset
-			err := rpcKeyboardReport(0, keyboardClearStateKeys)
-			if err != nil {
+			err := session.input(func() error { return rpcKeyboardReport(0, keyboardClearStateKeys) })
+			if err != nil && !errors.Is(err, errSessionInputRetired) {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}
 
@@ -1482,10 +1506,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"renewDHCPLease":             {Func: rpcRenewDHCPLease},
 	"getKeyboardLedState":        {Func: rpcGetKeyboardLedState},
 	"getKeyDownState":            {Func: rpcGetKeysDownState},
-	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
-	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}},
-	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
-	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
+	"keyboardReport":             {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}, Input: true},
+	"keypressReport":             {Func: rpcKeypressReport, Params: []string{"key", "press"}, Input: true},
+	"absMouseReport":             {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}, Input: true},
+	"relMouseReport":             {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}, Input: true},
 	"wakeHost":                   {Func: rpcWakeHost},
 	"getVideoState":              {Func: rpcGetVideoState},
 	"getUSBState":                {Func: rpcGetUSBState},

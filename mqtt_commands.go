@@ -298,7 +298,7 @@ func (m *MQTTManager) handleKeyboardMacroCommand(client mqtt.Client, msg mqtt.Me
 		return
 	}
 	go func() {
-		if err := run.execute(steps); err != nil {
+		if err := run.execute(nil, steps); err != nil {
 			if errors.Is(err, context.Canceled) {
 				mqttLogger.Info().Str("macro", name).Msg("keyboard macro canceled")
 				return

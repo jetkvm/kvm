@@ -50,7 +50,7 @@ func TestHidCancelStopsMacroWaitingToRun(t *testing.T) {
 	}()
 
 	done := make(chan error, 1)
-	go func() { done <- rpcExecuteKeyboardMacro(slowMacro()) }()
+	go func() { done <- rpcExecuteKeyboardMacro(nil, slowMacro()) }()
 	waitForRegisteredMacro(t)
 
 	handle(webrtc.DataChannelMessage{Data: []byte{byte(hidrpc.TypeCancelKeyboardMacroReport)}})

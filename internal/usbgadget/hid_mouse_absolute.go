@@ -112,6 +112,15 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
+	if err := u.absMouseReportLocked(x, y, buttons); err != nil {
+		return err
+	}
+
+	u.resetUserInputTime()
+	return nil
+}
+
+func (u *UsbGadget) absMouseReportLocked(x int, y int, buttons uint8) error {
 	err := u.absMouseWriteHidFile([]byte{
 		1,            // Report ID 1
 		buttons,      // Buttons
@@ -124,15 +133,31 @@ func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 		return err
 	}
 
+	u.absMouseButtons, u.absMouseX, u.absMouseY = buttons, x, y
 	if pressed := buttons != 0; pressed != u.absMousePressed {
 		u.absMousePressed = pressed
 		updateHidHandover(func(h *hidHandover) {
 			h.AbsPressed, h.AbsX, h.AbsY = pressed, x, y
 		})
 	}
-
-	u.resetUserInputTime()
 	return nil
+}
+
+func (u *UsbGadget) releaseAbsMouseButtons() error {
+	u.hidLifecycle.RLock()
+	defer u.hidLifecycle.RUnlock()
+
+	if !u.enabledDevices.AbsoluteMouse {
+		return nil
+	}
+
+	u.absMouseLock.Lock()
+	defer u.absMouseLock.Unlock()
+
+	if u.absMouseButtons == 0 {
+		return nil
+	}
+	return u.absMouseReportLocked(u.absMouseX, u.absMouseY, 0)
 }
 
 func (u *UsbGadget) AbsMouseWheelReport(wheelY int8, wheelX int8) error {
