@@ -11,6 +11,7 @@
     "fr",
     "it",
     "ja",
+    "ko",
     "nb",
     "pt",
     "ru",
@@ -18,8 +19,7 @@
     "sv",
     "tr",
     "zh-tw",
-    "zh",
-    "ko"
+    "zh"
   ],
   "languageTags": [
     "en",
@@ -30,6 +30,7 @@
     "fr",
     "it",
     "ja",
+    "ko",
     "nb",
     "pt",
     "ru",
@@ -37,8 +38,7 @@
     "sv",
     "tr",
     "zh-tw",
-    "zh",
-    "ko"
+    "zh"
   ],
   "modules": [
     "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4.4.4/dist/index.js",
