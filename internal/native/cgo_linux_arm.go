@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && arm && cgo
 
 // TODO: use a generator to generate the cgo code for the native functions
 // there's too much boilerplate code to write manually
