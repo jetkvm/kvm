@@ -96,13 +96,13 @@ func RunNativeProcess(binaryName string) {
 	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
 
 	nativeOptions := proxyOptions.toNativeOptions()
-	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
-		// Write 4-byte frame length prefix, then frame data
-		var frameSizeBuffer [4]byte
-		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
+	nativeOptions.OnVideoFrameReceived = func(frame []byte, pts time.Duration) {
+		var header [videoFrameHeaderSize]byte
+		binary.LittleEndian.PutUint32(header[:4], uint32(len(frame)))
+		binary.LittleEndian.PutUint64(header[4:], uint64(pts/time.Microsecond))
 
-		if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
-			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
+		if _, err := conn.Write(header[:]); err != nil {
+			logger.Fatal().Err(err).Msg("failed to write frame header to video stream socket")
 		}
 		if _, err := conn.Write(frame); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")

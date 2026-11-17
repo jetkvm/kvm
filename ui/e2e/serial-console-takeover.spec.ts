@@ -58,6 +58,21 @@ async function expectEcho(page: Page, tag: string): Promise<void> {
     .toBe(true);
 }
 
+// The counterpart of expectEcho: while another extension owns the port there
+// is no console, so what a session sends must not come back.
+async function expectNoEcho(page: Page, tag: string): Promise<void> {
+  const text = `${tag}_${Date.now()}`;
+  await page.evaluate(text => {
+    window.__e2eSerial?.dc.send(JSON.stringify({ type: "serial", data: `${text}\n` }));
+  }, text);
+  await page.waitForTimeout(1_000);
+  const rx = await page.evaluate(() => window.__e2eSerial?.rx ?? []);
+  expect(
+    rx.some(m => m.includes(text)),
+    `${tag}: no console echo`,
+  ).toBe(false);
+}
+
 // The device's built-in defaults; getSerialSettings errors until a settings
 // file exists.
 const DEFAULT_SERIAL_SETTINGS = {
@@ -79,6 +94,7 @@ const DEFAULT_SERIAL_SETTINGS = {
 test.describe("serial console sink across a session takeover", () => {
   let settingsChanged = false;
   let settings: Record<string, unknown> = DEFAULT_SERIAL_SETTINGS;
+  let extension: string | undefined;
 
   test.beforeAll(async ({ browser }) => {
     await ensureNoPasswordViaAPI();
@@ -89,16 +105,54 @@ test.describe("serial console sink across a session takeover", () => {
       } catch {
         // No settings file yet: the device runs on its defaults.
       }
-      await callJsonRpc(page, "setSerialSettings", { settings: { ...settings, enableEcho: true } });
+      // The console reads the extension port only while it is the active
+      // extension.
+      extension = (await callJsonRpc(page, "getActiveExtension")) as string;
+      await callJsonRpc(page, "setActiveExtension", {
+        extensionId: "serial-console",
+      });
+      await callJsonRpc(page, "setSerialSettings", {
+        settings: { ...settings, enableEcho: true },
+      });
       settingsChanged = true;
     });
   });
 
   test.afterAll(async ({ browser }) => {
-    if (!settingsChanged) return;
+    if (extension === undefined) return;
     await withRpcPage(browser, async page => {
-      await callJsonRpc(page, "setSerialSettings", { settings });
+      if (settingsChanged) await callJsonRpc(page, "setSerialSettings", { settings });
+      await callJsonRpc(page, "setActiveExtension", { extensionId: extension });
     });
+  });
+
+  // The UI opens the serial channel once per connection, before the user
+  // selects an extension. The console must reach that channel when it is
+  // selected later, and must stay off the port while the ATX or DC extension
+  // reads it.
+  test("the console follows the active extension on an open channel @serial", async ({
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+
+    const page = await browser.newPage();
+    await hookSerialChannel(page);
+    await page.goto("/", { waitUntil: "networkidle" });
+    await waitForWebRTCReady(page);
+    await expectEcho(page, "initial");
+
+    for (const other of ["atx-power", "dc-power", "", "atx-power"]) {
+      await callJsonRpc(page, "setActiveExtension", { extensionId: other });
+      expect(await callJsonRpc(page, "getActiveExtension")).toBe(other);
+      await expectNoEcho(page, `while_${other || "none"}`);
+
+      await callJsonRpc(page, "setActiveExtension", {
+        extensionId: "serial-console",
+      });
+      await expectEcho(page, `after_${other || "none"}`);
+    }
+
+    await page.close();
   });
 
   test("the new session keeps its serial sink when the replaced session's channel closes @serial", async ({

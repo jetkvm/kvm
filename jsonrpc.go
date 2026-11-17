@@ -426,11 +426,14 @@ type SSHKeyState struct {
 // tls, local_loopback, log_level, tailscale: the HTTPS setting (Access page),
 // the loopback-only setting and the default log level (Advanced page) and the
 // Tailscale card (Network page), each shown only when reported.
+// storage_download: the device can download an image from a URL into its
+// storage (startStorageDownload); the mount page hides the control without it.
 func rpcGetDeviceCapabilities() ([]string, error) {
 	return []string{
 		"shell", "extensions", "usb_serial", "custom_edid", "upload_channel", "video_during_update",
 		"http_proxy", "domain", "mdns", "ipv6",
 		"tls", "local_loopback", "log_level", "tailscale",
+		"storage_download",
 	}, nil
 }
 
@@ -459,6 +462,9 @@ var (
 func rpcSetVideoStreamPaused(session *Session, paused bool) error {
 	videoPauseMu.Lock()
 	defer videoPauseMu.Unlock()
+	if session == nil || session.isClosed() {
+		return context.Canceled
+	}
 	if paused {
 		videoPausedBy = session
 		return nativeInstance.VideoStop()
@@ -907,24 +913,15 @@ func rpcGetActiveExtension() (string, error) {
 }
 
 func rpcSetActiveExtension(extensionId string) error {
-	if config.ActiveExtension == extensionId {
+	if config.ActiveExtension == extensionId && extPort.active(extensionId) {
 		return nil
 	}
-	switch config.ActiveExtension {
-	case "atx-power":
-		_ = unmountATXControl()
-	case "dc-power":
-		_ = unmountDCControl()
+	if err := extPort.activate(extensionId); err != nil {
+		return fmt.Errorf("failed to open the serial port: %w", err)
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
-	}
-	switch extensionId {
-	case "atx-power":
-		_ = mountATXControl()
-	case "dc-power":
-		_ = mountDCControl()
 	}
 
 	// Re-publish MQTT HA Discovery for the new extension
@@ -1519,6 +1516,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"listStorageFiles":           {Func: rpcListStorageFiles},
 	"deleteStorageFile":          {Func: rpcDeleteStorageFile, Params: []string{"filename"}},
 	"startStorageFileUpload":     {Func: rpcStartStorageFileUpload, Params: []string{"filename", "size"}},
+	"startStorageDownload":       {Func: rpcStartStorageDownload, Params: []string{"url", "filename"}},
+	"getStorageDownloadState":    {Func: rpcGetStorageDownloadState},
+	"cancelStorageDownload":      {Func: rpcCancelStorageDownload},
 	"getWakeOnLanDevices":        {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":        {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"factoryReset":               {Func: rpcFactoryReset},

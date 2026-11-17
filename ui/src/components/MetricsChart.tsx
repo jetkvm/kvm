@@ -45,7 +45,7 @@ export default function MetricsChart({
         <XAxis
           dataKey="date"
           tick={{
-            fontFamily: "Circular",
+            fontFamily: "Inter",
             fontSize: "12px",
             fill: "rgba(107, 114, 128, 1)",
           }}
@@ -69,7 +69,7 @@ export default function MetricsChart({
           axisLine={false}
           orientation="right"
           tick={{
-            fontFamily: "Circular",
+            fontFamily: "Inter",
             fontSize: "12px",
             fill: "rgba(107, 114, 128, 1)",
           }}

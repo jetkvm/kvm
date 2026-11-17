@@ -13,6 +13,7 @@ import {
   restartAppViaSSH,
   skipWithoutDeviceShell,
   rebootDeviceViaSSH,
+  rebootAndReconnect,
 } from "../helpers";
 import { waitForKeyboardReady, KEY, skipWithoutRemoteHost } from "./remote-agent";
 import {
@@ -271,6 +272,97 @@ test.describe("Remote Host Agent: USB gadget", () => {
     await expect(sharedPage.getByRole("button", { name: "USB Serial Console" })).not.toBeVisible({
       timeout: 5000,
     });
+  });
+
+  test("usb: relative mouse works when the absolute mouse is disabled at boot, and all devices work after a runtime re-enable", async () => {
+    test.setTimeout(300_000);
+
+    const relMoveReachesHost = () =>
+      expect(async () => {
+        const events = await agent!.expectMouseMove(async () => {
+          await callJsonRpc(sharedPage, "relMouseReport", {
+            dx: 8,
+            dy: 0,
+            buttons: 0,
+          });
+        }, 2000);
+        expect(events.some(ev => ev.type === "mouse_move_rel")).toBe(true);
+      }).toPass({ timeout: 30_000 });
+
+    try {
+      await setUsbDevicesAndWait({ ...USB_DEVICES_DEFAULT, absolute_mouse: false }, [
+        "keyboard",
+        "relative_mouse",
+      ]);
+      await rebootAndReconnect(sharedPage);
+      await agent!.waitForInputDevices(["keyboard", "relative_mouse"], 60_000);
+      await relMoveReachesHost();
+
+      await setUsbDevicesAndWait(USB_DEVICES_DEFAULT, [
+        "keyboard",
+        "absolute_mouse",
+        "relative_mouse",
+      ]);
+      await relMoveReachesHost();
+      await expect(async () => {
+        const events = await agent!.expectMouseMove(async () => {
+          await sendAbsMouseMove(sharedPage, 0, 0);
+          await sendAbsMouseMove(sharedPage, 32767, 32767);
+        }, 2000);
+        expect(events.some(ev => ev.type === "mouse_move_abs")).toBe(true);
+      }).toPass({ timeout: 30_000 });
+      const keyEvents = await waitForKeyboardReady(agent!, sharedPage);
+      expect(keyEvents.length, "keyboard after runtime re-enable").toBeGreaterThan(0);
+    } finally {
+      await setUsbDevicesAndWait(USB_DEVICES_DEFAULT, [
+        "keyboard",
+        "absolute_mouse",
+        "relative_mouse",
+      ]);
+    }
+  });
+
+  test("usb: a keyboard report reaches no host device when the keyboard is disabled at boot", async () => {
+    test.setTimeout(300_000);
+
+    try {
+      await setUsbDevicesAndWait({ ...USB_DEVICES_DEFAULT, keyboard: false }, [
+        "absolute_mouse",
+        "relative_mouse",
+      ]);
+      await rebootAndReconnect(sharedPage);
+      await agent!.waitForInputDevices(["absolute_mouse", "relative_mouse"], 60_000);
+
+      await expect(async () => {
+        const events = await agent!.expectMouseMove(async () => {
+          await sendAbsMouseMove(sharedPage, 0, 0);
+          await sendAbsMouseMove(sharedPage, 16384, 16384);
+        }, 2000);
+        expect(events.some(ev => ev.type === "mouse_move_abs")).toBe(true);
+      }).toPass({ timeout: 30_000 });
+      await new Promise(r => setTimeout(r, 500));
+      await agent!.clearAllEvents();
+
+      await callJsonRpc(sharedPage, "keyboardReport", {
+        modifier: 0x01,
+        keys: [0x04, 0x05, 0x06, 0x07, 0, 0],
+      });
+      await callJsonRpc(sharedPage, "keyboardReport", {
+        modifier: 0,
+        keys: [0, 0, 0, 0, 0, 0],
+      });
+      await new Promise(r => setTimeout(r, 1500));
+
+      expect(await agent!.getMouseEvents(), "mouse events from a keyboard report").toEqual([]);
+      expect(await agent!.getKeyboardEvents(), "key events with no keyboard").toEqual([]);
+    } finally {
+      await setUsbDevicesAndWait(USB_DEVICES_DEFAULT, [
+        "keyboard",
+        "absolute_mouse",
+        "relative_mouse",
+      ]);
+      await waitForKeyboardReady(agent!, sharedPage);
+    }
   });
 
   // ═══════════════════════════════════════════
