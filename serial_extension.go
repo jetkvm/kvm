@@ -20,6 +20,7 @@ type extensionPort struct {
 
 	mu         sync.Mutex
 	port       serial.Port
+	extension  string
 	stop       chan struct{}
 	readerDone <-chan struct{}
 	mux        *SerialMux
@@ -46,8 +47,17 @@ func (e *extensionPort) activate(extension string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	previous, wasOpen := e.extension, e.port != nil
 	e.deactivate()
 
+	err := e.start(extension)
+	if err != nil && wasOpen {
+		_ = e.start(previous)
+	}
+	return err
+}
+
+func (e *extensionPort) start(extension string) error {
 	mode := defaultMode
 	if extension == "serial-console" {
 		mode = e.settings.mode
@@ -57,11 +67,13 @@ func (e *extensionPort) activate(extension string) error {
 		serialLogger.Error().
 			Err(err).
 			Str("path", serialPortPath).
+			Str("extension", extension).
 			Interface("mode", mode).
 			Msg("Error opening serial port")
 		return err
 	}
 	e.port = port
+	e.extension = extension
 
 	stop := make(chan struct{})
 	e.stop = stop
@@ -81,6 +93,12 @@ func (e *extensionPort) activate(extension string) error {
 		e.readerDone = e.mux.readerDone
 	}
 	return nil
+}
+
+func (e *extensionPort) active(extension string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.port != nil && e.extension == extension
 }
 
 func (e *extensionPort) deactivate() {

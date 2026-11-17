@@ -906,14 +906,16 @@ func rpcGetActiveExtension() (string, error) {
 }
 
 func rpcSetActiveExtension(extensionId string) error {
-	if config.ActiveExtension == extensionId {
+	if config.ActiveExtension == extensionId && extPort.active(extensionId) {
 		return nil
+	}
+	if err := extPort.activate(extensionId); err != nil {
+		return fmt.Errorf("failed to open the serial port: %w", err)
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
-	_ = extPort.activate(extensionId)
 
 	// Re-publish MQTT HA Discovery for the new extension
 	if mqttManager != nil {

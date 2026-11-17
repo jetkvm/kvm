@@ -94,14 +94,25 @@ func (p *fakeSerialPort) deliver(t *testing.T, data string) {
 }
 
 type fakeSerialPorts struct {
-	mu     sync.Mutex
-	opened []*fakeSerialPort
+	mu        sync.Mutex
+	opened    []*fakeSerialPort
+	failOpens int
+}
+
+func (f *fakeSerialPorts) failNextOpens(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failOpens = n
 }
 
 func (f *fakeSerialPorts) open(*serial.Mode) (serial.Port, error) {
 	port := newFakeSerialPort()
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.failOpens > 0 {
+		f.failOpens--
+		return nil, errors.New("serial port busy")
+	}
 	f.opened = append(f.opened, port)
 	return port, nil
 }
@@ -349,4 +360,70 @@ func TestSerialConsoleUseDuringExtensionSwitch(t *testing.T) {
 
 	close(stop)
 	wg.Wait()
+}
+
+func TestFailedSwitchKeepsPreviousExtension(t *testing.T) {
+	ports := useFakeExtensionPort(t)
+
+	if err := extPort.activate("atx-power"); err != nil {
+		t.Fatal(err)
+	}
+
+	ports.failNextOpens(1)
+	if err := extPort.activate("serial-console"); err == nil {
+		t.Fatal("the switch reported success although the serial port did not open")
+	}
+	if mux, _ := extPort.console(); mux != nil {
+		t.Fatal("the serial console exists after a failed switch")
+	}
+	if !extPort.active("atx-power") {
+		t.Fatal("the ATX extension is not active after a failed switch")
+	}
+
+	port := ports.current()
+	for _, powerOn := range []bool{true, false, true} {
+		line := "1111\n"
+		if powerOn {
+			line = "1011\n"
+		}
+		port.deliver(t, line)
+		eventually(t, "the ATX power LED state of line "+line, func() bool {
+			return ledPWRState.Load() == powerOn
+		})
+	}
+
+	if err := extPort.activate("serial-console"); err != nil {
+		t.Fatal(err)
+	}
+	if !extPort.active("serial-console") {
+		t.Fatal("the serial console is not active after the retry")
+	}
+}
+
+func TestSameExtensionCanBeRetriedAfterPortFailure(t *testing.T) {
+	ports := useFakeExtensionPort(t)
+
+	if err := extPort.activate("atx-power"); err != nil {
+		t.Fatal(err)
+	}
+
+	ports.failNextOpens(2)
+	if err := extPort.activate("dc-power"); err == nil {
+		t.Fatal("the switch reported success although the serial port did not open")
+	}
+	if extPort.active("atx-power") || extPort.active("dc-power") {
+		t.Fatal("an extension is reported active without an open serial port")
+	}
+	if err := extPort.write([]byte("x")); !errors.Is(err, errSerialPortClosed) {
+		t.Fatalf("write without a port returned %v", err)
+	}
+
+	if err := extPort.activate("atx-power"); err != nil {
+		t.Fatal(err)
+	}
+	port := ports.current()
+	port.deliver(t, "1011\n")
+	eventually(t, "the ATX power LED to turn on", func() bool { return ledPWRState.Load() })
+	port.deliver(t, "1111\n")
+	eventually(t, "the ATX power LED to turn off", func() bool { return !ledPWRState.Load() })
 }
