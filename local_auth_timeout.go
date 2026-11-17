@@ -137,13 +137,13 @@ func checkLocalAuthCookie(c *gin.Context) localAuthCookieState {
 	return localAuthCookieValid
 }
 
-func localLoginActive() bool {
+func localSignalingTokenValid(token string) bool {
 	localAuthMu.Lock()
 	defer localAuthMu.Unlock()
 	if config.LocalAuthMode != "password" {
 		return true
 	}
-	return config.LocalAuthToken != "" && !localAuthIdleLocked()
+	return token != "" && token == config.LocalAuthToken && !localAuthIdleLocked()
 }
 
 func sendSessionExpiredThenAbort(c *gin.Context) {

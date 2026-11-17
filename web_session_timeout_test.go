@@ -1,21 +1,23 @@
-//go:build linux && arm
-
 package kvm
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/network/types"
 )
 
 type sessionTimeoutTest struct {
@@ -51,6 +53,7 @@ func setupSessionTimeoutTest(t *testing.T, authMode string, idleMinutes int) *se
 	currentSession = nil
 
 	config.LocalAuthIdleMinutes = idleMinutes
+	config.NetworkConfig = &types.NetworkConfig{}
 	if authMode == "password" {
 		st.token = "login-token"
 		setLocalAuthToken(st.token)
@@ -353,5 +356,92 @@ func TestSessionTimeoutRejectsOutOfRangeValues(t *testing.T) {
 	}
 	if config.LocalAuthIdleMinutes != 15 {
 		t.Fatalf("rejected values changed the timeout to %d minutes", config.LocalAuthIdleMinutes)
+	}
+}
+
+func (st *sessionTimeoutTest) signalingServer() *httptest.Server {
+	var handlers sync.WaitGroup
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlers.Add(1)
+		defer handlers.Done()
+		st.router.ServeHTTP(w, r)
+	}))
+	st.t.Cleanup(func() {
+		handlers.Wait()
+		server.Close()
+	})
+	return server
+}
+
+func (st *sessionTimeoutTest) openSignaling(server *httptest.Server) *websocket.Conn {
+	st.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	header := http.Header{}
+	header.Set("Cookie", "authToken="+st.token)
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+localSignalingPath,
+		&websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		st.t.Fatal(err)
+	}
+	st.t.Cleanup(func() { _ = conn.CloseNow() })
+	if _, _, err := conn.Read(ctx); err != nil {
+		st.t.Fatalf("reading device metadata: %v", err)
+	}
+	return conn
+}
+
+func offerThenPing(t *testing.T, conn *websocket.Conn) error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"offer","data":{"sd":""}}`)); err != nil {
+		return err
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte("ping")); err != nil {
+		return err
+	}
+	for {
+		_, msg, err := conn.Read(ctx)
+		if err != nil {
+			return err
+		}
+		if string(msg) == "pong" {
+			return nil
+		}
+	}
+}
+
+func TestSessionTimeoutSignalingSocketIsBoundToItsLogin(t *testing.T) {
+	rotations := map[string]func(st *sessionTimeoutTest) *httptest.ResponseRecorder{
+		"password change": func(st *sessionTimeoutTest) *httptest.ResponseRecorder {
+			body := `{"oldPassword":"` + metricsTestPassword + `","newPassword":"another password"}`
+			return st.send(http.MethodPut, "/auth/password-local", st.token, body)
+		},
+		"new login": func(st *sessionTimeoutTest) *httptest.ResponseRecorder {
+			return st.send(http.MethodPost, "/auth/login-local", "", `{"password":"`+metricsTestPassword+`"}`)
+		},
+	}
+	for name, rotate := range rotations {
+		t.Run(name, func(t *testing.T) {
+			st := setupSessionTimeoutTest(t, "password", 15)
+			server := st.signalingServer()
+
+			if err := offerThenPing(t, st.openSignaling(server)); err != nil {
+				t.Fatalf("offer on a socket of the current login: %v", err)
+			}
+
+			stale := st.openSignaling(server)
+			expectStatus(t, rotate(st), http.StatusOK, name)
+			st.token = config.LocalAuthToken
+
+			err := offerThenPing(t, stale)
+			if status := websocket.CloseStatus(err); status != signalingStatusSessionExpired {
+				t.Fatalf("offer on a socket of the replaced login: got %v, want close status %d", err, signalingStatusSessionExpired)
+			}
+			if err := offerThenPing(t, st.openSignaling(server)); err != nil {
+				t.Fatalf("offer on a socket of the new login: %v", err)
+			}
+		})
 	}
 }

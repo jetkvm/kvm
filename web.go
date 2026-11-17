@@ -282,7 +282,8 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
+	localAuthToken, _ := c.Cookie("authToken")
+	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, localAuthToken, &scopedLogger)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
@@ -293,6 +294,7 @@ func handleWebRTCSignalWsMessages(
 	isCloudConnection bool,
 	source string,
 	connectionID string,
+	localAuthToken string,
 	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -412,8 +414,8 @@ func handleWebRTCSignalWsMessages(
 
 		if message.Type == "offer" {
 			l.Info().Msg("new session request received")
-			if !isCloudConnection && !localLoginActive() {
-				l.Info().Msg("local login expired, closing the signaling connection")
+			if !isCloudConnection && !localSignalingTokenValid(localAuthToken) {
+				l.Info().Msg("local login of this signaling connection is not valid, closing it")
 				_ = wsCon.Close(signalingStatusSessionExpired, "session expired")
 				return nil
 			}
