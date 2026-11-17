@@ -1,6 +1,10 @@
 package keyboard
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -146,35 +150,61 @@ func TestHIDStepsErrors(t *testing.T) {
 	}
 }
 
-// TestKeyMapsMatchWebUI spot-checks that the ported maps agree with
-// ui/src/keyboardMappings.ts.
-func TestKeyMapsMatchWebUI(t *testing.T) {
-	keyChecks := map[string]byte{
-		"KeyA":      0x04,
-		"Digit1":    0x1e,
-		"Enter":     0x28,
-		"Delete":    0x4c,
-		"F24":       0x73,
-		"AltGr":     0xe6,
-		"MetaRight": 0xe7,
-	}
-	for name, want := range keyChecks {
-		if got := keyCodes[name]; got != want {
-			t.Errorf("keyCodes[%q] = 0x%02x, want 0x%02x", name, got, want)
-		}
-	}
+var uiMapEntry = regexp.MustCompile(`^\s*"?([A-Za-z0-9_]+)"?:\s*0x([0-9a-fA-F]{1,2}),\s*(//.*)?$`)
 
-	modifierChecks := map[string]byte{
-		"ControlLeft":  0x01,
-		"ShiftLeft":    0x02,
-		"AltRight":     0x40,
-		"MetaRight":    0x80,
-		"AltGr":        0x40,
-		"ControlRight": 0x10,
+func parseUIMap(t *testing.T, source, name string) map[string]byte {
+	t.Helper()
+	header := "export const " + name + " = {"
+	start := strings.Index(source, header)
+	if start < 0 {
+		t.Fatalf("%s not found in keyboardMappings.ts", header)
 	}
-	for name, want := range modifierChecks {
-		if got := modifierMasks[name]; got != want {
-			t.Errorf("modifierMasks[%q] = 0x%02x, want 0x%02x", name, got, want)
+	body := source[start+len(header):]
+	end := strings.Index(body, "\n}")
+	if end < 0 {
+		t.Fatalf("end of %s not found in keyboardMappings.ts", name)
+	}
+	entries := map[string]byte{}
+	for _, line := range strings.Split(body[:end], "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		m := uiMapEntry.FindStringSubmatch(line)
+		if m == nil {
+			t.Fatalf("cannot parse %s entry %q in keyboardMappings.ts", name, trimmed)
+		}
+		code, err := strconv.ParseUint(m[2], 16, 8)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[m[1]] = byte(code)
+	}
+	return entries
+}
+
+func assertSameMap(t *testing.T, label string, got, want map[string]byte) {
+	t.Helper()
+	for name, code := range want {
+		if goCode, ok := got[name]; !ok {
+			t.Errorf("%s: %q is in the UI map but not in the Go map", label, name)
+		} else if goCode != code {
+			t.Errorf("%s: %q = 0x%02x in Go, 0x%02x in the UI", label, name, goCode, code)
 		}
 	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Errorf("%s: %q is in the Go map but not in the UI map", label, name)
+		}
+	}
+}
+
+func TestKeyMapsMatchWebUI(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "ui", "src", "keyboardMappings.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(raw)
+	assertSameMap(t, "keys", keyCodes, parseUIMap(t, source, "keys"))
+	assertSameMap(t, "modifiers", modifierMasks, parseUIMap(t, source, "modifiers"))
 }
