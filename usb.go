@@ -228,20 +228,27 @@ func attemptUSBRecovery(state string) string {
 		Bool("gadget_attached", gadgetAttached).
 		Msg("USB gadget is detached while USB emulation should be enabled; rebinding USB gadget")
 
+	// A config left with no linked function cannot be bound to a UDC, so the
+	// rebind fails with EINVAL and every retry fails the same way. Fall
+	// through to the reconfigure below, which relinks the functions and is
+	// the only thing that repairs that state.
+	rebound := true
 	if err := gadget.RebindUsb(true); err != nil {
-		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget by rebinding USB device controller")
-		return state
+		rebound = false
+		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget by rebinding USB device controller; attempting full USB gadget reconfigure")
 	}
 
-	// Clear stale /dev/hidg* handles from the pre-rebind gadget instance.
-	// The next write/open must use the newly recreated device nodes.
-	gadget.ResetHIDFiles()
+	if rebound {
+		// Clear stale /dev/hidg* handles from the pre-rebind gadget instance.
+		// The next write/open must use the newly recreated device nodes.
+		gadget.ResetHIDFiles()
 
-	if tryReopenKeyboard("udc_rebind", false) {
-		return gadget.GetUsbState()
+		if tryReopenKeyboard("udc_rebind", false) {
+			return gadget.GetUsbState()
+		}
+
+		usbLogger.Warn().Msg("keyboard HID file not ready after UDC rebind; attempting full USB gadget reconfigure")
 	}
-
-	usbLogger.Warn().Msg("keyboard HID file not ready after UDC rebind; attempting full USB gadget reconfigure")
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		usbLogger.Warn().Err(err).Msg("failed to recover USB gadget with full gadget reconfigure")
