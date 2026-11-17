@@ -117,6 +117,10 @@ function OsServicesSettingsPage() {
     guestUpdate?.phase === "installing"
       ? guestUpdate
       : null;
+  // A sender had an approved session with this KVM, now or earlier. Before
+  // that the page shows the setup; after it, the feature settings, and a
+  // sender that is away is not a missing installation.
+  const seenBefore = !!osServices.sender || !!settings?.last_sender_version;
   const { copy } = useCopyToClipboard();
   // A connected sender that has not registered video cannot act on the
   // video setting: it has no capture yet (no Screen Recording grant, no
@@ -206,260 +210,319 @@ function OsServicesSettingsPage() {
         </SettingsItem>
       ) : (
         <>
-          {runningUpdate ? (
-            <SettingsItem
-              title={m.guest_update_settings_title()}
-              description={guestUpdateDescription(runningUpdate)}
-            >
-              <Button
-                size="SM"
-                theme="primary"
-                text={m.guest_update_install()}
-                loading
-                disabled
-                data-testid="os-services-update-install"
-              />
-            </SettingsItem>
-          ) : (
-            osServices.sender && (
-              <SettingsItem
-                title={m.guest_update_settings_title()}
-                description={
-                  guestUpdate?.available && !guestUpdate.installable && installerProgress
-                    ? installerProgress
-                    : !guestUpdate?.available
-                      ? m.guest_update_settings_current({ current: osServices.sender.version })
-                      : guestUpdate.automatic && guestUpdate.installable
-                        ? m.guest_update_settings_automatic({
-                            current: osServices.sender.version,
-                            version: guestUpdate.version,
-                          })
-                        : m.guest_update_settings_available({
-                            current: osServices.sender.version,
-                            version: guestUpdate.version,
-                          })
-                }
-              >
-                {guestUpdate?.available &&
-                  (guestUpdate.installable ? (
-                    <Button
-                      size="SM"
-                      theme="primary"
-                      text={m.guest_update_install()}
-                      onClick={startUpdate}
-                      data-testid="os-services-update-install"
-                    />
-                  ) : (
+          <SettingsItem
+            title={m.os_services_enable_title()}
+            description={m.os_services_enable_description()}
+            loading={loading}
+          >
+            <Checkbox
+              checked={settings.enabled}
+              disabled={loading}
+              data-testid="os-services-enabled"
+              onChange={event => update({ ...settings, enabled: event.target.checked })}
+            />
+          </SettingsItem>
+
+          {settings.enabled && (
+            <>
+              {runningUpdate ? (
+                <SettingsItem
+                  title={m.guest_update_settings_title()}
+                  description={guestUpdateDescription(runningUpdate)}
+                >
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    text={m.guest_update_install()}
+                    loading
+                    disabled
+                    data-testid="os-services-update-install"
+                  />
+                </SettingsItem>
+              ) : (
+                osServices.sender && (
+                  <SettingsItem
+                    title={m.guest_update_settings_title()}
+                    description={
+                      guestUpdate?.available && !guestUpdate.installable && installerProgress
+                        ? installerProgress
+                        : !guestUpdate?.available
+                          ? m.guest_update_settings_current({ current: osServices.sender.version })
+                          : guestUpdate.automatic && guestUpdate.installable
+                            ? m.guest_update_settings_automatic({
+                                current: osServices.sender.version,
+                                version: guestUpdate.version,
+                              })
+                            : m.guest_update_settings_available({
+                                current: osServices.sender.version,
+                                version: guestUpdate.version,
+                              })
+                    }
+                  >
+                    {guestUpdate?.available &&
+                      (guestUpdate.installable ? (
+                        <Button
+                          size="SM"
+                          theme="primary"
+                          text={m.guest_update_install()}
+                          onClick={startUpdate}
+                          data-testid="os-services-update-install"
+                        />
+                      ) : (
+                        <OsServicesInstallerButton
+                          installer={installer}
+                          version={guestUpdate.version}
+                          theme="light"
+                          testId="os-services-update-mount-installer"
+                          menuTestId="os-services-update-installer-menu"
+                        />
+                      ))}
+                  </SettingsItem>
+                )
+              )}
+
+              {!runningUpdate &&
+                !osServices.connected &&
+                !osServices.approvalPending &&
+                (seenBefore ? (
+                  <SettingsItem
+                    title={m.os_services_away_title()}
+                    description={
+                      installerProgress ??
+                      m.os_services_away_description({
+                        version: settings.last_sender_version ?? "",
+                      })
+                    }
+                  >
                     <OsServicesInstallerButton
                       installer={installer}
-                      version={guestUpdate.version}
                       theme="light"
-                      testId="os-services-update-mount-installer"
-                      menuTestId="os-services-update-installer-menu"
+                      testId="os-services-mount-installer"
+                      menuTestId="os-services-installer-menu"
                     />
-                  ))}
-              </SettingsItem>
-            )
-          )}
-
-          {!runningUpdate && !osServices.connected && !osServices.approvalPending && (
-            <SettingsItem
-              title={m.os_services_install_title()}
-              description={installerProgress ?? m.os_services_install_description()}
-            >
-              <OsServicesInstallerButton
-                installer={installer}
-                theme="primary"
-                testId="os-services-mount-installer"
-                menuTestId="os-services-installer-menu"
-              />
-            </SettingsItem>
-          )}
-
-          {osServices.fingerprint && (
-            <div className="flex items-center justify-between gap-x-8">
-              <SettingsItem
-                title={m.os_services_fingerprint_title()}
-                description={
-                  osServices.approvalPending ? (
-                    <span className="text-amber-700 dark:text-amber-500">
-                      {m.os_services_fingerprint_pending()}
-                    </span>
-                  ) : (
-                    m.os_services_fingerprint_description()
-                  )
-                }
-              />
-              <div className="flex items-center">
-                <GridCard cardClassName="rounded-r-none">
-                  <div className="flex h-[34px] items-center px-3 font-mono text-xs whitespace-nowrap text-black select-all dark:text-white">
-                    {osServices.fingerprint}
-                  </div>
-                </GridCard>
-                <Button
-                  className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20"
-                  size="SM"
-                  type="button"
-                  theme="light"
-                  LeadingIcon={LuCopy}
-                  data-testid="os-services-fingerprint-copy"
-                  onClick={async () => {
-                    const id = osServices.fingerprint;
-                    if (await copy(id)) {
-                      notifications.success(m.os_services_fingerprint_copy_success({ id }));
-                    } else {
-                      notifications.error(m.os_services_fingerprint_copy_error());
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <SettingsSectionHeader title={m.os_services_video_section_title()} />
-
-            <SettingsItem
-              title={m.os_services_video_title()}
-              description={
-                videoUnavailable ? (
-                  <>
-                    {m.os_services_video_description()}
-                    <span className="mt-0.5 block text-amber-700 dark:text-amber-500">
-                      {osServices.videoError
-                        ? m.os_services_video_faulted({
-                            error: osServices.videoError,
-                          })
-                        : m.os_services_video_unregistered()}
-                    </span>
-                  </>
+                  </SettingsItem>
                 ) : (
-                  m.os_services_video_description()
-                )
-              }
-              loading={loading}
-            >
-              <Checkbox
-                checked={settings.video_enabled}
-                disabled={loading}
-                onChange={event => update({ ...settings, video_enabled: event.target.checked })}
-              />
-            </SettingsItem>
+                  <SettingsItem
+                    title={m.os_services_install_title()}
+                    description={installerProgress ?? m.os_services_setup_description()}
+                  >
+                    <OsServicesInstallerButton
+                      installer={installer}
+                      theme="primary"
+                      testId="os-services-mount-installer"
+                      menuTestId="os-services-installer-menu"
+                    />
+                  </SettingsItem>
+                ))}
 
-            <SettingsItem
-              title={m.os_services_capture_title()}
-              description={m.os_services_capture_description()}
-            >
-              <SelectMenuBasic
-                size="SM"
-                label=""
-                fullWidth
-                className="min-w-52"
-                value={settings.capture_display}
-                disabled={loading}
-                options={[
-                  { value: "", label: m.os_services_capture_auto() },
-                  ...Array.from(
-                    new Set([...(osServices.sender?.displays ?? []), settings.capture_display]),
-                  )
-                    .filter(Boolean)
-                    .map(name => ({ value: name, label: name })),
-                ]}
-                onChange={event => update({ ...settings, capture_display: event.target.value })}
-              />
-            </SettingsItem>
-            <SettingsItem
-              title={m.os_services_resolution_title()}
-              description={m.os_services_resolution_description()}
-            >
-              <SelectMenuBasic
-                size="SM"
-                label=""
-                fullWidth
-                className="min-w-52"
-                value={currentResolution === null ? settings.resolution : currentResolutionValue}
-                options={resolutionOptionsWith(currentResolution)}
-                disabled={loading}
-                onChange={event => {
-                  if (event.target.value === currentResolutionValue) return;
-                  setResolutionRequests(count => count + 1);
-                  update({ ...settings, resolution: event.target.value });
-                }}
-              />
-            </SettingsItem>
+              {osServices.fingerprint && (
+                <div className="flex items-center justify-between gap-x-8">
+                  <SettingsItem
+                    title={m.os_services_fingerprint_title()}
+                    description={
+                      osServices.approvalPending ? (
+                        <span className="text-amber-700 dark:text-amber-500">
+                          {m.os_services_fingerprint_pending()}
+                        </span>
+                      ) : (
+                        m.os_services_fingerprint_description()
+                      )
+                    }
+                  />
+                  <div className="flex items-center">
+                    <GridCard cardClassName="rounded-r-none">
+                      <div className="flex h-[34px] items-center px-3 font-mono text-xs whitespace-nowrap text-black select-all dark:text-white">
+                        {osServices.fingerprint}
+                      </div>
+                    </GridCard>
+                    <Button
+                      className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20"
+                      size="SM"
+                      type="button"
+                      theme="light"
+                      LeadingIcon={LuCopy}
+                      data-testid="os-services-fingerprint-copy"
+                      onClick={async () => {
+                        const id = osServices.fingerprint;
+                        if (await copy(id)) {
+                          notifications.success(m.os_services_fingerprint_copy_success({ id }));
+                        } else {
+                          notifications.error(m.os_services_fingerprint_copy_error());
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
 
-            <SettingsItem
-              title={m.os_services_display_mode_title()}
-              description={m.os_services_display_mode_description()}
-            >
-              <SelectMenuBasic
-                size="SM"
-                label=""
-                fullWidth
-                className="min-w-52"
-                value={settings.display_mode}
-                options={displayModeOptions}
-                disabled={loading}
-                onChange={event =>
-                  update({
-                    ...settings,
-                    display_mode: event.target.value as OsServicesSettings["display_mode"],
-                  })
-                }
-              />
-            </SettingsItem>
-          </div>
+              {seenBefore && (
+                <>
+                  <div className="space-y-4">
+                    <SettingsSectionHeader title={m.os_services_video_section_title()} />
 
-          <div className="space-y-4">
-            <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
-            <SettingsSectionHeader title={m.os_services_access_title()} />
-            {(
-              [
-                [
-                  "terminal_enabled",
-                  m.os_services_terminal_title(),
-                  m.os_services_terminal_description(),
-                ],
-                ["files_enabled", m.os_services_files_title(), m.os_services_files_description()],
-              ] as const
-            ).map(([field, title, description]) => (
-              <SettingsItem key={field} title={title} description={description} loading={loading}>
-                <Checkbox
-                  checked={settings[field]}
-                  disabled={loading}
-                  onChange={event => update({ ...settings, [field]: event.target.checked })}
-                />
-              </SettingsItem>
-            ))}
-          </div>
+                    <SettingsItem
+                      title={m.os_services_video_title()}
+                      description={
+                        videoUnavailable ? (
+                          <>
+                            {m.os_services_video_description()}
+                            <span className="mt-0.5 block text-amber-700 dark:text-amber-500">
+                              {osServices.videoError
+                                ? m.os_services_video_faulted({
+                                    error: osServices.videoError,
+                                  })
+                                : m.os_services_video_unregistered()}
+                            </span>
+                          </>
+                        ) : (
+                          m.os_services_video_description()
+                        )
+                      }
+                      loading={loading}
+                    >
+                      <Checkbox
+                        checked={settings.video_enabled}
+                        disabled={loading}
+                        onChange={event =>
+                          update({ ...settings, video_enabled: event.target.checked })
+                        }
+                      />
+                    </SettingsItem>
 
-          <div className="space-y-4">
-            <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
-            <SettingsSectionHeader
-              title={m.os_services_clipboard_section_title()}
-              description={m.os_services_clipboard_section_description({
-                paste: clipboardShortcut("V"),
-                copy: clipboardShortcut("C"),
-              })}
-            />
+                    <SettingsItem
+                      title={m.os_services_capture_title()}
+                      description={m.os_services_capture_description()}
+                    >
+                      <SelectMenuBasic
+                        size="SM"
+                        label=""
+                        fullWidth
+                        className="min-w-52"
+                        value={settings.capture_display}
+                        disabled={loading}
+                        options={[
+                          { value: "", label: m.os_services_capture_auto() },
+                          ...Array.from(
+                            new Set([
+                              ...(osServices.sender?.displays ?? []),
+                              settings.capture_display,
+                            ]),
+                          )
+                            .filter(Boolean)
+                            .map(name => ({ value: name, label: name })),
+                        ]}
+                        onChange={event =>
+                          update({ ...settings, capture_display: event.target.value })
+                        }
+                      />
+                    </SettingsItem>
+                    <SettingsItem
+                      title={m.os_services_resolution_title()}
+                      description={m.os_services_resolution_description()}
+                    >
+                      <SelectMenuBasic
+                        size="SM"
+                        label=""
+                        fullWidth
+                        className="min-w-52"
+                        value={
+                          currentResolution === null ? settings.resolution : currentResolutionValue
+                        }
+                        options={resolutionOptionsWith(currentResolution)}
+                        disabled={loading}
+                        onChange={event => {
+                          if (event.target.value === currentResolutionValue) return;
+                          setResolutionRequests(count => count + 1);
+                          update({ ...settings, resolution: event.target.value });
+                        }}
+                      />
+                    </SettingsItem>
 
-            <SettingsItem
-              title={m.os_services_clipboard_title()}
-              description={m.os_services_clipboard_description()}
-              loading={loading}
-            >
-              <Checkbox
-                checked={settings.clipboard_enabled}
-                disabled={loading}
-                onChange={event =>
-                  update({
-                    ...settings,
-                    clipboard_enabled: event.target.checked,
-                  })
-                }
-              />
-            </SettingsItem>
-          </div>
+                    <SettingsItem
+                      title={m.os_services_display_mode_title()}
+                      description={m.os_services_display_mode_description()}
+                    >
+                      <SelectMenuBasic
+                        size="SM"
+                        label=""
+                        fullWidth
+                        className="min-w-52"
+                        value={settings.display_mode}
+                        options={displayModeOptions}
+                        disabled={loading}
+                        onChange={event =>
+                          update({
+                            ...settings,
+                            display_mode: event.target.value as OsServicesSettings["display_mode"],
+                          })
+                        }
+                      />
+                    </SettingsItem>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+                    <SettingsSectionHeader title={m.os_services_access_title()} />
+                    {(
+                      [
+                        [
+                          "terminal_enabled",
+                          m.os_services_terminal_title(),
+                          m.os_services_terminal_description(),
+                        ],
+                        [
+                          "files_enabled",
+                          m.os_services_files_title(),
+                          m.os_services_files_description(),
+                        ],
+                      ] as const
+                    ).map(([field, title, description]) => (
+                      <SettingsItem
+                        key={field}
+                        title={title}
+                        description={description}
+                        loading={loading}
+                      >
+                        <Checkbox
+                          checked={settings[field]}
+                          disabled={loading}
+                          onChange={event => update({ ...settings, [field]: event.target.checked })}
+                        />
+                      </SettingsItem>
+                    ))}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+                    <SettingsSectionHeader
+                      title={m.os_services_clipboard_section_title()}
+                      description={m.os_services_clipboard_section_description({
+                        paste: clipboardShortcut("V"),
+                        copy: clipboardShortcut("C"),
+                      })}
+                    />
+
+                    <SettingsItem
+                      title={m.os_services_clipboard_title()}
+                      description={m.os_services_clipboard_description()}
+                      loading={loading}
+                    >
+                      <Checkbox
+                        checked={settings.clipboard_enabled}
+                        disabled={loading}
+                        onChange={event =>
+                          update({
+                            ...settings,
+                            clipboard_enabled: event.target.checked,
+                          })
+                        }
+                      />
+                    </SettingsItem>
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </>
       )}
     </div>

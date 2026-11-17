@@ -37,6 +37,10 @@ type ExternalFunction struct {
 	// MSOSDescriptors turns on the Microsoft OS 1.0 descriptors of the
 	// gadget, which a FunctionFS function fills.
 	MSOSDescriptors bool
+	// Enabled reports whether the gadget has the function. While it reports
+	// false, the driver does not hold the instance and the gadget is the
+	// gadget without an external function. Nil means always.
+	Enabled func() bool
 }
 
 var (
@@ -125,6 +129,10 @@ func (u *UsbGadget) prepareExternalFunction() bool {
 	if _, ok := u.configMap[f.Key]; !ok {
 		return false
 	}
+	if f.Enabled != nil && !f.Enabled() {
+		u.dropExternalFunction(f)
+		return false
+	}
 	spareIN := u.externalNeedsSpareIN(f)
 	if u.externalPrepared && (u.externalMustRelease || u.externalSpareIN != spareIN) {
 		if err := u.releaseExternalFunction(f); err != nil {
@@ -161,6 +169,50 @@ func (u *UsbGadget) prepareExternalFunction() bool {
 		}
 	}
 	return true
+}
+
+// dropExternalFunction has the driver close the instance of a function that
+// is switched off, and turns the Microsoft OS descriptors off again.
+func (u *UsbGadget) dropExternalFunction(f *ExternalFunction) {
+	if u.externalPrepared {
+		if err := u.releaseExternalFunction(f); err != nil {
+			u.externalMustRelease = true
+			u.log.Warn().Err(err).Str("function", f.Key).Msg("cannot release the external function")
+		} else {
+			u.externalPrepared = false
+			u.externalMustRelease = false
+			u.log.Info().Str("function", f.Key).Msg("external function released: it is switched off")
+		}
+	}
+	if !f.MSOSDescriptors {
+		return
+	}
+	use := path.Join(u.kvmGadgetPath, "os_desc", "use")
+	if current, err := os.ReadFile(use); err == nil && trimNewline(string(current)) == "1" {
+		if err := os.WriteFile(use, []byte("0"), 0o644); err != nil {
+			u.log.Warn().Err(err).Msg("cannot turn off the Microsoft OS descriptors")
+		}
+	}
+}
+
+// Windows asks a device for its Microsoft OS descriptors once per vendor ID,
+// product ID and bcdDevice. The gadget with the external function has
+// another bcdDevice than the gadget without it, so Windows asks again when
+// the function comes or goes.
+const externalDeviceRevision = "0x0101"
+
+// setExternalDeviceRevision gives the gadget the bcdDevice for its state:
+// with the external function linked, or without it.
+func (u *UsbGadget) setExternalDeviceRevision() {
+	f := registeredExternalFunction()
+	if f == nil || !f.MSOSDescriptors {
+		return
+	}
+	revision := defaultGadgetConfig["base"].attrs["bcdDevice"]
+	if u.externalReady {
+		revision = externalDeviceRevision
+	}
+	u.configMap["base"].attrs["bcdDevice"] = revision
 }
 
 // enableMSOSDescriptors turns on the gadget's Microsoft OS 1.0 descriptors

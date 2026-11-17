@@ -238,7 +238,7 @@ export default function InfoBar() {
             </div>
           )}
 
-          {hasOsServices && (
+          {hasOsServices && osServices.enabled && (
             <div className="flex items-center divide-x divide-slate-800/20 border-r-2 border-r-slate-800/30 dark:divide-slate-300/20 dark:border-r-slate-300/30">
               <GuestIndicator on={osServices.connected} label={m.info_os_services()} />
               <GuestIndicator on={osServices.video} label={m.info_guest_video()} />

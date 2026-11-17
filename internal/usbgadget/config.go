@@ -255,6 +255,7 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, forceRebind bool) (bool, e
 
 func (u *UsbGadget) configureUsbGadgetLocked(resetUsb bool, forceRebind bool) (bool, error) {
 	u.externalReady = u.prepareExternalFunction()
+	u.setExternalDeviceRevision()
 	disconnected := false
 	adopted := false
 	err := u.WithTransaction(func() error {

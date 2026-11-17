@@ -54,3 +54,33 @@ func TestExternalFunctionINEndpointIsReliable(t *testing.T) {
 		}
 	}
 }
+
+// A function that is switched off is not prepared and not linked, so the
+// gadget has the functions it has without an external function.
+func TestExternalFunctionSwitchedOff(t *testing.T) {
+	previous := registeredExternalFunction()
+	t.Cleanup(func() {
+		externalFunctionLock.Lock()
+		externalFunction = previous
+		externalFunctionLock.Unlock()
+	})
+
+	enabled := false
+	prepared := 0
+	RegisterExternalFunction(ExternalFunction{
+		Key:      "external",
+		Instance: "external",
+		Order:    5000,
+		Prepare:  func(bool) error { prepared++; return nil },
+		Enabled:  func() bool { return enabled },
+	})
+	u, f := externalTestGadget(defaultUsbGadgetDevices)
+
+	u.externalReady = u.prepareExternalFunction()
+	if u.externalReady || prepared != 0 {
+		t.Fatalf("switched off: ready %v after %d Prepare calls", u.externalReady, prepared)
+	}
+	if u.isGadgetConfigItemEnabled(f.Key) {
+		t.Fatalf("switched off: the function is in the gadget configuration")
+	}
+}

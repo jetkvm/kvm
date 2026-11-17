@@ -110,6 +110,7 @@ func initOSServices() {
 		Prepare:         s.prepareFunction,
 		Release:         s.releaseFunction,
 		MSOSDescriptors: true,
+		Enabled:         func() bool { return s.config().Enabled },
 	})
 	go s.ticker()
 	go s.stateNotifier()
@@ -295,6 +296,9 @@ func (s *osServicesService) stateNotifier() {
 	var last string
 	for range s.stateSignal {
 		state := currentVideoState()
+		if status := state.OSServices; status != nil && status.Connected && !status.ApprovalPending && status.Sender != nil {
+			s.noteSender(status.Sender.Version)
+		}
 		if text := fmt.Sprintf("%+v", state); text != last {
 			last = text
 			writeJSONRPCEvent("videoInputState", state, currentSession)
@@ -311,6 +315,7 @@ type osServicesSenderJSON struct {
 }
 
 type osServicesStatusJSON struct {
+	Enabled         bool                  `json:"enabled"`
 	Sender          *osServicesSenderJSON `json:"sender,omitempty"`
 	Connected       bool                  `json:"connected"`
 	Video           bool                  `json:"video"`
@@ -381,6 +386,7 @@ func currentVideoState() rpcVideoState {
 		state.Error = ""
 	}
 	status := &osServicesStatusJSON{
+		Enabled:         osServices.config().Enabled,
 		Connected:       st.Connected,
 		Video:           st.Source == osservices.SourceGuest,
 		VideoRegistered: st.VideoRegistered,
@@ -458,12 +464,57 @@ func rpcSetOsServicesSettings(settings map[string]any) (OSServicesConfig, error)
 	if err := SaveConfig(); err != nil {
 		return merged, fmt.Errorf("failed to save config: %w", err)
 	}
+	if merged.Enabled != current.Enabled {
+		// The USB interface comes or goes: the target enumerates the KVM
+		// again, as for a change of the USB devices.
+		osServicesNoteKVMRestart()
+		setUSBRecoveryTimer(time.Now())
+		err := gadget.UpdateGadgetConfig()
+		setUSBRecoveryTimer(time.Now())
+		if err != nil {
+			return merged, fmt.Errorf("failed to write gadget config: %w", err)
+		}
+	}
 	s.applySettings()
+	s.announceSettings(merged)
+	return merged, nil
+}
+
+// announceSettings tells the browser the settings; the caller holds
+// settingsMu.
+func (s *osServicesService) announceSettings(settings OSServicesConfig) {
 	s.settingsSequence++
-	event := osServicesSettingsEvent{Sequence: s.settingsSequence, Settings: merged}
+	event := osServicesSettingsEvent{Sequence: s.settingsSequence, Settings: settings}
 	go writeJSONRPCEvent("osServicesSettings", event, currentSession)
 	s.StateChanged()
-	return merged, nil
+}
+
+// osServicesLastSenderAge is how old the stored time of the last sender can
+// be before a session of the same version writes it again.
+const osServicesLastSenderAge = time.Hour
+
+// noteSender stores the sender of an approved session, so that the KVM
+// knows later that a sender was installed.
+func (s *osServicesService) noteSender(version string) {
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	current := s.config()
+	if current.LastSenderVersion == version {
+		if at, err := time.Parse(time.RFC3339, current.LastSenderAt); err == nil && time.Since(at) < osServicesLastSenderAge {
+			return
+		}
+	}
+	current.LastSenderVersion = version
+	current.LastSenderAt = time.Now().UTC().Format(time.RFC3339)
+	configLock.Lock()
+	stored := current
+	config.OSServices = &stored
+	configLock.Unlock()
+	if err := SaveConfig(); err != nil {
+		osServicesLogger.Warn().Err(err).Msg("cannot store the last OS Services sender")
+		return
+	}
+	s.announceSettings(current)
 }
 
 const (

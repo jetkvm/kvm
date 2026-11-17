@@ -325,6 +325,8 @@ export interface GuestClipboardState {
 
 // Live OS Services state as the KVM reports it in every video state.
 export interface OsServicesStatus {
+  // The KVM has the OS Services USB interface (the switch in the settings).
+  enabled: boolean;
   sender?: { version: string; displays: string[] };
   connected: boolean;
   video: boolean;
@@ -342,6 +344,7 @@ export interface OsServicesStatus {
 }
 
 const noOsServices: OsServicesStatus = {
+  enabled: false,
   connected: false,
   video: false,
   videoRegistered: false,
@@ -363,6 +366,12 @@ export interface RpcVideoState extends HdmiState {
 
 // Desired state persisted by JetKVM.
 export interface OsServicesSettings {
+  // The KVM has the OS Services USB interface. Off by default.
+  enabled: boolean;
+  // The sender of the last approved session, which the KVM records. Absent
+  // until a sender has connected once.
+  last_sender_version?: string;
+  last_sender_at?: string;
   adaptation?: string;
   terminal_enabled: boolean;
   files_enabled: boolean;

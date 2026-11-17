@@ -12,6 +12,10 @@ import (
 // JSON shape as the JetKVM Mini's, which the browser reads and writes with
 // getOsServicesSettings and setOsServicesSettings.
 type OSServicesConfig struct {
+	// Enabled: the KVM has the OS Services USB interface, so a sender on
+	// the target computer can connect. While it is false, the USB device is
+	// the device without OS Services.
+	Enabled          bool   `json:"enabled"`
 	TerminalEnabled  bool   `json:"terminal_enabled"`
 	FilesEnabled     bool   `json:"files_enabled"`
 	CaptureDisplay   string `json:"capture_display"`
@@ -20,6 +24,12 @@ type OSServicesConfig struct {
 	DisplayMode      string `json:"display_mode"`
 	Adaptation       string `json:"adaptation,omitempty"`
 	ClipboardEnabled bool   `json:"clipboard_enabled"`
+	// LastSenderVersion and LastSenderAt (RFC 3339) are the sender that had
+	// the last approved session. The KVM writes them; a settings request
+	// cannot. They tell a KVM whose sender is away from a KVM that never
+	// had one.
+	LastSenderVersion string `json:"last_sender_version,omitempty"`
+	LastSenderAt      string `json:"last_sender_at,omitempty"`
 }
 
 type osServicesResolution struct {
@@ -94,6 +104,7 @@ func mergeOSServicesConfig(base OSServicesConfig, request map[string]any) (OSSer
 		name  string
 		value *bool
 	}{
+		{"enabled", &merged.Enabled},
 		{"terminal_enabled", &merged.TerminalEnabled},
 		{"files_enabled", &merged.FilesEnabled},
 		{"video_enabled", &merged.VideoEnabled},
