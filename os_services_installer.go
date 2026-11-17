@@ -18,6 +18,19 @@ const builtinInstallerFolder = "/userdata/jetkvm/os_services"
 
 var builtinInstallerPath = filepath.Join(builtinInstallerFolder, installer.Filename)
 
+// The kernel's mass storage function refuses a CD-ROM image of fewer than
+// 300 sectors of 2048 bytes, the smallest track ("file too small", errno
+// 525). The disc is smaller, so its file has zero sectors after the volume.
+const builtinInstallerMinBytes = 300 * 2048
+
+func builtinInstallerFile(version string) []byte {
+	image := installer.Image(version)
+	if short := builtinInstallerMinBytes - len(image); short > 0 {
+		image = append(image, make([]byte, short)...)
+	}
+	return image
+}
+
 // writeBuiltinInstaller writes the disc for this firmware, unless the file
 // already holds it.
 func writeBuiltinInstaller(image []byte) error {
@@ -43,7 +56,7 @@ func prepareBuiltinInstallerMount() error {
 	if currentVirtualMediaState != nil {
 		return errors.New("another virtual media is already mounted")
 	}
-	image := installer.Image(GetBuiltAppVersion())
+	image := builtinInstallerFile(GetBuiltAppVersion())
 	if err := writeBuiltinInstaller(image); err != nil {
 		return err
 	}
