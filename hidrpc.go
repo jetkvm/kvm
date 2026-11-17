@@ -11,6 +11,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
+var hidWheelReport = rpcWheelReport
+
 func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 	var rpcErr error
 
@@ -60,7 +62,7 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			logger.Warn().Err(err).Msg("failed to get wheel report")
 			return
 		}
-		rpcErr = rpcWheelReport(wheelReport.DeltaY, wheelReport.DeltaX)
+		rpcErr = hidWheelReport(wheelReport.DeltaY, wheelReport.DeltaX)
 	default:
 		logger.Warn().Uint8("type", uint8(message.Type())).Msg("unknown HID RPC message type")
 	}
