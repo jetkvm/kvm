@@ -101,6 +101,7 @@ type Config struct {
 	HashedPassword       string               `json:"hashed_password"`
 	LocalAuthToken       string               `json:"local_auth_token"`
 	LocalAuthMode        string               `json:"localAuthMode"` //TODO: fix it with migration
+	LocalAuthIdleMinutes int                  `json:"local_auth_idle_minutes"`
 	LocalLoopbackOnly    bool                 `json:"local_loopback_only"`
 	WakeOnLanDevices     []WakeOnLanDevice    `json:"wake_on_lan_devices"`
 	KeyboardMacros       []KeyboardMacro      `json:"keyboard_macros"`

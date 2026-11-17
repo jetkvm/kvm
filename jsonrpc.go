@@ -130,6 +130,9 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	t := time.Now()
 
 	handler, ok := rpcHandlers[request.Method]
+	if ok && rpcCountsAsLocalAuthActivity(request.Method) {
+		session.recordLocalAuthActivity()
+	}
 	if !ok {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -1494,6 +1497,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"rpcMountBuiltInImage":       {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
 	"setJigglerState":            {Func: rpcSetJigglerState, Params: []string{"enabled"}},
 	"getJigglerState":            {Func: rpcGetJigglerState},
+	"getLocalAuthSessionTimeout": {Func: rpcGetLocalAuthSessionTimeout},
+	"setLocalAuthSessionTimeout": {Func: rpcSetLocalAuthSessionTimeout, Params: []string{"timeoutMinutes"}},
 	"setJigglerConfig":           {Func: rpcSetJigglerConfig, Params: []string{"jigglerConfig"}},
 	"getJigglerConfig":           {Func: rpcGetJigglerConfig},
 	"getTimezones":               {Func: rpcGetTimezones},
