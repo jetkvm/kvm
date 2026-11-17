@@ -909,26 +909,11 @@ func rpcSetActiveExtension(extensionId string) error {
 	if config.ActiveExtension == extensionId {
 		return nil
 	}
-	switch config.ActiveExtension {
-	case "atx-power":
-		_ = unmountATXControl()
-	case "dc-power":
-		_ = unmountDCControl()
-	case "serial-console":
-		_ = unmountSerialConsole()
-	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
-	switch extensionId {
-	case "atx-power":
-		_ = mountATXControl()
-	case "dc-power":
-		_ = mountDCControl()
-	case "serial-console":
-		_ = mountSerialConsole()
-	}
+	_ = extPort.activate(extensionId)
 
 	// Re-publish MQTT HA Discovery for the new extension
 	if mqttManager != nil {
