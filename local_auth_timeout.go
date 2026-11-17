@@ -44,7 +44,7 @@ func localAuthSinceEpoch() time.Duration {
 }
 
 func recordLocalAuthActivity() {
-	localAuthLastActivity.Store(int64(max(localAuthSinceEpoch(), 1)))
+	localAuthLastActivity.Store(int64(localAuthSinceEpoch()) + 1)
 }
 
 func localAuthIdleTimeout() time.Duration {
@@ -63,7 +63,7 @@ func localAuthIdleLocked() bool {
 	if last == 0 {
 		return true
 	}
-	return localAuthSinceEpoch()-time.Duration(last) >= timeout
+	return localAuthSinceEpoch()-time.Duration(last-1) >= timeout
 }
 
 func setLocalAuthToken(token string) {
