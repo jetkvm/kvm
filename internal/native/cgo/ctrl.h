@@ -2,6 +2,7 @@
 #define VIDEO_DAEMON_CTRL_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -66,6 +67,8 @@ int jetkvm_video_set_edid(const char *edid_hex);
 char *jetkvm_video_get_edid_hex();
 char *jetkvm_video_log_status();
 jetkvm_video_state_t *jetkvm_video_get_status();
+int jetkvm_video_get_snapshot(uint8_t **out_buf, size_t *out_len);
+void jetkvm_video_free_snapshot(uint8_t *buf);
 
 void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second);
 void video_send_format_report();

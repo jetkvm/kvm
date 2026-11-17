@@ -1,11 +1,17 @@
 package native
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 )
+
+// ErrVideoNotStreaming is returned by VideoGetSnapshot when there's no
+// active video capture to snapshot (video only streams while at least one
+// WebRTC viewer session is connected).
+var ErrVideoNotStreaming = errors.New("video stream is not active")
 
 const sleepModeFile = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode"
 
@@ -208,6 +214,15 @@ func (n *Native) VideoLogStatus() (string, error) {
 	defer n.videoLock.Unlock()
 
 	return videoLogStatus(), nil
+}
+
+// VideoGetSnapshot captures a single JPEG-encoded frame of the current video feed.
+// Returns ErrVideoNotStreaming if no video capture is currently running.
+func (n *Native) VideoGetSnapshot() ([]byte, error) {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	return videoGetSnapshot()
 }
 
 // VideoStop stops the video stream.
