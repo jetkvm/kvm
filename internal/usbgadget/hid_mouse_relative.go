@@ -158,11 +158,11 @@ func (u *UsbGadget) RelMouseWheelReport(wheelY int8, wheelX int8) error {
 	}
 
 	err := u.relMouseWriteHidFile([]byte{
-		0,            // Buttons (none)
-		0,            // X
-		0,            // Y
-		byte(wheelY), // Wheel (signed)
-		byte(wheelX), // AC Pan (signed)
+		u.relMouseButtons, // Preserve held buttons while scrolling
+		0,                 // X
+		0,                 // Y
+		byte(wheelY),      // Wheel (signed)
+		byte(wheelX),      // AC Pan (signed)
 	})
 
 	u.resetUserInputTime()
