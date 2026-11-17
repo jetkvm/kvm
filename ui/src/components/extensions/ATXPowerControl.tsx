@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
+import { LuHardDrive, LuPower, LuRotateCcw, LuTriangleAlert } from "react-icons/lu";
 
 import { m } from "@localizations/messages.js";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
@@ -14,6 +14,7 @@ const LONG_PRESS_DURATION = 3000; // 3 seconds for long press
 interface ATXState {
   power: boolean;
   hdd: boolean;
+  responding?: boolean;
 }
 
 export function ATXPowerControl() {
@@ -147,7 +148,9 @@ export function ATXPowerControl() {
                 }}
               />
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{m.atx_power_control_hold_hint()}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {m.atx_power_control_hold_hint()}
+            </p>
 
             <hr className="border-slate-700/30 dark:border-slate-600/30" />
             {/* Status Indicators */}
@@ -173,6 +176,19 @@ export function ATXPowerControl() {
                 </span>
               </div>
             </div>
+            {atxState.responding === false && (
+              <div className="flex items-start gap-x-2">
+                <LuTriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-500" />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-amber-600 dark:text-amber-500">
+                    {m.atx_power_control_board_not_responding()}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {m.atx_power_control_board_not_responding_hint()}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       )}

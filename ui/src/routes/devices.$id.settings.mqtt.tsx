@@ -25,6 +25,7 @@ interface MQTTSettings {
   tls_insecure: boolean;
   enable_ha_discovery: boolean;
   enable_actions: boolean;
+  enable_keyboard_macros: boolean;
   debounce_ms: number;
 }
 
@@ -75,6 +76,7 @@ export default function SettingsMqttRoute() {
     tls_insecure: false,
     enable_ha_discovery: true,
     enable_actions: true,
+    enable_keyboard_macros: false,
     debounce_ms: 500,
   });
 
@@ -297,7 +299,7 @@ export default function SettingsMqttRoute() {
           />
         </SettingsItem>
 
-        {settings.enabled && (
+        {(settings.enabled && (
           <>
             <SettingsItem title={m.mqtt_broker_label()} description={m.mqtt_broker_description()}>
               <InputField
@@ -365,6 +367,16 @@ export default function SettingsMqttRoute() {
               <Checkbox
                 checked={settings.enable_actions}
                 onChange={e => updateField("enable_actions", e.target.checked)}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title={m.mqtt_keyboard_macros_title()}
+              description={m.mqtt_keyboard_macros_description()}
+            >
+              <Checkbox
+                checked={settings.enable_keyboard_macros}
+                onChange={e => updateField("enable_keyboard_macros", e.target.checked)}
               />
             </SettingsItem>
 
@@ -489,7 +501,7 @@ export default function SettingsMqttRoute() {
               />
             </div>
           </>
-        ) || (
+        )) || (
           <>
             <div className="flex items-center gap-x-2 pt-2">
               <Button

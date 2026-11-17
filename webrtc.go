@@ -47,7 +47,13 @@ type Session struct {
 	done               chan struct{}
 	closeOnce          sync.Once
 
+	inputMu      sync.RWMutex
+	inputRetired bool
+
 	codecMimeType string
+
+	local     bool
+	signaling *websocket.Conn
 
 	videoClockMu sync.Mutex
 	videoClock   rtpclock.Clock
@@ -391,6 +397,7 @@ func (s *Session) isClosed() bool {
 }
 
 func (s *Session) close() {
+	s.retireInput()
 	s.closeOnce.Do(func() {
 		close(s.done)
 	})
@@ -419,11 +426,15 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 
 		l.Trace().Msg("received data in HID RPC message handler")
 
+		if hidMessageCountsAsLocalAuthActivity(hidrpc.MessageType(msg.Data[0])) {
+			session.recordLocalAuthActivity()
+		}
+
 		// Cancel before admitting the next message on this ordered channel.
 		// A separate worker can process a late cancel after the old macro has
 		// finished and its replacement has started, canceling the replacement.
 		if hidrpc.MessageType(msg.Data[0]) == hidrpc.TypeCancelKeyboardMacroReport {
-			if !session.isClosed() {
+			if session.acceptsInput() {
 				rpcCancelKeyboardMacro()
 			}
 			return
@@ -540,6 +551,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		done:           make(chan struct{}),
 		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
 	}
+	if !config.IsCloud {
+		session.local = true
+		session.signaling = config.ws
+	}
 	session.initQueues()
 	session.initKeysDownStateQueue()
 
@@ -646,17 +661,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
-			if session == currentSession {
-				// Cancel any ongoing keyboard report multi when session closes
-				cancelKeyboardMacro()
-				// Stop pending auto-release timers (avoids unnecessary work),
-				// then clear all keys. keyboardMutex inside KeyboardReport
-				// serialises with any auto-release goroutine already in flight,
-				// so the clear is guaranteed to be the final state.
-				gadget.CancelAllAutoReleaseTimers()
-				_ = rpcKeyboardReport(0, keyboardClearStateKeys)
-				currentSession = nil
-			}
+			endSessionInput(session)
 			session.close()
 			releaseVideoPause(session)
 

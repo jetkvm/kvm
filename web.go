@@ -201,7 +201,7 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
-		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
+		protected.GET(localSignalingPath, handleLocalWebRTCSignal)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
@@ -228,6 +228,8 @@ func setupRouter() *gin.Engine {
 
 	return r
 }
+
+const localSignalingPath = "/webrtc/signaling/client"
 
 // TODO: support multiple sessions?
 var currentSession *Session
@@ -280,7 +282,8 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
+	localAuthToken, _ := c.Cookie("authToken")
+	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, localAuthToken, &scopedLogger)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
@@ -291,6 +294,7 @@ func handleWebRTCSignalWsMessages(
 	isCloudConnection bool,
 	source string,
 	connectionID string,
+	localAuthToken string,
 	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -410,6 +414,11 @@ func handleWebRTCSignalWsMessages(
 
 		if message.Type == "offer" {
 			l.Info().Msg("new session request received")
+			if !isCloudConnection && !localSignalingTokenValid(localAuthToken) {
+				l.Info().Msg("local login of this signaling connection is not valid, closing it")
+				_ = wsCon.Close(signalingStatusSessionExpired, "session expired")
+				return nil
+			}
 			var req WebRTCSessionRequest
 			err = json.Unmarshal(message.Data, &req)
 			if err != nil {
@@ -485,7 +494,8 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	config.LocalAuthToken = uuid.New().String()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -493,13 +503,13 @@ func handleLogin(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
 func handleLogout(c *gin.Context) {
-	config.LocalAuthToken = ""
+	setLocalAuthToken("")
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
@@ -517,13 +527,19 @@ func protectedMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		authToken, err := c.Cookie("authToken")
-		if err != nil || authToken != config.LocalAuthToken || authToken == "" {
+		switch checkLocalAuthCookie(c) {
+		case localAuthCookieExpired:
+			sendSessionExpiredThenAbort(c)
+			return
+		case localAuthCookieInvalid:
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
 
+		if c.FullPath() != localSignalingPath {
+			recordLocalAuthActivity()
+		}
 		c.Next()
 	}
 }
@@ -544,11 +560,12 @@ func metricsAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Try cookie auth first (browser access)
-		authToken, err := c.Cookie("authToken")
-		if err == nil && authToken == config.LocalAuthToken && authToken != "" {
+		switch checkLocalAuthCookie(c) {
+		case localAuthCookieValid:
 			c.Next()
 			return
+		case localAuthCookieExpired:
+			c.SetCookie("authToken", "", -1, "/", "", false, true)
 		}
 
 		// Fall back to basic auth (Prometheus scraper)
@@ -641,6 +658,7 @@ const webReadHeaderTimeout = 10 * time.Second
 
 func RunWebServer() {
 	r := setupRouter()
+	go runLocalAuthExpirySweeper()
 
 	// Determine the binding address based on the config
 	bindAddress := getBindAddress(80) // default port
@@ -703,7 +721,8 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 	config.LocalAuthMode = "password"
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -711,7 +730,7 @@ func handleCreatePassword(c *gin.Context) {
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
@@ -758,14 +777,15 @@ func handleUpdatePassword(c *gin.Context) {
 	}
 
 	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
+	token := uuid.New().String()
+	setLocalAuthToken(token)
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+	c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
@@ -794,7 +814,7 @@ func handleDeletePassword(c *gin.Context) {
 
 	// Disable password
 	config.HashedPassword = ""
-	config.LocalAuthToken = ""
+	setLocalAuthToken("")
 	config.LocalAuthMode = "noPassword"
 	if err := SaveConfig(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
@@ -896,14 +916,15 @@ func handleSetup(c *gin.Context) {
 		}
 
 		config.HashedPassword = string(hashedPassword)
-		config.LocalAuthToken = uuid.New().String()
+		token := uuid.New().String()
+		setLocalAuthToken(token)
 
 		// Set the cookie
-		c.SetCookie("authToken", config.LocalAuthToken, authTokenMaxAge, "/", "", false, true)
+		c.SetCookie("authToken", token, authTokenMaxAge, "/", "", false, true)
 	} else {
 		// For noPassword mode, ensure the password field is empty
 		config.HashedPassword = ""
-		config.LocalAuthToken = ""
+		setLocalAuthToken("")
 	}
 
 	err := SaveConfig()
@@ -911,6 +932,8 @@ func handleSetup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
 		return
 	}
+
+	updateMdnsTXT()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
 }

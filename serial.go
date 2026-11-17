@@ -25,7 +25,113 @@ var (
 	btnPWRState bool
 )
 
-func runATXControl(port io.Reader, stop <-chan struct{}) {
+const atxSilenceTimeout = 10 * time.Second
+
+type atxTimer interface {
+	Stop() bool
+}
+
+var (
+	atxBoardSilent atomic.Bool
+	atxAfterFunc   = func(d time.Duration, f func()) atxTimer { return time.AfterFunc(d, f) }
+)
+
+func broadcastATXState(state ATXState) {
+	if currentSession != nil {
+		writeJSONRPCEvent("atxState", state, currentSession)
+	}
+	if mqttManager != nil {
+		mqttManager.publishATXState(state)
+	}
+}
+
+func currentATXState() ATXState {
+	return ATXState{
+		Power:      ledPWRState.Load(),
+		HDD:        ledHDDState.Load(),
+		Responding: !atxBoardSilent.Load(),
+	}
+}
+
+type atxLink struct {
+	mu      sync.Mutex
+	timer   atxTimer
+	gen     uint64
+	stopped bool
+
+	sendMu sync.Mutex
+}
+
+func startATXLink() *atxLink {
+	l := &atxLink{}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	atxBoardSilent.Store(false)
+	l.armLocked()
+	return l
+}
+
+func (l *atxLink) armLocked() {
+	if l.timer != nil {
+		l.timer.Stop()
+	}
+	l.gen++
+	gen := l.gen
+	l.timer = atxAfterFunc(atxSilenceTimeout, func() { l.expire(gen) })
+}
+
+func (l *atxLink) expire(gen uint64) {
+	l.mu.Lock()
+	if l.stopped || gen != l.gen {
+		l.mu.Unlock()
+		return
+	}
+	atxBoardSilent.Store(true)
+	l.mu.Unlock()
+
+	serialLogger.Warn().Dur("timeout", atxSilenceTimeout).Msg("ATX extension board sends no status")
+	l.broadcast(gen)
+}
+
+func (l *atxLink) received() {
+	l.mu.Lock()
+	if l.stopped {
+		l.mu.Unlock()
+		return
+	}
+	l.armLocked()
+	gen := l.gen
+	cameBack := atxBoardSilent.Swap(false)
+	l.mu.Unlock()
+
+	if cameBack {
+		serialLogger.Info().Msg("ATX extension board sends status again")
+	}
+	l.broadcast(gen)
+}
+
+func (l *atxLink) broadcast(gen uint64) {
+	l.sendMu.Lock()
+	defer l.sendMu.Unlock()
+
+	l.mu.Lock()
+	current := !l.stopped && gen == l.gen
+	l.mu.Unlock()
+
+	if current {
+		broadcastATXState(currentATXState())
+	}
+}
+
+func (l *atxLink) stop() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.stopped = true
+	l.timer.Stop()
+	atxBoardSilent.Store(false)
+}
+
+func runATXControl(port io.Reader, stop <-chan struct{}, link *atxLink) {
 	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
 
 	reader := bufio.NewReader(port)
@@ -52,19 +158,6 @@ func runATXControl(port io.Reader, stop <-chan struct{}) {
 		newBtnRSTState := line[2] == '1'
 		newBtnPWRState := line[3] == '1'
 
-		atxState := ATXState{
-			Power: newLedPWRState,
-			HDD:   newLedHDDState,
-		}
-
-		if currentSession != nil {
-			writeJSONRPCEvent("atxState", atxState, currentSession)
-		}
-
-		if mqttManager != nil {
-			mqttManager.publishATXState(atxState)
-		}
-
 		if newLedHDDState != ledHDDState.Load() ||
 			newLedPWRState != ledPWRState.Load() ||
 			newBtnRSTState != btnRSTState ||
@@ -82,6 +175,8 @@ func runATXControl(port io.Reader, stop <-chan struct{}) {
 			btnRSTState = newBtnRSTState
 			btnPWRState = newBtnPWRState
 		}
+
+		link.received()
 	}
 }
 
