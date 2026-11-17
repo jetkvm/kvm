@@ -45,6 +45,7 @@ export default function WebRTCVideo({
   const videoElm = useRef<HTMLVideoElement>(null);
   const audioElm = useRef<HTMLAudioElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const overlaysRef = useRef<HTMLDivElement>(null);
   const { mediaStream, mediaStreamTrackVersion, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
@@ -629,7 +630,12 @@ export default function WebRTCVideo({
       if (isRelativeMouseMode) {
         containerRef.current?.addEventListener(
           "click",
-          () => {
+          (e: MouseEvent) => {
+            const target = e.target as Element;
+            const isOnVideoArea =
+              target === videoElmRefValue || overlaysRef.current?.contains(target);
+            if (!isOnVideoArea || target.closest("a, button")) return;
+
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
             }
@@ -782,7 +788,7 @@ export default function WebRTCVideo({
                           style={{ animationDuration: "500ms" }}
                           className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                         >
-                          <div className="relative h-full w-full rounded-md">
+                          <div ref={overlaysRef} className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
                             <UpdateVideoPausedOverlay show={updatePausesVideo} />
