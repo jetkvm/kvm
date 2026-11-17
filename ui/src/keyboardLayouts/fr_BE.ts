@@ -7,7 +7,7 @@ const isoCode = "nl-BE";
 
 const keyTrema: KeyCombo = { key: "BracketLeft", shift: true }; // tréma (umlaut), two dots placed above a vowel
 const keyHat: KeyCombo = { key: "BracketLeft" }; // accent circonflexe (accent hat), mark ^ placed above the letter
-const keyAcute: KeyCombo = { key: "Semicolon", altRight: true }; // accent aigu (acute accent), mark ´ placed above the letter
+const keyAcute: KeyCombo = { key: "Quote", altRight: true }; // accent aigu (acute accent), mark ´ placed above the letter
 const keyGrave: KeyCombo = { key: "Backslash", altRight: true }; // accent grave, mark ` placed above the letter
 const keyTilde: KeyCombo = { key: "Slash", altRight: true }; // tilde, mark ~ placed above the letter
 
