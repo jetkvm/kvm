@@ -19,6 +19,10 @@ func effectiveUsbDevices() *usbgadget.Devices {
 	return &devices
 }
 
+func serialConsoleEnabled() bool {
+	return config != nil && config.UsbDevices != nil && config.UsbDevices.SerialConsole
+}
+
 func effectiveAudioEnabled() bool {
 	return config != nil &&
 		config.UsbDevices != nil &&
