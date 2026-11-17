@@ -1318,48 +1318,61 @@ func rpcEmitTestLog(level string) error {
 	return nil
 }
 
-var (
-	keyboardMacroCancel context.CancelFunc
-	keyboardMacroLock   sync.Mutex
+type keyboardMacroRun struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
 
-	// keyboardMacroRun serializes macro execution. Executions share
-	// keyboardMacroCancel and drive the same global HID gadget, so they must
-	// not overlap. Historically the only caller was the single WebRTC
-	// session's HID queue (inherently serial); MQTT keyboard commands add
-	// concurrent callers, so a new execution now cancels the running one and
-	// waits for it to unwind before starting, instead of interleaving reports.
-	keyboardMacroRun sync.Mutex
+var (
+	keyboardMacroLock    sync.Mutex
+	keyboardMacroCurrent *keyboardMacroRun
+
+	keyboardMacroExec sync.Mutex
 )
 
-// cancelKeyboardMacro cancels any ongoing keyboard macro execution
+// cancelKeyboardMacro cancels the registered keyboard macro, running or
+// waiting to run.
 func cancelKeyboardMacro() {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	if keyboardMacroCancel != nil {
-		keyboardMacroCancel()
+	if keyboardMacroCurrent != nil {
+		keyboardMacroCurrent.cancel()
 		logger.Info().Msg("canceled keyboard macro")
-		keyboardMacroCancel = nil
+		keyboardMacroCurrent = nil
 	}
 }
 
-func setKeyboardMacroCancel(cancel context.CancelFunc) {
+func registerKeyboardMacro() *keyboardMacroRun {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	keyboardMacroCancel = cancel
+	if keyboardMacroCurrent != nil {
+		keyboardMacroCurrent.cancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	keyboardMacroCurrent = &keyboardMacroRun{ctx: ctx, cancel: cancel}
+	return keyboardMacroCurrent
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
-	// Cancel any running macro, then wait for it to actually finish before
-	// starting this one — see keyboardMacroRun. cancelKeyboardMacro makes the
-	// in-flight macro return promptly at its next step, so this rarely blocks.
-	cancelKeyboardMacro()
-	keyboardMacroRun.Lock()
-	defer keyboardMacroRun.Unlock()
+func (r *keyboardMacroRun) finish() {
+	keyboardMacroLock.Lock()
+	if keyboardMacroCurrent == r {
+		keyboardMacroCurrent = nil
+	}
+	keyboardMacroLock.Unlock()
+	r.cancel()
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	setKeyboardMacroCancel(cancel)
+func (r *keyboardMacroRun) execute(macro []hidrpc.KeyboardMacroStep) error {
+	defer r.finish()
+
+	keyboardMacroExec.Lock()
+	defer keyboardMacroExec.Unlock()
+
+	if err := r.ctx.Err(); err != nil {
+		return err
+	}
 
 	s := hidrpc.KeyboardMacroState{
 		State:   true,
@@ -1370,9 +1383,7 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 		currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
-	err := rpcDoExecuteKeyboardMacro(ctx, macro)
-
-	setKeyboardMacroCancel(nil)
+	err := rpcDoExecuteKeyboardMacro(r.ctx, macro)
 
 	s.State = false
 	if currentSession != nil {
@@ -1380,6 +1391,10 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	}
 
 	return err
+}
+
+func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
+	return registerKeyboardMacro().execute(macro)
 }
 
 // rpcRunKeyboardMacro runs a stored macro by ID or case-insensitive name, the
