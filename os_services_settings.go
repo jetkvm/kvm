@@ -45,7 +45,7 @@ var osServicesResolutions = []osServicesResolution{
 }
 
 const (
-	osServicesDefaultResolution = "2560x1440"
+	osServicesDefaultResolution = "1920x1080"
 	// osServicesAdaptationMax bounds the adaptation text.
 	osServicesAdaptationMax = 39
 )
