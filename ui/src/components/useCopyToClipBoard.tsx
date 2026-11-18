@@ -1,5 +1,47 @@
 import { useCallback, useState } from "react";
 
+// Insecure origins have no navigator.clipboard, so the copy goes through the
+// legacy command. It must not move focus: pages that keep a focus trap armed
+// reclaim focus from a temporary input and the selection is gone before the
+// copy runs. Selecting a detached span through a Range never moves focus, and
+// overriding the copy event makes the payload independent of the selection.
+function copyViaCopyEvent(text: string) {
+  const span = document.createElement("span");
+  span.textContent = text;
+  span.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none;white-space:pre";
+  document.body.appendChild(span);
+
+  const selection = window.getSelection();
+  const restore = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const range = document.createRange();
+  range.selectNodeContents(span);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  let copied = false;
+  const onCopy = (event: ClipboardEvent) => {
+    event.clipboardData?.setData("text/plain", text);
+    event.preventDefault();
+    copied = true;
+  };
+
+  document.addEventListener("copy", onCopy, true);
+  try {
+    document.execCommand("copy");
+  } catch (err) {
+    console.error("Fallback copy failed:", err);
+  } finally {
+    document.removeEventListener("copy", onCopy, true);
+    selection?.removeAllRanges();
+    if (restore) selection?.addRange(restore);
+    span.remove();
+  }
+
+  // execCommand reports success even when nothing reached the clipboard; the
+  // copy event firing is the only trustworthy signal.
+  return copied;
+}
+
 export function useCopyToClipboard(resetInterval = 2000) {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -20,22 +62,7 @@ export function useCopyToClipboard(resetInterval = 2000) {
 
       // Fallback for insecure contexts
       if (!success) {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-
-        try {
-          success = document.execCommand("copy");
-        } catch (err) {
-          console.error("Fallback copy failed:", err);
-          success = false;
-        } finally {
-          document.body.removeChild(textarea);
-        }
+        success = copyViaCopyEvent(text);
       }
 
       setIsCopied(success);

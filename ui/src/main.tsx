@@ -45,6 +45,7 @@ const SettingsAdvancedRoute = lazy(() => import("@routes/devices.$id.settings.ad
 const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.hardware"));
 const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
 const SettingsAudioRoute = lazy(() => import("@routes/devices.$id.settings.audio"));
+const SettingsOsServicesRoute = lazy(() => import("@routes/devices.$id.settings.os-services"));
 const SettingsAppearanceRoute = lazy(() => import("@routes/devices.$id.settings.appearance"));
 const SettingsGeneralIndexRoute = lazy(() => import("@routes/devices.$id.settings.general._index"));
 const SettingsGeneralRebootRoute = lazy(
@@ -204,6 +205,10 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
         {
           path: "audio",
           element: <SettingsAudioRoute />,
+        },
+        {
+          path: "os-services",
+          element: <SettingsOsServicesRoute />,
         },
         {
           path: "appearance",

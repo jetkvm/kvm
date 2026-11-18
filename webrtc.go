@@ -11,9 +11,11 @@ import (
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/osservices"
 	"github.com/jetkvm/kvm/internal/playoutdelay"
 	"github.com/jetkvm/kvm/internal/rtpclock"
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/internal/timinglog"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 
 	"github.com/coder/websocket"
@@ -21,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/rs/zerolog"
@@ -29,6 +32,7 @@ import (
 type Session struct {
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
+	videoTap                 *timinglog.VideoTap
 	AudioTrack               *webrtc.TrackLocalStaticSample
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
@@ -57,13 +61,32 @@ type Session struct {
 
 	videoClockMu sync.Mutex
 	videoClock   rtpclock.Clock
+	videoSource  videoClockSource
 }
 
-func (s *Session) writeVideoFrame(frame []byte, pts time.Duration) error {
+type videoClockSource int
+
+const (
+	videoClockHardware videoClockSource = iota
+	videoClockService
+)
+
+// writeVideoFrame writes one frame with the capture time of its source. The
+// hardware capture and service video have different capture clocks, so the
+// first frame after a change of source moves the RTP clock by one nominal
+// frame.
+func (s *Session) writeVideoFrame(source videoClockSource, frame []byte, pts time.Duration) error {
 	s.videoClockMu.Lock()
 	defer s.videoClockMu.Unlock()
 
-	if step := s.videoClock.Advance(pts); step > 0 {
+	step := s.videoClock.Advance(pts)
+	if source != s.videoSource {
+		s.videoSource = source
+		if step > 0 {
+			step = rtpclock.RestartStep
+		}
+	}
+	if step > 0 {
 		if err := s.VideoTrack.WriteSample(media.Sample{Duration: step}); err != nil {
 			return err
 		}
@@ -203,8 +226,19 @@ func (s *Session) attachAudioTrack(offerSDP string) error {
 func drainRTCP(sender *webrtc.RTPSender) {
 	buf := make([]byte, 1500)
 	for {
-		if _, _, err := sender.Read(buf); err != nil {
+		n, _, err := sender.Read(buf)
+		if err != nil {
 			return
+		}
+		// The hardware encoder sends a keyframe every half second; service
+		// video sends one only on request.
+		if packets, err := rtcp.Unmarshal(buf[:n]); err == nil {
+			for _, packet := range packets {
+				switch packet.(type) {
+				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+					osServicesKeyframeRequest()
+				}
+			}
 		}
 	}
 }
@@ -213,6 +247,11 @@ func drainRTCP(sender *webrtc.RTPSender) {
 // Always validates against the browser's SDP offer to prevent negotiation failure.
 func resolveCodec(offerSDP string) string {
 	browserSupportsH265 := strings.Contains(strings.ToUpper(offerSDP), "H265")
+
+	// An OS Services sender that shows video without H.265 decides.
+	if osServicesPrefersH264() {
+		return webrtc.MimeTypeH264
+	}
 
 	switch config.VideoCodecPreference {
 	case "h265":
@@ -532,6 +571,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 	interceptorRegistry.Add(playoutdelay.NewFactory())
+	// The tap is the last interceptor: it sees each video packet of the
+	// track one time, and no packet that is sent again.
+	videoTap := &timinglog.VideoTap{}
+	interceptorRegistry.Add(videoTap)
 
 	api := webrtc.NewAPI(
 		webrtc.WithSettingEngine(webrtcSettingEngine),
@@ -548,6 +591,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session := &Session{
 		peerConnection: peerConnection,
+		videoTap:       videoTap,
 		done:           make(chan struct{}),
 		rpcQueue:       make(chan webrtc.DataChannelMessage, 256),
 	}
@@ -619,9 +663,13 @@ func newSession(config SessionConfig) (*Session, error) {
 			handleSerialChannel(d)
 		case "cdcacm":
 			handleCDCACMChannel(d)
+		case osservices.TerminalChannelLabel:
+			handleGuestTerminalChannel(d)
 		default:
 			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
 				go handleUploadChannel(d)
+			} else if strings.HasPrefix(d.Label(), osservices.FileChannelPrefix) {
+				handleGuestFileChannel(d)
 			}
 		}
 	})
@@ -715,7 +763,7 @@ func startNativeVideoForSession(session *Session) {
 // startNativeVideoLocked starts the pipeline unless a pause is held. The
 // caller holds videoPauseMu.
 func startNativeVideoLocked(session *Session) {
-	if videoPausedBy != nil {
+	if videoPausedBy != nil || osServicesOwnsVideo() {
 		return
 	}
 	_ = nativeInstance.VideoSetCodecType(sessionVideoCodecType(session))
@@ -756,6 +804,7 @@ func onFirstSessionConnected(session *Session) {
 // connected can fire before then, racing the assignment.
 func onSessionConnected(session *Session) {
 	notifyFailsafeMode(session)
+	go osServicesBrowserChanged(session)
 	if session.AudioTrack != nil {
 		startAudio(session.AudioTrack)
 	}

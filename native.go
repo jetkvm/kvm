@@ -68,11 +68,15 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 		OnVideoFrameReceived: func(frame []byte, pts time.Duration) {
+			// Service video owns the track while it shows.
+			if osServicesOwnsVideo() {
+				return
+			}
 			session := currentSession
 			if session == nil {
 				return
 			}
-			if err := session.writeVideoFrame(frame, pts); err != nil {
+			if err := session.writeVideoFrame(videoClockHardware, frame, pts); err != nil {
 				nativeLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		},

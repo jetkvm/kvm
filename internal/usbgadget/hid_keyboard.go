@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/internal/timinglog"
 
 	"github.com/rs/xid"
 	"github.com/rs/zerolog"
@@ -25,7 +26,8 @@ var keyboardConfig = gadgetConfigItem{
 		"no_out_endpoint": "0",
 		"wakeup_on_write": "0",
 	},
-	reportDesc: keyboardReportDesc,
+	reportDesc:  keyboardReportDesc,
+	inEndpoints: 1,
 }
 
 var wakeHIDConfig = gadgetConfigItem{
@@ -40,7 +42,8 @@ var wakeHIDConfig = gadgetConfigItem{
 		"no_out_endpoint": "1",
 		"wakeup_on_write": "1",
 	},
-	reportDesc: wakeReportDesc,
+	reportDesc:  wakeReportDesc,
+	inEndpoints: 1,
 }
 
 var wakeReportDesc = []byte{
@@ -490,11 +493,16 @@ func (u *UsbGadget) keyboardWriteHidFileLocked(modifier byte, keys []byte) error
 		return err
 	}
 
-	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
+	report := append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...)
+	n, err := u.writeWithTimeout(u.keyboardHidFile, report)
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to the keyboard")
 		u.closeKeyboardHidFileLocked()
 		return err
+	}
+	// A write that timed out has no error and wrote no report.
+	if n == len(report) {
+		timinglog.Key(keys[0], time.Now())
 	}
 	u.resetLogSuppressionCounter("keyboardWriteHidFile")
 	return nil

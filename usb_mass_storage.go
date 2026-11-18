@@ -41,6 +41,7 @@ func rebindAndRecoverHID(context string) error {
 }
 
 func setMassStorageMode(cdrom bool) error {
+	osServicesNoteKVMRestart()
 	mode := "0"
 	if cdrom {
 		mode = "1"
@@ -90,6 +91,7 @@ func ejectMassStorageImage() error {
 
 	logger.Warn().Err(err).Msg("eject failed with EBUSY, force-ejecting via controller rebind")
 
+	osServicesNoteKVMRestart()
 	setUSBRecoveryTimer(time.Now())
 	defer func() { setUSBRecoveryTimer(time.Now()) }()
 	if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
@@ -287,6 +289,8 @@ type VirtualMediaSource string
 const (
 	HTTP    VirtualMediaSource = "HTTP"
 	Storage VirtualMediaSource = "Storage"
+	// Builtin is a disc the firmware makes: the OS Services installer.
+	Builtin VirtualMediaSource = "Builtin"
 )
 
 type VirtualMediaMode string
@@ -378,6 +382,9 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 			return nil, fmt.Errorf("failed to get file info: %w", err)
 		}
 		initialState.Size = info.Size()
+		if diskPath == builtinInstallerPath {
+			initialState.Source = Builtin
+		}
 	}
 
 	return initialState, nil

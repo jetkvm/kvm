@@ -33,6 +33,7 @@ const bundle = await rolldown({
         export const useMouseStore = selector => pick({}, selector);
         export const useSettingsStore = selector => pick({ debugMode: false, showPressedKeys: false }, selector);
         export const useVideoStore = selector => pick({ width: 0, height: 0, clientWidth: 0, clientHeight: 0 }, selector);
+        export const useCapability = () => false;
         export const hidKeyBufferSize = 6;
         export const hidErrorRollOver = 1;
       `;

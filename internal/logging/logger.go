@@ -82,6 +82,7 @@ var (
 	subsystemDefaultLevels = map[string]zerolog.Level{
 		"diagnostics": zerolog.InfoLevel,
 		"supervisor":  zerolog.InfoLevel,
+		"os_services": zerolog.InfoLevel,
 	}
 )
 

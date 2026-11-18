@@ -18,7 +18,8 @@ var absoluteMouseConfig = gadgetConfigItem{
 		"no_out_endpoint": "1",
 		"wakeup_on_write": "0",
 	},
-	reportDesc: absoluteMouseCombinedReportDesc,
+	reportDesc:  absoluteMouseCombinedReportDesc,
+	inEndpoints: 1,
 }
 
 var absoluteMouseCombinedReportDesc = []byte{
