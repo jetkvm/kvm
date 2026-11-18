@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/tailscale"
 )
 
-const tailscaleStatePath = "/userdata/jetkvm/tailscale"
+const (
+	tailscaleStatePath    = "/userdata/jetkvm/tailscale"
+	tailscaleResetTimeout = 20 * time.Second
+)
 
 var (
 	tailscaleMu       sync.Mutex
@@ -32,17 +36,31 @@ func initTailscale() {
 	}()
 }
 
-func logoutTailscale() {
-	tailscaleMu.Lock()
-	defer tailscaleMu.Unlock()
-	logoutTailscaleLocked()
+func logoutTailscale(timeout time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tailscaleMu.Lock()
+		defer tailscaleMu.Unlock()
+		logoutTailscaleLocked()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		tailscaleLogger.Warn().Msg("tailscale did not log out in time")
+	}
 }
 
 func startTailscaleLocked(authKey string) error {
 	if tailscale.CheckInstalled() {
-		tailscaleStartErr = errors.New("remove the Tailscale installation in /userdata/tailscale before you enable the built-in client")
-		tailscaleLogger.Warn().Err(tailscaleStartErr).Msg("not starting the built-in tailscale client")
-		return tailscaleStartErr
+		tailscaleLogger.Warn().Msg("turning the built-in tailscale client off beside the installation in /userdata/tailscale")
+		config.TailscaleEnabled = false
+		tailscaleStartErr = nil
+		if err := SaveConfig(); err != nil {
+			tailscaleLogger.Warn().Err(err).Msg("failed to save tailscale state")
+		}
+		return errors.New("remove the Tailscale installation in /userdata/tailscale before you enable the built-in client")
 	}
 
 	hostname := config.NetworkConfig.Hostname.String

@@ -877,7 +877,7 @@ func rpcFactoryReset() error {
 		}
 	}
 
-	logoutTailscale()
+	logoutTailscale(tailscaleResetTimeout)
 
 	var errs []error
 	for _, path := range factoryResetPaths {
