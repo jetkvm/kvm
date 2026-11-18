@@ -61,8 +61,21 @@ func TestEnableTailscaleIsRefusedWhileScriptInstallExists(t *testing.T) {
 
 	assert.False(t, config.TailscaleEnabled)
 	assert.Nil(t, tailscaleNode)
-	assert.NoFileExists(t, configPath)
 	status, err := rpcGetTailscaleStatus()
 	require.NoError(t, err)
 	assert.False(t, status.Builtin)
+}
+
+func TestBuiltinTailscaleDoesNotStartBesideScriptInstall(t *testing.T) {
+	withScriptInstalledTailscale(t, true, `{"BackendState":"Running"}`)
+	config.TailscaleEnabled = true
+	t.Cleanup(func() { tailscaleStartErr = nil })
+
+	require.Error(t, startTailscaleLocked(""))
+
+	assert.Nil(t, tailscaleNode)
+	status, err := rpcGetTailscaleStatus()
+	require.NoError(t, err)
+	assert.False(t, status.Builtin)
+	assert.True(t, status.Running)
 }

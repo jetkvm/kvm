@@ -32,7 +32,19 @@ func initTailscale() {
 	}()
 }
 
+func logoutTailscale() {
+	tailscaleMu.Lock()
+	defer tailscaleMu.Unlock()
+	logoutTailscaleLocked()
+}
+
 func startTailscaleLocked(authKey string) error {
+	if tailscale.CheckInstalled() {
+		tailscaleStartErr = errors.New("remove the Tailscale installation in /userdata/tailscale before you enable the built-in client")
+		tailscaleLogger.Warn().Err(tailscaleStartErr).Msg("not starting the built-in tailscale client")
+		return tailscaleStartErr
+	}
+
 	hostname := config.NetworkConfig.Hostname.String
 	if hostname == "" {
 		hostname = GetDefaultHostname()
@@ -98,24 +110,21 @@ func tailscaleStatusLocked() *tailscale.Status {
 		return tailscaleNode.Status()
 	}
 
+	external, _ := tailscale.GetStatus(config.TailscaleControlURL, func(err error) {
+		tailscaleLogger.Warn().Err(err).Msg("failed to get tailscale status")
+	})
+	if external != nil && external.Installed {
+		return external
+	}
+
 	status := &tailscale.Status{
 		Installed:  true,
 		Builtin:    true,
 		Enabled:    config.TailscaleEnabled,
 		ControlURL: tailscale.EffectiveControlURL(config.TailscaleControlURL),
 	}
-	if config.TailscaleEnabled {
-		if tailscaleStartErr != nil {
-			status.Error = tailscaleStartErr.Error()
-		}
-		return status
-	}
-
-	external, _ := tailscale.GetStatus(config.TailscaleControlURL, func(err error) {
-		tailscaleLogger.Warn().Err(err).Msg("failed to get tailscale status")
-	})
-	if external != nil && external.Installed {
-		return external
+	if tailscaleStartErr != nil {
+		status.Error = tailscaleStartErr.Error()
 	}
 	return status
 }
@@ -135,10 +144,6 @@ func rpcSetTailscaleEnabled(enabled bool) error {
 	if enabled == config.TailscaleEnabled {
 		return nil
 	}
-	if enabled && tailscale.CheckInstalled() {
-		return errors.New("remove the Tailscale installation in /userdata/tailscale before you enable the built-in client")
-	}
-
 	config.TailscaleEnabled = enabled
 	if err := SaveConfig(); err != nil {
 		config.TailscaleEnabled = !enabled
@@ -149,13 +154,16 @@ func rpcSetTailscaleEnabled(enabled bool) error {
 	if enabled {
 		if err = startTailscaleLocked(""); err != nil {
 			config.TailscaleEnabled = false
-			tailscaleStartErr = nil
 			if saveErr := SaveConfig(); saveErr != nil {
 				tailscaleLogger.Warn().Err(saveErr).Msg("failed to save tailscale state")
 			}
 		}
 	} else {
 		stopTailscaleLocked()
+	}
+
+	if !config.TailscaleEnabled {
+		tailscaleStartErr = nil
 	}
 
 	broadcastTailscaleStatus(tailscaleStatusLocked())

@@ -877,6 +877,8 @@ func rpcFactoryReset() error {
 		}
 	}
 
+	logoutTailscale()
+
 	var errs []error
 	for _, path := range factoryResetPaths {
 		if err := os.RemoveAll(path); err != nil {
