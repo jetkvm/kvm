@@ -92,6 +92,7 @@ type Config struct {
 	UpdateAPIURL         string               `json:"update_api_url"`
 	CloudAppURL          string               `json:"cloud_app_url"`
 	CloudToken           string               `json:"cloud_token"`
+	TailscaleEnabled     bool                 `json:"tailscale_enabled,omitempty"`
 	TailscaleControlURL  string               `json:"tailscale_control_url,omitempty"`
 	GoogleIdentity       string               `json:"google_identity"`
 	JigglerEnabled       bool                 `json:"jiggler_enabled"`

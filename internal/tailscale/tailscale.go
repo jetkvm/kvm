@@ -17,12 +17,16 @@ const DefaultControlURL = "https://controlplane.tailscale.com"
 
 type Status struct {
 	Installed    bool     `json:"installed"`
+	Builtin      bool     `json:"builtin"`
+	Enabled      bool     `json:"enabled"`
 	Running      bool     `json:"running"`
 	BackendState string   `json:"backendState,omitempty"`
 	AuthURL      string   `json:"authURL,omitempty"`
 	ControlURL   string   `json:"controlURL,omitempty"`
+	Tailnet      string   `json:"tailnet,omitempty"`
 	Self         *Peer    `json:"self,omitempty"`
 	Health       []string `json:"health,omitempty"`
+	Error        string   `json:"error,omitempty"`
 }
 
 type Peer struct {
