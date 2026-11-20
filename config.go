@@ -13,6 +13,7 @@ import (
 	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/internal/tesmart"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -125,6 +126,7 @@ type Config struct {
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
 	AudioEnabled         bool                 `json:"audio_enabled"`
 	OSServices           *OSServicesConfig    `json:"os_services"`
+	HdmiSwitch           *tesmart.Config      `json:"hdmi_switch"`
 }
 
 // GetUpdateAPIURL returns the update API URL
@@ -220,6 +222,7 @@ func getDefaultConfig() Config {
 			EnableActions:     true,
 			DebounceMs:        500,
 		},
+		HdmiSwitch: tesmart.DefaultConfig(),
 	}
 }
 
@@ -309,6 +312,9 @@ func LoadConfig() {
 
 	if loadedConfig.MqttConfig == nil {
 		loadedConfig.MqttConfig = getDefaultConfig().MqttConfig
+	}
+	if loadedConfig.HdmiSwitch == nil {
+		loadedConfig.HdmiSwitch = getDefaultConfig().HdmiSwitch
 	}
 
 	// fixup old keyboard layout value
