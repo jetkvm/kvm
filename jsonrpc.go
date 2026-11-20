@@ -861,6 +861,7 @@ var factoryResetPaths = []string{
 	imagesFolder,
 	tlsStorePath,
 	sshKeyDir,
+	tailscaleStatePath,
 	serialSettingsPath,
 	SerialCommandHistoryPath,
 	failsafeDefaultLastCrashPath,
@@ -875,6 +876,8 @@ func rpcFactoryReset() error {
 			logger.Warn().Err(err).Msg("failed to deregister device from cloud during factory reset")
 		}
 	}
+
+	logoutTailscale(tailscaleResetTimeout)
 
 	var errs []error
 	for _, path := range factoryResetPaths {
@@ -1626,6 +1629,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"getPublicIPAddresses":       {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses":     {Func: rpcCheckPublicIPAddresses},
 	"getTailscaleStatus":         {Func: rpcGetTailscaleStatus},
+	"setTailscaleEnabled":        {Func: rpcSetTailscaleEnabled, Params: []string{"enabled"}},
+	"loginTailscale":             {Func: rpcLoginTailscale, Params: []string{"authKey"}},
+	"logoutTailscale":            {Func: rpcLogoutTailscale},
 	"getTailscaleControlURL":     {Func: rpcGetTailscaleControlURL},
 	"setTailscaleControlURL":     {Func: rpcSetTailscaleControlURL, Params: []string{"controlURL"}},
 	"getMqttSettings":            {Func: rpcGetMqttSettings},

@@ -16,7 +16,7 @@ Welcome to JetKVM development! This guide will help you get started quickly, whe
 ### Prerequisites
 
 - **A JetKVM device** (for full development)
-- **[Go 1.24.4+](https://go.dev/doc/install)** and **[Node.js 22.21.1](https://nodejs.org/en/download/)**
+- **[Go 1.26.6+](https://go.dev/doc/install)** and **[Node.js 22.21.1](https://nodejs.org/en/download/)**
 - **[Git](https://git-scm.com/downloads)** for version control
 - **[SSH access](https://jetkvm.com/docs/advanced-usage/developing#developer-mode)** to your JetKVM device
 
@@ -144,7 +144,7 @@ tail -f /userdata/jetkvm/last.log
 
 - `web.go` - Add new API endpoints here
 - `config.go` - Add new settings here
-- `tailscale.go` - Tailscale status and control-server logic
+- `tailscale.go` - Built-in Tailscale client lifecycle and RPC methods
 - `ui/src/routes/` - Add new pages here
 - `ui/src/components/` - Add new UI components here
 
@@ -251,21 +251,38 @@ curl -X POST http://<IP>/auth/password-local \
   -d '{"password": "test123"}'
 ```
 
-### Tailscale control server testing
+### Tailscale
 
-JetKVM exposes Tailscale control-server configuration through JSON-RPC so self-hosted control planes (for example Headscale) can be used.
+JetKVM embeds the Tailscale client (`tsnet`) in the app process. `internal/tailscale` creates the `tailscale0` TUN device, starts the client with its state in `/userdata/jetkvm/tailscale`, and gives the interface the addresses that the control server assigns. The web UI, WebRTC and SSH are then reachable on the tailnet address without other changes.
 
-- `getTailscaleStatus` returns current state and effective `controlURL`
+JSON-RPC methods:
+
+- `getTailscaleStatus` returns the state, the login URL, the tailnet addresses and the effective `controlURL`
+- `setTailscaleEnabled` starts or stops the built-in client and persists the choice
+- `loginTailscale` joins with an auth key; an empty key requests a new login URL
+- `logoutTailscale` removes the device from the tailnet
 - `getTailscaleControlURL` returns the effective control server URL
 - `setTailscaleControlURL` updates and persists the URL (empty value resets to default)
 
+The device sends a `tailscaleStatus` event on each state change.
+
 Notes:
 
-- URLs must be `http://` or `https://` and include a host.
-- Query strings, fragments, user info, and non-root paths are rejected.
-- Control server changes are applied with `tailscale set --login-server=...`.
-- When apply fails, the previous configured URL is restored and not persisted.
+- Control server URLs must be `http://` or `https://` and include a host. Query strings, fragments, user info, and non-root paths are rejected.
+- A control server change logs the built-in client out of the previous server.
+- A Tailscale installed with the install script (`/userdata/tailscale`) keeps working. The built-in client cannot be enabled while that installation exists; its control server changes are applied with `tailscale set --login-server=...`.
+- Log upload to Tailscale is off (`TS_NO_LOGS_NO_SUPPORT`).
 
+To test the join flow on a device, give the Playwright runner an auth key. The runner must be a member of the same tailnet:
+
+```sh
+JETKVM_URL=http://device-under-test \
+TAILSCALE_AUTHKEY=tskey-auth-... \
+TAILSCALE_CONTROL_URL=https://headscale.example.com \
+./node_modules/.bin/playwright test --project=ui tailscale.spec.ts
+```
+
+`TAILSCALE_CONTROL_URL` is optional. Without `TAILSCALE_AUTHKEY`, only the enable and login-link test runs.
 
 ### End to End Testing
 

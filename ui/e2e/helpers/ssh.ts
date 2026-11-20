@@ -96,7 +96,7 @@ export async function sshExec(cmd: string, ignoreErrors = false): Promise<string
 }
 
 export async function resetConfigViaSSH(): Promise<void> {
-  await sshExec("rm -f /userdata/kvm_config.json");
+  await sshExec("rm -rf /userdata/kvm_config.json /userdata/jetkvm/tailscale");
   await sshExec("sync");
 }
 
