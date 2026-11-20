@@ -1,6 +1,12 @@
 import { useCallback } from "react";
 
-import { useCapability, useRTCStore, useUiStore, useVideoStore } from "@hooks/stores";
+import {
+  type GuestClipboardState,
+  useCapability,
+  useRTCStore,
+  useUiStore,
+  useVideoStore,
+} from "@hooks/stores";
 import useKeyboard from "@hooks/useKeyboard";
 import { useCopyToClipboard } from "@components/useCopyToClipBoard";
 import notifications from "@/notifications";
@@ -49,6 +55,24 @@ export type PasteResult = "pasted" | "unavailable" | "failed";
 
 export function clipboardShortcut(key: "V" | "C") {
   return isMac() ? `⌘⇧${key}` : `Ctrl+Shift+${key}`;
+}
+
+// The chord that pastes on the guest. A Linux terminal takes Ctrl+V for a
+// control character, so a sender that also wrote the primary selection gets
+// Shift+Insert: a terminal pastes the primary selection, and every other
+// application pastes the clipboard.
+export function pasteShortcut(guest: Pick<GuestClipboardState, "os" | "primary">) {
+  if (guest.os === "macos") return { keys: ["KeyV"], modifiers: ["MetaLeft"] };
+  if (guest.primary) return { keys: ["Insert"], modifiers: ["ShiftLeft"] };
+  return { keys: ["KeyV"], modifiers: ["ControlLeft"] };
+}
+
+// The chord that copies on the guest. A Linux terminal takes Ctrl+C to stop
+// the program, and Ctrl+Insert copies there and in other apps.
+export function copyShortcut(guest: Pick<GuestClipboardState, "os">) {
+  if (guest.os === "macos") return { keys: ["KeyC"], modifiers: ["MetaLeft"] };
+  if (guest.os === "linux") return { keys: ["Insert"], modifiers: ["ControlLeft"] };
+  return { keys: ["KeyC"], modifiers: ["ControlLeft"] };
 }
 
 function statusMessage(status: GuestClipboardStatus) {
@@ -142,13 +166,7 @@ export default function useGuestClipboard() {
           }
           // The chord that triggered this left Ctrl/Shift held on the guest.
           await resetKeyboardState();
-          await executeMacro([
-            {
-              keys: ["KeyV"],
-              modifiers: [guestClipboard.os === "macos" ? "MetaLeft" : "ControlLeft"],
-              delay: shortcutDelay,
-            },
-          ]);
+          await executeMacro([{ ...pasteShortcut(guestClipboard), delay: shortcutDelay }]);
           return "pasted";
         } catch (error) {
           notifications.error(m.clipboard_guest_error({ error: String(error) }));
@@ -179,13 +197,7 @@ export default function useGuestClipboard() {
       try {
         // The chord that triggered this left modifiers held on the guest.
         await resetKeyboardState();
-        await executeMacro([
-          {
-            keys: ["KeyC"],
-            modifiers: [guestClipboard.os === "macos" ? "MetaLeft" : "ControlLeft"],
-            delay: shortcutDelay,
-          },
-        ]);
+        await executeMacro([{ ...copyShortcut(guestClipboard), delay: shortcutDelay }]);
         await sleep(guestCopySettleMs);
         const content = await guestRpc<GuestClipboardContent>("guestClipboardGet", {});
         if (content.status === "unsupported") {
