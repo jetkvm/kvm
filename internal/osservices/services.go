@@ -32,8 +32,11 @@ func (s *Session) handleClipboard(payload []byte) {
 			return
 		}
 		flags := le.Uint32(payload)
-		if flags&^uint32(ClipboardFlagRead|ClipboardFlagWrite) != 0 || payload[4] > byte(OSLinux) ||
-			payload[5] != 0 || payload[6] != 0 || payload[7] != 0 {
+		// The primary selection is written by clipboard.set, so its flag
+		// comes only with the write flag.
+		primaryWithoutWrite := flags&ClipboardFlagPrimary != 0 && flags&ClipboardFlagWrite == 0
+		if flags&^uint32(ClipboardFlagRead|ClipboardFlagWrite|ClipboardFlagPrimary) != 0 || primaryWithoutWrite ||
+			payload[4] > byte(OSLinux) || payload[5] != 0 || payload[6] != 0 || payload[7] != 0 {
 			s.faultService(ServiceClipboard, "invalid clipboard.capabilities")
 			return
 		}

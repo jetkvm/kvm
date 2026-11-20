@@ -188,9 +188,24 @@ func TestClipboardFaultsAndSettings(t *testing.T) {
 	}
 
 	// Invalid capabilities fault the service.
-	h.registerClipboard(4, byte(OSWindows))
+	h.registerClipboard(8, byte(OSWindows))
 	if h.s.ClipboardAvailable() {
-		t.Fatalf("flags 4 accepted")
+		t.Fatalf("flags 8 accepted")
+	}
+	// The primary selection is written by a set: its flag needs the write
+	// flag.
+	h.registerClipboard(ClipboardFlagPrimary, byte(OSLinux))
+	if h.s.ClipboardAvailable() {
+		t.Fatalf("the primary flag accepted without the write flag")
+	}
+	h.registerClipboard(ClipboardFlagRead|ClipboardFlagPrimary, byte(OSLinux))
+	if h.s.ClipboardAvailable() {
+		t.Fatalf("the primary flag accepted with the read flag only")
+	}
+	h.registerClipboard(ClipboardFlagRead|ClipboardFlagWrite|ClipboardFlagPrimary, byte(OSLinux))
+	h.expectClipboardConfig(1)
+	if st := h.s.State(); !st.Clipboard || st.ClipboardFlags != 7 {
+		t.Fatalf("read, write and primary: %+v", st)
 	}
 	h.registerClipboard(1, 4)
 	if h.s.ClipboardAvailable() {

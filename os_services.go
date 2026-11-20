@@ -331,9 +331,12 @@ type osServicesStatusJSON struct {
 }
 
 type guestClipboardJSON struct {
-	Read  bool   `json:"read"`
-	Write bool   `json:"write"`
-	OS    string `json:"os"`
+	Read  bool `json:"read"`
+	Write bool `json:"write"`
+	// Primary: a write also sets the primary selection, so the paste
+	// shortcut for Linux is Shift+Insert.
+	Primary bool   `json:"primary"`
+	OS      string `json:"os"`
 }
 
 type guestFileJSON struct {
@@ -413,9 +416,10 @@ func currentVideoState() rpcVideoState {
 	state.OSServices = status
 	if st.Clipboard {
 		state.GuestClipboard = &guestClipboardJSON{
-			Read:  st.ClipboardFlags&osservices.ClipboardFlagRead != 0,
-			Write: st.ClipboardFlags&osservices.ClipboardFlagWrite != 0,
-			OS:    st.ClipboardOS.String(),
+			Read:    st.ClipboardFlags&osservices.ClipboardFlagRead != 0,
+			Write:   st.ClipboardFlags&osservices.ClipboardFlagWrite != 0,
+			Primary: st.ClipboardFlags&osservices.ClipboardFlagPrimary != 0,
+			OS:      st.ClipboardOS.String(),
 		}
 	}
 	state.GuestTerminal = st.Terminal

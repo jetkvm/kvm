@@ -417,7 +417,7 @@ func TestProtocolSettingsChangesReachTheSender(t *testing.T) {
 		}
 		sawClipboard = sawClipboard || reflect.DeepEqual(m, sentMessage{svcClipboard, kClipConfig, []byte{0}})
 	}
-	want := map[string]any{"terminal_enabled": true, "files_enabled": false, "capture_display": "HDMI-A-1", "display_mode_by_sender": true}
+	want := map[string]any{"terminal_enabled": true, "files_enabled": false, "capture_display": "HDMI-A-1", "display_mode_by_sender": true, "clipboard_primary": true}
 	if !reflect.DeepEqual(config, want) || !sawClipboard {
 		t.Fatalf("messages %+v", got)
 	}

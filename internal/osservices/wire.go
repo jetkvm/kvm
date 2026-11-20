@@ -159,7 +159,10 @@ const (
 
 	ClipboardFlagRead  = 1 << 0
 	ClipboardFlagWrite = 1 << 1
-	ClipboardMaxText   = 65528
+	// ClipboardFlagPrimary: clipboard.set also writes the primary
+	// selection, which a Linux terminal pastes with Shift+Insert.
+	ClipboardFlagPrimary = 1 << 2
+	ClipboardMaxText     = 65528
 )
 
 // ClipboardStatus is the outcome of a clipboard request.
