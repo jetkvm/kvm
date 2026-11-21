@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/serialnet"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
@@ -393,6 +394,10 @@ var serialConfig = SerialSettings{
 	PreserveANSI:       true,
 	ShowNLTag:          false,
 	Buttons:            []QuickButton{},
+	NetworkMode:        serialnet.ModeDisabled,
+	Ser2NetPort:        serialnet.DefaultPort,
+	Ser2NetProtocol:    serialnet.ProtocolRaw,
+	NetworkMaxClients:  serialnet.DefaultMaxClients,
 }
 
 const serialSettingsPath = "/userdata/serialSettings.json"
@@ -425,6 +430,10 @@ type SerialSettings struct {
 	PreserveANSI       bool          `json:"preserveANSI"`       // Whether to preserve ANSI escape codes
 	ShowNLTag          bool          `json:"showNLTag"`          // Whether to show a special tag for new lines
 	Buttons            []QuickButton `json:"buttons"`            // Custom quick buttons
+	NetworkMode        string        `json:"networkMode"`        // Network access: "disabled", "ser2net", "web"
+	Ser2NetPort        int           `json:"ser2netPort"`        // TCP port for ser2net mode
+	Ser2NetProtocol    string        `json:"ser2netProtocol"`    // ser2net protocol: "raw", "rfc2217"
+	NetworkMaxClients  int           `json:"networkMaxClients"`  // Concurrent network clients allowed
 }
 
 type DCMsg struct {
@@ -459,7 +468,7 @@ func getSerialSettings() (SerialSettings, error) {
 	file, err := os.Open(serialSettingsPath)
 	if err != nil {
 		logger.Info().Msg("SerialSettings file doesn't exist, using default")
-		return serialConfig, err
+		return serialConfig, nil
 	}
 	defer file.Close()
 
@@ -470,6 +479,7 @@ func getSerialSettings() (SerialSettings, error) {
 		return serialConfig, nil
 	}
 
+	loadedConfig.normalizeNetwork()
 	serialConfig = loadedConfig // Update global config
 
 	// Apply settings to serial port, when opening the extension
@@ -510,6 +520,11 @@ func getSerialSettings() (SerialSettings, error) {
 }
 
 func setSerialSettings(newSettings SerialSettings) error {
+	newSettings.normalizeNetwork()
+	if err := newSettings.validateNetwork(); err != nil {
+		return err
+	}
+
 	logger.Trace().Str("path", serialSettingsPath).Msg("Saving config")
 
 	file, err := os.Create(serialSettingsPath)
@@ -562,7 +577,7 @@ func setSerialSettings(newSettings SerialSettings) error {
 
 	applyConsoleSettings()
 
-	return nil
+	return applySerialNetwork(serialConfig)
 }
 
 func applyConsoleSettings() {
@@ -610,7 +625,11 @@ func setTerminalPaused(paused bool) {
 }
 
 func initSerialPort() {
+	registerSerialMetrics()
 	_ = extPort.activate(config.ActiveExtension)
+	if config.ActiveExtension == "serial-console" {
+		_ = mountSerialConsole()
+	}
 }
 
 func handleSerialChannel(dataChannel *webrtc.DataChannel) {
