@@ -37,6 +37,14 @@ func rpcGetVideoState() (rpcVideoState, error) {
 	return currentVideoState(), nil
 }
 
+func unsupportedResolutionState(state native.VideoState) native.VideoState {
+	if state.Error == "" && (state.Width > 1920 || state.Height > 1080) {
+		state.Error = "out_of_range"
+		state.Ready = false
+	}
+	return state
+}
+
 var (
 	hostDisplayAdvertiseLock = sync.Mutex{}
 	hostDisplayAdvertised    bool
