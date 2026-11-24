@@ -394,7 +394,7 @@ func runWebsocketClient() error {
 	wsResetMetrics(true, "cloud", wsURL.Host)
 
 	// we don't have a source for the cloud connection
-	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId, "", scopedLogger)
+	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId, "", "", scopedLogger)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
