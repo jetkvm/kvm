@@ -29,10 +29,12 @@ import { cs_CZ } from "@/keyboardLayouts/cs_CZ";
 import { da_DK } from "@/keyboardLayouts/da_DK";
 import { de_CH } from "@/keyboardLayouts/de_CH";
 import { de_DE } from "@/keyboardLayouts/de_DE";
+import { en_CA } from "@/keyboardLayouts/en_CA";
 import { en_US } from "@/keyboardLayouts/en_US";
 import { en_UK } from "@/keyboardLayouts/en_UK";
 import { es_ES } from "@/keyboardLayouts/es_ES";
 import { fr_BE } from "@/keyboardLayouts/fr_BE";
+import { fr_CA } from "@/keyboardLayouts/fr_CA";
 import { fr_CH } from "@/keyboardLayouts/fr_CH";
 import { fr_FR } from "@/keyboardLayouts/fr_FR";
 import { hu_HU } from "@/keyboardLayouts/hu_HU";
@@ -50,10 +52,12 @@ export const keyboards: KeyboardLayout[] = [
   da_DK,
   de_CH,
   de_DE,
+  en_CA,
   en_UK,
   en_US,
   es_ES,
   fr_BE,
+  fr_CA,
   fr_CH,
   fr_FR,
   hu_HU,
