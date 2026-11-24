@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -285,10 +286,40 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 	}
 
 	localAuthToken, _ := c.Cookie("authToken")
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, localAuthToken, &scopedLogger)
+	externalIP := externalIPFromHost(c.Request.Host, ownIPAddrs())
+	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, localAuthToken, externalIP, &scopedLogger)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("websocket session ended with error")
 	}
+}
+
+func ownIPAddrs() []netip.Addr {
+	ifaceAddrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	addrs := make([]netip.Addr, 0, len(ifaceAddrs))
+	for _, ifaceAddr := range ifaceAddrs {
+		ipNet, ok := ifaceAddr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		if addr, ok := netip.AddrFromSlice(ipNet.IP); ok {
+			addrs = append(addrs, addr.Unmap())
+		}
+	}
+	return addrs
+}
+
+func externalIPFromHost(host string, ownAddrs []netip.Addr) string {
+	if hostOnly, _, err := net.SplitHostPort(host); err == nil {
+		host = hostOnly
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil || !addr.Is4() || len(ownAddrs) == 0 || slices.Contains(ownAddrs, addr) {
+		return ""
+	}
+	return addr.String()
 }
 
 func handleWebRTCSignalWsMessages(
@@ -297,6 +328,7 @@ func handleWebRTCSignalWsMessages(
 	source string,
 	connectionID string,
 	localAuthToken string,
+	localExternalIP string,
 	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -426,6 +458,9 @@ func handleWebRTCSignalWsMessages(
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("unable to parse session request data")
 				continue
+			}
+			if !isCloudConnection {
+				req.IP = localExternalIP
 			}
 
 			if req.OidcGoogle != "" {

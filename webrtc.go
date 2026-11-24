@@ -524,23 +524,23 @@ func newSession(config SessionConfig) (*Session, error) {
 			iceServer.URLs = config.ICEServers
 			scopedLogger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
 		}
+	}
 
-		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set ICEAddressRewriteRules")
+	if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
+		scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set ICEAddressRewriteRules")
+	} else {
+		err := webrtcSettingEngine.SetICEAddressRewriteRules(
+			webrtc.ICEAddressRewriteRule{
+				CIDR:            "0.0.0.0/0",
+				External:        []string{config.LocalIP},
+				Mode:            webrtc.ICEAddressRewriteAppend,
+				AsCandidateType: webrtc.ICECandidateTypeSrflx,
+			},
+		)
+		if err != nil {
+			scopedLogger.Warn().Err(err).Str("localIP", config.LocalIP).Msg("Failed to set ICEAddressRewriteRules")
 		} else {
-			err := webrtcSettingEngine.SetICEAddressRewriteRules(
-				webrtc.ICEAddressRewriteRule{
-					CIDR:            "0.0.0.0/0",
-					External:        []string{config.LocalIP},
-					Mode:            webrtc.ICEAddressRewriteAppend,
-					AsCandidateType: webrtc.ICECandidateTypeSrflx,
-				},
-			)
-			if err != nil {
-				scopedLogger.Warn().Err(err).Str("localIP", config.LocalIP).Msg("Failed to set ICEAddressRewriteRules")
-			} else {
-				scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Set ICEAddressRewriteRules for local IP")
-			}
+			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Set ICEAddressRewriteRules for local IP")
 		}
 	}
 
