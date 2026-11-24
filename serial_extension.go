@@ -59,6 +59,12 @@ func (e *extensionPort) activate(extension string) error {
 }
 
 func (e *extensionPort) start(extension string) error {
+	if extension == "hdmi-switch" {
+		// The HDMI switch extension talks to the switch over the network,
+		// so it does not own the serial port: skip opening it entirely.
+		e.extension = extension
+		return mountHdmiSwitchControl()
+	}
 	mode := defaultMode
 	if extension == "serial-console" {
 		mode = e.settings.mode
@@ -105,6 +111,12 @@ func (e *extensionPort) active(extension string) bool {
 }
 
 func (e *extensionPort) deactivate() {
+	if e.extension == "hdmi-switch" {
+		// Network extension: no serial port was opened, but its poller
+		// still needs to be stopped before the next extension starts.
+		_ = unmountHdmiSwitchControl()
+		e.extension = ""
+	}
 	if e.port == nil {
 		return
 	}
