@@ -24,6 +24,7 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 #include "video.h"
+#include "video_limits.h"
 #include "ctrl.h"
 #include "log.h"
 
@@ -993,6 +994,23 @@ void *run_detect_format(void *arg)
                 log_error("error VIDIOC_QUERY_DV_TIMINGS: %s", strerror(errno));
                 sleep(1);
                 continue;
+            }
+        }
+        else if (jetkvm_video_pixel_clock_out_of_range(dv_timings.bt.pixelclock))
+        {
+            // The capture chip is limited by the pixel clock, not by the line
+            // count: 1920x1200 and 1280x1440 fit, while higher-clock modes
+            // such as 2560x1440@60 do not.
+            log_warn("HDMI status: %ux%u at %llu Hz is out of range",
+                     dv_timings.bt.width, dv_timings.bt.height,
+                     (unsigned long long)dv_timings.bt.pixelclock);
+            bool had_signal = detected_signal;
+            detected_signal = false;
+            video_report_format(false, "out_of_range", 0, 0, 0);
+            if (had_signal)
+            {
+                // The capture of the previous format stops.
+                video_restart_streaming();
             }
         }
         else if ((uint64_t)dv_timings.bt.width * dv_timings.bt.height * 2 > input_buffer_size)
