@@ -404,8 +404,8 @@ int jetkvm_video_get_codec_type() {
 }
 
 int jetkvm_video_set_edid(const char *edid_hex) {
-    uint8_t edid[256];
-    int edid_len = hex_to_bytes(edid_hex, edid, 256);
+    uint8_t edid[EDID_MAX_SIZE];
+    int edid_len = hex_to_bytes(edid_hex, edid, EDID_MAX_SIZE);
     if (edid_len < 0) {
         return -1;
     }
@@ -413,8 +413,8 @@ int jetkvm_video_set_edid(const char *edid_hex) {
 }
 
 char *jetkvm_video_get_edid_hex() {
-    uint8_t edid[256];
-    int edid_len = get_edid(edid, 256);
+    uint8_t edid[EDID_MAX_SIZE];
+    int edid_len = get_edid(edid, EDID_MAX_SIZE);
     if (edid_len < 0) {
         return NULL;
     }
