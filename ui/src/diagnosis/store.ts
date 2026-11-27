@@ -13,6 +13,7 @@ interface DiagnosisState {
   sweepDiagnosis: Diagnosis | null;
   answerState: Facts["answerState"];
   kvmHostAddresses: string[];
+  held: boolean;
   publish: (live: Facts, facts: Facts, diagnosis: Diagnosis) => void;
   setOverride: <K extends keyof Facts>(key: K, value: Facts[K] | undefined) => void;
   setOverrides: (overrides: Partial<Facts>) => void;
@@ -22,6 +23,7 @@ interface DiagnosisState {
   sessionStarted: () => void;
   setAnswerState: (answerState: Facts["answerState"]) => void;
   addKvmCandidates: (candidates: string[]) => void;
+  setHeld: (held: boolean) => void;
 }
 
 const HOST_CANDIDATE = /^(?:a=)?candidate:\S+ \d+ \S+ \d+ (\S+) \d+ typ host/;
@@ -37,6 +39,7 @@ export const useDiagnosisStore = create<DiagnosisState>(set => ({
   sweepDiagnosis: null,
   answerState: "none",
   kvmHostAddresses: [],
+  held: false,
   publish: (live, facts, diagnosis) => set({ live, facts, diagnosis }),
   setOverride: (key, value) =>
     set(state => {
@@ -58,6 +61,7 @@ export const useDiagnosisStore = create<DiagnosisState>(set => ({
       if (found.length === 0) return state;
       return { kvmHostAddresses: [...new Set([...state.kvmHostAddresses, ...found])] };
     }),
+  setHeld: held => set({ held }),
   setSweepTitle: sweepTitle =>
     set(state => ({
       sweepTitle,

@@ -166,6 +166,8 @@ export default function WebRTCVideo({
   const setPlayError = useDiagnosisStore(state => state.setPlayError);
   const edidChanged = useDiagnosisStore(state => state.edidChanged);
   const heldByKvm = showSourceSwitchOverlay || updatePausesVideo || downloadPausesVideo;
+  const setHeld = useDiagnosisStore(state => state.setHeld);
+  useEffect(() => setHeld(heldByKvm), [heldByKvm, setHeld]);
   const showDiagnosis =
     diagnosis.status !== "ok" && (diagnosis.question <= 5 ? !hasConnectionIssues : !heldByKvm);
   const shownDiagnosis = useRef(diagnosis);

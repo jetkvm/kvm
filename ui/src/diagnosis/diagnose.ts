@@ -205,7 +205,9 @@ function socketClosed(facts: Facts): Diagnosis {
     return failed(
       3,
       m.diagnosis_no_response_title(),
-      m.diagnosis_cloud_no_response_summary(),
+      facts.cloudOnline
+        ? m.diagnosis_cloud_no_response_summary()
+        : m.diagnosis_cloud_no_answer_summary(),
       "issue",
     );
   }

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useHidStore, useRTCStore, useVideoStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { isOnDevice } from "@/main";
+import api from "@/api";
+import { CLOUD_API } from "@/ui.config";
 import { isLinuxDesktop } from "@/utils";
 
 import { diagnose, type Browser, type Facts } from "./diagnose";
@@ -12,7 +14,8 @@ import { useDiagnosisStore } from "./store";
 const POLL_MS = 1000;
 const SELF_TEST_DELAY_MS = 2000;
 const RATE_WINDOW_MS = 2000;
-const HTTP_PROBE_TIMEOUT_MS = 2000;
+const PROBE_TIMEOUT_MS = 2000;
+const PROBE_INTERVAL_MS = 3000;
 
 function detectBrowser(): Browser {
   const ua = navigator.userAgent;
@@ -128,39 +131,55 @@ function pageAddressIsOther(kvmHostAddresses: string[]) {
   return !kvmHostAddresses.includes(hostname);
 }
 
-function useHttpReachable(socketOpen: boolean) {
-  const [httpReachable, setHttpReachable] = useState<boolean | null>(null);
+async function probeDeviceStatus(signal: AbortSignal) {
+  const response = await fetch("/device/status", { cache: "no-store", signal });
+  return response.ok;
+}
+
+async function probeCloudOnline(deviceId: string, signal: AbortSignal) {
+  const response = await api.GET(`${CLOUD_API}/devices/${deviceId}`, {
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) return null;
+  const { device } = (await response.json()) as { device?: { online?: unknown } };
+  return typeof device?.online === "boolean" ? device.online : null;
+}
+
+function useProbe(
+  active: boolean,
+  probe: (signal: AbortSignal) => Promise<boolean | null>,
+  failed: boolean | null,
+) {
+  const [result, setResult] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!isOnDevice || socketOpen) {
-      setHttpReachable(null);
+    if (!active) {
+      setResult(null);
       return;
     }
     let cancelled = false;
-    const probe = async () => {
+    const run = async () => {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), HTTP_PROBE_TIMEOUT_MS);
+      const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
       try {
-        const response = await fetch("/device/status", {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (!cancelled) setHttpReachable(response.ok);
+        const value = await probe(controller.signal);
+        if (!cancelled) setResult(value);
       } catch {
-        if (!cancelled) setHttpReachable(false);
+        if (!cancelled) setResult(failed);
       } finally {
         clearTimeout(timeout);
       }
     };
-    void probe();
-    const interval = setInterval(probe, 3000);
+    void run();
+    const interval = setInterval(run, PROBE_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [socketOpen]);
+  }, [active, probe, failed]);
 
-  return httpReachable;
+  return result;
 }
 
 function useEdidIsDefault(rpcOpen: boolean) {
@@ -255,9 +274,11 @@ function useVideoFacts(peerConnection: RTCPeerConnection | null, connected: bool
 }
 
 export function useDiagnosisEngine({
+  deviceId,
   socketOpen,
   paused,
 }: {
+  deviceId: string;
   socketOpen: boolean;
   paused: boolean;
 }) {
@@ -270,12 +291,18 @@ export function useDiagnosisEngine({
   const playError = useDiagnosisStore(state => state.playError);
   const answerState = useDiagnosisStore(state => state.answerState);
   const kvmHostAddresses = useDiagnosisStore(state => state.kvmHostAddresses);
+  const held = useDiagnosisStore(state => state.held);
   const publish = useDiagnosisStore(state => state.publish);
 
   const [environment] = useState(readEnvironment);
   const peerConnected = peerConnectionState === "connected";
   const iceWasConnected = useIceWasConnected(peerConnection);
-  const httpReachable = useHttpReachable(socketOpen);
+  const httpReachable = useProbe(isOnDevice && !socketOpen, probeDeviceStatus, false);
+  const probeCloud = useCallback(
+    (signal: AbortSignal) => probeCloudOnline(deviceId, signal),
+    [deviceId],
+  );
+  const cloudOnline = useProbe(!isOnDevice && !socketOpen, probeCloud, null);
   const edidIsDefault = useEdidIsDefault(rpcOpen);
   const video = useVideoFacts(peerConnection, peerConnected);
   const computerOnline = useComputerOnline();
@@ -292,7 +319,7 @@ export function useDiagnosisEngine({
       computerOnline,
       socketOpen,
       httpReachable,
-      cloudOnline: null,
+      cloudOnline,
       answerState,
       reachedThroughOtherAddress,
       selfTestConnected: selfTest?.connected ?? null,
@@ -310,6 +337,7 @@ export function useDiagnosisEngine({
       computerOnline,
       socketOpen,
       httpReachable,
+      cloudOnline,
       answerState,
       reachedThroughOtherAddress,
       selfTest,
@@ -325,7 +353,7 @@ export function useDiagnosisEngine({
 
   const merged = useMemo(() => ({ ...live, ...overrides }), [live, overrides]);
   const first = diagnose({ ...merged, msWaiting: 0 });
-  const openQuestion = first.status === "waiting" ? first.question : 0;
+  const openQuestion = first.status === "waiting" && !paused && !held ? first.question : 0;
 
   const waitingSince = useRef({ question: 0, at: Date.now() });
   if (waitingSince.current.question !== openQuestion) {

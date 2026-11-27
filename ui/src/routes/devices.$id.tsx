@@ -288,6 +288,7 @@ export default function KvmIdRoute() {
   });
 
   useDiagnosisEngine({
+    deviceId: params.id,
     socketOpen,
     paused: location.pathname.includes("other-session"),
   });

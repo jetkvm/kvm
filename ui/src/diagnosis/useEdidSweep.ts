@@ -67,8 +67,10 @@ export function useEdidSweep() {
 
       setSweepTitle(m.diagnosis_sweep_restoring());
       const originalIsDefault = presets[0]?.edid.toLowerCase() === original.toLowerCase();
-      await call("setEDID", { edid: originalIsDefault ? "" : original });
-      notifications.error(m.diagnosis_sweep_no_signal());
+      const restored = await call("setEDID", { edid: originalIsDefault ? "" : original });
+      notifications.error(
+        "error" in restored ? m.diagnosis_sweep_restore_failed() : m.diagnosis_sweep_no_signal(),
+      );
     } finally {
       setSweepTitle(null);
       edidChanged();
