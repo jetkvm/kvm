@@ -68,13 +68,13 @@ function useIceWasConnected(peerConnection: RTCPeerConnection | null) {
   const [iceWasConnected, setIceWasConnected] = useState(false);
 
   useEffect(() => {
+    setIceWasConnected(false);
     if (!peerConnection) return;
     const read = () =>
       setIceWasConnected(previous => {
         const state = peerConnection.iceConnectionState;
         return previous || state === "connected" || state === "completed";
       });
-    setIceWasConnected(false);
     read();
     peerConnection.addEventListener("iceconnectionstatechange", read);
     return () => peerConnection.removeEventListener("iceconnectionstatechange", read);
