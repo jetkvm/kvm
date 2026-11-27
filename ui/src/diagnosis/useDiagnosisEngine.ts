@@ -394,8 +394,14 @@ export function useDiagnosisEngine({
   }
   if (running && clock.current.since === null) {
     const { elapsed, graced } = clock.current;
-    if (!graced && openQuestion >= FIRST_STATS_QUESTION && elapsed > 0 && elapsed < WAIT_LIMIT_MS) {
-      clock.current.elapsed = Math.min(elapsed, WAIT_LIMIT_MS - RESUME_GRACE_MS);
+    const graceStart = WAIT_LIMIT_MS - RESUME_GRACE_MS;
+    if (
+      !graced &&
+      openQuestion >= FIRST_STATS_QUESTION &&
+      elapsed > graceStart &&
+      elapsed < WAIT_LIMIT_MS
+    ) {
+      clock.current.elapsed = graceStart;
       clock.current.graced = true;
     }
     clock.current.since = Date.now();
