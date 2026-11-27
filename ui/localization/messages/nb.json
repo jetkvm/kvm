@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "Leser profilene",
     "diagnosis_sweep_restore_failed": "Ingen skjermprofil ga signal, og den forrige profilen kunne ikke gjenopprettes.",
     "diagnosis_sweep_restoring": "Gjenoppretter den forrige profilen",
+    "diagnosis_sweep_stopped": "Testen av skjermprofiler stoppet. Den forrige profilen er gjenopprettet.",
+    "diagnosis_sweep_stopped_restore_failed": "Testen av skjermprofiler stoppet, og den forrige profilen kunne ikke gjenopprettes.",
     "diagnosis_sweep_success": "Skjermprofil satt til {name}.",
     "diagnosis_usb_configured": "USB er aktiv.",
     "diagnosis_usb_not_attached": "Ingen datamaskin på USB.",

@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "正在讀取設定檔",
     "diagnosis_sweep_restore_failed": "沒有任何顯示設定檔產生訊號，且無法還原先前的設定檔。",
     "diagnosis_sweep_restoring": "正在還原先前的設定檔",
+    "diagnosis_sweep_stopped": "顯示設定檔測試已中斷。已還原先前的設定檔。",
+    "diagnosis_sweep_stopped_restore_failed": "顯示設定檔測試已中斷，且無法還原先前的設定檔。",
     "diagnosis_sweep_success": "顯示設定檔已設定為 {name}。",
     "diagnosis_usb_configured": "USB 處於作用中狀態。",
     "diagnosis_usb_not_attached": "USB 上沒有連接電腦。",

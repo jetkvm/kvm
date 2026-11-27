@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "Profile werden gelesen",
     "diagnosis_sweep_restore_failed": "Kein Anzeigeprofil hat ein Signal geliefert, und das vorherige Profil konnte nicht wiederhergestellt werden.",
     "diagnosis_sweep_restoring": "Vorheriges Profil wird wiederhergestellt",
+    "diagnosis_sweep_stopped": "Der Test der Anzeigeprofile wurde abgebrochen. Das vorherige Profil ist wiederhergestellt.",
+    "diagnosis_sweep_stopped_restore_failed": "Der Test der Anzeigeprofile wurde abgebrochen, und das vorherige Profil konnte nicht wiederhergestellt werden.",
     "diagnosis_sweep_success": "Anzeigeprofil auf {name} gesetzt.",
     "diagnosis_usb_configured": "USB ist aktiv.",
     "diagnosis_usb_not_attached": "Kein Computer an USB angeschlossen.",

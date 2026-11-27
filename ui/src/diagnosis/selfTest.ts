@@ -31,33 +31,33 @@ async function videoFrames(
 }
 
 export async function runSelfTest(): Promise<SelfTestResult> {
-  let sender: RTCPeerConnection;
-  let receiver: RTCPeerConnection;
+  const cleanup: (() => void)[] = [];
   try {
-    sender = new RTCPeerConnection();
-    receiver = new RTCPeerConnection();
-  } catch {
-    return { connected: false, h264: null };
-  }
+    const sender = new RTCPeerConnection();
+    cleanup.push(() => sender.close());
+    const receiver = new RTCPeerConnection();
+    cleanup.push(() => receiver.close());
 
-  const canvas = document.createElement("canvas");
-  canvas.width = 320;
-  canvas.height = 240;
-  const context = canvas.getContext("2d");
-  let hue = 0;
-  const draw = setInterval(() => {
-    if (!context) return;
-    hue = (hue + 30) % 360;
-    context.fillStyle = `hsl(${hue} 80% 50%)`;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }, POLL_MS);
-  const stream = canvas.captureStream(10);
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 240;
+    const context = canvas.getContext("2d");
+    let hue = 0;
+    const draw = setInterval(() => {
+      if (!context) return;
+      hue = (hue + 30) % 360;
+      context.fillStyle = `hsl(${hue} 80% 50%)`;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }, POLL_MS);
+    cleanup.push(() => clearInterval(draw));
+    const stream = canvas.captureStream(10);
+    cleanup.push(() => stream.getTracks().forEach(track => track.stop()));
 
-  const video = document.createElement("video");
-  video.muted = true;
-  video.playsInline = true;
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    cleanup.push(() => (video.srcObject = null));
 
-  try {
     sender.onicecandidate = ({ candidate }) => {
       if (candidate) void receiver.addIceCandidate(candidate).catch(() => undefined);
     };
@@ -107,10 +107,6 @@ export async function runSelfTest(): Promise<SelfTestResult> {
   } catch {
     return { connected: false, h264: null };
   } finally {
-    clearInterval(draw);
-    stream.getTracks().forEach(track => track.stop());
-    video.srcObject = null;
-    sender.close();
-    receiver.close();
+    cleanup.forEach(release => release());
   }
 }

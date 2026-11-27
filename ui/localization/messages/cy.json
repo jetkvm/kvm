@@ -411,6 +411,8 @@
     "diagnosis_sweep_reading": "Yn darllen y proffiliau",
     "diagnosis_sweep_restore_failed": "Ni roddodd unrhyw broffil sgrin signal, ac ni ellid adfer y proffil blaenorol.",
     "diagnosis_sweep_restoring": "Yn adfer y proffil blaenorol",
+    "diagnosis_sweep_stopped": "Daeth y prawf proffiliau sgrin i ben. Mae'r proffil blaenorol wedi'i adfer.",
+    "diagnosis_sweep_stopped_restore_failed": "Daeth y prawf proffiliau sgrin i ben, ac ni ellid adfer y proffil blaenorol.",
     "diagnosis_sweep_success": "Proffil sgrin wedi'i osod i {name}.",
     "diagnosis_usb_configured": "Mae USB yn weithredol.",
     "diagnosis_usb_not_attached": "Dim cyfrifiadur ar USB.",

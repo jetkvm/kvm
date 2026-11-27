@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "正在读取配置文件",
     "diagnosis_sweep_restore_failed": "没有任何显示配置文件产生信号，且无法恢复之前的配置文件。",
     "diagnosis_sweep_restoring": "正在恢复之前的配置文件",
+    "diagnosis_sweep_stopped": "显示配置文件测试已中断。已恢复之前的配置文件。",
+    "diagnosis_sweep_stopped_restore_failed": "显示配置文件测试已中断，且无法恢复之前的配置文件。",
     "diagnosis_sweep_success": "显示配置文件已设置为 {name}。",
     "diagnosis_usb_configured": "USB 处于活动状态。",
     "diagnosis_usb_not_attached": "USB 上没有连接计算机。",

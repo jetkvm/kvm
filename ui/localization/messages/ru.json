@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "Чтение профилей",
     "diagnosis_sweep_restore_failed": "Ни один профиль дисплея не дал сигнала, и предыдущий профиль не удалось восстановить.",
     "diagnosis_sweep_restoring": "Восстановление предыдущего профиля",
+    "diagnosis_sweep_stopped": "Проверка профилей дисплея прервана. Предыдущий профиль восстановлен.",
+    "diagnosis_sweep_stopped_restore_failed": "Проверка профилей дисплея прервана, и предыдущий профиль не удалось восстановить.",
     "diagnosis_sweep_success": "Установлен профиль дисплея {name}.",
     "diagnosis_usb_configured": "USB активен.",
     "diagnosis_usb_not_attached": "К USB не подключён компьютер.",

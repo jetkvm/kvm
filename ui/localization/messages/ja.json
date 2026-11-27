@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "プロファイルを読み込み中",
     "diagnosis_sweep_restore_failed": "どのディスプレイプロファイルでも信号が得られず、以前のプロファイルを復元できませんでした。",
     "diagnosis_sweep_restoring": "以前のプロファイルを復元中",
+    "diagnosis_sweep_stopped": "ディスプレイプロファイルのテストが中断しました。以前のプロファイルを復元しました。",
+    "diagnosis_sweep_stopped_restore_failed": "ディスプレイプロファイルのテストが中断し、以前のプロファイルを復元できませんでした。",
     "diagnosis_sweep_success": "ディスプレイプロファイルを {name} に設定しました。",
     "diagnosis_usb_configured": "USBはアクティブです。",
     "diagnosis_usb_not_attached": "USBにコンピュータが接続されていません。",

@@ -413,6 +413,8 @@
     "diagnosis_sweep_reading": "Načítavanie profilov",
     "diagnosis_sweep_restore_failed": "Žiadny profil displeja nedal signál a predchádzajúci profil sa nepodarilo obnoviť.",
     "diagnosis_sweep_restoring": "Obnovovanie predchádzajúceho profilu",
+    "diagnosis_sweep_stopped": "Test profilov displeja sa zastavil. Predchádzajúci profil je obnovený.",
+    "diagnosis_sweep_stopped_restore_failed": "Test profilov displeja sa zastavil a predchádzajúci profil sa nepodarilo obnoviť.",
     "diagnosis_sweep_success": "Profil displeja nastavený na {name}.",
     "diagnosis_usb_configured": "USB je aktívne.",
     "diagnosis_usb_not_attached": "Na USB nie je pripojený počítač.",

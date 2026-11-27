@@ -52,15 +52,20 @@ export function useEdidSweep() {
     };
 
     let restoreEdid: string | null = null;
-    const restorePrevious = async () => {
+    const restorePrevious = async (triedAll: boolean) => {
       if (restoreEdid === null) return;
       setSweepTitle(m.diagnosis_sweep_restoring());
       const restored = await call("setEDID", { edid: restoreEdid }).catch(() => null);
-      notifications.error(
-        !restored || "error" in restored
-          ? m.diagnosis_sweep_restore_failed()
-          : m.diagnosis_sweep_no_signal(),
-      );
+      const ok = !!restored && !("error" in restored);
+      if (triedAll) {
+        notifications.error(
+          ok ? m.diagnosis_sweep_no_signal() : m.diagnosis_sweep_restore_failed(),
+        );
+      } else {
+        notifications.error(
+          ok ? m.diagnosis_sweep_stopped() : m.diagnosis_sweep_stopped_restore_failed(),
+        );
+      }
     };
 
     try {
@@ -89,11 +94,11 @@ export function useEdidSweep() {
         }
       }
 
-      await restorePrevious();
+      await restorePrevious(true);
     } catch (error) {
       console.error("The display profile sweep stopped", error);
       if (restoreEdid === null) notifications.error(m.diagnosis_sweep_read_failed());
-      else await restorePrevious();
+      else await restorePrevious(false);
     } finally {
       setSweepTitle(null);
       edidChanged();

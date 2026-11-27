@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "Lecture des profils",
     "diagnosis_sweep_restore_failed": "Aucun profil d'affichage n'a donné de signal, et le profil précédent n'a pas pu être restauré.",
     "diagnosis_sweep_restoring": "Restauration du profil précédent",
+    "diagnosis_sweep_stopped": "Le test des profils d'affichage s'est arrêté. Le profil précédent est restauré.",
+    "diagnosis_sweep_stopped_restore_failed": "Le test des profils d'affichage s'est arrêté, et le profil précédent n'a pas pu être restauré.",
     "diagnosis_sweep_success": "Profil d'affichage défini sur {name}.",
     "diagnosis_usb_configured": "L'USB est actif.",
     "diagnosis_usb_not_attached": "Aucun ordinateur connecté en USB.",

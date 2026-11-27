@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "Profiller okunuyor",
     "diagnosis_sweep_restore_failed": "Hiçbir ekran profili sinyal vermedi ve önceki profil geri yüklenemedi.",
     "diagnosis_sweep_restoring": "Önceki profil geri yükleniyor",
+    "diagnosis_sweep_stopped": "Ekran profili testi durdu. Önceki profil geri yüklendi.",
+    "diagnosis_sweep_stopped_restore_failed": "Ekran profili testi durdu ve önceki profil geri yüklenemedi.",
     "diagnosis_sweep_success": "Ekran profili {name} olarak ayarlandı.",
     "diagnosis_usb_configured": "USB etkin.",
     "diagnosis_usb_not_attached": "USB'de bilgisayar yok.",

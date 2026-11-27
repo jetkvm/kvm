@@ -416,6 +416,8 @@
     "diagnosis_sweep_reading": "Lettura dei profili",
     "diagnosis_sweep_restore_failed": "Nessun profilo dello schermo ha dato un segnale e non è stato possibile ripristinare il profilo precedente.",
     "diagnosis_sweep_restoring": "Ripristino del profilo precedente",
+    "diagnosis_sweep_stopped": "Il test dei profili dello schermo si è interrotto. Il profilo precedente è stato ripristinato.",
+    "diagnosis_sweep_stopped_restore_failed": "Il test dei profili dello schermo si è interrotto e non è stato possibile ripristinare il profilo precedente.",
     "diagnosis_sweep_success": "Profilo dello schermo impostato su {name}.",
     "diagnosis_usb_configured": "L'USB è attivo.",
     "diagnosis_usb_not_attached": "Nessun computer collegato via USB.",

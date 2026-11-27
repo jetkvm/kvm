@@ -411,6 +411,8 @@
     "diagnosis_sweep_reading": "프로필을 읽는 중",
     "diagnosis_sweep_restore_failed": "어떤 디스플레이 프로필에서도 신호가 나오지 않았고, 이전 프로필로 복원하지 못했습니다.",
     "diagnosis_sweep_restoring": "이전 프로필을 복원하는 중",
+    "diagnosis_sweep_stopped": "디스플레이 프로필 테스트가 중단되었습니다. 이전 프로필로 복원했습니다.",
+    "diagnosis_sweep_stopped_restore_failed": "디스플레이 프로필 테스트가 중단되었고, 이전 프로필로 복원하지 못했습니다.",
     "diagnosis_sweep_success": "디스플레이 프로필을 {name}(으)로 설정했습니다.",
     "diagnosis_usb_configured": "USB가 활성 상태입니다.",
     "diagnosis_usb_not_attached": "USB에 연결된 컴퓨터가 없습니다.",

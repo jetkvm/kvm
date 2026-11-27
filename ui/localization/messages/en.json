@@ -427,6 +427,8 @@
     "diagnosis_sweep_reading": "Reading the profiles",
     "diagnosis_sweep_restore_failed": "No display profile gave a signal, and the previous profile could not be restored.",
     "diagnosis_sweep_restoring": "Restoring the previous profile",
+    "diagnosis_sweep_stopped": "The display profile test stopped. The previous profile is restored.",
+    "diagnosis_sweep_stopped_restore_failed": "The display profile test stopped, and the previous profile could not be restored.",
     "diagnosis_sweep_success": "Display profile set to {name}.",
     "diagnosis_usb_configured": "USB is active.",
     "diagnosis_usb_not_attached": "No computer on USB.",
