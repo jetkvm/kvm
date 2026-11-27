@@ -265,8 +265,8 @@ export async function recoverRemoteHostAfterUSBWakeTest(
 
 export async function wakeRemoteHostWithWakeButton(page: Page, timeoutMs = 45000): Promise<void> {
   await waitForNoSignalOverlay(page);
-  const wakeButton = page.getByRole("button", { name: /^try to wake$/i }).first();
-  await expect(wakeButton).toBeVisible({ timeout: 10000 });
+  const wakeButton = page.getByRole("button", { name: /^wake$/i }).first();
+  await expect(wakeButton).toBeVisible({ timeout: 20000 });
   await wakeButton.click();
 
   const deadline = Date.now() + timeoutMs;
@@ -277,7 +277,7 @@ export async function wakeRemoteHostWithWakeButton(page: Page, timeoutMs = 45000
     await new Promise(r => setTimeout(r, 1000));
   }
 
-  throw new Error(`Host did not wake within ${timeoutMs}ms after clicking Try to wake`);
+  throw new Error(`Host did not wake within ${timeoutMs}ms after clicking Wake`);
 }
 
 export async function sendBrowserInputThatMustNotWakeHost(page: Page): Promise<void> {

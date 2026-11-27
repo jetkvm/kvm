@@ -236,12 +236,22 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
   ],
 });
 
+const devRoutes: RouteObject[] = import.meta.env.DEV
+  ? [
+      {
+        path: "/playground",
+        lazy: async () => ({ Component: (await import("@routes/playground")).default }),
+      },
+    ]
+  : [];
+
 if (isOnDevice) {
   router = createBrowserRouter([
     {
       element: <Shell />,
       HydrateFallback: () => null,
       children: [
+        ...devRoutes,
         {
           path: "/welcome/mode",
           element: <WelcomeLocalModeRoute />,

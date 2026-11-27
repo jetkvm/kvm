@@ -1,0 +1,430 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { useHidStore, useRTCStore, useVideoStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { isOnDevice } from "@/main";
+import api from "@/api";
+import { CLOUD_API } from "@/ui.config";
+import { isLinuxDesktop } from "@/utils";
+
+import { diagnose, WAIT_LIMIT_MS, type Browser, type Facts } from "./diagnose";
+import { runSelfTest, type SelfTestResult } from "./selfTest";
+import { useDiagnosisStore } from "./store";
+
+const POLL_MS = 1000;
+const SELF_TEST_DELAY_MS = 2000;
+const RATE_WINDOW_MS = 2000;
+const RESUME_GRACE_MS = RATE_WINDOW_MS + POLL_MS;
+const FIRST_STATS_QUESTION = 7;
+const PROBE_TIMEOUT_MS = 2000;
+const PROBE_INTERVAL_MS = 3000;
+
+function detectBrowser(): Browser {
+  const ua = navigator.userAgent;
+  if (ua.includes("Edg/")) return "edge";
+  if (ua.includes("Firefox/")) return "firefox";
+  if (ua.includes("Chrome/") || ua.includes("Chromium/")) return "chrome";
+  if (ua.includes("Safari/")) return "safari";
+  return "other";
+}
+
+function detectH264() {
+  if (typeof RTCRtpReceiver === "undefined" || !RTCRtpReceiver.getCapabilities) return true;
+  const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs;
+  if (!codecs) return true;
+  return codecs.some(codec => codec.mimeType.toLowerCase() === "video/h264");
+}
+
+const readEnvironment = () => ({
+  mode: isOnDevice ? ("local" as const) : ("cloud" as const),
+  browser: detectBrowser(),
+  linux: isLinuxDesktop(),
+  addressIsIp: /^[\d.]+$|:/.test(window.location.hostname),
+  webrtcSupported: typeof RTCPeerConnection !== "undefined",
+  h264Supported: detectH264(),
+});
+
+interface Sample {
+  at: number;
+  bytes: number;
+  frames: number;
+}
+
+interface VideoFacts {
+  receivingBytes: boolean;
+  decodingFrames: boolean;
+  codec: Facts["codec"];
+  videoPlaying: boolean;
+}
+
+const noVideo: VideoFacts = {
+  receivingBytes: false,
+  decodingFrames: false,
+  codec: null,
+  videoPlaying: false,
+};
+
+function useIceWasConnected(peerConnection: RTCPeerConnection | null) {
+  const [iceWasConnected, setIceWasConnected] = useState(false);
+
+  useEffect(() => {
+    if (!peerConnection) return;
+    const read = () =>
+      setIceWasConnected(previous => {
+        const state = peerConnection.iceConnectionState;
+        return previous || state === "connected" || state === "completed";
+      });
+    setIceWasConnected(false);
+    read();
+    peerConnection.addEventListener("iceconnectionstatechange", read);
+    return () => peerConnection.removeEventListener("iceconnectionstatechange", read);
+  }, [peerConnection]);
+
+  return iceWasConnected;
+}
+
+function usePageHidden() {
+  const [hidden, setHidden] = useState(document.hidden);
+
+  useEffect(() => {
+    const update = () => setHidden(document.hidden);
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  return hidden;
+}
+
+function useComputerOnline() {
+  const [online, setOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  return online;
+}
+
+function useSelfTest(peerConnection: RTCPeerConnection | null, wanted: boolean) {
+  const [result, setResult] = useState<SelfTestResult | null>(null);
+  const testedPeer = useRef<RTCPeerConnection | null>(null);
+  const currentPeer = useRef(peerConnection);
+
+  useEffect(() => {
+    if (!peerConnection) return;
+    currentPeer.current = peerConnection;
+    setResult(null);
+  }, [peerConnection]);
+
+  useEffect(() => {
+    if (!wanted) return;
+    const timer = setTimeout(() => {
+      const peer = currentPeer.current;
+      if (testedPeer.current === peer) return;
+      testedPeer.current = peer;
+      void runSelfTest().then(selfTest => {
+        if (currentPeer.current === peer) setResult(selfTest);
+      });
+    }, SELF_TEST_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [wanted]);
+
+  return result;
+}
+
+function pageAddressIsOther(kvmHostAddresses: string[]) {
+  const { hostname } = window.location;
+  if (import.meta.env.DEV || !isOnDevice) return null;
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || kvmHostAddresses.length === 0) return null;
+  return !kvmHostAddresses.includes(hostname);
+}
+
+async function probeDeviceStatus(signal: AbortSignal) {
+  const response = await fetch("/device/status", { cache: "no-store", signal });
+  return response.ok;
+}
+
+async function probeCloudOnline(deviceId: string, signal: AbortSignal) {
+  const response = await api.GET(`${CLOUD_API}/devices/${deviceId}`, {
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) return null;
+  const { device } = (await response.json()) as { device?: { online?: unknown } };
+  return typeof device?.online === "boolean" ? device.online : null;
+}
+
+function useProbe(
+  active: boolean,
+  probe: (signal: AbortSignal) => Promise<boolean | null>,
+  failed: boolean | null,
+) {
+  const [result, setResult] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      setResult(null);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+      try {
+        const value = await probe(controller.signal);
+        if (!cancelled) setResult(value);
+      } catch {
+        if (!cancelled) setResult(failed);
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+    void run();
+    const interval = setInterval(run, PROBE_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [active, probe, failed]);
+
+  return result;
+}
+
+function useEdidIsDefault(rpcOpen: boolean) {
+  const { send } = useJsonRpc();
+  const [edidIsDefault, setEdidIsDefault] = useState<boolean | null>(null);
+  const edidChanges = useDiagnosisStore(state => state.edidChanges);
+
+  useEffect(() => {
+    if (!rpcOpen) {
+      setEdidIsDefault(null);
+      return;
+    }
+    send("getEDIDPresets", {}, (presets: JsonRpcResponse) => {
+      if ("error" in presets) return;
+      const defaultEdid = (presets.result as { edid: string }[])[0]?.edid;
+      if (!defaultEdid) return;
+      send("getEDID", {}, (current: JsonRpcResponse) => {
+        if ("error" in current) return;
+        setEdidIsDefault((current.result as string).toLowerCase() === defaultEdid.toLowerCase());
+      });
+    });
+  }, [rpcOpen, send, edidChanges]);
+
+  return edidIsDefault;
+}
+
+function useVideoFacts(peerConnection: RTCPeerConnection | null, connected: boolean) {
+  const [video, setVideo] = useState<VideoFacts>(noVideo);
+  const samples = useRef<Sample[]>([]);
+  const setPlayError = useDiagnosisStore(state => state.setPlayError);
+
+  useEffect(() => {
+    samples.current = [];
+    setPlayError(null);
+    if (!peerConnection || !connected) {
+      setVideo(noVideo);
+      return;
+    }
+    let cancelled = false;
+    let probedPlay = false;
+
+    const poll = async () => {
+      if (document.hidden) return;
+      const stats = await peerConnection.getStats().catch(() => null);
+      if (cancelled || !stats) return;
+
+      let bytes = 0;
+      let frames = 0;
+      let codec: Facts["codec"] = null;
+      stats.forEach(report => {
+        if (report.type !== "inbound-rtp" || report.kind !== "video") return;
+        bytes = report.bytesReceived ?? 0;
+        frames = report.framesDecoded ?? 0;
+        const mimeType = (stats.get(report.codecId)?.mimeType ?? "").toLowerCase();
+        if (mimeType === "video/h264") codec = "H.264";
+        if (mimeType === "video/h265") codec = "H.265";
+      });
+
+      const now = Date.now();
+      samples.current = [
+        ...samples.current.filter(sample => now - sample.at <= RATE_WINDOW_MS),
+        { at: now, bytes, frames },
+      ];
+      if (samples.current.length < 2) return;
+      const oldest = samples.current[0];
+      const receivingBytes = bytes > oldest.bytes;
+      const decodingFrames = frames > oldest.frames;
+
+      const element = useVideoStore.getState().videoElement;
+      const videoPlaying = !!element && !element.paused && element.readyState >= 3;
+
+      if (element && element.paused && decodingFrames && !probedPlay) {
+        probedPlay = true;
+        element.play().then(
+          () => setPlayError(null),
+          (error: unknown) => setPlayError((error as DOMException | undefined)?.name ?? "Error"),
+        );
+      }
+
+      setVideo({ receivingBytes, decodingFrames, codec, videoPlaying });
+    };
+
+    void poll();
+    const interval = setInterval(poll, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [peerConnection, connected, setPlayError]);
+
+  return video;
+}
+
+export function useDiagnosisEngine({
+  deviceId,
+  socketOpen,
+  paused,
+}: {
+  deviceId: string;
+  socketOpen: boolean;
+  paused: boolean;
+}) {
+  const peerConnection = useRTCStore(state => state.peerConnection);
+  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
+  const rpcOpen = useRTCStore(state => state.rpcDataChannel?.readyState === "open");
+  const hdmiState = useVideoStore(state => state.hdmiState);
+  const usbState = useHidStore(state => state.usbState);
+  const overrides = useDiagnosisStore(state => state.overrides);
+  const playError = useDiagnosisStore(state => state.playError);
+  const answerState = useDiagnosisStore(state => state.answerState);
+  const kvmHostAddresses = useDiagnosisStore(state => state.kvmHostAddresses);
+  const held = useDiagnosisStore(state => state.held);
+  const publish = useDiagnosisStore(state => state.publish);
+
+  const [environment] = useState(readEnvironment);
+  const peerConnected = peerConnectionState === "connected";
+  const iceWasConnected = useIceWasConnected(peerConnection);
+  const httpReachable = useProbe(isOnDevice && !socketOpen, probeDeviceStatus, false);
+  const probeCloud = useCallback(
+    (signal: AbortSignal) => probeCloudOnline(deviceId, signal),
+    [deviceId],
+  );
+  const cloudOnline = useProbe(!isOnDevice && !socketOpen, probeCloud, null);
+  const edidIsDefault = useEdidIsDefault(rpcOpen);
+  const video = useVideoFacts(peerConnection, peerConnected);
+  const computerOnline = useComputerOnline();
+  const pageHidden = usePageHidden();
+  const selfTest = useSelfTest(
+    peerConnection,
+    (socketOpen && answerState === "accepted" && !iceWasConnected) ||
+      (peerConnected && video.receivingBytes && !video.decodingFrames && video.codec === "H.264"),
+  );
+  const reachedThroughOtherAddress = pageAddressIsOther(kvmHostAddresses);
+
+  const live = useMemo<Omit<Facts, "msWaiting">>(
+    () => ({
+      ...environment,
+      computerOnline,
+      socketOpen,
+      httpReachable,
+      cloudOnline,
+      answerState,
+      reachedThroughOtherAddress,
+      selfTestConnected: selfTest?.connected ?? null,
+      selfTestH264: selfTest?.h264 ?? null,
+      iceWasConnected,
+      peerConnected,
+      hdmiState,
+      usbState,
+      edidIsDefault,
+      ...video,
+      playError,
+    }),
+    [
+      environment,
+      computerOnline,
+      socketOpen,
+      httpReachable,
+      cloudOnline,
+      answerState,
+      reachedThroughOtherAddress,
+      selfTest,
+      iceWasConnected,
+      peerConnected,
+      hdmiState,
+      usbState,
+      edidIsDefault,
+      video,
+      playError,
+    ],
+  );
+
+  const merged = useMemo(() => ({ ...live, ...overrides }), [live, overrides]);
+  const first = diagnose({ ...merged, msWaiting: 0 });
+  const openQuestion = first.status === "waiting" ? first.question : 0;
+  const heldVideo = held && openQuestion > 5;
+  const running = openQuestion !== 0 && !heldVideo && !paused && !pageHidden;
+
+  const clock = useRef({
+    question: openQuestion,
+    peerConnection,
+    elapsed: 0,
+    since: null as number | null,
+    graced: false,
+  });
+  if (
+    heldVideo ||
+    clock.current.question !== openQuestion ||
+    clock.current.peerConnection !== peerConnection
+  ) {
+    clock.current = {
+      question: openQuestion,
+      peerConnection,
+      elapsed: 0,
+      since: null,
+      graced: false,
+    };
+  }
+  if (running && clock.current.since === null) {
+    const { elapsed, graced } = clock.current;
+    const graceStart = WAIT_LIMIT_MS - RESUME_GRACE_MS;
+    if (
+      !graced &&
+      openQuestion >= FIRST_STATS_QUESTION &&
+      elapsed > graceStart &&
+      elapsed < WAIT_LIMIT_MS
+    ) {
+      clock.current.elapsed = graceStart;
+      clock.current.graced = true;
+    }
+    clock.current.since = Date.now();
+  }
+  if (!running && clock.current.since !== null) {
+    clock.current.elapsed += Date.now() - clock.current.since;
+    clock.current.since = null;
+  }
+
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(interval);
+  }, [running]);
+
+  useEffect(() => {
+    const { elapsed, since } = clock.current;
+    const msWaiting =
+      openQuestion === 0 ? 0 : elapsed + (since === null ? 0 : Math.max(0, now - since));
+    const liveFacts = { ...live, msWaiting };
+    const facts = { ...liveFacts, ...overrides };
+    publish(liveFacts, facts, paused ? { status: "ok" } : diagnose(facts));
+  }, [live, overrides, openQuestion, running, now, paused, publish]);
+}
