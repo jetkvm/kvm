@@ -161,6 +161,7 @@ export default function WebRTCVideo({
   const liveDiagnosis = useDiagnosisStore(state => state.diagnosis);
   const sweepTitle = useDiagnosisStore(state => state.sweepTitle);
   const [restoringEdid, setRestoringEdid] = useState(false);
+  const restoreAttempt = useRef(0);
   const startEdidSweep = useEdidSweep();
   const sweepDiagnosis = useDiagnosisStore(state => state.sweepDiagnosis);
   const diagnosis: Diagnosis = sweepDiagnosis ?? liveDiagnosis;
@@ -872,9 +873,15 @@ export default function WebRTCVideo({
       return;
     }
     if (action === "restoreEdid") {
+      const attempt = ++restoreAttempt.current;
       setRestoringEdid(true);
-      const timeout = setTimeout(() => setRestoringEdid(false), RESTORE_TIMEOUT_MS);
+      const timeout = setTimeout(() => {
+        if (restoreAttempt.current !== attempt) return;
+        restoreAttempt.current++;
+        setRestoringEdid(false);
+      }, RESTORE_TIMEOUT_MS);
       sendRpc("setEDID", { edid: "" }, (resp: JsonRpcResponse) => {
+        if (restoreAttempt.current !== attempt) return;
         clearTimeout(timeout);
         setRestoringEdid(false);
         if ("error" in resp) {

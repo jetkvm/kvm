@@ -366,30 +366,43 @@ export function useDiagnosisEngine({
 
   const merged = useMemo(() => ({ ...live, ...overrides }), [live, overrides]);
   const first = diagnose({ ...merged, msWaiting: 0 });
-  const clockStopped =
-    paused || pageHidden || (held && first.status === "waiting" && first.question > 5);
-  const openQuestion = first.status === "waiting" && !clockStopped ? first.question : 0;
+  const openQuestion = first.status === "waiting" ? first.question : 0;
+  const heldVideo = held && openQuestion > 5;
+  const running = openQuestion !== 0 && !heldVideo && !paused && !pageHidden;
 
-  const waitingSince = useRef({ question: 0, peerConnection, at: Date.now() });
+  const clock = useRef({
+    question: openQuestion,
+    peerConnection,
+    elapsed: 0,
+    since: null as number | null,
+  });
   if (
-    waitingSince.current.question !== openQuestion ||
-    waitingSince.current.peerConnection !== peerConnection
+    heldVideo ||
+    clock.current.question !== openQuestion ||
+    clock.current.peerConnection !== peerConnection
   ) {
-    waitingSince.current = { question: openQuestion, peerConnection, at: Date.now() };
+    clock.current = { question: openQuestion, peerConnection, elapsed: 0, since: null };
+  }
+  if (running && clock.current.since === null) clock.current.since = Date.now();
+  if (!running && clock.current.since !== null) {
+    clock.current.elapsed += Date.now() - clock.current.since;
+    clock.current.since = null;
   }
 
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    if (openQuestion === 0) return;
+    if (!running) return;
     setNow(Date.now());
     const interval = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(interval);
-  }, [openQuestion]);
+  }, [running]);
 
   useEffect(() => {
-    const msWaiting = openQuestion === 0 ? 0 : Math.max(0, now - waitingSince.current.at);
+    const { elapsed, since } = clock.current;
+    const msWaiting =
+      openQuestion === 0 ? 0 : elapsed + (since === null ? 0 : Math.max(0, now - since));
     const liveFacts = { ...live, msWaiting };
     const facts = { ...liveFacts, ...overrides };
     publish(liveFacts, facts, paused ? { status: "ok" } : diagnose(facts));
-  }, [live, overrides, openQuestion, now, paused, publish]);
+  }, [live, overrides, openQuestion, running, now, paused, publish]);
 }
