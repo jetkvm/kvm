@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,7 +23,7 @@ import (
 /* ---------- telnet / RFC 2217 ---------- */
 
 func TestTelnetDecodeUnescapesIACAndStripsCRNUL(t *testing.T) {
-	tn := newTelnetSession(serial.Mode{}, nil, nil)
+	tn := newTelnetSession(serial.Mode{}, nil, nil, nil)
 
 	data, reply := tn.Decode([]byte{'a', telnetIAC, telnetIAC, 'b', '\r', 0, 'c'})
 	if want := []byte{'a', telnetIAC, 'b', '\r', 'c'}; !bytes.Equal(data, want) {
@@ -40,7 +42,7 @@ func TestTelnetDecodeUnescapesIACAndStripsCRNUL(t *testing.T) {
 }
 
 func TestTelnetDecodeAcrossChunks(t *testing.T) {
-	tn := newTelnetSession(serial.Mode{BaudRate: 115200}, func(serial.Mode) error { return nil }, nil)
+	tn := newTelnetSession(serial.Mode{BaudRate: 115200}, func(m serial.Mode) (serial.Mode, error) { return m, nil }, nil, nil)
 
 	msg := []byte{telnetIAC, telnetSB, telnetOptComPort, rfc2217SetBaudRate, 0, 0, 0x25, 0x80, telnetIAC, telnetSE, 'x'}
 	var data, reply []byte
@@ -56,13 +58,13 @@ func TestTelnetDecodeAcrossChunks(t *testing.T) {
 	if !bytes.Equal(reply, want) {
 		t.Fatalf("reply = %v, want %v", reply, want)
 	}
-	if tn.mode.BaudRate != 9600 || !tn.modeChanged {
-		t.Fatalf("mode = %+v changed=%v", tn.mode, tn.modeChanged)
+	if tn.mode.BaudRate != 9600 {
+		t.Fatalf("mode = %+v", tn.mode)
 	}
 }
 
 func TestTelnetNegotiationDoesNotLoop(t *testing.T) {
-	tn := newTelnetSession(serial.Mode{}, nil, nil)
+	tn := newTelnetSession(serial.Mode{}, nil, nil, nil)
 	_ = tn.initialNegotiation()
 
 	cases := []struct {
@@ -95,15 +97,17 @@ func rfc2217Cmd(cmd byte, val ...byte) []byte {
 
 func TestRFC2217LineSettings(t *testing.T) {
 	var applied []serial.Mode
-	setMode := func(m serial.Mode) error {
+	base := serial.Mode{BaudRate: 115200, DataBits: 8, Parity: serial.NoParity, StopBits: serial.OneStopBit}
+	current := base
+	setMode := func(m serial.Mode) (serial.Mode, error) {
 		if m.BaudRate == 12345 {
-			return errors.New("unsupported")
+			return current, errors.New("unsupported")
 		}
 		applied = append(applied, m)
-		return nil
+		current = m
+		return m, nil
 	}
-	base := serial.Mode{BaudRate: 115200, DataBits: 8, Parity: serial.NoParity, StopBits: serial.OneStopBit}
-	tn := newTelnetSession(base, setMode, nil)
+	tn := newTelnetSession(base, setMode, nil, nil)
 
 	cases := []struct {
 		name string
@@ -141,7 +145,7 @@ func TestRFC2217LineSettings(t *testing.T) {
 
 func TestRFC2217ReplyEscapesIAC(t *testing.T) {
 	// 0xFF in a baud rate must be doubled inside the subnegotiation.
-	tn := newTelnetSession(serial.Mode{BaudRate: 255}, nil, nil)
+	tn := newTelnetSession(serial.Mode{BaudRate: 255}, nil, nil, nil)
 	_, reply := tn.Decode(rfc2217Cmd(rfc2217SetBaudRate, 0, 0, 0, 0))
 	want := []byte{telnetIAC, telnetSB, telnetOptComPort, 101, 0, 0, 0, telnetIAC, telnetIAC, telnetIAC, telnetSE}
 	if !bytes.Equal(reply, want) {
@@ -151,7 +155,7 @@ func TestRFC2217ReplyEscapesIAC(t *testing.T) {
 
 func TestTelnetBreak(t *testing.T) {
 	breaks := 0
-	tn := newTelnetSession(serial.Mode{}, nil, func() { breaks++ })
+	tn := newTelnetSession(serial.Mode{}, nil, func() { breaks++ }, nil)
 	data, _ := tn.Decode([]byte{'a', telnetIAC, telnetBRK, 'b'})
 	if !bytes.Equal(data, []byte("ab")) || breaks != 1 {
 		t.Fatalf("data = %q breaks = %d", data, breaks)
@@ -273,6 +277,26 @@ func waitClients(t *testing.T, s *Server, n int) {
 	}
 }
 
+// waitSubscribers polls until n clients receive UART output. A client counts
+// as connected a moment before it subscribes, so broadcasting right after
+// waitClients could miss it.
+func waitSubscribers(t *testing.T, s *Server, n int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		s.hub.mu.Lock()
+		got := len(s.hub.subs)
+		s.hub.mu.Unlock()
+		if got == n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("subscribers = %d, want %d", got, n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestSer2NetRawRelaysBothWays(t *testing.T) {
 	s, uart := newTestServer(t)
 	if err := s.Apply(true, ser2netSettings(ProtocolRaw, 1)); err != nil {
@@ -289,6 +313,7 @@ func TestSer2NetRawRelaysBothWays(t *testing.T) {
 	}
 	defer conn.Close()
 	waitClients(t, s, 1)
+	waitSubscribers(t, s, 1)
 
 	s.hub.Broadcast([]byte("login: "))
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
@@ -354,8 +379,10 @@ func TestSer2NetStopDropsClients(t *testing.T) {
 	// Unloading the extension closes the listener and the session.
 	s.Stop()
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	if _, err := conn.Read(make([]byte, 1)); err == nil {
-		t.Fatal("expected the connection to be closed")
+	// A closed connection reads EOF or a reset; a timeout means it stayed open.
+	var netErr net.Error
+	if _, err := conn.Read(make([]byte, 1)); err == nil || (errors.As(err, &netErr) && netErr.Timeout()) {
+		t.Fatalf("expected the connection to be closed, read returned %v", err)
 	}
 	if _, err := net.DialTimeout("tcp", addr, time.Second); err == nil {
 		t.Fatal("listener still accepting after Stop")
@@ -404,7 +431,7 @@ func TestSer2NetRFC2217Session(t *testing.T) {
 	r := bufio.NewReader(conn)
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 
-	greeting := newTelnetSession(base, nil, nil).initialNegotiation()
+	greeting := newTelnetSession(base, nil, nil, nil).initialNegotiation()
 	got := make([]byte, len(greeting))
 	if _, err := io.ReadFull(r, got); err != nil || !bytes.Equal(got, greeting) {
 		t.Fatalf("greeting = %v, %v", got, err)
@@ -422,6 +449,7 @@ func TestSer2NetRFC2217Session(t *testing.T) {
 	uart.waitFor(t, "hi\xff")
 
 	// UART output containing IAC reaches the client escaped.
+	waitSubscribers(t, s, 1)
 	s.hub.Broadcast([]byte{'x', telnetIAC})
 	got = make([]byte, 3)
 	if _, err := io.ReadFull(r, got); err != nil || !bytes.Equal(got, []byte{'x', telnetIAC, telnetIAC}) {
@@ -465,7 +493,7 @@ func TestSerialWebSocketRelaysBothWays(t *testing.T) {
 			return
 		}
 		defer ws.CloseNow()
-		s.ServeWeb(r.Context(), ws, r.RemoteAddr)
+		s.ServeWeb(r.Context(), ws, r.RemoteAddr, WebAuth{})
 	}))
 	defer srv.Close()
 
@@ -479,6 +507,7 @@ func TestSerialWebSocketRelaysBothWays(t *testing.T) {
 	}
 	defer ws.CloseNow()
 	waitClients(t, s, 1)
+	waitSubscribers(t, s, 1)
 
 	if err := ws.Write(ctx, websocket.MessageBinary, []byte("uname -a\r")); err != nil {
 		t.Fatal(err)
@@ -509,5 +538,282 @@ func TestSerialWebSocketRelaysBothWays(t *testing.T) {
 	_, _, err = ws.Read(ctx)
 	if websocket.CloseStatus(err) != websocket.StatusGoingAway {
 		t.Fatalf("after mode change err = %v", err)
+	}
+}
+
+/* ---------- review follow-ups ---------- */
+
+func TestRFC2217BreakOnSendsBreak(t *testing.T) {
+	breaks := 0
+	tn := newTelnetSession(serial.Mode{}, nil, func() { breaks++ }, nil)
+
+	for _, tc := range []struct {
+		name  string
+		value byte
+		want  int // breaks sent so far
+	}{
+		{"query break state", 4, 0},
+		{"break on", rfc2217BreakOn, 1},
+		{"break off", 6, 1},
+	} {
+		_, reply := tn.Decode(rfc2217Cmd(rfc2217SetControl, tc.value))
+		if len(reply) == 0 {
+			t.Errorf("%s: no reply", tc.name)
+		}
+		if breaks != tc.want {
+			t.Errorf("%s: breaks = %d, want %d", tc.name, breaks, tc.want)
+		}
+	}
+}
+
+func TestRFC2217PurgeDropsQueuedReceiveData(t *testing.T) {
+	purges := 0
+	tn := newTelnetSession(serial.Mode{}, nil, nil, func() { purges++ })
+
+	for _, value := range []byte{1, 2, 3} {
+		_, reply := tn.Decode(rfc2217Cmd(rfc2217PurgeData, value))
+		if !bytes.Equal(reply, rfc2217Reply(rfc2217PurgeData, []byte{value})) {
+			t.Errorf("purge %d: reply = %v", value, reply)
+		}
+	}
+	// Receive (1) and both (3) purge; transmit (2) has nothing to purge.
+	if purges != 2 {
+		t.Fatalf("purges = %d, want 2", purges)
+	}
+
+	h := NewHub()
+	sub := h.subscribe()
+	h.Broadcast([]byte("a"))
+	h.Broadcast([]byte("b"))
+	sub.purge()
+	if n := len(sub.ch); n != 0 {
+		t.Fatalf("%d chunks left after purge", n)
+	}
+}
+
+// dialRFC2217 connects, reads the server's opening negotiation and returns the
+// connection with a reader for its replies.
+func dialRFC2217(t *testing.T, s *Server) (net.Conn, *bufio.Reader) {
+	t.Helper()
+	conn, err := net.Dial("tcp", s.Status().ListenAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	r := bufio.NewReader(conn)
+	greeting := newTelnetSession(serial.Mode{}, nil, nil, nil).initialNegotiation()
+	if _, err := io.ReadFull(r, make([]byte, len(greeting))); err != nil {
+		t.Fatal(err)
+	}
+	return conn, r
+}
+
+// setBaud asks for a baud rate and returns the one the server reports.
+func setBaud(t *testing.T, conn net.Conn, r *bufio.Reader, baud uint32) uint32 {
+	t.Helper()
+	req := make([]byte, 4)
+	binary.BigEndian.PutUint32(req, baud)
+	if _, err := conn.Write(rfc2217Cmd(rfc2217SetBaudRate, req...)); err != nil {
+		t.Fatal(err)
+	}
+	// IAC SB COM-PORT <cmd+100> <4 bytes> IAC SE, assuming no byte is 0xFF.
+	reply := make([]byte, 10)
+	if _, err := io.ReadFull(r, reply); err != nil {
+		t.Fatal(err)
+	}
+	return binary.BigEndian.Uint32(reply[4:8])
+}
+
+func TestRFC2217LineSettingsBelongToOneClient(t *testing.T) {
+	s, _ := newTestServer(t)
+	base := serial.Mode{BaudRate: 115200, DataBits: 8}
+	var mu sync.Mutex
+	var applied []serial.Mode
+	s.mode = func() serial.Mode { return base }
+	s.setMode = func(m serial.Mode) error {
+		mu.Lock()
+		applied = append(applied, m)
+		mu.Unlock()
+		return nil
+	}
+	appliedModes := func() []serial.Mode {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]serial.Mode(nil), applied...)
+	}
+	if err := s.Apply(true, ser2netSettings(ProtocolRFC2217, 2)); err != nil {
+		t.Fatal(err)
+	}
+
+	a, ar := dialRFC2217(t, s)
+	b, br := dialRFC2217(t, s)
+	waitClients(t, s, 2)
+
+	// The first client to change the settings owns them.
+	if got := setBaud(t, a, ar, 9600); got != 9600 {
+		t.Fatalf("owner's baud rate = %d", got)
+	}
+	// The second is refused and is told what is really set.
+	if got := setBaud(t, b, br, 19200); got != 9600 {
+		t.Fatalf("refused client was told %d, want the owner's 9600", got)
+	}
+	if n := len(appliedModes()); n != 1 {
+		t.Fatalf("applied %d modes, want only the owner's", n)
+	}
+
+	// The owner leaving restores the configured mode once, and the other
+	// client can then take over.
+	a.Close()
+	waitClients(t, s, 1)
+	deadline := time.Now().Add(2 * time.Second)
+	for len(appliedModes()) < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("applied = %+v", appliedModes())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if modes := appliedModes(); modes[1] != base {
+		t.Fatalf("restored %+v, want %+v", modes[1], base)
+	}
+	if got := setBaud(t, b, br, 19200); got != 19200 {
+		t.Fatalf("second client's baud rate after takeover = %d", got)
+	}
+}
+
+func TestStopEndsLineSettingsChanges(t *testing.T) {
+	s, _ := newTestServer(t)
+	changed := 0
+	s.mode = func() serial.Mode { return serial.Mode{BaudRate: 115200} }
+	s.setMode = func(serial.Mode) error { changed++; return nil }
+	if err := s.Apply(true, ser2netSettings(ProtocolRFC2217, 1)); err != nil {
+		t.Fatal(err)
+	}
+	dialRFC2217(t, s)
+	waitClients(t, s, 1)
+
+	s.mu.Lock()
+	var c *client
+	for c = range s.clients {
+	}
+	s.mu.Unlock()
+
+	// A client that is still winding down after Stop must not reach the port.
+	s.Stop()
+	if _, err := s.setLineModeFor(c, serial.Mode{BaudRate: 9600}); err == nil {
+		t.Fatal("a dropped client changed the line settings")
+	}
+	if changed != 0 {
+		t.Fatalf("setMode ran %d times after Stop", changed)
+	}
+}
+
+func TestConnectionAcceptedBeforeReconfigureIsRefused(t *testing.T) {
+	s, _ := newTestServer(t)
+	if err := s.Apply(true, ser2netSettings(ProtocolRaw, 1)); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	old := s.gen
+	s.mu.Unlock()
+
+	// Same mode, new protocol: the listener restarts under a new generation.
+	if err := s.Apply(true, ser2netSettings(ProtocolRFC2217, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.register(transportTCP, "late", old, func() {}); !errors.Is(err, errDisabled) {
+		t.Fatalf("a connection from the old generation registered: %v", err)
+	}
+	s.mu.Lock()
+	cur := s.gen
+	s.mu.Unlock()
+	c, err := s.register(transportTCP, "current", cur, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.unregister(c)
+}
+
+func webAuthServer(t *testing.T, auth WebAuth) (*Server, *uartRecorder, string) {
+	t.Helper()
+	s, uart := newTestServer(t)
+	if err := s.Apply(true, Settings{Mode: ModeWeb, MaxClients: 1}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.CloseNow()
+		s.ServeWeb(r.Context(), ws, r.RemoteAddr, auth)
+	}))
+	t.Cleanup(srv.Close)
+	return s, uart, "ws" + strings.TrimPrefix(srv.URL, "http")
+}
+
+func TestWebConsoleEndsWhenLoginEnds(t *testing.T) {
+	old := webAuthCheckInterval
+	webAuthCheckInterval = 10 * time.Millisecond
+	t.Cleanup(func() { webAuthCheckInterval = old })
+
+	var valid atomic.Bool
+	valid.Store(true)
+	_, _, url := webAuthServer(t, WebAuth{Valid: valid.Load})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.CloseNow()
+
+	// Logging out closes an open console, with nobody typing.
+	valid.Store(false)
+	_, _, err = ws.Read(ctx)
+	if websocket.CloseStatus(err) != CloseSessionExpired {
+		t.Fatalf("close status = %v (%v), want %v", websocket.CloseStatus(err), err, CloseSessionExpired)
+	}
+}
+
+func TestWebConsoleInputAfterLoginEndsReachesNothing(t *testing.T) {
+	var valid atomic.Bool
+	valid.Store(true)
+	var activity atomic.Int32
+	s, uart, url := webAuthServer(t, WebAuth{Valid: valid.Load, Activity: func() { activity.Add(1) }})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.CloseNow()
+	waitClients(t, s, 1)
+
+	if err := ws.Write(ctx, websocket.MessageBinary, []byte("ls\r")); err != nil {
+		t.Fatal(err)
+	}
+	uart.waitFor(t, "ls\r")
+	if activity.Load() != 1 {
+		t.Fatalf("typing counted as activity %d times, want 1", activity.Load())
+	}
+
+	// Before the periodic check notices, input is already refused.
+	valid.Store(false)
+	_ = ws.Write(ctx, websocket.MessageBinary, []byte("reboot\r"))
+	_, _, err = ws.Read(ctx)
+	if websocket.CloseStatus(err) != CloseSessionExpired {
+		t.Fatalf("close status = %v (%v), want %v", websocket.CloseStatus(err), err, CloseSessionExpired)
+	}
+	uart.mu.Lock()
+	got := string(uart.data)
+	uart.mu.Unlock()
+	if got != "ls\r" {
+		t.Fatalf("UART got %q, want only the input from before the login ended", got)
+	}
+	if activity.Load() != 1 {
+		t.Fatalf("input after the login ended counted as activity")
 	}
 }

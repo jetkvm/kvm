@@ -45,9 +45,22 @@ const (
 	BreakDuration      = 250 * time.Millisecond
 )
 
+// webAuthCheckInterval is how often an open web console re-checks that its
+// login is still valid. A variable so tests can shorten it.
+var webAuthCheckInterval = 5 * time.Second
+
+// CloseSessionExpired closes a web console whose login ended. It is the code
+// the signaling socket uses, so the UI treats both the same way.
+const CloseSessionExpired websocket.StatusCode = 4003
+
+// anyGeneration lets a client register whatever the current generation is.
+const anyGeneration = 0
+
 var (
 	errDisabled = errors.New("serial network access is disabled")
 	errBusy     = errors.New("too many serial network clients")
+
+	errLineModeBusy = errors.New("line settings are in use by another client")
 
 	// Ports the device already serves on.
 	reservedPorts = map[int]string{22: "SSH", 80: "HTTP", 443: "HTTPS"}
@@ -136,6 +149,17 @@ type subscriber struct {
 
 func (s *subscriber) close() { s.once.Do(func() { close(s.done) }) }
 
+// purge drops what is queued for the client.
+func (s *subscriber) purge() {
+	for {
+		select {
+		case <-s.ch:
+		default:
+			return
+		}
+	}
+}
+
 func NewHub() *Hub {
 	return &Hub{subs: map[*subscriber]struct{}{}}
 }
@@ -213,6 +237,18 @@ type Server struct {
 	listener  net.Listener
 	listenErr error
 	clients   map[*client]struct{}
+	// gen counts reconfigurations. A TCP connection accepted before one
+	// carries the old number and is refused, so it can't join under
+	// settings it never connected with.
+	gen uint64
+
+	// lineMu guards the RFC 2217 line-settings lease: the first client to
+	// change the UART's line settings owns them until it disconnects, and
+	// other clients can't change them in the meantime. Lock order: lineMu,
+	// then mu.
+	lineMu    sync.Mutex
+	lineOwner *client
+	lineMode  serial.Mode
 }
 
 // Deps connect a Server to the UART.
@@ -222,7 +258,9 @@ type Deps struct {
 	// LineMode is the configured UART mode, restored after an RFC 2217
 	// client that changed it disconnects.
 	LineMode func() serial.Mode
-	// SetLineMode applies a mode requested by an RFC 2217 client.
+	// SetLineMode applies a mode requested by an RFC 2217 client. It
+	// should fail unless the UART still belongs to the service this
+	// server fronts.
 	SetLineMode func(serial.Mode) error
 	// SendBreak sends a serial break (telnet IAC BRK).
 	SendBreak func()
@@ -290,7 +328,7 @@ func (s *Server) Apply(active bool, st Settings) error {
 		Str("protocol", st.Protocol).
 		Int("max_clients", st.MaxClients).
 		Msg("ser2net listener started")
-	go s.acceptLoop(ln, st.Protocol)
+	go s.acceptLoop(ln, st.Protocol, s.gen)
 	return nil
 }
 
@@ -304,6 +342,7 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) stopLocked() {
+	s.gen++
 	if s.listener != nil {
 		_ = s.listener.Close()
 		logger.Info().Str("address", s.listener.Addr().String()).Msg("ser2net listener stopped")
@@ -348,7 +387,7 @@ func (s *Server) Status() Status {
 	return st
 }
 
-func (s *Server) register(transport, remote string, kick func()) (*client, error) {
+func (s *Server) register(transport, remote string, gen uint64, kick func()) (*client, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -356,7 +395,7 @@ func (s *Server) register(transport, remote string, kick func()) (*client, error
 	if transport == transportWeb {
 		want = ModeWeb
 	}
-	if !s.active || s.settings.Mode != want {
+	if !s.active || s.settings.Mode != want || (gen != anyGeneration && gen != s.gen) {
 		return nil, errDisabled
 	}
 	if len(s.clients) >= s.settings.MaxClients {
@@ -392,7 +431,7 @@ func (s *Server) toUART(p []byte, transport string) {
 	s.write(p, transport)
 }
 
-func (s *Server) acceptLoop(ln net.Listener, protocol string) {
+func (s *Server) acceptLoop(ln net.Listener, protocol string, gen uint64) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -403,7 +442,7 @@ func (s *Server) acceptLoop(ln net.Listener, protocol string) {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		go s.serveTCP(conn, protocol)
+		go s.serveTCP(conn, protocol, gen)
 	}
 }
 
@@ -421,11 +460,11 @@ func (l *lockedConn) write(p []byte) error {
 	return err
 }
 
-func (s *Server) serveTCP(conn net.Conn, protocol string) {
+func (s *Server) serveTCP(conn net.Conn, protocol string, gen uint64) {
 	defer conn.Close()
 	remote := conn.RemoteAddr().String()
 
-	client, err := s.register(transportTCP, remote, func() { _ = conn.Close() })
+	client, err := s.register(transportTCP, remote, gen, func() { _ = conn.Close() })
 	if err != nil {
 		logger.Info().Err(err).Str("remote", remote).Msg("rejected ser2net connection")
 		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
@@ -436,20 +475,22 @@ func (s *Server) serveTCP(conn net.Conn, protocol string) {
 
 	out := &lockedConn{conn: conn}
 
+	sub := s.hub.subscribe()
+	defer s.hub.unsubscribe(sub)
+
 	var tn *telnetSession
 	if protocol == ProtocolRFC2217 {
-		var mode serial.Mode
-		if s.mode != nil {
-			mode = s.mode()
-		}
-		tn = newTelnetSession(mode, s.setMode, s.sendBreak)
+		tn = newTelnetSession(
+			s.currentLineMode(),
+			func(m serial.Mode) (serial.Mode, error) { return s.setLineModeFor(client, m) },
+			s.sendBreak,
+			sub.purge,
+		)
+		defer s.releaseLineMode(client)
 		if err := out.write(tn.initialNegotiation()); err != nil {
 			return
 		}
 	}
-
-	sub := s.hub.subscribe()
-	defer s.hub.unsubscribe(sub)
 
 	relayDone := make(chan struct{})
 	go func() {
@@ -495,17 +536,86 @@ func (s *Server) serveTCP(conn net.Conn, protocol string) {
 
 	sub.close()
 	<-relayDone
+}
 
-	// Line settings an RFC 2217 client changed only last for its session.
-	if tn != nil && tn.modeChanged && s.setMode != nil && s.mode != nil {
-		if err := s.setMode(s.mode()); err != nil {
-			logger.Warn().Err(err).Msg("failed to restore serial mode after RFC 2217 session")
-		}
+// currentLineMode is the mode an RFC 2217 client should see: its owner's if
+// one has changed it, the configured one otherwise.
+func (s *Server) currentLineMode() serial.Mode {
+	s.lineMu.Lock()
+	defer s.lineMu.Unlock()
+	return s.currentLineModeLocked()
+}
+
+func (s *Server) currentLineModeLocked() serial.Mode {
+	if s.lineOwner != nil {
+		return s.lineMode
+	}
+	if s.mode != nil {
+		return s.mode()
+	}
+	return serial.Mode{}
+}
+
+// setLineModeFor applies m for an RFC 2217 client and returns the mode in
+// effect afterwards. The first client to change the line settings keeps
+// them until it disconnects; the others are refused, so one client leaving
+// can't pull the settings out from under another.
+func (s *Server) setLineModeFor(c *client, m serial.Mode) (serial.Mode, error) {
+	s.lineMu.Lock()
+	defer s.lineMu.Unlock()
+
+	current := s.currentLineModeLocked()
+	if s.setMode == nil {
+		return current, errors.New("line settings can't be changed")
+	}
+	if s.lineOwner != nil && s.lineOwner != c {
+		return current, errLineModeBusy
+	}
+	s.mu.Lock()
+	_, connected := s.clients[c]
+	s.mu.Unlock()
+	if !connected {
+		return current, errDisabled
+	}
+	if err := s.setMode(m); err != nil {
+		return current, err
+	}
+	s.lineOwner, s.lineMode = c, m
+	return m, nil
+}
+
+// releaseLineMode ends c's lease and puts the configured line settings back.
+func (s *Server) releaseLineMode(c *client) {
+	s.lineMu.Lock()
+	defer s.lineMu.Unlock()
+
+	if s.lineOwner != c {
+		return
+	}
+	s.lineOwner = nil
+	if s.setMode == nil || s.mode == nil {
+		return
+	}
+	if err := s.setMode(s.mode()); err != nil {
+		logger.Warn().Err(err).Msg("failed to restore serial mode after RFC 2217 session")
 	}
 }
 
-func (s *Server) ServeWeb(ctx context.Context, ws *websocket.Conn, remote string) {
-	client, err := s.register(transportWeb, remote, func() {
+// WebAuth lets the web console follow the login that opened it.
+type WebAuth struct {
+	// Valid reports whether that login still holds. The console is closed
+	// with CloseSessionExpired once it doesn't, so logging out, rotating the
+	// token or an idle sign-out ends it as it would any other request.
+	Valid func() bool
+	// Activity is called when the user types, so a busy console doesn't
+	// count as idle.
+	Activity func()
+}
+
+func (a WebAuth) valid() bool { return a.Valid == nil || a.Valid() }
+
+func (s *Server) ServeWeb(ctx context.Context, ws *websocket.Conn, remote string, auth WebAuth) {
+	client, err := s.register(transportWeb, remote, anyGeneration, func() {
 		_ = ws.Close(websocket.StatusGoingAway, "serial web console stopped")
 	})
 	if err != nil {
@@ -526,8 +636,15 @@ func (s *Server) ServeWeb(ctx context.Context, ws *websocket.Conn, remote string
 
 	go func() {
 		defer cancel()
+		tick := time.NewTicker(webAuthCheckInterval)
+		defer tick.Stop()
 		for {
 			select {
+			case <-tick.C:
+				if !auth.valid() {
+					_ = ws.Close(CloseSessionExpired, "session expired")
+					return
+				}
 			case p := <-sub.ch:
 				bytesTotal.WithLabelValues(transportWeb, "from_uart").Add(float64(len(p)))
 				wctx, wcancel := context.WithTimeout(ctx, clientWriteTimeout)
@@ -549,6 +666,13 @@ func (s *Server) ServeWeb(ctx context.Context, ws *websocket.Conn, remote string
 		_, p, err := ws.Read(ctx)
 		if err != nil {
 			return
+		}
+		if !auth.valid() {
+			_ = ws.Close(CloseSessionExpired, "session expired")
+			return
+		}
+		if auth.Activity != nil {
+			auth.Activity()
 		}
 		s.toUART(p, transportWeb)
 	}

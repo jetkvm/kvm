@@ -71,7 +71,7 @@ func applySerialNetwork(settings SerialSettings) error {
 func mountSerialConsole() error {
 	// Load the stored UART settings now rather than when the UI next opens,
 	// so a network client gets the configured line settings after boot.
-	settings, err := getSerialSettings()
+	settings, err := loadSerialSettings(true)
 	if err != nil {
 		serialLogger.Warn().Err(err).Msg("failed to load serial settings; using defaults")
 	}
@@ -108,5 +108,11 @@ func handleSerialWebSocket(c *gin.Context) {
 	}
 	defer func() { _ = ws.CloseNow() }()
 
-	serialNetwork.ServeWeb(c.Request.Context(), ws, c.ClientIP())
+	// The socket outlives the request, so it keeps checking the login that
+	// opened it, the way the signaling socket does.
+	token, _ := c.Cookie("authToken")
+	serialNetwork.ServeWeb(c.Request.Context(), ws, c.ClientIP(), serialnet.WebAuth{
+		Valid:    func() bool { return localSignalingTokenValid(token) },
+		Activity: recordLocalAuthActivity,
+	})
 }

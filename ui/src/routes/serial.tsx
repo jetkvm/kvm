@@ -3,16 +3,23 @@ import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { LuRefreshCw } from "react-icons/lu";
 
 import { m } from "@localizations/messages.js";
 import { Button } from "@components/Button";
+import { sessionExpiredLoginPath } from "@/api";
 
 // Standalone serial console for the extension port UART, served when the
 // Serial Console extension's network access is set to "Web console". It
 // talks to /serial/ws, which relays raw bytes both ways, so unlike the
 // in-session console there is no line normalisation or RX/TX labelling.
+//
+// The device it talks to can print anything, so the terminal gets no
+// clipboard addon: with it, an OSC 52 query in the output would hand the
+// viewer's clipboard back to the device.
+
+// Close code the device uses when the login that opened the console has ended.
+const SESSION_EXPIRED_CLOSE_CODE = 4003;
 
 const TERMINAL_OPTIONS = {
   theme: { background: "#0f172a", foreground: "#e2e8f0", cursor: "#93a1a1" },
@@ -47,7 +54,6 @@ export default function SerialWebConsoleRoute() {
     if (!instance) return;
     const fit = new FitAddon();
     instance.loadAddon(fit);
-    instance.loadAddon(new ClipboardAddon());
     instance.loadAddon(new Unicode11Addon());
     instance.loadAddon(new WebLinksAddon());
     fit.fit();
@@ -72,6 +78,10 @@ export default function SerialWebConsoleRoute() {
       else instance.write(new Uint8Array(e.data as ArrayBuffer));
     };
     ws.onclose = e => {
+      if (e.code === SESSION_EXPIRED_CLOSE_CODE) {
+        window.location.assign(sessionExpiredLoginPath);
+        return;
+      }
       setState({ kind: "disconnected", reason: e.reason || `code ${e.code}` });
     };
 

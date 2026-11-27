@@ -1031,6 +1031,7 @@
     "serial_console_network_mode_web": "Web console",
     "serial_console_network_open_web_console": "Open Web Console",
     "serial_console_network_port": "TCP Port",
+    "serial_console_network_port_reserved": "Port {port} is used by {service}",
     "serial_console_network_protocol": "Protocol",
     "serial_console_network_protocol_raw": "Raw TCP",
     "serial_console_network_protocol_rfc2217": "Telnet (RFC 2217)",

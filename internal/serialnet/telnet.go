@@ -43,6 +43,10 @@ const (
 	rfc2217ServerOffset       byte = 100
 )
 
+// SET-CONTROL values this server acts on; see rfc2217ControlReply for the
+// rest.
+const rfc2217BreakOn byte = 5
+
 const (
 	rfc2217ServerSignature = "JetKVM"
 	telnetMaxSubnegLen     = 256
@@ -73,19 +77,23 @@ type telnetSession struct {
 	they map[byte]bool
 
 	// mode is the UART mode this session last reported or applied.
-	mode        serial.Mode
-	modeChanged bool
-	setMode     func(serial.Mode) error
-	sendBreak   func()
+	mode serial.Mode
+	// setMode applies a requested mode and returns the mode now in effect,
+	// which differs from the request when it was refused.
+	setMode   func(serial.Mode) (serial.Mode, error)
+	sendBreak func()
+	// purgeRx drops data already queued for this client.
+	purgeRx func()
 }
 
-func newTelnetSession(mode serial.Mode, setMode func(serial.Mode) error, sendBreak func()) *telnetSession {
+func newTelnetSession(mode serial.Mode, setMode func(serial.Mode) (serial.Mode, error), sendBreak, purgeRx func()) *telnetSession {
 	return &telnetSession{
 		we:        map[byte]bool{},
 		they:      map[byte]bool{},
 		mode:      mode,
 		setMode:   setMode,
 		sendBreak: sendBreak,
+		purgeRx:   purgeRx,
 	}
 }
 
@@ -294,15 +302,32 @@ func (t *telnetSession) handleSubneg(sb []byte) []byte {
 		if len(val) != 1 {
 			return nil
 		}
+		if val[0] == rfc2217BreakOn && t.sendBreak != nil {
+			// The port can only send a timed break, so BREAK OFF has
+			// nothing left to do.
+			t.sendBreak()
+		}
 		return rfc2217Reply(cmd, []byte{rfc2217ControlReply(val[0])})
 
-	case rfc2217SetLineStateMask, rfc2217SetModemStateMask, rfc2217PurgeData:
+	case rfc2217PurgeData:
+		if len(val) != 1 {
+			return nil
+		}
+		// 1 and 3 purge the receive buffer; there is no transmit queue.
+		if (val[0] == 1 || val[0] == 3) && t.purgeRx != nil {
+			t.purgeRx()
+		}
+		return rfc2217Reply(cmd, val[:1])
+
+	case rfc2217SetLineStateMask, rfc2217SetModemStateMask:
 		if len(val) != 1 {
 			return nil
 		}
 		return rfc2217Reply(cmd, val[:1])
 
 	case rfc2217FlowControlSuspend, rfc2217FlowControlResume:
+		// The UART has no flow control. Pausing the stream would mean
+		// buffering or dropping console output, so it keeps flowing.
 		return nil
 	}
 	return nil
@@ -332,12 +357,11 @@ func (t *telnetSession) apply(next serial.Mode) {
 	if t.setMode == nil {
 		return
 	}
-	if err := t.setMode(next); err != nil {
-		logger.Warn().Err(err).Interface("mode", next).Msg("RFC 2217 client requested an unsupported serial mode")
-		return
+	got, err := t.setMode(next)
+	if err != nil {
+		logger.Warn().Err(err).Interface("mode", next).Msg("RFC 2217 serial mode request refused")
 	}
-	t.mode = next
-	t.modeChanged = true
+	t.mode = got
 }
 
 func rfc2217Reply(cmd byte, payload []byte) []byte {

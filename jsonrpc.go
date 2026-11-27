@@ -939,19 +939,26 @@ func rpcSetActiveExtension(extensionId string) error {
 	if config.ActiveExtension == extensionId && extPort.active(extensionId) {
 		return nil
 	}
+	// Network clients must be gone before another extension takes the UART.
+	if extensionId != "serial-console" {
+		_ = unmountSerialConsole()
+	}
 	if err := extPort.activate(extensionId); err != nil {
+		// activate puts the previous extension back when it can.
+		if config.ActiveExtension == "serial-console" && extPort.active("serial-console") {
+			_ = mountSerialConsole()
+		}
 		return fmt.Errorf("failed to open the serial port: %w", err)
 	}
 	config.ActiveExtension = extensionId
-	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-	// Failures show up in getSerialNetworkStatus; the extension itself
-	// still loads.
+	// The port is the console's from here on whether or not the save
+	// below works, so its network access starts now. Failures show up in
+	// getSerialNetworkStatus; the extension itself still loads.
 	if extensionId == "serial-console" {
 		_ = mountSerialConsole()
-	} else {
-		_ = unmountSerialConsole()
+	}
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
 	// Re-publish MQTT HA Discovery for the new extension

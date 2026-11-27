@@ -12,7 +12,7 @@ import {
   LuTerminal,
   LuExternalLink,
 } from "react-icons/lu";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
@@ -68,6 +68,9 @@ interface SerialNetworkStatus {
 
 const SERIAL_NETWORK_STATUS_POLL_MS = 3000;
 
+// Ports the device already serves on; the device refuses them too.
+const RESERVED_SER2NET_PORTS: Record<number, string> = { 22: "SSH", 80: "HTTP", 443: "HTTPS" };
+
 /** ============== Component ============== */
 
 export function SerialConsole() {
@@ -114,7 +117,7 @@ export function SerialConsole() {
   const [draftTerminator, setDraftTerminator] = useState({ label: "LF (\\n)", value: "\n" });
 
   // load serial settings like SerialConsole
-  useEffect(() => {
+  const loadSettings = useCallback(() => {
     send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
@@ -130,6 +133,10 @@ export function SerialConsole() {
   }, [send, setTerminator]);
 
   useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
     const refresh = () =>
       send("getSerialNetworkStatus", {}, (resp: JsonRpcResponse) => {
         if ("error" in resp) return;
@@ -143,6 +150,12 @@ export function SerialConsole() {
   const commitPort = () => {
     const port = Number(portDraft);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setPortDraft(String(settings.ser2netPort));
+      return;
+    }
+    const reservedBy = RESERVED_SER2NET_PORTS[port];
+    if (reservedBy) {
+      notifications.error(m.serial_console_network_port_reserved({ port, service: reservedBy }));
       setPortDraft(String(settings.ser2netPort));
       return;
     }
@@ -165,6 +178,8 @@ export function SerialConsole() {
             error: resp.error.data || m.unknown_error(),
           }),
         );
+        // Show what the device kept, not the value it refused.
+        loadSettings();
         return;
       }
     });
