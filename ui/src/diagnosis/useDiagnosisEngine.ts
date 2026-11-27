@@ -7,13 +7,14 @@ import api from "@/api";
 import { CLOUD_API } from "@/ui.config";
 import { isLinuxDesktop } from "@/utils";
 
-import { diagnose, type Browser, type Facts } from "./diagnose";
+import { diagnose, WAIT_LIMIT_MS, type Browser, type Facts } from "./diagnose";
 import { runSelfTest, type SelfTestResult } from "./selfTest";
 import { useDiagnosisStore } from "./store";
 
 const POLL_MS = 1000;
 const SELF_TEST_DELAY_MS = 2000;
 const RATE_WINDOW_MS = 2000;
+const RESUME_GRACE_MS = RATE_WINDOW_MS + POLL_MS;
 const PROBE_TIMEOUT_MS = 2000;
 const PROBE_INTERVAL_MS = 3000;
 
@@ -383,7 +384,13 @@ export function useDiagnosisEngine({
   ) {
     clock.current = { question: openQuestion, peerConnection, elapsed: 0, since: null };
   }
-  if (running && clock.current.since === null) clock.current.since = Date.now();
+  if (running && clock.current.since === null) {
+    const { elapsed } = clock.current;
+    if (elapsed > 0 && elapsed < WAIT_LIMIT_MS) {
+      clock.current.elapsed = Math.min(elapsed, WAIT_LIMIT_MS - RESUME_GRACE_MS);
+    }
+    clock.current.since = Date.now();
+  }
   if (!running && clock.current.since !== null) {
     clock.current.elapsed += Date.now() - clock.current.since;
     clock.current.since = null;
