@@ -52,12 +52,8 @@ func newDeviceSerialNetServer(hub *serialnet.Hub) *serialnet.Server {
 		},
 		LineMode:    func() serial.Mode { return *serialPortMode },
 		SetLineMode: func(m serial.Mode) error { return extPort.setLineMode(&m) },
-		SendBreak: func() {
-			if err := extPort.sendBreak(serialnet.BreakDuration); err != nil {
-				serialLogger.Warn().Err(err).Msg("failed to send serial break")
-			}
-		},
-		BindAddr: getBindAddress,
+		SendBreak:   func() error { return extPort.sendBreak(serialnet.BreakDuration) },
+		BindAddr:    getBindAddress,
 	})
 }
 

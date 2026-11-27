@@ -45,7 +45,10 @@ const (
 
 // SET-CONTROL values this server acts on; see rfc2217ControlReply for the
 // rest.
-const rfc2217BreakOn byte = 5
+const (
+	rfc2217BreakOn  byte = 5
+	rfc2217BreakOff byte = 6
+)
 
 const (
 	rfc2217ServerSignature = "JetKVM"
@@ -78,15 +81,18 @@ type telnetSession struct {
 
 	// mode is the UART mode this session last reported or applied.
 	mode serial.Mode
-	// setMode applies a requested mode and returns the mode now in effect,
-	// which differs from the request when it was refused.
-	setMode   func(serial.Mode) (serial.Mode, error)
-	sendBreak func()
+	// setMode applies a change to the UART's current line settings and
+	// returns the settings now in effect, which differ from the request when
+	// it was refused. The session describes the change rather than the
+	// result: other clients may have changed the settings since this one last
+	// looked, and a partial change must not write its stale copy back.
+	setMode   func(change func(*serial.Mode)) (serial.Mode, error)
+	sendBreak func() error
 	// purgeRx drops data already queued for this client.
 	purgeRx func()
 }
 
-func newTelnetSession(mode serial.Mode, setMode func(serial.Mode) (serial.Mode, error), sendBreak, purgeRx func()) *telnetSession {
+func newTelnetSession(mode serial.Mode, setMode func(change func(*serial.Mode)) (serial.Mode, error), sendBreak func() error, purgeRx func()) *telnetSession {
 	return &telnetSession{
 		we:        map[byte]bool{},
 		they:      map[byte]bool{},
@@ -145,7 +151,9 @@ func (t *telnetSession) Decode(in []byte) (data []byte, reply []byte) {
 				t.state = telnetStateSB
 			case telnetBRK:
 				if t.sendBreak != nil {
-					t.sendBreak()
+					if err := t.sendBreak(); err != nil {
+						logger.Warn().Err(err).Msg("telnet break could not be sent")
+					}
 				}
 				t.state = telnetStateData
 			default:
@@ -242,9 +250,9 @@ func (t *telnetSession) handleSubneg(sb []byte) []byte {
 			return nil
 		}
 		if baud := binary.BigEndian.Uint32(val); baud != 0 {
-			next := t.mode
-			next.BaudRate = int(baud)
-			t.apply(next)
+			t.apply(func(m *serial.Mode) { m.BaudRate = int(baud) })
+		} else {
+			t.apply(nil)
 		}
 		out := make([]byte, 4)
 		binary.BigEndian.PutUint32(out, uint32(t.mode.BaudRate))
@@ -255,9 +263,9 @@ func (t *telnetSession) handleSubneg(sb []byte) []byte {
 			return nil
 		}
 		if v := int(val[0]); v >= 5 && v <= 8 {
-			next := t.mode
-			next.DataBits = v
-			t.apply(next)
+			t.apply(func(m *serial.Mode) { m.DataBits = v })
+		} else {
+			t.apply(nil)
 		}
 		return rfc2217Reply(cmd, []byte{byte(t.mode.DataBits)})
 
@@ -267,9 +275,9 @@ func (t *telnetSession) handleSubneg(sb []byte) []byte {
 		}
 		// RFC 2217 codes are 1-based in the same order as serial.Parity.
 		if v := val[0]; v >= 1 && v <= 5 {
-			next := t.mode
-			next.Parity = serial.Parity(v - 1)
-			t.apply(next)
+			t.apply(func(m *serial.Mode) { m.Parity = serial.Parity(v - 1) })
+		} else {
+			t.apply(nil)
 		}
 		return rfc2217Reply(cmd, []byte{byte(t.mode.Parity) + 1})
 
@@ -277,17 +285,15 @@ func (t *telnetSession) handleSubneg(sb []byte) []byte {
 		if len(val) != 1 {
 			return nil
 		}
-		next := t.mode
-		switch val[0] {
-		case 1:
-			next.StopBits = serial.OneStopBit
-		case 2:
-			next.StopBits = serial.TwoStopBits
-		case 3:
-			next.StopBits = serial.OnePointFiveStopBits
-		}
-		if next != t.mode {
-			t.apply(next)
+		stop, ok := map[byte]serial.StopBits{
+			1: serial.OneStopBit,
+			2: serial.TwoStopBits,
+			3: serial.OnePointFiveStopBits,
+		}[val[0]]
+		if ok {
+			t.apply(func(m *serial.Mode) { m.StopBits = stop })
+		} else {
+			t.apply(nil)
 		}
 		code := byte(1)
 		switch t.mode.StopBits {
@@ -302,12 +308,16 @@ func (t *telnetSession) handleSubneg(sb []byte) []byte {
 		if len(val) != 1 {
 			return nil
 		}
+		state := rfc2217ControlReply(val[0])
 		if val[0] == rfc2217BreakOn && t.sendBreak != nil {
 			// The port can only send a timed break, so BREAK OFF has
-			// nothing left to do.
-			t.sendBreak()
+			// nothing left to do. A break that failed is reported as off.
+			if err := t.sendBreak(); err != nil {
+				logger.Warn().Err(err).Msg("RFC 2217 client asked for a break that could not be sent")
+				state = rfc2217BreakOff
+			}
 		}
-		return rfc2217Reply(cmd, []byte{rfc2217ControlReply(val[0])})
+		return rfc2217Reply(cmd, []byte{state})
 
 	case rfc2217PurgeData:
 		if len(val) != 1 {
@@ -353,13 +363,20 @@ func rfc2217ControlReply(v byte) byte {
 	}
 }
 
-func (t *telnetSession) apply(next serial.Mode) {
+// apply makes change to the UART's line settings and refreshes the session's
+// copy from the result. A nil change only refreshes it, so queries report
+// what is set now.
+func (t *telnetSession) apply(change func(*serial.Mode)) {
 	if t.setMode == nil {
 		return
 	}
-	got, err := t.setMode(next)
-	if err != nil {
-		logger.Warn().Err(err).Interface("mode", next).Msg("RFC 2217 serial mode request refused")
+	query := change == nil
+	if query {
+		change = func(*serial.Mode) {}
+	}
+	got, err := t.setMode(change)
+	if err != nil && !query {
+		logger.Warn().Err(err).Interface("mode", got).Msg("RFC 2217 serial mode request refused")
 	}
 	t.mode = got
 }

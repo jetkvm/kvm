@@ -42,7 +42,11 @@ func TestTelnetDecodeUnescapesIACAndStripsCRNUL(t *testing.T) {
 }
 
 func TestTelnetDecodeAcrossChunks(t *testing.T) {
-	tn := newTelnetSession(serial.Mode{BaudRate: 115200}, func(m serial.Mode) (serial.Mode, error) { return m, nil }, nil, nil)
+	tn := newTelnetSession(serial.Mode{BaudRate: 115200}, func(change func(*serial.Mode)) (serial.Mode, error) {
+		m := serial.Mode{BaudRate: 115200}
+		change(&m)
+		return m, nil
+	}, nil, nil)
 
 	msg := []byte{telnetIAC, telnetSB, telnetOptComPort, rfc2217SetBaudRate, 0, 0, 0x25, 0x80, telnetIAC, telnetSE, 'x'}
 	var data, reply []byte
@@ -99,13 +103,17 @@ func TestRFC2217LineSettings(t *testing.T) {
 	var applied []serial.Mode
 	base := serial.Mode{BaudRate: 115200, DataBits: 8, Parity: serial.NoParity, StopBits: serial.OneStopBit}
 	current := base
-	setMode := func(m serial.Mode) (serial.Mode, error) {
-		if m.BaudRate == 12345 {
+	setMode := func(change func(*serial.Mode)) (serial.Mode, error) {
+		next := current
+		change(&next)
+		if next.BaudRate == 12345 {
 			return current, errors.New("unsupported")
 		}
-		applied = append(applied, m)
-		current = m
-		return m, nil
+		if next != current {
+			applied = append(applied, next)
+			current = next
+		}
+		return current, nil
 	}
 	tn := newTelnetSession(base, setMode, nil, nil)
 
@@ -155,7 +163,7 @@ func TestRFC2217ReplyEscapesIAC(t *testing.T) {
 
 func TestTelnetBreak(t *testing.T) {
 	breaks := 0
-	tn := newTelnetSession(serial.Mode{}, nil, func() { breaks++ }, nil)
+	tn := newTelnetSession(serial.Mode{}, nil, func() error { breaks++; return nil }, nil)
 	data, _ := tn.Decode([]byte{'a', telnetIAC, telnetBRK, 'b'})
 	if !bytes.Equal(data, []byte("ab")) || breaks != 1 {
 		t.Fatalf("data = %q breaks = %d", data, breaks)
@@ -545,7 +553,7 @@ func TestSerialWebSocketRelaysBothWays(t *testing.T) {
 
 func TestRFC2217BreakOnSendsBreak(t *testing.T) {
 	breaks := 0
-	tn := newTelnetSession(serial.Mode{}, nil, func() { breaks++ }, nil)
+	tn := newTelnetSession(serial.Mode{}, nil, func() error { breaks++; return nil }, nil)
 
 	for _, tc := range []struct {
 		name  string
@@ -563,6 +571,15 @@ func TestRFC2217BreakOnSendsBreak(t *testing.T) {
 		if breaks != tc.want {
 			t.Errorf("%s: breaks = %d, want %d", tc.name, breaks, tc.want)
 		}
+	}
+}
+
+func TestRFC2217BreakThatFailsIsReportedOff(t *testing.T) {
+	tn := newTelnetSession(serial.Mode{}, nil, func() error { return errors.New("port closed") }, nil)
+
+	_, reply := tn.Decode(rfc2217Cmd(rfc2217SetControl, rfc2217BreakOn))
+	if want := rfc2217Reply(rfc2217SetControl, []byte{rfc2217BreakOff}); !bytes.Equal(reply, want) {
+		t.Fatalf("reply = %v, want %v (break off)", reply, want)
 	}
 }
 
@@ -700,7 +717,7 @@ func TestStopEndsLineSettingsChanges(t *testing.T) {
 
 	// A client that is still winding down after Stop must not reach the port.
 	s.Stop()
-	if _, err := s.setLineModeFor(c, serial.Mode{BaudRate: 9600}); err == nil {
+	if _, err := s.setLineModeFor(c, func(m *serial.Mode) { m.BaudRate = 9600 }); err == nil {
 		t.Fatal("a dropped client changed the line settings")
 	}
 	if changed != 0 {
@@ -737,6 +754,7 @@ func TestConnectionAcceptedBeforeReconfigureIsRefused(t *testing.T) {
 func webAuthServer(t *testing.T, auth WebAuth) (*Server, *uartRecorder, string) {
 	t.Helper()
 	s, uart := newTestServer(t)
+	s.webAuthInterval = 10 * time.Millisecond // before anything uses it
 	if err := s.Apply(true, Settings{Mode: ModeWeb, MaxClients: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -753,10 +771,6 @@ func webAuthServer(t *testing.T, auth WebAuth) (*Server, *uartRecorder, string) 
 }
 
 func TestWebConsoleEndsWhenLoginEnds(t *testing.T) {
-	old := webAuthCheckInterval
-	webAuthCheckInterval = 10 * time.Millisecond
-	t.Cleanup(func() { webAuthCheckInterval = old })
-
 	var valid atomic.Bool
 	valid.Store(true)
 	_, _, url := webAuthServer(t, WebAuth{Valid: valid.Load})
@@ -815,5 +829,79 @@ func TestWebConsoleInputAfterLoginEndsReachesNothing(t *testing.T) {
 	}
 	if activity.Load() != 1 {
 		t.Fatalf("input after the login ended counted as activity")
+	}
+}
+
+// setDataBits asks for a data size and returns the one the server reports.
+func setDataBits(t *testing.T, conn net.Conn, r *bufio.Reader, bits byte) byte {
+	t.Helper()
+	if _, err := conn.Write(rfc2217Cmd(rfc2217SetDataSize, bits)); err != nil {
+		t.Fatal(err)
+	}
+	reply := make([]byte, 7) // IAC SB COM-PORT <cmd+100> <bits> IAC SE
+	if _, err := io.ReadFull(r, reply); err != nil {
+		t.Fatal(err)
+	}
+	return reply[4]
+}
+
+func TestRFC2217PartialChangeStartsFromTheCurrentLineSettings(t *testing.T) {
+	s, _ := newTestServer(t)
+	base := serial.Mode{BaudRate: 115200, DataBits: 8}
+	var mu sync.Mutex
+	var applied []serial.Mode
+	s.mode = func() serial.Mode { return base }
+	s.setMode = func(m serial.Mode) error {
+		mu.Lock()
+		applied = append(applied, m)
+		mu.Unlock()
+		return nil
+	}
+	lastApplied := func() (serial.Mode, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		if len(applied) == 0 {
+			return serial.Mode{}, 0
+		}
+		return applied[len(applied)-1], len(applied)
+	}
+	if err := s.Apply(true, ser2netSettings(ProtocolRFC2217, 2)); err != nil {
+		t.Fatal(err)
+	}
+
+	a, ar := dialRFC2217(t, s)
+	waitClients(t, s, 1)
+	setBaud(t, a, ar, 9600) // A owns the settings at 9600
+
+	// B connects while A owns them, so B first sees 9600.
+	b, br := dialRFC2217(t, s)
+	waitClients(t, s, 2)
+
+	// A leaves; the configured 115200 comes back.
+	a.Close()
+	waitClients(t, s, 1)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if m, n := lastApplied(); n == 2 && m == base {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the configured line settings were not restored")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// B changes only the data bits. The baud rate must stay what the UART is
+	// really at (115200), not what B last saw (9600).
+	if got := setDataBits(t, b, br, 7); got != 7 {
+		t.Fatalf("data bits = %d", got)
+	}
+	if m, _ := lastApplied(); m != (serial.Mode{BaudRate: 115200, DataBits: 7}) {
+		t.Fatalf("applied %+v, want 115200 baud with 7 data bits", m)
+	}
+
+	// A query reports the settings now in effect, not a stale copy.
+	if got := setBaud(t, b, br, 0); got != 115200 {
+		t.Fatalf("queried baud rate = %d, want 115200", got)
 	}
 }

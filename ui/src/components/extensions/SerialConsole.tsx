@@ -12,7 +12,7 @@ import {
   LuTerminal,
   LuExternalLink,
 } from "react-icons/lu";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
@@ -116,8 +116,12 @@ export function SerialConsole() {
   const [draftCmd, setDraftCmd] = useState("");
   const [draftTerminator, setDraftTerminator] = useState({ label: "LF (\\n)", value: "\n" });
 
+  // Counts edits, so a read that started before the latest one can't replace it.
+  const editCount = useRef(0);
+
   // load serial settings like SerialConsole
   const loadSettings = useCallback(() => {
+    const startedAtEdit = editCount.current;
     send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
@@ -125,6 +129,9 @@ export function SerialConsole() {
         );
         return;
       }
+      // The user edited again while this read was in flight: what it returned
+      // is older than what is on screen.
+      if (editCount.current !== startedAtEdit) return;
 
       setSettings(resp.result as SerialSettings);
       setTerminator((resp.result as SerialSettings).terminator.value);
@@ -169,6 +176,7 @@ export function SerialConsole() {
       : `socat -,raw,echo=0 tcp:${deviceHost}:${settings.ser2netPort}`;
 
   const handleSerialSettingsChange = (config: keyof SerialSettings, value: unknown) => {
+    editCount.current += 1;
     const newSettings = { ...settings, [config]: value };
     send("setSerialSettings", { settings: newSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {

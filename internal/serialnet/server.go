@@ -45,9 +45,9 @@ const (
 	BreakDuration      = 250 * time.Millisecond
 )
 
-// webAuthCheckInterval is how often an open web console re-checks that its
-// login is still valid. A variable so tests can shorten it.
-var webAuthCheckInterval = 5 * time.Second
+// defaultWebAuthCheckInterval is how often an open web console re-checks that
+// its login is still valid.
+const defaultWebAuthCheckInterval = 5 * time.Second
 
 // CloseSessionExpired closes a web console whose login ended. It is the code
 // the signaling socket uses, so the UI treats both the same way.
@@ -228,7 +228,7 @@ type Server struct {
 	write     func(p []byte, source string)
 	mode      func() serial.Mode
 	setMode   func(serial.Mode) error
-	sendBreak func()
+	sendBreak func() error
 	bindAddr  func(port int) string
 
 	mu        sync.Mutex
@@ -237,6 +237,8 @@ type Server struct {
 	listener  net.Listener
 	listenErr error
 	clients   map[*client]struct{}
+	// webAuthInterval is how often an open web console re-checks its login.
+	webAuthInterval time.Duration
 	// gen counts reconfigurations. A TCP connection accepted before one
 	// carries the old number and is refused, so it can't join under
 	// settings it never connected with.
@@ -263,7 +265,7 @@ type Deps struct {
 	// server fronts.
 	SetLineMode func(serial.Mode) error
 	// SendBreak sends a serial break (telnet IAC BRK).
-	SendBreak func()
+	SendBreak func() error
 	// BindAddr returns the listen address for a TCP port, or "" if there
 	// is nothing to listen on.
 	BindAddr func(port int) string
@@ -278,6 +280,8 @@ func NewServer(hub *Hub, deps Deps) *Server {
 		sendBreak: deps.SendBreak,
 		bindAddr:  deps.BindAddr,
 		clients:   map[*client]struct{}{},
+
+		webAuthInterval: defaultWebAuthCheckInterval,
 		settings: Settings{
 			Mode:       ModeDisabled,
 			Port:       DefaultPort,
@@ -482,7 +486,7 @@ func (s *Server) serveTCP(conn net.Conn, protocol string, gen uint64) {
 	if protocol == ProtocolRFC2217 {
 		tn = newTelnetSession(
 			s.currentLineMode(),
-			func(m serial.Mode) (serial.Mode, error) { return s.setLineModeFor(client, m) },
+			func(change func(*serial.Mode)) (serial.Mode, error) { return s.setLineModeFor(client, change) },
 			s.sendBreak,
 			sub.purge,
 		)
@@ -556,15 +560,22 @@ func (s *Server) currentLineModeLocked() serial.Mode {
 	return serial.Mode{}
 }
 
-// setLineModeFor applies m for an RFC 2217 client and returns the mode in
-// effect afterwards. The first client to change the line settings keeps
-// them until it disconnects; the others are refused, so one client leaving
-// can't pull the settings out from under another.
-func (s *Server) setLineModeFor(c *client, m serial.Mode) (serial.Mode, error) {
+// setLineModeFor applies a change for an RFC 2217 client to the line
+// settings in effect now, and returns the settings in effect afterwards. The
+// first client to change the line settings keeps them until it disconnects;
+// the others are refused, so one client leaving can't pull the settings out
+// from under another. A change that changes nothing is not a change: it
+// claims nothing and just reports the settings.
+func (s *Server) setLineModeFor(c *client, change func(*serial.Mode)) (serial.Mode, error) {
 	s.lineMu.Lock()
 	defer s.lineMu.Unlock()
 
 	current := s.currentLineModeLocked()
+	m := current
+	change(&m)
+	if m == current {
+		return current, nil
+	}
 	if s.setMode == nil {
 		return current, errors.New("line settings can't be changed")
 	}
@@ -636,7 +647,7 @@ func (s *Server) ServeWeb(ctx context.Context, ws *websocket.Conn, remote string
 
 	go func() {
 		defer cancel()
-		tick := time.NewTicker(webAuthCheckInterval)
+		tick := time.NewTicker(s.webAuthInterval)
 		defer tick.Stop()
 		for {
 			select {
