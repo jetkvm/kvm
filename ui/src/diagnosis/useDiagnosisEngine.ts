@@ -15,6 +15,7 @@ const POLL_MS = 1000;
 const SELF_TEST_DELAY_MS = 2000;
 const RATE_WINDOW_MS = 2000;
 const RESUME_GRACE_MS = RATE_WINDOW_MS + POLL_MS;
+const FIRST_STATS_QUESTION = 7;
 const PROBE_TIMEOUT_MS = 2000;
 const PROBE_INTERVAL_MS = 3000;
 
@@ -376,18 +377,26 @@ export function useDiagnosisEngine({
     peerConnection,
     elapsed: 0,
     since: null as number | null,
+    graced: false,
   });
   if (
     heldVideo ||
     clock.current.question !== openQuestion ||
     clock.current.peerConnection !== peerConnection
   ) {
-    clock.current = { question: openQuestion, peerConnection, elapsed: 0, since: null };
+    clock.current = {
+      question: openQuestion,
+      peerConnection,
+      elapsed: 0,
+      since: null,
+      graced: false,
+    };
   }
   if (running && clock.current.since === null) {
-    const { elapsed } = clock.current;
-    if (elapsed > 0 && elapsed < WAIT_LIMIT_MS) {
+    const { elapsed, graced } = clock.current;
+    if (!graced && openQuestion >= FIRST_STATS_QUESTION && elapsed > 0 && elapsed < WAIT_LIMIT_MS) {
       clock.current.elapsed = Math.min(elapsed, WAIT_LIMIT_MS - RESUME_GRACE_MS);
+      clock.current.graced = true;
     }
     clock.current.since = Date.now();
   }
