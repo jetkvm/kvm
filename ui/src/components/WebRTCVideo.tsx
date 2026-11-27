@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
@@ -25,13 +26,15 @@ import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
   AudioPermissionBanner,
-  HDMIErrorOverlay,
   LoadingConnectionOverlay,
-  LoadingVideoOverlay,
-  NoAutoplayPermissionsOverlay,
   PointerLockBar,
   VideoPausedOverlay,
 } from "@components/VideoOverlay";
+import DiagnosisCard from "@components/DiagnosisCard";
+import type { CardAction, Diagnosis } from "@/diagnosis/diagnose";
+import { useDiagnosisStore } from "@/diagnosis/store";
+import { useEdidSweep } from "@/diagnosis/useEdidSweep";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import OcrOverlay from "@components/OcrOverlay";
 import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
@@ -62,12 +65,20 @@ function isEditableTarget(target: EventTarget | null) {
   );
 }
 
+const settingsPages = {
+  update: "/settings/general/update",
+  restart: "/settings/general/reboot",
+  videoSettings: "/settings/video",
+};
+
 export default function WebRTCVideo({
   hasConnectionIssues,
   hideStatusBar,
+  onRetryConnection,
 }: {
   hasConnectionIssues: boolean;
   hideStatusBar?: boolean;
+  onRetryConnection: () => void;
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
@@ -144,6 +155,22 @@ export default function WebRTCVideo({
   const downloadPausesVideo = useStorageDownloadStore(
     state => state.download?.state === "downloading" && state.download.videoPaused,
   );
+
+  const liveDiagnosis = useDiagnosisStore(state => state.diagnosis);
+  const sweepTitle = useDiagnosisStore(state => state.sweepTitle);
+  const startEdidSweep = useEdidSweep();
+  const sweepDiagnosis = useDiagnosisStore(state => state.sweepDiagnosis);
+  const diagnosis: Diagnosis = sweepDiagnosis ?? liveDiagnosis;
+  const { navigateTo } = useDeviceUiNavigation();
+  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
+  const setPlayError = useDiagnosisStore(state => state.setPlayError);
+  const edidChanged = useDiagnosisStore(state => state.edidChanged);
+  const heldByKvm = showSourceSwitchOverlay || updatePausesVideo || downloadPausesVideo;
+  const showDiagnosis =
+    diagnosis.status !== "ok" && (diagnosis.question <= 5 ? !hasConnectionIssues : !heldByKvm);
+  const shownDiagnosis = useRef(diagnosis);
+  if (showDiagnosis) shownDiagnosis.current = diagnosis;
+  const diagnosisRef = useRef<HTMLDivElement>(null);
 
   // Video-related
   const handleResize = useCallback(
@@ -745,8 +772,10 @@ export default function WebRTCVideo({
           (e: MouseEvent) => {
             const target = e.target as Element;
             if (target !== videoElmRefValue) {
-              const overlays = overlaysRef.current;
-              if (!hdmiError || !overlays?.contains(target)) return;
+              const overlays = [diagnosisRef.current, overlaysRef.current].find(area =>
+                area?.contains(target),
+              );
+              if (!hdmiError || !overlays) return;
 
               const isOnControl = Array.from(overlays.querySelectorAll("a, button")).some(el => {
                 const r = el.getBoundingClientRect();
@@ -803,13 +832,54 @@ export default function WebRTCVideo({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const hasNoAutoPlayPermissions = useMemo(() => {
-    if (peerConnection?.connectionState !== "connected") return false;
-    if (isPlaying) return false;
-    if (hdmiError) return false;
-    if (videoHeight === 0 || videoWidth === 0) return false;
-    return true;
-  }, [hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
+  const diagnosisCard = (
+    <DiagnosisCard
+      diagnosis={shownDiagnosis.current}
+      onAction={action => handleDiagnosisAction(action)}
+      busy={sweepTitle ? { action: "edidSweep", text: sweepTitle } : undefined}
+    />
+  );
+
+  function handleDiagnosisAction(action: CardAction) {
+    if (action in settingsPages) {
+      setDisableVideoFocusTrap(true);
+      navigateTo(settingsPages[action as keyof typeof settingsPages]);
+      return;
+    }
+    if (action === "edidSweep") {
+      void startEdidSweep();
+      return;
+    }
+    if (action === "reconnect") {
+      onRetryConnection();
+      return;
+    }
+    if (action === "wake") {
+      sendRpc("wakeHost", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) console.error("Failed to wake host", resp.error);
+      });
+      return;
+    }
+    if (action === "restoreEdid") {
+      sendRpc("setEDID", { edid: "" }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(m.diagnosis_edid_restore_failed());
+          return;
+        }
+        notifications.success(m.diagnosis_edid_restored());
+        edidChanged();
+      });
+      return;
+    }
+    videoElm.current?.play().then(
+      () => setPlayError(null),
+      () => undefined,
+    );
+    audioElm.current
+      ?.play()
+      .then(() => setAudioAutoplayBlocked(false))
+      .catch(() => undefined);
+  }
 
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
@@ -894,17 +964,20 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx("h-full w-full object-contain transition-all duration-1000", {
-                          "cursor-none": settings.isCursorHidden,
-                          "pointer-events-none": isOcrMode,
-                          "opacity-0!":
-                            isVideoLoading ||
-                            hdmiError ||
-                            hasConnectionIssues ||
-                            peerConnectionState !== "connected",
-                          "opacity-60!": showPointerLockBar,
-                          "animate-slideUpFade": isPlaying,
-                        })}
+                        className={cx(
+                          "h-full w-full object-contain transition-[opacity,scale] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                          {
+                            "cursor-none": settings.isCursorHidden,
+                            "pointer-events-none": isOcrMode,
+                            "scale-[0.985] opacity-0!":
+                              showDiagnosis ||
+                              isVideoLoading ||
+                              hdmiError ||
+                              hasConnectionIssues ||
+                              peerConnectionState !== "connected",
+                            "opacity-60!": showPointerLockBar,
+                          },
+                        )}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />
@@ -922,10 +995,6 @@ export default function WebRTCVideo({
                                   : m.video_overlay_switching_to_guest()
                               }
                             />
-                            <LoadingVideoOverlay
-                              show={isVideoLoading && !showSourceSwitchOverlay}
-                            />
-                            <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
                             <VideoPausedOverlay
                               show={updatePausesVideo}
                               title={m.video_overlay_update_paused_title()}
@@ -935,16 +1004,6 @@ export default function WebRTCVideo({
                               show={downloadPausesVideo && !updatePausesVideo}
                               title={m.video_overlay_download_paused_title()}
                               description={m.video_overlay_download_paused_description()}
-                            />
-                            <NoAutoplayPermissionsOverlay
-                              show={hasNoAutoPlayPermissions}
-                              onPlayClick={() => {
-                                videoElm.current?.play();
-                                audioElm.current
-                                  ?.play()
-                                  .then(() => setAudioAutoplayBlocked(false))
-                                  .catch(() => undefined);
-                              }}
                             />
                             <AudioPermissionBanner
                               show={isPlaying && audioEnabled && audioAutoplayBlocked && !hdmiError}
@@ -958,6 +1017,20 @@ export default function WebRTCVideo({
                           </div>
                         </div>
                       )}
+                      <AnimatePresence>
+                        {showDiagnosis && (
+                          <motion.div
+                            ref={diagnosisRef}
+                            className="absolute inset-0"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0, scale: 0.985 }}
+                            transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                          >
+                            {diagnosisCard}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                   <VirtualKeyboard />

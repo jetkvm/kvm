@@ -59,12 +59,9 @@ import Modal from "@components/Modal";
 import GuestFileTransferStatusCard from "@components/GuestFileTransferStatusCard";
 import GuestUpdateStatusCard from "@components/GuestUpdateStatusCard";
 import { FailSafeModeOverlay } from "@components/FailSafeModeOverlay";
-import {
-  ConnectionFailedOverlay,
-  LoadingConnectionOverlay,
-  PeerConnectionDisconnectedOverlay,
-  RebootingOverlay,
-} from "@components/VideoOverlay";
+import { RebootingOverlay } from "@components/VideoOverlay";
+import TroubleshootingSidebar from "@components/sidebar/troubleshooting";
+import { useDiagnosisEngine } from "@/diagnosis/useDiagnosisEngine";
 import { m } from "@localizations/messages.js";
 import notifications from "@/notifications";
 import { doRpcHidHandshake, useHidRpc } from "@hooks/useHidRpc";
@@ -284,14 +281,15 @@ export default function KvmIdRoute() {
     [iceConfig?.iceServers],
   );
 
-  const {
-    connect: setupPeerConnection,
-    loadingMessage,
-    connectionFailed,
-  } = useSignaling({
+  const { connect: setupPeerConnection, socketOpen } = useSignaling({
     deviceId: params.id,
     iceServers,
     onPeerConnection: attachPeerConnection,
+  });
+
+  useDiagnosisEngine({
+    socketOpen,
+    paused: location.pathname.includes("other-session"),
   });
 
   // Cleanup effect
@@ -784,26 +782,6 @@ export default function KvmIdRoute() {
       return <FailSafeModeOverlay reason={failsafeReason} />;
     }
 
-    const hasConnectionFailed =
-      connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
-
-    const isPeerConnectionLoading =
-      ["connecting", "new"].includes(peerConnectionState ?? "") || peerConnection === null;
-
-    const isDisconnected = peerConnectionState === "disconnected";
-
-    if (peerConnectionState === "connected") return null;
-    if (isDisconnected) {
-      return <PeerConnectionDisconnectedOverlay show={true} />;
-    }
-
-    if (hasConnectionFailed)
-      return <ConnectionFailedOverlay show={true} setupPeerConnection={setupPeerConnection} />;
-
-    if (isPeerConnectionLoading) {
-      return <LoadingConnectionOverlay show={true} text={loadingMessage} />;
-    }
-
     return null;
   }, [
     location.pathname,
@@ -812,11 +790,6 @@ export default function KvmIdRoute() {
     params.id,
     isFailsafeMode,
     failsafeReason,
-    connectionFailed,
-    peerConnectionState,
-    peerConnection,
-    setupPeerConnection,
-    loadingMessage,
   ]);
 
   return (
@@ -874,6 +847,7 @@ export default function KvmIdRoute() {
             {isFailsafeMode && failsafeReason === "native" ? null : (
               <WebRTCVideo
                 hasConnectionIssues={!!ConnectionStatusElement}
+                onRetryConnection={setupPeerConnection}
                 hideStatusBar={hideStatusBar}
               />
             )}
@@ -893,6 +867,18 @@ export default function KvmIdRoute() {
           </div>
         </div>
       </div>
+
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          onClick={() =>
+            setSidebarView(sidebarView === "troubleshooting" ? null : "troubleshooting")
+          }
+          className="fixed right-3 bottom-14 z-40 rounded-sm border border-slate-800/30 bg-white px-2 py-1 text-xs font-semibold text-black shadow-sm dark:border-slate-300/20 dark:bg-slate-800 dark:text-white"
+        >
+          Troubleshooting
+        </button>
+      )}
 
       <div
         className="z-50"
@@ -964,6 +950,20 @@ function SidebarContainer(props: SidebarContainerProps) {
               }}
             >
               <ConnectionStatsSidebar />
+            </motion.div>
+          )}
+          {import.meta.env.DEV && sidebarView === "troubleshooting" && (
+            <motion.div
+              className="absolute inset-0"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: 0.5,
+                ease: "easeInOut",
+              }}
+            >
+              <TroubleshootingSidebar />
             </motion.div>
           )}
         </AnimatePresence>

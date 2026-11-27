@@ -29,10 +29,7 @@ export interface SignalingController {
    * call again after a failure; any previous peer is discarded.
    */
   readonly connect: () => Promise<void>;
-  /** Progress text for the connection overlay. */
-  readonly loadingMessage: string;
-  /** True once the adapter has given up on the current attempt. */
-  readonly connectionFailed: boolean;
+  readonly socketOpen: boolean;
 }
 
 /**

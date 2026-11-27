@@ -39,7 +39,7 @@ const appendStatToMap = <T extends { timestamp: number }>(
 };
 
 // Constants and types
-export type AvailableSidebarViews = "connection-stats";
+export type AvailableSidebarViews = "connection-stats" | "troubleshooting";
 export type AvailableTerminalTypes = "kvm" | "serial" | "cdcacm" | "guest" | "none";
 
 export interface User {
