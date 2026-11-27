@@ -8,6 +8,7 @@ import { useDiagnosisStore } from "./store";
 
 const POLL_MS = 1000;
 const POLLS_PER_PRESET = 8;
+const RPC_TIMEOUT_MS = 15_000;
 
 interface Preset {
   name: string;
@@ -27,7 +28,16 @@ export function useEdidSweep() {
     running.current = true;
 
     const call = (method: string, params: unknown) =>
-      new Promise<JsonRpcResponse>(resolve => send(method, params, resolve));
+      new Promise<JsonRpcResponse>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error(`${method} got no reply`)),
+          RPC_TIMEOUT_MS,
+        );
+        void send(method, params, response => {
+          clearTimeout(timeout);
+          resolve(response);
+        });
+      });
 
     const signalIsGood = async () => {
       let goodPolls = 0;
@@ -71,6 +81,8 @@ export function useEdidSweep() {
       notifications.error(
         "error" in restored ? m.diagnosis_sweep_restore_failed() : m.diagnosis_sweep_no_signal(),
       );
+    } catch (error) {
+      console.error("The display profile sweep stopped", error);
     } finally {
       setSweepTitle(null);
       edidChanged();

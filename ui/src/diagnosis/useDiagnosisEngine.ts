@@ -355,9 +355,12 @@ export function useDiagnosisEngine({
   const first = diagnose({ ...merged, msWaiting: 0 });
   const openQuestion = first.status === "waiting" && !paused && !held ? first.question : 0;
 
-  const waitingSince = useRef({ question: 0, at: Date.now() });
-  if (waitingSince.current.question !== openQuestion) {
-    waitingSince.current = { question: openQuestion, at: Date.now() };
+  const waitingSince = useRef({ question: 0, peerConnection, at: Date.now() });
+  if (
+    waitingSince.current.question !== openQuestion ||
+    waitingSince.current.peerConnection !== peerConnection
+  ) {
+    waitingSince.current = { question: openQuestion, peerConnection, at: Date.now() };
   }
 
   const [now, setNow] = useState(Date.now());

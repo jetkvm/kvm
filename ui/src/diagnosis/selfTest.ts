@@ -18,19 +18,27 @@ async function until(check: () => boolean | Promise<boolean>, timeoutMs: number)
   return false;
 }
 
-async function framesDecoded(connection: RTCPeerConnection) {
+async function videoFrames(
+  connection: RTCPeerConnection,
+  type: "inbound-rtp" | "outbound-rtp",
+  key: "framesDecoded" | "framesEncoded",
+) {
   let frames = 0;
   (await connection.getStats()).forEach(report => {
-    if (report.type === "inbound-rtp" && report.kind === "video") {
-      frames = report.framesDecoded ?? 0;
-    }
+    if (report.type === type && report.kind === "video") frames = report[key] ?? 0;
   });
   return frames;
 }
 
 export async function runSelfTest(): Promise<SelfTestResult> {
-  const sender = new RTCPeerConnection();
-  const receiver = new RTCPeerConnection();
+  let sender: RTCPeerConnection;
+  let receiver: RTCPeerConnection;
+  try {
+    sender = new RTCPeerConnection();
+    receiver = new RTCPeerConnection();
+  } catch {
+    return { connected: false, h264: null };
+  }
 
   const canvas = document.createElement("canvas");
   canvas.width = 320;
@@ -89,8 +97,13 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     if (!connected) return { connected: false, h264: null };
     if (!h264Negotiated) return { connected: true, h264: null };
 
-    const decoded = await until(async () => (await framesDecoded(receiver)) > 0, DECODE_TIMEOUT_MS);
-    return { connected: true, h264: decoded };
+    const decoded = await until(
+      async () => (await videoFrames(receiver, "inbound-rtp", "framesDecoded")) > 0,
+      DECODE_TIMEOUT_MS,
+    );
+    if (decoded) return { connected: true, h264: true };
+    const encoded = await videoFrames(sender, "outbound-rtp", "framesEncoded");
+    return { connected: true, h264: encoded > 0 ? false : null };
   } catch {
     return { connected: false, h264: null };
   } finally {
