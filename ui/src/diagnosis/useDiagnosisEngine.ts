@@ -81,6 +81,18 @@ function useIceWasConnected(peerConnection: RTCPeerConnection | null) {
   return iceWasConnected;
 }
 
+function usePageHidden() {
+  const [hidden, setHidden] = useState(document.hidden);
+
+  useEffect(() => {
+    const update = () => setHidden(document.hidden);
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  return hidden;
+}
+
 function useComputerOnline() {
   const [online, setOnline] = useState(navigator.onLine);
 
@@ -306,6 +318,7 @@ export function useDiagnosisEngine({
   const edidIsDefault = useEdidIsDefault(rpcOpen);
   const video = useVideoFacts(peerConnection, peerConnected);
   const computerOnline = useComputerOnline();
+  const pageHidden = usePageHidden();
   const selfTest = useSelfTest(
     peerConnection,
     (socketOpen && answerState === "accepted" && !iceWasConnected) ||
@@ -353,7 +366,9 @@ export function useDiagnosisEngine({
 
   const merged = useMemo(() => ({ ...live, ...overrides }), [live, overrides]);
   const first = diagnose({ ...merged, msWaiting: 0 });
-  const openQuestion = first.status === "waiting" && !paused && !held ? first.question : 0;
+  const clockStopped =
+    paused || pageHidden || (held && first.status === "waiting" && first.question > 5);
+  const openQuestion = first.status === "waiting" && !clockStopped ? first.question : 0;
 
   const waitingSince = useRef({ question: 0, peerConnection, at: Date.now() });
   if (
