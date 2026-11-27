@@ -88,10 +88,12 @@ export function useEdidSweep() {
         restoreEdid = originalIsDefault ? "" : original;
         const response = await call("setEDID", { edid: preset.edid });
         if ("error" in response) continue;
-        if (await signalIsGood()) {
-          notifications.success(m.diagnosis_sweep_success({ name: preset.name }));
-          return;
-        }
+        if (!(await signalIsGood())) continue;
+        const active = await call("getEDID", {});
+        if ("error" in active) continue;
+        if ((active.result as string).toLowerCase() !== preset.edid.toLowerCase()) continue;
+        notifications.success(m.diagnosis_sweep_success({ name: preset.name }));
+        return;
       }
 
       await restorePrevious(true);
