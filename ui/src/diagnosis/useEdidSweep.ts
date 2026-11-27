@@ -51,6 +51,18 @@ export function useEdidSweep() {
       return false;
     };
 
+    let restoreEdid: string | null = null;
+    const restorePrevious = async () => {
+      if (restoreEdid === null) return;
+      setSweepTitle(m.diagnosis_sweep_restoring());
+      const restored = await call("setEDID", { edid: restoreEdid }).catch(() => null);
+      notifications.error(
+        !restored || "error" in restored
+          ? m.diagnosis_sweep_restore_failed()
+          : m.diagnosis_sweep_no_signal(),
+      );
+    };
+
     try {
       setSweepTitle(m.diagnosis_sweep_reading());
       const presetsResponse = await call("getEDIDPresets", {});
@@ -61,12 +73,14 @@ export function useEdidSweep() {
       }
       const presets = presetsResponse.result as Preset[];
       const original = currentResponse.result as string;
+      const originalIsDefault = presets[0]?.edid.toLowerCase() === original.toLowerCase();
       const candidates = presets.filter(
         preset => preset.edid.toLowerCase() !== original.toLowerCase(),
       );
 
       for (const [index, preset] of candidates.entries()) {
         setSweepTitle(m.diagnosis_sweep_profile({ index: index + 1, count: candidates.length }));
+        restoreEdid = originalIsDefault ? "" : original;
         const response = await call("setEDID", { edid: preset.edid });
         if ("error" in response) continue;
         if (await signalIsGood()) {
@@ -75,14 +89,11 @@ export function useEdidSweep() {
         }
       }
 
-      setSweepTitle(m.diagnosis_sweep_restoring());
-      const originalIsDefault = presets[0]?.edid.toLowerCase() === original.toLowerCase();
-      const restored = await call("setEDID", { edid: originalIsDefault ? "" : original });
-      notifications.error(
-        "error" in restored ? m.diagnosis_sweep_restore_failed() : m.diagnosis_sweep_no_signal(),
-      );
+      await restorePrevious();
     } catch (error) {
       console.error("The display profile sweep stopped", error);
+      if (restoreEdid === null) notifications.error(m.diagnosis_sweep_read_failed());
+      else await restorePrevious();
     } finally {
       setSweepTitle(null);
       edidChanged();
