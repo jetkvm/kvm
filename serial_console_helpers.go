@@ -723,9 +723,14 @@ func (m *SerialMux) reader() {
 				time.Sleep(50 * time.Millisecond)
 				continue
 			}
-			if n > 0 && m.broker != nil {
+			if n == 0 {
+				continue
+			}
+			data := append([]byte(nil), buf[:n]...)
+			serialRx.Broadcast(data)
+			if m.broker != nil {
 				scopedLogger.Trace().Msg("Sending RX data to console broker")
-				m.broker.Enqueue(consoleEvent{kind: evRX, data: append([]byte(nil), buf[:n]...)})
+				m.broker.Enqueue(consoleEvent{kind: evRX, data: data})
 			}
 		}
 	}

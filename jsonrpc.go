@@ -939,10 +939,24 @@ func rpcSetActiveExtension(extensionId string) error {
 	if config.ActiveExtension == extensionId && extPort.active(extensionId) {
 		return nil
 	}
+	// Network clients must be gone before another extension takes the UART.
+	if extensionId != "serial-console" {
+		_ = unmountSerialConsole()
+	}
 	if err := extPort.activate(extensionId); err != nil {
+		// activate puts the previous extension back when it can.
+		if config.ActiveExtension == "serial-console" && extPort.active("serial-console") {
+			_ = mountSerialConsole()
+		}
 		return fmt.Errorf("failed to open the serial port: %w", err)
 	}
 	config.ActiveExtension = extensionId
+	// The port is the console's from here on whether or not the save
+	// below works, so its network access starts now. Failures show up in
+	// getSerialNetworkStatus; the extension itself still loads.
+	if extensionId == "serial-console" {
+		_ = mountSerialConsole()
+	}
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
@@ -1604,6 +1618,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setATXPowerAction":          {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":          {Func: rpcGetSerialSettings},
 	"setSerialSettings":          {Func: rpcSetSerialSettings, Params: []string{"settings"}},
+	"getSerialNetworkStatus":     {Func: rpcGetSerialNetworkStatus},
 	"sendCustomCommand":          {Func: rpcSendCustomCommand, Params: []string{"command"}},
 	"getSerialCommandHistory":    {Func: rpcGetSerialCommandHistory},
 	"setSerialCommandHistory":    {Func: rpcSetSerialCommandHistory, Params: []string{"commandHistory"}},

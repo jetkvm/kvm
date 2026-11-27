@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/serialnet"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
@@ -393,9 +394,13 @@ var serialConfig = SerialSettings{
 	PreserveANSI:       true,
 	ShowNLTag:          false,
 	Buttons:            []QuickButton{},
+	NetworkMode:        serialnet.ModeDisabled,
+	Ser2NetPort:        serialnet.DefaultPort,
+	Ser2NetProtocol:    serialnet.ProtocolRaw,
+	NetworkMaxClients:  serialnet.DefaultMaxClients,
 }
 
-const serialSettingsPath = "/userdata/serialSettings.json"
+var serialSettingsPath = "/userdata/serialSettings.json"
 
 type Terminator struct {
 	Label string `json:"label"` // Terminator label
@@ -425,6 +430,10 @@ type SerialSettings struct {
 	PreserveANSI       bool          `json:"preserveANSI"`       // Whether to preserve ANSI escape codes
 	ShowNLTag          bool          `json:"showNLTag"`          // Whether to show a special tag for new lines
 	Buttons            []QuickButton `json:"buttons"`            // Custom quick buttons
+	NetworkMode        string        `json:"networkMode"`        // Network access: "disabled", "ser2net", "web"
+	Ser2NetPort        int           `json:"ser2netPort"`        // TCP port for ser2net mode
+	Ser2NetProtocol    string        `json:"ser2netProtocol"`    // ser2net protocol: "raw", "rfc2217"
+	NetworkMaxClients  int           `json:"networkMaxClients"`  // Concurrent network clients allowed
 }
 
 type DCMsg struct {
@@ -433,7 +442,16 @@ type DCMsg struct {
 	Data json.RawMessage `json:"data"`           // string for "serial", object for "system"
 }
 
+// getSerialSettings returns the saved settings. It leaves the UART's line
+// settings alone: a network client's session may have changed them, and
+// reading the settings page must not undo that.
 func getSerialSettings() (SerialSettings, error) {
+	return loadSerialSettings(false)
+}
+
+// loadSerialSettings reads the saved settings into the running console, and
+// applies their line settings to the UART when applyLineMode is set.
+func loadSerialSettings(applyLineMode bool) (SerialSettings, error) {
 	switch defaultMode.StopBits {
 	case serial.OneStopBit:
 		serialConfig.StopBits = "1"
@@ -459,7 +477,7 @@ func getSerialSettings() (SerialSettings, error) {
 	file, err := os.Open(serialSettingsPath)
 	if err != nil {
 		logger.Info().Msg("SerialSettings file doesn't exist, using default")
-		return serialConfig, err
+		return serialConfig, nil
 	}
 	defer file.Close()
 
@@ -470,6 +488,7 @@ func getSerialSettings() (SerialSettings, error) {
 		return serialConfig, nil
 	}
 
+	loadedConfig.normalizeNetwork()
 	serialConfig = loadedConfig // Update global config
 
 	// Apply settings to serial port, when opening the extension
@@ -504,26 +523,19 @@ func getSerialSettings() (SerialSettings, error) {
 		Parity:   parity,
 	}
 
-	applyConsoleSettings()
+	applyConsoleSettings(!applyLineMode)
 
 	return loadedConfig, nil
 }
 
 func setSerialSettings(newSettings SerialSettings) error {
-	logger.Trace().Str("path", serialSettingsPath).Msg("Saving config")
-
-	file, err := os.Create(serialSettingsPath)
-	if err != nil {
-		return fmt.Errorf("failed to create SerialSettings file: %w", err)
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(newSettings); err != nil {
-		return fmt.Errorf("failed to encode SerialSettings: %w", err)
+	newSettings.normalizeNetwork()
+	if err := newSettings.validateNetwork(); err != nil {
+		return err
 	}
 
+	// Check everything before saving: a rejected update must not leave
+	// part of itself, such as an enabled network mode, in the file.
 	var stopBits serial.StopBits
 	switch newSettings.StopBits {
 	case "1":
@@ -551,6 +563,22 @@ func setSerialSettings(newSettings SerialSettings) error {
 	default:
 		return fmt.Errorf("invalid parity: %s", newSettings.Parity)
 	}
+
+	logger.Trace().Str("path", serialSettingsPath).Msg("Saving config")
+
+	file, err := os.Create(serialSettingsPath)
+	if err != nil {
+		return fmt.Errorf("failed to create SerialSettings file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(newSettings); err != nil {
+		return fmt.Errorf("failed to encode SerialSettings: %w", err)
+	}
+
+	previousMode := *serialPortMode
 	serialPortMode = &serial.Mode{
 		BaudRate: newSettings.BaudRate,
 		DataBits: newSettings.DataBits,
@@ -560,16 +588,19 @@ func setSerialSettings(newSettings SerialSettings) error {
 
 	serialConfig = newSettings // Update global config
 
-	applyConsoleSettings()
+	// Only changed line settings go to the UART: saving something else, such
+	// as the echo option, must not undo an RFC 2217 client's session.
+	applyConsoleSettings(*serialPortMode == previousMode)
 
-	return nil
+	return applySerialNetwork(serialConfig)
 }
 
-func applyConsoleSettings() {
+func applyConsoleSettings(keepLineMode bool) {
 	extPort.setConsoleSettings(consoleSettings{
-		mode: serialPortMode,
-		echo: serialConfig.EnableEcho,
-		norm: normalizationOptions(serialConfig),
+		mode:         serialPortMode,
+		echo:         serialConfig.EnableEcho,
+		norm:         normalizationOptions(serialConfig),
+		keepLineMode: keepLineMode,
 	})
 }
 
@@ -610,7 +641,11 @@ func setTerminalPaused(paused bool) {
 }
 
 func initSerialPort() {
+	registerSerialMetrics()
 	_ = extPort.activate(config.ActiveExtension)
+	if config.ActiveExtension == "serial-console" {
+		_ = mountSerialConsole()
+	}
 }
 
 func handleSerialChannel(dataChannel *webrtc.DataChannel) {

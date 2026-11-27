@@ -2,17 +2,24 @@ package kvm
 
 import (
 	"errors"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/sync"
 	"go.bug.st/serial"
 )
 
-var errSerialPortClosed = errors.New("serial port is not open")
+var (
+	errSerialPortClosed = errors.New("serial port is not open")
+	errNotSerialConsole = errors.New("the serial console extension doesn't own the serial port")
+)
 
 type consoleSettings struct {
 	mode *serial.Mode
 	echo bool
 	norm NormalizationOptions
+	// keepLineMode stores mode without applying it, so reading the saved
+	// settings doesn't undo line settings an RFC 2217 client changed.
+	keepLineMode bool
 }
 
 type extensionPort struct {
@@ -75,6 +82,7 @@ func (e *extensionPort) start(extension string) error {
 	}
 	e.port = port
 	e.extension = extension
+	serialPortTracker.Opened(*mode)
 
 	stop := make(chan struct{})
 	e.stop = stop
@@ -114,6 +122,7 @@ func (e *extensionPort) deactivate() {
 		e.broker.Close()
 	}
 	e.port.Close()
+	serialPortTracker.Closed()
 	if e.readerDone != nil {
 		<-e.readerDone
 	}
@@ -144,6 +153,47 @@ func (e *extensionPort) write(data []byte) error {
 	return err
 }
 
+// consolePortLocked is the port while the Serial Console extension owns it.
+// Network clients get no further than this: after another extension takes the
+// UART they must not change its line settings or send it a break.
+func (e *extensionPort) consolePortLocked() (serial.Port, error) {
+	if e.port == nil {
+		return nil, errSerialPortClosed
+	}
+	if e.extension != "serial-console" {
+		return nil, errNotSerialConsole
+	}
+	return e.port, nil
+}
+
+// setLineMode changes the UART line settings without touching the saved
+// Serial Console settings, e.g. for an RFC 2217 client's session.
+func (e *extensionPort) setLineMode(mode *serial.Mode) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if _, err := e.consolePortLocked(); err != nil {
+		return err
+	}
+	if err := e.port.SetMode(mode); err != nil {
+		return err
+	}
+	serialPortTracker.SetMode(*mode)
+	return nil
+}
+
+// sendBreak holds the TX line low for d.
+func (e *extensionPort) sendBreak(d time.Duration) error {
+	e.mu.Lock()
+	port, err := e.consolePortLocked()
+	e.mu.Unlock()
+
+	if err != nil {
+		return err
+	}
+	return port.Break(d)
+}
+
 func (e *extensionPort) console() (*SerialMux, *ConsoleBroker) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -155,10 +205,15 @@ func (e *extensionPort) setConsoleSettings(settings consoleSettings) {
 	defer e.mu.Unlock()
 
 	e.settings = settings
+	e.settings.keepLineMode = false
 	if e.mux == nil {
 		return
 	}
-	_ = e.port.SetMode(settings.mode)
+	if !settings.keepLineMode {
+		if err := e.port.SetMode(settings.mode); err == nil {
+			serialPortTracker.SetMode(*settings.mode)
+		}
+	}
 	e.mux.SetEchoEnabled(settings.echo)
 	e.broker.SetNormOptions(settings.norm)
 }
