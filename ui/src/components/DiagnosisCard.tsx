@@ -238,7 +238,12 @@ export default function DiagnosisCard({ diagnosis, onAction, busy }: DiagnosisCa
   if (diagnosis.status === "waiting") {
     return (
       <GridCard cardClassName="h-full pointer-events-auto outline-hidden!">
-        <div className="flex h-full w-full flex-col items-center justify-center gap-y-1 rounded-md border border-slate-800/30 p-6 text-center dark:border-slate-300/20">
+        <div
+          data-testid="connection-card"
+          data-status={diagnosis.status}
+          data-question={diagnosis.question}
+          className="flex h-full w-full flex-col items-center justify-center gap-y-1 rounded-md border border-slate-800/30 p-6 text-center dark:border-slate-300/20"
+        >
           <div className="flex h-12 w-12 items-center justify-center">
             <BarSpinner className="h-6 w-6 text-slate-600 dark:text-slate-300" />
           </div>
@@ -269,7 +274,12 @@ export default function DiagnosisCard({ diagnosis, onAction, busy }: DiagnosisCa
 
   return (
     <GridCard cardClassName="h-full pointer-events-auto outline-hidden!">
-      <div className="h-full w-full overflow-y-auto rounded-md border border-slate-800/30 text-left text-sm dark:border-slate-300/20">
+      <div
+        data-testid="connection-card"
+        data-status={diagnosis.status}
+        data-question={diagnosis.question}
+        className="h-full w-full overflow-y-auto rounded-md border border-slate-800/30 text-left text-sm dark:border-slate-300/20"
+      >
         <div className="flex min-h-full items-center justify-center p-6 md:p-8">
           <div className="grid w-full max-w-3xl gap-8 md:grid-cols-[minmax(0,1fr)_13rem]">
             <div className="md:self-center">
