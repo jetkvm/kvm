@@ -68,6 +68,22 @@ test.describe("Connection card", () => {
     }
   });
 
+  test("asks for the network path again when a connected peer fails", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto("/");
+    await waitForWebRTCReady(page);
+
+    await page.evaluate(() => {
+      const peer = window.__kvmTestHooks?._getPeerConnection?.();
+      if (!peer) throw new Error("no peer connection");
+      Object.defineProperty(peer, "connectionState", { get: () => "failed" });
+      peer.dispatchEvent(new Event("connectionstatechange"));
+    });
+
+    await expect.poll(() => cardState(page)).toBe("waiting:4");
+    await expect.poll(() => cardState(page), { timeout: WAIT_LIMIT_MS + 10_000 }).toBe("failed:4");
+  });
+
   test("shows the loading state, then hides it when the video plays", async ({ page }) => {
     test.setTimeout(90_000);
     await page.goto("/");
