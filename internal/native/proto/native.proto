@@ -22,6 +22,7 @@ service NativeService {
   rpc VideoLogStatus(Empty) returns (VideoLogStatusResponse);
   rpc VideoStop(Empty) returns (Empty);
   rpc VideoStart(Empty) returns (Empty);
+  rpc VideoGetSnapshot(Empty) returns (VideoGetSnapshotResponse);
 
   // UI methods
   rpc GetLVGLVersion(Empty) returns (GetLVGLVersionResponse);
@@ -108,6 +109,10 @@ message VideoGetEDIDResponse {
 
 message VideoLogStatusResponse {
   string status = 1;
+}
+
+message VideoGetSnapshotResponse {
+  bytes jpeg = 1;
 }
 
 message GetLVGLVersionResponse {
