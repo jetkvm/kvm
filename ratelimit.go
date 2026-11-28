@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Rate limiting configuration
@@ -174,22 +175,38 @@ func (rl *RateLimiter) Stop() {
 // Global rate limiter instance for password endpoints
 var passwordRateLimiter = NewRateLimiter()
 
-// RateLimitMiddleware creates a Gin middleware that applies rate limiting
-func RateLimitMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ip := c.ClientIP()
+type passwordCheckResult int
 
-		allowed, retryAfter := passwordRateLimiter.IsAllowed(ip)
-		if !allowed {
-			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
-			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error":       "Too many failed attempts. Please try again later.",
-				"retry_after": retryAfter,
-			})
-			c.Abort()
-			return
-		}
+const (
+	passwordCorrect passwordCheckResult = iota
+	passwordWrong
+	passwordLockedOut
+)
 
-		c.Next()
+func checkPassword(c *gin.Context, password string) (passwordCheckResult, int) {
+	if config.HashedPassword == "" {
+		return passwordWrong, 0
 	}
+
+	ip := c.ClientIP()
+	if allowed, retryAfter := passwordRateLimiter.IsAllowed(ip); !allowed {
+		return passwordLockedOut, retryAfter
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(password)); err != nil {
+		passwordRateLimiter.RecordFailure(ip)
+		return passwordWrong, 0
+	}
+
+	passwordRateLimiter.RecordSuccess(ip)
+	return passwordCorrect, 0
+}
+
+func sendTooManyAttemptsThenAbort(c *gin.Context, retryAfter int) {
+	c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+	c.JSON(http.StatusTooManyRequests, gin.H{
+		"error":       "Too many failed attempts. Please try again later.",
+		"retry_after": retryAfter,
+	})
+	c.Abort()
 }

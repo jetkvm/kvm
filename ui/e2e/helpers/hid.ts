@@ -109,6 +109,17 @@ export async function sendAbsMouseMove(
   );
 }
 
+export async function sendWheel(page: Page, deltaY: number, deltaX: number): Promise<void> {
+  await page.evaluate(
+    ({ deltaY, deltaX }) => {
+      const hooks = window.__kvmTestHooks;
+      if (!hooks) throw new Error("Test hooks not available");
+      hooks.sendWheel(deltaY, deltaX);
+    },
+    { deltaY, deltaX },
+  );
+}
+
 export async function captureVideoRegionFingerprint(
   page: Page,
   x: number,

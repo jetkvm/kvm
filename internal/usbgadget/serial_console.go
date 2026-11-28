@@ -5,4 +5,6 @@ var serialConsoleConfig = gadgetConfigItem{
 	device:     "acm.usb0",
 	path:       []string{"functions", "acm.usb0"},
 	configPath: []string{"acm.usb0"},
+	// The notification endpoint and the data endpoint.
+	inEndpoints: 2,
 }

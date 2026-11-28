@@ -22,4 +22,7 @@ var audioConfig = gadgetConfigItem{
 		"p_mute_present":   "0",
 		"p_volume_present": "0",
 	},
+	// The host only sends audio (p_chmask 0), and no feature unit asks for
+	// the status endpoint.
+	inEndpoints: 0,
 }

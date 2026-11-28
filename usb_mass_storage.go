@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	neturl "net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/imagedownload"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/resource"
 
@@ -41,6 +41,7 @@ func rebindAndRecoverHID(context string) error {
 }
 
 func setMassStorageMode(cdrom bool) error {
+	osServicesNoteKVMRestart()
 	mode := "0"
 	if cdrom {
 		mode = "1"
@@ -82,8 +83,25 @@ func setMassStorageMode(cdrom bool) error {
 	return nil
 }
 
-func mountImage(imagePath string) error {
+func ejectMassStorageImage() error {
 	err := gadget.SetMassStorageImage("")
+	if !errors.Is(err, syscall.EBUSY) {
+		return err
+	}
+
+	logger.Warn().Err(err).Msg("eject failed with EBUSY, force-ejecting via controller rebind")
+
+	osServicesNoteKVMRestart()
+	setUSBRecoveryTimer(time.Now())
+	defer func() { setUSBRecoveryTimer(time.Now()) }()
+	if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
+		return fmt.Errorf("%w, %w", err, ejectErr)
+	}
+	return nil
+}
+
+func mountImage(imagePath string) error {
+	err := ejectMassStorageImage()
 	if err != nil {
 		return fmt.Errorf("remove mass storage image error: %w", err)
 	}
@@ -174,17 +192,15 @@ type VirtualMediaUrlInfo struct {
 
 func rpcCheckMountUrl(rawURL string) (*VirtualMediaUrlInfo, error) {
 	rawURL = strings.TrimSpace(rawURL)
-	parsedURL, err := neturl.Parse(rawURL)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return &VirtualMediaUrlInfo{
-			Usable: false,
-			Reason: "Enter a valid HTTP or HTTPS image URL.",
-		}, nil
-	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+	if _, err := imagedownload.ParseURL(rawURL); errors.Is(err, imagedownload.ErrUnsupportedScheme) {
 		return &VirtualMediaUrlInfo{
 			Usable: false,
 			Reason: "Only HTTP and HTTPS image URLs can be mounted.",
+		}, nil
+	} else if err != nil {
+		return &VirtualMediaUrlInfo{
+			Usable: false,
+			Reason: "Enter a valid HTTP or HTTPS image URL.",
 		}, nil
 	}
 
@@ -273,6 +289,8 @@ type VirtualMediaSource string
 const (
 	HTTP    VirtualMediaSource = "HTTP"
 	Storage VirtualMediaSource = "Storage"
+	// Builtin is a disc the firmware makes: the OS Services installer.
+	Builtin VirtualMediaSource = "Builtin"
 )
 
 type VirtualMediaMode string
@@ -303,19 +321,8 @@ func unmountImageLocked() error {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
 
-	err := gadget.SetMassStorageImage("\n")
-	if err != nil {
-		if !errors.Is(err, syscall.EBUSY) {
-			return fmt.Errorf("failed to unmount image: %w", err)
-		}
-
-		logger.Warn().Err(err).Msg("unmount failed with EBUSY, force-ejecting via controller rebind")
-
-		setUSBRecoveryTimer(time.Now())
-		defer func() { setUSBRecoveryTimer(time.Now()) }()
-		if ejectErr := gadget.ForceEjectMassStorageImage(); ejectErr != nil {
-			return fmt.Errorf("failed to unmount image: %w, %w", err, ejectErr)
-		}
+	if err := ejectMassStorageImage(); err != nil {
+		return fmt.Errorf("failed to unmount image: %w", err)
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -375,6 +382,9 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 			return nil, fmt.Errorf("failed to get file info: %w", err)
 		}
 		initialState.Size = info.Size()
+		if diskPath == builtinInstallerPath {
+			initialState.Source = Builtin
+		}
 	}
 
 	return initialState, nil
@@ -418,6 +428,13 @@ func prepareHTTPMount(url string, mode VirtualMediaMode) error {
 	}
 	httpRangeReader = httpreadat.New(url)
 	logger.Info().Str("url", url).Int64("size", urlInfo.Size).Msg("using remote url")
+
+	// f_mass_storage refuses cdrom and ro while the LUN holds an open medium,
+	// and a refused write aborts the whole gadget transaction. Eject first; on
+	// an already empty LUN this is a no-op.
+	if err := ejectMassStorageImage(); err != nil {
+		return fmt.Errorf("failed to eject before setting mass storage mode: %w", err)
+	}
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
 		return fmt.Errorf("failed to set mass storage mode: %w", err)
@@ -464,11 +481,20 @@ func prepareStorageMount(filename string, mode VirtualMediaMode) error {
 	if currentVirtualMediaState != nil {
 		return fmt.Errorf("another virtual media is already mounted")
 	}
+	if err := errIfDownloading(filename); err != nil {
+		return err
+	}
 
 	fullPath := filepath.Join(imagesFolder, filename)
 	fileInfo, err := os.Stat(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// Same as in prepareHTTPMount: the mode cannot be changed against an open
+	// medium, and a refused write aborts the gadget transaction.
+	if err := ejectMassStorageImage(); err != nil {
+		return fmt.Errorf("failed to eject before setting mass storage mode: %w", err)
 	}
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
@@ -493,7 +519,6 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	if err != nil {
 		return err
 	}
-
 	if err := prepareStorageMount(filename, mode); err != nil {
 		return err
 	}
@@ -581,6 +606,10 @@ func rpcDeleteStorageFile(filename string) error {
 		return err
 	}
 
+	if err := errIfDownloading(sanitizedFilename); err != nil {
+		return err
+	}
+
 	fullPath := filepath.Join(imagesFolder, sanitizedFilename)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -618,6 +647,9 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 
 	if _, err := os.Stat(filePath); err == nil {
 		return nil, fmt.Errorf("file already exists: %s", sanitizedFilename)
+	}
+	if err := errIfDownloading(sanitizedFilename + imagedownload.IncompleteSuffix); err != nil {
+		return nil, err
 	}
 
 	// A retry after a cancel must not race the transfer it replaces. A data

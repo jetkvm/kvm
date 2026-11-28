@@ -14,7 +14,7 @@ import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
 import { initTestHooks } from "@/test/testHooks";
 import { CLOUD_API, CLOUD_ENABLE_VERSIONED_UI, DEVICE_API } from "@/ui.config";
-import api from "@/api";
+import api, { localLoginPath } from "@/api";
 import Root from "@/root";
 import { m } from "@localizations/messages.js";
 import Card from "@components/Card";
@@ -45,6 +45,7 @@ const SettingsAdvancedRoute = lazy(() => import("@routes/devices.$id.settings.ad
 const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.hardware"));
 const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
 const SettingsAudioRoute = lazy(() => import("@routes/devices.$id.settings.audio"));
+const SettingsOsServicesRoute = lazy(() => import("@routes/devices.$id.settings.os-services"));
 const SettingsAppearanceRoute = lazy(() => import("@routes/devices.$id.settings.appearance"));
 const SettingsGeneralIndexRoute = lazy(() => import("@routes/devices.$id.settings.general._index"));
 const SettingsGeneralRebootRoute = lazy(
@@ -90,7 +91,7 @@ export async function checkDeviceAuth() {
   if (!res.isSetup) throw redirect("/welcome");
 
   const deviceRes = await api.GET(`${DEVICE_API}/device`);
-  if (deviceRes.status === 401) throw redirect("/login-local");
+  if (deviceRes.status === 401) throw redirect(await localLoginPath(deviceRes));
   if (deviceRes.ok) {
     const device = (await deviceRes.json()) as LocalDevice;
     return { authMode: device.authMode };
@@ -206,6 +207,10 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
           element: <SettingsAudioRoute />,
         },
         {
+          path: "os-services",
+          element: <SettingsOsServicesRoute />,
+        },
+        {
           path: "appearance",
           element: <SettingsAppearanceRoute />,
         },
@@ -231,12 +236,22 @@ const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject
   ],
 });
 
+const devRoutes: RouteObject[] = import.meta.env.DEV
+  ? [
+      {
+        path: "/playground",
+        lazy: async () => ({ Component: (await import("@routes/playground")).default }),
+      },
+    ]
+  : [];
+
 if (isOnDevice) {
   router = createBrowserRouter([
     {
       element: <Shell />,
       HydrateFallback: () => null,
       children: [
+        ...devRoutes,
         {
           path: "/welcome/mode",
           element: <WelcomeLocalModeRoute />,

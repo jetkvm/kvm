@@ -6,9 +6,14 @@ import (
 	"github.com/jetkvm/kvm/internal/mdns"
 )
 
-var mDNS *mdns.MDNS
+var (
+	mDNS                  *mdns.MDNS
+	webServerLoopbackOnly bool
+)
 
 func initMdns() error {
+	webServerLoopbackOnly = config.LocalLoopbackOnly
+
 	options := getMdnsOptions()
 	if options == nil {
 		return fmt.Errorf("failed to get mDNS options")
@@ -18,6 +23,7 @@ func initMdns() error {
 		Logger:        logger,
 		LocalNames:    options.LocalNames,
 		ListenOptions: options.ListenOptions,
+		Service:       options.Service,
 	})
 	if err != nil {
 		return err
@@ -27,4 +33,41 @@ func initMdns() error {
 	mDNS = m
 
 	return nil
+}
+
+func getMdnsOptions() *mdns.MDNSOptions {
+	if networkManager == nil {
+		return nil
+	}
+
+	hostname := networkManager.Hostname()
+	if hostname == "" {
+		hostname = GetDefaultHostname()
+	}
+
+	return mdns.DeviceOptions(mdns.DeviceState{
+		Hostname:     hostname,
+		FQDN:         networkManager.FQDN(),
+		Mode:         config.NetworkConfig.MDNSMode.String,
+		TLSEnabled:   config.TLSMode != "",
+		LoopbackOnly: webServerLoopbackOnly,
+		SetupDone:    config.LocalAuthMode != "",
+		DeviceID:     GetDeviceID(),
+		Version:      GetBuiltAppVersion(),
+	})
+}
+
+func updateMdnsTXT() {
+	if mDNS == nil {
+		return
+	}
+
+	options := getMdnsOptions()
+	if options == nil {
+		return
+	}
+
+	if err := mDNS.UpdateServiceTXT(options.Service); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to update mDNS TXT record")
+	}
 }

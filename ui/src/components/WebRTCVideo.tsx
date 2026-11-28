@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { cx } from "@/cva.config";
 import { isWindows } from "@/utils";
+import useGuestClipboard from "@hooks/useGuestClipboard";
+import useGuestFileDrop from "@hooks/useGuestFileDrop";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import { useDevicePixelRatio } from "@hooks/useDevicePixelRatio";
 import {
+  RpcVideoState,
   useCapability,
   useRTCStore,
   useSettingsStore,
+  useStorageDownloadStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
@@ -21,30 +26,67 @@ import MacroBar from "@components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import {
   AudioPermissionBanner,
-  HDMIErrorOverlay,
-  LoadingVideoOverlay,
-  NoAutoplayPermissionsOverlay,
+  LoadingConnectionOverlay,
   PointerLockBar,
-  UpdateVideoPausedOverlay,
+  VideoPausedOverlay,
 } from "@components/VideoOverlay";
+import DiagnosisCard from "@components/DiagnosisCard";
+import type { CardAction, Diagnosis } from "@/diagnosis/diagnose";
+import { useDiagnosisStore } from "@/diagnosis/store";
+import { useEdidSweep } from "@/diagnosis/useEdidSweep";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import OcrOverlay from "@components/OcrOverlay";
 import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
 const initialHdmiErrorGraceMs = 2500;
+// The device owns the switch between HDMI capture and OS Services video
+// and reports a switching source until the new path has a stable signal
+// (or its own give-up). Its worst case is ~38 s (parking wait + teardown +
+// 30 s give-up); this longer timeout is only a safety net for a resolution
+// event that never reached this client.
+const sourceSwitchTimeoutMs = 45_000;
+
+// On a device with OS Services, Ctrl+Shift+V and Ctrl+Shift+C (Cmd on macOS)
+// move the clipboard between this browser and the target instead of reaching
+// the target as keystrokes.
+function isClipboardChord(e: KeyboardEvent) {
+  return (
+    (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.code === "KeyV" || e.code === "KeyC")
+  );
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  const element = target as HTMLElement | null;
+  return (
+    !!element &&
+    (element.isContentEditable || element.tagName === "INPUT" || element.tagName === "TEXTAREA")
+  );
+}
+
+const RESTORE_TIMEOUT_MS = 15_000;
+
+const settingsPages = {
+  update: "/settings/general/update",
+  restart: "/settings/general/reboot",
+  videoSettings: "/settings/video",
+};
 
 export default function WebRTCVideo({
   hasConnectionIssues,
   hideStatusBar,
+  onRetryConnection,
 }: {
   hasConnectionIssues: boolean;
   hideStatusBar?: boolean;
+  onRetryConnection: () => void;
 }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const audioElm = useRef<HTMLAudioElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const overlaysRef = useRef<HTMLDivElement>(null);
   const { mediaStream, mediaStreamTrackVersion, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
@@ -74,6 +116,8 @@ export default function WebRTCVideo({
     clientWidth: videoClientWidth,
     clientHeight: videoClientHeight,
     hdmiState,
+    videoSource,
+    applyVideoState,
     setVideoElement,
     setContainerElement,
   } = useVideoStore();
@@ -83,13 +127,21 @@ export default function WebRTCVideo({
   const devicePixelRatio = useDevicePixelRatio();
 
   // OCR mode
-  const { isOcrMode } = useUiStore();
+  const { isOcrMode, setPendingPasteText } = useUiStore();
+  const { osServices, pasteViaGuest, copyFromGuest } = useGuestClipboard();
+  // Files dragged from the desktop onto the video go to the remote host.
+  useGuestFileDrop(videoElm);
 
   // RTC related states
   const { peerConnection } = useRTCStore();
 
   // HDMI and UI states
   const isVideoLoading = !isPlaying;
+  // Only a device with OS Services switches the video source.
+  const isSourceSwitching =
+    osServices && (videoSource === "switching_to_guest" || videoSource === "switching_to_physical");
+  const [sourceSwitchTimedOut, setSourceSwitchTimedOut] = useState(false);
+  const showSourceSwitchOverlay = isSourceSwitching && !sourceSwitchTimedOut;
   const rawHdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const [isInitialHdmiErrorGraceActive, setIsInitialHdmiErrorGraceActive] = useState(false);
   const hdmiError = rawHdmiError && !isInitialHdmiErrorGraceActive;
@@ -99,6 +151,32 @@ export default function WebRTCVideo({
   const videoDuringUpdate = useCapability("video_during_update");
   const { otaState } = useUpdateStore();
   const updatePausesVideo = !videoDuringUpdate && otaState.updating && otaState.systemUpdatePending;
+  // A device with removable storage also pauses the stream while it
+  // downloads a file to its TF card, such as the OS Services installer, so
+  // the transfer gets the link.
+  const downloadPausesVideo = useStorageDownloadStore(
+    state => state.download?.state === "downloading" && state.download.videoPaused,
+  );
+
+  const liveDiagnosis = useDiagnosisStore(state => state.diagnosis);
+  const sweepTitle = useDiagnosisStore(state => state.sweepTitle);
+  const [restoringEdid, setRestoringEdid] = useState(false);
+  const restoreAttempt = useRef(0);
+  const startEdidSweep = useEdidSweep();
+  const sweepDiagnosis = useDiagnosisStore(state => state.sweepDiagnosis);
+  const diagnosis: Diagnosis = sweepDiagnosis ?? liveDiagnosis;
+  const { navigateTo } = useDeviceUiNavigation();
+  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
+  const setPlayError = useDiagnosisStore(state => state.setPlayError);
+  const edidChanged = useDiagnosisStore(state => state.edidChanged);
+  const heldByKvm = showSourceSwitchOverlay || updatePausesVideo || downloadPausesVideo;
+  const setHeld = useDiagnosisStore(state => state.setHeld);
+  useEffect(() => setHeld(heldByKvm), [heldByKvm, setHeld]);
+  const showDiagnosis =
+    diagnosis.status !== "ok" && (diagnosis.question <= 5 ? !hasConnectionIssues : !heldByKvm);
+  const shownDiagnosis = useRef(diagnosis);
+  if (showDiagnosis) shownDiagnosis.current = diagnosis;
+  const diagnosisRef = useRef<HTMLDivElement>(null);
 
   // Video-related
   const handleResize = useCallback(
@@ -154,6 +232,32 @@ export default function WebRTCVideo({
       window.clearTimeout(timeout);
     };
   }, [isPlaying, peerConnectionState]);
+
+  // Safety net: the device resolves every switch, so reaching this timeout
+  // means the resolution event never arrived here (lost to session churn or
+  // a reload race). Resync from the device instead of trusting stale state,
+  // and only report a failure if the device really is still switching.
+  useEffect(() => {
+    if (!isSourceSwitching) {
+      setSourceSwitchTimedOut(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setSourceSwitchTimedOut(true);
+      sendRpc("getVideoState", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(m.video_overlay_source_switch_timeout());
+          return;
+        }
+        const state = resp.result as RpcVideoState;
+        applyVideoState(state);
+        if (state.source === "switching_to_guest" || state.source === "switching_to_physical") {
+          notifications.error(m.video_overlay_source_switch_timeout());
+        }
+      });
+    }, sourceSwitchTimeoutMs);
+    return () => window.clearTimeout(timeout);
+  }, [isSourceSwitching, videoSource, sendRpc, applyVideoState]);
 
   // On mount, get the video size
   useEffect(
@@ -334,9 +438,29 @@ export default function WebRTCVideo({
     return code;
   }
 
+  // A click or key on the video is a user gesture: use it to start audio when
+  // the autoplay policy blocked it, instead of asking for a second click.
+  const retryBlockedAudio = useCallback(() => {
+    if (!audioAutoplayBlocked) return;
+    audioElm.current
+      ?.play()
+      .then(() => setAudioAutoplayBlocked(false))
+      .catch(() => {});
+  }, [audioAutoplayBlocked]);
+
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      retryBlockedAudio();
+      if (osServices && isClipboardChord(e)) {
+        // Ctrl+Shift+V keeps its default action so the browser fires `paste`;
+        // Ctrl+Shift+C is handled here. Neither chord reaches the target, and
+        // a held chord transfers once: cancelling the repeat also cancels the
+        // `paste` event it would fire.
+        if (e.repeat || e.code === "KeyC") e.preventDefault();
+        if (!e.repeat && e.code === "KeyC") void copyFromGuest();
+        return;
+      }
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -405,12 +529,22 @@ export default function WebRTCVideo({
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive, isOcrMode, isWindowsClient],
+    [
+      handleKeyPress,
+      isKeyboardLockActive,
+      isOcrMode,
+      isWindowsClient,
+      retryBlockedAudio,
+      osServices,
+      copyFromGuest,
+    ],
   );
 
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
       if (isOcrMode) return; // Let OCR overlay handle keys
+      // The clipboard chords never reached the target on keydown.
+      if (osServices && isClipboardChord(e)) return;
       e.preventDefault();
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -448,7 +582,7 @@ export default function WebRTCVideo({
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress, isOcrMode, isWindowsClient],
+    [handleKeyPress, isOcrMode, isWindowsClient, osServices],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -528,7 +662,11 @@ export default function WebRTCVideo({
       elm
         .play()
         .then(() => setAudioAutoplayBlocked(false))
-        .catch(() => setAudioAutoplayBlocked(true));
+        // Only the autoplay policy needs a click; a play() interrupted by the
+        // next stream change is not a permission problem.
+        .catch((error: unknown) =>
+          setAudioAutoplayBlocked((error as DOMException | undefined)?.name === "NotAllowedError"),
+        );
 
       return () => {
         elm.srcObject = null;
@@ -536,6 +674,28 @@ export default function WebRTCVideo({
       };
     },
     [mediaStream, mediaStreamTrackVersion, audioEnabled],
+  );
+
+  // A paste event only reaches the document when Ctrl+Shift+V was left to
+  // its default action above (plain Ctrl+V is cancelled and forwarded), or
+  // when the browser's Edit menu was used. Either way it is a deliberate
+  // request to paste this browser's clipboard into the target.
+  const pasteHandler = useCallback(
+    (e: ClipboardEvent) => {
+      if (isOcrMode || isEditableTarget(e.target)) return;
+      e.preventDefault();
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (!text) {
+        notifications.error(m.clipboard_paste_empty());
+        return;
+      }
+      void pasteViaGuest(text).then(result => {
+        // Without an OS Services clipboard the paste popover types the text,
+        // showing which characters the keyboard layout cannot produce.
+        if (result === "unavailable") setPendingPasteText(text);
+      });
+    },
+    [isOcrMode, pasteViaGuest, setPendingPasteText],
   );
 
   // Setup Keyboard Events
@@ -546,6 +706,7 @@ export default function WebRTCVideo({
 
       document.addEventListener("keydown", keyDownHandler, { signal });
       document.addEventListener("keyup", keyUpHandler, { signal });
+      if (osServices) document.addEventListener("paste", pasteHandler, { signal });
 
       window.addEventListener("blur", resetKeyboardState, { signal });
       document.addEventListener("visibilitychange", resetKeyboardState, { signal });
@@ -554,7 +715,7 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [keyDownHandler, keyUpHandler, resetKeyboardState],
+    [keyDownHandler, keyUpHandler, osServices, pasteHandler, resetKeyboardState],
   );
 
   // Setup Video Event Listeners
@@ -569,6 +730,7 @@ export default function WebRTCVideo({
       // To prevent the video from being paused when the user presses a space in fullscreen mode
       videoElmRefValue.addEventListener("keydown", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
+      videoElmRefValue.addEventListener("mousedown", retryBlockedAudio, { signal });
 
       // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
@@ -581,7 +743,13 @@ export default function WebRTCVideo({
         abortController.abort();
       };
     },
-    [onVideoPlaying, videoKeyDownHandler, videoKeyUpHandler, updateVideoSizeStore],
+    [
+      onVideoPlaying,
+      videoKeyDownHandler,
+      videoKeyUpHandler,
+      retryBlockedAudio,
+      updateVideoSizeStore,
+    ],
   );
 
   // Setup Mouse Events
@@ -605,9 +773,28 @@ export default function WebRTCVideo({
       });
 
       if (isRelativeMouseMode) {
-        videoElmRefValue.addEventListener(
+        containerRef.current?.addEventListener(
           "click",
-          () => {
+          (e: MouseEvent) => {
+            const target = e.target as Element;
+            if (target !== videoElmRefValue) {
+              const overlays = [diagnosisRef.current, overlaysRef.current].find(area =>
+                area?.contains(target),
+              );
+              if (!hdmiError || !overlays) return;
+
+              const isOnControl = Array.from(overlays.querySelectorAll("a, button")).some(el => {
+                const r = el.getBoundingClientRect();
+                return (
+                  e.clientX >= r.left &&
+                  e.clientX <= r.right &&
+                  e.clientY >= r.top &&
+                  e.clientY <= r.bottom
+                );
+              });
+              if (isOnControl) return;
+            }
+
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
             }
@@ -637,6 +824,7 @@ export default function WebRTCVideo({
       };
     },
     [
+      hdmiError,
       isPointerLockActive,
       isPointerLockPossible,
       requestPointerLock,
@@ -650,13 +838,70 @@ export default function WebRTCVideo({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const hasNoAutoPlayPermissions = useMemo(() => {
-    if (peerConnection?.connectionState !== "connected") return false;
-    if (isPlaying) return false;
-    if (hdmiError) return false;
-    if (videoHeight === 0 || videoWidth === 0) return false;
-    return true;
-  }, [hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
+  const diagnosisCard = (
+    <DiagnosisCard
+      diagnosis={shownDiagnosis.current}
+      onAction={action => handleDiagnosisAction(action)}
+      busy={
+        sweepTitle
+          ? { action: "edidSweep", text: sweepTitle }
+          : restoringEdid
+            ? { action: "restoreEdid", text: "" }
+            : undefined
+      }
+    />
+  );
+
+  function handleDiagnosisAction(action: CardAction) {
+    if (action in settingsPages) {
+      setDisableVideoFocusTrap(true);
+      navigateTo(settingsPages[action as keyof typeof settingsPages]);
+      return;
+    }
+    if (action === "edidSweep") {
+      void startEdidSweep();
+      return;
+    }
+    if (action === "reconnect") {
+      onRetryConnection();
+      return;
+    }
+    if (action === "wake") {
+      sendRpc("wakeHost", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) console.error("Failed to wake host", resp.error);
+      });
+      return;
+    }
+    if (action === "restoreEdid") {
+      const attempt = ++restoreAttempt.current;
+      setRestoringEdid(true);
+      const timeout = setTimeout(() => {
+        if (restoreAttempt.current !== attempt) return;
+        restoreAttempt.current++;
+        setRestoringEdid(false);
+      }, RESTORE_TIMEOUT_MS);
+      sendRpc("setEDID", { edid: "" }, (resp: JsonRpcResponse) => {
+        if (restoreAttempt.current !== attempt) return;
+        clearTimeout(timeout);
+        setRestoringEdid(false);
+        if ("error" in resp) {
+          notifications.error(m.diagnosis_edid_restore_failed());
+          return;
+        }
+        notifications.success(m.diagnosis_edid_restored());
+        edidChanged();
+      });
+      return;
+    }
+    videoElm.current?.play().then(
+      () => setPlayError(null),
+      () => undefined,
+    );
+    audioElm.current
+      ?.play()
+      .then(() => setAudioAutoplayBlocked(false))
+      .catch(() => undefined);
+  }
 
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
@@ -741,17 +986,20 @@ export default function WebRTCVideo({
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         style={videoStyle}
-                        className={cx("h-full w-full object-contain transition-all duration-1000", {
-                          "cursor-none": settings.isCursorHidden,
-                          "pointer-events-none": isOcrMode,
-                          "opacity-0!":
-                            isVideoLoading ||
-                            hdmiError ||
-                            hasConnectionIssues ||
-                            peerConnectionState !== "connected",
-                          "opacity-60!": showPointerLockBar,
-                          "animate-slideUpFade": isPlaying,
-                        })}
+                        className={cx(
+                          "h-full w-full object-contain transition-[opacity,scale] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                          {
+                            "cursor-none": settings.isCursorHidden,
+                            "pointer-events-none": isOcrMode,
+                            "scale-[0.985] opacity-0!":
+                              showDiagnosis ||
+                              isVideoLoading ||
+                              hdmiError ||
+                              hasConnectionIssues ||
+                              peerConnectionState !== "connected",
+                            "opacity-60!": showPointerLockBar,
+                          },
+                        )}
                       />
                       {audioEnabled && <audio ref={audioElm} autoPlay playsInline hidden />}
                       <OcrOverlay />
@@ -760,19 +1008,24 @@ export default function WebRTCVideo({
                           style={{ animationDuration: "500ms" }}
                           className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                         >
-                          <div className="relative h-full w-full rounded-md">
-                            <LoadingVideoOverlay show={isVideoLoading} />
-                            <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
-                            <UpdateVideoPausedOverlay show={updatePausesVideo} />
-                            <NoAutoplayPermissionsOverlay
-                              show={hasNoAutoPlayPermissions}
-                              onPlayClick={() => {
-                                videoElm.current?.play();
-                                audioElm.current
-                                  ?.play()
-                                  .then(() => setAudioAutoplayBlocked(false))
-                                  .catch(() => undefined);
-                              }}
+                          <div ref={overlaysRef} className="relative h-full w-full rounded-md">
+                            <LoadingConnectionOverlay
+                              show={showSourceSwitchOverlay}
+                              text={
+                                videoSource === "switching_to_physical"
+                                  ? m.video_overlay_switching_to_physical()
+                                  : m.video_overlay_switching_to_guest()
+                              }
+                            />
+                            <VideoPausedOverlay
+                              show={updatePausesVideo}
+                              title={m.video_overlay_update_paused_title()}
+                              description={m.video_overlay_update_paused_description()}
+                            />
+                            <VideoPausedOverlay
+                              show={downloadPausesVideo && !updatePausesVideo}
+                              title={m.video_overlay_download_paused_title()}
+                              description={m.video_overlay_download_paused_description()}
                             />
                             <AudioPermissionBanner
                               show={isPlaying && audioEnabled && audioAutoplayBlocked && !hdmiError}
@@ -786,6 +1039,20 @@ export default function WebRTCVideo({
                           </div>
                         </div>
                       )}
+                      <AnimatePresence>
+                        {showDiagnosis && (
+                          <motion.div
+                            ref={diagnosisRef}
+                            className="absolute inset-0"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0, scale: 0.985 }}
+                            transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                          >
+                            {diagnosisCard}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                   <VirtualKeyboard />

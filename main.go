@@ -64,6 +64,7 @@ func Main() {
 	go runWatchdog()
 
 	// initialize usb gadget
+	initOSServices()
 	setProcTitle("initUsbGadget")
 	initUsbGadget()
 
@@ -188,6 +189,14 @@ func Main() {
 	<-sigs
 
 	logger.Log().Msg("JetKVM Shutting Down")
+
+	if mDNS != nil {
+		// Close the multicast sockets so we stop responding to
+		// browses immediately. Browsers age the entry out by TTL.
+		if err := mDNS.Stop(); err != nil {
+			logger.Warn().Err(err).Msg("failed to stop mDNS server")
+		}
+	}
 
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")

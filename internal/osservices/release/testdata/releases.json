@@ -1,0 +1,124 @@
+{
+  "releases": [
+    {
+      "version": "0.4.0",
+      "packages": {
+        "windows-x86_64": {
+          "path": "0.4.0/IP-KVM-OS-Services_0.4.0_windows-x86_64-setup.exe",
+          "size": 1692180,
+          "sha256": "be8addba83be7b3935083231707a7d891deef1555695ba6e36acdec03a9a5793"
+        },
+        "macos-aarch64": {
+          "path": "0.4.0/IP-KVM-OS-Services_0.4.0_macos-aarch64.app.tar.gz",
+          "size": 1839556,
+          "sha256": "e58cc303c54601acd0e28cb1ebc68958ff66c4996fa538367c726b37351cadae"
+        },
+        "linux-x86_64-appimage": {
+          "path": "0.4.0/IP-KVM-OS-Services_0.4.0_linux-x86_64.AppImage",
+          "size": 88599032,
+          "sha256": "a08b7db27dcd993ccfd2f5b6a06a9ff49de3d9a897c6fd875a907973b6773e5f"
+        }
+      }
+    },
+    {
+      "version": "0.4.1",
+      "packages": {
+        "windows-x86_64": {
+          "path": "0.4.1/IP-KVM-OS-Services_0.4.1_windows-x86_64-setup.exe",
+          "size": 1697739,
+          "sha256": "7337f353ffeb3bdbb058eb0007b93f470152e497bd1f2a2be6eb7bf35b8b9b7a"
+        },
+        "macos-aarch64": {
+          "path": "0.4.1/IP-KVM-OS-Services_0.4.1_macos-aarch64.app.tar.gz",
+          "size": 1846982,
+          "sha256": "0cc5e9b36522512c155bd292865ed405227d5b7e41b72b665b50180a9da3a5f3"
+        },
+        "linux-x86_64-appimage": {
+          "path": "0.4.1/IP-KVM-OS-Services_0.4.1_linux-x86_64.AppImage",
+          "size": 88615416,
+          "sha256": "381c6c9bf59a26801d741afd47d4b193b938eef49e00e5e19d40e17e153edd35"
+        }
+      }
+    },
+    {
+      "version": "0.4.2",
+      "packages": {
+        "windows-x86_64": {
+          "path": "0.4.2/IP-KVM-OS-Services_0.4.2_windows-x86_64-setup.exe",
+          "size": 1698973,
+          "sha256": "d90a3020ec87fe3c68eed50164c011e0f69678753102626fb566c92f3160c86d"
+        },
+        "macos-aarch64": {
+          "path": "0.4.2/IP-KVM-OS-Services_0.4.2_macos-aarch64.app.tar.gz",
+          "size": 1848233,
+          "sha256": "911ed293bac5920f431ad62162991986d95ef850811fa2fdf4137ea898744b86"
+        },
+        "linux-x86_64-appimage": {
+          "path": "0.4.2/IP-KVM-OS-Services_0.4.2_linux-x86_64.AppImage",
+          "size": 88627704,
+          "sha256": "8d31652c574e27a3b401d33b3ed70de6b30a685b123e9f74f6c97c44478ffa96"
+        }
+      }
+    },
+    {
+      "version": "0.4.3",
+      "packages": {
+        "windows-x86_64": {
+          "path": "0.4.3/IP-KVM-OS-Services_0.4.3_windows-x86_64-setup.exe",
+          "size": 1698816,
+          "sha256": "51818779e471f32c4df2be0ebc718cbc6bf216e5a9cd6b7f2e2a00f999507334"
+        },
+        "macos-aarch64": {
+          "path": "0.4.3/IP-KVM-OS-Services_0.4.3_macos-aarch64.app.tar.gz",
+          "size": 1851118,
+          "sha256": "25192e65223750dc49d5f18cd95692a5f39075a740590a077dca20c91e49fdb0"
+        },
+        "linux-x86_64-appimage": {
+          "path": "0.4.3/IP-KVM-OS-Services_0.4.3_linux-x86_64.AppImage",
+          "size": 88627704,
+          "sha256": "5cb24523598010550aea58e7aec5be59ddb21919733f071c7d3b2897cb82af30"
+        }
+      }
+    },
+    {
+      "version": "0.4.4",
+      "packages": {
+        "windows-x86_64": {
+          "path": "0.4.4/IP-KVM-OS-Services_0.4.4_windows-x86_64-setup.exe",
+          "size": 1710745,
+          "sha256": "c0e7362aa7239b4a9af8ea08b4a6d6cd4fa7b72a1c5a93c534199a252b5c6bdb"
+        },
+        "macos-aarch64": {
+          "path": "0.4.4/IP-KVM-OS-Services_0.4.4_macos-aarch64.app.tar.gz",
+          "size": 1855143,
+          "sha256": "e0d065f0c2327d5c0c52e0880e15d2238a56f5f2843e4e5fa9f216bbe99277ea"
+        },
+        "linux-x86_64-appimage": {
+          "path": "0.4.4/IP-KVM-OS-Services_0.4.4_linux-x86_64.AppImage",
+          "size": 88627704,
+          "sha256": "540c0528d66c5a9e0356b962b100353d6122516a4166dc7d2bb8462dcffc9ce3"
+        }
+      }
+    },
+    {
+      "version": "0.4.5",
+      "packages": {
+        "windows-x86_64": {
+          "path": "0.4.5/IP-KVM-OS-Services_0.4.5_windows-x86_64-setup.exe",
+          "size": 1711412,
+          "sha256": "6dfb756c5d633b9c590185a8545079fe77501b1b9efa10b571ae412ed62ab41e"
+        },
+        "macos-aarch64": {
+          "path": "0.4.5/IP-KVM-OS-Services_0.4.5_macos-aarch64.app.tar.gz",
+          "size": 1855046,
+          "sha256": "d4ebcb242f3edb3a2c5ccbe0edda77e8232980f4b5ac300ba87a93edce81eaec"
+        },
+        "linux-x86_64-appimage": {
+          "path": "0.4.5/IP-KVM-OS-Services_0.4.5_linux-x86_64.AppImage",
+          "size": 88685048,
+          "sha256": "77542dc59b44ff5a67e2bf76eca126fdfed1bcfc6d478e9bdba6e6d89eb3fb6b"
+        }
+      }
+    }
+  ]
+}

@@ -6,7 +6,7 @@ export const name = "Dansk";
 const isoCode = "da-DK";
 
 const keyTrema = { key: "BracketRight" };
-const keyAcute = { key: "Equal", altRight: true };
+const keyAcute = { key: "Equal" };
 const keyHat = { key: "BracketRight", shift: true };
 const keyGrave = { key: "Equal", shift: true };
 const keyTilde = { key: "BracketRight", altRight: true };
@@ -146,13 +146,13 @@ export const chars = {
   "}": { key: "Digit0", altRight: true },
   "+": { key: "Minus" },
   "?": { key: "Minus", shift: true },
-  "\\": { key: "Equal" },
+  "\\": { key: "IntlBackslash", altRight: true },
   å: { key: "BracketLeft" },
   Å: { key: "BracketLeft", shift: true },
-  ø: { key: "Semicolon" },
-  Ø: { key: "Semicolon", shift: true },
-  æ: { key: "Quote" },
-  Æ: { key: "Quote", shift: true },
+  ø: { key: "Quote" },
+  Ø: { key: "Quote", shift: true },
+  æ: { key: "Semicolon" },
+  Æ: { key: "Semicolon", shift: true },
   "'": { key: "Backslash" },
   "*": { key: "Backslash", shift: true },
   ",": { key: "Comma" },
@@ -166,7 +166,7 @@ export const chars = {
   "~": { key: "BracketRight", deadKey: true, altRight: true },
   "^": { key: "BracketRight", deadKey: true, shift: true },
   "¨": { key: "BracketRight", deadKey: true },
-  "|": { key: "Equal", deadKey: true, altRight: true },
+  "|": { key: "Equal", altRight: true },
   "`": { key: "Equal", deadKey: true, shift: true },
   "´": { key: "Equal", deadKey: true },
   " ": { key: "Space" },

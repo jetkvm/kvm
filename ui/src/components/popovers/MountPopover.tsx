@@ -1,6 +1,6 @@
 import { PlusCircleIcon } from "@heroicons/react/20/solid";
 import { forwardRef, useEffect, useCallback } from "react";
-import { LuLink, LuPlus, LuRadioReceiver } from "react-icons/lu";
+import { LuDisc, LuLink, LuPlus, LuRadioReceiver } from "react-icons/lu";
 import { useClose } from "@headlessui/react";
 import { useLocation } from "react-router";
 
@@ -112,6 +112,24 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
             </p>
             <p className="text-sm text-slate-900 dark:text-slate-100">
               {formatters.bytes(size ?? 0)}
+            </p>
+          </div>
+        );
+      case "Builtin":
+        return (
+          <div className="">
+            <div className="mb-0 inline-block">
+              <Card>
+                <div className="p-1">
+                  <LuDisc className="h-4 w-4 shrink-0 text-blue-700 dark:text-blue-500" />
+                </div>
+              </Card>
+            </div>
+            <h3 className="text-base font-semibold text-black dark:text-white">
+              {m.mount_mounted_builtin_installer()}
+            </h3>
+            <p className="text-sm text-slate-900 dark:text-slate-100">
+              {formatters.truncateMiddle(filename, 30)}
             </p>
           </div>
         );

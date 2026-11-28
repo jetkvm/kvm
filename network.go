@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/confparser"
-	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/ota"
 	"github.com/jetkvm/kvm/pkg/myip"
@@ -42,34 +41,6 @@ type PostRebootAction struct {
 func toRpcNetworkSettings(config *types.NetworkConfig) *RpcNetworkSettings {
 	return &RpcNetworkSettings{
 		NetworkConfig: *config,
-	}
-}
-
-func getMdnsOptions() *mdns.MDNSOptions {
-	if networkManager == nil {
-		return nil
-	}
-
-	var ipv4, ipv6 bool
-	switch config.NetworkConfig.MDNSMode.String {
-	case "auto":
-		ipv4 = true
-		ipv6 = true
-	case "ipv4_only":
-		ipv4 = true
-	case "ipv6_only":
-		ipv6 = true
-	}
-
-	return &mdns.MDNSOptions{
-		LocalNames: []string{
-			networkManager.Hostname(),
-			networkManager.FQDN(),
-		},
-		ListenOptions: &mdns.MDNSListenOptions{
-			IPv4: ipv4,
-			IPv6: ipv6,
-		},
 	}
 }
 

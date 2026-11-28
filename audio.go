@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/jetkvm/kvm/internal/rtpclock"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -88,6 +89,7 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 	defer audioLogger.Info().Msg("audio capture stopped")
 
 	sample := media.Sample{Duration: 20 * time.Millisecond}
+	lastPacket := time.Now()
 	consecutiveErrors := 0
 
 	for {
@@ -129,6 +131,14 @@ func runAudioCapture(ctx context.Context, track *webrtc.TrackLocalStaticSample, 
 		if len(payload) == 0 {
 			continue
 		}
+
+		now := time.Now()
+		if gap := rtpclock.SilenceGap(now.Sub(lastPacket), sample.Duration); gap > 0 {
+			if err := track.WriteSample(media.Sample{Duration: gap}); err != nil {
+				audioLogger.Warn().Err(err).Msg("audio clock step failed")
+			}
+		}
+		lastPacket = now
 
 		sample.Data = payload
 		if err := track.WriteSample(sample); err != nil {

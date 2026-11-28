@@ -28,7 +28,7 @@ const (
 
 func triggerVideoStateUpdate() {
 	go func() {
-		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
+		writeJSONRPCEvent("videoInputState", currentVideoState(), currentSession)
 	}()
 
 	// Publish video state to MQTT
@@ -39,9 +39,9 @@ func triggerVideoStateUpdate() {
 	nativeLogger.Info().Interface("state", lastVideoState).Msg("video state updated")
 }
 
-func rpcGetVideoState() (native.VideoState, error) {
+func rpcGetVideoState() (rpcVideoState, error) {
 	notifyFailsafeMode(currentSession)
-	return lastVideoState, nil
+	return currentVideoState(), nil
 }
 
 const (
@@ -200,6 +200,11 @@ var (
 )
 
 func configuredVideoEDID() string {
+	// While service video owns the display, the target sees the KVM
+	// display that OS Services presents.
+	if edid := osServicesDisplayEDID(); edid != "" {
+		return edid
+	}
 	if config.EdidString == "" || isInternalDisabledEDID(config.EdidString) {
 		return native.DefaultEDID
 	}
@@ -217,7 +222,7 @@ func isHostDisplayAdvertised() bool {
 }
 
 func shouldAdvertiseHostDisplayLocked() bool {
-	return !config.HideDisplayWhenIdle || getActiveSessions() > 0
+	return !config.HideDisplayWhenIdle || getActiveSessions() > 0 || osServicesDisplayEDID() != ""
 }
 
 func setHostDisplayAdvertised(enabled bool, reason string, force bool) error {
@@ -245,6 +250,35 @@ func setHostDisplayAdvertisedLocked(enabled bool, reason string, force bool) err
 	hostDisplayAdvertised = enabled
 	nativeLogger.Info().Bool("advertised", enabled).Str("reason", reason).Msg("host display advertisement updated")
 	return nil
+}
+
+// hostDisplayChangeHPDLow is how long HPD stays low when the target gets
+// another display. Some sources ignore a shorter pulse and keep the old
+// display: a Mac powers its DP-to-HDMI converter off only 300 ms after HPD
+// falls. A target that sees the display go and come back also sets the mode
+// of the new display before it shows a picture on it.
+const hostDisplayChangeHPDLow = 2 * time.Second
+
+// changeHostDisplay gives the target the configured EDID as another display:
+// it takes the display away, keeps HPD low for hostDisplayChangeHPDLow and
+// advertises the display again.
+func changeHostDisplay(reason string) error {
+	hostDisplayAdvertiseLock.Lock()
+	defer hostDisplayAdvertiseLock.Unlock()
+
+	if hostDisplayAdvertised {
+		if err := setHostDisplayAdvertisedLocked(false, reason, true); err != nil {
+			return err
+		}
+		time.Sleep(hostDisplayChangeHPDLow)
+	}
+	err := setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
+	if err != nil {
+		// HPD is low now. Without a second try, the target has no display
+		// until the next change.
+		err = setHostDisplayAdvertisedLocked(shouldAdvertiseHostDisplayLocked(), reason, true)
+	}
+	return err
 }
 
 // applyHostDisplayAdvertisement reconciles the advertised state without rewriting

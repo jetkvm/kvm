@@ -6,8 +6,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type videoFrame struct {
+	data []byte
+	pts  time.Duration
+}
+
 var (
-	videoFrameChan chan []byte           = make(chan []byte)
+	videoFrameChan chan videoFrame       = make(chan videoFrame)
 	videoStateChan chan VideoState       = make(chan VideoState)
 	logChan        chan nativeLogMessage = make(chan nativeLogMessage)
 	indevEventChan chan int              = make(chan int)
@@ -15,13 +20,9 @@ var (
 )
 
 func (n *Native) handleVideoFrameChan() {
-	lastFrame := time.Now()
 	for {
 		frame := <-videoFrameChan
-		now := time.Now()
-		sinceLastFrame := now.Sub(lastFrame)
-		lastFrame = now
-		n.onVideoFrameReceived(frame, sinceLastFrame)
+		n.onVideoFrameReceived(frame.data, frame.pts)
 	}
 }
 

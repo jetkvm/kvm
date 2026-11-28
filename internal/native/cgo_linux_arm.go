@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && arm && cgo
 
 // TODO: use a generator to generate the cgo code for the native functions
 // there's too much boilerplate code to write manually
@@ -8,6 +8,7 @@ package native
 import (
 	"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/rs/zerolog"
@@ -32,7 +33,7 @@ static inline void jetkvm_cgo_setup_video_state_handler() {
     jetkvm_set_video_state_handler(&jetkvm_go_video_state_handler);
 }
 
-extern void jetkvm_go_video_handler(cuint8_t *frame, ssize_t len);
+extern void jetkvm_go_video_handler(cuint8_t *frame, ssize_t len, uint64_t pts_us);
 static inline void jetkvm_cgo_setup_video_handler() {
     jetkvm_set_video_handler(&jetkvm_go_video_handler);
 }
@@ -80,8 +81,11 @@ func jetkvm_go_log_handler(level C.int, filename *C.cchar_t, funcname *C.cchar_t
 }
 
 //export jetkvm_go_video_handler
-func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t) {
-	videoFrameChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
+func jetkvm_go_video_handler(frame *C.cuint8_t, len C.ssize_t, ptsUs C.uint64_t) {
+	videoFrameChan <- videoFrame{
+		data: C.GoBytes(unsafe.Pointer(frame), C.int(len)),
+		pts:  time.Duration(ptsUs) * time.Microsecond,
+	}
 }
 
 //export jetkvm_go_indev_handler
@@ -108,7 +112,7 @@ func uiEventCodeToName(code int) string {
 	return name
 }
 
-func setUpNativeHandlers() {
+func setUpNativeHandlers() error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -117,6 +121,7 @@ func setUpNativeHandlers() {
 	C.jetkvm_cgo_setup_video_handler()
 	C.jetkvm_cgo_setup_indev_handler()
 	C.jetkvm_cgo_setup_rpc_handler()
+	return nil
 }
 
 func uiInit(rotation uint16) {

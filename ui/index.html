@@ -97,31 +97,29 @@
           ><b style="width: 84px"></b><b style="width: 118px"></b>
         </div>
       </div>
-      <div class="sk-stage"></div>
-      <div class="sk-footer"><i style="width: 32px"></i></div>
-      <div class="sk-overlay">
+      <div class="sk-stage">
         <div class="sk-video">
-          <svg
-            class="sk-spinner"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              opacity=".25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            />
-            <path
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
+          <div class="sk-wait">
+            <div class="sk-spinner">
+              <span style="transform: translate(-50%, -50%) rotate(0deg) translate(146%); animation-delay: -1.2s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(30deg) translate(146%); animation-delay: -1.1s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(60deg) translate(146%); animation-delay: -1.0s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(90deg) translate(146%); animation-delay: -0.9s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(120deg) translate(146%); animation-delay: -0.8s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(150deg) translate(146%); animation-delay: -0.7s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(180deg) translate(146%); animation-delay: -0.6s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(210deg) translate(146%); animation-delay: -0.5s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(240deg) translate(146%); animation-delay: -0.4s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(270deg) translate(146%); animation-delay: -0.3s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(300deg) translate(146%); animation-delay: -0.2s"></span>
+              <span style="transform: translate(-50%, -50%) rotate(330deg) translate(146%); animation-delay: -0.1s"></span>
+            </div>
+            <div class="sk-text"></div>
+            <div class="sk-steps"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          </div>
         </div>
       </div>
+      <div class="sk-footer"><i style="width: 32px"></i></div>
     </div>
     <style>
       #skeleton {
@@ -134,7 +132,8 @@
         --sk-stage: oklch(97% 0.014 254.604 / 32%);
         --sk-dot: oklch(80.9% 0.105 251.813);
         --sk-tint: oklch(97% 0.014 254.604 / 25%);
-        --sk-spinner: oklch(42.4% 0.199 265.638);
+        --sk-spinner: oklch(44.6% 0.043 257.281);
+        --sk-step: oklch(86.9% 0.022 252.894);
         --sk-brand: oklch(48.8% 0.243 264.376);
         position: fixed;
         inset: 0;
@@ -163,7 +162,8 @@
         --sk-stage: oklch(27.9% 0.041 260.031 / 32%);
         --sk-dot: oklch(37.2% 0.044 257.287);
         --sk-tint: oklch(27.9% 0.041 260.031 / 25%);
-        --sk-spinner: oklch(88.2% 0.059 254.128);
+        --sk-spinner: oklch(86.9% 0.022 252.894);
+        --sk-step: oklch(37.2% 0.044 257.287);
         --sk-brand: #fff;
       }
       #skeleton.sk-done {
@@ -227,6 +227,7 @@
         background: var(--sk-bone-strong);
       }
       .sk-actions {
+        box-sizing: border-box;
         display: flex;
         flex-wrap: wrap;
         justify-content: space-between;
@@ -258,6 +259,9 @@
         background: var(--sk-bone);
       }
       .sk-stage {
+        display: flex;
+        min-height: 0;
+        padding: 8px 17px 8px 16px;
         background-color: var(--sk-stage);
         background-image:
           radial-gradient(var(--sk-dot) 0.5px, transparent 0.5px),
@@ -267,25 +271,11 @@
           10px 10px;
         background-size: 20px 20px;
       }
-      .sk-overlay {
-        position: absolute;
-        top: 57px;
-        right: 0;
-        bottom: 0;
-        left: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-      }
       .sk-video {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 100%;
-        max-width: 80rem;
-        height: 100%;
-        max-height: 720px;
+        flex: 1;
         border-radius: 6px;
         background-color: var(--sk-surface);
         background-image:
@@ -301,17 +291,57 @@
           linear-gradient(to top right, var(--sk-tint), transparent),
           url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='%23334155' stroke-opacity='.07'%3E%3Cpath d='M0 .5H31.5V32'/%3E%3C/svg%3E");
       }
-      .sk-spinner {
-        width: 28px;
-        height: 28px;
-        animation: sk-spin 1s linear infinite;
+      .sk-wait {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
       }
-      @keyframes sk-spin {
+      .sk-spinner {
+        position: relative;
+        width: 24px;
+        height: 24px;
+        margin: 12px;
+      }
+      .sk-spinner span {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 24%;
+        height: 8%;
+        border-radius: 9999px;
+        background: currentColor;
+        animation: sk-fade 1.2s linear infinite;
+      }
+      @keyframes sk-fade {
+        from {
+          opacity: 1;
+        }
         to {
-          transform: rotate(360deg);
+          opacity: 0.15;
+        }
+      }
+      .sk-text {
+        height: 20px;
+      }
+      .sk-steps {
+        display: flex;
+        gap: 4px;
+        margin-top: 12px;
+      }
+      .sk-steps span {
+        width: 20px;
+        height: 2px;
+        border-radius: 9999px;
+        background: var(--sk-step);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .sk-spinner span {
+          animation: none;
         }
       }
       .sk-footer {
+        box-sizing: border-box;
         display: flex;
         align-items: center;
         height: 25px;
