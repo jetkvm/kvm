@@ -5,7 +5,8 @@ import { createServer } from "vite";
 
 const uiRoot = fileURLToPath(new URL("..", import.meta.url));
 
-export async function loadKeyboardLayouts() {
+// Loads TypeScript modules from src/, given as paths like "/src/foo.ts".
+export async function loadUiModules(paths) {
   const server = await createServer({
     root: uiRoot,
     configFile: false,
@@ -16,12 +17,20 @@ export async function loadKeyboardLayouts() {
     optimizeDeps: { noDiscovery: true, include: [] },
   });
   try {
-    const { keyboards } = await server.ssrLoadModule("/src/keyboardLayouts.ts");
-    const { keys } = await server.ssrLoadModule("/src/keyboardMappings.ts");
-    return { keyboards, keys };
+    const modules = [];
+    for (const path of paths) modules.push(await server.ssrLoadModule(path));
+    return modules;
   } finally {
     await server.close();
   }
+}
+
+export async function loadKeyboardLayouts() {
+  const [{ keyboards }, { keys }] = await loadUiModules([
+    "/src/keyboardLayouts.ts",
+    "/src/keyboardMappings.ts",
+  ]);
+  return { keyboards, keys };
 }
 
 // Text is typed one code point at a time, so entries named after a key, such
