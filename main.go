@@ -116,6 +116,8 @@ func Main() {
 	}
 	initJiggler()
 
+	initTailscale()
+
 	// Initialize MQTT
 	initMQTT()
 	defer func() {

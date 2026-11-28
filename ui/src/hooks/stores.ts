@@ -1027,12 +1027,16 @@ export interface TailscalePeer {
 
 export interface TailscaleStatus {
   installed: boolean;
+  builtin?: boolean;
+  enabled?: boolean;
   running: boolean;
   backendState?: string;
   authURL?: string;
   controlURL?: string;
+  tailnet?: string;
   self?: TailscalePeer;
   health?: string[];
+  error?: string;
 }
 
 export interface NetworkState {

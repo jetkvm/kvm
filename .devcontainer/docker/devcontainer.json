@@ -1,6 +1,6 @@
 {
   "name": "JetKVM docker devcontainer",
-  "image": "mcr.microsoft.com/devcontainers/go:1.25-trixie",
+  "image": "mcr.microsoft.com/devcontainers/go:1.26-trixie",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       // Should match what is defined in ui/package.json
