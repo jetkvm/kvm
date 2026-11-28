@@ -692,7 +692,10 @@ func (s *Session) sendSessionConfig() bool {
 		// This KVM presents the same monitor each time to a sender that
 		// sets the display's mode (videoDisplaySerial).
 		DisplayModeBySender bool `json:"display_mode_by_sender"`
-	}{s.settings.TerminalEnabled, s.settings.FilesEnabled, s.settings.CaptureDisplay, true})
+		// This KVM takes the primary-selection flag in
+		// clipboard.capabilities (ClipboardFlagPrimary).
+		ClipboardPrimary bool `json:"clipboard_primary"`
+	}{s.settings.TerminalEnabled, s.settings.FilesEnabled, s.settings.CaptureDisplay, true, true})
 	if err != nil {
 		s.endSession("session.config: " + err.Error())
 		return false

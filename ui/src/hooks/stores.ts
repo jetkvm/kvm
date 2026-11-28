@@ -320,6 +320,9 @@ export type VideoSource = "physical" | "guest" | "switching_to_physical" | "swit
 export interface GuestClipboardState {
   read: boolean;
   write: boolean;
+  // A write also sets the primary selection, which a Linux terminal pastes
+  // with Shift+Insert. Not present on a KVM that predates the flag.
+  primary?: boolean;
   os: "windows" | "macos" | "linux" | "unknown";
 }
 
